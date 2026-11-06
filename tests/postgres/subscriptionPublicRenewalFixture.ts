@@ -5,6 +5,7 @@ import { installSubscriptionConsumer } from "../helpers/installSubscriptionConsu
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
@@ -17,7 +18,7 @@ import type { NativeRenewalPurchaseFacts, SubscriptionQueryExecutor, AutomaticRe
 import type { RenewalSettlementPort } from "@openlup/platform/subscriptions/contracts";
 
 const exec = promisify(execFile);
-const scratch = resolve(".context/scratch/g7/installed");
+let scratch: string;
 export let at: string, now: string, later: string;
 export const days = (stamp: string, count: number) => new Date(Date.parse(stamp) + count * 86_400_000).toISOString();
 export let api: typeof import("@openlup/platform/subscriptions");
@@ -45,6 +46,7 @@ export async function rpc<T = Record<string, unknown>>(name: string, values: unk
   return (await executor.query(`SELECT public.${name}(${values.map((_, i) => `$${i + 1}`).join(",")}) AS result`, values)).rows[0].result as T;
 }
 beforeAll(async () => {
+  scratch = resolve(".context/scratch/g7", randomUUID(), "installed");
   const require = await installSubscriptionConsumer(scratch);
   const load = (key: string) => import(pathToFileURL(require.resolve(key)).href);
   api = await load("@openlup/platform/subscriptions"); payments = await load("@openlup/platform/payments");
@@ -94,7 +96,10 @@ beforeAll(async () => {
     skuRef: "G7-REFILL", totalQuantity: 1000, forSaleQuantity: 1000, reservedOrUnavailableQuantity: 0, syncRunId: "g7-sync" },
     inventoryClass: "sellable", lastSyncedAt: at, staleAfter: "2027-01-01T00:00:00.000Z" });
 }, postgresSetupTimeoutMs);
-afterAll(async () => { await closePostgres(container, [admin, migration, runtime].filter(Boolean)); });
+afterAll(async () => {
+  try { await closePostgres(container, [admin, migration, runtime].filter(Boolean)); }
+  finally { if (scratch) await rm(resolve(scratch, ".."), { recursive: true, force: true }); }
+});
 
 export async function purchase(captured = true, declared = true, paidAt = at) {
   const accounts = identity.createPostgresAccountLinkStore({ connectionString: runtimeUrl });

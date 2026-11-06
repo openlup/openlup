@@ -1,5 +1,4 @@
-import { appendFile, mkdir } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { createPrivateCapture } from './private-capture.ts';
 import type { PostgresCheckoutRecoveryTokenPort } from '@openlup/platform/commerce/server';
 import type { ActionContext } from './bindings.ts';
 import { routes } from '../shared/routes.ts';
@@ -32,7 +31,9 @@ export function createCheckoutRecoveryDelivery(origin: string,
   };
 }
 async function captureRecoveryMessage(message: CheckoutRecoveryMessage): Promise<void> {
-  const directory = resolve('.context/captured-messages');
-  await mkdir(directory, { recursive: true, mode: 0o700 });
-  await appendFile(resolve(directory, 'checkout-recovery.jsonl'), JSON.stringify(message) + '\n', { mode: 0o600 });
+  const capture = createPrivateCapture();
+  const key = `checkout-recovery:${message.orderRef.toLowerCase()}`;
+  await capture.writeOnce(key, { ...message });
+  const committed = await capture.read(key);
+  if (!committed) throw new Error('starter_private_capture_unavailable');
 }

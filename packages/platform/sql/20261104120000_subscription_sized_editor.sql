@@ -102,7 +102,7 @@ END;
 $$;
 
 CREATE FUNCTION public.subscriptions_bind_sized_opt_in_from_edit()
- RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+ RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE s public.subscriptions%ROWTYPE; q public.subscription_quote_previews%ROWTYPE;
 BEGIN
  IF NEW.event_type<>'subscription.customer_self_service.resize_bundle'

@@ -92,6 +92,16 @@ if (command === 'candidate') {
   }
   // The installed runner owns its pool; this one-shot process owns its lifetime.
   process.exit(process.exitCode ?? 0);
+} else if (command === 'renewal') {
+  const { selectConfiguration } = await import('./owned/store.config.ts');
+  const { parseHostArguments, assertConfig } = await import('./shared/config.ts');
+  const { runScheduledRenewal } = await import('./host/scheduled-renewal.ts');
+  const options = parseHostArguments(args);
+  const config = selectConfiguration(options.configuration);
+  assertConfig(config);
+  if (!options.databaseUrl) throw new Error('starter_runtime_connection_required');
+  // Local invocation only. The existing scheduler may call this same entry.
+  process.stdout.write(JSON.stringify(await runScheduledRenewal(options.databaseUrl, config)) + '\n');
 } else if (command === 'down') {
   // Does not discard the database volume. Destruction is an explicit separate owner action.
   run('docker', ['compose', 'down']);
@@ -108,6 +118,6 @@ if (command === 'candidate') {
 } else if (command === 'ownership') {
   process.stdout.write(await readFile(resolve(root, 'ownership.json'), 'utf8'));
 } else {
-  process.stderr.write('Usage: ./lifecycle candidate <core.tgz> <outbox.tgz> <platform.tgz> | up [--configuration <id>] | down | verify | upgrade <args> | ownership\n');
+  process.stderr.write('Usage: ./lifecycle candidate <core.tgz> <outbox.tgz> <platform.tgz> | up [--configuration <id>] | renewal --configuration <id> --database-url <runtime-url> | down | verify | upgrade <args> | ownership\n');
   process.exitCode = 2;
 }

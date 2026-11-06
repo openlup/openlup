@@ -12,7 +12,7 @@ import { createCapturedTransactionalDelivery, createPostgresTransactionalDeliver
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady,
   type PostgresContainer } from "../helpers/postgresContainer.js";
 const at = "2026-11-06T12:00:00.000Z", next = "2026-12-20T12:00:00.000Z";
-const sqlPath = "db/platform/migrations/20261120120000_subscription_sized_editor.sql";
+const sqlPath = "db/platform/migrations/20261104120000_subscription_sized_editor.sql";
 const money = (amountMinor: number) => ({ amountMinor, currency: "XXX" });
 function quoteLine(sku: string, quantity: number, unit = 100): SizedQuoteLine & Record<string, unknown> {
   return { sku, productSlug: "refill", quantity, unitPriceGross: money(unit), lineSubtotalGross: money(unit * quantity),
@@ -150,11 +150,12 @@ it("refuses direct sized INSERT, direct binding UPDATE and reverse UPDATE with r
   await bind(f);
   await expect(runtime.query("UPDATE public.subscriptions SET configured_offer_version='classic' WHERE id=$1", [f.subscription])).rejects.toMatchObject({ message: "subscription_configured_offer_immutable" });
 });
+// The binding trigger runs as its caller; only the owner-run sized apply can read previews, so a runtime-forged opt-in event fails closed.
 it("rejects an unrelated or unaccepted consent event and rolls back its insert", async () => {
   const f = await fixture(); await accepted(f); const before = await protectedState(f);
   const q = (await owner.query("SELECT id FROM public.subscription_quote_previews WHERE subscription_id=$1", [f.subscription])).rows[0];
   await expect(runtime.query("INSERT INTO public.subscription_events(subscription_id,event_type,idempotency_key,payload) VALUES($1,'subscription.customer_self_service.resize_bundle',$2,$3)",
-    [f.subscription, randomUUID(), { quotePreviewId: q.id, payload: { resizeLever: { kind: SIZED_PARCEL_LEVER_KIND, value: { optInToSized: true } } } }])).rejects.toMatchObject({ message: "subscription_edit_quote_not_accepted" });
+    [f.subscription, randomUUID(), { quotePreviewId: q.id, payload: { resizeLever: { kind: SIZED_PARCEL_LEVER_KIND, value: { optInToSized: true } } } }])).rejects.toMatchObject({ code: "42501", message: "permission denied for table subscription_quote_previews" });
   expect(await protectedState(f)).toEqual(before);
 });
 it("quotes only changed lines, retains complete agreed bytes and add-on identity, and keeps delivery alignment untouched", async () => {

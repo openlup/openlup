@@ -191,6 +191,8 @@ it.each(["paid", "cancelled"])("waits for the canonical order lock and refuses a
     await db.query("BEGIN");
     await db.query("SELECT id FROM public.commerce_orders WHERE id=$1 FOR UPDATE", [o.orderId]);
     mint = issue(o.orderId);
+    // Handle rejection immediately while preserving it for the later assertion.
+    mint.catch(() => {});
     // Observe an actual blocked row-lock waiter, not an arbitrary sleep.
     let blocked = false;
     for (let tries = 0; tries < 100 && !blocked; tries++) {

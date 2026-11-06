@@ -160,3 +160,14 @@ by configuration validation. Both demonstrations use 160. Longer purchase e-mail
 receive `starter_email_invalid` before contact resolution. Checkout and subscription
 address changes share the configured phone and postal-code limits; configuration
 cannot exceed the native destination bounds. Browser fields use those same limits.
+
+## Paid-order message ownership
+
+[The paid-mail host](../host/paid-mail.ts) is managed application composition of
+the installed commerce handler and public outbox claim/process rail. Its registry
+selects only the paid-email event. [The versioned artifact](../host/paid-mail-artifact.ts)
+uses the existing atomic private capture protocol; recipients and rendered bodies
+remain private generated data. [Owned locale copy](../owned/renewal-copy.ts)
+supplies the paid subject and line labels through shared configuration validation.
+The lifecycle command runs one bounded pass without starting a scheduler or a
+real mail provider. Native subscription notices keep their existing owner.

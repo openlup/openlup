@@ -125,7 +125,8 @@ it.each(["2026-01-01T00:00:00.123456Z", "2026-01-01T00:00:00.000Z"])("normalizes
 }, 30_000);
 
 // The shared lock and conflict completion lets the restricted runtime count destinations by client.
-it.each([null, "identity_privacy_erasures", "subscription_command_receipts", "subscription_stock_wait_cases"] as const)("absorbs through the restricted runtime at the destinations count (block=%s)", async table => {
+// A quote preview exists only for its client's subscription; absorption retains previews unread and refuses through the subscription.
+it.each([null, "identity_privacy_erasures", "subscription_command_receipts", "subscription_stock_wait_cases", "subscription_quote_previews"] as const)("absorbs through the restricted runtime at the destinations count (block=%s)", async table => {
   // Scratch fixture: pending the G3 policy row. Never part of this forward.
   // The null case still exercises the full, unmodified chain.
   const pending = table ? await admin.query(`INSERT INTO public.client_absorption_policy(table_name,disposition,note)
@@ -140,12 +141,15 @@ it.each([null, "identity_privacy_erasures", "subscription_command_receipts", "su
     if (table === "identity_privacy_erasures") await admin.query(`INSERT INTO public.identity_privacy_erasures
       (erasure_id,idempotency_key,client_id,actor_principal_id,contract_version,contributor_versions,dispositions,retained_obligations,completed_at)
       VALUES($1,$2,$3,$4,'identity.erasure.v1','{}','{}','[]',$5)`, [randomUUID(), randomUUID(), lead, operator, at]);
-    if (table === "subscription_command_receipts" || table === "subscription_stock_wait_cases") {
+    if (table === "subscription_command_receipts" || table === "subscription_stock_wait_cases" || table === "subscription_quote_previews") {
       const subscription = randomUUID();
       await admin.query("INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at) VALUES($1,$2,28,$3)", [subscription, lead, at]);
       if (table === "subscription_command_receipts") await admin.query(`INSERT INTO public.subscription_command_receipts
         (actor_id,idempotency_key,subscription_id,client_id,command_fingerprint,command,result,status)
         VALUES($1,$2,$3,$4,$5,'{}','{}','refused')`, [operator, randomUUID(), subscription, lead, "a".repeat(64)]);
+      else if (table === "subscription_quote_previews") await admin.query(`INSERT INTO public.subscription_quote_previews
+        (subscription_id,client_id,actor_id,action,quote_hash,template_version,expires_at,request_payload,quote_snapshot,totals)
+        VALUES($1,$2,$3,'update_package_template',$4,1,$5,'{}','{}','{}')`, [subscription, lead, operator, "a".repeat(64), days(at, 1)]);
       else {
         const operation = randomUUID(), identity = `subscription:${subscription}:cycle:${at}`;
         await admin.query(`INSERT INTO public.subscription_renewal_operations
@@ -166,7 +170,8 @@ it.each([null, "identity_privacy_erasures", "subscription_command_receipts", "su
     const result = await absorb();
     if (table) {
       expect(result, JSON.stringify(result)).toMatchObject({ outcome: "refused", action: "absorb_lead", leadId: lead, refusalCode: "lead_has_commercial_footprint" });
-      expect(result.blockingTables).toContain(table);
+      expect(result.blockingTables).toContain(table === "subscription_quote_previews" ? "subscriptions" : table);
+      expect(result.blockingTables).not.toContain("subscription_quote_previews");
       expect(result.blockingTables).not.toContain("commerce_destinations");
       const after = await allPublicRows(admin) as Record<string, unknown[]>, prior = before as Record<string, unknown[]>;
       for (const name of ["customer_support_subscription_commands", "customer_support_subscription_audit_events"]) {

@@ -341,15 +341,17 @@ describe("complete public CI", () => {
     expect(workflow).not.toMatch(/^ {2}test-full:$/mu);
     const aggregate = workflowJob("test");
     expect(aggregate).toContain("    name: test\n");
-    expect(aggregate).toContain("    needs: [test-full-shard]\n");
+    expect(aggregate).toContain("    needs: [test-full-shard, pgtap]\n");
     expect(aggregate).toContain("if: ${{ always() && github.event.repository.private == false &&");
     expect(aggregate).toContain("SHARD_RESULT: ${{ needs.test-full-shard.result }}");
-    expect(workflowCommands(aggregate)).toEqual(['test "$SHARD_RESULT" = "success"']);
-    for (const result of ["success", "failure", "cancelled", "skipped", "", "unknown"]) {
+    expect(workflowJob("pgtap").split("\n").find(line => line.startsWith("    if:"))).toBe(shard.split("\n").find(line => line.startsWith("    if:")));
+    expect(aggregate).toContain("PGTAP_RESULT: ${{ needs.pgtap.result }}");
+    expect(workflowCommands(aggregate)).toEqual(['test "$SHARD_RESULT" = "success" && test "$PGTAP_RESULT" = "success"']);
+    for (const result of ["success", "failure", "cancelled", "skipped", "", "unknown"]) for (const pgtap of ["success", "failure", "cancelled", "skipped", "", "unknown"]) {
       const check = spawnSync("bash", ["-e", "-c", workflowCommands(aggregate)[0]!], {
-        env: { SHARD_RESULT: result },
+        env: { SHARD_RESULT: result, PGTAP_RESULT: pgtap },
       });
-      expect(check.status, result).toBe(result === "success" ? 0 : 1);
+      expect(check.status, `${result}/${pgtap}`).toBe(result === "success" && pgtap === "success" ? 0 : 1);
     }
   });
   it("runs package proof, root shards and database diagnostics independently", () => {
@@ -437,7 +439,7 @@ describe("complete public CI", () => {
         expect(result.status).toBe(29);
         expect(JSON.parse(readFileSync(log, "utf8"))).toEqual(args);
       }
-      const additional = "server/runtime/public-reference src/pages/account/v2/subscriptions/modals/RescheduleModal.test.tsx scripts/oss-published-tree-check.test.ts scripts/documentation-impact.test.ts scripts/documentation-bundle.test.ts scripts/documentation-cli.test.ts scripts/ast-grep/check-filewide-ignore.test.ts scripts/ast-grep/rule-tests/portable-no-industry-contracts.test.ts scripts/public-ci-neutrality.test.ts".split(" ");
+      const additional = "server/runtime/public-reference src/pages/account/v2/subscriptions/modals/RescheduleModal.test.tsx scripts/oss-published-tree-check.test.ts scripts/documentation-bundle.test.ts scripts/documentation-cli.test.ts scripts/ast-grep/check-filewide-ignore.test.ts scripts/ast-grep/rule-tests/portable-no-industry-contracts.test.ts scripts/public-ci-neutrality.test.ts".split(" ");
       const combined = run(["run", ...additional], 29);
       expect(combined.error).toBeUndefined();
       expect(combined.status).toBe(29);

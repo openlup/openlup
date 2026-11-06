@@ -39,7 +39,7 @@ Current execution is documented in [Development and release](../DEVELOPMENT_AND_
 The existing six contexts remain `dco`, `typecheck`, `install-proof`, `test`,
 `self-check` and `gitleaks`. The 19 October CI simplification supersedes the
 selector command and independent full-root diagnostic: four full-root shards
-now feed required `test`, with conservative tooling-input selection on PR/group
+and pgTAP feed required `test`, with conservative tooling-input selection on PR/group
 events. Whole-tree falsifiers always run. Complete core CI remains in the
 independent `install-proof` package gate. Lint blocks `typecheck`; UI neutrality
 and the tree ratchet block `self-check`.
@@ -65,6 +65,10 @@ refuses required `test` and release validation; raw pgTAP retains diagnostic sta
 Follow [testing](../../../CONTRIBUTING.md#test-scope-and-diagnostics) for current
 execution and proof limits. Merge neither cuts a preview nor authorizes
 an installation or adoption.
+
+Update, 6 November 2026: the required `test` aggregate now requires pgTAP, so
+admission and release depend on its success through that unchanged check name;
+the earlier independent-diagnostic descriptions above are historical.
 
 ## Runner and ratchet contracts
 
@@ -103,8 +107,9 @@ regrowth fails. Baseline regeneration never authorizes higher allowances.
    native reviews of the exact committed candidate and staged local-tool bytes.
    Consolidate material findings before repairs; retain complete prior evidence
    and use the installed protocol's closure route for eligible ordinary repairs.
-   Sensitive or unknown repairs retain two reviewers; at most two automatic repair
-   cycles precede regrouping. A current complete pass ends review.
+   Historical review used two reviewers for sensitive or unknown repairs and a
+   two-cycle regroup budget. Current review and delivery follow
+   [Deliver a change](../../../CONTRIBUTING.md#deliver-a-change).
 5. Run the prescribed verifier and DCO on the final candidate. Inspect the fresh
    diagnostic logs after verifier execution; a required-admission exit 0 cannot
    waive a new infrastructure failure. Push only accepted evidence, then stop

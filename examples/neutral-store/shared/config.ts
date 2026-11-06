@@ -1,3 +1,5 @@
+import { assertRenewalConfig, type RenewalConfig } from './renewal-config.ts';
+import { assertRecoveryConfiguration, type RecoveryConfiguration } from './recovery-config.ts';
 import { priceInterimOffer } from './interim-pricing.ts';
 import type { SellableCatalogItem } from '@openlup/platform/catalog/contracts';
 import { assertEditorConfig, type SubscriptionEditorConfig } from './subscription-edit.ts';
@@ -20,6 +22,8 @@ export interface Product extends SellableCatalogItem {
 export interface StoreConfig {
   id: string;
   subscriptionEditing: SubscriptionEditorConfig;
+  renewal: RenewalConfig;
+  recovery?: RecoveryConfiguration;
   /** Optional owned origin; absence preserves the two local HTTP authorities. */
   publicOrigin?: string;
   /** Explicit opt-in for a non-loopback HTTP origin. Prefer TLS. */
@@ -95,8 +99,10 @@ export interface StoreConfig {
 }
 
 export function assertConfig(config: StoreConfig): void {
+  assertRenewalConfig(config.renewal);
   assertEditorConfig(config.subscriptionEditing);
   assertPublicOrigin(config);
+  assertRecoveryConfiguration(config.recovery);
   assertSupportEmail(config);
   const offer = config.offer;
   if (typeof config.market.country !== 'string' || !/^[A-Z]{2}$/.test(config.market.country)

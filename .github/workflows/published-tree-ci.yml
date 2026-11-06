@@ -260,14 +260,15 @@ jobs:
   test:
     name: test
     if: ${{ always() && github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
-    needs: [test-full-shard]
+    needs: [test-full-shard, pgtap]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Require all four full-root shards to succeed
+      - name: Require all four full-root shards and pgTAP to succeed
         env:
           SHARD_RESULT: ${{ needs.test-full-shard.result }}
-        run: test "$SHARD_RESULT" = "success"
+          PGTAP_RESULT: ${{ needs.pgtap.result }}
+        run: test "$SHARD_RESULT" = "success" && test "$PGTAP_RESULT" = "success"
 
   self-check:
     name: self-check

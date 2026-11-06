@@ -1,3 +1,5 @@
+import { demoRenewalConfig } from './renewal.config.ts';
+import { demoRecoveryConfiguration } from '../shared/recovery-config.ts';
 import type { StoreConfig } from '../shared/config.ts';
 import { subscriptionEditing } from './subscription-editing.ts';
 
@@ -5,6 +7,8 @@ import { subscriptionEditing } from './subscription-editing.ts';
 const inputs = {
   supplements: {
     id: 'supplements',
+    renewal: demoRenewalConfig('supplements'),
+    recovery: structuredClone(demoRecoveryConfiguration),
     brand: {
       name: 'Aster Goods',
       strapline: { en: 'A fictional everyday collection', pl: 'Fikcyjna kolekcja na co dzień' },
@@ -88,6 +92,8 @@ const inputs = {
   },
   coffee: {
     id: 'coffee',
+    renewal: demoRenewalConfig('coffee'),
+    recovery: structuredClone(demoRecoveryConfiguration),
     brand: {
       name: 'Pebble Coffee',
       strapline: { en: 'A fictional coffee shelf', pl: 'Fikcyjna półka z kawą' },

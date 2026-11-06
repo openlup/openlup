@@ -1,5 +1,10 @@
 # Native sandbox payment ingress and durable attempts
 
+SQL admission update, 6 November 2026: supported class data, exact approval pins
+and SQL may land together under the [current admission rule](../DATA_AND_MIGRATIONS.md#co-located-sql-and-approval-pins).
+Earlier requirements here for a separate class or pin approval before SQL are
+historical; other scope, proof and owner gates remain unchanged.
+
 Status: implementation and focused proof complete. Native review waits for the
 forward class and the supervisor. Final signed policy/pack evidence accompanies
 the immutable handoff.
@@ -48,7 +53,7 @@ New functions are begin_attempt(text,uuid,text,jsonb,timestamptz),
 record_observation(uuid,text,text,text,timestamptz), read_attempt(uuid,uuid), and
 assert_truth(uuid,text,bigint,text,timestamptz,jsonb), all prefixed
 `public.payment_simulator_`, pinned to `pg_catalog, pg_temp`, with PUBLIC execution
-revoked before conditional service_role execution. CD-M19-47 adds explicit ALL
+revoked before conditional service_role execution. The accepted table-privilege narrowing adds explicit ALL
 revokes on both new tables from PUBLIC and separate conditional revokes for anon,
 authenticated and service_role. This removes hostile creation-time default grants.
 No RLS is enabled. No new table grants, policies,
@@ -277,7 +282,7 @@ Suite paths with wildcards each identify exactly one tracked file.
 - `packages/platform/test/payments/verifiedIngress.test.ts`
 - `packages/platform/test/payments/verifyHandler.test.ts`
 - `packages/platform/test/subscriptions/contracts.test.ts`
-- `scripts/documentation-impact.test.ts`
+- the former documentation-impact suite
 - `scripts/packages/platform-cold-consumer.test.ts`
 - `scripts/payment-truth-schema.test.ts`
 - `scripts/public-ci-payment-allowance.test.ts`
@@ -496,7 +501,7 @@ Recorded admissions waited 4433s in total (largest 421s); test execution totaled
 | `packages/platform/test/payments/verifiedIngress.test.ts` | PASS | 8 |
 | `packages/platform/test/payments/verifyHandler.test.ts` | PASS | 3 |
 | `packages/platform/test/subscriptions/contracts.test.ts` | PASS | 3 |
-| `scripts/documentation-impact.test.ts` | PASS | 101 |
+| the former documentation-impact suite | PASS | 101 |
 | `scripts/packages/platform-cold-consumer.test.ts` | PASS | 108 |
 | `scripts/payment-truth-schema.test.ts` | PASS | 3 |
 | `scripts/public-ci-payment-allowance.test.ts` | PASS | 8 |
@@ -741,7 +746,7 @@ Tail-position repair: the hostile-defaults case locates exactly one G6 forward a
 
 ## Payment and purchase-renewal bundle
 
-The owner decision CD-M19-112 joins G6 and G2 as one candidate and one PR,
+The owner's bundle decision joins G6 and G2 as one candidate and one PR,
 implemented at the existing `oss-m19-g2` stack top on `codex/oss-m19-g2`.
 Both task records remain. The supervisor authorizes merging only main,
 binding the purchase-renewal feature pin, focused proof, a signed candidate and
