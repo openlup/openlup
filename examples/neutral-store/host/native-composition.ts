@@ -14,6 +14,7 @@ import { createPostgresCustomerOrderHistoryReadStore, createPostgresCustomerSubs
   createPostgresCustomerNewsletterPreferencesPort } from '@openlup/platform/account-support';
 import { createPostgresCommerceOmsControlPlane } from '@openlup/platform/commerce/server/postgres';
 import type { ActionBinding, ApplicationBindings, VerifiedActor } from './bindings.ts';
+import type { PromotionAcceptanceKeyring } from '@openlup/platform/promotions';
 import type { OriginPolicy } from './origin-policy.ts';
 import { createSessions } from './sessions.ts';
 import { createPostgresCheckoutRecoveryTokenPort } from '@openlup/platform/commerce/server';
@@ -28,7 +29,7 @@ const uuid = (value: unknown): value is string => typeof value === 'string'
   && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 
 /** Local demonstration only. All database connections use the restricted runtime URL. */
-export async function composeNativeBindings(connectionString: string, origin: OriginPolicy): Promise<ApplicationBindings> {
+export async function composeNativeBindings(connectionString: string, origin: OriginPolicy, quoteAcceptanceKeyring?: PromotionAcceptanceKeyring): Promise<ApplicationBindings> {
   const pool = new pg.Pool({ connectionString, max: 4 });
   try {
     const identity = (await pool.query(`SELECT session_user AS login, current_user AS role,
@@ -69,7 +70,7 @@ export async function composeNativeBindings(connectionString: string, origin: Or
       await createCheckoutRecoveryDelivery(admittedOrigin)(input);
     },
   };
-  const actions: ApplicationBindings['actions'] = { ...capabilities.actions, ...composePurchaseCapabilities(pool, contacts, undefined, recovery), ...composeAuthenticatedRecovery(pool), ...composeOperatorRecovery(pool) };
+  const actions: ApplicationBindings['actions'] = { ...capabilities.actions, ...composePurchaseCapabilities(pool, contacts, undefined, recovery, { ...(quoteAcceptanceKeyring ? { keyring: quoteAcceptanceKeyring } : {}) }), ...composeAuthenticatedRecovery(pool), ...composeOperatorRecovery(pool) };
   const asCustomer = <T>(principalId: string, work: (db: PgGatewayClient) => Promise<T>) =>
     gateway.asActor({ role: 'authenticated', sub: principalId }, db => work(db as PgGatewayClient));
   const email = (value: unknown, limit: number): value is string => typeof value === 'string' && value.trim().length <= limit

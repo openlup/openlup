@@ -81,6 +81,7 @@ test('nonzero renewal shipping refuses while the native contract requires zero',
 for (const original of Object.values(configurations)) test(`${original.id}: native configuration boundaries refuse before composition`, () => {
   const valid = structuredClone(original);
   valid.offer.cadenceDays = [120]; valid.offer.defaultCadenceDays = 120;
+  valid.quote.acquisition.graduationCadenceDays = 120;
   valid.purchase.tax.legalBasis = 'x'.repeat(200);
   valid.legal.revision = 'x'.repeat(64);
   valid.purchase.stock.quantities[valid.offer.products[0]!.sku] = 2147483647;
@@ -97,6 +98,6 @@ for (const original of Object.values(configurations)) test(`${original.id}: nati
     (config: typeof valid) => { config.legal.revision = ' padded '; },
   ]) {
     const invalid = structuredClone(valid); mutate(invalid);
-    assert.throws(() => assertConfig(invalid), /starter_(offer|purchase_configuration|product|configuration)_invalid/);
+    assert.throws(() => assertConfig(invalid), /starter_(offer|purchase_configuration|product|configuration|quote_configuration)_invalid/);
   }
 });
