@@ -446,6 +446,12 @@ describe.each([{ serviceRole: true }, { serviceRole: false }])("native store for
     await expect(checkForward(pool, slot, forward(CREATED_OK, `${view} GRANT SELECT ON public.cat_created_view TO authenticated;`))).rejects.toThrow(/new relation .* grants/u);
     await expect(checkForward(pool, SYNTHETIC_SLOT, forward(CREATED_OK, view))).rejects.toThrow(/created views differ/u);
   });
+  it("lets plain PostgreSQL DDL refuse duplicate views, duplicate triggers and missing targets", async () => {
+    await expect(checkForward(pool, SYNTHETIC_SLOT, forward(CREATED_OK, "CREATE VIEW public.cat_view AS SELECT id FROM public.cat_existing_table;"))).rejects.toThrow('relation "cat_view" already exists');
+    await expect(checkForward(pool, SYNTHETIC_SLOT, forward(CREATED_OK, "CREATE TRIGGER cat_base_trigger BEFORE INSERT ON public.cat_existing_table FOR EACH ROW EXECUTE FUNCTION public.cat_trigger_fn();"))).rejects.toThrow('trigger "cat_base_trigger" for relation "cat_existing_table" already exists');
+    await expect(checkForward(pool, SYNTHETIC_SLOT, forward(CREATED_OK, "CREATE TRIGGER missing BEFORE INSERT ON public.cat_missing FOR EACH ROW EXECUTE FUNCTION public.cat_trigger_fn();"))).rejects.toThrow('relation "public.cat_missing" does not exist');
+    await expect(checkForward(pool, SYNTHETIC_SLOT, forward(CREATED_OK, "ALTER TABLE public.cat_missing ADD COLUMN extra text;"))).rejects.toThrow('relation "public.cat_missing" does not exist');
+  });
   it("proves listed enabled row triggers and their owner-only invoker binding on existing tables", async () => {
     await checkForward(pool, TRIGGER_SLOT, forward(CREATED_OK, TRIGGER_SQL));
   });

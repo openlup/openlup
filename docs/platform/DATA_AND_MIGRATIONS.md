@@ -1466,8 +1466,8 @@ may land with its SQL under the existing validator and applicable maintainer rea
 set-version preparation (S1). A sealed class stays sealed: its complete old slots
 array, including unissued reservations, must remain a canonical content-equal
 prefix of every later array. Only appends are allowed; editing, deleting or
-inserting among those slots refuses. Issued bindings retain their content and
-positions. There is no slot-count maximum or second class key.
+inserting among those slots refuses. Issued bindings and their slots retain their content and array positions, even
+while the class is unsealed. There is no slot-count maximum or second class key.
 Slot timestamps come from their paths and strictly increase in array order. A
 new slot's time must exceed every dated migration in its introduction base,
 including qualified identities; later migrations do not invalidate issued slots.
@@ -1510,8 +1510,8 @@ database. A backslash inside a dollar body is data, and the earlier files of the
 prefix keep the older reading.
 Adding columns or new CHECKs to an existing table retains the expand-only path.
 Any slot may also list exact complete ALTER TABLE texts in
-`existingTableStatements`. Each target comes from that text and must exist in the
-preceding native prefix. The closed actions are ADD COLUMN, named ADD CONSTRAINT
+`existingTableStatements`. PostgreSQL checks target existence when applying the
+plain ALTER TABLE; IF EXISTS is refused. The closed actions are ADD COLUMN, named ADD CONSTRAINT
 under the existing expression checks, ALTER COLUMN DROP NOT NULL, and VALIDATE
 CONSTRAINT. The restricted FOREIGN KEY ... ON DELETE RESTRICT NOT VALID form
 preserves the issued purchase-reservation companions. Other drops, column type
@@ -1524,15 +1524,23 @@ is active. The issued three purchase-reservation texts remain unchanged data.
 The hash binds the complete original CREATE TABLE statement and values is the
 exact new positive IN list. Each entry requires one adjacent DROP CONSTRAINT /
 ADD CONSTRAINT CHECK pair that retains every parsed old value. Between that
-CREATE and the forward, named constraint ADD/DROP/ALTER/RENAME/VALIDATE, the
-checked column's ALTER/DROP/RENAME, and table DROP/RENAME/SET SCHEMA refuse.
-Unrelated, fully classified ADD COLUMN or ADD CONSTRAINT statements remain
-allowed. Identity reads use quote- and comment-aware tokens, including keyword
-whitespace, schema separators and quoted names; literal data cannot name an object.
-Unresolved table identities and unknown DDL on the table refuse. The same token
-identities determine UNIQUE preimages, trigger-name freshness and current prefix
-table existence, so dropped or moved tables cannot remain eligible targets. The real PostgreSQL witness compares
-the installed old constraint with the values parsed from the hash-bound source.
+CREATE and the forward, only statements mentioning the protected table are checked.
+A mention is its bare name as a word or quoted identifier, or that name anywhere
+in a string literal, including a DO body. Each mention must be an ADD COLUMN,
+an ADD or plain DROP CONSTRAINT with another resolved name, CREATE INDEX or
+CREATE TRIGGER on that table, CREATE TABLE of a different resolved table that
+references it, ALTER TABLE of a different resolved table, table privileges,
+COMMENT ON, DML, or CREATE [OR REPLACE] FUNCTION/VIEW. Definition bodies are
+not inspected: they execute only on a later call or select. A mentioning DO
+block refuses except for the existing constant guarded privilege shells. Constraint words fold to lower case; quoted
+names remain exact. Protected or unresolved names and conditional existence
+forms refuse.
+Every other mention refuses, including the protected constraint's changes,
+column changes, table moves and unclassified forms. Keyword whitespace, spaced
+schema dots and quoted identifiers cannot hide a mention. Statements before the
+hash-bound definition and statements without a mention are ignored. The real
+PostgreSQL witness compares the installed old constraint with the values parsed
+from the hash-bound source, including runtime effects of the preceding SQL.
 The issued account-consent `purposeCheck` remains readable unchanged: its values
 continue to mean the old list, and its existing refusal messages remain intact.
 
@@ -1547,7 +1555,9 @@ the installed old and new definitions, including the mode and replacement index.
 
 `createdViews` entries declare a fresh qualified name and exact CREATE VIEW
 statement hash. Only plain unconditional creation is admitted, once per listed
-view. REVOKE ALL ON TABLE ... FROM PUBLIC is mandatory after creation; the
+view. OR REPLACE and conditional existence forms refuse. PostgreSQL rejects a
+duplicate name; the reader does not reconstruct a prefix object catalog.
+REVOKE ALL ON TABLE ... FROM PUBLIC is mandatory after creation; the
 existing guarded role revokes are allowed. Every GRANT on a created view refuses.
 Views gain no RLS or table-grant capability. The real catalog checks the declared
 new view inventory, ownership and owner-only privileges.
@@ -1559,8 +1569,10 @@ zero-argument public function are admitted. That function must be created in the
 same slot, explicitly return trigger with SECURITY INVOKER and a pinned search
 path, revoke PUBLIC and receive no EXECUTE grant. Conditional revokes remain
 allowed. WHEN, transition relations, constraint/statement/instead-of triggers,
-trigger mutation, missing targets and unlisted or drifted statements refuse.
-The catalog witness checks the enabled binding, events and owner-only function ACL.
+trigger mutation and unlisted or drifted statements refuse. Creation stays plain:
+OR REPLACE and conditional existence forms refuse. PostgreSQL rejects duplicate
+triggers and missing targets; the catalog witness checks prefix-table membership,
+name freshness, enabled binding, events and owner-only function ACL.
 
 The destination slot registers four created function signatures and pinned
 search paths. Its two new tables, revokes and RLS use the existing same-file
