@@ -306,14 +306,13 @@ changed bodies, extra definitions and an earlier position. The active SQL is
 byte-identical to that approved fixture.
 The restricted-bootstrap control witness admits the four corrected `qb_`
 identities only as an atomic positions 13–16 append after all twelve earlier
-approvals, checks their exact fixture hashes, and rejects prior repins or
-co-located active SQL. These approvals are inert until a separate selected
+approvals, checks their exact fixture hashes and rejects prior repins; active
+SQL may land with its new approvals under the co-location rule. These approvals are inert until a separate selected
 generation passes its installation and runtime proofs.
 The lock and conflict completion control witness pins the approved shared
 seventeenth identity. The reader admits it only at position 17, and the
 co-located approval check keeps all sixteen issued approvals fixed; the witness
-checks its exact fixture hash and refuses co-located SQL, later repins and wrong
-positions. The manifest witness admits it only once, as a tail of both qualified
+checks its exact fixture hash and refuses later repins and wrong positions. The manifest witness admits it only once, as a tail of both qualified
 plans at the same position among shared units; shared forwards still append
 after it. Its restricted-runtime effects and its destination-state guard are
 proved on both generations by
@@ -2212,7 +2211,7 @@ Core required coverage is V8: statements/lines 80%, branches 65%, functions 75%,
 
 Root tests include required disposable Docker/PostgreSQL proofs. Some older tests explicitly skip when Docker is absent; a skip does not prove that boundary. Installed Outbox/Platform consumers require their owned database and refuse missing infrastructure. For managed SQL use `node scripts/public-ci-pgtap.mjs` with Docker; it needs neither the Supabase CLI nor npm dependencies. It validates committed migration bytes, starts one disposable stock PostgreSQL 17 container with the checksum-pinned pgTAP, `pg_cron` and `pg_prove` packages and the managed-compatibility adapter, replays baseline/forwards with public prerequisites, runs all supplied SQL tests and removes only its own container. Commit migration candidates before this runner; it refuses dirty migration bytes. It never links a hosted database or installs application seed data; it copies the shipped SQL tests unchanged. Replay uses a disposable diagnostic owner with closed default grants, so this profile is not production installer authority or a managed-host certification.
 
-pgTAP remains a raw diagnostic, while root `test` and package `install-proof` are required. Triage actual exits, failed/aborted files, skipped prerequisites and new failures against the exact base; [historical diagnostic evidence](docs/platform/plans/public-ci-known-red.md) grants no waiver. Neither mocks, static SQL assertions, listing, a build nor a green aggregate proves an unexecuted DB/browser/provider obligation.
+In CI, pgTAP is required through the root `test` aggregate, as is package `install-proof`; locally it remains a raw diagnostic. Triage actual exits, failed/aborted files, skipped prerequisites and new failures against the exact base; [historical diagnostic evidence](docs/platform/plans/public-ci-known-red.md) grants no waiver. Neither mocks, static SQL assertions, listing, a build nor a green aggregate proves an unexecuted DB/browser/provider obligation.
 
 Local root coverage (`npm test -- --coverage <path>`) runs Vitest directly when
 the host-local broker helper is absent, with the same arguments, environment
@@ -2441,15 +2440,14 @@ full-root and managed SQL diagnostics are expected green. Matching named debt is
 permission to ignore a red run. When triaging a change, compare fresh
 Vitest failure identities and per-file assertion counts, and pgTAP file summaries,
 with the exact PR base, normalizing log timestamps and ANSI formatting first.
-The required `test` aggregate exposes root failures; `pgtap` remains a raw
-diagnostic job. They do not suppress tests or normalize exits. Installation, database
+The required `test` aggregate exposes root and `pgtap` failures. They do not suppress tests or normalize exits. Installation, database
 start/replay/cleanup and unexplained new failures block delivery; naming those
 failures does not waive broken CI. Use the hosted pull-request run's raw logs
 for this comparison, or the corresponding local commands. The six existing required contexts retain
 their coverage, with blocking lint and neutrality. Promoting diagnostic jobs to
 required checks is the maintainer's ruleset decision; this contribution changes
 no repository settings. Release workflows still check those six contexts, so a
-red root suite now refuses release through `test`; raw pgTAP retains its diagnostic status.
+red root suite or `pgtap` run now refuses release through `test`.
 
 For independently discovered documentation falsifiers and their proof limits,
 follow [Test scope and diagnostics](#test-scope-and-diagnostics). Documentation
