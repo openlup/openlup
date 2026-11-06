@@ -1561,6 +1561,20 @@ for upgrade and operational-dependency proof.
 
 ## Subscription contracts and renewal port
 
+`createPostgresSizedEditor` adds agreed-plan editing and explicit classic-to-sized
+opt-in on the selected sized SQL forward. Compose it with the classic binding
+through `createOfferDispatchedSubscriptionEditor`. Unchanged exact SKU/count/
+add-on lines retain their complete agreements; only changed lines are quoted.
+The host supplies owned need/exclusion facts, verified catalogue/stock facts,
+portion proposals and a single-connection transaction callback. Its
+`assertCurrentFacts` locks and compares host facts in that transaction before
+the five sized composition actions apply; individual add-on edits keep the
+existing exact writer boundary. Preview never binds; accepted opt-in binds atomically, including when
+contents are unchanged. Direct/reverse binding writes refuse. Current SKU
+admission is transactional; publication-head fencing and sized acquisition are
+not supplied. The [subscription owner](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
+defines configuration, introductory reachability and host obligations.
+
 The subscriptions entry also exports `createNativeSubscriptionBinding`,
 `createNativeRetryDriver`, `withNativeDeliveryAlignmentRenewalAdmission`,
 `createPostgresRenewalSettlementPort` and `nativeSubscriptionSchema`. These are
@@ -1599,7 +1613,7 @@ for the fingerprint dialect, transaction boundaries and recovery limits.
 
 The experimental `./subscriptions` entry exposes hosted renewal mechanisms and
 an explicit native capability descriptor; `./subscriptions/contracts` is
-browser-safe and type-only. The [subscription architecture and recipe](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
+browser-safe, with data declarations and the sized parcel lever identifier. The [subscription architecture and recipe](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
 owns the concrete ports, continuity rules, capability refusals and witnesses.
 These entries do not install a store or activate a runner.
 
