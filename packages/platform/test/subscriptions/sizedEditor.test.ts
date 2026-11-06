@@ -4,7 +4,8 @@ import { createSizedEditContextScope, normalizeSizedEdit, sizedEditPhase } from 
 import { createSizedCompositionRules } from "../../src/subscriptions/sizedComposition.js";
 import { quoteSizedEdit, selectSizedAgreements, sizedCandidateCompatibility } from "../../src/subscriptions/sizedEditQuote.js";
 import { createOfferDispatchedSubscriptionEditor, mapSizedEditError, createPostgresSizedEditor } from "../../src/subscriptions/sizedEditor.js";
-import { SIZED_PARCEL_LEVER_KIND, type SizedEditRequest } from "../../src/subscriptions/contracts/sizedEdit.js";
+import { SIZED_PARCEL_LEVER_KIND } from "../../src/subscriptions/sizedParcelLever.js";
+import { type SizedEditRequest } from "../../src/subscriptions/contracts/sizedEdit.js";
 import { agreed, catalog, context, fullQuote, host, ids, money, policy, quoteLine } from "./sizedFixtures.js";
 const db = { query: vi.fn(async () => ({ rows: [] })) };
 const coreConstraint = (value = 4) => ({ kind: "subscription.sized", version: 1, data: { kind: "unit_count", dailyNeed: 4, value } });

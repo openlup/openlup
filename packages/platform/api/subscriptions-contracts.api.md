@@ -347,8 +347,7 @@ export type { SubscriptionLifecycleFact, SubscriptionLifecycleMessageDescriptor,
 export type { SubscriptionRenewalOutcome, HostedRenewalDue, SubscriptionRenewalChargeResult, SubscriptionCycleSnapshotResult, SubscriptionCycleOrderInput, SubscriptionCycleOrderResult, SubscriptionReservationPreflightResult, SubscriptionRenewalPersistencePort, FailurePropagationKind, FailurePropagationContext, CycleRetryState, DunningCaseOpenOutcome, CycleChargeFailurePropagationPort, FailurePropagationResult, RenewalPrepareInput, RenewalAttemptResult, RenewalIntentResult, RenewalPaymentPort, RenewalExecutionPort, RenewalDeliveryAdmission, RenewalAllowedAdmission, RenewalDeliveryClient, RenewalFailureDeps, RenewalPreflightDeps, RenewalCycleDeps, RenewalExecutionContext, RenewalOutcomeContext, RenewalReplayContext, RenewalPreparedAttemptPrepareInput, RenewalPreparedAttemptPersistenceResult, RenewalPreparedAttemptFinalizeInput, RenewalPreparedAttemptPersistencePort } from "./renewal.js";
 export type { PackageEditMoney, PackageEditLine, PackageEditQuoteLine, PackageEditPricedLine, PackageEditRequest, PackageEditQuote, PackageEditBlockedReason, PackageEditPreview, PackageEditApplyResult } from "./packageEdit.js";
 export type { ExactSubscriptionEditAction, ExactSubscriptionEditRequest, SubscriptionEditRequest, ExactSubscriptionEditPreview, ExactSubscriptionEditApplyResult, ExactSubscriptionEditPricedLine, ExactSubscriptionEditQuote, SubscriptionPortionModes } from "./exactEdit.js";
-export { SIZED_PARCEL_LEVER_KIND } from "./sizedEdit.js";
-export type { SizedEditAction, SizedEditRequest, SizedEditPhase, SizedAgreedLine, SizedEditContext, SizedEditPolicy, SizedPricedLine, SizedEditQuote, SizedEditPreview, SizedEditApplyResult, SizedQuoteLine, SizedRecurringQuote, SizedQuoteRequest } from "./sizedEdit.js";
+export type { SizedParcelLeverKind, SizedEditAction, SizedEditRequest, SizedEditPhase, SizedAgreedLine, SizedEditContext, SizedEditPolicy, SizedPricedLine, SizedEditQuote, SizedEditPreview, SizedEditApplyResult, SizedQuoteLine, SizedRecurringQuote, SizedQuoteRequest } from "./sizedEdit.js";
 ```
 ## dist/subscriptions/contracts/messages.d.ts
 
@@ -1129,7 +1128,8 @@ export interface SizedQuoteRequest {
         isAddon?: boolean;
     }[];
 }
-export declare const SIZED_PARCEL_LEVER_KIND: "subscription.sized.parcel";
+/** The sized parcel lever; the runtime value is exported by the server entry. */
+export type SizedParcelLeverKind = "subscription.sized.parcel";
 export type SizedEditAction = "resize_bundle" | "update_bundle" | "update_base_mix" | "update_plan_length" | "update_portion" | "add_addon" | "remove_addon" | "update_addon_quantity";
 type Acceptance = {
     subscriptionId: string;
@@ -1141,7 +1141,7 @@ export type SizedEditRequest = Acceptance & ({
     cadenceDays: number;
     compositionConstraint: Record<string, unknown>;
     resizeLever: {
-        kind: typeof SIZED_PARCEL_LEVER_KIND;
+        kind: SizedParcelLeverKind;
         value: {
             coreLines: PackageEditLine[];
             optInToSized?: true;

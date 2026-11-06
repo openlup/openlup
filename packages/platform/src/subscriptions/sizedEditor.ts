@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { PackageEditActor, PackageEditBlockedReason } from "./packageEditContracts.js";
 import type { SizedEditApplyResult, SizedEditContext, SizedEditPreview, SizedEditRequest } from "./contracts/sizedEdit.js";
-import { SIZED_PARCEL_LEVER_KIND } from "./contracts/sizedEdit.js";
+import { SIZED_PARCEL_LEVER_KIND } from "./sizedParcelLever.js";
 import type { SizedEditorOptions } from "./sizedEditPorts.js";
 import { createSizedEditContextScope, isSizedOptIn, normalizeSizedEdit, readSizedEditContext } from "./sizedEditContext.js";
 import { assertSizedPolicy } from "./sizedComposition.js";

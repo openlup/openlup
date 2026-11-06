@@ -1,5 +1,6 @@
 import type { BundleLineRef, CompositionConstraint, CompositionRulesPort } from "@openlup/core/bundle";
-import { SIZED_PARCEL_LEVER_KIND, type SizedAgreedLine, type SizedEditPolicy } from "./contracts/sizedEdit.js";
+import { SIZED_PARCEL_LEVER_KIND } from "./sizedParcelLever.js";
+import { type SizedAgreedLine, type SizedEditPolicy } from "./contracts/sizedEdit.js";
 import type { SizedCatalogFact, SizedHostPorts } from "./sizedEditPorts.js";
 
 export function assertSizedPolicy(policy: SizedEditPolicy): void {

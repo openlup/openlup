@@ -1631,8 +1631,8 @@ published complete migration chain. See the
 for the fingerprint dialect, transaction boundaries and recovery limits.
 
 The experimental `./subscriptions` entry exposes hosted renewal mechanisms and
-an explicit native capability descriptor; `./subscriptions/contracts` is
-browser-safe, with data declarations and the sized parcel lever identifier. The [subscription architecture and recipe](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
+an explicit native capability descriptor and the sized parcel lever value;
+`./subscriptions/contracts` is browser-safe and type-only. The [subscription architecture and recipe](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
 owns the concrete ports, continuity rules, capability refusals and witnesses.
 These entries do not install a store or activate a runner.
 

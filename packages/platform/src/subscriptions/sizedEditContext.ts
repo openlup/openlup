@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { assertAgreedQuoteLine } from "./agreedPlanQuote.js";
 import type { SizedAgreedLine, SizedEditContext, SizedEditPolicy, SizedEditPhase, SizedEditRequest } from "./contracts/sizedEdit.js";
-import { SIZED_PARCEL_LEVER_KIND } from "./contracts/sizedEdit.js";
+import { SIZED_PARCEL_LEVER_KIND } from "./sizedParcelLever.js";
 import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 import { nativeRenewalTermsSchema } from "./nativeRenewalTerms.js";
 

@@ -3,7 +3,8 @@ import { agreedSubscriptionTotal, mergeSubscriptionAgreedQuote, splitBySubscript
 import { hashPackageEditQuote } from "./classicPackageQuote.js";
 import { createSizedCompositionRules } from "./sizedComposition.js";
 import { isSizedOptIn, sameSizedPinnedConstraint, sizedEditPhase } from "./sizedEditContext.js";
-import { SIZED_PARCEL_LEVER_KIND, type SizedAgreedLine, type SizedEditContext, type SizedEditPolicy, type SizedEditRequest } from "./contracts/sizedEdit.js";
+import { SIZED_PARCEL_LEVER_KIND } from "./sizedParcelLever.js";
+import { type SizedAgreedLine, type SizedEditContext, type SizedEditPolicy, type SizedEditRequest } from "./contracts/sizedEdit.js";
 import type { SizedCatalogFact, SizedHostPorts, SizedSubjectFacts } from "./sizedEditPorts.js";
 import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 
