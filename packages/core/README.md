@@ -418,6 +418,15 @@ vocabulary. Handlers must keep effects idempotent and honor the abort signal.
 The separate `@openlup/outbox` rail owns claiming and settlement ports; its host
 adapter and worker supply durable storage, transactions and external delivery.
 
+`PLATFORM_EVENT_VOCABULARY` includes `commerce.settlement.settled`, emitted by
+the platform settlement rail beside the paid-order events. A host that passes
+this vocabulary as the rail's known-type list can leave a settlement fact
+pending without blocking a later paid receipt on the same order aggregate.
+The claim allowlist still comes from registered handlers. A known type without
+a handler is retained without acknowledgement or delivery; no dormant seed is
+required. Readiness evaluation separately requires an explicit owned
+`ignored` or `dormant` exemption when that selected type has no handler.
+
 ## Platform runtime contracts
 
 The `./platform-runtime` export describes shared host capabilities and runtime
