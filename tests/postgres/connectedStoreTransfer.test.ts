@@ -672,7 +672,7 @@ it("captures only the address-reference registry census and preserves the target
     const sourcePacket = await capture(source.owner, "source-with-address-reference-registry");
     const freshTarget = await capture(target.owner, "target-with-own-address-reference-registry");
     expect(sourcePacket.outsideProfileCensus.filter(entry => entry.disposition !== "unsupported-empty").map(entry => entry.relation).sort())
-      .toEqual(["acquisition_private.address_references", "acquisition_private.installation_key", "public.platform_schema_migrations"]);
+      .toEqual(["acquisition_private.address_references", "acquisition_private.installation_key", "public.customer_identity_challenges", "public.platform_schema_migrations"]);
     expect(sourcePacket.outsideProfileCensus.find(entry => entry.relation === "acquisition_private.address_references"))
       .toEqual({ relation: "acquisition_private.address_references", owner: "platform_acquisition_owner", rows: "2", disposition: "target-address-references" });
     expect(freshTarget.outsideProfileCensus.find(entry => entry.relation === "acquisition_private.address_references")).toMatchObject({ rows: "1" });

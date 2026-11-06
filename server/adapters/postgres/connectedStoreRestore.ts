@@ -463,7 +463,8 @@ function copyCapture(input: ConnectedNativeStoreCapture): ConnectedNativeStoreCa
         || typeof entry.rows !== "string" || !entry.rows || /[^0-9]/.test(entry.rows)) fail("invalid_input");
       const disposition = entry.relation === "acquisition_private.installation_key" ? "new-target-installation-key"
         : entry.relation === "public.platform_schema_migrations" ? "target-migration-history"
-          : entry.relation === "acquisition_private.address_references" ? "target-address-references" : "unsupported-empty";
+          : entry.relation === "acquisition_private.address_references" ? "target-address-references"
+            : entry.relation === "public.customer_identity_challenges" ? "intentionally-not-carried" : "unsupported-empty";
       if (entry.disposition !== disposition || disposition === "unsupported-empty" && entry.rows !== "0") fail("invalid_input");
     }
     const all = tables(copy);
