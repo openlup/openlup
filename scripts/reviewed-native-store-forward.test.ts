@@ -7,7 +7,7 @@ import { assertAdmittedPlatformForward } from "./oss-source-release-contract.ts"
 import { waitNativeAdmission } from "./agent-review-queue.mjs";
 import { captureCommittedReviewCandidate, git as reviewGit } from "./agent-review-session.mjs";
 import { prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER } from "./agent-review-decide.mjs";
-import { NATIVE_CATALOG_CONTROLS, assertCoLocatedForwardApproval, assertNativeStoreForward, assertReviewedPlatformForward, assertUnchangedForwardApproval, nativeStoreFunctionDefinitions, reviewedFunctionDefinitions, sqlStatements, isExpandOnlyPlatformForward, changedForwardApprovals, readReviewedForwardRegistry, sqlSha256, type NativeStoreForwardClass, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
+import { NATIVE_CATALOG_CONTROLS, isNativeStoreMigrationPath, assertCoLocatedForwardApproval, assertNativeStoreForward, assertReviewedPlatformForward, assertUnchangedForwardApproval, nativeStoreFunctionDefinitions, reviewedFunctionDefinitions, sqlStatements, isExpandOnlyPlatformForward, changedForwardApprovals, readReviewedForwardRegistry, sqlSha256, type NativeStoreForwardClass, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
 
 const fixture = (path: string) => readFileSync(`scripts/fixtures/reviewed-native-store/${path}`);
 const control = JSON.parse(fixture("registry.json").toString()) as NativeStoreForwardClass;
@@ -64,14 +64,13 @@ describe("closed native store class data", () => {
     const old = structuredClone(production); delete old.nativeStoreForwardClass; delete old.nativeStoreForwards;
     expect(() => readReviewedForwardRegistry(encode(old))).not.toThrow();
   });
-  it.each(["eighth slot", "wrong rail", "unknown row", "wrong order", "duplicate slot", "before last forward", "unknown signature type", "bad before hash", "CHECK on another row"])("refuses %s", attack => {
+  it.each(["eighth slot", "wrong rail", "malformed row", "wrong order", "duplicate slot", "unknown signature type", "bad before hash", "CHECK on another row"])("refuses %s", attack => {
     const value = registry(), slots = value.nativeStoreForwardClass!.slots;
     if (attack === "eighth slot") slots.push(structuredClone(slots[0]!));
     if (attack === "wrong rail") slots[0]!.path = slots[0]!.path.replace("db/platform", "supabase");
-    if (attack === "unknown row") slots[0]!.row = "G5";
+    if (attack === "malformed row") slots[0]!.row = "bad row";
     if (attack === "wrong order") slots.reverse();
     if (attack === "duplicate slot") slots[1] = structuredClone(slots[0]!);
-    if (attack === "before last forward") slots[0]!.path = "db/platform/migrations/20261030121900_fixture.sql";
     if (attack === "unknown signature type") slots[0]!.replacedFunctions[0]!.signature = "public.fixture_existing(regclass)";
     if (attack === "bad before hash") slots[0]!.replacedFunctions[0]!.beforeSha256 = "bad";
     if (attack === "CHECK on another row") slots[0]!.purposeCheck = slots[6]!.purposeCheck;
@@ -82,12 +81,12 @@ describe("closed native store class data", () => {
     expect(() => changedForwardApprovals(encode(prior), encode(next))).not.toThrow();
     prior.nativeStoreForwardClass!.sealed = true;
     next.nativeStoreForwardClass!.sealed = true;
-    expect(() => changedForwardApprovals(encode(prior), encode(next))).toThrow(/after S1/u);
+    expect(() => changedForwardApprovals(encode(prior), encode(next))).toThrow(/sealed slot prefix/u);
     const partial = registry(); partial.nativeStoreForwardClass!.slots.pop(); partial.nativeStoreForwardClass!.sealed = true;
     const added = registry(); added.nativeStoreForwardClass!.sealed = true;
-    expect(() => changedForwardApprovals(encode(partial), encode(added))).toThrow(/after S1/u);
+    expect(() => changedForwardApprovals(encode(partial), encode(added))).not.toThrow();
     added.nativeStoreForwardClass!.sealed = false;
-    expect(() => changedForwardApprovals(encode(prior), encode(added))).toThrow(/after S1/u);
+    expect(() => changedForwardApprovals(encode(prior), encode(added))).toThrow(/sealed slot prefix/u);
   });
   it("refuses replacing one normalized signature in a second slot", () => {
     const value = registry();
@@ -139,7 +138,7 @@ describe("native store SQL shapes and pins", () => {
     const value = registry(), text = sql(1), pin = bind(value, 1, text);
     expect(() => assertNativeStoreForward(value, pin.path, Buffer.from(text), [{ path: PLATFORM_BASELINE_FILE, bytes: before }])).toThrow(/earlier slot/u);
     value.nativeStoreForwardClass!.slots.shift();
-    expect(() => assertNativeStoreForward(value, pin.path, Buffer.from(text), [{ path: PLATFORM_BASELINE_FILE, bytes: before }])).toThrow(/earlier slot/u);
+    expect(() => assertNativeStoreForward(value, pin.path, Buffer.from(text), [{ path: PLATFORM_BASELINE_FILE, bytes: before }])).not.toThrow();
     expect(() => check(`${sql()} `, value => { value.nativeStoreForwards![0]!.sha256 = sqlSha256(sql()); })).toThrow(/file hash/u);
   });
   it("admits only exactly named data statements", () => {
@@ -161,7 +160,7 @@ describe("native store SQL shapes and pins", () => {
     if (attack === "missing add") text = text.replace(purposeAdd, "");
     if (attack === "preimage drift") value.nativeStoreForwardClass!.slots[6]!.purposeCheck!.beforeSha256 = "0".repeat(64);
     if (attack === "nonadjacent pair") text = text.replace(purposeDrop, `${purposeDrop}\nCREATE TABLE public.fixture_gap (id uuid);`);
-    if (attack === "quoted intervening DDL") preceding.push({ path: "db/platform/migrations/20261101231999_fixture_history.sql", bytes: Buffer.from('ALTER TABLE "public"."communication_native_sync_state" ADD COLUMN fixture_note text;') });
+    if (attack === "quoted intervening DDL") preceding.push({ path: "db/platform/migrations/20261101231999_fixture_history.sql", bytes: Buffer.from('ALTER TABLE "public"."communication_native_sync_state" ALTER COLUMN purpose DROP NOT NULL;') });
     const pin = bind(value, 6, text);
     expect(() => assertNativeStoreForward(value, pin.path, Buffer.from(text), preceding)).toThrow(/CHECK|closed shapes/u);
   });
@@ -570,7 +569,7 @@ describe("same-file new-table narrowing", () => {
 });
 
 describe("real Git introduction, release and co-location", () => {
-  it.each(["pull_request", "merge_group"])("refuses unbound expand-only reserved SQL at native %s admission", async eventName => {
+  it.each([{ eventName: "pull_request", fresh: false }, { eventName: "merge_group", fresh: false }, { eventName: "pull_request", fresh: true }])("refuses unbound expand-only SQL at native $eventName admission (new registry time: $fresh)", async ({ eventName, fresh }) => {
     mkdirSync(".context/scratch", { recursive: true });
     const folder = mkdtempSync(resolve(".context/scratch/native-store-queue-"));
     const git = (...args: string[]) => execFileSync("git", ["-C", folder, "-c", "user.name=Control Test", "-c", "user.email=control@example.invalid", "-c", "commit.gpgsign=false", ...args], { encoding: "utf8" }).trim();
@@ -579,7 +578,14 @@ describe("real Git introduction, release and co-location", () => {
     try {
       git("init", "-q", "-b", "main"); put("config/reviewed-platform-forwards.json", encode(registry())); const base = commit();
       git("update-ref", "refs/remotes/origin/main", base);
-      put(control.slots[0]!.path, "CREATE TABLE public.fixture_unbound (id uuid);"); const head = commit();
+      const path = fresh ? "db/platform/migrations/20271106100000_fixture_new.sql" : control.slots[0]!.path;
+      if (fresh) {
+        const value = registry(); value.nativeStoreForwardClass!.slots.push({ row: "Future", path, replacedFunctions: [], createdFunctions: [], grantOnlyFunctions: [], dataStatements: [] });
+        put("config/reviewed-platform-forwards.json", encode(value));
+        expect(isNativeStoreMigrationPath(path)).toBe(false);
+        expect(isNativeStoreMigrationPath(path, value.nativeStoreForwardClass!.slots)).toBe(true);
+      }
+      put(path, "CREATE TABLE public.fixture_unbound (id uuid);"); const head = commit();
       const candidate = await captureCommittedReviewCandidate(folder, base, head);
       let session = prepareCandidate(null, { ...candidate, intent: { risk: "behavior", criteria: "Synthetic closed native class refusal" }, authorSessionId: "fixture-author" }, 1000);
       for (const reviewer of ["fixture-reviewer-a", "fixture-reviewer-b"]) session = recordReport(session, { reviewer, cold: true, tree: candidate.tree, verdict: "PASS", findings: [], closes: [], documentation: "Synthetic queue fixture; exact class boundary." }, 1000);
@@ -649,7 +655,7 @@ describe("real Git introduction, release and co-location", () => {
       const sealed = structuredClone(initial); sealed.nativeStoreForwardClass!.sealed = true;
       put(registryPath, encode(sealed)); const sealing = commit();
       sealed.nativeStoreForwardClass!.slots.pop(); put(registryPath, encode(sealed)); const sealedEdit = commit();
-      expect(() => assertCoLocatedForwardApproval(folder, sealing, sealedEdit)).toThrow("reviewed native store admits no slot changes after S1 sealing");
+      expect(() => assertCoLocatedForwardApproval(folder, sealing, sealedEdit)).toThrow("reviewed native store sealed slot prefix is immutable and cannot be unsealed");
     } finally { rmSync(folder, { recursive: true, force: true }); }
   }, 30_000);
   it("preserves earlier classes' release approval when the new class is added", () => {
@@ -745,15 +751,11 @@ describe("G4 exact existing-table companions and G3 inventory", () => {
     expect(() => check(`${sql()}\n${statement}`)).toThrow(/closed shapes/u);
     expect(() => checkG4G3(3, `${g3()}\n${statement}`)).toThrow(/closed shapes/u);
   });
-  it.each(g4g3.listRefusals)("refuses $label in the pinned class list before SQL exists", attack => {
-    const value = registry(), statements = attack.order?.map(index => g4g3.g4Statements[index]!) ?? [...g4g3.g4Statements];
-    if (attack.replace !== undefined) statements[attack.replace] = attack.sql!;
-    value.nativeStoreForwardClass!.slots[2]!.existingTableStatements = statements;
-    expect(() => readReviewedForwardRegistry(encode(value))).toThrow(/existing-table list is pinned/u);
-  });
-  it("refuses the pinned list on another slot during class validation", () => {
+  it("admits a safe exact existing-table list on any unissued slot", () => {
     const value = registry(); value.nativeStoreForwardClass!.slots[0]!.existingTableStatements = [...g4g3.g4Statements];
-    expect(() => readReviewedForwardRegistry(encode(value))).toThrow(/G4-only/u);
+    expect(() => readReviewedForwardRegistry(encode(value))).not.toThrow();
+    value.nativeStoreForwardClass!.slots[0]!.existingTableStatements!.push(g4g3.g4Statements[0]!);
+    expect(() => readReviewedForwardRegistry(encode(value))).toThrow(/unique exact texts/u);
   });
   it("requires a list target in the prefix, not a new table created by this file", () => {
     const value = registry(), preceding = [{ path: PLATFORM_BASELINE_FILE, bytes: before }];
@@ -770,7 +772,7 @@ describe("G4 exact existing-table companions and G3 inventory", () => {
     next.nativeStoreForwardClass!.slots[2]!.existingTableStatements = [...g4g3.g4Statements];
     expect(() => changedForwardApprovals(encode(prior), encode(next))).not.toThrow();
     prior.nativeStoreForwardClass!.sealed = true; next.nativeStoreForwardClass!.sealed = true;
-    expect(() => changedForwardApprovals(encode(prior), encode(next))).toThrow(/after S1/u);
+    expect(() => changedForwardApprovals(encode(prior), encode(next))).toThrow(/sealed slot prefix/u);
   });
   it("preserves the inherited final END semicolon requirement for conditional DO", () => {
     expect(() => checkG4G3(2, `${g4()}\n${g4g3.writerDoTerminatorRefusal}`)).toThrow(/single constant role privilege shape/u);
@@ -858,5 +860,136 @@ describe("checker-pinned G8 INSERT/SELECT table", () => {
   it("refuses policy text differing by one token", () => { noticeRefusal(() => checkNotice(noticeShape.replace(noticePolicy, noticePolicy.replace("USING (true)", "USING (false)"))), conditionalNoticeError); });
   it("refuses reordered privileges and added TABLE", () => {
     for (const grant of [noticeGrant.replace("SELECT, INSERT", "INSERT, SELECT"), noticeGrant.replace(" ON ", " ON TABLE ")]) noticeRefusal(() => checkNotice(noticeShape.replace(noticeGrant, grant)), conditionalNoticeError);
+  });
+});
+
+
+const parameterTable = "CREATE TABLE public.fixture_parameters (id uuid, extra uuid, status text, kind text, CONSTRAINT fixture_status CHECK (status IN ('open','closed')), CONSTRAINT fixture_kind CHECK (kind IN ('first','second')), CONSTRAINT fixture_key UNIQUE (id));";
+const parameterCheck = (name = "fixture_status", column = "status", values = "'open','closed','paused'") => `ALTER TABLE public.fixture_parameters DROP CONSTRAINT ${name};\nALTER TABLE public.fixture_parameters ADD CONSTRAINT ${name} CHECK (${column} IN (${values}));`;
+const parameterUnique = "ALTER TABLE public.fixture_parameters DROP CONSTRAINT fixture_key;\nALTER TABLE public.fixture_parameters ADD CONSTRAINT fixture_key UNIQUE NULLS NOT DISTINCT (id,extra);";
+function parameterForward(text: string, mutate: (slot: NativeStoreSlot) => void, history = "") {
+  const value = registry(), slot = value.nativeStoreForwardClass!.slots[0]!; mutate(slot);
+  const complete = `${sql()}\n${text}`, pin = bind(value, 0, complete);
+  const preceding = [{ path: PLATFORM_BASELINE_FILE, bytes: Buffer.concat([before, Buffer.from(`\n${parameterTable}`)]) }, ...history ? [{ path: "db/platform/migrations/20261031120000_parameter_history.sql", bytes: Buffer.from(history) }] : []];
+  assertNativeStoreForward(value, pin.path, Buffer.from(complete), preceding);
+}
+const addCheck = (slot: NativeStoreSlot) => { slot.checkSupersets = [{ table: "public.fixture_parameters", constraint: "fixture_status", column: "status", beforeSha256: sqlSha256(parameterTable), values: ["open", "closed", "paused"] }]; };
+const addUnique = (slot: NativeStoreSlot) => { slot.uniqueSupersets = [{ table: "public.fixture_parameters", constraint: "fixture_key", beforeSha256: sqlSha256(parameterTable), columns: ["id", "extra"], nullsNotDistinct: true }]; };
+
+describe("registry-defined native capabilities", () => {
+  it("admits a fresh later eighth slot from data and keeps all issued data unchanged", () => {
+    expect(readReviewedForwardRegistry(encode(production))).toEqual(production);
+    const value = registry(), preceding = [{ path: PLATFORM_BASELINE_FILE, bytes: before }];
+    for (let index = 0; index < 7; index++) { const text = sql(index), pin = bind(value, index, text); assertNativeStoreForward(value, pin.path, Buffer.from(text), preceding); preceding.push({ path: pin.path, bytes: Buffer.from(text) }); }
+    const path = "db/platform/migrations/20271106100000_future.sql";
+    value.nativeStoreForwardClass!.slots.push({ row: "C2-1", path, replacedFunctions: [], createdFunctions: [], grantOnlyFunctions: [], dataStatements: [] });
+    const text = "CREATE TABLE public.fixture_eighth (id uuid);"; bind(value, 7, text);
+    expect(() => assertNativeStoreForward(value, path, Buffer.from(text), preceding)).not.toThrow();
+    value.nativeStoreForwardClass!.slots.push({ ...structuredClone(value.nativeStoreForwardClass!.slots[7]!), row: "Ninth", path: "db/platform/migrations/20271106110000_ninth.sql" });
+    expect(() => readReviewedForwardRegistry(encode(value))).not.toThrow();
+  });
+  it.each(["DROP TABLE public.fixture_parameters;", "ALTER TABLE public.fixture_parameters DROP COLUMN status;", "ALTER TABLE public.fixture_parameters ALTER COLUMN status TYPE integer;", "ALTER TABLE public.fixture_parameters RENAME COLUMN status TO other;", "ALTER TABLE public.fixture_parameters ADD COLUMN safe text, DROP COLUMN status;"])("refuses listed destructive existing-table DDL: %s", statement => {
+    expect(() => parameterForward(statement, slot => { slot.existingTableStatements = [statement]; })).toThrow("reviewed native store existing-table statement is not expand-only");
+  });
+  it("admits multiple CHECK widenings after unrelated additive DDL", () => {
+    const history = "ALTER TABLE public.fixture_parameters DROP CONSTRAINT unrelated_old;\nALTER TABLE public.fixture_parameters ADD COLUMN unrelated uuid;\nALTER TABLE public.fixture_parameters ADD CONSTRAINT unrelated_fk FOREIGN KEY (unrelated) REFERENCES public.fixture_row(id) ON DELETE RESTRICT NOT VALID;";
+    expect(() => parameterForward(`${parameterCheck()}\n${parameterCheck("fixture_kind", "kind", "'first','second','third'")}`, slot => { addCheck(slot); slot.checkSupersets!.push({ ...slot.checkSupersets![0]!, constraint: "fixture_kind", column: "kind", values: ["first", "second", "third"] }); }, history)).not.toThrow();
+  });
+  it.each(["ALTER TABLE public.fixture_parameters ALTER COLUMN status DROP NOT NULL;", "ALTER TABLE public.fixture_parameters DROP COLUMN status;", "ALTER TABLE public.fixture_parameters RENAME COLUMN status TO other;", "ALTER TABLE public.fixture_parameters VALIDATE CONSTRAINT fixture_status;", "ALTER TABLE public.fixture_parameters RENAME TO other;", "ALTER TABLE public.fixture_parameters SET SCHEMA other;", "DROP TABLE public.fixture_parameters;", 'ALTER TABLE "public"."fixture_parameters" DROP CONSTRAINT "fixture_status";', "ALTER TABLE public.fixture_parameters DISABLE TRIGGER ALL;"])("refuses a CHECK with affecting or unclassified DDL: %s", history => {
+    expect(() => parameterForward(parameterCheck(), addCheck, history)).toThrow("reviewed native store CHECK intervening DDL refused");
+  });
+  it("refuses CHECK narrowing, preimage drift and nonadjacent pairs", () => {
+    expect(() => parameterForward(parameterCheck(undefined, undefined, "'open','paused'"), addCheck)).toThrow("reviewed native store CHECK must only widen");
+    expect(() => parameterForward(parameterCheck(), slot => { addCheck(slot); slot.checkSupersets![0]!.beforeSha256 = "0".repeat(64); })).toThrow("reviewed native store CHECK preimage drifted");
+    expect(() => parameterForward(parameterCheck().replace(";\n", ";\nCREATE TABLE public.gap (id uuid);\n"), addCheck)).toThrow(/adjacent/u);
+  });
+  it("admits only a listed adjacent UNIQUE superset without widening the general grammar", () => {
+    expect(isExpandOnlyPlatformForward(parameterUnique.split("\n")[1]!)).toBe(false);
+    expect(() => parameterForward(parameterUnique, addUnique)).not.toThrow();
+    expect(() => parameterForward(parameterUnique, () => {})).toThrow(/closed shapes/u);
+    expect(() => parameterForward(parameterUnique.replace("(id,extra)", "(extra)"), slot => { addUnique(slot); slot.uniqueSupersets![0]!.columns = ["extra"]; })).toThrow("reviewed native store UNIQUE must only widen its key");
+    expect(() => parameterForward(parameterUnique.replace(";\n", ";\nCREATE TABLE public.gap (id uuid);\n"), addUnique)).toThrow(/adjacent/u);
+    expect(() => parameterForward(parameterUnique.replaceAll("fixture_key", "other_key"), addUnique)).toThrow(/closed shapes/u);
+    expect(() => parameterForward(parameterUnique.replace(" NULLS NOT DISTINCT", ""), addUnique)).toThrow(/UNIQUE must only widen/u);
+  });
+  it("uses the last defining UNIQUE statement as its hash-bound preimage", () => {
+    const history = "ALTER TABLE public.fixture_parameters DROP CONSTRAINT fixture_key;\nALTER TABLE public.fixture_parameters ADD CONSTRAINT fixture_key UNIQUE (id,extra);";
+    // A changed named constraint before its newest definition is legitimate history.
+    expect(() => parameterForward(parameterUnique, slot => { addUnique(slot); slot.uniqueSupersets![0]!.beforeSha256 = sqlSha256(history.split("\n")[1]!); }, history)).not.toThrow();
+  });
+  it("admits a hash-pinned fresh view and required PUBLIC and conditional revokes", () => {
+    const create = "CREATE VIEW public.fixture_parameter_view AS SELECT id FROM public.fixture_parameters;";
+    const revoke = "REVOKE ALL ON TABLE public.fixture_parameter_view FROM PUBLIC;";
+    const entry = (slot: NativeStoreSlot) => { slot.createdViews = [{ name: "public.fixture_parameter_view", sha256: sqlSha256(create) }]; };
+    const text = `${create}\n${revoke}\nDO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN EXECUTE 'REVOKE ALL ON TABLE public.fixture_parameter_view FROM anon'; END IF; END; $$;`;
+    expect(() => parameterForward(text, entry)).not.toThrow();
+    expect(() => parameterForward(create, entry)).toThrow("reviewed native store created view missing PUBLIC revoke");
+    for (const role of ["PUBLIC", "service_role", "authenticated"]) {
+      expect(() => parameterForward(`${text}\nGRANT SELECT ON TABLE public.fixture_parameter_view TO ${role};`, entry)).toThrow("reviewed native store created view GRANT refused");
+      expect(() => parameterForward(`${text}\nDO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT SELECT ON TABLE public.fixture_parameter_view TO ${role};'; END IF; END; $$;`, entry)).toThrow("reviewed native store created view GRANT refused");
+    }
+    expect(() => parameterForward(text, () => {})).toThrow(/view definition/u);
+    expect(() => parameterForward(text + `\n${create}`, entry)).toThrow(/view definition/u);
+    expect(() => parameterForward(text.replace("SELECT id", "SELECT extra"), entry)).toThrow(/view definition/u);
+    expect(() => parameterForward("", entry)).toThrow(/view missing/u);
+  });
+  it("preserves all required new-table, index, invoker, narrowing and named-DML shapes", () => {
+    const table = "CREATE TABLE public.fixture_editor (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), parent uuid REFERENCES public.fixture_parameters(id), hash text CHECK (char_length(hash) = 64), status text DEFAULT 'previewed', created_at timestamptz DEFAULT now());";
+    const seed = "INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('fixture_editor','block','Retain original ownership.');";
+    const text = `${table}\nCREATE INDEX fixture_editor_lookup ON public.fixture_editor (id, created_at DESC);\nCREATE INDEX fixture_editor_expiry ON public.fixture_editor (created_at);\nCREATE UNIQUE INDEX fixture_editor_open ON public.fixture_editor (id) WHERE status = 'previewed';\nALTER TABLE public.fixture_editor ENABLE ROW LEVEL SECURITY;\nREVOKE ALL ON TABLE public.fixture_editor FROM PUBLIC;\nALTER TABLE public.subscriptions ADD COLUMN composition_constraint jsonb;\nALTER TABLE public.subscriptions ADD CONSTRAINT fixture_composition CHECK (composition_constraint IS NULL OR jsonb_typeof(composition_constraint) = 'object') NOT VALID;\nALTER TABLE public.subscriptions ADD COLUMN configured_offer_version text NOT NULL DEFAULT 'classic';\nALTER TABLE public.subscriptions ADD CONSTRAINT fixture_offer CHECK (configured_offer_version IN ('classic','sized.v1')) NOT VALID;\n${seed}`;
+    expect(() => parameterForward(text, slot => { slot.dataStatements = [seed]; })).not.toThrow();
+    expect(() => check(sql().replace("SECURITY DEFINER", "IMMUTABLE SECURITY INVOKER"))).not.toThrow();
+  });
+});
+
+function nativeGitFixture(run: (context: { folder: string; git: (...args: string[]) => string; put: (path: string, bytes: string | Buffer) => void; commit: () => string }) => void) {
+  mkdirSync(".context/scratch", { recursive: true });
+  const folder = mkdtempSync(resolve(".context/scratch/native-parameters-"));
+  const git = (...args: string[]) => execFileSync("git", ["-C", folder, "-c", "user.name=Control Test", "-c", "user.email=control@example.invalid", "-c", "commit.gpgsign=false", ...args], { encoding: "utf8" }).trim();
+  const put = (path: string, bytes: string | Buffer) => { mkdirSync(dirname(resolve(folder, path)), { recursive: true }); writeFileSync(resolve(folder, path), bytes); };
+  const commit = () => { git("add", "."); git("commit", "-qm", "Synthetic parameter witness"); return git("rev-parse", "HEAD"); };
+  try { git("init", "-q", "-b", "main"); run({ folder, git, put, commit }); } finally { rmSync(folder, { force: true, recursive: true }); }
+}
+const emptySlot = (path: string, row = "Future"): NativeStoreSlot => ({ row, path, replacedFunctions: [], createdFunctions: [], grantOnlyFunctions: [], dataStatements: [] });
+describe("parameterized native Git history", () => {
+  it.each(["20271106100000", "20271105100000"])("refuses a registry-only new slot at or before the latest qualified base time: %s", time => {
+    nativeGitFixture(({ folder, put, commit }) => {
+      const value = registry(); value.nativeStoreForwardClass = { sealed: true, slots: [] };
+      put(PLATFORM_BASELINE_FILE, before); put("db/platform/migrations/q2_20271106100000_latest.sql", "CREATE TABLE public.latest (id uuid);"); put("config/reviewed-platform-forwards.json", encode(value)); const base = commit();
+      value.nativeStoreForwardClass.slots.push(emptySlot(`db/platform/migrations/${time}_future.sql`)); put("config/reviewed-platform-forwards.json", encode(value)); const head = commit();
+      expect(() => assertCoLocatedForwardApproval(folder, base, head)).toThrow("reviewed native store new slot time must be later than every base migration");
+    });
+  });
+  it("routes new timestamps through source, group and release and preserves issued SQL after sealed appends", () => {
+    nativeGitFixture(({ folder, git, put, commit }) => {
+      const value = registry(); value.nativeStoreForwardClass = { sealed: true, slots: [] };
+      put(PLATFORM_BASELINE_FILE, before); put("config/reviewed-platform-forwards.json", encode(value)); const base = commit();
+      const path = "db/platform/migrations/20271106100000_future.sql", text = "CREATE TABLE public.future (id uuid);";
+      value.nativeStoreForwardClass.slots.push(emptySlot(path)); value.nativeStoreForwards!.push({ path, sha256: sqlSha256(text), functions: [] });
+      put(path, text); put("config/reviewed-platform-forwards.json", encode(value)); const head = commit();
+      expect(() => assertAdmittedPlatformForward(folder, base, head, path, Buffer.from(text))).not.toThrow();
+      const group = git("commit-tree", git("rev-parse", `${head}^{tree}`), "-p", base, "-p", head, "-m", "Synthetic parameter group");
+      expect(() => assertCoLocatedForwardApproval(folder, base, group)).not.toThrow();
+      value.nativeStoreForwardClass.slots.push(emptySlot("db/platform/migrations/20271107100000_later.sql", "Later")); put("config/reviewed-platform-forwards.json", encode(value)); const appended = commit();
+      expect(() => assertCoLocatedForwardApproval(folder, head, appended)).not.toThrow();
+      expect(() => assertReviewedPlatformForward(folder, base, appended, path, Buffer.from(text), true)).not.toThrow();
+      value.nativeStoreForwardClass.slots[0]!.dataStatements = ["UPDATE public.future SET id=NULL;"]; put("config/reviewed-platform-forwards.json", encode(value)); const edited = commit();
+      expect(() => assertCoLocatedForwardApproval(folder, appended, edited)).toThrow(/sealed slot prefix|issued bindings/u);
+    });
+  });
+  it("freezes sealed unissued reservations and refuses every way to unseal or edit the old prefix", () => {
+    const prior = registry(); prior.nativeStoreForwardClass!.sealed = true;
+    for (const mutation of ["unseal", "edit", "remove", "insert"]) {
+      const next = structuredClone(prior);
+      if (mutation === "unseal") next.nativeStoreForwardClass!.sealed = false;
+      if (mutation === "edit") next.nativeStoreForwardClass!.slots[0]!.row = "Edited";
+      if (mutation === "remove") next.nativeStoreForwardClass!.slots.pop();
+      if (mutation === "insert") next.nativeStoreForwardClass!.slots.unshift(emptySlot("db/platform/migrations/20261101221900_inserted.sql", "Inserted"));
+      expect(() => changedForwardApprovals(encode(prior), encode(next))).toThrow("reviewed native store sealed slot prefix is immutable and cannot be unsealed");
+    }
+  });
+  it("keeps static preimages distinct from a DO-patched installed body", () => {
+    const patch = "DO $$ BEGIN EXECUTE $patch$CREATE OR REPLACE FUNCTION public.fixture_existing(p_id uuid) RETURNS text LANGUAGE sql SECURITY INVOKER SET search_path = pg_catalog AS $body$ SELECT 'patched'; $body$;$patch$; END; $$;";
+    expect(() => parameterForward("", () => {}, patch)).not.toThrow();
   });
 });

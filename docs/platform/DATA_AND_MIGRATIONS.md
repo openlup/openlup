@@ -883,7 +883,7 @@ activation evidence.
 SQL, its exact approval pins and any class data land together in the feature
 pull request. CI runs its tests. Issued approvals and slots are immutable,
 including their content and
-positions; sealed classes cannot change. Shared fields, the registry schema and
+positions; sealed native classes retain their existing slot prefix as described below. Shared fields, the registry schema and
 immutable baselines stay unchanged. Fixed path/signature inventories, whole-file
 and function hashes, preimages, statement/grant limits, ordered prefixes and
 fixture/package equality still apply. A hash binds bytes; review follows the
@@ -1457,27 +1457,34 @@ Missing Docker/PostgreSQL is a failed prerequisite, never lexical proof.
 ### Closed native store forwards
 
 `nativeStoreForwardClass` in the [reviewed registry](../../config/reviewed-platform-forwards.json)
-owns up to seven exact native paths, their ordered rows and three closed lists:
+owns exact native paths and row names supplied by its slots, and three closed function lists:
 replaced functions with before-hashes, created functions with pinned search
 paths, and grant-only existing functions with closed role/verb capabilities.
 Only firm rows
 are registered; an absent row authorizes nothing. Additional unissued inventory
 may land with its SQL under the existing validator and applicable maintainer read. Set `sealed: true` in the store's
-set-version preparation (S1); subsequent slot changes or unsealing refuse.
+set-version preparation (S1). A sealed class stays sealed: its complete old slots
+array, including unissued reservations, must remain a canonical content-equal
+prefix of every later array. Only appends are allowed; editing, deleting or
+inserting among those slots refuses. Issued bindings retain their content and
+positions. There is no slot-count maximum or second class key.
+Slot timestamps come from their paths and strictly increase in array order. A
+new slot's time must exceed every dated migration in its introduction base,
+including qualified identities; later migrations do not invalidate issued slots.
 The [admission witness](../../scripts/reviewed-native-store-forward.test.ts)
 uses an independent synthetic registry, never production placeholder approvals.
 
 Feature SQL supplies `nativeStoreForwards` with whole-file and function
 after-hashes. Its pull request may include class data but cannot change admission
 machinery.
-Every earlier row in the fixed order needs prior inventory and unchanged landed pins;
+Every earlier slot in registry order needs unchanged landed pins;
 issued native file pins must also be present unchanged.
 Reserved timestamps require approval even for expand-only SQL. Unlisted function
 signatures, drifted preimages, destructive statements, default privileges and
 role statements refuse. Tables and indexes retain the existing expand-only
-rules; data statements require exact head-class slot entries. Only the account-consent
-slot may replace the named native sync-purpose CHECK, preserving every prior
-value and binding the original table statement's hash.
+rules; data statements require exact head-class slot entries. CHECK and UNIQUE
+replacements use the named, closed entries below. A whole-file hash does not
+bypass the content checks.
 
 One signature may be replaced by at most one slot. Its before-hash binds the
 latest definition in the pre-class native prefix, and replacement headers stay
@@ -1498,22 +1505,45 @@ splitter would read it as an escape, while PostgreSQL ends a standard literal at
 the quote after it, so one statement for the splitter would be several for the
 database. A backslash inside a dollar body is data, and the earlier files of the
 prefix keep the older reading.
-Adding a nullable column or a new CHECK on an existing table already follows the
-existing expand-only rules. The purchase-reservation slot alone adds an
-`existingTableStatements` list: three exact whole ALTER TABLE statements, in
-order, for `public.fulfillment_inventory_reservations`. They drop NOT NULL only
-from `renewal_operation_id` while adding `purchase_order_id`, add the purchase
-foreign key and exclusive-owner CHECK as NOT VALID, then validate both. The registry
-holds their complete text, and the reader accepts that list, and only that list, on
-this slot. Trusted main parses a changed registry before anything else, so the list
-reached the registry in a separate pin-only change after the reader had landed.
-Feature SQL must include each statement once, in that order. Its existing-table
-ALTERs cannot fall through to generic ADD admission.
-The checker pins the complete three-entry list; changing it requires a control
-change. Its target table must exist in the preceding native prefix.
-Comparison uses the existing statement splitter: leading comments/space are
-removed, internal statement bytes remain exact. Missing, duplicate, changed,
-extra or reordered companions refuse. No other slot gains this exception.
+Adding columns or new CHECKs to an existing table retains the expand-only path.
+Any slot may also list exact complete ALTER TABLE texts in
+`existingTableStatements`. Each target comes from that text and must exist in the
+preceding native prefix. The closed actions are ADD COLUMN, named ADD CONSTRAINT
+under the existing expression checks, ALTER COLUMN DROP NOT NULL, and VALIDATE
+CONSTRAINT. The restricted FOREIGN KEY ... ON DELETE RESTRICT NOT VALID form
+preserves the issued purchase-reservation companions. Other drops, column type
+changes, renames and ownership changes refuse even when listed. Every listed
+statement must appear once in order, with internal bytes unchanged; an unlisted
+existing-table ALTER cannot fall through to generic ADD admission when the list
+is active. The issued three purchase-reservation texts remain unchanged data.
+
+`checkSupersets` entries declare table, constraint, column, beforeSha256 and values.
+The hash binds the complete original CREATE TABLE statement and values is the
+exact new positive IN list. Each entry requires one adjacent DROP CONSTRAINT /
+ADD CONSTRAINT CHECK pair that retains every parsed old value. Between that
+CREATE and the forward, named constraint ADD/DROP/ALTER/RENAME/VALIDATE, the
+checked column's ALTER/DROP/RENAME, and table DROP/RENAME/SET SCHEMA refuse.
+Unrelated, fully classified ADD COLUMN or ADD CONSTRAINT statements remain
+allowed; unknown DDL on the table refuses. The real PostgreSQL witness compares
+the installed old constraint with the values parsed from the hash-bound source.
+The issued account-consent `purposeCheck` remains readable unchanged: its values
+continue to mean the old list, and its existing refusal messages remain intact.
+
+`uniqueSupersets` entries declare table, constraint, beforeSha256, columns and
+nullsNotDistinct. The hash binds the statement that last defined the named UNIQUE
+in the preceding rail. One adjacent DROP / ADD of that same constraint must
+retain every old key column, with the exact new column list and declared NULLS
+NOT DISTINCT mode. That syntax belongs only to this entry; the general expression
+grammar is unchanged. Missing old columns, non-adjacent pairs, other constraint
+names and unlisted UNIQUE drops refuse. The catalog witness independently checks
+the installed old and new definitions, including the mode and replacement index.
+
+`createdViews` entries declare a fresh qualified name and exact CREATE VIEW
+statement hash. Only plain unconditional creation is admitted, once per listed
+view. REVOKE ALL ON TABLE ... FROM PUBLIC is mandatory after creation; the
+existing guarded role revokes are allowed. Every GRANT on a created view refuses.
+Views gain no RLS or table-grant capability. The real catalog checks the declared
+new view inventory, ownership and owner-only privileges.
 
 The destination slot registers four created function signatures and pinned
 search paths. Its two new tables, revokes and RLS use the existing same-file
@@ -1594,7 +1624,8 @@ operator a forward creates for another operand type cannot hide what it adds:
   carries no `SET` at all. Its language and leakproof flag are not compared: like
   its body, they stay with the whole-file hash and the feature review.
 - Existing relations of every kind, indexes and TOAST tables included, keep their
-  owner, privileges, row security, options and column privileges. A new relation of
+  owner, privileges, row security, options and column privileges. Only the index
+  of an explicitly listed UNIQUE replacement may be replaced with its new key. A new relation of
   any kind is owned by the migration role and carries only its owner's table
   privileges and no column privilege. The pinned notice table above alone may
   carry service-role SELECT/INSERT with RLS enabled and its single fixed policy;
@@ -1604,8 +1635,10 @@ operator a forward creates for another operand type cannot hide what it adds:
   default, replaces its TOAST relation and is refused: a known fail-closed limit,
   with a follow-up to compare TOAST relations without OID identity.
 - No constraint, one PostgreSQL ships included, is dropped or rewritten, a NOT NULL
-  excepted. The purpose CHECK keeps every value it holds and may gain more, in the one list form PostgreSQL deparses
-  for `IN`, and its slot lists the values it holds before the forward.
+  excepted. Listed CHECKs retain their hash-bound old values in the positive IN
+  form PostgreSQL deparses. Listed UNIQUE replacements retain every old key
+  column and the exact declared new definition; their old indexes may be replaced.
+  Other existing constraints and indexes keep the same protections.
 - The guard catalogs, each read whole, do not change: `pg_namespace`, `pg_authid`,
   `pg_auth_members`, `pg_db_role_setting`, `pg_database`, `pg_default_acl`,
   `pg_event_trigger`, `pg_extension`, `pg_cast` and `pg_parameter_acl` (the

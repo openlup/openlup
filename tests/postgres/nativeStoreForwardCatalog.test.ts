@@ -3,14 +3,13 @@ import { readFileSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
-import { readReviewedForwardRegistry, type NativeStoreSlot } from "../../scripts/reviewed-platform-forward.js";
+import { readReviewedForwardRegistry, nativeStoreChecks, nativeStoreCheckPreimage, nativeStoreUniqueDefinition, sqlSha256, sqlStatements, type NativeStoreSlot } from "../../scripts/reviewed-platform-forward.js";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 // The static native-store class is a first gate for ordinary mistakes. This test is the
 // truth for function identity, attributes and ACLs: it applies a forward to a real
 // database and compares what PostgreSQL itself reports with the slot's lists.
-type CatalogSlot = Pick<NativeStoreSlot, "createdFunctions" | "replacedFunctions" | "grantOnlyFunctions" | "purposeCheck" | "insertSelectTables">;
-const PURPOSE_CONSTRAINT = "public.communication_native_sync_state.communication_native_sync_state_purpose_check";
+type CatalogSlot = Pick<NativeStoreSlot, "createdFunctions" | "replacedFunctions" | "grantOnlyFunctions" | "purposeCheck" | "insertSelectTables" | "checkSupersets" | "uniqueSupersets" | "createdViews">;
 // PostgreSQL creates its own objects below this OID; every object a forward adds is at or above it.
 const FIRST_USER_OID = 16384;
 // The floor is typed as oid, so every comparison with it resolves to pg_catalog's own oid >= oid and oid < oid. A bare integer
@@ -25,7 +24,7 @@ type FunctionRow = { oid: number; name: string; owner: string; attrs: Record<str
 type RelationRow = { oid: number; name: string; kind: string; owner: string; rls: boolean; forceRls: boolean; options: string | null; acl: string[]; columnAcls: unknown };
 type Snapshot = {
   functions: FunctionRow[]; relations: RelationRow[]; system: { functions: string; relations: string };
-  relationOids: number[]; constraintOids: number[]; constraints: { rel: string; name: string; def: string }[]; guards: Record<string, Record<string, unknown>[]>;
+  relationOids: number[]; constraintOids: number[]; constraints: { rel: string; name: string; def: string; indexOid: number }[]; guards: Record<string, Record<string, unknown>[]>;
 };
 // Every guard catalog is read whole through to_jsonb, with its OID and volatile columns left out and parser positions in
 // node trees normalized, so a new guard is one entry here. `relation` names the column that ties a row to a relation:
@@ -62,7 +61,7 @@ async function snapshot(db: PoolClient): Promise<Snapshot> {
     md5(COALESCE((SELECT string_agg(jsonb_build_array(c.oid,c.relname,c.relnamespace,c.relowner,c.relkind,c.relrowsecurity,c.relforcerowsecurity,c.reloptions,c.relacl::text)::text, E'\\n' ORDER BY c.oid) FROM pg_class c WHERE c.oid < ${OID_FLOOR}),'')
       || COALESCE((SELECT string_agg(a.attrelid||'.'||a.attname||'='||a.attacl::text, E'\\n' ORDER BY a.attrelid,a.attnum) FROM pg_attribute a WHERE a.attrelid < ${OID_FLOOR} AND a.attacl IS NOT NULL),'')) AS relations`)).rows[0];
   // The relation is schema-qualified explicitly: regclass text omits a schema that is on the search path.
-  const constraints = (await db.query(`SELECT COALESCE(n.nspname||'.'||c.relname, 'type:'||con.contypid::regtype::text) AS rel, con.conname AS name, pg_get_constraintdef(con.oid) AS def
+  const constraints = (await db.query(`SELECT COALESCE(n.nspname||'.'||c.relname, 'type:'||con.contypid::regtype::text) AS rel, con.conname AS name, pg_get_constraintdef(con.oid) AS def, con.conindid::int AS "indexOid"
     FROM pg_constraint con LEFT JOIN pg_class c ON c.oid=con.conrelid LEFT JOIN pg_namespace n ON n.oid=c.relnamespace
     WHERE con.contype <> 'n' ORDER BY 1,2`)).rows;
   const relationOids = (await db.query("SELECT oid::int AS oid FROM pg_class ORDER BY oid")).rows.map(row => row.oid as number);
@@ -78,8 +77,10 @@ const norm = (path: string) => `search_path=${path.replace(/\s+/gu, " ").trim()}
 const quotedValues = (list: string) => (list.match(/'((?:[^']|'')*)'/gu) ?? []).map(value => value.slice(1, -1).replaceAll("''", "'"));
 // The only shape the purpose CHECK may take, as PostgreSQL deparses it. A NOT IN, an OR, NOT VALID or NO INHERIT
 // spelling does not match and so never reads as a list of allowed values.
-const PURPOSE_SHAPE = /^CHECK \(\(purpose = ANY \(ARRAY\[((?:'(?:[^']|'')*'::text)(?:, '(?:[^']|'')*'::text)*)\]\)\)\)$/u;
-const purposeValues = (def: string) => { const match = PURPOSE_SHAPE.exec(def); return match ? quotedValues(match[1]!) : null; };
+const checkValues = (def: string, column: string) => {
+  const shape = new RegExp(`^CHECK \\(\\(${column} = ANY \\(ARRAY\\[((?:'(?:[^']|'')*'::text)(?:, '(?:[^']|'')*'::text)*)\\]\\)\\)\\)$`, "u");
+  const match = shape.exec(def); return match ? quotedValues(match[1]!) : null;
+};
 const fail = (message: string): never => { throw new Error(`catalog: ${message}`); };
 
 /** Compare PostgreSQL's own before/after catalogs with one slot's closed lists. Throws on any difference. */
@@ -136,7 +137,8 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
   // 4. Relations: no privilege or row-security change on an existing one; a new one is owned by the migration role and carries only its privileges.
   const oldRelations = new Map(before.relations.map(row => [row.oid, row]));
   const currentRelations = new Map(after.relations.map(row => [row.oid, row]));
-  for (const old of before.relations) if (JSON.stringify(currentRelations.get(old.oid)) !== JSON.stringify(old)) fail(`existing relation ${old.name} changed its owner, ACL, row security, options or column ACLs`);
+  const replacedUniqueIndexes = new Set(before.constraints.filter(old => slot.uniqueSupersets?.some(entry => entry.table === old.rel && entry.constraint === old.name)).map(old => old.indexOid));
+  for (const old of before.relations) if (!replacedUniqueIndexes.has(old.oid) && JSON.stringify(currentRelations.get(old.oid)) !== JSON.stringify(old)) fail(`existing relation ${old.name} changed its owner, ACL, row security, options or column ACLs`);
   for (const row of after.relations) if (!oldRelations.has(row.oid)) {
     if (row.owner !== migrationRole) fail(`new relation ${row.name} is owned by ${row.owner}, not the migration role`);
     if (row.name === "public.subscription_notice_refusals" && JSON.stringify(slot.insertSelectTables) === JSON.stringify([row.name])) {
@@ -151,17 +153,32 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
     if (row.columnAcls !== null) fail(`new relation ${row.name} has column privileges ${JSON.stringify(row.columnAcls)}`);
   }
 
-  // 5. Constraints: none dropped or rewritten. The purpose CHECK may only gain values: the slot lists its preimage
-  // values, the catalog must show the same list before, and the new list must keep every one of them.
+  const newViews = after.relations.filter(row => !oldRelations.has(row.oid) && row.kind === "v").map(row => row.name).sort();
+  if (JSON.stringify(newViews) !== JSON.stringify((slot.createdViews ?? []).map(view => view.name).sort())) fail("created views differ from the slot list");
+
+  // Installed definitions must equal the parsed, hash-bound preimages before
+  // the forward, even when unrelated additive DDL intervened on the same table.
   const constraintKey = (row: { rel: string; name: string }) => `${row.rel}.${row.name}`;
   const nowConstraints = new Map(after.constraints.map(row => [constraintKey(row), row.def]));
+  const checks = nativeStoreChecks(slot), uniques = slot.uniqueSupersets ?? [];
+  const sorted = (values: string[]) => JSON.stringify([...new Set(values)].sort());
+  for (const entry of checks) {
+    const old = before.constraints.find(old => old.rel === entry.table && old.name === entry.constraint);
+    const source = preimages.get(entry.beforeSha256), parsed = source ? nativeStoreCheckPreimage(source, entry) : null;
+    const oldValues = old ? checkValues(old.def, entry.column) : null;
+    const def = nowConstraints.get(`${entry.table}.${entry.constraint}`), newValues = def ? checkValues(def, entry.column) : null;
+    if (!parsed || !oldValues || sorted(parsed) !== sorted(oldValues) || !newValues || oldValues.some(value => !newValues.includes(value)) || sorted(entry.values) !== sorted(entry.legacy ? oldValues : newValues)) fail(`purpose CHECK changed beyond a widening of its listed values: ${def}`);
+  }
+  for (const entry of uniques) {
+    const old = before.constraints.find(old => old.rel === entry.table && old.name === entry.constraint);
+    const source = preimages.get(entry.beforeSha256), parsed = source ? nativeStoreUniqueDefinition(source, entry.constraint) : null;
+    const oldDef = old ? nativeStoreUniqueDefinition(`CONSTRAINT ${entry.constraint} ${old.def}`, entry.constraint) : null;
+    const def = nowConstraints.get(`${entry.table}.${entry.constraint}`), newDef = def ? nativeStoreUniqueDefinition(`CONSTRAINT ${entry.constraint} ${def}`, entry.constraint) : null;
+    if (!parsed || JSON.stringify(parsed) !== JSON.stringify(oldDef) || !newDef || parsed.columns.some(column => !entry.columns.includes(column)) || JSON.stringify(newDef) !== JSON.stringify({ columns: entry.columns, nullsNotDistinct: entry.nullsNotDistinct })) fail(`UNIQUE changed beyond its listed superset: ${def}`);
+  }
   for (const old of before.constraints) {
-    const def = nowConstraints.get(constraintKey(old));
-    if (constraintKey(old) === PURPOSE_CONSTRAINT && def !== undefined && def !== old.def) {
-      const oldValues = purposeValues(old.def), newValues = purposeValues(def);
-      const sorted = (values: string[]) => JSON.stringify([...new Set(values)].sort());
-      if (!slot.purposeCheck || !oldValues || !newValues || sorted(slot.purposeCheck.values) !== sorted(oldValues) || oldValues.some(value => !newValues.includes(value))) fail(`purpose CHECK changed beyond a widening of its listed values: ${def}`);
-    } else if (def !== old.def) fail(`constraint ${constraintKey(old)} was dropped or rewritten`);
+    if (checks.some(entry => entry.table === old.rel && entry.constraint === old.name) || uniques.some(entry => entry.table === old.rel && entry.constraint === old.name)) continue;
+    if (nowConstraints.get(constraintKey(old)) !== old.def) fail(`constraint ${constraintKey(old)} was dropped or rewritten`);
   }
 
   // 6. Guard catalogs: every row that existed stays as it was, and nothing attaches behaviour (a trigger, a policy, a
@@ -185,14 +202,15 @@ async function pinned<T>(db: PoolClient, run: () => Promise<T>): Promise<T> {
 
 // Run a forward in a transaction on a real database and check it against the slot. It is rolled
 // back, except that `keep` commits a forward that passed so the next slot sees the cumulative chain.
-async function checkForward(pool: Pool, slot: CatalogSlot, forward: string, keep = false) {
+async function checkForward(pool: Pool, slot: CatalogSlot, forward: string, keep = false, setup = "") {
   const db = await pool.connect();
   let passed = false;
   try {
     const migrationRole = String((await db.query("SELECT current_user::text::regrole::text AS role")).rows[0].role);
-    const before = await pinned(db, () => snapshot(db));
     await db.query("BEGIN");
     try {
+      if (setup) await db.query(setup);
+      const before = await pinned(db, () => snapshot(db));
       await db.query(forward);
       await pinned(db, async () => assertSlotCatalog(db, slot, before, await snapshot(db), migrationRole));
       passed = true;
@@ -203,6 +221,7 @@ async function checkForward(pool: Pool, slot: CatalogSlot, forward: string, keep
 // ---- Synthetic cases: the comparator itself, on real PostgreSQL ---------------------------------
 const SYNTHETIC_BASE = `
 CREATE TABLE public.cat_existing_table (id int PRIMARY KEY, owner_ref uuid NOT NULL);
+CREATE TABLE public.cat_parameters (id uuid, extra uuid, status text, kind text, CONSTRAINT cat_status CHECK (status IN ('open','closed')), CONSTRAINT cat_kind CHECK (kind IN ('first','second')), CONSTRAINT cat_key UNIQUE (id));
 CREATE TABLE public.communication_native_sync_state (purpose text NOT NULL CONSTRAINT communication_native_sync_state_purpose_check CHECK (purpose IN ('a','b')));
 CREATE FUNCTION public.cat_replaced(p text, q boolean DEFAULT false) RETURNS text LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$ SELECT 'before' $$;
 REVOKE ALL ON FUNCTION public.cat_replaced(text,boolean) FROM PUBLIC;
@@ -219,7 +238,7 @@ const SYNTHETIC_SLOT: CatalogSlot = {
   grantOnlyFunctions: [{ signature: "public.cat_grant_only(text)", grantTo: ["service_role"], revokeFrom: ["anon", "authenticated"] }],
 };
 // The slot lists the purposes the CHECK holds before the forward, as the registry does.
-const PURPOSE_SLOT: CatalogSlot = { ...SYNTHETIC_SLOT, purposeCheck: { beforeSha256: "", values: ["a", "b"] } };
+const PURPOSE_SLOT: CatalogSlot = { ...SYNTHETIC_SLOT, purposeCheck: { beforeSha256: sqlSha256(sqlStatements(SYNTHETIC_BASE).find(statement => statement.startsWith("CREATE TABLE public.communication_native_sync_state"))!), values: ["a", "b"] } };
 const purposeCheck = (definition: string) => `ALTER TABLE public.communication_native_sync_state DROP CONSTRAINT communication_native_sync_state_purpose_check;
 ALTER TABLE public.communication_native_sync_state ADD CONSTRAINT communication_native_sync_state_purpose_check ${definition};`;
 // An invoker function pins no search_path, so the slot lists none and the catalog must show none.
@@ -303,8 +322,8 @@ const REFUSALS: [string, string, RegExp, boolean, CatalogSlot][] = [
   ["a purpose CHECK inverted by NOT IN", forward(CREATED_OK, purposeCheck("CHECK (purpose NOT IN ('a','b'))")), /purpose CHECK/u, false, PURPOSE_SLOT],
   ["a purpose CHECK voided by OR true", forward(CREATED_OK, purposeCheck("CHECK (purpose IN ('a','b','c') OR true)")), /purpose CHECK/u, false, PURPOSE_SLOT],
   ["a purpose CHECK added NOT VALID", forward(CREATED_OK, purposeCheck("CHECK (purpose IN ('a','b','c')) NOT VALID")), /purpose CHECK/u, false, PURPOSE_SLOT],
-  ["a purpose CHECK whose slot lists other preimage values", forward(CREATED_OK, purposeCheck("CHECK (purpose IN ('a','b','c'))")), /purpose CHECK/u, false, { ...SYNTHETIC_SLOT, purposeCheck: { beforeSha256: "", values: ["a"] } }],
-  ["a purpose CHECK rewritten by a slot that lists none", forward(CREATED_OK, purposeCheck("CHECK (purpose IN ('a','b','c'))")), /purpose CHECK/u, false, SYNTHETIC_SLOT],
+  ["a purpose CHECK whose slot lists other preimage values", forward(CREATED_OK, purposeCheck("CHECK (purpose IN ('a','b','c'))")), /purpose CHECK/u, false, { ...SYNTHETIC_SLOT, purposeCheck: { beforeSha256: PURPOSE_SLOT.purposeCheck!.beforeSha256, values: ["a"] } }],
+  ["a purpose CHECK rewritten by a slot that lists none", forward(CREATED_OK, purposeCheck("CHECK (purpose IN ('a','b','c'))")), /dropped or rewritten/u, false, SYNTHETIC_SLOT],
 ];
 
 // ---- Real forwards: every bound native slot, replayed on the cumulative native chain -----------
@@ -320,6 +339,15 @@ const chain = [manifest.baseline, ...manifest.forward].filter(unit => !boundPath
   if (sha(bytes) !== unit.sha256) throw new Error(`native chain unit differs from the manifest: ${unit.file}`);
   return { path: unit.file, sql: bytes.toString("utf8") };
 });
+const preimages = new Map([SYNTHETIC_BASE, ...chain.map(unit => unit.sql), ...bound.map(entry => readFileSync(entry.pin.path, "utf8"))].flatMap(sql => sqlStatements(sql, true).map(statement => [sqlSha256(statement), statement] as const)));
+const parameterSource = sqlStatements(SYNTHETIC_BASE).find(statement => statement.startsWith("CREATE TABLE public.cat_parameters"))!;
+const PARAMETER_SLOT: CatalogSlot = { ...SYNTHETIC_SLOT, checkSupersets: [
+  { table: "public.cat_parameters", constraint: "cat_status", column: "status", beforeSha256: sqlSha256(parameterSource), values: ["open", "closed", "paused"] },
+  { table: "public.cat_parameters", constraint: "cat_kind", column: "kind", beforeSha256: sqlSha256(parameterSource), values: ["first", "second", "third"] },
+] };
+const PARAMETER_CHECKS = "ALTER TABLE public.cat_parameters DROP CONSTRAINT cat_status; ALTER TABLE public.cat_parameters ADD CONSTRAINT cat_status CHECK (status IN ('open','closed','paused')); ALTER TABLE public.cat_parameters DROP CONSTRAINT cat_kind; ALTER TABLE public.cat_parameters ADD CONSTRAINT cat_kind CHECK (kind IN ('first','second','third'));";
+const UNIQUE_SLOT: CatalogSlot = { ...SYNTHETIC_SLOT, uniqueSupersets: [{ table: "public.cat_parameters", constraint: "cat_key", beforeSha256: sqlSha256(parameterSource), columns: ["id", "extra"], nullsNotDistinct: true }] };
+const UNIQUE_SQL = "ALTER TABLE public.cat_parameters DROP CONSTRAINT cat_key; ALTER TABLE public.cat_parameters ADD CONSTRAINT cat_key UNIQUE NULLS NOT DISTINCT (id,extra);";
 // The chain creates anon and authenticated itself; service_role comes from the host bootstrap, so it is
 // the one role these two modes toggle for the whole run. With no bound forward this is a plain replay of
 // the chain, so the replay is proved before the first feature change relies on it.
@@ -367,6 +395,30 @@ describe.each([{ serviceRole: true }, { serviceRole: false }])("native store for
   it("admits a conforming forward", async () => { await checkForward(pool, SYNTHETIC_SLOT, CONFORMING); });
   it("admits only the named new table runtime ACL and policy", async () => { await checkForward(pool, NOTICE_SLOT, forward(CREATED_OK, NOTICE_SQL)); });
   it("admits a widened purpose CHECK that its slot lists", async () => { await checkForward(pool, PURPOSE_SLOT, forward(CREATED_OK, purposeCheck("CHECK (purpose IN ('a','b','c'))"))); });
+  it("admits multiple named CHECK widenings after unrelated additive DDL", async () => {
+    await checkForward(pool, PARAMETER_SLOT, forward(CREATED_OK, PARAMETER_CHECKS), false, "ALTER TABLE public.cat_parameters ADD COLUMN unrelated uuid; ALTER TABLE public.cat_parameters ADD CONSTRAINT cat_unrelated CHECK (unrelated IS NULL) NOT VALID;");
+  });
+  it("requires installed CHECK preimages to equal the hash-bound parsed values", async () => {
+    const setup = "ALTER TABLE public.cat_parameters DROP CONSTRAINT cat_status; ALTER TABLE public.cat_parameters ADD CONSTRAINT cat_status CHECK (status IN ('open'));";
+    await expect(checkForward(pool, PARAMETER_SLOT, forward(CREATED_OK, PARAMETER_CHECKS), false, setup)).rejects.toThrow(/CHECK changed/u);
+  });
+  it("proves a UNIQUE superset and its exact NULLS mode in the installed catalog", async () => {
+    await checkForward(pool, UNIQUE_SLOT, forward(CREATED_OK, UNIQUE_SQL));
+    await expect(checkForward(pool, UNIQUE_SLOT, forward(CREATED_OK, UNIQUE_SQL.replace("(id,extra)", "(extra)")))).rejects.toThrow(/UNIQUE changed/u);
+    await expect(checkForward(pool, UNIQUE_SLOT, forward(CREATED_OK, UNIQUE_SQL.replace(" NULLS NOT DISTINCT", "")))).rejects.toThrow(/UNIQUE changed/u);
+    await expect(checkForward(pool, UNIQUE_SLOT, forward(CREATED_OK, UNIQUE_SQL), false, "ALTER TABLE public.cat_parameters DROP CONSTRAINT cat_key; ALTER TABLE public.cat_parameters ADD CONSTRAINT cat_key UNIQUE (extra);")).rejects.toThrow(/UNIQUE changed/u);
+  });
+  it("admits only a listed fresh view with owner-only privileges", async () => {
+    const view = "CREATE VIEW public.cat_created_view AS SELECT id FROM public.cat_existing_table;";
+    const slot = { ...SYNTHETIC_SLOT, createdViews: [{ name: "public.cat_created_view", sha256: sqlSha256(view) }] };
+    await checkForward(pool, slot, forward(CREATED_OK, `${view} REVOKE ALL ON TABLE public.cat_created_view FROM PUBLIC;`));
+    await expect(checkForward(pool, slot, forward(CREATED_OK, `${view} GRANT SELECT ON public.cat_created_view TO authenticated;`))).rejects.toThrow(/new relation .* grants/u);
+    await expect(checkForward(pool, SYNTHETIC_SLOT, forward(CREATED_OK, view))).rejects.toThrow(/created views differ/u);
+  });
+  it("keeps static preimages distinct from a DO-patched installed body", async () => {
+    const patch = "DO $$ BEGIN EXECUTE $patch$CREATE OR REPLACE FUNCTION public.cat_replaced(p text, q boolean DEFAULT false) RETURNS text LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $body$ SELECT 'patched' $body$;$patch$; END; $$;";
+    await checkForward(pool, SYNTHETIC_SLOT, CONFORMING, false, patch);
+  });
   // A view recreated byte-for-byte but for spacing differs only in stored parser positions.
   it("admits a view redefinition that changes only parser positions", async () => { await checkForward(pool, SYNTHETIC_SLOT, [REPLACE_PART, CREATED_OK, GRANT_PART, TABLE_PART, "CREATE OR REPLACE VIEW public.cat_view AS SELECT    id   FROM   public.cat_existing_table;"].join("\n")); });
   // The new table's foreign key adds internal triggers to the existing table it references; PostgreSQL creates them, not the forward.
