@@ -1307,8 +1307,8 @@ is durable even when another authorized human resumes execution.
 
 `createPostgresOperatorAuthority` takes an injected transaction executor. Pause,
 ordinary paid-up resume and 3–60-day slide delegate to M10 in the support SQL
-transaction. The qualified runtime currently refuses these lifecycle commands at
-the term-line row lock (42501); F-QUALIFIED-LIFECYCLE-LOCK tracks its repair.
+transaction. On the qualified runtime they take the term-line row lock through
+the shared lock and conflict completion forward, which admits no actual update.
 `NativeOperatorSubscriptionResult` carries the optional actual
 `OperatorOwnerReceipt` and capability refusal
 `operator_subscription_authority_unavailable`; the managed result stays unchanged.

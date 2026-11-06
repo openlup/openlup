@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { PLATFORM_BASELINE_FILE, QUALIFIED_BASELINE_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_ACQUISITION_FILE, QUALIFIED_RUNTIME_FILE, QUALIFIED_IMPORT_FILE, QUALIFIED_RUNTIME_COMPLETION_FILE, QUALIFIED_OWNER_PATH_FILE, ADMIN_BASELINE_FILE, ADMIN_ACTOR_FILE, ADMIN_ACQUISITION_FILE, ADMIN_RUNTIME_FILE, ADMIN_IMPORT_FILE, REVISED_ADMIN_ACTOR_FILE, REVISED_ADMIN_ACQUISITION_FILE, REVISED_ADMIN_RUNTIME_FILE, REVISED_ADMIN_IMPORT_FILE, isChannelIngestMigrationPath, isQualifiedPlatformMigrationPath } from "./platform-migration-manifest.ts";
+import { PLATFORM_BASELINE_FILE, QUALIFIED_BASELINE_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_ACQUISITION_FILE, QUALIFIED_RUNTIME_FILE, QUALIFIED_IMPORT_FILE, QUALIFIED_RUNTIME_COMPLETION_FILE, QUALIFIED_OWNER_PATH_FILE, QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE, ADMIN_BASELINE_FILE, ADMIN_ACTOR_FILE, ADMIN_ACQUISITION_FILE, ADMIN_RUNTIME_FILE, ADMIN_IMPORT_FILE, REVISED_ADMIN_ACTOR_FILE, REVISED_ADMIN_ACQUISITION_FILE, REVISED_ADMIN_RUNTIME_FILE, REVISED_ADMIN_IMPORT_FILE, isChannelIngestMigrationPath, isQualifiedPlatformMigrationPath } from "./platform-migration-manifest.ts";
 import { documentationGit, readDocumentationObjects } from "./documentation-git.ts";
 
 export const REVIEWED_FORWARD_PATH = "config/reviewed-platform-forwards.json";
@@ -43,7 +43,7 @@ const portableCreationPaths = [
   "db/platform/migrations/20261022195000_invoicing_seller_revision.sql",
 ];
 type PortableCreationBinding = { path: string; sha256: string };
-const qualifiedInstallationPaths = [QUALIFIED_BASELINE_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_ACQUISITION_FILE, QUALIFIED_RUNTIME_FILE, QUALIFIED_IMPORT_FILE, QUALIFIED_RUNTIME_COMPLETION_FILE, QUALIFIED_OWNER_PATH_FILE, ADMIN_BASELINE_FILE, ADMIN_ACTOR_FILE, ADMIN_ACQUISITION_FILE, ADMIN_RUNTIME_FILE, ADMIN_IMPORT_FILE, REVISED_ADMIN_ACTOR_FILE, REVISED_ADMIN_ACQUISITION_FILE, REVISED_ADMIN_RUNTIME_FILE, REVISED_ADMIN_IMPORT_FILE];
+const qualifiedInstallationPaths = [QUALIFIED_BASELINE_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_ACQUISITION_FILE, QUALIFIED_RUNTIME_FILE, QUALIFIED_IMPORT_FILE, QUALIFIED_RUNTIME_COMPLETION_FILE, QUALIFIED_OWNER_PATH_FILE, ADMIN_BASELINE_FILE, ADMIN_ACTOR_FILE, ADMIN_ACQUISITION_FILE, ADMIN_RUNTIME_FILE, ADMIN_IMPORT_FILE, REVISED_ADMIN_ACTOR_FILE, REVISED_ADMIN_ACQUISITION_FILE, REVISED_ADMIN_RUNTIME_FILE, REVISED_ADMIN_IMPORT_FILE, QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE];
 const qualifiedOwnerPathSignatures = [
   "acquisition_private.keyed_digest(text,jsonb)",
   "acquisition_private.case_projection(uuid)",
@@ -64,7 +64,7 @@ export type ManagedCommerceForwardBinding = BatchedForwardBinding & { constraint
 export type SupportAuthorityForwardBinding = ManagedCommerceForwardBinding;
 type NativeStoreFunction = { signature: string; beforeSha256: string | null; searchPath: string | null };
 type NativeStoreGrantOnly = { signature: string; grantTo: string[]; revokeFrom: string[] };
-export type NativeStoreSlot = { row: string; path: string; replacedFunctions: NativeStoreFunction[]; createdFunctions: { signature: string; searchPath: string | null }[]; grantOnlyFunctions: NativeStoreGrantOnly[]; dataStatements: string[]; existingTableStatements?: string[]; purposeCheck?: { beforeSha256: string; values: string[] } };
+export type NativeStoreSlot = { row: string; path: string; replacedFunctions: NativeStoreFunction[]; createdFunctions: { signature: string; searchPath: string | null }[]; grantOnlyFunctions: NativeStoreGrantOnly[]; dataStatements: string[]; insertSelectTables?: string[]; existingTableStatements?: string[]; purposeCheck?: { beforeSha256: string; values: string[] } };
 export type NativeStoreForwardClass = { sealed: boolean; slots: NativeStoreSlot[] };
 export type ReviewedForwardRegistry = { nativeStoreForwardClass?: NativeStoreForwardClass; nativeStoreForwards?: ForwardBinding[]; qualifiedInstallations?: (PortableCreationBinding | ForwardBinding)[]; channelIngestForwards?: BatchedForwardBinding[]; supportAuthorityForwards?: SupportAuthorityForwardBinding[]; managedCommerceForwards?: ManagedCommerceForwardBinding[]; batchedForwards?: BatchedForwardBinding[]; schemaVersion: 1; baselineSha256: string; replacementForwards: ForwardBinding[]; creationForwards: ForwardBinding[]; runtimeForwards?: RuntimeForwardBinding[]; portableReplacementForwards?: ForwardBinding[]; portableCreationForwards?: PortableCreationBinding[]; managedInvoicingForwards?: ForwardBinding[] };
 export const sqlSha256 = (bytes: Buffer | string): string => createHash("sha256").update(bytes).digest("hex");
@@ -175,7 +175,7 @@ function readForwardRegistry(bytes: Buffer, historical: boolean): ReviewedForwar
   if (raw.schemaVersion !== 1 || !hash(raw.baselineSha256) || !Array.isArray(raw.replacementForwards) || raw.replacementForwards.length !== 2 || !Array.isArray(raw.creationForwards) || raw.creationForwards.length !== 1) throw new Error("reviewed replacement registry requires one baseline, two replacement forwards and one creation forward");
   const paths = new Set<string>(), signatures = new Set<string>(), replaced = new Set<string>();
   if (raw.qualifiedInstallations !== undefined) {
-    if (!Array.isArray(raw.qualifiedInstallations) || ![4, 5, 6, 7, 12, 16].includes(raw.qualifiedInstallations.length)) throw new Error("qualified installation approval requires an exact issued prefix or all four revised restricted identities");
+    if (!Array.isArray(raw.qualifiedInstallations) || ![4, 5, 6, 7, 12, 16, 17].includes(raw.qualifiedInstallations.length)) throw new Error("qualified installation approval requires an exact issued prefix, all four revised restricted identities or the shared lock and conflict completion");
     for (const [index, entry] of raw.qualifiedInstallations.entries()) {
       if (!entry || entry.path !== qualifiedInstallationPaths[index] || !hash(entry.sha256)) throw new Error("qualified installation approval has an invalid fixed identity or hash");
       if (index !== 6) {
@@ -1948,6 +1948,9 @@ export function nativeStoreFunctionDefinitions(bytes: Buffer, signatures: readon
   }
   return result;
 }
+const nativeStoreInsertSelectTables = ["public.subscription_notice_refusals"];
+const nativeStoreInsertSelectGrant = "GRANT SELECT, INSERT ON public.subscription_notice_refusals TO service_role;";
+const nativeStoreInsertSelectPolicy = "CREATE POLICY subscription_notice_refusals_runtime ON public.subscription_notice_refusals FOR ALL TO service_role USING (true) WITH CHECK (true);";
 const purposeTable = "public.communication_native_sync_state";
 const purposeConstraint = "communication_native_sync_state_purpose_check";
 const keysAre = (value: object, keys: string) => Object.keys(value).sort().join(",") === keys;
@@ -1964,7 +1967,7 @@ function validateNativeStoreClass(registry: ReviewedForwardRegistry, paths: Set<
   const replacements = new Set<string>();
   for (const slot of control.slots) {
     const index = nativeStoreRows.indexOf(slot.row);
-    const keys = ["createdFunctions", "dataStatements", "grantOnlyFunctions", "path", "replacedFunctions", "row", ...(slot.purposeCheck ? ["purposeCheck"] : []), ...(slot.existingTableStatements !== undefined ? ["existingTableStatements"] : [])].sort().join(",");
+    const keys = ["createdFunctions", "dataStatements", "grantOnlyFunctions", "path", "replacedFunctions", "row", ...(slot.purposeCheck ? ["purposeCheck"] : []), ...(slot.existingTableStatements !== undefined ? ["existingTableStatements"] : []), ...(slot.insertSelectTables !== undefined ? ["insertSelectTables"] : [])].sort().join(",");
     if (!keysAre(slot, keys) || index <= previous || index < 0 || !new RegExp(`^db/platform/migrations/${nativeStoreTimes[index]}_[a-z][a-z0-9_]*\\.sql$`, "u").test(slot.path) || paths.has(slot.path)) throw new Error("reviewed native store slot path, row or order drifted");
     previous = index;
     paths.add(slot.path);
@@ -1981,6 +1984,10 @@ function validateNativeStoreClass(registry: ReviewedForwardRegistry, paths: Set<
     const signatures = [...functions, ...slot.grantOnlyFunctions].map(fn => fn.signature);
     if (new Set(signatures).size !== signatures.length) throw new Error("reviewed native store function lists must be disjoint and unique");
     if (!Array.isArray(slot.dataStatements) || slot.dataStatements.some(sql => typeof sql !== "string" || !/^(?:INSERT|UPDATE|DELETE) /u.test(sql) || sqlStatements(sql).length !== 1) || new Set(slot.dataStatements).size !== slot.dataStatements.length) throw new Error("reviewed native store data statements must be exact named statements");
+    if (slot.insertSelectTables !== undefined) {
+      if (slot.row !== "G8") throw new Error("reviewed native store insertSelectTables is G8-only");
+      if (JSON.stringify(slot.insertSelectTables) !== JSON.stringify(nativeStoreInsertSelectTables)) throw new Error("reviewed native store insertSelectTables is pinned by the checker");
+    }
     if (slot.existingTableStatements !== undefined) {
       if (slot.row !== "G4") throw new Error("reviewed native store existing-table list is G4-only");
       if (JSON.stringify(slot.existingTableStatements) !== JSON.stringify(nativeStoreG4ExistingTableStatements)) throw new Error("reviewed native store existing-table list is pinned by the checker");
@@ -2026,14 +2033,21 @@ function nativeStoreTableNarrowing(statement: string, tables: Set<string>): { ki
 
 // The sole DO exception. Keep its grammar and role policy together so a later
 // control can tighten or remove it without changing the generic SQL splitter.
-function nativeStorePrivilege(statement: string, tables: Set<string>): { kind: "RLS" } | { kind: "FUNCTION" | "TABLE"; targets: string[]; role: string; grant: boolean; conditional: boolean } | null {
-  let sql = statement, roleGuard: string | undefined;
+function nativeStorePrivilege(statement: string, tables: Set<string>, insertSelectTables: string[]): { kind: "RLS" } | { kind: "POLICY" } | { kind: "FUNCTION" | "TABLE"; targets: string[]; role: string; grant: boolean; conditional: boolean } | null {
+  let sql = statement, exactSql = statement, roleGuard: string | undefined;
   const conditional = /^DO\b/iu.test(statement);
   if (conditional) {
     const block = /^DO \$\$[ \t\n]*BEGIN[ \t\n]+IF EXISTS[ \t\n]*\(SELECT 1 FROM pg_roles WHERE rolname[ \t\n]*=[ \t\n]*'(anon|authenticated|service_role)'\) THEN[ \t\n]+EXECUTE '([^']+)';[ \t\n]*END IF;[ \t\n]*END;[ \t\n]*\$\$;$/i.exec(statement);
     if (!block || !nativeStoreRoles.includes(block[1]!)) throw new Error("reviewed native store refuses DO outside the single constant role privilege shape");
     if (!nativeStoreAscii(block[2]!)) throw new Error("reviewed native store conditional privilege requires ASCII identifiers and verbs");
+    exactSql = block[2]!;
     roleGuard = block[1]!.toLowerCase(); sql = block[2]!.replace(/;?$/u, ";");
+  }
+  if (exactSql === nativeStoreInsertSelectGrant || exactSql === nativeStoreInsertSelectPolicy) {
+    if (!insertSelectTables.includes(nativeStoreInsertSelectTables[0]!)) throw new Error("reviewed native store INSERT/SELECT requires the pinned G8 table");
+    if (!tables.has(nativeStoreInsertSelectTables[0]!)) throw new Error("reviewed native store INSERT/SELECT requires its table created earlier in the same slot file");
+    if (!conditional || roleGuard !== "service_role") throw new Error("reviewed native store INSERT/SELECT requires the service_role conditional shell");
+    return exactSql === nativeStoreInsertSelectPolicy ? { kind: "POLICY" } : { kind: "TABLE", targets: nativeStoreInsertSelectTables, role: "service_role", grant: true, conditional };
   }
   const table = nativeStoreTableNarrowing(nativeStoreTrim(sql.replace(/[ \t\n]+/gu, " ")), tables);
   if (table) {
@@ -2095,7 +2109,7 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   const existingTableStatements = slot.existingTableStatements ?? [];
   if (existingTableStatements.length && !prefixTables.has(nativeStoreG4ExistingTable)) throw new Error("reviewed native store existing-table target absent from prefix");
   const revoked = new Set<string>(), defined = new Set<string>(), blocks = new Set<string>(), data = new Set<string>(), tables = new Set<string>();
-  let droppedCheck = false, addedCheck = false, existingTablePosition = 0;
+  let droppedCheck = false, addedCheck = false, existingTablePosition = 0, insertSelectPolicy = false;
   for (const statement of statements) {
     if (droppedCheck && !addedCheck && !statement.startsWith(`ALTER TABLE ${purposeTable} ADD CONSTRAINT ${purposeConstraint} `)) throw new Error("reviewed native store requires the adjacent purpose CHECK replacement");
     if (/^CREATE(?: OR REPLACE)? FUNCTION /iu.test(statement)) {
@@ -2109,8 +2123,12 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
       if (/--|\/\*|["\\]/u.test(header) || searchPath !== fixed.searchPath || (/\bSECURITY DEFINER\b/iu.test(header) && !searchPath) || (header.match(/\bSET search_path\b/giu)?.length ?? 0) > 1) throw new Error("reviewed native store unpinned SECURITY DEFINER or search_path");
       defined.add(signature); continue;
     }
-    const privilege = nativeStorePrivilege(statement, tables);
+    const privilege = nativeStorePrivilege(statement, tables, slot.insertSelectTables ?? []);
     if (privilege) {
+      if (privilege.kind === "POLICY") {
+        if (insertSelectPolicy) throw new Error("reviewed native store INSERT/SELECT permits at most one policy");
+        insertSelectPolicy = true; continue;
+      }
       if (privilege.kind === "RLS") continue;
       if (privilege.kind === "FUNCTION") {
         for (const signature of privilege.targets) {

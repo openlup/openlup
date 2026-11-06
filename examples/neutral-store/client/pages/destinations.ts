@@ -1,7 +1,7 @@
 import type { PageContext } from '../context.ts';
 import type { CopyKey } from '../../owned/copy.ts';
 import { messageDestinations, routes } from '../../shared/routes.ts';
-import { nativeLimits, otherLimits } from '../../shared/limits.ts';
+import { nativeLimits, otherLimits, releaseLimits } from '../../shared/limits.ts';
 import { append, el, link } from '../dom.ts';
 import { actionForm, otherRefusal, readPanel, refusedAction } from '../forms.ts';
 
@@ -118,6 +118,7 @@ export function limitsPage(context: PageContext): HTMLElement {
   append(table, body);
   return el('div', {}, el('h1', {}, context.t('limits')),
     el('p', { class: 'notice' }, context.t('sandboxOnly')),
+    ...releaseLimits.map(key => el('p', {}, context.t(key))),
     el('div', { class: 'table-wrap' }, table),
     readPanel(context, 'bindingStatus', 'application.status'));
 }

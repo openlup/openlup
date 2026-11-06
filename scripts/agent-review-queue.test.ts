@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { admit, carryOver, exportAdditions, RECEIPT_MARKER } from './agent-review-decide.mjs';
+import { admit, carryOver, RECEIPT_MARKER } from './agent-review-decide.mjs';
 import { carryOverSourceReview, enqueueAfterChecks, parseReceipt, readReceipts, waitNativeAdmission } from './agent-review-queue.mjs';
 import { REQUIRED_CONTEXTS } from './packages/release-gate.ts';
 
@@ -8,11 +8,6 @@ const receipt = { pr: 12, base: 'a'.repeat(40), head: 'b'.repeat(40), tree: 'c'.
 const observed = { ...receipt, baseValid: true, changedPaths: ['source.txt'] };
 const body = (value = receipt) => `${RECEIPT_MARKER}\n\`\`\`json\n${JSON.stringify(value)}\n\`\`\``;
 const comment = (patch = {}) => ({ id: 1, body: body(), author_association: 'OWNER', user: { login: 'review-owner', type: 'User' }, created_at: '2026-10-19T00:00:00Z', ...patch });
-const manifestPath = 'packages/p/package.json';
-const manifest = { name: '@openlup/p', version: '0.1.0', exports: { '.': './index.js' } };
-const queueManifest = { ...manifest, exports: { ...manifest.exports, './a': './a.js' } };
-const headManifest = { ...manifest, exports: { ...manifest.exports, './b': './b.js' } };
-const groupManifest = { ...manifest, exports: { ...queueManifest.exports, ...headManifest.exports } };
 
 function handoffFixture() {
   const repository = { id: 1376035358, full_name: 'openlup/openlup', private: false, owner: { login: 'openlup' } };
@@ -83,7 +78,6 @@ describe('CI completion queue handoff', () => {
     ['unknown mergeability', (f: ReturnType<typeof handoffFixture>) => { f.queuePr.mergeable = 'UNKNOWN'; }],
     ['lost merge authority', (f: ReturnType<typeof handoffFixture>) => { f.state.permission = 'read'; }],
     ['missing native receipt', (f: ReturnType<typeof handoffFixture>) => { f.state.comments = []; }],
-    ['expired native receipt', (f: ReturnType<typeof handoffFixture>) => { f.state.clock = receipt.expires; }],
     ['insufficient review floor', (f: ReturnType<typeof handoffFixture>) => { f.runGit.mockImplementation(async (_cwd, ...args) => args[0] === 'diff' ? `:100644 100644 ${'a'.repeat(40)} ${'b'.repeat(40)} M\0AGENTS.md\0` : args[0] === 'rev-parse' ? receipt.tree : args[0] === 'merge-base' ? receipt.base : ''); }],
     ['missing check', (f: ReturnType<typeof handoffFixture>) => { f.result.jobs.pop(); f.result.total_count--; }],
     ['skipped check', (f: ReturnType<typeof handoffFixture>) => { f.result.jobs[0]!.conclusion = 'skipped'; }],
@@ -106,7 +100,7 @@ describe('CI completion queue handoff', () => {
     if (scenario === 'draft') f.queuePr.isDraft = true;
     await expect(f.execute()).resolves.toMatchObject({ status: 'skipped' }); expect(f.enqueue).not.toHaveBeenCalled();
   });
-  it.each(['head', 'disarmed', 'queued', 'attempt', 'intent', 'permission', 'expiry'])('revalidates a late %s change before enqueue', async change => {
+  it.each(['head', 'disarmed', 'queued', 'attempt', 'intent', 'permission'])('revalidates a late %s change before enqueue', async change => {
     const f = handoffFixture(); let reads = 0;
     f.state.getHook = path => {
       if (!path.includes('/actions/runs/100') || path.includes('/jobs?')) return;
@@ -117,7 +111,6 @@ describe('CI completion queue handoff', () => {
       if (change === 'attempt') f.run.run_attempt++;
       if (change === 'intent') f.queuePr.autoMergeRequest.enabledAt = '2026-10-24T12:01:00Z';
       if (change === 'permission') f.state.permission = 'read';
-      if (change === 'expiry') f.state.clock = receipt.expires;
     };
     if (['head', 'disarmed', 'queued'].includes(change)) await expect(f.execute()).resolves.toMatchObject({ status: 'skipped' });
     else await expect(f.execute()).rejects.toThrow();
@@ -181,46 +174,10 @@ describe('CI completion queue handoff', () => {
   });
 });
 
-describe('pure export additions', () => {
-  it.each([
-    ['new key', manifest, queueManifest, ['./a']],
-    ['unchanged', manifest, manifest, []],
-    ['nested conditions and reordered object keys',
-      { dependencies: { a: '1', b: '2' }, exports: { '.': { import: { types: './index.d.ts', default: './index.js' }, require: './index.cjs' } } },
-      { exports: { './a': './a.js', '.': { require: './index.cjs', import: { default: './index.js', types: './index.d.ts' } } }, dependencies: { b: '2', a: '1' } }, null],
-    ['reordered nested conditions',
-      { exports: { '.': { import: { types: './index.d.ts', default: './index.js' } } } },
-      { exports: { '.': { import: { default: './index.js', types: './index.d.ts' } }, './a': './a.js' } }, null],
-    ['reordered other top-level value',
-      { ...manifest, dependencies: { a: '1', b: '2' } },
-      { ...queueManifest, dependencies: { b: '2', a: '1' } }, null],
-    ['changed nested target', { exports: { '.': { import: './index.js' } } }, { exports: { '.': { import: './other.js' } } }, null],
-    ['removed export', manifest, { ...manifest, exports: {} }, null],
-    ['added top-level key', manifest, { ...queueManifest, dependencies: { a: '1' } }, null],
-    ['removed top-level key', manifest, { exports: manifest.exports }, null],
-    ['replaced top-level key', { name: 'p', exports: {} }, { version: '1', exports: {} }, null],
-    ['changed top-level value', manifest, { ...queueManifest, version: '0.2.0' }, null],
-    ['string-valued exports before', { exports: './index.js' }, manifest, null],
-    ['string-valued exports after', manifest, { exports: './index.js' }, null],
-    ['missing exports', {}, { exports: {} }, null],
-    ['array exports', { exports: [] }, { exports: {} }, null],
-    ['null exports', { exports: null }, { exports: {} }, null],
-    ['condition-sugar exports', { exports: { import: './index.js' } }, { exports: { import: './index.js', require: './index.cjs' } }, null],
-    ['condition-sugar key added', manifest, { ...queueManifest, exports: { ...queueManifest.exports, default: './index.js' } }, null],
-    ['missing object', undefined, manifest, null],
-    ['null object', manifest, null, null],
-    ['array object', [], manifest, null],
-    ['non-plain object', new Date(0), manifest, null],
-  ])('%s', (_name, before, after, expected) => {
-    expect(exportAdditions(before, after)).toEqual(expected);
-  });
-});
-
 describe('hosted review decisions', () => {
   it.each([
     ['pass', {}, {}, time, 'reviewed'],
-    ['expired', {}, {}, receipt.expires, 'expired'],
-    ['future expiry', { expires: receipt.expires + 1 }, {}, time, 'invalid'],
+    ['a month after the recorded expiry: reviews do not expire', {}, {}, receipt.expires + 30 * 86400000, 'reviewed'],
     ['wrong PR', { pr: 13 }, {}, time, 'stale'],
     ['wrong head', { head: 'e'.repeat(40) }, {}, time, 'stale'],
     ['wrong tree', { tree: 'e'.repeat(40) }, {}, time, 'stale'],
@@ -243,56 +200,19 @@ describe('hosted review decisions', () => {
     ['unlanded base, even with equal tree', { baseAncestor: false, groupTree: receipt.tree }, false],
     ['wrong prediction', { predictedTree: 'f'.repeat(40) }, false],
     ['conflict', { predictedTree: null }, false],
-    ['overlap', { movedPaths: ['source.txt'] }, false],
+    ['clean overlap', { movedPaths: ['source.txt'] }, true],
     ['ordinary check config', { movedPaths: ['vitest.config.ts'] }, true],
   ])('carry-over: %s', (_name, patch, ok) => {
     const decision = carryOver({ ...facts, ...patch }); expect(decision.ok).toBe(ok);
-    if (!ok) expect(decision.reason).toContain('merge main and re-review');
+    if (!ok) expect(decision.reason).toContain('merge main');
   });
+  // Review binds to the candidate's own change; main's moves carry over whenever the merge is clean.
   it.each([
     '.github/workflows/extra.yml', 'scripts/agent-review-decide.mjs', 'scripts/documentation-git.ts',
     'package.json', 'package-lock.json', 'packages/core/package.json', 'packages/core/package-lock.json',
     'supabase/migrations/0001_extra.sql', 'db/platform/migrations/0001_extra.sql', 'config/platform-migration-manifest.json',
-  ])('refuses protected base move %s', path => {
-    expect(carryOver({ ...facts, movedPaths: [path] }).ok).toBe(false);
-  });
-  const manifests = { [manifestPath]: { base: manifest, queueBase: queueManifest, head: headManifest, group: groupManifest } };
-  it.each([
-    ['disjoint export additions', {}, {}, true],
-    ['protected path without PR overlap', {}, { changedPaths: [] }, true],
-    ['main modifies existing export', { queueBase: { ...queueManifest, exports: { ...queueManifest.exports, '.': './other.js' } } }, {}, false],
-    ['main reorders conditions of an existing export', {
-      base: { ...manifest, exports: { '.': { types: './index.d.ts', default: './index.js' } } },
-      head: { ...headManifest, exports: { ...headManifest.exports, '.': { types: './index.d.ts', default: './index.js' } } },
-      queueBase: { ...queueManifest, exports: { ...queueManifest.exports, '.': { default: './index.js', types: './index.d.ts' } } },
-      group: { ...groupManifest, exports: { ...groupManifest.exports, '.': { types: './index.d.ts', default: './index.js' } } },
-    }, {}, false],
-    ['main removes export', { queueBase: { ...manifest, exports: { './a': './a.js' } } }, {}, false],
-    ['main adds dependency', { queueBase: { ...queueManifest, dependencies: { a: '1' } } }, {}, false],
-    ['main bumps version', { queueBase: { ...queueManifest, version: '0.2.0' } }, {}, false],
-    ['overlapping added key', { head: queueManifest }, {}, false],
-    ['PR touches non-export key', { head: { ...headManifest, version: '0.2.0' } }, {}, false],
-    ['missing base', { base: undefined }, {}, false],
-    ['missing queue base', { queueBase: undefined }, {}, false],
-    ['unparseable head', { head: undefined }, {}, false],
-    ['missing group manifest', { group: undefined }, {}, false],
-    ['group manifest missing main addition', { group: headManifest }, {}, false],
-    ['group manifest missing PR addition', { group: queueManifest }, {}, false],
-    ['group manifest with extra key', { group: { ...groupManifest, exports: { ...groupManifest.exports, './extra': './extra.js' } } }, {}, false],
-    ['missing manifests', {}, { manifests: undefined }, false],
-    ['missing manifest entry', {}, { manifests: {} }, false],
-    ['root manifest', {}, { movedPaths: ['package.json'], manifests: { 'package.json': manifests[manifestPath] } }, false],
-    ['package lockfile', {}, { movedPaths: ['packages/x/package-lock.json'], manifests: { 'packages/x/package-lock.json': manifests[manifestPath] } }, false],
-    ['root lockfile', {}, { movedPaths: ['package-lock.json'], manifests: { 'package-lock.json': manifests[manifestPath] } }, false],
-    ['wrong predicted tree', {}, { predictedTree: 'f'.repeat(40) }, false],
-    ['unlanded base', {}, { baseAncestor: false }, false],
-    ['another overlapping path', {}, { movedPaths: [manifestPath, 'source.txt'], changedPaths: [manifestPath, 'source.txt'] }, false],
-    ['another protected path', {}, { movedPaths: [manifestPath, '.github/workflows/extra.yml'] }, false],
-  ])('export carry-over: %s', (_name, manifestPatch, patch, ok) => {
-    const decision = carryOver({ ...facts, movedPaths: [manifestPath], changedPaths: [manifestPath], manifests: { [manifestPath]: { ...manifests[manifestPath], ...manifestPatch } }, ...patch });
-    expect(decision.code).toBe(ok ? 'reviewed' : 'stale');
-    expect(decision.ok).toBe(ok);
-    if (ok) expect(decision.reason).toBe('disjoint base move with export additions');
+  ])('carries a clean base move of %s', path => {
+    expect(carryOver({ ...facts, movedPaths: [path] }).ok).toBe(true);
   });
   it.each(['not JSON', `${RECEIPT_MARKER}\n{}`, `prefix\n${body()}`, `${RECEIPT_MARKER}\n\`\`\`json\n{\n\`\`\``])('ignores malformed receipt %s', value => {
     expect(parseReceipt(value)).toBeNull();
@@ -337,13 +257,13 @@ describe('hosted review decisions', () => {
     const old = comment({ id: 2 }); const newer = comment({ id: 3, body: body({ ...receipt, reviewers: ['new'] }) });
     const first = Array.from({ length: 100 }, (_, index) => comment({ id: index + 4, body: 'unrelated' }));
     first[0] = comment({ id: 105, body: body({ ...receipt, head: 'e'.repeat(40) }) });
-    first[1] = comment({ id: 106, body: body({ ...receipt, expires: time }) });
+    first[1] = comment({ id: 106, body: body({ ...receipt, verdict: 'FAIL' }) });
     first[2] = comment({ id: 107, body: body({ ...receipt, pr: 13 }) });
     const api = { get: vi.fn(async path => path.includes('/collaborators/') ? { permission: 'admin' } : path.endsWith('page=1') ? first : [old, newer]) };
     expect((await readReceipts(api, '/repos/o/r', 12, receipt.head, time)).map(item => item.reviewers)).toEqual([['new'], ['reviewer']]);
     expect(api.get).toHaveBeenCalledTimes(3);
   });
-  it.each(['newer bad base', 'equal-tree group', 'live head changed', 'expiry during admission', 'main moved'])('wait checks %s with fake API and Git', async scenario => {
+  it.each(['newer bad base', 'equal-tree group', 'live head changed', 'main moved'])('wait checks %s with fake API and Git', async scenario => {
     let clock = time; let mainReads = 0;
     const group = scenario === 'equal-tree group'; const groupHead = 'f'.repeat(40);
     const event = { number: 12, repository: { private: false }, pull_request: { head: { sha: receipt.head } }, action: 'checks_requested', merge_group: { base_ref: 'refs/heads/main', head_ref: `refs/heads/gh-readonly-queue/main/pr-12-${groupHead}`, base_sha: receipt.base, head_sha: groupHead } };
@@ -352,7 +272,6 @@ describe('hosted review decisions', () => {
       if (path.includes('/issues/')) return scenario === 'newer bad base' ? [comment(), comment({ id: 2, body: body({ ...receipt, base: 'e'.repeat(40) }) })] : [comment()];
       if (path.includes('/pulls/')) return { number: 12, state: 'open', draft: false, base: { ref: 'main' }, head: { sha: scenario === 'live head changed' ? groupHead : receipt.head } };
       mainReads += 1;
-      if (mainReads === 2 && scenario === 'expiry during admission') clock = receipt.expires;
       return { object: { sha: mainReads === 2 && scenario === 'main moved' ? groupHead : receipt.base } };
     }) };
     const runGit = vi.fn(async (_cwd, ...args) => {
@@ -365,7 +284,6 @@ describe('hosted review decisions', () => {
     try {
       const wait = waitNativeAdmission({ event, env: { GITHUB_REPOSITORY: 'openlup/openlup', GITHUB_EVENT_NAME: group ? 'merge_group' : 'pull_request' }, api, runGit, now: () => clock, sleep: async ms => { clock += ms; }, deadlineMs: 15000 });
       if (scenario === 'live head changed') await expect(wait).rejects.toThrow('PR head changed');
-      else if (scenario === 'expiry during admission') await expect(wait).rejects.toThrow('expired');
       else if (scenario === 'main moved') await expect(wait).rejects.toThrow('main moved');
       else {
         await expect(wait).resolves.toEqual(receipt); expect(log).toHaveBeenLastCalledWith(expect.stringContaining(group ? 'unchanged tree' : 'reviewed PR head'));
@@ -395,40 +313,16 @@ describe('hosted review decisions', () => {
   });
 });
 
-describe('carry-over manifest adapter', () => {
-  const candidate = { base: receipt.base, head: receipt.head, tree: receipt.tree, changedPaths: [manifestPath] };
+describe('carry-over adapter', () => {
+  const candidate = { base: receipt.base, head: receipt.head, tree: receipt.tree, changedPaths: ['source.txt'] };
   const group = { base: 'e'.repeat(40), tree: 'f'.repeat(40) };
-  it.each([
-    ['valid', undefined, 'valid'],
-    ...[candidate.base, group.base, candidate.head, group.tree].flatMap(sha => ['limit', 'missing', 'invalid', 'oversized'].map(failure => [failure, sha, failure])),
-  ])('%s blob at %s', async (_name, failingSha, failure) => {
-    const values = { [candidate.base]: manifest, [group.base]: queueManifest, [candidate.head]: headManifest, [group.tree]: groupManifest };
-    const runGit = vi.fn(async (_cwd, command, ...args) => {
-      if (command === 'merge-base') return '';
-      if (command === 'merge-tree') return group.tree;
-      if (command === 'diff') return `${manifestPath}\0`;
-      const sha = args[0].split(':')[0]; const json = JSON.stringify(values[sha]);
-      if (sha !== failingSha) return json;
-      if (failure === 'missing') throw new Error('missing blob');
-      if (failure === 'invalid') return '{';
-      if (failure === 'oversized') {
-        if (sha === candidate.base) return json.padEnd(1024 * 1024 + 1, ' ');
-        return JSON.stringify({ ...values[sha], exports: { ...values[sha].exports, [sha === group.base ? './a' : './b']: 'é'.repeat(524288) } });
-      }
-      return json.padEnd(1024 * 1024, ' ');
+  // Carry-over decides from ancestry and the clean merge alone; it reads no moved paths or blobs.
+  it.each([['clean merge', 'f'.repeat(40), 'reviewed'], ['different merge', 'a'.repeat(40), 'stale'], ['conflict', null, 'stale']])('%s', async (_name, merged, code) => {
+    const runGit = vi.fn(async (_cwd, command) => {
+      if (command === 'merge-tree') { if (merged === null) throw Object.assign(new Error('conflict'), { code: 1 }); return merged; }
+      return '';
     });
-    const decision = await carryOverSourceReview('/fixture', candidate, group, runGit);
-    expect(decision.code).toBe(['valid', 'limit'].includes(failure) ? 'reviewed' : 'stale');
-    expect(runGit.mock.calls.filter(([, command]) => command === 'show')).toEqual([
-      ['/fixture', 'show', `${candidate.base}:${manifestPath}`],
-      ['/fixture', 'show', `${group.base}:${manifestPath}`],
-      ['/fixture', 'show', `${candidate.head}:${manifestPath}`],
-      ['/fixture', 'show', `${group.tree}:${manifestPath}`],
-    ]);
-  });
-  it.each(['package.json', 'package-lock.json', 'packages/x/package-lock.json'])('does not read blobs for %s', async path => {
-    const runGit = vi.fn(async (_cwd, command) => command === 'diff' ? `${path}\0` : command === 'merge-tree' ? group.tree : '');
-    expect((await carryOverSourceReview('/fixture', candidate, group, runGit)).code).toBe('stale');
-    expect(runGit.mock.calls.some(([, command]) => command === 'show')).toBe(false);
+    expect((await carryOverSourceReview('/fixture', candidate, group, runGit)).code).toBe(code);
+    expect(runGit.mock.calls.some(([, command]) => command === 'show' || command === 'diff')).toBe(false);
   });
 });

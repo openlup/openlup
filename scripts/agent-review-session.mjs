@@ -2,18 +2,18 @@
 import { execFile, spawn } from 'node:child_process';
 import { accessSync, constants } from 'node:fs';
 import { mkdir, open, rename, rm, writeFile } from 'node:fs/promises';
-import { delimiter, join, resolve, posix } from 'node:path';
+import { delimiter, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { createHash, randomUUID } from 'node:crypto';
 import { env as processEnvironment } from 'node:process';
-import { ECONOMY_RECEIPT_MARKER, coverageState, digest, protectedCoveragePath, ordinaryRepairPath, renewCoverage, carryOver, continueOwner, demand, integrationReviewContext, prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER, verdict } from './agent-review-decide.mjs';
+import { ECONOMY_RECEIPT_MARKER, digest, protectedCoveragePath, carryOver, continueOwner, demand, integrationReviewContext, prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER, verdict } from './agent-review-decide.mjs';
 import { REGISTRY_PATHS, registryUnion } from './agent-review-registry.mjs';
 
 const execute = promisify(execFile);
 const SHA = /^[a-f0-9]{40}$/u;
 export async function git(cwd, ...args) {
-  return (await execute('/usr/bin/git', ['--no-replace-objects', '-C', cwd, '-c', 'core.fsmonitor=false', '-c', 'merge.renames=false', '-c', 'merge.directoryRenames=false', ...args], { encoding: 'utf8', timeout: 30000, maxBuffer: 16 * 1024 * 1024, env: { ...processEnvironment, PATH: '/usr/bin:/bin' } })).stdout;
+  return (await execute('/usr/bin/git', ['--no-replace-objects', '-C', cwd, '-c', 'core.fsmonitor=false', '-c', 'merge.renames=false', '-c', 'merge.directoryRenames=false', '-c', 'merge.conflictStyle=merge', ...args], { encoding: 'utf8', timeout: 30000, maxBuffer: 16 * 1024 * 1024, env: { ...processEnvironment, PATH: '/usr/bin:/bin' } })).stdout;
 }
 export async function captureCommittedReviewCandidate(cwd, base, head, runGit = git) {
   demand(SHA.test(base) && SHA.test(head), 'base and head must be full commit digests');
@@ -64,23 +64,18 @@ async function integrationParents(cwd, head) {
   // Do not recurse: two trailer commits, or a trailer on a non-merge, cannot qualify.
   return tree === mergeTree && joined.length === 2 ? joined : parents;
 }
+// This literal anchors the one-time transition in trusted main's first-parent history.
+const PORTABLE_REVIEW = 'openlup-portable-review-20261103';
+const SESSION_PATH = 'scripts/agent-review-session.mjs';
+
+// Review evidence binds to the candidate's own change: a clean merge onto a later base keeps it.
 export async function carryOverSourceReview(cwd, candidate, group, runGit = git) {
   const baseAncestor = await ancestor(runGit, cwd, candidate.base, group.base);
-  let predictedTree; let movedPaths = []; const manifests = {};
+  let predictedTree;
   if (baseAncestor && candidate.tree !== group.tree) {
     try { predictedTree = (await runGit(cwd, 'merge-tree', '--write-tree', `--merge-base=${candidate.base}`, group.base, candidate.head)).trim(); } catch { predictedTree = null; }
-    movedPaths = (await runGit(cwd, 'diff', '--name-only', '--no-renames', '-z', candidate.base, group.base)).split('\0').filter(Boolean);
-    for (const path of movedPaths.filter(path => /^packages\/[\w.-]+\/package\.json$/u.test(path))) {
-      const [base, queueBase, head, merged] = await Promise.all([candidate.base, group.base, candidate.head, group.tree].map(async sha => {
-        try {
-          const blob = await runGit(cwd, 'show', `${sha}:${path}`);
-          return Buffer.byteLength(blob, 'utf8') <= 1024 * 1024 ? JSON.parse(blob) : undefined;
-        } catch { return undefined; }
-      }));
-      manifests[path] = { base, queueBase, head, group: merged };
-    }
   }
-  return carryOver({ reviewedTree: candidate.tree, groupTree: group.tree, baseAncestor, predictedTree, changedPaths: candidate.changedPaths, movedPaths, manifests });
+  return carryOver({ reviewedTree: candidate.tree, groupTree: group.tree, baseAncestor, predictedTree });
 }
 // Source objects are parsed, never imported as candidate modules.
 export async function captureReviewRules(cwd, candidate, runGit = git) {
@@ -121,98 +116,75 @@ async function replaceTreeBlobs(cwd, tree, replacements) {
   demand([...replacements.keys()].every(path => rows.some(row => path === row.slice(row.indexOf('\t') + 1) || path.startsWith(row.slice(row.indexOf('\t') + 1) + '/'))), 'registry absent from merge tree');
   return objectInput(cwd, ['mktree', '-z'], output.join(''));
 }
-export async function proveReviewIntegration(cwd, previous, current) {
+export async function proveReviewIntegration(cwd, previous, current, portable = false) {
   const parents = await integrationParents(cwd, current.head);
   demand(parents.length === 2 && parents[0] === previous.head && parents[1] === current.base, 'integration parents differ');
   demand(await ancestor(git, cwd, previous.base, current.base), 'integration base ancestry differs');
   const own = (await captureCommittedReviewCandidate(cwd, previous.base, previous.head)).changedPaths;
   const moved = (await captureCommittedReviewCandidate(cwd, previous.base, current.base)).changedPaths;
-  const registries = moved.filter(path => REGISTRY_PATHS.includes(path));
-  demand(!moved.some(path => !registries.includes(path) && (own.includes(path) || protectedCoveragePath(path))), 'main touched candidate or machinery path');
   let prediction; let conflicts = [];
   try { prediction = (await git(cwd, 'merge-tree', '--write-tree', '--name-only', '--no-messages', '-z', previous.head, current.base)).split('\0')[0]; }
   catch (error) {
     if (error.code !== 1) throw error;
     const parts = error.stdout.split('\0'); prediction = parts.shift(); conflicts = parts.filter(Boolean);
-    demand(conflicts.length > 0 && conflicts.every(path => registries.includes(path)), 'nonregistry integration conflict');
+    demand(conflicts.length > 0, 'integration conflict list missing');
   }
   demand(SHA.test(prediction), 'merge prediction missing'); const replacements = new Map();
-  for (const path of registries) {
+  // Git's clean merge stands for every carrier it merged. A conflicting carrier
+  // takes the deterministic union of its named arrays; if that union does not
+  // apply (a change outside the arrays, an overlap or another mode), the carrier
+  // is reviewed as part of the resolution.
+  for (const path of conflicts.filter(path => REGISTRY_PATHS.includes(path))) {
     const blobs = [];
     for (const revision of [previous.base, previous.head, current.base]) {
-      const rows = (await git(cwd, 'ls-tree', revision, '--', path)).trim(); demand(rows.startsWith('100644 blob '), 'unsupported registry mode');
-      blobs.push(await git(cwd, 'show', `${revision}:${path}`));
+      if ((await git(cwd, 'ls-tree', revision, '--', path)).trim().startsWith('100644 blob ')) blobs.push(await git(cwd, 'show', `${revision}:${path}`));
     }
-    const union = registryUnion(path, ...blobs);
-    // Clean Git remains authoritative if it preserves the exact same registry
-    // entries. Conflicting carriers require the deterministic union bytes.
-    if (conflicts.includes(path)) replacements.set(path, await objectInput(cwd, ['hash-object', '-w', '--stdin'], union));
-    else {
-      const actual = await git(cwd, 'show', `${prediction}:${path}`);
-      demand(registryUnion(path, actual, actual, actual) === registryUnion(path, union, union, union), 'clean registry merge differs from exact union');
-    }
+    let union; try { union = blobs.length === 3 ? registryUnion(path, ...blobs) : undefined; } catch { union = undefined; }
+    if (union !== undefined) replacements.set(path, await objectInput(cwd, ['hash-object', '-w', '--stdin'], union));
+  }
+  // A union counts only when it is what was committed; any other carrier bytes are reviewed.
+  for (const [path, blob] of replacements) {
+    if ((await git(cwd, 'ls-tree', current.tree, '--', path)).trim() !== `100644 blob ${blob}\t${path}`) replacements.delete(path);
   }
   if (replacements.size) prediction = await replaceTreeBlobs(cwd, prediction, replacements);
-  demand(prediction === current.tree, 'integration whole tree differs from prediction');
-  return { kind: conflicts.length ? 'registry-union' : 'git', tree: prediction, own, moved };
+  // A clean or registry-union merge needs no review. Every other difference from
+  // that mechanical result, including edits outside the conflicts, is the
+  // resolution and is reviewed as its delta. A conflict left unresolved refuses.
+  const delta = await captureCommittedReviewCandidate(cwd, prediction, current.tree);
+  demand(conflicts.every(path => replacements.has(path) || delta.changedPaths.includes(path)), 'integration commits a conflict without resolving it');
+  const resolution = delta.changedPaths; const modeChanged = delta.modeChanged;
+  const kind = resolution.length ? 'resolution' : conflicts.length ? 'registry-union' : 'git';
+  return { kind: portable ? 'portable-' + kind : kind, tree: current.tree, own, moved, ...(resolution.length ? { resolution, prediction, modeChanged } : {}) };
 }
-async function hasProductionConsumer(cwd, head, paths) {
-  const code = paths.filter(path => /\.(?:[cm]?[jt]sx?|json)$/u.test(path)); const seen = new Set();
-  for (let index = 0; index < code.length; index++) {
-    const path = code[index]; if (seen.has(path)) continue; seen.add(path);
-    if (/^(?:packages\/[^/]+\/src|server|api)\//u.test(path)) return true;
-    let matches;
-    try {
-      matches = await git(cwd, 'grep', '-l', '-z', '-F', '-e', posix.basename(path).replace(/\.[^.]+$/u, ''), head, '--',
-        'src', 'server', 'api', 'packages/*/src', 'packages/*/test', 'scripts', 'examples', 'tests');
-    } catch (error) { if (error.code === 1) continue; throw error; }
-    for (const row of matches.split('\0').filter(Boolean)) {
-      const importer = row.slice(row.indexOf(':') + 1);
-      if (!/\.[cm]?[jt]sx?$/u.test(importer)) continue;
-      const source = await git(cwd, 'show', `${head}:${importer}`);
-      for (const match of source.matchAll(/(?:from\s+|import\s*(?:\(\s*)?|require\s*\(\s*)(["'])([^"'\r\n]+)\1/gu)) {
-        const specifier = match[2];
-        const target = specifier.startsWith('.') ? posix.normalize(posix.join(posix.dirname(importer), specifier))
-          : specifier.startsWith('@/') ? 'src/' + specifier.slice(2) : specifier;
-        const stem = target.replace(/\.[cm]?[jt]sx?$/u, '');
-        if ([target, stem, ...['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.mts', '.cts', '.json', '/index.ts', '/index.js'].map(suffix => stem + suffix)].includes(path)) {
-          const testOnly = !protectedCoveragePath(importer) && (ordinaryRepairPath(importer) || /^(?:tests\/|packages\/[^/]+\/test\/)/u.test(importer));
-          if (!testOnly) return true; code.push(importer);
-        }
-      }
-    }
-  }
-  return false;
-}
-export async function captureCoverageEdge(cwd, session, observed, now) {
-  if (!session || !verdict(session, session.candidate, now).ok || !observed.rules || !session.candidate.rules ||
-    session.candidate.rules.head !== observed.rules.head ||
+export async function captureCoverageEdge(cwd, session, observed, now, historicalKind) {
+  if (!session || !verdict(session, session.candidate, now).ok || !observed.rules ||
     digest(observed.intent) !== digest(session.history.findLast(event => event.type === 'prepare').intent) ||
     observed.authorSessionId !== session.history.findLast(event => event.type === 'prepare').authorSessionId) return undefined;
-  // An unlanded stack base remains eligible for ordinary full review only.
-  if (!await ancestor(git, cwd, observed.base, 'origin/main')) return undefined;
-  let proof; let kind;
+  let proof; let kind; let from = session.candidate.head; let to = observed.head;
   if (session.candidate.base !== observed.base) {
-    try { proof = await proveReviewIntegration(cwd, session.candidate, observed); kind = 'integration'; }
-    catch { return undefined; }
+    // An integration base must be on main; a repair keeps its existing (possibly stacked) base.
+    if (!await ancestor(git, cwd, observed.base, 'origin/main')) return undefined;
+    kind = 'integration';
+    try {
+      const entry = await git(cwd, 'ls-tree', observed.base, '--', SESSION_PATH);
+      const source = entry ? await git(cwd, 'show', `${observed.base}:${SESSION_PATH}`) : '';
+      const portable = source.includes(`const PORTABLE_REVIEW = '${PORTABLE_REVIEW}';`);
+      // The landed base selects the proof. A receipt cannot opt into the old
+      // selector after the rollout, even when historical fingerprints match.
+      // A session from before the version-3 rules can inherit only through the portable proof.
+      if ((historicalKind && historicalKind.startsWith('portable-') !== portable) || (!portable && session.candidate.rules?.version !== 3)) return undefined;
+      proof = await proveReviewIntegration(cwd, session.candidate, observed, portable);
+      if (proof.prediction) { from = proof.prediction; to = observed.tree; }
+    } catch { return undefined; }
   } else {
+    if (session.candidate.rules?.version !== 3) return undefined;
     const delta = await captureCommittedReviewCandidate(cwd, session.candidate.head, observed.head);
     const commits = (await git(cwd, 'rev-list', '--merges', `${session.candidate.head}..${observed.head}`)).trim();
-    if (!await ancestor(git, cwd, session.candidate.head, observed.head) || commits || delta.modeChanged || !delta.changedPaths.length || !delta.changedPaths.every(ordinaryRepairPath) || await hasProductionConsumer(cwd, observed.head, delta.changedPaths)) return undefined;
-    proof = { paths: delta.changedPaths, modeChanged: false }; kind = 'repair';
+    if (!await ancestor(git, cwd, session.candidate.head, observed.head) || commits || !delta.changedPaths.length) return undefined;
+    proof = { paths: delta.changedPaths, modeChanged: delta.modeChanged }; kind = 'repair';
   }
   return { kind, previous: digest(session.history), from: { base: session.candidate.base, head: session.candidate.head, tree: session.candidate.tree },
-    delta: digest(await git(cwd, 'diff', '--binary', '--no-renames', session.candidate.head, observed.head)), proof };
-}
-export async function captureRenewalProof(cwd, session, runGit = git) {
-  const candidate = session.candidate; const rules = await captureReviewRules(cwd, candidate, runGit);
-  demand(rules && digest(rules) === digest(candidate.rules), 'renewal tree policy changed');
-  const main = (await runGit(cwd, 'rev-parse', '--verify', 'origin/main^{commit}')).trim();
-  const anchor = coverageState(session);
-  demand(await ancestor(runGit, cwd, anchor.base, main), 'renewal base is not on main');
-  const touched = (await runGit(cwd, 'log', '--full-history', '--diff-merges=separate', '--format=', '--name-only', '--no-renames', '-z', `${anchor.base}..${main}`)).split('\0').filter(Boolean);
-  demand(!touched.some(path => anchor.paths.includes(path) || protectedCoveragePath(path)), 'main touched candidate or machinery path');
-  return { main, untouched: true };
+    delta: digest(await git(cwd, 'diff', '--binary', '--no-renames', from, to)), proof };
 }
 // Trusted admission and local verify rederive every recorded exceptional edge.
 export async function validateEconomySession(cwd, session, runGit = git) {
@@ -227,14 +199,11 @@ export async function validateEconomySession(cwd, session, runGit = git) {
         event.candidate.rules !== undefined && digest(rules) === digest(event.candidate.rules), 'recorded policy or base rules differ');
       if (event.candidate.coverage) {
         const prefix = session.history.slice(0, session.history[index - 1]?.type === 'rules' ? index - 1 : index); const prior = prefix.findLast(item => item.type === 'prepare');
-        const before = { ...session, candidate: prior.candidate, history: prefix, preparedAt: prior.at, cycle: prior.cycle };
-        const edge = await captureCoverageEdge(cwd, before, { ...actual, rules, intent: event.intent, authorSessionId: event.authorSessionId }, event.at);
-        demand(digest(edge) === digest(event.candidate.coverage), 'recorded coverage proof differs');
+        const version = prefix.some(item => item.type === 'rules' || item.candidate?.rules?.version === 3) ? 3 : 2;
+        const before = { ...session, version, candidate: prior.candidate, history: prefix, preparedAt: prior.at, cycle: prior.cycle };
+        const edge = await captureCoverageEdge(cwd, before, { ...actual, rules, intent: event.intent, authorSessionId: event.authorSessionId }, event.at, event.candidate.coverage.proof?.kind);
+        demand(edge && digest(edge) === digest(event.candidate.coverage), 'recorded coverage proof differs');
       }
-    } else if (event.type === 'renew') {
-      const history = session.history.slice(0, index); const prior = history.findLast(item => item.type === 'prepare');
-      const prefix = { ...session, history, candidate: prior.candidate, preparedAt: prior.at, cycle: prior.cycle };
-      const proof = await captureRenewalProof(cwd, prefix, runGit); demand(await ancestor(runGit, cwd, event.proof.main, proof.main), 'renewal main ancestry changed');
     }
   }
 }
@@ -251,7 +220,7 @@ export async function assertMergePreflight(cwd, candidate, { runGit = git, env =
     throw new Error(`merge_preflight: cannot compute merge with origin/main: ${error.message}`);
   }
   demand(SHA.test(tree), 'merge preflight did not produce a tree', 'merge_preflight');
-  const decision = await carryOverSourceReview(cwd, candidate, { base: main, tree }, runGit);
+  const decision = await carryOverSourceReview(cwd, candidate, { base: main, tree, trustedMain: main }, runGit);
   demand(decision.ok, `clean merge cannot carry over source review: ${decision.reason}`, 'merge_preflight');
 }
 async function boundedJson(path, limit = 1024 * 1024) {
@@ -298,11 +267,11 @@ export async function verifyCandidateCommand({ cwd, session, command, args = [],
   return code;
 }
 export async function sessionMain(argv = process.argv.slice(2), { cwd = process.cwd(), env = processEnvironment } = {}) {
-  const [verb, ...args] = argv; demand(['prepare', 'record', 'continue', 'renew', 'verify', 'status', 'receipt', 'verify-command'].includes(verb), 'use prepare [--new] <intent.json>, record <report.json>, continue "<note>", verify, status, receipt <PR>, or verify-command');
+  const [verb, ...args] = argv; demand(['prepare', 'record', 'continue', 'verify', 'status', 'receipt', 'verify-command'].includes(verb), 'use prepare [--new] <intent.json>, record <report.json>, continue "<note>", verify, status, receipt <PR>, or verify-command');
   const directory = join(cwd, '.context', 'scratch', 'agent-review'); const path = join(directory, 'session.json');
   await mkdir(directory, { recursive: true });
   let lock;
-  if (['prepare', 'record', 'continue', 'renew'].includes(verb)) {
+  if (['prepare', 'record', 'continue'].includes(verb)) {
     try { lock = await open(join(directory, '.session.lock'), 'wx', 0o600); }
     catch (error) { if (error.code === 'EEXIST') throw new Error('invalid: session is busy; retry after the active transaction finishes'); throw error; }
   }
@@ -353,10 +322,6 @@ export async function sessionMain(argv = process.argv.slice(2), { cwd = process.
     const observed = await captureSessionCandidate(cwd, session.candidate.base, { env });
     demand(observed.clean, 'commit source changes before review', 'dirty');
     demand(['base', 'head', 'tree'].every(key => observed[key] === session.candidate[key]), 'candidate changed; prepare again', 'stale');
-    if (verb === 'renew') {
-      await validateEconomySession(cwd, session);
-      session = renewCoverage(session, await captureRenewalProof(cwd, session), Date.now()); await saveState(path, session); return 0;
-    }
     if (verb === 'record') { session = recordReport(session, await boundedJson(args[0]), Date.now()); await saveState(path, session); return 0; }
     await validateEconomySession(cwd, session);
     const decision = verdict(session, observed, Date.now()); demand(decision.ok, decision.reason, decision.code);

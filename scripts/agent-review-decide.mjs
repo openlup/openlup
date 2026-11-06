@@ -74,18 +74,14 @@ export function protectedCoveragePath(path) {
     /(?:^|\/)(?:package(?:-lock)?\.json|npm-shrinkwrap\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lockb?)$/u.test(path) ||
     /^(?:\.gitignore|\.gitattributes|\.npmrc|\.nvmrc|[^/]*config\.[^/]+)$/u.test(path);
 }
-export function ordinaryRepairPath(path) {
-  if (protectedCoveragePath(path) || sensitivePath(path)) return false;
-  const test = /(?:^|\/)[^/]+\.(?:test|spec)\.(?:[cm]?[jt]sx?)$/u.test(path);
-  const fixture = /^(?:tests\/(?:.*\/)?fixtures\/|packages\/[^/]+\/test\/(?:.*\/)?fixtures\/).*\.(?:json|txt|csv|html|tsx?)$/u.test(path) ||
-    /^packages\/[^/]+\/test\/(?:.*\/)?(?:fixtures|[^/]+\.fixtures)\.tsx?$/u.test(path);
-  const prose = /^docs\/.*\.md$/u.test(path) || /(?:^|\/)README\.md$/u.test(path);
-  return test || fixture || prose;
-}
+// A repair or conflict resolution is reviewed as its own delta: two reviewers when it touches
+// SQL, controls, machinery or security-sensitive paths or changes a mode, one otherwise.
+export const deltaFloor = (paths, modeChanged = false) => modeChanged || paths.some(protectedCoveragePath) ? 2 : 1;
 function prefixSession(session, end) {
   const history = session.history.slice(0, end); const event = history.findLast(item => item.type === 'prepare');
   demand(event, 'coverage prefix has no candidate');
-  return { ...session, history, candidate: event.candidate, preparedAt: event.at, cycle: event.cycle };
+  const version = history.some(item => item.type === 'rules' || item.candidate?.rules?.version === 3) ? 3 : 2;
+  return { ...session, version, history, candidate: event.candidate, preparedAt: event.at, cycle: event.cycle };
 }
 export function coverageState(session) {
   demand(digest(session.candidate) === digest(latestPrepare(session)?.candidate), 'candidate differs from history');
@@ -103,15 +99,19 @@ export function coverageState(session) {
     demand(edge.previous === digest(prior.history) && digest(edge.from) === digest({ base: prior.candidate.base, head: prior.candidate.head, tree: prior.candidate.tree }), 'coverage prefix differs');
     demand(digest(event.intent) === digest(latestIntent(prior)) && event.authorSessionId === latestPrepare(prior).authorSessionId, 'coverage intent or author changed');
     const decision = verdict(prior, prior.candidate, event.at); demand(decision.ok, 'prior coverage is incomplete, expired or unresolved');
-    inherited = coverageState(prior);
-    demand(prior.candidate.rules?.version === 3 && candidate.rules.head === prior.candidate.rules.head, 'coverage policy changed');
+    const portable = edge.kind === 'integration' && ['portable-git', 'portable-registry-union', 'portable-resolution'].includes(edge.proof?.kind);
+    inherited = prior.version === 2 && portable ? {
+      earliest: Math.min(...currentReports(prior).filter(report => report.verdict === 'PASS').map(report => report.at)),
+      expires: legacyReviewExpiry(prior), base: prior.candidate.base, paths: prior.candidate.changedPaths,
+    } : coverageState(prior);
+    if (!portable) demand(prior.candidate.rules?.version === 3, 'coverage policy changed');
     if (edge.kind === 'integration') {
-      demand(candidate.integration && ['git', 'registry-union'].includes(edge.proof?.kind) && edge.proof.tree === candidate.tree, 'integration proof missing'); floor = 0;
-    } else {
-      demand(edge.kind === 'repair' && candidate.base === prior.candidate.base && candidate.rules.base === prior.candidate.rules.base &&
-        edge.proof?.paths?.length > 0 && edge.proof.paths.every(ordinaryRepairPath) && edge.proof.modeChanged === false, 'repair delta is not ordinary');
-      floor = 1;
-      demand(deltaReports.every(report => report.delta === edge.delta), 'repair reviewer must confirm ordinary semantics and exact delta');
+      demand(candidate.integration && (portable || ['git', 'registry-union', 'resolution'].includes(edge.proof?.kind)) && edge.proof.tree === candidate.tree, 'integration proof missing'); floor = 0;
+    } else demand(edge.kind === 'repair' && candidate.base === prior.candidate.base && candidate.rules.base === prior.candidate.rules.base && edge.proof?.paths?.length > 0, 'repair delta is missing');
+    const delta = edge.kind === 'repair' ? edge.proof.paths : edge.proof.resolution;
+    if (delta) {
+      floor = deltaFloor(delta, edge.proof.modeChanged === true);
+      demand(deltaReports.every(report => report.delta === edge.delta), 'delta reviewer must confirm the exact delta');
       if (fullReports.length) {
         inherited = undefined; floor = 2;
         renewalStart = session.history.findIndex(item => item.type === 'report' && item.report === fullReports[0]);
@@ -135,18 +135,6 @@ export function coverageState(session) {
   return { earliest, expires, base: inherited?.base ?? candidate.base, paths: [...new Set([...(inherited?.paths ?? []), ...candidate.changedPaths])] };
 }
 const reviewExpiry = session => session.version === 3 ? coverageState(session).expires : legacyReviewExpiry(session);
-export function renewCoverage(session, proof, now) {
-  stateValid(session); const complete = verdict(session, session.candidate, now);
-  demand(complete.ok || complete.code === 'expired', complete.reason, complete.code);
-  demand(session.candidate.rules?.version === 3 && proof?.main && proof.untouched === true, 'renewal needs unchanged Git/policy/base proof');
-  const state = coverageState(session); demand(now < state.earliest + 3 * DAY, 'renewal exceeds 72-hour total age', 'expired');
-  demand(Number.isFinite(now) && session.history.every(event => event.at <= now), 'renewal time is invalid');
-  const next = structuredClone(session); next.version = 3;
-  next.history.push({ type: 'renew', previous: digest(session.history), at: now, head: session.candidate.head, tree: session.candidate.tree,
-    base: session.candidate.base, policy: digest(session.candidate.rules), oldExpiry: state.expires,
-    expires: Math.min(now + DAY, state.earliest + 3 * DAY), proof });
-  return next;
-}
 export function integrationReviewContext(session, observed, { parents, baseAncestor, mechanical = false }, now) {
   if (!session || !verdict(session, session.candidate, now).ok || !baseAncestor ||
     digest(latestIntent(session)) !== digest(observed.intent) ||
@@ -233,16 +221,14 @@ export function verdict(session, observed, now) {
     demand(session.history.every((event, index) => Number.isFinite(event.at) && event.at <= now && (index === 0 || event.at >= session.history[index - 1].at)), 'history time is invalid');
     if (session.version === 3) {
       validateHistory(session);
-      const coverage = coverageState(session);
+      coverageState(session);
       if (openFindings(session).size) return result(false, 'needs_agent_review', 'close every material finding');
-      if (now >= coverage.expires) return result(false, 'expired', 'review expired; renew unchanged coverage or obtain full review');
       return result(true, 'reviewed', 'reviewed');
     }
     const reports = currentReports(session).filter(report => report.verdict === 'PASS');
     const floor = Math.max(requiredReviewers(classifyRisk(observed, latestIntent(session).risk)), session.candidate.integration ? 2 : 0);
     if (reports.length < floor) return result(false, 'needs_agent_review', `${floor} independent PASS reports required`);
     if (reports.some(report => report.at > now)) return result(false, 'invalid', 'report is from the future');
-    if (now >= reviewExpiry(session)) return result(false, 'expired', 'review expired; prepare --new and re-review');
     if (openFindings(session).size) return result(false, 'needs_agent_review', 'close every material finding');
     return result(true, 'reviewed', 'reviewed');
   } catch (error) { return result(false, error.message.startsWith('needs_agent_review:') ? 'needs_agent_review' : 'invalid', error.message); }
@@ -267,11 +253,10 @@ export function admit({ receipt, observed, now }) {
       const expected = receiptSummary(receipt.session, receipt.pr, now); demand(Object.keys(expected).every(key => digest(expected[key]) === digest(receipt[key])), 'v3 summary differs');
       demand(observed.baseValid && ['base', 'head', 'tree', 'pr'].every(key => receipt[key] === observed[key]), 'v3 live identity differs');
       if (observed.changedPaths) demand(digest(observed.changedPaths) === digest(receipt.session.candidate.changedPaths) && observed.modeChanged === receipt.session.candidate.modeChanged, 'v3 actual diff differs');
-      demand(receipt.expires <= now + DAY, 'v3 expiry too far in future'); return result(true, 'reviewed', 'reviewed');
+      return result(true, 'reviewed', 'reviewed');
     } catch (error) { return result(false, 'invalid', error.message); }
   }
-  if (!Number.isFinite(now) || !receipt || !Number.isSafeInteger(receipt.pr) || receipt.pr <= 0 || !['base', 'head', 'tree'].every(key => SHA.test(receipt[key])) || !RISKS.includes(receipt.risk) || receipt.verdict !== 'PASS' || !/^[a-f0-9]{64}$/u.test(receipt.sessionDigest) || !Array.isArray(receipt.reviewers) || !receipt.reviewers.every(identity) || new Set(receipt.reviewers).size !== receipt.reviewers.length || !Number.isFinite(receipt.expires) || receipt.expires > now + 86400000) return result(false, 'invalid', 'receipt schema or expiry is invalid');
-  if (receipt.expires <= now) return result(false, 'expired', 'review receipt expired');
+  if (!Number.isFinite(now) || !receipt || !Number.isSafeInteger(receipt.pr) || receipt.pr <= 0 || !['base', 'head', 'tree'].every(key => SHA.test(receipt[key])) || !RISKS.includes(receipt.risk) || receipt.verdict !== 'PASS' || !/^[a-f0-9]{64}$/u.test(receipt.sessionDigest) || !Array.isArray(receipt.reviewers) || !receipt.reviewers.every(identity) || new Set(receipt.reviewers).size !== receipt.reviewers.length || !Number.isFinite(receipt.expires)) return result(false, 'invalid', 'receipt schema is invalid');
   if (['pr', 'base', 'head', 'tree'].some(key => receipt[key] !== observed[key])) return result(false, 'stale', 'receipt differs from the live PR candidate');
   if (!observed.baseValid) return result(false, 'stale', 'review base must be the exact fork point on main');
   const floor = Math.max(requiredReviewers(receipt.risk), requiredReviewers(classifyRisk(observed)));
@@ -279,27 +264,9 @@ export function admit({ receipt, observed, now }) {
   return result(true, 'reviewed', 'reviewed');
 }
 const TRUST_PATHS = [/^\.github\//u, /^scripts\/agent-review-/u, /^scripts\/documentation-git\.ts$/u, /^(?:packages\/[^/]+\/)?package(?:-lock)?\.json$/u, /^(?:db\/platform|supabase)\/migrations\//u, /^config\/platform-migration-manifest\.json$/u];
-const plainObject = value => value !== null && typeof value === 'object' && [Object.prototype, null].includes(Object.getPrototypeOf(value));
-export function exportAdditions(before, after) {
-  if (!plainObject(before) || !plainObject(after) || !plainObject(before.exports) || !plainObject(after.exports)) return null;
-  if ([...Object.keys(before.exports), ...Object.keys(after.exports)].some(key => !key.startsWith('.'))) return null;
-  const beforeKeys = Object.keys(before).filter(key => key !== 'exports');
-  const afterKeys = Object.keys(after).filter(key => key !== 'exports');
-  if (beforeKeys.length !== afterKeys.length || beforeKeys.some(key => !Object.hasOwn(after, key) || JSON.stringify(before[key]) !== JSON.stringify(after[key]))) return null;
-  if (Object.keys(before.exports).some(key => !Object.hasOwn(after.exports, key) || JSON.stringify(before.exports[key]) !== JSON.stringify(after.exports[key]))) return null;
-  return Object.keys(after.exports).filter(key => !Object.hasOwn(before.exports, key));
-}
-export function carryOver({ reviewedTree, groupTree, baseAncestor, predictedTree, changedPaths = [], movedPaths = [], manifests = {} }) {
-  if (!baseAncestor) return result(false, 'stale', 'reviewed base is not an ancestor of the queue base; merge main and re-review');
+export function carryOver({ reviewedTree, groupTree, baseAncestor, predictedTree }) {
+  if (!baseAncestor) return result(false, 'stale', 'reviewed base is not an ancestor of the queue base; merge main');
   if (reviewedTree === groupTree) return result(true, 'reviewed', 'unchanged tree');
-  const exempt = movedPaths.filter(path => {
-    if (!/^packages\/[\w.-]+\/package\.json$/u.test(path)) return false;
-    const { base, queueBase, head, group } = manifests[path] ?? {};
-    const mainAdded = exportAdditions(base, queueBase); const prAdded = exportAdditions(base, head);
-    const groupAdded = exportAdditions(base, group);
-    return mainAdded !== null && prAdded !== null && groupAdded !== null && !mainAdded.some(key => prAdded.includes(key)) &&
-      groupAdded.length === mainAdded.length + prAdded.length && [...mainAdded, ...prAdded].every(key => groupAdded.includes(key));
-  });
-  if (predictedTree !== groupTree || movedPaths.some(path => !exempt.includes(path) && (changedPaths.includes(path) || TRUST_PATHS.some(pattern => pattern.test(path))))) return result(false, 'stale', 'group does not carry over; merge main and re-review');
-  return result(true, 'reviewed', exempt.length ? 'disjoint base move with export additions' : 'disjoint base move');
+  if (predictedTree !== groupTree) return result(false, 'stale', 'group does not merge cleanly; merge main and review the resolution');
+  return result(true, 'reviewed', 'clean merge of the reviewed change');
 }

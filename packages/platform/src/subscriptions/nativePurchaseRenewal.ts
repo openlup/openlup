@@ -1,7 +1,8 @@
 import { nativeInstant } from "./nativeInstant.js";
 import { createHash } from "node:crypto";
-import type { RenewalLine } from "./contracts/renewal.js";
+import type { RenewalLine, RenewalRetainedTerms } from "./contracts/renewal.js";
 import { subscriptionRecord, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+import { nativeRenewalTermsSchema } from "./nativeRenewalTerms.js";
 
 /** Server-owned purchase facts. Sandbox authorization is never a real mandate. */
 export interface NativeRenewalPurchaseFacts {
@@ -16,8 +17,9 @@ export interface NativeRenewalPurchaseFacts {
   cadenceDays: number;
   currency: string;
   lines: readonly RenewalLine[];
-  /** Native preparation currently supports line totals only. */
-  shippingAmountMinor: 0;
+  /** Legacy fixed amount; a retained threshold is evaluated after product discounts. */
+  shippingAmountMinor: number;
+  renewalTerms?: RenewalRetainedTerms;
   acquisitionRef: string | null;
 }
 export type SandboxMethodHealth = "healthy" | "method_missing" | "mandate_not_chargeable_unattended" | "pending_activation";
@@ -30,7 +32,8 @@ export function createPostgresPurchaseRenewalWriter(executor: SubscriptionQueryE
   }
   return {
     async register(orderId: string, facts: NativeRenewalPurchaseFacts) {
-      return response("SELECT public.subscription_register_renewal_purchase($1::uuid,$2::jsonb) AS response", [orderId, JSON.stringify({ ...facts, unattendedChargeAuthorizedAt: nativeInstant(facts.unattendedChargeAuthorizedAt) })]);
+      if (Object.hasOwn(facts, "renewalTerms")) nativeRenewalTermsSchema.parse(facts.renewalTerms);
+      return response("SELECT public.subscription_register_renewal_purchase_with_shipping($1::uuid,$2::jsonb) AS response", [orderId, JSON.stringify({ ...facts, unattendedChargeAuthorizedAt: nativeInstant(facts.unattendedChargeAuthorizedAt) })]);
     },
     complete(orderId: string) {
       return response("SELECT public.subscription_complete_renewal_attachment($1::uuid) AS response", [orderId]);

@@ -182,3 +182,12 @@ Repeating an identical tuple is safe. A different provenance or inactive row
 fails the entire transaction rather than overwriting it. A customer environment
 needs its own owner-loaded registry and onboarding. Editing this list never
 grants runtime registry writes or customer delivery qualification.
+
+
+Configured subscription cadences and their default are whole days from 1 through
+120, matching the native checkout. Checkout admits at most 50 selected lines and
+99 units per line within the configured total. Stock and seeded unit prices fit
+PostgreSQL integers; each offered mode must have a positive seeded unit price.
+Tax legal-basis text is at most 200 characters and the shared legal revision is
+trimmed, nonempty text of at most 64 characters. Configuration rejects values
+outside these native boundaries before composition.

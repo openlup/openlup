@@ -26,14 +26,16 @@ and set-version preparation in that change. Delivery or merge delegation depends
 on the actual programme grant and applicable maintainer-local policy; this page
 does not activate it. Required maintainer reading precedes DCO sign-off, and
 fresh native review, checks and protected release approval retain their roles.
+New rules follow [process minimalism](../../CONTRIBUTING.md#deliver-a-change): each
+needs a named failure that the required CI and the change's own review would miss.
 
 | Stage | Trigger and executor | Checks and next step |
 | --- | --- | --- |
 | Local iteration | Contributor edits in the task worktree | Run a focused structural scan and tests for changed behavior; run whole-tree lint before committing. |
-| Candidate preparation | Contributor commits with DCO sign-off | Native agent tasks obtain independent review of the exact committed candidate, bound to its fork point (`git merge-base HEAD origin/main`); a branch behind `main` stays verifiable and pushable without a rebase. Where installed, run `openlup-dev verify` on the clean committed tree; pre-push refuses a task-worktree push without its stamp. Elsewhere, run the required check commands, or the [bounded local integration alternative](../../CONTRIBUTING.md#native-review-and-accountability) when proved eligible. |
+| Candidate preparation | Contributor commits with DCO sign-off | Native agent tasks obtain independent review of the exact committed candidate, bound to its fork point (`git merge-base HEAD origin/main`); a branch behind `main` stays verifiable and pushable without a rebase. Run the focused checks for the code being written; hosted CI on the integration tree is the required verification. |
 | Draft PR | Authorized branch push and PR creation | Sonar can analyze it. Published Tree CI jobs skip drafts; skipped jobs are not passing evidence. |
 | Ready PR | Open/reopen a non-draft PR, push updates, or mark ready | Published Tree CI runs six mechanical checks and separate raw diagnostics. Post `agent-review-session.mjs receipt <PR>` output with `gh pr comment <PR> --body-file -` as soon as the PR is open and ready. After all other prerequisites, actual merge authority permits enabling auto-merge once while source checks are pending. Native admission still waits for six actual successes and that receipt. |
-| Merge queue | GitHub enqueues after required source success; no rebase for freshness | Pending `autoMergeRequest` confirms enabled auto-merge; only `mergeQueueEntry` confirms queue entry. Mechanical checks run on the actual group. The source receipt admits the group when the review carries over: an unchanged tree, or a group that is exactly the reviewed change on its base (checked with `git merge-tree`) whose net base change avoids the change's paths and the admission, identity-binding, dependency and migration machinery. Otherwise the group is rejected: merge `main` and re-review, then post the new source receipt. |
+| Merge queue | GitHub enqueues after required source success; no rebase for freshness | Pending `autoMergeRequest` confirms enabled auto-merge; only `mergeQueueEntry` confirms queue entry. Mechanical checks run on the actual group. The [canonical carry-over proof](../../CONTRIBUTING.md#merge-queue) keeps the review when the group is a clean merge of the reviewed change. A refusal requires merging `main`; only a conflict resolution is reviewed. |
 | Main | A merge commit produces a main push | Expensive commands reuse a complete successful merge-group run only for the exact same commit; otherwise they run again. DCO, policy/neutrality and secret checks run for the push; Sonar updates its main analysis. Native admission does not run on main pushes. A merge is not a release. |
 | Package release | Authorized dispatch of `publish-package.yml` for a reviewed SHA on main's first-parent line, package `all` (the set) or one package, the version, and exact notes | Unprivileged preflight refuses while any package release or publication is in flight, checks ancestry, contexts and versions, packs and scans every tarball, and decides each package by its tag, release and npm state before protected release approval. One approval covers the set; the release App creates each annotated tag `openlup-<package>-v<version>` on the target and its immutable release. |
 | npm | Published package-release event from the release App | Package workflow independently checks identity, tag and tarball, re-reads npm, then publishes with OIDC provenance under `latest`. Verify its observed result; publication does not update an adopter. |
@@ -59,8 +61,8 @@ remain in [Test scope and diagnostics](../../CONTRIBUTING.md#test-scope-and-diag
 | `npm run oss:published-tree -- --typecheck` | TypeScript projects checked against tracked preview compatibility debt; local and CI `typecheck`. | Required. Not equivalent to claiming zero compiler diagnostics. Run `npm run pretest` before invoking directly after package-source edits. |
 | `npm run oss:published-tree -- --policy` and `--inventory` | Publication classification, documentation ownership/impact/navigation and tree inventory; local and CI `self-check`. | Required. These check structure and recorded obligations, not the truth of arbitrary prose or runtime behavior. |
 | `node scripts/verify-local.mjs --plan` (optionally `--json`, `--pgtap`) | Read-only explanation of the same local phases the runner executes, including owners, reasons, prerequisite order, commands and resource profiles. Works before review on a dirty task worktree without dependencies. | Planning only; no checks, scratch output, review validation or verification evidence. Unknown Git scope exits 2 and retains all obligations. Package discovery and root tooling selection retain their existing owners. |
-| `node scripts/verify-local.mjs` (add `--pgtap` for DB inputs or an explicitly requested diagnostic) | Normal full local command set after committed native review; one install and root run, serialized builds/package gates, fixed existing resource profiles when the optional broker is present. | Required mechanical equivalents; [contributor commands](../../CONTRIBUTING.md#required-and-raw-checks) own scope and limits. Logs retain exits, timing and the first root-worker observation. No hosted admission, new stamp, retry or cached pass. |
-| `node scripts/agent-review-session.mjs verify-command -- <heavy required command>` | Native review verification before and after the command, with unchanged HEAD tree and clean worktree; optional installed host resource broker. | Command wrapper; preserves underlying commands and installed stamp requirements, but does not attest completeness of selected commands. Before starting, it predicts merge/carry-over against locally fetched `origin/main`; refresh that ref first. The [canonical wrapper limits](../../CONTRIBUTING.md#local-stack-bases-and-heavy-verification) include local review of unlanded stacks. It adds no proof lease or policy/inventory check. Independent PRs use their normal base; stacked PRs export the exact `OPENLUP_STACK_BASE`. No cache, hosted receipt, settings change or merge authority. |
+| `node scripts/verify-local.mjs` (add `--pgtap` for DB inputs or an explicitly requested diagnostic) | Optional full local command set after committed native review; one install and root run, serialized builds/package gates, fixed existing resource profiles when the optional broker is present. | Optional local mirror of the required hosted commands; [contributor commands](../../CONTRIBUTING.md#required-and-raw-checks) own scope and limits. Logs retain exits, timing and the first root-worker observation. No hosted admission, new stamp, retry or cached pass. |
+| `node scripts/agent-review-session.mjs verify-command -- <heavy required command>` | Native review verification before and after the command, with unchanged HEAD tree and clean worktree; optional installed host resource broker. | Command wrapper; preserves underlying commands but does not attest completeness of selected commands. Before starting, it predicts merge/carry-over against locally fetched `origin/main`; refresh that ref first. The [canonical wrapper limits](../../CONTRIBUTING.md#local-stack-bases-and-heavy-verification) include local review of unlanded stacks. It adds no proof lease or policy/inventory check. Independent PRs use their normal base; stacked PRs export the exact `OPENLUP_STACK_BASE`. No cache, hosted receipt, settings change or merge authority. |
 | `node scripts/public-ci-neutrality.mjs --base-commit <full-base-sha>` and UI neutrality smoke | Tree-wide shrink-only neutrality and portable UI boundary; local and CI `self-check`. | Required. Use the exact event/comparison base, not a guessed latest main. |
 | Shared `scripts/packages/required-package-gates.ts` in [required checks](../../CONTRIBUTING.md#required-and-raw-checks) | Discover each publishable workspace and its required scripts; cold-pack the current set, check all APIs, then run each owning required batch with the same artifacts. Core retains mechanical CI obligations and uses dependency-regression admission instead of the absolute release audit; Outbox owns schema/SQL/replay. | Required `install-proof` follows both builds in its own checkout, independently of root tests. Local package preparation and tests remain serial because they share build outputs. Missing routes, artifacts or runtimes refuse. Future modules use the same semantic consumer proof; only SQL modules require a database. |
 | `npm --workspace @openlup/core run ci` | Package coverage, runtime imports, type smoke, API snapshots, docs, release checks and packed-consumer smoke; local and CI `install-proof`. | Standalone `ci` includes the full live audit. Required PR/queue proof uses the shared API phase plus `ci:required` and dependency-regression admission, with manifest/commit inputs. Manual mode still builds/packs; supplied mode executes the same assertions without repacking. Separate from root Vitest discovery. |
@@ -135,16 +137,11 @@ records a stamp of that exact tree.
 
 Installed pre-commit checks staged structural violations; commit-message checks
 require the configured identity and sign-off. Pre-push rechecks current review
-and publication leak evidence. In a task worktree it also requires the
-verification stamp of the exact pushed tree; it does not rerun verification. A hook pass
-is not a hosted CI pass. `leak-check` inspects what the range would publish;
+and publication leak evidence. A hook pass is not a hosted CI pass, which is the
+required verification. `leak-check` inspects what the range would publish;
 `release-check` is advisory and can report `CANNOT-DECIDE`. Neither replaces
 release prepare or release attestation. Installation and changes to this local
 layer remain maintainer-controlled and outside the public tree.
-An installed verifier without support for the
-[bounded local integration alternative](../../CONTRIBUTING.md#native-review-and-accountability)
-still requires its full run and exact-tree stamp. The raw-command alternative follows that section's
-full-anchor, chain and check-selection conditions; it introduces no copied stamp or cache.
 All required source and merge-group CI commands still run.
 
 ## Measuring delivery improvements
@@ -202,14 +199,17 @@ variables enabled and the ruleset requiring six mechanical statuses plus
 `native-review`. This is dated activation evidence, not a promise about another
 repository or future settings.
 
+When a branch's review scripts are older than trusted main's, run the receipt
+from a clean checkout of the fetched, trusted main in the branch's working
+directory: `node /absolute/path/to/trusted-main/scripts/agent-review-session.mjs receipt PR_NUMBER`.
+It reads the branch's existing session with main's rules. Keep the stack pin.
+
 The admission script is checked out from `main`, but the job YAML comes from
 the PR or merge-group tree. A candidate can replace `native-review` with a
-successful no-op. Review of `.github/` edits is the current in-repo control;
-carry-over's protected-path refusal does not prevent a modified job from skipping
-admission. For [co-located SQL and pins](DATA_AND_MIGRATIONS.md#co-located-sql-and-approval-pins),
-the invoked main admission also validates the data under its trusted checker and
-refuses simultaneous machinery changes or a machinery move since the reviewed
-base. Qualified migration changes invoke that guard even when their separately
+successful no-op. Two-reviewer review of `.github/` edits is the current in-repo
+control. For [co-located SQL and pins](DATA_AND_MIGRATIONS.md#co-located-sql-and-approval-pins),
+the invoked main admission also validates the candidate's own change under its
+trusted checker and refuses machinery changes in that change. Qualified migration changes invoke that guard even when their separately
 approved pins are unchanged. This adds no workflow isolation. A separately authorized owner must configure a ruleset-required
 workflow pinned to a trusted definition outside candidate control to close this
 bypass. Requiring the status name alone does not pin its implementation. See
@@ -243,28 +243,22 @@ of collecting, validating and restoring evidence from the work it would save,
 and distinguish that estimate from an observed saving.
 
 Fix named local violations rather than bypass hooks. A busy verification lock
-belongs to another run; wait without removing it. A pre-push refusal for a
-missing stamp needs `openlup-dev verify` on the clean committed tree. Workflow-mirror drift needs
+belongs to another run; wait without removing it. Workflow-mirror drift needs
 maintainer recovery, not an alternate verifier. The supervisor handles missing
 native-review evidence in the active task with fresh independent reviewers;
 retain finding cards and the repair counter. Three repair cycles are automatic;
 `needs_owner` then requires an owner decision recorded with `continue "<note>"`.
 A rebase or changed intent uses `prepare --new`, which references the old session.
 Optional review advice does not add acceptance obligations. A `native-review` timeout is a missing or late
-PR comment receipt. A merge group that cannot carry over is rejected with
-"merge main and re-review". The existing session can prove prior coverage for
-focused integration inspection by two fresh reviewers; inherited expiry and all
-required source and merge-group checks remain binding. Only a clean exact
-successful `git merge-tree` result for the prior reviewed head and new main base,
-proved as `candidate.integration.mechanical: true`, avoids charging a repair
-cycle; history, findings and earliest expiry are preserved. Manual resolution or
-extra edits use the ordinary repair and full local verification route. It has
+PR comment receipt. A merge group that does not merge cleanly is rejected: merge
+main and review only the resolution. A clean merge or registry union needs no new
+review and charges no repair cycle; history and findings are preserved. There is
 no separate integration receipt route.
 Refresh local main before prepare/final verify so their preflight rejects known
-conflicts or failed carry-over early. A DIRTY PR stops enqueue attempts until its
-head or mergeability changes; see [review after integration](../../CONTRIBUTING.md#native-review-and-accountability).
-Early auto-merge follows [Merge queue](../../CONTRIBUTING.md#merge-queue): local
-proof, current review, required maintainer reads and a ready-main-PR source
+conflicts early. A DIRTY PR stops enqueue attempts until its
+head or mergeability changes; see [Native review](../../CONTRIBUTING.md#native-review-and-accountability).
+Early auto-merge follows [Merge queue](../../CONTRIBUTING.md#merge-queue): current
+review, required maintainer reads and a ready-main-PR source
 receipt precede the one-shot request under actual merge authority. Known failed
 checks, conflicts and unresolved mergeability retain their existing stops;
 pending auto-merge is not queue admission or merge confirmation.

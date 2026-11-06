@@ -819,7 +819,7 @@ describe("admitted M11 commerce live registry", () => {
         f.commit();
       }
     } finally { f.cleanup(); }
-  }, 60_000);
+  }, 120_000); // Measured 2026-11-04: hosted max 24.530 s, local max 9.375 s; 4x hosted rounded up.
 
   it.each(commerce.flatMap((pin, index) => ["CREATE OR REPLACE", ...pin.functions[0]!.beforeSha256 === null ? ["CREATE"] : []]
     .map(ddl => ({ pin, slot: index + 1, ddl }))))("refuses a coherent extra $ddl function in slot $slot", ({ pin, ddl }) => {
@@ -1819,5 +1819,5 @@ describe("M17 channel ingest approval", () => {
       git("reset", "--hard", control); put(registryPath, encode(changed)); const lateApproval = commit();
       expect(() => assertForwardApproval(root, control, lateApproval)).toThrow(/SQL is introduced/u);
     } finally { rmSync(root, { recursive: true, force: true }); }
-  }, 60_000);
+  }, 300_000); // Measured 2026-11-04: hosted censored at 61.504 s, local max 29.845 s; 4x observed lower bound rounded up.
 });
