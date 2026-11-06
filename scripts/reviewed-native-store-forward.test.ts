@@ -77,9 +77,9 @@ describe("closed native store class data", () => {
     if (attack === "CHECK on another row") slots[0]!.purposeCheck = slots[6]!.purposeCheck;
     expect(() => readReviewedForwardRegistry(encode(value))).toThrow(/reviewed native store/u);
   });
-  it("refuses inventory changes in SQL approvals and adding or changing a slot after S1 sealing", () => {
+  it("allows unissued inventory changes and refuses slot changes after sealing", () => {
     const prior = registry(), next = registry(); next.nativeStoreForwardClass!.slots.pop();
-    expect(() => changedForwardApprovals(encode(prior), encode(next))).toThrow(/approved separately/u);
+    expect(() => changedForwardApprovals(encode(prior), encode(next))).not.toThrow();
     prior.nativeStoreForwardClass!.sealed = true;
     next.nativeStoreForwardClass!.sealed = true;
     expect(() => changedForwardApprovals(encode(prior), encode(next))).toThrow(/after S1/u);
@@ -598,7 +598,7 @@ describe("real Git introduction, release and co-location", () => {
     expect([...named.matchAll(/`([^`]+)`/gu)].map(match => match[1]).sort()).toEqual([...NATIVE_CATALOG_CONTROLS, "tests/setup/"].sort());
   });
   // Measured 8.3 s alone and 12.1 s at load average 7 exceed Vitest's 5 s default.
-  it("requires prior class approval, feature pins, unchanged controls and immutable issued SQL", () => {
+  it("accepts class, slot, pins and SQL together while preserving machinery and issued immutability", () => {
     mkdirSync(".context/scratch", { recursive: true });
     const folder = mkdtempSync(resolve(".context/scratch/native-store-git-"));
     const git = (...args: string[]) => execFileSync("git", ["-C", folder, ...args], { encoding: "utf8" }).trim();
@@ -612,18 +612,18 @@ describe("real Git introduction, release and co-location", () => {
       expect(() => assertCoLocatedForwardApproval(folder, base, feature)).not.toThrow();
       expect(() => assertReviewedPlatformForward(folder, base, feature, path, Buffer.from(text), true)).not.toThrow();
       put("scripts/reviewed-platform-forward.ts", "// Changed control"); const mixed = commit();
-      expect(() => assertCoLocatedForwardApproval(folder, base, mixed)).toThrow(/machinery/u);
+      expect(() => assertCoLocatedForwardApproval(folder, base, mixed)).toThrow("reviewed replacement admission machinery must be approved separately before co-located SQL/pins");
       git("reset", "--hard", feature);
       // The real-PostgreSQL catalog test is the truth for function attributes: a feature PR cannot edit it, or the named
       // files that select, run and containerize it, unseen. Code those files run is a review duty, not a control.
-      for (const control of [...NATIVE_CATALOG_CONTROLS, "tests/setup/disposable-docker.ts"]) {
+      for (const control of [...NATIVE_CATALOG_CONTROLS, ".github/workflows/fixture.yml", "tests/setup/disposable-docker.ts"]) {
         put(control, "// Changed catalog test input"); const controlEdit = commit();
-        expect(() => assertCoLocatedForwardApproval(folder, base, controlEdit), control).toThrow(/machinery/u);
+        expect(() => assertCoLocatedForwardApproval(folder, base, controlEdit), control).toThrow("reviewed replacement admission machinery must be approved separately before co-located SQL/pins");
         git("reset", "--hard", feature);
       }
       const changed = structuredClone(value); changed.nativeStoreForwardClass!.slots[0]!.replacedFunctions[0]!.searchPath = null;
       put(registryPath, encode(changed)); const enlarged = commit();
-      expect(() => assertCoLocatedForwardApproval(folder, base, enlarged)).toThrow(/approved separately/u);
+      expect(() => assertCoLocatedForwardApproval(folder, feature, enlarged)).toThrow("reviewed native store issued bindings and slots are immutable");
       git("reset", "--hard", feature);
       value.nativeStoreForwards![0]!.sha256 = sqlSha256(text + " "); put(registryPath, encode(value)); const repin = commit();
       expect(() => assertCoLocatedForwardApproval(folder, feature, repin)).toThrow(/immutable/u);
@@ -631,12 +631,25 @@ describe("real Git introduction, release and co-location", () => {
       const unknown = path.replace("fixture_1", "unknown"); const expand = "CREATE TABLE public.fixture_unknown (id uuid);";
       put(unknown, expand); const unbound = commit();
       expect(() => assertAdmittedPlatformForward(folder, base, unbound, unknown, Buffer.from(expand))).toThrow(/reviewed replacement path/u);
-      expect(() => assertCoLocatedForwardApproval(folder, base, unbound)).toThrow(/prior exact slot/u);
+      expect(() => assertCoLocatedForwardApproval(folder, base, unbound)).toThrow(`reviewed native store requires an exact slot and feature binding: ${unknown}`);
       git("reset", "--hard", base);
       const noClass = registry(); delete noClass.nativeStoreForwardClass; delete noClass.nativeStoreForwards;
       put(registryPath, encode(noClass)); const older = commit();
       const initial = registry(); bind(initial, 0, text); put(registryPath, encode(initial)); put(path, text); const simultaneous = commit();
-      expect(() => assertCoLocatedForwardApproval(folder, older, simultaneous)).toThrow(/approved separately/u);
+      const group = git("-c", "user.name=Control Test", "-c", "user.email=control@example.invalid", "commit-tree", git("rev-parse", `${simultaneous}^{tree}`), "-p", older, "-p", simultaneous, "-m", "Native same-change merge group");
+      for (const head of [simultaneous, group]) expect(() => assertCoLocatedForwardApproval(folder, older, head)).not.toThrow();
+      for (const release of [false, true]) expect(() => assertReviewedPlatformForward(folder, older, simultaneous, path, Buffer.from(text), release)).not.toThrow();
+      // A same-change pin must still bind the actual SQL bytes.
+      const wrong = structuredClone(initial); wrong.nativeStoreForwards![0]!.sha256 = "0".repeat(64);
+      put(registryPath, encode(wrong)); const mismatch = commit();
+      expect(() => assertCoLocatedForwardApproval(folder, older, mismatch)).toThrow(`non-expand-only forward differs from reviewed replacement path or bytes: ${path}`);
+      // Release cannot authorize an issued introduction with a later pin repair.
+      expect(() => assertReviewedPlatformForward(folder, older, mismatch, path, Buffer.from(text), true)).toThrow("reviewed replacement allowlist must be approved separately before a feature PR adds SQL");
+      git("reset", "--hard", simultaneous);
+      const sealed = structuredClone(initial); sealed.nativeStoreForwardClass!.sealed = true;
+      put(registryPath, encode(sealed)); const sealing = commit();
+      sealed.nativeStoreForwardClass!.slots.pop(); put(registryPath, encode(sealed)); const sealedEdit = commit();
+      expect(() => assertCoLocatedForwardApproval(folder, sealing, sealedEdit)).toThrow("reviewed native store admits no slot changes after S1 sealing");
     } finally { rmSync(folder, { recursive: true, force: true }); }
   }, 30_000);
   it("preserves earlier classes' release approval when the new class is added", () => {
@@ -752,10 +765,10 @@ describe("G4 exact existing-table companions and G3 inventory", () => {
     const text = `${g4g3.prefix}\n${g4()}`, pin = bind(value, 2, text);
     expect(() => assertNativeStoreForward(value, pin.path, Buffer.from(text), preceding)).toThrow(/target absent from prefix/u);
   });
-  it("keeps exact-statement inventory changes separate from feature approval changes", () => {
+  it("allows unissued exact-statement inventory changes but preserves sealing", () => {
     const prior = registry(), next = registry();
     next.nativeStoreForwardClass!.slots[2]!.existingTableStatements = [...g4g3.g4Statements];
-    expect(() => changedForwardApprovals(encode(prior), encode(next))).toThrow(/approved separately/u);
+    expect(() => changedForwardApprovals(encode(prior), encode(next))).not.toThrow();
     prior.nativeStoreForwardClass!.sealed = true; next.nativeStoreForwardClass!.sealed = true;
     expect(() => changedForwardApprovals(encode(prior), encode(next))).toThrow(/after S1/u);
   });

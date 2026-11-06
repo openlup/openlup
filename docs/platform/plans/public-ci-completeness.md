@@ -39,7 +39,7 @@ Current execution is documented in [Development and release](../DEVELOPMENT_AND_
 The existing six contexts remain `dco`, `typecheck`, `install-proof`, `test`,
 `self-check` and `gitleaks`. The 19 October CI simplification supersedes the
 selector command and independent full-root diagnostic: four full-root shards
-now feed required `test`, with conservative tooling-input selection on PR/group
+and pgTAP feed required `test`, with conservative tooling-input selection on PR/group
 events. Whole-tree falsifiers always run. Complete core CI remains in the
 independent `install-proof` package gate. Lint blocks `typecheck`; UI neutrality
 and the tree ratchet block `self-check`.
@@ -65,6 +65,10 @@ refuses required `test` and release validation; raw pgTAP retains diagnostic sta
 Follow [testing](../../../CONTRIBUTING.md#test-scope-and-diagnostics) for current
 execution and proof limits. Merge neither cuts a preview nor authorizes
 an installation or adoption.
+
+Update, 6 November 2026: the required `test` aggregate now requires pgTAP, so
+admission and release depend on its success through that unchanged check name;
+the earlier independent-diagnostic descriptions above are historical.
 
 ## Runner and ratchet contracts
 
