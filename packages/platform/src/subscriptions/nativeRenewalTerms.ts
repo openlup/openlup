@@ -70,6 +70,10 @@ function listAnchor(prices: readonly RenewalLinePricing[], count: number): numbe
   return total;
 }
 
+// Exact integer money: amount × basis points can exceed 2^53, where float rounding drifts by a minor unit.
+const ceilBps = (amount: number, bps: number) => Number((BigInt(amount) * BigInt(bps) + 9_999n) / 10_000n);
+const roundBps = (amount: number, bps: number) => Number((BigInt(amount) * BigInt(bps) * 2n + 10_000n) / 20_000n);
+
 /** Same threshold boundary as the shipping owner, without a cross-module runtime dependency. */
 export function nativeRenewalPrice(row: Record<string, unknown>, lines: readonly RenewalLine[], logicalCycle: number): RenewalPricingSnapshot {
   const facts = subscriptionRecord(row.purchase_facts), terms = nativeRetainedTerms(row);
@@ -80,7 +84,7 @@ export function nativeRenewalPrice(row: Record<string, unknown>, lines: readonly
   if (marker && logicalCycle === 2) {
     const list = listAnchor(prices, lines.length), saved = marker.delivery2;
     const raw = subtotal === saved.basisSubtotalMinor ? saved.discountMinor : list !== null && list > 0
-      ? subtotal - Math.ceil(list * (10_000 - saved.discountBps) / 10_000) : Math.round(subtotal * saved.discountBps / 10_000);
+      ? subtotal - ceilBps(list, 10_000 - saved.discountBps) : roundBps(subtotal, saved.discountBps);
     discount = Math.min(Math.max(0, Math.trunc(raw)), Math.max(0, subtotal - terms!.minimumPayableMinor!));
   }
   const product = subtotal - discount, shippingTerms = terms?.shippingTerms;

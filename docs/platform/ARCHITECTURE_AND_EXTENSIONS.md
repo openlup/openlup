@@ -1893,7 +1893,9 @@ its frozen renewal amount only for the comparison baseline; retained desired
 lines must still resolve in the subscription-sellable catalogue.
 
 Preview has no command key. It records a content-keyed, one-use quote with a
-15-minute expiry, current/new totals, ordered line evidence and template version.
+15-minute expiry, current/new totals, ordered line evidence, the host's quoted
+composition constraint and template version. Apply persists that accepted
+constraint exactly, including null; plan days do not overwrite opaque host data.
 Apply uses its own key. A completed key replays its original result before
 repricing or configuration reads. A fresh key requires repricing and hash
 equality, then the locked SQL checks and drift comparison. The configured minimum is a strict positive integer
@@ -1935,6 +1937,9 @@ and before preview acceptance or the locked-cycle check. Missing add-on removal
 is a refusal. A reduced-mode request can fail its repricer before SQL's same-mode
 no-op. Exact previews return hash/expiry and persist their ordered pricing
 evidence with empty totals; they do not attach the classic price summary.
+An exact plan change persists the accepted quote’s composition constraint. The
+host sizing policy changes its `value` only for a plan-length constraint; a
+unit-count constraint keeps its value and other host data as cadence changes.
 
 `createExactSubscriptionRepricer` uses the recurring-only quote engine and the
 existing `CompositionRulesPort.resizeComposition` seam. The optional

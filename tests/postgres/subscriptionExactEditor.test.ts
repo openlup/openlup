@@ -256,6 +256,31 @@ it("resizes the plan, replaces only base IDs and relocks retained add-ons", asyn
     .toEqual({ cadence_days: 14, composition_constraint: pricedConstraint });
   expect(pricedConstraint).toEqual({ kind: "plan_days", value: 14, marker: "keep", need: 4 });
 }, 30_000);
+it.each(["unit_count", "plan_days"])("persists the accepted %s constraint through exact plan preview and apply", async kind => {
+  const f = await fixture(), service = await unchangedService(f);
+  const constraint = { kind, value: kind === "unit_count" ? 4 : 28, need: 4, marker: "keep", details: { source: "host", units: [1, 2] } };
+  await owner.query("UPDATE public.subscriptions SET composition_constraint=$2 WHERE id=$1", [f.subscription, constraint]);
+  const editor = createPostgresPackageEditor(options(f)), actor = { actorId: f.actor, clientId: f.client };
+  const request = { subscriptionId: f.subscription, action: "update_plan_length", planDays: 14 } as const;
+  const preview = await editor.preview(actor, request);
+  expect(preview.preview.canApply).toBe(true);
+  const ledger = (await owner.query("SELECT id,quote_snapshot FROM public.subscription_quote_previews WHERE subscription_id=$1 AND quote_hash=$2",
+    [f.subscription, preview.quoteHash])).rows[0];
+  const acceptedConstraint = { ...constraint, value: kind === "unit_count" ? 4 : 14 };
+  expect(ledger.quote_snapshot.compositionConstraint).toEqual(acceptedConstraint);
+  expect(ledger.quote_snapshot.cadenceDays).toBe(14);
+  expect(await editor.apply(actor, randomUUID(), { ...request, acceptedQuoteHash: preview.quoteHash,
+    expectedTemplateVersion: preview.preview.templateVersion })).toMatchObject({ status: "applied", templateVersion: 2 });
+  expect((await owner.query("SELECT cadence_days,composition_constraint FROM public.subscriptions WHERE id=$1", [f.subscription])).rows[0])
+    .toEqual({ cadence_days: ledger.quote_snapshot.cadenceDays, composition_constraint: acceptedConstraint });
+  expect((await rows(f)).map(line => ({ variantId: line.variant_id, qty: line.quantity, isAddon: line.is_addon, unitAmountMinor: Number(line.unit_price_minor) })))
+    .toEqual(ledger.quote_snapshot.lines.map((line: Evidence["lines"][number]) => ({ variantId: line.variantId, qty: line.qty,
+      isAddon: line.isAddon, unitAmountMinor: line.quoteLine.unitPriceGross.amountMinor })));
+  expect((await rows(f)).map(line => line.quantity)).toEqual([2, 3]);
+  expect((await owner.query("SELECT accepted_at IS NOT NULL AS accepted FROM public.subscription_quote_previews WHERE id=$1", [ledger.id])).rows)
+    .toEqual([{ accepted: true }]);
+  expect(await unchangedService(f)).toEqual(service);
+}, 30_000);
 it("replaces a fixed-total base mix and independently refuses a changed SQL total", async () => {
   const f = await fixture(), payload = await evidence(f, { action: "update_base_mix", base: [{ variantId: f.target, qty: 4 }] });
   const changed = structuredClone(payload); changed.lines[0].qty = 5; changed.lines[0].quoteLine.quantity = 5;

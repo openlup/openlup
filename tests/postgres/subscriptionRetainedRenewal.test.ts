@@ -412,7 +412,8 @@ async function classicEdit(f: Awaited<ReturnType<typeof active>>, input: {
   await rpc("subscription_quote_preview_record", [actor, f.clientId, f.subscriptionId, "update_package_template", hash, current.template_version,
     new Date(Date.parse(input.requestedAt) + 15 * 60_000).toISOString(),
     { planDays: input.planDays, nominalPlanDays: input.planDays, base, addons: [], compositionConstraint: { kind: "plan_days", value: input.planDays } },
-    { baseLines, addonLines: [] }, { currentRecurringPrice: payload.currentRecurringPrice, newRecurringPrice: price, delta: payload.delta }, input.requestedAt]);
+    { baseLines, addonLines: [], compositionConstraint: { kind: "plan_days", value: input.planDays } },
+    { currentRecurringPrice: payload.currentRecurringPrice, newRecurringPrice: price, delta: payload.delta }, input.requestedAt]);
   const result = await rpc("subscription_package_edit_apply", [actor, f.clientId, key, f.subscriptionId, payload, input.requestedAt]);
   expect(result).toMatchObject({ status: "applied", templateVersion: Number(current.template_version) + 1 });
   return { result, payload, actor, quoteLine };
