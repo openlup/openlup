@@ -1,7 +1,10 @@
 # Trailer-only commit after a reviewed integration
 
 Status: development-preview control task. This record contains neutral outcome,
-scope and proof criteria for independent review.
+scope and proof criteria for independent review. Its fresh-reviewer and expiry
+conditions were superseded on 2026-11-05 by
+[Native review](../../../CONTRIBUTING.md#native-review-and-accountability); the
+trailer-only tip rule itself remains.
 
 Outcome: recognize exactly one single-parent commit directly after an otherwise
 qualifying two-parent integration merge when its tree equals the merge tree and

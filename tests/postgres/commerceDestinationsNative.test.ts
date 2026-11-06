@@ -573,8 +573,8 @@ it("matches native address and unsupported subcases through the restricted write
  expect(observed, JSON.stringify({ observed, expected })).toEqual(expected);
 });
 
-// Pre-existing qualified-runtime limit; closed by F-QUALIFIED-LIFECYCLE-LOCK.
-it.each(["pause", "resume", "slide"] as const)("pins the pre-existing qualified-runtime %s lock limit for F-QUALIFIED-LIFECYCLE-LOCK", async name => {
+// The shared lock and conflict completion admits the term-line row lock on the qualified runtime.
+it.each(["pause", "resume", "slide"] as const)("applies %s through the qualified runtime's term-line row lock", async name => {
  const f = await fixture();
  await owner.query("UPDATE public.subscriptions SET next_cycle_at=$2,started_at='2026-01-01' WHERE id=$1", [f.subscription, later(240)]);
  await owner.query("INSERT INTO public.subscription_method_states(subscription_id,health_state) VALUES($1,'healthy')", [f.subscription]);
@@ -595,10 +595,10 @@ it.each(["pause", "resume", "slide"] as const)("pins the pre-existing qualified-
  await expect(authority.applySubscriptionAction({ operatorId: f.operator, subscriptionId: f.subscription,
   subscriptionAction: name === "slide" ? "slide_next_cycle" : name,
   payload: name === "slide" ? { newNextCycleAt: later(72) } : {}, expectedVersion: version,
-  idempotencyKey: key })).rejects.toThrow("managed_customer_support_operator_inactive");
- expect(sqlFailure).toMatchObject({ code: "42501", message: "permission denied for table subscription_renewal_term_lines" });
- expect(await counts(f)).toEqual(before);
- expect((await owner.query("SELECT count(*)::int n FROM public.customer_support_subscription_commands WHERE target_id=$1 AND idempotency_key=$2", [f.subscription, key])).rows).toEqual([{ n: 0 }]);
+  idempotencyKey: key })).resolves.toMatchObject({ outcome: "applied", ownerReceipt: { actorId: f.operator } });
+ expect(sqlFailure).toBeUndefined();
+ expect((await counts(f)).destinations).toBe(before.destinations);
+ expect((await owner.query("SELECT count(*)::int n FROM public.customer_support_subscription_commands WHERE target_id=$1 AND idempotency_key=$2", [f.subscription, key])).rows).toEqual([{ n: 1 }]);
 });
 
 // Focused solo measured 161ms; real PostgreSQL cases keep the explicit 30s floor.
@@ -696,15 +696,23 @@ it("refuses a lead destination by name without carrying or rebinding any row", a
  expect(await absorptionSnapshot()).toEqual(replayBefore);
 });
 
-// Pre-existing restricted absorption read limit; closer qlock-3. This is not availability proof.
-it.each([false, true])("pins restricted absorption 42501 at the destinations count (destination=%s), closer qlock-3", async withDestination => {
+// The shared lock and conflict completion lets the restricted runtime count destinations by client.
+it.each([false, true])("absorbs through the restricted runtime at the destinations count (destination=%s)", async withDestination => {
  const f = await absorptionFixture(withDestination), before = await absorptionSnapshot();
  expect((await runtime.query("SELECT current_user,session_user,rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user")).rows)
   .toEqual([{ current_user: "service_role", session_user: "g3_runtime", rolsuper: false, rolbypassrls: false }]);
- try { await absorb(f, runtime); throw new Error("expected_restricted_absorption_read_limit"); }
- catch (error) {
-  expect(error).toMatchObject({ code: "42501", message: "permission denied for table commerce_destinations" });
-  expect((error as { where?: string }).where).toContain('SELECT count(*) FROM public.commerce_destinations');
- }
- expect(await absorptionSnapshot()).toEqual(before);
+ const result = await absorb(f, runtime);
+ if (withDestination) {
+  expect(result, JSON.stringify(result)).toEqual({ outcome: "refused", action: "absorb_lead", leadId: f.lead,
+   refusalCode: "lead_has_commercial_footprint", blockingTables: ["commerce_destinations"] });
+  const after = await absorptionSnapshot();
+  for (const table of ["customer_support_subscription_commands", "customer_support_subscription_audit_events"]) {
+   expect(after[table].length - before[table].length, table).toBe(1);
+   delete after[table]; delete before[table];
+  }
+  expect(after).toEqual(before);
+ } else expect(result, JSON.stringify(result)).toMatchObject({ outcome: "applied", leadId: f.lead, customerId: f.client });
+ const replayBefore = await absorptionSnapshot();
+ expect(await absorb(f, runtime)).toEqual(withDestination ? result : { ...result, outcome: "replayed" });
+ expect(await absorptionSnapshot()).toEqual(replayBefore);
 });
