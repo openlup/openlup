@@ -65,8 +65,11 @@ describe.each(lifecycleProfiles)("subscription lifecycle closure on %s", profile
       (SELECT revoked_at IS NOT NULL FROM public.commerce_checkout_recovery_tokens WHERE id=$6) AS revoked
       FROM public.subscription_dunning_cases c WHERE id=$1`, [f.caseId, f.original.cycleId, f.original.orderId, f.original.settlementIntentId, f.operation, f.token])).rows[0];
     expect(state).toEqual({ status: "paused", next_retry_at: null, updated_at: new Date(AT), cycle: "skipped", orders: "cancelled", intent: "cancelled", retry: null, revoked: true });
-    expect((await env.owner.query("SELECT status,error,recovery_url_path FROM public.subscription_dunning_notifications WHERE case_id=$1", [f.caseId])).rows)
-      .toEqual([{ status: "skipped", error: "subscription_paused", recovery_url_path: null }]);
+    expect((await env.owner.query("SELECT recipient_kind,status,error,recovery_url_path FROM public.subscription_dunning_notifications WHERE case_id=$1 ORDER BY recipient_kind", [f.caseId])).rows)
+      .toEqual([
+        { recipient_kind: "customer", status: "skipped", error: "subscription_paused", recovery_url_path: null },
+        { recipient_kind: "operator", status: "skipped", error: "missing_critical_notification_recipient", recovery_url_path: null },
+      ]);
     await expect(call(env.runtime, "subscription_retry_authorize_recovery", [f.operation, f.token, "method-1", "evidence", later(1)])).rejects.toThrow("not_authorized");
     const before = await lifecycleRows(env.owner);
     expect(await invoke(f, `pause:${f.subscription}`, "pause", input, later(30), terms)).toMatchObject({ ...first, status: "replayed", originalStatus: "applied" });
