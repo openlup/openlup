@@ -91,6 +91,38 @@ describe("documentation CLI on the bare public runtime", () => {
       expect(broken.stderr).toContain("missing local fragment");
     } finally { rmSync(temporary, { recursive: true, force: true }); }
   });
+  it.each(["exact", "main-moved", "wrong-head", "unrelated-base"])("validates a pull-request merge with %s attribution on the bare runtime", (scenario) => {
+    const temporary = mkdtempSync(join(tmpdir(), "documentation-pr-cli-"));
+    try {
+      const checkout = join(temporary, "checkout"); mkdirSync(checkout); const fork = seed(checkout);
+      write(checkout, "src/domains/demo/main.ts", "export const value = 2;\n");
+      write(checkout, "README.md", readFileSync(join(checkout, "README.md"), "utf8").replace("preserves replay safety", "preserves replay safety and refuses reordered events"));
+      const source = commit(checkout);
+      git(checkout, ["checkout", "-q", "--detach", fork]);
+      if (scenario !== "exact") {
+        write(checkout, "supabase/migrations/00000000000000_platform_schema_baseline.sql", "select 2;\n");
+        commit(checkout); // Already on main: comparing against the fork would wrongly refuse this historical edit.
+      }
+      const firstParent = git(checkout, ["rev-parse", "HEAD"]);
+      git(checkout, ["-c", "user.name=CLI Fixture", "-c", "user.email=fixture@example.invalid", "merge", "-q", "--no-ff", "-m", "PR merge", source]);
+      const head = git(checkout, ["rev-parse", "HEAD"]);
+      const unrelated = scenario === "unrelated-base"
+        ? git(checkout, ["-c", "user.name=CLI Fixture", "-c", "user.email=fixture@example.invalid", "commit-tree", `${fork}^{tree}`, "-m", "Unrelated root"]) : fork;
+      const event = join(temporary, "event.json");
+      writeFileSync(event, JSON.stringify({ repository: { full_name: "openlup/openlup", private: false },
+        pull_request: { base: { sha: unrelated }, head: { sha: scenario === "wrong-head" ? fork : source } } }));
+      const result = spawnSync(process.execPath, ["--experimental-strip-types", ENTRYPOINT, "--policy"], {
+        cwd: checkout, encoding: "utf8", timeout: 30_000,
+        env: { ...localEnvironment, GITHUB_ACTIONS: "true", GITHUB_REPOSITORY: "openlup/openlup", GITHUB_EVENT_NAME: "pull_request", GITHUB_SHA: head, GITHUB_EVENT_PATH: event },
+      });
+      if (scenario === "exact" || scenario === "main-moved") {
+        expect(result.stderr).toBe(""); expect(result.status).toBe(0); expect(result.stdout).toContain(`${firstParent} (pull-request)`);
+      } else {
+        expect(result.status).toBe(1);
+        expect(result.stderr).toContain(scenario === "wrong-head" ? "pull-request checkout is not the event's base/head merge" : "pull-request event base is not an observed ancestor");
+      }
+    } finally { rmSync(temporary, { recursive: true, force: true }); }
+  });
   it("checks a merge group's event range on the bare runtime and refuses stale event refs", () => {
     const temporary = mkdtempSync(join(tmpdir(), "documentation-queue-cli-"));
     try {
