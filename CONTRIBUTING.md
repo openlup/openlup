@@ -154,18 +154,6 @@ its users or operators can observe.
 
 ## Development-preview checks
 
-Classic package editing uses
-`packages/platform/test/subscriptions/classicPackageQuote.test.ts` and
-`packageEditor.test.ts` for quote, binding and customer-error characterization.
-`tests/postgres/subscriptionPackageEditor.test.ts` exercises restricted runtime
-and browser refusals, zero-write rejection, price drift, concurrent versions and
-notice cardinality. `subscriptionRetainedRenewal.test.ts` covers accepted event
-pricing, delivery-two money, graduation cancellation, cutoff/due admission and
-frozen-operation preservation. Connected transfer and all qualified-composition
-proofs retain their own real PostgreSQL obligations. These witnesses establish
-neither forward admission nor hosted/provider qualification.
-
-
 Only `packages/platform/src/catalog/commerceQuoteCatalogRead.ts` permits a pinned, unread payload handoff to `verifyDocument`, with refusal witnesses for extra reads, inspection, interpretation and logging.
 
 Native review tooling records the exact candidate and its Git coverage edges: a
