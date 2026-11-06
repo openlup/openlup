@@ -43,11 +43,13 @@ const capture = (tables: CompatiblePostgresTable[]) => captureCompatiblePostgres
 
 it("moves compatible canonical rows atomically, preserves clocks/money/duties and resumes exact replay without touching the target catalogue", async () => {
   const client = randomUUID(), subscription = randomUUID(), event = randomUUID(), outbox = randomUUID();
-  // Clients already exist identically: their canonical INSERT trigger is not
-  // an import-safe history path. The transport must refuse copying that table.
-  for (const pool of [source, target]) await pool.query("INSERT INTO public.clients(id,email) VALUES($1,$2)", [client, `${client}@example.invalid`]);
-  await source.query("INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at) VALUES($1,$2,28,'2027-01-01T12:00:00.123456Z')", [subscription, client]);
-  await source.query("INSERT INTO public.subscription_events(id,subscription_id,event_type,idempotency_key,payload) VALUES($1,$2,'imported-history','history-key','{\"large\":9007199254740993}')", [event, subscription]);
+  // Guarded clients, subscriptions and events are prerequisites supplied by
+  // their owner paths; the generic transport still refuses their INSERT triggers.
+  for (const pool of [source, target]) {
+    await pool.query("INSERT INTO public.clients(id,email) VALUES($1,$2)", [client, `${client}@example.invalid`]);
+    await pool.query("INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at) VALUES($1,$2,28,'2027-01-01T12:00:00.123456Z')", [subscription, client]);
+    await pool.query("INSERT INTO public.subscription_events(id,subscription_id,event_type,idempotency_key,payload) VALUES($1,$2,'imported-history','history-key','{\"large\":9007199254740993}')", [event, subscription]);
+  }
   await source.query(`INSERT INTO public.subscription_renewal_terms(subscription_id,currency_code,stock_source_key,settlement_channel_key,unattended_charge_authorized_at,authorization_ref)
     VALUES($1,'XXX','synthetic-stock','synthetic-channel','2026-10-26T12:00:00.654321Z','frozen-mandate')`, [subscription]);
   await source.query("INSERT INTO public.subscription_renewal_term_lines(subscription_id,line_ordinal,sku,quantity,unit_amount_minor) VALUES($1,1,'synthetic-sku',1,9007199254740993)", [subscription]);
@@ -56,7 +58,7 @@ it("moves compatible canonical rows atomically, preserves clocks/money/duties an
   const beforeLedger = (await target.query("SELECT to_jsonb(t)::text AS value FROM public.platform_schema_migrations t ORDER BY position")).rows;
   const beforeAcl = (await target.query("SELECT relname,relacl::text FROM pg_class WHERE relnamespace='public'::regnamespace ORDER BY relname")).rows;
   const guardedOutbox = (await target.query("SELECT to_regclass('public.sales_channel_control_operations') IS NOT NULL AS installed")).rows[0].installed;
-  const tables: CompatiblePostgresTable[] = ["subscriptions", "subscription_events", "subscription_renewal_terms", "subscription_renewal_term_lines", ...(guardedOutbox ? [] : ["outbox_events" as const])];
+  const tables: CompatiblePostgresTable[] = ["subscription_renewal_terms", "subscription_renewal_term_lines", ...(guardedOutbox ? [] : ["outbox_events" as const])];
   if (guardedOutbox) {
     expect((await target.query("SELECT count(*)::int AS count FROM pg_trigger WHERE tgrelid='public.outbox_events'::regclass AND tgname='channel_purchase_outbox_guard' AND NOT tgisinternal AND tgenabled<>'D' AND (tgtype & 4)<>0")).rows[0].count).toBe(1);
     const outboxPacket = await capture(["outbox_events"]);
@@ -66,7 +68,7 @@ it("moves compatible canonical rows atomically, preserves clocks/money/duties an
   }
   const packet = await capture(tables);
   expect(packet.tables.find(table => table.table === "subscription_renewal_term_lines")?.rows.join("")).toContain("9007199254740993");
-  expect(packet.tables.find(table => table.table === "subscriptions")?.rows.join("")).toContain("123456");
+  expect(packet.tables.find(table => table.table === "subscription_renewal_terms")?.rows.join("")).toContain("654321");
   const copyStarted = performance.now();
   const first = await restoreCompatiblePostgresRows({ target: destination, catalogueId, packet });
   const copyMs = performance.now() - copyStarted;
@@ -85,19 +87,26 @@ it("moves compatible canonical rows atomically, preserves clocks/money/duties an
   if (!guardedOutbox) expect((await target.query("SELECT status,attempts,payload FROM public.outbox_events WHERE id=$1", [outbox])).rows[0]).toEqual({ status: "processing", attempts: 3, payload: { unknownEffect: true } });
   expect((await target.query("SELECT to_jsonb(t)::text AS value FROM public.platform_schema_migrations t ORDER BY position")).rows).toEqual(beforeLedger);
   expect((await target.query("SELECT relname,relacl::text FROM pg_class WHERE relnamespace='public'::regnamespace ORDER BY relname")).rows).toEqual(beforeAcl);
-  // Source catch-up may append compatible history. A changed retained row
-  // refuses the whole new packet, including that new history.
-  const secondEvent = randomUUID();
-  await source.query("INSERT INTO public.subscription_events(id,subscription_id,event_type,idempotency_key) VALUES($1,$2,'later-history','later-key')", [secondEvent, subscription]);
+  // Source catch-up may append compatible terms. A changed retained row
+  // refuses the whole new packet, including the earlier inserted new terms.
+  const secondSubscription = randomUUID();
+  for (const pool of [source, target]) await pool.query("INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at) VALUES($1,$2,28,'2027-02-01T12:00:00Z')", [secondSubscription, client]);
+  await source.query(`INSERT INTO public.subscription_renewal_terms(subscription_id,currency_code,stock_source_key,settlement_channel_key,unattended_charge_authorized_at,authorization_ref)
+    VALUES($1,'XXX','synthetic-stock','synthetic-channel','2026-10-26T12:00:00.654321Z','later-mandate')`, [secondSubscription]);
   await source.query("UPDATE public.subscription_renewal_term_lines SET unit_amount_minor=42 WHERE subscription_id=$1", [subscription]);
   await expect(restoreCompatiblePostgresRows({ target: destination, catalogueId, packet: await capture(tables) })).rejects.toMatchObject({ code: "target_conflict", table: "subscription_renewal_term_lines" });
-  expect((await target.query("SELECT 1 FROM public.subscription_events WHERE id=$1", [secondEvent])).rows).toEqual([]);
+  expect((await target.query("SELECT 1 FROM public.subscription_renewal_terms WHERE subscription_id=$1", [secondSubscription])).rows).toEqual([]);
   expect((await target.query("SELECT unit_amount_minor::text FROM public.subscription_renewal_term_lines WHERE subscription_id=$1", [subscription])).rows[0].unit_amount_minor).toBe("9007199254740993");
 });
 
 it("refuses history-producing canonical INSERT triggers, schema drift, unbounded input and migration-ledger copying", async () => {
   const clientPacket = await capture(["clients"]);
   await expect(restoreCompatiblePostgresRows({ target: destination, catalogueId, packet: clientPacket })).rejects.toMatchObject({ code: "insert_trigger_requires_owner", table: "clients" });
+  for (const table of ["subscriptions", "subscription_events"] as const) {
+    const guardedPacket = await capture([table]);
+    await expect(restoreCompatiblePostgresRows({ target: destination, catalogueId, packet: guardedPacket }))
+      .rejects.toMatchObject({ code: "insert_trigger_requires_owner", table });
+  }
   const cyclePacket = await capture(["subscription_cycles"]);
   await expect(restoreCompatiblePostgresRows({ target: destination, catalogueId, packet: cyclePacket })).rejects.toMatchObject({ code: "insert_trigger_requires_owner", table: "subscription_cycles" });
   const orderPacket = await capture(["commerce_orders"]);
