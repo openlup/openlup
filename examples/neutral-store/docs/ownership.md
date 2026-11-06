@@ -113,7 +113,7 @@ request bodies carry private capabilities. The required purchase spec remains
 byte-identical. Focused regressions live in `test/checkout-recovery.test.ts`.
 
 
-The one temporary mode-price function is managed in `shared/interim-pricing.ts`.
+The one temporary mode-price function is managed in `shared/offer-estimate.ts`.
 Its rate/quantum and demonstration purchase values are owned typed configuration;
 `owned/demo-seed.ts` uses the same function for distinct per-mode price entries.
 The installer compares existing authored price facts and refuses a changed-price

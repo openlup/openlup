@@ -216,7 +216,7 @@ The configured subscription rate and rounding quantum resolve each unit before
 quantity is applied. Quote lines and installed subscription price entries carry
 that actual unit price. A `mode_discount` component explains the included benefit;
 there is no order promotion or second deduction. First-subscription acquisition
-is a separate later offer. `shared/interim-pricing.ts` owns this temporary rule;
+is a separate later offer. `shared/offer-estimate.ts` owns this temporary rule;
 the later installed quote-engine composition replaces it.
 
 The owned seed writes distinct one-time/subscription price entries. Repeating an

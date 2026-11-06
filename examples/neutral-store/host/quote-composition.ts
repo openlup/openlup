@@ -96,7 +96,7 @@ export function createNativeQuoteService(db: Pool, predecessors: AcquisitionPred
       const linePricing = snapshot.quote.lines.map(line => ({ sku: line.sku, quantity: line.quantity,
         unitAmountMinor: line.unitPriceGross.amountMinor, isAddon: false, quoteLine: { ...line } }));
       snapshot.quote.context.starterRenewalTerms = { version: 'native.renewal-terms.v1', linePricing,
-        shippingTerms: snapshot.quote.context.shippingTerms,
+        ...(snapshot.quote.context.shippingTerms === undefined ? {} : { shippingTerms: snapshot.quote.context.shippingTerms }),
         minimumPayableMinor: config.quote.acquisition.minimumProductPayableMinor,
         normalCadenceDays: [config.quote.acquisition.graduationCadenceDays],
         starterPack: { schemaVersion: '1', starterIntervalDays: selected.cart.cadenceDays!, basisTemplateVersion: 1,

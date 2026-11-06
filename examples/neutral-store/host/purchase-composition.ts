@@ -225,10 +225,11 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
               stockSourceKey: source(context), templateId: `starter:${context.config.id}` });
           } else {
           const lines = acceptedQuote.quote.lines;
+          const shippingTerms = (acceptedQuote.quote.context as { shippingTerms?: import('@openlup/platform/shipping').ShippingTerms } | undefined)?.shippingTerms;
           const facts: NativeRenewalPurchaseFacts = { settlementChannelKey: 'sandbox', ...attempt.methodFacts,
             stockSourceKey: source(context), templateId: `starter:${context.config.id}`, cadenceDays: declaration.cadence_days,
             currency: order.currency_code, shippingAmountMinor: (acceptedQuote.quote.shippingGross?.amountMinor ?? 0) - (acceptedQuote.quote.shippingDiscountGross?.amountMinor ?? 0), acquisitionRef: null,
-            renewalTerms: { version: 'native.renewal-terms.v1', shippingTerms: (acceptedQuote.quote.context as { shippingTerms?: import('@openlup/platform/shipping').ShippingTerms } | undefined)?.shippingTerms },
+            renewalTerms: { version: 'native.renewal-terms.v1', ...(shippingTerms === undefined ? {} : { shippingTerms }) },
             lines: lines.map((line, index) => ({ lineOrdinal: index + 1, sku: line.sku, quantity: line.quantity, unitAmountMinor: line.unitPriceGross.amountMinor })) };
           renewalAttachment = (await activateNativePurchaseWithRenewal(db, { orderId: order.id,
             idempotencyKey: `activate:${order.id}`, capturedReference: intent.external_ref ?? intent.id, facts })).renewalAttachment;
