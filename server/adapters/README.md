@@ -155,7 +155,7 @@ target with no challenges and never clears an active target's authorization stat
 The [joined native proofs](../../tests/postgres/storeJourneyTransfer.test.ts) use intake-empty
 fixtures, real restricted-runtime commands and exact public-row comparisons after restore.
 They cover guest checkout/sign-in, destinations and purchase holds, consent choices,
-renewal execution with terminal replay, and captured paid/dunning dispatch without duplicate effects.
+renewal execution with terminal replay, a late delivery after restore that extends the restored schedule, and captured paid/dunning dispatch without duplicate effects.
 The challenge registry remains `block`; owner-access absorption classification matches both stores.
 Restricted-runtime absorption count reads remain a documented pre-existing limit; availability is not claimed.
 

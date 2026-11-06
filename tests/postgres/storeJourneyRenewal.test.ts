@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { afterAll, expect, it } from "vitest";
-import { createPostgresPaidFulfillmentHandoffStore } from "@openlup/platform/fulfillment";
-import { runOneAutomaticSubscriptionRenewal } from "@openlup/platform/subscriptions";
+import { createPostgresDeliveryAlignmentPort, createPostgresFulfillmentShipmentSpinePort, createPostgresPaidFulfillmentHandoffStore } from "@openlup/platform/fulfillment";
+import { runOneAutomaticSubscriptionRenewal, withNativeDeliveryAlignmentRenewalAdmission } from "@openlup/platform/subscriptions";
 import { createPostgresDestinationPort } from "@openlup/platform/commerce/server/destinations";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
 import { assertJourneyRuntime, assertJourneyWithoutIntake, captureStoreJourney, composeJourneyRenewal, journeyCensus,
@@ -76,4 +76,84 @@ it("executes the transferred paid subscription once and replays its terminal res
   }
   expect(answers[1]).toEqual(answers[0]);
 // Two-store joined cases measured at most 11 s; 90 s retains installation and loaded-host headroom.
+}, 90_000);
+
+
+it("retains a protected predecessor, extends the restored schedule on actual late arrival and renews only at that later instant", async () => {
+  const source = await resources.installation("late-renewal-source"), target = await resources.installation("late-renewal-target");
+  await assertJourneyWithoutIntake(target);
+  const pristine = await captureStoreJourney(target.owner, "late-renewal-pristine"), purchase = await prepareJourneyRenewal(source);
+  // Existing owner-only installation configuration and an undispatched predecessor
+  // fixture; alignment admission, arrival and renewal all use the real runtime.
+  await source.owner.query("SELECT public.subscription_delivery_alignment_set_mode('auto_align')");
+  const predecessor = await createPostgresFulfillmentShipmentSpinePort(source.owner, { portKey: "journey-parcel" })
+    .createShipment({ idempotencyKey: "journey-late-predecessor", orderId: purchase.orderId, requestedAt: journeyPaidAt });
+  const offered = await composeJourneyRenewal(source, purchase.subscriptionId, "succeeded", at);
+  const admission = { subscriptionId: purchase.subscriptionId, scheduledAt: journeyScheduledAt, occurredAt: at };
+  expect(await withNativeDeliveryAlignmentRenewalAdmission(offered.input.store, source.runtime).admitDeliveryAlignment(admission))
+    .toEqual({ allowed: false, state: "protected", reason: "delivery_alignment_protected", deferred: true });
+  const before = await journeyCensus(source.owner), packet = await captureStoreJourney(source.owner, "late-renewal-protected");
+  expect(before.subscription_delivery_alignment_cases).toHaveLength(1);
+  expect(await restoreConnectedNativeStore({ owner: target.owner, installation: journeySelection, packet, freshTarget: pristine }))
+    .toMatchObject({ replayed: false });
+  expect(await journeyCensus(target.owner)).toEqual(before);
+  const deliveredAt = "2026-09-30T12:00:00.123456Z", extended = "2026-10-28T12:00:00.123456Z";
+  const renewAt = "2026-10-28T12:01:00.654321Z", replayAt = "2026-10-28T13:01:00.654321Z";
+  const arrival = { requestKey: "journey-late-arrival", parcelRef: predecessor.shipmentId,
+    deliveredAt, evidenceRef: "evidence:journey-late-arrival" };
+  const answers: unknown[] = [];
+  for (const store of [source, target]) {
+    await assertJourneyRuntime(store.runtime);
+    expect((await store.runtime.query("SELECT public.subscription_delivery_alignment_get_mode() AS mode")).rows)
+      .toEqual([{ mode: "auto_align" }]);
+    expect((await store.owner.query("SELECT state,captured_mode,shipment_id FROM public.subscription_delivery_alignment_cases")).rows)
+      .toEqual([{ state: "protected", captured_mode: "auto_align", shipment_id: predecessor.shipmentId }]);
+    const pending = await composeJourneyRenewal(store, purchase.subscriptionId, "succeeded", at);
+    expect(await withNativeDeliveryAlignmentRenewalAdmission(pending.input.store, store.runtime).admitDeliveryAlignment(admission))
+      .toEqual({ allowed: false, state: "protected", reason: "delivery_alignment_protected", deferred: true });
+    expect(await journeyCensus(store.owner)).toEqual(before);
+    const alignment = createPostgresDeliveryAlignmentPort(store.runtime);
+    expect(await alignment.recordArrival(arrival)).toEqual({ disposition: "aligned", nextCycleAt: "2026-10-28T12:00:00.123Z", replayed: false });
+    const schedule = async () => (await store.owner.query(`SELECT status,
+      to_char(next_cycle_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS next
+      FROM public.subscriptions WHERE id=$1`, [purchase.subscriptionId])).rows[0];
+    expect(await schedule()).toEqual({ status: "active", next: extended });
+    expect(Date.parse(extended)).toBeGreaterThan(Date.parse(journeyScheduledAt));
+    const aligned = await journeyCensus(store.owner);
+    expect(await alignment.recordArrival(arrival)).toEqual({ disposition: "aligned", nextCycleAt: "2026-10-28T12:00:00.123Z", replayed: true });
+    expect(await journeyCensus(store.owner)).toEqual(aligned);
+    await expect(withNativeDeliveryAlignmentRenewalAdmission(pending.input.store, store.runtime)
+      .admitDeliveryAlignment({ ...admission, occurredAt: renewAt }))
+      .rejects.toThrow(/^subscription_renewal_snapshot_not_found$/);
+    expect(await pending.input.store.listDue(100, at)).toEqual([]);
+    expect(pending.executions()).toBe(0);
+    expect(aligned.commerce_orders).toHaveLength(1);
+    expect(aligned.subscription_cycles).toHaveLength(1);
+    expect(aligned.subscription_renewal_operations).toHaveLength(0);
+    expect(aligned.fulfillment_inventory_reservations).toHaveLength(0);
+    const composition = await composeJourneyRenewal(store, purchase.subscriptionId, "succeeded", renewAt);
+    composition.input.store = withNativeDeliveryAlignmentRenewalAdmission(composition.input.store, store.runtime);
+    expect(composition.due.scheduledAt).toBe(extended);
+    const result = await runOneAutomaticSubscriptionRenewal(composition.input, composition.due, renewAt);
+    expect(result).toMatchObject({ status: "succeeded", replayed: false, reason: null });
+    expect(await schedule()).toEqual({ status: "active", next: "2026-11-25T12:00:00.123456Z" });
+    const receipts = (await store.owner.query(`SELECT scheduled_at=$2::timestamptz AS exact,
+      consumed_at IS NOT NULL AS consumed FROM public.subscription_delivery_alignment_admission_receipts
+      WHERE subscription_id=$1`, [purchase.subscriptionId, extended])).rows;
+    expect(receipts).toEqual([{ exact: true, consumed: true }]);
+    const terminal = await journeyCensus(store.owner);
+    expect(terminal.commerce_orders).toHaveLength(2);
+    expect(terminal.subscription_cycles).toHaveLength(2);
+    expect(terminal.subscription_renewal_operations).toHaveLength(1);
+    expect(terminal.fulfillment_inventory_reservations).toHaveLength(1);
+    expect(terminal.subscription_delivery_alignment_arrivals).toHaveLength(1);
+    expect(await runOneAutomaticSubscriptionRenewal(composition.input, composition.due, replayAt))
+      .toEqual({ ...result, status: "terminal_replay", replayed: true });
+    expect(composition.executions()).toBe(1);
+    expect(await journeyCensus(store.owner)).toEqual(terminal);
+    answers.push({ scheduledAt: composition.due.scheduledAt, schedule: await schedule(), receipts,
+      status: result.status, identityKey: result.identityKey });
+  }
+  expect(answers[1]).toEqual(answers[0]);
+// The two-store renewal witness measured under 11 s; 90 s leaves headroom for real alignment and restore.
 }, 90_000);
