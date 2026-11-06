@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 1,
   "catalog": {
     "schemaVersion": 3,
     "baseline": {
@@ -1754,6 +1754,16 @@
       "sha256": "53fbed96be421a69b3c92bc1b2b3fef1eac508a082edb3f2ebe72eac6db7f5b5"
     },
     {
+      "file": "20261106100000_subscription_lifecycle_closure.sql",
+      "source": "db/platform/migrations/20261106100000_subscription_lifecycle_closure.sql",
+      "sha256": "1c95a2e26939e51c83f0987fc02f69d5506f96a4da8ea513c92107c5ba7051b5"
+    },
+    {
+      "file": "20261106120000_subscription_notice_producers.sql",
+      "source": "db/platform/migrations/20261106120000_subscription_notice_producers.sql",
+      "sha256": "26d54fdd13cbd758b60129967a09b7c53763f816b973e31078651f04c1bb032c"
+    },
+    {
       "file": "q2_00000000000000_platform_baseline.sql",
       "source": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "sha256": "679f46e8eee66b70ff7664b300174b4c105a4f43de9449c26391da01cc1f9863"
@@ -1817,16 +1827,6 @@
       "file": "qb_20261026140000_retained_client_subscription_import.sql",
       "source": "db/platform/migrations/qb_20261026140000_retained_client_subscription_import.sql",
       "sha256": "05e664066073b8f053c729feaaf45984c328431a2f3baa0caadea3234c1a22b9"
-    },
-    {
-      "file": "20261106100000_subscription_lifecycle_closure.sql",
-      "source": "db/platform/migrations/20261106100000_subscription_lifecycle_closure.sql",
-      "sha256": "1c95a2e26939e51c83f0987fc02f69d5506f96a4da8ea513c92107c5ba7051b5"
-    },
-    {
-      "file": "20261106120000_subscription_notice_producers.sql",
-      "source": "db/platform/migrations/20261106120000_subscription_notice_producers.sql",
-      "sha256": "26d54fdd13cbd758b60129967a09b7c53763f816b973e31078651f04c1bb032c"
     }
   ]
 }

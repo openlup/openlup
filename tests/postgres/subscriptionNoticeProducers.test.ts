@@ -21,17 +21,16 @@ function collect(value: unknown): void {
   for (const child of Object.values(row)) collect(child);
 }
 collect(candidate);
-const migrations = [...files].map(([file, digest]) => {
+for (const [file, digest] of files) {
   const content = readFileSync(file, "utf8");
   if (createHash("sha256").update(content).digest("hex") !== digest) throw new Error(`prefix hash mismatch: ${file}`);
-  return { file, content };
-});
-const candidateCatalog = { readManifest: () => candidate, readMigrations: () => ({ migrations, errors: [] }) };
+}
+
 const password = "synthetic-conformance";
-async function install(connectionString: string, installation: PlatformPostgresInstallation, catalog = candidateCatalog) {
+async function install(connectionString: string, installation: PlatformPostgresInstallation) {
   const pool = new Pool({ connectionString, options: installation.generation === "qualified-v2" ? qualifiedPostgresStartupOptions(installation)
     : installation.generation === "qualified-admin" ? qualifiedAdminPostgresStartupOptions(installation) : undefined });
-  try { await createPlatformPostgresMigrationRunner({ connectionString }, { installation, catalog, poolFactory: () => pool }).apply(); }
+  try { await createPlatformPostgresMigrationRunner({ connectionString }, { installation, poolFactory: () => pool }).apply(); }
   finally { await pool.end(); }
 }
 
