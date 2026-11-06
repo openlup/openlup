@@ -12,7 +12,7 @@ for (const generation of ["legacy", "qualified-v2", "qualified-admin"] as const)
   describe(`stock-wait busy reporting on ${generation}`, () => {
     let container: PostgresContainer | undefined, owner: Pool, runtime: Pool, migration: Pool;
     beforeAll(async () => {
-      const timezone = process.env.TZ ?? "UTC";
+      const timezone = "UTC";
       container = await runPostgresContainer({ name: `stock-wait-busy-${generation}-${process.pid}`, password: "synthetic-conformance",
         command: ["postgres", "-c", `timezone=${timezone}`] });
       expect(await waitForPostgresTcpReady(container.connectionString)).toBe(true);

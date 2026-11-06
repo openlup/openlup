@@ -2173,7 +2173,9 @@ It is distinguishable from an issued quote reference, and non-zero renewal
 shipping amounts still refuse. Existing frozen operations replay their retained
 wire. A host supplies the batch limit; its existing default is preserved.
 Both normal-due and stock-recovery rows use the existing `runRenewalBatchRows` isolation: a thrown row yields an
-`error` result with `renewal_processing_failed` and later rows still execute.
+`error` result with `renewal_processing_failed` and later rows still execute. A row
+throwing recognized inventory-admission busy is omitted instead, as described
+under the native stock-wait seam.
 Static admission precedes G23;
 existing cycles, prepared attempts and retries bypass new-cycle G23. Off without
 a captured case performs no G23 call; captured protected cases retain authority
