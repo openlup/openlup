@@ -139,8 +139,8 @@ without `--database-url` is still the UI-only preview with pending bindings.
 The native runtime composition binds customer challenge request/redemption,
 sign-out, reduced customer profile/subscription-control and owned order reads,
 newsletter read/withdraw, and the reduced operator order control-plane view.
-Invoice artifacts, the full account projection and shipment reads remain named
-refusals. Guest purchase, account and operator order reads have real-database
+The full account projection remains a named refusal. Guest purchase, account and
+operator order reads have real-database
 host and browser proofs. The database-backed suite passes the unchanged required
 purchase assertion in both configurations; this is local preview evidence.
 

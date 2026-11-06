@@ -44,8 +44,8 @@ export const operationLimitDefinitions = Object.freeze({
   }),
   trackingAccess: Object.freeze({
     id: 'trackingAccess', actions: Object.freeze(["tracking"] as const), code: 'starter_tracking_access_unavailable',
-    explanation: Object.freeze({ en: "Public tracking lookup is unavailable. Signed-in customers can see tracking for their own orders in the account.",
-      pl: "Publiczne wyszukiwanie przesyłki jest niedostępne. Po zalogowaniu klient może zobaczyć śledzenie własnych zamówień na koncie." }),
+    explanation: Object.freeze({ en: "Public tracking lookup is unavailable.",
+      pl: "Publiczne wyszukiwanie przesyłki jest niedostępne." }),
   }),
   subscriptionCommand: Object.freeze({
     id: 'subscriptionCommand', actions: Object.freeze(["subscriptions"] as const), code: 'starter_subscription_command_unavailable',
