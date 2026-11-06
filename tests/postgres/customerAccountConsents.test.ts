@@ -66,7 +66,8 @@ it.each(profiles)("atomic actor account choices and refusals on %s", async profi
     await runner.apply();
     expect((await runner.apply()).applied).toEqual([]);
     // Notice production follows lifecycle closure; qualified plans also retain their completion tail.
-    const tail = [{ catalog_path: "db/platform/migrations/20261106120000_subscription_notice_producers.sql" },
+    const tail = [{ catalog_path: "db/platform/migrations/20261106140000_subscriber_winback_policy.sql" },
+      { catalog_path: "db/platform/migrations/20261106120000_subscription_notice_producers.sql" },
       { catalog_path: "db/platform/migrations/20261106100000_subscription_lifecycle_closure.sql" },
       ...(profile === "legacy" ? [] : [{ catalog_path: "db/platform/migrations/q2_20261103200000_runtime_lock_and_conflict_completion.sql" }])];
     const ledger = (await owner.query("SELECT catalog_path FROM public.platform_schema_migrations ORDER BY position DESC LIMIT $1", [tail.length + 1])).rows;
