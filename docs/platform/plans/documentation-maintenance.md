@@ -76,10 +76,12 @@ fingerprinted against the source delta and unchanged owner text. Cosmetic edits,
 generated blocks and unrelated documents did not satisfy that former gate.
 Fingerprints established scope rather than semantic correctness.
 
-That impact checker, base-fetch procedure and fingerprinted answers have been
-removed. Current documentation updates and reviewer responsibility follow
+That impact checker and its fingerprinted answers have been removed. Current
+documentation updates and reviewer responsibility follow
 [Deliver a change](../../../CONTRIBUTING.md#deliver-a-change); `--policy` checks
-navigation, links and owner structure.
+navigation, links and owner structure. It still resolves the comparison base,
+fetching a missing public hosted base, for the append-only migration history and
+package Migration-block checks.
 
 ### Bundle and consumer boundary
 
@@ -139,8 +141,9 @@ is present; existing public plan location and actual required checks govern.
   source/contract and verification route. Accounting has a usable owner page.
 - Historical impact-gate acceptance required real-Git source edits to fail
   without a section update or scoped no-impact answer, and tested cosmetic edits,
-  stale fingerprints and missing bases. Those obligations and their hosted
-  base-fetch witnesses are superseded; they are not current acceptance checks.
+  stale fingerprints and missing bases. Those impact obligations are superseded
+  and are not current acceptance checks; base resolution keeps its witnesses
+  because the migration-history checks still use it.
 - Current documentation acceptance follows
   [Deliver a change](../../../CONTRIBUTING.md#deliver-a-change): the pull request
   updates stale documentation, and its reviewer checks the explanation.
@@ -158,8 +161,9 @@ is present; existing public plan location and actual required checks govern.
 Broad routing can hide useful internal boundaries; require explicit domain and
 workflow routes and inspect unfamiliar-reader answers. The former semantic text
 comparison could accept irrelevant prose; reviewers and behavioral examples remained necessary.
-The former impact checker fetched a public CI base and refused when it could not
-resolve one. That fetch is no longer part of documentation policy.
+The policy resolves a public CI base for its migration-history and Migration-block
+checks and refuses when it cannot resolve one; the removed impact checker no
+longer uses that base.
 
 Do not broaden this work to fix unrelated release refusals. New schema changes,
 protected release identities, additional services/dependencies, control weakening,
