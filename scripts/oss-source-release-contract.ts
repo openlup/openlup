@@ -180,9 +180,13 @@ const controlByte = (byte: number) => (byte < 0x20 && byte !== 0x09 && byte !== 
 /** Refuses control characters other than tab and line feed (PostgreSQL also ends a `--` comment at a carriage return, so no classifier models line ends differently). */
 export function assertAdmittedPlatformForward(root: string, base: string, head: string, path: string, bytes: Buffer, release = false): void {
   if (bytes.some(controlByte)) throw new Error(`migration SQL refuses control characters: ${path}`);
-  const hasRegistry = gitBytes(root, ["ls-tree", head, "--", REVIEWED_FORWARD_PATH]).length > 0;
-  const slots = hasRegistry ? readReviewedForwardRegistry(gitBytes(root, ["show", `${head}:${REVIEWED_FORWARD_PATH}`])).nativeStoreForwardClass?.slots ?? [] : undefined;
-  if (isQualifiedPlatformMigrationPath(path) || isChannelIngestMigrationPath(path) || isNativeStoreMigrationPath(path, slots) || !isExpandOnlyPlatformForward(bytes.toString("utf8"))) assertReviewedPlatformForward(root, base, head, path, bytes, release);
+  let native = false;
+  if (isNativeStoreMigrationPath(path)) {
+    const hasRegistry = gitBytes(root, ["ls-tree", head, "--", REVIEWED_FORWARD_PATH]).length > 0;
+    const slots = hasRegistry ? readReviewedForwardRegistry(gitBytes(root, ["show", `${head}:${REVIEWED_FORWARD_PATH}`])).nativeStoreForwardClass?.slots ?? [] : undefined;
+    native = isNativeStoreMigrationPath(path, slots);
+  }
+  if (isQualifiedPlatformMigrationPath(path) || isChannelIngestMigrationPath(path) || native || !isExpandOnlyPlatformForward(bytes.toString("utf8"))) assertReviewedPlatformForward(root, base, head, path, bytes, release);
 }
 
 function assertPlatformSchemaForwards(root: string, previousCommit: string, targetCommit: string, old: GitInventoryEntry[], target: GitInventoryEntry[], readOld: SourceReleaseBlobReader, readTarget: SourceReleaseBlobReader): void {

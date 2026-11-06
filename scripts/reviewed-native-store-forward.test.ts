@@ -59,7 +59,7 @@ const encode = (value: ReviewedForwardRegistry) => Buffer.from(JSON.stringify(va
 describe("closed native store class data", () => {
   it("keeps synthetic paths out of production and reads the exact seven-slot fixture", () => {
     expect(() => readReviewedForwardRegistry(encode(registry()))).not.toThrow();
-    for (const slot of control.slots) expect(production.nativeStoreForwardClass!.slots.some(real => real.path === slot.path)).toBe(false);
+    for (const slot of control.slots) expect(production.nativeStoreForwardClass!.slots.slice(0, 7).some(real => real.path === slot.path)).toBe(false);
     expect(control.slots).toHaveLength(7);
     const old = structuredClone(production); delete old.nativeStoreForwardClass; delete old.nativeStoreForwards;
     expect(() => readReviewedForwardRegistry(encode(old))).not.toThrow();
@@ -215,8 +215,8 @@ describe("native store SQL shapes and pins", () => {
     expect(isExpandOnlyPlatformForward(statement)).toBe(true);
     expect(() => check(`${sql()}\n${statement}`)).not.toThrow();
   });
-  it("pins only firm production rows and finds every replacement/grant-only signature in the immutable base prefix", () => {
-    const slots = production.nativeStoreForwardClass!.slots;
+  it("pins the issued production prefix and finds every replacement/grant-only signature in the immutable base prefix", () => {
+    const slots = production.nativeStoreForwardClass!.slots.slice(0, 7);
     expect(slots.map(slot => slot.row)).toEqual(["G6", "G2", "G4", "G3", "G7", "G8", "G11-c"]);
     expect(slots.find(slot => slot.row === "G6")!.replacedFunctions).toHaveLength(5);
     expect(slots.find(slot => slot.row === "G6")!.createdFunctions).toHaveLength(4);
@@ -582,7 +582,7 @@ describe("real Git introduction, release and co-location", () => {
       if (fresh) {
         const value = registry(); value.nativeStoreForwardClass!.slots.push({ row: "Future", path, replacedFunctions: [], createdFunctions: [], grantOnlyFunctions: [], dataStatements: [] });
         put("config/reviewed-platform-forwards.json", encode(value));
-        expect(isNativeStoreMigrationPath(path)).toBe(false);
+        expect(isNativeStoreMigrationPath(path)).toBe(true);
         expect(isNativeStoreMigrationPath(path, value.nativeStoreForwardClass!.slots)).toBe(true);
       }
       put(path, "CREATE TABLE public.fixture_unbound (id uuid);"); const head = commit();
@@ -696,11 +696,11 @@ function checkG4G3(index: number, text: string) {
 describe("G4 exact existing-table companions and G3 inventory", () => {
   const g4 = () => `${g4g3.g4Statements.join("\n")}\n${sql(2)}`;
   const g3 = () => fixture("g3-shape.sql").toString();
-  it("keeps the slots in order with four feature bindings, without sealing or whole-file class pins", () => {
-    const slots = production.nativeStoreForwardClass!.slots;
+  it("keeps the issued slot and binding prefix in order, without sealing or whole-file class pins", () => {
+    const slots = production.nativeStoreForwardClass!.slots.slice(0, 7);
     expect(slots.map(slot => slot.row)).toEqual(["G6", "G2", "G4", "G3", "G7", "G8", "G11-c"]);
     expect(production.nativeStoreForwardClass!.sealed).toBe(false);
-    expect(production.nativeStoreForwards!.map(pin => pin.path)).toEqual(slots.slice(0, 7).map(slot => slot.path));
+    expect(production.nativeStoreForwards!.slice(0, 7).map(pin => pin.path)).toEqual(slots.slice(0, 7).map(slot => slot.path));
     expect(slots[2]!.existingTableStatements).toEqual(g4g3.g4Statements);
     expect(slots[3]!.dataStatements).toEqual(["INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('commerce_destinations', 'block', 'A delivery destination is an immutable delivery snapshot bound to the order or subscription that used it; never carry or rebind it when absorbing a lead.');"]);
     expect(slots[2]!.createdFunctions).toEqual([
@@ -867,10 +867,10 @@ describe("checker-pinned G8 INSERT/SELECT table", () => {
 const parameterTable = "CREATE TABLE public.fixture_parameters (id uuid, extra uuid, status text, kind text, CONSTRAINT fixture_status CHECK (status IN ('open','closed')), CONSTRAINT fixture_kind CHECK (kind IN ('first','second')), CONSTRAINT fixture_key UNIQUE (id));";
 const parameterCheck = (name = "fixture_status", column = "status", values = "'open','closed','paused'") => `ALTER TABLE public.fixture_parameters DROP CONSTRAINT ${name};\nALTER TABLE public.fixture_parameters ADD CONSTRAINT ${name} CHECK (${column} IN (${values}));`;
 const parameterUnique = "ALTER TABLE public.fixture_parameters DROP CONSTRAINT fixture_key;\nALTER TABLE public.fixture_parameters ADD CONSTRAINT fixture_key UNIQUE NULLS NOT DISTINCT (id,extra);";
-function parameterForward(text: string, mutate: (slot: NativeStoreSlot) => void, history = "") {
+function parameterForward(text: string, mutate: (slot: NativeStoreSlot) => void, history = "", tableSource = parameterTable) {
   const value = registry(), slot = value.nativeStoreForwardClass!.slots[0]!; mutate(slot);
   const complete = `${sql()}\n${text}`, pin = bind(value, 0, complete);
-  const preceding = [{ path: PLATFORM_BASELINE_FILE, bytes: Buffer.concat([before, Buffer.from(`\n${parameterTable}`)]) }, ...history ? [{ path: "db/platform/migrations/20261031120000_parameter_history.sql", bytes: Buffer.from(history) }] : []];
+  const preceding = [{ path: PLATFORM_BASELINE_FILE, bytes: Buffer.concat([before, Buffer.from(`\n${tableSource}`)]) }, ...history ? [{ path: "db/platform/migrations/20261031120000_parameter_history.sql", bytes: Buffer.from(history) }] : []];
   assertNativeStoreForward(value, pin.path, Buffer.from(complete), preceding);
 }
 const addCheck = (slot: NativeStoreSlot) => { slot.checkSupersets = [{ table: "public.fixture_parameters", constraint: "fixture_status", column: "status", beforeSha256: sqlSha256(parameterTable), values: ["open", "closed", "paused"] }]; };
@@ -1089,4 +1089,132 @@ describe("closed created row triggers on prefix tables", () => {
     }
     expect(() => triggerForward(triggerBefore, "", slot => { slot.createdTriggers!.push({ ...slot.createdTriggers![0]! }); })).toThrow("reviewed native store invalid created trigger inventory");
   });
+});
+
+function legacyCheckHistory(history: string) {
+  const value = registry(), preceding = [{ path: PLATFORM_BASELINE_FILE, bytes: before }];
+  for (let index = 0; index < 6; index++) { const text = sql(index), pin = bind(value, index, text); preceding.push({ path: pin.path, bytes: Buffer.from(text) }); }
+  preceding.push({ path: "db/platform/migrations/20261101231999_identity_history.sql", bytes: Buffer.from(history) });
+  const text = sql(6), pin = bind(value, 6, text);
+  assertNativeStoreForward(value, pin.path, Buffer.from(text), preceding);
+}
+
+describe("token-bound native SQL identities", () => {
+  it.each([
+    "ALTER\nTABLE public.TABLE_NAME ALTER COLUMN COLUMN_NAME DROP NOT NULL;",
+    "ALTER TABLE public . TABLE_NAME ALTER COLUMN COLUMN_NAME DROP NOT NULL;",
+    'ALTER/* table */TABLE "public" /* dot */ . "TABLE_NAME" ALTER/* column */COLUMN "COLUMN_NAME" DROP NOT NULL;',
+    'ALTER TABLE "public" . "TABLE_NAME" DROP CONSTRAINT "CONSTRAINT_NAME";',
+    "ALTER\tTABLE public/* gap */.TABLE_NAME VALIDATE/* name */CONSTRAINT CONSTRAINT_NAME;",
+    "ALTER TABLE TABLE_NAME ALTER COLUMN COLUMN_NAME DROP NOT NULL;",
+    "ALTER TABLE public.TABLE_NAME.extra ALTER COLUMN COLUMN_NAME DROP NOT NULL;",
+  ])("refuses affecting or unresolved identities for legacy and generic CHECKs: %s", spelling => {
+    const generic = spelling.replaceAll("TABLE_NAME", "fixture_parameters").replaceAll("COLUMN_NAME", "status").replaceAll("CONSTRAINT_NAME", "fixture_status");
+    const legacy = spelling.replaceAll("TABLE_NAME", "communication_native_sync_state").replaceAll("COLUMN_NAME", "purpose").replaceAll("CONSTRAINT_NAME", "communication_native_sync_state_purpose_check");
+    expect(() => parameterForward(parameterCheck(), addCheck, generic)).toThrow("reviewed native store CHECK intervening DDL refused");
+    expect(() => legacyCheckHistory(legacy)).toThrow("reviewed native store purpose CHECK intervening DDL refused");
+  });
+  it("permits token-resolved unrelated additions and ignores names inside literal data", () => {
+    const history = 'ALTER/* gap */TABLE "public" . "fixture_parameters" ADD/* gap */COLUMN unrelated text DEFAULT \'DROP CONSTRAINT fixture_status\';';
+    expect(() => parameterForward(parameterCheck(), addCheck, history)).not.toThrow();
+    expect(() => legacyCheckHistory('ALTER\nTABLE "public" . "communication_native_sync_state" ADD COLUMN unrelated text;')).not.toThrow();
+  });
+  it("reads quoted/commented CREATE and constraint identities while preserving exact source hashes", () => {
+    const source = parameterTable.replace("CREATE TABLE public.fixture_parameters", 'CREATE\nTABLE "public" /* schema */ . "fixture_parameters"').replace("CONSTRAINT fixture_status", 'CONSTRAINT/* name */"fixture_status"');
+    const sql = parameterCheck().replaceAll("ALTER TABLE public.fixture_parameters", 'ALTER/* gap */TABLE "public" . "fixture_parameters"').replaceAll("CONSTRAINT fixture_status", 'CONSTRAINT /* name */ "fixture_status"');
+    expect(() => parameterForward(sql, slot => { addCheck(slot); slot.checkSupersets![0]!.beforeSha256 = sqlSha256(source); }, "", source)).not.toThrow();
+  });
+  it("cannot use a CHECK-shaped dollar literal as the preimage predicate", () => {
+    const source = "CREATE TABLE public.fixture_parameters (id uuid, note text DEFAULT $data$CONSTRAINT fixture_status CHECK (status IN ('open'))$data$, status text, CONSTRAINT fixture_status CHECK (status IN ('open','closed')));";
+    expect(() => parameterForward(parameterCheck(undefined, undefined, "'open','paused'"), slot => { addCheck(slot); slot.checkSupersets![0]!.beforeSha256 = sqlSha256(source); slot.checkSupersets![0]!.values = ["open", "paused"]; }, "", source)).toThrow("reviewed native store CHECK must only widen");
+  });
+  it("cannot use a UNIQUE-shaped dollar literal as the preimage key", () => {
+    const source = "CREATE TABLE public.fixture_parameters (id uuid, extra uuid, note text DEFAULT $data$CONSTRAINT fixture_key UNIQUE (extra)$data$, CONSTRAINT fixture_key UNIQUE (id));";
+    expect(() => parameterForward(parameterUnique.replace("(id,extra)", "(extra)"), slot => { addUnique(slot); slot.uniqueSupersets![0]!.beforeSha256 = sqlSha256(source); slot.uniqueSupersets![0]!.columns = ["extra"]; }, "", source)).toThrow("reviewed native store UNIQUE must only widen its key");
+  });
+  it("resolves affecting and latest-definition UNIQUE DDL through comments and schema separators", () => {
+    const history = 'ALTER\nTABLE "public" . "fixture_parameters" VALIDATE/* name */CONSTRAINT "fixture_key";';
+    expect(() => parameterForward(parameterUnique, addUnique, history)).toThrow("reviewed native store CHECK intervening DDL refused");
+    const drop = 'ALTER\nTABLE "public" . "fixture_parameters" DROP/* name */CONSTRAINT "fixture_key";';
+    const add = 'ALTER TABLE public /* schema */ . fixture_parameters ADD CONSTRAINT "fixture_key" UNIQUE (id, extra);';
+    expect(() => parameterForward(parameterUnique, slot => { addUnique(slot); slot.uniqueSupersets![0]!.beforeSha256 = sqlSha256(add); }, `${drop}\n${add}`)).not.toThrow();
+  });
+  it("finds a prefix trigger name through comments and quoted identifiers", () => {
+    const source = triggerFunction.replaceAll("fixture_trigger_guard", "fixture_external_trigger");
+    const history = `${source}\nCREATE/* gap */TRIGGER "fixture_trigger_guard" AFTER INSERT ON public . fixture_row FOR EACH ROW EXECUTE FUNCTION public . fixture_external_trigger();`;
+    expect(() => triggerForward(triggerBefore, "", undefined, history)).toThrow("reviewed native store created trigger name already exists in prefix");
+  });
+  it.each([
+    'DROP\nTABLE "public" . "fixture_parameters";',
+    'ALTER/* gap */TABLE public . fixture_parameters RENAME TO old_parameters;',
+    'ALTER TABLE "public" . "fixture_parameters" SET/* gap */SCHEMA private;',
+  ])("does not retain a removed or moved prefix table for created triggers: %s", history => {
+    expect(() => triggerForward(triggerBefore, "", undefined, history)).toThrow("reviewed native store created trigger target absent from prefix");
+  });
+  it("refuses unresolved prefix object identities for trigger admission", () => {
+    expect(() => triggerForward(triggerBefore, "", undefined, "ALTER TABLE fixture_parameters ADD COLUMN unrelated uuid;")).toThrow("reviewed native store unresolved preceding object identity");
+  });
+  it("resolves both trigger shapes through keyword comments and qualified-name whitespace", () => {
+    const statement = triggerBefore.replace("CREATE TRIGGER", "CREATE/* gap */TRIGGER").replace("ON public.fixture_parameters", 'ON "public" /* schema */ . "fixture_parameters"').replace("FUNCTION public.fixture_trigger_guard", 'FUNCTION "public" . "fixture_trigger_guard"');
+    expect(() => triggerForward(statement)).not.toThrow();
+    expect(() => triggerForward(triggerBefore, 'ALTER\nTABLE "public" . "fixture_parameters" DISABLE/* gap */TRIGGER fixture_trigger_guard;')).toThrow("reviewed native store trigger mutation refused");
+  });
+  it("resolves view revokes and refuses view grants using token identities", () => {
+    const create = 'CREATE/* gap */VIEW "public" . "fixture_parameter_view" AS SELECT id FROM public.fixture_parameters;';
+    const revoke = 'REVOKE/* gap */ALL ON TABLE "public" . "fixture_parameter_view" FROM PUBLIC;';
+    const entry = (slot: NativeStoreSlot) => { slot.createdViews = [{ name: "public.fixture_parameter_view", sha256: sqlSha256(create) }]; };
+    expect(() => parameterForward(`${create}\n${revoke}`, entry)).not.toThrow();
+    expect(() => parameterForward(`${create}\n${revoke}\nGRANT SELECT ON TABLE public /* schema */ . fixture_parameter_view TO service_role;`, entry)).toThrow("reviewed native store created view GRANT refused");
+    expect(() => parameterForward(`${create}\n${revoke}`, entry, 'CREATE\nVIEW "public" . "fixture_parameter_view" AS SELECT id FROM public.fixture_row;')).toThrow("reviewed native store unlisted, duplicate or drifted view definition");
+  });
+  it("does not let a commented or spaced existing-table ADD bypass the exact list", () => {
+    expect(() => parameterForward('ALTER/* gap */TABLE "public" . "fixture_parameters" ADD COLUMN unlisted text;', slot => { slot.existingTableStatements = ["ALTER TABLE public.fixture_parameters ADD COLUMN listed text;"]; })).toThrow("reviewed native store existing-table statement unlisted, duplicate or out of order");
+  });
+  it("detects a preceding function identity through schema whitespace", () => {
+    expect(() => parameterForward("", () => {}, 'ALTER/* gap */FUNCTION "public" . "fixture_existing"(uuid) SET search_path=public;')).toThrow("reviewed native store unsupported preceding function DDL");
+  });
+});
+
+it.each(["pull_request", "merge_group"])("routes prepared later SQL plus a catalog change through the unchanged %s queue expression", async eventName => {
+  mkdirSync(".context/scratch", { recursive: true }); const folder = mkdtempSync(resolve(".context/scratch/prepared-native-queue-"));
+  const git = (...args: string[]) => execFileSync("git", ["-C", folder, "-c", "user.name=Control Test", "-c", "user.email=control@example.invalid", "-c", "commit.gpgsign=false", ...args], { encoding: "utf8" }).trim();
+  const put = (path: string, bytes: Buffer | string) => { mkdirSync(dirname(resolve(folder, path)), { recursive: true }); writeFileSync(resolve(folder, path), bytes); };
+  const commit = () => { git("add", "."); git("commit", "-qm", "Synthetic prepared native slot"); return git("rev-parse", "HEAD"); };
+  try {
+    git("init", "-q", "-b", "main"); const value = registry(), path = "db/platform/migrations/20271106100000_prepared.sql", text = "CREATE TABLE public.prepared (id uuid);";
+    value.nativeStoreForwardClass = { sealed: false, slots: [emptySlot(path)] }; value.nativeStoreForwards = [{ path, sha256: sqlSha256(text), functions: [] }];
+    put("config/reviewed-platform-forwards.json", encode(value)); put(PLATFORM_BASELINE_FILE, before); const base = commit(); git("update-ref", "refs/remotes/origin/main", base);
+    put(path, text); put("tests/postgres/nativeStoreForwardCatalog.test.ts", "// Changed observer"); const head = commit();
+    expect(isNativeStoreMigrationPath(path)).toBe(true);
+    expect(isNativeStoreMigrationPath(path, value.nativeStoreForwardClass.slots)).toBe(true);
+    const candidate = await captureCommittedReviewCandidate(folder, base, head);
+    let session = prepareCandidate(null, { ...candidate, intent: { risk: "behavior", criteria: "Prepared native slot machinery refusal" }, authorSessionId: "prepared-author" }, 1000);
+    for (const reviewer of ["prepared-reviewer-a", "prepared-reviewer-b"]) session = recordReport(session, { reviewer, cold: true, tree: candidate.tree, verdict: "PASS", findings: [], closes: [], documentation: "Synthetic prepared-slot queue boundary." }, 1000);
+    const receipt = receiptSummary(session, 12, 1000), merged = git("commit-tree", candidate.tree, "-p", base, "-p", head, "-m", "Synthetic prepared group"), ref = `refs/heads/gh-readonly-queue/main/pr-12-${base}`;
+    const event = { number: 12, repository: { private: false }, action: "checks_requested", pull_request: { head: { sha: head } }, merge_group: { base_ref: "refs/heads/main", head_ref: ref, base_sha: base, head_sha: merged } };
+    const env = { GITHUB_REPOSITORY: "openlup/openlup", GITHUB_EVENT_NAME: eventName, GITHUB_SHA: merged, GITHUB_REF: ref };
+    const api = { get: async (path: string) => path.includes("/pulls/") ? { number: 12, state: "open", draft: false, base: { ref: "main" }, head: { sha: head } } : path.includes("/issues/") ? [{ id: 1, user: { login: "fixture-owner", type: "User" }, body: `${RECEIPT_MARKER}\n\`\`\`json\n${JSON.stringify(receipt)}\n\`\`\`` }] : path.includes("/collaborators/") ? { permission: "write" } : { object: { sha: base } } };
+    const runGit = (cwd: string, ...args: string[]) => args.includes("fetch") ? Promise.resolve("") : reviewGit(cwd, ...args);
+    await expect(waitNativeAdmission({ cwd: folder, event, env, api, runGit, now: () => 1000, deadlineMs: 1 })).rejects.toThrow("reviewed replacement admission machinery must be approved separately before co-located SQL/pins");
+  } finally { rmSync(folder, { recursive: true, force: true }); }
+});
+
+it("routes later paths conservatively while admitting an ordinary unregistered expand-only migration", () => {
+  nativeGitFixture(({ folder, put, commit }) => {
+    const value = registry(), path = "db/platform/migrations/20271106100000_unregistered.sql", text = "CREATE TABLE public.unregistered (id uuid);";
+    put("config/reviewed-platform-forwards.json", encode(value)); put(PLATFORM_BASELINE_FILE, before); const base = commit();
+    put(path, text); put("tests/postgres/nativeStoreForwardCatalog.test.ts", "// Ordinary additive test change"); const head = commit();
+    expect(isNativeStoreMigrationPath(path)).toBe(true); expect(isNativeStoreMigrationPath(path, value.nativeStoreForwardClass!.slots)).toBe(false);
+    expect(isNativeStoreMigrationPath("db/platform/migrations/20261101221999_earlier.sql")).toBe(false);
+    expect(isNativeStoreMigrationPath("supabase/migrations/20271106100000_other.sql")).toBe(false);
+    expect(isNativeStoreMigrationPath("db/platform/migrations/20271106100000_UPPER-extra.sql")).toBe(true);
+    expect(() => assertCoLocatedForwardApproval(folder, base, head)).not.toThrow();
+    expect(() => assertAdmittedPlatformForward(folder, base, head, path, Buffer.from(text))).not.toThrow();
+  });
+});
+
+it("keeps the complete issued slot and pin contents fixed without pinning later appends", () => {
+  const canonical = (value: unknown) => JSON.stringify(value, (_key, item: unknown) => item && typeof item === "object" && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
+  expect(sqlSha256(canonical(production.nativeStoreForwardClass!.slots.slice(0, 7)))).toBe("e045315db04e824b10dd7d1565d3d42b443fef72a433598e582b1ee46d5b4859");
+  expect(sqlSha256(canonical(production.nativeStoreForwards!.slice(0, 7)))).toBe("7c8cc2e9a9735359a01384e4fcc34c84f45ae82fcf07f2f76f86123a290d8760");
 });

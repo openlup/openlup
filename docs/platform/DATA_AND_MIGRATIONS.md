@@ -1479,7 +1479,10 @@ after-hashes. Its pull request may include class data but cannot change admissio
 machinery.
 Every earlier slot in registry order needs unchanged landed pins;
 issued native file pins must also be present unchanged.
-Reserved timestamps require approval even for expand-only SQL. Unlisted function
+Registry-derived slot timestamps require approval even for expand-only SQL.
+The queue routes every native filename at or after the first issued slot time
+through the guard, including SQL whose slot was prepared earlier. The guard
+still admits ordinary unregistered expand-only migrations through their existing path. Unlisted function
 signatures, drifted preimages, destructive statements, default privileges and
 role statements refuse. Tables and indexes retain the existing expand-only
 rules; data statements require exact head-class slot entries. CHECK and UNIQUE
@@ -1524,7 +1527,11 @@ ADD CONSTRAINT CHECK pair that retains every parsed old value. Between that
 CREATE and the forward, named constraint ADD/DROP/ALTER/RENAME/VALIDATE, the
 checked column's ALTER/DROP/RENAME, and table DROP/RENAME/SET SCHEMA refuse.
 Unrelated, fully classified ADD COLUMN or ADD CONSTRAINT statements remain
-allowed; unknown DDL on the table refuses. The real PostgreSQL witness compares
+allowed. Identity reads use quote- and comment-aware tokens, including keyword
+whitespace, schema separators and quoted names; literal data cannot name an object.
+Unresolved table identities and unknown DDL on the table refuse. The same token
+identities determine UNIQUE preimages, trigger-name freshness and current prefix
+table existence, so dropped or moved tables cannot remain eligible targets. The real PostgreSQL witness compares
 the installed old constraint with the values parsed from the hash-bound source.
 The issued account-consent `purposeCheck` remains readable unchanged: its values
 continue to mean the old list, and its existing refusal messages remain intact.
