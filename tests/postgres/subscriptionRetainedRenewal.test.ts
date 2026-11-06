@@ -125,7 +125,8 @@ it.each(["2026-01-01T00:00:00.123456Z", "2026-01-01T00:00:00.000Z"])("normalizes
 }, 30_000);
 
 // The shared lock and conflict completion lets the restricted runtime count destinations by client.
-it.each([null, "identity_privacy_erasures", "subscription_command_receipts", "subscription_stock_wait_cases"] as const)("absorbs through the restricted runtime at the destinations count (block=%s)", async table => {
+// A quote preview exists only for its client's subscription; absorption retains previews unread and refuses through the subscription.
+it.each([null, "identity_privacy_erasures", "subscription_command_receipts", "subscription_stock_wait_cases", "subscription_quote_previews"] as const)("absorbs through the restricted runtime at the destinations count (block=%s)", async table => {
   // Scratch fixture: pending the G3 policy row. Never part of this forward.
   // The null case still exercises the full, unmodified chain.
   const pending = table ? await admin.query(`INSERT INTO public.client_absorption_policy(table_name,disposition,note)
@@ -140,12 +141,15 @@ it.each([null, "identity_privacy_erasures", "subscription_command_receipts", "su
     if (table === "identity_privacy_erasures") await admin.query(`INSERT INTO public.identity_privacy_erasures
       (erasure_id,idempotency_key,client_id,actor_principal_id,contract_version,contributor_versions,dispositions,retained_obligations,completed_at)
       VALUES($1,$2,$3,$4,'identity.erasure.v1','{}','{}','[]',$5)`, [randomUUID(), randomUUID(), lead, operator, at]);
-    if (table === "subscription_command_receipts" || table === "subscription_stock_wait_cases") {
+    if (table === "subscription_command_receipts" || table === "subscription_stock_wait_cases" || table === "subscription_quote_previews") {
       const subscription = randomUUID();
       await admin.query("INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at) VALUES($1,$2,28,$3)", [subscription, lead, at]);
       if (table === "subscription_command_receipts") await admin.query(`INSERT INTO public.subscription_command_receipts
         (actor_id,idempotency_key,subscription_id,client_id,command_fingerprint,command,result,status)
         VALUES($1,$2,$3,$4,$5,'{}','{}','refused')`, [operator, randomUUID(), subscription, lead, "a".repeat(64)]);
+      else if (table === "subscription_quote_previews") await admin.query(`INSERT INTO public.subscription_quote_previews
+        (subscription_id,client_id,actor_id,action,quote_hash,template_version,expires_at,request_payload,quote_snapshot,totals)
+        VALUES($1,$2,$3,'update_package_template',$4,1,$5,'{}','{}','{}')`, [subscription, lead, operator, "a".repeat(64), days(at, 1)]);
       else {
         const operation = randomUUID(), identity = `subscription:${subscription}:cycle:${at}`;
         await admin.query(`INSERT INTO public.subscription_renewal_operations
@@ -166,7 +170,8 @@ it.each([null, "identity_privacy_erasures", "subscription_command_receipts", "su
     const result = await absorb();
     if (table) {
       expect(result, JSON.stringify(result)).toMatchObject({ outcome: "refused", action: "absorb_lead", leadId: lead, refusalCode: "lead_has_commercial_footprint" });
-      expect(result.blockingTables).toContain(table);
+      expect(result.blockingTables).toContain(table === "subscription_quote_previews" ? "subscriptions" : table);
+      expect(result.blockingTables).not.toContain("subscription_quote_previews");
       expect(result.blockingTables).not.toContain("commerce_destinations");
       const after = await allPublicRows(admin) as Record<string, unknown[]>, prior = before as Record<string, unknown[]>;
       for (const name of ["customer_support_subscription_commands", "customer_support_subscription_audit_events"]) {
@@ -385,4 +390,127 @@ it("transfers paid shipping, retained terms, graduation agreements and frozen re
     d.due, days(d.when, 1))).toMatchObject({ status: "terminal_replay", operationId: original.operationId });
     expect(forbidden).not.toHaveBeenCalled(); expect(await allPublicRows(target.owner)).toEqual(before);
   });
+}, 30_000);
+
+/** Accepted server quote fixture, applied through the restricted C SQL boundary. */
+async function classicEdit(f: Awaited<ReturnType<typeof active>>, input: {
+  quantity: number; unit: number; planDays: number; requestedAt: string; list?: number;
+}) {
+  const current = (await runtime.query("SELECT template_version,cadence_days FROM public.subscriptions WHERE id=$1", [f.subscriptionId])).rows[0];
+  const variant = String((await runtime.query("SELECT variant_id FROM public.subscription_lines WHERE subscription_id=$1 AND NOT is_addon ORDER BY sort_order LIMIT 1", [f.subscriptionId])).rows[0].variant_id);
+  const money = (amountMinor: number) => ({ amountMinor, currency: "XXX" });
+  const quoteLine = { sku: "G7-REFILL", quantity: input.quantity, unitPriceGross: money(input.unit), lineSubtotalGross: money(input.quantity * input.unit),
+    ...(input.list === undefined ? {} : { pricingComponents: [{ componentType: "base_unit", amountMinor: input.list }] }) };
+  const price = money(input.quantity * input.unit), quote = { lines: [quoteLine], totalGross: price, subtotalGross: price, discountTotalGross: money(0) };
+  const hash = api.hashPackageEditQuote(quote), actor = randomUUID(), key = randomUUID();
+  const base = [{ variantId: variant, qty: input.quantity }], baseLines = [{ ...base[0], quoteLine }];
+  const request = { planDays: input.planDays, base, addons: [], expectedTemplateVersion: current.template_version, acceptedQuoteHash: hash };
+  const payload = { request, planDays: input.planDays, nominalPlanDays: input.planDays, base, addons: [], baseLines, addonLines: [],
+    currentRecurringPrice: money(200), newRecurringPrice: price, delta: money(price.amountMinor - 200),
+    expectedTemplateVersion: current.template_version, acceptedQuoteHash: hash };
+  await admin.query("INSERT INTO public.commerce_settings(key,value_text) VALUES('subscription_minimum_base_units','2') ON CONFLICT(key) DO UPDATE SET value_text=EXCLUDED.value_text");
+  await rpc("subscription_quote_preview_record", [actor, f.clientId, f.subscriptionId, "update_package_template", hash, current.template_version,
+    new Date(Date.parse(input.requestedAt) + 15 * 60_000).toISOString(),
+    { planDays: input.planDays, nominalPlanDays: input.planDays, base, addons: [], compositionConstraint: { kind: "plan_days", value: input.planDays } },
+    { baseLines, addonLines: [], compositionConstraint: { kind: "plan_days", value: input.planDays } },
+    { currentRecurringPrice: payload.currentRecurringPrice, newRecurringPrice: price, delta: payload.delta }, input.requestedAt]);
+  const result = await rpc("subscription_package_edit_apply", [actor, f.clientId, key, f.subscriptionId, payload, input.requestedAt]);
+  expect(result).toMatchObject({ status: "applied", templateVersion: Number(current.template_version) + 1 });
+  return { result, payload, actor, quoteLine };
+}
+
+it.each([
+  { branch: "list anchor", quantity: 14, unit: 997, list: 15442, planDays: 28, discount: 3920, total: 10038 },
+  { branch: "no anchor", quantity: 14, unit: 997, list: undefined, planDays: 28, discount: 4885, total: 9073 },
+  { branch: "frozen basis", quantity: 2, unit: 100, list: 250, planDays: 21, discount: 51, total: 149 },
+])("bills the accepted edited delivery-two agreement to the minor unit ($branch)", async scenario => {
+  const retained: RenewalRetainedTerms = { version: "native.renewal-terms.v1", minimumPayableMinor: 100, normalCadenceDays: [14, 21, 28],
+    linePricing: terms().linePricing, starterPack: { schemaVersion: "1", starterIntervalDays: 28, basisTemplateVersion: 1,
+      delivery2: { discountBps: 3500, discountMinor: 51, basisSubtotalMinor: 200 },
+      graduation: { cadenceDays: 28, lines: [{ sku: "G7-REFILL", qty: 28, sortOrder: 0, isAddon: false,
+        quoteLine: { unitPriceGross: { amountMinor: 997, currency: "XXX" }, lineSubtotalGross: { amountMinor: 27916, currency: "XXX" } } }] } } };
+  const f = await active(retained), edited = await classicEdit(f, { ...scenario, requestedAt: days(at, 1) });
+  const d = await driver(f.subscriptionId), snapshot = await d.input.store.buildCycleSnapshots(d.due);
+  expect(snapshot.pricingSnapshot).toMatchObject({ productSubtotalAmountMinor: scenario.quantity * scenario.unit,
+    discountAmountMinor: scenario.discount, totalAmountMinor: scenario.total, shippingAmountMinor: 0,
+    linePricing: [{ sku: "G7-REFILL", quantity: scenario.quantity, unitAmountMinor: scenario.unit, isAddon: false, quoteLine: edited.quoteLine }] });
+  expect((await api.runOneAutomaticSubscriptionRenewal(d.input, d.due, now)).status).toBe("succeeded");
+  expect(d.execute).toHaveBeenCalledOnce(); expect(d.execute.mock.calls[0][0].amountMinor).toBe(scenario.total);
+  const operation = (await d.input.store.readRenewal(d.codec.identity(snapshot)))!;
+  expect((await runtime.query("SELECT total_amount_minor FROM public.commerce_orders WHERE id=$1", [operation.orderId])).rows[0].total_amount_minor).toBe(String(scenario.total));
+  // A later accepted template cannot rewrite the operation that already prepared/billed these lines.
+  await classicEdit(f, { quantity: 15, unit: 101, planDays: 28, requestedAt: days(now, 1), list: 1875 });
+  expect(await d.input.store.buildCycleSnapshots(d.due)).toEqual(operation.cycleSnapshot);
+}, 30_000);
+
+it("keeps accepted classic pricing after a newer unpriced generic package command", async () => {
+  const f = await active(), edited = await classicEdit(f, { quantity: 14, unit: 100, planDays: 28,
+    requestedAt: days(at, 1), list: 1800 });
+  const linePricing = [{ sku: "G7-REFILL", quantity: 14, unitAmountMinor: 100, isAddon: false, quoteLine: edited.quoteLine }];
+  expect((await runtime.query("SELECT payload->'linePricing' AS pricing FROM public.subscription_events WHERE id=$1",
+    [edited.result.eventId])).rows).toEqual([{ pricing: linePricing }]);
+  const anchor = (await runtime.query("SELECT next_cycle_at::text AS anchor FROM public.subscriptions WHERE id=$1", [f.subscriptionId])).rows[0].anchor;
+  // The generic command reprices the same lines from the fixture catalogue,
+  // changes only cadence, and emits its real event without top-level linePricing.
+  const commands = api.createPostgresSubscriptionCommandStore({ withTransaction: transaction });
+  const command = { actorId: edited.actor, clientId: f.clientId, subscriptionId: f.subscriptionId, idempotencyKey: randomUUID(),
+    action: "update_package_template", now: days(at, 2), payload: {
+      coreLines: edited.payload.base, addonLines: [], planDays: 45, expectedTemplateVersion: 2,
+      compositionConstraint: { kind: "plan_days", value: 45 },
+    } };
+  const preview = await commands.preview(command);
+  expect(preview).toMatchObject({ status: "previewed", newTotalMinor: 1400 });
+  const payload = { ...command.payload, acceptedQuoteHash: String(preview.quoteHash) };
+  const applied = await commands.apply({ ...command, payload });
+  expect(applied).toMatchObject({ status: "applied", templateVersion: 3 });
+  expect((await runtime.query(`SELECT id,event_type,payload FROM public.subscription_events WHERE subscription_id=$1
+    AND event_type IN ('subscription.starter_graduated','subscription.customer_self_service.update_package_template')
+    ORDER BY occurred_at DESC,id DESC LIMIT 1`, [f.subscriptionId])).rows).toEqual([{
+    id: applied.eventId, event_type: "subscription.customer_self_service.update_package_template",
+    payload: { action: command.action, payload,
+      priceAgreementPolicy: { kind: "lock_until_edit", proration: "none", cycleEffect: "future_unlocked_cycles_only" } },
+  }]);
+  expect((await runtime.query("SELECT status,next_cycle_at=$2::timestamptz AS same,cadence_days FROM public.subscriptions WHERE id=$1",
+    [f.subscriptionId, anchor])).rows).toEqual([{ status: "active", same: true, cadence_days: 45 }]);
+  const d = await driver(f.subscriptionId), snapshot = await d.input.store.buildCycleSnapshots(d.due);
+  expect(snapshot.pricingSnapshot).toMatchObject({ productSubtotalAmountMinor: 1400, discountAmountMinor: 50,
+    totalAmountMinor: 1350, shippingAmountMinor: 0, linePricing });
+  expect((await api.runOneAutomaticSubscriptionRenewal(d.input, d.due, now)).status).toBe("succeeded");
+  expect(d.execute).toHaveBeenCalledOnce(); expect(d.execute.mock.calls[0][0].amountMinor).toBe(1350);
+  const operation = (await d.input.store.readRenewal(d.codec.identity(snapshot)))!;
+  expect(operation.cycleSnapshot.pricingSnapshot).toEqual(snapshot.pricingSnapshot);
+  expect((await runtime.query("SELECT total_amount_minor FROM public.commerce_orders WHERE id=$1", [operation.orderId])).rows)
+    .toEqual([{ total_amount_minor: "1350" }]);
+}, 30_000);
+
+it.each([28, 21])("a real classic edit cancels full graduation and only normalizes a retained starter cadence (%i)", async cadence => {
+  const f = await active(), d = await nextDelivery(f);
+  await classicEdit(f, { quantity: 6, unit: 137, planDays: cadence, requestedAt: days(now, 1), list: 1038 });
+  const snapshot = await d.input.store.buildCycleSnapshots(d.due);
+  expect(snapshot.templateSnapshot).toMatchObject({ version: cadence === 28 ? 3 : 2, cadenceDays: cadence === 28 ? 30 : 21,
+    lines: [{ quantity: 6, unitAmountMinor: 137 }] });
+  expect((await runtime.query("SELECT event_type FROM public.subscription_events WHERE subscription_id=$1 AND event_type LIKE 'subscription.starter_%'", [f.subscriptionId])).rows)
+    .toEqual(cadence === 28 ? [{ event_type: "subscription.starter_cadence_normalized" }] : []);
+}, 30_000);
+
+it("admits an edit before cutoff, refuses a not-due claim and late edit, and freezes only the edited terms", async () => {
+  const f = await active(), d = await driver(f.subscriptionId), due = d.due.scheduledAt;
+  const cutoff = new Date(Date.parse(due) - 72 * 3_600_000 - 1).toISOString();
+  const edited = await classicEdit(f, { quantity: 6, unit: 137, planDays: 28, requestedAt: cutoff, list: 1038 });
+  const snapshot = await d.input.store.buildCycleSnapshots(d.due);
+  expect(snapshot.templateSnapshot).toMatchObject({ version: 2, lines: [{ quantity: 6, unitAmountMinor: 137 }] });
+  const beforeClaim = await allPublicRows(admin);
+  await expect(d.input.store.claimDue({ snapshot, workerId: "not-due-editor-proof", now: new Date(Date.parse(due) - 1).toISOString() }))
+    .rejects.toThrow("subscription_renewal_claim_not_due");
+  expect(await allPublicRows(admin)).toEqual(beforeClaim);
+  const claimed = await d.input.store.claimDue({ snapshot, workerId: "due-editor-proof", now: due });
+  const reservation = await d.input.inventory.reserve({ operationId: claimed.operationId, claimToken: claimed.claimToken, now: due });
+  expect(reservation).toMatchObject({ reserved: true });
+  await d.input.settlement.prepareRenewal({ operationId: claimed.operationId, claimToken: claimed.claimToken, now: due });
+  const prepared = await d.input.store.readRenewal(d.codec.identity(snapshot)), beforeLate = await allPublicRows(admin);
+  await expect(rpc("subscription_package_edit_apply", [edited.actor, f.clientId, randomUUID(), f.subscriptionId,
+    { ...edited.payload, expectedTemplateVersion: 2 }, due])).rejects.toThrow("subscription_edit_window_closed");
+  expect(await allPublicRows(admin)).toEqual(beforeLate);
+  expect(await d.input.store.readRenewal(d.codec.identity(snapshot))).toEqual(prepared);
+  expect(await d.input.store.buildCycleSnapshots(d.due)).toEqual(prepared!.cycleSnapshot);
 }, 30_000);

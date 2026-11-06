@@ -52,6 +52,46 @@ before enabling database adapters. It is not evidence of schema compatibility.
 
 ## Retained renewal storage
 
+The package-editor forward adds an opaque nullable object constraint on
+`subscriptions` and the owner-only, RLS-enabled `subscription_quote_previews`
+ledger. Service-only definers record, take and accept a preview and apply future
+package terms; browser roles have no execution or table access. The eight new
+functions leave existing command routines unchanged. An accepted preview retains
+its request, quote, totals, command key and subscription-event reference. The
+accepted event also carries complete renewal `linePricing`; no per-line agreement
+column or existing cycle/operation snapshot is rewritten.
+
+Quote previews are classified `retain` for client absorption: a preview exists
+only for a subscription its client owns, and subscriptions already block
+absorption, so absorption never reads the owner-only preview table and refuses
+through the subscription instead. Connected native-store capture owns
+these rows, and restore inserts them after clients, subscriptions and subscription
+events. Preview pruning retains accepted history and deletes at most 500
+unaccepted rows expired more than seven days before the request time. The minimum
+base-unit setting is supplied by the host installation, never seeded by this
+forward. The [subscription contract](ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
+owns quote composition, no-op ordering and renewal behavior. SQL installation
+still requires its separate reviewed forward admission; source presence alone
+is not an admitted or published installation chain.
+
+The subsequent `20261104110000_subscription_exact_levers.sql` forward creates
+only `subscription_line_edit_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz)`.
+It reuses the preview ledger and receipts, adds no table, column, data statement
+or replacement function, pins `pg_catalog, pg_temp`, revokes PUBLIC/browser
+execution and grants execution only to `service_role`. Its seven actions retain
+their separate no-op and line-identity semantics. Portion acceptance binds the
+configured mode/factor pair to the preview and refuses a mismatched selection.
+Base mix independently checks
+its fixed total; plan and portion edits replace only base rows and preserve
+add-on IDs. Every real edit rewrites future renewal term lines and stores full
+accepted pricing in its action event, then accepts the preview and records the
+receipt atomically. Existing cycles, arrivals and frozen renewal snapshots are
+not rewritten. The current selected installation plans append one unit after
+the shared editor, with measured current inventories; issued prefixes remain
+unchanged. See the [subscription contract](ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
+for host sizing configuration and API limits.
+
+
 The account-choice forward also creates the service-only
 `subscription_register_renewal_purchase_with_shipping(uuid,jsonb)` and STABLE
 `subscription_renewal_purchase_terms(uuid)` definers. Both pin `pg_catalog,
@@ -188,6 +228,10 @@ delivery receipts are also retained. Cases precede their notifications during
 restore, and accepted delivery evidence keeps its original idempotency key.
 The [notice witness](../../tests/postgres/m19NoticeIsolation.test.ts) compares all
 four row sets after real connected capture/restore and repeats the restore.
+
+Connected native restore refuses any subscription whose `configured_offer_version`
+is not `classic` with `unsupported_table` for `subscriptions` before any target
+data write; sized offer bindings have no transfer mapping in this preview.
 
 Channel source captures, purchased-line claims and pull pages have no transfer
 mapping in this profile. Native restore imports ordinary outbox rows through the
@@ -1814,6 +1858,20 @@ separate from both this probe and application-file upgrades.
 
 ## Compatibility lifecycle
 
+The classic package-editor forward appends nullable subscription composition
+storage, a new preview ledger and eight created functions. It replaces no served
+command routine and rewrites no existing agreement, cycle or operation snapshot.
+The canonical manifest and projected package SQL retain identical bytes for all
+selected plans; each installation shape needs its separately measured catalogue
+identity. Apply this additive schema before upgrading native account reads or
+composing the editor. Old generic commands keep their existing contract.
+Preview rows retain linked actor/client and accepted-event references, stay
+unread by client absorption (their subscriptions block it) and travel through
+the finite connected-store profile. They
+have no erasure path yet. [Retained storage](#retained-renewal-storage) owns their
+privilege, pruning, acceptance and renewal-pricing boundaries.
+
+
 The opt-in [complete account consent choices](#complete-account-consent-choices)
 forward adds a distinct actor API and expands only the native sync purpose CHECK.
 It neither replaces the served newsletter routines nor backfills grants. Hosts
@@ -2066,8 +2124,9 @@ client, but that table had row security and no runtime access at all.
 One shared completion tail closes these gaps. It is the approved seventeenth
 qualified identity. Both qualified plans select it once, after their issued
 tails and at the same position among shared units, so later shared forwards
-still append identically. The qualified plan now has 103 units and the
-restricted plan 102; legacy is unchanged.
+still append identically. With the package editor and exact-lever suffixes,
+the qualified plan has 105 units, the restricted plan 104 and legacy 100.
+The completion tail itself adds no legacy unit.
 
 The tail must follow the delivery destination forward. Its guard refuses the
 whole unit unless that table exists in its created state: owned by the

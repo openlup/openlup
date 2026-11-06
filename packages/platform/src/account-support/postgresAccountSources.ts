@@ -57,7 +57,7 @@ export function createPostgresAccountReadSources<Extension, ChargeEvidence = Acc
     async readSubscriptionRows(id, limit) {
       await requireClient(id);
       if (!Number.isInteger(limit) || limit < 1 || limit > 50) throw new Error("native_account_subscription_limit_invalid");
-      return rows(`SELECT s.*,CASE WHEN EXISTS(SELECT 1 FROM public.subscription_events event
+      return rows(`SELECT s.*,s.composition_constraint AS size_constraint,CASE WHEN EXISTS(SELECT 1 FROM public.subscription_events event
         WHERE event.subscription_id=s.id AND event.event_type='subscription.customer_self_service.cancel' AND event.occurred_at=s.ended_at
         AND COALESCE(event.payload#>>'{payload,actorKind}','customer')='customer')
         THEN 'customer_self_service' ELSE NULL END AS cancellation_source

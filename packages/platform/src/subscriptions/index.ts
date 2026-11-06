@@ -53,3 +53,28 @@ export { subscriptionLifecycleTemplate, createSubscriptionLifecycleMessages } fr
 export { createPostgresLifecycleMessages, type NativeLifecycleMessagesOptions, type NativeLifecycleNotice } from "./postgresLifecycleMessages.js";
 export { createSubscriptionCommandExamples } from "./commandExamples.js";
 export { createSubscriptionServices } from "./services.js";
+export { createClassicPackageRepricer, hashPackageEditQuote } from "./classicPackageQuote.js";
+export { createPostgresPackageEditReadPort } from "./packageEditRead.js";
+export { createPostgresPackageEditor } from "./packageEditor.js";
+export { createPostgresSizedEditor, createOfferDispatchedSubscriptionEditor, mapSizedEditError } from "./sizedEditor.js";
+export { createSizedParcelProjection } from "./sizedParcelProjection.js";
+export type { SizedParcelProjectionPorts } from "./sizedParcelProjection.js";
+export { createSizedEditContextScope, readSizedEditContext, sizedEditPhase, isSizedOptIn, normalizeSizedEdit } from "./sizedEditContext.js";
+export { createSizedCompositionRules } from "./sizedComposition.js";
+export { quoteSizedEdit, selectSizedAgreements, sizedCandidateCompatibility } from "./sizedEditQuote.js";
+export { splitBySubscriptionAgreement, agreedSubscriptionTotal, mergeSubscriptionAgreedQuote } from "./agreedPlanQuote.js";
+export type { SizedEditorOptions, SizedHostPorts, SizedSubjectFacts, SizedCatalogFact } from "./sizedEditPorts.js";
+export { SIZED_PARCEL_LEVER_KIND } from "./sizedParcelLever.js";
+export type { SizedParcelLeverKind, SizedEditAction, SizedEditRequest, SizedEditPhase, SizedAgreedLine, SizedEditContext, SizedEditPolicy,
+  SizedPricedLine, SizedEditQuote, SizedEditPreview, SizedEditApplyResult, SizedQuoteLine, SizedRecurringQuote, SizedQuoteRequest } from "./contracts/sizedEdit.js";
+export { mapPackageEditError } from "./packageEditErrors.js";
+export type { PackageEditErrorMapping } from "./packageEditErrors.js";
+export type { PackageEditMoney, PackageEditLine, PackageEditQuoteLine, PackageEditPricedLine, PackageEditRequest, PackageEditQuote,
+  PackageEditSubscription, PackageEditCurrentLine, PackageEditConstraintMapper, PackageEditReadPort, PackageEditQuotePorts,
+  PackageEditLimits, PackageEditorOptions, PackageEditActor, PackageEditBlockedReason, PackageEditPreview, PackageEditApplyResult } from "./packageEditContracts.js";
+
+export type { ExactSubscriptionEditAction, ExactSubscriptionEditRequest, SubscriptionEditRequest, ExactSubscriptionEditPreview,
+  ExactSubscriptionEditApplyResult, ExactSubscriptionEditPricedLine, ExactSubscriptionEditQuote, SubscriptionPortionModes } from "./contracts/exactEdit.js";
+export { createExactSubscriptionRepricer } from "./exactEditQuote.js";
+export { createSubscriptionSizingRules, apportionSubscriptionUnits } from "./subscriptionSizing.js";
+export type { SubscriptionSizingUnit, SubscriptionSizingPolicy } from "./subscriptionSizing.js";

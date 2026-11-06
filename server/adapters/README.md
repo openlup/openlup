@@ -120,6 +120,15 @@ hosted endpoint.
 
 ## Native retained-store transfer preparation
 
+The finite native profile includes open and accepted `subscription_quote_previews`.
+Capture retains their request, quote, totals and acceptance references under the
+existing cumulative row/byte limits. Restore inserts clients, subscriptions and
+subscription events before previews, preserving the accepted event foreign key.
+The [connected-store witness](../../tests/postgres/connectedStoreTransfer.test.ts)
+compares both preview states and repeats restore without changing their identity.
+These linked pricing records share the profile's existing erasure-coverage limit.
+
+
 Native destination transfer includes commerce_destinations (full immutable postal addresses and contact phone numbers), commerce_destination_bindings (scoped owner/destination references),
 subscription_command_receipts and the support command/audit ledgers. Restore
 parents precede documents/bindings and ledger actors. Owner snapshot authority,
@@ -346,8 +355,10 @@ constraints and source alignment policy last. A named historical hold-trigger
 correction removes only the fully checked notification inserted in that
 transaction when its deterministic source notification was already pruned.
 The [explicit connected-native trigger decision](../../docs/platform/plans/oss-m14-existing-store-transfer.md#connected-native-candidate-explicit-trigger-boundary-2026-10-28)
-bounds these seven existing triggers separately from the generic transport,
-which still refuses every enabled user INSERT trigger. Complete qualified
+bounds the historical triggers separately from the generic transport,
+which still refuses every enabled user INSERT trigger. Classic subscriptions and
+their events use the locked owner path for the offer-binding triggers; sized
+bindings refuse before target data writes. Complete qualified
 definitions, functions and roles are checked after table locks and before import;
 a known name alone never establishes safe behavior. A retained source event or
 pre-existing target obligation is ineligible for compensation.
@@ -359,6 +370,9 @@ one disposable managed PostgreSQL snapshot across non-system schemas, selecting
 Auth identity metadata without credentials. A capture login that row security
 would filter refuses. Its finite typed projection maps
 eligible business obligations into the existing connected restore packet.
+The pinned managed source has no package-editor composition constraint; carried
+subscriptions project the target's nullable `composition_constraint` as NULL
+and `configured_offer_version` as `classic`.
 Full managed audit and business history remains in the operator's source
 backup or snapshot, under the operator's own access, retention and erasure
 controls. The existing `retained-history` disposition records history with no

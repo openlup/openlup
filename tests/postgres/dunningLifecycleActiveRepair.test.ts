@@ -43,7 +43,7 @@ function runner(pool: Pool, root = process.cwd()) {
 }
 
 async function snapshot(connection: Pool | PoolClient) {
-  const result: Record<string, unknown> = {};
+  const result: Record<string, { row: Record<string, unknown> }[]> = {};
   for (const table of ["subscriptions", "subscription_cycles", "subscription_dunning_cases", "subscription_dunning_notifications", "subscription_events", "subscription_pause_windows"]) {
     result[table] = (await connection.query(`SELECT to_jsonb(t) AS row FROM public.${table} t ORDER BY to_jsonb(t)::text`)).rows;
   }
@@ -99,6 +99,8 @@ describe("real PostgreSQL portable dunning forward", () => {
     await upgrade.query(`INSERT INTO public.subscription_dunning_cases(id,subscription_id,cycle_id,client_id,retry_attempt,next_retry_at,idempotency_key)
       VALUES ($1,$2,$3,$4,4,$5,'synthetic:last-rung')`, [caseId, subscriptionId, cycleId, clientId, at]);
     prefixRows = await snapshot(upgrade);
+    // Later editor forwards add the nullable constraint and the classic offer default.
+    prefixRows.subscriptions = prefixRows.subscriptions.map(({ row }) => ({ row: { ...row, composition_constraint: null, configured_offer_version: "classic" } }));
     prefixAcl = await privileges(upgrade);
     upgradeApplied = (await runner(upgrade).apply()).applied;
     freshApplied = (await runner(fresh).apply()).applied;

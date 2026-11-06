@@ -250,13 +250,24 @@ describe("canonical qualified migration selection", () => {
     if (current.schemaVersion !== 3) throw new Error("current qualified source must be schema 3");
     const content = readFileSync(`scripts/fixtures/reviewed-m14-qualified/${QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE}`, "utf8");
     const lock = { file: QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE, sha256: sha256(content) };
-    const migrations = readPlatformMigrations(process.cwd()).migrations;
-    expect(migrations.find(({ file }) => file === lock.file)?.content).toBe(content);
+    const currentMigrations = readPlatformMigrations(process.cwd()).migrations;
+    expect(currentMigrations.find(({ file }) => file === lock.file)?.content).toBe(content);
     expect(isQualifiedPlatformMigrationPath(lock.file)).toBe(true);
-    // The active manifest selects the tail last in both plans; its predecessor is the same manifest without it.
+    expect(evaluatePlatformMigrationManifest({ manifest: current, migrations: currentMigrations })).toEqual([]);
+    // Pin the completion's introduction before the current shared suffix, just
+    // as the earlier generation fixtures pin their issued tails above.
     const next = structuredClone(current);
+    const lockIndex = next.qualified.forward.findIndex(({ file }) => file === lock.file);
+    expect(lockIndex).toBeGreaterThan(0);
+    const suffix = next.qualified.forward.slice(lockIndex + 1);
+    const suffixFiles = new Set(suffix.map(({ file }) => file));
+    for (const plan of [next, next.qualified, next.qualifiedAdmin]) {
+      expect(plan.forward.filter(({ file }) => suffixFiles.has(file))).toEqual(suffix);
+      plan.forward = plan.forward.filter(({ file }) => !suffixFiles.has(file));
+    }
+    const migrations = currentMigrations.filter(({ file }) => !suffixFiles.has(file));
     expect([next.qualified.forward.at(-1), next.qualifiedAdmin.forward.at(-1)]).toEqual([lock, lock]);
-    const previous = structuredClone(current);
+    const previous = structuredClone(next);
     for (const plan of [previous.qualified, previous.qualifiedAdmin]) plan.forward = plan.forward.filter(({ file }) => file !== lock.file);
     expect(evaluatePlatformMigrationManifest({ manifest: next, migrations })).toEqual([]);
     expect(evaluatePlatformMigrationManifestHistory(previous, next, [lock.file])).toEqual([]);

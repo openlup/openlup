@@ -439,6 +439,23 @@ beforeAll(async () => {
       } finally { await seeded.changeCondition(); }
     }
   }
+  // Keep both an accepted agreement and an open preview, including the event FK.
+  const previewActor = randomUUID();
+  const previewVersion = Number((await source.owner.query("SELECT template_version FROM public.subscriptions WHERE id=$1", [graph.subscription])).rows[0].template_version);
+  const recordPreview = async (hash: string) => (await source.runtime.query(
+    "SELECT public.subscription_quote_preview_record($1,$2,$3,'update_package_template',$4,$5,$6,$7,$8,$9,$10) AS result",
+    [previewActor, graph.client, graph.subscription, hash, previewVersion, "2026-11-06T12:00:00Z",
+      { planDays: 28, nominalPlanDays: 28, compositionConstraint: { kind: "plan_days", value: 28 } },
+      { baseLines: [], addonLines: [] }, { currentRecurringPrice: { amountMinor: 100, currency: "XXX" } },
+      "2026-11-05T12:00:00Z"])).rows[0].result;
+  const acceptedPreview = await recordPreview("c".repeat(64));
+  const editEvent = (await source.owner.query(`INSERT INTO public.subscription_events(subscription_id,event_type,idempotency_key,payload)
+    VALUES($1,'subscription.customer_self_service.update_package_template','retained-package-edit','{"linePricing":[]}') RETURNING id`, [graph.subscription])).rows[0].id;
+  await source.runtime.query("SELECT public.subscription_quote_preview_mark_accepted($1,'retained-package-key',$2,'2026-11-05T12:00:00Z')", [acceptedPreview.id, editEvent]);
+  await recordPreview("d".repeat(64));
+  // Capture the new event's delivery receipt as well, so later dispatcher replay
+  // does not create a new obligation on an otherwise identical restored graph.
+  await dispatchNotices(source);
   packet = await capture(source.owner, "owned-existing-source");
 }, postgresSetupTimeoutMs);
 // Each case owns a fresh qualified target and can run without another case.
@@ -1379,3 +1396,94 @@ try {
     console.info("Checkout transfer retained tables:", connectedNativeStoreTables.length);
   } finally { await rm(consumer, { recursive: true, force: true }); }
 }, 60_000);
+
+// Local no-coverage case: 8.141 s; fourfold 32.564 s rounds to a 40 s deadline.
+it("round-trips open and accepted package previews with their event and subscription parents", async () => {
+  const captured = packet.owned.find(table => table.table === "subscription_quote_previews");
+  expect(captured?.rows).toHaveLength(2);
+  expect(captured!.rows.map(row => JSON.parse(row).status).sort()).toEqual(["accepted", "previewed"]);
+  await restore();
+  expect((await census(target.owner)).subscription_quote_previews).toEqual((await census(source.owner)).subscription_quote_previews);
+  expect((await target.owner.query(`SELECT q.status,e.event_type,s.client_id=q.client_id AS owned
+    FROM public.subscription_quote_previews q JOIN public.subscriptions s ON s.id=q.subscription_id
+    LEFT JOIN public.subscription_events e ON e.id=q.accepted_event_id ORDER BY q.status`)).rows)
+    .toEqual([{ status: "accepted", event_type: "subscription.customer_self_service.update_package_template", owned: true },
+      { status: "previewed", event_type: null, owned: true }]);
+  const beforeReplay = await census(target.owner);
+  expect((await restore()).replayed).toBe(true);
+  expect(await census(target.owner)).toEqual(beforeReplay);
+}, 40_000);
+
+
+it("refuses a real sized opt-in before target writes while the classic source still transfers", async () => {
+  const sizedSource = await installation("sized-source");
+  const clientId = randomUUID(), subscriptionId = randomUUID(), actorId = randomUUID(), sku = randomUUID(), priceList = randomUUID();
+  const at = "2026-11-06T12:00:00.000Z", next = "2026-12-20T12:00:00.000Z";
+  await sizedSource.owner.query("INSERT INTO public.clients(id,email,principal_id) VALUES($1,'sized@example.invalid',$2)", [clientId, actorId]);
+  await sizedSource.owner.query("INSERT INTO public.catalog_products(id,slug,name) VALUES($1,'sized-refill','Refill')", [sku]);
+  await sizedSource.owner.query("INSERT INTO public.catalog_skus(id,product_id,sku,title,sellable_in_subscription) VALUES($1,$1,$2,'Refill',true)", [sku, sku]);
+  await sizedSource.owner.query("INSERT INTO public.price_lists(id,name,region_code,currency) VALUES($1,'Configured','AA','XXX')", [priceList]);
+  await sizedSource.owner.query(`INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at,currency_code,price_list_id,composition_constraint)
+    VALUES($1,$2,20,$3,'XXX',$4,'{"kind":"unit_count","value":4,"dailyNeed":4}')`, [subscriptionId, clientId, next, priceList]);
+  await sizedSource.owner.query(`INSERT INTO public.subscription_renewal_terms(subscription_id,currency_code,stock_source_key,settlement_channel_key,unattended_charge_authorized_at,authorization_ref)
+    VALUES($1,'XXX','synthetic-stock','sandbox',$2,'sandbox-authorization')`, [subscriptionId, at]);
+  await sizedSource.owner.query("INSERT INTO public.subscription_method_states(subscription_id,health_state) VALUES($1,'healthy')", [subscriptionId]);
+  await sizedSource.owner.query(`INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,unit_price_minor,currency_code)
+    VALUES($1,$2,4,0,100,'XXX')`, [subscriptionId, sku]);
+  await sizedSource.owner.query("INSERT INTO public.subscription_renewal_term_lines(subscription_id,line_ordinal,sku,quantity,unit_amount_minor) VALUES($1,1,$2,4,100)", [subscriptionId, sku]);
+  const money = (amountMinor: number) => ({ amountMinor, currency: "XXX" });
+  const quoteLine: renewal.SizedQuoteLine = { sku, productSlug: "sized-refill", quantity: 4, unitPriceGross: money(100), lineSubtotalGross: money(400),
+    tax: { included: true, country: "AA", category: "standard", vatRateBps: 0, legalBasis: "synthetic", netAmount: money(400), vatAmount: money(0), grossAmount: money(400) } };
+  await sizedSource.owner.query(`INSERT INTO public.subscription_events(subscription_id,event_type,idempotency_key,payload,occurred_at)
+    VALUES($1,'subscription.starter_graduated',$2,$3,$4)`, [subscriptionId, randomUUID(),
+    { linePricing: [{ sku, quantity: 4, unitAmountMinor: 100, isAddon: false, quoteLine }] }, at]);
+  const classic = await capture(sizedSource.owner, "classic-before-opt-in");
+  const classicRows = await census(sizedSource.owner);
+  // This synthetic host has no mutable subject facts; the production preview
+  // and apply still execute with the restricted runtime on one transaction.
+  const editor = renewal.createPostgresSizedEditor({
+    policy: { minimumCoreUnits: 4, maximumCoreLines: 3, maximumAddonLines: 5, maximumQuantity: 12,
+      allowedCadences: [20], maximumExclusions: 8, maximumCatalogExclusions: 16, fixedThroughCycle: 2, graduationCycle: 3,
+      portionModes: { full: { mode: "complete", factor: 1 }, reduced: { mode: "partial", factor: 0.5 } } },
+    now: () => at,
+    async withTransaction(work) {
+      const db = await sizedSource.runtime.connect();
+      try { await db.query("BEGIN"); const result = await work(db); await db.query("COMMIT"); return result; }
+      catch (error) { await db.query("ROLLBACK"); throw error; } finally { db.release(); }
+    },
+    async readFacts() { return { subscriptionId, clientId, subjectRef: subscriptionId, exclusions: [], snapshot: {} }; },
+    async resolveOptInNeed() { return { dailyNeed: 4, snapshot: {} }; },
+    async assertCurrentFacts() {},
+    async readCatalog() { return [{ variantId: sku, sku, groupId: sku, isAddon: false, sellable: true, physicalSize: 250, demandPerUnit: 20,
+      documentRevisionId: sku, documentDigest: "a".repeat(64), verified: true, exclusions: [], sellableNow: 12 }]; },
+    async proposePortion({ current }) { return current.map(line => ({ variantId: line.variantId, qty: line.qty })); },
+    quotePort: { async createServerAuthoritativeQuote() { return { quote: { currency: "XXX", taxIncluded: true, lines: [quoteLine], discounts: [],
+      subtotalGross: money(400), discountTotalGross: money(0), totalGross: money(400), netTotal: money(400), taxTotal: money(0) } }; } },
+  });
+  const actor = { clientId, actorId };
+  const request: renewal.SizedEditRequest = { subscriptionId, action: "resize_bundle", cadenceDays: 20,
+    compositionConstraint: { kind: "unit_count", value: 4, dailyNeed: 4 },
+    resizeLever: { kind: renewal.SIZED_PARCEL_LEVER_KIND, value: { coreLines: [{ variantId: sku, qty: 4 }], optInToSized: true } } };
+  const preview = await editor.preview(actor, request);
+  expect(preview.preview.canApply).toBe(true);
+  expect((await editor.apply(actor, randomUUID(), { ...request, expectedTemplateVersion: preview.preview.templateVersion, acceptedQuoteHash: preview.quoteHash })).status).toBe("applied");
+  expect((await sizedSource.owner.query("SELECT configured_offer_version,status,next_cycle_at FROM public.subscriptions WHERE id=$1", [subscriptionId])).rows)
+    .toEqual([{ configured_offer_version: "sized.v1", status: "active", next_cycle_at: new Date(next) }]);
+  const sized = await capture(sizedSource.owner, "sized-after-opt-in"), before = await census(target.owner);
+  // Observe the boundary as well as rollback: no retained-data SQL may start.
+  const connect = target.owner.connect.bind(target.owner);
+  const observed = { async connect() {
+    const db = await connect();
+    return { async query(sql: string, values?: unknown[]) {
+      if (/^\s*(INSERT|UPDATE|DELETE)\b/iu.test(sql) || /public\.(client_import_retained_row|subscription_cycle_import_retained_row)\(/u.test(sql)) {
+        throw new Error("sized refusal attempted a target data write");
+      }
+      return db.query(sql, values);
+    }, release: (destroy?: boolean) => db.release(destroy) };
+  } } as unknown as Pool;
+  await expect(restoreConnectedNativeStore({ owner: observed, installation: selection, packet: sized, freshTarget: pristine }))
+    .rejects.toMatchObject({ code: "unsupported_table", table: "subscriptions" });
+  expect(await census(target.owner)).toEqual(before);
+  expect((await restore(classic)).replayed).toBe(false);
+  expect(await census(target.owner)).toEqual(classicRows);
+});

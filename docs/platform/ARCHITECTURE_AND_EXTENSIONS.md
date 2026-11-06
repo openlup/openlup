@@ -1825,6 +1825,150 @@ reference composition and activation remain host choices.
 
 ## Subscription contracts
 
+The opt-in sized editor is `createPostgresSizedEditor`, composed through
+`createOfferDispatchedSubscriptionEditor` alongside the existing classic binding.
+Its agreed-plan policy preserves complete quote lines for unchanged exact
+SKU/count/add-on matches and quotes only changed lines. A changed quantity
+acquires a price for the entire resulting line; a cadence-only edit preserves
+counts and agreements. Renewal reads sized events alongside the other pricing
+events, so future orders retain the accepted amounts and quote evidence.
+
+The host owns authenticated identity, stored need derivation on opt-in,
+exclusion precedence and equality, verified catalogue documents, stock reads and
+portion proposal arithmetic. Ordinary edits use frozen `dailyNeed`, never fresh
+profile recommendations. `readFacts` runs at candidate discovery, preview and
+new apply. For the five sized bundle/mix/plan/portion commands,
+`assertCurrentFacts` must lock and reread the host's owned subject/exclusion
+rows, optional opt-in need, and all selected SKU catalogue facts on the supplied
+transaction connection before SQL apply. It compares those reads with the apply
+quote's evidence; locks hold until commit. Catalogue evidence includes variant,
+SKU and group identity, add-on/sellable flags, document revision and digest,
+verification, physical size, demand per unit, exclusion keys and `sellableNow`.
+Selected facts are ordered by canonical variant UUID and exclusion keys are
+sorted. The preview ledger nests them in `subjectFacts.catalogFacts`, so the
+existing SQL subject-evidence equality check refuses preview/apply drift even
+when money and frozen lines are unchanged. Stock is reread and compared by this
+host check; this is evidence equality, not a stock reservation. Individual add-on
+edits retain the existing exact writer's transaction boundary. Missing facts refuse. The platform owns no subject table.
+Candidate compatibility is advisory; server policy allows retained/reduced
+conflicting lines while refusing new/increased conflicts. Explicit plan-length
+edits reject retained conflicts too. Withdrawn lines require exact retained
+quantity, or removal/replacement. New/increased quantities must fit absolute
+sellable stock; zero or unknown stock does not remove an existing agreement.
+
+Typed `SizedEditPolicy` configures cadence choices, quantities, selected groups,
+portion modes/factors and introductory cutoffs. The sized minimum is composition
+policy; the classic editor retains its separate SQL minimum below.
+For an introductory marker, SQL requires `subscription_sized_intro_phase`
+with JSON integer fields `fixedThroughCycle` and `graduationCycle`, matching the
+host policy. Missing or malformed configuration refuses. These settings carry
+adopter values; the package installs none.
+
+The sized SQL forward adds `configured_offer_version` and service-only
+context/apply functions. Classic stays classic on entry, preview or abandonment.
+Even unchanged contents require priced review and explicit `resize_bundle`
+opt-in consent. Acceptance commits the future template, full merged pricing,
+one event, one receipt and the sized binding atomically. Direct sized insertion,
+direct binding updates and reverse changes refuse through the binding trigger.
+The accepted event and preview are joined through the native accepted event ID
+and command key identity. A completed key replays before mutable host/price reads;
+a no-op creates no package-change event or notice. Active status, due anchor,
+existing cycles, orders and delivery alignment are preserved.
+
+Fixed and graduation-pending introductory subscriptions cannot opt in. Frozen
+graduation dispatch/normalization is available for host fixtures, but native
+sized introductory acquisition is not supplied: native sized subscriptions arise
+only through accepted opt-in. New/increased and opted-in core SKUs are checked
+for current active/subscription-sellable state inside SQL apply. Catalogue
+publication-head/membership fencing remains a later catalogue boundary.
+
+`createSizedParcelProjection` supports the existing paid-email parcel-note hook.
+The host supplies frozen order/cycle correlation and exact retained physical
+identity; localization stays with that host. Unprovable facts omit the note.
+The projection describes item quantities and frozen cadence, never packing counts.
+These APIs supply no account UI, acquisition route, deployment or release claim.
+
+The opt-in classic package editor uses `createClassicPackageRepricer` and
+`createPostgresPackageEditor` from `@openlup/platform/subscriptions`. The host
+supplies authenticated actor/client ownership, request bounds, the existing
+server-authoritative quote engine and `CompositionRulesPort`. Compose that engine
+with the current price/catalogue authorities, no promotion or settings ports and
+empty automatic/code promotion results. Quote the complete desired base/add-on
+set in subscription mode; changing plan days never resizes explicit quantities.
+The host maps its opaque composition constraint and nominal plan. An unchanged
+nominal plan preserves an extended delivery cadence. A retired current line uses
+its frozen renewal amount only for the comparison baseline; retained desired
+lines must still resolve in the subscription-sellable catalogue.
+
+Preview has no command key. It records a content-keyed, one-use quote with a
+15-minute expiry, current/new totals, ordered line evidence, the host's quoted
+composition constraint and template version. Apply persists that accepted
+constraint exactly, including null; plan days do not overwrite opaque host data.
+Apply uses its own key. A completed key replays its original result before
+repricing or configuration reads. A fresh key requires repricing and hash
+equality, then the locked SQL checks and drift comparison. The configured minimum is a strict positive integer
+in `commerce_settings.value_text` at `subscription_minimum_base_units`; both the
+repricer and direct SQL apply refuse missing or malformed configuration. A no-op
+has no event, notice or preview acceptance. Existing generic commands retain
+their separate contracts. `mapPackageEditError` distinguishes customer request
+refusals, durable apply conflicts and generic upstream failures; raw preview
+ledger failures remain upstream failures.
+
+The package-editor forward must be admitted and installed through the selected
+migration plan before this API is composed. It writes future line/cadence terms
+and the accepted full `linePricing` on its existing package-change event. Renewal
+reads the newest event that carries a `linePricing` array among graduation and
+classic and exact package edits, ordered by occurrence time and event ID, falling back to
+retained purchase pricing. Frozen renewal operations keep their existing snapshot. Package editing
+never moves the due anchor, writes an arrival or interrupts active service.
+
+The same editor binding accepts `ExactSubscriptionEditRequest` for seven separate
+API levers. These requests include their `action`; the classic request retains
+its existing shape and result type. There are no supplied portal controls or
+starter host routes for these levers.
+
+| Action | Future-template effect |
+| --- | --- |
+| `swap_base_line` | Substitute the requested variant in place, preserving ID, quantity, add-on flag and sort order; refuse an existing target or missing source. |
+| `add_addon` | Append a new add-on with a newly assigned ID. |
+| `remove_addon` | Remove an existing add-on, including a retired one; missing add-ons refuse. |
+| `update_addon_quantity` | Change the existing add-on quantity without replacing its ID. |
+| `update_plan_length` | Resize the current base selection through the host composition port and set cadence to the requested plan days. |
+| `update_base_mix` | Replace the base set at the same total base-unit count, checked in both the repricer and SQL. |
+| `update_portion` | Resize at the current cadence and patch the configured mode/factor; only reduced mode requires a strict unit reduction. Returning to full is permitted. |
+
+Base-set edits replace base IDs and preserve add-on IDs, relocking the complete
+remaining template at current recurring prices. Individual line edits preserve
+the other IDs. Swap-to-self, unchanged add-on quantity, and unchanged plan/mix/
+portion sets are SQL no-ops after the ordinary ownership/payment/version guards
+and before preview acceptance or the locked-cycle check. Missing add-on removal
+is a refusal. A reduced-mode request can fail its repricer before SQL's same-mode
+no-op. Exact previews return hash/expiry and persist their ordered pricing
+evidence with empty totals; they do not attach the classic price summary.
+An exact plan change persists the accepted quote’s composition constraint. The
+host sizing policy changes its `value` only for a plan-length constraint; a
+unit-count constraint keeps its value and other host data as cadence changes.
+
+`createExactSubscriptionRepricer` uses the recurring-only quote engine and the
+existing `CompositionRulesPort.resizeComposition` seam. The optional
+`createSubscriptionSizingRules` implementation accepts host daily-need facts,
+unit demand/capacity, quantity policy and `SubscriptionPortionModes` configuration.
+It preserves selection, apportions proportions with deterministic remainder,
+transfers units toward demand coverage and refuses unservable results. Neither
+mode factors nor a vertical demand formula are platform constants. Quantity
+floors remain with the applicable host sizing policy; the classic editor's
+configured minimum is not an extra blanket guard on these individual levers.
+There is no stored customer-exclusion check or subscription-line inventory gate.
+
+Every real exact edit emits `subscription.customer_self_service.<action>` with
+full accepted `linePricing`. Renewal selects these events along with classic
+edits and graduation; the lifecycle dispatcher aliases all seven to the existing
+`subscription.package_changed` notice. Receipt replay still precedes repricing.
+The service-only exact-lever migration must be installed after the shared editor
+ledger migration. It does not change delivery-alignment or replacement-arrival
+authority.
+
+
 Native purchase renewal attachment uses
 `createPostgresPurchaseRenewalWriter` and `activateNativePurchaseWithRenewal` from
 `@openlup/platform/subscriptions`. Declare the purchase first, then supply trusted
@@ -2919,6 +3063,17 @@ The fixture harness prepares dependencies; the upgrade command never installs
 them. Registry unavailability or an integrity mismatch fails the proof.
 
 ## Existing-store transfer and recovery
+
+The connected native profile retains both open and accepted package quote
+previews, with their original acceptance key and event reference. Restore places
+these rows after their client, subscription and event parents; replay compares
+the retained rows without reopening accepted quotes. The
+[transfer witness](../../tests/postgres/connectedStoreTransfer.test.ts) covers
+both states. The qualified composition proofs append the editor unit to their
+current suffix only; issued prefix counts and identities stay unchanged.
+Selecting these source units does not qualify an installation or activate a
+restored target.
+
 
 The finite profile retains immutable order adjustment rows, including renewal
 shipping charges. Capture and restore preserve their row and order identities,
