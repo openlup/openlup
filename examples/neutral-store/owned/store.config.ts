@@ -1,9 +1,15 @@
+import { quoteConfigurations } from './quote.config.ts';
+import { demoRenewalConfig } from './renewal.config.ts';
+import { demoRecoveryConfiguration } from '../shared/recovery-config.ts';
 import type { StoreConfig } from '../shared/config.ts';
 
 /** Change this single input to personalize the running application. */
 export const configurations: Record<string, StoreConfig> = {
   supplements: {
     id: 'supplements',
+    quote: quoteConfigurations.supplements,
+    renewal: demoRenewalConfig('supplements'),
+    recovery: structuredClone(demoRecoveryConfiguration),
     brand: {
       name: 'Aster Goods',
       strapline: { en: 'A fictional everyday collection', pl: 'Fikcyjna kolekcja na co dzień' },
@@ -40,6 +46,7 @@ export const configurations: Record<string, StoreConfig> = {
       products: [
         {
           sku: 'ASTER-DAWN-60', slug: 'dawn', title: 'Dawn',
+          physical: { netWeightG: 100, unitGtin: '0000000000017', issuer: 'demo' },
           name: { en: 'Dawn', pl: 'Świt' },
           description: { en: 'A fictional supplement in a simple amber container.', pl: 'Fikcyjny suplement w prostym bursztynowym opakowaniu.' },
           details: { en: 'Demonstration product. The label is fictional and gives no consumption instructions.', pl: 'Produkt demonstracyjny. Etykieta jest fikcyjna i nie zawiera zaleceń spożycia.' },
@@ -49,6 +56,7 @@ export const configurations: Record<string, StoreConfig> = {
         },
         {
           sku: 'ASTER-NOON-60', slug: 'noon', title: 'Noon',
+          physical: { netWeightG: 100, unitGtin: '0000000000024', issuer: 'demo' },
           name: { en: 'Noon', pl: 'Południe' },
           description: { en: 'A fictional supplement with a pale green label.', pl: 'Fikcyjny suplement z jasnozieloną etykietą.' },
           details: { en: 'An inert catalogue example for testing product selection, prices and recurring orders.', pl: 'Przykład katalogowy do testowania wyboru produktów, cen i zamówień cyklicznych.' },
@@ -58,6 +66,7 @@ export const configurations: Record<string, StoreConfig> = {
         },
         {
           sku: 'ASTER-DUSK-30', slug: 'dusk', title: 'Dusk',
+          physical: { netWeightG: 100, unitGtin: '0000000000031', issuer: 'demo' },
           name: { en: 'Dusk', pl: 'Zmierzch' },
           description: { en: 'A fictional supplement with a muted blue label.', pl: 'Fikcyjny suplement ze stonowaną niebieską etykietą.' },
           details: { en: 'No medical benefit is implied. No physical product is supplied by this application.', pl: 'Nie przypisujemy produktowi korzyści medycznych. Aplikacja nie dostarcza fizycznych produktów.' },
@@ -98,6 +107,9 @@ export const configurations: Record<string, StoreConfig> = {
   },
   coffee: {
     id: 'coffee',
+    quote: quoteConfigurations.coffee,
+    renewal: demoRenewalConfig('coffee'),
+    recovery: structuredClone(demoRecoveryConfiguration),
     brand: {
       name: 'Pebble Coffee',
       strapline: { en: 'A fictional coffee shelf', pl: 'Fikcyjna półka z kawą' },
@@ -126,6 +138,7 @@ export const configurations: Record<string, StoreConfig> = {
       products: [
         {
           sku: 'PEBBLE-LIGHT-250', slug: 'light-roast', title: 'Light roast',
+          physical: { netWeightG: 250, unitGtin: '0000000000048', issuer: 'demo' },
           name: { en: 'Light roast', pl: 'Jasne palenie' },
           description: { en: 'A fictional light roast in a paper bag.', pl: 'Fikcyjna jasno palona kawa w papierowej torebce.' },
           details: { en: 'Illustrative whole-bean coffee. No actual origin, certification or stock is claimed.', pl: 'Przykładowa kawa ziarnista. Bez deklaracji rzeczywistego pochodzenia, certyfikacji lub zapasu.' },
@@ -135,6 +148,7 @@ export const configurations: Record<string, StoreConfig> = {
         },
         {
           sku: 'PEBBLE-MEDIUM-250', slug: 'medium-roast', title: 'Medium roast',
+          physical: { netWeightG: 250, unitGtin: '0000000000055', issuer: 'demo' },
           name: { en: 'Medium roast', pl: 'Średnie palenie' },
           description: { en: 'A fictional medium roast for your demonstration box.', pl: 'Fikcyjna średnio palona kawa do demonstracyjnego pakietu.' },
           details: { en: 'Use this product to test mixed boxes and recurring cadence. No real coffee is supplied.', pl: 'Ten produkt służy do testowania pakietów mieszanych i częstotliwości. Nie dostarczamy rzeczywistej kawy.' },
@@ -144,6 +158,7 @@ export const configurations: Record<string, StoreConfig> = {
         },
         {
           sku: 'PEBBLE-DARK-250', slug: 'dark-roast', title: 'Dark roast',
+          physical: { netWeightG: 250, unitGtin: '0000000000062', issuer: 'demo' },
           name: { en: 'Dark roast', pl: 'Ciemne palenie' },
           description: { en: 'A fictional dark roast with an illustrated label.', pl: 'Fikcyjna ciemno palona kawa z ilustrowaną etykietą.' },
           details: { en: 'The product, media and prices are fictional demonstration data.', pl: 'Produkt, ilustracje i ceny są fikcyjnymi danymi demonstracyjnymi.' },

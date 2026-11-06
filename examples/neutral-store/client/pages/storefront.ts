@@ -1,7 +1,7 @@
 import type { PageContext } from '../context.ts';
 import type { Cart, OfferResult } from '../../shared/offer.ts';
-import { emptyCart, evaluateOffer } from '../../shared/offer.ts';
-import { priceInterimOffer } from '../../shared/interim-pricing.ts';
+import { emptyCart, validateCart } from '../../shared/offer.ts';
+import { nativeUnitPrice, refreshLiveQuote, clearLiveQuote } from '../live-quote.ts';
 import { routes } from '../../shared/routes.ts';
 import { append, button, el, link } from '../dom.ts';
 import { field, refusal } from '../forms.ts';
@@ -67,7 +67,7 @@ export function productPage(context: PageContext): HTMLElement {
       el('p', {}, product.description[context.locale]),
       el('p', {}, product.details[context.locale]),
       el('p', { class: 'muted' }, `${context.t('packContents')}: ${product.contents}`),
-      el('p', { class: 'price' }, context.money(priceInterimOffer(context.config, context.getCart().mode, [{ sku: product.sku, quantity: 1 }]).lines[0]!.unitMinor)),
+      nativeUnitPrice(context, product),
       quantity.wrapper, add, output,
       el('p', { class: 'muted' }, context.config.copy.shippingNote[context.locale])));
 }
@@ -101,18 +101,20 @@ export function builderPage(context: PageContext): HTMLElement {
     lines: [...selected.entries()].map(([sku, control]) => ({ sku, quantity: Number(control.value) }))
       .filter(line => line.quantity !== 0) });
   function preview(): void {
-    for (const line of priceInterimOffer(config, mode.value(), config.offer.products.map(product => ({ sku: product.sku, quantity: 1 }))).lines) {
-      unitPrices.get(line.sku)!.textContent = context.money(line.unitMinor);
-    }
-    const value = evaluateOffer(config, input());
-    result.replaceChildren(value.ok ? context.fragments.checkoutSummary(context, value.quote) : offerIssues(context, value));
+    for (const element of unitPrices.values()) element.textContent = '';
+    const value = validateCart(config, input());
+    if (!value.ok) { clearLiveQuote(result); result.replaceChildren(offerIssues(context,value)); return; }
+    void refreshLiveQuote(context,value.cart,result,quote => {
+      for (const line of quote.lines) unitPrices.get(line.sku)!.textContent = context.money(line.unitMinor);
+      result.replaceChildren(context.fragments.checkoutSummary(context,quote));
+    });
   }
   form.addEventListener('input', preview);
   form.addEventListener('change', preview);
   form.addEventListener('submit', event => {
     event.preventDefault();
     if (!form.reportValidity()) return;
-    const value = evaluateOffer(config, input());
+    const value = validateCart(config, input());
     if (!value.ok) { result.replaceChildren(offerIssues(context, value)); return; }
     context.setCart(value.cart);
     context.navigate(routes.cart[context.locale]);
@@ -148,9 +150,9 @@ export function cartPage(context: PageContext): HTMLElement {
   function save(): boolean {
     const next: Cart = { ...cart, mode: mode.value(), cadenceDays: mode.cadence(),
       lines: cart.lines.map(line => ({ sku: line.sku, quantity: Number(quantities.get(line.sku)?.value) })) };
-    const value = evaluateOffer(context.config, next);
-    result.replaceChildren(value.ok ? context.fragments.checkoutSummary(context, value.quote) : offerIssues(context, value));
-    if (!value.ok) return false;
+    const value = validateCart(context.config, next);
+    if (!value.ok) { clearLiveQuote(result); result.replaceChildren(offerIssues(context,value)); return false; }
+    void refreshLiveQuote(context,value.cart,result,quote => result.replaceChildren(context.fragments.checkoutSummary(context,quote)));
     context.setCart(value.cart);
     return true;
   }

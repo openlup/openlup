@@ -2,7 +2,7 @@ import type { IncomingMessage } from 'node:http';
 import type { StoreConfig } from '../shared/config.ts';
 import type { ActionInput, ActionResult, Operation } from '../shared/api.ts';
 import { operationLimits } from '../shared/limits.ts';
-import { evaluateOffer } from '../shared/offer.ts';
+import { evaluateOffer, validateCart } from '../shared/offer.ts';
 
 export interface VerifiedActor {
   customerRef: string | null;
@@ -60,6 +60,13 @@ export async function dispatchAction(
   }
   const limit = operationLimits[operation];
   if (limit) return { ok: false, code: limit.code };
+  if (operation === 'offer.validate' || operation === 'checkout.create') {
+    const selected = validateCart(context.config,input.cart);
+    if (!selected.ok) return { ok: false,code: selected.issues[0]!.code };
+    if (selected.cart.mode === 'subscription' && input.acquisitionCapability !== 'subscription-acquisition.v1') return { ok: false,code: 'acquisition_terms_capability_required' };
+    if (selected.cart.mode === 'subscription' && operation === 'offer.validate' && !bindings.actions[operation]) return { ok: false,code: 'host_binding_required' };
+  }
+  if (operation === 'offer.validate' && bindings.actions[operation]) return bindings.actions[operation]!(input, context);
   if (operation === 'offer.validate') {
     const result = evaluateOffer(context.config, input.cart);
     return result.ok ? { ok: true, value: result.quote } : { ok: false, code: result.issues[0]!.code };

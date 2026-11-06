@@ -1,5 +1,7 @@
+import { createQuoteAcceptance } from '../quote-acceptance.ts';
+import { authenticatedRepairPage } from '../recovery-page.ts';
 import type { PageContext } from '../context.ts';
-import { evaluateOffer, isRecord } from '../../shared/offer.ts';
+import { validateCart, isRecord } from '../../shared/offer.ts';
 import { routes } from '../../shared/routes.ts';
 import { append, el, link } from '../dom.ts';
 import { actionForm, nativeActions } from '../forms.ts';
@@ -9,7 +11,7 @@ import { offerIssues } from './storefront.ts';
 import { currentPurchase, rememberPurchase, visiblePurchase } from '../purchase.ts';
 
 export function checkoutPage(context: PageContext): HTMLElement {
-  const result = evaluateOffer(context.config, context.getCart());
+  const result = validateCart(context.config, context.getCart());
   const page = el('div', {}, el('h1', {}, context.t('checkout')),
     el('p', { class: 'notice' }, context.t('sandboxOnly')),
     el('p', {}, context.t('demoContact')));
@@ -18,8 +20,10 @@ export function checkoutPage(context: PageContext): HTMLElement {
     return page;
   }
   const continuation = el('div', { 'aria-live': 'polite' });
+  const summary = el('div', { 'aria-live': 'polite' });
+  const quote = createQuoteAcceptance(context, summary);
   append(page, el('div', { class: 'checkout-layout' },
-    actionForm(context, {
+    (() => { const form = actionForm(context, {
       operation: 'checkout.create', submit: 'placeOrder',
       fields: [
         { name: 'firstName', maxLength: context.config.purchase.inputLimits.name, label: 'firstName', value: context.t('demoFirstName') },
@@ -32,8 +36,9 @@ export function checkoutPage(context: PageContext): HTMLElement {
         { name: 'postalCode', maxLength: context.config.purchase.inputLimits.postalCode, label: 'postalCode', value: '00-001' },
         { name: 'termsAccepted', label: 'termsAccept', type: 'checkbox' },
       ],
-      input: () => ({ cart: context.getCart(), configuration: context.config.id,
-        country: context.config.market.country, termsRevision: context.config.legal.revision }),
+      input: quote.input,
+      prepare: quote.prepare,
+      onFailure: quote.refused,
       display: visiblePurchase,
       onSuccess: value => {
         if (!isRecord(value) || typeof value.orderRef !== 'string') return;
@@ -41,7 +46,7 @@ export function checkoutPage(context: PageContext): HTMLElement {
         continuation.replaceChildren(link(context.t('completion'),
           routes.completion[context.locale], 'button-link'));
       },
-    }), context.fragments.checkoutSummary(context, result.quote)),
+    }); quote.attach(form); return form; })(), summary),
     continuation,
     el('section', { class: 'panel' }, link(context.t('terms'), routes.terms[context.locale]),
       el('p', {}, context.config.copy.shippingNote[context.locale])),
@@ -85,12 +90,5 @@ export function completionPage(context: PageContext): HTMLElement {
 }
 
 export function repairPage(context: PageContext): HTMLElement {
-  return el('div', {}, el('h1', {}, context.t('repair')),
-    el('p', {}, context.t('repairBody')),
-    actionForm(context, {
-      operation: 'payment.recover', submit: 'repairAction',
-      fields: [{ name: 'token', label: 'recoveryToken', value: context.query.get('token') ?? '', maxLength: 1024 }],
-    }),
-    el('p', { class: 'notice' }, context.t('subscriptionInvariant')),
-    nativeActions(context, ['N6']));
+  return authenticatedRepairPage(context);
 }

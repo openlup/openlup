@@ -549,11 +549,36 @@ durable draft receipt; changed input conflicts without superseding the order.
 The receipt's `not_started` field describes draft creation, not current payment
 truth. Neither creating nor replaying it settles an order or dispatches payment.
 Browser return handling and authenticated quote production belong to the host.
-Existing native refusals for net shipping, line discounts and zero-payable
-orders still apply. Catalogue and prices are install-time seed data on this
+Existing native refusals for line discounts and zero-payable orders still
+apply. Catalogue and prices are install-time seed data on this
 rail; this port adds no price writer or managed-rail behavior.
 The [installed PostgreSQL witness](../../tests/postgres/nativeCheckoutPersistence.test.ts)
 checks snapshot retention, refusal, concurrent replay and fresh-process recovery.
+
+`createPostgresAcquisitionCheckoutPersistence` adds final acquisition admission
+over that persistence port. Supply a restricted runtime pool with exclusive
+checked-out connections, the region, the existing financial policy and a host
+classifier for acquisition discount semantics. It owns one READ COMMITTED
+transaction: serialize the normalized native idempotency key, lock the existing
+scoped definitions, re-read the current promise
+and paid-family facts, check the quote's capability and pricing policy, then
+persist and commit the draft on that connection. Changed second-delivery promises
+refuse even when initial money is unchanged. Missing standalone capability raises
+`AcquisitionTermsError` with `acquisition_terms_capability_required`; incompatible
+engines raise `acquisition_terms_v2_required`. A changed promise raises
+`acquisition_terms_changed`. Existing matching receipts replay before current
+offer checks; the lower writer still validates replay ownership and input.
+An ordinary returning subscription may omit acquisition terms only with complete
+discount evidence, no acquisition grant or marker, and paid-family evidence.
+Admission re-checks paid-family eligibility for the ordinary-returning path; a quote issued before the family's first payment stays admissible until it expires, as in the reference implementation.
+The host must pass only a quote produced on the server, authorize the buyer and
+verify quote acceptance before calling this boundary. A host that mounts
+acquisition routing must route every acquisition caller through this adapter;
+the mounting integration supplies its own no-bypass witness.
+The lower persistence factory remains
+available for trusted composition and does not enforce acquisition admission.
+No route is mounted by either factory. Definition writers must share the same
+row-lock protocol; this adapter adds no schedule-insertion protocol or writer.
 
 `./commerce/contracts` is a type-only, browser-safe entry for commerce-owned
 records and generic persistence, checkout/runtime, availability, recovery and
@@ -809,6 +834,18 @@ units 47/48 with paths, positions and hashes. These sparse units are not an
 installation chain: use the complete canonical catalogue. No migration or
 manifest identity changes in this move.
 
+`createPostgresQuoteCustomerEligibility` is a trusted-server read adapter.
+`resolve(email)` trims and lowercases the lookup, prefers an exact stored email,
+then checks at most the 25 oldest matching candidates after local-part plus-tag
+normalization. It returns `clientId`, `source` and `matchKind`; plus-normalized
+evidence is only for promotion eligibility and must never grant recognition,
+login, sessions or past-order access. The result of `resolve` must stay inside
+the server and must never be sent to the browser.
+`hasPaidSubscription(clientId)` compares canonical UUID values and checks paid
+subscription facts across the normalized family using the existing native
+paid-order-count reader. The final family check is independent of the bounded
+preview lookup: a newly persisted exact alias may have no personal paid orders
+and still belong to a paid family. Neither read changes stored contact identity.
 Two native evidence limits remain: the device-redemption routine returns constant
 false because visitor evidence is not persisted; this does not establish device
 eligibility or implement a device guard. Redemption counts are keyed by individual
@@ -816,6 +853,8 @@ promotion IDs and do not aggregate mirror families. Hosts must not assume either
 capability or claim full eligibility parity from these reads. The characterization
 tests preserve these limits without changing the reader or adding a default
 eligibility rule.
+
+Admission re-checks paid-family eligibility for the ordinary-returning path; a quote issued before the family's first payment stays admissible until it expires, as in the reference implementation.
 
 The server entry is classified as an adapter because its executor declaration
 reaches the data entry and optional pg types. It imports at runtime without pg
@@ -1266,7 +1305,6 @@ they do not import the data entry or its PostgreSQL types. The cold proof still
 requires all declared non-adapter entries (including `./identity/contracts`) to import in fresh processes and compile
 in both resolution modes with all three optional peers absent.
 
-<!-- openlup-doc-impact {"unit":"platform-substrate","digest":"sha256-00994d288cfec0c8dc0ae9aeae2ff542e2e9af2fedcb4dd2dfeb6c99523be92d","reason":"The manifest moves to the 0.15.0 set version with the exact @openlup/core 0.15.0 peer pin. The package surface, settings and verification described here are unchanged by this preparation delta."} -->
 
 ## Identity import candidate
 
@@ -1587,6 +1625,26 @@ The native purchase-renewal forward adds bounded attachment and method-state
 writers through `createPostgresPurchaseRenewalWriter`, plus the independently
 committed `activateNativePurchaseWithRenewal` convenience call. A completion
 failure leaves an enumerable durable duty while paid service remains active.
+After successful completion, including replays, an optional best-effort unit
+materializes the admitted logical draft lines and optional price context in one
+statement. It writes only when the template is empty and still version one,
+preserving later edits and graduation. A crash after completion leaves the prior
+no-template state; replay can recover it. Per SKU, quantities sum, sort uses the
+earliest ordinal and the unit price must agree across its original draft lines.
+Different prices skip the whole template and pair with a neutral reason.
+Add-on roles follow retained `renewalTerms.linePricing`, rather than catalogue
+roles. Resolution checks the original draft lines and saved mode, including when
+promotion allocation splits effective positions. Missing or ambiguous lists leave
+NULL context while permitted template lines remain visible.
+Only SQLSTATE classes 42, 22 and 23 skip the optional unit, logging
+`subscription_template_unavailable` plus the SQLSTATE once. Other failures
+propagate. The unit first attempts a savepoint. Only `25P01` identifies independently
+committed pool queries, which continue without one; any other savepoint error
+propagates. A caller transaction retains the established savepoint. Detection
+calls no database function and opens no explicit transaction. Missing runtime
+access keeps the prior no-template behavior and refused native edits, with no new
+grant. Graduation retries absent context under the same best-effort rule in a
+savepoint, preserving its existing add-on lookup and due anchor.
 `createNativeRenewalCodec` supplies a versioned, database-decodable frozen wire;
 `createPostgresSandboxRenewalRail` and `createSandboxRenewalPolicy` provide no-key
 renewal success, decline and ambiguity using the existing native operation fence.

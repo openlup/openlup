@@ -619,10 +619,7 @@ supported upgrade path, and the version model at 1.0 is not decided.
 ### Task authority, verification and adopter continuation
 
 The finite task record names actual implementation/submission/merge and
-release-dispatch grants; generated plans and reviews grant none. Collect required
-sensitive API/Migration/budget/recovery reading in one stabilized packet before
-DCO, without repeating an acceptance after immaterial identity updates. A later
-material delta returns to its native decision. An implementation/set-preparation
+release-dispatch grants; generated plans and reviews grant none. An implementation/set-preparation
 combined PR requires the explicitly accepted route above; it is not selected by
 a general instruction to work autonomously. Merging still publishes nothing.
 
@@ -645,8 +642,8 @@ is not created by the message. No production action is granted.
 
 ### Package artifact limits
 
-Size growth follows the cap-change route, with the applicable maintainer read,
-not a new package: see the canonical [package placement decision](../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#package-placement-decision-canonical).
+Size growth follows the cap-change route, a reviewed change that records the
+measured size and the new cap, not a new package: see the canonical [package placement decision](../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#package-placement-decision-canonical).
 
 `npm run packages:check` builds and packs by default. Caps, the content allowlist
 and browser-entry limits also run in `--release-set`, the preflight's
@@ -856,9 +853,8 @@ A release takes three steps:
    every version npm holds for each package. Choose it from actual registry
    observations and the API, behaviour, schema and shipped-SQL classification,
    then recheck before dispatch. A conflict after review needs a repair and
-   applicable review of the new candidate; do not silently change pins. Complete
-   working-tree checks and any required stabilized maintainer read before DCO
-   sign-off, then committed native review and final verification, as
+   applicable review of the new candidate; do not silently change pins. Commit
+   with DCO sign-off, then native review and hosted verification, as
    [CONTRIBUTING](../CONTRIBUTING.md#deliver-a-change) describes. Merging it does
    not authorize a release. Read the candidate version from the manifests, and
    publication only from the immutable releases and the npm registry: a version bump by itself

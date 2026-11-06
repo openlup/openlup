@@ -64,8 +64,10 @@ certification. Normalized ingest has no real marketplace connector.
 
 Demonstration sessions run in a single process, expire after one hour, have
 capacity 1000 and are lost on restart. This is not a production session store.
-The captured demonstration mailbox is not a real mailbox; its private file
-contains sign-in tokens and requires runtime filesystem access.
+The capture is a developer mailbox with no real recipients. Its files stay in
+the git-ignored `.context` directory with 0700 mailbox directories and 0600 files.
+Tokens, recovery URLs and recipient email addresses require private filesystem
+access and stay out of application logs and recovery responses.
 
 With the runtime URL supplied by lifecycle, native customer challenges and
 opaque host sessions bind reduced profile/subscription-control reads, selected
@@ -237,7 +239,10 @@ The native customer branch returns the next-parcel outcome. Current-parcel
 operator correction is not offered through this customer action.
 
 Generic subscription commands remain unmounted pending a complete native fit.
-Payment recovery and operator recovery await their recovery rails. No refusal
+Authenticated payment recovery authorizes the same native unpaid obligation.
+The selected native installation includes the command receipt-lock completion.
+Operator recovery passes the committed real-HTTP proof in both configurations and
+revalidates active human membership and support authority on replay. No refusal
 pauses or freezes an active subscription or confirms an undelivered replacement.
 
 
@@ -277,3 +282,13 @@ PostgreSQL integers; each offered mode must have a positive seeded unit price.
 Tax legal-basis text is at most 200 characters and the shared legal revision is
 trimmed, nonempty text of at most 64 characters. Configuration rejects values
 outside these native boundaries before composition.
+
+## Paid-order message capture
+
+The one-shot lifecycle renewal command also drains only paid-order email events,
+including when renewal execution is disabled. A paid order with its emitted
+paid-mail event and contact yields one private filesystem message record;
+unpaid and cancelled purchases emit no paid-mail event. The record dedupes
+reclaimed sends, and processed outbox state prevents another claim. No real mail
+provider is active. This adds no other event dispatcher, transport, SQL or grant.
+Subscription notices retain their separate native owner and existing limits.

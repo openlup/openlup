@@ -1,3 +1,4 @@
+import { currentRecoveryToken } from '../recovery-session.ts';
 import type { PageContext } from '../context.ts';
 import type { CopyKey } from '../../owned/copy.ts';
 import { isRecord } from '../../shared/offer.ts';
@@ -106,6 +107,7 @@ export function authPage(context: PageContext): HTMLElement {
     }),
     actionForm(context, {
       operation: 'auth.verify', submit: 'verifyOtp',
+      onSuccess: () => { if (currentRecoveryToken()) context.navigate(routes.repair[context.locale]); },
       fields: [{ name: 'token', label: 'otp', type: 'password', maxLength: 43 }],
     }),
     nativeActions(context, ['N10']));
@@ -116,6 +118,7 @@ export function callbackPage(context: PageContext): HTMLElement {
     el('p', {}, context.t('authCallbackBody')),
     actionForm(context, {
       operation: 'auth.callback', submit: 'continue',
+      onSuccess: () => { if (currentRecoveryToken()) context.navigate(routes.repair[context.locale]); },
       input: () => ({ token: context.query.get('token') ?? '', state: context.query.get('state') ?? '' }),
     }), link(context.t('account'), routes.account[context.locale]));
 }

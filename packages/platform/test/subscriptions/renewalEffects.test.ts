@@ -1,6 +1,37 @@
 import { describe,expect,it,vi } from 'vitest';
 import { runOneAutomaticSubscriptionRenewal,runAutomaticSubscriptionRenewals,correlatedLogicalCycle } from '../../src/subscriptions/automaticRenewal.js';
 import { effectsFixture } from './renewalEffectsFixture.js';
+import { runRenewalBatchRows } from '../../src/subscriptions/automaticRenewalExecution.js';
+
+// Characterizes the reference semantic busy rule through the public row result.
+it.each(['inventory_admission_busy', 'inventory_lock_unavailable'])('omits recognized %s and continues the serial batch', async reason => {
+ const f=effectsFixture(), healthy={...f.due,subscriptionId:'healthy'}, calls:string[]=[];
+ const result=await runRenewalBatchRows([f.due,healthy],async row=>{
+  calls.push(row.subscriptionId);
+  if(row===f.due)throw {details:{code:'55P03',reason}};
+  return {subscriptionId:row.subscriptionId,identityKey:'healthy-key',operationId:'healthy-op',status:'succeeded',replayed:false,reason:null};
+ },f.deps.policy);
+ expect(calls).toEqual([f.due.subscriptionId,'healthy']);
+ expect(result).toEqual([{subscriptionId:'healthy',identityKey:'healthy-key',operationId:'healthy-op',status:'succeeded',replayed:false,reason:null}]);
+});
+it.each([
+ null,
+ undefined,
+ {},
+ {details:null},
+ {details:{}},
+ {details:{code:'55P03'}},
+ {details:{reason:'inventory_admission_busy'}},
+ {code:'55P03',message:'inventory_admission_busy'},
+ {details:{code:'55P03',reason:'unrelated_lock'}},
+ {details:{code:'XX000',reason:'inventory_admission_busy'}},
+ new Error('inventory_lock_unavailable'),
+])('keeps unrelated or unrecognized busy-looking errors visible',async error=>{
+ const f=effectsFixture();
+ expect(await runRenewalBatchRows([f.due],async()=>{throw error;},f.deps.policy)).toEqual([
+  {subscriptionId:f.due.subscriptionId,identityKey:f.op.identityKey,operationId:'',status:'error',replayed:false,reason:'renewal_processing_failed'},
+ ]);
+});
 describe('native renewal effect ordering through the P1 port',()=>{
  it('orders admission, stock, atomic prepare, M07 dispatch, ACK and terminal settlement',async()=>{
   const f=effectsFixture();expect(await runOneAutomaticSubscriptionRenewal(f.deps,f.due)).toMatchObject({status:'succeeded'});

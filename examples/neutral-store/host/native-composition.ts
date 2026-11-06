@@ -1,3 +1,6 @@
+import { readAccountRenewal } from './account-renewal.ts';
+import { composeOperatorRecovery } from './operator-recovery.ts';
+import { composeAuthenticatedRecovery } from './authenticated-recovery.ts';
 import pg from 'pg';
 import { createHash } from 'node:crypto';
 import { mkdir, appendFile } from 'node:fs/promises';
@@ -11,6 +14,7 @@ import { createPostgresCustomerOrderHistoryReadStore, createPostgresCustomerSubs
   createPostgresCustomerNewsletterPreferencesPort } from '@openlup/platform/account-support';
 import { createPostgresCommerceOmsControlPlane } from '@openlup/platform/commerce/server/postgres';
 import type { ActionBinding, ApplicationBindings, VerifiedActor } from './bindings.ts';
+import type { PromotionAcceptanceKeyring } from '@openlup/platform/promotions';
 import type { OriginPolicy } from './origin-policy.ts';
 import { createSessions } from './sessions.ts';
 import { createPostgresCheckoutRecoveryTokenPort } from '@openlup/platform/commerce/server';
@@ -26,7 +30,7 @@ const uuid = (value: unknown): value is string => typeof value === 'string'
   && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 
 /** Local demonstration only. All database connections use the restricted runtime URL. */
-export async function composeNativeBindings(connectionString: string, origin: OriginPolicy): Promise<ApplicationBindings> {
+export async function composeNativeBindings(connectionString: string, origin: OriginPolicy, quoteAcceptanceKeyring?: PromotionAcceptanceKeyring): Promise<ApplicationBindings> {
   const pool = new pg.Pool({ connectionString, max: 4 });
   try {
     const identity = (await pool.query(`SELECT session_user AS login, current_user AS role,
@@ -71,7 +75,8 @@ export async function composeNativeBindings(connectionString: string, origin: Or
     ...composeE4Capabilities(pool, async context => {
       const authorization = await operatorAuth.authorize(context.actor.sessionToken ?? '', { allowedRoles: ['admin'] });
       return authorization.ok && authorization.principalId.toLowerCase() === context.actor.operatorRef?.toLowerCase();
-    }), ...composePurchaseCapabilities(pool, contacts, undefined, recovery) };
+    }), ...composePurchaseCapabilities(pool, contacts, undefined, recovery, { ...(quoteAcceptanceKeyring ? { keyring: quoteAcceptanceKeyring } : {}) }),
+    ...composeAuthenticatedRecovery(pool), ...composeOperatorRecovery(pool) };
   const asCustomer = <T>(principalId: string, work: (db: PgGatewayClient) => Promise<T>) =>
     gateway.asActor({ role: 'authenticated', sub: principalId }, db => work(db as PgGatewayClient));
   const email = (value: unknown, limit: number): value is string => typeof value === 'string' && value.trim().length <= limit
@@ -109,11 +114,16 @@ export async function composeNativeBindings(connectionString: string, origin: Or
   actions['account.read'] = async (_payload, context) => {
     const principal = context.actor.principalRef;
     if (!principal) return refused('customer_session_required');
-    return asCustomer(principal, async db => success({
+    const account = await asCustomer(principal, async db => ({
       profile: await createPostgresCustomerMePort(db).getCustomerMe(principal),
       subscriptionControl: await createPostgresCustomerSubscriptionSnapshotPort(db).getSnapshot(),
-      fullProjection: { ok: false, code: 'starter_account_projection_binding_required' },
     }));
+    // Release the actor transaction before the projection borrows this pool.
+    return success({
+      ...account,
+      renewal: context.actor.customerRef ? await readAccountRenewal(pool, { principalId: principal, clientId: context.actor.customerRef }) : null,
+      fullProjection: { ok: false, code: 'starter_account_projection_binding_required' },
+    });
   };
   actions['account.orders'] = async (payload, context) => {
     if (!context.actor.principalRef || !context.actor.customerRef) return refused('customer_session_required');

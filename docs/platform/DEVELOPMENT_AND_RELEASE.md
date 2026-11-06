@@ -21,21 +21,14 @@ The stages below are sequential, but CI jobs and Sonar analysis run in parallel.
 Local success is preparation, not proof that a hosted run or release succeeded.
 The step-by-step order for one change is
 [Deliver a change](../../CONTRIBUTING.md#deliver-a-change).
-An explicitly approved new bounded module programme may combine implementation
-and set-version preparation in that change. Delivery or merge delegation depends
-on the actual programme grant and applicable maintainer-local policy; this page
-does not activate it. Required maintainer reading precedes DCO sign-off, and
-fresh native review, checks and protected release approval retain their roles.
-New rules follow [process minimalism](../../CONTRIBUTING.md#deliver-a-change): each
-needs a named failure that the required CI and the change's own review would miss.
+Release preparation and authorization follow
+[package release policy](../../.github/VERSIONING_AND_EOL.md#package-releases).
 
 | Stage | Trigger and executor | Checks and next step |
 | --- | --- | --- |
-| Local iteration | Contributor edits in the task worktree | Run a focused structural scan and tests for changed behavior; run whole-tree lint before committing. |
-| Candidate preparation | Contributor commits with DCO sign-off | Native agent tasks obtain independent review of the exact committed candidate, bound to its fork point (`git merge-base HEAD origin/main`); a branch behind `main` stays verifiable and pushable without a rebase. Run the focused checks for the code being written; hosted CI on the integration tree is the required verification. |
 | Draft PR | Authorized branch push and PR creation | Sonar can analyze it. Published Tree CI jobs skip drafts; skipped jobs are not passing evidence. |
-| Ready PR | Open/reopen a non-draft PR, push updates, or mark ready | Published Tree CI runs six mechanical checks and separate raw diagnostics. Post `agent-review-session.mjs receipt <PR>` output with `gh pr comment <PR> --body-file -` as soon as the PR is open and ready. After all other prerequisites, actual merge authority permits enabling auto-merge once while source checks are pending. Native admission still waits for six actual successes and that receipt. |
-| Merge queue | GitHub enqueues after required source success; no rebase for freshness | Pending `autoMergeRequest` confirms enabled auto-merge; only `mergeQueueEntry` confirms queue entry. Mechanical checks run on the actual group. The [canonical carry-over proof](../../CONTRIBUTING.md#merge-queue) keeps the review when the group is a clean merge of the reviewed change. A refusal requires merging `main`; only a conflict resolution is reviewed. |
+| Ready PR | Non-draft PR opened, reopened, updated or marked ready | Published Tree CI runs six mechanical checks and separate raw diagnostics on the integration merge ref; native admission checks review evidence. See [Deliver a change](../../CONTRIBUTING.md#deliver-a-change). |
+| Merge queue | Required source checks pass and the PR is enqueued | Checks run on the actual group tree. `autoMergeRequest` means armed; `mergeQueueEntry` confirms queue entry. See [queue mechanics](../../CONTRIBUTING.md#merge-queue). |
 | Main | A merge commit produces a main push | Expensive commands reuse a complete successful merge-group run only for the exact same commit; otherwise they run again. DCO, policy/neutrality and secret checks run for the push; Sonar updates its main analysis. Native admission does not run on main pushes. A merge is not a release. |
 | Package release | Authorized dispatch of `publish-package.yml` for a reviewed SHA on main's first-parent line, package `all` (the set) or one package, the version, and exact notes | Unprivileged preflight refuses while any package release or publication is in flight, checks ancestry, contexts and versions, packs and scans every tarball, and decides each package by its tag, release and npm state before protected release approval. One approval covers the set; the release App creates each annotated tag `openlup-<package>-v<version>` on the target and its immutable release. |
 | npm | Published package-release event from the release App | Package workflow independently checks identity, tag and tarball, re-reads npm, then publishes with OIDC provenance under `latest`. Verify its observed result; publication does not update an adopter. |
@@ -59,15 +52,15 @@ remain in [Test scope and diagnostics](../../CONTRIBUTING.md#test-scope-and-diag
 | `npx --no -- ast-grep scan --error=no-suppress-all --error=unused-suppression <changed-path>` | Fast local structural feedback after edits; installed pre-commit scans staged TS/TSX. | Fix violations before committing. Keep `--no --` to avoid fetching another package. CLI output names the rule. |
 | `npm run lint` | File-wide suppression hygiene, ast-grep scans/rule tests, ESLint and import boundaries; local and CI `typecheck`. | Required. npm prelint builds Core, Outbox and Platform first; it is not just formatting. |
 | `npm run oss:published-tree -- --typecheck` | TypeScript projects checked against tracked preview compatibility debt; local and CI `typecheck`. | Required. Not equivalent to claiming zero compiler diagnostics. Run `npm run pretest` before invoking directly after package-source edits. |
-| `npm run oss:published-tree -- --policy` and `--inventory` | Publication classification, documentation ownership/impact/navigation and tree inventory; local and CI `self-check`. | Required. These check structure and recorded obligations, not the truth of arbitrary prose or runtime behavior. |
+| `npm run oss:published-tree -- --policy` and `--inventory` | Publication classification, documentation ownership/navigation and tree inventory; local and CI `self-check`. | Required. These check structure and recorded obligations, not the truth of arbitrary prose or runtime behavior. |
 | `node scripts/verify-local.mjs --plan` (optionally `--json`, `--pgtap`) | Read-only explanation of the same local phases the runner executes, including owners, reasons, prerequisite order, commands and resource profiles. Works before review on a dirty task worktree without dependencies. | Planning only; no checks, scratch output, review validation or verification evidence. Unknown Git scope exits 2 and retains all obligations. Package discovery and root tooling selection retain their existing owners. |
 | `node scripts/verify-local.mjs` (add `--pgtap` for DB inputs or an explicitly requested diagnostic) | Optional full local command set after committed native review; one install and root run, serialized builds/package gates, fixed existing resource profiles when the optional broker is present. | Optional local mirror of the required hosted commands; [contributor commands](../../CONTRIBUTING.md#required-and-raw-checks) own scope and limits. Logs retain exits, timing and the first root-worker observation. No hosted admission, new stamp, retry or cached pass. |
 | `node scripts/agent-review-session.mjs verify-command -- <heavy required command>` | Native review verification before and after the command, with unchanged HEAD tree and clean worktree; optional installed host resource broker. | Command wrapper; preserves underlying commands but does not attest completeness of selected commands. Before starting, it predicts merge/carry-over against locally fetched `origin/main`; refresh that ref first. The [canonical wrapper limits](../../CONTRIBUTING.md#local-stack-bases-and-heavy-verification) include local review of unlanded stacks. It adds no proof lease or policy/inventory check. Independent PRs use their normal base; stacked PRs export the exact `OPENLUP_STACK_BASE`. No cache, hosted receipt, settings change or merge authority. |
 | `node scripts/public-ci-neutrality.mjs --base-commit <full-base-sha>` and UI neutrality smoke | Tree-wide shrink-only neutrality and portable UI boundary; local and CI `self-check`. | Required. Use the exact event/comparison base, not a guessed latest main. |
 | Shared `scripts/packages/required-package-gates.ts` in [required checks](../../CONTRIBUTING.md#required-and-raw-checks) | Discover each publishable workspace and its required scripts; cold-pack the current set, check all APIs, then run each owning required batch with the same artifacts. Core retains mechanical CI obligations and uses dependency-regression admission instead of the absolute release audit; Outbox owns schema/SQL/replay. | Required `install-proof` follows both builds in its own checkout, independently of root tests. Local package preparation and tests remain serial because they share build outputs. Missing routes, artifacts or runtimes refuse. Future modules use the same semantic consumer proof; only SQL modules require a database. |
 | `npm --workspace @openlup/core run ci` | Package coverage, runtime imports, type smoke, API snapshots, docs, release checks and packed-consumer smoke; local and CI `install-proof`. | Standalone `ci` includes the full live audit. Required PR/queue proof uses the shared API phase plus `ci:required` and dependency-regression admission, with manifest/commit inputs. Manual mode still builds/packs; supplied mode executes the same assertions without repacking. Separate from root Vitest discovery. |
-| `npm run test:scoped` locally; `npm test -- --shard=N/4` in CI | Root Vitest; see [testing](../../CONTRIBUTING.md#test-scope-and-diagnostics) for discovery, selection and sharding. | Required `test` refuses failure, cancellation or skipped shard jobs. Individually skipped cases remain missing proof. Package gates and raw pgTAP are separate. |
-| `node scripts/public-ci-pgtap.mjs` | Shipped SQL tests against the committed managed baseline and forwards on the digest-pinned stock PostgreSQL 17 image with the [managed-compatibility adapter](../../tests/postgres/managed-compat/supabase.sql) and checksum-pinned pgTAP, pg_cron and `pg_prove` packages; local and CI `pgtap`. Requires Docker only: no Supabase CLI and no npm install. | Raw diagnostic. Start, replay, cleanup failures and unexplained new failures block delivery under contribution rules. `node scripts/pgtap-parity.mjs` compares TAP logs, snapshots and fingerprints. |
+| `npm run test:scoped` locally; `npm test -- --shard=N/4` in CI | Root Vitest; see [testing](../../CONTRIBUTING.md#test-scope-and-diagnostics) for discovery, selection and sharding. | Required `test` aggregates all four root shards and pgTAP and refuses failure, cancellation or skipped dependency jobs. Individually skipped cases remain missing proof. Package gates remain separate. |
+| `node scripts/public-ci-pgtap.mjs` | Shipped SQL tests against the committed managed baseline and forwards on the digest-pinned stock PostgreSQL 17 image with the [managed-compatibility adapter](../../tests/postgres/managed-compat/supabase.sql) and checksum-pinned pgTAP, pg_cron and `pg_prove` packages; local and CI `pgtap`. Requires Docker only: no Supabase CLI and no npm install. | Required in CI through the `test` aggregate; a raw diagnostic locally. Start, replay, cleanup failures and unexplained new failures block delivery under contribution rules. `node scripts/pgtap-parity.mjs` compares TAP logs, snapshots and fingerprints. |
 | `npm run build` and subscription-profile build | Install/build proof for reference profiles; local and CI `install-proof`. | Required. A build does not prove a browser journey, live provider or production deployment. |
 | `npm run check:dco-signoff -- <full-base-sha> <full-head-sha>` | Sign-off on the full commit range; local and CI `dco`. | Required. Empty ranges and malformed identities are not success evidence. |
 | Gitleaks | Secret scanning of Git history in CI `gitleaks`; unpacked tarballs in release preflight and package workflow. | Required in those owners. Use pinned configuration/version and redacted logs; it is distinct from local publication leak checks. |
@@ -204,16 +197,9 @@ from a clean checkout of the fetched, trusted main in the branch's working
 directory: `node /absolute/path/to/trusted-main/scripts/agent-review-session.mjs receipt PR_NUMBER`.
 It reads the branch's existing session with main's rules. Keep the stack pin.
 
-The admission script is checked out from `main`, but the job YAML comes from
-the PR or merge-group tree. A candidate can replace `native-review` with a
-successful no-op. Two-reviewer review of `.github/` edits is the current in-repo
-control. For [co-located SQL and pins](DATA_AND_MIGRATIONS.md#co-located-sql-and-approval-pins),
-the invoked main admission also validates the candidate's own change under its
-trusted checker and refuses machinery changes in that change. Qualified migration changes invoke that guard even when their separately
-approved pins are unchanged. This adds no workflow isolation. A separately authorized owner must configure a ruleset-required
-workflow pinned to a trusted definition outside candidate control to close this
-bypass. Requiring the status name alone does not pin its implementation. See
-[Merge queue](../../CONTRIBUTING.md#merge-queue) for the control and residual risk.
+The admission job's workflow trust boundary is described in
+[Merge queue](../../CONTRIBUTING.md#merge-queue). SQL approval mechanics remain
+in [Data and migrations](DATA_AND_MIGRATIONS.md#co-located-sql-and-approval-pins).
 
 An aggregate Actions workflow can be red while its required statuses are green.
 Inspect the individual job and its raw log, exact SHA, event, run and attempt.
@@ -242,34 +228,10 @@ stage waits are not additive wall time. For a proposed reuse, subtract the cost
 of collecting, validating and restoring evidence from the work it would save,
 and distinguish that estimate from an observed saving.
 
-Fix named local violations rather than bypass hooks. A busy verification lock
+Fix named local violations rather than bypassing hooks. A busy verification lock
 belongs to another run; wait without removing it. Workflow-mirror drift needs
-maintainer recovery, not an alternate verifier. The supervisor handles missing
-native-review evidence in the active task with fresh independent reviewers;
-retain finding cards and the repair counter. Three repair cycles are automatic;
-`needs_owner` then requires an owner decision recorded with `continue "<note>"`.
-A rebase or changed intent uses `prepare --new`, which references the old session.
-Optional review advice does not add acceptance obligations. A `native-review` timeout is a missing or late
-PR comment receipt. A merge group that does not merge cleanly is rejected: merge
-main and review only the resolution. A clean merge or registry union needs no new
-review and charges no repair cycle; history and findings are preserved. There is
-no separate integration receipt route.
-Refresh local main before prepare/final verify so their preflight rejects known
-conflicts early. A DIRTY PR stops enqueue attempts until its
-head or mergeability changes; see [Native review](../../CONTRIBUTING.md#native-review-and-accountability).
-Early auto-merge follows [Merge queue](../../CONTRIBUTING.md#merge-queue): current
-review, required maintainer reads and a ready-main-PR source
-receipt precede the one-shot request under actual merge authority. Known failed
-checks, conflicts and unresolved mergeability retain their existing stops;
-pending auto-merge is not queue admission or merge confirmation.
-Where separately activated, the trusted `Queue Handoff` completion workflow
-inserts a still-armed exact head once after the existing seven required successes
-and current native proof. It covers a missing native auto-merge transition without
-a watcher, new required status or automatic requeue. Its isolated App identity
-and activation boundary are owned by [Merge queue](../../CONTRIBUTING.md#merge-queue).
-For recovery, see the receipt-timeout rule in
-[Merge queue](../../CONTRIBUTING.md#merge-queue). See [review policy](../../.github/AI_CONTRIBUTION_POLICY.md#admission-native-review-and-dco)
-for the complete protocol.
+maintainer recovery. For missing native evidence, receipt timeouts or queue
+recovery, follow [Deliver a change](../../CONTRIBUTING.md#deliver-a-change).
 
 For Sonar, fix confirmed new defects in the PR and inspect the next analysis.
 Triage existing findings separately by impact; do not bulk-clean unrelated code
@@ -437,8 +399,6 @@ SECURITY and release-gates metadata. Installing core does not run Sonar or adopt
 this repository's PR workflow. See the [package file list](../../packages/core/package.json).
 
 The [platform index](README.md) routes readers here. Detailed contributor commands
-remain in CONTRIBUTING, release rules in VERSIONING_AND_EOL, review rules in the
-AI contribution policy, and documentation upkeep in [DOCUMENTATION](DOCUMENTATION.md).
+remain in CONTRIBUTING, release rules in VERSIONING_AND_EOL, delivery and review in [Deliver a change](../../CONTRIBUTING.md#deliver-a-change), and documentation upkeep in [DOCUMENTATION](DOCUMENTATION.md).
 Update this overview with the behavior it explains, regenerate navigation through
-`npm run oss:published-tree -- --policy --docs-update`, and retain existing
-same-change ownership checks instead of introducing another diagnostic registry.
+`npm run oss:published-tree -- --policy --docs-update`, as described in [Documentation maintenance](DOCUMENTATION.md#navigation-and-source-map).

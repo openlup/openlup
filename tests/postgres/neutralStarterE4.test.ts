@@ -133,7 +133,8 @@ beforeAll(async () => {
     .toEqual([{ session_user: 'starter_runtime', rolsuper: false, rolbypassrls: false }]);
   const seed = await import(/* @vite-ignore */ pathToFileURL(join(app, 'installation/install.ts')).href);
   await installer.query("COMMENT ON DATABASE neutral_store IS 'openlup-neutral-store-demo-v1'");
-  for (const config of Object.values(configurations)) await seed.applyDemoSeed(config,
+  // Purchases use one configuration; both hosts exercise the same owned reads.
+  await seed.applyDemoSeed(configurations.supplements!,
     { connection: installer, installRole: 'starter_install', runtimeRole: 'starter_runtime' });
   const operators = identity.createPostgresOperatorIdentityStore({ connectionString: runtimeConnection });
   const accounts = identity.createPostgresAccountLinkStore({ connectionString: runtimeConnection });
@@ -435,7 +436,7 @@ it('all fourteen operation limits preserve the complete effect snapshot over rep
   for (const host of hosts) {
     const status = (await action('application.status', {}, operatorCookie, randomUUID(), host.baseURL)).body.value.bindings;
     expect(status.length).toBe(51);
-    expect(status.filter((item: { bound: boolean }) => item.bound)).toHaveLength(34);
+    expect(status.filter((item: { bound: boolean }) => item.bound)).toHaveLength(36);
     for (const operation of Object.keys(operationLimits)) {
       expect(status.find((item: { operation: string }) => item.operation === operation).bound).toBe(false);
     }

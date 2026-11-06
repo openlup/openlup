@@ -18,8 +18,8 @@ const compatible = [
 ] as const satisfies readonly CompatiblePostgresTable[];
 
 const owned = [
-  "commerce_order_draft_receipts", "fulfillment_stock_operations",
-  "commerce_order_adjustments",
+  "commerce_promotion_definitions", "commerce_order_draft_receipts", "fulfillment_stock_operations",
+  "commerce_order_adjustments", "commerce_promotion_claims", "commerce_promotion_claim_events",
   "subscription_dunning_cases", "subscription_dunning_notifications",
   "subscription_retry_obligations", "subscription_retry_receipts", "subscription_retry_recovery_authorizations",
   "commerce_checkout_recovery_tokens", "subscription_stock_wait_cases",
@@ -30,7 +30,8 @@ const owned = [
   "commerce_destinations", "commerce_destination_bindings", "subscription_command_receipts",
   "customer_support_subscription_commands", "customer_support_subscription_audit_events",
   "platform_human_principals", "platform_human_memberships", "platform_human_membership_audit_events",
-  "catalog_products", "catalog_skus", "price_lists", "price_entries", "subscription_lines",
+  "catalog_products", "catalog_product_document_revisions", "catalog_skus", "catalog_sku_identifiers",
+  "price_lists", "subscription_price_policy_revisions", "price_entries", "subscription_lines",
   "communication_recipient_consents", "communication_native_sends", "communication_native_observations", "communication_native_sync_state",
   "customer_account_consent_events", "customer_account_consent_sync_targets",
   "identity_operator_invitations", "identity_operator_invitation_events", "identity_privacy_erasures",
@@ -53,6 +54,10 @@ const owned = [
   "subscription_notice_refusals",
 ] as const;
 
+// Intentionally not carried: single-use authorization state must stay in its
+// source store. Only this exact relation receives the count-only disposition.
+const intentionallyNotCarriedRelation = "public.customer_identity_challenges";
+
 export const connectedNativeStoreTables = [...compatible, ...owned] as const;
 
 type OwnedTable = typeof owned[number];
@@ -70,7 +75,7 @@ export interface ConnectedNativeStoreCapture {
   observation: { cluster: string; database: string; login: string; snapshot: string };
   emptyOutsideProfile: string[];
   outsideProfileCensus: { relation: string; owner: string; rows: string;
-    disposition: "unsupported-empty" | "new-target-installation-key" | "target-migration-history" }[];
+    disposition: "unsupported-empty" | "new-target-installation-key" | "target-migration-history" | "target-address-references" | "intentionally-not-carried" }[];
   sha256: string;
 }
 
@@ -128,14 +133,18 @@ export async function captureConnectedNativeStore(input: {
       for (const relation of relations) {
         if (relation.schema === "public" && allowed.has(relation.table)) continue;
         const qualified = `${identifier(relation.schema)}.${identifier(relation.table)}`;
-        if (relation.schema === "acquisition_private" && relation.table === "installation_key"
-          || relation.schema === "public" && relation.table === "platform_schema_migrations") {
+        if (relation.schema === "acquisition_private" && (relation.table === "installation_key" || relation.table === "address_references")
+          || relation.schema === "public" && relation.table === "platform_schema_migrations"
+          || `${relation.schema}.${relation.table}` === intentionallyNotCarriedRelation) {
           // Count/ownership only. Never read, hash or transport installation key
-          // payloads. Private acquisition business rows below are NOT secrets
-          // by naming convention: nonempty cases/history still refuse capture.
+          // payloads, target-owned address-reference registry rows or any challenge
+          // column. Private acquisition business rows below are NOT secrets by
+          // naming convention: nonempty cases/history still refuse capture.
           const rows = (await db.query<{ count: string }>(`SELECT count(*)::pg_catalog.text AS count FROM ${qualified}`)).rows[0]!.count;
           outsideProfileCensus.push({ relation: `${relation.schema}.${relation.table}`, owner: relation.owner, rows,
-            disposition: relation.table === "installation_key" ? "new-target-installation-key" : "target-migration-history" });
+            disposition: relation.table === "installation_key" ? "new-target-installation-key"
+              : relation.table === "address_references" ? "target-address-references"
+                : relation.table === "platform_schema_migrations" ? "target-migration-history" : "intentionally-not-carried" });
           continue;
         }
         if ((await db.query(`SELECT 1 FROM ${qualified} LIMIT 1`)).rows.length) {

@@ -1,18 +1,22 @@
+import { isInitialCheckoutOrder, sameUuid } from './recurring-fence.ts';
 import { createHash } from 'node:crypto';
 import type { Pool } from 'pg';
 import { setTimeout } from 'node:timers/promises';
 import type { PostgresContactClientRegistrar } from '@openlup/platform/identity';
 import { createInterimCheckoutLimiter, createCheckoutAttemptBindings, admitCheckoutAttempt, type CheckoutRateLimit } from './checkout-attempts.ts';
-import { createPostgresNativeCheckoutPersistence } from '@openlup/platform/commerce/server/native-checkout';
+import { installedAcquisitionPredecessors, createAcquisitionRenewalBinding, type AcquisitionPredecessors, type AcquisitionRenewalBinding } from './acquisition-predecessors.ts';
+import { createNativeQuoteService, quoteFailure } from './quote-composition.ts';
+import { createAcquisitionFinancialPolicy } from '../owned/acquisition-policy.ts';
+import type { PromotionAcceptanceKeyring } from '@openlup/platform/promotions';
 import { createPostgresDestinationPort } from '@openlup/platform/commerce/server/destinations';
 import { createPostgresPurchaseReservationPort, createPostgresAbandonedCheckoutCompensationPort } from '@openlup/platform/inventory';
 import { createPostgresFulfillmentStockSyncPort } from '@openlup/platform/fulfillment';
 import { createPostgresSandboxPaymentSimulator } from '@openlup/platform/payments';
 import { activateNativePurchaseWithRenewal } from '@openlup/platform/subscriptions';
-import { splitIncludedVat, type CreateQuoteResponse } from '@openlup/platform/pricing';
+import { ACQUISITION_TERMS_CAPABILITY, type CreateQuoteResponse } from '@openlup/platform/pricing';
 import type { NativeRenewalPurchaseFacts } from '@openlup/platform/subscriptions';
 import type { ApplicationBindings, ActionContext } from './bindings.ts';
-import { evaluateOffer, isRecord } from '../shared/offer.ts';
+import { validateCart, isRecord } from '../shared/offer.ts';
 import { generateCheckoutRecoveryToken } from '@openlup/platform/commerce/server';
 import type { PurchaseRecovery } from './checkout-recovery.ts';
 
@@ -29,10 +33,12 @@ const present = (order: Record<string, unknown>) => ({ orderRef: order.id, statu
   total: { amountMinor: Number(order.total_amount_minor), currency: order.currency_code } });
 
 /** Existing request admission precedes each action; ownership is derived here. */
-export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactClientRegistrar, checkRateLimit: CheckoutRateLimit | undefined, recovery: PurchaseRecovery): ApplicationBindings['actions'] {
+export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactClientRegistrar, checkRateLimit: CheckoutRateLimit | undefined, recovery: PurchaseRecovery, quoteOptions: { predecessors?: AcquisitionPredecessors; keyring?: PromotionAcceptanceKeyring; renewal?: AcquisitionRenewalBinding } = {}): ApplicationBindings['actions'] {
   let interimLimiter: ReturnType<typeof createInterimCheckoutLimiter> | undefined;
   let attemptBindings: ReturnType<typeof createCheckoutAttemptBindings> | undefined;
-  const drafts = createPostgresNativeCheckoutPersistence(db);
+  const predecessors = quoteOptions.predecessors ?? installedAcquisitionPredecessors();
+  const renewal = quoteOptions.renewal ?? createAcquisitionRenewalBinding(db);
+  const quotes = createNativeQuoteService(db, predecessors, quoteOptions.keyring);
   const destinations = createPostgresDestinationPort(db);
   const reservations = createPostgresPurchaseReservationPort(db);
   const compensation = createPostgresAbandonedCheckoutCompensationPort(db);
@@ -44,16 +50,25 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
   const token = (value: unknown): value is string => typeof value === 'string' && /^rcv_[A-Za-z0-9_-]{43}$/.test(value);
   const authorizedOrder = async (payload: Record<string, unknown>, context: ActionContext) => {
     if (context.actor.customerRef) {
-      const orderId = payload.orderRef ?? (token(payload.token) ? (await recovery.tokens.validate(payload.token))?.orderId : undefined);
+      let orderId = payload.orderRef;
+      if (payload.token !== undefined) {
+        if (!token(payload.token)) return null;
+        const verified = await recovery.tokens.validate(payload.token);
+        if (!verified || (payload.orderRef !== undefined && !sameUuid(payload.orderRef, verified.orderId))
+          || !await isInitialCheckoutOrder(db, verified.orderId)) return null;
+        orderId = verified.orderId;
+      }
       const order = await readOrder(orderId);
-      return order?.client_id === context.actor.customerRef ? order : null;
+      return order && sameUuid(order.client_id, context.actor.customerRef)
+        && await isInitialCheckoutOrder(db, order.id) ? order : null;
     }
     if (!token(payload.token)) return null;
     const verified = await recovery.tokens.validate(payload.token);
     if (!verified || (payload.orderRef !== undefined
-      && (!uuid(payload.orderRef) || payload.orderRef.toLowerCase() !== verified.orderId))) return null;
+      && (!uuid(payload.orderRef) || !sameUuid(payload.orderRef, verified.orderId)))) return null;
     const order = await readOrder(verified.orderId);
-    return order?.status === 'pending_payment' && order.client_id === verified.clientId ? order : null;
+    return order?.status === 'pending_payment' && sameUuid(order.client_id, verified.clientId)
+      && await isInitialCheckoutOrder(db, order.id) ? order : null;
   };
   const address = (payload: Record<string, unknown>, country: string) => ({
     recipientName: `${payload.firstName} ${payload.lastName}`, line1: String(payload.line1),
@@ -61,23 +76,39 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
     postalCode: String(payload.postalCode), country, contactPhone: String(payload.phone),
   });
   const actions: ApplicationBindings['actions'] = {};
+  actions['offer.validate'] = async (payload, context) => {
+    try { return success(quotes.public(await quotes.quote(payload, context))); }
+    catch (error) { return refused(quoteFailure(error)); }
+  };
   actions['checkout.create'] = async (payload, context) => {
     const started = performance.now();
     try {
-    if (!only(payload, ['email', 'cart', 'configuration', 'country', 'termsRevision', 'termsAccepted', 'firstName', 'lastName', 'phone', 'line1', 'line2', 'city', 'postalCode'])
+    if (!only(payload, ['email', 'cart', 'configuration', 'country', 'termsRevision', 'termsAccepted', 'firstName', 'lastName', 'phone', 'line1', 'line2', 'city', 'postalCode', 'acquisitionCapability', 'quoteAcceptance', 'expectedTotal', 'promoCodes'])
       || !['firstName', 'lastName', 'phone', 'line1', 'city', 'postalCode'].every(key => text(payload[key], key === 'postalCode' ? context.config.purchase.inputLimits.postalCode
         : key === 'phone' ? context.config.purchase.inputLimits.phone
           : ['firstName', 'lastName'].includes(key) ? context.config.purchase.inputLimits.name : context.config.purchase.inputLimits.text))
       || (payload.line2 !== undefined && (typeof payload.line2 !== 'string' || payload.line2.length > context.config.purchase.inputLimits.text))
       || payload.configuration !== context.config.id || payload.country !== context.config.market.country) return refused('starter_input_invalid');
-    const offer = evaluateOffer(context.config, payload.cart);
+    const offer = validateCart(context.config, payload.cart);
     if (!offer.ok) return refused(offer.issues[0]!.code);
+    if (offer.cart.mode === 'subscription' && payload.acquisitionCapability !== ACQUISITION_TERMS_CAPABILITY) return refused('acquisition_terms_capability_required');
     if (payload.termsAccepted !== true || payload.termsRevision !== context.config.legal.revision) return refused('starter_terms_required');
     if (payload.locale !== 'en' && payload.locale !== 'pl') return refused('starter_input_invalid');
     const email = context.actor.customerRef
       ? (await db.query('SELECT email FROM public.clients WHERE id=$1 AND principal_id=$2', [context.actor.customerRef, context.actor.principalRef])).rows[0]?.email
       : typeof payload.email === 'string' ? payload.email.trim().toLowerCase() : '';
     if (!text(email, context.config.purchase.inputLimits.email) || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return refused('starter_email_invalid');
+    const key = command(context, 'checkout');
+    const prior = (await db.query(`SELECT o.metadata->'quoteSnapshot' AS snapshot FROM public.commerce_order_draft_receipts r
+      JOIN public.commerce_orders o ON o.id=r.order_id JOIN public.clients c ON c.id=o.client_id
+      WHERE r.idempotency_key=$1 AND ($2::uuid IS NOT NULL AND c.id=$2 OR $2::uuid IS NULL AND lower(btrim(c.email))=$3)`,
+    [key,context.actor.customerRef,email])).rows[0]?.snapshot as CreateQuoteResponse | undefined;
+    let observed;
+    try {
+      observed = await quotes.quote(payload, context, prior);
+      if (!prior) quotes.verify(observed, payload);
+      if (observed.terms) renewal.assertAvailable(observed.snapshot);
+    } catch (error) { return refused(quoteFailure(error)); }
     interimLimiter ??= createInterimCheckoutLimiter(context.config.purchase.attemptLimits);
     if (!await admitCheckoutAttempt(checkRateLimit ?? interimLimiter.checkRateLimit,
       { headers: {}, ...(context.actor.requesterKey ? { requesterKey: context.actor.requesterKey } : {}) },
@@ -92,42 +123,18 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
           phone: String(payload.phone), country: context.config.market.country },
         journey: { idempotencyKey: context.commandKey, locale: payload.locale, mode: offer.cart.mode } }));
     if (!contact.ok) return refused('starter_purchase_unavailable');
-    const { quote } = offer;
-    const money = (amountMinor: number) => ({ amountMinor, currency: quote.currency });
+    const quoteSnapshot = observed.snapshot;
+    const quote = observed.projection;
     const shipping = address(payload, context.config.market.country);
-    const quoteSnapshotNet = () => quote.lines.reduce((sum, line) => sum
-      + splitIncludedVat(line.lineMinor, context.config.purchase.tax.vatRateBps).netMinor, 0)
-      + splitIncludedVat(quote.shippingMinor, context.config.purchase.tax.vatRateBps).netMinor;
-    const quoteSnapshot: CreateQuoteResponse = { contractVersion: 'commerce.v0', quote: {
-      currency: quote.currency, taxIncluded: true,
-      lines: quote.lines.map(line => {
-        const tax = splitIncludedVat(line.lineMinor, context.config.purchase.tax.vatRateBps);
-        return { sku: line.sku,
-          productSlug: `demo-${context.config.id}-${context.config.offer.products.find(product => product.sku === line.sku)!.slug}`,
-          quantity: line.quantity, unitPriceGross: money(line.unitMinor), lineSubtotalGross: money(line.lineMinor),
-          pricingComponents: [{ scope: 'line', componentType: 'base_unit', amountMinor: line.baseUnitMinor * line.quantity,
-            reasonCode: 'base_unit', reasonPayload: {} },
-          ...(line.baseUnitMinor !== line.unitMinor ? [{ scope: 'line' as const, componentType: 'mode_discount' as const,
-            amountMinor: (line.unitMinor - line.baseUnitMinor) * line.quantity, reasonCode: 'subscription_mode', reasonPayload: {} }] : [])],
-          tax: { included: true, country: context.config.market.country, category: context.config.purchase.tax.category,
-            vatRateBps: context.config.purchase.tax.vatRateBps, legalBasis: context.config.purchase.tax.legalBasis,
-            netAmount: money(tax.netMinor), vatAmount: money(tax.vatMinor), grossAmount: money(line.lineMinor) } };
-      }),
-      discounts: [],
-      context: { mode: quote.mode, cadenceDays: quote.cadenceDays, promoCodes: [],
-        ...{ starterRequest: hash({ cart: offer.cart, shipping, email: context.actor.customerRef ? null : email, termsRevision: payload.termsRevision }) } },
-      subtotalGross: money(quote.subtotalMinor), discountTotalGross: money(quote.discountMinor),
-      shippingGross: money(quote.shippingMinor), shippingDiscountGross: money(0), totalGross: money(quote.totalMinor),
-      netTotal: money(quoteSnapshotNet()), taxTotal: money(quote.totalMinor - quoteSnapshotNet()),
-    } };
-    const key = command(context, 'checkout');
+    const drafts = predecessors.checkout(db, { regionCode: context.config.market.country,
+      financialPolicy: createAcquisitionFinancialPolicy(), isAcquisitionDiscount: discount => discount.promotionId === `demo-acquisition:${context.config.id}` });
     let created: { id: string; fresh: boolean } | null = null;
     try {
       const result = await drafts.createOrderDraft({ idempotencyKey: key, quoteSnapshot }, { clientId: contact.clientId });
       const orderId = result.orderDraft.orderId.slice(6);
       created = { id: orderId, fresh: !result.orderDraft.replayed };
       const current = await readOrder(orderId);
-      if (!current || !['pending_payment', 'paid'].includes(current.status)) return refused('starter_checkout_not_payable');
+      if (!current || !await isInitialCheckoutOrder(db, current.id) || !['pending_payment', 'paid'].includes(current.status)) return refused('starter_checkout_not_payable');
       // Replayed registration compares the original immutable address before returning it.
       await destinations.registerOrder({ idempotencyKey: `${key}:destination`, orderId, address: shipping, now: new Date().toISOString() });
       const stock = createPostgresFulfillmentStockSyncPort(db, { sourceKey: source(context), readLocalInventoryStock: async () => [] });
@@ -164,7 +171,7 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
       }
       return failure(error);
     }
-    } catch { return refused('starter_purchase_unavailable'); }
+    } catch (error) { return refused(quoteFailure(error)); }
     finally { await setTimeout(Math.max(0, context.config.purchase.responseFloorMs - (performance.now() - started))); }
   };
   actions['checkout.read'] = async (payload, context) => {
@@ -176,8 +183,9 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
     if (!token(payload.token)) return refused('starter_recovery_unavailable');
     const inspected = await recovery.tokens.inspect(payload.token);
     if (!inspected || (payload.orderRef !== undefined
-      && (!uuid(payload.orderRef) || payload.orderRef.toLowerCase() !== inspected.orderId))) return refused('starter_recovery_unavailable');
-    if (context.actor.customerRef && inspected.clientId !== context.actor.customerRef) return refused('starter_order_not_found');
+      && (!uuid(payload.orderRef) || !sameUuid(payload.orderRef, inspected.orderId)))) return refused('starter_recovery_unavailable');
+    if (!await isInitialCheckoutOrder(db, inspected.orderId)) return refused('starter_recovery_unavailable');
+    if (context.actor.customerRef && !sameUuid(inspected.clientId, context.actor.customerRef)) return refused('starter_order_not_found');
     if (inspected.tokenState === 'revoked') return refused('starter_recovery_unavailable');
     if (inspected.tokenState === 'expired') return refused('starter_recovery_expired');
     if (inspected.status === 'cancelled') return refused('starter_recovery_cancelled');
@@ -196,6 +204,8 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
     if (!intent) return refused('starter_sandbox_intent_unavailable');
     try {
       const key = command(context, 'payment');
+      const storedQuote = order.metadata.quoteSnapshot as CreateQuoteResponse;
+      if (payload.outcome === 'captured' && (storedQuote.quote.context as { acquisitionTerms?: unknown })?.acquisitionTerms) renewal.assertAvailable(storedQuote);
       const simulator = createPostgresSandboxPaymentSimulator(db, context.config.purchase.sandbox);
       const attempt = await simulator.beginAttempt({ settlementIntentId: intent.id, idempotencyKey: key,
         requestFingerprint: hash([order.id, payload.outcome]), at: new Date().toISOString() });
@@ -206,16 +216,24 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
       if (accepted.status !== 200) return refused('starter_sandbox_observation_refused');
       let renewalAttachment: string | undefined;
       if (payload.outcome === 'captured') {
+        if (!await isInitialCheckoutOrder(db, order.id)) return refused('starter_order_not_found');
         const declaration = (await db.query('SELECT cadence_days FROM public.subscription_activations WHERE order_id=$1', [order.id])).rows[0];
         if (declaration) {
-          const lines = (await db.query(`SELECT i.line_ordinal,s.sku,i.quantity,i.unit_amount_minor FROM public.commerce_order_items i
-            JOIN public.catalog_skus s ON s.id=i.sku_id WHERE i.order_id=$1 ORDER BY i.line_ordinal`, [order.id])).rows;
+          const acceptedQuote = order.metadata.quoteSnapshot as CreateQuoteResponse;
+          const acquisitionTerms = (acceptedQuote.quote.context as { acquisitionTerms?: unknown }).acquisitionTerms;
+          if (acquisitionTerms) {
+            renewalAttachment = await renewal.activate({ orderId: order.id, acceptedQuote,
+              capturedReference: intent.external_ref ?? intent.id, methodFacts: attempt.methodFacts,
+              stockSourceKey: source(context), templateId: `starter:${context.config.id}` });
+          } else {
+          const lines = acceptedQuote.quote.lines;
           const facts: NativeRenewalPurchaseFacts = { settlementChannelKey: 'sandbox', ...attempt.methodFacts,
             stockSourceKey: source(context), templateId: `starter:${context.config.id}`, cadenceDays: declaration.cadence_days,
             currency: order.currency_code, shippingAmountMinor: renewalShipping, acquisitionRef: null,
-            lines: lines.map(line => ({ lineOrdinal: line.line_ordinal, sku: line.sku, quantity: line.quantity, unitAmountMinor: Number(line.unit_amount_minor) })) };
+            lines: lines.map((line, index) => ({ lineOrdinal: index + 1, sku: line.sku, quantity: line.quantity, unitAmountMinor: line.unitPriceGross.amountMinor })) };
           renewalAttachment = (await activateNativePurchaseWithRenewal(db, { orderId: order.id,
             idempotencyKey: `activate:${order.id}`, capturedReference: intent.external_ref ?? intent.id, facts })).renewalAttachment;
+          }
         }
       }
       const updated = await readOrder(order.id);
@@ -247,7 +265,10 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
 }
 
 function failure(error: unknown) {
+  if (error instanceof Error && error.message === 'starter_quote_refresh_required') return refused(error.message);
   if (isRecord(error)) {
+    if (error.message === 'acquisition_terms_changed') return refused('starter_quote_refresh_required');
+    if (error.name === 'AcquisitionTermsError' && typeof error.reason === 'string' && error.reason.startsWith('acquisition_terms_')) return refused(error.reason);
     if (error.code === '23505' || error.code === '40001' || (isRecord(error.details) && ['23505', '40001'].includes(String(error.details.code)))) return refused('starter_command_conflict');
     if (error.code === '22023' && typeof error.message === 'string' && /^(payment_simulator|commerce_destination|subscription_activation)_/.test(error.message)) return refused(error.message);
     if (error.name === 'CommerceOrderDraftPriceChangedError') return refused('starter_quote_price_changed');

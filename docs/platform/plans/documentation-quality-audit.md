@@ -49,7 +49,9 @@ conversation, archived execution notes or peer verdicts. Executable instructions
 and public-contract paths require two fresh full reviews. No native session or
 committed full-verification anchor existed at local acceptance; preliminary
 family reviews do not establish admission, expiry or a native repair counter.
-Three automatic native repair cycles and all actual later limits remain binding.
+The three-cycle native repair budget applied during this audit. That budget is
+historical; current delivery follows
+[Deliver a change](../../../CONTRIBUTING.md#deliver-a-change).
 
 ## Coverage and outcomes
 
@@ -121,9 +123,9 @@ or general documentation machinery is introduced.
 1. Resolve and inspect conflicts; reconcile affected owner sections with actual
    integrated source and regenerate existing API/navigation outputs. Run the
    existing policy, structural, inventory/neutrality and package artifact checks
-   before broad verification. Run lint before sign-off. Sensitive semantic API
-   or publishing/security/release-control changes would require their actual
-   maintainer read; comment-only clarification grants no such control change.
+   before broad verification. The original blanket maintainer-read requirement
+   before sign-off is historical; current delivery and approval authority follow
+   [Deliver a change](../../../CONTRIBUTING.md#deliver-a-change).
 2. Commit the stabilized candidate with the accountable human's DCO sign-off.
    Prepare the native session against its actual main fork point; obtain and
    record two independent fresh full reviews, close material findings, verify.
