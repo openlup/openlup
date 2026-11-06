@@ -493,9 +493,10 @@ its explicit disabled default, population, cadence, batch and lease values. The
 installer and public configuration use the same object. After the selected
 installation is complete, an existing local scheduler may invoke
 `./lifecycle renewal --configuration <id> --database-url <restricted-runtime-url>`.
-This one-shot lifecycle entry selects the native renewal service once; it creates
-no timer or second HTTP server. Disabled or structurally unready invocations do
-not claim. Population session exclusion and the durable job ledger serialize
+This one-shot lifecycle entry runs one bounded paid-mail outbox pass and selects
+the native renewal service once; it creates no timer or second HTTP server.
+The renewal enable flag gates renewal claims; the paid-mail pass also runs when
+renewals are disabled. Structurally unready renewal invocations do not claim renewals. Population session exclusion and the durable job ledger serialize
 selected executors, including a callback longer than its lease interval.
 Returned batches record actual checked, updated, failure and deferred counts.
 An invocation that throws without a batch result marks counts unavailable; it
@@ -520,7 +521,8 @@ copy through the separately owned private capture module and M04 receipt owner.
 It preserves one artifact and frozen token expiry per native notice command;
 access-grant references contain the native token UUID. It remains unmounted in this checkpoint; native notice dispatch and the joined
 recovery proof are available, but this row selects no parallel sender. No parallel
-outbox handler is registered. Consent/signed opt-out wait for native purpose
+subscription-notice outbox handler is registered. The separate paid-order
+handler below does not dispatch subscription notices. Consent/signed opt-out wait for native purpose
 support; operator shipment and invoice joins wait for their existing owners.
 Reminder windows, historical closure, winback, escalation and configurable
 subscription policies retain their named interim limits in subscription care.
@@ -541,3 +543,20 @@ including issuance, replay, missing/changed capture, restart and human revocatio
 Active human authority is revalidated on replay. The
 scheduled notice host reads the original operator artifact and preserves its
 rendered content, token and expiry across process restarts.
+
+### Private paid-order receipts
+
+The same `./lifecycle renewal` invocation mounts the package's paid-order email
+handler through [the paid-mail host](host/paid-mail.ts). Only
+`commerce.order.paid.email` is claimable. Other known event types stay untouched.
+For a paid order with a resolvable contact and its emitted paid-mail event, the
+pass produces one [private receipt record](host/paid-mail-artifact.ts) under
+`.context/captured-messages`. It reads the order's contact, frozen lines and
+catalogue/discount/charged totals from the installed native tables. Replay and
+reclaimed events reuse the original record. No real mail provider is active.
+
+Subject and summary labels live in the per-locale `paid` values in
+[owned notice copy](owned/renewal-copy.ts). Locale selection uses the same
+`renewal.notices.locale` and `countryLocales` as subscription notice copy.
+Both English and Polish copy must be complete and nonempty. All other email
+send methods refuse with `starter_paid_mail_method_not_selected`.

@@ -2086,6 +2086,14 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/host/paid-mail-artifact.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/host/paid-mail.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/host/private-capture.ts",
       "class": "public-output"
     },
@@ -28226,6 +28234,14 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/connectedStorePromotionClaims.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/connectedStoreStarterRelations.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/connectedStoreTransfer.test.ts",
       "class": "public-output"
     },
@@ -28535,6 +28551,10 @@
     },
     {
       "path": "tests/postgres/nativeStoreForwardCatalog.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/neutralStorePaidMail.test.ts",
       "class": "public-output"
     },
     {

@@ -122,7 +122,9 @@
     "client/quote-acceptance.ts",
     "host/quote-secret.ts",
     "test/acquisition-quote.test.ts",
-    "client/live-quote.ts"
+    "client/live-quote.ts",
+    "host/paid-mail-artifact.ts",
+    "host/paid-mail.ts"
   ],
   "sourceMappings": {
     "AGENTS.md": "AGENTS.template.md"

@@ -18,8 +18,8 @@ const compatible = [
 ] as const satisfies readonly CompatiblePostgresTable[];
 
 const owned = [
-  "commerce_order_draft_receipts", "fulfillment_stock_operations",
-  "commerce_order_adjustments",
+  "commerce_promotion_definitions", "commerce_order_draft_receipts", "fulfillment_stock_operations",
+  "commerce_order_adjustments", "commerce_promotion_claims", "commerce_promotion_claim_events",
   "subscription_dunning_cases", "subscription_dunning_notifications",
   "subscription_retry_obligations", "subscription_retry_receipts", "subscription_retry_recovery_authorizations",
   "commerce_checkout_recovery_tokens", "subscription_stock_wait_cases",
@@ -30,7 +30,8 @@ const owned = [
   "commerce_destinations", "commerce_destination_bindings", "subscription_command_receipts",
   "customer_support_subscription_commands", "customer_support_subscription_audit_events",
   "platform_human_principals", "platform_human_memberships", "platform_human_membership_audit_events",
-  "catalog_products", "catalog_product_document_revisions", "catalog_skus", "price_lists", "price_entries", "subscription_lines",
+  "catalog_products", "catalog_product_document_revisions", "catalog_skus", "catalog_sku_identifiers",
+  "price_lists", "subscription_price_policy_revisions", "price_entries", "subscription_lines",
   "communication_recipient_consents", "communication_native_sends", "communication_native_observations", "communication_native_sync_state",
   "customer_account_consent_events", "customer_account_consent_sync_targets",
   "identity_operator_invitations", "identity_operator_invitation_events", "identity_privacy_erasures",

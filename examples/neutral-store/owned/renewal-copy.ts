@@ -1,5 +1,7 @@
 export const renewalNoticeCopy = {
   en: {
+    paid: { subject: 'Order payment confirmed', order: 'Order', item: 'Item', quantity: 'Quantity',
+      subtotal: 'Subtotal', discount: 'Discount', total: 'Total' },
     minorUnits: 'minor units', cause: 'Payment information', needsConfirmation: 'This payment needs confirmation.',
     cannotRecur: 'This method cannot be used for an unattended payment.', methodDead: 'This payment method is no longer available.',
     methodDataInvalid: 'The payment method details need attention.', methodMissing: 'A payment method is missing.',
@@ -13,6 +15,8 @@ export const renewalNoticeCopy = {
     address: 'A future address change does not move a parcel already being prepared.',
   },
   pl: {
+    paid: { subject: 'Płatność za zamówienie potwierdzona', order: 'Zamówienie', item: 'Pozycja', quantity: 'Liczba',
+      subtotal: 'Suma częściowa', discount: 'Rabat', total: 'Razem' },
     minorUnits: 'jednostki mniejsze', cause: 'Informacja o płatności', needsConfirmation: 'Ta płatność wymaga potwierdzenia.',
     cannotRecur: 'Ta metoda nie obsługuje płatności bez udziału klienta.', methodDead: 'Ta metoda płatności nie jest już dostępna.',
     methodDataInvalid: 'Dane metody płatności wymagają uwagi.', methodMissing: 'Brakuje metody płatności.',

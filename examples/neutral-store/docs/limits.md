@@ -242,3 +242,13 @@ PostgreSQL integers; each offered mode must have a positive seeded unit price.
 Tax legal-basis text is at most 200 characters and the shared legal revision is
 trimmed, nonempty text of at most 64 characters. Configuration rejects values
 outside these native boundaries before composition.
+
+## Paid-order message capture
+
+The one-shot lifecycle renewal command also drains only paid-order email events,
+including when renewal execution is disabled. A paid order with its emitted
+paid-mail event and contact yields one private filesystem message record;
+unpaid and cancelled purchases emit no paid-mail event. The record dedupes
+reclaimed sends, and processed outbox state prevents another claim. No real mail
+provider is active. This adds no other event dispatcher, transport, SQL or grant.
+Subscription notices retain their separate native owner and existing limits.
