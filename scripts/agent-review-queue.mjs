@@ -82,12 +82,12 @@ export async function waitNativeAdmission({ event, env = process.env, api, cwd =
       if (!decision.ok) { reason = `${decision.code}: ${decision.reason}`; continue; }
       const needsForwardApproval = candidate.changedPaths.includes(REVIEWED_FORWARD_PATH) || candidate.changedPaths.some(path => isQualifiedPlatformMigrationPath(path) || isChannelIngestMigrationPath(path) || isNativeStoreMigrationPath(path));
       // The trusted reader checks each change on its own base; moves on main or ahead in the queue do not refuse it.
-      if (needsForwardApproval) assertCoLocatedForwardApproval(cwd, candidate.base, candidate.head, candidate.base);
+      if (needsForwardApproval) assertCoLocatedForwardApproval(cwd, candidate.base, candidate.head);
       if (group) {
         const tree = (await runGit(cwd, 'rev-parse', '--verify', `${group.head_sha}^{tree}`)).trim();
         decision = await carryOverSourceReview(cwd, candidate, { base: group.base_sha, tree, trustedMain: main }, runGit);
         demand(decision.ok, decision.reason, decision.code);
-        if (needsForwardApproval) assertCoLocatedForwardApproval(cwd, group.base_sha, group.head_sha, group.base_sha);
+        if (needsForwardApproval) assertCoLocatedForwardApproval(cwd, group.base_sha, group.head_sha);
       }
       const live = await api.get(`${root}/pulls/${prNumber}`);
       demand(live.head?.sha === pr.head.sha && live.state === 'open' && live.draft === false && !live.merged && live.base?.ref === 'main', 'PR changed during admission; rerun CI', 'stale');
