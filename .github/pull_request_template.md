@@ -16,8 +16,6 @@ one-time public-root projection is not an ongoing authoring route. -->
 - Task record (finite outcome, scope and exclusions, authority and delivery boundary, acceptance and sufficient completion evidence, risk and proof plan):
 - Tests added or updated for the behaviour this changes:
 - Affected documentation owner sections and meaningful updates:
-- Scoped no-impact explanations, if any, and why the existing text remains correct:
-- Simpler alternative considered where meaningful; added complexity justified:
 
 ## Risk and rollback
 
@@ -26,14 +24,14 @@ one-time public-root projection is not an ongoing authoring route. -->
 
 ## Checks
 
-- [ ] Completed the applicable [required and raw checks](../CONTRIBUTING.md#required-and-raw-checks),
-      with commands/results and missing prerequisites recorded; each passes, or
-      its failure is explained above and compared with the base. Follow the
-      [testing guide](../CONTRIBUTING.md#test-scope-and-diagnostics) for scope and proof.
+- [ ] Hosted required checks pass, or a failure is explained above and compared
+      with the base. Locally I ran the tests I wrote, `npm run lint` and the
+      ast-grep scan ([Deliver a change](../CONTRIBUTING.md#deliver-a-change));
+      the [testing guide](../CONTRIBUTING.md#test-scope-and-diagnostics) covers scope and proof.
 - [ ] Contributor-facing behaviour or commands changed here are documented in
       `README.md` and/or `CONTRIBUTING.md`.
-- [ ] Generated navigation is current; affected owner explanations or fresh
-      scoped no-impact records were reviewed for meaning, not only fingerprints.
+- [ ] Generated navigation is current, and documentation this change makes stale
+      is updated in this pull request.
 - [ ] Every commit carries a `Signed-off-by:` line (`git commit -s`), and this
       description ends with yours, because the merge commit takes it. The
       Developer Certificate of Origin section of `CONTRIBUTING.md` explains what
@@ -46,11 +44,10 @@ one-time public-root projection is not an ongoing authoring route. -->
 - Check the accepted outcome, failure boundaries and unnecessary maintenance
   cost. Report concrete mechanisms and effects, not style preferences or a quota.
 - Include the `documentation` assessment in each native review report: canonical
-  sections, related instructions/examples and no-impact reasoning; compare
+  sections, stale claims and related instructions/examples; compare
   documentation-only claims with their source as well.
 - AI assistance (agents and what they did, or none):
 - Publication authority (actual maintainer task or bounded delivery scope):
 - Native review evidence for the exact committed candidate, as required by the
   AI contribution policy; no claim that the maintainer personally read the diff:
-- Source receipt submitted for the reviewed head, and the maintainer read if the
-  change needs one before sign-off:
+- Source receipt submitted for the reviewed head:

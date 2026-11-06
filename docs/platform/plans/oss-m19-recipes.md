@@ -279,7 +279,7 @@ execution path and application build inputs are unchanged by those scan refineme
 | `scripts/generate-outcome-projection.test.ts` | 7 | No |
 | `scripts/packages/eslint-import-map.test.ts` | 123 | No |
 | `packages/platform/test/packageBoundary.test.ts` | 2921 | No |
-| `scripts/documentation-impact.test.ts` | 101 | No |
+| the former documentation-impact suite | 101 | No |
 
 All 17 selected files pass, totalling 4902 cases, plus four new pure cases. No
 second existing test was edited. Source-preview and batch-forward execution

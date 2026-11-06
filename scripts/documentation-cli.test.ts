@@ -1,15 +1,30 @@
 import { createSourceReleaseContract } from "./oss-source-release-contract.ts";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawnSync, type ExecFileSyncOptions } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, posix, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { PUBLIC_EXECUTION_ENTRYPOINTS } from "./oss-publication-contract.ts";
 import { PUBLIC_PACKAGE_COMMANDS, PUBLIC_PACKAGE_EXECUTION_SURFACES, createPublicPublicationCatalog } from "./oss-publication-policy.ts";
-import { readDocumentationState } from "./documentation-routing.ts";
+import { readDocumentationState, type DocumentationSurface } from "./documentation-routing.ts";
 import { renderDocumentationSourceMap } from "./documentation-navigation.ts";
+import { resolveDocumentationBase } from "./documentation-git.ts";
+
+const fetchMock = vi.hoisted(() => ({ source: "", calls: [] as { args: string[]; options: ExecFileSyncOptions }[] }));
+vi.mock("node:child_process", async (original) => {
+  const actual = await original<typeof import("node:child_process")>();
+  return { ...actual, execFileSync: (command: string, args: string[], options: ExecFileSyncOptions) => {
+    if (command === "git" && args.includes("fetch") && args.includes("https://github.com/openlup/openlup.git")) {
+      fetchMock.calls.push({ args, options });
+      if (!fetchMock.source) throw new Error("simulated public base fetch failure");
+      // The test transport alone admits the synthetic file repository; production admits HTTPS only.
+      return actual.execFileSync(command, ["-c", "protocol.file.allow=always", ...args.map((arg) => arg === "https://github.com/openlup/openlup.git" ? `file://${fetchMock.source}` : arg)], options);
+    }
+    return actual.execFileSync(command, args, options);
+  } };
+});
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const ENTRYPOINT = "scripts/oss-published-tree-check.ts";
@@ -158,7 +173,7 @@ describe("documentation CLI on the bare public runtime", () => {
       expect(unmigratedApi.status).toBe(1); expect(unmigratedApi.stderr).toContain("migration-block @openlup/core: packages/core/api/demo.api.md removes or changes a declaration line");
     } finally { rmSync(temporary, { recursive: true, force: true }); }
   });
-  it("runs in a shallow checkout without node_modules, enforces source impact and trusts hosted attribution", () => {
+  it("runs in a shallow checkout without node_modules, checks navigation and trusts hosted attribution", () => {
     const temporary = mkdtempSync(join(tmpdir(), "documentation-cli-"));
     try {
       const source = join(temporary, "source"); mkdirSync(source); const base = seed(source);
@@ -182,14 +197,188 @@ describe("documentation CLI on the bare public runtime", () => {
       const redirected = execute(["--docs-base", head], { GIT_DIR: join(decoy, ".git"), GIT_WORK_TREE: decoy, GIT_INDEX_FILE: join(decoy, ".git/index") });
       expect(redirected.stderr).toBe(""); expect(redirected.status).toBe(0); expect(redirected.stdout).toContain(`${head} (explicit)`);
       write(checkout, "src/domains/demo/main.ts", "export const value = 2;\n");
-      const original = readFileSync(join(checkout, "README.md"), "utf8");
-      write(checkout, "README.md", original.replace("## Other", `<!-- openlup-doc-impact {"unit":"domain-demo","digest":"sha256-${"0".repeat(64)}","reason":"An invalid fingerprint is not an update."} -->\n\n## Other`));
-      const refused = execute([], env);
-      expect(refused.status).toBe(1); expect(refused.stdout).toContain("needs a substantive section update");
-      write(checkout, "README.md", original.replace("preserves replay safety", "preserves replay safety and now refuses reordered events"));
+      // Source edits no longer need an owner-section answer.
       expect(execute([], env).status).toBe(0);
+      write(checkout, "docs/platform/SOURCE_MAP.md", "stale navigation\n");
+      const staleMap = execute([], env);
+      expect(staleMap.status).toBe(1); expect(staleMap.stderr).toContain("documentation source map is stale");
+      expect(execute(["--docs-update"], env).status).toBe(0);
       const mismatch = execute([], { ...env, GITHUB_SHA: base });
       expect(mismatch.status).toBe(1); expect(mismatch.stderr).toContain("checkout identity");
     } finally { rmSync(temporary, { recursive: true, force: true }); }
   }, 30_000);
+});
+
+describe("strict documentation base attribution", () => {
+  const directories: string[] = [];
+  let fixtureSeed: { root: string; base: string } | undefined;
+  afterEach(() => { vi.unstubAllEnvs(); for (const root of directories.splice(0)) rmSync(root, { recursive: true, force: true }); fetchMock.source = ""; fetchMock.calls.length = 0; });
+  afterAll(() => { if (fixtureSeed) rmSync(fixtureSeed.root, { recursive: true, force: true }); });
+  function temporary(): string { const path = mkdtempSync(join(tmpdir(), "documentation-guard-")); directories.push(path); return path; }
+  function git(root: string, ...args: string[]): string {
+    return execFileSync("git", ["-c", "maintenance.auto=false", "-c", "gc.auto=0", ...args], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+  }
+  function write(root: string, path: string, text: string): void { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), text); }
+  function commit(root: string): string {
+    git(root, "add", "."); git(root, "-c", "user.name=Documentation Test", "-c", "user.email=test@example.org", "commit", "-qm", "fixture"); return git(root, "rev-parse", "HEAD");
+  }
+  const OWNER = "docs/owner.md";
+  const SOURCE = "src/domains/demo/main.ts";
+  const ownerText = "# Owner\n\n## Canonical\n\nThe contract preserves replay safety.\n\nUpdated: 2026-09-26\n\n## Other\n\nSeparate guidance.\n";
+  function fixture(): { root: string; base: string; surfaces: DocumentationSurface[] } {
+    const root = temporary();
+    const surfaces: DocumentationSurface[] = [
+      { id: "repository", when: "Repository contracts and configuration", paths: ["*", "config/**", "src/lib/**"], doc: OWNER, anchor: "#canonical" },
+      { id: "domain-demo", when: "The demo domain contract", paths: ["src/domains/demo/**"], doc: OWNER, anchor: "#canonical" },
+      { id: "documentation", when: "Public documentation authoring", paths: ["docs/**"], doc: OWNER, anchor: "" },
+    ];
+    if (fixtureSeed) {
+      // Reuse only immutable setup bytes; every case owns its complete tree and .git.
+      cpSync(fixtureSeed.root, root, { recursive: true });
+      return { root, base: fixtureSeed.base, surfaces };
+    }
+    git(root, "init", "-q");
+    write(root, "README.md", `[Owner](${OWNER})\n`); write(root, OWNER, ownerText);
+    write(root, "src/lib/coreDomains.ts", 'export const CORE_DOMAINS = Object.freeze(["demo"] as const);\n');
+    write(root, SOURCE, "export const value = 1;\n"); write(root, "src/domains/demo/other.ts", "export const other = 1;\n");
+    write(root, "config/doc-routing.json", JSON.stringify({ version: 2, surfaces }));
+    const base = commit(root); git(root, "update-ref", "refs/remotes/origin/main", base);
+    fixtureSeed = { root: mkdtempSync(join(tmpdir(), "documentation-guard-seed-")), base };
+    cpSync(root, fixtureSeed.root, { recursive: true });
+    return { root, base, surfaces };
+  }
+  function hostedEvent(root: string, base: string, eventName = "push", extra: Record<string, unknown> = {}): NodeJS.ProcessEnv {
+    const head = git(root, "rev-parse", "HEAD"); const eventPath = join(temporary(), "event.json");
+    writeFileSync(eventPath, JSON.stringify({ repository: { full_name: "openlup/openlup", private: false }, before: base, after: head, ...extra }));
+    return { GITHUB_ACTIONS: "true", GITHUB_REPOSITORY: "openlup/openlup", GITHUB_EVENT_NAME: eventName, GITHUB_EVENT_PATH: eventPath, GITHUB_SHA: head, PATH: localEnvironment.PATH };
+  }
+  function mergeGroupEvent(root: string, base: string, patch: Record<string, unknown> = {}): NodeJS.ProcessEnv {
+    const head = git(root, "rev-parse", "HEAD"); const ref = "refs/heads/gh-readonly-queue/main/pr-1-fixture";
+    return { ...hostedEvent(root, base, "merge_group", { action: "checks_requested", merge_group: {
+      base_sha: base, base_ref: "refs/heads/main", head_sha: head, head_ref: ref,
+      head_commit: { id: head, tree_id: git(root, "rev-parse", "HEAD^{tree}") }, ...patch,
+    } }), GITHUB_REF: ref };
+  }
+
+  it.each(["rewrite", "header", "included-header", "remote-alias"])("refuses effective %s configuration before public fallback transport", (setting) => {
+    const { root, base } = fixture(); write(root, SOURCE, "export const value = 2;\n"); commit(root);
+    const shallow = join(temporary(), "checkout"); git(root, "clone", "-q", "--depth=1", `file://${root}`, shallow);
+    if (setting === "rewrite") git(shallow, "config", `url.file://${root}.insteadOf`, "https://github.com/openlup/openlup.git");
+    else if (setting === "header") git(shallow, "config", "http.https://github.com/openlup/.extraHeader", "Authorization: SyntheticDocumentationFixture");
+    else if (setting === "remote-alias") git(shallow, "config", "remote.https://github.com/openlup/openlup.git.url", `file://${root}`);
+    else {
+      const included = join(temporary(), "transport.gitconfig");
+      writeFileSync(included, '[http "https://github.com/openlup/"]\n extraHeader = Authorization: SyntheticDocumentationFixture\n');
+      git(shallow, "config", "include.path", included);
+    }
+    fetchMock.source = root;
+    expect(() => resolveDocumentationBase(shallow, { env: hostedEvent(shallow, base) })).toThrow(/transport or credential configuration/);
+    expect(fetchMock.calls).toHaveLength(0);
+  });
+  it("uses a local merge base, refuses unknown/nonancestor bases and never silently skips", () => {
+    const { root, base } = fixture(); expect(resolveDocumentationBase(root, { env: {} }).base).toBe(base);
+    expect(() => resolveDocumentationBase(root, { base: "HEAD", env: {} })).toThrow(/full commit SHA/);
+    expect(() => resolveDocumentationBase(root, { base: "f".repeat(40), env: {} })).toThrow();
+    git(root, "checkout", "--orphan", "unrelated"); git(root, "rm", "-rf", "."); write(root, "unrelated.txt", "unrelated\n"); const other = commit(root);
+    git(root, "checkout", "-q", "--detach", base);
+    expect(() => resolveDocumentationBase(root, { base: other, env: {} })).toThrow(/not an ancestor/);
+    git(root, "update-ref", "-d", "refs/remotes/origin/main"); expect(() => resolveDocumentationBase(root, { env: {} })).toThrow();
+  });
+  it("prioritizes valid public hosted events over a caller override and rejects identity drift", () => {
+    const { root, base } = fixture(); write(root, SOURCE, "export const value = 2;\n"); commit(root);
+    const env = hostedEvent(root, base);
+    expect(resolveDocumentationBase(root, { base: "f".repeat(40), env }).provenance).toBe("push");
+    for (const patch of [{ GITHUB_REPOSITORY: "foreign/repository" }, { GITHUB_SHA: base }, { GITHUB_EVENT_NAME: "workflow_dispatch" }])
+      expect(() => resolveDocumentationBase(root, { env: { ...env, ...patch } })).toThrow(/identity|event/);
+    const privateEnv = hostedEvent(root, base, "push", { repository: { full_name: "openlup/openlup", private: true } });
+    expect(() => resolveDocumentationBase(root, { env: privateEnv })).toThrow(/public OpenLup/);
+  });
+  it("validates the actual PR merge parents", () => {
+    const { root, base } = fixture(); git(root, "checkout", "-qb", "topic"); write(root, SOURCE, "export const value = 2;\n"); const source = commit(root);
+    git(root, "checkout", "-qb", "merge", base); git(root, "-c", "user.name=Documentation Test", "-c", "user.email=test@example.org", "merge", "--no-ff", "-qm", "merge fixture", "topic");
+    const env = hostedEvent(root, base, "pull_request", { pull_request: { base: { sha: base }, head: { sha: source }, merge_commit_sha: git(root, "rev-parse", "HEAD") } });
+    expect(resolveDocumentationBase(root, { env }).provenance).toBe("pull-request");
+    git(root, "checkout", "-q", "--detach", source); env.GITHUB_SHA = source;
+    expect(() => resolveDocumentationBase(root, { env })).toThrow(/base\/head merge/);
+  });
+  describe("the pull-request identity fence", () => {
+    function merged() {
+      const { root, base } = fixture(); git(root, "checkout", "-qb", "topic"); write(root, SOURCE, "export const value = 2;\n"); const source = commit(root);
+      git(root, "checkout", "-qb", "merge", base); git(root, "-c", "user.name=Documentation Test", "-c", "user.email=test@example.org", "merge", "--no-ff", "-qm", "merge fixture", "topic");
+      return { root, base, source, merge: git(root, "rev-parse", "HEAD") };
+    }
+    const pullRequest = (root: string, base: string, source: string, mergeCommit: string) => hostedEvent(root, base, "pull_request", { pull_request: { base: { sha: base }, head: { sha: source }, merge_commit_sha: mergeCommit } });
+    it("F1 accepts exact parents when the payload's merge_commit_sha lags", () => {
+      const { root, base, source } = merged(); expect(resolveDocumentationBase(root, { env: pullRequest(root, base, source, base) }).provenance).toBe("pull-request");
+    });
+    it("F2 refuses swapped parents", () => {
+      const { root, base, source } = merged(); const swapped = git(root, "-c", "user.name=Documentation Test", "-c", "user.email=test@example.org", "commit-tree", git(root, "rev-parse", "HEAD^{tree}"), "-p", source, "-p", base, "-m", "swapped");
+      git(root, "checkout", "-q", "--detach", swapped); expect(() => resolveDocumentationBase(root, { env: pullRequest(root, base, source, swapped) })).toThrow(/base\/head merge/);
+    });
+    it("F3 refuses a one-parent checkout", () => {
+      const { root, base, source } = merged(); git(root, "checkout", "-q", "--detach", source); expect(() => resolveDocumentationBase(root, { env: pullRequest(root, base, source, source) })).toThrow(/base\/head merge/);
+    });
+    it("F4 refuses an event base that is not an ancestor of the first parent", () => {
+      const { root, source, merge } = merged(); expect(() => resolveDocumentationBase(root, { env: pullRequest(root, source, source, merge) })).toThrow(/not an observed ancestor/);
+    });
+    it("F5 refuses a checkout other than GITHUB_SHA", () => {
+      const { root, base, source, merge } = merged(); const env = pullRequest(root, base, source, merge); env.GITHUB_SHA = source;
+      expect(() => resolveDocumentationBase(root, { env })).toThrow(/hosted checkout identity/);
+    });
+  });
+  it("attributes a complete merge batch to its exact event base, head, ref and checkout", () => {
+    const { root, base } = fixture(); write(root, SOURCE, "export const value = 2;\n"); commit(root);
+    write(root, "src/domains/demo/other.ts", "export const other = 2;\n"); const head = commit(root);
+    const env = mergeGroupEvent(root, base);
+    expect(resolveDocumentationBase(root, { base: head, env })).toEqual({ base, head, provenance: "merge-group" });
+    expect(fetchMock.calls).toEqual([]);
+    write(root, SOURCE, "export const value = 3;\n"); commit(root);
+    expect(() => resolveDocumentationBase(root, { env })).toThrow(/checkout identity/);
+  });
+  it.each([
+    { base_sha: undefined }, { base_sha: "invalid" }, { base_sha: "0".repeat(40) },
+    { base_ref: undefined }, { base_ref: "refs/heads/other" },
+    { head_sha: undefined }, { head_sha: "f".repeat(40) },
+    { head_ref: undefined }, { head_ref: "refs/heads/main" },
+    { head_commit: undefined }, { head_commit: { id: "f".repeat(40), tree_id: "a".repeat(40) } },
+  ])("refuses missing or malformed merge-group attribution %j before transport", (patch) => {
+    const { root, base } = fixture(); write(root, SOURCE, "export const value = 2;\n"); commit(root);
+    expect(() => resolveDocumentationBase(root, { env: mergeGroupEvent(root, base, patch) })).toThrow(/merge-group checkout/);
+    expect(fetchMock.calls).toEqual([]);
+  });
+  it("refuses missing group/action/ref, wrong tree, empty range and unrelated base", () => {
+    const { root, base } = fixture(); write(root, SOURCE, "export const value = 2;\n"); const head = commit(root);
+    const env = mergeGroupEvent(root, base);
+    const original = JSON.parse(readFileSync(env.GITHUB_EVENT_PATH!, "utf8"));
+    for (const patch of [{ action: undefined }, { action: "destroyed" }, { merge_group: undefined }]) {
+      writeFileSync(env.GITHUB_EVENT_PATH!, JSON.stringify({ ...original, ...patch }));
+      expect(() => resolveDocumentationBase(root, { env })).toThrow(/merge-group checkout/);
+    }
+    writeFileSync(env.GITHUB_EVENT_PATH!, JSON.stringify(original));
+    for (const patch of [{ GITHUB_REF: undefined }, { GITHUB_REF: "refs/heads/gh-readonly-queue/main/pr-2-fixture" }])
+      expect(() => resolveDocumentationBase(root, { env: { ...env, ...patch } })).toThrow(/merge-group checkout/);
+    const wrongTree = mergeGroupEvent(root, base, { head_commit: { id: head, tree_id: "f".repeat(40) } });
+    expect(() => resolveDocumentationBase(root, { env: wrongTree })).toThrow(/merge-group checkout/);
+    expect(() => resolveDocumentationBase(root, { env: mergeGroupEvent(root, head) })).toThrow(/merge-group checkout/);
+    const badRef = "refs/heads/gh-readonly-queue/main/../fixture";
+    expect(() => resolveDocumentationBase(root, { env: { ...mergeGroupEvent(root, base, { head_ref: badRef }), GITHUB_REF: badRef } })).toThrow(/ref is malformed/);
+    git(root, "checkout", "--orphan", "unrelated"); git(root, "rm", "-rf", "."); write(root, "other.txt", "other\n"); const other = commit(root);
+    git(root, "checkout", "-q", "--detach", head);
+    expect(() => resolveDocumentationBase(root, { env: mergeGroupEvent(root, other) })).toThrow(/not an observed ancestor/);
+    expect(fetchMock.calls).toEqual([]);
+  });
+  it("fetches a missing shallow CI base with no credentials, refs or FETCH_HEAD; failure refuses", () => {
+    const { root, base } = fixture(); write(root, SOURCE, "export const value = 2;\n"); commit(root);
+    const shallow = join(temporary(), "checkout"); git(root, "clone", "-q", "--depth=1", `file://${root}`, shallow);
+    expect(() => resolveDocumentationBase(shallow, { base, env: {} })).toThrow();
+    const env = hostedEvent(shallow, base); env.DEMONSTRATION_TOKEN = "synthetic";
+    expect(() => resolveDocumentationBase(shallow, { env })).toThrow(/simulated public base fetch failure/);
+    fetchMock.source = root; expect(resolveDocumentationBase(shallow, { env }).base).toBe(base);
+    const call = fetchMock.calls.at(-1)!;
+    expect(call.args).toContain("--no-write-fetch-head"); expect(call.args).toContain("credential.helper="); expect(call.args).toContain("core.askPass=");
+    for (const flag of ["--no-prune", "--no-prune-tags", "--no-recurse-submodules", "--refmap=", "--no-auto-maintenance", "--no-write-commit-graph"])
+      expect(call.args).toContain(flag);
+    expect(call.options.env?.GIT_TERMINAL_PROMPT).toBe("0"); expect(call.options.env?.DEMONSTRATION_TOKEN).toBeUndefined();
+    expect(existsSync(join(shallow, ".git/FETCH_HEAD"))).toBe(false);
+  });
 });
