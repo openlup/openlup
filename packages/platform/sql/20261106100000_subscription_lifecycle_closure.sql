@@ -46,11 +46,14 @@ BEGIN
   FROM public.commerce_orders orders,public.subscription_cycles cycle
   WHERE intent.order_id=orders.id AND orders.subscription_cycle_id=cycle.id AND cycle.subscription_id=p_subscription_id
    AND cycle.status='payment_pending' AND intent.status IN ('created','failed');
+ -- A recorded simulator capture is not yet applied settlement. Cancel the unpaid
+ -- order with its intent/cycle so late positive truth takes the existing review
+ -- path; only settled money preserves a pending order here.
  UPDATE public.commerce_orders orders SET status='cancelled',updated_at=p_requested_at
   FROM public.subscription_cycles cycle WHERE orders.subscription_cycle_id=cycle.id AND cycle.subscription_id=p_subscription_id
    AND cycle.status='payment_pending' AND orders.status='pending_payment'
    AND NOT EXISTS(SELECT 1 FROM public.commerce_settlement_intents intent WHERE intent.order_id=orders.id
-    AND (intent.status='settled' OR (intent.channel_key='sandbox' AND public.payment_simulator_read_attempt(intent.id,NULL)->>'state'='captured')));
+    AND intent.status='settled');
  UPDATE public.subscription_retry_obligations SET next_retry_at=NULL,updated_at=p_requested_at
   WHERE subscription_id=p_subscription_id AND state='waiting' AND cycle_id IN
    (SELECT id FROM public.subscription_cycles WHERE subscription_id=p_subscription_id AND status='payment_pending');

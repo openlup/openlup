@@ -10,8 +10,8 @@ import { AT, call, failure, later, prepareOriginal, renewal } from "./subscripti
 
 export const lifecycleForward = "db/platform/migrations/20261106100000_subscription_lifecycle_closure.sql";
 export const lifecycleProfiles = ["legacy", "qualified-v2", "qualified-admin"] as const;
-// Use the same named zones for JavaScript and every PostgreSQL test connection.
-export const lifecycleTimeZone = ["Etc/GMT-9", "Etc/GMT+5"].includes(process.env.TZ ?? "") ? process.env.TZ! : "UTC";
+// Fixtures use explicit UTC; individual cases select their own named database zones.
+export const lifecycleTimeZone = "UTC";
 export type LifecycleProfile = typeof lifecycleProfiles[number];
 const priorInventories = {
   "legacy": "4b02a4badcc0dbc9240bc8a84b4bfbd2041611282ad09b1278237cd85cf0b5ca",
@@ -44,7 +44,10 @@ export async function lifecycleInstallation(profile: LifecycleProfile) {
     prefix.qualifiedAdmin.objectInventorySha256.installerManaged = priorInventories["qualified-admin"];
     const root = resolve(`.context/scratch/c21/prefix-${profile}`);
     for (const plan of [prefix, prefix.qualified, prefix.qualifiedAdmin]) {
-      plan.forward = plan.forward.filter((entry: { file: string }) => entry.file !== lifecycleForward);
+      // The frozen prefix ends before this forward; later appended forwards are not part of it.
+      const end = plan.forward.findIndex((entry: { file: string }) => entry.file === lifecycleForward);
+      if (end < 0) throw new Error("lifecycle forward missing from the manifest plan");
+      plan.forward = plan.forward.slice(0, end);
       for (const entry of [plan.baseline, ...plan.forward]) {
         const target = resolve(root, entry.file); mkdirSync(dirname(target), { recursive: true }); writeFileSync(target, readFileSync(entry.file));
       }

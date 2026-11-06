@@ -21,17 +21,16 @@ function collect(value: unknown): void {
   for (const child of Object.values(row)) collect(child);
 }
 collect(candidate);
-const migrations = [...files].map(([file, digest]) => {
+for (const [file, digest] of files) {
   const content = readFileSync(file, "utf8");
   if (createHash("sha256").update(content).digest("hex") !== digest) throw new Error(`prefix hash mismatch: ${file}`);
-  return { file, content };
-});
-const candidateCatalog = { readManifest: () => candidate, readMigrations: () => ({ migrations, errors: [] }) };
+}
+
 const password = "synthetic-conformance";
-async function install(connectionString: string, installation: PlatformPostgresInstallation, catalog = candidateCatalog) {
+async function install(connectionString: string, installation: PlatformPostgresInstallation) {
   const pool = new Pool({ connectionString, options: installation.generation === "qualified-v2" ? qualifiedPostgresStartupOptions(installation)
     : installation.generation === "qualified-admin" ? qualifiedAdminPostgresStartupOptions(installation) : undefined });
-  try { await createPlatformPostgresMigrationRunner({ connectionString }, { installation, catalog, poolFactory: () => pool }).apply(); }
+  try { await createPlatformPostgresMigrationRunner({ connectionString }, { installation, poolFactory: () => pool }).apply(); }
   finally { await pool.end(); }
 }
 
@@ -77,6 +76,42 @@ for (const generation of ["legacy", "qualified-v2"] as const) describe(`notice p
   async function customerNotice(caseId: string, attempt = 1) {
     return (await runtime.query("SELECT public.dunning_lifecycle_queue_notice($1::uuid,'payment_failed','subscription-payment-failed-1',$2,NULL) AS id", [caseId.toUpperCase(), attempt])).rows[0].id;
   }
+
+  it("retains legacy reminder identities, frozen event facts and accepted receipts across the notice upgrade", async () => {
+    const queued = await subscription(), sent = await subscription();
+    const queuedId = randomUUID(), sentId = randomUUID();
+    for (const [subject, id] of [[queued, queuedId], [sent, sentId]] as const) {
+      await admin.query(`INSERT INTO public.subscription_reminder_ledger(id,subscription_id,reminder_kind,reminder_day)
+        SELECT $1,$2,'renewal_due_soon',(next_cycle_at AT TIME ZONE 'UTC')::date FROM public.subscriptions WHERE id=$2`, [id, subject.id]);
+      await admin.query(`INSERT INTO public.subscription_events(subscription_id,event_type,idempotency_key,payload)
+        SELECT id,'subscription.reminder.renewal_facts','renewal-reminder:'||to_char(next_cycle_at AT TIME ZONE 'UTC','YYYY-MM-DD'),
+          jsonb_build_object('renewalAt',to_char(next_cycle_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'))
+        FROM public.subscriptions WHERE id=$1`, [subject.id]);
+    }
+    const legacyFacts = (await admin.query("SELECT payload FROM public.subscription_events WHERE subscription_id=$1 AND event_type='subscription.reminder.renewal_facts'", [queued.id])).rows[0].payload;
+    await runtime.query("SELECT public.transactional_delivery_record_accepted($1,$2,'captured:legacy-reminder')", [`subscription-notice:reminder:${sentId}`, "a".repeat(64)]);
+    const receipts = createPostgresTransactionalDeliveryStore({ connectionString: runtimeUrl });
+    const bound: string[] = [], sentKeys: string[] = [];
+    const delivery = createTransactionalDelivery({ store: receipts, delivery: { async deliver(command) {
+      sentKeys.push(command.idempotencyKey); return { deliveryReference: `captured:${command.idempotencyKey}` };
+    } } });
+    const worker = createPostgresLifecycleMessages({
+      async withSession(work) { const db = await runtime.connect(); try { return await work(db); } finally { db.release(); } },
+      bind: async notice => {
+        expect(notice.subscriptionId).toBe(queued.id);
+        expect(notice.payload.renewalAt).toBe(legacyFacts.renewalAt);
+        bound.push(notice.subscriptionId);
+        return { recipientReference: `client:${queued.client}`, templateReference: notice.templateSlug };
+      },
+      delivery: { readReceipt: receipts.readReceipt, send: delivery.send },
+    });
+    try { await worker.run(100); await worker.run(100); } finally { await receipts.close(); }
+    expect(bound).toHaveLength(1);
+    expect(sentKeys).toEqual([`subscription-notice:reminder:${queuedId}`]);
+    expect((await admin.query("SELECT id,subscription_id,renewal_at FROM public.subscription_reminder_ledger WHERE subscription_id=ANY($1::uuid[]) ORDER BY subscription_id", [[queued.id, sent.id]])).rows)
+      .toEqual([{ id: queuedId, subscription_id: queued.id, renewal_at: null }, { id: sentId, subscription_id: sent.id, renewal_at: null }].sort((a,b) => a.subscription_id.localeCompare(b.subscription_id)));
+    expect((await admin.query("SELECT payload FROM public.subscription_events WHERE subscription_id=$1 AND event_type='subscription.reminder.renewal_facts'", [queued.id])).rows[0].payload).toEqual(legacyFacts);
+  }, 30000);
 
   async function markedPurchase(hasMarker = true) {
     const client = randomUUID(), order = randomUUID(), activation = randomUUID();
@@ -292,10 +327,10 @@ for (const generation of ["legacy", "qualified-v2"] as const) describe(`notice p
     expect(await Promise.all(rows.map(row => count(row.id)))).toEqual([1, 1, 0, 0, 0]);
     await enqueue(); expect(await count(rows[0].id)).toBe(1);
     const original = (await admin.query("SELECT next_cycle_at FROM public.subscriptions WHERE id=$1", [rows[0].id])).rows[0].next_cycle_at;
-    const facts = (await runtime.query("SELECT payload FROM public.subscription_events WHERE subscription_id=$1::uuid AND event_type='subscription.reminder.renewal_facts'", [rows[0].id.toUpperCase()])).rows[0].payload;
-    expect(Date.parse(facts.renewalAt)).toBe(original.getTime());
+    const facts = (await runtime.query("SELECT id,renewal_at FROM public.subscription_reminder_ledger WHERE subscription_id=$1::uuid", [rows[0].id.toUpperCase()])).rows[0];
+    expect(facts.renewal_at.getTime()).toBe(original.getTime());
     await admin.query("UPDATE public.subscriptions SET next_cycle_at=next_cycle_at+interval '1 day' WHERE id=$1", [rows[0].id]);
-    expect(facts.renewalAt).toEqual((await runtime.query("SELECT payload->>'renewalAt' AS at FROM public.subscription_events WHERE subscription_id=$1::uuid AND event_type='subscription.reminder.renewal_facts'", [rows[0].id])).rows[0].at);
+    expect(facts.renewal_at).toEqual((await runtime.query("SELECT renewal_at FROM public.subscription_reminder_ledger WHERE id=$1::uuid", [facts.id])).rows[0].renewal_at);
     await enqueue(); expect(await count(rows[0].id)).toBe(2);
   });
 
@@ -593,6 +628,58 @@ for (const generation of ["legacy", "qualified-v2"] as const) describe(`notice p
     }
     expect(delivered).toBe(2);
   }, 60000);
+  it("isolates renewal facts from customer lifecycle keys and preserves unrelated notice dispatch", async () => {
+    const blocked = await subscription(), otherReminder = await subscription();
+    const principal = randomUUID();
+    await admin.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,$2)", [principal, `${principal}@example.invalid`]);
+    await admin.query("UPDATE public.clients SET principal_id=$2 WHERE id=$1", [blocked.client, principal]);
+    const key = (await admin.query("SELECT 'renewal-reminder:'||to_char(next_cycle_at AT TIME ZONE 'UTC','YYYY-MM-DD') AS key FROM public.subscriptions WHERE id=$1", [blocked.id])).rows[0].key;
+    const actor = await admin.connect();
+    try {
+      await actor.query("BEGIN");
+      await actor.query("SET LOCAL ROLE authenticated");
+      await actor.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: principal, role: "authenticated" })]);
+      expect((await actor.query("SELECT current_user AS name")).rows[0].name).toBe("authenticated");
+      await actor.query("SELECT public.customer_subscription_pause_as_actor($1,$2,'indefinite',NULL)", [blocked.id, key]);
+      await actor.query("COMMIT");
+    } catch (error) { await actor.query("ROLLBACK"); throw error; } finally { actor.release(); }
+    expect((await admin.query("SELECT status FROM public.subscriptions WHERE id=$1", [blocked.id])).rows[0].status).toBe("paused");
+    expect((await admin.query("SELECT event_type FROM public.subscription_events WHERE subscription_id=$1 AND idempotency_key=$2", [blocked.id, key])).rows)
+      .toEqual([{ event_type: "subscription.customer_self_service.pause" }]);
+    await runtime.query("SELECT public.subscription_apply_lifecycle_action($1,$2,$3,'resume','{}'::jsonb,now())", [blocked.client, `collision-resume:${blocked.id}`, blocked.id]);
+    // Model elapsed freshness after the real pause/resume writers without re-keying their event.
+    await admin.query("UPDATE public.subscriptions SET updated_at=now()-interval '6 days' WHERE id=$1", [blocked.id]);
+    await admin.query("UPDATE public.notification_recipients SET active=false WHERE notification_type='commerce_payment_critical'");
+    const recipient = randomUUID();
+    await admin.query("INSERT INTO public.notification_recipients(id,email,notification_type) VALUES($1,$2,'commerce_payment_critical')", [recipient, `${recipient}@example.invalid`]);
+    const unrelated = await caseFor(); await customerNotice(unrelated.caseId);
+    let delivered = 0;
+    const accepted = new Map<string, { state: "accepted"; deliveryReference: string }>();
+    const worker = createPostgresLifecycleMessages({
+      async withSession(work) { const db = await runtime.connect(); try { return await work(db); } finally { db.release(); } },
+      bind: async () => ({ recipientReference: "customer:collision-control", templateReference: "notice:collision-control" }),
+      bindOperator: async () => ({ recipientReference: "operator:collision-control", templateReference: "operator:collision-control" }),
+      delivery: { readReceipt: async key => accepted.get(key) ?? null, send: async command => {
+        const receipt = { state: "accepted" as const, deliveryReference: `captured:collision:${++delivered}` };
+        accepted.set(command.idempotencyKey, receipt); return receipt;
+      } },
+    });
+    await worker.run(100);
+    expect(await count(blocked.id)).toBe(1);
+    expect(await count(otherReminder.id)).toBe(1);
+    expect((await admin.query("SELECT recipient_kind,status FROM public.subscription_dunning_notifications WHERE case_id=$1 ORDER BY recipient_kind", [unrelated.caseId])).rows)
+      .toEqual([{ recipient_kind: "customer", status: "sent" }, { recipient_kind: "operator", status: "sent" }]);
+    expect((await admin.query("SELECT event_type FROM public.subscription_events WHERE subscription_id=$1 AND idempotency_key=$2", [blocked.id, key])).rows)
+      .toEqual([{ event_type: "subscription.customer_self_service.pause" }]);
+    const deliveredOnce = delivered;
+    await worker.run(100);
+    expect(await count(blocked.id)).toBe(1);
+    expect(await count(otherReminder.id)).toBe(1);
+    expect(deliveredOnce).toBeGreaterThanOrEqual(4);
+    expect(delivered).toBe(deliveredOnce);
+  }, 30000);
+
+
 });
 
 // The service read is the only new authority. Both restricted-bootstrap role

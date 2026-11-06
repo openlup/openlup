@@ -65,8 +65,11 @@ describe.each(lifecycleProfiles)("subscription lifecycle closure on %s", profile
       (SELECT revoked_at IS NOT NULL FROM public.commerce_checkout_recovery_tokens WHERE id=$6) AS revoked
       FROM public.subscription_dunning_cases c WHERE id=$1`, [f.caseId, f.original.cycleId, f.original.orderId, f.original.settlementIntentId, f.operation, f.token])).rows[0];
     expect(state).toEqual({ status: "paused", next_retry_at: null, updated_at: new Date(AT), cycle: "skipped", orders: "cancelled", intent: "cancelled", retry: null, revoked: true });
-    expect((await env.owner.query("SELECT status,error,recovery_url_path FROM public.subscription_dunning_notifications WHERE case_id=$1", [f.caseId])).rows)
-      .toEqual([{ status: "skipped", error: "subscription_paused", recovery_url_path: null }]);
+    expect((await env.owner.query("SELECT recipient_kind,status,error,recovery_url_path FROM public.subscription_dunning_notifications WHERE case_id=$1 ORDER BY recipient_kind", [f.caseId])).rows)
+      .toEqual([
+        { recipient_kind: "customer", status: "skipped", error: "subscription_paused", recovery_url_path: null },
+        { recipient_kind: "operator", status: "skipped", error: "missing_critical_notification_recipient", recovery_url_path: null },
+      ]);
     await expect(call(env.runtime, "subscription_retry_authorize_recovery", [f.operation, f.token, "method-1", "evidence", later(1)])).rejects.toThrow("not_authorized");
     const before = await lifecycleRows(env.owner);
     expect(await invoke(f, `pause:${f.subscription}`, "pause", input, later(30), terms)).toMatchObject({ ...first, status: "replayed", originalStatus: "applied" });
@@ -217,6 +220,37 @@ describe.each(lifecycleProfiles)("subscription lifecycle closure on %s", profile
         expect(await lifecycleRows(env.owner, true)).toEqual(before);
       }
     } finally { await db.query("ROLLBACK"); db.release(); }
+  }, 30_000);
+
+  it.each(["pause", "cancel"])("retains committed capture evidence for review when %s precedes truth ingress", async action => {
+    const f = await lifecycleDeclined(env.owner), at = later(1);
+    await env.owner.query("UPDATE public.commerce_settlement_intents SET channel_key='sandbox' WHERE id=$1", [f.original.settlementIntentId]);
+    const attempt = await call(env.runtime, "payment_simulator_begin_attempt", [`capture:${f.subscription}`, f.original.settlementIntentId, "a".repeat(64), {}, AT]);
+    const observation = await call(env.runtime, "payment_simulator_record_observation", [attempt.id, `capture:${attempt.id}`, "b".repeat(64), "captured", at]);
+    expect((await env.owner.query("SELECT state FROM public.subscription_renewal_operations WHERE id=$1", [f.operation])).rows[0].state).toBe("refused");
+    expect((await env.owner.query("SELECT state FROM public.subscription_retry_obligations WHERE renewal_operation_id=$1", [f.operation])).rows[0].state).toBe("waiting");
+    expect((await env.owner.query("SELECT id FROM public.payment_truth_events WHERE settlement_intent_id=$1", [f.original.settlementIntentId])).rows).toEqual([]);
+    expect(await invoke(f, `capture-${action}:${f.subscription}`, action, action === "pause" ? { pausePreset: "indefinite" } : {}, at))
+      .toMatchObject({ status: "applied" });
+    expect((await env.owner.query(`SELECT c.status AS cycle,o.status AS orders,i.status AS intent
+      FROM public.subscription_cycles c JOIN public.commerce_orders o ON o.subscription_cycle_id=c.id
+      JOIN public.commerce_settlement_intents i ON i.order_id=o.id WHERE i.id=$1`, [f.original.settlementIntentId])).rows)
+      .toEqual([{ cycle: action === "pause" ? "skipped" : "cancelled", orders: "cancelled", intent: "cancelled" }]);
+    const evidence = { sourceKind: "accepted_event", sourceReference: observation.id, attemptRef: attempt.id,
+      observedStatus: "captured", observedAt: at, payloadFingerprint: "b".repeat(64) };
+    const ingress = () => call(env.runtime, "payment_truth_ingest_event", [`sandbox:${observation.id}`, "c".repeat(64),
+      `ingest:${observation.id}`, f.original.settlementIntentId, "captured", f.snapshot.totalAmountMinor, "XXX", at,
+      null, null, evidence, "payment_failed", "/recover", "payment_recovered"]);
+    expect(await ingress()).toMatchObject({ event: { applicationStatus: "review_required", outcome: "captured", replayed: false },
+      financial: { orderStatus: "cancelled" }, effects: { paymentResultRecorded: false } });
+    const beforeReplay = await lifecycleRows(env.owner);
+    expect(await ingress()).toMatchObject({ event: { applicationStatus: "review_required", outcome: "captured", replayed: true },
+      financial: { orderStatus: "cancelled" }, effects: { paymentResultRecorded: false } });
+    expect(await lifecycleRows(env.owner)).toEqual(beforeReplay);
+    expect((await env.owner.query(`SELECT count(*)::int AS count, bool_and(outcome='captured' AND review_required_at IS NOT NULL
+      AND settlement_transition_id IS NULL AND amount_minor=$2) AS retained FROM public.payment_truth_events
+      WHERE settlement_intent_id=$1`, [f.original.settlementIntentId, f.snapshot.totalAmountMinor])).rows).toEqual([{ count: 1, retained: true }]);
+    expect((await env.owner.query("SELECT id FROM public.commerce_settlement_transitions WHERE intent_id=$1 AND outcome='succeeded'", [f.original.settlementIntentId])).rows).toEqual([]);
   }, 30_000);
 
   it("rolls resume forward by whole stored cadences without creating a delivery fact", async () => {
