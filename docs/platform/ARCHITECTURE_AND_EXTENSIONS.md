@@ -2300,10 +2300,19 @@ precede this facade. M12 retains account aggregation. The installed consumer
 covers enabled execution and readiness, actor and lifecycle-identity refusals.
 
 `createPostgresLifecycleMessages` is a native scheduled-host binding over the
-existing dunning queue, reminder ledger and subscription events. It maps native
+existing dunning queue, reminder ledger, typed outbox and subscription events. It maps native
 activation and customer pause/resume/cancel/skip/slide/bundle-edit facts to the
 existing lifecycle templates; it does not invent a parcel arrival or service
 pause. Both reminder producers run explicitly in this scheduled operation.
+New system notice keys live in the typed outbox rather than the customer command
+event namespace, under a separate `subscription_notice` aggregate so pending notices
+do not block ordinary subscription outbox work. Legacy reads require the notice's own event type; existing IDs
+and `subscription-notice:<source>:<id>` keys remain valid across the carrier change.
+The at-risk cause/day cap counts accepted and disabled history from both carriers,
+using retained typed keys after terminal outbox payload compaction.
+Accepted or terminally skipped outbox notices are completed, including receipt-first
+reconciliation after an interrupted completion. Customer lifecycle confirmations
+keep their own event IDs and receipts.
 For address-change events, a host uses either this binding or an outbox handler, not both, because their idempotency keys differ and the customer would receive two mails.
 `run(limit)` accepts 1–100 and mounts no HTTP route or scheduler. Supply one
 exclusive autocommit connection per `withSession` callback, host-composed transactional delivery

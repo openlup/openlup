@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { subscriptionLifecycleTemplate } from "./lifecycleMessages.js";
 import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
-import { runAtRiskNotices, runOperatorNotices } from "./postgresNoticeExtensions.js";
+import { completeSystemNotice, reconcileSystemNotices, runAtRiskNotices, runOperatorNotices, systemNoticeIdentity } from "./postgresNoticeExtensions.js";
 
 export interface NativeLifecycleNotice {
   id: string; messageKey: string; source: "dunning" | "event" | "reminder";
@@ -89,19 +89,23 @@ export function createPostgresLifecycleMessages(options: NativeLifecycleMessages
         await db.query("SELECT public.dunning_lifecycle_renewal_reminder_enqueue($1::integer,$2::integer,$3::integer,$4::integer,$5::integer)",
           [limit, policy.renewalMinSeconds, policy.renewalMaxSeconds, policy.ordinaryFreshnessSeconds, policy.starterFreshnessSeconds]);
         await db.query("SELECT public.dunning_lifecycle_pause_reminder_dispatch($1::integer,$2::integer)", [limit, policy.pauseWindowSeconds]);
+        await reconcileSystemNotices(db);
         await runAtRiskNotices(options, db, limit, policy, result);
         await runOperatorNotices(options, db, limit, policy, result);
         const dunning = (await db.query("SELECT * FROM public.subscription_dunning_claim_batch($1::integer,$2::integer,$3::integer)",
           [limit, dispatch.leaseSeconds, dispatch.maxAttempts])).rows;
         const sources = (await db.query(`WITH sources AS (
-          SELECT e.id,'event' AS source,e.subscription_id,s.client_id,e.event_type AS kind,e.payload
+          SELECT e.id,'event' AS source,e.subscription_id,s.client_id,e.event_type AS kind,e.payload,false AS outbox
           FROM public.subscription_events e JOIN public.subscriptions s ON s.id=e.subscription_id
           WHERE e.event_type=ANY($2::text[])
+          UNION ALL SELECT e.id,'event',e.aggregate_id,s.client_id,e.event_type,e.payload,true
+          FROM public.outbox_events e JOIN public.subscriptions s ON s.id=e.aggregate_id
+          WHERE e.aggregate_type='subscription_notice' AND e.event_type='subscription.pause_reminder_due'
           UNION ALL SELECT r.id,'reminder',r.subscription_id,s.client_id,
           CASE r.reminder_kind WHEN 'pause_ending' THEN 'subscription.pause_reminder_due' ELSE 'subscription.renewal_upcoming' END,
           jsonb_build_object('reminderDay',r.reminder_day)||CASE WHEN r.renewal_at IS NOT NULL
             THEN jsonb_build_object('renewalAt',to_char(r.renewal_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'))
-            ELSE coalesce(f.payload,'{}'::jsonb) END
+            ELSE coalesce(f.payload,'{}'::jsonb) END,false
           FROM public.subscription_reminder_ledger r JOIN public.subscriptions s ON s.id=r.subscription_id
           LEFT JOIN public.subscription_events f ON f.subscription_id=r.subscription_id
             AND f.event_type='subscription.reminder.renewal_facts'
@@ -110,7 +114,11 @@ export function createPostgresLifecycleMessages(options: NativeLifecycleMessages
           ON r.idempotency_key='subscription-notice:'||x.source||':'||x.id::text
           WHERE r.state IS DISTINCT FROM 'accepted' AND COALESCE(r.attempt_count,0)<6
             AND NOT EXISTS(SELECT 1 FROM public.subscription_events done WHERE done.subscription_id=x.subscription_id
+              AND done.event_type='subscription.notice.suppressed'
               AND done.idempotency_key='notice-suppressed:'||x.source||':'||x.id::text)
+            AND NOT EXISTS(SELECT 1 FROM public.outbox_events done WHERE done.aggregate_type='subscription_notice'
+              AND done.aggregate_id=x.subscription_id AND done.event_type='subscription.notice.suppressed'
+              AND done.idempotency_key=x.subscription_id::text||':notice-suppressed:'||x.source||':'||x.id::text)
             AND NOT EXISTS (SELECT 1 FROM public.subscription_notice_refusals refused
               WHERE refused.source=x.source AND refused.source_id=x.id)
           ORDER BY x.id LIMIT $1::integer`, [limit, [...Object.keys(aliases), "subscription.pause_reminder_due"]])).rows;
@@ -121,7 +129,10 @@ export function createPostgresLifecycleMessages(options: NativeLifecycleMessages
           const locked = (await db.query("SELECT pg_try_advisory_lock(hashtextextended($1,0)) AS locked", [key])).rows[0]?.locked;
           if (locked !== true) { result.busy++; continue; }
           const settle = async (status: "sent" | "queued" | "failed" | "skipped", reference: string) => {
-            if (source !== "dunning") return true;
+            if (source !== "dunning") {
+              if (row.outbox === true && (status === "sent" || status === "skipped")) await completeSystemNotice(db, String(row.id));
+              return true;
+            }
             if (status === "sent") return (await db.query(
               "SELECT public.subscription_dunning_mark_sent($1::uuid,$2::uuid,$3) AS ok",
               [row.id, row.claim_token, reference])).rows[0]?.ok === true;
@@ -150,10 +161,9 @@ export function createPostgresLifecycleMessages(options: NativeLifecycleMessages
             if (kind === "subscription.pause_reminder_due" && payload.pauseWindowId) {
               if (!(await db.query("SELECT id FROM public.subscription_pause_windows WHERE id=$1::uuid AND resumed_at IS NULL",
                 [payload.pauseWindowId])).rows.length) {
-                await db.query(`INSERT INTO public.subscription_events(subscription_id,event_type,idempotency_key,payload)
-                  VALUES($1::uuid,'subscription.notice.suppressed',$2,'{"reason":"pause_window_resolved"}'::jsonb)
-                  ON CONFLICT(subscription_id,idempotency_key) DO NOTHING`,
-                [row.subscription_id, `notice-suppressed:${source}:${row.id}`]);
+                await systemNoticeIdentity(db, String(row.subscription_id), "subscription.notice.suppressed",
+                  `notice-suppressed:${source}:${row.id}`, { reason: "pause_window_resolved", source, sourceId: String(row.id) }, true);
+                if (row.outbox === true) await completeSystemNotice(db, String(row.id));
                 result.skipped++; continue;
               }
             }
@@ -194,6 +204,7 @@ export function createPostgresLifecycleMessages(options: NativeLifecycleMessages
               } else {
                 await db.query(`INSERT INTO public.subscription_notice_refusals(source,source_id,reason)
                   VALUES($1,$2::uuid,'notice_policy_refused') ON CONFLICT (source,source_id) DO NOTHING`, [source, row.id]);
+                if (row.outbox === true) await completeSystemNotice(db, String(row.id));
               }
               result.skipped++; continue;
             }

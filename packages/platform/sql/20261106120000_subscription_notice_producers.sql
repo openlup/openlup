@@ -176,10 +176,13 @@ BEGIN
       AND w.ends_at<=now()+make_interval(secs=>p_pause_window_seconds)
     ORDER BY w.ends_at,w.id LIMIT greatest(coalesce(p_limit,0),0)
   ), written AS (
-    INSERT INTO public.subscription_events(subscription_id,event_type,idempotency_key,payload)
-    SELECT subscription_id,'subscription.pause_reminder_due','pause-reminder:'||id::text,
+    INSERT INTO public.outbox_events(aggregate_type,aggregate_id,event_type,idempotency_key,payload)
+    SELECT 'subscription_notice',subscription_id,'subscription.pause_reminder_due','subscription_pause_reminder:'||id::text,
       jsonb_build_object('pauseWindowId',id,'pausePreset',pause_preset,'pauseEndsAt',ends_at,'nextDeliveryAt',next_delivery_at,'resumeAt',next_delivery_at)
-    FROM due ON CONFLICT(subscription_id,idempotency_key) DO NOTHING RETURNING id
+    FROM due WHERE NOT EXISTS(SELECT 1 FROM public.subscription_events legacy
+      WHERE legacy.subscription_id=due.subscription_id AND legacy.event_type='subscription.pause_reminder_due'
+        AND legacy.idempotency_key='pause-reminder:'||due.id::text)
+    ON CONFLICT(event_type,idempotency_key) DO NOTHING RETURNING id
   ) SELECT (SELECT count(*)::integer FROM due),(SELECT count(*)::integer FROM written) INTO v_scanned,v_queued;
   RETURN jsonb_build_object('ok',true,'scanned',v_scanned,'queued',v_queued,'sent',0,'skipped',v_scanned-v_queued,'failed',0);
 END;

@@ -54,9 +54,13 @@ before enabling database adapters. It is not evidence of schema compatibility.
 
 The subscription-notice forward preserves the reminder ledger's renewal-day
 identity and stores new queued charge facts in `subscription_reminder_ledger.renewal_at`;
-subscription events supply only the legacy fallback. Pause reminders
-use the existing event uniqueness with the pause-window UUID; at-risk outcomes
-use distinct non-deliverable event kinds. Operator notification rows bind a
+subscription events supply only the legacy fallback. New pause reminders and
+at-risk identities use the existing typed outbox, separate from customer command
+keys, under the dedicated `subscription_notice` aggregate. Pause reminders retain pause-window UUID identity; at-risk caps count
+accepted receipts and disabled outcomes across the outbox and typed legacy events.
+The immutable outbox keys retain cause/day history after terminal payload compaction.
+Resolved-pause markers use the same isolated carrier and are not deliverable kinds.
+Legacy notice IDs and their delivery keys stay unchanged. Operator notification rows bind a
 separate critical-recipient FK; customer references retain their client FK.
 Recipient-aware uniqueness admits multiple operators without colliding with the
 customer notice. Existing rows default to dispatch-ineligible operator history;

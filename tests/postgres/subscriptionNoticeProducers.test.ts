@@ -26,6 +26,8 @@ for (const [file, digest] of files) {
   if (createHash("sha256").update(content).digest("hex") !== digest) throw new Error(`prefix hash mismatch: ${file}`);
 }
 
+const noticeHistory = `SELECT id,subscription_id,event_type,payload FROM public.subscription_events
+  UNION ALL SELECT id,aggregate_id,event_type,payload FROM public.outbox_events WHERE aggregate_type='subscription_notice'`;
 const password = "synthetic-conformance";
 async function install(connectionString: string, installation: PlatformPostgresInstallation) {
   const pool = new Pool({ connectionString, options: installation.generation === "qualified-v2" ? qualifiedPostgresStartupOptions(installation)
@@ -384,15 +386,15 @@ for (const generation of ["legacy", "qualified-v2"] as const) describe(`notice p
     const other = new Pool({ connectionString: runtimeUrl });
     try { await Promise.all([runtime.query("SELECT public.dunning_lifecycle_pause_reminder_dispatch(100)"), other.query("SELECT public.dunning_lifecycle_pause_reminder_dispatch(100)")]); }
     finally { await other.end(); }
-    expect((await admin.query("SELECT payload FROM public.subscription_events WHERE subscription_id=$1 AND event_type='subscription.pause_reminder_due'", [s.id])).rows).toHaveLength(1);
+    expect((await admin.query(`SELECT payload FROM (${noticeHistory}) n WHERE subscription_id=$1 AND event_type='subscription.pause_reminder_due'`, [s.id])).rows).toHaveLength(1);
     await admin.query("UPDATE public.subscription_pause_windows SET ends_at=ends_at+interval '1 hour' WHERE id=$1", [w]);
     await runtime.query("SELECT public.dunning_lifecycle_pause_reminder_dispatch(100)");
-    expect((await admin.query("SELECT id FROM public.subscription_events WHERE subscription_id=$1 AND event_type='subscription.pause_reminder_due'", [s.id])).rows).toHaveLength(1);
+    expect((await admin.query(`SELECT id FROM (${noticeHistory}) n WHERE subscription_id=$1 AND event_type='subscription.pause_reminder_due'`, [s.id])).rows).toHaveLength(1);
     await admin.query("UPDATE public.subscription_pause_windows SET resumed_at=now() WHERE id=$1", [w]);
     const next = randomUUID();
     await admin.query("INSERT INTO public.subscription_pause_windows(id,subscription_id,pause_preset,starts_at,ends_at,idempotency_key) VALUES($1,$2,'2_weeks',now(),now()+interval '2 days',$3)", [next, s.id, `pause:${next}`]);
     await runtime.query("SELECT public.dunning_lifecycle_pause_reminder_dispatch(100)");
-    expect((await admin.query("SELECT id FROM public.subscription_events WHERE subscription_id=$1 AND event_type='subscription.pause_reminder_due'", [s.id])).rows).toHaveLength(2);
+    expect((await admin.query(`SELECT id FROM (${noticeHistory}) n WHERE subscription_id=$1 AND event_type='subscription.pause_reminder_due'`, [s.id])).rows).toHaveLength(2);
     expect((await runtime.query("SELECT public.dunning_lifecycle_pause_reminder_dispatch(0) AS result")).rows[0].result.scanned).toBe(0);
   }, 30000);
 
@@ -420,7 +422,7 @@ for (const generation of ["legacy", "qualified-v2"] as const) describe(`notice p
     await worker().run(100); await worker().run(100);
     const delayed = bound.find(payload => Date.parse(String(payload.renewalAt)) === original.getTime())!;
     expect(delayed).toMatchObject({ phaseFactsAllowed: false, phaseFacts: null });
-    expect((await admin.query("SELECT id FROM public.subscription_events WHERE subscription_id=$1 AND event_type='subscription.notice.suppressed'", [paused.id])).rows).toHaveLength(1);
+    expect((await admin.query(`SELECT id FROM (${noticeHistory}) n WHERE subscription_id=$1 AND event_type='subscription.notice.suppressed'`, [paused.id])).rows).toHaveLength(1);
     expect((await admin.query("SELECT r.* FROM public.subscription_notice_refusals r JOIN public.subscription_events e ON e.id=r.source_id WHERE e.subscription_id=$1", [paused.id])).rows).toHaveLength(0);
   }, 30000);
 
@@ -432,7 +434,7 @@ for (const generation of ["legacy", "qualified-v2"] as const) describe(`notice p
       for (const [index, days] of [0, 1, 3, 4, null].entries()) await db.query(`INSERT INTO public.subscription_pause_windows(subscription_id,pause_preset,starts_at,ends_at,idempotency_key)
         VALUES($1,'2_weeks',now()-interval '1 day',CASE WHEN $2::integer IS NULL THEN NULL ELSE now()+make_interval(days=>$2) END,$3)`, [samples[index].id, days, `boundary:${samples[index].id}`]);
       await db.query("SELECT public.dunning_lifecycle_pause_reminder_dispatch(100)");
-      const ids = (await db.query("SELECT subscription_id FROM public.subscription_events WHERE subscription_id=ANY($1::uuid[]) AND event_type='subscription.pause_reminder_due'", [samples.map(row => row.id)])).rows.map(row => row.subscription_id).sort();
+      const ids = (await db.query(`SELECT subscription_id FROM (${noticeHistory}) n WHERE subscription_id=ANY($1::uuid[]) AND event_type='subscription.pause_reminder_due'`, [samples.map(row => row.id)])).rows.map(row => row.subscription_id).sort();
       expect(ids).toEqual([samples[1].id, samples[2].id].sort());
       await db.query("ROLLBACK");
     } finally { db.release(); }
@@ -600,21 +602,21 @@ for (const generation of ["legacy", "qualified-v2"] as const) describe(`notice p
         const duplicate = make(); try { await duplicate.binding.run(100); } finally { await duplicate.receipts.close(); }
         await admin.query("UPDATE public.subscriptions SET next_cycle_at=now()+interval '2 days' WHERE id=$1", [s.id]);
         const earlier = make(); try { await earlier.binding.run(100); } finally { await earlier.receipts.close(); }
-        expect(Number((await admin.query("SELECT count(*) FROM public.subscription_events WHERE subscription_id=$1 AND event_type='subscription.notice.at_risk_outcome'", [s.id])).rows[0].count)).toBe(1);
+        expect(Number((await admin.query(`SELECT count(*) FROM (${noticeHistory}) n WHERE subscription_id=$1 AND event_type='subscription.notice.at_risk_outcome'`, [s.id])).rows[0].count)).toBe(1);
       }
     }
-    expect(Number((await admin.query("SELECT count(*) FROM public.subscription_events WHERE subscription_id=$1 AND event_type='subscription.notice.at_risk_outcome'", [s.id])).rows[0].count)).toBe(2);
+    expect(Number((await admin.query(`SELECT count(*) FROM (${noticeHistory}) n WHERE subscription_id=$1 AND event_type='subscription.notice.at_risk_outcome'`, [s.id])).rows[0].count)).toBe(2);
     await admin.query("UPDATE public.communication_delivery_controls SET enabled=true WHERE control_key=$1", [control]);
     await admin.query("UPDATE public.subscriptions SET next_cycle_at=now()+interval '5 days' WHERE id=$1", [s.id]);
     const third = make(); try { await third.binding.run(100); } finally { await third.receipts.close(); }
     expect(delivered).toBe(0);
-    expect((await admin.query("SELECT id FROM public.subscription_events WHERE subscription_id=$1 AND event_type IN ('subscription.notice.at_risk','subscription.notice.at_risk_outcome')", [missing.id])).rows).toHaveLength(0);
+    expect((await admin.query(`SELECT id FROM (${noticeHistory}) n WHERE subscription_id=$1 AND event_type IN ('subscription.notice.at_risk','subscription.notice.at_risk_outcome')`, [missing.id])).rows).toHaveLength(0);
     // A separate cause has a separate history; invalid ID must not count the day.
     await admin.query("UPDATE public.subscription_method_states SET health_state='mandate_not_chargeable_unattended' WHERE subscription_id=$1", [s.id]);
     await admin.query("UPDATE public.subscriptions SET next_cycle_at=now()+interval '4 days' WHERE id=$1", [s.id]);
     for (let index = 0; index < 2; index++) {
       const worker = make(); try { await worker.binding.run(100); } finally { await worker.receipts.close(); }
-      const counted = Number((await admin.query(`SELECT count(*) FROM public.subscription_events e JOIN public.transactional_delivery_receipts r
+      const counted = Number((await admin.query(`SELECT count(*) FROM (${noticeHistory}) e JOIN public.transactional_delivery_receipts r
         ON r.idempotency_key='subscription-notice:event:'||e.id::text WHERE e.subscription_id=$1 AND e.event_type='subscription.notice.at_risk' AND e.payload->>'cause'='mandate' AND r.state='accepted'`, [s.id])).rows[0].count);
       expect(counted).toBe(index);
     }
@@ -622,7 +624,7 @@ for (const generation of ["legacy", "qualified-v2"] as const) describe(`notice p
     const failure = await subscription("method_missing"); rejectTransport = true;
     for (let index = 0; index < 2; index++) {
       const worker = make(failure.id); try { await worker.binding.run(100); } finally { await worker.receipts.close(); }
-      const accepted = Number((await admin.query(`SELECT count(*) FROM public.subscription_events e JOIN public.transactional_delivery_receipts r
+      const accepted = Number((await admin.query(`SELECT count(*) FROM (${noticeHistory}) e JOIN public.transactional_delivery_receipts r
         ON r.idempotency_key='subscription-notice:event:'||e.id::text WHERE e.subscription_id=$1 AND e.event_type='subscription.notice.at_risk' AND r.state='accepted'`, [failure.id])).rows[0].count);
       expect(accepted).toBe(index);
     }
@@ -654,10 +656,14 @@ for (const generation of ["legacy", "qualified-v2"] as const) describe(`notice p
     await admin.query("INSERT INTO public.notification_recipients(id,email,notification_type) VALUES($1,$2,'commerce_payment_critical')", [recipient, `${recipient}@example.invalid`]);
     const unrelated = await caseFor(); await customerNotice(unrelated.caseId);
     let delivered = 0;
+    const boundCustomerIds: string[] = [];
     const accepted = new Map<string, { state: "accepted"; deliveryReference: string }>();
     const worker = createPostgresLifecycleMessages({
       async withSession(work) { const db = await runtime.connect(); try { return await work(db); } finally { db.release(); } },
-      bind: async () => ({ recipientReference: "customer:collision-control", templateReference: "notice:collision-control" }),
+      bind: async notice => {
+        if (notice.subscriptionId === blocked.id && notice.kind === "subscription.paused") boundCustomerIds.push(notice.id);
+        return { recipientReference: "customer:collision-control", templateReference: "notice:collision-control" };
+      },
       bindOperator: async () => ({ recipientReference: "operator:collision-control", templateReference: "operator:collision-control" }),
       delivery: { readReceipt: async key => accepted.get(key) ?? null, send: async command => {
         const receipt = { state: "accepted" as const, deliveryReference: `captured:collision:${++delivered}` };
@@ -671,12 +677,200 @@ for (const generation of ["legacy", "qualified-v2"] as const) describe(`notice p
       .toEqual([{ recipient_kind: "customer", status: "sent" }, { recipient_kind: "operator", status: "sent" }]);
     expect((await admin.query("SELECT event_type FROM public.subscription_events WHERE subscription_id=$1 AND idempotency_key=$2", [blocked.id, key])).rows)
       .toEqual([{ event_type: "subscription.customer_self_service.pause" }]);
+    const customerEventId = (await admin.query("SELECT id FROM public.subscription_events WHERE subscription_id=$1 AND idempotency_key=$2", [blocked.id, key])).rows[0].id;
+    expect(boundCustomerIds).toEqual([customerEventId]);
+    expect(accepted.get(`subscription-notice:event:${customerEventId}`)?.state).toBe("accepted");
     const deliveredOnce = delivered;
     await worker.run(100);
     expect(await count(blocked.id)).toBe(1);
     expect(await count(otherReminder.id)).toBe(1);
     expect(deliveredOnce).toBeGreaterThanOrEqual(4);
     expect(delivered).toBe(deliveredOnce);
+  }, 30000);
+
+  async function customerPause(s: { id: string; client: string }, key: string) {
+    const principal = randomUUID();
+    await admin.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,$2)", [principal, `${principal}@example.invalid`]);
+    await admin.query("UPDATE public.clients SET principal_id=$2 WHERE id=$1", [s.client, principal]);
+    const actor = await admin.connect();
+    try {
+      await actor.query("BEGIN"); await actor.query("SET LOCAL ROLE authenticated");
+      await actor.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: principal, role: "authenticated" })]);
+      await actor.query("SELECT public.customer_subscription_pause_as_actor($1,$2,'indefinite',NULL)", [s.id, key]);
+      await actor.query("COMMIT");
+    } catch (error) { await actor.query("ROLLBACK"); throw error; } finally { actor.release(); }
+    return (await admin.query("SELECT * FROM public.subscription_events WHERE subscription_id=$1 AND idempotency_key=$2", [s.id, key])).rows[0];
+  }
+  async function resume(s: { id: string; client: string }) {
+    await runtime.query("SELECT public.subscription_apply_lifecycle_action($1,$2,$3,'resume','{}'::jsonb,now())", [s.client, `resume:${randomUUID()}`, s.id]);
+  }
+  async function dispatchCaptured(s: { id: string; client: string }, bound: { id: string; kind: string; key: string }[], returnedFailure = false) {
+    const receipts = createPostgresTransactionalDeliveryStore({ connectionString: runtimeUrl });
+    const engine = createTransactionalDelivery({ store: receipts, delivery: { async deliver(command) {
+      if (returnedFailure) throw new Error("fixture_transport_unavailable");
+      return { deliveryReference: `captured:${command.idempotencyKey}` };
+    } } });
+    try {
+      const worker = createPostgresLifecycleMessages({
+        async withSession(work) {
+          const db = await runtime.connect();
+          try { await db.query("SET TimeZone='Etc/GMT+5'"); return await work(db); } finally { db.release(); }
+        },
+        bind: async notice => {
+          if (notice.subscriptionId !== s.id) throw new Error("fixture_unselected_notice");
+          bound.push({ id: notice.id, kind: notice.kind, key: notice.messageKey });
+          return { recipientReference: `client:${s.client}`, templateReference: notice.templateSlug };
+        },
+        delivery: { send: async command => {
+          try { return await engine.send(command); }
+          catch (error) {
+            if (!returnedFailure) throw error;
+            // The shared engine already persisted the failed receipt; the host port returns that outcome.
+            return { state: "failed" as const, deliveryReference: null, retryable: true };
+          }
+        }, readReceipt: receipts.readReceipt },
+      });
+      await worker.run(100);
+    } finally { await receipts.close(); }
+  }
+  async function acceptedCustomer(s: { id: string }, event: Record<string, unknown>) {
+    expect((await admin.query("SELECT * FROM public.subscription_events WHERE id=$1", [event.id])).rows).toEqual([event]);
+    expect((await admin.query("SELECT state,delivery_reference FROM public.transactional_delivery_receipts WHERE idempotency_key=$1",
+      [`subscription-notice:event:${event.id}`])).rows).toEqual([{ state: "accepted", delivery_reference: `captured:subscription-notice:event:${event.id}` }]);
+    expect((await admin.query("SELECT id FROM public.outbox_events WHERE aggregate_id=$1 AND id=$2", [s.id, event.id])).rows).toEqual([]);
+  }
+  it.each(["missing", "mandate"])("isolates %s at-risk identities from authenticated pause keys and permanently counts accepted warnings", async cause => {
+    const s = await subscription(cause === "missing" ? "method_missing" : "mandate_not_chargeable_unattended", "active", 3);
+    await admin.query("UPDATE public.communication_delivery_controls SET enabled=true WHERE control_key='subscription-renewal-at-risk'");
+    const day = (await admin.query("SELECT to_char(next_cycle_at AT TIME ZONE 'UTC','YYYY-MM-DD') AS day FROM public.subscriptions WHERE id=$1", [s.id])).rows[0].day;
+    const event = await customerPause(s, `at-risk:${cause}:${day}`); await resume(s);
+    const bound: { id: string; kind: string; key: string }[] = [];
+    for (const days of [3, 4, 5]) {
+      await admin.query("UPDATE public.subscriptions SET next_cycle_at=now()+make_interval(days=>$2) WHERE id=$1", [s.id, days]);
+      await dispatchCaptured(s, bound); // New worker/session/receipt store each day.
+    }
+    await acceptedCustomer(s, event);
+    const warnings = bound.filter(notice => notice.kind === "subscription.renewal_at_risk");
+    expect(warnings).toHaveLength(2);
+    expect(warnings.every(notice => notice.id !== event.id)).toBe(true);
+    expect(bound.filter(notice => notice.id === event.id).map(notice => notice.kind)).toEqual(["subscription.paused"]);
+    expect((await admin.query(`SELECT count(DISTINCT n.payload->>'renewalDay')::int AS n FROM (${noticeHistory}) n
+      JOIN public.transactional_delivery_receipts r ON r.idempotency_key='subscription-notice:event:'||n.id::text
+      WHERE n.subscription_id=$1 AND n.event_type='subscription.notice.at_risk' AND n.payload->>'cause'=$2 AND r.state='accepted'`, [s.id, cause])).rows).toEqual([{ n: 2 }]);
+    expect((await admin.query("SELECT status FROM public.outbox_events WHERE aggregate_id=$1 AND event_type='subscription.notice.at_risk'", [s.id])).rows)
+      .toEqual([{ status: "processed" }, { status: "processed" }]);
+    await admin.query("SELECT public.commerce_outbox_compact_terminal(5000,now()+interval '31 days')");
+    expect((await admin.query("SELECT payload FROM public.outbox_events WHERE aggregate_id=$1 AND event_type='subscription.notice.at_risk'", [s.id])).rows)
+      .toEqual([{ payload: {} }, { payload: {} }]);
+    await dispatchCaptured(s, bound);
+    expect(bound.filter(notice => notice.kind === "subscription.renewal_at_risk")).toHaveLength(2);
+  }, 30000);
+  it("isolates disabled at-risk outcome keys and includes their day in the permanent cap", async () => {
+    const s = await subscription("method_missing", "active", 3);
+    const day = (await admin.query("SELECT to_char(next_cycle_at AT TIME ZONE 'UTC','YYYY-MM-DD') AS day FROM public.subscriptions WHERE id=$1", [s.id])).rows[0].day;
+    const event = await customerPause(s, `at-risk-outcome:missing:${day}`); await resume(s);
+    await admin.query("INSERT INTO public.communication_delivery_controls(control_key,enabled) VALUES('subscription-renewal-at-risk',false) ON CONFLICT(control_key) DO UPDATE SET enabled=false");
+    const bound: { id: string; kind: string; key: string }[] = [];
+    await dispatchCaptured(s, bound); await acceptedCustomer(s, event);
+    expect((await admin.query("SELECT id,payload->>'outcome' AS outcome FROM public.outbox_events WHERE aggregate_id=$1 AND event_type='subscription.notice.at_risk_outcome'", [s.id])).rows)
+      .toEqual([{ id: expect.not.stringMatching(String(event.id)), outcome: "disabled" }]);
+    await admin.query("UPDATE public.communication_delivery_controls SET enabled=true WHERE control_key='subscription-renewal-at-risk'");
+    for (const days of [4, 5]) {
+      await admin.query("UPDATE public.subscriptions SET next_cycle_at=now()+make_interval(days=>$2) WHERE id=$1", [s.id, days]);
+      await dispatchCaptured(s, bound);
+    }
+    expect(bound.filter(notice => notice.kind === "subscription.renewal_at_risk")).toHaveLength(1);
+    expect((await admin.query("SELECT id FROM public.outbox_events WHERE aggregate_id=$1 AND event_type='subscription.notice.at_risk'", [s.id])).rows).toHaveLength(2);
+    await admin.query("SELECT public.commerce_outbox_compact_terminal(5000,now()+interval '31 days')");
+    expect((await admin.query("SELECT payload FROM public.outbox_events WHERE aggregate_id=$1 AND event_type='subscription.notice.at_risk_outcome'", [s.id])).rows)
+      .toEqual([{ payload: {} }]);
+    await dispatchCaptured(s, bound);
+    expect(bound.filter(notice => notice.kind === "subscription.renewal_at_risk")).toHaveLength(1);
+  }, 30000);
+  it.each(["pause-reminder:", "subscription_pause_reminder:"])("isolates pause-window notices from authenticated %s keys", async prefix => {
+    const s = await subscription(), window = randomUUID();
+    const event = await customerPause(s, `${prefix}${window}`); await resume(s);
+    await runtime.query("SELECT public.subscription_apply_lifecycle_action($1,$2,$3,'pause','{\"pausePreset\":\"2_weeks\"}'::jsonb,now())", [s.client, `window:${window}`, s.id]);
+    // Pin the writer-allocated random UUID and model elapsed time, without changing its event or command key.
+    await admin.query("UPDATE public.subscription_pause_windows SET id=$2,ends_at=now()+interval '2 days' WHERE subscription_id=$1 AND resumed_at IS NULL", [s.id, window]);
+    const bound: { id: string; kind: string; key: string }[] = [];
+    await dispatchCaptured(s, bound); await dispatchCaptured(s, bound);
+    await acceptedCustomer(s, event);
+    const notices = bound.filter(notice => notice.kind === "subscription.pause_reminder_due");
+    expect(notices).toHaveLength(1); expect(notices[0].id).not.toBe(event.id);
+    expect((await admin.query("SELECT payload->>'pauseWindowId' AS window FROM public.outbox_events WHERE aggregate_id=$1 AND event_type='subscription.pause_reminder_due'", [s.id])).rows).toEqual([{ window }]);
+    await resume(s); await dispatchCaptured(s, bound);
+    expect(bound.filter(notice => notice.kind === "subscription.pause_reminder_due")).toHaveLength(1);
+  }, 30000);
+  it.each(["notice", "customer"])("isolates resolved-pause markers from customer keys targeting a %s source", async target => {
+    const s = await subscription();
+    const first = await customerPause(s, `pause:${s.id}`);
+    await admin.query("UPDATE public.subscription_pause_windows SET ends_at=now()+interval '2 days' WHERE subscription_id=$1 AND resumed_at IS NULL", [s.id]);
+    await runtime.query("SELECT public.dunning_lifecycle_pause_reminder_dispatch(100)");
+    const notice = (await admin.query("SELECT id FROM public.outbox_events WHERE aggregate_id=$1 AND event_type='subscription.pause_reminder_due'", [s.id])).rows[0];
+    await resume(s);
+    const event = await customerPause(s, `notice-suppressed:event:${target === 'notice' ? notice.id : first.id}`); await resume(s);
+    const bound: { id: string; kind: string; key: string }[] = [];
+    await dispatchCaptured(s, bound); await dispatchCaptured(s, bound);
+    await acceptedCustomer(s, first); await acceptedCustomer(s, event);
+    expect(bound.some(row => row.id === notice.id)).toBe(false);
+    expect((await admin.query("SELECT payload FROM public.outbox_events WHERE aggregate_id=$1 AND event_type='subscription.notice.suppressed'", [s.id])).rows)
+      .toEqual([{ payload: { reason: "pause_window_resolved", source: "event", sourceId: notice.id } }]);
+    expect((await admin.query("SELECT state FROM public.transactional_delivery_receipts WHERE idempotency_key=$1", [`subscription-notice:event:${notice.id}`])).rows).toEqual([]);
+  }, 30000);
+  it("keeps failed pause work pending and reconciles interrupted acceptance without changing its delivery key", async () => {
+    const s = await subscription(), customer = await customerPause(s, `pause-retry:${s.id}`);
+    await admin.query("UPDATE public.subscription_pause_windows SET ends_at=now()+interval '2 days' WHERE subscription_id=$1 AND resumed_at IS NULL", [s.id]);
+    const bound: { id: string; kind: string; key: string }[] = [];
+    await dispatchCaptured(s, bound, true);
+    const notice = (await admin.query("SELECT id,status FROM public.outbox_events WHERE aggregate_id=$1 AND event_type='subscription.pause_reminder_due'", [s.id])).rows[0];
+    expect(notice.status).toBe("pending");
+    const unrelated = randomUUID();
+    await admin.query("INSERT INTO public.outbox_events(id,aggregate_type,aggregate_id,event_type,idempotency_key,payload) VALUES($1,'subscription',$2,'subscription.notice.identity_probe',$3,'{}')", [unrelated, s.id, `probe:${unrelated}`]);
+    expect((await admin.query("SELECT id FROM public.outbox_claim_batch(ARRAY['subscription.notice.identity_probe'])")).rows).toEqual([{ id: unrelated }]);
+    expect((await admin.query("SELECT state,attempt_count FROM public.transactional_delivery_receipts WHERE idempotency_key=$1", [`subscription-notice:event:${notice.id}`])).rows)
+      .toEqual([{ state: "failed", attempt_count: 1 }]);
+    await dispatchCaptured(s, bound); await acceptedCustomer(s, customer);
+    expect(bound.filter(row => row.id === notice.id).map(row => row.key)).toEqual([
+      `subscription-notice:event:${notice.id}`, `subscription-notice:event:${notice.id}`,
+    ]);
+    // Model the process exiting after durable acceptance but before outbox completion.
+    await admin.query("UPDATE public.outbox_events SET status='pending',processed_at=NULL WHERE id=$1", [notice.id]);
+    await dispatchCaptured(s, bound);
+    expect((await admin.query("SELECT status FROM public.outbox_events WHERE id=$1", [notice.id])).rows).toEqual([{ status: "processed" }]);
+    expect(bound.filter(row => row.id === notice.id)).toHaveLength(2);
+    expect((await admin.query("SELECT state,attempt_count FROM public.transactional_delivery_receipts WHERE idempotency_key=$1", [`subscription-notice:event:${notice.id}`])).rows)
+      .toEqual([{ state: "accepted", attempt_count: 2 }]);
+  }, 30000);
+  it.each(["accepted", "disabled", "retry"])("keeps typed legacy %s at-risk and pause identities across the carrier change", async history => {
+    const risk = await subscription("method_missing", "active", history === "retry" ? 3 : 4), paused = await subscription("healthy", "paused");
+    const priorRisk = randomUUID(), priorPause = randomUUID(), window = randomUUID();
+    await admin.query(`INSERT INTO public.subscription_events(id,subscription_id,event_type,idempotency_key,payload)
+      SELECT $1,id,'subscription.notice.at_risk','at-risk:missing:'||to_char((next_cycle_at-make_interval(days=>$3)) AT TIME ZONE 'UTC','YYYY-MM-DD'),
+        jsonb_build_object('cause','missing','renewalDay',to_char((next_cycle_at-make_interval(days=>$3)) AT TIME ZONE 'UTC','YYYY-MM-DD'))
+        FROM public.subscriptions WHERE id=$2`, [priorRisk, risk.id, history === "retry" ? 0 : 1]);
+    if (history === "accepted") await runtime.query("SELECT public.transactional_delivery_record_accepted($1,$2,$3)", [`subscription-notice:event:${priorRisk}`, "b".repeat(64), "captured:old-risk"]);
+    if (history === "disabled") await admin.query(`INSERT INTO public.subscription_events(subscription_id,event_type,idempotency_key,payload)
+      SELECT subscription_id,'subscription.notice.at_risk_outcome','at-risk-outcome:missing:'||(payload->>'renewalDay'),
+        payload||jsonb_build_object('noticeId',id,'outcome','disabled') FROM public.subscription_events WHERE id=$1`, [priorRisk]);
+    await admin.query("INSERT INTO public.subscription_pause_windows(id,subscription_id,pause_preset,starts_at,ends_at,idempotency_key) VALUES($1,$2,'2_weeks',now()-interval '1 day',now()+interval '2 days',$3)", [window, paused.id, `legacy:${window}`]);
+    await admin.query("INSERT INTO public.subscription_events(id,subscription_id,event_type,idempotency_key,payload) VALUES($1,$2,'subscription.pause_reminder_due',$3,$4)",
+      [priorPause, paused.id, `pause-reminder:${window}`, JSON.stringify({ pauseWindowId: window })]);
+    const bound: { id: string; kind: string; key: string }[] = [];
+    await dispatchCaptured(paused, bound); await dispatchCaptured(paused, bound);
+    expect(bound.filter(row => row.id === priorPause)).toHaveLength(1);
+    expect((await admin.query("SELECT id FROM public.outbox_events WHERE aggregate_id=$1 AND event_type='subscription.pause_reminder_due'", [paused.id])).rows).toEqual([]);
+    await dispatchCaptured(risk, bound);
+    if (history === "retry") {
+      await admin.query("UPDATE public.subscriptions SET next_cycle_at=now()+interval '4 days' WHERE id=$1", [risk.id]);
+      await dispatchCaptured(risk, bound);
+    }
+    await admin.query("UPDATE public.subscriptions SET next_cycle_at=now()+interval '5 days' WHERE id=$1", [risk.id]);
+    await dispatchCaptured(risk, bound);
+    expect(bound.filter(row => row.kind === "subscription.renewal_at_risk")).toHaveLength(history === "retry" ? 2 : 1);
+    expect(bound.some(row => row.id === priorRisk)).toBe(history === "retry");
+    expect((await admin.query("SELECT id FROM public.subscription_events WHERE id=ANY($1::uuid[]) ORDER BY id", [[priorRisk, priorPause]])).rows)
+      .toEqual([priorRisk, priorPause].sort().map(id => ({ id })));
   }, 30000);
 
 

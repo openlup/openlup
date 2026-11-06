@@ -19,14 +19,15 @@ export async function runAtRiskNotices(options: NativeLifecycleMessagesOptions, 
       result.busy++; continue;
     }
     try {
-      const history = (await db.query(`SELECT DISTINCT n.payload->>'renewalDay' AS day
-        FROM public.subscription_events n LEFT JOIN public.transactional_delivery_receipts r
+      const history = (await db.query(`WITH notices AS (${systemNoticeEvents}) SELECT DISTINCT n.payload->>'renewalDay' AS day
+        FROM notices n LEFT JOIN public.transactional_delivery_receipts r
           ON r.idempotency_key='subscription-notice:event:'||n.id::text
         WHERE n.subscription_id=$1::uuid AND n.event_type='subscription.notice.at_risk'
           AND n.payload->>'cause'=$2 AND (r.state='accepted' OR EXISTS(
-            SELECT 1 FROM public.subscription_events o WHERE o.subscription_id=n.subscription_id
+            SELECT 1 FROM notices o WHERE o.subscription_id=n.subscription_id
               AND o.event_type='subscription.notice.at_risk_outcome' AND o.payload->>'outcome'='disabled'
-              AND (o.payload->>'noticeId')::uuid=n.id))`, [row.subscription_id, cause])).rows.map(value => String(value.day));
+              AND o.payload->>'cause'=n.payload->>'cause'
+              AND o.payload->>'renewalDay'=n.payload->>'renewalDay'))`, [row.subscription_id, cause])).rows.map(value => String(value.day));
       if (history.length >= policy.atRiskMaxDaysPerCause || history.some(value => value >= day)) { result.skipped++; continue; }
       // Recipient absence is not an attempt and consumes no recorded day.
       const recipient = (await db.query("SELECT public.dunning_lifecycle_recipient($1::uuid) AS recipient", [row.client_id])).rows[0]?.recipient as
@@ -34,19 +35,13 @@ export async function runAtRiskNotices(options: NativeLifecycleMessagesOptions, 
       if (!recipient) { result.skipped++; continue; }
       const identity = `at-risk:${cause}:${day}`;
       const payload = { cause, renewalDay: day, renewalAt };
-      const inserted = await db.query(`INSERT INTO public.subscription_events(subscription_id,event_type,idempotency_key,payload)
-        VALUES($1::uuid,'subscription.notice.at_risk',$2,$3::jsonb) ON CONFLICT(subscription_id,idempotency_key) DO NOTHING RETURNING id`,
-      [row.subscription_id, identity, JSON.stringify(payload)]);
-      const stored = inserted.rows[0] ?? (await db.query(`SELECT id FROM public.subscription_events
-        WHERE subscription_id=$1::uuid AND idempotency_key=$2`, [row.subscription_id, identity])).rows[0];
-      if (!stored) throw new Error("subscription_notice_source_missing");
+      const stored = await systemNoticeIdentity(db, String(row.subscription_id), "subscription.notice.at_risk", identity, payload);
       const key = `subscription-notice:event:${stored.id}`, templateSlug = "subscription-renewal-at-risk";
       const enabled = (await db.query("SELECT public.communications_notification_control_enabled($1::text[]) AS enabled", [[templateSlug]])).rows[0]?.enabled;
       if (enabled !== true) {
-        await db.query(`INSERT INTO public.subscription_events(subscription_id,event_type,idempotency_key,payload)
-          VALUES($1::uuid,'subscription.notice.at_risk_outcome',$2,$3::jsonb)
-          ON CONFLICT(subscription_id,idempotency_key) DO NOTHING`, [row.subscription_id, `at-risk-outcome:${cause}:${day}`,
-          JSON.stringify({ ...payload, noticeId: stored.id, outcome: "disabled" })]);
+        await systemNoticeIdentity(db, String(row.subscription_id), "subscription.notice.at_risk_outcome",
+          `at-risk-outcome:${cause}:${day}`, { ...payload, noticeId: stored.id, outcome: "disabled" }, true);
+        if (stored.outbox) await completeSystemNotice(db, stored.id);
         result.skipped++; continue;
       }
       // This state-scanned operational notice has the reference path's template
@@ -55,9 +50,13 @@ export async function runAtRiskNotices(options: NativeLifecycleMessagesOptions, 
         subscriptionId: String(row.subscription_id), clientId: String(row.client_id), kind: "subscription.renewal_at_risk",
         templateSlug, payload, recoveryUrlPath: null };
       const prior = await options.delivery.readReceipt(key);
-      if (prior?.state === "accepted" && prior.deliveryReference) { result.replayed++; continue; }
+      if (prior?.state === "accepted" && prior.deliveryReference) {
+        if (stored.outbox) await completeSystemNotice(db, stored.id);
+        result.replayed++; continue;
+      }
       const receipt = await options.delivery.send({ ...await options.bind(notice, recipient), idempotencyKey: key });
       if (receipt.state !== "accepted" || !receipt.deliveryReference) { result.failed++; continue; }
+      if (stored.outbox) await completeSystemNotice(db, stored.id);
       result.sent++;
     } catch { result.failed++; }
     finally { await db.query("SELECT pg_advisory_unlock(hashtextextended($1,0))", [lock]); }
@@ -105,4 +104,60 @@ export async function runOperatorNotices(options: NativeLifecycleMessagesOptions
     } catch { result.failed++; /* The fenced lease and receipt reconcile ambiguous work. */ }
     finally { await db.query("SELECT pg_advisory_unlock(hashtextextended($1,0))", [key]); }
   }
+}
+
+/** Legacy IDs survive; immutable typed keys preserve the permanent cap after payload compaction. */
+export const systemNoticeEvents = `
+  SELECT id,subscription_id,event_type,idempotency_key,payload FROM public.subscription_events
+  WHERE event_type IN ('subscription.pause_reminder_due','subscription.notice.at_risk',
+    'subscription.notice.at_risk_outcome','subscription.notice.suppressed')
+  UNION ALL
+  SELECT id,aggregate_id,event_type,idempotency_key,payload||CASE
+    WHEN event_type IN ('subscription.notice.at_risk','subscription.notice.at_risk_outcome') THEN
+      jsonb_build_object('cause',split_part(idempotency_key,':',3),'renewalDay',split_part(idempotency_key,':',4))
+      ||CASE WHEN event_type='subscription.notice.at_risk_outcome' THEN '{"outcome":"disabled"}'::jsonb ELSE '{}'::jsonb END
+    WHEN event_type='subscription.notice.suppressed' THEN
+      jsonb_build_object('source',split_part(idempotency_key,':',3),'sourceId',split_part(idempotency_key,':',4))
+    ELSE '{}'::jsonb END FROM public.outbox_events
+  WHERE aggregate_type='subscription_notice' AND event_type IN ('subscription.pause_reminder_due',
+    'subscription.notice.at_risk','subscription.notice.at_risk_outcome','subscription.notice.suppressed')`;
+
+export async function systemNoticeIdentity(db: SubscriptionQueryExecutor, subscriptionId: string,
+  eventType: string, identity: string, payload: Record<string, unknown>, terminal = false): Promise<{ id: string; outbox: boolean }> {
+  const legacy = (await db.query(`SELECT id FROM public.subscription_events
+    WHERE subscription_id=$1::uuid AND event_type=$2 AND idempotency_key=$3`, [subscriptionId, eventType, identity])).rows[0];
+  if (legacy) return { id: String(legacy.id), outbox: false };
+  const key = `${subscriptionId}:${identity}`;
+  const inserted = (await db.query(`INSERT INTO public.outbox_events
+    (aggregate_type,aggregate_id,event_type,idempotency_key,payload,status,processed_at)
+    VALUES('subscription_notice',$1::uuid,$2,$3,$4::jsonb,CASE WHEN $5 THEN 'processed' ELSE 'pending' END,
+      CASE WHEN $5 THEN now() END)
+    ON CONFLICT(event_type,idempotency_key) DO NOTHING RETURNING id`,
+  [subscriptionId, eventType, key, JSON.stringify(payload), terminal])).rows[0];
+  const stored = inserted ?? (await db.query(`SELECT id FROM public.outbox_events
+    WHERE aggregate_type='subscription_notice' AND aggregate_id=$1::uuid AND event_type=$2 AND idempotency_key=$3`,
+  [subscriptionId, eventType, key])).rows[0];
+  if (!stored) throw new Error("subscription_notice_source_missing");
+  return { id: String(stored.id), outbox: true };
+}
+
+export async function completeSystemNotice(db: SubscriptionQueryExecutor, id: string): Promise<void> {
+  await db.query(`UPDATE public.outbox_events SET status='processed',processed_at=coalesce(processed_at,now()),error=NULL
+    WHERE id=$1::uuid AND aggregate_type='subscription_notice'
+      AND event_type IN ('subscription.pause_reminder_due','subscription.notice.at_risk')`, [id]);
+}
+
+/** Receipt-first reconciliation also releases the shared outbox ordering barrier after a crash. */
+export async function reconcileSystemNotices(db: SubscriptionQueryExecutor): Promise<void> {
+  await db.query(`WITH notices AS (${systemNoticeEvents})
+    UPDATE public.outbox_events n SET status='processed',processed_at=coalesce(n.processed_at,now()),error=NULL
+    WHERE n.aggregate_type='subscription_notice' AND n.event_type IN ('subscription.pause_reminder_due','subscription.notice.at_risk')
+      AND n.status<>'processed' AND (EXISTS(SELECT 1 FROM public.transactional_delivery_receipts r
+        WHERE r.idempotency_key='subscription-notice:event:'||n.id::text AND r.state='accepted')
+      OR EXISTS(SELECT 1 FROM public.subscription_notice_refusals r WHERE r.source='event' AND r.source_id=n.id)
+      OR EXISTS(SELECT 1 FROM notices o WHERE o.subscription_id=n.aggregate_id
+        AND ((n.event_type='subscription.notice.at_risk' AND o.event_type='subscription.notice.at_risk_outcome'
+            AND o.payload->>'outcome'='disabled' AND o.payload->>'cause'=n.payload->>'cause'
+            AND o.payload->>'renewalDay'=n.payload->>'renewalDay')
+          OR (o.event_type='subscription.notice.suppressed' AND o.payload->>'source'='event' AND o.payload->>'sourceId'=n.id::text))))`);
 }
