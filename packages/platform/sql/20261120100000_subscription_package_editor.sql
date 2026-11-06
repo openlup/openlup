@@ -128,7 +128,7 @@ DECLARE s public.subscriptions%ROWTYPE; q public.subscription_quote_previews%ROW
 BEGIN
  IF p_actor_id IS NULL OR p_client_id IS NULL OR p_now IS NULL OR NOT isfinite(p_now) THEN
   RAISE EXCEPTION 'subscription_command_invalid_input' USING ERRCODE='22023'; END IF;
- IF p_action IS NULL OR p_action NOT IN ('update_package_template','update_plan_length','add_addon','remove_addon',
+ IF p_action IS NULL OR p_action NOT IN ('update_package_template','update_bundle','update_plan_length','add_addon','remove_addon',
   'update_addon_quantity','swap_base_line','update_base_mix','update_portion','resize_bundle') THEN
   RAISE EXCEPTION 'subscription_command_unsupported_action' USING ERRCODE='22023'; END IF;
  IF p_hash IS NULL OR p_hash !~ '^[a-f0-9]{64}$' THEN
@@ -160,7 +160,7 @@ BEGIN
  IF p_actor_id IS NULL OR p_client_id IS NULL OR p_now IS NULL OR NOT isfinite(p_now)
   OR p_key IS NULL OR p_key<>btrim(p_key) OR char_length(p_key) NOT BETWEEN 8 AND 180 THEN
   RAISE EXCEPTION 'subscription_command_invalid_input' USING ERRCODE='22023'; END IF;
- IF p_action IS NULL OR p_action NOT IN ('update_package_template','update_plan_length','add_addon','remove_addon',
+ IF p_action IS NULL OR p_action NOT IN ('update_package_template','update_bundle','update_plan_length','add_addon','remove_addon',
   'update_addon_quantity','swap_base_line','update_base_mix','update_portion','resize_bundle') THEN
   RAISE EXCEPTION 'subscription_command_unsupported_action' USING ERRCODE='22023'; END IF;
  IF p_hash IS NULL OR p_hash !~ '^[a-f0-9]{64}$' THEN

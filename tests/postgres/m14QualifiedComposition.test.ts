@@ -13,8 +13,8 @@ const exec = promisify(execFile);
 // Frozen 92-unit issued-prefix measurements remain independent expectations.
 // The current complete 105-unit installation includes the shared suffix and the lock and conflict completion tail.
 const shapes = [
-  { name: "bootstrap-restore", currentSha256: "30210e809f9214a442371d7a99b996225ef8861cc4766f77d79ec62135e7816e", separate: false, sha256: "c4f6bb9daa5882877149a78e13d07594b7e8653c3a3ba39f508477b072548f9b" },
-  { name: "separate-restore", currentSha256: "bf67442c9033d85876dbcf79ad048b6735a11a35109f22aefa1265fa8f5e9366", separate: true, sha256: "624cc57789e3aaf36d0b61bdad420fc4eb0b63c2a7eb09358e5c18240ec13f82" },
+  { name: "bootstrap-restore", currentSha256: "1134981ec9a73f2c37e17f7b5a11bfd6dc9957017c721461f807aa627aa860f7", separate: false, sha256: "c4f6bb9daa5882877149a78e13d07594b7e8653c3a3ba39f508477b072548f9b" },
+  { name: "separate-restore", currentSha256: "9b0d577153608e9e3d6aba6297179de8ff197926cf0caea86fa7f2aad63c8a63", separate: true, sha256: "624cc57789e3aaf36d0b61bdad420fc4eb0b63c2a7eb09358e5c18240ec13f82" },
 ] as const;
 const profiles = [
   { name: "reference", roleMode: "installer-managed", prefix: "q2_reference" },

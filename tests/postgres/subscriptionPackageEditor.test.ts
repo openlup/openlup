@@ -106,6 +106,21 @@ it("keeps ledger tables owner-only and exposes exactly the service definer bound
   expect((await owner.query("SELECT relrowsecurity FROM pg_class WHERE oid='public.subscription_quote_previews'::regclass")).rows[0].relrowsecurity).toBe(true);
 }, 30_000);
 
+it("records and takes an update_bundle preview while refusing unknown actions without writes", async () => {
+  const f = await fixture(), hash = "c".repeat(64), expiry = "2026-11-05T12:15:00Z";
+  const recordAction = (action: string) => rpc(runtime, "subscription_quote_preview_record", [
+    f.actor, f.client, f.subscription, action, hash, 1, expiry, {}, {}, {}, at]);
+  const takeAction = (action: string) => rpc(runtime, "subscription_quote_preview_take", [
+    f.actor, f.client, f.subscription, action, hash, 1, "bundle-preview-take", at]);
+  const preview = await recordAction("update_bundle");
+  expect(preview).toMatchObject({ action: "update_bundle", quote_hash: hash, template_version: 1, status: "previewed" });
+  const beforeTake = await effects();
+  expect(await takeAction("update_bundle")).toEqual(preview);
+  expect(await effects()).toEqual(beforeTake);
+  await refuses(() => recordAction("unknown_action"), "subscription_command_unsupported_action");
+  await refuses(() => takeAction("unknown_action"), "subscription_command_unsupported_action");
+}, 30_000);
+
 it("refuses direct sub-minimum applies and absent or malformed settings without any durable delta", async () => {
   const f = await fixture(); await record(f, evidence(f));
   await refuses(() => apply(f, evidence(f, 3)), "subscription_edit_below_minimum_order_units");
