@@ -28686,6 +28686,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/subscriptionLifecycleContractWitnesses.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/subscriptionManagedStock.test.ts",
       "class": "public-output"
     },
