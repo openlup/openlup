@@ -74,7 +74,7 @@ export interface ConnectedNativeStoreCapture {
   observation: { cluster: string; database: string; login: string; snapshot: string };
   emptyOutsideProfile: string[];
   outsideProfileCensus: { relation: string; owner: string; rows: string;
-    disposition: "unsupported-empty" | "new-target-installation-key" | "target-migration-history" | "intentionally-not-carried" }[];
+    disposition: "unsupported-empty" | "new-target-installation-key" | "target-migration-history" | "target-address-references" | "intentionally-not-carried" }[];
   sha256: string;
 }
 
@@ -132,17 +132,18 @@ export async function captureConnectedNativeStore(input: {
       for (const relation of relations) {
         if (relation.schema === "public" && allowed.has(relation.table)) continue;
         const qualified = `${identifier(relation.schema)}.${identifier(relation.table)}`;
-        if (relation.schema === "acquisition_private" && relation.table === "installation_key"
+        if (relation.schema === "acquisition_private" && (relation.table === "installation_key" || relation.table === "address_references")
           || relation.schema === "public" && relation.table === "platform_schema_migrations"
           || `${relation.schema}.${relation.table}` === intentionallyNotCarriedRelation) {
           // Count/ownership only. Never read, hash or transport installation key
-          // payloads or any challenge column. Private acquisition business rows
-          // below are NOT secrets by naming convention: nonempty cases/history
-          // still refuse capture.
+          // payloads, target-owned address-reference registry rows or any challenge
+          // column. Private acquisition business rows below are NOT secrets by
+          // naming convention: nonempty cases/history still refuse capture.
           const rows = (await db.query<{ count: string }>(`SELECT count(*)::pg_catalog.text AS count FROM ${qualified}`)).rows[0]!.count;
           outsideProfileCensus.push({ relation: `${relation.schema}.${relation.table}`, owner: relation.owner, rows,
-            disposition: `${relation.schema}.${relation.table}` === intentionallyNotCarriedRelation ? "intentionally-not-carried"
-              : relation.table === "installation_key" ? "new-target-installation-key" : "target-migration-history" });
+            disposition: relation.table === "installation_key" ? "new-target-installation-key"
+              : relation.table === "address_references" ? "target-address-references"
+                : relation.table === "platform_schema_migrations" ? "target-migration-history" : "intentionally-not-carried" });
           continue;
         }
         if ((await db.query(`SELECT 1 FROM ${qualified} LIMIT 1`)).rows.length) {

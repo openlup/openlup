@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { exportJWK, generateKeyPair } from "jose";
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it, vi } from "vitest";
+import type { Pool } from "pg";
 import { createPostgresDataGateway, type PgGatewayClient } from "@openlup/platform/data";
 import { createCapturedCustomerChallengeDelivery, createCustomerIdentityVerifier, createPostgresCustomerChallengeStore,
   createPostgresCustomerMePort, resolveCustomerSessionBinding } from "@openlup/platform/identity";
@@ -172,4 +173,20 @@ it("counts but never carries authorization challenges, restores customer sign-in
     await expect(captureStoreJourney(source.owner, "challenge-unknown-table"))
       .rejects.toMatchObject({ code: "unsupported_table", table: "public.challenge_transfer_probe" });
   } finally { await source.owner.query("DROP TABLE public.challenge_transfer_probe"); }
+}, 30_000);
+
+
+it("rejects malformed challenge census entries before connecting", async () => {
+  const packet = await captureStoreJourney(source.owner, "challenge-census-validation");
+  const connect = vi.fn(async () => { throw new Error("unexpected_database_connection"); });
+  const owner = { connect } as unknown as Pool;
+  for (const patch of [{ disposition: "unsupported-empty", rows: "0" }, { rows: "not-a-count" }]) {
+    const malformed = structuredClone(packet);
+    Object.assign(malformed.outsideProfileCensus.find(entry => entry.relation === relation)!, patch);
+    const { sha256: _previous, ...payload } = malformed;
+    malformed.sha256 = hash(JSON.stringify(payload));
+    await expect(restoreConnectedNativeStore({ owner, installation: journeySelection, packet: malformed, freshTarget: packet }))
+      .rejects.toMatchObject({ code: "invalid_input", message: "postgres_transfer_invalid_input" });
+    expect(connect).not.toHaveBeenCalled();
+  }
 }, 30_000);
