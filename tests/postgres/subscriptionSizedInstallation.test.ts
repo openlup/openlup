@@ -8,6 +8,13 @@ import { qualifiedPostgresCatalogPayload, qualifiedAdminPostgresCatalogPayload, 
 import { readSelectedCatalogProjection, selectedCatalogProjectionPayload } from "../../server/adapters/postgres/selectedCatalogProjection.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
+const inventories = {
+  "legacy": "0bb34b7450920e849dbee135c7b67bdf24b3a28103278092f15b45a80ce6f3ea",
+  "bootstrap": "6622dc86c108710cfbd3cc0add761c8a1d16dacdc5fd645d7f38ea7b6cd49295",
+  "separate": "db5cba510aa0e590957a6bef314e7f3610070b5e366056642c4cf17439d78a2f",
+  "admin-managed": "e12097298e2a9e4891f48ed4fa808cf4e5e1ab892fcb4c63bbed9f352b0e2234",
+  "admin-operator": "81881714f70343c59381010458de51bd7f33493ad74e3f5198550ca304836183",
+} as const;
 it.each(["legacy", "bootstrap", "separate", "admin-managed", "admin-operator"] as const)("installs the sized editor on %s with the selected ownership and binding ACLs", async profile => {
   const container = await runPostgresContainer({ name: `sized-install-${profile}-${process.pid}`, password: "synthetic-conformance" });
   const pools: Pool[] = [];
@@ -40,6 +47,7 @@ it.each(["legacy", "bootstrap", "separate", "admin-managed", "admin-operator"] a
         const payload = installation.generation === "qualified-v2" ? await qualifiedPostgresCatalogPayload(client, installation, "openlup:public-platform-migrations:v1")
           : installation.generation === "qualified-admin" ? await qualifiedAdminPostgresCatalogPayload(client, installation, "openlup:public-platform-migrations:v1")
             : selectedCatalogProjectionPayload(await readSelectedCatalogProjection(client));
+        expect(hash(payload)).toBe(inventories[profile]);
         mkdirSync(".context/scratch/sized-edit", { recursive: true });
         writeFileSync(`.context/scratch/sized-edit/inventory-${profile}.json`, JSON.stringify({ profile, sha256: hash(payload) })); return payload;
       } });
