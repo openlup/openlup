@@ -1600,8 +1600,10 @@ promotion allocation splits effective positions. Missing or ambiguous lists leav
 NULL context while permitted template lines remain visible.
 Only SQLSTATE classes 42, 22 and 23 skip the optional unit, logging
 `subscription_template_unavailable` plus the SQLSTATE once. Other failures
-propagate. An existing caller transaction uses a savepoint; independently
-committed pool queries use no savepoint or explicit transaction. Missing runtime
+propagate. The unit first attempts a savepoint. Only `25P01` identifies independently
+committed pool queries, which continue without one; any other savepoint error
+propagates. A caller transaction retains the established savepoint. Detection
+calls no database function and opens no explicit transaction. Missing runtime
 access keeps the prior no-template behavior and refused native edits, with no new
 grant. Graduation retries absent context under the same best-effort rule in a
 savepoint, preserving its existing add-on lookup and due anchor.

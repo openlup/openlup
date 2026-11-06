@@ -1863,10 +1863,11 @@ The optional unit catches only SQLSTATE classes 42 (access), 22 (data) and 23
 (integrity), logs `subscription_template_unavailable` plus the SQLSTATE once, and
 keeps the completion response. All other failures propagate. On a caller-bound
 transaction it uses a savepoint to discard failed optional work without aborting
-the transaction. Independently committed pool queries use no savepoint or explicit
-transaction. Transaction and statement timestamps distinguish these modes after
-the completion call. No runtime grant is added; missing template access leaves
-no template and native edits stay refused, as before this change.
+the transaction. The writer first attempts `SAVEPOINT native_purchase_template`:
+success establishes the savepoint; only SQLSTATE `25P01` identifies independently committed
+pool queries, which continue without one. Other savepoint errors propagate. This
+detection calls no database function and opens no explicit transaction. No runtime
+grant is added; missing template access leaves no template and native edits stay refused, as before this change.
 Graduation retries NULL context with the same resolver inside a best-effort
 savepoint, retaining its existing add-on precedence, service and due anchor.
 The runtime has no direct privileges on the attachment or method-event tables;

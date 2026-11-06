@@ -193,8 +193,15 @@ it.each(["template", "context"])("completes without materialization when %s priv
   const id = activation.subscriptionId;
   const observe = () => admin.query("SELECT status,next_cycle_at::text,price_list_id,currency_code FROM public.subscriptions WHERE id=$1", [id]).then(r => r.rows[0]);
   const before = await observe(), log = vi.spyOn(console, "warn").mockImplementation(() => {});
-  const queries: string[] = [];
-  const narrowed = api.createPostgresPurchaseRenewalWriter({ query(sql, values) { queries.push(sql); return executor.query(sql, values); } });
+  const queries: string[] = [], savepointErrors: unknown[] = [];
+  const narrowed = api.createPostgresPurchaseRenewalWriter({ async query(sql, values) {
+    queries.push(sql);
+    try { return await executor.query(sql, values); }
+    catch (error) {
+      if (sql === "SAVEPOINT native_purchase_template") savepointErrors.push(error && typeof error === "object" && "code" in error ? error.code : undefined);
+      throw error;
+    }
+  } });
   try {
     await admin.query("REVOKE UPDATE ON public.subscriptions FROM service_role; GRANT UPDATE(updated_at) ON public.subscriptions TO service_role");
     if (scope === "template") await admin.query(`
@@ -204,16 +211,18 @@ it.each(["template", "context"])("completes without materialization when %s priv
       GRANT SELECT(id,client_id,updated_at,cadence_days,template_version,currency_code,status,next_cycle_at) ON public.subscriptions TO service_role`);
     expect((await runtime.query("SELECT has_column_privilege(current_user,'public.subscriptions','price_list_id','UPDATE') AS allowed")).rows[0].allowed).toBe(false);
     expect(await narrowed.complete(p.orderId)).toMatchObject({ subscriptionId: id, replayed: false });
-    expect(queries.some(sql => sql.startsWith("SAVEPOINT"))).toBe(false);
+    expect(savepointErrors).toEqual(["25P01"]);
+    expect(queries.filter(sql => sql.includes("SAVEPOINT"))).toEqual(["SAVEPOINT native_purchase_template"]);
     expect(await observe()).toEqual(before);
     expect(before).toMatchObject({ status: "active", price_list_id: null, currency_code: null });
     expect((await admin.query("SELECT 1 FROM public.subscription_lines WHERE subscription_id=$1", [id])).rows).toEqual([]);
     expect(log.mock.calls).toEqual([["subscription_template_unavailable", "42501"]]);
     const completed = await allPublicRows(admin);
-    log.mockClear(); queries.length = 0;
+    log.mockClear(); queries.length = 0; savepointErrors.length = 0;
     expect(await narrowed.complete(p.orderId)).toMatchObject({ subscriptionId: id, replayed: true });
     expect(await allPublicRows(admin)).toEqual(completed);
-    expect(queries.some(sql => sql.startsWith("SAVEPOINT"))).toBe(false);
+    expect(savepointErrors).toEqual(["25P01"]);
+    expect(queries.filter(sql => sql.includes("SAVEPOINT"))).toEqual(["SAVEPOINT native_purchase_template"]);
     expect(log.mock.calls).toEqual([["subscription_template_unavailable", "42501"]]);
   } finally {
     if (scope === "template") await admin.query(`
@@ -452,4 +461,34 @@ it("keeps a retained acquisition add-on at attach and matches graduation from an
     results.push({ template: snapshot.templateSnapshot, pricing: snapshot.pricingSnapshot, lines });
   }
   expect(results[0]).toEqual(results[1]);
+});
+
+
+it("completes without any auxiliary function query before the protected work", async () => {
+  const f = await prepared(), queries: string[] = [], log = vi.spyOn(console, "warn").mockImplementation(() => {});
+  const writer = api.createPostgresPurchaseRenewalWriter({ query(sql, values) {
+    queries.push(sql);
+    if (sql === "SELECT public.subscription_complete_renewal_attachment($1::uuid) AS response"
+      || sql === "SAVEPOINT native_purchase_template" || sql.startsWith("SELECT sku.id AS variant_id")
+      || sql.startsWith("SELECT list.id,list.currency") || sql.startsWith("WITH locked AS MATERIALIZED")) return executor.query(sql, values);
+    throw Object.assign(new Error("synthetic auxiliary function denial"), { code: "42501" });
+  } });
+  expect(await writer.complete(f.orderId)).toEqual({ subscriptionId: f.subscriptionId, replayed: false });
+  expect(queries.slice(0, 2)).toEqual(["SELECT public.subscription_complete_renewal_attachment($1::uuid) AS response", "SAVEPOINT native_purchase_template"]);
+  expect(await accountLines(f)).toMatchObject([{ qty: 2 }]);
+  expect(await state(f.subscriptionId)).toMatchObject({ price_list_id: list, currency_code: "XXX" });
+  expect(log.mock.calls).toEqual([]);
+});
+
+it("propagates a savepoint error other than no active transaction without running template work", async () => {
+  const f = await prepared(), queries: string[] = [], failure = Object.assign(new Error("synthetic savepoint failure"), { code: "42501" });
+  const log = vi.spyOn(console, "warn").mockImplementation(() => {});
+  const writer = api.createPostgresPurchaseRenewalWriter({ query(sql, values) {
+    queries.push(sql);
+    if (sql === "SAVEPOINT native_purchase_template") throw failure;
+    return executor.query(sql, values);
+  } });
+  await expect(writer.complete(f.orderId)).rejects.toBe(failure);
+  expect(queries).toEqual(["SELECT public.subscription_complete_renewal_attachment($1::uuid) AS response", "SAVEPOINT native_purchase_template"]);
+  expect(log.mock.calls).toEqual([]);
 });

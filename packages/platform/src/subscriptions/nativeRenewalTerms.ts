@@ -119,7 +119,7 @@ export async function graduateNativeRenewal(db: SubscriptionQueryExecutor, row: 
     if (context.priceListId) await db.query(`UPDATE public.subscriptions SET price_list_id=$2::uuid,currency_code=$3
       WHERE id=$1::uuid AND price_list_id IS NULL AND currency_code IS NULL`, [id, context.priceListId, context.currency]);
     if (context.reason) console.warn("subscription_price_list_unresolved", context.reason);
-  }, true);
+  });
   const original = z.array(z.object({ lineOrdinal: cadence, sku: z.string(), quantity: cadence, unitAmountMinor: amount }).strict()).parse(row.lines);
   const prices = currentPricing(row, original, terms!);
   let finalLines = original, finalPricing = prices;

@@ -1,12 +1,13 @@
 import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 
 /** Only the optional template/context work may be discarded; completion is outside this unit. */
-export async function bestEffortNativePurchaseTemplate(db: SubscriptionQueryExecutor, work: () => Promise<void>, inTransaction?: boolean): Promise<void> {
-  // A later statement has a different timestamp only inside an existing transaction;
-  // independently committed pool queries start a new transaction at each statement.
-  const transactional = inTransaction ?? (await db.query(
-    "SELECT transaction_timestamp() <> statement_timestamp() AS in_transaction")).rows[0]?.in_transaction === true;
-  if (transactional) await db.query("SAVEPOINT native_purchase_template");
+export async function bestEffortNativePurchaseTemplate(db: SubscriptionQueryExecutor, work: () => Promise<void>): Promise<void> {
+  let transactional = true;
+  try { await db.query("SAVEPOINT native_purchase_template"); }
+  catch (error) {
+    if (!error || typeof error !== "object" || !("code" in error) || error.code !== "25P01") throw error;
+    transactional = false;
+  }
   try { await work(); }
   catch (error) {
     const code = error && typeof error === "object" && "code" in error ? error.code : undefined;
