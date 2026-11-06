@@ -819,7 +819,10 @@ separately from historical grant spellings or inherited CLI defaults.
 
 The fixed `qualifiedInstallations` class requires prior exact whole-file approval
 for four bootstrap units, an optional retained-import unit, the runtime
-completion tail and the owner-path forward. Even expand-only
+completion tail and the owner-path forward. Position 17
+approves the shared lock and conflict completion tail described under
+[Compatibility lifecycle](#compatibility-lifecycle); its active SQL is
+byte-identical to that approval. Even expand-only
 qualified SQL uses this separate control-before-feature route: new SQL with new
 pins, simultaneous machinery changes, later repins, unknown paths and edits to
 issued files refuse. Trusted queue admission applies this guard to qualified SQL
@@ -895,9 +898,9 @@ review or a new report format. Applicable maintainer/delegate reads remain requi
 
 Changes to a class, validator, its dependencies, review/admission or release
 machinery need a separate control change before using the new rule. The existing
-native admission, invoked from trusted main, validates co-located data with its
-own checker and refuses simultaneous machinery changes or machinery drift since
-the reviewed base. Production tooling in `scripts/agent-review-*`, `scripts/oss-*`,
+native admission, invoked from trusted main, validates the candidate's own
+co-located change with its own checker and refuses machinery changes in that
+change. Production tooling in `scripts/agent-review-*`, `scripts/oss-*`,
 `scripts/source-*` and `scripts/packages/` stays unchanged for this route, including
 release entry points and preparation; test-only coverage changes remain allowed,
 except the catalog test of the [closed native store forwards](#closed-native-store-forwards)
@@ -2001,6 +2004,74 @@ selected catalogue through the existing executor and ledger; this exact grant
 completion does not authorize owner fallback, legacy relabelling or a new role mode.
 The production-composition witness includes actual restricted-runtime commands
 and refusals; reference inventory derivation alone does not qualify those commands.
+
+Before the lock and conflict completion tail, both qualified generations
+refused five existing native paths on the restricted runtime with `42501`:
+
+- native subscription lifecycle commands;
+- operator recovery issue;
+- platform control set and heartbeat;
+- order settlement for an order with a promotion claim;
+- operator lead absorption, once delivery destinations block absorption.
+
+The first three lock a row `FOR UPDATE` on a table whose issued runtime grants
+include no `UPDATE` column: renewal term lines, recovery commands and control
+operations. None of these tables had row security. The claim transition
+trigger appends events with a conflict target, and the issued runtime grant
+there was `INSERT` only. The absorber counts a lead's delivery destinations by
+client, but that table had row security and no runtime access at all.
+
+One shared completion tail closes these gaps. It is the approved seventeenth
+qualified identity. Both qualified plans select it once, after their issued
+tails and at the same position among shared units, so later shared forwards
+still append identically. The qualified plan now has 103 units and the
+restricted plan 102; legacy is unchanged.
+
+The tail must follow the delivery destination forward. Its guard refuses the
+whole unit unless that table exists in its created state: owned by the
+installer, with row security enabled and not forced, no policy and no grant
+beyond the owner. A destination grant or policy added by any other change
+before the tail would therefore stop every installation.
+
+On each of the three locked tables, the tail does the following:
+
+- enables row security;
+- keeps the existing runtime access through policies;
+- admits row locks through an `UPDATE` policy whose check refuses every
+  actual update;
+- grants `UPDATE` on one timestamp column.
+
+On claim events it grants `SELECT` on the two arbiter columns only. Row
+security would not help there, because an arbiter also requires the new row
+to pass a select policy. On delivery destinations it grants `SELECT` on the
+client column and adds a runtime select policy, so the existing row security
+returns a truthful count. Addresses stay unreadable, and every write stays
+unavailable.
+
+The active file is byte-identical to its approved fixture. The four qualified
+installation inventories were measured again; the legacy plan and its
+inventory are unchanged. The
+[real-PostgreSQL witness](../../tests/postgres/qualifiedRuntimeLockCompletion.test.ts)
+runs on `qualified-v2` and on operator-provisioned `qualified-admin`, with an
+actual restricted runtime login. It covers:
+
+- the four lifecycle commands through the customer command store, and the
+  operator support wrapper's three, each with a receipt;
+- recovery issue and replay;
+- platform control set, heartbeat and their replays;
+- an order settlement with a promotion claim, recording exactly one claim event
+  and none on later statuses;
+- operator lead absorption: a lead without destinations is absorbed and
+  replayed, and a lead with one is refused naming `commerce_destinations`, with
+  its rows unchanged.
+
+It also refuses every actual update, every other claim-event and destination
+read, and every destination write, and enumerates every role that reaches each
+target. The guard refuses the unit for a missing, renamed, unprotected or
+force-protected destination table and for any extra policy or grant on it.
+Existing destination, purchase-hold, retained-renewal and notice-delivery
+witnesses now apply the lifecycle commands, operator recovery issuance, the
+claim sweep and absorption through the restricted runtime.
 
 The separate `qualified-admin` generation starts with its issued 91-unit prefix
 and appends current shared forwards. It is not an upgrade, relabel or migration-history conversion from
