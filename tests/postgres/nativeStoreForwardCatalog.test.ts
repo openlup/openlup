@@ -3,13 +3,13 @@ import { readFileSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
-import { readReviewedForwardRegistry, nativeStoreChecks, nativeStoreCheckPreimage, nativeStoreUniqueDefinition, sqlSha256, sqlStatements, type NativeStoreSlot } from "../../scripts/reviewed-platform-forward.js";
+import { readReviewedForwardRegistry, nativeStoreChecks, nativeStoreCheckPreimage, nativeStoreUniqueDefinition, nativeStoreTriggerDefinition, sqlSha256, sqlStatements, type NativeStoreSlot } from "../../scripts/reviewed-platform-forward.js";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 // The static native-store class is a first gate for ordinary mistakes. This test is the
 // truth for function identity, attributes and ACLs: it applies a forward to a real
 // database and compares what PostgreSQL itself reports with the slot's lists.
-type CatalogSlot = Pick<NativeStoreSlot, "createdFunctions" | "replacedFunctions" | "grantOnlyFunctions" | "purposeCheck" | "insertSelectTables" | "checkSupersets" | "uniqueSupersets" | "createdViews">;
+type CatalogSlot = Pick<NativeStoreSlot, "createdFunctions" | "replacedFunctions" | "grantOnlyFunctions" | "purposeCheck" | "insertSelectTables" | "checkSupersets" | "uniqueSupersets" | "createdViews" | "createdTriggers">;
 // PostgreSQL creates its own objects below this OID; every object a forward adds is at or above it.
 const FIRST_USER_OID = 16384;
 // The floor is typed as oid, so every comparison with it resolves to pg_catalog's own oid >= oid and oid < oid. A bare integer
@@ -181,6 +181,27 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
     if (nowConstraints.get(constraintKey(old)) !== old.def) fail(`constraint ${constraintKey(old)} was dropped or rewritten`);
   }
 
+  const admittedTriggers = new Set<string>();
+  for (const entry of slot.createdTriggers ?? []) {
+    const statement = preimages.get(entry.sha256), expected = statement ? nativeStoreTriggerDefinition(statement) : null;
+    if (!expected || expected.name !== entry.name || expected.table !== entry.table) fail("created trigger source differs from its listed hash and identity");
+    if (before.guards.triggers!.some(row => row.tgname === entry.name)) fail("created trigger name existed in the prefix");
+    const table = before.relations.find(row => row.name === entry.table && row.kind === "r");
+    const fn = slot.createdFunctions.find(fn => fn.signature === expected!.signature);
+    if (!table || !fn || !fn.searchPath) fail("created trigger requires an existing table and same-slot created function");
+    const functionOid = await resolve(expected!.signature), functionRow = added.find(row => row.oid === functionOid);
+    const attrs = (await db.query("SELECT prorettype = 'pg_catalog.trigger'::regtype AS returns_trigger, prosecdef FROM pg_proc WHERE oid=$1::oid", [functionOid])).rows[0];
+    if (!functionRow || !attrs?.returns_trigger || attrs.prosecdef || functionRow.acl.some(item => !item.startsWith(`${migrationRole}:`))) fail("created trigger function must be an owner-only invoker returning trigger");
+    const rows = after.guards.triggers!.filter(row => row.tgname === entry.name && Number(row.tgrelid) === table!.oid);
+    const row = rows[0];
+    if (rows.length !== 1 || row!.tgenabled !== "O" || row!.tgisinternal !== false || Number(row!.tgfoid) !== functionOid || Number(row!.tgconstraint) !== 0 || Number(row!.tgnargs) !== 0) fail("created trigger binding or enabled state differs from its entry");
+    const definition = String((await db.query("SELECT pg_get_triggerdef(oid) AS definition FROM pg_trigger WHERE tgname=$1 AND tgrelid=$2::oid", [entry.name, table!.oid])).rows[0].definition);
+    const actual = nativeStoreTriggerDefinition(`${definition};`);
+    const eventKey = (events: NonNullable<typeof actual>["events"]) => JSON.stringify(events.map(event => ({ ...event, columns: [...event.columns].sort() })).sort((a, b) => a.event.localeCompare(b.event)));
+    if (!actual || actual.name !== expected!.name || actual.table !== expected!.table || actual.signature !== expected!.signature || actual.timing !== expected!.timing || eventKey(actual.events) !== eventKey(expected!.events)) fail("created trigger events or row shape differ from its entry");
+    admittedTriggers.add(JSON.stringify(row));
+  }
+
   // 6. Guard catalogs: every row that existed stays as it was, and nothing attaches behaviour (a trigger, a policy, a
   // rewrite rule, a view's own included) to an existing relation. A new row is a change unless the guard admits it.
   const existing = new Set(before.relationOids), knownConstraints = new Set(before.constraintOids);
@@ -189,7 +210,7 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
     const rows = (snap: Snapshot) => snap.guards[guard.id]!.filter(row => !guard.relation || existing.has(Number(row[guard.relation])));
     const was = new Set(rows(before).map(row => JSON.stringify(row))), now = rows(after);
     const kept = new Set(now.map(row => JSON.stringify(row)));
-    if ([...was].some(row => !kept.has(row)) || now.some(row => !was.has(JSON.stringify(row)) && !guard.added?.(row, newConstraints))) fail(`${guard.id} ${guard.relation ? "on existing relations " : ""}changed`);
+    if ([...was].some(row => !kept.has(row)) || now.some(row => !was.has(JSON.stringify(row)) && !guard.added?.(row, newConstraints) && !(guard.id === "triggers" && admittedTriggers.has(JSON.stringify(row))))) fail(`${guard.id} ${guard.relation ? "on existing relations " : ""}changed`);
   }
 }
 
@@ -259,6 +280,16 @@ const REVOKE_CREATED = "REVOKE ALL ON FUNCTION public.cat_created(text) FROM PUB
 const CREATED_OK = `${CREATE_PINNED}\n${REVOKE_CREATED}\n${guarded("service_role", "GRANT EXECUTE ON FUNCTION", "public.cat_created(text) TO service_role;")}`;
 const forward = (created: string, extra = "") => [REPLACE_PART, created, GRANT_PART, TABLE_PART, EXISTING_PART, extra].filter(Boolean).join("\n");
 const CONFORMING = forward(CREATED_OK);
+const TRIGGER_FUNCTION = "CREATE FUNCTION public.cat_created_guard() RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$ BEGIN RETURN NEW; END; $$;";
+const TRIGGER_REVOKE = "REVOKE ALL ON FUNCTION public.cat_created_guard() FROM PUBLIC;";
+const TRIGGER_BEFORE = "CREATE TRIGGER cat_created_guard BEFORE INSERT OR DELETE OR UPDATE OF owner_ref, id ON public.cat_existing_table FOR EACH ROW EXECUTE FUNCTION public.cat_created_guard();";
+const TRIGGER_AFTER = "CREATE TRIGGER cat_created_event AFTER INSERT ON public.cat_parameters FOR EACH ROW EXECUTE FUNCTION public.cat_created_guard();";
+const TRIGGER_SLOT: CatalogSlot = { ...SYNTHETIC_SLOT,
+  createdFunctions: [...SYNTHETIC_SLOT.createdFunctions, { signature: "public.cat_created_guard()", searchPath: "pg_catalog, pg_temp" }],
+  createdTriggers: [{ name: "cat_created_guard", table: "public.cat_existing_table", sha256: sqlSha256(TRIGGER_BEFORE) }, { name: "cat_created_event", table: "public.cat_parameters", sha256: sqlSha256(TRIGGER_AFTER) }],
+};
+const TRIGGER_SQL = `${TRIGGER_FUNCTION}\n${TRIGGER_REVOKE}\n${TRIGGER_BEFORE}\n${TRIGGER_AFTER}`;
+
 const NOTICE_SLOT: CatalogSlot = { ...SYNTHETIC_SLOT, insertSelectTables: ["public.subscription_notice_refusals"] };
 const NOTICE_TABLE = "CREATE TABLE public.subscription_notice_refusals (id int); ALTER TABLE public.subscription_notice_refusals ENABLE ROW LEVEL SECURITY; REVOKE ALL ON TABLE public.subscription_notice_refusals FROM PUBLIC;";
 const NOTICE_GRANT = guarded("service_role", "GRANT SELECT, INSERT ON", "public.subscription_notice_refusals TO service_role;");
@@ -339,7 +370,7 @@ const chain = [manifest.baseline, ...manifest.forward].filter(unit => !boundPath
   if (sha(bytes) !== unit.sha256) throw new Error(`native chain unit differs from the manifest: ${unit.file}`);
   return { path: unit.file, sql: bytes.toString("utf8") };
 });
-const preimages = new Map([SYNTHETIC_BASE, ...chain.map(unit => unit.sql), ...bound.map(entry => readFileSync(entry.pin.path, "utf8"))].flatMap(sql => sqlStatements(sql, true).map(statement => [sqlSha256(statement), statement] as const)));
+const preimages = new Map([SYNTHETIC_BASE, TRIGGER_SQL, ...chain.map(unit => unit.sql), ...bound.map(entry => readFileSync(entry.pin.path, "utf8"))].flatMap(sql => sqlStatements(sql, true).map(statement => [sqlSha256(statement), statement] as const)));
 const parameterSource = sqlStatements(SYNTHETIC_BASE).find(statement => statement.startsWith("CREATE TABLE public.cat_parameters"))!;
 const PARAMETER_SLOT: CatalogSlot = { ...SYNTHETIC_SLOT, checkSupersets: [
   { table: "public.cat_parameters", constraint: "cat_status", column: "status", beforeSha256: sqlSha256(parameterSource), values: ["open", "closed", "paused"] },
@@ -414,6 +445,26 @@ describe.each([{ serviceRole: true }, { serviceRole: false }])("native store for
     await checkForward(pool, slot, forward(CREATED_OK, `${view} REVOKE ALL ON TABLE public.cat_created_view FROM PUBLIC;`));
     await expect(checkForward(pool, slot, forward(CREATED_OK, `${view} GRANT SELECT ON public.cat_created_view TO authenticated;`))).rejects.toThrow(/new relation .* grants/u);
     await expect(checkForward(pool, SYNTHETIC_SLOT, forward(CREATED_OK, view))).rejects.toThrow(/created views differ/u);
+  });
+  it("proves listed enabled row triggers and their owner-only invoker binding on existing tables", async () => {
+    await checkForward(pool, TRIGGER_SLOT, forward(CREATED_OK, TRIGGER_SQL));
+  });
+  it.each([
+    ["disabled trigger", `${TRIGGER_SQL} ALTER TABLE public.cat_existing_table DISABLE TRIGGER cat_created_guard;`, /binding or enabled state/u],
+    ["changed events", TRIGGER_SQL.replace("BEFORE INSERT OR DELETE OR UPDATE OF owner_ref, id", "AFTER INSERT"), /events or row shape/u],
+    ["different table", TRIGGER_SQL.replace("ON public.cat_existing_table FOR EACH", "ON public.cat_parameters FOR EACH"), /binding or enabled state/u],
+    ["different function", TRIGGER_SQL.replaceAll("EXECUTE FUNCTION public.cat_created_guard()", "EXECUTE FUNCTION public.cat_trigger_fn()"), /binding or enabled state/u],
+    ["function grant", `${TRIGGER_SQL} GRANT EXECUTE ON FUNCTION public.cat_created_guard() TO authenticated;`, /owner-only invoker/u],
+    ["definer function", TRIGGER_SQL.replace("SECURITY INVOKER", "SECURITY DEFINER"), /owner-only invoker/u],
+    ["WHEN clause", TRIGGER_SQL.replace("FOR EACH ROW EXECUTE FUNCTION", "FOR EACH ROW WHEN (true) EXECUTE FUNCTION"), /events or row shape/u],
+  ] as const)("refuses a listed trigger with %s", async (_label, sql, message) => {
+    await expect(checkForward(pool, TRIGGER_SLOT, forward(CREATED_OK, sql))).rejects.toThrow(message);
+  });
+  it("refuses a listed trigger name already present on a different prefix table", async () => {
+    const statement = TRIGGER_AFTER.replace("cat_created_event", "cat_base_trigger");
+    preimages.set(sqlSha256(statement), statement);
+    const slot = { ...TRIGGER_SLOT, createdTriggers: [TRIGGER_SLOT.createdTriggers![0]!, { name: "cat_base_trigger", table: "public.cat_parameters", sha256: sqlSha256(statement) }] };
+    await expect(checkForward(pool, slot, forward(CREATED_OK, TRIGGER_SQL.replace(TRIGGER_AFTER, statement)))).rejects.toThrow("catalog: created trigger name existed in the prefix");
   });
   it("keeps static preimages distinct from a DO-patched installed body", async () => {
     const patch = "DO $$ BEGIN EXECUTE $patch$CREATE OR REPLACE FUNCTION public.cat_replaced(p text, q boolean DEFAULT false) RETURNS text LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $body$ SELECT 'patched' $body$;$patch$; END; $$;";

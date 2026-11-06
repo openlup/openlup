@@ -1545,6 +1545,16 @@ existing guarded role revokes are allowed. Every GRANT on a created view refuses
 Views gain no RLS or table-grant capability. The real catalog checks the declared
 new view inventory, ownership and owner-only privileges.
 
+`createdTriggers` entries name a fresh trigger, an existing prefix table and the
+exact CREATE TRIGGER statement hash. Only BEFORE/AFTER INSERT, DELETE or UPDATE
+(with an optional OF column list), combined with OR, FOR EACH ROW and a
+zero-argument public function are admitted. That function must be created in the
+same slot, explicitly return trigger with SECURITY INVOKER and a pinned search
+path, revoke PUBLIC and receive no EXECUTE grant. Conditional revokes remain
+allowed. WHEN, transition relations, constraint/statement/instead-of triggers,
+trigger mutation, missing targets and unlisted or drifted statements refuse.
+The catalog witness checks the enabled binding, events and owner-only function ACL.
+
 The destination slot registers four created function signatures and pinned
 search paths. Its two new tables, revokes and RLS use the existing same-file
 narrowing rules below. Class data does not pin table columns, constraint/index
@@ -1648,7 +1658,7 @@ operator a forward creates for another operand type cannot hide what it adds:
   Left out of the comparison: each row's own OID, parser positions inside stored
   node trees, temporary schemas and the two transaction-horizon columns of
   `pg_database`. Every trigger that existed before the forward, an internal one and
-  its enabled state included, stays as it was; the only addition allowed is the
+  its enabled state included, stays as it was; additions are limited to the declared row triggers above and the
   enforcement trigger PostgreSQL creates internally for a constraint the forward
   itself adds.
 

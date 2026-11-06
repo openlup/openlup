@@ -993,3 +993,100 @@ describe("parameterized native Git history", () => {
     expect(() => parameterForward("", () => {}, patch)).not.toThrow();
   });
 });
+
+const triggerFunction = "CREATE FUNCTION public.fixture_trigger_guard() RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$ BEGIN RETURN NEW; END; $$;";
+const triggerRevoke = "REVOKE ALL ON FUNCTION public.fixture_trigger_guard() FROM PUBLIC;";
+const triggerBefore = "CREATE TRIGGER fixture_trigger_guard BEFORE INSERT OR DELETE OR UPDATE OF id, extra ON public.fixture_parameters FOR EACH ROW EXECUTE FUNCTION public.fixture_trigger_guard();";
+const triggerAfter = "CREATE TRIGGER fixture_trigger_event AFTER INSERT ON public.fixture_row FOR EACH ROW EXECUTE FUNCTION public.fixture_trigger_guard();";
+function triggerForward(statement = triggerBefore, extra = "", configure?: (slot: NativeStoreSlot) => void, history = "", definition = triggerFunction) {
+  parameterForward(`${definition}\n${triggerRevoke}\n${statement}\n${extra}`, slot => {
+    slot.createdFunctions.push({ signature: "public.fixture_trigger_guard()", searchPath: "pg_catalog, pg_temp" });
+    slot.createdTriggers = [{ name: "fixture_trigger_guard", table: "public.fixture_parameters", sha256: sqlSha256(statement) }];
+    configure?.(slot);
+  }, history);
+}
+
+describe("closed created row triggers on prefix tables", () => {
+  it("admits both guarded existing-table trigger shapes with PUBLIC and conditional revokes", () => {
+    const revokes = ["anon", "authenticated", "service_role"].map(role => block(role, "REVOKE ALL", "public.fixture_trigger_guard()")).join("\n");
+    expect(() => triggerForward(triggerBefore, `${triggerAfter}\n${revokes}`, slot => {
+      slot.createdTriggers!.push({ name: "fixture_trigger_event", table: "public.fixture_row", sha256: sqlSha256(triggerAfter) });
+    })).not.toThrow();
+  });
+  it.each([
+    ["WHEN", triggerBefore.replace("FOR EACH ROW EXECUTE", "FOR EACH ROW WHEN (true) EXECUTE")],
+    ["FOR EACH STATEMENT", triggerBefore.replace("FOR EACH ROW", "FOR EACH STATEMENT")],
+    ["CONSTRAINT TRIGGER", triggerBefore.replace("CREATE TRIGGER", "CREATE CONSTRAINT TRIGGER")],
+    ["INSTEAD OF", triggerBefore.replace("BEFORE", "INSTEAD OF")],
+    ["REFERENCING", triggerBefore.replace("FOR EACH ROW", "REFERENCING NEW TABLE AS new_rows FOR EACH ROW")],
+    ["TRUNCATE event", triggerBefore.replace("INSERT OR DELETE OR UPDATE OF id, extra", "TRUNCATE")],
+    ["function arguments", triggerBefore.replace("fixture_trigger_guard();", "fixture_trigger_guard('argument');")],
+  ])("refuses %s even with a fresh statement hash", (_label, statement) => {
+    expect(() => triggerForward(statement)).toThrow("reviewed native store created trigger shape refused");
+  });
+  it("refuses an existing trigger function outside the slot", () => {
+    const statement = triggerBefore.replace("EXECUTE FUNCTION public.fixture_trigger_guard()", "EXECUTE FUNCTION public.fixture_external_trigger()");
+    const history = triggerFunction.replace("fixture_trigger_guard", "fixture_external_trigger");
+    expect(() => triggerForward(statement, "", undefined, history)).toThrow("reviewed native store created trigger requires a same-slot created function");
+  });
+  it("refuses a function created by an earlier slot", () => {
+    const value = registry(), first = sql(), firstPin = bind(value, 0, first);
+    const statement = triggerBefore.replace("public.fixture_trigger_guard()", "public.fixture_created_1()");
+    const text = `${sql(1)}\n${statement}`;
+    value.nativeStoreForwardClass!.slots[1]!.createdTriggers = [{ name: "fixture_trigger_guard", table: "public.fixture_parameters", sha256: sqlSha256(statement) }];
+    const pin = bind(value, 1, text);
+    expect(() => assertNativeStoreForward(value, pin.path, Buffer.from(text), [{ path: PLATFORM_BASELINE_FILE, bytes: Buffer.concat([before, Buffer.from(`\n${parameterTable}`)]) }, { path: firstPin.path, bytes: Buffer.from(first) }])).toThrow("reviewed native store created trigger requires a same-slot created function");
+  });
+  it.each([
+    ["SECURITY DEFINER", triggerFunction.replace("SECURITY INVOKER", "SECURITY DEFINER")],
+    ["implicit invoker", triggerFunction.replace(" SECURITY INVOKER", "")],
+    ["non-trigger return", triggerFunction.replace("RETURNS trigger", "RETURNS text")],
+  ])("refuses a trigger function with %s", (_label, definition) => {
+    expect(() => triggerForward(triggerBefore, "", undefined, "", definition)).toThrow("reviewed native store trigger function requires RETURNS trigger, SECURITY INVOKER and pinned search_path");
+  });
+  it("requires a pinned trigger-function search_path and its PUBLIC revoke", () => {
+    expect(() => triggerForward(triggerBefore, "", slot => { slot.createdFunctions.at(-1)!.searchPath = null; }, "", triggerFunction.replace(" SET search_path = pg_catalog, pg_temp", ""))).toThrow("reviewed native store trigger function requires RETURNS trigger, SECURITY INVOKER and pinned search_path");
+    expect(() => parameterForward(`${triggerFunction}\n${triggerBefore}`, slot => {
+      slot.createdFunctions.push({ signature: "public.fixture_trigger_guard()", searchPath: "pg_catalog, pg_temp" });
+      slot.createdTriggers = [{ name: "fixture_trigger_guard", table: "public.fixture_parameters", sha256: sqlSha256(triggerBefore) }];
+    })).toThrow("reviewed native store created function missing PUBLIC revoke");
+  });
+  it.each(["PUBLIC", "authenticated", "service_role"])("refuses a trigger-function GRANT EXECUTE to %s", role => {
+    expect(() => triggerForward(triggerBefore, `GRANT EXECUTE ON FUNCTION public.fixture_trigger_guard() TO ${role};`)).toThrow("reviewed native store trigger function GRANT EXECUTE refused");
+  });
+  it("refuses a guarded trigger-function GRANT EXECUTE", () => {
+    expect(() => triggerForward(triggerBefore, block("service_role", "GRANT EXECUTE", "public.fixture_trigger_guard()"))).toThrow("reviewed native store trigger function GRANT EXECUTE refused");
+  });
+  it("refuses a prefix trigger name even when it belongs to another table", () => {
+    const history = "CREATE TRIGGER fixture_trigger_guard AFTER INSERT ON public.fixture_row FOR EACH ROW EXECUTE FUNCTION public.fixture_external_trigger();";
+    expect(() => triggerForward(triggerBefore, "", undefined, history)).toThrow("reviewed native store created trigger name already exists in prefix");
+  });
+  it("refuses a missing prefix table and a same-file table", () => {
+    const statement = triggerBefore.replace("ON public.fixture_parameters", "ON public.fixture_new_target");
+    expect(() => triggerForward(statement, "", slot => { slot.createdTriggers![0]!.table = "public.fixture_new_target"; })).toThrow("reviewed native store created trigger target absent from prefix");
+    expect(() => triggerForward(statement, "CREATE TABLE public.fixture_new_target (id uuid);", slot => { slot.createdTriggers![0]!.table = "public.fixture_new_target"; })).toThrow("reviewed native store created trigger target absent from prefix");
+  });
+  it("refuses unlisted, duplicate, missing and hash-drifted trigger statements", () => {
+    const error = "reviewed native store unlisted, duplicate or drifted trigger statement";
+    expect(() => triggerForward(triggerBefore, "", slot => { delete slot.createdTriggers; })).toThrow(error);
+    expect(() => triggerForward(triggerBefore, triggerBefore)).toThrow(error);
+    expect(() => triggerForward(triggerBefore, "", slot => { slot.createdTriggers![0]!.sha256 = "0".repeat(64); })).toThrow(error);
+    expect(() => triggerForward("", "", slot => { slot.createdTriggers![0]!.sha256 = sqlSha256(triggerBefore); })).toThrow("reviewed native store created trigger statement missing");
+  });
+  it.each([
+    "DROP TRIGGER fixture_trigger_guard ON public.fixture_parameters;",
+    "ALTER TRIGGER fixture_trigger_guard ON public.fixture_parameters RENAME TO fixture_renamed;",
+    "ALTER TABLE public.fixture_parameters ENABLE TRIGGER fixture_trigger_guard;",
+    "ALTER TABLE public.fixture_parameters DISABLE TRIGGER fixture_trigger_guard;",
+    "ALTER TABLE public.fixture_parameters ENABLE ALWAYS TRIGGER fixture_trigger_guard;",
+    "ALTER TABLE public.fixture_parameters ENABLE REPLICA TRIGGER fixture_trigger_guard;",
+  ])("refuses trigger mutation: %s", statement => {
+    expect(() => triggerForward(triggerBefore, statement)).toThrow("reviewed native store trigger mutation refused");
+  });
+  it("validates only the three trigger entry fields and unique names", () => {
+    for (const entry of [{ name: "bad name", table: "public.fixture_parameters", sha256: sqlSha256(triggerBefore) }, { name: "fixture_trigger_guard", table: "app.fixture_parameters", sha256: sqlSha256(triggerBefore) }, { name: "fixture_trigger_guard", table: "public.fixture_parameters", sha256: "bad" }, { name: "fixture_trigger_guard", table: "public.fixture_parameters", sha256: sqlSha256(triggerBefore), extra: true }]) {
+      expect(() => triggerForward(triggerBefore, "", slot => { slot.createdTriggers = [entry]; })).toThrow("reviewed native store invalid created trigger inventory");
+    }
+    expect(() => triggerForward(triggerBefore, "", slot => { slot.createdTriggers!.push({ ...slot.createdTriggers![0]! }); })).toThrow("reviewed native store invalid created trigger inventory");
+  });
+});
