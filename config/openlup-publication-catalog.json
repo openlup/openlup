@@ -1234,7 +1234,7 @@
       "class": "public-output"
     },
     {
-      "path": "db/platform/migrations/20261120100000_subscription_package_editor.sql",
+      "path": "db/platform/migrations/20261104100000_subscription_package_editor.sql",
       "class": "public-output"
     },
     {
@@ -4026,7 +4026,7 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/sql/20261120100000_subscription_package_editor.sql",
+      "path": "packages/platform/sql/20261104100000_subscription_package_editor.sql",
       "class": "public-output"
     },
     {
