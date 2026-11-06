@@ -5,6 +5,7 @@ export const PLATFORM_EVENT_VOCABULARY: readonly EventVocabularyEntry[] = [
   { eventType: "commerce.order_draft.created", owner: "@openlup/core" },
   { eventType: "commerce.order.paid", owner: "@openlup/core" },
   { eventType: "commerce.order.paid.email", owner: "@openlup/core" },
+  { eventType: "commerce.settlement.settled", owner: "@openlup/core" },
   { eventType: "commerce.payment.failed", owner: "@openlup/core" },
   { eventType: "commerce.checkout.expired", owner: "@openlup/core" },
   { eventType: "commerce.order.canceled", owner: "@openlup/core" },
