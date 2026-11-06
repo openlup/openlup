@@ -127,11 +127,11 @@ describe('native review decisions', () => {
     expect(session.version).toBe(2);
     expect(session.history.filter(event => event.type === 'report')).toHaveLength(1);
     expect(verdict(session, candidate, time)).toMatchObject({ ok: true, code: 'reviewed' });
-    // Literal legacy summary: admission must also replay receipts emitted by main.
+    // Literal legacy summary: admission replays receipts emitted on a legacy base.
     const receipt = { pr: 12, base: candidate.base, head: candidate.head, tree: candidate.tree,
       risk: 'routine', reviewers: ['reviewer-1'], verdict: 'PASS', expires: time + 86400000, sessionDigest: digest(session) };
     expect(receiptSummary(session, 12, time)).toEqual(receipt);
-    expect(admit({ receipt, observed: { ...candidate, pr: 12, baseValid: true }, now: time })).toMatchObject({ ok: true, code: 'reviewed' });
+    expect(admit({ receipt, observed: { ...candidate, pr: 12, baseValid: true, legacyRules: true }, now: time })).toMatchObject({ ok: true, code: 'reviewed' });
     const v3 = recordReport(prepare({ changedPaths: [path], rules: { version: 3 } }), report(), time);
     expect(verdict(v3, candidate, time)).toMatchObject({ ok: false, code: 'needs_agent_review' });
   });

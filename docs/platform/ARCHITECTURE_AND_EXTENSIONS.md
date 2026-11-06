@@ -676,8 +676,7 @@ not permit Node dependencies or I/O in kernel contracts or logic.
 Place a new module at declared subpaths of `@openlup/platform` by default.
 Use core and outbox only for their defined roles above. UI remains a future
 artifact role, with no current name reservation or bootstrap obligation. Record
-placement and the topology-trigger check in the module/API packet before
-implementation.
+placement and the topology-trigger check in the pull request's task record.
 
 A separate package needs evidence: incompatible peer ranges in supported cold
 installs; a genuinely different browser/edge/Node runtime; measured
@@ -686,7 +685,7 @@ or an actual independent consumer poorly served by subpaths. First
 assess whether an isolated subpath suffices; for adapters also consider an
 existing port, optional peer or application adapter. A provider name alone is
 not a trigger. Record the evidence and compatibility and maintenance ownership
-in the same packet. A trigger requires an explicit maintainer decision under
+in the pull request's task record. A trigger requires an explicit maintainer decision under
 the applicable authority; it grants no authority to create, bootstrap or
 publish a package. A
 new npm name also needs the maintainer's manual bootstrap before its first

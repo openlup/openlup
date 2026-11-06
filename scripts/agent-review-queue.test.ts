@@ -196,12 +196,36 @@ describe('hosted review decisions', () => {
   it.each([
     ['docs/guide.md', 'prose', 1], ['docs/guide.md', 'unknown', 2], ['AGENTS.md', 'routine', 2],
     ['app.ts', 'unknown', 2], ['app.ts', 'behavior', 2],
-    ['.nvmrc', 'routine', 1], ['scripts/documentation-routing.ts', 'routine', 1],
+    ['.nvmrc', 'routine', 2], ['scripts/documentation-routing.ts', 'routine', 2],
   ])('recomputes v2 admission for %s with %s risk and floor %i', (path, risk, floor) => {
     const candidate = { ...observed, changedPaths: [path] };
     const summary = { ...receipt, risk, reviewers: Array.from({ length: floor }, (_, index) => `reviewer-${index}`) };
     expect(admit({ receipt: summary, observed: candidate, now: time }).ok).toBe(true);
     if (floor) expect(admit({ receipt: { ...summary, reviewers: summary.reviewers.slice(1) }, observed: candidate, now: time }).ok).toBe(false);
+  });
+  it.each([undefined, false, true, 'true'])('uses the v2 legacy floor only with an explicit trusted legacy flag: %s', legacyRules => {
+    const candidate = { ...observed, changedPaths: ['scripts/documentation-routing.ts'], legacyRules };
+    expect(admit({ receipt, observed: candidate, now: time }).ok).toBe(legacyRules === true);
+  });
+  it.each([false, true])('checks the base rules before hosted v2 admission: legacy=%s', async legacy => {
+    const f = handoffFixture(); const original = f.runGit.getMockImplementation()!;
+    f.runGit.mockImplementation(async (cwd, ...args) => {
+      if (args[0] === 'diff') return `:100644 100644 ${'a'.repeat(40)} ${'b'.repeat(40)} M\0scripts/documentation-routing.ts\0`;
+      if (args[0] === 'show') return legacy ? 'export const REVIEW_RULES_VERSION = 2;\n' : 'export const REVIEW_RULES_VERSION = 3;\n';
+      return original(cwd, ...args);
+    });
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      if (legacy) {
+        await expect(f.execute()).resolves.toMatchObject({ status: 'enqueued' });
+        expect(f.enqueue).toHaveBeenCalledTimes(1);
+      } else {
+        await expect(f.execute()).rejects.toThrow('Current native review is unavailable');
+        expect(log).toHaveBeenCalledWith('needs_agent_review: needs_agent_review: 2 independent reviewers required by the diff');
+        expect(f.enqueue).not.toHaveBeenCalled();
+      }
+      expect(f.runGit).toHaveBeenCalledWith(expect.any(String), 'show', `${receipt.base}:scripts/agent-review-decide.mjs`);
+    } finally { log.mockRestore(); }
   });
   const facts = { reviewedTree: receipt.tree, groupTree: 'e'.repeat(40), baseAncestor: true, predictedTree: 'e'.repeat(40), changedPaths: ['source.txt'], movedPaths: ['other.ts'] };
   it.each([

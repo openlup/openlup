@@ -258,7 +258,8 @@ export function admit({ receipt, observed, now }) {
   if (!Number.isFinite(now) || !receipt || !Number.isSafeInteger(receipt.pr) || receipt.pr <= 0 || !['base', 'head', 'tree'].every(key => SHA.test(receipt[key])) || !RISKS.includes(receipt.risk) || receipt.verdict !== 'PASS' || !/^[a-f0-9]{64}$/u.test(receipt.sessionDigest) || !Array.isArray(receipt.reviewers) || !receipt.reviewers.every(identity) || new Set(receipt.reviewers).size !== receipt.reviewers.length || !Number.isFinite(receipt.expires)) return result(false, 'invalid', 'receipt schema is invalid');
   if (['pr', 'base', 'head', 'tree'].some(key => receipt[key] !== observed[key])) return result(false, 'stale', 'receipt differs from the live PR candidate');
   if (!observed.baseValid) return result(false, 'stale', 'review base must be the exact fork point on main');
-  const floor = Math.max(legacyRequiredReviewers(receipt.risk), legacyRequiredReviewers(legacyClassifyRisk(observed)));
+  const legacyFloor = Math.max(legacyRequiredReviewers(receipt.risk), legacyRequiredReviewers(legacyClassifyRisk(observed)));
+  const floor = observed.legacyRules === true ? legacyFloor : Math.max(legacyFloor, candidateFloor(observed, receipt.risk));
   if (receipt.reviewers.length < floor) return result(false, 'needs_agent_review', `${floor} independent reviewers required by the diff`);
   return result(true, 'reviewed', 'reviewed');
 }

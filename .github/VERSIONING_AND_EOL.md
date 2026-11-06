@@ -619,10 +619,7 @@ supported upgrade path, and the version model at 1.0 is not decided.
 ### Task authority, verification and adopter continuation
 
 The finite task record names actual implementation/submission/merge and
-release-dispatch grants; generated plans and reviews grant none. Collect required
-sensitive API/Migration/budget/recovery reading in one stabilized packet before
-DCO, without repeating an acceptance after immaterial identity updates. A later
-material delta returns to its native decision. An implementation/set-preparation
+release-dispatch grants; generated plans and reviews grant none. An implementation/set-preparation
 combined PR requires the explicitly accepted route above; it is not selected by
 a general instruction to work autonomously. Merging still publishes nothing.
 
