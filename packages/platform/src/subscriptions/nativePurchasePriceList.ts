@@ -1,59 +1,30 @@
 import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 
-/** Resolve admission prices and the exact statement privileges without reading protected rows. */
-export async function resolveNativePurchasePriceList(db: SubscriptionQueryExecutor, orderId: string, forTemplate = false, subscriptionId?: string): Promise<{
-  priceListId: string | null; currency: string | null; templateAllowed: boolean; contextWritable: boolean; contextReadable: boolean;
-}> {
-  const access = (await db.query(`WITH requirements(lane,relation_name,permission,column_names) AS (VALUES
-    ('resolver','public.commerce_orders','SELECT',ARRAY['id','currency_code','metadata']),
-    ('resolver','public.price_lists','SELECT',ARRAY['id','currency','status','valid_from','valid_to']),
-    ('resolver','public.price_entries','SELECT',ARRAY['id','variant_id','price_list_id','active','amount_kind','mode','min_qty','valid_from','valid_to','unit_price_minor']),
-    ('resolver','public.catalog_skus','SELECT',ARRAY['id','product_id','status','sku','min_order_qty','sellable_in_subscription','sellable_standalone']),
-    ('resolver','public.catalog_products','SELECT',ARRAY['id','status']),
-    ('template','public.subscription_activations','SELECT',ARRAY['subscription_id','order_id','state']),
-    ('template','public.subscriptions','SELECT',ARRAY['id','template_version']),
-    ('template','public.subscription_lines','SELECT',ARRAY['id','subscription_id','variant_id']),
-    ('template','public.subscription_lines','INSERT',ARRAY['subscription_id','variant_id','quantity','sort_order','is_addon','unit_price_minor','currency_code']),
-    ('template','public.commerce_orders','SELECT',ARRAY['id','metadata','currency_code']),
-    ('template','public.catalog_skus','SELECT',ARRAY['id','sku']),
-    ('context_read','public.subscriptions','SELECT',ARRAY['id','price_list_id','currency_code']),
-    ('context_write','public.subscriptions','UPDATE',ARRAY['price_list_id','currency_code'])
-  ), access AS (
-    SELECT lane,bool_and(COALESCE((SELECT has_column_privilege(current_user,to_regclass(r.relation_name),a.attnum,r.permission)
-      FROM pg_catalog.pg_attribute a WHERE a.attrelid=to_regclass(r.relation_name)
-        AND a.attname=c.column_name AND a.attnum>0 AND NOT a.attisdropped),false)) AS allowed
-    FROM requirements r CROSS JOIN LATERAL unnest(r.column_names) c(column_name) GROUP BY lane
-  ) SELECT bool_and(allowed) FILTER(WHERE lane='resolver')
-      AND COALESCE(has_function_privilege(current_user,to_regprocedure('pg_catalog.jsonb_array_elements(jsonb)'),'EXECUTE'),false)
-      AND COALESCE(has_function_privilege(current_user,to_regprocedure('pg_catalog.now()'),'EXECUTE'),false) AS resolver_allowed,
-    bool_and(allowed) FILTER(WHERE lane='template') AS template_allowed,
-    bool_and(allowed) FILTER(WHERE lane='context_read') AS context_readable,
-    bool_and(allowed) FILTER(WHERE lane='context_write') AS context_writable,
-    has_any_column_privilege(current_user,to_regclass('public.subscriptions'),'UPDATE') AS can_lock,
-    (SELECT bool_and(COALESCE(has_function_privilege(current_user,to_regprocedure(signature),'EXECUTE'),false))
-      FROM unnest(ARRAY['public.subscription_renewal_purchase_facts(uuid)','pg_catalog.jsonb_array_elements(jsonb)',
-        'pg_catalog.gen_random_uuid()','pg_catalog.now()']) signature) AS template_functions
-    FROM access`)).rows[0] ?? {};
-  const capabilities = { contextWritable: access.context_readable === true && access.context_writable === true,
-    contextReadable: access.context_readable === true,
-    templateAllowed: access.template_allowed === true && access.can_lock === true && access.template_functions === true };
-  const unresolved = { priceListId: null, currency: null, ...capabilities };
-  if (forTemplate && !capabilities.templateAllowed) {
-    console.warn("subscription_template_unavailable", "privileges_unavailable");
-    return unresolved;
-  }
-  if (subscriptionId) {
-    if (!capabilities.contextReadable) {
-      console.warn("subscription_price_list_unresolved", "read_unavailable");
-      return unresolved;
+/** Only the optional template/context work may be discarded; completion is outside this unit. */
+export async function bestEffortNativePurchaseTemplate(db: SubscriptionQueryExecutor, work: () => Promise<void>, inTransaction?: boolean): Promise<void> {
+  // A later statement has a different timestamp only inside an existing transaction;
+  // independently committed pool queries start a new transaction at each statement.
+  const transactional = inTransaction ?? (await db.query(
+    "SELECT transaction_timestamp() <> statement_timestamp() AS in_transaction")).rows[0]?.in_transaction === true;
+  if (transactional) await db.query("SAVEPOINT native_purchase_template");
+  try { await work(); }
+  catch (error) {
+    const code = error && typeof error === "object" && "code" in error ? error.code : undefined;
+    if (typeof code !== "string" || !/^(42|22|23)[0-9A-Z]{3}$/.test(code)) throw error;
+    if (transactional) {
+      await db.query("ROLLBACK TO SAVEPOINT native_purchase_template");
+      await db.query("RELEASE SAVEPOINT native_purchase_template");
     }
-    const current = (await db.query("SELECT price_list_id,currency_code FROM public.subscriptions WHERE id=$1::uuid", [subscriptionId])).rows[0];
-    if (!current || current.price_list_id != null || current.currency_code != null) return unresolved;
+    console.warn("subscription_template_unavailable", code);
+    return;
   }
-  if (access.resolver_allowed !== true) {
-    console.warn("subscription_price_list_unresolved", "read_unavailable");
-    return unresolved;
-  }
+  if (transactional) await db.query("RELEASE SAVEPOINT native_purchase_template");
+}
+
+/** Evaluate admission's price predicate per original logical draft line. */
+export async function resolveNativePurchasePriceList(db: SubscriptionQueryExecutor, orderId: string): Promise<{
+  priceListId: string | null; currency: string | null; reason?: "missing" | "ambiguous";
+}> {
   const result = await db.query(`SELECT list.id,list.currency FROM public.commerce_orders o
     JOIN public.price_lists list ON list.currency=o.currency_code AND list.status='active'
       AND list.valid_from<=now() AND (list.valid_to IS NULL OR list.valid_to>now())
@@ -73,14 +44,7 @@ export async function resolveNativePurchasePriceList(db: SubscriptionQueryExecut
             ORDER BY (price.mode=COALESCE(o.metadata#>>'{orderDraftSnapshot,context,mode}','one_time')) DESC,
               price.min_qty DESC,price.id LIMIT 1) IS DISTINCT FROM (item.line#>>'{unitPriceGross,amountMinor}')::bigint)
     ORDER BY list.id`, [orderId]);
-  if (result.rows.length === 1) {
-    if (forTemplate && !capabilities.contextWritable) {
-      console.warn("subscription_template_unavailable", "privileges_unavailable");
-      return { ...unresolved, templateAllowed: false };
-    }
-    if (!forTemplate && !capabilities.contextWritable) console.warn("subscription_price_list_unresolved", "write_unavailable");
-    return { priceListId: String(result.rows[0].id), currency: String(result.rows[0].currency), ...capabilities };
-  }
-  console.warn("subscription_price_list_unresolved", result.rows.length ? "ambiguous" : "missing");
-  return unresolved;
+  return result.rows.length === 1
+    ? { priceListId: String(result.rows[0].id), currency: String(result.rows[0].currency) }
+    : { priceListId: null, currency: null, reason: result.rows.length ? "ambiguous" : "missing" };
 }

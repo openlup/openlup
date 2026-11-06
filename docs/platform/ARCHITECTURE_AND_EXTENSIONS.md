@@ -1841,33 +1841,34 @@ A failed facts or completion writer returns a pending attachment while paid
 service remains active. Hosts drain `writer.pending()` and retry `complete()`;
 rows without facts require resubmitting the original purchase facts. Changed
 accepted facts refuse; attachment replay does not reset a later method state.
-Before completion, one privilege probe checks every read/write column required
-by the template source and subscription row lock, plus EXECUTE on the completed
-purchase reader, JSON iterator and UUID/timestamp defaults. Missing template
-grants skip materialization, log one neutral reason and call completion as before;
-they do not leave the attachment pending. On that restricted runtime, no account
-template is created and native edits remain refused, as before this change.
-Where grants permit, the writer materializes the standing template and optional
-price context in one atomic statement on its existing query executor. Initial
-lines use admitted SKU, quantity, zero-based ordinal and false addon flags.
-Both materialization and resolution use the admitted logical draft lines saved
-in order metadata, plus the SKU lookup. Promotion allocation can split effective
-order positions; those positions are never a template or admission-price source.
-Sellable flags follow the saved order mode, exactly as admission does. Term lines
-are created only by completion and cannot supply this earlier phase.
-A failure between materialization and completion leaves the template present
-and attachment pending; retry preserves existing lines and completes the duty.
-Completed attachments and later template revisions receive no template/context
-writes, so replay cannot overwrite a customer edit or graduation.
-The resolver checks read grants before selecting eligible lists in the order
-currency with admission's entry precedence and admitted prices. Exactly one match
-sets a still-NULL list/currency pair only when both column writes are granted.
-For an unresolved pair, the materialization statement contains no context UPDATE.
-Missing, ambiguous or unavailable price reads retain NULL context and log a neutral
-reason; lines are still shown where template grants exist. Graduation retries
-absent context with the same resolver. It reads context only after its SELECT
-check, and skips the new pair UPDATE if its read or write grants are missing,
-preserving the existing graduation and due anchor.
+After successful completion, including a replay, the writer attempts an optional
+template unit on its existing query executor. A crash before that unit leaves the
+completed purchase without a template, as before; a later replay can fill it in.
+The unit writes only while there are no template lines and `template_version = 1`,
+so it preserves later edits and graduation. Lines and the optional price context
+are atomic with each other, but are separate from completion.
+Both materialization and resolution use admitted logical draft lines saved in
+order metadata. Per SKU, the template sums quantity, takes the earliest zero-based
+ordinal and uses the admitted unit price only when all its lines agree. Different
+prices for one SKU skip the whole template and pair with
+`subscription_template_unavailable`, `ambiguous_line_price`. Add-on roles come
+from retained `renewalTerms.linePricing`, read through the existing completed
+purchase terms reader, with false when no retained role exists. Effective order
+positions split by promotion allocation are never the template or price source.
+The resolver evaluates each original draft line using admission's currency,
+validity, mode-dependent sellable flags and entry precedence. Exactly one matching
+list sets a still-NULL list/currency pair; missing or ambiguous lists leave it NULL
+and log a neutral reason while the template can still be materialized.
+The optional unit catches only SQLSTATE classes 42 (access), 22 (data) and 23
+(integrity), logs `subscription_template_unavailable` plus the SQLSTATE once, and
+keeps the completion response. All other failures propagate. On a caller-bound
+transaction it uses a savepoint to discard failed optional work without aborting
+the transaction. Independently committed pool queries use no savepoint or explicit
+transaction. Transaction and statement timestamps distinguish these modes after
+the completion call. No runtime grant is added; missing template access leaves
+no template and native edits stay refused, as before this change.
+Graduation retries NULL context with the same resolver inside a best-effort
+savepoint, retaining its existing add-on precedence, service and due anchor.
 The runtime has no direct privileges on the attachment or method-event tables;
 fixed definer readers expose pending identifiers/readiness and completed snapshot
 fields. `subscription_renewal_purchase_terms(uuid)` additionally returns the sealed
