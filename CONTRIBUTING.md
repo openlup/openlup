@@ -1418,8 +1418,8 @@ for the dead-owner sweep. Locally, `node scripts/pgtap-parity.mjs compare <left.
 compares two TAP logs assertion by assertion and fails on any difference,
 including a file present in one log only; `diff` compares two snapshots or
 fingerprints. The runner takes one of the five planned `--sabotage` switches,
-each of which must fail. The job is neither a required context nor a
-native-review input.
+each of which must fail. It is not a required context of its own; the required
+`test` aggregate, which native review waits for, requires it.
 
 See [Test scope and diagnostics](#test-scope-and-diagnostics) for selection,
 sharding, discovery and test-author guidance.
@@ -2480,8 +2480,8 @@ unchanged. SQL and its pins may share a feature PR under the canonical
 Only bindings for that PR's new SQL may change; other entries and shared fields
 stay fixed. Trusted-main native admission refuses co-changing the machinery.
 Release preserves each binding from its actual mainline introduction; later
-repins cannot authorize earlier SQL. New classes and control changes still need
-prior separate approval. Batched pins land per rail as a prefix in version
+repins cannot authorize earlier SQL. A change to the validator or other admission
+machinery still lands first as its own change. Batched pins land per rail as a prefix in version
 order: all earlier same-rail pins must be present with their pinned whole-file
 digests. The PG gate refuses landed holes and replays committed interleaved
 files through the last pin along with the absent fixture suffix. These forwards
