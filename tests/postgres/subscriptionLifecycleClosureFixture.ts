@@ -10,8 +10,8 @@ import { AT, call, failure, later, prepareOriginal, renewal } from "./subscripti
 
 export const lifecycleForward = "db/platform/migrations/20261106100000_subscription_lifecycle_closure.sql";
 export const lifecycleProfiles = ["legacy", "qualified-v2", "qualified-admin"] as const;
-// Use the same named zones for JavaScript and every PostgreSQL test connection.
-export const lifecycleTimeZone = ["Etc/GMT-9", "Etc/GMT+5"].includes(process.env.TZ ?? "") ? process.env.TZ! : "UTC";
+// Fixtures use explicit UTC; individual cases select their own named database zones.
+export const lifecycleTimeZone = "UTC";
 export type LifecycleProfile = typeof lifecycleProfiles[number];
 const priorInventories = {
   "legacy": "4b02a4badcc0dbc9240bc8a84b4bfbd2041611282ad09b1278237cd85cf0b5ca",
