@@ -25,4 +25,4 @@ claim columns, sequence state/ACL, deferred auth.users trigger, unaffected catal
 transaction rollback and no-op/replay tuple stability. Missing infrastructure fails the
 prerequisite. Sequence allocation may leave gaps after command rollback. Source hashes
 and bounded lexical admission checks are not catalog or behavioral proof. No custom SQL
-parser is a proof oracle. Regroup after two unresolved attempts without resetting history.
+parser is a proof oracle.

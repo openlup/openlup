@@ -257,24 +257,6 @@ export function documentationSection(markdown: string, anchor: string): string {
   return markdown.slice(heading.start, heading.end);
 }
 
-/** Review metadata and generated projections cannot discharge a source obligation. */
-export function normalizeDocumentation(markdown: string, options: { includeGenerated?: boolean } = {}): string {
-  const withoutGenerated = options.includeGenerated ? markdown : markdown.replace(/<!--\s*openlup-generated(?::|\s+)start(?:\s+[^>]*)?\s*-->[\s\S]*?<!--\s*openlup-generated(?::|\s+)end\s*-->/giu, "");
-  return withoutGenerated.replace(/<!--[\s\S]*?-->/gu, "")
-    .replace(/^(?:\*\*)?[\p{L}][\p{L}\p{N} _-]*(?:\*\*)?:[ \t]*\d{4}-\d{2}-\d{2}(?:[T ][0-9:.+Z-]+)?(?: UTC)?[ \t]*$/gmiu, "")
-    .replace(/^(?:Source commit|Source digest|Source revision|Content digest|Tree digest|Generated from|Provenance):[^\n]*$/gmiu, "")
-    .replace(/\s+/gu, " ").trim();
-}
-
-export function classifyDocumentationPath(path: string): "documentation" | "historical" | "generated" | "test" | "asset" | "source" {
-  if (/\.md$/iu.test(path) && (/^docs\/(?:history|archive)\//u.test(path) || /^docs\/platform\/plans\//u.test(path))) return "historical";
-  if (["config/openlup-publication-catalog.json", "config/openlup-source-release-contract.json", "docs/platform/SOURCE_MAP.md"].includes(path)) return "generated";
-  if (/\.md$/iu.test(path)) return "documentation";
-  if (/(?:\.test\.|\.spec\.|(?:^|\/)(?:tests?|__tests__)\/)/u.test(path)) return "test";
-  if (/\.(?:svg|png|jpe?g|gif|webp|ico|woff2?|ttf|mp[34]|wav)$/iu.test(path)) return "asset";
-  return "source";
-}
-
 function readCoreDomains(root: string): string[] {
   const source = readFileSync(join(root, "src/lib/coreDomains.ts"), "utf8");
   const literal = /export const CORE_DOMAINS = Object\.freeze\(\[([\s\S]*?)\]\s+as const\);/u.exec(source)?.[1];

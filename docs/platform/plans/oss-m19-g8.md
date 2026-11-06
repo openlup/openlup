@@ -377,7 +377,7 @@ At the first audit stop, 60 suites passed (3598 cases), the unchanged handover p
 | `scripts/customer-selfservice-recovery-schema.test.ts` | PASS before R0 merge — Tests  3 passed (3) |
 | `scripts/documentation-bundle.test.ts` | PASS on R0 base before address repair — Tests  20 passed (20) |
 | `scripts/documentation-cli.test.ts` | PASS on R0 base before address repair — Tests  3 passed (3) |
-| `scripts/documentation-impact.test.ts` | PASS before R0 merge — Tests  101 passed (101) |
+| the former documentation-impact suite | PASS before R0 merge — Tests  101 passed (101) |
 | Fulfillment provider lifecycle-evidence suite | PASS before R0 merge — Tests  28 passed (28) |
 | `scripts/oss-published-tree-check.test.ts` | PASS on R0 base before address repair — Tests  74 passed (74) |
 | `scripts/packages/package-release.test.ts` | PASS on R0 base before address repair — Tests  18 passed (18) |

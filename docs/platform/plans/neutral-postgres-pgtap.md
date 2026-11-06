@@ -494,8 +494,9 @@ These are planning estimates to check in W1:
   inside the existing 20-minute job limit. The shadow window costs one extra
   `pgtap`-sized job per run.
 - **Review.** Each of W1 and W2 touches CI controls, so each gets two
-  independent fresh reviews and the standard three repair cycles. A loop
-  triggers the regroup procedure; it does not add cycles.
+  independent fresh reviews. The then-standard three-cycle repair and regroup
+  procedure is historical; current delivery follows
+  [Deliver a change](../../../CONTRIBUTING.md#deliver-a-change).
 - **Retries.** At most one blind retry per hosted failure, then root-cause
   diagnosis.
 

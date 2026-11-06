@@ -1,6 +1,13 @@
 # Documentation navigation and maintenance
 
-Status: implementation plan; local execution requested by the maintainer on
+Status of documentation-impact obligations: historical and superseded by
+[Deliver a change](../../../CONTRIBUTING.md#deliver-a-change). A pull request
+updates the documentation it makes stale; the reviewer checks it; tooling checks
+only generated navigation, links and owner structure, not substantive updates or
+fingerprinted no-impact answers. The impact-control design below records the
+former plan and creates no current obligation.
+
+Original status: implementation plan; local execution requested by the maintainer on
 2026-09-27. The maintainer subsequently authorized bounded task delivery through
 merge under the native review rules introduced in pull request #52. Release and
 website activation remain separate.
@@ -23,7 +30,7 @@ planning stage. For current ownership, use
 ## 2. Scope and authority
 
 - `merge`: public ownership routing, generated navigation, canonical authoring
-  rules, a mandatory structural/impact check through existing `--policy`, source
+  rules, the then-planned structural/impact check through existing `--policy`, source
   and package links, meaningful subscription workflow guidance, and a reproducible
   documentation bundle with integrity validation.
 - `experimental`: an explicitly labelled local bundle from an uncommitted tree
@@ -60,31 +67,21 @@ Generate a concise platform source map; a full per-file inventory is an on-deman
 view with path, class, responsibility owner and source-derived symbol information.
 Do not invent per-file semantics from a filename.
 
-### Change impact
+### Change impact (historical; superseded)
 
-The CLI's `--policy` checks impact by default. A local checkout resolves an
-explicit full `--docs-base` SHA or its merge base with `origin/main`. Hosted CI
-uses the exact base SHA in its validated PR/push event metadata, taking precedence
-over any local override. Validate public repository/event and checkout identities
-(the PR merge checkout or push head), not just SHA syntax. If the shallow
-checkout lacks that object, fetch only that validated public commit, without
-credential helpers, askpass or ref/FETCH_HEAD writes. Missing/malformed attribution or fetch failure
-refuses. This extends the existing execution owner without modifying workflow bytes.
+The former `--policy` design resolved a local or hosted comparison base and
+compared source inventories and ownership maps. It required an affected canonical
+section to change substantively or carry a fresh scoped no-impact explanation
+fingerprinted against the source delta and unchanged owner text. Cosmetic edits,
+generated blocks and unrelated documents did not satisfy that former gate.
+Fingerprints established scope rather than semantic correctness.
 
-Compare base and candidate inventories and both ownership maps, including moves,
-deletions, mapping changes, modes and staged/unstaged/new candidate paths.
-The initial dormant v1-to-v2 transition uses the new public map; later map changes
-cannot erase the base owner's obligation. Pure docs, generated navigation and
-historical records remain correctly classified rather than demanding self-review.
-
-An affected canonical section must change substantively, or contain a fresh
-scoped no-impact explanation tied to that source delta and unchanged owner text.
-Keep such explanations at their owner; do not create an independent review ledger.
-Exclude no-impact comments, provenance and generated blocks from the substantive
-comparison. An invalid receipt must not pass as a section update. Whitespace,
-review dates, generated navigation and unrelated documents cannot
-satisfy an obligation. Fingerprints establish scope, never semantic correctness,
-reviewer identity or owner approval. PR review must challenge the explanation.
+That impact checker and its fingerprinted answers have been removed. Current
+documentation updates and reviewer responsibility follow
+[Deliver a change](../../../CONTRIBUTING.md#deliver-a-change); `--policy` checks
+navigation, links and owner structure. It still resolves the comparison base,
+fetching a missing public hosted base, for the append-only migration history and
+package Migration-block checks.
 
 ### Bundle and consumer boundary
 
@@ -107,10 +104,11 @@ bytes belong to committed HEAD. Do not run Markdown code blocks or MDX.
    import-only and new tests used one published-tree falsifier entrypoint. That
    test arrangement is superseded by independently discovered files; follow
    [testing](../../../CONTRIBUTING.md#test-scope-and-diagnostics).
-2. **Guard — guard worker.** Own cohesive routing/impact helpers and their focused
-   regression cases. The lead owns shared checker integration and config. Prove
-   refusal for missing history, orphan paths/anchors, unchanged/cosmetic docs,
-   stale no-impact explanations, deletion/remap and hidden untracked additions.
+2. **Guard — historical assignment.** The worker owned routing/impact helpers
+   and their focused regression cases; the lead owned checker integration and
+   config. Missing history, cosmetic docs and stale no-impact answers were
+   refusal cases for the former impact checker, now removed. Current structural
+   checks cover owner paths, anchors and generated navigation.
 3. **Owner documentation — documentation worker.** Own platform documentation
    pages, the accounting README, subscription/browser/server owner explanations
    and the domain-map authoring inputs. Link real source and real test commands;
@@ -122,7 +120,7 @@ bytes belong to committed HEAD. Do not run Markdown code blocks or MDX.
 5. **Integrated review and gates — independent reviewers plus lead.** Review code,
    ownership, guard adversarial cases, documentation truth and release boundaries.
    Repair material findings as one batch; rerun affected checks and final verify.
-   Final delivery follows the current two-review floor for changed code and controls:
+   Historical delivery used a two-review floor for changed code and controls:
    commit the candidate, then launch fresh native correctness and security
    reviewers with no author history or other verdicts; at least one checks
    simplification. Record exact candidate observations and run required gates.
@@ -141,13 +139,14 @@ is present; existing public plan location and actual required checks govern.
   and all active documentation owners are reachable from the public entrypoints.
 - Root, package, domain and meaningful workflow guidance lead to the actual
   source/contract and verification route. Accounting has a usable owner page.
-- A real-Git source edit without relevant documentation fails. Correct section
-  update or scoped no-impact review passes. Cosmetic/unrelated edits, stale
-  fingerprints, missing bases and route removal/remapping fail as appropriate.
-- The same guard path runs in the existing local and public self-check command;
-  simulated hosted event/shallow-base cases prove strict attribution behavior.
-  Run the actual CLI in a bare fixture without node_modules: self-check installs
-  no dependencies, so every import in that closure must use Node or public code.
+- Historical impact-gate acceptance required real-Git source edits to fail
+  without a section update or scoped no-impact answer, and tested cosmetic edits,
+  stale fingerprints and missing bases. Those impact obligations are superseded
+  and are not current acceptance checks; base resolution keeps its witnesses
+  because the migration-history checks still use it.
+- Current documentation acceptance follows
+  [Deliver a change](../../../CONTRIBUTING.md#deliver-a-change): the pull request
+  updates stale documentation, and its reviewer checks the explanation.
 - Generated navigation matches its inputs. Bundle production is deterministic,
   validates content integrity, preserves all selected pages and refuses tampering,
   version mixing and publication of a dirty draft as clean committed content.
@@ -160,10 +159,11 @@ is present; existing public plan location and actual required checks govern.
 ## 6. Risks, recovery and reconsideration
 
 Broad routing can hide useful internal boundaries; require explicit domain and
-workflow routes and inspect unfamiliar-reader answers. Semantic text comparisons
-can still accept irrelevant prose; reviewers and behavioral examples are necessary.
-Fetching a public CI base introduces a small read-only network prerequisite; a
-failure is an actionable refusal, not permission to guess a base or skip impact.
+workflow routes and inspect unfamiliar-reader answers. The former semantic text
+comparison could accept irrelevant prose; reviewers and behavioral examples remained necessary.
+The policy resolves a public CI base for its migration-history and Migration-block
+checks and refuses when it cannot resolve one; the removed impact checker no
+longer uses that base.
 
 Do not broaden this work to fix unrelated release refusals. New schema changes,
 protected release identities, additional services/dependencies, control weakening,
@@ -173,16 +173,18 @@ local contribution, never a destructive reset or change to immutable evidence.
 
 ## 7. Simpler path considered
 
-Only fixing links and adding another writing reminder leaves the requested
-same-change enforcement and copy-free publishing unsolved. Conversely a docs SaaS,
-new agent framework, mandatory model loop or a second registry adds maintenance
-without proving meaning. Use one owner map, existing checks and plain public data.
+At planning time, link checks and writing reminders were considered insufficient
+for the requested same-change enforcement and copy-free publishing. The later
+simplification moved substantive documentation assessment to PR review. A docs
+SaaS, new agent framework, mandatory model loop or a second registry was rejected
+as extra maintenance without proof of meaning. The plan selected one owner map,
+existing checks and plain public data.
 
 ## 8. Delivery evidence
 
 The pull request records the exact committed candidate, comparison base and tree,
 actual native reviewer execution IDs, complete role coverage, required check
 results and remaining activation boundaries. Keep execution observations separate
-from this normative plan so fresh reviewers receive the contract and source
+from this historical plan so fresh reviewers receive the contract and source
 without previous verdicts. Session-local navigation measurements do not establish
 general performance, human acceptance or framework maturity.
