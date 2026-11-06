@@ -15,7 +15,7 @@ const fail = (): never => { throw new Error('starter_notice_identity_unavailable
 const sameId = (left: string | null, right: string | null) => left === null || right === null
   ? left === right : left.replace(/[{}-]/g, '').toLowerCase() === right.replace(/[{}-]/g, '').toLowerCase();
 const hash = (token: string) => createHash('sha256').update(token).digest('hex');
-/** One native binding owns each fact. No outbox delivery handler is mounted alongside it. */
+/** Native subscription notices have one owner; the separate outbox host selects only paid-order mail. */
 export function createLifecycleNoticeHost(input: {
   config: StoreConfig; publicOrigin: string;
   withTransaction<T>(work: (db: Executor) => Promise<T>): Promise<T>;
@@ -122,7 +122,8 @@ export function createLifecycleNoticeHost(input: {
         }
         const locale = (recipient.country ? config.renewal.notices.countryLocales?.[recipient.country.toUpperCase()] : undefined)
           ?? config.renewal.notices.locale, copy = config.renewal.notices.copy[locale];
-        const subject = notice.kind in copy ? copy[notice.kind as keyof typeof copy] : copy.lifecycle;
+        const selectedCopy = notice.kind in copy ? copy[notice.kind as keyof typeof copy] : null;
+        const subject = typeof selectedCopy === 'string' ? selectedCopy : copy.lifecycle;
         const payload = notice.payload;
         const amount = Number.isSafeInteger(payload.amountMinor) && typeof payload.currency === 'string'
           ? `${String(payload.amountMinor)} ${payload.currency} (${copy.minorUnits})` : copy.unknown;
