@@ -875,7 +875,7 @@ row to its lexical position instead of reordering shared entries.
 
 ## Payment and purchase-renewal bundle
 
-The owner decision CD-M19-112 joins G6 and G2 as one candidate and one PR,
+The owner's bundle decision joins G6 and G2 as one candidate and one PR,
 implemented at the existing `oss-m19-g2` stack top on `codex/oss-m19-g2`.
 Both task records remain. The supervisor authorizes merging only main,
 binding the purchase-renewal feature pin, focused proof, a signed candidate and
