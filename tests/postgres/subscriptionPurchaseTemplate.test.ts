@@ -436,7 +436,7 @@ it("keeps a retained acquisition add-on at attach and matches graduation from an
   retained.linePricing = [{ sku: "G7-REFILL", quantity: 2, unitAmountMinor: 100, isAddon: false, quoteLine: {} },
     { sku: "SYNTHETIC-ADDON", quantity: 1, unitAmountMinor: 40, isAddon: true, quoteLine: {} }];
   retained.starterPack!.delivery2.basisSubtotalMinor = 240;
-  const results = [];
+  const results: unknown[] = [];
   for (const materialized of [true, false]) {
     const p = await draftedPurchase("subscription", 0, [{ sku: "G7-REFILL", quantity: 2, unitPrice: 100 },
       { sku: "SYNTHETIC-ADDON", quantity: 1, unitPrice: 40 }]);
