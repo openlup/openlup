@@ -70,3 +70,35 @@ it("denies owner/operator access before queries or PDF and rejects transient URL
   resolveDownload.mockResolvedValueOnce(ticket);
   expect(await model.download(input)).toMatchObject({ kind: "downloaded", fileName: "INV-1.pdf", parentDocumentRef: null });
 });
+
+it.each([
+  "ABCDEFAB-CDEF-4ABC-8DEF-ABCDEFABCDEF",
+  "aBcDeFaB-cDeF-4aBc-8dEf-aBcDeFaBcDeF"
+])("matches UUID history and tickets without rewriting echoes or artifact identity: %s", async requested => {
+  const canonical = requested.toLowerCase();
+  const identity = { providerRef: "Host-A", documentRef: canonical, providerDocumentRef: "Remote-A", orderRef: "Order-A",
+    invoiceRef: "Invoice-A", parentProviderDocumentRef: null };
+  const content = new TextEncoder().encode("%PDF-1.7\n%%EOF\n");
+  const download = vi.fn(async () => ({ kind: "downloaded" as const, content, contentType: "application/pdf" }));
+  const model = createInvoiceReadModel({ accountHistory: {
+    read: async () => ({ kind: "found", accountRef: canonical, orderId: canonical, documents: [] }),
+    resolveDownload: async () => ({ kind: "authorized", identity, artifactRef: "Artifact-A", fileName: "Invoice-A.pdf", parentDocumentRef: null })
+  }, artifacts: { download } });
+  expect(await model.history({ accountRef: requested, orderId: requested })).toEqual({ kind: "found", accountRef: requested, orderId: requested, documents: [] });
+  expect(await model.download({ accountRef: requested, orderId: requested, documentRef: requested })).toMatchObject({ kind: "downloaded", fileName: "Invoice-A.pdf" });
+  expect(download).toHaveBeenCalledExactlyOnceWith({ identity, artifactRef: "Artifact-A" });
+  expect(await model.download({ accountRef: requested, orderId: requested, documentRef: "abcdefab-cdef-4abc-8def-abcdefabcdee" })).toEqual({ kind: "denied" });
+  expect(download).toHaveBeenCalledTimes(1);
+});
+it("keeps opaque history and ticket references case-sensitive", async () => {
+  const download = vi.fn();
+  const model = createInvoiceReadModel({ accountHistory: {
+    read: async () => ({ kind: "found", accountRef: "Owner-A", orderId: "Order-A", documents: [] }),
+    resolveDownload: async () => ({ kind: "authorized", identity: { providerRef: "Host-A", documentRef: "Doc-A", providerDocumentRef: null,
+      orderRef: "Order-A", invoiceRef: "Invoice-A", parentProviderDocumentRef: null }, artifactRef: "Artifact-A", fileName: "Invoice-A.pdf", parentDocumentRef: null })
+  }, artifacts: { download } });
+  expect(await model.history({ accountRef: "owner-a", orderId: "Order-A" })).toEqual({ kind: "denied" });
+  expect(await model.history({ accountRef: "Owner-A", orderId: "order-a" })).toEqual({ kind: "denied" });
+  expect(await model.download({ accountRef: "Owner-A", orderId: "Order-A", documentRef: "doc-a" })).toEqual({ kind: "denied" });
+  expect(download).not.toHaveBeenCalled();
+});

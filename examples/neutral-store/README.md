@@ -39,6 +39,21 @@ case ownership and ingest needs a complete native binding; those two actions
 remain unmounted and refuse `host_binding_required`.
 Support is a static contact page; see [contact configuration](docs/customization.md#support-contact).
 
+## Order controls and documents
+
+Hold and release retain their typed forms and configured reasons. Both remain
+unbound and return `starter_order_hold_unavailable` after operator admission.
+The host composes
+customer invoice history, owned captured PDF downloads and local operator
+document summaries. The session supplies the actor and invoice
+owner. The captured provider produces explicitly non-fiscal sandbox documents.
+The download stays behind authenticated POST, Origin admission and no-store.
+The browser saves the decoded PDF through a short-lived local object URL.
+Deferred operations share one bilingual catalogue with the limits page and stay
+unbound. The operator returns reader is removed. Shipment list/detail compose
+the native nonmutating reader under the human-admin read boundary; the reduced
+projection retains its explicit unavailable facts. See [limits](docs/limits.md).
+
 ## Start from an exact source archive
 
 The release route is a source archive, followed by the small extraction script.
@@ -124,9 +139,12 @@ without `--database-url` is still the UI-only preview with pending bindings.
 The native runtime composition binds customer challenge request/redemption,
 sign-out, reduced customer profile/subscription-control and owned order reads,
 newsletter read/withdraw, and the reduced operator order control-plane view.
-Invoice artifacts, the full account projection and shipment reads remain named
-refusals. Guest purchase, account and operator order reads have committed source
-and real-HTTP proofs. Separate local real-browser evidence passes the unchanged
+Invoice history, owned captured PDF access, operator document summaries and
+shipment reads are also bound, alongside authenticated recovery, scheduled sandbox
+renewal and private transactional notices. The full account projection remains a
+named refusal. Deferred order and shipment mutations retain their named limits.
+Guest purchase, account and operator order reads have committed source and
+real-HTTP proofs. Separate local real-browser evidence passes the unchanged
 required journey and recovery checks in both configurations; those browser runs
 are not a committed root-job witness.
 

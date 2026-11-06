@@ -1810,6 +1810,14 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-st-e4.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-st-e4u.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m19-st-qa.md",
       "class": "public-output"
     },
@@ -1906,6 +1914,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/browser/e4.spec.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/browser/journey.spec.ts",
       "class": "public-output"
     },
@@ -1947,6 +1959,10 @@
     },
     {
       "path": "examples/neutral-store/client/forms.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/client/invoice-download.ts",
       "class": "public-output"
     },
     {
@@ -2055,6 +2071,14 @@
     },
     {
       "path": "examples/neutral-store/host/e-composition.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/host/e4-composition.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/host/e4-invoice-summary.ts",
       "class": "public-output"
     },
     {
@@ -2303,6 +2327,18 @@
     },
     {
       "path": "examples/neutral-store/test/checkout-recovery.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/e4-invoice.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/e4-limits.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/e4-oms.test.ts",
       "class": "public-output"
     },
     {
@@ -6779,6 +6815,10 @@
     },
     {
       "path": "packages/platform/src/invoicing/snapshot.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/uuidIdentity.ts",
       "class": "public-output"
     },
     {
@@ -28551,6 +28591,10 @@
     },
     {
       "path": "tests/postgres/nativeStoreForwardCatalog.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/neutralStarterE4.test.ts",
       "class": "public-output"
     },
     {

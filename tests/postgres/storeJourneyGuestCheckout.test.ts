@@ -45,6 +45,9 @@ const config: StoreConfig = {
       collectedAt: "2026-01-01T00:00:00.000Z", staleAfter: "2099-01-01T00:00:00.000Z", providerRef: "synthetic", syncRunId: "synthetic" },
     tax: { vatRateBps: 0, category: "standard", legalBasis: "Synthetic fixture" },
     sandbox: { dunningTemplateSlug: "synthetic-refused", recoveryTemplateSlug: "synthetic-recovered", recoveryUrlPath: "/recover" } },
+  documents: { sandbox: { enabled: false, providerRef: "synthetic" } },
+  returns: { reasons: [{ code: "synthetic", label: words }] },
+  orderControls: { holdReasons: [{ code: "manual_support", label: words }] },
   legal: { revision: "synthetic-1", returnsDays: 14, demoOnly: true },
   features: { reviews: false, acquisition: false, research: false, partners: false, risk: false, normalizedIngest: false },
 };

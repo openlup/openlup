@@ -1,3 +1,4 @@
+import type { AdminCommerceOrderHoldRequest } from '@openlup/platform/commerce/contracts';
 import { estimateOffer } from './offer-estimate.ts';
 import { assertQuoteConfiguration, type QuoteConfiguration } from './quote-config.ts';
 import { isValidGtin } from '@openlup/platform/catalog/contracts';
@@ -85,6 +86,9 @@ export interface StoreConfig {
     tax: { vatRateBps: number; legalBasis: string; category: string };
     sandbox: { dunningTemplateSlug: string; recoveryTemplateSlug: string; recoveryUrlPath: string };
   };
+  documents: { sandbox: { enabled: boolean; providerRef: string } };
+  returns: { reasons: readonly { code: string; label: Localized }[] };
+  orderControls: { holdReasons: readonly { code: AdminCommerceOrderHoldRequest['reason']; label: Localized }[] };
   legal: {
     revision: string;
     returnsDays: number;
@@ -164,6 +168,15 @@ export function assertConfig(config: StoreConfig): void {
     || !/^\/[a-zA-Z0-9/_-]+$/.test(purchase.sandbox.recoveryUrlPath)
     || !Number.isFinite(Date.parse(purchase.stock.collectedAt)) || !Number.isFinite(Date.parse(purchase.stock.staleAfter))
     || Date.parse(purchase.stock.staleAfter) <= Date.parse(purchase.stock.collectedAt)) throw new Error('starter_purchase_configuration_invalid');
+  if (!config.documents || typeof config.documents.sandbox.enabled !== 'boolean'
+    || !config.documents.sandbox.providerRef.trim() || !config.returns?.reasons.length
+    || !config.orderControls?.holdReasons.length) throw new Error('starter_order_controls_configuration_invalid');
+  for (const choices of [config.returns.reasons, config.orderControls.holdReasons]) {
+    if (new Set(choices.map(choice => choice.code)).size !== choices.length || choices.some(choice =>
+      !choice.code.trim() || !choice.label.en.trim() || !choice.label.pl.trim())) {
+      throw new Error('starter_order_controls_configuration_invalid');
+    }
+  }
   const seen = new Set<string>();
   const slugs = new Set<string>();
   if (offer.products.length === 0) throw new Error('starter_catalog_empty');

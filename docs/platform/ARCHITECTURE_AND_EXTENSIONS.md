@@ -2487,7 +2487,12 @@ continue, with no uncertain receipt for these unsent failures. Uncertain transpo
 or lost local acknowledgement cannot become another send.
 
 The account-history host projection verifies owner/order before its query and
-keeps correction parent, signed total, currency and download availability. Missing
+keeps correction parent, signed total, currency and download availability. Invoice
+owner/order/document checks compare standard UUID identifiers by value, including
+uppercase and mixed-case spelling. Echoes retain their source spelling; opaque
+host references, provider references and artifact identities remain case-sensitive.
+The [restricted native witness](../../tests/postgres/invoicingCaptured.test.ts)
+checks owned history and PDF access with alternate UUID letter case. Missing
 native parity is typed unsupported with `host_binding_required`. Operator auth
 precedes query and customer ticket ownership precedes PDF fetch/validation. The
 reference browser client consumes the host route without importing the server
