@@ -296,10 +296,12 @@ BEGIN
   PERFORM public.subscription_quote_assert_jsonb_equal(p_payload->'newRecurringPrice',q#>'{totals,newRecurringPrice}');
   PERFORM public.subscription_quote_assert_jsonb_equal(p_payload->'delta',q#>'{totals,delta}');
   IF plan IS NULL OR plan<1 THEN RAISE EXCEPTION 'subscription_edit_invalid_request' USING ERRCODE='22023'; END IF;
-  constraint_value:=jsonb_set(COALESCE(s.composition_constraint,'{}'::jsonb),'{value}',to_jsonb(plan));
-  IF COALESCE(q#>>'{request_payload,nominalPlanDays}','') ~ '^[1-9][0-9]{0,2}$' THEN
-   constraint_value:=jsonb_set(constraint_value,'{value}',to_jsonb((q#>>'{request_payload,nominalPlanDays}')::integer));
+  constraint_value:=q#>'{quote_snapshot,compositionConstraint}';
+  IF constraint_value IS NULL THEN RAISE EXCEPTION 'subscription_edit_quote_drift' USING ERRCODE='22023'; END IF;
+  IF p_payload ? 'compositionConstraint' THEN
+   PERFORM public.subscription_quote_assert_jsonb_equal(p_payload->'compositionConstraint',constraint_value);
   END IF;
+  constraint_value:=NULLIF(constraint_value,'null'::jsonb);
   DELETE FROM public.subscription_lines WHERE subscription_id=s.id;
   DELETE FROM public.subscription_renewal_term_lines WHERE subscription_id=s.id;
   line_pricing:='[]'::jsonb;

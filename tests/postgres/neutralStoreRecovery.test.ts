@@ -11,6 +11,7 @@ import { createPlatformPostgresMigrationRunner, qualifiedPostgresStartupOptions 
 import * as subscriptions from '@openlup/platform/subscriptions';
 import { createPostgresRenewalReservationPort } from '@openlup/platform/inventory';
 import { createPostgresSandboxPaymentSimulator } from '@openlup/platform/payments';
+import { ACQUISITION_TERMS_CAPABILITY } from '@openlup/platform/pricing';
 import { createPostgresTransactionalDeliveryStore } from '@openlup/platform/communications';
 import { createLifecycleNoticeHost } from '../../examples/neutral-store/host/lifecycle-notices.ts';
 import { createPrivateCapture } from '../../examples/neutral-store/host/private-capture.ts';
@@ -33,7 +34,7 @@ describe.each(Object.values(configurations))('$id recurring recovery HTTP bounda
   let container: PostgresContainer | undefined;
   let owner: Pool, migration: Pool, runtime: Pool;
   let host: ChildProcess | undefined;
-  let base: string, state: string, runtimeUrl: string, port: number;
+  let base: string, state: string, runtimeUrl: string, keyringFile: string, port: number;
   let logs = '';
   const outputs: string[] = [];
   const privateValues = new Set<string>();
@@ -60,7 +61,8 @@ describe.each(Object.values(configurations))('$id recurring recovery HTTP bounda
     const hostUrl = new URL(runtimeUrl); hostUrl.password = ''; hostUrl.protocol = 'postgresql:';
     parseHostArguments(['--database-url', hostUrl.toString()]);
     host = spawn(process.execPath, ['--experimental-strip-types', resolve('examples/neutral-store/host/server.ts'),
-      '--configuration', config.id, '--port', String(port), '--database-url', hostUrl.toString()],
+      '--configuration', config.id, '--port', String(port), '--database-url', hostUrl.toString(),
+      '--quote-acceptance-key-file', keyringFile],
     { cwd: state, env: { ...processEnvironment, PGPASSWORD: 'synthetic-conformance' }, stdio: ['ignore', 'pipe', 'pipe'] });
     await new Promise<void>((done, fail) => {
       const timer = setTimeout(() => fail(new Error('recovery_host_start_timeout')), 15_000);
@@ -112,12 +114,17 @@ describe.each(Object.values(configurations))('$id recurring recovery HTTP bounda
   }
   async function createOrder(email: string, mode: 'one_time' | 'subscription' = 'subscription') {
     privateValues.add(email);
-    const result = await call('checkout.create', { locale: 'en', email, configuration: config.id,
+    const payload = { locale: 'en', email, configuration: config.id,
+      acquisitionCapability: ACQUISITION_TERMS_CAPABILITY,
       country: config.market.country, termsAccepted: true, termsRevision: config.legal.revision,
       firstName: 'Example', lastName: 'Buyer', phone: '000000000', line1: '1 Example Lane',
       city: 'Example City', postalCode: '00000', cart: { schemaVersion: 1, configuration: config.id,
         mode, cadenceDays: mode === 'subscription' ? config.offer.defaultCadenceDays : null,
-        lines: [{ sku: config.offer.products[0]!.sku, quantity: 1 }] } });
+        lines: [{ sku: config.offer.products[0]!.sku, quantity: 1 }] } };
+    const quote = await call('offer.validate', payload);
+    if (!quote.ok || !isRecord(quote.value)) throw new Error('recovery_quote_required');
+    const result = await call('checkout.create', { ...payload,
+      quoteAcceptance: quote.value.quoteAcceptance, expectedTotal: quote.value.expectedTotal });
     if (!result.ok || !isRecord(result.value) || typeof result.value.orderRef !== 'string'
       || typeof result.value.token !== 'string') throw new Error('recovery_checkout_required');
     privateValues.add(result.value.token);
@@ -148,7 +155,7 @@ describe.each(Object.values(configurations))('$id recurring recovery HTTP bounda
     if (!due) throw new Error('recovery_due_required');
     const method = await subscriptions.createPostgresPurchaseRenewalWriter(runtime).readMethod(subscriptionId);
     const lifecycle = subscriptions.createPostgresRetryLifecycleBinding({ executor: runtime, withTransaction: transaction,
-      settlement: db => subscriptions.createPostgresRenewalSettlementPort(db, codec), correlate: wire => codec.decode(wire).cycle,
+      settlement: db => subscriptions.createPostgresRenewalSettlementPort(db, codec, transaction), correlate: wire => codec.decode(wire).cycle,
       failureTemplate: 'failed', recoveryPath: '/account/payment/recover' });
     const rail = subscriptions.createPostgresSandboxRenewalRail(runtime, { scenario: 'declined', now: () => dueAt });
     const result = await subscriptions.runOneAutomaticSubscriptionRenewal({ store, settlement: lifecycle.settlement,
@@ -180,6 +187,10 @@ describe.each(Object.values(configurations))('$id recurring recovery HTTP bounda
     if (!await dockerAvailable()) throw new Error('Recovery proof requires Docker PostgreSQL');
     await mkdir(resolve('.context/scratch'), { recursive: true });
     state = await mkdtemp(resolve('.context/scratch', `starter-recovery-${config.id}-`));
+    keyringFile = resolve(state, 'quote-acceptance-keyring.json');
+    const current = randomBytes(32).toString('base64url');
+    privateValues.add(current);
+    await writeFile(keyringFile, JSON.stringify({ current }), { mode: 0o600 });
     container = await runPostgresContainer({ name: `starter-recovery-${config.id}-${process.pid}`, database: 'neutral_store', password: 'synthetic-conformance' });
     if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error('Recovery PostgreSQL unavailable');
     owner = new Pool({ connectionString: container.connectionString });

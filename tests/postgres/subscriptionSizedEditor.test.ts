@@ -421,11 +421,14 @@ it.each(["activation", "graduation", "classic-package"])("keeps the existing %s 
     const baseLines = [{ ...base[0], quoteLine: quoteLine(f.a, 5) }], addonLines = [{ ...addons[0], quoteLine: quoteLine(f.addon, 1) }];
     const requestPayload = { planDays: 20, base, addons, expectedTemplateVersion: 1, acceptedQuoteHash: hash };
     const totals = { currentRecurringPrice: money(500), newRecurringPrice: money(600), delta: money(100) };
+    const compositionConstraint = { kind: "unit_count", value: 4, dailyNeed: 4 };
     await runtime.query("SELECT public.subscription_quote_preview_record($1,$2,$3,'update_package_template',$4,1,$5,$6,$7,$8,$9)",
-      [f.actor, f.client, f.subscription, hash, "2026-11-06T12:15:00Z", { planDays: 20, base, addons }, { baseLines, addonLines }, totals, at]);
+      [f.actor, f.client, f.subscription, hash, "2026-11-06T12:15:00Z", { planDays: 20, base, addons }, { baseLines, addonLines, compositionConstraint }, totals, at]);
     const result = (await runtime.query("SELECT public.subscription_package_edit_apply($1,$2,$3,$4,$5,$6) result", [f.actor, f.client, randomUUID(), f.subscription,
       { request: requestPayload, planDays: 20, base, addons, baseLines, addonLines, ...totals, expectedTemplateVersion: 1, acceptedQuoteHash: hash }, at])).rows[0].result;
     expect(result.status).toBe("applied");
+    expect((await owner.query("SELECT composition_constraint FROM public.subscriptions WHERE id=$1", [f.subscription])).rows[0].composition_constraint)
+      .toEqual(compositionConstraint);
   }
   expect((await owner.query("SELECT configured_offer_version,status,next_cycle_at FROM public.subscriptions WHERE id=$1", [f.subscription])).rows[0])
     .toEqual({ configured_offer_version: "classic", status: "active", next_cycle_at: new Date(next) });

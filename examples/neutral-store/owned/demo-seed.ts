@@ -1,4 +1,4 @@
-import { priceInterimOffer } from '../shared/interim-pricing.ts';
+import { deriveSubscriptionUnitPrice } from '@openlup/platform/pricing';
 import { assertConfig, type StoreConfig } from '../shared/config.ts';
 import { demoIdentifier, editorDocuments, editorProducts } from '../host/editor-catalogue.ts';
 
@@ -21,9 +21,8 @@ export function buildDemoSeed(config: StoreConfig) {
   const priceLists = [{ id: listId, name: `${config.brand.name} demonstration`,
     region_code: config.market.country, currency: config.market.currency, status: 'active',
     valid_from: '2000-01-01T00:00:00.000Z' }];
-  const pricingConfig = { ...config, offer: { ...config.offer, products: catalogue } };
   const prices = catalogue.flatMap((product, index) => product.permittedPurchaseModes.map(mode => {
-    const amount = priceInterimOffer(pricingConfig, mode, [{ sku: product.sku, quantity: 1 }]).lines[0]!.unitMinor;
+    const amount = mode === 'one_time' ? product.unitPrice.amountMinor : deriveSubscriptionUnitPrice(product.unitPrice.amountMinor, { discountBps: config.offer.subscriptionDiscountBps, roundingQuantumMinor: config.offer.subscriptionRoundingQuantumMinor, roundingRule: 'FLOOR_TO_QUANTUM' });
     if (amount > 2147483647) throw new Error('starter_demo_price_out_of_range');
     if (amount < 1) throw new Error('starter_demo_price_not_payable');
     return { id: identifier('price', `${product.sku}:${mode}`), price_list_id: listId, variant_id: skus[index]!.id,
@@ -38,3 +37,5 @@ export function buildDemoSeed(config: StoreConfig) {
   ];
   return { products, skus, priceLists, prices, documents, settings };
 }
+
+export { demoIdentifier } from '../host/editor-catalogue.ts';

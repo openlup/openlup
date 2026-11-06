@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve, extname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertConfig, parseHostArguments } from '../shared/config.ts';
+import { readQuoteAcceptanceKeyring } from './quote-secret.ts';
 import { isOperation, operations } from '../shared/api.ts';
 import { isRecord } from '../shared/offer.ts';
 import { selectConfiguration } from '../owned/store.config.ts';
@@ -120,7 +121,8 @@ function sendJson(response: ServerResponse, status: number, value: unknown): voi
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const bindings = options.databaseUrl
-    ? await (await import('./native-composition.ts')).composeNativeBindings(options.databaseUrl, originPolicy)
+    ? await (await import('./native-composition.ts')).composeNativeBindings(options.databaseUrl, originPolicy, options.quoteAcceptanceKeyFile
+      ? await readQuoteAcceptanceKeyring(options.quoteAcceptanceKeyFile) : undefined)
     : pendingBindings();
   const server = createApplication(bindings);
   server.requestTimeout = 25000;

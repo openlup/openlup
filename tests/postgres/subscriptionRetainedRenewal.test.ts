@@ -412,7 +412,8 @@ async function classicEdit(f: Awaited<ReturnType<typeof active>>, input: {
   await rpc("subscription_quote_preview_record", [actor, f.clientId, f.subscriptionId, "update_package_template", hash, current.template_version,
     new Date(Date.parse(input.requestedAt) + 15 * 60_000).toISOString(),
     { planDays: input.planDays, nominalPlanDays: input.planDays, base, addons: [], compositionConstraint: { kind: "plan_days", value: input.planDays } },
-    { baseLines, addonLines: [] }, { currentRecurringPrice: payload.currentRecurringPrice, newRecurringPrice: price, delta: payload.delta }, input.requestedAt]);
+    { baseLines, addonLines: [], compositionConstraint: { kind: "plan_days", value: input.planDays } },
+    { currentRecurringPrice: payload.currentRecurringPrice, newRecurringPrice: price, delta: payload.delta }, input.requestedAt]);
   const result = await rpc("subscription_package_edit_apply", [actor, f.clientId, key, f.subscriptionId, payload, input.requestedAt]);
   expect(result).toMatchObject({ status: "applied", templateVersion: Number(current.template_version) + 1 });
   return { result, payload, actor, quoteLine };
@@ -440,6 +441,46 @@ it.each([
   // A later accepted template cannot rewrite the operation that already prepared/billed these lines.
   await classicEdit(f, { quantity: 15, unit: 101, planDays: 28, requestedAt: days(now, 1), list: 1875 });
   expect(await d.input.store.buildCycleSnapshots(d.due)).toEqual(operation.cycleSnapshot);
+}, 30_000);
+
+it("keeps accepted classic pricing after a newer unpriced generic package command", async () => {
+  const f = await active(), edited = await classicEdit(f, { quantity: 14, unit: 100, planDays: 28,
+    requestedAt: days(at, 1), list: 1800 });
+  const linePricing = [{ sku: "G7-REFILL", quantity: 14, unitAmountMinor: 100, isAddon: false, quoteLine: edited.quoteLine }];
+  expect((await runtime.query("SELECT payload->'linePricing' AS pricing FROM public.subscription_events WHERE id=$1",
+    [edited.result.eventId])).rows).toEqual([{ pricing: linePricing }]);
+  const anchor = (await runtime.query("SELECT next_cycle_at::text AS anchor FROM public.subscriptions WHERE id=$1", [f.subscriptionId])).rows[0].anchor;
+  // The generic command reprices the same lines from the fixture catalogue,
+  // changes only cadence, and emits its real event without top-level linePricing.
+  const commands = api.createPostgresSubscriptionCommandStore({ withTransaction: transaction });
+  const command = { actorId: edited.actor, clientId: f.clientId, subscriptionId: f.subscriptionId, idempotencyKey: randomUUID(),
+    action: "update_package_template", now: days(at, 2), payload: {
+      coreLines: edited.payload.base, addonLines: [], planDays: 45, expectedTemplateVersion: 2,
+      compositionConstraint: { kind: "plan_days", value: 45 },
+    } };
+  const preview = await commands.preview(command);
+  expect(preview).toMatchObject({ status: "previewed", newTotalMinor: 1400 });
+  const payload = { ...command.payload, acceptedQuoteHash: String(preview.quoteHash) };
+  const applied = await commands.apply({ ...command, payload });
+  expect(applied).toMatchObject({ status: "applied", templateVersion: 3 });
+  expect((await runtime.query(`SELECT id,event_type,payload FROM public.subscription_events WHERE subscription_id=$1
+    AND event_type IN ('subscription.starter_graduated','subscription.customer_self_service.update_package_template')
+    ORDER BY occurred_at DESC,id DESC LIMIT 1`, [f.subscriptionId])).rows).toEqual([{
+    id: applied.eventId, event_type: "subscription.customer_self_service.update_package_template",
+    payload: { action: command.action, payload,
+      priceAgreementPolicy: { kind: "lock_until_edit", proration: "none", cycleEffect: "future_unlocked_cycles_only" } },
+  }]);
+  expect((await runtime.query("SELECT status,next_cycle_at=$2::timestamptz AS same,cadence_days FROM public.subscriptions WHERE id=$1",
+    [f.subscriptionId, anchor])).rows).toEqual([{ status: "active", same: true, cadence_days: 45 }]);
+  const d = await driver(f.subscriptionId), snapshot = await d.input.store.buildCycleSnapshots(d.due);
+  expect(snapshot.pricingSnapshot).toMatchObject({ productSubtotalAmountMinor: 1400, discountAmountMinor: 50,
+    totalAmountMinor: 1350, shippingAmountMinor: 0, linePricing });
+  expect((await api.runOneAutomaticSubscriptionRenewal(d.input, d.due, now)).status).toBe("succeeded");
+  expect(d.execute).toHaveBeenCalledOnce(); expect(d.execute.mock.calls[0][0].amountMinor).toBe(1350);
+  const operation = (await d.input.store.readRenewal(d.codec.identity(snapshot)))!;
+  expect(operation.cycleSnapshot.pricingSnapshot).toEqual(snapshot.pricingSnapshot);
+  expect((await runtime.query("SELECT total_amount_minor FROM public.commerce_orders WHERE id=$1", [operation.orderId])).rows)
+    .toEqual([{ total_amount_minor: "1350" }]);
 }, 30_000);
 
 it.each([28, 21])("a real classic edit cancels full graduation and only normalizes a retained starter cadence (%i)", async cadence => {

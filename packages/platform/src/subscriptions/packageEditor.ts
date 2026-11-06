@@ -65,7 +65,7 @@ export function createPostgresPackageEditor(options: PackageEditorOptions) {
     if ("lines" in quote) return quote;
     if ("action" in request) throw new Error("subscription_reprice_invalid_request");
     return { planDays: quote.cadenceDays, nominalPlanDays: request.planDays, base: request.base, addons: request.addons,
-      baseLines: quote.baseLines, addonLines: quote.addonLines,
+      baseLines: quote.baseLines, addonLines: quote.addonLines, compositionConstraint: quote.compositionConstraint,
       currentRecurringPrice: quote.currentRecurringPrice, newRecurringPrice: quote.newRecurringPrice, delta: quote.delta,
       expectedTemplateVersion: quote.expectedTemplateVersion, acceptedQuoteHash: request.acceptedQuoteHash };
   }
@@ -97,7 +97,7 @@ export function createPostgresPackageEditor(options: PackageEditorOptions) {
           nominalPlanDays: "planDays" in request ? request.planDays : undefined };
         const snapshot = exact ? { lines: quote.lines, cadenceDays: quote.cadenceDays, compositionConstraint: quote.compositionConstraint,
           ...(quote.portionModes ? { portionModes: quote.portionModes } : {}) }
-          : { baseLines: quote.baseLines, addonLines: quote.addonLines };
+          : { baseLines: quote.baseLines, addonLines: quote.addonLines, compositionConstraint: quote.compositionConstraint };
         const totals = exact ? {} : { currentRecurringPrice: quote.currentRecurringPrice, newRecurringPrice: quote.newRecurringPrice, delta: quote.delta };
         await db.query(`SELECT public.subscription_quote_preview_record($1::uuid,$2::uuid,$3::uuid,'${action}',$4::text,$5::integer,$6::timestamptz,$7::jsonb,$8::jsonb,$9::jsonb,$10::timestamptz)`,
           [actor.actorId, actor.clientId, request.subscriptionId, quote.quoteHash, quote.expectedTemplateVersion, expires,

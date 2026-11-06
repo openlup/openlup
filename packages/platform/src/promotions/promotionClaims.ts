@@ -68,3 +68,46 @@ function paidCounts(value: unknown): PaidOrdersByMode {
   }
   return { oneTime, subscription };
 }
+
+/** Trusted quote evidence only; never customer identity or access authority. */
+export interface QuoteCustomerEligibilityResolution {
+  clientId: string | null;
+  source: "anonymous" | "resolved_client";
+  matchKind: "exact" | "plus_normalized" | null;
+}
+
+function plusNormalize(email: string): string {
+  const normalized = email.trim().toLowerCase(), at = normalized.lastIndexOf("@");
+  return at <= 0 ? normalized : `${normalized.slice(0, at).replace(/\+.*/, "")}${normalized.slice(at)}`;
+}
+
+/** Exact first, then at most 25 oldest candidates; never changes stored contact. */
+export function createPostgresQuoteCustomerEligibility(executor: PgQueryExecutor) {
+  return {
+    async resolve(email: string | null): Promise<QuoteCustomerEligibilityResolution> {
+      const anonymous: QuoteCustomerEligibilityResolution = { clientId: null, source: "anonymous", matchKind: null };
+      if (!email) return anonymous;
+      const normalized = email.trim().toLowerCase();
+      const exact = (await executor.query("SELECT id FROM public.clients WHERE email=$1 ORDER BY created_at LIMIT 1", [normalized])).rows[0];
+      if (exact) return { clientId: String(exact.id), source: "resolved_client", matchKind: "exact" };
+      const key = plusNormalize(normalized), at = key.lastIndexOf("@");
+      if (at <= 0) return anonymous;
+      const escape = (value: string) => value.replace(/[%_\\]/g, "\\$&");
+      const rows = (await executor.query("SELECT id,email FROM public.clients WHERE email ILIKE $1 ORDER BY created_at LIMIT 25",
+        [`${escape(key.slice(0, at))}%@${escape(key.slice(at + 1))}`])).rows;
+      const match = rows.find(row => plusNormalize(String(row.email ?? "")) === key);
+      return match ? { clientId: String(match.id), source: "resolved_client", matchKind: "plus_normalized" } : anonymous;
+    },
+    /** Final family check uses the same native paid-subscription facts as quotes. */
+    async hasPaidSubscription(clientId: string | null): Promise<boolean> {
+      if (clientId === null) return false;
+      return scalar(await executor.query(`SELECT EXISTS (
+        SELECT FROM public.clients purchaser JOIN public.clients family ON
+          (family.id=purchaser.id OR regexp_replace(lower(btrim(family.email)), '\\+[^@]*@', '@') =
+            regexp_replace(lower(btrim(purchaser.email)), '\\+[^@]*@', '@'))
+        WHERE purchaser.id=$1::uuid
+          AND (public.commerce_promotion_paid_order_counts(family.id)->>'subscription')::bigint > 0
+      ) AS result`, [clientId])) === true;
+    },
+  };
+}

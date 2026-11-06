@@ -355,8 +355,10 @@ constraints and source alignment policy last. A named historical hold-trigger
 correction removes only the fully checked notification inserted in that
 transaction when its deterministic source notification was already pruned.
 The [explicit connected-native trigger decision](../../docs/platform/plans/oss-m14-existing-store-transfer.md#connected-native-candidate-explicit-trigger-boundary-2026-10-28)
-bounds these seven existing triggers separately from the generic transport,
-which still refuses every enabled user INSERT trigger. Complete qualified
+bounds the historical triggers separately from the generic transport,
+which still refuses every enabled user INSERT trigger. Classic subscriptions and
+their events use the locked owner path for the offer-binding triggers; sized
+bindings refuse before target data writes. Complete qualified
 definitions, functions and roles are checked after table locks and before import;
 a known name alone never establishes safe behavior. A retained source event or
 pre-existing target obligation is ineligible for compensation.
@@ -368,6 +370,9 @@ one disposable managed PostgreSQL snapshot across non-system schemas, selecting
 Auth identity metadata without credentials. A capture login that row security
 would filter refuses. Its finite typed projection maps
 eligible business obligations into the existing connected restore packet.
+The pinned managed source has no package-editor composition constraint; carried
+subscriptions project the target's nullable `composition_constraint` as NULL
+and `configured_offer_version` as `classic`.
 Full managed audit and business history remains in the operator's source
 backup or snapshot, under the operator's own access, retention and erasure
 controls. The existing `retained-history` disposition records history with no

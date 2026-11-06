@@ -68,7 +68,7 @@ function evidence(f: Fixture, quantity = 6, addons = [{ variantId: f.addon, qty:
     sku: variantId, quantity: qty, unitPriceGross: money(137), lineSubtotalGross: money(qty * 137),
     pricingComponents: [{ componentType: "base_unit", amountMinor: qty * 173 }] } });
   return { request: { planDays, base, addons, expectedTemplateVersion: 1, acceptedQuoteHash: hash },
-    planDays, nominalPlanDays: planDays, base, addons, compositionConstraint: { kind: "plan_days", value: planDays },
+    planDays, nominalPlanDays: planDays, base, addons, compositionConstraint: { kind: "plan_days", value: planDays } as Record<string, unknown> | null,
     baseLines: base.map(row => line(row.variantId, row.qty)), addonLines: addons.map(row => line(row.variantId, row.qty)),
     currentRecurringPrice: money(700), newRecurringPrice: money((quantity + addons.reduce((sum, row) => sum + row.qty, 0)) * 137),
     delta: money((quantity + addons.reduce((sum, row) => sum + row.qty, 0)) * 137 - 700),
@@ -79,7 +79,7 @@ async function record(f: Fixture, payload: Evidence, expiry = "2026-11-05T12:15:
   return rpc(runtime, "subscription_quote_preview_record", [f.actor, f.client, f.subscription, "update_package_template",
     payload.acceptedQuoteHash, payload.expectedTemplateVersion, expiry,
     { planDays: payload.planDays, nominalPlanDays: payload.nominalPlanDays, base: payload.base, addons: payload.addons, compositionConstraint: payload.compositionConstraint },
-    { baseLines: payload.baseLines, addonLines: payload.addonLines },
+    { baseLines: payload.baseLines, addonLines: payload.addonLines, compositionConstraint: payload.compositionConstraint },
     { currentRecurringPrice: payload.currentRecurringPrice, newRecurringPrice: payload.newRecurringPrice, delta: payload.delta }, at]);
 }
 const apply = (f: Fixture, payload: Evidence, key: string = randomUUID(), db: Pool | PoolClient = runtime, now = at) =>
@@ -135,7 +135,8 @@ it("deduplicates open previews and refuses drift, expiry and reused acceptance w
   const f = await fixture(), payload = evidence(f), preview = await record(f, payload);
   expect((await record(f, payload)).id).toBe(preview.id);
   for (const delta of [{ delta: money(1) }, { planDays: 21 }, { baseLines: evidence(f, 7).baseLines },
-    { base: [{ variantId: f.sku, qty: 7 }] }, { addonLines: [] },
+    { base: [{ variantId: f.sku, qty: 7 }] }, { addonLines: [] }, { compositionConstraint: { kind: "plan_days", value: 14 } },
+    { compositionConstraint: null },
     { request: { ...payload.request, base: [{ variantId: f.sku, qty: 7 }] } },
     { request: { ...payload.request, acceptedQuoteHash: "b".repeat(64) } }]) {
     await refuses(() => apply(f, { ...payload, ...delta }), "subscription_edit_quote_drift");
@@ -262,6 +263,48 @@ it("re-quotes against real changed prices, refuses the stale hash without writes
 }, 30_000);
 
 
+it.each([
+  { kind: "unit_count", value: 8, retained: { source: "host", units: [2, 6] } },
+  { kind: "plan_days", value: 28, retained: { source: "host", units: [2, 6] } },
+  null,
+])("persists the accepted host constraint %j through a real 28 to 14 preview and apply", async constraint => {
+  const f = await fixture();
+  await owner.query("UPDATE public.subscriptions SET composition_constraint=$2 WHERE id=$1", [f.subscription, constraint]);
+  const before = (await owner.query("SELECT to_jsonb(s) AS row FROM public.subscriptions s WHERE id=$1", [f.subscription])).rows[0].row;
+  const lines = async () => (await owner.query("SELECT variant_id,quantity,sort_order,is_addon,unit_price_minor,currency_code FROM public.subscription_lines WHERE subscription_id=$1 ORDER BY sort_order", [f.subscription])).rows;
+  const beforeLines = await lines();
+  const accepted = constraint?.kind === "plan_days" ? { ...constraint, value: 14 } : constraint;
+  const quoted: (Record<string, unknown> | null)[] = [];
+  const editor = createPostgresPackageEditor({ now: () => at,
+    limits: { maximumPlanDays: 90, maximumBaseLines: 6, maximumAddonLines: 12, maximumQuantity: 99 },
+    quoteCatalogReadPort: { async listQuoteCatalogItems() { return [f.sku, f.addon].map(variantId => ({ variantId, skuCode: variantId, sellability: { subscription: true } })); } },
+    quotePort: { async createServerAuthoritativeQuote(input) {
+      quoted.push(input.compositionConstraint);
+      const rows = input.lines.map(line => ({ sku: line.sku, quantity: line.quantity, unitPriceGross: money(100), lineSubtotalGross: money(line.quantity * 100) }));
+      return { quote: { lines: rows, totalGross: money(700), subtotalGross: money(700), discountTotalGross: money(0) } };
+    } },
+    constraintMapper: { toCore: stored => ({ kind: "configured", version: 1, data: stored ?? {} }), fromCore: value => value.data,
+      nominalPlanDays: stored => stored?.kind === "plan_days" ? Number(stored.value) : null },
+    compositionRulesPort: { validateComposition: async () => ({ ok: true }), resizeComposition: async input => constraint === null ? null : ({
+      coreLines: input.coreLines, constraint: { ...input.constraint,
+        data: input.constraint.data.kind === "plan_days" ? { ...input.constraint.data, value: input.lever.value } : input.constraint.data } }) },
+    async withTransaction(work) {
+      const db = await runtime.connect(); try { await db.query("BEGIN"); const result = await work(db); await db.query("COMMIT"); return result; }
+      catch (error) { await db.query("ROLLBACK"); throw error; } finally { db.release(); }
+    } });
+  const actor = { actorId: f.actor, clientId: f.client }, request = { subscriptionId: f.subscription, planDays: 14,
+    base: [{ variantId: f.sku, qty: 4 }], addons: [{ variantId: f.addon, qty: 3 }] };
+  const preview = await editor.preview(actor, request);
+  expect(await editor.apply(actor, "accepted-host-constraint", { ...request, acceptedQuoteHash: preview.quoteHash }))
+    .toMatchObject({ status: "applied", templateVersion: 2, subscriptionStatus: "active" });
+  expect(quoted).toEqual([constraint, accepted, constraint, accepted]);
+  const after = (await owner.query("SELECT to_jsonb(s) AS row FROM public.subscriptions s WHERE id=$1", [f.subscription])).rows[0].row;
+  expect(after).toEqual({ ...before, cadence_days: 14, composition_constraint: accepted, template_version: 2, updated_at: after.updated_at });
+  expect(await lines()).toEqual(beforeLines);
+  const ledger = (await owner.query("SELECT status,quote_snapshot FROM public.subscription_quote_previews WHERE subscription_id=$1", [f.subscription])).rows[0];
+  expect(ledger).toMatchObject({ status: "accepted", quote_snapshot: { compositionConstraint: accepted } });
+}, 30_000);
+
 it("dispatches exactly one existing package_changed notice for a change and none for a no-op", async () => {
   const f = await fixture(), payload = evidence(f); await record(f, payload);
   const applied = await apply(f, payload), key = `subscription-notice:event:${applied.eventId}`;
@@ -288,6 +331,7 @@ it("dispatches exactly one existing package_changed notice for a change and none
 
 it("restores the preview nominal plan into the existing constraint while preserving extended cadence and explicit quantities", async () => {
   const f = await fixture(), payload = evidence(f, 6, [], 30); payload.nominalPlanDays = 14;
+  payload.compositionConstraint = { kind: "plan_days", value: 14, retained: "host" };
   await owner.query("UPDATE public.subscriptions SET cadence_days=30,composition_constraint=$2 WHERE id=$1", [f.subscription, { kind: "plan_days", value: 14, retained: "host" }]);
   await record(f, payload); payload.nominalPlanDays = 99;
   await apply(f, payload);

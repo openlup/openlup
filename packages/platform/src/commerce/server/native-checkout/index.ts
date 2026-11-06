@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { createCommerceQuoteSchemas, COMMERCE_CONTRACT_VERSION, type CreateQuoteResponse } from "../../../pricing/index.js";
+import type { PromotionRow } from "@openlup/core/promo";
+import { selectAcquisitionTerms, assertAcquisitionTermsCapability, AcquisitionTermsError, resolvedAcquisitionTermsSchema,
+  createCommerceQuoteSchemas, COMMERCE_CONTRACT_VERSION, OFFER_POLICY_V2, type CreateQuoteResponse,
+  type AcquisitionFinancialPolicy, type CommerceQuoteDiscount } from "../../../pricing/index.js";
+import { createPostgresQuoteCustomerEligibility } from "../../../promotions/index.js";
 import { commerceIdempotencyKeySchema } from "../../contractPrimitives.js";
 import type { OrderDraftSummary } from "../../contracts/order.js";
 import { CommerceOrderDraftConflictError, CommerceOrderDraftInvalidResponseError, CommerceOrderDraftPersistenceError } from "../../errors.js";
@@ -110,6 +114,80 @@ export function createPostgresNativeCheckoutPersistence(
       const parsed = responseSchema.safeParse(response);
       if (!parsed.success) throw new CommerceOrderDraftInvalidResponseError();
       return parsed.data;
+    },
+  };
+}
+
+export interface NativeAcquisitionCheckoutPool {
+  connect(): Promise<NativeCheckoutQuery & { release(): void }>;
+}
+export interface NativeAcquisitionCheckoutOptions {
+  regionCode: string;
+  financialPolicy: AcquisitionFinancialPolicy<PromotionRow>;
+  /** Host-owned semantic labels, in addition to the saved family IDs. */
+  isAcquisitionDiscount(discount: CommerceQuoteDiscount): boolean;
+}
+
+/** Server-produced quotes only. Owns one READ COMMITTED transaction through draft
+ * commit; host authorization and quote acceptance precede this boundary. */
+export function createPostgresAcquisitionCheckoutPersistence(pool: NativeAcquisitionCheckoutPool, options: NativeAcquisitionCheckoutOptions) {
+  return {
+    async createOrderDraft(request: NativeCheckoutDraftRequest, identity?: { clientId?: string | null }) {
+      const db = await pool.connect();
+      try {
+        await db.query("BEGIN ISOLATION LEVEL READ COMMITTED");
+        const key = commerceIdempotencyKeySchema.parse(request.idempotencyKey);
+        await db.query("SELECT pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended($1::text, 0))", [key]);
+        const persistence = createPostgresNativeCheckoutPersistence(db);
+        // The existing writer owns replay, changed-input and ownership validation.
+        const replay = (await db.query("SELECT 1 FROM public.commerce_order_draft_receipts WHERE idempotency_key=$1", [key])).rows.length > 0;
+        const context = request.quoteSnapshot.quote.context as Record<string, unknown> | undefined;
+        if (!replay && context?.mode === "subscription") {
+          const policy = options.financialPolicy;
+          const read = async () => (await db.query("SELECT promotion_id,definition,active FROM public.commerce_promotion_definitions ORDER BY promotion_id")).rows;
+          const scoped = (row: Record<string, unknown>) => {
+            const definition = row.definition as PromotionRow;
+            return policy.facts(definition).regionCodes.includes(options.regionCode)
+              && (policy.facts(definition).metadataPresent || policy.classify(definition).canonicalRow);
+          };
+          const before = (await read()).filter(scoped);
+          for (const row of before) await db.query("SELECT * FROM public.commerce_promotion_lock_definition($1::text)", [row.promotion_id]);
+          const current = (await read()).filter(scoped);
+          const changed = () => { throw new Error("acquisition_terms_changed"); };
+          if (JSON.stringify(current.map(row => row.promotion_id)) !== JSON.stringify(before.map(row => row.promotion_id))) changed();
+          const { discounts } = request.quoteSnapshot.quote;
+          const candidate = context.acquisitionTerms;
+          const starter = context.starterPack as { delivery2?: { discountBps?: unknown } } | null | undefined;
+          const hasGrant = discounts.some(discount => options.isAcquisitionDiscount(discount)
+            || current.some(row => row.promotion_id === discount.promotionId));
+          const paid = await createPostgresQuoteCustomerEligibility(db).hasPaidSubscription(identity?.clientId ?? null);
+          const configured = current.some(row => policy.facts(row.definition as PromotionRow).metadataPresent);
+          if (!(candidate === undefined && (starter == null && !hasGrant && paid || !configured))) {
+            const now = (await db.query("SELECT clock_timestamp()::text AS instant")).rows[0]!.instant;
+            const rows = current.map(row => ({ ...(row.definition as PromotionRow),
+              status: row.active ? (row.definition as PromotionRow).status : "paused" }));
+            const selected = selectAcquisitionTerms(rows, String(now), options.regionCode, policy);
+            if (!selected && configured) {
+              throw new AcquisitionTermsError("acquisition_terms_not_effective");
+            }
+            if (selected) {
+              const pricing = context.pricingPolicy as { offerPolicyVersion?: unknown; promotionEngineVersion?: unknown } | undefined;
+              assertAcquisitionTermsCapability(selected, context.acquisitionCapability, pricing?.promotionEngineVersion);
+              if (selected.kind === "v2_standalone" && pricing?.offerPolicyVersion !== OFFER_POLICY_V2) changed();
+              if (!(candidate === undefined && selected.kind === "legacy_pair")) {
+                const parsed = resolvedAcquisitionTermsSchema.safeParse(candidate);
+                if (!parsed.success) changed();
+                else if (Object.entries(selected.terms).some(([key, value]) => parsed.data[key as keyof typeof parsed.data] !== value)) changed();
+              }
+              if (starter != null && starter.delivery2?.discountBps !== selected.terms.delivery2DiscountBps) changed();
+            } else if (candidate !== undefined || starter != null || hasGrant) changed();
+          }
+        }
+        const result = await persistence.createOrderDraft(request, identity);
+        await db.query("COMMIT");
+        return result;
+      } catch (error) { await db.query("ROLLBACK"); throw error; }
+      finally { db.release(); }
     },
   };
 }

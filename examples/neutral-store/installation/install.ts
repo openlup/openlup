@@ -1,3 +1,4 @@
+import { seedQuoteAuthority } from './quote-seed.ts';
 import type { StoreConfig } from '../shared/config.ts';
 import { buildDemoSeed } from '../owned/demo-seed.ts';
 import { acquisitionAddresses } from '../owned/acquisition-addresses.ts';
@@ -101,6 +102,7 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
         ? new Date(String(existing[key])).getTime() !== Date.parse(value as string)
         : existing[key] !== value)) throw new Error('starter_price_seed_conflict');
     }
+    await seedQuoteAuthority(config, seed, connection);
     for (const { addressReference: row } of acquisitionAddresses) {
       await connection.query(`INSERT INTO acquisition_private.address_references
         (source, reference, revision, provenance, active) VALUES ($1,$2,$3,$4,true)

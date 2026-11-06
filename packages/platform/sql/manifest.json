@@ -397,18 +397,18 @@
       },
       {
         "file": "db/platform/migrations/20261104100000_subscription_package_editor.sql",
-        "sha256": "192def5b7b78d8ddc03aa09a09d79ccf79761158e70b6f13b7a9e118592c4f40"
+        "sha256": "00291b733c89d9fe7e7d8785f90c6a8fe3c2e1d2b7dca4fc66abbc33de748fce"
       },
       {
         "file": "db/platform/migrations/20261104110000_subscription_exact_levers.sql",
-        "sha256": "0b2292fa961b5766a86a329a9eeec8b2ddab3d629234f964a5aaad2155fa7f5e"
+        "sha256": "9b3bad20bbf946dd0dc5d02617fe18cfe9b32ea16a4798736b9a5a4dbbf1b199"
       },
       {
         "file": "db/platform/migrations/20261104120000_subscription_sized_editor.sql",
         "sha256": "13129ea49660b1b8ffb95fdaf99be2676e2f43f36086d99895c4a797bb842b1d"
       }
     ],
-    "objectInventorySha256": "af9244757d38efaafd6f442aee360bd85d1ad101c0d4c55530ffaf524793669a",
+    "objectInventorySha256": "0bb34b7450920e849dbee135c7b67bdf24b3a28103278092f15b45a80ce6f3ea",
     "qualified": {
       "baseline": {
         "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -825,11 +825,11 @@
         },
         {
           "file": "db/platform/migrations/20261104100000_subscription_package_editor.sql",
-          "sha256": "192def5b7b78d8ddc03aa09a09d79ccf79761158e70b6f13b7a9e118592c4f40"
+          "sha256": "00291b733c89d9fe7e7d8785f90c6a8fe3c2e1d2b7dca4fc66abbc33de748fce"
         },
         {
           "file": "db/platform/migrations/20261104110000_subscription_exact_levers.sql",
-          "sha256": "0b2292fa961b5766a86a329a9eeec8b2ddab3d629234f964a5aaad2155fa7f5e"
+          "sha256": "9b3bad20bbf946dd0dc5d02617fe18cfe9b32ea16a4798736b9a5a4dbbf1b199"
         },
         {
           "file": "db/platform/migrations/20261104120000_subscription_sized_editor.sql",
@@ -838,10 +838,10 @@
       ],
       "objectInventorySha256": {
         "bootstrapMigrator": {
-          "withRestore": "159bd0cf4521e028b8cbc6f85b01e9f73d4c03ebf483604ebf26225ad1dac4ce"
+          "withRestore": "6622dc86c108710cfbd3cc0add761c8a1d16dacdc5fd645d7f38ea7b6cd49295"
         },
         "separateMigrator": {
-          "withRestore": "f658f67ed796392e8e0aac7ae5932395cf881652156806cd02e92923066cc339"
+          "withRestore": "db5cba510aa0e590957a6bef314e7f3610070b5e366056642c4cf17439d78a2f"
         }
       }
     },
@@ -1257,11 +1257,11 @@
         },
         {
           "file": "db/platform/migrations/20261104100000_subscription_package_editor.sql",
-          "sha256": "192def5b7b78d8ddc03aa09a09d79ccf79761158e70b6f13b7a9e118592c4f40"
+          "sha256": "00291b733c89d9fe7e7d8785f90c6a8fe3c2e1d2b7dca4fc66abbc33de748fce"
         },
         {
           "file": "db/platform/migrations/20261104110000_subscription_exact_levers.sql",
-          "sha256": "0b2292fa961b5766a86a329a9eeec8b2ddab3d629234f964a5aaad2155fa7f5e"
+          "sha256": "9b3bad20bbf946dd0dc5d02617fe18cfe9b32ea16a4798736b9a5a4dbbf1b199"
         },
         {
           "file": "db/platform/migrations/20261104120000_subscription_sized_editor.sql",
@@ -1269,8 +1269,8 @@
         }
       ],
       "objectInventorySha256": {
-        "installerManaged": "f841f49be3038d890e8e62e498c743f265093f27b113015332260d8e8f3bae8a",
-        "operatorProvisioned": "f09d8df86ca67fb3651af3b952a3968fc3511f19134f59f97a4c67915eb7bf60"
+        "installerManaged": "e12097298e2a9e4891f48ed4fa808cf4e5e1ab892fcb4c63bbed9f352b0e2234",
+        "operatorProvisioned": "81881714f70343c59381010458de51bd7f33493ad74e3f5198550ca304836183"
       }
     }
   },
@@ -1768,12 +1768,12 @@
     {
       "file": "20261104100000_subscription_package_editor.sql",
       "source": "db/platform/migrations/20261104100000_subscription_package_editor.sql",
-      "sha256": "192def5b7b78d8ddc03aa09a09d79ccf79761158e70b6f13b7a9e118592c4f40"
+      "sha256": "00291b733c89d9fe7e7d8785f90c6a8fe3c2e1d2b7dca4fc66abbc33de748fce"
     },
     {
       "file": "20261104110000_subscription_exact_levers.sql",
       "source": "db/platform/migrations/20261104110000_subscription_exact_levers.sql",
-      "sha256": "0b2292fa961b5766a86a329a9eeec8b2ddab3d629234f964a5aaad2155fa7f5e"
+      "sha256": "9b3bad20bbf946dd0dc5d02617fe18cfe9b32ea16a4798736b9a5a4dbbf1b199"
     },
     {
       "file": "20261104120000_subscription_sized_editor.sql",

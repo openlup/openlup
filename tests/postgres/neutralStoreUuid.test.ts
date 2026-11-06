@@ -62,6 +62,14 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
     return (await exchange(operation, payload, signedIn, key)).body;
   }
 
+  async function quotedSubscription(payload: Record<string, unknown>) {
+    const capable = { ...payload, acquisitionCapability: 'subscription-acquisition.v1' };
+    const quoted = await call('offer.validate', capable);
+    expect(quoted.ok).toBe(true);
+    if (!quoted.ok || !isRecord(quoted.value)) throw new Error('host_server_quote_required');
+    return { ...capable, quoteAcceptance: quoted.value.quoteAcceptance, expectedTotal: quoted.value.expectedTotal };
+  }
+
   async function control(permissive: boolean | null, emailLimit?: number, cadenceDays?: number[]) {
     return new Promise<{ registrations: number }>((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('host_control_timeout')), 5_000);
@@ -160,7 +168,8 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
       const connectionString = ${JSON.stringify(runtimeConnection)};
       const base = 'http://127.0.0.1:' + port;
       process.chdir(${JSON.stringify(state)});
-      const bindings = await composeNativeBindings(connectionString, createOriginPolicy(config, port));
+      const keyring = { current: 'fixture-only-acceptance-key-00000000000000' };
+      const bindings = await composeNativeBindings(connectionString, createOriginPolicy(config, port), keyring);
       const pool = new Pool({ connectionString });
       const registrar = createPostgresContactClientRegistrar({ connectionString });
       const lane = createPostgresRoleFreeTransactionLane({ connectionString });
@@ -174,7 +183,7 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
           config.purchase.attemptLimits = { ...config.purchase.attemptLimits, maxPerEmail: 2, maxPerRequester: 2, maxEntries: 8 };
           registrations = 0;
           bindings.actions['checkout.create'] = composePurchaseCapabilities(pool, contacts,
-            message.permissive ? async () => ({ allowed: true }) : undefined, recovery)['checkout.create'];
+            message.permissive ? async () => ({ allowed: true }) : undefined, recovery, { keyring })['checkout.create'];
         }
         process.send({ registrations });
       });
@@ -277,10 +286,10 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
       // Bypass configuration validation to exercise the independent HTTP admission guard.
       await control(null, undefined, [120, 121]);
       const input = checkout(`cadence-${config.id}@example.test`);
-      const refused = await call('checkout.create', { ...input, cart: { ...input.cart, mode: 'subscription', cadenceDays: 121 } });
+      const refused = await call('checkout.create', { ...input, acquisitionCapability: 'subscription-acquisition.v1', cart: { ...input.cart, mode: 'subscription', cadenceDays: 121 } });
       expect(refused).toEqual({ ok: false, code: 'cadence_unavailable' });
       expect(Number((await owner!.query('SELECT count(*) AS count FROM public.clients')).rows[0].count)).toBe(before);
-      const accepted = await call('checkout.create', { ...input, cart: { ...input.cart, mode: 'subscription', cadenceDays: 120 } });
+      const accepted = await call('checkout.create', await quotedSubscription({ ...input, cart: { ...input.cart, mode: 'subscription', cadenceDays: 120 } }));
       expect(accepted.ok).toBe(true);
       if (!accepted.ok || !isRecord(accepted.value)) throw new Error('cadence_purchase_required');
       const read = await call('checkout.read', { orderRef: accepted.value.orderRef, token: accepted.value.token });
@@ -337,7 +346,7 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
   it('subscription address uses the checkout phone and postal bounds', async () => {
     const payload = checkout(`address-${config.id}@example.test`);
     const cart = { ...payload.cart, mode: 'subscription', cadenceDays: config.offer.defaultCadenceDays };
-    const created = await call('checkout.create', { ...payload, cart });
+    const created = await call('checkout.create', await quotedSubscription({ ...payload, cart }));
     expect(created.ok).toBe(true);
     if (!created.ok || !isRecord(created.value)) throw new Error('address_purchase_required');
     expect((await call('payment.simulate', { orderRef: created.value.orderRef, token: created.value.token, outcome: 'captured' })).ok).toBe(true);

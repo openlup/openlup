@@ -1,13 +1,13 @@
+import { deriveSubscriptionUnitPrice } from '@openlup/platform/pricing';
 import type { PurchaseMode, StoreConfig } from './config.ts';
 import type { CartLine } from './offer.ts';
 
-/** Temporary mode-price composition; replace this function with the installed quote engine. */
-export function priceInterimOffer(config: StoreConfig, mode: PurchaseMode, selected: readonly CartLine[]) {
+/** Catalogue-only estimate from the package kernel. Native quotes own checkout money. */
+export function estimateOffer(config: StoreConfig, mode: PurchaseMode, selected: readonly CartLine[]) {
   const lines = selected.map(({ sku, quantity }) => {
     const baseUnitMinor = config.offer.products.find(product => product.sku === sku)!.unitPrice.amountMinor;
-    const quantum = BigInt(config.offer.subscriptionRoundingQuantumMinor);
-    const unitMinor = mode === 'one_time' ? baseUnitMinor : Number(
-      ((BigInt(baseUnitMinor) * BigInt(10000 - config.offer.subscriptionDiscountBps)) / 10000n / quantum) * quantum);
+    const unitMinor = mode === 'one_time' ? baseUnitMinor : deriveSubscriptionUnitPrice(baseUnitMinor, {
+      discountBps: config.offer.subscriptionDiscountBps, roundingQuantumMinor: config.offer.subscriptionRoundingQuantumMinor, roundingRule: 'FLOOR_TO_QUANTUM' });
     return { sku, quantity, baseUnitMinor, unitMinor, lineMinor: unitMinor * quantity };
   });
   const subtotalMinor = lines.reduce((sum, line) => sum + line.lineMinor, 0);

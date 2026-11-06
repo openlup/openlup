@@ -34,6 +34,7 @@ const SNAPSHOT_SQL = `SELECT s.id AS subscription_id,s.client_id,s.cadence_days,
    'subscription.customer_self_service.update_plan_length','subscription.customer_self_service.update_base_mix',
    'subscription.customer_self_service.resize_bundle','subscription.customer_self_service.update_bundle',
    'subscription.customer_self_service.update_portion')
+  AND jsonb_typeof(e.payload->'linePricing')='array'
   ORDER BY e.occurred_at DESC,e.id DESC LIMIT 1) AS graduation_pricing,
  COALESCE((SELECT jsonb_agg(jsonb_build_object('lineOrdinal',l.line_ordinal,'sku',l.sku,'quantity',l.quantity,
  'unitAmountMinor',l.unit_amount_minor) ORDER BY l.line_ordinal) FROM public.subscription_renewal_term_lines l
