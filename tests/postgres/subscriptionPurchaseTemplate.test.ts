@@ -1,7 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import { afterEach, expect, it, vi } from "vitest";
 import { createPostgresAccountReadSources, createPostgresCustomerOrderHistoryReadStore } from "@openlup/platform/account-support";
-import { api, purchase, admin, at, days, deps, executor, facts, now, rpc, runtime, transaction } from "./subscriptionPublicRenewalFixture.js";
+import { api, purchase, admin, at, checkout, days, deps, executor, facts, identity, now, payments, rpc, runtime, runtimeUrl, transaction } from "./subscriptionPublicRenewalFixture.js";
+import { captureSandboxPurchase } from "../helpers/captureSandboxPurchase.js";
 import { allPublicRows } from "./subscriptionStockWaitCases.js";
 import type { RenewalRetainedTerms } from "@openlup/platform/subscriptions/contracts";
 
@@ -244,4 +245,77 @@ it.each(["read", "write"])("graduates without the new pair %s grant without bloc
     if (permission === "read") await admin.query("REVOKE SELECT(id,client_id,cadence_days,template_version,next_cycle_at,updated_at) ON public.subscriptions FROM service_role; GRANT SELECT ON public.subscriptions TO service_role");
     await admin.query("REVOKE UPDATE(cadence_days,template_version,updated_at) ON public.subscriptions FROM service_role; GRANT UPDATE ON public.subscriptions TO service_role");
   }
+});
+
+
+// Same definition/quote fixture shape as m19CheckoutShipping; order positions
+// are produced by the public checkout writer, never inserted by this witness.
+async function draftedPurchase(mode: "subscription" | "one_time", discount = 0) {
+  const accounts = identity.createPostgresAccountLinkStore({ connectionString: runtimeUrl });
+  let clientId: string;
+  try { clientId = (await accounts.createAccount({ email: `${randomUUID()}@example.invalid`, principalId: randomUUID(), acquisitionSource: "fixture", lifecycleStage: "customer" })).id; }
+  finally { await accounts.close(); }
+  const key = randomUUID(), promotionId = `promotion-${key}`, money = (amountMinor: number) => ({ amountMinor, currency: "XXX" });
+  if (discount) await admin.query("INSERT INTO public.commerce_promotion_definitions(promotion_id,definition,active) VALUES($1,$2,true)", [promotionId, {
+    id: promotionId, status: "active", name: "Configured benefit", code: null, trigger_type: "automatic", discount_type: "fixed_amount", discount_value: discount,
+    applies_to_kind: "order_total", applies_to_payload: {}, stacking_rule: "exclusive", eligibility: {}, valid_from: "2020-01-01T00:00:00Z", valid_to: null,
+    region_availability: ["ZZ"], redemption_limit_global: null, redemption_limit_per_customer: null }]);
+  const made = await checkout.createPostgresNativeCheckoutPersistence(executor).createOrderDraft({ idempotencyKey: key,
+    quoteSnapshot: { contractVersion: "commerce.v0", quote: { currency: "XXX", taxIncluded: true,
+      lines: [{ sku: "G7-REFILL", productSlug: "g7-refill", quantity: 2, unitPriceGross: money(100), lineSubtotalGross: money(200),
+        tax: { included: true, country: "ZZ", category: "standard", vatRateBps: 0, legalBasis: "Synthetic test tax", netAmount: money(200), vatAmount: money(0), grossAmount: money(200) } }],
+      discounts: discount ? [{ promotionId, appliesTo: "order_total", amountOffMinor: discount, reasonCode: "configured" }] : [],
+      context: { mode, cadenceDays: 28, promoCodes: [] }, subtotalGross: money(200), discountTotalGross: money(discount),
+      shippingGross: money(0), shippingDiscountGross: money(0), totalGross: money(200 - discount), netTotal: money(200 - discount), taxTotal: money(0) } } }, { clientId });
+  const orderId = String(made.orderDraft.orderId).replace(/^order_/, "");
+  const intent = await rpc<{ settlement: { id: string } }>("commerce_open_settlement_intent", [`open:${key}`, orderId, "sandbox", 200 - discount, "XXX", "{}", at]);
+  expect(await captureSandboxPurchase(payments.createPostgresSandboxPaymentSimulator(executor,
+    { dunningTemplateSlug: "failed", recoveryUrlPath: "/recover", recoveryTemplateSlug: "recovered" }),
+    { settlementIntentId: intent.settlement.id, key, at })).toMatchObject({ status: 200 });
+  await rpc("subscription_declare_provisional_activation", [`declare:${key}`, orderId, 28, at]);
+  const settled = (await runtime.query("SELECT external_ref,id FROM public.commerce_settlement_intents WHERE id=$1", [intent.settlement.id])).rows[0];
+  return { orderId, clientId, capturedReference: settled.external_ref ?? settled.id, idempotencyKey: `activate:${key}` };
+}
+
+it("keeps the full admitted quantity and catalogue price when a promoted order splits effective positions", async () => {
+  const p = await draftedPurchase("subscription", 1);
+  expect((await runtime.query("SELECT quantity,unit_amount_minor::int FROM public.commerce_order_items WHERE order_id=$1 ORDER BY unit_amount_minor", [p.orderId])).rows)
+    .toEqual([{ quantity: 1, unit_amount_minor: 99 }, { quantity: 1, unit_amount_minor: 100 }]);
+  const f = await activate(p);
+  expect(await accountLines(f)).toMatchObject([{ variantId: variant, qty: 2, sortOrder: 0, unitPrice: { amountMinor: 100, currency: "XXX" }, lineSubtotal: { amountMinor: 200, currency: "XXX" } }]);
+  expect(await state(f.subscriptionId)).toMatchObject({ price_list_id: list, currency_code: "XXX" });
+});
+
+it.each(['public.subscription_renewal_purchase_facts(uuid)', 'pg_catalog.jsonb_array_elements(jsonb)',
+  'pg_catalog.gen_random_uuid()', 'pg_catalog.now()'])("completes without materialization when EXECUTE on %s is unavailable", async signature => {
+  const p = await purchase(), writer = api.createPostgresPurchaseRenewalWriter(executor);
+  await writer.register(p.orderId, facts);
+  const activation = await rpc<{ subscriptionId: string }>("subscription_activate_from_captured_payment", [p.idempotencyKey, p.orderId,
+    createHash("sha256").update(p.capturedReference).digest("hex")]);
+  const before = await state(activation.subscriptionId), grantee = signature.startsWith("pg_catalog.") ? "PUBLIC" : "service_role";
+  const log = vi.spyOn(console, "warn").mockImplementation(() => {});
+  try {
+    await admin.query(`REVOKE EXECUTE ON FUNCTION ${signature} FROM ${grantee}`);
+    expect((await runtime.query("SELECT has_function_privilege(current_user,$1,'EXECUTE') AS executable,has_table_privilege(current_user,'public.subscription_lines','INSERT') AS insertable", [signature])).rows[0])
+      .toEqual({ executable: false, insertable: true });
+    expect(await writer.complete(p.orderId)).toMatchObject({ subscriptionId: activation.subscriptionId, replayed: false });
+    expect(await state(activation.subscriptionId)).toEqual(before);
+    expect(before).toMatchObject({ status: "active", price_list_id: null, currency_code: null });
+    expect((await admin.query("SELECT 1 FROM public.subscription_lines WHERE subscription_id=$1", [activation.subscriptionId])).rows).toEqual([]);
+    expect(log.mock.calls).toEqual([["subscription_template_unavailable", "privileges_unavailable"]]);
+  } finally { await admin.query(`GRANT EXECUTE ON FUNCTION ${signature} TO ${grantee}`); }
+});
+
+it("matches the one-time sellable flag independently of the subscription flag", async () => {
+  try {
+    await admin.query("UPDATE public.catalog_skus SET sellable_in_subscription=false WHERE id=$1", [variant]);
+    const allowed = await activate(await draftedPurchase("one_time"));
+    expect(await state(allowed.subscriptionId)).toMatchObject({ price_list_id: list, currency_code: "XXX" });
+    const p = await draftedPurchase("one_time");
+    await admin.query("UPDATE public.catalog_skus SET sellable_standalone=false WHERE id=$1", [variant]);
+    const log = vi.spyOn(console, "warn").mockImplementation(() => {}), refused = await activate(p);
+    expect(await state(refused.subscriptionId)).toMatchObject({ price_list_id: null, currency_code: null });
+    expect(await accountLines(refused)).toMatchObject([{ qty: 2, unitPrice: { amountMinor: 100 } }]);
+    expect(log.mock.calls).toEqual([["subscription_price_list_unresolved", "missing"]]);
+  } finally { await admin.query("UPDATE public.catalog_skus SET sellable_in_subscription=true,sellable_standalone=true WHERE id=$1", [variant]); }
 });

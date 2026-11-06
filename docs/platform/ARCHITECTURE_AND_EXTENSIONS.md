@@ -1842,16 +1842,19 @@ service remains active. Hosts drain `writer.pending()` and retry `complete()`;
 rows without facts require resubmitting the original purchase facts. Changed
 accepted facts refuse; attachment replay does not reset a later method state.
 Before completion, one privilege probe checks every read/write column required
-by the chosen template source and the subscription row lock. Missing template
+by the template source and subscription row lock, plus EXECUTE on the completed
+purchase reader, JSON iterator and UUID/timestamp defaults. Missing template
 grants skip materialization, log one neutral reason and call completion as before;
 they do not leave the attachment pending. On that restricted runtime, no account
 template is created and native edits remain refused, as before this change.
 Where grants permit, the writer materializes the standing template and optional
 price context in one atomic statement on its existing query executor. Initial
 lines use admitted SKU, quantity, zero-based ordinal and false addon flags.
-When order-item reads are unavailable but draft/catalogue reads are granted, it
-uses the admitted draft persisted in order metadata plus the SKU lookup. Term
-lines are created only by completion and cannot supply this earlier phase.
+Both materialization and resolution use the admitted logical draft lines saved
+in order metadata, plus the SKU lookup. Promotion allocation can split effective
+order positions; those positions are never a template or admission-price source.
+Sellable flags follow the saved order mode, exactly as admission does. Term lines
+are created only by completion and cannot supply this earlier phase.
 A failure between materialization and completion leaves the template present
 and attachment pending; retry preserves existing lines and completes the duty.
 Completed attachments and later template revisions receive no template/context

@@ -39,13 +39,9 @@ export function createPostgresPurchaseRenewalWriter(executor: SubscriptionQueryE
     async complete(orderId: string) {
       const context = await resolveNativePurchasePriceList(executor, orderId, true);
       if (!context.templateAllowed) return response("SELECT public.subscription_complete_renewal_attachment($1::uuid) AS response", [orderId]);
-      // Renewal term lines do not exist before completion. Restricted order-item
-      // readers use the admitted draft saved by the same admission statement.
-      const source = context.orderReadable
-        ? `SELECT item.sku_id AS variant_id,item.quantity,item.line_ordinal-1 AS sort_order,
-            item.unit_amount_minor,o.currency_code FROM public.commerce_orders o
-          JOIN public.commerce_order_items item ON item.order_id=o.id WHERE o.id=$1::uuid`
-        : `SELECT sku.id AS variant_id,(item.line->>'quantity')::integer AS quantity,
+      // Both resolution and materialization use the admitted logical lines,
+      // never the effective positions split by promotion allocation.
+      const source = `SELECT sku.id AS variant_id,(item.line->>'quantity')::integer AS quantity,
             (item.ordinal-1)::integer AS sort_order,(item.line#>>'{unitPriceGross,amountMinor}')::bigint AS unit_amount_minor,
             o.currency_code FROM public.commerce_orders o
           CROSS JOIN LATERAL jsonb_array_elements(o.metadata#>'{orderDraftSnapshot,lines}')
