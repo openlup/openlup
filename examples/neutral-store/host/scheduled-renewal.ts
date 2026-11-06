@@ -36,7 +36,7 @@ export async function runScheduledRenewal(connectionString: string, config: Stor
       now: () => new Date().toISOString(), failureTemplate: config.purchase.sandbox.dunningTemplateSlug,
       recoveredTemplate: config.purchase.sandbox.recoveryTemplateSlug, recoveryPath: config.purchase.sandbox.recoveryUrlPath });
     const binding = createRenewalJob({ config: config.renewal, withSession, beforeRun: sandbox.refresh,
-      native: { executor: pool, withTransaction, codec, settlement: db => createPostgresRenewalSettlementPort(db, codec),
+      native: { executor: pool, withTransaction, codec, settlement: db => createPostgresRenewalSettlementPort(db, codec, withTransaction),
         inventory: createPostgresRenewalReservationPort(pool), paymentRails: sandbox.paymentRails,
         policy: sandbox.policy, retry: sandbox.retry, failureTemplate: config.purchase.sandbox.dunningTemplateSlug,
         recoveryPath: config.purchase.sandbox.recoveryUrlPath, workerId: `starter:${config.id}`,

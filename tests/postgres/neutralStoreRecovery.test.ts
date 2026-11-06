@@ -154,7 +154,7 @@ describe.each(Object.values(configurations))('$id recurring recovery HTTP bounda
     if (!due) throw new Error('recovery_due_required');
     const method = await subscriptions.createPostgresPurchaseRenewalWriter(runtime).readMethod(subscriptionId);
     const lifecycle = subscriptions.createPostgresRetryLifecycleBinding({ executor: runtime, withTransaction: transaction,
-      settlement: db => subscriptions.createPostgresRenewalSettlementPort(db, codec), correlate: wire => codec.decode(wire).cycle,
+      settlement: db => subscriptions.createPostgresRenewalSettlementPort(db, codec, transaction), correlate: wire => codec.decode(wire).cycle,
       failureTemplate: 'failed', recoveryPath: '/account/payment/recover' });
     const rail = subscriptions.createPostgresSandboxRenewalRail(runtime, { scenario: 'declined', now: () => dueAt });
     const result = await subscriptions.runOneAutomaticSubscriptionRenewal({ store, settlement: lifecycle.settlement,
