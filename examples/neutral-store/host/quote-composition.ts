@@ -1,3 +1,4 @@
+import type { RenewalRetainedTerms } from '@openlup/platform/subscriptions/contracts';
 import { evaluatePromotionAdjustmentsV2 } from '@openlup/core/promo';
 import type { Pool } from 'pg';
 import { createHash } from 'node:crypto';
@@ -14,7 +15,7 @@ import { isRecord, validateCart, type OfferQuote } from '../shared/offer.ts';
 import type { ActionContext } from './bindings.ts';
 import type { AcquisitionPredecessors } from './acquisition-predecessors.ts';
 
-interface Request extends AcquisitionQuoteRequest { checkout: Record<string, unknown>; pricingPolicy: typeof pricingPolicy; pricePolicyBasis?: unknown }
+interface Request extends AcquisitionQuoteRequest { checkout: Record<string, unknown>; pricingPolicy: typeof pricingPolicy; pricePolicyBasis?: unknown; renewalPolicy?: unknown }
 export const pricingPolicy = { offerPolicyVersion: 'commerce.offer-policy.v2', promotionEngineVersion: 'promotion-engine.v2' } as const;
 const acceptance = createPromotionQuoteAcceptance<Request>({ projectRequest: request => request });
 const digest = (value: unknown) => createHash('sha256').update(canonicalCatalogDraftJson(value)).digest('hex');
@@ -64,7 +65,7 @@ export function createNativeQuoteService(db: Pool, predecessors: AcquisitionPred
       commerceSettingsPort: { getShippingSettings: async () => ({ legacyFlatMinor: 0, policy: null }) } });
     const taxProfile = { included: true as const, country: config.market.country, ...config.purchase.tax };
     const port = createDbBackedCommerceQuotePort<Request, import('@openlup/platform/pricing').CommerceQuoteCatalogItem, Record<string, never>,
-      { mode: Request['mode']; cadenceDays: number | null; promoCodes: string[]; starterRequest: string; acquisitionCapability?: typeof ACQUISITION_TERMS_CAPABILITY }>({
+      { mode: Request['mode']; cadenceDays: number | null; promoCodes: string[]; starterRequest: string; acquisitionCapability?: typeof ACQUISITION_TERMS_CAPABILITY; starterRenewalTerms?: RenewalRetainedTerms }>({
       quoteCatalogReadPort: createPostgresCommerceQuoteCatalogReadPort(db, { verifyDocument: async (input,envelope) => {
         if (!isRecord(input) || input.schemaVersion !== config.quote.document.schemaId
           || input.schemaVersion !== envelope.documentRevision.schemaId || Object.keys(input).length !== 7
@@ -87,7 +88,25 @@ export function createNativeQuoteService(db: Pool, predecessors: AcquisitionPred
     });
     const snapshot = await port.createServerAuthoritativeQuote(request, { clientId: eligibility.clientId, pricingPolicy });
     const terms = snapshot.quote.context.acquisitionTerms;
-    const acceptedRequest = { ...request, pricePolicyBasis: snapshot.quote.lines.map(line => {
+    if (terms) {
+      const view = projectQuote(snapshot, config.quote.acquisition.minimumProductPayableMinor);
+      if (view.secondTotalMinor === undefined) throw new Error('starter_quote_refresh_required');
+      const linePricing = snapshot.quote.lines.map(line => ({ sku: line.sku, quantity: line.quantity,
+        unitAmountMinor: line.unitPriceGross.amountMinor, isAddon: false, quoteLine: { ...line } }));
+      snapshot.quote.context.starterRenewalTerms = { version: 'native.renewal-terms.v1', linePricing,
+        minimumPayableMinor: config.quote.acquisition.minimumProductPayableMinor,
+        normalCadenceDays: [config.quote.acquisition.graduationCadenceDays],
+        starterPack: { schemaVersion: '1', starterIntervalDays: selected.cart.cadenceDays!, basisTemplateVersion: 1,
+          delivery2: { discountBps: terms.delivery2DiscountBps, basisSubtotalMinor: snapshot.quote.subtotalGross.amountMinor,
+            discountMinor: snapshot.quote.subtotalGross.amountMinor - view.secondTotalMinor },
+          graduation: { cadenceDays: config.quote.acquisition.graduationCadenceDays,
+            lines: linePricing.map((line, index) => ({ sku: line.sku, qty: line.quantity, sortOrder: index,
+              isAddon: line.isAddon, quoteLine: line.quoteLine })) } } };
+    }
+    const retained = snapshot.quote.context.starterRenewalTerms;
+    const acceptedRequest = { ...request, ...(retained ? { renewalPolicy: { minimumPayableMinor: retained.minimumPayableMinor,
+      normalCadenceDays: retained.normalCadenceDays, starterIntervalDays: retained.starterPack!.starterIntervalDays,
+      graduationCadenceDays: retained.starterPack!.graduation.cadenceDays, delivery2: retained.starterPack!.delivery2 } } : {}), pricePolicyBasis: snapshot.quote.lines.map(line => {
       const facts = line.catalogFacts;
       return facts?.version === 'catalog_facts_v2' ? { sku: line.sku, policyRevisionId: facts.policyRevisionId, policyDigest: facts.policyDigest } : null;
     }) };
@@ -108,7 +127,13 @@ export function createNativeQuoteService(db: Pool, predecessors: AcquisitionPred
       throw new Error('starter_quote_refresh_required');
     }
   }, public(observed: Awaited<ReturnType<typeof quote>>) {
-    return { ...observed.projection, quote: projectPublicQuoteSnapshot(observed.snapshot), quoteAcceptance: observed.token,
+    const projected = projectPublicQuoteSnapshot(observed.snapshot);
+    if (projected.quote.context) {
+      const context = { ...projected.quote.context } as typeof projected.quote.context & { starterRenewalTerms?: RenewalRetainedTerms };
+      delete context.starterRenewalTerms;
+      projected.quote.context = context;
+    }
+    return { ...observed.projection, quote: projected, quoteAcceptance: observed.token,
       ...(observed.terms ? acquisitionProjectionFreshness(projectAcquisitionTerms(observed.terms),new Date().toISOString()) : {}),
       expectedTotal: observed.snapshot.quote.totalGross };
   } };
@@ -126,7 +151,9 @@ export function projectQuote(snapshot: CreateQuoteResponse, minimumProductPayabl
     currentProductMinor: quote.subtotalGross.amountMinor,shippingMinor: 0,minimumProductPayableMinor }, [{
       promotionId: terms.sourcePromotionId,name: 'Second delivery',source: 'automatic',scopes: ['subscription_initial'],
       kind: 'target_percentage',lane: 'product',valueBps: terms.delivery2DiscountBps }]) : null;
-  const secondTotalMinor = second ? quote.subtotalGross.amountMinor - second.adjustments.reduce((sum,item) => sum + item.amountOffMinor,0) : undefined;
+  const retained = (quote.context as { starterRenewalTerms?: RenewalRetainedTerms } | undefined)?.starterRenewalTerms;
+  const saved = retained?.starterPack?.delivery2;
+  const secondTotalMinor = saved ? saved.basisSubtotalMinor - saved.discountMinor : second ? quote.subtotalGross.amountMinor - second.adjustments.reduce((sum,item) => sum + item.amountOffMinor,0) : undefined;
   return { lines: quote.lines.map(line => ({ sku: line.sku, quantity: line.quantity, unitMinor: line.unitPriceGross.amountMinor,
     lineMinor: line.lineSubtotalGross.amountMinor,
     baseUnitMinor: line.catalogFacts?.baseUnitAmountMinor ?? line.unitPriceGross.amountMinor })),

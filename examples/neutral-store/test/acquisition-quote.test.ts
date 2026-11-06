@@ -10,7 +10,7 @@ import { configurations } from '../owned/store.config.ts';
 import { createAcquisitionFinancialPolicy } from '../owned/acquisition-policy.ts';
 import { composePurchaseCapabilities } from '../host/purchase-composition.ts';
 import { createNativeQuoteService } from '../host/quote-composition.ts';
-import { pendingAcquisitionRenewal, type AcquisitionPredecessors } from '../host/acquisition-predecessors.ts';
+import { createAcquisitionRenewalBinding, type AcquisitionPredecessors } from '../host/acquisition-predecessors.ts';
 import { validateCart } from '../shared/offer.ts';
 
 const config = Object.values(configurations)[0]!;
@@ -47,9 +47,12 @@ test('cart validation is separate from prices and rejects unknown products witho
   assert.equal(validateCart(config,{ ...cart,lines: [{ sku: 'UNKNOWN',quantity: 1 }] }).ok,false);
 });
 
-test('pending retained-terms integration refuses explicitly rather than reusing paid first-order units', async () => {
-  assert.throws(() => pendingAcquisitionRenewal.assertAvailable(),/starter_acquisition_renewal_binding_required/);
-  await assert.rejects(pendingAcquisitionRenewal.activate({} as never),/starter_acquisition_renewal_binding_required/);
+test('retained-terms binding refuses incomplete accepted quotes before native writes', async () => {
+  let writes = 0;
+  const binding = createAcquisitionRenewalBinding({ query: async () => { writes++; } } as unknown as Pool);
+  assert.throws(() => binding.assertAvailable(),/starter_quote_refresh_required/);
+  await assert.rejects(binding.activate({} as never),/starter_quote_refresh_required/);
+  assert.equal(writes,0);
 });
 
 function row(): PromotionRow {

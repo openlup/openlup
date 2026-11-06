@@ -3,7 +3,7 @@ import type { Pool } from 'pg';
 import { setTimeout } from 'node:timers/promises';
 import type { PostgresContactClientRegistrar } from '@openlup/platform/identity';
 import { createInterimCheckoutLimiter, createCheckoutAttemptBindings, admitCheckoutAttempt, type CheckoutRateLimit } from './checkout-attempts.ts';
-import { installedAcquisitionPredecessors, pendingAcquisitionRenewal, type AcquisitionPredecessors, type AcquisitionRenewalBinding } from './acquisition-predecessors.ts';
+import { installedAcquisitionPredecessors, createAcquisitionRenewalBinding, type AcquisitionPredecessors, type AcquisitionRenewalBinding } from './acquisition-predecessors.ts';
 import { createNativeQuoteService, quoteFailure } from './quote-composition.ts';
 import { createAcquisitionFinancialPolicy } from '../owned/acquisition-policy.ts';
 import type { PromotionAcceptanceKeyring } from '@openlup/platform/promotions';
@@ -36,7 +36,7 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
   let interimLimiter: ReturnType<typeof createInterimCheckoutLimiter> | undefined;
   let attemptBindings: ReturnType<typeof createCheckoutAttemptBindings> | undefined;
   const predecessors = quoteOptions.predecessors ?? installedAcquisitionPredecessors();
-  const renewal = quoteOptions.renewal ?? pendingAcquisitionRenewal;
+  const renewal = quoteOptions.renewal ?? createAcquisitionRenewalBinding(db);
   const quotes = createNativeQuoteService(db, predecessors, quoteOptions.keyring);
   const destinations = createPostgresDestinationPort(db);
   const reservations = createPostgresPurchaseReservationPort(db);
@@ -97,7 +97,7 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
     try {
       observed = await quotes.quote(payload, context, prior);
       if (!prior) quotes.verify(observed, payload);
-      if (observed.terms) renewal.assertAvailable();
+      if (observed.terms) renewal.assertAvailable(observed.snapshot);
     } catch (error) { return refused(quoteFailure(error)); }
     interimLimiter ??= createInterimCheckoutLimiter(context.config.purchase.attemptLimits);
     if (!await admitCheckoutAttempt(checkRateLimit ?? interimLimiter.checkRateLimit,
@@ -193,6 +193,8 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
     if (!intent) return refused('starter_sandbox_intent_unavailable');
     try {
       const key = command(context, 'payment');
+      const storedQuote = order.metadata.quoteSnapshot as CreateQuoteResponse;
+      if (payload.outcome === 'captured' && (storedQuote.quote.context as { acquisitionTerms?: unknown })?.acquisitionTerms) renewal.assertAvailable(storedQuote);
       const simulator = createPostgresSandboxPaymentSimulator(db, context.config.purchase.sandbox);
       const attempt = await simulator.beginAttempt({ settlementIntentId: intent.id, idempotencyKey: key,
         requestFingerprint: hash([order.id, payload.outcome]), at: new Date().toISOString() });
@@ -251,6 +253,7 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
 }
 
 function failure(error: unknown) {
+  if (error instanceof Error && error.message === 'starter_quote_refresh_required') return refused(error.message);
   if (isRecord(error)) {
     if (error.message === 'acquisition_terms_changed') return refused('starter_quote_refresh_required');
     if (error.name === 'AcquisitionTermsError' && typeof error.reason === 'string' && error.reason.startsWith('acquisition_terms_')) return refused(error.reason);

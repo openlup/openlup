@@ -435,10 +435,14 @@ refresh even if the total is unchanged. Expired observations withhold money.
 The local predecessor seam loads the package eligibility and transactional
 admission factories. Missing exports refuse admission by name. All mounted checkout modes use the
 transaction adapter; acquisition terms never reach a direct lower-level writer. Alias evidence cannot grant a customer session or
-account reads. The retained-renewal interface remains an explicit pending seam:
-`starter_acquisition_renewal_binding_required` prevents acquisition drafts until
-that owner supplies the final typed activation contract. This checkpoint does not
-claim a completed acquisition purchase or second-delivery renewal.
+account reads. The host freezes the installed retained-renewal contract in the
+server quote: original mode-price units and full line evidence, the second-delivery
+amount/rate/basis, configured minimum and graduation cadence, and zero shipping.
+Acceptance binds those promise values; observation timestamps are not promise
+identity. The full retained evidence is excluded from the browser projection.
+After sandbox capture, the installed purchase-renewal writer records those terms
+before activation. Missing or inconsistent retained evidence refuses creation
+with `starter_quote_refresh_required`. This composition does not itself qualify later renewal or invoicing.
 
 Attempt limits live in one process's memory and reset on restart.
 Checkout applies the configured attempt window, e-mail and requester counts, retention and capacity before contact resolution. Exact replay means the same command key, normalized e-mail and requester; it is free of further quota counts. A retained key with a changed identity is refused before contact resolution, including with a replacement quota callback. The synchronous host binding keeps identity digests within the same retention and capacity bounds; it fails closed when full. Denied quota attempts add nothing to the quota counts. Both process-local records reset on restart. Unpurchased contact retention belongs to the host.
