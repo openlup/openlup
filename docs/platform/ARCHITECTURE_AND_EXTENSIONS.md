@@ -2306,8 +2306,12 @@ existing lifecycle templates; it does not invent a parcel arrival or service
 pause. Both reminder producers run explicitly in this scheduled operation.
 New system notice keys live in the typed outbox rather than the customer command
 event namespace, under a separate `subscription_notice` aggregate so pending notices
-do not block ordinary subscription outbox work. Legacy reads require the notice's own event type; existing IDs
+do not block ordinary subscription outbox work. Legacy event reads require the notice's own event type; existing IDs
 and `subscription-notice:<source>:<id>` keys remain valid across the carrier change.
+Base pause ledger reminders keep their original reminder source and key. Their
+subscription/UTC end-day bucket prevents a second window notice, and unsent rows
+undergo the same live-window check before delivery. A resumed or missing window
+is durably skipped; an open match supplies its window facts without re-keying history.
 The at-risk cause/day cap counts accepted and disabled history from both carriers,
 using retained typed keys after terminal outbox payload compaction.
 Accepted or terminally skipped outbox notices are completed, including receipt-first

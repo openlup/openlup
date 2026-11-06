@@ -182,6 +182,9 @@ BEGIN
     FROM due WHERE NOT EXISTS(SELECT 1 FROM public.subscription_events legacy
       WHERE legacy.subscription_id=due.subscription_id AND legacy.event_type='subscription.pause_reminder_due'
         AND legacy.idempotency_key='pause-reminder:'||due.id::text)
+      AND NOT EXISTS(SELECT 1 FROM public.subscription_reminder_ledger legacy
+        WHERE legacy.subscription_id=due.subscription_id AND legacy.reminder_kind='pause_ending'
+          AND legacy.reminder_day=(due.ends_at AT TIME ZONE 'UTC')::date)
     ON CONFLICT(event_type,idempotency_key) DO NOTHING RETURNING id
   ) SELECT (SELECT count(*)::integer FROM due),(SELECT count(*)::integer FROM written) INTO v_scanned,v_queued;
   RETURN jsonb_build_object('ok',true,'scanned',v_scanned,'queued',v_queued,'sent',0,'skipped',v_scanned-v_queued,'failed',0);

@@ -60,7 +60,11 @@ keys, under the dedicated `subscription_notice` aggregate. Pause reminders retai
 accepted receipts and disabled outcomes across the outbox and typed legacy events.
 The immutable outbox keys retain cause/day history after terminal payload compaction.
 Resolved-pause markers use the same isolated carrier and are not deliverable kinds.
-Legacy notice IDs and their delivery keys stay unchanged. Operator notification rows bind a
+Legacy notice IDs and their delivery keys stay unchanged. Base `pause_ending`
+ledger rows own their subscription/UTC end-day bucket, so a matching window
+does not create another outbox identity. An unsent legacy row resolves its open
+window by that same day at delivery; no match durably skips the reminder.
+Operator notification rows bind a
 separate critical-recipient FK; customer references retain their client FK.
 Recipient-aware uniqueness admits multiple operators without colliding with the
 customer notice. Existing rows default to dispatch-ineligible operator history;

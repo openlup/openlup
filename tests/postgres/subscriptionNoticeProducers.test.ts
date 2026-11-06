@@ -1,8 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { Pool } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createPlatformPostgresMigrationRunner, qualifiedPostgresStartupOptions, qualifiedAdminPostgresStartupOptions, type PlatformPostgresInstallation } from "@openlup/platform/migrations";
+import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { noticeSessionWithRecipientFault } from "./m19NoticeFixture.js";
 import { captureConnectedNativeStore, type ConnectedNativeStoreCapture } from "../../server/adapters/postgres/connectedStoreCapture.js";
@@ -79,7 +81,8 @@ for (const generation of ["legacy", "qualified-v2"] as const) describe(`notice p
     return (await runtime.query("SELECT public.dunning_lifecycle_queue_notice($1::uuid,'payment_failed','subscription-payment-failed-1',$2,NULL) AS id", [caseId.toUpperCase(), attempt])).rows[0].id;
   }
 
-  it("retains legacy reminder identities, frozen event facts and accepted receipts across the notice upgrade", async () => {
+  // Retained event facts are secondary compatibility; the actual base ledger writers run in the prefix-upgrade test below.
+  it("retains reminder identities, frozen event facts and accepted receipts across the carrier change", async () => {
     const queued = await subscription(), sent = await subscription();
     const queuedId = randomUUID(), sentId = randomUUID();
     for (const [subject, id] of [[queued, queuedId], [sent, sentId]] as const) {
@@ -842,7 +845,8 @@ for (const generation of ["legacy", "qualified-v2"] as const) describe(`notice p
     expect((await admin.query("SELECT state,attempt_count FROM public.transactional_delivery_receipts WHERE idempotency_key=$1", [`subscription-notice:event:${notice.id}`])).rows)
       .toEqual([{ state: "accepted", attempt_count: 2 }]);
   }, 30000);
-  it.each(["accepted", "disabled", "retry"])("keeps typed legacy %s at-risk and pause identities across the carrier change", async history => {
+  // Retained event compatibility is separate from the actual base-ledger upgrade exercised below.
+  it.each(["accepted", "disabled", "retry"])("retains typed %s at-risk and pause event history across the carrier change", async history => {
     const risk = await subscription("method_missing", "active", history === "retry" ? 3 : 4), paused = await subscription("healthy", "paused");
     const priorRisk = randomUUID(), priorPause = randomUUID(), window = randomUUID();
     await admin.query(`INSERT INTO public.subscription_events(id,subscription_id,event_type,idempotency_key,payload)
@@ -913,3 +917,130 @@ it.each(["installer-managed", "operator-provisioned"] as const)("admits the at-r
       .rejects.toMatchObject({ code: "42501", message: "permission denied for function dunning_lifecycle_scan_at_risk" });
   } finally { await closePostgres(container, pools); }
 }, postgresSetupTimeoutMs);
+
+// Freeze the actual pre-notice boundary, not a synthetic event representation of its history.
+const beforeNoticeInventories = {
+  legacy: "efb971babfbc2f9fe39e9c09340edf2694d7fa51c678e587cd07b7466de1477f",
+  bootstrap: "731d7f834356bad154f48b6e3e127eb8f0bd50054f36f9224137eaf40b32772a",
+  separate: "ea60d61cf63ee3ff3f888afffbadaee85dfdb88e96cde4f104290294c1c81d2e",
+  adminInstaller: "b1912862ed752204419426398cd5b2105f32f2cc9cf9b0bc8c56fd5e914a74a6",
+  adminOperator: "1b2fd6cb8477b7acc102914bd2801da36a56086936c7e1d7eae577b5e13c5155",
+};
+it.each(["legacy", "qualified-v2"] as const)("bridges real base pause and renewal producers through the %s upgrade", async generation => {
+  const container = await runPostgresContainer({ name: `notice-base-upgrade-${generation}-${process.pid}`, password });
+  const pools: Pool[] = [];
+  mkdirSync(".context/scratch/c23", { recursive: true });
+  const prefixRoot = mkdtempSync(".context/scratch/c23/base-notices-");
+  try {
+    expect(await waitForPostgresTcpReady(container.connectionString)).toBe(true);
+    const owner = new Pool({ connectionString: container.connectionString }); pools.push(owner);
+    let installation: PlatformPostgresInstallation = { generation: "legacy" };
+    const login = new URL(container.connectionString);
+    if (generation === "qualified-v2") {
+      for (const role of ["base_notice_runtime", "base_notice_restore"]) await owner.query(`CREATE ROLE ${role} LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD '${password}'`);
+      installation = { generation, roleMode: "installer-managed", bootstrapLogin: "postgres", migrationLogin: "postgres", runtimeLogin: "base_notice_runtime", restoreLogin: "base_notice_restore" };
+      login.username = installation.runtimeLogin; login.password = password;
+    }
+    const migration = new Pool({ connectionString: container.connectionString,
+      options: installation.generation === "qualified-v2" ? qualifiedPostgresStartupOptions(installation) : undefined }); pools.push(migration);
+    const runtimeUrl = login.toString(), runtime = new Pool({ connectionString: runtimeUrl, options: "-c timezone=Etc/GMT+5" }); pools.push(runtime);
+    const prefix = structuredClone(candidate);
+    prefix.objectInventorySha256 = beforeNoticeInventories.legacy;
+    prefix.qualified.objectInventorySha256.bootstrapMigrator.withRestore = beforeNoticeInventories.bootstrap;
+    prefix.qualified.objectInventorySha256.separateMigrator.withRestore = beforeNoticeInventories.separate;
+    prefix.qualifiedAdmin.objectInventorySha256.installerManaged = beforeNoticeInventories.adminInstaller;
+    prefix.qualifiedAdmin.objectInventorySha256.operatorProvisioned = beforeNoticeInventories.adminOperator;
+    for (const plan of [prefix, prefix.qualified, prefix.qualifiedAdmin]) {
+      const end = plan.forward.findIndex((unit: { file: string }) => unit.file === "db/platform/migrations/20261106120000_subscription_notice_producers.sql");
+      expect(end).toBeGreaterThanOrEqual(0);
+      plan.forward = plan.forward.slice(0, end);
+      for (const unit of [plan.baseline, ...plan.forward]) {
+        const target = join(prefixRoot, unit.file); mkdirSync(dirname(target), { recursive: true }); writeFileSync(target, readFileSync(unit.file));
+      }
+    }
+    mkdirSync(join(prefixRoot, "config")); writeFileSync(join(prefixRoot, "config/platform-migration-manifest.json"), JSON.stringify(prefix));
+    const runner = (root = process.cwd()) => createPostgresMigrationRunner({ connectionString: container.connectionString }, { root, installation, poolFactory: () => migration });
+    await runner(prefixRoot).apply();
+    expect((await runner(prefixRoot).status()).pending).toEqual([]);
+    const producer = (await owner.query("SELECT prosrc FROM pg_proc WHERE oid='public.dunning_lifecycle_pause_reminder_dispatch(integer)'::regprocedure")).rows[0].prosrc;
+    expect(producer).toContain("INSERT INTO public.subscription_reminder_ledger");
+    expect(producer).toContain("'pause_ending'");
+    expect(producer).not.toContain("outbox_events");
+    expect((await owner.query("SELECT to_regprocedure('public.dunning_lifecycle_pause_reminder_dispatch(integer,integer)') AS extension")).rows).toEqual([{ extension: null }]);
+    const subject = async (renewal = false) => {
+      const client = randomUUID(), id = randomUUID();
+      await owner.query("INSERT INTO public.clients(id,email) VALUES($1,$2)", [client, `${client}@example.invalid`]);
+      await owner.query("INSERT INTO public.subscriptions(id,client_id,status,cadence_days,next_cycle_at,updated_at) VALUES($1,$2,'active',14,now()+interval '4 days',now()-interval '6 days')", [id, client]);
+      if (renewal) await owner.query("INSERT INTO public.subscription_method_states(subscription_id,health_state) VALUES($1,'healthy')", [id]);
+      return { id, client };
+    };
+    const acceptedPause = await subject(), resumedPause = await subject(), openPause = await subject();
+    const acceptedRenewal = await subject(true), openRenewal = await subject(true);
+    // 01:00Z is the previous local day in the dispatch session: identity must stay UTC.
+    const requestedAt = (await owner.query("SELECT ((date_trunc('day',now() AT TIME ZONE 'UTC')+interval '2 days 1 hour') AT TIME ZONE 'UTC')-interval '14 days' AS at")).rows[0].at;
+    for (const s of [acceptedPause, resumedPause, openPause]) await runtime.query(
+      "SELECT public.subscription_apply_lifecycle_action($1,$2,$3,'pause','{\"pausePreset\":\"2_weeks\"}'::jsonb,$4)", [s.client, `base-pause:${s.id}`, s.id, requestedAt]);
+    const windows = (await owner.query("SELECT id,subscription_id,ends_at FROM public.subscription_pause_windows ORDER BY subscription_id")).rows;
+    expect((await runtime.query("SELECT public.dunning_lifecycle_pause_reminder_dispatch(100) AS result")).rows[0].result).toMatchObject({ scanned: 3, queued: 3 });
+    expect((await runtime.query("SELECT public.dunning_lifecycle_renewal_reminder_enqueue(100) AS result")).rows[0].result).toEqual({ enqueued: 2 });
+    const census = async () => (await owner.query("SELECT id,subscription_id,reminder_kind,to_char(reminder_day,'YYYY-MM-DD') AS day,enqueued_at,xmin::text AS version FROM public.subscription_reminder_ledger ORDER BY id")).rows;
+    const before = await census(); expect(before).toHaveLength(5);
+    const ledgerFor = (id: string) => before.find(row => row.subscription_id === id)!;
+    expect(before.filter(row => row.reminder_kind === "pause_ending")).toHaveLength(3);
+    expect((await owner.query("SELECT id FROM public.subscription_events WHERE event_type IN ('subscription.pause_reminder_due','subscription.reminder.renewal_facts','subscription.notice.at_risk','subscription.notice.at_risk_outcome','subscription.notice.suppressed')")).rows).toEqual([]);
+    const baseReceipts = createPostgresTransactionalDeliveryStore({ connectionString: runtimeUrl });
+    const acceptedKeys: string[] = [];
+    const baseDelivery = createTransactionalDelivery({ store: baseReceipts, delivery: { async deliver(command) {
+      acceptedKeys.push(command.idempotencyKey); return { deliveryReference: `captured:base:${command.idempotencyKey}` };
+    } } });
+    try {
+      for (const [s, template] of [[acceptedPause, "subscription-pause-reminder"], [acceptedRenewal, "subscription-renewal-upcoming"]] as const) await baseDelivery.send({
+        idempotencyKey: `subscription-notice:reminder:${ledgerFor(s.id).id}`, recipientReference: `client:${s.client}`, templateReference: template,
+      });
+    } finally { await baseReceipts.close(); }
+    expect(acceptedKeys).toHaveLength(2);
+    await runtime.query("SELECT public.subscription_apply_lifecycle_action($1,$2,$3,'resume','{}'::jsonb,now())", [resumedPause.client, `base-resume:${resumedPause.id}`, resumedPause.id]);
+    // The old operator rail has no producer. Preserve a real base customer dunning row as well.
+    const failed = await subject();
+    const dunning = (await runtime.query("SELECT public.dunning_lifecycle_open_case($1,$2,NULL,$3,1,NULL,'temporary','declined',now(),100,'XXX','subscription-payment-failed-1','/recover') AS result",
+      [`base-case:${failed.id}`, failed.id, failed.client])).rows[0].result;
+    expect((await owner.query("SELECT id,recipient_kind FROM public.subscription_dunning_notifications")).rows).toEqual([{ id: dunning.notificationId, recipient_kind: "customer" }]);
+    expect((await runner().apply()).applied).toContain("db/platform/migrations/20261106120000_subscription_notice_producers.sql");
+    expect(await census()).toEqual(before); // No legacy row rewrite or re-key, including xmin.
+    expect((await owner.query("SELECT renewal_at FROM public.subscription_reminder_ledger")).rows.every(row => row.renewal_at === null)).toBe(true);
+    expect((await runtime.query("SELECT public.dunning_lifecycle_pause_reminder_dispatch(100) AS result")).rows[0].result).toMatchObject({ scanned: 2, queued: 0 });
+    const sent: string[] = [], bound: { id: string; source: string; kind: string; payload: Record<string, unknown> }[] = [];
+    const run = async () => {
+      const receipts = createPostgresTransactionalDeliveryStore({ connectionString: runtimeUrl });
+      const delivery = createTransactionalDelivery({ store: receipts, delivery: { async deliver(command) {
+        sent.push(command.idempotencyKey); return { deliveryReference: `captured:upgrade:${command.idempotencyKey}` };
+      } } });
+      try {
+        return await createPostgresLifecycleMessages({
+          async withSession(work) {
+            const fresh = new Pool({ connectionString: runtimeUrl, options: "-c timezone=Etc/GMT+5" });
+            try { const db = await fresh.connect(); try { return await work(db); } finally { db.release(); } } finally { await fresh.end(); }
+          },
+          bind: async notice => { bound.push(notice); return { recipientReference: `client:${notice.clientId}`, templateReference: notice.templateSlug }; },
+          delivery: { readReceipt: receipts.readReceipt, send: delivery.send },
+        }).run(100);
+      } finally { await receipts.close(); }
+    };
+    expect(await run()).toMatchObject({ failed: 0, skipped: 1, stale: 0 });
+    expect(await run()).toEqual({ sent: 0, replayed: 0, requeued: 0, failed: 0, skipped: 0, busy: 0, stale: 0 });
+    for (const s of [acceptedPause, resumedPause, acceptedRenewal]) expect(sent).not.toContain(`subscription-notice:reminder:${ledgerFor(s.id).id}`);
+    for (const s of [openPause, openRenewal]) expect(sent.filter(key => key === `subscription-notice:reminder:${ledgerFor(s.id).id}`)).toHaveLength(1);
+    expect(sent.filter(key => key === `subscription-notice:dunning:${dunning.notificationId}`)).toHaveLength(1);
+    const open = bound.filter(row => row.id === ledgerFor(openPause.id).id);
+    expect(open).toHaveLength(1);
+    expect(open[0]).toMatchObject({ source: "reminder", kind: "subscription.pause_reminder_due", payload: { pauseWindowId: windows.find(w => w.subscription_id === openPause.id)!.id } });
+    expect(bound.some(row => row.id === ledgerFor(resumedPause.id).id)).toBe(false);
+    expect((await owner.query("SELECT payload,status FROM public.outbox_events WHERE aggregate_id=$1 AND event_type='subscription.notice.suppressed'", [resumedPause.id])).rows)
+      .toEqual([{ payload: { reason: "pause_window_resolved", source: "reminder", sourceId: ledgerFor(resumedPause.id).id }, status: "processed" }]);
+    expect((await owner.query("SELECT id FROM public.outbox_events WHERE event_type='subscription.pause_reminder_due'")).rows).toEqual([]);
+    expect((await owner.query("SELECT source_id FROM public.subscription_notice_refusals WHERE source='reminder' AND source_id=$1", [ledgerFor(resumedPause.id).id])).rows).toEqual([]);
+    expect(await census()).toEqual(before);
+    expect((await owner.query("SELECT id,recipient_kind,status FROM public.subscription_dunning_notifications")).rows).toEqual([{ id: dunning.notificationId, recipient_kind: "customer", status: "sent" }]);
+    for (const key of acceptedKeys) expect((await owner.query("SELECT state,attempt_count FROM public.transactional_delivery_receipts WHERE idempotency_key=$1", [key])).rows).toEqual([{ state: "accepted", attempt_count: 1 }]);
+  } finally { await closePostgres(container, pools); rmSync(prefixRoot, { recursive: true, force: true }); }
+}, 60000);
