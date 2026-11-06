@@ -183,8 +183,8 @@ No release, repository setting, ruleset, secret or npm action is included.
 ### Step 3, W1: documentation checks that survive base moves (specs S1, S2)
 
 - **Scope:**
-  - `scripts/documentation-impact.ts` and `scripts/documentation-git.ts`;
-  - `scripts/documentation-impact.test.ts`;
+  - the former documentation-impact checker and `scripts/documentation-git.ts`;
+  - the former documentation-impact suite;
   - the marker description in `docs/platform/DOCUMENTATION.md`;
   - the merge-group paragraph in `CONTRIBUTING.md`.
 - **Falsifiers first:** P1 and F1 fail on `main`.
@@ -321,7 +321,7 @@ title where one exists.
 
 ### S1. Documentation obligation digest v2
 
-**Contract.** In `checkDocumentationImpact` (`scripts/documentation-impact.ts`),
+**Contract.** In `checkDocumentationImpact` (the former documentation-impact checker),
 the obligation digest hashes:
 
 ```ts

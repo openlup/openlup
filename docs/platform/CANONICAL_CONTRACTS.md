@@ -607,8 +607,7 @@ shapes. It preserves every earlier migration identity and existing state CHECK;
 its additive review marker distinguishes terminal cancelled capture from work
 awaiting reconciliation. The new attempt/readback factory is sandbox-only;
 generic prepared-provider storage and real PSP qualification remain unavailable.
-The separate closed-class admission prerequisite and feature pins must precede
-submission; a local manifest entry alone grants no delivery or release authority.
+Class data and feature pins may accompany SQL in its feature pull request; a local manifest entry alone grants no delivery or release authority.
 
 The G4 purchase-hold forward appends the same native forward path/hash to all three
 manifest selections, with a separate measured catalogue digest for each existing
@@ -646,7 +645,7 @@ no grant. Invoker rights and browser refusals remain unchanged. These manifests
 describe installation inputs, not authority to run jobs, disclose contacts or
 send messages. The [native notice binding](ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
 requires trusted scheduled-host admission and preserves transactional delivery receipt replay.
-The forward's separate class/pin admission and eventual package projection
+The forward's class/pin admission and eventual package projection
 remain delivery prerequisites; a measured local catalog is not publication or
 provider qualification.
 
@@ -677,14 +676,14 @@ prior approvals unchanged; the exact sixth SQL preceded the owner-path tail.
 The seventh approval binds one qualified owner-path forward's exact file and
 function definitions. Its active SQL is selected as unit 92, byte-identical to
 the prior inert fixture; the two installed inventories are measured separately.
-Trusted main parses a changed registry before returning for a no-SQL change,
-so reader support must land before the separate sixth-pin approval, which must
-land before SQL introduction. The installer-ownership/runtime-binding guard relies
+Historically, reader support, pin approval and SQL introduction landed
+separately. Future SQL, approval pins and class data may land together under
+main's validator; a new validator capability still lands first. The installer-ownership/runtime-binding guard relies
 on existing trusted session admission. The tail adds only context column writes/
 DELETE and receipt SELECT/INSERT; receipt mutation, ownership, RLS, triggers,
 production runner/projector, npm API and package budgets remain unchanged.
 The complete F90 prefix and historical inventory evidence remain retained.
-Introducing approved SQL still requires the separately landed control route;
+Introducing SQL follows the [co-located approval rule](DATA_AND_MIGRATIONS.md#co-located-sql-and-approval-pins);
 these pins grant no activation or managed-host compatibility.
 
 The separate restricted-bootstrap approval checkpoint extends the fixed list
@@ -697,7 +696,7 @@ role-mode inventory or grant a release or hosted compatibility claim.
 Four corrected `qb_` identities follow at approval positions 13–16 as one
 exact-byte append. The preceding twelve approvals remain fixed. The active
 restricted plan selects those four files with the approved `qa_` baseline only
-after the separate approval. Its local PG16 qualification covers both role
+with exact approval pins. Its local PG16 qualification covers both role
 modes; this does not qualify a hosted installation or release.
 A seventeenth exact-byte approval follows as one append. It binds the shared
 lock and conflict completion tail that both qualified plans select after their
@@ -834,8 +833,8 @@ headers and ACLs and remain outside installation manifests. Its ordered paths, r
 chains and exact grants/seeds do not install SQL, change a baseline, activate a
 runtime or establish upgrade compatibility. The
 [reviewed-forward boundary](DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards)
-requires a separate feature introduction and mandatory real-PG/pgTAP catalog
-evidence; existing admission classes keep their prior behavior.
+requires a feature introduction with exact class data and approval pins, plus
+mandatory real-PG/pgTAP catalog evidence.
 
 The CI-only [image inventory](../../config/ci-images.json) owns logical names,
 upstream repositories, tags, index digests and ordered public-registry sources
@@ -869,7 +868,7 @@ and needs no organization package before steps run.
 Other local launchers retain their existing behavior. These changes
 establish no public package visibility or runtime/application default.
 
-The non-required raw `pgtap` lane runs every shipped SQL test on the
+The `pgtap` lane is required through the `test` aggregate and runs every shipped SQL test on the
 install-proof `postgres:17` digest without the Supabase CLI or its images. Its
 [package pins](../../config/ci-postgres-packages.json) name the exact pg_cron
 1.6.4, pgTAP 1.3.3 and `pg_prove` 3.36 PGDG builds for Debian trixie, for amd64
@@ -923,8 +922,8 @@ and to reopen and refresh stock evidence on matching-fingerprint replay.
 The stock replacement keeps the supplied opaque fingerprint comparison and
 `23505` mismatch refusal; it does not rewrite legacy fingerprints.
 Each signature is fixed in code; its before hash binds the portable chain, while
-its after and whole-file hashes bind the proposed forward. This separate control
-approval supplies no migration or runtime activation. The
+its after and whole-file hashes bind the proposed forward. This approval
+supplies no migration or runtime activation. The
 [exact reviewed function rules](DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards)
 require unchanged headers and a single function statement, with introduction
 following the [co-located SQL/pin rule](DATA_AND_MIGRATIONS.md#co-located-sql-and-approval-pins). Existing managed classes retain their fixed counts; the separate
@@ -1179,8 +1178,8 @@ allowances. The baseline and scanner pins are unchanged. See the
 [CONTRIBUTING neutrality check guidance](../../CONTRIBUTING.md#package-policy-and-release-checks).
 
 Published Tree CI enforces that ratchet in required `self-check` and exercises
-its CLI refusal tests in required root `test`. Managed pgTAP remains a raw
-diagnostic; follow [testing](../../CONTRIBUTING.md#test-scope-and-diagnostics)
+its CLI refusal tests in required root `test`. Managed pgTAP is also required
+through that aggregate; follow [testing](../../CONTRIBUTING.md#test-scope-and-diagnostics)
 for execution and proof limits. These checks do not grant application privileges
 or declare complete compatibility evidence. Existing release context checks remain unchanged.
 

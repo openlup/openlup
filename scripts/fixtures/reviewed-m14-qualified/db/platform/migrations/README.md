@@ -10,8 +10,10 @@ active SQL. All six approval rows and the canonical manifest's legacy 88-unit
 selection and complete F90 prefix remain unchanged; the completion is unit 91
 of the qualified selection. Trusted admission parses a changed registry
 using main's reader before its no-SQL return, so reader support must land first.
-Only after the exact sixth approval lands may the SQL feature introduce the
-identical file and append its selected row.
+At that checkpoint the exact sixth approval landed before the SQL feature
+introduced the identical file and appended its selected row; under the current
+co-location rule in `docs/platform/DATA_AND_MIGRATIONS.md`, new approvals may
+land with their SQL.
 Observed installation hashes cannot replace prior source approval.
 
 The seventh fixture binds the qualified owner-path forward's exact nine

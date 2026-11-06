@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
-import { lstatSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { assertDocumentationPath, assertMaterializedDocumentationPath, documentationGit } from "./documentation-routing.ts";
+import { readFileSync } from "node:fs";
+import { assertDocumentationPath, documentationGit } from "./documentation-routing.ts";
 export { documentationGit } from "./documentation-routing.ts";
 
 export type DocumentationObject = { mode: string; digest: string; contents: Buffer };
@@ -73,14 +72,6 @@ function materializeGitRows(root: string, rows: { path: string; mode: string; oi
   if (position !== batch.length) throw new Error("documentation: unexpected base blob batch output");
   return new Map(rows.map(({ path, mode, oid }) => [path, { mode, ...blobs.get(oid)! }]));
 }
-export function readDocumentationCandidate(root: string, paths: string[]): Map<string, DocumentationObject> {
-  return new Map(paths.map((path) => {
-    assertMaterializedDocumentationPath(root, path);
-    const contents = readFileSync(join(root, path));
-    return [path, { mode: lstatSync(join(root, path)).mode & 0o111 ? "100755" : "100644", digest: documentationDigest(contents), contents }];
-  }));
-}
-
 function hostedBase(root: string, env: NodeJS.ProcessEnv, head: string): { base: string; provenance: "pull-request" | "merge-group" | "push" } {
   if (env.GITHUB_REPOSITORY !== "openlup/openlup" || !env.GITHUB_EVENT_PATH || !SHA.test(env.GITHUB_SHA ?? "") || head !== env.GITHUB_SHA)
     throw new Error("documentation: hosted checkout identity does not match the public event");
@@ -94,10 +85,15 @@ function hostedBase(root: string, env: NodeJS.ProcessEnv, head: string): { base:
   if (env.GITHUB_EVENT_NAME === "pull_request") {
     const base = event.pull_request?.base?.sha; const source = event.pull_request?.head?.sha;
     const parents = [...documentationGit(root, ["cat-file", "-p", head]).toString("utf8").matchAll(/^parent ([0-9a-f]{40})$/gmu)].map((match) => match[1]!);
-    // GITHUB_SHA and the exact parents identify the merge; a synchronize payload's merge_commit_sha can lag it.
-    if (!SHA.test(base ?? "") || !SHA.test(source ?? "") || parents.length !== 2 || parents[0] !== base || parents[1] !== source)
+    // Main can advance beyond the event base; merge_commit_sha can also lag the checkout.
+    if (!SHA.test(base ?? "") || !SHA.test(source ?? "") || parents.length !== 2 || parents[1] !== source)
       throw new Error("documentation: pull-request checkout is not the event's base/head merge");
-    return { base: base!, provenance: "pull-request" };
+    if (parents[0] !== base) {
+      try { documentationGit(root, ["merge-base", "--is-ancestor", base!, parents[0]!]); } catch {
+        throw new Error("documentation: pull-request event base is not an observed ancestor of the merge's first parent; complete history is required");
+      }
+    }
+    return { base: parents[0]!, provenance: "pull-request" };
   }
   if (env.GITHUB_EVENT_NAME === "push" && SHA.test(event.before ?? "") && !/^0+$/u.test(event.before!) && event.after === head)
     return { base: event.before!, provenance: "push" };

@@ -40,152 +40,20 @@ The policy is therefore **disclosure and accountability**, not permission.
 
 ## Admission, native review and DCO
 
-DCO certifies human provenance and the right to submit under the licence; it is
-not a certification of code quality or personal reading of every diff. The
-maintainer controls outcomes, important contracts and delivery authority.
-Technical review of maintainer-authorized agent tasks is delegated to independent
-fresh-context reviewers in the same logical task and evidence history.
+DCO certifies human provenance and the right to submit under the licence, not
+personal reading of every diff or code quality. One active supervisor coordinates
+the task's evidence and authorized delivery. Provider and model choice assign no
+rights: record the actual actors, permitted actions, submission and merge grants,
+and remaining human gates. Local work or review delegation does not transfer
+coordinator-only external-write authority.
 
-Coordination, task supervision, implementation, verification and independent review
-are roles, not provider assignments. One active supervisor owns each task's review
-evidence and authorized delivery. Codex, Claude Code or another compatible agent
-may fill any role within the actual maintainer grant; selecting a provider or model
-does not extend it. Local work and review may be delegated within scope without
-renewed approval unless the grant restricts actors. External writes retain their
-actual grants, and coordinator-only delegation does not pass to every worker.
-
-An author without supported independent-review capability or upstream write authority can
-prepare signed local commits and public check evidence, then use the
+[Deliver a change](../CONTRIBUTING.md#deliver-a-change) is the canonical sequence
+for worktrees, task records, checks, independent review, receipts and queue delivery.
+An author without upstream write authority can use the
 [local contribution handoff](../CONTRIBUTING.md#local-contribution-handoff).
-The authorized maintainer or supervisor owns independent native review, source
-receipt comment submission and queue admission. A dependency guide or local
-check result grants none of those rights.
-
-The [autonomous delivery intent](../docs/platform/plans/autonomous-reviewed-delivery-intent.md)
-and [implementation plan](../docs/platform/plans/autonomous-reviewed-delivery.md)
-define the subscription-backed task contract. The supervisor launches reviewers
-through native subagent tools or a supported local CLI, with observed fresh
-contexts and complete exact-candidate results, without author history or another
-reviewer's verdict. The [execution contract](../docs/platform/plans/autonomous-reviewed-delivery.md#provider-neutral-execution)
-owns that qualification. A CLI result is not counted merely because it contains
-PASS or a new run ID. No model API, backend, new host or authentication transfer
-is required; the maintainer need not move prompts or reports between tools.
-
-Installed verify and pre-push must refuse missing, stale, partial, mismatched or
-unresolved material evidence for the exact committed candidate. Their
-`needs_agent_review` response is handled by the supervisor, not by asking the
-maintainer to repeat an approved task. Each installation must demonstrate its actual refusal paths before claiming
-live enforcement; fixture results are not activation proof.
-Required source and merge-group mechanical checks and publication authority remain unchanged.
-
-Native execution observations and receipts enforce the process; they do not
-cryptographically attest remote agent execution or establish hard OS separation
-between author and supervisor. An author-written approval is not independent
-review. The supervisor must obtain actual complete execution observations under the review contract.
-
-The workflow records each task's outcome, scope, authority, acceptance,
-risk and execution/proof plan in one compact record. A separate specification
-is needed for an ambiguous or durable contract, not for every small task.
-Agents may refine execution notes without changing approved goals or guarantees.
-The [agent guide](../docs/platform/AGENT_GUIDE.md#change-and-verification-rules)
-owns finite outcome, inherited exclusions, necessary recovery and completion.
-Review checks that approved boundary; a discovery or optional recommendation
-cannot add acceptance obligations. Handoff retains blockers and consumed attempts.
-Programme or batch authority must be explicit; a generated plan cannot grant it.
-
-The initial candidate receives one short cold review for ordinary prose or
-narrow routine code, and two independent parallel bounded reviews for sensitive
-or material behaviour, executable instructions, contracts, controls and unknown
-risk; a specialist can fill one role. A third
-reviewer is reserved for a distinct uncovered concern or dispute. Reviewers see
-criteria and sufficient source context, not the author's conversation or each
-other's verdicts. A blocker states the mechanism, precondition, violated
-requirement and demonstrated effect on correctness or acceptance. Optional advice
-and style preferences do not block; there is no findings quota and an
-evidence-backed no-findings verdict is acceptable.
-
-Routine means a narrow internal change whose behavior, tests and rollback are
-understood. It excludes authorization, security, payment, personal or durable
-data, migrations, public contracts, dependency or package publication, release
-and CI controls, executable agent instructions, and unknown interactions. A
-small diff or the author's risk label alone does not qualify. The native gate
-refuses known sensitive paths; the single correctness reviewer must also confirm
-ordinary semantics and the simplicity perspective. Uncertainty or a discovered
-higher-risk interaction blocks the single-review route. Two fresh full reviews
-of the same committed candidate can resolve that uncertainty without a
-gratuitous code edit; prior evidence and the review-cycle budget remain visible.
-
-Commit repairs before review and give fresh reviewers the open finding cards.
-After a passing review with no open material finding, a repair is reviewed as its
-delta plus interactions: two reviewers when the delta touches SQL, controls,
-machinery or security-sensitive paths or changes a mode, one otherwise; two full
-reviews also satisfy it. A repair while material findings are open takes the
-full review floor. Every material finding must be
-closed; optional advice never blocks. Reviews do not expire.
-
-Unchanged prepare preserves evidence. Three repair cycles are automatic; after
-that `needs_owner` requires the owner to decide whether to continue, narrow or
-stop. Record an authorized continuation with `continue "<note>"`, which adds
-three cycles. The mandatory supervisor [regroup procedure](../CONTRIBUTING.md#regroup-when-work-stops-converging)
-adds no native gate or budget. The [agent guide](../AGENTS.md#change-and-verification-rules)
-owns this process; exhaustion cannot bypass review or authorize a merge.
-The review base is the candidate's fork point, the single
-`git merge-base HEAD origin/main`, so `main` moving ahead does not make a review
-stale. An optional `OPENLUP_STACK_BASE` can instead pin an exact predecessor
-between that fork point and HEAD; hosted source and group admission require the
-reviewed base on current main. No pin is needed for an independent PR.
-A merge of `main` into a reviewed candidate, with unchanged intent and author in
-the same session, keeps its review: a clean merge or the exact registry-carrier
-union needs no new review. Every other difference from that mechanical result,
-a resolved conflict or another edit made in the merge, is reviewed as the
-resolution; a conflict committed without a resolution is refused. These
-integrations charge no
-repair cycle. `prepare --new` records a changed intent or a rebase in the same
-append-only session history; findings, reviewers and the repair count carry on.
-Only an authorized `continue` adds cycles. Once criteria, required review and
-checks pass, stop optional edits and continue only authorized delivery steps.
-
-Hosted CI on the integration tree is the required verification. Local runs are
-optional and serve the code being written; `verify-command` does not attest
-completeness.
-
-Planning and review ask whether a simpler solution delivers the outcome faster,
-with less maintenance and stronger evidence. New abstractions, dependencies,
-retries, caches, artifacts or gates need a concrete benefit over the nearest
-simpler alternative. Obvious small tasks need no alternatives essay. Measure
-accepted outcomes, regressions, confirmed and false findings, lead time and
-total cost; code and pull-request volume are not quality targets. This
-perspective never waives existing controls or acceptance evidence.
-
-The approved [native queue follow-up](../docs/platform/plans/autonomous-reviewed-delivery.md#approved-native-queue-follow-up-wave)
-adds an optional GitHub admission transport, not another reviewer host. The
-active supervisor retains actual native source-review observations and posts
-`node scripts/agent-review-session.mjs receipt <PR>` output as a PR comment with
-`gh pr comment <PR> --body-file -`, within delivery authority, as soon as the
-pull request is open and ready, then waits for actual admission. Admission
-checks the live PR head, tree and reviewer floor.
-Under actual merge authority, after review, required maintainer
-reads and the ready-main-PR source receipt, the supervisor may enable auto-merge
-once while source checks are pending, following
-[Merge queue](../CONTRIBUTING.md#merge-queue). Known failed checks, conflicts and
-unresolved mergeability keep their existing stops. A pending `autoMergeRequest`
-confirms auto-merge is enabled; only `mergeQueueEntry` confirms queue entry.
-Actual required source and group success still precedes merge.
-
-The source review carries over to a merge group when the reviewed base is an
-ancestor of the queue base and the group tree is the reviewed tree or the clean
-`git merge-tree` result of the reviewed change on that base. Admission checks
-this itself; the author declares nothing. The mechanical checks on the group
-tree cover behavioural interaction. Otherwise the group is rejected: merge
-`main`, have the conflict resolution reviewed, and post the new source receipt.
-
-Activation requires separate explicit maintainer approval of the exact settings
-and live refusal proof. A disabled or skipped admission job is not that proof.
-The six mechanical checks remain required; active queue admission adds a seventh
-required `native-review` context. Its success establishes the review at admission. GitHub
-Actions source attribution does not isolate a workflow against a malicious
-writer able to spoof the same context. Native receipts remain process evidence;
-neither transport nor queue admission grants merge, release or settings authority.
+Review receipts and generated plans grant no publication, merge, credential,
+settings or release authority. Protected release approval and separate-repository
+work retain their own explicit authorization boundaries.
 
 ## Why the current bar is where it is
 
@@ -216,6 +84,9 @@ checkable: *you can extend this safely, including by delegating to an agent,
 because the readiness condition is machine-checked.*
 
 ## Changes to this policy
+
+These dated decisions are history. Current delivery and review follow
+[Deliver a change](../CONTRIBUTING.md#deliver-a-change).
 
 **Review binds to the change, decided 2026-11-05.** The rules read that review
 evidence expires after 24 hours, that a base move touching the change's paths or

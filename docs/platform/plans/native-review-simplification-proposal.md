@@ -9,15 +9,12 @@ programme. Steps 1–2
 (aggregate `test` job; run tooling tests only when their inputs change) belong
 to a separate session and are not touched here.
 
-The inventory, timings and staged-delivery alternatives below record the proposal
-at approval. The binding approved interface uses version-2 sessions, expiry from
-the earliest counted PASS report for the current candidate, three automatic
-repair cycles with `continue "<note>"` adding three, and `prepare --new` after a
-rebase or changed intent. The command wrapper remains a verify-before/after
-wrapper with optional resource brokering; merge previews, proof leases and
-policy/inventory runs are removed from it. The current
-[session interface](autonomous-reviewed-delivery.md#native-session-interface)
-owns executable instructions.
+The inventory, timings and staged-delivery alternatives below are historical
+proposal and implementation records. The former binding interface used version-2
+sessions, earliest-PASS expiry, three automatic repair cycles and
+`continue "<note>"` to add three more. Those obligations have been removed.
+Current review and delivery follow
+[Deliver a change](../../../CONTRIBUTING.md#deliver-a-change).
 
 ## Summary
 
@@ -105,11 +102,10 @@ repair state machine and no second review route for merge groups.
 
 ### Proposed mechanism (about 450 LOC)
 
-This mechanism is the proposal-time sketch, not the binding interface recorded
-above. Its “latest report” expiry and boolean owner-continuation sketch were not
-selected: current expiry remains anchored to the earliest counted PASS, and
-`continue` records an append-only continuation that adds three cycles. See the
-[native session interface](autonomous-reviewed-delivery.md#native-session-interface).
+This mechanism is a historical proposal-time sketch. Neither its latest-report
+expiry nor the later earliest-PASS expiry and append-only `continue` cycle budget
+is current. Use [Deliver a change](../../../CONTRIBUTING.md#deliver-a-change)
+for the current interface; the alternatives below remain historical.
 
 1. **Local session (`agent-review-session.mjs`, ~250 LOC).**
    - `prepare` records the base (fork point or stack pin), the head tree, the
@@ -146,7 +142,7 @@ selected: current expiry remains anchored to the earliest counted PASS, and
    owner-digest checks; symlink defences; and the `verify-command` wrapper
    (moved out).
 
-### AGENTS.md rule text that would change (owner decision)
+### Historical AGENTS.md rule-text alternatives (owner decision)
 
 The "Change and verification rules" section in AGENTS.md and
 `docs/platform/AGENT_GUIDE.md` changes together:

@@ -1,5 +1,10 @@
 # Native notice-table class approval
 
+SQL admission update, 6 November 2026: supported class data, exact approval pins
+and SQL may land together under the [current admission rule](../DATA_AND_MIGRATIONS.md#co-located-sql-and-approval-pins).
+Earlier requirements here for a separate class or pin approval before SQL are
+historical; other scope, proof and owner gates remain unchanged.
+
 ## Outcome and scope
 
 Add the existing checker-pinned `insertSelectTables` value to the unbound native

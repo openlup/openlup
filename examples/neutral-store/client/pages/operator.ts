@@ -73,7 +73,7 @@ function customerActions(context: PageContext): HTMLElement {
     }),
     actionForm(context, {
       operation: 'operator.recovery', submit: 'repairAction',
-      fields: [customerRef, { name: 'subscriptionRef', label: 'subscriptionRef' }],
+      fields: [customerRef, { name: 'caseRef', label: 'caseRef' }],
     }));
 }
 

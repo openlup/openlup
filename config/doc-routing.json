@@ -264,20 +264,11 @@
       "anchor": "#development-preview-checks"
     },
     {
-      "id": "docs-impact",
-      "when": "Documentation change impact and same-owner review enforcement",
-      "paths": [
-        "scripts/documentation-impact*.ts",
-        "scripts/documentation-git*.ts"
-      ],
-      "doc": "docs/platform/DOCUMENTATION.md",
-      "anchor": "#impact"
-    },
-    {
       "id": "docs-export",
       "when": "Generated documentation navigation and the checked bundle consumer boundary",
       "paths": [
         "scripts/documentation-bundle*.ts",
+        "scripts/documentation-git*.ts",
         "scripts/documentation-navigation*.ts",
         ".gitignore"
       ],

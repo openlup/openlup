@@ -24,7 +24,7 @@ export const subscriptionCorrelationSql = `o.subscription_cycle_id AS activation
 export const subscriptionCorrelationJoin = `LEFT JOIN public.subscription_activations a ON a.subscription_id=s.id
  LEFT JOIN public.commerce_orders o ON o.id=a.order_id
  LEFT JOIN public.subscription_cycles ac ON ac.id=o.subscription_cycle_id`;
-const SNAPSHOT_SQL = `SELECT s.id AS subscription_id,s.client_id,s.cadence_days,s.template_version,to_char(s.next_cycle_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS scheduled_at,t.*,
+const SNAPSHOT_SQL = `SELECT s.id AS subscription_id,s.client_id,s.cadence_days,s.template_version,o.id AS activation_order_id,to_char(s.next_cycle_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS scheduled_at,t.*,
  to_char(t.unattended_charge_authorized_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS unattended_charge_authorized_at,
  ${subscriptionCorrelationSql},m.health_state,public.subscription_renewal_purchase_terms(s.id) AS purchase_facts,
  (SELECT e.payload->'linePricing' FROM public.subscription_events e WHERE e.subscription_id=s.id

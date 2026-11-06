@@ -388,7 +388,9 @@ have host-level real-PostgreSQL proofs in both configurations. The measured
 three-package application delta is zero bytes against the committed dependency stack.
 The database-backed UI suite passes 98 checks (49 per configuration), including
 both unchanged required purchase cases, with no failures, skips or retries.
-Separate local browser proof covers captured recovery mail opened in a fresh
+Committed source and real-HTTP recovery tests need no starter UI assets or
+Chromium. Real-browser recovery runs are local evidence, not a committed root-job
+witness. Separate local browser proof covers captured recovery mail opened in a fresh
 context, URL cleanup/reload, an actual host-process restart, paid-link confirmation
 without controls, native-clock expiry and revoked/unknown/cross-order/cancelled
 refusals. Sign-in exposes the order and activated subscription with completed
@@ -439,3 +441,33 @@ purchase through payment, native challenge, sign-in and account order visibility
 both purchase and challenge requests. Address changes check the same phone and
 postal-code bounds as checkout. Each case has an explicit 30-second timeout;
 run new PostgreSQL cases in the default zone and both offset zones.
+
+
+The committed recurring-recovery and renewal PostgreSQL files pass 21 cases with
+no skips on the selected native installation, including its command receipt-lock
+completion. Both operator cases prove issuance, immutable artifact capture/replay,
+missing-artifact and changed-context refusal, process restart and revocation by
+another active human administrator. The authenticated recovery case scans the
+same host log stream for its raw token after real HTTP recovery. Consumer
+installations are isolated per setup and removed in teardown. Browser recovery
+remains separate local evidence; the root proof needs no starter assets or Chromium.
+
+The authenticated recovery proof also releases four concurrent account requests
+from a real PostgreSQL lock barrier and requires every owned renewal projection
+to complete. The host releases its actor transaction before the separate
+renewal read borrows the same bounded pool; queries and authority checks retain
+their existing owners.
+
+## Paid-order message witness
+
+[`neutralStorePaidMail.test.ts`](../../../tests/postgres/neutralStorePaidMail.test.ts)
+installs the canonical catalogue in disposable PostgreSQL and claims through the
+restricted runtime login without extra grants. It invokes the actual lifecycle
+entry with renewals disabled, observes exactly one private paid receipt with
+recipient reference, localized subject and frozen totals, then proves replay is
+inert. A competing claim is fenced; a lost acknowledgement followed by lease
+expiry reuses the original receipt before reading a changed contact. Unpaid and
+cancelled purchases produce none. The same file checks every unselected send
+method's refusal, missing-locale/empty-subject validation, private permissions,
+immutable capture and corrupt-identity refusal. These are local capture witnesses;
+no real mail delivery or provider qualification is claimed.

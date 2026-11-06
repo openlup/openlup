@@ -1,5 +1,10 @@
 # Native account consent choices
 
+SQL admission update, 6 November 2026: supported class data, exact approval pins
+and SQL may land together under the [current admission rule](../DATA_AND_MIGRATIONS.md#co-located-sql-and-approval-pins).
+Earlier requirements here for a separate class or pin approval before SQL are
+historical; other scope, proof and owner gates remain unchanged.
+
 Status: R0 handover and selected suites are green; final cheap checks and DCO merge handoff.
 Admission remains blocked on the separately owned prior control. The supervisor
 assigned the additive native bounce/complaint fan-out fix to this row so that the
@@ -526,7 +531,7 @@ The full selection (including proof children through their parent tests) is:
 
 - `packages/platform/test/communications/nativeDelivery.test.ts` — not run; stopped at blocker.
 - `scripts/customer-selfservice-recovery-schema.test.ts` — not run; stopped at blocker.
-- `scripts/documentation-impact.test.ts` — not run; stopped at blocker.
+- the former documentation-impact suite — not run; stopped at blocker.
 - `scripts/packages/platform-cold-consumer.test.ts` — not run; stopped at blocker.
 - `scripts/reviewed-batch-forward.test.ts` — not run; stopped at blocker.
 - `server/adapters/postgres/communicationsLifecycle.test.ts` — not run; stopped at blocker.
@@ -610,7 +615,7 @@ whose SQL, production source and test are unchanged. Current results:
 | --- | ---: | ---: |
 | `packages/platform/test/communications/nativeDelivery.test.ts` | 2 | 0 |
 | `scripts/customer-selfservice-recovery-schema.test.ts` | 3 | 0 |
-| `scripts/documentation-impact.test.ts` | 101 | 0 |
+| the former documentation-impact suite | 101 | 0 |
 | `scripts/packages/platform-cold-consumer.test.ts` | 108 | 0 |
 | `scripts/reviewed-batch-forward.test.ts` | 691 | 0 |
 | `server/adapters/postgres/communicationsLifecycle.test.ts` | 1 | 0 |
@@ -737,7 +742,7 @@ The current measurements, unchanged from the earlier isolated run, are:
 | --- | ---: | ---: |
 | `packages/platform/test/communications/nativeDelivery.test.ts` | 2 | 0 |
 | `scripts/customer-selfservice-recovery-schema.test.ts` | 3 | 0 |
-| `scripts/documentation-impact.test.ts` | 101 | 0 |
+| the former documentation-impact suite | 101 | 0 |
 | `scripts/packages/platform-cold-consumer.test.ts` | 108 | 0 |
 | `scripts/packages/platform-migration-projection.test.ts` | 1 | 0 |
 | `scripts/reviewed-batch-forward.test.ts` | 691 | 0 |

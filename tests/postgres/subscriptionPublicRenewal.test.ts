@@ -579,7 +579,7 @@ it.each(["generic", "native"] as const)("keeps %s reservation busy retryable wit
         try { return await executor.query(sql, values); }
         finally { await a.query("ROLLBACK"); }
       });
-      expect(await b.services.run()).toMatchObject({ renewals: [{ status: "error", reason: "renewal_processing_failed" }] });
+      expect(await b.services.run()).toEqual({ retries: [], renewals: [] });
       b.queries.mockImplementation(executor.query);
     }
     expect(d.execute).not.toHaveBeenCalled();
