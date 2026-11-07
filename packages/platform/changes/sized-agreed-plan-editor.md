@@ -9,8 +9,10 @@ publication-head fence and activates no deployment or release.
 
 Selected catalogue evidence (including document revision/digest, physical size,
 exclusions and stock) is retained in the preview ledger and compared by existing
-SQL equality. The host rereads and compares it under locks through commit.
+SQL equality. The host rereads and compares it in the apply transaction; catalogue
+rows are not locked, so concurrent catalogue publication remains the
+publication-fence limit.
 
-Migration: extend `assertCurrentFacts` to lock and compare its selected catalogue
+Migration: extend `assertCurrentFacts` to reread and compare its selected catalogue
 facts argument on the supplied transaction connection. Recreate outstanding
 sized previews after upgrading; older previews lack the catalogue evidence.

@@ -17,10 +17,12 @@ export interface SizedHostPorts {
   /** Only opt-in derives fresh need. Ordinary edits use the stored dailyNeed carrier. */
   resolveOptInNeed(db: SubscriptionQueryExecutor, context: SizedEditContext): Promise<{ dailyNeed: number; snapshot: Record<string, unknown> }>;
   readCatalog(db: SubscriptionQueryExecutor, context: SizedEditContext): Promise<SizedCatalogFact[]>;
-  /** On this transaction connection, lock and reread owned subject rows, optional opt-in need,
-   * and every selected catalogue fact (including stock). Compare with the supplied evidence;
-   * a mismatch throws subscription_edit_invalid_subject_snapshot. Locks hold through commit.
-   * Catalogue evidence is ordered by canonical variant UUID, with sorted exclusion keys. */
+  /** On this transaction connection, lock and reread owned subject rows and the optional opt-in
+   * need, and reread every selected catalogue fact (including stock). Compare with the supplied
+   * evidence; a mismatch throws subscription_edit_invalid_subject_snapshot. Subject locks hold
+   * through commit. Catalogue rows are reread, not locked: a restricted runtime may only read
+   * them, and serializing against a concurrent catalogue publication is the publication-fence
+   * limit. Catalogue evidence is ordered by canonical variant UUID, with sorted exclusion keys. */
   assertCurrentFacts(db: SubscriptionQueryExecutor, context: SizedEditContext, expected: SizedSubjectFacts,
     optInNeed: Record<string, unknown> | null, catalogFacts: readonly SizedCatalogFact[]): Promise<void>;
   proposePortion(input: { dailyNeed: number; cadenceDays: number; factor: number;
