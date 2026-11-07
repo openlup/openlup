@@ -361,9 +361,12 @@ database demonstration marker, creates its private mode-0600 keyring in
 `.context/quote-acceptance-keyring.json` if absent, and passes
 `--quote-acceptance-key-file` to the host. A restart of that container reuses the
 file; recreating it, including `down` followed by `up`, generates a new key and
-unsubmitted quotes need refresh. Keep the projects' loopback origins distinct.
+unsubmitted quotes need refresh. Compose publishes the fixed loopback port 4319;
+run these lifecycle configurations sequentially. These two lifecycle commands
+do not create the two distinct origins in the browser configuration below.
 
-For a host outside lifecycle, supply the documented `--database-url`,
+For the two-origin browser run below, start one host per configuration outside
+lifecycle on distinct loopback ports. Supply the documented `--database-url`,
 `--configuration`, `--port`, `--listen` and `--quote-acceptance-key-file <path>`,
 using the restricted installer-managed runtime role. Supply your own private
 JSON keyring: `current` and optional `previous`, each at least 32 characters.
