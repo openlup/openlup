@@ -220,6 +220,56 @@ describe.each(Object.values(configurations))('$id recurring recovery HTTP bounda
   }, postgresTeardownTimeoutMs);
 
   // Measured 0.85–1.57 s; retain the adjacent HTTP proof's 10 s bound.
+  it('refuses old quote proofs after key rotation without effects and accepts a fresh quote', async () => {
+    const payload = { locale: 'en', email: `rotate-${randomUUID()}@example.test`, configuration: config.id,
+      acquisitionCapability: ACQUISITION_TERMS_CAPABILITY, country: config.market.country,
+      termsAccepted: true, termsRevision: config.legal.revision, firstName: 'Example', lastName: 'Buyer',
+      phone: '000000000', line1: '1 Example Lane', city: 'Example City', postalCode: '00000',
+      cart: { schemaVersion: 1, configuration: config.id, mode: 'subscription',
+        cadenceDays: config.offer.defaultCadenceDays, lines: [{ sku: config.offer.products[0]!.sku, quantity: 1 }] } };
+    const quote = await call('offer.validate', payload);
+    expect(quote.ok && isRecord(quote.value)).toBe(true);
+    if (!quote.ok || !isRecord(quote.value)) throw new Error('rotation_quote_required');
+    const retained = { ...payload, quoteAcceptance: quote.value.quoteAcceptance, expectedTotal: quote.value.expectedTotal };
+    // A separate already-created checkout exercises the unchanged command/proof retry.
+    const priorPayload = { ...payload, email: `prior-${randomUUID()}@example.test` };
+    const priorQuote = await call('offer.validate', priorPayload);
+    if (!priorQuote.ok || !isRecord(priorQuote.value)) throw new Error('rotation_quote_required');
+    const priorInput = { ...priorPayload, quoteAcceptance: priorQuote.value.quoteAcceptance, expectedTotal: priorQuote.value.expectedTotal };
+    const priorKey = randomUUID();
+    const priorCreated = await call('checkout.create', priorInput, undefined, priorKey);
+    if (!priorCreated.ok || !isRecord(priorCreated.value)) throw new Error('rotation_checkout_required');
+    const counts = async () => (await owner.query(`SELECT
+      (SELECT count(*) FROM public.commerce_checkout_resume_drafts) AS drafts,
+      (SELECT count(*) FROM public.commerce_order_draft_receipts) AS receipts,
+      (SELECT count(*) FROM public.commerce_orders) AS orders,
+      (SELECT count(*) FROM public.payment_truth_events) AS payments,
+      (SELECT count(*) FROM public.payment_simulator_attempts) AS attempts,
+      (SELECT count(*) FROM public.commerce_settlement_intents) AS settlements,
+      (SELECT count(*) FROM public.clients) AS contacts`)).rows;
+    const before = await counts();
+    await stopHost();
+    const current = randomBytes(32).toString('base64url'); privateValues.add(current);
+    await writeFile(keyringFile, JSON.stringify({ current }), { mode: 0o600 });
+    await startHost();
+    expect(await call('checkout.create', retained)).toEqual({ ok: false, code: 'starter_quote_refresh_required' });
+    expect(await counts()).toEqual(before);
+    const replay = await call('checkout.create', priorInput, undefined, priorKey);
+    expect(replay.ok).toBe(true);
+    if (!replay.ok || !isRecord(replay.value)) throw new Error('rotation_receipt_required');
+    expect(replay.value.orderRef).toBe(priorCreated.value.orderRef);
+    expect(await counts()).toEqual(before);
+    const fresh = await call('offer.validate', payload);
+    if (!fresh.ok || !isRecord(fresh.value)) throw new Error('rotation_quote_required');
+    const created = await call('checkout.create', { ...payload,
+      quoteAcceptance: fresh.value.quoteAcceptance, expectedTotal: fresh.value.expectedTotal });
+    expect(created.ok).toBe(true);
+    if (!created.ok || !isRecord(created.value)) throw new Error('rotation_checkout_required');
+    const paid = await call('payment.simulate', { orderRef: created.value.orderRef, token: created.value.token, outcome: 'captured' });
+    expect(paid.ok).toBe(true);
+    expect((await owner.query('SELECT status FROM public.commerce_orders WHERE id=$1', [created.value.orderRef])).rows[0]?.status).toBe('paid');
+  }, 30_000);
+
   it('fences every checkout continuation and simulator/activation entry for guest and owner, including a misleading order', async () => {
     const f = await declined(), raw = await issue(f), control = await createOrder(f.email);
     await signIn(f.email);

@@ -63,7 +63,7 @@ if (command === 'candidate') {
       'node', 'lifecycle.mjs', 'install', '--configuration', config.id]);
     // Install and runtime receive the same non-secret configuration through arguments.
     const override = { services: { application: { command: [
-      'node', '--experimental-strip-types', 'host/server.ts',
+      'node', '--experimental-strip-types', 'lifecycle.mjs', 'serve-demo',
       '--configuration', config.id, '--port', '4319', '--listen', '0.0.0.0',
       '--database-url', 'postgresql://starter_runtime@database:5432/neutral_store',
     ] } } };
@@ -73,6 +73,29 @@ if (command === 'candidate') {
   } catch (error) {
     const code = error instanceof Error && /^starter_[a-z_]+$/.test(error.message)
       ? error.message : 'starter_installation_failed';
+    process.stderr.write(`${code}\n`);
+    process.exitCode = 2;
+  }
+} else if (command === 'serve-demo') {
+  // Internal container entry: private runtime state never enters the image or Compose values.
+  try {
+    const { parseHostArguments } = await import('./shared/config.ts');
+    const { prepareDemonstrationQuoteKey } = await import('./installation/install.ts');
+    const { default: pg } = await import('pg');
+    const options = parseHostArguments(args);
+    if (!options.databaseUrl) throw new Error('starter_runtime_connection_required');
+    const connection = new pg.Client({ connectionString: options.databaseUrl });
+    let keyFile;
+    try {
+      await connection.connect();
+      keyFile = await prepareDemonstrationQuoteKey(connection, resolve(root, '.context'));
+    } finally { await connection.end(); }
+    process.argv = [process.execPath, resolve(root, 'host/server.ts'), ...args,
+      '--quote-acceptance-key-file', keyFile];
+    await import('./host/server.ts');
+  } catch (error) {
+    const code = error instanceof Error && /^starter_[a-z_]+$/.test(error.message)
+      ? error.message : 'starter_demo_start_failed';
     process.stderr.write(`${code}\n`);
     process.exitCode = 2;
   }
