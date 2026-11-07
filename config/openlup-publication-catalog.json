@@ -1918,6 +1918,14 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/browser/editor-component-fixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/browser/editor-components.spec.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/browser/journey.spec.ts",
       "class": "public-output"
     },
@@ -1938,6 +1946,18 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/browser/subscription-api.spec.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/browser/subscription-journeys.spec.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/browser/subscription-native-fixture.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/client/api.ts",
       "class": "public-output"
     },
@@ -1951,6 +1971,22 @@
     },
     {
       "path": "examples/neutral-store/client/dom.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/client/editors/classic-model.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/client/editors/entries.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/client/editors/sized-model.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/client/editors/view.ts",
       "class": "public-output"
     },
     {
@@ -1978,6 +2014,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/client/pages/classic-editor.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/client/pages/destinations.ts",
       "class": "public-output"
     },
@@ -1987,6 +2027,10 @@
     },
     {
       "path": "examples/neutral-store/client/pages/participation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/client/pages/sized-editor.ts",
       "class": "public-output"
     },
     {
@@ -2070,6 +2114,18 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/host/editor-catalogue.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/host/editor-mail.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/host/editor-ports.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/host/healthcheck.ts",
       "class": "public-output"
     },
@@ -2146,6 +2202,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/host/subscription-editors.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/index.html",
       "class": "public-output"
     },
@@ -2186,6 +2246,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/owned/editor-copy.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/owned/fragments.ts",
       "class": "public-output"
     },
@@ -2210,6 +2274,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/owned/subscription-editing.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/ownership.json",
       "class": "public-output"
     },
@@ -2223,6 +2291,10 @@
     },
     {
       "path": "examples/neutral-store/playwright.database.config.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/playwright.editors.config.ts",
       "class": "public-output"
     },
     {
@@ -2294,6 +2366,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/shared/subscription-edit.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/starter-release.json",
       "class": "public-output"
     },
@@ -2315,6 +2391,14 @@
     },
     {
       "path": "examples/neutral-store/test/checkout-recovery.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/editor-contracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/editor-mail.test.ts",
       "class": "public-output"
     },
     {
@@ -2371,6 +2455,14 @@
     },
     {
       "path": "examples/neutral-store/test/sessions.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/subscription-models.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/subscription-routes.test.ts",
       "class": "public-output"
     },
     {

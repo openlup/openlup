@@ -58,9 +58,9 @@ afterAll(async () => {
 
 // Measured local bodies: 6.529 s / 6.338 s; four times the maximum fits 30 s.
 // The child measured at most 2.703 s; retain its separate 20 s deadline.
-for (const configuration of ['supplements','coffee']) it(`${configuration}: installed seed, strict quotes, capability refusal and retained-promise acceptance`, async () => {
+for (const { configuration, multiSize } of [{ configuration: 'supplements', multiSize: false }, { configuration: 'coffee', multiSize: false }, { configuration: 'coffee', multiSize: true }]) it(multiSize ? 'multi-size checkout selects its SKU and refuses a SKU absent from the shared product document' : `${configuration}: installed seed, strict quotes, capability refusal and retained-promise acceptance`, async () => {
   const caseStarted = performance.now();
-  const container = await runPostgresContainer({ name: `starter-quote-${configuration}-${process.pid}`,database: 'neutral_store',password: 'synthetic-conformance' });
+  const container = await runPostgresContainer({ name: `starter-quote-${configuration}-${multiSize ? "multi" : "single"}-${process.pid}`,database: 'neutral_store',password: 'synthetic-conformance' });
   containers.push(container);
   if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error('Starter quote PostgreSQL unavailable');
   const owner = new Pool({ connectionString: container.connectionString }); pools.push(owner);
@@ -81,16 +81,24 @@ for (const configuration of ['supplements','coffee']) it(`${configuration}: inst
     import assert from 'node:assert/strict';
     import pg from 'pg';
     import {createHash} from 'node:crypto';
+    import * as awaitedPricing from '@openlup/platform/pricing';
     import {configurations} from './application/owned/store.config.ts';
     import {applyDemoSeed} from './application/installation/install.ts';
     import {createNativeQuoteService} from './application/host/quote-composition.ts';
     import {installedAcquisitionPredecessors} from './application/host/acquisition-predecessors.ts';
     const config = structuredClone(configurations[fixture.configuration]);
     config.offer.products[0].unitPrice.amountMinor = 1499;
+    if (fixture.multiSize) {
+      const large = structuredClone(config.subscriptionEditing.catalogue.find(row => row.sku === config.offer.products[0].sku + '-L'));
+      large.unitPrice.amountMinor = 2998;
+      large.physical = {netWeightG:500,unitGtin:'0000000000109',issuer:'fixture-large'};
+      config.offer.products.push(large);
+      config.purchase.stock.quantities[large.sku]=1000;
+    }
     const owner = new pg.Pool({connectionString:fixture.ownerUrl});
     const runtime = new pg.Pool({connectionString:fixture.runtimeUrl});
     try {
-      const install = {connection:owner,installRole:'postgres',runtimeRole:'starter_runtime',close:async()=>{}};
+      const install = {connection:owner,installRole:'postgres',runtimeRole:'starter_runtime',stock:(await import('@openlup/platform/fulfillment')).createPostgresFulfillmentStockSyncPort(runtime,{sourceKey:'starter-demo:'+config.id,readLocalInventoryStock:async()=>[]}),close:async()=>{}};
       await applyDemoSeed(config,install);await applyDemoSeed(config,install);
       assert.equal(Number((await owner.query('SELECT count(*) AS n FROM public.subscription_price_policy_revisions')).rows[0].n),1);
       assert.equal(Number((await owner.query('SELECT count(*) AS n FROM public.commerce_promotion_definitions')).rows[0].n),1);
@@ -206,11 +214,35 @@ for (const configuration of ['supplements','coffee']) it(`${configuration}: inst
         assert.equal(second.ok,true,second.code);assert.equal(/"(?:linked|created|clientId|principalId|email|account)"/.test(JSON.stringify(second)),false);
         const secondPaid=(await call('payment.simulate',{orderRef:second.value.orderRef,token:second.value.token,outcome:'captured'})).body;
         assert.equal(secondPaid.ok,true,secondPaid.code);assert.equal(secondPaid.value.renewalAttachment,'complete');
+        if (fixture.multiSize) {
+          const large = config.offer.products.at(-1);
+          const largeInput = {...input,email:'multi-size@example.test',cart:{...cart,mode:'one_time',cadenceDays:null,lines:[{sku:large.sku,quantity:2}]}};
+          const largeQuote = await quote(largeInput);
+          assert.equal(largeQuote.totalMinor,5996);
+          const largeOrder = (await call('checkout.create',largeInput)).body;
+          assert.equal(largeOrder.ok,true,largeOrder.code);
+          assert.equal(largeOrder.value.total.amountMinor,5996);
+          const line = (await owner.query('SELECT i.sku_id,s.product_id,p.current_document_revision_id FROM public.commerce_order_items i JOIN public.catalog_skus s ON s.id=i.sku_id JOIN public.catalog_products p ON p.id=s.product_id WHERE i.order_id=$1',[largeOrder.value.orderRef])).rows[0];
+          const original = (await owner.query('SELECT document_payload,digest FROM public.catalog_product_document_revisions WHERE id=$1',[line.current_document_revision_id])).rows[0];
+          assert.equal(original.document_payload.variants.length,2);
+          assert.equal(original.document_payload.variants.find(row=>row.sku===large.sku).skuId,line.sku_id);
+          const primaryProduct = (await owner.query('SELECT product_id FROM public.catalog_skus WHERE sku=$1',[config.offer.products[0].sku])).rows[0];
+          assert.equal(line.product_id,primaryProduct.product_id);
+          const damaged = structuredClone(original.document_payload);
+          damaged.variants = damaged.variants.filter(row=>row.sku!==large.sku);
+          damaged.revisionNo++;
+          const digest = (await import('./application/host/editor-catalogue.ts')).documentDigest(damaged);
+          const next = (await owner.query("INSERT INTO public.catalog_product_document_revisions(product_id,revision_no,schema_id,document_ref,document_payload,provenance,source_ref,digest) VALUES($1,$2,$3,'fixture:missing-variant',$4,'{}',$5,$6) RETURNING id",[line.product_id,damaged.revisionNo,damaged.schemaVersion,damaged,damaged.sourceRef,digest])).rows[0].id;
+          try {
+            await owner.query('UPDATE public.catalog_products SET current_document_revision_id=$2 WHERE id=$1',[line.product_id,next]);
+            await assert.rejects(quotes.quote(largeInput,context),e=>e instanceof (awaitedPricing.CommerceQuoteCatalogReadError) && e.code==='catalog_document_schema_invalid');
+          } finally {await owner.query('UPDATE public.catalog_products SET current_document_revision_id=$2 WHERE id=$1',[line.product_id,line.current_document_revision_id]);}
+        }
       } finally {await new Promise(resolve=>{server.close(resolve);server.closeIdleConnections();});await bindings.close();}
       console.log(JSON.stringify({configuration:config.id,unit:1420,subtotal:4260,second:3958,capabilityRefused:true,secondPromiseRefresh:true,retainedCapture:true}));
     } finally {await runtime.end();await owner.end();}
   `;
-  writeFileSync(join(consumer,'scenario.mjs'),`const fixture = ${JSON.stringify({ configuration,port,ownerUrl: container.connectionString,runtimeUrl: runtime.toString() })};\n${script}`);
+  writeFileSync(join(consumer,'scenario.mjs'),`const fixture = ${JSON.stringify({ configuration,multiSize,port,ownerUrl: container.connectionString,runtimeUrl: runtime.toString() })};\n${script}`);
   const childStarted = performance.now();
   let output: string;
   try { output = execFileSync(process.execPath,['--experimental-strip-types','scenario.mjs','--configuration',configuration,'--port',String(port)], { cwd: consumer,encoding: 'utf8',timeout: 20_000 }); }

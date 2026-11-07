@@ -1,6 +1,9 @@
 /** Application copy; both locales have exactly the same keys. */
 export const copy = {
   en: {
+    subscriptionResize: 'Demand-driven plan and portion resizing',
+    sizedAcquisition: 'Size-aware acquisition',
+    publicationFence: 'Publication head and membership fence',
     attemptLimitsInterim: "Attempt limits live in one process's memory and reset on restart.",
     renewalShippingInterim: "For now this release does not charge shipping on renewals.",
     acquisitionInterim: "The first-subscription offer is not offered yet and comes in a later part of this release.",
@@ -313,6 +316,9 @@ export const copy = {
     amount_overflow: "The amount cannot be represented safely.",
   },
   pl: {
+    subscriptionResize: 'Zmiana okresu i proporcji według zapotrzebowania',
+    sizedAcquisition: 'Zakup początkowy z wyborem rozmiarów',
+    publicationFence: 'Kontrola wersji publikacji i przynależności do oferty',
     attemptLimitsInterim: "Limity prób działają w pamięci jednego procesu i resetują się po ponownym uruchomieniu.",
     renewalShippingInterim: "Na razie to wydanie nie pobiera opłat za dostawę odnowień.",
     acquisitionInterim: "Oferta na pierwszą subskrypcję nie jest jeszcze dostępna i pojawi się w późniejszej części tego wydania.",

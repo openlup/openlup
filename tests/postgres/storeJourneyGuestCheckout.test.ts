@@ -6,6 +6,7 @@ import { createPostgresDataGateway, createPostgresRoleFreeTransactionLane, type 
 import { createCapturedCustomerChallengeDelivery, createCustomerIdentityVerifier, createPostgresContactClientRegistrar,
   createPostgresCustomerMePort, resolveCustomerSessionBinding } from "@openlup/platform/identity";
 import { composePurchaseCapabilities } from "../../examples/neutral-store/host/purchase-composition.ts";
+import { subscriptionEditing } from "../../examples/neutral-store/owned/subscription-editing.ts";
 import { ACQUISITION_TERMS_CAPABILITY } from "@openlup/platform/pricing";
 import { buildDemoSeed } from "../../examples/neutral-store/owned/demo-seed.ts";
 import { quoteConfigurations } from "../../examples/neutral-store/owned/quote.config.ts";
@@ -25,6 +26,7 @@ afterAll(() => resources.close(), postgresTeardownTimeoutMs);
 const words = { en: "Synthetic collection", pl: "Synthetic collection" };
 const config: StoreConfig = {
   renewal: demoRenewalConfig("journey"),
+  subscriptionEditing: undefined as never,
   quote: { ...quoteConfigurations.coffee, acquisition: { ...quoteConfigurations.coffee.acquisition, enabled: true, minimumProductPayableMinor: 274 } },
   id: "journey", brand: { name: "Synthetic", strapline: words, description: words },
   theme: { ink: "#111111", paper: "#ffffff", accent: "#222222", accentInk: "#ffffff", border: "#333333" },
@@ -48,6 +50,8 @@ const config: StoreConfig = {
   legal: { revision: "synthetic-1", returnsDays: 14, demoOnly: true },
   features: { reviews: false, acquisition: false, research: false, partners: false, risk: false, normalizedIngest: false },
 };
+config.subscriptionEditing = subscriptionEditing(config.offer.products);
+config.subscriptionEditing.catalogue = config.subscriptionEditing.catalogue.filter(product => !product.isAddon);
 assertConfig(config);
 
 // Main's checkout.create and payment.simulate bind these same native ports.
@@ -61,7 +65,9 @@ it.each(["one_time", "subscription"] as const)("joins anonymous %s purchase, tra
   await source.owner.query("INSERT INTO public.catalog_products(id,slug,name) VALUES($1,'demo-journey-item','Synthetic item')", [product]);
   await source.owner.query("INSERT INTO public.catalog_skus(id,product_id,sku,title,sellable_in_subscription) VALUES($1,$2,'JOURNEY-GUEST','Synthetic item',true)", [sku, product]);
   await source.owner.query("INSERT INTO public.price_lists(id,name,region_code,currency,valid_from) VALUES($1,'Synthetic list','ZZ','XXX','2026-01-01T00:00:00Z')", [list]);
-  for (const price of seed.prices) await source.owner.query("INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from) VALUES($1,$2,$3,$4,'2026-01-01T00:00:00Z')",
+  const large = seed.skus.find(row => row.sku === 'JOURNEY-GUEST-L')!;
+  await source.owner.query("INSERT INTO public.catalog_skus(id,product_id,sku,title,sellable_in_subscription) VALUES($1,$2,$3,'Synthetic large item',true)", [large.id, product, large.sku]);
+  for (const price of seed.prices.filter(row => row.variant_id === sku)) await source.owner.query("INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from) VALUES($1,$2,$3,$4,'2026-01-01T00:00:00Z')",
     [list, sku, price.mode, price.unit_price_minor]);
   const installation = await source.owner.connect();
   try {
@@ -107,6 +113,9 @@ it.each(["one_time", "subscription"] as const)("joins anonymous %s purchase, tra
       const all = await journeyCensus(store.owner);
       return Object.fromEntries(Object.entries(all).filter(([name]) => /^(commerce_order|commerce_settlement|payment_simulator|subscription_|subscriptions$|fulfillment_inventory_reservation|fulfillment_purchase_reservation|outbox_events$|commerce_destination)/.test(name)));
     };
+    const documents = async (store: JourneyInstallation) => (await store.owner.query('SELECT document_payload FROM public.catalog_product_document_revisions WHERE product_id=$1', [product])).rows;
+    expect((await documents(source))[0]!.document_payload.variants).toHaveLength(2);
+    expect(await documents(target)).toEqual(await documents(source));
     const before = await purchaseRows(source);
     expect(await purchaseRows(target)).toEqual(before);
     const replays: unknown[] = [];

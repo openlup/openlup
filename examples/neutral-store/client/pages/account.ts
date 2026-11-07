@@ -6,6 +6,7 @@ import type { Operation } from '../../shared/api.ts';
 import { routes } from '../../shared/routes.ts';
 import { el, link } from '../dom.ts';
 import { actionForm, nativeActions, readPanel, type FieldSpec } from '../forms.ts';
+import { subscriptionEditorEntries } from '../editors/entries.ts';
 
 export function accountPage(context: PageContext): HTMLElement {
   return el('div', {}, el('h1', {}, context.t('account')),
@@ -16,6 +17,7 @@ export function accountPage(context: PageContext): HTMLElement {
     readPanel(context, 'orders', 'account.orders'),
     el('section', { class: 'panel' }, el('h2', {}, context.t('subscriptions')),
       el('p', {}, context.t('subscriptionInvariant')),
+      subscriptionEditorEntries(context),
       subscriptionCommands(context)),
     communicationChoices(context),
     nativeActions(context, ['N5', 'N6', 'N7', 'N8', 'N9']),
@@ -51,16 +53,6 @@ function subscriptionCommands(context: PageContext): HTMLElement {
   });
   return el('div', { class: 'form-grid' },
     command('reschedule', 'reschedule', [{ name: 'nextDate', label: 'nextDelivery', type: 'date' }]),
-    command('editBundle', 'update_bundle', [{ name: 'bundleCode', label: 'bundleCode' }]),
-    command('addAddon', 'add_addon', [
-      { name: 'sku', label: 'actionRef' },
-      { name: 'quantity', label: 'quantity', type: 'number', value: '1', min: 1, max: context.config.offer.maxUnits },
-    ]),
-    command('removeAddon', 'remove_addon', [{ name: 'sku', label: 'actionRef' }]),
-    command('changeQuantity', 'update_addon_quantity', [
-      { name: 'sku', label: 'actionRef' },
-      { name: 'quantity', label: 'quantity', type: 'number', value: '1', min: 1, max: context.config.offer.maxUnits },
-    ]),
     addressForm(context, 'subscription.address'),
     actionForm(context, {
       operation: 'subscription.command', title: 'cancelSubscription', submit: 'confirmCancel',

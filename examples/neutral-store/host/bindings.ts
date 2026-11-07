@@ -42,7 +42,7 @@ export function pendingBindings(): ApplicationBindings {
 
 export const customerOperations = new Set<Operation>([
   'account.read', 'account.orders', 'account.invoice', 'account.consent',
-  'subscription.command', 'subscription.address', 'return.request',
+  'subscription.command', 'subscription.preview', 'subscription.catalog', 'subscription.address', 'return.request',
 ]);
 
 export async function dispatchAction(

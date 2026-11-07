@@ -54,6 +54,30 @@ updating the typed configuration. Add that file to the ownership inventory.
 Product media paths must remain local; remote tracking images are not part of
 this demo. Theme tokens are six-digit hex colors, and system fonts are used.
 
+## Subscription editor values
+
+Subscription editing values live in `StoreConfig.subscriptionEditing`, built by
+`owned/subscription-editing.ts`. Set classic minimum base units, plan choices and
+quantity/line bounds there. Size-aware values include core minimum, cadence set,
+group/line limits, preferred and nominal physical sizes, portion modes/factors,
+and the synthetic need/exclusion fixture. The extra catalogue is install-only;
+it does not add a size-aware acquisition flow to checkout.
+
+Installation writes `subscription_minimum_base_units` as text in
+`commerce_settings`; the package's TypeScript and SQL minimum checks read that
+same value. It also writes the matching introductory phase policy and the
+synthetic subject fixture. Each owned demonstration customer uses that fixture
+with its own authenticated subject reference. Explicit current exclusions take
+precedence over inherited exclusions, including an empty array. The host locks
+the installed fixture row during apply; do not replace it with browser facts.
+There is no need-entry form or demand-driven plan/portion resize policy.
+
+The configuration supplies grouped variants, exact physical size, synthetic
+demand units, exclusion attributes and fictional stock quantities. The install
+creates verified opaque documents and uses the public stock writer. A real
+application must replace these fictional data and resolvers with its own owned
+facts. Neither a product label nor illustrative coverage is usage advice.
+
 ## Support contact
 
 Set optional `supportEmail: 'help@example.test'` in the owned configuration.
