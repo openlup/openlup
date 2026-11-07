@@ -155,7 +155,7 @@ it("refuses a reused cluster catalogue before the proof can create global roles"
   let pool: Pool | undefined;
   try {
     expect(await waitForPostgresTcpReady(container.connectionString)).toBe(true);
-    pool = new Pool({ connectionString: container.connectionString, connectionTimeoutMillis: 1000, query_timeout: 1000 });
+    pool = new Pool({ connectionString: container.connectionString });
     const waitForClosedSessions = async () => {
       // In 20 local PostgreSQL 16 shutdowns, zero other sessions were observed
       // within 3.11ms; allow 1s (>300x, rounded) for scheduling on loaded runners.
