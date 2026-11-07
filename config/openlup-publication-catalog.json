@@ -1946,6 +1946,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/browser/renewal.proof.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/client/api.ts",
       "class": "public-output"
     },

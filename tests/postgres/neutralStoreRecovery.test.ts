@@ -1,7 +1,9 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
-import { spawn, type ChildProcess } from 'node:child_process';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
+import { existsSync } from 'node:fs';
+import { chromium } from '@playwright/test';
 import { createServer } from 'node:net';
 import { resolve } from 'node:path';
 import { env as processEnvironment } from 'node:process';
@@ -218,6 +220,32 @@ describe.each(Object.values(configurations))('$id recurring recovery HTTP bounda
       if (state) await rm(state, { recursive: true, force: true });
     }
   }, postgresTeardownTimeoutMs);
+
+  // Measured 2.28–2.96 s including the UI build; 15 s exceeds four times the maximum.
+  // Local browser evidence is required when Chromium is installed.
+  it.runIf(existsSync(chromium.executablePath()))('runs the recurring recovery browser journey against PostgreSQL', async () => {
+    const f = await declined(true), token = await issue(f);
+    const app = resolve('examples/neutral-store');
+    const fixture = resolve(state, 'recovery-browser.private.json');
+    const configuration = resolve(app, '.context', `recovery-${config.id}.config.mjs`);
+    await mkdir(resolve(app, '.context'), { recursive: true });
+    await writeFile(fixture, JSON.stringify({ token, email: f.email,
+      identityMailbox: resolve(state, '.context/captured-messages/identity.jsonl') }), { mode: 0o600 });
+    await writeFile(configuration, `import {defineConfig} from '@playwright/test';
+export default defineConfig({testDir:'../browser',testMatch:'recovery.proof.ts',workers:1,fullyParallel:false,
+  reporter:'list',metadata:{recoveryFixture:${JSON.stringify(fixture)}},
+  use:{baseURL:${JSON.stringify(base)},headless:true,trace:'off',screenshot:'off',video:'off'}});`);
+    try {
+      execFileSync(process.execPath, [resolve('node_modules/vite/bin/vite.js'), 'build'], { cwd: app, stdio: 'pipe' });
+      process.stdout.write(execFileSync(process.execPath, [resolve('node_modules/@playwright/test/cli.js'),
+        'test', '--config', configuration], { cwd: app, encoding: 'utf8', timeout: 30_000, stdio: 'pipe' }));
+    } catch (error) {
+      if (error && typeof error === 'object' && 'stdout' in error) process.stdout.write(String(error.stdout));
+      throw new Error('starter_recovery_browser_failed');
+    } finally {
+      await rm(fixture, { force: true }); await rm(configuration, { force: true });
+    }
+  }, 15_000);
 
   // Measured 0.85–1.57 s; retain the adjacent HTTP proof's 10 s bound.
   it('refuses old quote proofs after key rotation without effects and accepts a fresh quote', async () => {
