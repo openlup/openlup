@@ -111,7 +111,11 @@ available through the customer-session API; they have no portal buttons. Plan
 and portion resize commands reach the named configuration limit after ownership
 admission. Ordinary classic plan and sized cadence choices keep quantities.
 New/increased sized SKUs require current active/subscription-sellable state in
-the apply transaction; publication-head/membership fencing is not implemented.
+the apply transaction. The host locks its owned subject/need fixture row and
+rereads every selected catalogue fact, including stock and exclusion keys, on
+that same connection. Catalogue reads do not acquire row locks; serializing
+against concurrent catalogue publication and publication-head/membership fencing
+remain the named publication-fence limit.
 Entering, previewing or abandoning an invitation never binds sized. An acquisition
 purchase's fixed introductory phase refuses sized opt-in; the servicing proof
 completes that phase through native renewals before editing. Checkout and the

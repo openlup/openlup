@@ -79,31 +79,44 @@ export function sizedHostPorts(config: StoreConfig, now: () => string): Omit<Siz
     if (!Array.isArray(exclusions) || exclusions.some(key => typeof key !== 'string' || !key)) throw new Error('subscription_reprice_sized_subject_facts_unreadable');
     return { value,exclusions: exclusions as string[],dailyNeed: Number(value.dailyNeed) };
   };
+  const configuredIds = editorProducts(config).map(product => demoIdentifier(config,'sku',product.sku));
+  const readCatalog = async (db: SubscriptionQueryExecutor,ids: string[] = configuredIds): Promise<SizedCatalogFact[]> => {
+    const rows = (await db.query(`SELECT sku.id,sku.sku,sku.product_id,sku.is_addon,sku.status,sku.sellable_in_subscription,sku.net_weight_g,product.status AS product_status,
+      product.current_document_revision_id,revision.document_payload,revision.digest FROM public.catalog_skus sku
+      JOIN public.catalog_products product ON product.id=sku.product_id
+      JOIN public.catalog_product_document_revisions revision ON revision.id=product.current_document_revision_id
+      WHERE sku.id=ANY($1::uuid[]) ORDER BY sku.id`, [ids])).rows;
+    const stock = await createPostgresStockAvailability(db, { sourceKey: `starter-demo:${config.id}`,now }).readPort.read({
+      skus: rows.map(row => String(row.sku)),horizonDays: 14,excludeOrderId: null });
+    return rows.map((row): SizedCatalogFact => {
+      const parsed = productDocument(row.document_payload,config.quote.document.schemaId), variant = parsed.variants.find(item => item.skuId === row.id && item.sku === row.sku);
+      if (!variant || parsed.productId !== row.product_id || variant.physical.netWeightG !== row.net_weight_g || documentDigest(parsed) !== row.digest) throw new Error('subscription_reprice_sized_catalog_facts_unreadable');
+      const availability = stock.get(String(row.sku));
+      return { variantId: String(row.id).toLowerCase(),sku: String(row.sku),groupId: String(row.product_id),isAddon: row.is_addon === true,
+        sellable: row.status === 'active' && row.product_status === 'active' && row.sellable_in_subscription === true,physicalSize: variant.physical.netWeightG,demandPerUnit: variant.demandPerUnit,
+        documentRevisionId: String(row.current_document_revision_id),documentDigest: String(row.digest),verified: true,exclusions: [...variant.exclusions].sort(),
+        sellableNow: availability?.stale ? 0 : availability?.availableForNewPurchases ?? null };
+    });
+  };
   return {
     async readFacts(db,context) { const facts = await read(db,context);
       return { subscriptionId: context.subscriptionId,clientId: context.clientId,subjectRef: `starter:${context.clientId}`,exclusions: facts.exclusions,snapshot: facts.value }; },
     async resolveOptInNeed(db,context) { const facts = await read(db,context); return { dailyNeed: facts.dailyNeed,snapshot: facts.value }; },
-    async assertCurrentFacts(db,context,expected,need) { const facts = await read(db,context,true);
-      if (documentDigest(facts.value) !== documentDigest(expected.snapshot) || need !== null && documentDigest(need) !== documentDigest(facts.value)) throw new Error('subscription_edit_invalid_subject_snapshot'); },
-    async readCatalog(db) {
-      const products = editorProducts(config);
-      const rows = (await db.query(`SELECT sku.id,sku.sku,sku.product_id,sku.is_addon,sku.status,sku.sellable_in_subscription,sku.net_weight_g,product.status AS product_status,
-        product.current_document_revision_id,revision.document_payload,revision.digest FROM public.catalog_skus sku
-        JOIN public.catalog_products product ON product.id=sku.product_id
-        JOIN public.catalog_product_document_revisions revision ON revision.id=product.current_document_revision_id
-        WHERE sku.id=ANY($1::uuid[]) ORDER BY sku.id`, [products.map(product => demoIdentifier(config,'sku',product.sku))])).rows;
-      const stock = await createPostgresStockAvailability(db, { sourceKey: `starter-demo:${config.id}`,now }).readPort.read({
-        skus: rows.map(row => String(row.sku)),horizonDays: 14,excludeOrderId: null });
-      return rows.map((row): SizedCatalogFact => {
-        const parsed = productDocument(row.document_payload,config.quote.document.schemaId), variant = parsed.variants.find(item => item.skuId === row.id && item.sku === row.sku);
-        if (!variant || parsed.productId !== row.product_id || variant.physical.netWeightG !== row.net_weight_g || documentDigest(parsed) !== row.digest) throw new Error('subscription_reprice_sized_catalog_facts_unreadable');
-        const availability = stock.get(String(row.sku));
-        return { variantId: String(row.id),sku: String(row.sku),groupId: String(row.product_id),isAddon: row.is_addon === true,
-          sellable: row.status === 'active' && row.product_status === 'active' && row.sellable_in_subscription === true,physicalSize: variant.physical.netWeightG,demandPerUnit: variant.demandPerUnit,
-          documentRevisionId: String(row.current_document_revision_id),documentDigest: String(row.digest),verified: true,exclusions: variant.exclusions,
-          sellableNow: availability?.stale ? 0 : availability?.availableForNewPurchases ?? null };
-      });
+    async assertCurrentFacts(db,context,expected,need,catalogFacts) {
+      const facts = await read(db,context,true);
+      const current = { subscriptionId: context.subscriptionId,clientId: context.clientId,subjectRef: `starter:${context.clientId}`,
+        exclusions: facts.exclusions,snapshot: facts.value };
+      if (documentDigest(current) !== documentDigest(expected) || need !== null && documentDigest(need) !== documentDigest(facts.value)) {
+        throw new Error('subscription_edit_invalid_subject_snapshot');
+      }
+      const ids = catalogFacts.map(fact => fact.variantId.toLowerCase()).sort();
+      // Catalogue reads stay non-locking; concurrent publication remains the named fence limit.
+      let catalog: SizedCatalogFact[];
+      try { catalog = await readCatalog(db,ids); }
+      catch { throw new Error('subscription_edit_invalid_subject_snapshot'); }
+      if (documentDigest(catalog) !== documentDigest(catalogFacts)) throw new Error('subscription_edit_invalid_subject_snapshot');
     },
+    readCatalog: db => readCatalog(db),
     // The demonstration intentionally supplies no demand-driven resize policy.
     proposePortion: async () => { throw new Error('starter_subscription_resize_unconfigured'); },
   };

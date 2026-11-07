@@ -120,6 +120,48 @@ at most 20. All proof-owned containers, volumes, image tags and host processes
 were removed after this run, along with its disposable keyring. These are local
 sandbox results, not hosted, provider, release or upgrade qualification.
 
+## Selected catalogue fact comparison follow-up
+
+On 2026-11-07 the corrected sized fact contract was integrated from `eee93280`
+through merge `b00cc69f`. The host retains its owned subject/optional-need row
+lock and rereads selected catalogue facts on the same apply connection. Preview
+and recheck share one reader; UUID order and sorted exclusion keys match the
+package evidence. Any mismatch refuses with
+`subscription_edit_invalid_subject_snapshot`. Catalogue/product/SKU/document
+rows are read without locks. Serializing concurrent catalogue publication
+remains the named publication-fence limit; no catalogue write privilege or
+runtime escalation is added.
+
+J-S6 now previews a cadence-only edit with frozen agreed money, then appends a
+valid shared product-document revision with changed exclusion keys. Applying
+that stale preview refuses with `subscription_edit_quote_drift`, preserving
+template version and cadence. A fresh preview with unchanged current facts
+applies, and the original completed opt-in key still replays after later subject
+drift. This extends the existing case without increasing the suite count.
+
+The final follow-up run passed 17/17 journeys per configuration (34 total,
+52.7 seconds), with no failures, skips or retries. Both disposable installations
+applied 106 history units and zero on repeat. Their restricted `starter_runtime`
+login still has SELECT and no UPDATE privilege on all three catalogue tables.
+The same serving reader bytes were checked in both hosts. No catalogue lock,
+extra grant, template backfill or substitute preview was used.
+
+Store compilation passed with zero errors; all 65 focused source tests and 42
+component cases passed. The paid-mail file passed 9/9 once, guest transfer 2/2,
+and installed checkout/quote 3/3. Lint (zero errors, 33 existing warnings), the
+suppression scan and publication policy passed. Published-tree typecheck found
+zero unresolved edges and zero consumer errors against ceiling zero. All owned
+containers, volumes, image tags and hosts were removed, along with the disposable
+keyring. These remain local development-candidate results.
+
+The current local 0.36.0 artifacts were:
+
+| Artifact | SHA-256 | Packed bytes |
+| --- | --- | ---: |
+| `openlup-core.tgz` | `3818515857bf4b31c63d61bcb216d849b914af017cbfafbe0a342d8ed19f916d` | 183143 |
+| `openlup-outbox.tgz` | `e723db165b4e55166180b2b962191e80e5bbc5735d851e9de20a2e93877f3af0` | 41203 |
+| `openlup-platform.tgz` | `44bc1a0cf28c5a668ad61b034d4847ecbece9002a211b8c66ce68ca6d3927d37` | 2604739 |
+
 ## Clean-directory and startup witness
 
 Extract into a new empty directory, outside the source archive. Verify the new

@@ -258,8 +258,11 @@ cadence choices preserve explicit counts. See the [named limits](docs/limits.md)
 cadences, portion identifiers/factors and seeded subject facts. The fixture's
 explicit current-empty exclusions override inherited exclusions. Candidate,
 preview and apply read that installed fixture; the apply port locks its row and
-compares exact snapshots on the same transaction connection. There is no
-need-entry form. Classic candidates are unfiltered because this demonstration
+compares exact snapshots on the same transaction connection. It also rereads
+all selected SKU catalogue facts through the shared document reader and compares
+them in canonical UUID order with sorted exclusion keys. Catalogue rows remain
+read-only and unlocked; this comparison does not serialize concurrent catalogue
+publication (the named publication-fence limit). There is no need-entry form. Classic candidates are unfiltered because this demonstration
 has no classic exclusion facts.
 
 `host/editor-mail.ts` exports `composeSizedPaidEmailNote`, compatible with the

@@ -145,11 +145,38 @@ test('J-S5: withdrawn new/increased SKUs refuse while exact retained quantities 
 });
 test('J-S6: a matching completed key replays after a later subject-fact change',async ({ page,baseURL,composeProject }) => {
   const f = await nativeSubscription(page,baseURL,composeProject),original = f.subject(); const applied = await f.optIn();
+  const selected = f.uuid(f.sub.lines[0]!.variantId);
+  const product = f.rows(`SELECT p.id,p.current_document_revision_id,r.document_payload FROM public.catalog_skus s
+    JOIN public.catalog_products p ON p.id=s.product_id JOIN public.catalog_product_document_revisions r ON r.id=p.current_document_revision_id WHERE s.id='${selected}'`)[0]!;
   try {
+    // A cadence-only request preserves agreed prices, so catalogue drift must be fenced independently.
+    const request = await f.sizedRequest(); if (request.action !== 'resize_bundle') throw new Error('fixture');
+    request.cadenceDays = 14;
+    const preview = await f.accepted(request),before = await f.read();
+    const document = structuredClone(product.document_payload) as { revisionNo: number; variants: { skuId: string; exclusions: string[] }[] };
+    document.revisionNo = Number(f.rows(`SELECT max(revision_no)::int AS revision FROM public.catalog_product_document_revisions WHERE product_id='${f.uuid(String(product.id))}'`)[0]!.revision)+1;
+    document.variants.find(variant => variant.skuId === selected)!.exclusions = ['new-unrelated-exclusion','another-unrelated-exclusion'];
+    const { documentDigest } = await import('../host/editor-catalogue.ts');
+    const encoded = Buffer.from(JSON.stringify(document)).toString('hex');
+    const revision = randomUUID();
+    f.sql(`INSERT INTO public.catalog_product_document_revisions
+      (id,product_id,revision_no,schema_id,document_ref,document_payload,provenance,source_ref,digest)
+      SELECT '${revision}',product_id,${document.revisionNo},schema_id,'fixture:catalogue-drift:${document.revisionNo}',convert_from(decode('${encoded}','hex'),'UTF8')::jsonb,
+        provenance,source_ref,'${documentDigest(document)}' FROM public.catalog_product_document_revisions WHERE id='${f.uuid(String(product.current_document_revision_id))}'`);
+    f.sql(`UPDATE public.catalog_products SET current_document_revision_id='${f.uuid(String(revision))}' WHERE id='${f.uuid(String(product.id))}'`);
+    const refused = await f.action('subscription.command',{ request: preview.request },preview.key);
+    expect(refused.body.code).toBe('subscription_edit_quote_drift');
+    expect((await f.read()).templateVersion).toBe(before.templateVersion);
+    expect((await f.read()).cadenceDays).toBe(before.cadenceDays);
+    const fresh = await f.apply(request);
+    expect(fresh.result.status).toBe('applied'); expect((await f.read()).cadenceDays).toBe(14);
     f.setSubject({ ...JSON.parse(original),revision: 2,currentExclusions: ['demo-restricted'] });
     const events = f.rows(`SELECT id FROM public.subscription_events WHERE subscription_id='${f.id}'`);
     const replay = await f.action('subscription.command',{ request: applied.request },applied.key);
     expect(replay.body.ok).toBe(true); expect(replay.body.value.status).toBe('replayed');
     expect(f.rows(`SELECT id FROM public.subscription_events WHERE subscription_id='${f.id}'`)).toEqual(events);
-  } finally { f.setSubject(JSON.parse(original)); }
+  } finally {
+    f.setSubject(JSON.parse(original));
+    f.sql(`UPDATE public.catalog_products SET current_document_revision_id='${f.uuid(String(product.current_document_revision_id))}' WHERE id='${f.uuid(String(product.id))}'`);
+  }
 });
