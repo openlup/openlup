@@ -22,17 +22,18 @@ test('container demo startup privately creates a key once, reuses it, and refuse
     await writeFile(resolve(directory, 'package.json'), '{"type":"module"}');
     await mkdir(resolve(directory, 'node_modules/pg'), { recursive: true });
     await writeFile(resolve(directory, 'node_modules/pg/package.json'), '{"type":"module","exports":"./index.js"}');
-    await writeFile(resolve(directory, 'node_modules/pg/index.js'), `export default { Client: class {
+    await writeFile(resolve(directory, 'node_modules/pg/index.js'), `import { readFileSync } from 'node:fs';
+    export default { Client: class {
       async connect() {} async end() {}
-      async query() { return { rows: [{ marker: process.env.DEMO_MARKER }] }; }
+      async query() { return { rows: [{ marker: JSON.parse(readFileSync(new URL('./marker.json', import.meta.url))) }] }; }
     } };`);
     // Observe the actual host handoff without starting HTTP or exposing the private value.
     await writeFile(resolve(directory, 'host/server.ts'), 'console.log(JSON.stringify(process.argv));');
     const argv = ['lifecycle.mjs', 'serve-demo', '--configuration', 'supplements', '--port', '4319',
       '--listen', '0.0.0.0', '--database-url', 'postgresql://starter_runtime@database/neutral_store'];
     async function start(marker: string) {
-      const child = spawn(process.execPath, argv, { cwd: directory,
-        env: { ...process.env, DEMO_MARKER: marker }, stdio: 'pipe' });
+      await writeFile(resolve(directory, 'node_modules/pg/marker.json'), JSON.stringify(marker));
+      const child = spawn(process.execPath, argv, { cwd: directory, stdio: 'pipe' });
       let output = '';
       child.stdout.on('data', bytes => { output += String(bytes); });
       child.stderr.on('data', bytes => { output += String(bytes); });
