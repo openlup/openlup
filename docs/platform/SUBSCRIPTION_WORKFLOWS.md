@@ -176,8 +176,14 @@ composition and unchanged address evidence. Preview stores the quoted next
 agreement; send its accepted hash with the same actor/key and command to apply.
 N2 commits future lines, cadence, event and actual-command receipt together,
 without proration or repricing the current obligation. Applied/noop replay keeps
-its original state, revision and event; conflicts, expired/stale quotes, locked
-cycles and dunning refuse. The serving adapter refuses pause without writes.
+its original state, revision and event; conflicts, expired/stale quotes and locked
+cycles refuse. Open dunning still refuses future-term changes; explicit pause
+and cancellation use their lifecycle paths. With the lifecycle-closure forward installed, a
+valid explicit pause reaches the serving adapter even during open dunning: it
+closes recovery, terminalizes unpaid artifacts and writes the pause window and
+event atomically. Live or prepared payment work still refuses closure. Captured
+evidence arriving after unpaid closure is retained for operator review, including
+on redelivery, without reopening the terminal cycle.
 The existing native activation spine still requires captured-payment evidence;
 commands cannot synthesize activation or execute a charge.
 [Real-PG cases](../../tests/postgres/subscriptionCommandLifecycleCases.ts) cover

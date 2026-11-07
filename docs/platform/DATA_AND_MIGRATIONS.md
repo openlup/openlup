@@ -1819,6 +1819,22 @@ separate from both this probe and application-file upgrades.
 
 ## Compatibility lifecycle
 
+The lifecycle-closure forward is a closed-class function update: three existing
+function definitions retain their attributes and ACLs, four new invoker functions
+use `pg_catalog` and conditional trusted execution, and three status CHECKs gain
+`paused`, `skipped` and `cancelled` respectively. Existing status values remain
+valid; no historical row is rewritten. The package mirrors the exact SQL bytes.
+The outcomes projection is a nonmaterialized view over existing events with
+PUBLIC/browser access revoked and no new reader grant. Its installation needs
+the separately admitted class descriptor; a local SQL replay is not admission.
+The fixed actor pause wrapper alone flushes `trg_commerce_orders_line_sum` inside
+its existing definer context and then sets that named constraint DEFERRED. This
+moves the unchanged invoker check before the wrapper returns, without altering
+the constraint definition, trigger function, gateway commit role or table grants.
+Other deferred constraints are not changed. Service closure calls still defer
+line-sum checking until transaction completion.
+
+
 The opt-in [complete account consent choices](#complete-account-consent-choices)
 forward adds a distinct actor API and expands only the native sync purpose CHECK.
 It neither replaces the served newsletter routines nor backfills grants. Hosts

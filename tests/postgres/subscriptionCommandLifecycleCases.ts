@@ -581,7 +581,7 @@ it('binds the supported descriptor to real native command success, replay, rollb
  expect(hostCalls).toBe(callsBeforeReplay+1);
  expect((await h.pool.query('SELECT cadence_days FROM public.subscriptions WHERE id=$1',[f.subscription])).rows[0].cadence_days).toBe(21);
  expect(await commands.apply({...context,idempotencyKey:'adapter-pause',action:'pause',pausePreset:'host',reason:null,survey:null,saveOffer:null}))
-  .toEqual({outcome:'refused',reason:'subscription_command_pause_forbidden'});
+  .toEqual({outcome:'refused',reason:'subscription_lifecycle_invalid_transition'});
  const store=createPostgresSubscriptionCommandStore(binding);
  expect(await store.apply({actorId:f.actor,clientId:f.client,subscriptionId:f.subscription,idempotencyKey:'unsupported-prepaid',action:'multi_cycle_prepaid',payload:{},now:AT}))
   .toMatchObject({status:'refused',reason:NATIVE_SUBSCRIPTION_CAPABILITIES.multiCyclePrepaid.refusalCode});

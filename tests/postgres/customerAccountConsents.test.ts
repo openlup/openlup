@@ -65,8 +65,9 @@ it.each(profiles)("atomic actor account choices and refusals on %s", async profi
       } });
     await runner.apply();
     expect((await runner.apply()).applied).toEqual([]);
-    // Both qualified plans select the shared lock and conflict completion tail after this forward; legacy never does.
-    const tail = [{ catalog_path: "db/platform/migrations/20261106050000_customer_command_key_isolation.sql" },
+    // Lifecycle closure follows the consent forward in every plan; qualified plans also retain their completion tail.
+    const tail = [{ catalog_path: "db/platform/migrations/20261106100000_subscription_lifecycle_closure.sql" },
+      { catalog_path: "db/platform/migrations/20261106050000_customer_command_key_isolation.sql" },
       ...(profile === "legacy" ? [] : [{ catalog_path: "db/platform/migrations/q2_20261103200000_runtime_lock_and_conflict_completion.sql" }])];
     const ledger = (await owner.query("SELECT catalog_path FROM public.platform_schema_migrations ORDER BY position DESC LIMIT $1", [tail.length + 1])).rows;
     expect(ledger).toEqual([...tail, { catalog_path: file }]);
