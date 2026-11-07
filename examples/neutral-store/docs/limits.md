@@ -200,15 +200,19 @@ See the [operator roster recipe](../README.md#operator-support-roster-and-catalo
 
 ## Purchase composition boundaries
 
+Shipping is charged below the configured threshold on products after discounts;
+at or above it shipping is free. Renewals use the accepted agreement and the
+frozen cycle amount, including on replay. These remain local sandbox witnesses.
+
+Dostawa jest płatna poniżej skonfigurowanego progu dla produktów po rabatach;
+od progu włącznie jest bezpłatna. Odnowienia korzystają z zaakceptowanych warunków
+i kwoty utrwalonej dla cyklu, także przy ponowieniu.
+
 The starter runs on its local demonstration database only; a hosted database connection is not part of this release and comes in a later round.
-For now this release does not charge shipping on one-off orders.
-For now this release does not charge shipping on renewals.
 The first-subscription offer is not offered yet and comes in a later part of this release.
 A purchase needs no account; checkout keeps a contact record for the e-mail; the customer signs in with that e-mail to see the purchase.
 
 Starter działa wyłącznie na lokalnej demonstracyjnej bazie danych; połączenie z bazą hostowaną nie należy do tego wydania i pojawi się w późniejszej rundzie.
-Na razie to wydanie nie pobiera opłat za dostawę zamówień jednorazowych.
-Na razie to wydanie nie pobiera opłat za dostawę odnowień.
 Oferta na pierwszą subskrypcję nie jest jeszcze dostępna i pojawi się w późniejszej części tego wydania.
 Aktywowanego pakietu nie można kupić w tym wydaniu; taka możliwość pojawi się w późniejszej rundzie.
 Zakup nie wymaga konta; przy zakupie zapisujemy kontakt dla podanego e-maila; klient loguje się tym e-mailem, aby zobaczyć zakup.
@@ -252,7 +256,7 @@ The configured subscription rate and rounding quantum resolve each unit before
 quantity is applied. Quote lines and installed subscription price entries carry
 that actual unit price. A `mode_discount` component explains the included benefit;
 there is no order promotion or second deduction. First-subscription acquisition
-is a separate later offer. `shared/interim-pricing.ts` owns this temporary rule;
+is a separate later offer. `shared/offer-estimate.ts` owns this temporary rule;
 the later installed quote-engine composition replaces it.
 
 The owned seed writes distinct one-time/subscription price entries. Repeating an

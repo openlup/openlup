@@ -6,6 +6,7 @@ import type { AcquisitionFinancialPolicy, CommerceQuoteDiscount, CreateQuoteResp
 import type { PromotionRow } from '@openlup/core/promo';
 import { activateNativePurchaseWithRenewal, type NativeRenewalPurchaseFacts } from '@openlup/platform/subscriptions';
 import type { RenewalRetainedTerms } from '@openlup/platform/subscriptions/contracts';
+import { parseShippingTerms, resolveThresholdShipping } from '@openlup/platform/shipping';
 import { canonicalCatalogDraftJson } from '@openlup/platform/catalog';
 
 /** Local integration seam until the installed predecessor's API is frozen. */
@@ -49,7 +50,7 @@ export function createAcquisitionRenewalBinding(db: Pool): AcquisitionRenewalBin
       const quote = input.acceptedQuote.quote;
       const facts: NativeRenewalPurchaseFacts = { settlementChannelKey: 'sandbox', ...input.methodFacts,
         stockSourceKey: input.stockSourceKey, templateId: input.templateId, currency: quote.currency,
-        cadenceDays: quote.context!.cadenceDays!, shippingAmountMinor: 0,
+        cadenceDays: quote.context!.cadenceDays!, shippingAmountMinor: (quote.shippingGross?.amountMinor ?? 0) - (quote.shippingDiscountGross?.amountMinor ?? 0),
         acquisitionRef: (quote.context as NonNullable<typeof quote.context> & { acquisitionTerms: { sourcePromotionId: string } }).acquisitionTerms.sourcePromotionId,
         lines: quote.lines.map((line, index) => ({ lineOrdinal: index + 1, sku: line.sku,
           quantity: line.quantity, unitAmountMinor: line.unitPriceGross.amountMinor })), renewalTerms };
@@ -62,18 +63,23 @@ export function createAcquisitionRenewalBinding(db: Pool): AcquisitionRenewalBin
 export function retainedQuoteTerms(snapshot?: CreateQuoteResponse): RenewalRetainedTerms {
   const quote = snapshot?.quote;
   const context = quote?.context as { mode?: string; cadenceDays?: number;
-    acquisitionTerms?: { sourcePromotionId?: unknown; delivery2DiscountBps: number }; starterRenewalTerms?: RenewalRetainedTerms } | undefined;
+    shippingTerms?: unknown; acquisitionTerms?: { sourcePromotionId?: unknown; delivery2DiscountBps: number }; starterRenewalTerms?: RenewalRetainedTerms } | undefined;
   const terms = context?.starterRenewalTerms, marker = terms?.starterPack;
+  let shipping;
+  try { shipping = parseShippingTerms(context?.shippingTerms); } catch { throw new Error('starter_quote_refresh_required'); }
   if (!quote || context?.mode !== 'subscription' || !context.acquisitionTerms
     || typeof context.acquisitionTerms.sourcePromotionId !== 'string' || !context.acquisitionTerms.sourcePromotionId
-    || terms?.version !== 'native.renewal-terms.v1' || terms.shippingTerms !== undefined
+    || terms?.version !== 'native.renewal-terms.v1'
+    || canonicalCatalogDraftJson(terms.shippingTerms ?? null) !== canonicalCatalogDraftJson(shipping ?? null)
     || !marker || marker.starterIntervalDays !== context.cadenceDays
     || !terms.minimumPayableMinor || !terms.normalCadenceDays?.includes(marker.graduation.cadenceDays)
     || marker.delivery2.discountBps !== context.acquisitionTerms.delivery2DiscountBps
     || marker.delivery2.basisSubtotalMinor !== quote.subtotalGross.amountMinor
     || !Number.isSafeInteger(marker.delivery2.discountMinor) || marker.delivery2.discountMinor < 0
     || marker.delivery2.basisSubtotalMinor - marker.delivery2.discountMinor < terms.minimumPayableMinor
-    || (quote.shippingGross?.amountMinor ?? 0) !== 0 || (quote.shippingDiscountGross?.amountMinor ?? 0) !== 0
+    || (shipping && shipping.currency !== quote.currency)
+    || (quote.shippingGross?.amountMinor ?? 0) !== (shipping ? resolveThresholdShipping(shipping, quote.subtotalGross.amountMinor - quote.discountTotalGross.amountMinor).grossMinor : 0)
+    || (quote.shippingDiscountGross?.amountMinor ?? 0) !== 0
     || terms.linePricing?.length !== quote.lines.length || marker.graduation.lines.length !== quote.lines.length
     || quote.lines.some((line, index) => {
       const price = terms.linePricing![index], graduation = marker.graduation.lines[index];
