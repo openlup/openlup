@@ -79,18 +79,58 @@ The account order response does not claim a rich customer-order projection.
 Native detail preserves `native_account_order_money_unavailable` when a historical
 order lacks captured money; it never reconstructs purchase truth.
 
-Purchase creation uses the native contact-client factory. Invoice history/artifacts,
-shipment list/detail and dependent label,
-handoff, delivery and tracking bindings, signed unsubscribe and other unmounted
-workflows remain pending. Shipment reads follow destination/reservation facts;
-dispatch preparation alone does not provide them.
-`operator.returns` waits on returns reader; r1a continues to refuse it with
-`host_binding_required`.
-Unbound operations return
-`host_binding_required` after customer/operator admission. These are implementation
-blockers, not additional accepted native limits. An invalid-grant example does
-not prove a valid grant works. Local completion evidence includes real purchase and account browser journeys in
-both configurations; operator order reads have separate host proofs.
+Purchase creation uses the native contact-client factory. Customer invoice history
+and owned captured PDF downloads use the native session principal. Documents are
+explicitly non-fiscal sandbox artifacts. Operator invoice summaries authorize
+before querying local history, duty, retry and delivery evidence, including guest
+orders. Placing and releasing an order hold are unavailable in this release.
+Both operations stay unbound and return `starter_order_hold_unavailable` after
+operator admission with zero effects. Their typed forms retain configured hold
+reasons and the exact hold-reference release target. The later order-control
+composition closes this boundary alongside cancellation and external refund
+marking.
+
+The operation catalogue in `shared/limits.ts` supplies the same code and exact
+localized explanation to action results and the limits page. Named deferred
+actions remain unbound and refuse after customer/operator admission, before any
+native routine. Return forms retain reason codes, order-item quantities and
+refund intent. No operator returns list or detail; the operator approves or
+rejects by the return reference the customer receives. Approval and rejection
+are unavailable in this release. The removed `operator.returns` route returns
+HTTP 404 with `starter_operation_unknown`.
+
+The catalogue covers 14 declared named-refusal operations. The removed reader
+retains its separate HTTP 404 protocol.
+
+| Operations | Named refusal |
+| --- | --- |
+| `return.request` | `starter_return_request_unavailable` |
+| `operator.returnApprove`, `operator.returnReject` | `starter_return_decision_unavailable` |
+| `operator.hold`, `operator.release` | `starter_order_hold_unavailable` |
+| `operator.cancelUnpaid` | `starter_order_cancellation_unavailable` |
+| `operator.externalRefund` | `starter_external_refund_mark_unavailable` |
+| `operator.label`, `operator.handoff`, `operator.delivery` | `starter_shipment_mutation_unavailable` |
+| `tracking.read` | `starter_tracking_access_unavailable` |
+| `subscription.command` | `starter_subscription_command_unavailable` |
+| `research.submit`, `ingest.submit` | `host_binding_required` |
+
+Shipment list/detail use the native commerce reader in one repeatable-read,
+read-only snapshot after native human-admin authorization on each request.
+Unknown input fields and invalid selectors refuse before shipment I/O.
+The destination view never prepares or pins a shipment. A pinned parcel retains
+its destination when the order's current destination changes. This reduced
+projection keeps the captured fulfillment client id, provider kind, parcel-line
+ids and saved-address id null, item reservation links empty, and reservation
+locations null. It supplies
+no contact revision, digest, correction target or baseline comparison. Tracking
+and operation evidence retain the native reader's limits; missing required facts
+refuse rather than omit a selected shipment. See the canonical
+[native read limits](../../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#native-parity-boundaries).
+Shipment mutations remain unavailable. Owned account tracking needs
+its separate account composition proof. Signed unsubscribe retains its separately
+owned pending binding. Other absent bindings return `host_binding_required` after
+admission. An invalid-grant example does not
+prove a valid grant works.
 
 Both example catalogues price in `XTS` test units for fictional market `ZZ` at
 `UTC`. These choices make no real tax, shipping or compliance claim. The selected
@@ -103,7 +143,7 @@ supply an installation capability.
 No generic contact form; the partner inquiry is the durable intake.
 Support is static and shows optional validated `supportEmail` as plain text,
 with an account link. Missing contact configuration is stated explicitly.
-The application declares 52 operations. With a runtime connection, the partner
+The application declares 51 operations. With a runtime connection, the partner
 submit/list/transition and review read/submit/list/moderation actions are mounted.
 Without that connection they remain unbound, like the other native actions.
 
@@ -242,3 +282,15 @@ PostgreSQL integers; each offered mode must have a positive seeded unit price.
 Tax legal-basis text is at most 200 characters and the shared legal revision is
 trimmed, nonempty text of at most 64 characters. Configuration rejects values
 outside these native boundaries before composition.
+
+## Paid-order message capture
+
+The one-shot lifecycle renewal command also drains only paid-order email events,
+including when renewal execution is disabled. A paid order with its emitted
+paid-mail event and contact yields one private filesystem message record;
+unpaid and cancelled purchases emit no paid-mail event. The record dedupes
+reclaimed sends, and processed outbox state prevents another claim. No real mail
+provider is active. This adds no other event dispatcher, transport, SQL or grant.
+Subscription notices retain their separate native owner and existing limits.
+The sibling settlement event is known but unclaimed: it remains pending without
+delivery or a message record, and does not hold the paid receipt behind it.

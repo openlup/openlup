@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { RenewalLine, RenewalLinePricing, RenewalPricingSnapshot, RenewalRetainedTerms } from "./contracts/renewal.js";
 import { subscriptionRecord, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+import { bestEffortNativePurchaseTemplate, resolveNativePurchasePriceList } from "./nativePurchasePriceList.js";
 
 const amount = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const cadence = z.number().int().positive().max(2_147_483_647);
@@ -69,6 +70,10 @@ function listAnchor(prices: readonly RenewalLinePricing[], count: number): numbe
   return total;
 }
 
+// Exact integer money: amount × basis points can exceed 2^53, where float rounding drifts by a minor unit.
+const ceilBps = (amount: number, bps: number) => Number((BigInt(amount) * BigInt(bps) + 9_999n) / 10_000n);
+const roundBps = (amount: number, bps: number) => Number((BigInt(amount) * BigInt(bps) * 2n + 10_000n) / 20_000n);
+
 /** Same threshold boundary as the shipping owner, without a cross-module runtime dependency. */
 export function nativeRenewalPrice(row: Record<string, unknown>, lines: readonly RenewalLine[], logicalCycle: number): RenewalPricingSnapshot {
   const facts = subscriptionRecord(row.purchase_facts), terms = nativeRetainedTerms(row);
@@ -79,7 +84,7 @@ export function nativeRenewalPrice(row: Record<string, unknown>, lines: readonly
   if (marker && logicalCycle === 2) {
     const list = listAnchor(prices, lines.length), saved = marker.delivery2;
     const raw = subtotal === saved.basisSubtotalMinor ? saved.discountMinor : list !== null && list > 0
-      ? subtotal - Math.ceil(list * (10_000 - saved.discountBps) / 10_000) : Math.round(subtotal * saved.discountBps / 10_000);
+      ? subtotal - ceilBps(list, 10_000 - saved.discountBps) : roundBps(subtotal, saved.discountBps);
     discount = Math.min(Math.max(0, Math.trunc(raw)), Math.max(0, subtotal - terms!.minimumPayableMinor!));
   }
   const product = subtotal - discount, shippingTerms = terms?.shippingTerms;
@@ -111,6 +116,14 @@ export async function graduateNativeRenewal(db: SubscriptionQueryExecutor, row: 
     AND state NOT IN ('succeeded','refused') UNION ALL SELECT 1 FROM public.subscription_cycles WHERE subscription_id=$1::uuid
     AND status IN ('payment_pending','retry_scheduled') LIMIT 1`, [id]);
   if (open.rows.length) throw new Error("subscription_starter_graduation_open_cycle");
+  await bestEffortNativePurchaseTemplate(db, async () => {
+    const current = (await db.query("SELECT price_list_id,currency_code FROM public.subscriptions WHERE id=$1::uuid", [id])).rows[0];
+    if (!current || current.price_list_id != null || current.currency_code != null) return;
+    const context = await resolveNativePurchasePriceList(db, String(row.activation_order_id));
+    if (context.priceListId) await db.query(`UPDATE public.subscriptions SET price_list_id=$2::uuid,currency_code=$3
+      WHERE id=$1::uuid AND price_list_id IS NULL AND currency_code IS NULL`, [id, context.priceListId, context.currency]);
+    if (context.reason) console.warn("subscription_price_list_unresolved", context.reason);
+  });
   const original = z.array(z.object({ lineOrdinal: cadence, sku: z.string(), quantity: cadence, unitAmountMinor: amount }).strict()).parse(row.lines);
   const prices = currentPricing(row, original, terms!);
   let finalLines = original, finalPricing = prices;
@@ -154,9 +167,15 @@ export async function graduateNativeRenewal(db: SubscriptionQueryExecutor, row: 
   }
   await db.query("UPDATE public.subscriptions SET cadence_days=$2,template_version=template_version+1,updated_at=now() WHERE id=$1::uuid", [id, marker.graduation.cadenceDays]);
   const mode = full ? "full" : "cadence_only";
+  const eventType = full ? "subscription.starter_graduated" : "subscription.starter_cadence_normalized";
+  let eventKey = `${full ? "starter-graduation" : "starter-cadence-normalize"}:${id}:${marker.basisTemplateVersion}`;
+  // Preserve pre-upgrade customer history, including a pre-claimed fallback key.
+  while ((await db.query(`SELECT 1 FROM public.subscription_events
+    WHERE subscription_id=$1::uuid AND idempotency_key=$2 AND event_type<>$3`, [id, eventKey, eventType])).rows.length) {
+    eventKey = `system:${eventKey}`;
+  }
   await db.query(`INSERT INTO public.subscription_events(subscription_id,event_type,idempotency_key,payload)
-    VALUES($1::uuid,$2,$3,$4::jsonb)`, [id, full ? "subscription.starter_graduated" : "subscription.starter_cadence_normalized",
-    `${full ? "starter-graduation" : "starter-cadence-normalize"}:${id}:${marker.basisTemplateVersion}`,
+    VALUES($1::uuid,$2,$3,$4::jsonb)`, [id, eventType, eventKey,
     JSON.stringify({ mode, basisTemplateVersion: marker.basisTemplateVersion, templateVersion: Number(row.template_version) + 1,
       cadenceDays: marker.graduation.cadenceDays, before: original, lines: finalLines, linePricing: finalPricing,
       ...(full && marker.graduation.sizeConstraint ? { sizeConstraint: marker.graduation.sizeConstraint } : {}),

@@ -236,7 +236,8 @@ export type OmsPaymentStatus<PaymentState extends string> = "not_started" | Paym
 ## dist/commerce/server/native-checkout/index.d.ts
 
 ```ts
-import { COMMERCE_CONTRACT_VERSION, type CreateQuoteResponse } from "../../../pricing/index.js";
+import type { PromotionRow } from "@openlup/core/promo";
+import { COMMERCE_CONTRACT_VERSION, type CreateQuoteResponse, type AcquisitionFinancialPolicy, type CommerceQuoteDiscount } from "../../../pricing/index.js";
 import type { OrderDraftSummary } from "../../contracts/order.js";
 export interface NativeCheckoutQuery {
     query(text: string, values?: unknown[]): Promise<{
@@ -258,6 +259,24 @@ export interface NativeCheckoutDraftResponse {
  */
 export declare function createPostgresNativeCheckoutPersistence(executor: NativeCheckoutQuery): {
     createOrderDraft(request: NativeCheckoutDraftRequest, options?: {
+        clientId?: string | null;
+    }): Promise<NativeCheckoutDraftResponse>;
+};
+export interface NativeAcquisitionCheckoutPool {
+    connect(): Promise<NativeCheckoutQuery & {
+        release(): void;
+    }>;
+}
+export interface NativeAcquisitionCheckoutOptions {
+    regionCode: string;
+    financialPolicy: AcquisitionFinancialPolicy<PromotionRow>;
+    /** Host-owned semantic labels, in addition to the saved family IDs. */
+    isAcquisitionDiscount(discount: CommerceQuoteDiscount): boolean;
+}
+/** Server-produced quotes only. Owns one READ COMMITTED transaction through draft
+ * commit; host authorization and quote acceptance precede this boundary. */
+export declare function createPostgresAcquisitionCheckoutPersistence(pool: NativeAcquisitionCheckoutPool, options: NativeAcquisitionCheckoutOptions): {
+    createOrderDraft(request: NativeCheckoutDraftRequest, identity?: {
         clientId?: string | null;
     }): Promise<NativeCheckoutDraftResponse>;
 };

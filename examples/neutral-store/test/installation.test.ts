@@ -12,10 +12,20 @@ function installation(identity = { login: 'demo_install', role: 'demo_install', 
   const calls: Array<{ text: string; values: unknown[] | undefined }> = [];
   let closed = 0;
   const prices = new Map<string, Record<string, unknown>>();
+  const digests = new Map<string, unknown>();
+  const policies = new Map<string, { id: unknown; digest: unknown }>();
+  const promotions = new Map<string, Record<string, unknown>>();
   const binding: DemonstrationInstallation = {
     installRole: 'demo_install', runtimeRole: 'demo_runtime',
     connection: { query: async (text, values) => {
       calls.push({ text, values });
+      if (text.startsWith('INSERT INTO public.subscription_price_policy_revisions') && values) { digests.set(String(values[0]), values[11]); policies.set(String(values[2]), { id: values[0],digest: values[11] }); }
+      if (text.startsWith('SELECT id,digest')) return { rows: policies.has(String(values?.[0])) ? [policies.get(String(values?.[0]))!] : [] };
+      if (text.startsWith('SELECT p.primary_sku_id')) return { rows: [{ primary_sku_id: null,current_document_revision_id: null,net_weight_g: 0 }] };
+      if (text.startsWith('INSERT INTO public.catalog_product_document_revisions') && values) digests.set(String(values[0]), values[7]);
+      if (text.startsWith('SELECT digest')) return { rows: [{ digest: digests.get(String(values?.[0])) }] };
+      if (text.startsWith('INSERT INTO public.commerce_promotion_definitions') && values) promotions.set(String(values[0]), { definition: values[1], active: values[2] });
+      if (text.startsWith('SELECT definition,active')) return { rows: [promotions.get(String(values?.[0]))!] };
       if (text.startsWith('INSERT INTO public.price_entries') && values) prices.set(String(values[0]),
         Object.fromEntries(['id','price_list_id','variant_id','mode','min_qty','unit_price_minor','amount_kind','active','valid_from'].map((key,i) => [key, values[i]])));
       if (text.startsWith('SELECT id, price_list_id')) return { rows: [prices.get(String(values?.[0]))!] };
@@ -62,10 +72,10 @@ for (const config of Object.values(configurations)) {
     assert.equal(first.calls[0]!.text, 'BEGIN');
     assert.equal(first.calls.at(-1)!.text, 'COMMIT');
     const inserts = first.calls.filter(call => call.text.startsWith('INSERT INTO public.'));
-    assert.equal(inserts.length, config.offer.products.length * 2 + seedPriceCount(config) + 1);
+    assert.equal(inserts.length, config.offer.products.length * 4 + seedPriceCount(config) + 3);
     for (const call of inserts) {
-      assert.match(call.text, call.text.startsWith('INSERT INTO public.price_entries') ? /ON CONFLICT \(id\) DO NOTHING/ : /ON CONFLICT \(id\) DO UPDATE/);
-      assert.match(call.text, /INSERT INTO public\.(catalog_products|catalog_skus|price_lists|price_entries)\b/);
+      assert.match(call.text, call.text.startsWith('INSERT INTO public.catalog_products') || call.text.startsWith('INSERT INTO public.catalog_skus') || call.text.startsWith('INSERT INTO public.price_lists') ? /ON CONFLICT \(id\) DO UPDATE/ : /ON CONFLICT.*DO NOTHING/);
+      assert.match(call.text, /INSERT INTO public\.(catalog_products|catalog_skus|price_lists|price_entries|subscription_price_policy_revisions|catalog_product_document_revisions|catalog_sku_identifiers|commerce_promotion_definitions)\b/);
       assert.ok(call.values?.length);
     }
     const registry = first.calls.filter(call => call.text.startsWith('INSERT INTO acquisition_private.'));

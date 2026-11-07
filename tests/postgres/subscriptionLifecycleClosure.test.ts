@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPostgresCustomerOrderHistoryReadStore } from "@openlup/platform/account-support";
@@ -278,7 +278,17 @@ describe.each(lifecycleProfiles)("subscription lifecycle closure on %s", profile
       await db.query("ROLLBACK");
     } finally { await db.query("ROLLBACK"); db.release(); }
     await env.owner.query("UPDATE public.subscription_dunning_notifications SET status='sending',claim_token=$2,lease_expires_at=$3 WHERE case_id=$1", [f.caseId, randomUUID(), later(1)]);
-    await env.actor(principal, actor => call(actor, "customer_subscription_pause_as_actor", [f.subscription.toUpperCase(), `actor:${f.subscription}`, "indefinite", null]));
+    const key = `actor:${f.subscription}`, derived = `command:${createHash("sha256").update(`${principal}:${key}`).digest("hex")}`;
+    const beforeReserved = await lifecycleRows(env.owner);
+    await expect(env.actor(principal, actor => call(actor, "customer_subscription_pause_as_actor", [f.subscription, derived, "indefinite", null])))
+      .rejects.toMatchObject({ code: "22023", message: "subscription_command_reserved_idempotency_key" });
+    expect(await lifecycleRows(env.owner)).toEqual(beforeReserved);
+    await env.actor(principal, actor => call(actor, "customer_subscription_pause_as_actor", [f.subscription.toUpperCase(), key, "indefinite", null]));
+    expect((await env.owner.query("SELECT idempotency_key,payload#>'{payload,commandKeyIdentity}' AS identity FROM public.subscription_events WHERE subscription_id=$1 AND event_type='subscription.customer_self_service.pause'", [f.subscription])).rows)
+      .toEqual([{ idempotency_key: derived, identity: { derivation: "principal-sha256.v1", actorId: principal } }]);
+    const beforeReplay = await lifecycleRows(env.owner);
+    expect((await env.actor(principal, actor => call(actor, "customer_subscription_pause_as_actor", [f.subscription, key, "indefinite", null]))).subscriptionAction.status).toBe("replayed");
+    expect(await lifecycleRows(env.owner)).toEqual(beforeReplay);
     expect((await env.owner.query("SELECT status,next_retry_at FROM public.subscription_dunning_cases WHERE id=$1", [f.caseId])).rows[0]).toEqual({ status: "paused", next_retry_at: null });
     expect((await env.owner.query("SELECT status FROM public.subscription_dunning_notifications WHERE case_id=$1", [f.caseId])).rows[0].status).toBe("sending");
     expect((await env.owner.query("SELECT status FROM public.commerce_orders WHERE id=$1", [f.original.orderId])).rows[0].status).toBe("cancelled");

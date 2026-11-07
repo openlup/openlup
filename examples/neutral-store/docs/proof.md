@@ -457,3 +457,27 @@ from a real PostgreSQL lock barrier and requires every owned renewal projection
 to complete. The host releases its actor transaction before the separate
 renewal read borrows the same bounded pool; queries and authority checks retain
 their existing owners.
+
+## Paid-order message witness
+
+[`neutralStorePaidMail.test.ts`](../../../tests/postgres/neutralStorePaidMail.test.ts)
+installs the canonical catalogue in disposable PostgreSQL and claims through the
+restricted runtime login without extra grants. It invokes the actual lifecycle
+entry with renewals disabled, observes exactly one private paid receipt with
+recipient reference, localized subject and frozen totals, then proves replay is
+inert. A competing claim is fenced; a lost acknowledgement followed by lease
+expiry reuses the original receipt before reading a changed contact. Unpaid and
+cancelled purchases produce none. The same file checks every unselected send
+method's refusal, missing-locale/empty-subject validation, private permissions,
+immutable capture and corrupt-identity refusal. These are local capture witnesses;
+no real mail delivery or provider qualification is claimed.
+
+The same file also creates real purchases through the starter's bound checkout
+and sandbox-payment actions, which emit both settlement and paid-email events.
+The fixture owner changes only the generated events' `created_at` values to
+explicit UTC instants, forcing each sibling order independently of random UUIDs.
+Each order is exercised once: the dispatcher captures one paid receipt and replay
+adds none, while the unclaimed settlement fact retains its row and version and
+creates no message. The settlement-first case fails before the vocabulary fix;
+the paid-first control already passes. No hand-inserted event substitutes for the
+real purchase in these two cases.

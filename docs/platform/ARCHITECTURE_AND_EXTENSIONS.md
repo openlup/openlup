@@ -1838,6 +1838,35 @@ A failed facts or completion writer returns a pending attachment while paid
 service remains active. Hosts drain `writer.pending()` and retry `complete()`;
 rows without facts require resubmitting the original purchase facts. Changed
 accepted facts refuse; attachment replay does not reset a later method state.
+After successful completion, including a replay, the writer attempts an optional
+template unit on its existing query executor. A crash before that unit leaves the
+completed purchase without a template, as before; a later replay can fill it in.
+The unit writes only while there are no template lines and `template_version = 1`,
+so it preserves later edits and graduation. Lines and the optional price context
+are atomic with each other, but are separate from completion.
+Both materialization and resolution use admitted logical draft lines saved in
+order metadata. Per SKU, the template sums quantity, takes the earliest zero-based
+ordinal and uses the admitted unit price only when all its lines agree. Different
+prices for one SKU skip the whole template and pair with
+`subscription_template_unavailable`, `ambiguous_line_price`. Add-on roles come
+from retained `renewalTerms.linePricing`, read through the existing completed
+purchase terms reader, with false when no retained role exists. Effective order
+positions split by promotion allocation are never the template or price source.
+The resolver evaluates each original draft line using admission's currency,
+validity, mode-dependent sellable flags and entry precedence. Exactly one matching
+list sets a still-NULL list/currency pair; missing or ambiguous lists leave it NULL
+and log a neutral reason while the template can still be materialized.
+The optional unit catches only SQLSTATE classes 42 (access), 22 (data) and 23
+(integrity), logs `subscription_template_unavailable` plus the SQLSTATE once, and
+keeps the completion response. All other failures propagate. On a caller-bound
+transaction it uses a savepoint to discard failed optional work without aborting
+the transaction. The writer first attempts `SAVEPOINT native_purchase_template`:
+success establishes the savepoint; only SQLSTATE `25P01` identifies independently committed
+pool queries, which continue without one. Other savepoint errors propagate. This
+detection calls no database function and opens no explicit transaction. No runtime
+grant is added; missing template access leaves no template and native edits stay refused, as before this change.
+Graduation retries NULL context with the same resolver inside a best-effort
+savepoint, retaining its existing add-on precedence, service and due anchor.
 The runtime has no direct privileges on the attachment or method-event tables;
 fixed definer readers expose pending identifiers/readiness and completed snapshot
 fields. `subscription_renewal_purchase_terms(uuid)` additionally returns the sealed
@@ -2498,7 +2527,12 @@ continue, with no uncertain receipt for these unsent failures. Uncertain transpo
 or lost local acknowledgement cannot become another send.
 
 The account-history host projection verifies owner/order before its query and
-keeps correction parent, signed total, currency and download availability. Missing
+keeps correction parent, signed total, currency and download availability. Invoice
+owner/order/document checks compare standard UUID identifiers by value, including
+uppercase and mixed-case spelling. Echoes retain their source spelling; opaque
+host references, provider references and artifact identities remain case-sensitive.
+The [restricted native witness](../../tests/postgres/invoicingCaptured.test.ts)
+checks owned history and PDF access with alternate UUID letter case. Missing
 native parity is typed unsupported with `host_binding_required`. Operator auth
 precedes query and customer ticket ownership precedes PDF fetch/validation. The
 reference browser client consumes the host route without importing the server

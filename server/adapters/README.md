@@ -208,6 +208,26 @@ product primary-SKU reference after its SKU exists, sends before observations,
 and sync state after its outbox work, then includes them in replay and the final
 whole-table census. The profile still refuses other nonempty tables.
 
+`catalog_product_document_revisions` is carried with its immutable row text.
+Restore stages both product pointers to null, inserts revisions after their
+products, then installs each current-revision pointer while the primary-SKU
+pointer is still staged. Each guarded update preserves every other product
+field and requires exactly one row; the foreign key requires the revision to
+belong to that product. The existing primary-SKU update follows SKU insertion.
+
+The profile carries `catalog_sku_identifiers` after their SKUs,
+`subscription_price_policy_revisions` after their price lists, and
+`commerce_promotion_definitions` before order adjustments. Closed and open
+price-policy intervals are inserted unchanged under the existing READ COMMITTED
+transaction and overlap guard. Promotion definitions retain their active flag
+and database-computed fingerprint; all three relations participate in exact
+row comparison and replay.
+Promotion claims restore after definitions, clients, orders, items and
+adjustments; claim events follow claims. Reserved and redeemed states, expiry
+and keyed transition history remain unchanged, preserving per-customer
+redemption limits. The status-update and item-mutation triggers stay enabled;
+restoring paid orders uses INSERT and does not generate another transition.
+
 The profile also carries account consent events (requested/effective
 choice, actor/client and recipient fingerprint, copy/source/reason, route/client
 attribution, capture times and work ID) and their singleton sync-target row.

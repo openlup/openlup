@@ -11,6 +11,14 @@ subscription cadences and market inputs. Both example configurations satisfy
 `StoreConfig` in `shared/config.ts`. No theme framework, configuration service,
 generated client or preview tool is involved.
 
+Every owned configuration also supplies `documents.sandbox` (`enabled` and
+`providerRef`), `returns.reasons` (nonempty, uniquely coded choices with English and Polish
+labels), and `orderControls.holdReasons` (nonempty native reason codes with
+English and Polish labels). These required document/return/hold settings are checked by
+`assertConfig`; missing document, return or hold configuration blocks startup
+with `starter_order_controls_configuration_invalid`. Keep them when adding
+or replacing a configuration, even while the related mutation is unavailable.
+
 The application owns `configurations`, `defaultConfigurationId` and
 `selectConfiguration` in `owned/store.config.ts`. Add another typed configuration
 there and select its ID as the default; no managed file needs a vertical name.

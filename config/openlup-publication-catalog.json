@@ -1234,6 +1234,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261106050000_customer_command_key_isolation.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/20261106100000_subscription_lifecycle_closure.sql",
       "class": "public-output"
     },
@@ -1770,6 +1774,14 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-r1d-pkg.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-r1d.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m19-r2.md",
       "class": "public-output"
     },
@@ -1803,6 +1815,14 @@
     },
     {
       "path": "docs/platform/plans/oss-m19-st-e3.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-st-e4.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-st-e4u.md",
       "class": "public-output"
     },
     {
@@ -1898,6 +1918,14 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/browser/acquisition.spec.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/browser/e4.spec.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/browser/journey.spec.ts",
       "class": "public-output"
     },
@@ -1942,6 +1970,14 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/client/invoice-download.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/client/live-quote.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/client/main.ts",
       "class": "public-output"
     },
@@ -1971,6 +2007,10 @@
     },
     {
       "path": "examples/neutral-store/client/purchase.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/client/quote-acceptance.ts",
       "class": "public-output"
     },
     {
@@ -2018,6 +2058,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/host/acquisition-predecessors.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/host/authenticated-recovery.ts",
       "class": "public-output"
     },
@@ -2035,6 +2079,14 @@
     },
     {
       "path": "examples/neutral-store/host/e-composition.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/host/e4-composition.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/host/e4-invoice-summary.ts",
       "class": "public-output"
     },
     {
@@ -2066,11 +2118,27 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/host/paid-mail-artifact.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/host/paid-mail.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/host/private-capture.ts",
       "class": "public-output"
     },
     {
       "path": "examples/neutral-store/host/purchase-composition.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/host/quote-composition.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/host/quote-secret.ts",
       "class": "public-output"
     },
     {
@@ -2106,6 +2174,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/installation/quote-seed.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/lifecycle",
       "class": "public-output"
     },
@@ -2115,6 +2187,10 @@
     },
     {
       "path": "examples/neutral-store/owned/acquisition-addresses.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/owned/acquisition-policy.ts",
       "class": "public-output"
     },
     {
@@ -2131,6 +2207,14 @@
     },
     {
       "path": "examples/neutral-store/owned/fragments.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/owned/quote-copy.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/owned/quote.config.ts",
       "class": "public-output"
     },
     {
@@ -2210,7 +2294,15 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/shared/offer-estimate.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/shared/offer.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/shared/quote-config.ts",
       "class": "public-output"
     },
     {
@@ -2230,6 +2322,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/test/acquisition-quote.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/test/address-outcomes.test.ts",
       "class": "public-output"
     },
@@ -2243,6 +2339,18 @@
     },
     {
       "path": "examples/neutral-store/test/checkout-recovery.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/e4-invoice.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/e4-limits.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/e4-oms.test.ts",
       "class": "public-output"
     },
     {
@@ -4015,6 +4123,10 @@
     },
     {
       "path": "packages/platform/sql/20261101232000_customer_account_consents.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261106050000_customer_command_key_isolation.sql",
       "class": "public-output"
     },
     {
@@ -6726,6 +6838,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/invoicing/uuidIdentity.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/job-ledger/index.ts",
       "class": "public-output"
     },
@@ -7943,6 +8059,10 @@
     },
     {
       "path": "packages/platform/src/subscriptions/nativeInstant.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/nativePurchasePriceList.ts",
       "class": "public-output"
     },
     {
@@ -28030,6 +28150,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/platform/neutralStoreCheckoutRetry.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/platform/partners/partnerAcquisitionParity.test.ts",
       "class": "public-output"
     },
@@ -28087,6 +28211,14 @@
     },
     {
       "path": "tests/postgres/accountSupportUpgrade.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/acquisitionAdmission.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/acquisitionAdmissionFixture.ts",
       "class": "public-output"
     },
     {
@@ -28162,6 +28294,18 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/connectedStoreCatalogRevisions.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/connectedStorePromotionClaims.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/connectedStoreStarterRelations.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/connectedStoreTransfer.test.ts",
       "class": "public-output"
     },
@@ -28171,6 +28315,10 @@
     },
     {
       "path": "tests/postgres/customerAccountConsents.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/customerCommandKeyIsolation.test.ts",
       "class": "public-output"
     },
     {
@@ -28474,6 +28622,18 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/neutralStarterE4.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/neutralStorePaidMail.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/neutralStoreQuote.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/neutralStoreRecovery.test.ts",
       "class": "public-output"
     },
@@ -28715,6 +28875,14 @@
     },
     {
       "path": "tests/postgres/subscriptionPurchaseRenewal.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionPurchaseTemplate.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionPurchaseTemplateLegacy.test.ts",
       "class": "public-output"
     },
     {

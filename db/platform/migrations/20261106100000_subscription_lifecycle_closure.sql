@@ -563,12 +563,18 @@ AS $$
 DECLARE
   v_principal_id uuid;
   v_client_id uuid;
+  v_command_key text;
+  v_key_identity jsonb;
+  v_existing public.subscription_events%ROWTYPE;
 BEGIN
   IF p_idempotency_key IS NULL
     OR p_idempotency_key <> btrim(p_idempotency_key)
     OR char_length(p_idempotency_key) NOT BETWEEN 8 AND 180
   THEN
     RAISE EXCEPTION 'subscription_lifecycle_invalid_idempotency_key' USING ERRCODE = '22023';
+  END IF;
+  IF starts_with(p_idempotency_key, 'command:') THEN
+    RAISE EXCEPTION 'subscription_command_reserved_idempotency_key' USING ERRCODE = '22023';
   END IF;
 
   IF p_pause_preset IS NULL
@@ -597,7 +603,65 @@ BEGIN
     RAISE EXCEPTION 'subscription_lifecycle_not_found' USING ERRCODE = '22023';
   END IF;
 
-  PERFORM public.subscription_pause_close_recovery(v_client_id,p_idempotency_key,p_subscription_id,statement_timestamp());
+  -- Serialize ownership, legacy replay and the lifecycle write on the same row.
+  PERFORM 1 FROM public.subscriptions
+   WHERE id = p_subscription_id AND client_id = v_client_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'subscription_lifecycle_forbidden' USING ERRCODE = '22023';
+  END IF;
+  v_command_key := 'command:' || encode(sha256(convert_to(
+    v_principal_id::text || ':' || p_idempotency_key, 'UTF8')), 'hex');
+  v_key_identity := jsonb_build_object('derivation', 'principal-sha256.v1', 'actorId', v_principal_id);
+  SELECT * INTO v_existing FROM public.subscription_events
+   WHERE subscription_id = p_subscription_id AND idempotency_key = v_command_key;
+  IF FOUND THEN
+    IF COALESCE(v_existing.payload->'commandKeyIdentity', v_existing.payload#>'{payload,commandKeyIdentity}') IS DISTINCT FROM v_key_identity THEN
+      RAISE EXCEPTION 'subscription_command_ambiguous_idempotency_key' USING ERRCODE = '23505';
+    END IF;
+    IF v_existing.event_type <> 'subscription.customer_self_service.pause'
+      OR v_existing.payload->>'action' IS DISTINCT FROM 'pause'
+    THEN
+      RAISE EXCEPTION 'subscription_lifecycle_idempotency_conflict' USING ERRCODE = '23505';
+    END IF;
+  ELSE
+    SELECT * INTO v_existing FROM public.subscription_events
+     WHERE subscription_id = p_subscription_id AND idempotency_key = p_idempotency_key;
+    IF FOUND THEN
+      IF COALESCE(v_existing.payload->'commandKeyIdentity', v_existing.payload#>'{payload,commandKeyIdentity}') IS NOT NULL THEN
+        RAISE EXCEPTION 'subscription_command_ambiguous_idempotency_key' USING ERRCODE = '23505';
+      END IF;
+      IF starts_with(v_existing.event_type, 'subscription.customer_self_service.') THEN
+        IF v_existing.event_type <> 'subscription.customer_self_service.pause'
+          OR v_existing.payload->>'action' IS DISTINCT FROM 'pause'
+        THEN
+          RAISE EXCEPTION 'subscription_lifecycle_idempotency_conflict' USING ERRCODE = '23505';
+        END IF;
+      ELSE
+        -- A system row at the raw key belongs to its producer, never this command.
+        v_existing := NULL;
+      END IF;
+    END IF;
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM public.subscription_edit_quotes
+    WHERE subscription_id = p_subscription_id AND idempotency_key = v_command_key
+      AND command_key_identity IS DISTINCT FROM v_key_identity)
+  THEN
+    RAISE EXCEPTION 'subscription_command_ambiguous_idempotency_key' USING ERRCODE = '23505';
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.subscription_edit_quotes
+    WHERE subscription_id = p_subscription_id
+      AND (idempotency_key = v_command_key
+        OR (idempotency_key = p_idempotency_key AND command_key_identity IS NULL)))
+  THEN
+    RAISE EXCEPTION 'subscription_lifecycle_idempotency_conflict' USING ERRCODE = '23505';
+  END IF;
+  IF v_existing.id IS NOT NULL THEN
+    -- Only a proved same-action event supplies the replay identity.
+    v_command_key := v_existing.idempotency_key;
+  END IF;
+
+  PERFORM public.subscription_pause_close_recovery(v_client_id,v_command_key,p_subscription_id,statement_timestamp());
 
   -- Closing an unpaid order queues this deferred invoker check. Fire it while
   -- the fixed actor wrapper still has owner authority, then restore deferral.
@@ -607,10 +671,10 @@ BEGIN
 
   RETURN public.subscription_apply_lifecycle_action(
     v_client_id,
-    p_idempotency_key,
+    v_command_key,
     p_subscription_id,
     'pause',
-    jsonb_build_object('pausePreset', p_pause_preset, 'reason', p_reason),
+    jsonb_build_object('pausePreset', p_pause_preset, 'reason', p_reason, 'commandKeyIdentity', v_key_identity),
     statement_timestamp()
   );
 END;
