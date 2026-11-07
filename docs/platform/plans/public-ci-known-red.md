@@ -1,6 +1,6 @@
 # Public CI diagnostic obligations
 
-Status: the managed runtime repair closes the twelve SQL obligations recorded below. Historical measurements are archived; the required root-suite `test` aggregate (four `test-full-shard` jobs) and the unrestricted `pgtap` diagnostic must remain visible and new failures require triage.
+Status: the managed runtime repair closes the twelve SQL obligations recorded below. Historical measurements are archived; the required root-suite `test` aggregate (four `test-full-shard` jobs and `pgtap`) and the unrestricted `pgtap` diagnostic must remain visible and new failures require triage.
 Audience: contributors repairing published tests and runtime contracts.
 
 Accountable triage owner for **every row**: **OpenLup maintainer**. Each follow-up family identifies repair scope, not an assigned person's commitment. These records introduce no skip, exception, assertion budget or waiver. Failed behavior and ACL checks are unresolved defects or contract mismatches; calling a test fixture incomplete does not prove the runtime safe.
@@ -12,7 +12,8 @@ artifact and integration-receipt procedure used then was superseded by the
 [2026-10-19 simplification](native-review-simplification-proposal.md). Current
 submission posts `agent-review-session.mjs receipt <PR>` output as a PR comment;
 see [Deliver a change](../../../CONTRIBUTING.md#deliver-a-change). A group that
-cannot carry over is rejected: merge `main` and re-review. This does not change
+cannot carry over is rejected: merge `main`; only a conflict resolution is
+reviewed. This does not change
 the diagnostic results or waive their obligations.
 
 ## Current checkpoint
@@ -59,7 +60,7 @@ fences, idempotency, refusals and row/advisory locks remain required.
 
 A green diagnostic checkpoint does not establish production safety, stable
 framework readiness or historical migration compatibility. A future red
-`test` aggregate (four `test-full-shard` jobs) or `pgtap` result is a new failure to classify, not debt waived by the
+`test` aggregate (four `test-full-shard` jobs and `pgtap`) or `pgtap` result is a new failure to classify, not debt waived by the
 archived inventory below.
 
 ## Archived merged checkpoint: twelve SQL obligations

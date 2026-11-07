@@ -1,4 +1,6 @@
+import { captureRecoveryEntry } from './recovery-session.ts';
 import './style.css';
+import { captureCompletionEntry } from './purchase.ts';
 import { copy, type CopyKey } from '../owned/copy.ts';
 import { fragments } from '../owned/fragments.ts';
 import { assertConfig } from '../shared/config.ts';
@@ -14,6 +16,9 @@ import { operatorPage } from './pages/operator.ts';
 import { acquisitionPage, partnersPage, researchPage } from './pages/participation.ts';
 import { returnsPage, termsPage, reviewPage, unsubscribePage, supportPage,
   trackingPage, destinationsPage, limitsPage } from './pages/destinations.ts';
+
+captureCompletionEntry();
+captureRecoveryEntry();
 
 const root = document.querySelector<HTMLElement>('#app');
 if (!root) throw new Error('starter_root_missing');
@@ -64,6 +69,7 @@ async function start(): Promise<void> {
     render(true);
   }
   function render(focus: boolean): void {
+    captureRecoveryEntry();
     const route = resolveRoute(location.pathname);
     const locale = route.locale;
     const context: PageContext = {

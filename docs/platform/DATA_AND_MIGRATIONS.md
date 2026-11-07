@@ -5,6 +5,11 @@ it does not certify a migration path or an upgrade service.
 
 ## Data ownership
 
+Native terminal replay replaces only `subscription_claim_due_renewal` while
+retaining its header, ACL, frozen-input comparison and subscription-first lock
+order. Terminal history precedes due eligibility; cancelled new work refuses.
+The subscription owner below defines the public behavior and proof.
+
 The native `20261101223000_subscription_purchase_renewal.sql` forward records
 purchase facts and renewal-attachment duties beside the existing activation
 spine. Activation commits service plus the duty; renewal header/lines/method
@@ -25,9 +30,11 @@ activation helper retains its ACL. Method transitions compare expected health an
 rewriting subscription service state. Sandbox observation uses invoker rights
 and the existing operation/outcome capabilities, without another attempt table.
 The [subscription owner](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
-describes the codec and retry duties. Installing or releasing this forward still
-requires its separately admitted SQL-control inventory and ordinary review;
+describes the codec and retry duties. The forward's approval inventory is
+admitted with it under ordinary review;
 local PostgreSQL proof does not establish that admission or a published chain.
+
+See [retained renewal storage](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#retained-renewal-storage).
 
 The platform owns its schema, migration history, and documented data contracts.
 An adopter owns tables and migrations for its own extensions in the `app` schema.
@@ -42,6 +49,29 @@ coordination mechanism for a multi-instance deployment.
 The preview source release deliberately ships an unbound database-type seam at
 `src/integrations/supabase/types.ts`; replace it with adopter-generated types
 before enabling database adapters. It is not evidence of schema compatibility.
+
+## Retained renewal storage
+
+The account-choice forward also creates the service-only
+`subscription_register_renewal_purchase_with_shipping(uuid,jsonb)` and STABLE
+`subscription_renewal_purchase_terms(uuid)` definers. Both pin `pg_catalog,
+pg_temp`, revoke PUBLIC before conditional role ACL blocks and add no table
+privileges. Registration seals optional full retained delivery/acquisition terms
+in the existing purchase attachment, fixes its acquisition basis version on the
+server, and compares the authorization instant with UTC microsecond identity.
+The old zero-only registration and its completer remain unchanged. A completed
+attachment reader exposes the retained terms; no current-settings read or
+additional agreement table is introduced. Graduation uses existing subscription,
+line-collection and event privileges inside the host transaction. Retained order
+preparation uses existing item INSERT/DELETE and shipping-adjustment INSERT
+privileges, with the existing deferred line-sum guard. The subscription owner
+above defines those transaction and frozen-replay obligations.
+
+The same forward adds the three explicitly classified absorption-policy rows for
+stock waits, privacy erasures and subscription command receipts. The absorber
+still refuses an unclassified client-referencing table. Classification and access
+to any other earlier-row table remain that table's integration responsibility;
+the forward neither widens table grants nor changes the absorber.
 
 ## Partner acquisition data
 
@@ -153,6 +183,11 @@ recipient-consent, native send/observation and communication-sync rows needed
 for pending communication work. These names use the same qualified-target
 catalogue, column-shape, pristine-row, locked insertion, replay and exact-census
 checks as the rest of the profile; no arbitrary source table becomes writable.
+Native dunning cases, fenced notifications, reminder-ledger rows and transactional
+delivery receipts are also retained. Cases precede their notifications during
+restore, and accepted delivery evidence keeps its original idempotency key.
+The [notice witness](../../tests/postgres/m19NoticeIsolation.test.ts) compares all
+four row sets after real connected capture/restore and repeats the restore.
 
 Channel source captures, purchased-line claims and pull pages have no transfer
 mapping in this profile. Native restore imports ordinary outbox rows through the
@@ -267,7 +302,7 @@ owners. These two routines are not a generic full-store restore capability.
 This retained-row unit follows the initial qualified runtime-capabilities unit
 in the selected manifest. Its exact source SHA-256 is
 `56144f8e61b649c9d9f48458a1734abcc8bbd8d36fdc3919d90ceb1bc35d3b48`. The fifth
-whole-file approval was landed separately before this SQL introduction. The two
+whole-file approval historically landed separately before this SQL introduction. The two
 90-unit `withRestore` inventories from the E2+F-only candidate and the linked
 [reference measurements](https://github.com/openlup/openlup/pull/404#issuecomment-6451079203)
 are historical; the E-only 89-unit expectations and legacy 88-unit plan are
@@ -782,18 +817,21 @@ separately from historical grant spellings or inherited CLI defaults.
 
 ### Co-located SQL and approval pins
 
-The fixed `qualifiedInstallations` class requires prior exact whole-file approval
+The fixed `qualifiedInstallations` class requires exact whole-file approval
 for four bootstrap units, an optional retained-import unit, the runtime
-completion tail and the owner-path forward. Even expand-only
-qualified SQL uses this separate control-before-feature route: new SQL with new
-pins, simultaneous machinery changes, later repins, unknown paths and edits to
-issued files refuse. Trusted queue admission applies this guard to qualified SQL
+completion tail and the owner-path forward. Position 17
+approves the shared lock and conflict completion tail described under
+[Compatibility lifecycle](#compatibility-lifecycle); its active SQL is
+byte-identical to that approval. Even expand-only
+qualified SQL may land with its approval pins. Simultaneous machinery changes,
+later repins, unknown paths and edits to issued files refuse. Trusted queue admission applies this guard to qualified SQL
 changes even when their prior approval pins are unchanged. The
 [inert fixtures](../../scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/README.md)
 retain seven exact bound units, including the
 [runtime completion](../../db/platform/migrations/q2_20261028100000_runtime_capability_completion.sql)
 selected before the owner-path forward. Reader preparation landed before the
 sixth approval row, and that approval landed before this SQL introduction.
+These are historical checkpoints, not an ordering requirement for future features.
 The [restricted-bootstrap task](plans/oss-m14-restricted-bootstrap.md) has
 five fixed approvals at positions 8–12. Those `qa_` fixtures remain inert
 except for the selected baseline. A PostgreSQL parse failure in the approved
@@ -815,20 +853,15 @@ profile has its own local PG16 qualification; hosted qualification remains open.
 
 The reader reserves the qualified owner-path forward after runtime completion,
 at approval position seven before the five reserved restricted-bootstrap
-positions. Its prior approval binds the exact file and nine function preimages
+positions. Its approval binds the exact file and nine function preimages
 and definitions. The active forward pins name resolution on those definitions;
 the issued qualified prefix has 92 units. Earlier qualified units and their approvals
 remain immutable.
 
-Delivery uses three separately landed checkpoints. First prepare the exact
-sixth identity's reader/order support, inert fixture and refusals without
-changing the five approval rows. Trusted main parses a changed registry before
-the no-active-SQL return, so co-locating an expanded reader and sixth registry
-row is incompatible with that existing reader. Calling the change control-only
-does not bypass this parser constraint. After reader preparation is
-actual main, append the exact sixth hash in a pin-only change. Only after that
-approval is actual main may a feature introduce the identical active SQL and
-append its selected manifest row. Keep all trusted co-location checks intact.
+Historically, delivery used three separately landed checkpoints: reader support,
+then an exact pin-only approval, then the identical active SQL and its selected
+manifest row. The current rule below permits class data, pins and SQL together
+when main's validator already supports that capability.
 
 The issued schema-2 manifest preserved legacy 88 units and the qualified
 91-unit prefix, then appended the exact owner-path forward as unit 92. Its two
@@ -847,35 +880,36 @@ There is no optional `withRestoreForward` field or new selection mode.
 Prior source approval establishes no installation, managed-host, publication or
 activation evidence.
 
-A PR introducing SQL in a class already admitted by its trusted comparison-base
-policy may also carry that SQL's pins. Only bindings for files introduced by
-that PR may change. Other entries and their list positions, shared fields,
-registry schema and immutable baselines stay unchanged. The fixed path/signature
-inventory, whole-file and function hashes, preimages, statement/grant limits,
-ordered prefixes and fixture/package equality still apply. A hash binds bytes;
-independent native review approves the complete candidate under the
+SQL, its exact approval pins and any class data land together in the feature
+pull request. CI runs its tests. Issued approvals and slots are immutable,
+including their content and
+positions; sealed native classes retain their existing slot prefix as described below. Shared fields, the registry schema and
+immutable baselines stay unchanged. Fixed path/signature inventories, whole-file
+and function hashes, preimages, statement/grant limits, ordered prefixes and
+fixture/package equality still apply. A hash binds bytes; review follows the
 [existing review procedure](../../CONTRIBUTING.md#native-review-and-accountability).
-SQL risk assessment belongs in that required review, without a mandatory third
-review or a new report format. Applicable maintainer/delegate reads remain required.
+Applicable maintainer/delegate reads remain required.
 
-Changes to a class, validator, its dependencies, review/admission or release
-machinery need a separate control change before using the new rule. The existing
-native admission, invoked from trusted main, validates co-located data with its
-own checker and refuses simultaneous machinery changes or machinery drift since
-the reviewed base. Production tooling in `scripts/agent-review-*`, `scripts/oss-*`,
+A new validator capability lands first as its own change. Admission runs main's
+validator against the candidate's own co-located change and refuses machinery
+changes in that change. A change that adds SQL cannot change the validator, the
+migration manifest checker, CI workflows, review or release tooling, or the test
+harness. Production tooling in `scripts/agent-review-*`, `scripts/oss-*`,
 `scripts/source-*` and `scripts/packages/` stays unchanged for this route, including
 release entry points and preparation; test-only coverage changes remain allowed,
 except the catalog test of the [closed native store forwards](#closed-native-store-forwards)
 and the named files that select and run it, which that section lists.
 The checker and its direct dependency closure, root manifests/lockfile and
-`.github/` files also stay unchanged. Admission reads candidate Git objects
+`.github/` files also stay unchanged. Machinery changes on main since the
+candidate's base do not trigger this veto. Admission reads candidate Git objects
 without running candidate code.
 The [documented workflow invocation limitation](DEVELOPMENT_AND_RELEASE.md#reading-results-and-recovering)
 remains: candidate YAML can omit the job, so sensitive review and the applicable
 maintainer/delegate read of workflow edits remain the control for that case.
 
 Release binds each forward to its unique first-parent mainline introduction.
-Its pin must be valid at that introduction and unchanged afterwards; a later
+Its pin may first appear with the SQL and class data in that introduction
+and must remain unchanged afterwards; a later
 repin cannot legalize an earlier invalid installation. Existing separate
 control → feature histories remain valid. Pin-only preparation of future SQL
 retains its existing control decision; it is not an unrelated companion of a
@@ -895,8 +929,8 @@ Current candidates require all 18 pins. Release-history comparison also reads
 the exact prior 16-pin set and
 the exact earlier 14-pin set (five native, then nine managed), preserving each
 unchanged approval's content and fixed shape position while pending pins move and native X/Y are added.
-Reordered, extra or unknown historical inventories refuse, and an approval added
-in the same commit as its SQL still cannot authorize that SQL.
+Reordered, extra or unknown historical inventories refuse. An approval added
+with its SQL at introduction can authorize that SQL.
 
 This batch covers four native creations (retry, commands, stock wait and the
 M06 ATP/new-purchase seam), three native body replacements (allocator, late-positive stock accounting
@@ -991,7 +1025,7 @@ native allocator ACL, and a repinned managed index on an existing table. Missing
 Docker, PostgreSQL or pgTAP fails the required `test` aggregate; a lexical PASS
 cannot replace this gate. The managed setup budget includes its first image pull.
 These batch rules do not broaden the earlier #267, #295 or #300 classes.
-Coordinator control review and two fresh reviews remain separate delivery gates.
+Review follows the [native review procedure](../../CONTRIBUTING.md#native-review-and-accountability).
 
 ### M10-9 attempt replay control fixtures
 
@@ -1178,12 +1212,12 @@ measured-base increases and parent-baseline raises, including regeneration;
 candidate counts must still fit the baseline. Changed bytes, another path even
 with the same digest, another category or count, and unrelated increases refuse.
 No native rail, TypeScript, package or documentation path can enter this list.
-Adding any further entry is a control change needing two independent fresh full reviews under the native review contract plus
-the coordinator's control read. The six rail-path entries can be retired after
+Adding any further entry is a control change reviewed under the
+[native review floors](../../CONTRIBUTING.md#native-review-and-accountability). The six rail-path entries can be retired after
 the F17 PR lands and the base carries the counts.
 
-The managed runtime capability forward is shipped after its separate control
-approval. It changes no baseline bytes or function signature. Required service
+Historically, the managed runtime capability forward shipped after a separate
+control approval. It changes no baseline bytes or function signature. Required service
 and authenticated column/helper permissions are explicit in that ordered file;
 no portable twin or live upgrade compatibility is claimed. A corrected forward
 also retires exactly eight legacy id-only browser policies that membership
@@ -1423,26 +1457,37 @@ Missing Docker/PostgreSQL is a failed prerequisite, never lexical proof.
 ### Closed native store forwards
 
 `nativeStoreForwardClass` in the [reviewed registry](../../config/reviewed-platform-forwards.json)
-owns up to seven exact native paths, their ordered rows and three closed lists:
+owns exact native paths and row names supplied by its slots, and three closed function lists:
 replaced functions with before-hashes, created functions with pinned search
 paths, and grant-only existing functions with closed role/verb capabilities.
 Only firm rows
-are registered; an absent row authorizes nothing. Additional inventory requires
-a separate control change and maintainer read. Set `sealed: true` in the store's
-set-version preparation (S1); subsequent slot changes or unsealing refuse.
+are registered; an absent row authorizes nothing. Additional unissued inventory
+may land with its SQL under the existing validator and applicable maintainer read. Set `sealed: true` in the store's
+set-version preparation (S1). A sealed class stays sealed: its complete old slots
+array, including unissued reservations, must remain a canonical content-equal
+prefix of every later array. Only appends are allowed; editing, deleting or
+inserting among those slots refuses. Issued bindings and their slots retain their content and array positions, even
+while the class is unsealed. There is no slot-count maximum or second class key.
+Slot timestamps come from their paths and strictly increase in array order. A
+new slot's time must exceed every dated migration in its introduction base,
+including qualified identities; later migrations do not invalidate issued slots.
 The [admission witness](../../scripts/reviewed-native-store-forward.test.ts)
 uses an independent synthetic registry, never production placeholder approvals.
 
 Feature SQL supplies `nativeStoreForwards` with whole-file and function
-after-hashes. It cannot change class data or admission machinery in that PR.
-Every earlier row in the fixed order needs prior inventory and unchanged landed pins;
+after-hashes. Its pull request may include class data but cannot change admission
+machinery.
+Every earlier slot in registry order needs unchanged landed pins;
 issued native file pins must also be present unchanged.
-Reserved timestamps require approval even for expand-only SQL. Unlisted function
+Registry-derived slot timestamps require approval even for expand-only SQL.
+The queue routes every native filename at or after the first issued slot time
+through the guard, including SQL whose slot was prepared earlier. The guard
+still admits ordinary unregistered expand-only migrations through their existing path. Unlisted function
 signatures, drifted preimages, destructive statements, default privileges and
 role statements refuse. Tables and indexes retain the existing expand-only
-rules; data statements require exact prior slot entries. Only the account-consent
-slot may replace the named native sync-purpose CHECK, preserving every prior
-value and binding the original table statement's hash.
+rules; data statements require exact head-class slot entries. CHECK and UNIQUE
+replacements use the named, closed entries below. A whole-file hash does not
+bypass the content checks.
 
 One signature may be replaced by at most one slot. Its before-hash binds the
 latest definition in the pre-class native prefix, and replacement headers stay
@@ -1463,22 +1508,53 @@ splitter would read it as an escape, while PostgreSQL ends a standard literal at
 the quote after it, so one statement for the splitter would be several for the
 database. A backslash inside a dollar body is data, and the earlier files of the
 prefix keep the older reading.
-Adding a nullable column or a new CHECK on an existing table already follows the
-existing expand-only rules. The purchase-reservation slot alone adds an
-`existingTableStatements` list: three exact whole ALTER TABLE statements, in
-order, for `public.fulfillment_inventory_reservations`. They drop NOT NULL only
-from `renewal_operation_id` while adding `purchase_order_id`, add the purchase
-foreign key and exclusive-owner CHECK as NOT VALID, then validate both. The registry
-holds their complete text, and the reader accepts that list, and only that list, on
-this slot. Trusted main parses a changed registry before anything else, so the list
-reached the registry in a separate pin-only change after the reader had landed.
-Feature SQL must include each statement once, in that order. Its existing-table
-ALTERs cannot fall through to generic ADD admission.
-The checker pins the complete three-entry list; changing it requires a control
-change. Its target table must exist in the preceding native prefix.
-Comparison uses the existing statement splitter: leading comments/space are
-removed, internal statement bytes remain exact. Missing, duplicate, changed,
-extra or reordered companions refuse. No other slot gains this exception.
+Adding columns or new CHECKs to an existing table retains the expand-only path.
+Any slot may also list exact complete ALTER TABLE texts in
+`existingTableStatements`. PostgreSQL checks target existence when applying the
+plain ALTER TABLE; IF EXISTS is refused. The closed actions are ADD COLUMN, named ADD CONSTRAINT
+under the existing expression checks, ALTER COLUMN DROP NOT NULL, and VALIDATE
+CONSTRAINT. The restricted FOREIGN KEY ... ON DELETE RESTRICT NOT VALID form
+preserves the issued purchase-reservation companions. Other drops, column type
+changes, renames and ownership changes refuse even when listed. Every listed
+statement must appear once in order, with internal bytes unchanged; an unlisted
+existing-table ALTER cannot fall through to generic ADD admission when the list
+is active. The issued three purchase-reservation texts remain unchanged data.
+
+`checkSupersets` entries declare table, constraint, column and values;
+`uniqueSupersets` entries declare table, constraint, columns and nullsNotDistinct.
+The lexical validator checks only the slot's own SQL: exactly one adjacent
+DROP CONSTRAINT / ADD CONSTRAINT pair per entry, with the exact listed positive
+IN values or plain UNIQUE columns and NULLS NOT DISTINCT mode. Unlisted drops,
+non-adjacent pairs and mismatched additions refuse; the general expression
+grammar is unchanged. The protected real-PostgreSQL catalog control proves
+widening against the installed definition immediately before the slot: the old
+constraint must exist in the closed CHECK or UNIQUE shape, every old value or
+key column must remain, and NULLS NOT DISTINCT may be added but never removed.
+The installed new definition must equal the entry; other constraints, columns
+and triggers remain protected. No historical SQL anchor is used for these
+entries. The issued account-consent `purposeCheck` retains its original preimage,
+values and refusal behavior unchanged.
+
+`createdViews` entries declare a fresh qualified name and exact CREATE VIEW
+statement hash. Only plain unconditional creation is admitted, once per listed
+view. OR REPLACE and conditional existence forms refuse. PostgreSQL rejects a
+duplicate name; the reader does not reconstruct a prefix object catalog.
+REVOKE ALL ON TABLE ... FROM PUBLIC is mandatory after creation; the
+existing guarded role revokes are allowed. Every GRANT on a created view refuses.
+Views gain no RLS or table-grant capability. The real catalog checks the declared
+new view inventory, ownership and owner-only privileges.
+
+`createdTriggers` entries name a fresh trigger, an existing prefix table and the
+exact CREATE TRIGGER statement hash. Only BEFORE/AFTER INSERT, DELETE or UPDATE
+(with an optional OF column list), combined with OR, FOR EACH ROW and a
+zero-argument public function are admitted. That function must be created in the
+same slot, explicitly return trigger with SECURITY INVOKER and a pinned search
+path, revoke PUBLIC and receive no EXECUTE grant. Conditional revokes remain
+allowed. WHEN, transition relations, constraint/statement/instead-of triggers,
+trigger mutation and unlisted or drifted statements refuse. Creation stays plain:
+OR REPLACE and conditional existence forms refuse. PostgreSQL rejects duplicate
+triggers and missing targets; the catalog witness checks prefix-table membership,
+name freshness, enabled binding, events and owner-only function ACL.
 
 The destination slot registers four created function signatures and pinned
 search paths. Its two new tables, revokes and RLS use the existing same-file
@@ -1505,7 +1581,28 @@ Only qualified tables created earlier by unconditional `CREATE TABLE public.<nam
 statements in that same slot's file may use table narrowing: bare `REVOKE ALL ON
 TABLE <table> FROM PUBLIC`, conditional per-role `REVOKE ALL ON TABLE` lists, and
 `ALTER TABLE <table> ENABLE ROW LEVEL SECURITY`. A table from the prefix or
-another slot, an unqualified/IF NOT EXISTS creation, or any table GRANT refuses.
+another slot or an unqualified/IF NOT EXISTS creation refuses. Table grants refuse
+except for the fixed notice-table allowance below.
+The native paid-notice slot alone may name `insertSelectTables`, whose complete
+value is pinned by the reader to `["public.subscription_notice_refusals"]`.
+It is an allowance, so it may precede the table's introduction. It authorizes
+nothing until that same forward creates the table earlier in its own file.
+Only the following exact statements are admitted inside the existing service-role
+existence shell:
+
+```sql
+GRANT SELECT, INSERT ON public.subscription_notice_refusals TO service_role;
+CREATE POLICY subscription_notice_refusals_runtime ON public.subscription_notice_refusals FOR ALL TO service_role USING (true) WITH CHECK (true);
+```
+
+The quoted inner statement includes its final semicolon; different spelling,
+privilege order, an added `TABLE`, extra roles, column grants and grant options
+refuse. The existing revoke and RLS-enable narrowing paths are unchanged.
+The table keeps RLS enabled and only owner plus service-role SELECT/INSERT
+privileges; its one policy has that role alone. With the role absent, the guarded
+grant and policy do not run and the new table stays owner-only with RLS enabled.
+No other row or table gains this capability.
+
 The existing expand-only grammar and every other class retain their refusals.
 Each feature PR using this narrowing must provide real-PostgreSQL proof that its
 restricted runtime retains the access required by its row after the revokes/RLS;
@@ -1538,15 +1635,21 @@ operator a forward creates for another operand type cannot hide what it adds:
   carries no `SET` at all. Its language and leakproof flag are not compared: like
   its body, they stay with the whole-file hash and the feature review.
 - Existing relations of every kind, indexes and TOAST tables included, keep their
-  owner, privileges, row security, options and column privileges. A new relation of
+  owner, privileges, row security, options and column privileges. Only the index
+  of an explicitly listed UNIQUE replacement may be replaced with its new key. A new relation of
   any kind is owned by the migration role and carries only its owner's table
-  privileges and no column privilege. Relations are matched by OID, so a forward
+  privileges and no column privilege. The pinned notice table above alone may
+  carry service-role SELECT/INSERT with RLS enabled and its single fixed policy;
+  the comparator checks the role, command, predicates and absence of grant options.
+  Every other new relation stays owner-only. Relations are matched by OID, so a forward
   that rewrites an existing table, for example by adding a column with a volatile
   default, replaces its TOAST relation and is refused: a known fail-closed limit,
   with a follow-up to compare TOAST relations without OID identity.
 - No constraint, one PostgreSQL ships included, is dropped or rewritten, a NOT NULL
-  excepted. The purpose CHECK keeps every value it holds and may gain more, in the one list form PostgreSQL deparses
-  for `IN`, and its slot lists the values it holds before the forward.
+  excepted. Listed CHECKs retain their hash-bound old values in the positive IN
+  form PostgreSQL deparses. Listed UNIQUE replacements retain every old key
+  column and the exact declared new definition; their old indexes may be replaced.
+  Other existing constraints and indexes keep the same protections.
 - The guard catalogs, each read whole, do not change: `pg_namespace`, `pg_authid`,
   `pg_auth_members`, `pg_db_role_setting`, `pg_database`, `pg_default_acl`,
   `pg_event_trigger`, `pg_extension`, `pg_cast` and `pg_parameter_acl` (the
@@ -1556,7 +1659,7 @@ operator a forward creates for another operand type cannot hide what it adds:
   Left out of the comparison: each row's own OID, parser positions inside stored
   node trees, temporary schemas and the two transaction-horizon columns of
   `pg_database`. Every trigger that existed before the forward, an internal one and
-  its enabled state included, stays as it was; the only addition allowed is the
+  its enabled state included, stays as it was; additions are limited to the declared row triggers above and the
   enforcement trigger PostgreSQL creates internally for a constraint the forward
   itself adds.
 
@@ -1583,11 +1686,12 @@ These are admission controls, not SQL behavior or hosted qualification.
 
 ### M17 channelIngestForwards
 
-The reviewed registry declares `channelIngestForwards: []` before SQL can land.
+The reviewed registry may introduce `channelIngestForwards` together with its
+SQL and exact pins.
 Its fixed class admits only `20261030121000_channel_retained_basis.sql` and
 `20261030122000_channel_purchased_source.sql` on each native and managed rail.
-R1 supplies all four exact file, function and ordered-statement pins with the
-SQL introduction; an absent class remains readable in historical registries.
+The feature supplies all four exact file, function and ordered-statement pins
+with the SQL introduction; an absent class remains readable in historical registries.
 The checker fixes signatures, creation or replacement, preimages, headers and
 ordered companions, including triggers and ACLs. Registry pins cannot widen
 that inventory. PR, release and native queue checks require a binding at each
@@ -1710,6 +1814,92 @@ separate from both this probe and application-file upgrades.
 
 ## Compatibility lifecycle
 
+The opt-in [complete account consent choices](#complete-account-consent-choices)
+forward adds a distinct actor API and expands only the native sync purpose CHECK.
+It neither replaces the served newsletter routines nor backfills grants. Hosts
+configure its single sync target before selecting the new API; old callers retain
+their existing opt-in/withdrawal behaviour across the upgrade.
+
+The native [paid-email forward](../../db/platform/migrations/20261101231000_native_paid_email.sql)
+replaces the paid-notification trigger and promoted-draft functions, preserving
+their invoker headers. The existing paid event remains; the additional mail event uses order_<UUID>,
+a separate idempotency key and the native cycle/draft mode. Its mail-only block
+bounds lock waits, absorbs insertion/cancellation errors and restores the
+caller's timeout, so this added effect cannot roll back settlement. A missed mail
+event leaves the retained paid event/order as operator-repair evidence; this is
+best-effort capture, not a new durable mail obligation. Existing rows and historic
+events are not rewritten. Eight existing notice, recipient, policy and reminder
+routines gain conditional service_role EXECUTE, without new table privileges,
+definers or changes to their bodies. The condition preserves legacy installs
+where service_role is absent. Native case/notice creation remains atomic;
+explicit notice-storage contention rolls back cleanly and is retried after
+release. The [scheduled binding boundary](ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
+and [grant assessment](plans/oss-m19-g8.md#grant-exposure-assessment) own caller
+trust and contact-data exposure. The feature requires exact class data and
+approval pins; local SQL proof alone does not admit it.
+
+The staged promoted-draft port validates effective shipping and retains its canonical charge
+adjustment, money equation, replay and line-allocation refusals. Where a quote
+retains `shipping-threshold.v1` terms, the configured flat fee applies below the
+threshold and zero applies at or above it, measured after product discounts and
+excluding delivery. Currency, numeric bounds and the retained shipping amount
+must agree. Quotes without these terms retain their supplied shipping amount;
+hosts must supply server-produced quotes and authorize the customer separately.
+Product discounts allocate only to product lines. The deferred line-sum guard
+adds shipping charges and subtracts shipping-scoped discounts before comparing
+with the order total; its other checks and invoker trigger header remain unchanged.
+The local invoice constructor appends positive effective delivery as its own line.
+
+The new `commerce_promotion_lock_definition(text)` is a volatile definer routine
+owned by the migration role, with `search_path = pg_catalog, pg_temp`. It only
+selects the named definition for update and returns its row or null. PUBLIC and
+browser roles cannot execute it; only the service runtime receives EXECUTE.
+The invoker draft retains definition, missing-promotion and global/customer cap
+checks after that lock. Runtime callers still cannot update definitions.
+These native opt-in changes do not modify a managed database or activate a host.
+
+The existing `subscription_dunning_notifications` and
+`transactional_delivery_receipts` tables can hold customer-linked delivery facts.
+There is no erasure path for these tables yet. Capturing or restoring these rows
+does not qualify customer-data erasure; a host must account for this limit before
+using the native notice path with customer data.
+
+### Paid-mail capture repair
+
+Run this read query through the trusted runtime or operator connection to find
+paid orders with a retained paid event and no mail event:
+
+```sql
+SELECT o.id AS order_uuid, o.paid_at
+FROM public.commerce_orders AS o
+WHERE o.status = 'paid'
+  AND EXISTS (
+    SELECT 1 FROM public.outbox_events AS e
+    WHERE e.aggregate_type = 'commerce_order' AND e.aggregate_id = o.id
+      AND e.event_type = 'commerce.order.paid'
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM public.outbox_events AS e
+    WHERE e.aggregate_type = 'commerce_order' AND e.aggregate_id = o.id
+      AND e.event_type = 'commerce.order.paid.email'
+  )
+ORDER BY o.paid_at, o.id;
+```
+
+This identifies missing capture, not provider delivery. It can include historical
+paid orders; reconcile their event history before an explicit host-controlled
+repair. The query changes no row and triggers no send. Settlement replay does
+not recreate a mail event omitted during the original paid transition.
+
+The native terminal-renewal replay forward preserves the claim routine's
+signature, defaults, invoker rights, search path, ownership and ACL. It moves a
+matching stored succeeded/refused answer before current due eligibility, under
+the same subscription-then-operation locks and full frozen-input comparison.
+Changed replay input remains 23505. Cancellation permits historical terminal
+readback but never new or nonterminal claims. Apply this ordered forward before
+selecting that public replay behavior; the managed chain and separate adopter
+native copies require their own adoption rather than changing implicitly.
+
 The source preview's sandbox-attempt suffix adds nullable review metadata without
 rewriting existing truth rows or changing the open/settled checks. Existing
 non-sandbox truth does not read or require simulator storage. New sandbox truth
@@ -1718,6 +1908,54 @@ event replay retains its first fingerprint and instant after restart. Cancelled
 capture is terminal operator-review evidence, excluded from reconciliation work
 and the open sweep, while the order remains cancelled. See the sandbox forward
 in [Module catalogues and installed histories](#module-catalogues-and-installed-histories).
+The destination forward adds immutable address documents and scoped order,
+subscription and shipment bindings. Both relations revoke PUBLIC, browser and
+runtime table privileges and enable RLS; trusted runtime uses four bounded
+definer routines with pinned search paths. Parent/client consistency is checked,
+but host authorization of each parent read remains necessary. There is no saved
+address book or arbitrary destination-ID reader. Subscription defaults read
+through an active purchase; renewal orders resolve their own frozen operation
+reference, never the subscription's later future address. Shipment preparation
+pins its first document under the native dispatch lock. Hosts compose this reader
+in the existing authoritative preparation transaction before freezing requests.
+The shipment destination read and command enqueue must share one transaction
+on one connection; otherwise the host owns the intervening window.
+
+A human operator can correct an unowned created/packed/label_pending current
+parcel. Once a dispatch ref, command or attempt exists, the order and parcel keep
+their destination and the subscription future changes with the named
+applied_from_next_parcel result, including replay. The account-link orchestration
+returns partial and retains that named nested result. The reference HTTP route
+preserves the outcome; its older donor browser schema refuses it, so hosts must
+compose the native result explicitly and show next-parcel applicability. It is not a fully applied
+current-parcel result. Native customer changes future only. Open dunning does not
+blanket-block address; the donor next-cycle payment lock still applies, including
+a native snapshot owned before its cycle row exists. Subscription reads lock the
+parent; G7 retains that writable transaction through snapshot claim. Address
+changes do not move cadence, next_cycle_at, template_version, money, or delivery
+alignment. Never confirm an undelivered replacement through this boundary.
+
+The transaction records the native subscription event as account history and
+one subscription.address_changed outbox row, keyed by source event UUID. Both
+payloads name applicability and future destination ID, without frozen-parcel
+address data. Replay bypasses both INSERTs; the outbox's unique event/key fence
+also deduplicates. An outbox failure rolls back address, binding, event and receipt
+writes. Delivery is asynchronous: no mail response gates money or parcel work.
+The existing template mapper and explicitly composed subscription message facade
+do not automatically consume the native outbox. Host mail dispatch remains
+unbound; no delivered-email claim follows from enqueue.
+
+These documents carry full postal addresses and contact phone numbers, customer names
+and delivery instructions,
+plus identifying parent, actor and reference strings. Hosts should use opaque
+references and avoid personal data in keys/reasons. There is no destination privacy
+export or erasure path; existing identity erasure does not erase these documents.
+Do not claim complete privacy coverage. Privileged connected-store transfer
+retains exact documents, bindings and the existing command/support ledgers under
+whole-packet row/byte bounds and filtered-login refusal; it is not a subject
+privacy export. Root capture/restore additions ship no npm assets. The API remains
+a development-preview source candidate; full catalogue installation and explicit
+host composition are required, and managed definitions remain unchanged.
 
 The installed complete-catalogue entry preserves this lifecycle. Its generated
 SQL assets are copies of issued units with unchanged canonical identities,
@@ -1727,6 +1965,36 @@ legacy selection remains available for existing history. The required installed-
 compares the projection against the canonical manifest and exact source bytes.
 See [module catalogues](#module-catalogues-and-installed-histories) and the
 [installed recipe](../../packages/platform/README.md#install-the-portable-postgresql-schema).
+The G4 forward adds purchase ownership to the existing inventory reservation
+table. Renewal ownership becomes nullable while its UNIQUE and foreign key stay
+intact; a validated exclusive-owner CHECK requires either a renewal operation
+or a purchase order. Existing renewal rows need no data backfill. Purchase
+release/expiry change only purchase-owned rows, and the unchanged ATP, renewal,
+stock-wait and retry paths continue counting their live quantities. One command
+receipt retains batch/release/cancel replay; runtime table grants do not widen. This
+ownership alteration is named by the closed class control and bound by the
+co-located feature pins. The receipt table revokes PUBLIC and named
+runtime/browser roles separately from function ACLs; it introduces neither RLS
+nor table grants. The existing reservation-table ACL stays unchanged. Local lots, locations,
+balance counters and movement history are outside this slice.
+
+The native abandoned-checkout wrapper locks the subscription root, order, intents,
+simulator attempts and their evidence, in that order. A dispatched attempt returns
+`cancelled: false` with `provider_attempt_in_flight` without writing a receipt or
+changing the order, intent or holds. Terminal refused/expired attempts permit
+cancellation; captured or indeterminate attempts retain the money refusal.
+It delegates aggregate cleanup to the existing
+compensation routine and purchase transitions to the existing release routine in
+one transaction. Strict command receipts reject changed keyed input; paid,
+captured or indeterminate evidence prevents cancellation. It rejects renewal
+orders and admits no new holds on cancelled orders. No withdrawal metadata or
+money effect is written. A late capture's review disposition belongs to the
+preceding payment slot: it records `review_required` without reopening the
+cancelled order or reclaiming its released holds.
+Dedicated promotion cancellation remains unbound. Reference fields, including
+keys and source references, can contain identifying strings; hosts should use
+opaque references and avoid personal details in metadata and reasons. No erasure
+path exists yet for retained reservation, command-receipt or compensation data.
 
 Fresh channel capture admission binds the normalized slug through the existing
 trusted scope read and the raw-source digest through its original page event.
@@ -1778,6 +2046,74 @@ selected catalogue through the existing executor and ledger; this exact grant
 completion does not authorize owner fallback, legacy relabelling or a new role mode.
 The production-composition witness includes actual restricted-runtime commands
 and refusals; reference inventory derivation alone does not qualify those commands.
+
+Before the lock and conflict completion tail, both qualified generations
+refused five existing native paths on the restricted runtime with `42501`:
+
+- native subscription lifecycle commands;
+- operator recovery issue;
+- platform control set and heartbeat;
+- order settlement for an order with a promotion claim;
+- operator lead absorption, once delivery destinations block absorption.
+
+The first three lock a row `FOR UPDATE` on a table whose issued runtime grants
+include no `UPDATE` column: renewal term lines, recovery commands and control
+operations. None of these tables had row security. The claim transition
+trigger appends events with a conflict target, and the issued runtime grant
+there was `INSERT` only. The absorber counts a lead's delivery destinations by
+client, but that table had row security and no runtime access at all.
+
+One shared completion tail closes these gaps. It is the approved seventeenth
+qualified identity. Both qualified plans select it once, after their issued
+tails and at the same position among shared units, so later shared forwards
+still append identically. The qualified plan now has 103 units and the
+restricted plan 102; legacy is unchanged.
+
+The tail must follow the delivery destination forward. Its guard refuses the
+whole unit unless that table exists in its created state: owned by the
+installer, with row security enabled and not forced, no policy and no grant
+beyond the owner. A destination grant or policy added by any other change
+before the tail would therefore stop every installation.
+
+On each of the three locked tables, the tail does the following:
+
+- enables row security;
+- keeps the existing runtime access through policies;
+- admits row locks through an `UPDATE` policy whose check refuses every
+  actual update;
+- grants `UPDATE` on one timestamp column.
+
+On claim events it grants `SELECT` on the two arbiter columns only. Row
+security would not help there, because an arbiter also requires the new row
+to pass a select policy. On delivery destinations it grants `SELECT` on the
+client column and adds a runtime select policy, so the existing row security
+returns a truthful count. Addresses stay unreadable, and every write stays
+unavailable.
+
+The active file is byte-identical to its approved fixture. The four qualified
+installation inventories were measured again; the legacy plan and its
+inventory are unchanged. The
+[real-PostgreSQL witness](../../tests/postgres/qualifiedRuntimeLockCompletion.test.ts)
+runs on `qualified-v2` and on operator-provisioned `qualified-admin`, with an
+actual restricted runtime login. It covers:
+
+- the four lifecycle commands through the customer command store, and the
+  operator support wrapper's three, each with a receipt;
+- recovery issue and replay;
+- platform control set, heartbeat and their replays;
+- an order settlement with a promotion claim, recording exactly one claim event
+  and none on later statuses;
+- operator lead absorption: a lead without destinations is absorbed and
+  replayed, and a lead with one is refused naming `commerce_destinations`, with
+  its rows unchanged.
+
+It also refuses every actual update, every other claim-event and destination
+read, and every destination write, and enumerates every role that reaches each
+target. The guard refuses the unit for a missing, renamed, unprotected or
+force-protected destination table and for any extra policy or grant on it.
+Existing destination, purchase-hold, retained-renewal and notice-delivery
+witnesses now apply the lifecycle commands, operator recovery issuance, the
+claim sweep and absorption through the restricted runtime.
 
 The separate `qualified-admin` generation starts with its issued 91-unit prefix
 and appends current shared forwards. It is not an upgrade, relabel or migration-history conversion from
@@ -2403,6 +2739,124 @@ The narrowed import moves receipt stores and their ledger contracts. Reference
 mail-provider timeline/send-ledger implementations remain at their existing
 owners; no provider mapping or new schema enters the package.
 
+### Complete account consent choices
+
+The opt-in native forward `20261101232000_customer_account_consents.sql` adds
+`customer_account_communication_choices_as_actor(uuid)` and
+`customer_account_communication_choice_set_as_actor(uuid,text,boolean,text)`.
+These are actor SECURITY DEFINER boundaries: `auth.uid()` must own the supplied
+client. Authenticated callers receive EXECUTE only; preference, event, evaluator
+and sync tables receive no browser DML grant. A pinned `pg_catalog, pg_temp`
+search path and qualified references avoid caller name resolution. Invoker
+routines cannot write the deliberately ungranted preference/event tables.
+The existing newsletter actor reader/setter below retain their behaviour.
+Both newly created account tables revoke ALL from PUBLIC, anon, authenticated
+and service_role, with RLS enabled and no browser policies. Their definer
+routines retain the required access without direct caller table privileges.
+Table checks bound lengths, nonblank target identifiers and the two literal copy
+versions. The command refuses target control characters, derives a lowercase
+SHA-256 fingerprint and constructs the exact copy version for its closed purpose
+list. Privileged direct ledger writes no longer have table-level hex or
+purpose/version-pair validation; trusted installation code must preserve those
+rules. Customers have no direct ledger/configuration write path.
+
+The read returns `customer.account_communication_choices.v1`, with contact and
+both `marketingNewsletter` and `marketingGiftsDiscounts`. Each carries purpose,
+state, granted, source, reason, capture/update time and nullable consentCopyVersion.
+Absent permission is unknown; an owned client without an email returns null.
+Read creates no contact or permission. Gifts/discounts is independent of launch
+offer. Historical or externally changed evaluator rows retain their state and
+times, with null attribution when no matching account event proves it.
+
+The command accepts client UUID, purpose, boolean choice and idempotency key.
+It returns `customer.account_communication_choice_result.v1` with permissionEventId,
+nullable workId, replayed and current choices. A valid withdrawal with an owned
+client and non-null stored email commits the local preference (newsletter),
+evaluator denial and permission event immediately. Provider sync is optional:
+no usable target or unusable email yields workId=null and no outbox/sync row.
+A registration failure also rolls back only optional work for a withdrawal;
+grants still require usable email/target and atomic work registration. Null
+stored email and invalid command/key still refuse. A suppression always wins.
+Exact replay returns the stored event ID and work ID (including null) with
+current choices, without reapplying an old choice or filling in missing work.
+Conflicting reuse refuses with `account_consent_idempotency_conflict` (23505).
+Ownership is checked before replay disclosure.
+
+The new `customer_account_consent_events` ledger records requested choice and
+effective state separately, actor/client/email fingerprint, source/reason,
+copy version, client/route attribution, capture method/time and work ID. Copy
+versions are `customer_account_marketing_newsletter.v1` and
+`customer_account_marketing_gifts_discounts.v1`. A current suppression retains
+its state and original evaluator timestamps; an account choice never clears it.
+The requested choice remains audited, and sync work requests suppress. The read
+does not attribute an external suppression to a customer's grant event.
+
+A trusted migration/admin connection configures the single
+`customer_account_consent_sync_targets` row with binding, provider_kind and
+enabled=true before grants or provider registration. No target is seeded or
+inferred. Grants refuse missing/disabled targets or control characters in either
+identifier with `account_consent_sync_target_unavailable` (55000), and unusable
+email with `account_consent_email_invalid` (22023). A withdrawal records locally
+without that work when either prerequisite is unavailable. Customers cannot
+configure or select targets. The provider remains unaware of an unsynced denial;
+enabling a target later or replaying the original key does not enqueue it.
+The target is held stable through the command. Source/work IDs use the reserved
+`account-consent:<permission-event-uuid>` namespace; the account-specific command
+fingerprint binds its payload/target, while the aggregate and event type match
+the existing native sync rail. Hosts must not register that reserved source key
+through the separate TypeScript registration API.
+
+For an unusable non-null email, the local recipient fingerprint remains SHA-256
+of the normalized stored text, including an empty or otherwise invalid result;
+that string is never passed to provider registration. The withdrawal also denies
+recipient fingerprints previously recorded by this actor/client for this purpose,
+using the existing event ledger, so correcting back to an earlier granted
+address cannot resurrect its old grant. Each recipient's suppression and times
+remain protected. Event metadata records `recipientFingerprints` and
+`syncDeferredReason`; no extra raw email is copied into the ledger. A fresh valid
+address is a separate unknown/default-denied recipient, requiring an explicit
+new grant. The historical denial is retained, and replay never retargets it or
+reapplies it over a later choice. Database/JavaScript case-fold limits below
+still apply; there is no general automatic email-change/provider migration.
+
+Owner-only read of locally recorded withdrawals without work:
+
+```sql
+-- account-consent-unsynced-denials
+SELECT id, principal_id, client_id, purpose, recipient_fingerprint,
+       metadata->'recipientFingerprints' AS recipient_fingerprints,
+       source, reason, consent_copy_version, source_ref, captured_at,
+       metadata->>'syncDeferredReason' AS sync_deferred_reason
+FROM public.customer_account_consent_events
+WHERE requested_consent = false AND work_id IS NULL
+ORDER BY captured_at, id;
+```
+
+This audit query includes effective denials and retained suppressions, and may
+include historical withdrawals superseded by later explicit choices. It does
+not send or retry anything. Operators must reconcile current choices, usable
+addresses and trusted targets before any provider action; no reconciliation
+writer or automatic backfill is supplied here. Reference fields and idempotency
+keys can contain identifying strings: hosts should use opaque references. No
+erasure path for this consent history exists yet; transfer does not add one.
+
+`outbox_events` and `communication_native_sync_state` remain the sole sync rail,
+with the existing per-contact/target aggregate ordering and worker claims,
+leases, retry limits and finalizers. The purpose CHECK additionally admits
+`marketing_gifts_discounts`; host composition must classify that purpose as
+marketing in its evaluator registry. Nothing here activates provider transport.
+No array/jsonb parameter encoding is introduced by these SQL signatures.
+The [real PostgreSQL witness](../../tests/postgres/customerAccountConsents.test.ts)
+uses the restricted runtime login and `SET LOCAL ROLE authenticated` for actor
+calls, covering refusal, replay, suppression, rollback and worker consumption.
+Database lowercase normalization retains the locale/Unicode limits explained
+in the newsletter section below; no broader normalization parity is claimed.
+The native delivery-observation adapter suppresses newsletter, gifts/discounts,
+launch-offer and tester consent after a bounce or complaint. The account-consent
+PostgreSQL regression grants the three marketing purposes, applies each provider
+hold through the restricted runtime adapter and verifies suppressed evaluator
+state, callback replay and suppression retention after subsequent account grants.
+
 ### Account newsletter withdrawal upgrade
 
 After installing the complete portable chain containing
@@ -2758,3 +3212,15 @@ The [neutrality owner](../../CONTRIBUTING.md#development-preview-checks) admits
 only this exact package path, digest and 0-to-1 tuple with its matching baseline
 key. This preserves canonical bytes without admitting other package SQL,
 changing scanner patterns or raising any existing count.
+
+### Terminal native notice refusals
+
+The native lifecycle binding retains `subscription_notice_refusals` by the
+original `(source, source_id)`, for event and reminder sources only. Its reason
+is the existing `notice_policy_refused` code and its time is database-recorded.
+A refusal is terminal, including after recipient, control or consent changes;
+it never asserts a send or changes a transactional delivery receipt. The runtime
+can insert and read this RLS-protected record, with no update or delete access.
+Browser roles have no access. Connected capture and restore retain these opaque
+source identities and their refusal times so a store move cannot send them again.
+This table contains no recipient address, message content or free-form reason.

@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { RenewalCycleCorrelation, RenewalFrozenSnapshot, RenewalLine, RenewalReadback, RenewalSchedule } from "./contracts/renewal.js";
 import { subscriptionRecord, type NativeRenewalCodec } from "./postgresRenewalStore.js";
+import { nativeRenewalPrice, nativeRetainedTerms, renewalShippingTermsSchema } from "./nativeRenewalTerms.js";
 
 const REVISION = "native.purchase-renewal.v1";
 const CONTRACT = "platform.subscription.renewal.v1";
@@ -11,22 +12,42 @@ const whole = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const line = z.object({ lineOrdinal: whole.positive(), sku: ref, quantity: whole.positive(), unitAmountMinor: whole }).strict();
 const basket = z.array(line).min(1).max(100);
 const snapshotSchema = z.object({
-  contractVersion: z.literal(CONTRACT), frozenRevision: z.literal(REVISION), frozenFingerprint: z.string().regex(/^[0-9a-f]{64}$/),
+  contractVersion: z.literal(CONTRACT), frozenRevision: z.enum([REVISION, "native.purchase-renewal.v2"]), frozenFingerprint: z.string().regex(/^[0-9a-f]{64}$/),
   subscriptionId: z.uuid(), clientId: z.uuid(), scheduledAt: z.iso.datetime(), scheduledInstant: whole,
   cycle: z.object({ status: z.literal("correlated"), logicalCycleNumber: whole.positive(), nativeRenewalCounter: whole.positive(),
     activationCycleId: z.uuid(), evidenceRef: ref }).strict(), retryAttempt: z.literal(0), externalAttemptSequence: z.literal(0),
   templateSnapshot: z.object({ templateId: ref, version: whole.positive(), cadenceDays: whole.positive(), lines: basket }).strict(),
-  pricingSnapshot: z.object({ currency: z.string().regex(/^[A-Z]{3}$/), totalAmountMinor: whole.positive(), shippingAmountMinor: z.literal(0),
+  pricingSnapshot: z.object({ currency: z.string().regex(/^[A-Z]{3}$/), totalAmountMinor: whole.positive(), shippingAmountMinor: whole,
+    productSubtotalAmountMinor: whole.optional(), discountAmountMinor: whole.optional(), shippingTerms: renewalShippingTermsSchema.optional(),
+    linePricing: z.array(z.object({ sku: ref, quantity: whole.positive(), unitAmountMinor: whole, isAddon: z.boolean(),
+      quoteLine: z.record(z.string(), z.unknown()) }).strict()).optional(),
+    acquisition: z.object({ reasonCode: z.literal("starter_pack_delivery_2"), discountMinor: whole, basisTemplateVersion: whole.positive() }).strict().optional(),
     agreementPolicy: z.literal("lock_until_edit"), proration: z.literal("none") }).strict(),
-  orderSnapshot: z.object({ shippingAddressRef: ref.nullable(), shippingQuoteRef: ref.nullable(), acquisitionRef: ref.nullable(), lines: basket }).strict(),
+  orderSnapshot: z.object({ shippingAddressRef: ref.nullable(), shippingQuoteRef: z.union([ref, z.object({ kind: z.literal("zero_shipping"), shippingAmountMinor: z.literal(0) }).strict(),
+    z.object({ kind: z.literal("retained_shipping"), shippingAmountMinor: whole, terms: renewalShippingTermsSchema.nullable() }).strict()]).nullable(), acquisitionRef: ref.nullable(), lines: basket }).strict(),
   stockSourceKey: ref, settlementChannelKey: z.literal("sandbox"), authorizationRef: ref, payerAccountRef: ref.nullable(),
   unattendedChargeAuthorizedAt: z.iso.datetime(),
 }).strict();
 function validate(snapshot: RenewalFrozenSnapshot) {
   snapshotSchema.parse(snapshot);
   const items = nativeRenewalCanonicalJson(snapshot.orderSnapshot.lines);
+  const pricing = snapshot.pricingSnapshot;
+  const subtotal = snapshot.orderSnapshot.lines.reduce((sum, item) => sum + item.quantity * item.unitAmountMinor, 0);
+  const discount = pricing.discountAmountMinor ?? 0;
+  const terms = pricing.shippingTerms;
+  const marker = snapshot.orderSnapshot.shippingQuoteRef;
   if (items !== nativeRenewalCanonicalJson(snapshot.templateSnapshot.lines)
-    || snapshot.orderSnapshot.lines.reduce((sum, item) => sum + item.quantity * item.unitAmountMinor, 0) !== snapshot.pricingSnapshot.totalAmountMinor
+    || subtotal - discount + pricing.shippingAmountMinor !== pricing.totalAmountMinor || discount > subtotal
+    || (pricing.productSubtotalAmountMinor !== undefined && pricing.productSubtotalAmountMinor !== subtotal)
+    || (snapshot.frozenRevision === REVISION && (pricing.shippingAmountMinor !== 0 || pricing.discountAmountMinor !== undefined))
+    || (terms && (terms.currency !== pricing.currency || pricing.shippingAmountMinor !== (subtotal - discount < terms.freeThresholdMinor ? terms.flatMinor : 0)))
+    || (marker && typeof marker === "object" && marker.shippingAmountMinor !== pricing.shippingAmountMinor)
+    || (marker && typeof marker === "object" && marker.kind === "retained_shipping"
+      && nativeRenewalCanonicalJson(marker.terms) !== nativeRenewalCanonicalJson(terms ?? null))
+    || (snapshot.frozenRevision === REVISION && (Object.keys(pricing).length !== 5 || typeof marker === "object" && marker?.kind === "retained_shipping"))
+    || (snapshot.frozenRevision === "native.purchase-renewal.v2" && (pricing.productSubtotalAmountMinor === undefined || pricing.discountAmountMinor === undefined
+      || ((terms || pricing.shippingAmountMinor > 0) && (!marker || typeof marker !== "object" || marker.kind !== "retained_shipping"))
+      || (!terms && pricing.shippingAmountMinor === 0 && typeof marker === "object" && marker?.kind === "retained_shipping")))
     || snapshot.scheduledInstant !== Date.parse(snapshot.scheduledAt)) throw new Error("subscription_renewal_snapshot_inconsistent");
 }
 /** Sorted object keys, array order preserved, JSON primitives; UTF-8 SHA-256.
@@ -107,19 +128,20 @@ export function createNativeRenewalCodec(): NativeRenewalCodec {
     },
     freeze(row, schedule) {
       const due = codec.due({ ...row, scheduled_at: schedule.scheduledAt });
-      if (due.subscriptionId !== schedule.subscriptionId || due.scheduledInstant !== schedule.scheduledInstant) throw new Error("subscription_renewal_schedule_mismatch");
+      if (due.subscriptionId.toLowerCase() !== schedule.subscriptionId.toLowerCase() || due.scheduledInstant !== schedule.scheduledInstant) throw new Error("subscription_renewal_schedule_mismatch");
       const facts = subscriptionRecord(row.purchase_facts);
       if (due.cycle.status !== "correlated") throw new Error("subscription_renewal_cycle_correlation_required");
       const frozenLines = lines(row.lines);
-      const total = frozenLines.reduce((sum, line) => sum + line.quantity * line.unitAmountMinor, 0);
-      integer(total, 1);
+      const pricing = nativeRenewalPrice(row, frozenLines, due.cycle.logicalCycleNumber);
+      const retained = nativeRetainedTerms(row);
       const snapshot: RenewalFrozenSnapshot = { subscriptionId: due.subscriptionId, scheduledAt: instant(due.scheduledAt),
         scheduledInstant: due.scheduledInstant, contractVersion: CONTRACT,
-        clientId: due.clientId, frozenRevision: REVISION, frozenFingerprint: "", cycle: due.cycle,
+        clientId: due.clientId, frozenRevision: retained ? "native.purchase-renewal.v2" : REVISION, frozenFingerprint: "", cycle: due.cycle,
         retryAttempt: 0, externalAttemptSequence: 0,
         templateSnapshot: { templateId: text(facts, "templateId"), version: integer(row.template_version, 1), cadenceDays: due.cadenceDays, lines: frozenLines },
-        pricingSnapshot: { currency: due.currency, totalAmountMinor: total, shippingAmountMinor: integer(facts.shippingAmountMinor), agreementPolicy: "lock_until_edit", proration: "none" },
-        orderSnapshot: { shippingAddressRef: null, shippingQuoteRef: null, acquisitionRef: nullable(facts.acquisitionRef), lines: frozenLines },
+        pricingSnapshot: pricing,
+        orderSnapshot: { shippingAddressRef: null, shippingQuoteRef: retained && (retained.shippingTerms || pricing.shippingAmountMinor > 0) ? { kind: "retained_shipping", shippingAmountMinor: pricing.shippingAmountMinor,
+          terms: retained.shippingTerms ?? null } : null, acquisitionRef: nullable(facts.acquisitionRef), lines: frozenLines },
         stockSourceKey: due.stockSourceKey, settlementChannelKey: due.settlementChannelKey,
         authorizationRef: due.authorizationRef, payerAccountRef: due.payerAccountRef,
         unattendedChargeAuthorizedAt: due.unattendedChargeAuthorizedAt };
@@ -129,7 +151,7 @@ export function createNativeRenewalCodec(): NativeRenewalCodec {
     },
     encode(snapshot) {
       validate(snapshot);
-      if (snapshot.frozenRevision !== REVISION || snapshot.frozenFingerprint !== fingerprint(snapshot)) throw new Error("subscription_renewal_snapshot_fingerprint_mismatch");
+      if (snapshot.frozenFingerprint !== fingerprint(snapshot)) throw new Error("subscription_renewal_snapshot_fingerprint_mismatch");
       // Round-trip through canonical bytes prevents undefined or extra host values.
       return JSON.parse(nativeRenewalCanonicalJson({ ...body(snapshot), frozenFingerprint: snapshot.frozenFingerprint })) as Record<string, unknown>;
     },
@@ -159,6 +181,13 @@ export function createNativeRenewalCodec(): NativeRenewalCodec {
     },
     identity(snapshot: RenewalSchedule) { return `subscription:${snapshot.subscriptionId}:cycle:${instant(snapshot.scheduledAt).replace(/(?:\.(\d*))?Z$/, (_, fraction = "") => `.${fraction.padEnd(3, "0").slice(0, 3)}Z`)}`; },
     fingerprint,
+    withDestination(snapshot, destinationId) {
+      codec.encode(snapshot);
+      const next = { ...snapshot, orderSnapshot: { ...snapshot.orderSnapshot, shippingAddressRef: z.uuid().parse(destinationId),
+        shippingQuoteRef: snapshot.orderSnapshot.shippingQuoteRef ?? { kind: "zero_shipping" as const, shippingAmountMinor: 0 as const } } };
+      next.frozenFingerprint = fingerprint(next);
+      return next;
+    },
   };
   return codec;
 }

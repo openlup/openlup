@@ -1,6 +1,13 @@
 import { nextRetryAttemptAt } from "@openlup/core/subscription";
 import type { RenewalDue, RenewalPaymentRail, RenewalReadback, RenewalSettlementPort, RenewalStorePort } from "./contracts/renewal.js";
 import type { AutomaticRenewalPolicy, AutomaticRenewalRunDeps, AutomaticRenewalRunResult, AutomaticRenewalRunStatus } from "./automaticRenewal.js";
+/** Recognizes the semantic busy details produced by this module's stock-wait store. */
+function isInventoryAdmissionBusy(error: unknown): boolean {
+  if (!error || typeof error !== "object" || !("details" in error)) return false;
+  const details = error.details;
+  return !!details && typeof details === "object" && "code" in details && details.code === "55P03"
+    && "reason" in details && ["inventory_admission_busy", "inventory_lock_unavailable"].includes(String(details.reason));
+}
 export function automaticRenewalResult(operation: RenewalReadback, status: AutomaticRenewalRunStatus, reason: string | null): AutomaticRenewalRunResult {
   return { subscriptionId: operation.subscriptionId, identityKey: operation.identityKey, operationId: operation.operationId, status, replayed: operation.replayed, reason };
 }
@@ -16,7 +23,10 @@ export async function runRenewalBatchRows(due: RenewalDue[], run: (row: RenewalD
   const results: AutomaticRenewalRunResult[] = [];
   for (const row of due) {
     try { results.push(await run(row)); }
-    catch { results.push({ subscriptionId: row.subscriptionId, identityKey: policy.identityKey(row), operationId: "", status: "error", replayed: false, reason: "renewal_processing_failed" }); }
+    catch (error) {
+      if (isInventoryAdmissionBusy(error)) continue;
+      results.push({ subscriptionId: row.subscriptionId, identityKey: policy.identityKey(row), operationId: "", status: "error", replayed: false, reason: "renewal_processing_failed" });
+    }
   }
   return results;
 }

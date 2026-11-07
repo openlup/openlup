@@ -1,3 +1,9 @@
+import type { AdminCommerceOrderHoldRequest } from '@openlup/platform/commerce/contracts';
+import { estimateOffer } from './offer-estimate.ts';
+import { assertQuoteConfiguration, type QuoteConfiguration } from './quote-config.ts';
+import { isValidGtin } from '@openlup/platform/catalog/contracts';
+import { assertRenewalConfig, type RenewalConfig } from './renewal-config.ts';
+import { assertRecoveryConfiguration, type RecoveryConfiguration } from './recovery-config.ts';
 import type { SellableCatalogItem } from '@openlup/platform/catalog/contracts';
 
 export type Locale = 'en' | 'pl';
@@ -5,6 +11,7 @@ export type Localized = Record<Locale, string>;
 export type PurchaseMode = 'one_time' | 'subscription';
 
 export interface Product extends SellableCatalogItem {
+  physical: { netWeightG: number; unitGtin: string; issuer: string };
   slug: string;
   name: Localized;
   description: Localized;
@@ -17,6 +24,8 @@ export interface Product extends SellableCatalogItem {
 /** Application-owned data, shared without translation between browser and host. */
 export interface StoreConfig {
   id: string;
+  renewal: RenewalConfig;
+  recovery?: RecoveryConfiguration;
   /** Optional owned origin; absence preserves the two local HTTP authorities. */
   publicOrigin?: string;
   /** Explicit opt-in for a non-loopback HTTP origin. Prefer TLS. */
@@ -60,9 +69,26 @@ export interface StoreConfig {
     shippingMinor: number;
     freeShippingFromMinor: number;
     subscriptionDiscountBps: number;
+    subscriptionRoundingQuantumMinor: number;
+    renewalShippingMinor: number;
     cadenceDays: readonly number[];
     defaultCadenceDays: number;
   };
+  quote: QuoteConfiguration;
+  purchase: {
+    recoveryMessage: { subject: Localized; body: Localized; expiryLabel: Localized; orderLabel: Localized };
+    inputLimits: { text: number; postalCode: number; email: number; name: number; phone: number };
+    contact: { acquisitionSource: string; lifecycleStage: 'lead' | 'customer' | 'inactive' };
+    responseFloorMs: number;
+    attemptLimits: { windowMs: number; maxPerRequester: number; maxPerEmail: number; retentionMs: number; maxEntries: number };
+    reservationMinutes: number;
+    stock: { quantities: Record<string, number>; collectedAt: string; staleAfter: string; providerRef: string; syncRunId: string };
+    tax: { vatRateBps: number; legalBasis: string; category: string };
+    sandbox: { dunningTemplateSlug: string; recoveryTemplateSlug: string; recoveryUrlPath: string };
+  };
+  documents: { sandbox: { enabled: boolean; providerRef: string } };
+  returns: { reasons: readonly { code: string; label: Localized }[] };
+  orderControls: { holdReasons: readonly { code: AdminCommerceOrderHoldRequest['reason']; label: Localized }[] };
   legal: {
     revision: string;
     returnsDays: number;
@@ -79,9 +105,12 @@ export interface StoreConfig {
 }
 
 export function assertConfig(config: StoreConfig): void {
+  assertRenewalConfig(config.renewal);
   assertPublicOrigin(config);
+  assertRecoveryConfiguration(config.recovery);
   assertSupportEmail(config);
   const offer = config.offer;
+  assertQuoteConfiguration(config.quote, offer.cadenceDays);
   if (typeof config.market.country !== 'string' || !/^[A-Z]{2}$/.test(config.market.country)
     || typeof config.market.currency !== 'string' || !/^[A-Z]{3}$/.test(config.market.currency)
     || typeof config.market.timezone !== 'string' || !config.market.timezone.trim()) {
@@ -91,6 +120,8 @@ export function assertConfig(config: StoreConfig): void {
   catch { throw new Error('starter_market_invalid'); }
   if (typeof config.id !== 'string' || config.id.length > 80
     || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(config.id)) throw new Error('starter_configuration_invalid');
+  if (typeof config.legal.revision !== 'string' || config.legal.revision !== config.legal.revision.trim()
+    || config.legal.revision.length < 1 || config.legal.revision.length > 64) throw new Error('starter_configuration_invalid');
   if (!config.brand.name.trim() || !config.legal.demoOnly || config.features.risk !== false) {
     throw new Error('starter_configuration_invalid');
   }
@@ -98,33 +129,81 @@ export function assertConfig(config: StoreConfig): void {
     if (!/^#[0-9a-f]{6}$/i.test(token)) throw new Error('starter_theme_invalid');
   }
   for (const amount of [offer.minUnits, offer.maxUnits, offer.shippingMinor,
-    offer.freeShippingFromMinor, offer.subscriptionDiscountBps]) {
+    offer.freeShippingFromMinor, offer.subscriptionDiscountBps, offer.renewalShippingMinor,
+    offer.subscriptionRoundingQuantumMinor]) {
     if (!Number.isSafeInteger(amount) || amount < 0) throw new Error('starter_offer_invalid');
   }
-  if (offer.minUnits < 1 || offer.maxUnits < offer.minUnits || offer.maxUnits > 100
+  if (offer.subscriptionRoundingQuantumMinor < 1 || offer.minUnits < 1 || offer.maxUnits < offer.minUnits || offer.maxUnits > 100
     || offer.subscriptionDiscountBps > 10000 || offer.cadenceDays.length === 0
     || !offer.cadenceDays.includes(offer.defaultCadenceDays)
-    || offer.cadenceDays.some(day => !Number.isSafeInteger(day) || day < 1 || day > 366)) {
+    || !Number.isSafeInteger(offer.defaultCadenceDays) || offer.defaultCadenceDays < 1 || offer.defaultCadenceDays > 120
+    || offer.cadenceDays.some(day => !Number.isSafeInteger(day) || day < 1 || day > 120)) {
     throw new Error('starter_offer_invalid');
+  }
+  if (offer.renewalShippingMinor !== 0) throw new Error('starter_renewal_shipping_unsupported');
+  const purchase = config.purchase;
+  if (!purchase?.recoveryMessage || (['subject', 'body', 'expiryLabel', 'orderLabel'] as const).some(key => {
+    const value = purchase.recoveryMessage[key];
+    return !value || ['en', 'pl'].some(locale => typeof value[locale as Locale] !== 'string' || !value[locale as Locale].trim());
+  })) {
+    throw new Error('starter_recovery_message_invalid');
+  }
+  if (!purchase
+    || !Number.isSafeInteger(purchase.responseFloorMs) || purchase.responseFloorMs < 0
+    || !purchase.contact.acquisitionSource.trim() || purchase.contact.acquisitionSource.length > 100
+    || !['lead', 'customer', 'inactive'].includes(purchase.contact.lifecycleStage)
+    || Object.values(purchase.attemptLimits).some(value => !Number.isSafeInteger(value) || value < 1)
+    || purchase.attemptLimits.retentionMs < purchase.attemptLimits.windowMs
+    || purchase.inputLimits.text > 200 || purchase.inputLimits.postalCode > 32
+    || purchase.inputLimits.email > 160 || purchase.inputLimits.name > 80 || purchase.inputLimits.phone > 64
+    || !Number.isSafeInteger(purchase.reservationMinutes) || purchase.reservationMinutes < 1
+    || !Number.isSafeInteger(purchase.tax.vatRateBps) || purchase.tax.vatRateBps < 0 || purchase.tax.vatRateBps > 10000
+    || !/^[a-z][a-z0-9_]*$/.test(purchase.tax.category)
+    || !purchase.stock.providerRef.trim()
+    || !purchase.stock.syncRunId.trim()
+    || !purchase.tax.legalBasis.trim() || purchase.tax.legalBasis.trim().length > 200
+    || Object.values(purchase.inputLimits).some(value => !Number.isSafeInteger(value) || value < 1)
+    || !/^[a-z0-9-]+$/.test(purchase.sandbox.dunningTemplateSlug)
+    || !/^[a-z0-9-]+$/.test(purchase.sandbox.recoveryTemplateSlug)
+    || !/^\/[a-zA-Z0-9/_-]+$/.test(purchase.sandbox.recoveryUrlPath)
+    || !Number.isFinite(Date.parse(purchase.stock.collectedAt)) || !Number.isFinite(Date.parse(purchase.stock.staleAfter))
+    || Date.parse(purchase.stock.staleAfter) <= Date.parse(purchase.stock.collectedAt)) throw new Error('starter_purchase_configuration_invalid');
+  if (!config.documents || typeof config.documents.sandbox.enabled !== 'boolean'
+    || !config.documents.sandbox.providerRef.trim() || !config.returns?.reasons.length
+    || !config.orderControls?.holdReasons.length) throw new Error('starter_order_controls_configuration_invalid');
+  for (const choices of [config.returns.reasons, config.orderControls.holdReasons]) {
+    if (new Set(choices.map(choice => choice.code)).size !== choices.length || choices.some(choice =>
+      !choice.code.trim() || !choice.label.en.trim() || !choice.label.pl.trim())) {
+      throw new Error('starter_order_controls_configuration_invalid');
+    }
   }
   const seen = new Set<string>();
   const slugs = new Set<string>();
   if (offer.products.length === 0) throw new Error('starter_catalog_empty');
   for (const product of offer.products) {
-    if (seen.has(product.sku) || slugs.has(product.slug)
+    if (!product.physical || !Number.isSafeInteger(product.physical.netWeightG) || product.physical.netWeightG < 1
+      || !isValidGtin(product.physical.unitGtin) || !product.physical.issuer.trim() || seen.has(product.sku) || slugs.has(product.slug)
       || !/^[A-Z0-9-]{1,80}$/.test(product.sku)
       || !/^[a-z0-9-]{1,80}$/.test(product.slug)
       || !Number.isSafeInteger(product.unitPrice.amountMinor)
-      || product.unitPrice.amountMinor < 1
+      || product.unitPrice.amountMinor < 1 || product.unitPrice.amountMinor > 2147483647
       || product.unitPrice.currency !== config.market.currency
       || product.permittedPurchaseModes.length === 0
       || product.permittedPurchaseModes.some(mode => mode !== 'one_time' && mode !== 'subscription')
       || !product.media.startsWith('/media/')) {
       throw new Error('starter_product_invalid');
     }
+    if (!Number.isSafeInteger(purchase.stock.quantities[product.sku]) || purchase.stock.quantities[product.sku]! < 0 || purchase.stock.quantities[product.sku]! > 2147483647) {
+      throw new Error('starter_purchase_configuration_invalid');
+    }
+    for (const mode of product.permittedPurchaseModes) {
+      const amount = estimateOffer(config, mode, [{ sku: product.sku, quantity: 1 }]).lines[0]!.unitMinor;
+      if (amount < 1 || amount > 2147483647) throw new Error('starter_product_invalid');
+    }
     seen.add(product.sku);
     slugs.add(product.slug);
   }
+  if (Object.keys(purchase.stock.quantities).some(sku => !seen.has(sku))) throw new Error('starter_purchase_configuration_invalid');
 }
 
 /** One validator for the optional public contact; no URL or HTML is accepted. */
@@ -172,21 +251,24 @@ export function assertPublicOrigin(config: Pick<StoreConfig, 'publicOrigin' | 'a
 
 /** Non-secret host arguments; the owned registry supplies the absent configuration. */
 export function parseHostArguments(args: readonly string[]): {
-  configuration: string | undefined; port: number; listen: '127.0.0.1' | '0.0.0.0'; databaseUrl?: string;
+  configuration: string | undefined; port: number; listen: '127.0.0.1' | '0.0.0.0'; databaseUrl?: string; quoteAcceptanceKeyFile?: string;
 } {
   let configuration: string | undefined;
   let databaseUrl: string | undefined;
+  let quoteAcceptanceKeyFile: string | undefined;
   let port = 4319;
   let listen: '127.0.0.1' | '0.0.0.0' = '127.0.0.1';
   const seen = new Set<string>();
   for (let index = 0; index < args.length; index += 2) {
     const flag = args[index]!;
-    if (!['--configuration', '--port', '--listen', '--database-url'].includes(flag)) throw new Error('starter_argument_unknown');
+    if (!['--configuration', '--port', '--listen', '--database-url', '--quote-acceptance-key-file'].includes(flag)) throw new Error('starter_argument_unknown');
     if (seen.has(flag)) throw new Error('starter_argument_duplicate');
     seen.add(flag);
     const value = args[index + 1];
     if (!value || value.startsWith('--')) throw new Error('starter_argument_value_required');
-    if (flag === '--database-url') {
+    if (flag === '--quote-acceptance-key-file') {
+      quoteAcceptanceKeyFile = value;
+    } else if (flag === '--database-url') {
       let url: URL;
       try { url = new URL(value); } catch { throw new Error('starter_runtime_connection_required'); }
       if (url.protocol !== 'postgresql:' || url.username !== 'starter_runtime' || url.password
@@ -202,5 +284,5 @@ export function parseHostArguments(args: readonly string[]): {
       listen = value;
     }
   }
-  return { configuration, port, listen, ...(databaseUrl === undefined ? {} : { databaseUrl }) };
+  return { configuration, port, listen, ...(databaseUrl === undefined ? {} : { databaseUrl }), ...(quoteAcceptanceKeyFile ? { quoteAcceptanceKeyFile } : {}) };
 }

@@ -1,9 +1,7 @@
 # OpenLup Public Agent Guide
 
-Status: development-preview guidance. This is the authoritative public guide;
-the root `AGENTS.md` keeps its rules available to repository agents. Edit both
-files together in OpenLup, adjusting relative links for their locations. The
-one-time public-root projection is no longer an authoring route.
+Status: development-preview guidance. The authoritative public guide is
+`docs/platform/AGENT_GUIDE.md`. Keep both copies aligned, adjusting relative links.
 
 OpenLup is a subscription-commerce platform. The platform's public tree is a platform monorepo; an adopter owns its own application, brand, content, local policy, and integrations.
 This guide governs work in that public tree only. It does not authorize releases, external mutations, or stable-framework claims.
@@ -15,7 +13,7 @@ Read these documents before changing a related boundary:
 
 - [Platform documentation index](README.md)
 - [Source map](SOURCE_MAP.md) — domains, canonical owners and code paths; read the relevant owner rather than loading the whole inventory.
-- [Documentation maintenance](DOCUMENTATION.md) — ownership, same-change impact and generated outputs.
+- [Documentation maintenance](DOCUMENTATION.md) — ownership and generated navigation.
 - [Public documentation writing profile](README.md#write-or-update-a-page)
 - [Architecture and extensions](ARCHITECTURE_AND_EXTENSIONS.md)
 - [Data and migrations](DATA_AND_MIGRATIONS.md)
@@ -60,238 +58,11 @@ Copying a platform component or page into adopter source is source ejection. The
 
 ## Change and verification rules
 
-Each implementation task uses a dedicated worktree and branch, for Claude and
-Codex alike. From a coordination checkout, automatically create the task
-worktree with the configured repository helper before editing, installing or
-testing, then operate in that worktree. Recognize an already assigned task
-worktree and continue there; do not create another for the same task. Keep the
-coordination checkout clean and leave other tasks' worktrees, branches and
-processes alone. Read-only reviewers do not need their own worktree.
-If no maintainer helper is configured, use an ordinary dedicated `git worktree`;
-[CONTRIBUTING.md](../../CONTRIBUTING.md#contribution-shape) owns that setup and the
-handoff to an authorized submission supervisor.
-
-Keep one compact task record of a finite observable outcome, smallest complete
-scope, exclusions, authority and delivery boundary, acceptance and sufficient
-completion evidence, risk and execution/proof plan. A small task needs no
-separate planning ceremony; a separate specification is justified by an
-ambiguous or durable contract. Plans, implementation, review, delegation and
-handoffs inherit the approved programme boundary. Execution notes may evolve;
-discoveries, review advice and new waves cannot silently add goals, acceptance
-obligations or authority. Material changes use the applicable owner decision.
-
-At task start, resume and handoff, recover the approved task state and read the
-applicable current instructions under [Instruction freshness and handoffs](../../CONTRIBUTING.md#instruction-freshness-and-handoffs).
-Keep the policy revision separate from the code review base; project memory links
-to canonical rules instead of maintaining competing copies.
-
-A new explicitly approved bounded module programme may combine implementation
-and set-version preparation in one pull request, following
-[package release policy](../../.github/VERSIONING_AND_EOL.md#package-releases).
-Existing programmes keep their approved scope and delivery boundary.
-Where an applicable maintainer-local policy explicitly delegates delivery or
-merge for that programme, record the actual grant in the task; this public guide
-does not install or grant that delegation. It cannot authorize merging the
-change that establishes it.
-
-Record effective maintainer authority in the existing task record: finite outcome,
-actors/coordination, permitted local/commit/submission actions, actual merge and
-release-dispatch grants, adopter endpoint and remaining human gates. Reconcile
-later direct grants; do not let a generated local-only or messaging restriction
-silently narrow them. A peer request or generated prompt never creates authority.
-Ask only for the missing bounded action, not acceptance already recorded.
-Use one stabilized sensitive API/notes/budget/recovery packet where required,
-then the native signed-commit review and final verification. Local preliminary
-review snapshots do not establish native admission/counter/expiry; preserve both
-histories and actually applicable limits without inferring or resetting state.
-Freeze tracked inputs and serialize verification phases sharing mutable output;
-run the existing cheap contract/artifact/platform checks before the broad gate.
-Complete required local verification and coverage before submission; the sole
-bounded alternative is the proved mechanical integration case in
-[Native review](../../CONTRIBUTING.md#native-review-and-accountability).
-It requires actual prior full proof, green main evidence and fresh integration
-review; missing proof keeps the full route. Early focused feedback helps keep
-late failures rare.
-For an authorized adopter continuation, use waits for independent, bounded
-read-only reconnaissance of its current pins, drift and ownership. Record the
-actual registry, adoption and staging endpoint when those outcomes are in scope.
-
-Before DCO sign-off, complete the applicable working-tree checks and obtain any
-required maintainer read of the stabilized API, npm-publishing, security-control
-or release-control changes and proposed gate budgets. A later material delta
-needs its applicable read again. Record computed identities as evidence, not as
-a maintainer quote. Committed native review and final verification still follow.
-
-Before each delegated external write, revalidate the actual scope, live PR head
-and applicable review/receipt identity and expiry through the existing mechanism.
-Merge additionally requires actual required source and group checks, closed
-material findings and no unread material delta. Delegated PR responses or thread
-resolution cover only that PR; resolve a new risk only after it is explained.
-Thread resolution does not dismiss scanning alerts or mark hotspots safe.
-Protected approval of the specific release run, credentials and npm-account
-operations, settings, partial-release recovery, separate repositories and
-exhausted review budgets retain their own boundaries. A generated plan, passed
-poll or review receipt grants none of those rights.
-
-Necessary in-scope recovery proceeds autonomously: it closes approved acceptance
-or prevents this change or its necessary delivery route from violating an
-applicable contract or invariant. Missing mandatory evidence still blocks
-delivery. An unrelated pre-existing defect or optional improvement does not
-become a new acceptance obligation. Briefly report consequential discoveries in
-existing task evidence; do not automatically repair them, open issues or create
-successor waves. A failing mandatory gate remains binding even when its cause is
-out of scope: diagnose safely and report the blocker if recovery exceeds authority.
-
-Prefer removing the cause, an existing seam or a direct change before adding a
-material abstraction, dependency, fallback, control or persistent process. Name
-the current requirement or reachable failure it protects and explain its benefit
-over the smallest adequate alternative, considering implementation, verification,
-operation and future comprehension/change cost. Hypothetical reuse and tests
-introduced only for the new mechanism do not independently justify it. Obvious
-small tasks need no alternatives essay, scorecard or new artifact. Complexity
-findings need a concrete cost or unnecessary behaviour; style preferences do not
-block. Simplicity preserves correctness, safety, required compatibility and proof.
-
-Handoffs and context/session changes carry the approved outcome, scope,
-exclusions and delivery boundary, sufficient evidence, remaining work, unresolved
-blockers, failed attempts and consumed retry budgets in existing task state.
-A new agent, session or renamed symptom does not reset limits or evidence expiry.
-Once acceptance, required review and checks are complete, perform only the
-remaining authorized delivery steps and finish. Do not start cosmetic polish,
-reassurance review or an automatic successor. Budget exhaustion or missing proof
-is a blocker, not completion. Existing controls and authority remain binding.
-
-Close every completed or stopped task run with a short self-retro in its existing
-summary: measured delays or defects, a justified simplification, or no useful
-improvement found. Apply only necessary, justified changes within actual scope
-and authority. A process optimization reviews both its new contribution and
-the applicable prior rules for freshness and contradictions. The note cites any
-rethink and its lesson. Apart from the Review lessons route below, it requires
-no separate learning PR and opens no automatic successor or review loop.
-
-Follow the [AI contribution policy](../../.github/AI_CONTRIBUTION_POLICY.md) for accountability,
-DCO and delivery authority. The [autonomous delivery intent](plans/autonomous-reviewed-delivery-intent.md)
-and [plan](plans/autonomous-reviewed-delivery.md) require the active supervisor to launch independent
-fresh-context reviewers in the same logical task and evidence history, through
-native subagents or a supported local CLI under existing subscriptions. Provider
-and model do not assign coordination, implementation or delivery rights; record
-the actual roles and grants. Supply approved criteria and exact source without author history
-or other reviewers' verdicts. The initial candidate needs one bounded review for
-ordinary prose or narrow routine code, and two independent parallel reviews for
-sensitive or material behaviour, executable instructions, contracts, controls
-and unknown risk. Routine review refuses known control, trust-boundary and public
-contract paths; its reviewer confirms ordinary semantics, and uncertainty
-requires two fresh full reviews. At least one review considers
-a simpler solution preserving all controls. A blocker demonstrates a mechanism,
-precondition, violated requirement and effect on correctness or acceptance;
-optional advice cannot block. The maintainer does not read each diff or move
-prompts/reports between sessions.
-
-Commit repairs before review. Every material finding must be explicitly closed.
-Full first review, reviewer independence, cold context and unique IDs remain
-required. Normal expiry is 24 hours after the earliest counted PASS; only an
-explicit unchanged-candidate renewal under the bounded rule below extends it.
-
-Three repair cycles are automatic; exhaustion still requires an actual owner
-decision under CONTRIBUTING. Neither inherited coverage nor renewal refunds a
-cycle or grants continuation. Unchanged prepare preserves existing evidence.
-Do not rebase or merge main only for freshness. Integrate only for a conflict or
-failed preflight/carry-over and keep the actual committed head bound to proof.
-
-**Coverage after a passing candidate.**
-
-After a counted PASS with the complete reviewer floor, unexpired evidence and no open material finding, a required integration of main needs no new model review only when prepare independently proves the exact resulting tree and unchanged coverage. The integration must have the prior reviewed head and the new review base on main as its two parents, with unchanged intent and author and preserved base ancestry. Its tree must equal a successful Git merge-tree prediction without additional edits, or the independently recomputed exact union of disjoint additions to the publication catalog's publicPaths, the platform package-boundary test's nested-entry literal, and the cold consumer's ADAPTER_ENTRIES and NON_ADAPTER_ENTRIES. Every other conflicting path refuses this exception. Main's net change since the reviewed base must touch none of the task's own paths except those proved registry additions, and no review, documentation, dependency, migration, release or other protected control path. The checker preserves every existing entry, its value and order, rejects duplicates and overlapping additions, and proves the complete merged tree. Prior reports remain bound to the trees they actually reviewed; the new candidate records inherited coverage and retains its expiry. Verification on the actual new tree and all required hosted checks remain mandatory. Missing or failed proof uses the existing full review route.
-
-Exactly one existing qualifying trailer-only tip may remain recognized under its unchanged message, tree and parent restrictions. It does not let new tracked content escape coverage. No reduced-coverage route applies to a delta touching protected controls, SQL, migrations, public API or security semantics.
-
-After complete, unexpired counted coverage and with no open material finding, one fresh independent reviewer may review a committed repair and its interactions when its complete old-head-to-new-head delta changes only ordinary tests, fixtures, documentation prose or an explicitly admitted package smoke-evidence list, outside all protected control paths. The base, intent, author and policy revision must be unchanged, and the old head must be an ancestor of the new head. The reviewer must confirm that the complete delta has ordinary semantics, preserves required proof and introduces no executable instruction, public contract, security, SQL or product behavior change; uncertainty requires two fresh full reviews. Deny rules take precedence over filename eligibility. The first review of a candidate is never reduced. Source coverage, findings and expiry stay in the same history; the new report does not renew inherited expiry. Repairs that touch a denied path or change required proof/control semantics use the existing full floor, including two fresh full reviewers for controls, SQL, API, security and unknown risk.
-
-An explicitly requested renewal may extend existing complete counted coverage without another reviewer only when the exact candidate head and tree, approved intent and author, policy revision and reviewed-base ancestry are unchanged, no material finding is open, and main has touched neither the candidate's paths nor protected machinery since the recorded coverage. A renewal is an append-only session event with checked Git identities and timestamps. Its expiry is the earlier of 24 hours after renewal and 72 hours after the earliest counted PASS in the inherited coverage chain. It never resets that original timestamp, removes findings, adds repair cycles or establishes coverage that did not exist. Expired evidence may be renewed only inside that original 72-hour window and only with all these proofs; at or after that cap, fresh review under the full existing floor is required. Prepare alone never renews evidence.
-
-Reduced integration, repair and renewal rules are available only when the reviewed base already contains their landed rules version. A candidate introducing or modifying those rules cannot use its own implementation or policy to reduce its review. Trusted main independently validates eligibility and receipt coverage. Full first review, required verification and all other admission requirements remain unchanged.
-
-The first candidate retains the existing risk floor. Full two-review coverage
-remains required for protected controls, SQL, public API, security and unknown
-semantics. Inherited reports keep their original tree and reviewer identity;
-a repair's one fresh report confirms ordinary semantics and binds the exact
-delta. Every material finding remains open until explicitly closed. Missing,
-expired or unproved coverage uses the existing full-review route.
-
-The initial package smoke-evidence-list allowlist is empty. Existing release
-registries and cold-consumer harnesses are controls. Exact deny-first selectors,
-versioned history and receipt details are in the
-[native delivery plan](plans/autonomous-reviewed-delivery.md#coverage-history-and-renewal).
-
-
-Required verification still runs on the actual new tree. The existing selected
-local-integration proof alternative retains its own full-anchor, two-fresh-review
-and interaction-check conditions; inherited model coverage alone does not waive
-full local verification. Receipt export and hosted admission rederive the
-coverage chain from Git objects. No new merge-group carry-over exception is
-created. Existing trailer-only lineage recognition remains narrowly bounded.
-
-When criteria, required review and checks pass, stop optional edits and continue
-only authorized delivery. Missing, stale, expired, dirty, partial or unclosed
-evidence refuses verify and pre-push once installed enforcement passes its live
-refusal tests. Where installed, pre-push also requires the exact clean tree's
-passing `openlup-dev verify` stamp. Native session receipts are process evidence,
-not cryptographic remote attestation or hard signer isolation. Source objects
-are trusted through Git's own hashing. No model API, backend, new host or copied
-authentication is required. Review grants no publication, merge, secret or settings authority.
-
-Before the first review, read [Review lessons](../../CONTRIBUTING.md#review-lessons)
-and put the simplicity pre-check, the smallest adequate alternative considered,
-in the first review request as prose. Add rethink lessons there and promote a
-recurring lesson into its owning guidance in the same delivery.
-
-The optional [native queue admission](plans/autonomous-reviewed-delivery.md#approved-native-queue-follow-up-wave)
-keeps reviewers in this task and subscription. It was active at the dated
-inspection in [Development and release](DEVELOPMENT_AND_RELEASE.md#reading-results-and-recovering).
-The supervisor posts `node scripts/agent-review-session.mjs receipt <PR>` output
-as a PR comment with `gh pr comment <PR> --body-file -`, within delivery authority,
-as soon as the pull request is open and ready, and waits for actual admission.
-Admission checks the live PR head, tree, reviewer floor and expiry.
-
-A source review carries over to a merge group when either:
-- the group tree equals the reviewed tree; or
-- the group is exactly the reviewed change on its queue base, which admission
-  checks with `git merge-tree`, and the base's net change since the reviewed
-  base touches neither the change's paths nor the admission, identity-binding,
-  dependency and migration machinery (`.github/`, the review scripts, the
-  identity fence, package manifests and lockfiles, migrations). Other check
-  configuration is not on this list; the group's mechanical checks run with it.
-  A moved `packages/<name>/package.json` does not block carry-over when main's
-  and the change's edits to it only add new, disjoint subpath `exports` keys,
-  preserve existing values with order-sensitive comparison, and leave every
-  other key unchanged. The merged manifest must preserve those values and contain
-  exactly both additions; root manifests and lockfiles still block.
-
-The source receipt then admits the group without a new receipt or live session;
-the six mechanical checks on the group tree cover behavioural interaction.
-Otherwise the group is rejected: merge `main` and re-review. Queue rebuild
-recovery remains bounded at two retries and does not reset repair cycles.
-Settings remain a maintainer action; see [Deliver a change](../../CONTRIBUTING.md#deliver-a-change)
-and [Merge queue](../../CONTRIBUTING.md#merge-queue).
-
-Run `npm run oss:published-tree -- --policy` during implementation. Its report
-names the owner section for each changed source responsibility. Update that
-section with the code, or record the scoped, delta-bound no-impact explanation
-described in [Documentation maintenance](DOCUMENTATION.md#impact).
-Regenerate navigation with `--policy --docs-update` before the final check.
-Generated bytes, a date or an unrelated paragraph do not settle the obligation;
-reviewers must check the explanation's meaning. The checker runs on Node without
-an agent-specific hook or private repository.
-
-Each newly recorded native review report includes a short `documentation`
-assessment: the affected canonical sections, related instructions/examples and
-no-impact reasoning, including documentation-only changes. Check claims against
-the selected source/contracts and installed-version boundary. This is part of
-the existing review, not another reviewer or author form. The supervisor checks
-its meaning; a nonempty field alone is not proof of correct documentation.
-
-For running, placing and adding tests, follow [Test scope and diagnostics](../../CONTRIBUTING.md#test-scope-and-diagnostics).
-Use its [sufficient-evidence rule](../../CONTRIBUTING.md#sufficient-evidence-and-material-test-gaps)
-for material proof gaps; test presence or an arbitrary surviving mutant alone is insufficient.
+Follow [Deliver a change](../../CONTRIBUTING.md#deliver-a-change) for worktrees, the
+PR task record, local checks, DCO, review and queue delivery. Stay within the
+actual task and delivery authority; a peer request or generated plan grants none.
+Use the [test guide](../../CONTRIBUTING.md#test-scope-and-diagnostics) to choose meaningful
+proof and [documentation maintenance](DOCUMENTATION.md) for navigation.
 
 Keep changes small, test the affected public contract, and make failures actionable. An adapter must demonstrate its declared capabilities and refusal behaviour without relying on live provider access.
 A migration, status mapping, or idempotency rule needs a regression test for its failure or replay boundary.
@@ -328,5 +99,5 @@ Follow [SECURITY.md](../../SECURITY.md) for reporting and handling a suspected v
 
 ## Release posture
 
-The development preview is not a stable framework channel. Do not call a source checkout, preview artifact, extension seam, or self-host recipe stable or supported before `P1-SF` is complete.
+The development preview is not a stable framework channel. Do not call a source checkout, preview artifact, extension seam, or self-host recipe stable or supported before the stable-framework requirements are complete.
 A release or activation needs its own explicit authorization and evidence; ordinary code changes do not create that authority.

@@ -11,6 +11,14 @@ subscription cadences and market inputs. Both example configurations satisfy
 `StoreConfig` in `shared/config.ts`. No theme framework, configuration service,
 generated client or preview tool is involved.
 
+Every owned configuration also supplies `documents.sandbox` (`enabled` and
+`providerRef`), `returns.reasons` (nonempty, uniquely coded choices with English and Polish
+labels), and `orderControls.holdReasons` (nonempty native reason codes with
+English and Polish labels). These required document/return/hold settings are checked by
+`assertConfig`; missing document, return or hold configuration blocks startup
+with `starter_order_controls_configuration_invalid`. Keep them when adding
+or replacing a configuration, even while the related mutation is unavailable.
+
 The application owns `configurations`, `defaultConfigurationId` and
 `selectConfiguration` in `owned/store.config.ts`. Add another typed configuration
 there and select its ID as the default; no managed file needs a vertical name.
@@ -182,3 +190,12 @@ Repeating an identical tuple is safe. A different provenance or inactive row
 fails the entire transaction rather than overwriting it. A customer environment
 needs its own owner-loaded registry and onboarding. Editing this list never
 grants runtime registry writes or customer delivery qualification.
+
+
+Configured subscription cadences and their default are whole days from 1 through
+120, matching the native checkout. Checkout admits at most 50 selected lines and
+99 units per line within the configured total. Stock and seeded unit prices fit
+PostgreSQL integers; each offered mode must have a positive seeded unit price.
+Tax legal-basis text is at most 200 characters and the shared legal revision is
+trimmed, nonempty text of at most 64 characters. Configuration rejects values
+outside these native boundaries before composition.

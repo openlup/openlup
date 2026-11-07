@@ -10,6 +10,23 @@ const settings: ShippingSettings = { legacyFlatMinor: 200, policy: { version: "s
   enabled: true, flatMinor: 200, freeThresholdMinor: 1000, effectiveFrom: AT } } };
 const input = { request: { ...request, mode: "one_time" as const }, regionCode: "ZZ", currency: "XXX", referenceProductMinor: 1200, subtotalGrossMinor: 1200, atTime: AT };
 const adjust = createQuotePromotionCodeAdjustments({ minimumProductPayableMinor: 7 });
+
+// Characterizes the reference adopter's after-discount boundary with configured values.
+it.each([1, 2] as const)("retains configured after-discount boundaries in engine %i", async engine => {
+  const threshold = 1201, fee = 217, productDiscount = 91;
+  const configured: ShippingSettings = { legacyFlatMinor: fee, policy: { version: "shipping-policy.v1", current: {
+    enabled: true, flatMinor: fee, freeThresholdMinor: threshold, effectiveFrom: AT,
+  } } };
+  for (const delta of [-1, 0, 1]) {
+    const subtotal = threshold + productDiscount + delta;
+    const value = resolver([row(`boundary-${engine}-${delta}`, { discount_type: "fixed_amount", discount_value: productDiscount })], undefined, configured);
+    const result = await value.resolveQuoteShippingPromotions({ ...input, subtotalGrossMinor: subtotal, referenceProductMinor: subtotal,
+      options: { pricingPolicy: engine === 2 ? pricingPolicy : { offerPolicyVersion: "commerce.offer-policy.v1", promotionEngineVersion: "promotion-engine.v1" } } });
+    expect(result.discounts.filter(discount => discount.appliesTo !== "shipping").reduce((sum, discount) => sum + discount.amountOffMinor, 0)).toBe(productDiscount);
+    expect(result.shippingGrossMinor).toBe(delta < 0 ? fee : 0);
+    expect(result.shippingTerms).toEqual({ version: "shipping-threshold.v1", currency: "XXX", flatMinor: fee, freeThresholdMinor: threshold });
+  }
+});
 function resolver(rows = [] as ReturnType<typeof row>[], codePort?: PromotionCodeQuotePort, configured = settings) {
   const automatic = vi.fn(orchestrators().resolveAutomaticQuotePromotions);
   const apply = vi.fn(adjust.applyPromotionCodesV2);

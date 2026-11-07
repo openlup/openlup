@@ -96,7 +96,7 @@ describe('six real Git witnesses', () => {
     f.git('update-ref', 'refs/remotes/origin/main', main);
     await expect(f.cli('verify')).resolves.toBe(0);
   });
-  it.each([false, true])('merge group carry-over with overlapping base move = %s', async overlap => {
+  it.each([false, true])('merge group carries over a clean base move, overlapping path = %s', async overlap => {
     const f = await fixture(); const candidate = await captureSessionCandidate(f.cwd, undefined, { env: {} });
     f.git('checkout', '-q', '--detach', f.base);
     if (overlap) f.git('update-index', '--chmod=+x', 'source.txt');
@@ -105,8 +105,8 @@ describe('six real Git witnesses', () => {
     const tree = f.git('merge-tree', '--write-tree', base, f.head);
     const head = f.git('commit-tree', tree, '-p', base, '-p', f.head, '-m', 'queue group');
     const decision = await carryOverSourceReview(f.cwd, candidate, { base, head, tree });
-    expect(decision.ok).toBe(!overlap);
-    expect(decision.reason).toContain(overlap ? 'merge main and re-review' : 'disjoint base move');
+    // Review binds to the candidate's own change: a clean merge keeps it even on a shared path.
+    expect(decision).toMatchObject({ ok: true, reason: 'clean merge of the reviewed change' });
     if (!overlap) {
       await mkdir(join(f.scratch, 'agent-review'));
       await writeFile(join(f.scratch, 'intent.json'), JSON.stringify({ intent }));
@@ -119,12 +119,12 @@ describe('six real Git witnesses', () => {
       await f.cli('prepare', '--new', join(f.scratch, 'intent.json'));
       const next = JSON.parse(await readFile(f.statePath, 'utf8'));
       expect(next.history.slice(0, -1)).toEqual(initial.history);
-      expect(next.cycle).toBe(initial.cycle);
+
       expect(next).not.toHaveProperty('previousSessionDigest');
       expect((await readdir(join(f.scratch, 'agent-review'))).some(name => /^session-.*\.json$/.test(name))).toBe(false);
     }
   });
-  it.each(['text conflict', 'clean overlap', 'admission machinery', 'disjoint'])('preflight refuses known integration failure before review or costly verification: %s', async scenario => {
+  it.each(['text conflict', 'clean overlap', 'admission machinery', 'disjoint'])('preflight refuses only a known conflict before review or costly verification: %s', async scenario => {
     const f = await fixture(); const session = await f.review();
     f.git('checkout', '-q', '--detach', f.base);
     if (scenario === 'text conflict') await writeFile(join(f.cwd, 'source.txt'), 'main conflicts\n');
@@ -141,7 +141,7 @@ describe('six real Git witnesses', () => {
     const run = vi.fn(async () => 0);
     const prepared = await readFile(f.statePath, 'utf8');
     const request = join(f.scratch, 'intent.json');
-    if (scenario === 'disjoint') {
+    if (scenario !== 'text conflict') {
       await expect(f.cli('prepare', request)).resolves.toBe(0);
       await expect(verifyCandidateCommand({ cwd: f.cwd, session, command: 'costly-check', run, env: {} })).resolves.toBe(0);
       await expect(f.cli('receipt', '12')).resolves.toBe(0);
@@ -174,7 +174,7 @@ describe('six real Git witnesses', () => {
     await f.cli('prepare', join(f.scratch, 'intent.json'));
     const next = JSON.parse(await readFile(f.statePath, 'utf8'));
     const mechanical = ['mechanical', 'trailer-only'].includes(scenario);
-    expect(next.cycle).toBe(prior.cycle + (mechanical ? 0 : 1));
+
     expect(next.candidate.base).toBe(main);
     expect(next.candidate.head).toBe(f.git('rev-parse', 'HEAD'));
     expect(next.history.slice(0, -1)).toEqual(prior.history);
@@ -186,7 +186,7 @@ describe('six real Git witnesses', () => {
       const path = join(f.scratch, 'integration-report.json');
       await writeFile(path, JSON.stringify({ reviewer: 'fresh-integration-1', cold: true, verdict: 'PASS', tree: next.candidate.tree, findings: [], closes: [], documentation: 'Fixture assessment: reviewed canonical guidance and secondary examples; no impact.' }));
       await f.cli('record', path);
-      await expect(f.cli('verify')).rejects.toThrow('2 independent PASS');
+      await expect(f.cli('verify')).rejects.toThrow('2 independent PASS reports required');
       await writeFile(path, JSON.stringify({ reviewer: 'fresh-integration-2', cold: true, verdict: 'PASS', tree: next.candidate.tree, findings: [], closes: [], documentation: 'Fixture assessment: reviewed canonical guidance and secondary examples; no impact.' }));
       await f.cli('record', path);
       await expect(f.cli('verify')).resolves.toBe(0);
@@ -335,7 +335,7 @@ describe('six real Git witnesses', () => {
     await expect(verifyCandidateCommand({ cwd: f.cwd, session, env, command: 'stack-check', run })).resolves.toBe(0);
     expect(run).toHaveBeenCalledTimes(1);
   });
-  it('carries over disjoint export additions to the same package manifest with real Git', async () => {
+  it('carries over a clean merge of export additions to the same package manifest with real Git', async () => {
     const f = await fixture(); const path = 'packages/p/package.json';
     await mkdir(join(f.cwd, 'packages/p'), { recursive: true });
     const manifest = { name: '@openlup/p', exports: { '.': './index.js', './middle': './middle.js', './last': './last.js' } };
@@ -351,7 +351,7 @@ describe('six real Git witnesses', () => {
     const queueBase = f.git('rev-parse', 'HEAD');
     const groupTree = f.git('merge-tree', '--write-tree', queueBase, head);
     const decision = await carryOverSourceReview(f.cwd, { base, head, tree, changedPaths: [path] }, { base: queueBase, tree: groupTree });
-    expect(decision).toEqual({ ok: true, code: 'reviewed', reason: 'disjoint base move with export additions' });
+    expect(decision).toEqual({ ok: true, code: 'reviewed', reason: 'clean merge of the reviewed change' });
   });
   it('hosted wait admits in one fake API poll and verify-command runs only its stub command', async () => {
     const f = await fixture(); const candidate = await captureSessionCandidate(f.cwd, undefined, { env: {} });

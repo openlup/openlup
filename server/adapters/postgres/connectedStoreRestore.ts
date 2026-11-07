@@ -236,20 +236,32 @@ const order = [
   "identity_operator_invitations", "identity_operator_invitation_events", "identity_privacy_erasures",
   "customer_subject_lifecycle_events", "customer_communication_preferences", "customer_communication_preference_events",
   "platform_operational_controls", "platform_control_operations", "platform_alerts", "platform_alert_notifications", "platform_job_runs",
-  "catalog_products", "catalog_skus", "price_lists", "price_entries",
+  "catalog_products", "catalog_product_document_revisions", "catalog_skus", "catalog_sku_identifiers",
+  "price_lists", "subscription_price_policy_revisions", "price_entries", "commerce_promotion_definitions",
   "subscriptions", "subscription_events", "subscription_pause_windows", "subscription_renewal_terms", "subscription_renewal_term_lines",
   "subscription_method_states",
   "subscription_renewal_operations", "subscription_lines", "subscription_cycles", "commerce_orders", "commerce_order_items",
-  "commerce_order_draft_receipts",
+  "commerce_order_draft_receipts", "fulfillment_stock_operations",
+  "commerce_order_adjustments", "commerce_promotion_claims", "commerce_promotion_claim_events",
   "subscription_activations", "subscription_renewal_attachments", "subscription_method_state_events",
+  "commerce_checkout_compensations",
+  "fulfillment_stock_current", "fulfillment_inventory_reservations", "fulfillment_inventory_reservation_lines", "fulfillment_purchase_reservation_receipts",
   "commerce_settlement_intents", "commerce_settlement_transitions",
+  "subscription_reminder_ledger", "transactional_delivery_receipts",
+  "subscription_notice_refusals",
   "payment_simulator_attempts", "payment_simulator_observations",
   "payment_truth_events", "payment_truth_reconciliation_evidence", "subscription_renewal_outcomes", "outbox_events", "communication_native_sync_state", "outbox_dormant_event_types",
   "communication_recipient_consents", "communication_native_sends", "communication_native_observations",
+  "customer_account_consent_events", "customer_account_consent_sync_targets",
   "fulfillment_ports", "fulfillment_shipments", "shipment_external_refs", "fulfillment_shipment_operations", "fulfillment_provider_attempts",
   "commerce_fulfillment_provider_commands", "commerce_fulfillment_provider_command_transitions", "fulfillment_dispatch_contexts",
+  "commerce_destinations", "commerce_destination_bindings", "subscription_command_receipts",
+  "customer_support_subscription_commands", "customer_support_subscription_audit_events",
   "fulfillment_dispatch_refs", "fulfillment_paid_handoffs", "fulfillment_observations", "fulfillment_stock_movements",
   "commerce_order_holds", "commerce_order_operations", "subscription_delivery_alignment_cases", "subscription_delivery_alignment_admission_receipts", "subscription_delivery_alignment_arrivals",
+  "subscription_dunning_cases", "subscription_dunning_notifications",
+  "commerce_checkout_recovery_tokens", "subscription_retry_obligations", "subscription_retry_receipts",
+  "subscription_retry_recovery_authorizations", "subscription_stock_wait_cases",
   "subscriber_profiles", "subscriber_review_access_grants", "subscriber_retention_intents", "commerce_order_reviews", "commerce_order_review_media",
   "commerce_order_review_command_receipts", "commerce_order_review_audit", "invoicing_cutover", "invoicing_duties", "invoicing_seller_revisions",
   "invoicing_fact_revisions", "invoicing_effect_receipts", "invoicing_capture_faults", "invoicing_document_observations", "invoicing_delivery_receipts",
@@ -367,14 +379,12 @@ export async function restoreConnectedNativeStore(input: {
             await insert(client, rows, staged);
           }
           else if (table === "catalog_products") {
-            const value = JSON.parse(row) as { primary_sku_id: string | null; current_document_revision_id: string | null };
-            if (value.current_document_revision_id !== null) fail("unsupported_table", "catalog_product_document_revisions");
-            // The product-to-primary-SKU FK and SKU-to-product FK form a cycle.
-            // Stage this one nullable reference, then install its exact captured
-            // value after all SKU parents exist in the same locked transaction.
-            const staged = value.primary_sku_id === null ? row :
-              (await client.query<{ value: string }>(`SELECT pg_catalog.jsonb_set($1::jsonb,'{primary_sku_id}',
-                'null'::jsonb)::pg_catalog.text AS value`, [row])).rows[0]!.value;
+            // Products reference their SKUs and document revisions, which in
+            // turn reference the product. Stage both nullable pointers, then
+            // install each captured value after its parents exist.
+            const staged = (await client.query<{ value: string }>(`SELECT pg_catalog.jsonb_set(
+              pg_catalog.jsonb_set($1::jsonb,'{primary_sku_id}','null'::jsonb),
+              '{current_document_revision_id}','null'::jsonb)::pg_catalog.text AS value`, [row])).rows[0]!.value;
             await insert(client, rows, staged);
           }
           else {
@@ -393,6 +403,17 @@ export async function restoreConnectedNativeStore(input: {
               AND (pg_catalog.to_jsonb(a)-'state'-'last_observation_id')=(pg_catalog.to_jsonb(x)-'state'-'last_observation_id')
             RETURNING a.id`, [attempt]);
           if (updated.rows.length !== 1) fail("target_conflict", "payment_simulator_attempts");
+        }
+        if (table === "catalog_product_document_revisions") for (const product of source.get("catalog_products")!.rows) {
+          const value = JSON.parse(product) as { current_document_revision_id: string | null };
+          if (value.current_document_revision_id === null) continue;
+          const updated = await client.query(`UPDATE public.catalog_products p SET current_document_revision_id=x.current_document_revision_id
+            FROM pg_catalog.jsonb_populate_record(NULL::public.catalog_products,
+              pg_catalog.jsonb_set($1::jsonb,'{primary_sku_id}','null'::jsonb)) x
+            WHERE p.id=x.id AND p.current_document_revision_id IS NULL AND x.current_document_revision_id IS NOT NULL
+              AND (pg_catalog.to_jsonb(p)-'current_document_revision_id')=(pg_catalog.to_jsonb(x)-'current_document_revision_id')
+            RETURNING p.id`, [product]);
+          if (updated.rows.length !== 1) fail("target_conflict", "catalog_products");
         }
         if (table === "catalog_skus") for (const product of source.get("catalog_products")!.rows) {
           const value = JSON.parse(product) as { id: string; primary_sku_id: string | null };
@@ -444,6 +465,18 @@ function copyCapture(input: ConnectedNativeStoreCapture): ConnectedNativeStoreCa
     if (copy.format !== "openlup.native-retained-store.v1" || digest(JSON.stringify(body)) !== sha256) fail("invalid_input");
     if (!copy.observation || Object.keys(copy.observation).sort().join("\0") !== "cluster\0database\0login\0snapshot"
       || Object.values(copy.observation).some(value => typeof value !== "string" || !value)) fail("invalid_input");
+    if (!Array.isArray(copy.outsideProfileCensus)) fail("invalid_input");
+    for (const entry of copy.outsideProfileCensus) {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)
+        || Object.keys(entry).sort().join("\0") !== "disposition\0owner\0relation\0rows"
+        || typeof entry.relation !== "string" || !entry.relation || typeof entry.owner !== "string" || !entry.owner
+        || typeof entry.rows !== "string" || !entry.rows || /[^0-9]/.test(entry.rows)) fail("invalid_input");
+      const disposition = entry.relation === "acquisition_private.installation_key" ? "new-target-installation-key"
+        : entry.relation === "public.platform_schema_migrations" ? "target-migration-history"
+          : entry.relation === "acquisition_private.address_references" ? "target-address-references"
+            : entry.relation === "public.customer_identity_challenges" ? "intentionally-not-carried" : "unsupported-empty";
+      if (entry.disposition !== disposition || disposition === "unsupported-empty" && entry.rows !== "0") fail("invalid_input");
+    }
     const all = tables(copy);
     if (all.size !== connectedNativeStoreTables.length || connectedNativeStoreTables.some(table => !all.has(table))) fail("invalid_input");
     let count = 0, bytes = 0;
@@ -502,7 +535,7 @@ async function equalCensus(client: PoolClient, expected: Map<TableName, Rows>): 
 async function assertOutsideEmpty(client: PoolClient, relations: readonly { schema: string; table: string }[]): Promise<void> {
   for (const relation of relations) {
     if (relation.schema === "public" && (connectedNativeStoreTables.includes(relation.table as TableName) || relation.table === "platform_schema_migrations")) continue;
-    if (relation.schema === "acquisition_private" && relation.table === "installation_key") continue;
+    if (relation.schema === "acquisition_private" && (relation.table === "installation_key" || relation.table === "address_references")) continue;
     if ((await client.query(`SELECT 1 FROM ${quoted(relation.schema)}.${quoted(relation.table)} LIMIT 1`)).rows.length) fail("unsupported_table", `${relation.schema}.${relation.table}`);
   }
 }
@@ -544,6 +577,9 @@ function parentOrder(table: TableName, rows: readonly string[]): string[] {
 }
 async function assertInsertTriggers(client: PoolClient): Promise<void> {
   const allowed: Readonly<Record<string, readonly string[]>> = {
+    // These guards retain final intervals and recompute the same definition digest.
+    subscription_price_policy_revisions: ["subscription_price_policy_revisions_10_prevent_overlap"],
+    commerce_promotion_definitions: ["commerce_promotion_definition_fingerprint_trigger"],
     clients: ["customer_subject_capture_lifecycle_trigger"], subscription_cycles: ["trg_subscription_delivery_alignment_guard_cycle_insert"],
     commerce_orders: ["trg_commerce_orders_line_sum"], commerce_order_items: ["trg_commerce_order_items_line_sum"],
     commerce_order_holds: ["trg_fulfillment_emit_shipment_exception", "trg_subscription_delivery_alignment_exception_case"],

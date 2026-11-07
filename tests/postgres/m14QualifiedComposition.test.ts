@@ -11,10 +11,10 @@ import {
 
 const exec = promisify(execFile);
 // Frozen 92-unit issued-prefix measurements remain independent expectations.
-// The current complete 97-unit installation includes the shared suffix.
+// The current complete 103-unit installation includes the shared suffix and the lock and conflict completion tail.
 const shapes = [
-  { name: "bootstrap-restore", currentSha256: "70a6cf41fd0c24ecb642ef36b457411f9ab46b3d721982032bd77d8a8d05afca", separate: false, sha256: "c4f6bb9daa5882877149a78e13d07594b7e8653c3a3ba39f508477b072548f9b" },
-  { name: "separate-restore", currentSha256: "7c51eda0ec825e993283ba7d73463cea8e84e097d28543755a2e6bb2b8044dc3", separate: true, sha256: "624cc57789e3aaf36d0b61bdad420fc4eb0b63c2a7eb09358e5c18240ec13f82" },
+  { name: "bootstrap-restore", currentSha256: "3f7044a59278c24c70b54d303d46dba0653d4ebdf51653202cd133d4f3aab136", separate: false, sha256: "c4f6bb9daa5882877149a78e13d07594b7e8653c3a3ba39f508477b072548f9b" },
+  { name: "separate-restore", currentSha256: "0f3b53cac93b794aee56ea821e0c73f8f300490e5515a1ffe78f2ba5a0840ef9", separate: true, sha256: "624cc57789e3aaf36d0b61bdad420fc4eb0b63c2a7eb09358e5c18240ec13f82" },
 ] as const;
 const profiles = [
   { name: "reference", roleMode: "installer-managed", prefix: "q2_reference" },
@@ -55,7 +55,7 @@ for (const profile of profiles) for (const shape of shapes) {
         migrationIsBootstrap: !shape.separate, hasRestore: true,
       });
       const count = 1 + current.forward.length;
-      expect(count).toBe(97);
+      expect(count).toBe(103);
       expect(current.objectInventorySha256).toBe(shape.currentSha256);
       expect(result).toMatchObject({
         inventorySha256: shape.currentSha256, issuedInventorySha256: shape.sha256, issuedLedgerRows: 92,
@@ -70,5 +70,7 @@ for (const profile of profiles) for (const shape of shapes) {
       // Also runs after partial startup, a failed assertion or killed child.
       await closePostgres(container);
     }
-  }, postgresSetupTimeoutMs);
+  // Hosted maximum 54.315 s: fourfold 217.260 s rounds to the existing 240 s child bound.
+  // Five-row tail estimate leaves at least 122.907 s of case headroom.
+  }, 240_000);
 }

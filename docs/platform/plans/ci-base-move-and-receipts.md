@@ -5,18 +5,17 @@ Audience: the agents executing it, their reviewers and the maintainer.
 
 This is the historical 2026-10-03 execution record. Its dispatch/artifact
 transport, run-keyed integration receipts, closure lineage, inherited expiry,
-repair-cycle limits and `needs_rescope` recovery are superseded by the
-[2026-10-19 simplification](native-review-simplification-proposal.md). The
-fork-point base remains. The current carry-over rule also has a later narrow
-exception for disjoint package `exports` additions. Use [Required and raw
-checks](../../../CONTRIBUTING.md#required-and-raw-checks) and [Merge queue](../../../CONTRIBUTING.md#merge-queue)
-for the exact current conditions. Current commands are in
-[Deliver a change](../../../CONTRIBUTING.md#deliver-a-change): post
-`node scripts/agent-review-session.mjs receipt <PR>` output using
-`gh pr comment <PR> --body-file -`; a group that cannot carry over is rejected,
-so merge `main` and re-review. A rebase or changed intent uses `prepare --new`.
-The procedures and falsifiers below record the earlier implementation, not
-additional current instructions or newly granted authority.
+repair-cycle limits and `needs_rescope` recovery were superseded by the
+[2026-10-19 simplification](native-review-simplification-proposal.md). Its
+base-move carry-over conditions, the later `exports` exception and review expiry
+were superseded on 2026-11-05: a review binds to the change, carry-over needs
+only base ancestry and a clean merge, and a conflict needs review of its
+resolution only. The fork-point base remains. Current rules and commands are in
+[Native review](../../../CONTRIBUTING.md#native-review-and-accountability),
+[Merge queue](../../../CONTRIBUTING.md#merge-queue) and
+[Deliver a change](../../../CONTRIBUTING.md#deliver-a-change). The procedures and
+falsifiers below record the earlier implementation, not current instructions or
+newly granted authority.
 
 ## 1. Why: recorded failures only
 
@@ -184,8 +183,8 @@ No release, repository setting, ruleset, secret or npm action is included.
 ### Step 3, W1: documentation checks that survive base moves (specs S1, S2)
 
 - **Scope:**
-  - `scripts/documentation-impact.ts` and `scripts/documentation-git.ts`;
-  - `scripts/documentation-impact.test.ts`;
+  - the former documentation-impact checker and `scripts/documentation-git.ts`;
+  - the former documentation-impact suite;
   - the marker description in `docs/platform/DOCUMENTATION.md`;
   - the merge-group paragraph in `CONTRIBUTING.md`.
 - **Falsifiers first:** P1 and F1 fail on `main`.
@@ -322,7 +321,7 @@ title where one exists.
 
 ### S1. Documentation obligation digest v2
 
-**Contract.** In `checkDocumentationImpact` (`scripts/documentation-impact.ts`),
+**Contract.** In `checkDocumentationImpact` (the former documentation-impact checker),
 the obligation digest hashes:
 
 ```ts

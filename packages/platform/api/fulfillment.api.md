@@ -50,15 +50,18 @@ export declare function createCapturedFulfillmentAdapter(options: {
 ## dist/fulfillment/commerceFulfillmentHandlers.d.ts
 
 ```ts
+import { type CommerceFulfillmentResponseSchemas } from "./handlerSchemas.js";
 import type { FulfillmentOperatorMutationPort as CommerceFulfillmentMutationPort } from './contracts/operator.js';
-import type { FulfillmentCommerceReadPort as CommerceFulfillmentReadPort } from './contracts/read.js';
+import type { FulfillmentCommerceReadPort as CommerceFulfillmentReadPort, FulfillmentCommerceOrder } from './contracts/read.js';
 import { type BaseDeps, type FulfillmentHandlerRequest } from './handlerSupport.js';
 type PortRef<T> = T | (() => T);
-export declare function createAdminCommerceFulfillmentOrdersListHandler<Response>({ authorizeAdmin, respond, fulfillmentPort, }: BaseDeps<Response> & {
-    fulfillmentPort: PortRef<Pick<CommerceFulfillmentReadPort, "listCommerceFulfillmentOrders">>;
+export declare function createAdminCommerceFulfillmentOrdersListHandler<Response, Order = FulfillmentCommerceOrder>({ authorizeAdmin, respond, fulfillmentPort, responseSchemas, }: BaseDeps<Response> & {
+    fulfillmentPort: PortRef<Pick<CommerceFulfillmentReadPort<Order>, "listCommerceFulfillmentOrders">>;
+    responseSchemas?: CommerceFulfillmentResponseSchemas<Order>;
 }): (req: FulfillmentHandlerRequest, res: Response) => Promise<void>;
-export declare function createAdminCommerceFulfillmentOrderDetailHandler<Response>({ authorizeAdmin, respond, fulfillmentPort, }: BaseDeps<Response> & {
-    fulfillmentPort: PortRef<Pick<CommerceFulfillmentReadPort, "getCommerceFulfillmentOrderDetail">>;
+export declare function createAdminCommerceFulfillmentOrderDetailHandler<Response, Order = FulfillmentCommerceOrder>({ authorizeAdmin, respond, fulfillmentPort, responseSchemas, }: BaseDeps<Response> & {
+    fulfillmentPort: PortRef<Pick<CommerceFulfillmentReadPort<Order>, "getCommerceFulfillmentOrderDetail">>;
+    responseSchemas?: CommerceFulfillmentResponseSchemas<Order>;
 }): (req: FulfillmentHandlerRequest, res: Response) => Promise<void>;
 export declare function createAdminCommerceFulfillmentCreateOrderHandler<Response>({ authorizeAdmin, respond, fulfillmentPort, }: BaseDeps<Response> & {
     fulfillmentPort: PortRef<Pick<CommerceFulfillmentMutationPort, "createCommerceFulfillmentOrder">>;
@@ -83,9 +86,9 @@ export {};
 ## dist/fulfillment/commerceFulfillmentReadModel.d.ts
 
 ```ts
-import type { FulfillmentCommerceReadPolicy, FulfillmentPaymentStatus, FulfillmentOrderStatus as OrderStatus } from './contracts/read.js';
+import type { FulfillmentOrdersListResponse, FulfillmentOrderDetailResponse, FulfillmentCommerceReadPolicy, FulfillmentPaymentStatus, FulfillmentOrderStatus as OrderStatus } from './contracts/read.js';
 import type { SubscriptionCycleStatus } from '@openlup/core/subscription';
-import { type AdminCommerceFulfillmentOrderDetailResponse, type AdminCommerceFulfillmentOrdersListResponse, type CommerceFulfillmentOrder, type CommerceFulfillmentOperationType, type CommerceFulfillmentStatus } from "./handlerSchemas.js";
+import { type AdminCommerceFulfillmentOrderDetailResponse, type AdminCommerceFulfillmentOrdersListResponse, type CommerceFulfillmentOrder, type CommerceFulfillmentOperationType, type CommerceFulfillmentStatus, type CommerceFulfillmentResponseSchemas } from "./handlerSchemas.js";
 export interface CommerceFulfillmentOrderRow {
     id: string;
     order_id: string;
@@ -144,9 +147,17 @@ export interface CommerceFulfillmentShipmentRefRow {
     active: boolean;
     created_at?: string | null;
 }
-export declare function buildCommerceFulfillmentOrdersListResponse(input: {
-    fulfillmentOrders: CommerceFulfillmentOrderRow[];
-    lines: CommerceFulfillmentLineRow[];
+type ProjectionOrderRow = Omit<CommerceFulfillmentOrderRow, 'shipping_address_snapshot'> & {
+    shipping_address_snapshot: Omit<CommerceFulfillmentOrder['shippingAddress'], 'addressId'> & {
+        addressId: string | null;
+    };
+};
+type ProjectionLineRow = Omit<CommerceFulfillmentLineRow, 'id'> & {
+    id: string | null;
+};
+type ListInput = {
+    fulfillmentOrders: ProjectionOrderRow[];
+    lines: ProjectionLineRow[];
     latestOperations: CommerceFulfillmentOperationRow[];
     orderContexts: CommerceFulfillmentOrderContextRow[];
     paymentIntents: CommerceFulfillmentPaymentIntentRow[];
@@ -157,10 +168,17 @@ export declare function buildCommerceFulfillmentOrdersListResponse(input: {
     totalCount: number;
     page: number;
     pageSize: number;
+    hasShippingAddress?: Record<string, boolean>;
+};
+export declare function buildCommerceFulfillmentOrdersListResponse<Order>(input: ListInput & {
+    responseSchemas: CommerceFulfillmentResponseSchemas<Order>;
+}, policy: FulfillmentCommerceReadPolicy): FulfillmentOrdersListResponse<Order>;
+export declare function buildCommerceFulfillmentOrdersListResponse(input: ListInput & {
+    responseSchemas?: undefined;
 }, policy: FulfillmentCommerceReadPolicy): AdminCommerceFulfillmentOrdersListResponse;
-export declare function buildCommerceFulfillmentOrderDetailResponse(input: {
-    fulfillmentOrder: CommerceFulfillmentOrderRow;
-    lines: CommerceFulfillmentLineRow[];
+type DetailInput = {
+    fulfillmentOrder: ProjectionOrderRow;
+    lines: ProjectionLineRow[];
     latestOperation: CommerceFulfillmentOperationRow | null;
     orderContext: CommerceFulfillmentOrderContextRow;
     paymentIntent: CommerceFulfillmentPaymentIntentRow;
@@ -168,7 +186,15 @@ export declare function buildCommerceFulfillmentOrderDetailResponse(input: {
     shipmentRef: CommerceFulfillmentShipmentRefRow | null;
     activeHoldCount: number;
     subscriptionCycleStatus: SubscriptionCycleStatus | null;
+    hasShippingAddress?: boolean;
+};
+export declare function buildCommerceFulfillmentOrderDetailResponse<Order>(input: DetailInput & {
+    responseSchemas: CommerceFulfillmentResponseSchemas<Order>;
+}, policy: FulfillmentCommerceReadPolicy): FulfillmentOrderDetailResponse<Order>;
+export declare function buildCommerceFulfillmentOrderDetailResponse(input: DetailInput & {
+    responseSchemas?: undefined;
 }, policy: FulfillmentCommerceReadPolicy): AdminCommerceFulfillmentOrderDetailResponse;
+export {};
 ```
 ## dist/fulfillment/contracts/alignment.d.ts
 
@@ -833,21 +859,21 @@ export interface FulfillmentOrderDetailRequest {
     fulfillmentOrderId?: string;
     orderId?: string;
 }
-export interface FulfillmentOrdersListResponse {
+export interface FulfillmentOrdersListResponse<Order = FulfillmentCommerceOrder> {
     contractVersion: 'commerce.fulfillment.v0';
-    orders: FulfillmentCommerceOrder[];
+    orders: Order[];
     totalCount: number;
     page: number;
     pageSize: number;
 }
-export interface FulfillmentOrderDetailResponse {
+export interface FulfillmentOrderDetailResponse<Order = FulfillmentCommerceOrder> {
     contractVersion: 'commerce.fulfillment.v0';
-    order: FulfillmentCommerceOrder;
+    order: Order;
 }
 /** Host-owned persisted projections. Payment statuses already come from the payments projection. */
-export interface FulfillmentCommerceReadPort {
-    listCommerceFulfillmentOrders(request: FulfillmentOrdersListRequest): Promise<FulfillmentOrdersListResponse | FulfillmentNativeUnsupported>;
-    getCommerceFulfillmentOrderDetail(request: FulfillmentOrderDetailRequest): Promise<FulfillmentOrderDetailResponse | null | FulfillmentNativeUnsupported>;
+export interface FulfillmentCommerceReadPort<Order = FulfillmentCommerceOrder> {
+    listCommerceFulfillmentOrders(request: FulfillmentOrdersListRequest): Promise<FulfillmentOrdersListResponse<Order> | FulfillmentNativeUnsupported>;
+    getCommerceFulfillmentOrderDetail(request: FulfillmentOrderDetailRequest): Promise<FulfillmentOrderDetailResponse<Order> | null | FulfillmentNativeUnsupported>;
 }
 export interface FulfillmentShipmentsOverviewRequest {
     shippedFilter: 'today' | '7d' | '30d' | 'all';
@@ -1403,6 +1429,7 @@ export {};
 
 ```ts
 import { z } from 'zod';
+import type { FulfillmentOrdersListResponse, FulfillmentOrderDetailResponse } from './contracts/read.js';
 export declare const COMMERCE_FULFILLMENT_CONTRACT_VERSION = "commerce.fulfillment.v0";
 export declare const COMMERCE_FULFILLMENT_STATUSES: readonly ["created", "packed", "label_pending", "label_created", "handed_over", "in_transit", "delivered", "exception", "cancelled"];
 export declare const COMMERCE_FULFILLMENT_OPERATION_TYPES: readonly ["created", "packed", "provider_attempt_recorded", "label_created", "handed_over", "tracking_event_recorded", "cancelled"];
@@ -1548,6 +1575,309 @@ export declare const commerceFulfillmentOperationSchema: z.ZodObject<{
     actorUserId: z.ZodNullable<z.ZodGUID>;
     payload: z.ZodRecord<z.ZodString, z.ZodUnknown>;
 }, z.core.$strict>;
+export type CommerceFulfillmentResponseSchemas<Order = CommerceFulfillmentOrder> = {
+    list: z.ZodType<FulfillmentOrdersListResponse<Order>>;
+    detail: z.ZodType<FulfillmentOrderDetailResponse<Order>>;
+};
+export declare function createCommerceFulfillmentResponseSchemas<Address extends z.ZodType>(shippingAddress: Address): {
+    order: z.ZodObject<{
+        id: z.ZodGUID;
+        orderId: z.ZodGUID;
+        clientId: z.ZodNullable<z.ZodGUID>;
+        status: z.ZodEnum<{
+            cancelled: "cancelled";
+            delivered: "delivered";
+            exception: "exception";
+            created: "created";
+            packed: "packed";
+            label_pending: "label_pending";
+            label_created: "label_created";
+            handed_over: "handed_over";
+            in_transit: "in_transit";
+        }>;
+        providerKind: z.ZodNullable<z.ZodString>;
+        providerTrackingId: z.ZodNullable<z.ZodString>;
+        shippingAddress: Address;
+        lines: z.ZodArray<z.ZodObject<{
+            id: z.ZodNullable<z.ZodGUID>;
+            orderItemId: z.ZodGUID;
+            skuId: z.ZodGUID;
+            sku: z.ZodString;
+            title: z.ZodNullable<z.ZodString>;
+            quantity: z.ZodNumber;
+            inventoryReservationIds: z.ZodArray<z.ZodGUID>;
+            productSnapshot: z.ZodRecord<z.ZodString, z.ZodUnknown>;
+        }, z.core.$strict>>;
+        payment: z.ZodObject<{
+            paymentIntentId: z.ZodGUID;
+            paymentStatus: z.ZodEnum<{
+                requires_action: "requires_action";
+                failed: "failed";
+                cancelled: "cancelled";
+                created: "created";
+                expired: "expired";
+                refunded: "refunded";
+                not_started: "not_started";
+                processing: "processing";
+                partially_refunded: "partially_refunded";
+                disputed: "disputed";
+                succeeded: "succeeded";
+            }>;
+            providerPaymentId: z.ZodNullable<z.ZodString>;
+        }, z.core.$strict>;
+        inventory: z.ZodObject<{
+            status: z.ZodEnum<{
+                missing: "missing";
+                expired: "expired";
+                not_checked: "not_checked";
+                reserved: "reserved";
+                released: "released";
+                consumed: "consumed";
+                review_required: "review_required";
+            }>;
+            reservationId: z.ZodNullable<z.ZodGUID>;
+            reservationStatus: z.ZodNullable<z.ZodEnum<{
+                expired: "expired";
+                reserved: "reserved";
+                released: "released";
+                consumed: "consumed";
+            }>>;
+            expiresAt: z.ZodNullable<z.ZodString>;
+            locationId: z.ZodNullable<z.ZodGUID>;
+            locationCode: z.ZodNullable<z.ZodString>;
+        }, z.core.$strict>;
+        omsEligibility: z.ZodObject<{
+            allowed: z.ZodBoolean;
+            reason: z.ZodNullable<z.ZodEnum<{
+                order_not_paid: "order_not_paid";
+                payment_not_succeeded: "payment_not_succeeded";
+                subscription_cycle_not_paid: "subscription_cycle_not_paid";
+                active_hold: "active_hold";
+                missing_shipping_address: "missing_shipping_address";
+                inventory_review: "inventory_review";
+                risk_review: "risk_review";
+            }>>;
+        }, z.core.$strict>;
+        latestOperation: z.ZodNullable<z.ZodObject<{
+            id: z.ZodGUID;
+            type: z.ZodEnum<{
+                cancelled: "cancelled";
+                created: "created";
+                packed: "packed";
+                label_created: "label_created";
+                handed_over: "handed_over";
+                provider_attempt_recorded: "provider_attempt_recorded";
+                tracking_event_recorded: "tracking_event_recorded";
+            }>;
+            occurredAt: z.ZodString;
+            actorUserId: z.ZodNullable<z.ZodGUID>;
+            payload: z.ZodRecord<z.ZodString, z.ZodUnknown>;
+        }, z.core.$strict>>;
+        createdAt: z.ZodString;
+        updatedAt: z.ZodString;
+    }, z.core.$strict>;
+    list: z.ZodObject<{
+        contractVersion: z.ZodLiteral<"commerce.fulfillment.v0">;
+        orders: z.ZodArray<z.ZodObject<{
+            id: z.ZodGUID;
+            orderId: z.ZodGUID;
+            clientId: z.ZodNullable<z.ZodGUID>;
+            status: z.ZodEnum<{
+                cancelled: "cancelled";
+                delivered: "delivered";
+                exception: "exception";
+                created: "created";
+                packed: "packed";
+                label_pending: "label_pending";
+                label_created: "label_created";
+                handed_over: "handed_over";
+                in_transit: "in_transit";
+            }>;
+            providerKind: z.ZodNullable<z.ZodString>;
+            providerTrackingId: z.ZodNullable<z.ZodString>;
+            shippingAddress: Address;
+            lines: z.ZodArray<z.ZodObject<{
+                id: z.ZodNullable<z.ZodGUID>;
+                orderItemId: z.ZodGUID;
+                skuId: z.ZodGUID;
+                sku: z.ZodString;
+                title: z.ZodNullable<z.ZodString>;
+                quantity: z.ZodNumber;
+                inventoryReservationIds: z.ZodArray<z.ZodGUID>;
+                productSnapshot: z.ZodRecord<z.ZodString, z.ZodUnknown>;
+            }, z.core.$strict>>;
+            payment: z.ZodObject<{
+                paymentIntentId: z.ZodGUID;
+                paymentStatus: z.ZodEnum<{
+                    requires_action: "requires_action";
+                    failed: "failed";
+                    cancelled: "cancelled";
+                    created: "created";
+                    expired: "expired";
+                    refunded: "refunded";
+                    not_started: "not_started";
+                    processing: "processing";
+                    partially_refunded: "partially_refunded";
+                    disputed: "disputed";
+                    succeeded: "succeeded";
+                }>;
+                providerPaymentId: z.ZodNullable<z.ZodString>;
+            }, z.core.$strict>;
+            inventory: z.ZodObject<{
+                status: z.ZodEnum<{
+                    missing: "missing";
+                    expired: "expired";
+                    not_checked: "not_checked";
+                    reserved: "reserved";
+                    released: "released";
+                    consumed: "consumed";
+                    review_required: "review_required";
+                }>;
+                reservationId: z.ZodNullable<z.ZodGUID>;
+                reservationStatus: z.ZodNullable<z.ZodEnum<{
+                    expired: "expired";
+                    reserved: "reserved";
+                    released: "released";
+                    consumed: "consumed";
+                }>>;
+                expiresAt: z.ZodNullable<z.ZodString>;
+                locationId: z.ZodNullable<z.ZodGUID>;
+                locationCode: z.ZodNullable<z.ZodString>;
+            }, z.core.$strict>;
+            omsEligibility: z.ZodObject<{
+                allowed: z.ZodBoolean;
+                reason: z.ZodNullable<z.ZodEnum<{
+                    order_not_paid: "order_not_paid";
+                    payment_not_succeeded: "payment_not_succeeded";
+                    subscription_cycle_not_paid: "subscription_cycle_not_paid";
+                    active_hold: "active_hold";
+                    missing_shipping_address: "missing_shipping_address";
+                    inventory_review: "inventory_review";
+                    risk_review: "risk_review";
+                }>>;
+            }, z.core.$strict>;
+            latestOperation: z.ZodNullable<z.ZodObject<{
+                id: z.ZodGUID;
+                type: z.ZodEnum<{
+                    cancelled: "cancelled";
+                    created: "created";
+                    packed: "packed";
+                    label_created: "label_created";
+                    handed_over: "handed_over";
+                    provider_attempt_recorded: "provider_attempt_recorded";
+                    tracking_event_recorded: "tracking_event_recorded";
+                }>;
+                occurredAt: z.ZodString;
+                actorUserId: z.ZodNullable<z.ZodGUID>;
+                payload: z.ZodRecord<z.ZodString, z.ZodUnknown>;
+            }, z.core.$strict>>;
+            createdAt: z.ZodString;
+            updatedAt: z.ZodString;
+        }, z.core.$strict>>;
+        totalCount: z.ZodNumber;
+        page: z.ZodNumber;
+        pageSize: z.ZodNumber;
+    }, z.core.$strict>;
+    detail: z.ZodObject<{
+        contractVersion: z.ZodLiteral<"commerce.fulfillment.v0">;
+        order: z.ZodObject<{
+            id: z.ZodGUID;
+            orderId: z.ZodGUID;
+            clientId: z.ZodNullable<z.ZodGUID>;
+            status: z.ZodEnum<{
+                cancelled: "cancelled";
+                delivered: "delivered";
+                exception: "exception";
+                created: "created";
+                packed: "packed";
+                label_pending: "label_pending";
+                label_created: "label_created";
+                handed_over: "handed_over";
+                in_transit: "in_transit";
+            }>;
+            providerKind: z.ZodNullable<z.ZodString>;
+            providerTrackingId: z.ZodNullable<z.ZodString>;
+            shippingAddress: Address;
+            lines: z.ZodArray<z.ZodObject<{
+                id: z.ZodNullable<z.ZodGUID>;
+                orderItemId: z.ZodGUID;
+                skuId: z.ZodGUID;
+                sku: z.ZodString;
+                title: z.ZodNullable<z.ZodString>;
+                quantity: z.ZodNumber;
+                inventoryReservationIds: z.ZodArray<z.ZodGUID>;
+                productSnapshot: z.ZodRecord<z.ZodString, z.ZodUnknown>;
+            }, z.core.$strict>>;
+            payment: z.ZodObject<{
+                paymentIntentId: z.ZodGUID;
+                paymentStatus: z.ZodEnum<{
+                    requires_action: "requires_action";
+                    failed: "failed";
+                    cancelled: "cancelled";
+                    created: "created";
+                    expired: "expired";
+                    refunded: "refunded";
+                    not_started: "not_started";
+                    processing: "processing";
+                    partially_refunded: "partially_refunded";
+                    disputed: "disputed";
+                    succeeded: "succeeded";
+                }>;
+                providerPaymentId: z.ZodNullable<z.ZodString>;
+            }, z.core.$strict>;
+            inventory: z.ZodObject<{
+                status: z.ZodEnum<{
+                    missing: "missing";
+                    expired: "expired";
+                    not_checked: "not_checked";
+                    reserved: "reserved";
+                    released: "released";
+                    consumed: "consumed";
+                    review_required: "review_required";
+                }>;
+                reservationId: z.ZodNullable<z.ZodGUID>;
+                reservationStatus: z.ZodNullable<z.ZodEnum<{
+                    expired: "expired";
+                    reserved: "reserved";
+                    released: "released";
+                    consumed: "consumed";
+                }>>;
+                expiresAt: z.ZodNullable<z.ZodString>;
+                locationId: z.ZodNullable<z.ZodGUID>;
+                locationCode: z.ZodNullable<z.ZodString>;
+            }, z.core.$strict>;
+            omsEligibility: z.ZodObject<{
+                allowed: z.ZodBoolean;
+                reason: z.ZodNullable<z.ZodEnum<{
+                    order_not_paid: "order_not_paid";
+                    payment_not_succeeded: "payment_not_succeeded";
+                    subscription_cycle_not_paid: "subscription_cycle_not_paid";
+                    active_hold: "active_hold";
+                    missing_shipping_address: "missing_shipping_address";
+                    inventory_review: "inventory_review";
+                    risk_review: "risk_review";
+                }>>;
+            }, z.core.$strict>;
+            latestOperation: z.ZodNullable<z.ZodObject<{
+                id: z.ZodGUID;
+                type: z.ZodEnum<{
+                    cancelled: "cancelled";
+                    created: "created";
+                    packed: "packed";
+                    label_created: "label_created";
+                    handed_over: "handed_over";
+                    provider_attempt_recorded: "provider_attempt_recorded";
+                    tracking_event_recorded: "tracking_event_recorded";
+                }>;
+                occurredAt: z.ZodString;
+                actorUserId: z.ZodNullable<z.ZodGUID>;
+                payload: z.ZodRecord<z.ZodString, z.ZodUnknown>;
+            }, z.core.$strict>>;
+            createdAt: z.ZodString;
+            updatedAt: z.ZodString;
+        }, z.core.$strict>;
+    }, z.core.$strict>;
+};
 export declare const commerceFulfillmentOrderSchema: z.ZodObject<{
     id: z.ZodGUID;
     orderId: z.ZodGUID;

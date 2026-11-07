@@ -1,7 +1,7 @@
 import type { PageContext } from '../context.ts';
 import type { CopyKey } from '../../owned/copy.ts';
 import { messageDestinations, routes } from '../../shared/routes.ts';
-import { nativeLimits, otherLimits } from '../../shared/limits.ts';
+import { nativeLimits, otherLimits, releaseLimits } from '../../shared/limits.ts';
 import { append, el, link } from '../dom.ts';
 import { actionForm, otherRefusal, readPanel, refusedAction } from '../forms.ts';
 
@@ -11,7 +11,13 @@ export function returnsPage(context: PageContext): HTMLElement {
     el('p', {}, `${context.t('returnDays')}: ${context.config.legal.returnsDays}`),
     actionForm(context, {
       operation: 'return.request', submit: 'requestReturn',
-      fields: [{ name: 'orderRef', label: 'orderRef' }, { name: 'reason', label: 'returnReason', type: 'textarea' }],
+      fields: [{ name: 'orderRef', label: 'orderRef' },
+        { name: 'reasonCode', label: 'reasonCode', type: 'select', options: context.config.returns.reasons.map(choice =>
+          ({ value: choice.code, text: choice.label[context.locale] })) },
+        { name: 'orderItemId', label: 'orderItemRef' }, { name: 'quantity', label: 'quantity', type: 'number', min: 1 },
+        { name: 'note', label: 'note', type: 'textarea', required: false }],
+      transform: values => ({ orderRef: values.orderRef, reasonCode: values.reasonCode, customerNote: values.note,
+        lines: [{ orderItemId: values.orderItemId, quantity: values.quantity }] }),
     }),
     el('section', { class: 'panel' },
       ...(['receiveReturn', 'restockReturn', 'refundReturn'] as const).map(key => otherRefusal(context, key))),
@@ -118,6 +124,7 @@ export function limitsPage(context: PageContext): HTMLElement {
   append(table, body);
   return el('div', {}, el('h1', {}, context.t('limits')),
     el('p', { class: 'notice' }, context.t('sandboxOnly')),
+    ...releaseLimits.map(key => el('p', {}, context.t(key))),
     el('div', { class: 'table-wrap' }, table),
     readPanel(context, 'bindingStatus', 'application.status'));
 }

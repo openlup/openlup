@@ -585,6 +585,9 @@ privileges and complete catalogue installation are described in
 
 ## Compatibility posture
 
+The channel suffix established the preceding selected-plan prefix of
+91 legacy units, 95 qualified units and 94 restricted units.
+
 The sandbox-attempt source suffix follows the M17 prefix described below. Its
 one additive native unit extends those prefix counts to legacy 92, qualified 96
 and restricted 95, with separate reference digests for all five installation
@@ -592,9 +595,24 @@ shapes. It preserves every earlier migration identity and existing state CHECK;
 its additive review marker distinguishes terminal cancelled capture from work
 awaiting reconciliation. The new attempt/readback factory is sandbox-only;
 generic prepared-provider storage and real PSP qualification remain unavailable.
-The separate closed-class admission prerequisite and feature pins must precede
-submission; a local manifest entry alone grants no delivery or release authority.
+Class data and feature pins may accompany SQL in its feature pull request; a local manifest entry alone grants no delivery or release authority.
 
+The G4 purchase-hold forward appends the same native forward path/hash to all three
+manifest selections, with a separate measured catalogue digest for each existing
+installation shape. It preserves every prior source pin and defines four bounded runtime entries
+and one owner-only admission helper rather than replacing ATP or renewal functions. Abandoned compensation wraps
+the unchanged aggregate donor and releases purchase holds atomically; it adds
+neither withdrawal markers nor raw runtime ledger grants. Source admission
+separately checks the closed native class and co-located whole-forward/function
+pins. The data owner records the accepted ownership shape and donor limits.
+The native destination suffix adds two private address/binding relations and
+four bounded routines without replacing an existing function. Native operator
+results add applied_from_next_parcel; callers must name that partial applicability
+or refuse it, never infer fully applied current-parcel success. The managed
+subscription result/decoder remain unchanged. Destination/event/outbox records
+commit atomically; parcel and money transitions do not depend on mail delivery.
+No saved address book, privacy erasure/export, or automatic host/mail wiring is
+provided. The source task and data owner describe the explicit limits.
 
 The M17 channel suffix appends two native units to each existing selected plan:
 legacy now has 91 units, qualified selections 95, and restricted selections 94.
@@ -605,6 +623,19 @@ The RPC catalogue records the normalized ingest and existing payment owner call
 sites. Managed settlement uses the existing ATP exposure hook and allocator;
 portable source capture/read/CAS declares physical conversion unavailable. Fresh
 qualification and privacy lifecycle capabilities remain outside this import.
+
+The native paid-notice suffix appends one source unit, preserving those exact
+prefixes: selected source plans now contain 92, 96 and 95 units respectively.
+All five installation-shape inventories are measured separately before and
+after applying the forward. The conditional grants expose only the eight
+existing native notice helpers to service_role; an absent legacy role receives
+no grant. Invoker rights and browser refusals remain unchanged. These manifests
+describe installation inputs, not authority to run jobs, disclose contacts or
+send messages. The [native notice binding](ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
+requires trusted scheduled-host admission and preserves transactional delivery receipt replay.
+The forward's class/pin admission and eventual package projection
+remain delivery prerequisites; a measured local catalog is not publication or
+provider qualification.
 
 Corrections to these unissued forwards keep their source hashes, packed SQL
 hash and measured fingerprints for all five installation shapes in agreement.
@@ -633,14 +664,14 @@ prior approvals unchanged; the exact sixth SQL preceded the owner-path tail.
 The seventh approval binds one qualified owner-path forward's exact file and
 function definitions. Its active SQL is selected as unit 92, byte-identical to
 the prior inert fixture; the two installed inventories are measured separately.
-Trusted main parses a changed registry before returning for a no-SQL change,
-so reader support must land before the separate sixth-pin approval, which must
-land before SQL introduction. The installer-ownership/runtime-binding guard relies
+Historically, reader support, pin approval and SQL introduction landed
+separately. Future SQL, approval pins and class data may land together under
+main's validator; a new validator capability still lands first. The installer-ownership/runtime-binding guard relies
 on existing trusted session admission. The tail adds only context column writes/
 DELETE and receipt SELECT/INSERT; receipt mutation, ownership, RLS, triggers,
 production runner/projector, npm API and package budgets remain unchanged.
 The complete F90 prefix and historical inventory evidence remain retained.
-Introducing approved SQL still requires the separately landed control route;
+Introducing SQL follows the [co-located approval rule](DATA_AND_MIGRATIONS.md#co-located-sql-and-approval-pins);
 these pins grant no activation or managed-host compatibility.
 
 The separate restricted-bootstrap approval checkpoint extends the fixed list
@@ -653,8 +684,16 @@ role-mode inventory or grant a release or hosted compatibility claim.
 Four corrected `qb_` identities follow at approval positions 13–16 as one
 exact-byte append. The preceding twelve approvals remain fixed. The active
 restricted plan selects those four files with the approved `qa_` baseline only
-after the separate approval. Its local PG16 qualification covers both role
+with exact approval pins. Its local PG16 qualification covers both role
 modes; this does not qualify a hosted installation or release.
+A seventeenth exact-byte approval follows as one append. It binds the shared
+lock and conflict completion tail that both qualified plans select after their
+issued tails, and all sixteen earlier rows stay fixed. The approval itself adds
+no active SQL, manifest row, inventory or package change. The identical active
+SQL follows as its own change, after the delivery destination forward whose
+created state it guards. Both plans select it last: the qualified plan has 103
+units and the restricted plan 102, with four newly measured inventories; the
+legacy plan is unchanged.
 
 The reference qualified selection declares actual migration/bootstrap/runtime
 and optional restore principals; omitted selection remains legacy. The E2
@@ -782,8 +821,8 @@ headers and ACLs and remain outside installation manifests. Its ordered paths, r
 chains and exact grants/seeds do not install SQL, change a baseline, activate a
 runtime or establish upgrade compatibility. The
 [reviewed-forward boundary](DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards)
-requires a separate feature introduction and mandatory real-PG/pgTAP catalog
-evidence; existing admission classes keep their prior behavior.
+requires a feature introduction with exact class data and approval pins, plus
+mandatory real-PG/pgTAP catalog evidence.
 
 The CI-only [image inventory](../../config/ci-images.json) owns logical names,
 upstream repositories, tags, index digests and ordered public-registry sources
@@ -817,7 +856,7 @@ and needs no organization package before steps run.
 Other local launchers retain their existing behavior. These changes
 establish no public package visibility or runtime/application default.
 
-The non-required raw `pgtap` lane runs every shipped SQL test on the
+The `pgtap` lane is required through the `test` aggregate and runs every shipped SQL test on the
 install-proof `postgres:17` digest without the Supabase CLI or its images. Its
 [package pins](../../config/ci-postgres-packages.json) name the exact pg_cron
 1.6.4, pgTAP 1.3.3 and `pg_prove` 3.36 PGDG builds for Debian trixie, for amd64
@@ -871,8 +910,8 @@ and to reopen and refresh stock evidence on matching-fingerprint replay.
 The stock replacement keeps the supplied opaque fingerprint comparison and
 `23505` mismatch refusal; it does not rewrite legacy fingerprints.
 Each signature is fixed in code; its before hash binds the portable chain, while
-its after and whole-file hashes bind the proposed forward. This separate control
-approval supplies no migration or runtime activation. The
+its after and whole-file hashes bind the proposed forward. This approval
+supplies no migration or runtime activation. The
 [exact reviewed function rules](DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards)
 require unchanged headers and a single function statement, with introduction
 following the [co-located SQL/pin rule](DATA_AND_MIGRATIONS.md#co-located-sql-and-approval-pins). Existing managed classes retain their fixed counts; the separate
@@ -1082,12 +1121,15 @@ source commit identifies the measured base, scanner blob identities pin the
 counting implementation, and SHA-256 keys identify exact relative paths. Each
 count belongs to one path and category; a reduction elsewhere cannot pay for an
 increase, and a new path has no inherited allowance.
+The check applies its explicit opt-in adapter vocabulary allowances before
+comparing these counts, including the scoped root `ROADMAP.md` addition below.
 
 The [repository check](../../scripts/public-ci-neutrality.mjs) counts text
 regardless of filename extension and inventories binary files. It refuses
 increases against both the comparison tree and the accepted baseline, including
-an increased baseline allowance. Regeneration may lower existing allowances;
-it cannot admit new debt except for the fixed diagnostic-fixture introduction
+an increased baseline allowance. Baseline regeneration may lower existing
+allowances. It cannot admit new baseline debt except for the fixed
+diagnostic-fixture introduction
 recorded in the checker. That introduction admits five exact SQL fixture files
 in category `ui-15`, verified by their complete SHA-256 bytes, original counts
 and accepted counts, against one full comparison commit. The explicit baseline
@@ -1097,7 +1139,8 @@ a reduction. Scanner pins and every other path, category and increase remain
 unchanged. These counts reuse the existing scanner semantics and do not expand
 a runtime contract or establish a stable preview channel.
 
-The opt-in communications adapters have a `ui-12` vocabulary allowance only
+Apart from the scoped root `ROADMAP.md` addition below, the opt-in
+communications adapters have a `ui-12` vocabulary allowance only
 inside their two declared source/test directories, their exact API reports and
 exact cold-consumer proof lines. The exact path-segment tokens
 `communications/resend` and `communications/klaviyo` are additionally allowed in
@@ -1112,13 +1155,19 @@ The two snapshot filename tokens are additionally allowed only in the platform
 release-gates file and publication catalogue; the two relative adapter entry
 tokens are allowed only in the package boundary test. The undeclared-subpath
 fixture uses a neutral vendor segment and needs no allowance.
-Only the ledger additionally allows bare adapter names. Neutral communications
-sources and contracts, other root content and other documentation remain
-checked; baseline counts and matcher pins are unchanged.
+The ledger additionally allows bare adapter names. The root `ROADMAP.md`
+provider matrix is the one scoped addition to these adapter vocabulary
+allowances, with at most two matches each for categories `ui-12`, `ui-13`,
+`ui-14` and `ui-15` at that exact path. A third match, those terms at other paths
+outside their existing adapter allowances, and every other counted term or
+category remain checked. Neutral communications sources and contracts, other
+root content and other documentation remain checked outside their existing
+allowances. The baseline and scanner pins are unchanged. See the
+[CONTRIBUTING neutrality check guidance](../../CONTRIBUTING.md#package-policy-and-release-checks).
 
 Published Tree CI enforces that ratchet in required `self-check` and exercises
-its CLI refusal tests in required root `test`. Managed pgTAP remains a raw
-diagnostic; follow [testing](../../CONTRIBUTING.md#test-scope-and-diagnostics)
+its CLI refusal tests in required root `test`. Managed pgTAP is also required
+through that aggregate; follow [testing](../../CONTRIBUTING.md#test-scope-and-diagnostics)
 for execution and proof limits. These checks do not grant application privileges
 or declare complete compatibility evidence. Existing release context checks remain unchanged.
 
@@ -1616,13 +1665,17 @@ an owner in-band refusal is durably paired with its support receipt/audit.
 
 Native SQL refusals write exactly one support receipt and one audit, with zero
 owner/lifecycle/event/outbox/address/identity changes. Native email/phone/link
-port refusals and typed address refusal open no transaction. Same-UTC-day slide
-is a support-only noop after window/version checks. Required real database proofs
+port refusals open no transaction. The native new-address branch instead calls
+its bounded destination routine and returns the destination applicability result;
+`applied_from_next_parcel` retains the frozen current parcel and changes the
+subscription's future. Same-UTC-day slide is a support-only noop after
+window/version checks. Required real database proofs
 are [operator authority](../../tests/postgres/accountSupportOperatorAuthority.test.ts)
 and [upgrade/recovery replay](../../tests/postgres/accountSupportUpgrade.test.ts).
 
-Only link-then-subscription composition has a partial result: the completed link
-and the second command's refusal or unknown transport completion remain separate.
+Link-then-subscription composition preserves a partial result: the completed link
+and the second command's refusal, next-parcel application or unknown transport
+completion remain separate.
 Its callback is invoked before the second call without awaiting refresh. Email
 correction instead follows admission, exclusive execution claim, identity commit
 and settlement. A queued recovery notice is not proof of delivery, and an email

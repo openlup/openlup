@@ -159,6 +159,7 @@ bearer; its local fixture establishes no hosted revocation guarantee.
 | `./payments` | Experimental prepared-attempt ordering with injected persistence, execution and failure policy; contracts at `./payments/contracts`. |
 | `./fulfillment`, `./fulfillment/contracts` | [Experimental fulfillment services, contracts and status canon](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#fulfillment-contracts). |
 | `./fulfillment/native` | Experimental `createNativeFulfillmentBinding` locked dispatch-preparation binding; the host supplies authoritative facts, a capability-local transaction lane and contribution composition. |
+| `./fulfillment/native` (commerce projection) | Experimental reduced `createPostgresFulfillmentCommerceReadPort`; requires the existing eligibility policy and explicit order-mode mapping. Its default destination reader calls the nonmutating shipment view through the supplied executor; an optional injected reader wins. Select `nativeFulfillmentCommerceResponseSchemas` explicitly when composing served commerce handlers; managed schemas remain the default. The preparation reader does not supply that boundary. [Limits](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#native-commerce-read-projection). |
 | `./subscriptions`, `./subscriptions/contracts` | Default-off, incomplete; [experimental subscription contracts and renewal port](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts). |
 | `./invoicing`, `./invoicing/contracts` | Default-off invoicing contracts and independent duty collection; no provider activation. |
 | `./inventory` | Experimental schemas/ports, handlers, native stores, projection, injected forecast and SQL descriptor; `./inventory/contracts` DTOs. |
@@ -417,6 +418,21 @@ remain the reduced `control_plane_v1` projection. Rich OMS reads, notes, address
 correction and replacement requests retain their existing refusal. Returns record
 intent; they do not receive, restock or execute a refund. The host authenticates
 and authorizes each operation. See the [composition recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#native-oms-and-support-stores).
+Native destinations use `./commerce/server/destinations` and the complete SQL
+catalogue. Hosts authorize parent reads and bind checkout/dispatch explicitly.
+The confirmation outbox is durable; native mail dispatch is unbound.
+Addresses and identifying reference strings persist. Use opaque references;
+address export/erasure is unavailable. No saved address book is provided.
+
+
+Native destinations use `./commerce/server/destinations` and the complete SQL
+catalogue. Hosts authorize parent reads and bind checkout/dispatch explicitly.
+The confirmation outbox is durable; native mail dispatch is unbound.
+Full postal addresses, contact phone numbers, command reasons and identifying reference strings persist. Use opaque references;
+there is no address export or erasure path. No saved address book is provided.
+The port's PostgreSQL routines are included in the native migration chain.
+Address-change events retain the optional command reason in their top-level and nested payloads.
+The shipment reader and dispatch enqueue must share one transaction; otherwise the host owns the intervening window.
 
 `./composition` exports the inert `createCommerceContribution` for the installed
 commerce entries and selected callables. Duplicate descriptor identities refuse;
@@ -480,11 +496,36 @@ durable draft receipt; changed input conflicts without superseding the order.
 The receipt's `not_started` field describes draft creation, not current payment
 truth. Neither creating nor replaying it settles an order or dispatches payment.
 Browser return handling and authenticated quote production belong to the host.
-Existing native refusals for net shipping, line discounts and zero-payable
-orders still apply. Catalogue and prices are install-time seed data on this
+Existing native refusals for line discounts and zero-payable orders still
+apply. Catalogue and prices are install-time seed data on this
 rail; this port adds no price writer or managed-rail behavior.
 The [installed PostgreSQL witness](../../tests/postgres/nativeCheckoutPersistence.test.ts)
 checks snapshot retention, refusal, concurrent replay and fresh-process recovery.
+
+`createPostgresAcquisitionCheckoutPersistence` adds final acquisition admission
+over that persistence port. Supply a restricted runtime pool with exclusive
+checked-out connections, the region, the existing financial policy and a host
+classifier for acquisition discount semantics. It owns one READ COMMITTED
+transaction: serialize the normalized native idempotency key, lock the existing
+scoped definitions, re-read the current promise
+and paid-family facts, check the quote's capability and pricing policy, then
+persist and commit the draft on that connection. Changed second-delivery promises
+refuse even when initial money is unchanged. Missing standalone capability raises
+`AcquisitionTermsError` with `acquisition_terms_capability_required`; incompatible
+engines raise `acquisition_terms_v2_required`. A changed promise raises
+`acquisition_terms_changed`. Existing matching receipts replay before current
+offer checks; the lower writer still validates replay ownership and input.
+An ordinary returning subscription may omit acquisition terms only with complete
+discount evidence, no acquisition grant or marker, and paid-family evidence.
+Admission re-checks paid-family eligibility for the ordinary-returning path; a quote issued before the family's first payment stays admissible until it expires, as in the reference implementation.
+The host must pass only a quote produced on the server, authorize the buyer and
+verify quote acceptance before calling this boundary. A host that mounts
+acquisition routing must route every acquisition caller through this adapter;
+the mounting integration supplies its own no-bypass witness.
+The lower persistence factory remains
+available for trusted composition and does not enforce acquisition admission.
+No route is mounted by either factory. Definition writers must share the same
+row-lock protocol; this adapter adds no schedule-insertion protocol or writer.
 
 `./commerce/contracts` is a type-only, browser-safe entry for commerce-owned
 records and generic persistence, checkout/runtime, availability, recovery and
@@ -634,6 +675,13 @@ and any artifact-cap change require their own approved scope.
 
 Shipping handlers require injected host schemas; contracts are type-only with opaque provider/carrier strings.
 No vendor code, inventory import, activation or parity claim.
+`resolveThresholdShipping` evaluates configured delivery terms against product
+payable after product discounts, excluding delivery: equality and higher spend
+are free. `summarizeThresholdShipping` projects one quote's effective delivery,
+free state and remaining product spend. Pass `stale: true` for loading, failed
+or busy quote state to suppress the remaining-spend helper. Missing delivery
+money does not imply free delivery. Hosts own copy and formatting; fees and
+thresholds remain configuration inputs.
 Native flat-rate save requires the rate port, a ready Core report and
 `nativeRateSchema`, a same-database Core `SchemaObservation` proving the applied
 seed identity and settings objects. A candidate schema label is not proof;
@@ -643,7 +691,47 @@ caller-declared schema requirements. Missing proof keeps the named refusal.
 
 ## Inventory
 
-`createInventoryBindings` selects one store with exact host provider validation. With `dataKind: "postgres"`, supply `stockSourceKey` to bind the existing native ATP new-purchase reader; without it, `unsupported.newPurchaseStockRead` reports `inventory_stock_source_key_required`. Admin reads remain ready. The native PostgreSQL admin port refuses direct stock adjustment because this stock is externally observed; no native direct stock writer is supplied here. Preview availability subtracts all live holds, remaining subscription demand inside 14 days and channel exposure, clamped at zero. The native reader refuses a different horizon or an own-order exclusion as `native_stock_read_options_unsupported`. For managed reads, an injected reader wins; otherwise supply `stockRpc` to bind `createManagedStockAvailability` with the managed forward `20261025109000_inventory_new_purchase_stock_read.sql`. Without either dependency, the reason remains `inventory_new_purchase_stock_reader_required`. Managed previews retain provider-tagged ATP accounting and refuse other horizons or exclusions as `managed_stock_read_options_unsupported`. The managed SQL reader refuses a NULL as-of timestamp as `inventory_stock_as_of_invalid` (SQLSTATE `22023`). Their conservative stale flag is true if any provider row for the SKU is stale; ATP quantities and allocator freshness checks are unchanged. `createInventoryContribution` declares selected callables without activation.
+Native purchase reservations expose `createPostgresPurchaseReservationPort`:
+an atomic ordered item batch over finalized order items, per-reservation release,
+and bounded expiry. The trusted host supplies its observed-stock source and
+server payment status, wires checkout compensation and schedules expiry. Item
+arrays are serialized as JSON for node-postgres. Existing native ATP counts its
+live holds together with renewal holds, while the fourteen-day subscription
+priority remains in force for purchase admission. Matching replay retains the
+reservation identity and current status; changed keyed input and elapsed initial
+expiry refuse. Local lots, locations, balance counters and movement history are
+outside this slice. Install the complete catalogue; this remains a
+development-preview source binding. See the
+[G4 source task evidence](https://github.com/openlup/openlup/blob/main/docs/platform/plans/oss-m19-g4.md).
+Fresh reserve/release writes and expiry require READ COMMITTED and shared
+transaction admission. Contention maps to `InventoryPersistenceError`
+with SQLSTATE `55P03` and reason `inventory_admission_busy` or
+`inventory_lock_unavailable`; unsupported isolation maps to the persistence
+error with code `22023`. Committed receipt replay needs no new admission.
+The gate caps the transaction-local lock timeout at 50 ms; no automatic retry
+or fallback is performed. The helper is owner-only, reached through the bounded
+definer entries, with no runtime helper or table grant.
+
+
+`createPostgresAbandonedCheckoutCompensationPort(executor, now?)` supplies
+`CheckoutCompensationPort.cancelAbandonedOrder` on native PostgreSQL. The bounded
+routine closes the pending order, created intents and provisional activation,
+then releases its purchase holds in the same transaction. It retains strict
+keyed replay, refuses renewal orders and leaves existing payment/uncertainty
+facts untouched. A dispatched simulator attempt refuses without writes with
+`provider_attempt_in_flight`; captured or indeterminate attempts retain the money
+refusal. The host withholds this operation for uncertain dispatch.
+Dedicated promotion cancellation (`cancelUnstartedPromotionOrder`) remains
+unbound on native PostgreSQL. No table grant, withdrawal marker or provider
+dispatch is added. Install the complete catalogue and compose the binding
+explicitly.
+
+Reservation keys, stock-source references and cancellation reasons can contain
+identifying strings, as can receipt metadata. Hosts should use opaque references
+and keep personal details out of those fields. There is no erasure path for
+these retained reservations, receipts or compensation history yet.
+
+`createInventoryBindings` selects one store with exact host provider validation. With `dataKind: "postgres"`, supply `stockSourceKey` to bind the existing native ATP new-purchase reader; without it, `unsupported.newPurchaseStockRead` reports `inventory_stock_source_key_required`. Admin reads remain ready. The native PostgreSQL admin port refuses direct stock adjustment because this stock is externally observed; no native direct stock writer is supplied here. Native preview availability subtracts all live holds and remaining subscription demand inside 14 days, clamped at zero; native safety and channel exposure remain zero. Managed preview additionally accounts for channel exposure. The native reader refuses a different horizon or an own-order exclusion as `native_stock_read_options_unsupported`. For managed reads, an injected reader wins; otherwise supply `stockRpc` to bind `createManagedStockAvailability` with the managed forward `20261025109000_inventory_new_purchase_stock_read.sql`. Without either dependency, the reason remains `inventory_new_purchase_stock_reader_required`. Managed previews retain provider-tagged ATP accounting and refuse other horizons or exclusions as `managed_stock_read_options_unsupported`. The managed SQL reader refuses a NULL as-of timestamp as `inventory_stock_as_of_invalid` (SQLSTATE `22023`). Their conservative stale flag is true if any provider row for the SKU is stale; ATP quantities and allocator freshness checks are unchanged. `createInventoryContribution` declares selected callables without activation.
 
 `INVENTORY_MIGRATIONS` projects canonical units 27/33 byte-for-byte; install the full catalogue. Store support and pending proof: [M06 parity](https://github.com/openlup/openlup/blob/main/docs/platform/plans/oss-m06-stock-reservations-delivery.md#parity-pending-rows).
 
@@ -693,6 +781,18 @@ units 47/48 with paths, positions and hashes. These sparse units are not an
 installation chain: use the complete canonical catalogue. No migration or
 manifest identity changes in this move.
 
+`createPostgresQuoteCustomerEligibility` is a trusted-server read adapter.
+`resolve(email)` trims and lowercases the lookup, prefers an exact stored email,
+then checks at most the 25 oldest matching candidates after local-part plus-tag
+normalization. It returns `clientId`, `source` and `matchKind`; plus-normalized
+evidence is only for promotion eligibility and must never grant recognition,
+login, sessions or past-order access. The result of `resolve` must stay inside
+the server and must never be sent to the browser.
+`hasPaidSubscription(clientId)` compares canonical UUID values and checks paid
+subscription facts across the normalized family using the existing native
+paid-order-count reader. The final family check is independent of the bounded
+preview lookup: a newly persisted exact alias may have no personal paid orders
+and still belong to a paid family. Neither read changes stored contact identity.
 Two native evidence limits remain: the device-redemption routine returns constant
 false because visitor evidence is not persisted; this does not establish device
 eligibility or implement a device guard. Redemption counts are keyed by individual
@@ -700,6 +800,8 @@ promotion IDs and do not aggregate mirror families. Hosts must not assume either
 capability or claim full eligibility parity from these reads. The characterization
 tests preserve these limits without changing the reader or adding a default
 eligibility rule.
+
+Admission re-checks paid-family eligibility for the ordinary-returning path; a quote issued before the family's first payment stays admissible until it expires, as in the reference implementation.
 
 The server entry is classified as an adapter because its executor declaration
 reaches the data entry and optional pg types. It imports at runtime without pg
@@ -1150,7 +1252,6 @@ they do not import the data entry or its PostgreSQL types. The cold proof still
 requires all declared non-adapter entries (including `./identity/contracts`) to import in fresh processes and compile
 in both resolution modes with all three optional peers absent.
 
-<!-- openlup-doc-impact {"unit":"platform-substrate","digest":"sha256-00994d288cfec0c8dc0ae9aeae2ff542e2e9af2fedcb4dd2dfeb6c99523be92d","reason":"The manifest moves to the 0.15.0 set version with the exact @openlup/core 0.15.0 peer pin. The package surface, settings and verification described here are unchanged by this preparation delta."} -->
 
 ## Identity import candidate
 
@@ -1190,6 +1291,10 @@ opt-out denies only `marketing_newsletter` and preserves suppression. Opt-in
 changes the preference without granting consent. Earlier opt-outs need the
 [operator upgrade statement](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#account-newsletter-withdrawal-upgrade),
 which also documents the provider-sync and email-change limits.
+
+The native delivery adapter suppresses newsletter, gifts/discounts, launch-offer
+and tester consent on a bounce or complaint. Complete account choices and their
+actor command boundary are documented in [Data and migrations](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#complete-account-consent-choices).
 
 `./communications` provides host-composed communications services; `./communications/contracts` supplies pure content and browser contracts.
 See the [communications recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#communications-import) for migration, email rendering and native operations.
@@ -1441,10 +1546,52 @@ for upgrade and operational-dependency proof.
 
 ## Subscription contracts and renewal port
 
+The subscriptions entry also exports `createNativeSubscriptionBinding`,
+`createNativeRetryDriver`, `withNativeDeliveryAlignmentRenewalAdmission`,
+`createPostgresRenewalSettlementPort` and `nativeSubscriptionSchema`. These are
+opt-in native composition and persistence boundaries; hosts supply readiness,
+transactions, a shared population lease and exact payment-attempt readback.
+The binding freezes the destination under the claim lock. Lower-level hosts
+supply the transaction callback to `createPostgresRenewalStore` and
+`createPostgresRenewalSettlementPort`. Retained `native.renewal-terms.v1` facts
+freeze delivery pricing and optional second-delivery/graduation terms from the
+accepted server offer. Threshold shipping uses product payable after discounts:
+paid below, free at or above the configured threshold. Fixed paid shipping also
+requires the retained-terms document. New threshold or paid-shipping snapshots carry the actual
+`retained_shipping` marker; other zero-shipping snapshots keep their original
+wire and fingerprint. Graduation runs under the subscription lock before the
+first unlocked third delivery, preserving add-ons and customer-edited normal
+cadences without moving the due anchor. Preparation projects discounted product
+positions and a separate shipping charge in one transaction; replay adds neither.
+A retained snapshot refuses preparation without the supplied transaction runner.
+See the [composition owner](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#composed-subscription-module)
+for destination claim transactions and qualification limits.
+
+
 The native purchase-renewal forward adds bounded attachment and method-state
 writers through `createPostgresPurchaseRenewalWriter`, plus the independently
 committed `activateNativePurchaseWithRenewal` convenience call. A completion
 failure leaves an enumerable durable duty while paid service remains active.
+After successful completion, including replays, an optional best-effort unit
+materializes the admitted logical draft lines and optional price context in one
+statement. It writes only when the template is empty and still version one,
+preserving later edits and graduation. A crash after completion leaves the prior
+no-template state; replay can recover it. Per SKU, quantities sum, sort uses the
+earliest ordinal and the unit price must agree across its original draft lines.
+Different prices skip the whole template and pair with a neutral reason.
+Add-on roles follow retained `renewalTerms.linePricing`, rather than catalogue
+roles. Resolution checks the original draft lines and saved mode, including when
+promotion allocation splits effective positions. Missing or ambiguous lists leave
+NULL context while permitted template lines remain visible.
+Only SQLSTATE classes 42, 22 and 23 skip the optional unit, logging
+`subscription_template_unavailable` plus the SQLSTATE once. Other failures
+propagate. The unit first attempts a savepoint. Only `25P01` identifies independently
+committed pool queries, which continue without one; any other savepoint error
+propagates. A caller transaction retains the established savepoint. Detection
+calls no database function and opens no explicit transaction. Missing runtime
+access keeps the prior no-template behavior and refused native edits, with no new
+grant. Graduation retries absent context under the same best-effort rule in a
+savepoint, preserving its existing add-on lookup and due anchor.
 `createNativeRenewalCodec` supplies a versioned, database-decodable frozen wire;
 `createPostgresSandboxRenewalRail` and `createSandboxRenewalPolicy` provide no-key
 renewal success, decline and ambiguity using the existing native operation fence.
@@ -1491,6 +1638,21 @@ in `./subscriptions`; `createSubscriptionContribution` is in `./composition`.
 They are default-off and describe one host executor/job. The
 [composed module recipe](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#composed-subscription-module)
 owns explicit selection, frozen mandate/replay, M04 delivery and M12 boundaries.
+
+`createPostgresLifecycleMessages` consumes the native notice queue through an
+explicit trusted host. Its optional `dispatch` policy defaults to a 60-second
+lease, 6 attempts and a 900-second transient backoff. `recovered.windowSeconds`
+defaults to 172800. These are neutral safety defaults. Starter hosts must supply
+all four values explicitly from their typed configuration. Values are strictly
+validated positive PostgreSQL integers.
+Operator repair notices inherit their latest customer failure template and retain
+their own identity. Returned transient failures requeue using the SQL clock,
+explicit final failures settle failed, and exceptions retain the sending lease.
+Accepted receipts reconcile before binding. Current recovered-case truth and an
+inclusive recency cutoff gate unaccepted recovered history. The run result
+reports `requeued` separately. Hosts retain rendering, token authority and
+idempotent private-capture readback. The [lifecycle owner](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
+defines these policies and the attempt-ceiling repair boundary.
 
 ## Invoicing contracts
 
@@ -1587,6 +1749,8 @@ Customer 360 read schemas with CSP-safe initialization; it selects no Node drive
 `./account-support/contracts` remains type-only. Authentication, machine-read
 governance and optional diagnostic ports remain host composition. No diagnostic
 store or HTTP route is installed by these entries.
+`applied_from_next_parcel` leaves the frozen parcel unchanged; show that scope to
+the customer.
 
 Experimental `@openlup/platform/account-support` supplies `createAccountReadFacade`
 and the unchanged account-read diagnostic helpers. Inject account and order owner
@@ -1604,7 +1768,10 @@ R2 adds `readAccountSnapshot` with the two-stage fan-out and a store-level recen
 20-order request, stored-money order history/detail, Customer 360 projections
 and M09 invoice history/PDF delegation. `createInvoiceAccess` checks the requested
 document against the owned account/order history before resolving its ticket or
-reading PDF bytes; foreign or unknown documents return `{ kind: "denied" }`. Select pricing, captured line
+reading PDF bytes; foreign or unknown documents return `{ kind: "denied" }`.
+Standard UUID owner/order/document identifiers match regardless of letter case,
+without rewriting echoed values. Opaque host references remain case-sensitive.
+Select pricing, captured line
 presentation, private extensions and fulfillment evidence through typed host
 ports. Missing evidence stays unknown; owner refusals retain their distinctions.
 The default-off reference selections and host-fed read views are unmounted.
@@ -1658,7 +1825,7 @@ host may still inject its opaque-token generator. Managed email admission
 and claim precede identity mutation and settlement. Native lifecycle commands
 delegate to M10, with actual optional owner receipts and named unavailable
 subcases. Link-then-action reports a completed link separately when the second
-command refuses or fails. The reference binding is default-off and unmounted;
+command refuses, applies from the next parcel or fails. The reference binding is default-off and unmounted;
 no import provisions authority or activates a route.
 
 R5a adds `createAccountSupportBindings` and `createAccountSupportServices` here,

@@ -619,10 +619,7 @@ supported upgrade path, and the version model at 1.0 is not decided.
 ### Task authority, verification and adopter continuation
 
 The finite task record names actual implementation/submission/merge and
-release-dispatch grants; generated plans and reviews grant none. Collect required
-sensitive API/Migration/budget/recovery reading in one stabilized packet before
-DCO, without repeating an acceptance after immaterial identity updates. A later
-material delta returns to its native decision. An implementation/set-preparation
+release-dispatch grants; generated plans and reviews grant none. An implementation/set-preparation
 combined PR requires the explicitly accepted route above; it is not selected by
 a general instruction to work autonomously. Merging still publishes nothing.
 
@@ -645,8 +642,8 @@ is not created by the message. No production action is granted.
 
 ### Package artifact limits
 
-Size growth follows the cap-change route, with the applicable maintainer read,
-not a new package: see the canonical [package placement decision](../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#package-placement-decision-canonical).
+Size growth follows the cap-change route, a reviewed change that records the
+measured size and the new cap, not a new package: see the canonical [package placement decision](../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#package-placement-decision-canonical).
 
 `npm run packages:check` builds and packs by default. Caps, the content allowlist
 and browser-entry limits also run in `--release-set`, the preflight's
@@ -664,17 +661,14 @@ limit means editing that one value in a reviewed change. Core's standalone
 `release:pack` also retains its existing class and aggregate checks.
 
 The npm developer-experience change enables declaration maps without JavaScript
-source maps. Core and Outbox remain inside their existing caps. Platform's 975
-maps add 259,012 compressed code bytes, 229,600 tarball bytes and 1,262,189
-unpacked bytes in a local comparison with identical package content except maps
-and their declaration trailers. Adding those costs and rounding byte caps up to
-5,000 gives the recorded limits.
-code bytes 1,970,000 -> 2,230,000; code files 3,039 -> 4,014; tarball bytes
-2,485,000 -> 2,715,000; unpacked bytes 11,955,000 -> 13,220,000; total files
-3,173 -> 4,148. Platform compressed code measures 2,229,080 bytes against the
-2,230,000-byte cap, leaving 920 bytes and almost no code headroom. Without maps,
-it measures about 1,970,068 bytes against the old 1,970,000-byte cap, exceeding
-that cap by 68 bytes. `release-gates.json` remains authoritative for the limits.
+source maps. Core and Outbox remain inside their existing caps. On the merged
+main `9922c413` tree, Platform with a declaration map for every shipped
+declaration measures 2,290,602 compressed code bytes and 3,948 code files,
+2,777,108 tarball bytes, 13,259,399 unpacked bytes and 4,069 files. Its caps are
+those measurements times 1.02, rounded up: code bytes 2,055,017 -> 2,336,415;
+code files 3,039 -> 4,027; tarball bytes 2,595,000 -> 2,832,651; unpacked bytes
+12,204,310 -> 13,524,587; total files 3,173 -> 4,151. Every map resolves to a
+shipped source file. `release-gates.json` remains authoritative for the limits.
 
 Measurements below are from base `cf36b01`, set `0.16.0`, on 2026-10-19.
 One KiB is 1,024 bytes. The existing **compressed code** measure concatenates
@@ -872,9 +866,8 @@ A release takes three steps:
    every version npm holds for each package. Choose it from actual registry
    observations and the API, behaviour, schema and shipped-SQL classification,
    then recheck before dispatch. A conflict after review needs a repair and
-   applicable review of the new candidate; do not silently change pins. Complete
-   working-tree checks and any required stabilized maintainer read before DCO
-   sign-off, then committed native review and final verification, as
+   applicable review of the new candidate; do not silently change pins. Commit
+   with DCO sign-off, then native review and hosted verification, as
    [CONTRIBUTING](../CONTRIBUTING.md#deliver-a-change) describes. Merging it does
    not authorize a release. Read the candidate version from the manifests, and
    publication only from the immutable releases and the npm registry: a version bump by itself

@@ -7,7 +7,7 @@ Shipped package-local sources are relative to this package. Other sources link t
 Repository paths, imports and relative links inside verbatim excerpts describe that source checkout, not files to find or create in your application.
 Consult installed declarations and README for the installed version.
 
-<!-- openlup-context-inventory [{"id":"delivery-alignment","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.36.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Subscription delivery alignment","startLine":546,"endLine":575,"sha256":"db7d8be01a72b2ce76d6b4423c30115ac29cd16ffd48bbaf16fbfdd5540f1c5f"},{"id":"migration-data-ownership","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.36.0/docs/platform/DATA_AND_MIGRATIONS.md","heading":"Data ownership","startLine":6,"endLine":45,"sha256":"44f0d36b7659dc91772b6f3ca10b932397000bfa259bb5e94b091acb49ae3a4f"},{"id":"migration-forward-path","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.36.0/docs/platform/DATA_AND_MIGRATIONS.md","heading":"Additive forward release path","startLine":298,"endLine":320,"sha256":"3503b3ac6f6da04912e9ecd9a5161d9641e68a21b82beafc31beb8c9dc026b64"},{"id":"checkout-payment-outbox-idempotency","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.36.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Idempotency","startLine":250,"endLine":272,"sha256":"2d719cee94edefe6eccf76aa9c34bbf8a40cdb7e478e313b4a939e769c2e4d71"},{"id":"host-provider-adapter-capability-refusal","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.36.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Provider adapters","startLine":307,"endLine":319,"sha256":"5e72a74503e7b2a85706abdf06484ffd03f95130e617995b8f649f6bc36cea23"}] -->
+<!-- openlup-context-inventory [{"id":"delivery-alignment","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.36.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Subscription delivery alignment","startLine":546,"endLine":575,"sha256":"db7d8be01a72b2ce76d6b4423c30115ac29cd16ffd48bbaf16fbfdd5540f1c5f"},{"id":"migration-data-ownership","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.36.0/docs/platform/DATA_AND_MIGRATIONS.md","heading":"Data ownership","startLine":6,"endLine":52,"sha256":"09f9ca46aa24eae3321a5f386f59d6a7f842d0aee5199e056b1e5688e4b521cb"},{"id":"migration-forward-path","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.36.0/docs/platform/DATA_AND_MIGRATIONS.md","heading":"Additive forward release path","startLine":333,"endLine":355,"sha256":"3503b3ac6f6da04912e9ecd9a5161d9641e68a21b82beafc31beb8c9dc026b64"},{"id":"checkout-payment-outbox-idempotency","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.36.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Idempotency","startLine":250,"endLine":272,"sha256":"2d719cee94edefe6eccf76aa9c34bbf8a40cdb7e478e313b4a939e769c2e4d71"},{"id":"host-provider-adapter-capability-refusal","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.36.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Provider adapters","startLine":307,"endLine":319,"sha256":"5e72a74503e7b2a85706abdf06484ffd03f95130e617995b8f649f6bc36cea23"}] -->
 
 ## delivery-alignment: Preserve subscription cycle alignment after late delivery
 
@@ -48,10 +48,15 @@ deployment, provider adapter, or public release has activated the rail.
 
 ## migration-data-ownership: Keep adopter data in its owned schema
 
-Source: [OpenLup source repository at openlup-platform-v0.36.0](https://github.com/openlup/openlup/blob/openlup-platform-v0.36.0/docs/platform/DATA_AND_MIGRATIONS.md#L6-L45).
+Source: [OpenLup source repository at openlup-platform-v0.36.0](https://github.com/openlup/openlup/blob/openlup-platform-v0.36.0/docs/platform/DATA_AND_MIGRATIONS.md#L6-L52).
 
-<!-- openlup-context {"id":"migration-data-ownership","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.36.0/docs/platform/DATA_AND_MIGRATIONS.md","heading":"Data ownership","startLine":6,"endLine":45,"sha256":"44f0d36b7659dc91772b6f3ca10b932397000bfa259bb5e94b091acb49ae3a4f"} -->
+<!-- openlup-context {"id":"migration-data-ownership","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.36.0/docs/platform/DATA_AND_MIGRATIONS.md","heading":"Data ownership","startLine":6,"endLine":52,"sha256":"09f9ca46aa24eae3321a5f386f59d6a7f842d0aee5199e056b1e5688e4b521cb"} -->
 ## Data ownership
+
+Native terminal replay replaces only `subscription_claim_due_renewal` while
+retaining its header, ACL, frozen-input comparison and subscription-first lock
+order. Terminal history precedes due eligibility; cancelled new work refuses.
+The subscription owner below defines the public behavior and proof.
 
 The native `20261101223000_subscription_purchase_renewal.sql` forward records
 purchase facts and renewal-attachment duties beside the existing activation
@@ -73,9 +78,11 @@ activation helper retains its ACL. Method transitions compare expected health an
 rewriting subscription service state. Sandbox observation uses invoker rights
 and the existing operation/outcome capabilities, without another attempt table.
 The [subscription owner](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
-describes the codec and retry duties. Installing or releasing this forward still
-requires its separately admitted SQL-control inventory and ordinary review;
+describes the codec and retry duties. The forward's approval inventory is
+admitted with it under ordinary review;
 local PostgreSQL proof does not establish that admission or a published chain.
+
+See [retained renewal storage](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#retained-renewal-storage).
 
 The platform owns its schema, migration history, and documented data contracts.
 An adopter owns tables and migrations for its own extensions in the `app` schema.
@@ -95,9 +102,9 @@ before enabling database adapters. It is not evidence of schema compatibility.
 
 ## migration-forward-path: Follow the ordered additive migration path
 
-Source: [OpenLup source repository at openlup-platform-v0.36.0](https://github.com/openlup/openlup/blob/openlup-platform-v0.36.0/docs/platform/DATA_AND_MIGRATIONS.md#L298-L320).
+Source: [OpenLup source repository at openlup-platform-v0.36.0](https://github.com/openlup/openlup/blob/openlup-platform-v0.36.0/docs/platform/DATA_AND_MIGRATIONS.md#L333-L355).
 
-<!-- openlup-context {"id":"migration-forward-path","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.36.0/docs/platform/DATA_AND_MIGRATIONS.md","heading":"Additive forward release path","startLine":298,"endLine":320,"sha256":"3503b3ac6f6da04912e9ecd9a5161d9641e68a21b82beafc31beb8c9dc026b64"} -->
+<!-- openlup-context {"id":"migration-forward-path","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.36.0/docs/platform/DATA_AND_MIGRATIONS.md","heading":"Additive forward release path","startLine":333,"endLine":355,"sha256":"3503b3ac6f6da04912e9ecd9a5161d9641e68a21b82beafc31beb8c9dc026b64"} -->
 ## Additive forward release path
 
 A development preview may append expand-only platform forwards to either chain:

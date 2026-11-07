@@ -629,7 +629,6 @@ route admission or success-only availability metadata.
 The package's Node runtime, scheduler and node host are not yet composed by the
 public reference server; the module's composition change does that.
 
-<!-- openlup-doc-impact {"unit":"bff","digest":"sha256-522c966a57eaea1fe0dcd4e7b12852b5ee9bb2bb974f4c0e10d71b547de5150c","reason":"Test-only delta. The admin magic-link route test now pins that null and unknown stored roles get the same padded, non-enumerating accepted response without a send, with quota unchanged. No route, invocation order, setting or runtime composition described here changes."} -->
 
 Identity route files now compose [package handler factories](IDENTITY.md) with
 this application's schemas, feature admission, limiter, redirect resolver and
@@ -895,15 +894,17 @@ Local draft resume/discard behavior is unchanged. M04 receives subscription life
 descriptors with `messageKey === idempotencyKey`; R4's issue-recovery notice is
 already queued by its owner. M12 adds no renewal, reminder or delivery worker.
 
-The opt-in [M10 native subscription binding](../../server/runtime/public-reference/m10SubscriptionBinding.ts)
-returns schema, readiness, one job descriptor and its guarded executor; it mounts
+The opt-in `createNativeSubscriptionBinding` from `@openlup/platform/subscriptions`
+returns services, schema and realization admission. The [reference facade](../../server/runtime/public-reference/m10SubscriptionBinding.ts)
+joins it to public `createSubscriptionContribution`, preserving readiness,
+one job descriptor and its guarded executor; it mounts
 nothing. Supply a complete catalogue identity and Core readiness observation,
 the existing population's durable job lease, native transaction lane, codec and
 explicit M07 payment/correlation policy. Renewals, stock recovery and dunning
 run under that one lease. A normal-due or stock-recovery row failure returns the
 existing error result and leaves later rows runnable in that population run.
 Disable the incumbent executor before selecting a
-replacement. The default is off, and no current serving route changes. G23
+replacement. The default is off, and no current serving route changes. Native renewal stock routines enter shared admission inline with the same busy and isolation codes, retaining invoker rights and existing grants; custom runtime roles need no new grant. G23
 captured cases survive a global alignment-mode rollback to off; disabling this
 binding itself still requires the host's reconciliation/handoff procedure.
 The [subscription recipe](ARCHITECTURE_AND_EXTENSIONS.md#composed-subscription-module)
@@ -960,11 +961,13 @@ all precede worker invocation. Source edits
 and context updates commit together; an error rolls both back. Credentials remain
 host closures. Construction adds no route, schedule or automatic dispatch, and
 the public reference server does not select this binding by default. Renewal
-admission uses the [host store decorator](../../server/runtime/subscription/deliveryAlignmentRenewalStore.ts)
-around the automatic runner's existing hook. A host that composes the native
+admission uses public `withNativeDeliveryAlignmentRenewalAdmission` around the
+native automatic runner's existing hook; the [legacy decorator](../../server/runtime/subscription/deliveryAlignmentRenewalStore.ts)
+retains its existing hosted port. A host that composes the native
 automatic-renewal runner must wrap its store port with this decorator; until it
-does, native delivery-alignment mode stays off or shadow. This boundary stops at
-the decorator and supplies no runner composer, factory or production entrypoint.
+does, native delivery-alignment mode stays off or shadow. The public native
+composition factory includes this decorator; hosts using the primitives compose
+it explicitly.
 Construction installs no route or schedule. It preserves the
 static terms gate, skips admission for off with no non-terminal captured case,
 and processes captured cases through native admission even after rollback to off.
@@ -1185,7 +1188,6 @@ supported install, managed-host certification, or substitute for a complete
 HTTP/browser acceptance run. The separate portable PostgreSQL migration lane
 has not been installed or certified by this profile.
 
-<!-- openlup-doc-impact {"unit":"reference","digest":"sha256-aca245296bae41d05957e53bf0bfa1a5e2977fd089ba1598927e515666e21eed","reason":"Import-only delta. The opt-in subscription reference account binding imports its account-link store factory from @openlup/platform/identity instead of a removed re-export file. Reconciliation, admission and the disposable runtime are unchanged."} -->
 
 The Node reference start function accepts an admitted outbox candidate and a host schedule binding. For a selected rail it binds dispatch/prune before opening the listener; a refused candidate or absent schedule binding opens no listener. Host composition supplies its driver, lease, effect handlers, known vocabulary and migration observation. Immediate and scheduled work share the packed rail engine, with candidate identity checked at every entrance. The default static CLI selects no outbox adapter and provides no deployed outbox proof.
 
@@ -1427,7 +1429,6 @@ presentation argument for callers. A host that changes the selection must
 verify its server module resolution and rendered output. The public source
 does not declare a managed serverless packaging rule for this alias.
 
-<!-- openlup-doc-impact {"unit":"infrastructure","digest":"sha256-2b0421c680adfaa93b6ea03f7da109126065fa9b89a550ca027f21bf63b3157a","reason":"Transactional renderer tests now exercise neutral default presentation plus explicit synthetic presentation/content inputs, retaining rendered transport outcomes and refusal assertions. No renderer, provider, host or import-map implementation changes."} -->
 
 Canonical production hostnames come from
 `config/site-routes.json.productionHosts`. Configure this list for an adopting

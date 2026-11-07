@@ -10,8 +10,10 @@ active SQL. All six approval rows and the canonical manifest's legacy 88-unit
 selection and complete F90 prefix remain unchanged; the completion is unit 91
 of the qualified selection. Trusted admission parses a changed registry
 using main's reader before its no-SQL return, so reader support must land first.
-Only after the exact sixth approval lands may the SQL feature introduce the
-identical file and append its selected row.
+At that checkpoint the exact sixth approval landed before the SQL feature
+introduced the identical file and appended its selected row; under the current
+co-location rule in `docs/platform/DATA_AND_MIGRATIONS.md`, new approvals may
+land with their SQL.
 Observed installation hashes cannot replace prior source approval.
 
 The seventh fixture binds the qualified owner-path forward's exact nine
@@ -34,6 +36,15 @@ are not active installation files in this checkpoint. The restricted generation
 will select the `qa_` baseline and four `qb_` replacements, then reuse the
 issued completion tail without the qualified owner-path forward. See the
 [restricted-bootstrap task](../../../../../../docs/platform/plans/oss-m14-restricted-bootstrap.md).
+
+The `q2_20261103200000_runtime_lock_and_conflict_completion.sql` fixture binds
+the exact approved bytes at the seventeenth position: one shared tail for both
+qualified plans. It lets the restricted runtime take three existing row locks
+without admitting an actual update. It also lets the runtime read only the two
+arbiter columns that an existing conflict target requires, and only the client
+column that operator lead absorption counts. Reader support and this approval
+landed separately; both qualified plans now select the byte-identical active
+SQL.
 
 The [migration owner](../../../../../../docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
 explains generation selection and ledger identity. These fixtures do not prove

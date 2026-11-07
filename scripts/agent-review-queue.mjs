@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { admit, demand, RECEIPT_MARKER, ECONOMY_RECEIPT_MARKER } from './agent-review-decide.mjs';
-import { captureCommittedReviewCandidate, carryOverSourceReview, git, validateEconomySession } from './agent-review-session.mjs';
+import { captureCommittedReviewCandidate, captureReviewRules, carryOverSourceReview, git, validateEconomySession } from './agent-review-session.mjs';
 import { assertCoLocatedForwardApproval, isNativeStoreMigrationPath, REVIEWED_FORWARD_PATH } from './reviewed-platform-forward.ts';
 import { isChannelIngestMigrationPath, isQualifiedPlatformMigrationPath } from './platform-migration-manifest.ts';
 import { REQUIRED_CONTEXTS } from './packages/release-gate.ts';
@@ -69,29 +69,31 @@ export async function waitNativeAdmission({ event, env = process.env, api, cwd =
       const historical = receipt.version === 3 ? receipt.session.history.flatMap(event => event.type === 'prepare' ? [event.candidate.base, event.candidate.head] : event.type === 'renew' ? [event.proof.main] : []) : [];
       const refs = [...new Set([receipt.base, receipt.head, main, ...historical, ...(group ? [group.base_sha, group.head_sha] : [])])];
       demand(refs.every(ref => SHA.test(ref)), 'receipt references invalid source objects');
-      let candidate; let baseValid;
+      let candidate; let baseValid; let legacyRules;
       try {
         await runGit(cwd, '-c', 'transfer.fsckObjects=true', 'fetch', '--no-tags', '--no-write-fetch-head', 'origin', ...refs);
         await runGit(cwd, 'update-ref', 'refs/remotes/origin/main', main);
         candidate = await captureCommittedReviewCandidate(cwd, receipt.base, receipt.head, runGit);
         if (receipt.version === 3) await validateEconomySession(cwd, receipt.session, runGit);
+        else legacyRules = await captureReviewRules(cwd, candidate, runGit) === undefined;
         const forks = (await runGit(cwd, 'merge-base', '--all', receipt.head, 'origin/main')).trim().split('\n');
         baseValid = forks.length === 1 && SHA.test(forks[0]) && receipt.base === forks[0];
       } catch (error) { reason = `receipt objects could not be verified: ${error.message}; post a corrected receipt`; continue; }
-      let decision = admit({ receipt, observed: { ...candidate, pr: prNumber, baseValid }, now: now() });
+      let decision = admit({ receipt, observed: { ...candidate, pr: prNumber, baseValid, legacyRules }, now: now() });
       if (!decision.ok) { reason = `${decision.code}: ${decision.reason}`; continue; }
       const needsForwardApproval = candidate.changedPaths.includes(REVIEWED_FORWARD_PATH) || candidate.changedPaths.some(path => isQualifiedPlatformMigrationPath(path) || isChannelIngestMigrationPath(path) || isNativeStoreMigrationPath(path));
-      if (needsForwardApproval) assertCoLocatedForwardApproval(cwd, candidate.base, candidate.head, main);
+      // The trusted reader checks each change on its own base; moves on main or ahead in the queue do not refuse it.
+      if (needsForwardApproval) assertCoLocatedForwardApproval(cwd, candidate.base, candidate.head);
       if (group) {
         const tree = (await runGit(cwd, 'rev-parse', '--verify', `${group.head_sha}^{tree}`)).trim();
-        decision = await carryOverSourceReview(cwd, candidate, { base: group.base_sha, tree }, runGit);
+        decision = await carryOverSourceReview(cwd, candidate, { base: group.base_sha, tree, trustedMain: main }, runGit);
         demand(decision.ok, decision.reason, decision.code);
-        if (needsForwardApproval) assertCoLocatedForwardApproval(cwd, group.base_sha, group.head_sha, main);
+        if (needsForwardApproval) assertCoLocatedForwardApproval(cwd, group.base_sha, group.head_sha);
       }
       const live = await api.get(`${root}/pulls/${prNumber}`);
       demand(live.head?.sha === pr.head.sha && live.state === 'open' && live.draft === false && !live.merged && live.base?.ref === 'main', 'PR changed during admission; rerun CI', 'stale');
       demand((await api.get(`${root}/git/ref/heads/main`)).object?.sha === main, 'main moved during admission; rerun CI', 'stale');
-      const final = admit({ receipt, observed: { ...candidate, pr: prNumber, baseValid }, now: now() }); demand(final.ok, final.reason, final.code);
+      const final = admit({ receipt, observed: { ...candidate, pr: prNumber, baseValid, legacyRules }, now: now() }); demand(final.ok, final.reason, final.code);
       console.log(`Native review admission verified: ${group ? decision.reason : 'reviewed PR head'}.`); return receipt;
     }
     console.log(`needs_agent_review: ${reason}`); await sleep(Math.min(15000, Math.max(0, deadlineMs - (now() - start))));
@@ -171,7 +173,7 @@ export async function enqueueAfterChecks({ event, env, api, enqueue, cwd = proce
     const selected = matches.filter(job => job.run_attempt === latest);
     demand(selected.length === 1 && selected[0].status === 'completed' && selected[0].conclusion === 'success', `source requires one actual successful latest ${name} check`);
   }
-  const admitted = await waitNativeAdmission({ event: { repository: event.repository, number, pull_request: { head: { sha: source.head_sha } } },
+  await waitNativeAdmission({ event: { repository: event.repository, number, pull_request: { head: { sha: source.head_sha } } },
     env: { GITHUB_REPOSITORY: env.GITHUB_REPOSITORY, GITHUB_EVENT_NAME: 'pull_request' }, api, cwd, now, runGit,
     sleep: () => { throw new Error('Current native review is unavailable at CI completion; no enqueue retry'); } });
   await sourceCurrent();
@@ -182,7 +184,6 @@ export async function enqueueAfterChecks({ event, env, api, enqueue, cwd = proce
   if (attempted(pr)) return { status: 'skipped', reason: 'this merge intent already entered the queue; no automatic requeue' };
   const finalAccess = await api.get(`${root}/collaborators/${encodeURIComponent(login)}/permission`);
   demand(['write', 'maintain', 'admin'].includes(finalAccess?.permission ?? finalAccess?.role_name), 'auto-merge authority changed before enqueue');
-  demand(now() < admitted.expires, 'native review expired before enqueue');
   const queued = await enqueue({ pullRequestId: pr.id, expectedHeadOid: source.head_sha, jump: false });
   demand(typeof queued?.id === 'string' && queued.id.length > 0, 'enqueue did not confirm a queue entry');
   const after = await live();

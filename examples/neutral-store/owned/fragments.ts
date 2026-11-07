@@ -1,5 +1,6 @@
 import type { Product } from '../shared/config.ts';
 import type { OfferQuote } from '../shared/offer.ts';
+import { nativeUnitPrice } from '../client/live-quote.ts';
 import type { PageContext } from '../client/context.ts';
 import { el, link } from '../client/dom.ts';
 import { productPath, routes } from '../shared/routes.ts';
@@ -24,7 +25,7 @@ export const fragments: CustomizationFragments = {
       el('div', {},
         el('h3', {}, product.name[context.locale]),
         el('p', {}, product.description[context.locale]),
-        el('p', { class: 'price' }, context.money(product.unitPrice.amountMinor)),
+        nativeUnitPrice(context, product),
         link(context.t('details'), productPath(product.slug, context.locale))));
   },
   checkoutSummary(context, quote) {
@@ -36,6 +37,7 @@ export const fragments: CustomizationFragments = {
         row(context.t('discount'), -quote.discountMinor),
         row(context.t('shipping'), quote.shippingMinor),
         row(context.t('total'), quote.totalMinor)),
+      quote.modeDiscountMinor ? el('p', {}, `${context.t('modePriceBenefit')}: ${context.money(quote.modeDiscountMinor)}`) : null,
       el('p', { class: 'muted' }, context.t('authoritative')));
   },
 };

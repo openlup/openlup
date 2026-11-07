@@ -157,3 +157,36 @@ it.each(["owned"])("sweeps legacy PDF success: %s", async ticket => {
     contentType: "application/pdf", fileName: "owned.pdf" } });
   expect(download).toHaveBeenCalledExactlyOnceWith(ticket);
 });
+
+const uuidOwner = "abcdefab-cdef-4abc-8def-abcdefabcdef";
+const uuidOrder = "bcdefabc-defa-4bcd-8efa-bcdefabcdefa";
+const uuidDocument = "cdefabcd-efab-4cde-8fab-cdefabcdefab";
+it.each([
+  [uuidOwner.toUpperCase(), uuidOrder.toUpperCase(), uuidDocument.toUpperCase()],
+  ["aBcDeFaB-cDeF-4aBc-8dEf-aBcDeFaBcDeF", "bCdEfAbC-dEfA-4bCd-8eFa-bCdEfAbCdEfA", "cDeFaBcD-eFaB-4cDe-8fAb-cDeFaBcDeFaB"]
+])("matches UUID owner/order/document by value and forwards original spelling: %s", async (accountRef, orderId, documentRef) => {
+  const identity = { providerRef: "Host", documentRef: uuidDocument, providerDocumentRef: "Remote-A",
+    orderRef: "Order-A", invoiceRef: "Invoice-A", parentProviderDocumentRef: null };
+  const resolveDownload = vi.fn<InvoiceOwnerAccessPort["resolveDownload"]>(async () => ({ kind: "authorized", identity,
+    artifactRef: "Artifact-A", fileName: "Invoice-A.pdf", parentDocumentRef: null }));
+  const content = new TextEncoder().encode("%PDF-1.7\n%%EOF\n");
+  const download = vi.fn(async () => ({ kind: "downloaded" as const, content, contentType: "application/pdf" }));
+  const access = createInvoiceAccess({ accountHistory: {
+    read: async () => ({ kind: "found", accountRef: uuidOwner, orderId: uuidOrder, documents: [{ ...document, documentRef: uuidDocument }] }),
+    resolveDownload
+  }, artifacts: { download } });
+  expect(await access.history({ accountRef, orderId })).toMatchObject({ kind: "found", accountRef, orderId, documents: [{ documentRef: uuidDocument }] });
+  expect(await access.download({ accountRef, orderId, documentRef })).toMatchObject({ kind: "downloaded", fileName: "Invoice-A.pdf" });
+  expect(resolveDownload).toHaveBeenCalledExactlyOnceWith({ accountRef, orderId, documentRef });
+  expect(download).toHaveBeenCalledExactlyOnceWith({ identity, artifactRef: "Artifact-A" });
+});
+it.each([
+  { accountRef: "A", orderId: "o", documentRef: "child" },
+  { accountRef: "a", orderId: "O", documentRef: "child" },
+  { accountRef: "a", orderId: "o", documentRef: "CHILD" }
+])("keeps opaque owner/order/document references case-sensitive: %j", async input => {
+  const resolveDownload = vi.fn(), download = vi.fn();
+  expect(await createInvoiceAccess({ accountHistory: { read: async () => owned, resolveDownload }, artifacts: { download } }).download(input)).toEqual(denied);
+  expect(resolveDownload).not.toHaveBeenCalled();
+  expect(download).not.toHaveBeenCalled();
+});

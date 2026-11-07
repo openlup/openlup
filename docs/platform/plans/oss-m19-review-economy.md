@@ -1,7 +1,10 @@
 # Review coverage after a passing candidate
 
 Status: development-preview control task. This record owns the finite outcome,
-accepted scope, authority and sufficient proof for independent review.
+accepted scope, authority and sufficient proof for independent review. Its
+disjoint-integration, ordinary-repair, renewal and expiry rules were superseded
+on 2026-11-05 by
+[Native review](../../../CONTRIBUTING.md#native-review-and-accountability).
 
 Outcome: retain complete first review while removing redundant review rounds
 following a proved disjoint main integration; permit one fresh review of an
@@ -70,7 +73,7 @@ Existing direct-importer tests, run unchanged before counted review:
 `agent-review-session.test.ts`, `agent-review-gate.test.ts`,
 `agent-review-queue.test.ts`, `qualified-migration-admission.test.ts`,
 `reviewed-batch-forward.test.ts`, `reviewed-native-store-forward.test.ts`,
-`verify-local.test.ts`, `documentation-impact.test.ts`,
+`verify-local.test.ts`, the former documentation-impact suite,
 `oss-published-tree-check.test.ts`, `documentation-cli.test.ts`,
 `documentation-bundle.test.ts`, `check-publishable-gap-enumeration.test.ts`,
 `source-release-preparation.test.ts` and `ci-test-scope.test.ts`, all under

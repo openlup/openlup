@@ -90,9 +90,13 @@ describe("generic role-free lane confinement", () => {
       .filter((file) => !file.startsWith("packages/platform/"))
       // The package consumer proof calls the lane as a package consumer, not as a reference binding.
       .filter((file) => file !== "scripts/packages/platform-cold-consumer.ts")
+      // The installed-package host names its lane after its capability.
+      .filter((file) => file !== "examples/neutral-store/host/native-composition.ts")
       .filter((file) => !/\.(test|spec)\.(ts|tsx|mts|cts)$/.test(file))
       .filter((file) => readFileSync(file, "utf8").includes("createPostgresRoleFreeTransactionLane"))
       .sort();
     expect(users).toEqual(["server/adapters/postgres/dataGateway.ts"]);
+    const starter = readFileSync("examples/neutral-store/host/native-composition.ts", "utf8");
+    expect(starter.split("createPostgresRoleFreeTransactionLane(").length - 1).toBe(1);
   });
 });

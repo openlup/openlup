@@ -1,6 +1,7 @@
 import type { PageContext } from '../context.ts';
 import type { Operation } from '../../shared/api.ts';
 import type { CopyKey } from '../../owned/copy.ts';
+import { operationLimitDefinitions } from '../../shared/limits.ts';
 import { isRecord } from '../../shared/offer.ts';
 import { routes } from '../../shared/routes.ts';
 import { el, link } from '../dom.ts';
@@ -50,8 +51,12 @@ function orderActions(context: PageContext): HTMLElement {
     readPanel(context, 'orders', 'operator.orders'),
     el('div', { class: 'form-grid' },
       make('operator.order', 'read', []),
-      make('operator.hold', 'hold', [{ name: 'reason', label: 'reason', type: 'textarea' }]),
-      make('operator.release', 'releaseHold', [{ name: 'holdRef', label: 'holdRef' }]),
+      make('operator.hold', 'hold', [{ name: 'reason', label: 'reasonCode', type: 'select',
+        options: context.config.orderControls.holdReasons.map(choice => ({ value: choice.code, text: choice.label[context.locale] })) },
+        { name: 'note', label: 'note', type: 'textarea', required: false, maxLength: 1000 }]),
+      actionForm(context, { operation: 'operator.release', title: 'releaseHold', submit: 'releaseHold',
+        fields: [{ name: 'holdRef', label: 'holdRef' },
+          { name: 'note', label: 'note', type: 'textarea', required: false, maxLength: 1000 }] }),
       make('operator.cancelUnpaid', 'cancelUnpaid', [{ name: 'reason', label: 'reason' }]),
       make('operator.externalRefund', 'externalRefund', [
         { name: 'externalRefundRef', label: 'externalRefundRef' },
@@ -73,7 +78,7 @@ function customerActions(context: PageContext): HTMLElement {
     }),
     actionForm(context, {
       operation: 'operator.recovery', submit: 'repairAction',
-      fields: [customerRef, { name: 'subscriptionRef', label: 'subscriptionRef' }],
+      fields: [customerRef, { name: 'caseRef', label: 'caseRef' }],
     }));
 }
 
@@ -93,10 +98,27 @@ function shipmentActions(context: PageContext): HTMLElement {
 
 function returnActions(context: PageContext): HTMLElement {
   return el('section', { id: 'returns', class: 'panel' }, el('h2', {}, context.t('returns')),
-    readPanel(context, 'returns', 'operator.returns'),
+    el('p', {}, operationLimitDefinitions.returnsReader.explanation[context.locale]),
+    el('p', {}, operationLimitDefinitions.returnDecision.explanation[context.locale]),
     ...(['operator.returnApprove', 'operator.returnReject'] as const).map(operation => actionForm(context, {
       operation, submit: operation === 'operator.returnApprove' ? 'approveReturn' : 'rejectReturn',
-      fields: [{ name: 'returnRef', label: 'returnRef' }, { name: 'reason', label: 'reason', type: 'textarea' }],
+      fields: [{ name: 'returnRef', label: 'returnRef' }, { name: 'note', label: 'note', type: 'textarea', required: false },
+        ...(operation === 'operator.returnApprove' ? [
+          { name: 'refundMode', label: 'refundMode', type: 'select', options: [
+            { value: 'full', text: context.t('refundFull') }, { value: 'partial', text: context.t('refundPartial') },
+            { value: 'none', text: context.t('refundNone') }] },
+          { name: 'refundAmountCents', label: 'amountMinor', type: 'number', min: 0, required: false },
+        ] satisfies FieldSpec[] : []),
+      ],
+      transform: values => {
+        if (operation === 'operator.returnApprove' && values.refundMode === 'partial'
+          && (!Number.isSafeInteger(values.refundAmountCents) || Number(values.refundAmountCents) < 0)) {
+          throw new Error('starter_input_invalid');
+        }
+        return { returnRef: values.returnRef, adminNote: values.note,
+          ...(operation === 'operator.returnApprove' ? { refundMode: values.refundMode,
+            ...(Number.isSafeInteger(values.refundAmountCents) ? { refundAmountCents: values.refundAmountCents } : {}) } : {}) };
+      },
     })),
     ...(['receiveReturn', 'restockReturn', 'refundReturn'] as const).map(key => otherRefusal(context, key)));
 }

@@ -10,7 +10,8 @@
       "maturity": "experimental",
       "compatibilityPolicy": "internal-candidate",
       "packageSmokeEvidence": [
-        "test/fulfillment/nativePreparation.test.ts"
+        "test/fulfillment/nativePreparation.test.ts",
+        "test/fulfillment/nativeCommerceReads.test.ts"
       ],
       "entrypoint": "dist/fulfillment/native/index.d.ts",
       "snapshot": "api/fulfillment-native.api.md"
@@ -104,6 +105,14 @@
       ],
       "entrypoint": "dist/commerce/contracts/index.d.ts",
       "snapshot": "api/commerce-contracts.api.md"
+    },
+    "./commerce/server/destinations": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": ["test/packageBoundary.test.ts"],
+      "entrypoint": "dist/commerce/server/destinations/index.d.ts",
+      "snapshot": "api/commerce-destinations.api.md"
     },
     "./commerce/server": {
       "role": "capability",
@@ -946,17 +955,17 @@
   },
   "pack": {
     "code": {
-      "maxPackedBytes": 2230000,
-      "maxFiles": 4014
+      "maxPackedBytes": 2336415,
+      "maxFiles": 4027
     },
     "docs": {
       "maxPackedBytes": 75000,
       "maxFiles": 10
     },
-    "maxPackedBytes": 2715000,
-    "maxUnpackedBytes": 13220000,
-    "maxFiles": 4148,
-    "capReason": "Measured complete installed catalogue plus bounded remaining stores and ordered SQL. Declaration maps add 259,012 compressed code bytes, 975 code/aggregate files, 229,600 tarball bytes and 1,262,189 unpacked bytes in the working-tree comparison with identical docs/source and map trailers removed. Adding these costs to prior caps and rounding byte caps up to 5,000 gives the current limits. Compressed code measures 2,229,080 bytes against the 2,230,000-byte cap, leaving 920 bytes and almost no code headroom. Without maps it measures about 1,970,068 bytes against the old 1,970,000-byte cap, exceeding that cap by 68 bytes.",
+    "maxPackedBytes": 2832651,
+    "maxUnpackedBytes": 13524587,
+    "maxFiles": 4151,
+    "capReason": "Measured complete installed catalogue plus bounded remaining stores, ordered SQL and declaration maps for every shipped declaration, on the merged main 9922c413 tree: code 2,290,602 bytes and 3,948 files, tarball 2,777,108 bytes, unpacked 13,259,399 bytes, 4,069 files; caps are measured times 1.02, rounded up.",
     "baseline": {
       "version": "0.35.0",
       "packedBytes": 2097540

@@ -6,13 +6,29 @@ import { acquisitionAddresses } from '../owned/acquisition-addresses.ts';
 import { applyDemoSeed, demonstrationMarker, installDemonstration,
   type DemonstrationInstallation } from '../installation/install.ts';
 
+const seedPriceCount = (config: typeof configurations[string]) => config.offer.products.reduce((sum, product) => sum + product.permittedPurchaseModes.length, 0);
+
 function installation(identity = { login: 'demo_install', role: 'demo_install', marker: demonstrationMarker }) {
   const calls: Array<{ text: string; values: unknown[] | undefined }> = [];
   let closed = 0;
+  const prices = new Map<string, Record<string, unknown>>();
+  const digests = new Map<string, unknown>();
+  const policies = new Map<string, { id: unknown; digest: unknown }>();
+  const promotions = new Map<string, Record<string, unknown>>();
   const binding: DemonstrationInstallation = {
     installRole: 'demo_install', runtimeRole: 'demo_runtime',
     connection: { query: async (text, values) => {
       calls.push({ text, values });
+      if (text.startsWith('INSERT INTO public.subscription_price_policy_revisions') && values) { digests.set(String(values[0]), values[11]); policies.set(String(values[2]), { id: values[0],digest: values[11] }); }
+      if (text.startsWith('SELECT id,digest')) return { rows: policies.has(String(values?.[0])) ? [policies.get(String(values?.[0]))!] : [] };
+      if (text.startsWith('SELECT p.primary_sku_id')) return { rows: [{ primary_sku_id: null,current_document_revision_id: null,net_weight_g: 0 }] };
+      if (text.startsWith('INSERT INTO public.catalog_product_document_revisions') && values) digests.set(String(values[0]), values[7]);
+      if (text.startsWith('SELECT digest')) return { rows: [{ digest: digests.get(String(values?.[0])) }] };
+      if (text.startsWith('INSERT INTO public.commerce_promotion_definitions') && values) promotions.set(String(values[0]), { definition: values[1], active: values[2] });
+      if (text.startsWith('SELECT definition,active')) return { rows: [promotions.get(String(values?.[0]))!] };
+      if (text.startsWith('INSERT INTO public.price_entries') && values) prices.set(String(values[0]),
+        Object.fromEntries(['id','price_list_id','variant_id','mode','min_qty','unit_price_minor','amount_kind','active','valid_from'].map((key,i) => [key, values[i]])));
+      if (text.startsWith('SELECT id, price_list_id')) return { rows: [prices.get(String(values?.[0]))!] };
       return { rows: text.startsWith('SELECT provenance')
         ? [{ provenance: acquisitionAddresses[0]!.addressReference.provenance, active: true }]
         : text.startsWith('SELECT') ? [identity] : [] };
@@ -35,9 +51,10 @@ for (const config of Object.values(configurations)) {
       assert.equal(seed.products[index]!.description, product.description.en);
       assert.equal(seed.skus[index]!.sku, product.sku);
       assert.equal(seed.skus[index]!.product_id, seed.products[index]!.id);
-      assert.equal(seed.prices[index]!.variant_id, seed.skus[index]!.id);
-      assert.equal(seed.prices[index]!.unit_price_minor, product.unitPrice.amountMinor);
-      assert.equal(seed.prices[index]!.price_list_id, seed.priceLists[0]!.id);
+      const oneTime = seed.prices.find(row => row.variant_id === seed.skus[index]!.id && row.mode === 'one_time')!;
+      assert.equal(oneTime.unit_price_minor, product.unitPrice.amountMinor);
+      assert.equal(oneTime.price_list_id, seed.priceLists[0]!.id);
+      assert.equal(seed.prices.filter(row => row.variant_id === seed.skus[index]!.id).length, product.permittedPurchaseModes.length);
     }
     const changed = structuredClone(config);
     changed.offer.products[0]!.unitPrice.amountMinor++;
@@ -55,10 +72,10 @@ for (const config of Object.values(configurations)) {
     assert.equal(first.calls[0]!.text, 'BEGIN');
     assert.equal(first.calls.at(-1)!.text, 'COMMIT');
     const inserts = first.calls.filter(call => call.text.startsWith('INSERT INTO public.'));
-    assert.equal(inserts.length, config.offer.products.length * 3 + 1);
+    assert.equal(inserts.length, config.offer.products.length * 4 + seedPriceCount(config) + 3);
     for (const call of inserts) {
-      assert.match(call.text, /ON CONFLICT \(id\) DO UPDATE/);
-      assert.match(call.text, /INSERT INTO public\.(catalog_products|catalog_skus|price_lists|price_entries)\b/);
+      assert.match(call.text, call.text.startsWith('INSERT INTO public.catalog_products') || call.text.startsWith('INSERT INTO public.catalog_skus') || call.text.startsWith('INSERT INTO public.price_lists') ? /ON CONFLICT \(id\) DO UPDATE/ : /ON CONFLICT.*DO NOTHING/);
+      assert.match(call.text, /INSERT INTO public\.(catalog_products|catalog_skus|price_lists|price_entries|subscription_price_policy_revisions|catalog_product_document_revisions|catalog_sku_identifiers|commerce_promotion_definitions)\b/);
       assert.ok(call.values?.length);
     }
     const registry = first.calls.filter(call => call.text.startsWith('INSERT INTO acquisition_private.'));
@@ -117,7 +134,7 @@ test('a configured price outside PostgreSQL integer storage refuses before SQL',
   const config = structuredClone(Object.values(configurations)[0]!);
   config.offer.products[0]!.unitPrice.amountMinor = 2147483648;
   const fixture = installation();
-  await assert.rejects(applyDemoSeed(config, fixture.binding), { message: 'starter_demo_price_out_of_range' });
+  await assert.rejects(applyDemoSeed(config, fixture.binding), { message: 'starter_product_invalid' });
   assert.equal(fixture.calls.length, 0);
 });
 
@@ -134,3 +151,16 @@ for (const existing of [[], [{ provenance: 'other_seed', active: true }],
     assert.equal(fixture.closed(), 1);
   });
 }
+
+
+test('conflicting configured price is refused and rolls back instead of overwriting price truth', async () => {
+  const fixture = installation();
+  const query = fixture.binding.connection.query;
+  fixture.binding.connection.query = async (text, values) => {
+    const result = await query(text, values);
+    if (text.startsWith('SELECT id, price_list_id')) result.rows[0]!.unit_price_minor = 1;
+    return result;
+  };
+  await assert.rejects(applyDemoSeed(Object.values(configurations)[0]!, fixture.binding), { message: 'starter_price_seed_conflict' });
+  assert.equal(fixture.calls.at(-1)!.text, 'ROLLBACK');
+});

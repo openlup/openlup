@@ -69,12 +69,9 @@ immutable release; see the [install support policy](../../.github/INSTALL_SUPPOR
 
 ## Ownership
 
-Review coverage helpers use the existing tooling owner in CONTRIBUTING, and
-documentation impact parsing uses this page's Impact section. Task records stay
-under the existing history route and require explicit publication-catalog rows.
-Their no-impact comments are reviewable answers, not a new source owner or a
-substantive owner-section update. Carrier arrays retain their existing owners;
-recognizing an exact union does not transfer their maintenance responsibility.
+Review coverage helpers use the existing tooling owner in CONTRIBUTING.
+Task records belong in the PR description under
+[Deliver a change](../../CONTRIBUTING.md#deliver-a-change).
 
 The source-only outcome and package-set BOM generators route to
 [distribution evidence](DISTRIBUTION_EVIDENCE.md). Its projection section owns
@@ -181,7 +178,7 @@ its API report route to the
 [transfer architecture owner](ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery).
 Data guidance retains canonical import-trigger/identity limitations; runtime
 guidance retains effect-time fencing and host capability ownership. Navigation
-and selected-row/local-object evidence do not close the full M14 store outcome.
+and selected-row/local-object evidence do not close the full store-transfer outcome.
 
 The local handover sources (entry, cohort and catch-up helpers, dispatch actor,
 application actor and provider) route to that same transfer architecture owner.
@@ -197,8 +194,8 @@ adopter-host qualification or delivered-predecessor claim.
 Operations source, owner-local witnesses, the unchanged control-plane SQL
 projection and the three operations API reports route to the
 [operations architecture](ARCHITECTURE_AND_EXTENSIONS.md#operations-and-diagnostics).
-The package README is the short import entry point; the public M14 module record
-retains programme scope and lane records retain candidate evidence. Navigation
+The package README is the short import entry point; the historical module record
+retains scope and task records retain candidate evidence. Navigation
 adds no activation or hosted-provider claim.
 
 Risk package sources, API reports, sparse SQL projection and neutral witnesses
@@ -207,7 +204,6 @@ The package README owns its three experimental entry summaries; migration
 guidance owns full-catalogue installation and unchanged SQL identities. The
 publication catalogue inventories these files; generated navigation establishes
 no activation, managed parity, privacy reconciliation or installation claim.
-
 
 The plain Vitest worker-policy witness is a public tooling source in the
 publication catalogue; its embedded child CLI is also a declared execution
@@ -229,9 +225,9 @@ guidance owns refusal ordering, verified-subject enrollment and the local meanin
 of `active`. Publication inventory includes these sources without claiming
 portable context SQL, activation or delivery.
 
-The M10 control re-pin moves pending inert fixtures to `20261024`, adds native
-X/Y, and folds preview replay into N2 under `scripts/fixtures/reviewed-m10/`.
-The migration guide owns the exact 18-pin inventory (with historical 14/16-pin reads) and payment/stock/preview purpose; contributor checks own their
+The historical renewal-control re-pin moved inert fixtures under
+`scripts/fixtures/reviewed-m10/`.
+The migration guide owns the exact 18-pin inventory (with historical 14/16-pin reads) and payment/stock/preview purpose; the data guide owns
 same-rail landing order and real PostgreSQL witnesses. Generated navigation
 lists these control inputs without admitting them to an installation manifest
 or establishing activation, package publication or managed parity.
@@ -303,7 +299,6 @@ source bindings and navigation describe that smaller tree; they establish no
 new export, activation or release. The [case ledger](plans/oss-a2-payment-adapters.md#o-p3b-1-unused-root-retirement-2026-10-22)
 distinguishes root retirement from the remaining adopter obligation.
 
-
 The opt-in payment example's private capability descriptor is catalogued with
 its adapter sources; the existing public re-export is unchanged. The
 [payment contract](CANONICAL_CONTRACTS.md#opt-in-payment-example) owns the
@@ -329,15 +324,14 @@ in the tree-wide neutrality wrapper, as described in
 The allowance admits only this case-study prose and screenshot references; code
 and unapproved references remain subject to the existing scanner and baseline.
 
-The P7 native catalog move keeps the package README as owner of the two
+The native catalog move keeps the package README as owner of the two
 factory exports, sparse descriptor and structural contribution. The adapter
 owner explains reference compatibility paths; the runtime owner explains the
-explicit inert selection and unchanged default exposure. Contributor guidance
-owns the three P7 proof files, five cases and reused packed-consumer scenario. The
+explicit inert selection and unchanged default exposure. The package guide
+owns the proof files and reused packed-consumer scenario. The
 publication catalogue and derived source contract inventory these additions;
 neither generated navigation nor schema-object presence establishes activation
 or a successful installed consumer.
-
 
 The catalog extraction keeps the platform README as owner of its new package
 entries and moved witnesses, and the catalog domain README as owner of reference
@@ -362,22 +356,18 @@ inventories, direct reconcile and operator command composition. Their owner is
 the identity guide; runtime, package and publication owners retain their
 installation, consumer and execution-contract obligations.
 
-
-
 Identity ownership includes the disposable mailbox, profile-local policy and
 opt-in acceptance sources. The browser identity owner additionally describes
 the selected entry, account/admin mounts and closed import inventory. Runtime
 and architecture owners retain the shell's admission and public-policy boundary;
 contributor owners retain verification and command-inventory obligations.
 
-
 Privacy routing additionally names the identity-owned export/erasure contracts,
 canonical receipt SQL and projection, reference privacy routes and subscription
 veto, operator Settings panel and conformance modules. These selectors retain
-previous owners' impact obligations. Package composition, runtime mounting and
+previous canonical owners. Package composition, runtime mounting and
 direct/managed schema limitations remain explained by their respective owners;
 generated navigation describes source locations rather than installation proof.
-
 
 Identity routing includes the direct operator challenge source and tests,
 canonical/projection SQL, runtime auth composition and browser auth seams. The
@@ -386,9 +376,6 @@ selected-profile inventory, callback and persistence guidance. The identity guid
 owns their behavior; package, architecture, migration and runtime owners retain
 their API, installation and host explanations. Generated navigation reflects
 these routes and never substitutes for those substantive owner updates.
-
-
-<!-- openlup-doc-impact {"unit":"ownership","digest":"sha256-b3d56b4feaad78d44001bd18aeebe086853ba4c6f9cc79d1d49563c50591301d","reason":"The identity browser surface assigns customer pages, session hooks and browser adapters to their new canonical guide. Existing owner precedence and same-change documentation obligations remain unchanged; prior browser and data owners retain their impact review."} -->
 
 The [domain registry](../../src/lib/coreDomains.ts) names platform domains. The
 [publication catalogue](../../config/openlup-publication-catalog.json) supplies
@@ -424,7 +411,7 @@ match nothing are errors. The pending package changelog-fragment selector may
 match nothing after release preparation consumes every fragment; its owner route
 still applies when a new fragment appears. When moving or deleting a source,
 inspect its previous owner as well as its new owner; changing the route must
-not hide an obligation.
+not hide the previous contract owner.
 
 `anchor: ""` owns the complete page. A nonempty anchor owns that heading and
 its subsections until the next heading of the same or higher level. Selectors
@@ -436,7 +423,7 @@ section edit cannot answer their source changes. Production module selectors
 should not silently fall back to a package-wide README; narrow workflow routes
 should explain significant internal decisions.
 Historical exemption applies to Markdown documents, not executable or configuration
-inputs placed under a plan/history directory. Those inputs still owe impact review.
+inputs placed under a plan/history directory. Those inputs retain their actual implementation owners.
 
 Generated file views identify the responsibility owner and the source of the
 description. Authored guidance, source declarations and structural information
@@ -457,162 +444,42 @@ architecture owns explicit owner composition and provider readiness boundaries.
 
 ## Impact
 
-When an affected canonical section remains correct, a scoped no-impact explanation may be recorded in the change's in-tree task record at docs/platform/plans/<task>.md instead of a commit trailer. Use one active openlup-task-doc-impact record per owner and current delta, with the reported unit and digest, the exact owner document and anchor, and a substantive reason. The record must be newly introduced or changed relative to the comparison base and match the current source, modes and ownership. Existing records on the base, malformed or ambiguous records, and records bound to another delta or owner answer nothing. The checker reads regular in-tree files without network access, prints every accepted reason and still requires meaningful independent documentation assessment. Existing OpenLup-Doc-Impact trailers remain valid. A shallow checkout may use a task record only when the exact comparison-base tree and candidate tree are available; missing comparison objects still refuse. Trailer history retains its existing complete-history requirement.
+Documentation updates and their review follow
+[Deliver a change](../../CONTRIBUTING.md#deliver-a-change).
 
-Use the existing task record, with one active column-zero unfenced comment:
+## Navigation and source map
 
-```text
-<!-- openlup-task-doc-impact {"unit":"tooling","doc":"CONTRIBUTING.md","anchor":"#development-preview-checks","digest":"sha256-<reported 64 hex>","reason":"Explain why this exact owner section stays correct."} -->
-```
+Delivery, review and same-PR documentation updates follow
+[Deliver a change](../../CONTRIBUTING.md#deliver-a-change).
+The policy self-check validates owner paths and anchors, ordinary local Markdown
+links and generated navigation/source-map freshness. It checks structure; the
+reviewer checks whether the explanation remains true against source and contracts.
 
-The exact keys are unit, doc, anchor, digest and reason. The file must be an
-explicitly published regular Markdown file directly under plans/. An unchanged
-record already on the comparison base answers nothing. Changed source bytes,
-modes or ownership require a fresh digest. Duplicates, ambiguous or malformed
-active records fail; fenced, indented and inline examples are ignored. Reasons
-are printed with their task path. An independently staged answer concealed by
-restoring other worktree bytes refuses. Existing trailers and legacy section
-compatibility remain valid. No-impact text still needs substantive review.
+The migration-history and package Migration-block checks use an explicit full
+base SHA or a local merge base with `origin/main`. Hosted checks use validated
+event attribution and checkout identity, taking precedence over `--docs-base`.
+Missing comparison history is a refusal. A missing hosted base is fetched from
+the public repository by validated SHA, without credentials or ref updates.
 
+For `pull_request`, the checkout must have exactly two parents and its second
+parent must be the event head. The first parent must equal the event base or
+descend from it, allowing main to advance after the PR's fork point. The
+migration-history and package Migration-block checks compare that first parent
+with the checkout, covering only the PR's change. Missing objects or shallow
+history that cannot prove this ancestry refuse with a complete-history
+diagnostic; restore the required history before retrying.
 
-For a source change:
-
-1. Resolve its documentation impact against the comparison base.
-2. Read each affected canonical section and follow its source and test links.
-3. Update the explanation where behavior or the public boundary changed.
-4. If the section remains correct, record a scoped no-impact explanation as a
-   fresh in-tree task record or a commit trailer in the change itself, tied to the source delta and its owner.
-5. Regenerate navigation, then run the structural and impact checks.
-
-Each new native review report carries its short `documentation` assessment in
-the existing report. Check affected canonical sections and search related
-instructions/examples for changed public exports, options and commands. Assess
-no-impact reasoning against the source, not just its fingerprint. Documentation-
-only changes still need consequential claims checked against the selected code
-and contracts. A stale secondary example is not settled by a correct owner page.
-Prefer canonical links over unnecessary repeated explanations; package guides
-and versioned examples must remain self-contained for their installed artifact.
-
-The same policy entrypoint validates local Markdown link targets and fragments,
-including ordinary references outside the owner map, using the existing heading
-slugger and explicit HTML IDs. Fenced examples are not link instructions. No
-external website availability is required. These checks establish structure;
-nonempty assessments and source fingerprints do not prove semantic truth.
-
-The policy check uses an explicit full base SHA or a local merge base with
-`origin/main`. An optional local `OPENLUP_STACK_BASE` supplies the exact pinned
-predecessor for a stacked branch and is shared with native review and final
-verification. Conflicting `--docs-base` and environment pins refuse. A normal
-branch needs no pin. This keeps own-change fingerprints stable before and after
-the predecessor lands; native admission separately requires that base on main.
-Hosted checks use validated event attribution and checkout
-identity. Missing comparison history is a refusal, not a reason to assume that
-documentation has no impact. Hosted attribution takes precedence over
-`--docs-base`. A missing hosted base is fetched from the public repository by
-validated SHA, without credential helpers, prompts or ref updates. An immutable
-evaluation checkout lacking `origin/main` can pass its own full commit as the
-explicit base; a contribution needs its actual branch comparison base.
-The fallback refuses effective repository/worktree URL, HTTP or credential
-configuration, including included files and an alias named as the public URL,
-before starting transport. Its public HTTPS request disallows redirects and other
-transport protocols, pruning, submodule recursion and automatic maintenance. Resolve unsafe
-configuration before retrying; refusal diagnostics never print configured values
-or potentially credential-bearing keys.
-
-For `merge_group.checks_requested`, hosted attribution requires the public
-repository, a nonzero event base on `main`, and the event head/ref matching the
-actual queue checkout. The event's commit and tree identity must also match
-Git objects. Impact compares that complete event-base-to-group range; unknown,
-malformed or mismatched group identity refuses rather than borrowing a PR base.
-These structural checks establish attribution, not independent integration
-review or live queue activation.
-
-Generated output, whitespace, a review date or an unrelated paragraph cannot
-satisfy an affected section's obligation. A scoped no-impact explanation must
-be refreshed when its source delta or ownership changes. Its fingerprint binds
-the scope; it does not prove semantic correctness, reviewer identity or owner
-approval. Review the reason as carefully as a changed paragraph.
-The candidate includes staged, unstaged and nonignored untracked paths. If a pending
-staged source differs from both committed `HEAD` and the materialized candidate,
-reconcile the index before checking; hidden staged proposals must not disappear.
-An ordinary unstaged edit after a branch commit is supported.
-
-Run the existing structural and impact entrypoint from the repository root:
+From the repository root, check or regenerate navigation:
 
 ```sh
 npm run oss:published-tree -- --policy
-# For a deliberate local comparison, substitute the full ancestor commit SHA:
-npm run oss:published-tree -- --policy --docs-base <full-base-sha>
-# Regenerate the map and run the same check:
 npm run oss:published-tree -- --policy --docs-update
 ```
 
-An unanswered obligation reports its owner, changed paths and current digest.
-If the existing explanation remains correct, put the reported trailer on its
-own line in a commit message of the change. The policy output prints the exact
-line to complete:
-
-```text
-OpenLup-Doc-Impact: {"unit":"<reported-unit>","digest":"<reported-digest>","reason":"…"}
-```
-
-An existing trailer may be recorded in a signed commit; an empty commit is optional when a fresh task-record answer is used:
-
-```sh
-git commit --allow-empty -s -m "docs: record no-impact for <unit>" -m 'OpenLup-Doc-Impact: {"unit":"<reported-unit>","digest":"<reported-digest>","reason":"Explain why this section stays correct."}'
-```
-
-**What a record's digest binds:** the unit, the owner document and anchor, and
-the before and after content, mode and ownership of each changed path. It does
-not bind the owner section's prose or the comparison base commit.
-
-**When a record expires:** when the source delta or mapping changes, including
-a base change to a path the record covers. An edit of the owner section on
-`main` does not expire it, so independent pull requests never edit the same
-line to answer the same unit. Reviewers still read the reason against the
-current section.
-
-For trailers, only the change's own non-merge commits between the comparison
-base and `HEAD` count. The base's history and merge commits never answer, including the merge
-queue's synthetic tip, whose message is the pull-request description.
-This relies on the merge queue building merge commits; a squash or rebase queue
-would need its own rule.
-Records matching no current obligation are ignored; a malformed record in a
-change with obligations fails the check. A shallow checkout reads no trailers
-and checks a legacy comment only against the current section; fetch complete
-history. Every accepted reason is printed by `--policy` for review.
-
-When a required integration of main changes a covered source delta, refresh the
-in-tree task answer or record its fresh reason on a non-merge commit. The
-[focused integration review rule](../../CONTRIBUTING.md#native-review-and-accountability)
-also permits exactly one single-parent commit directly after the qualifying
-two-parent merge: its tree must equal the merge tree, and its message may contain
-only a subject, one or more `OpenLup-Doc-Impact` trailer lines and optional
-`Signed-off-by` lines. Reviewers receive and judge those reasons. The actual
-trailer tip remains the reviewed and receipted head; all existing coverage,
-expiry, intent, author, finding, cycle and mechanical-proof rules still apply.
-This does not change which commits answer obligations or what the digest binds.
-
-For compatibility, an in-section `openlup-doc-impact` comment accepted by the
-previous rule still answers: exactly one fresh record for the unit in its owner
-section. The comment's digest is the previous rule's, which also binds the owner
-section's text; that text may be the section at the candidate or at any of the
-change's own non-merge commits, so an edit of the section on `main` does not
-expire it either, while a source or mapping change still does. Only comments
-already written in open pull requests qualify; the digest `--policy` reports
-now is the trailer's and never satisfies this path. It remains until those pull
-requests have merged; existing comments on `main` answer nothing new and are
-removed with this compatibility path. Comments inside fenced or inline code
-never answer an obligation.
-
-The checker also keeps the previous owner's obligation when routing changes or
-a source disappears. Cosmetic edits, records and generated/provenance blocks
-are excluded from the substantive comparison. Adding irrelevant prose can still
-mislead a structural check: meaningful review remains necessary.
-
-See [contribution checks](../../CONTRIBUTING.md#development-preview-checks) for
-the other gates and their execution scope. Documentation checks do not replace
-behavioral tests or installation evidence.
+The routing map selects canonical owners; it is navigation rather than a second
+capability census. Regenerate after adding or moving sources or changing headings.
+Generated output does not establish runtime behavior, hosted qualification or
+compatibility with a different installed package version.
 
 ## Exporting
 
@@ -632,7 +499,7 @@ A clean export names the exact public source commit. A local candidate export
 binds its base revision and current content digest and is explicitly
 non-publishable; changed bytes must not be attributed to committed `HEAD`.
 HEAD, committed inventory, index and raw blob comparisons use the same isolated
-Git reader as impact checks, so local object replacements or environment
+Git reader as navigation checks, so local object replacements or environment
 redirects cannot substitute the revision being exported. The exporter compares
 raw bytes and modes without `git status` or worktree conversions, which could
 execute configured Git clean/process filters. A changed index or an untracked
@@ -700,7 +567,7 @@ npm run oss:published-tree -- --policy --docs-check-bundle dist-docs/committed \
 ```
 
 Bundle validation is a separate operation: it does not report that the current
-source tree passed policy/impact checks. A consumer with both pins refuses
+source tree passed policy checks. A consumer with both pins refuses
 drafts and mismatched revisions/digests. Its loader may import
 [validateDocumentationBundle](../../scripts/documentation-bundle-io.ts) directly;
 it must use data as plain Markdown, validate before rendering, and sanitize its

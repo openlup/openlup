@@ -440,7 +440,6 @@ See [the identity lifecycle](IDENTITY.md#operator-invitation-lifecycle) for expi
 cancellation, retained identity and managed concurrency limits.
 
 
-<!-- openlup-doc-impact {"unit":"browser","digest":"sha256-72979d3e343910cc061caf7f7335b82a8a1d4f0afbcec47f45b86e80632e9095","reason":"Deletion delta. The personalization route key, the homepage personalization flag and its hidden paths, and a personalizer comment are removed from browser code; no browser boundary described here changes."} -->
 
 Browser-facing modules own portable types, validation, clients, and pure logic.
 Server modules own HTTP composition, use cases, authorization decisions, and
@@ -484,7 +483,6 @@ of semantic or dataflow analysis; see the precise scope and exceptions in
 [contribution checks](../../CONTRIBUTING.md#development-preview-checks).
 
 
-<!-- openlup-doc-impact {"unit":"server","digest":"sha256-9cfdf7128ab62cd3a5e27dbf32460c1b005f8617537f7483950832afc55587a7","reason":"The admin-domain kit drops an uncalled managed-only preflight copy and its unused imports; the dispatcher keeps using the runtime auth binding's preflight. The customer kit, the runtime auth binding and the customer session binding drop unused imports and re-exports. A characterization test pins the reference customer binding's existing process-wide managed read settings independently of the passed bundle-selection environment. No runtime boundary described here changes."} -->
 
 The runnable server substrate lives in the development-preview `@openlup/platform`
 package: the Node HTTP runtime and its fixed request order, BFF dispatch,
@@ -678,8 +676,7 @@ not permit Node dependencies or I/O in kernel contracts or logic.
 Place a new module at declared subpaths of `@openlup/platform` by default.
 Use core and outbox only for their defined roles above. UI remains a future
 artifact role, with no current name reservation or bootstrap obligation. Record
-placement and the topology-trigger check in the module/API packet before
-implementation.
+placement and the topology-trigger check in the pull request's task record.
 
 A separate package needs evidence: incompatible peer ranges in supported cold
 installs; a genuinely different browser/edge/Node runtime; measured
@@ -688,7 +685,7 @@ or an actual independent consumer poorly served by subpaths. First
 assess whether an isolated subpath suffices; for adapters also consider an
 existing port, optional peer or application adapter. A provider name alone is
 not a trigger. Record the evidence and compatibility and maintenance ownership
-in the same packet. A trigger requires an explicit maintainer decision under
+in the pull request's task record. A trigger requires an explicit maintainer decision under
 the applicable authority; it grants no authority to create, bootstrap or
 publish a package. A
 new npm name also needs the maintainer's manual bootstrap before its first
@@ -696,8 +693,8 @@ release, not before its contribution PR; follow
 [package release setup](../../.github/VERSIONING_AND_EOL.md#package-releases).
 
 Size growth is not a topology trigger. When measured growth exceeds a cap,
-raise that cap in a reviewed change with the applicable maintainer read of the
-proposed budget; follow [Package artifact limits](../../.github/VERSIONING_AND_EOL.md#package-artifact-limits).
+raise that cap in a reviewed change that records the measured size and the new
+budget; follow [Package artifact limits](../../.github/VERSIONING_AND_EOL.md#package-artifact-limits).
 
 The opt-in Node `payments/stripe` example follows the same placement decision:
 it shares the platform package's release and maintenance owner and composes M07
@@ -1404,6 +1401,28 @@ or historical paid account payment spelling. Terminal, draft, expired and off-tr
 orders have no progress spine. OrdersScreen uses this projection with its existing
 labels, step resolution and payment recovery controls.
 
+### Native commerce read projection
+
+The existing `@openlup/platform/fulfillment/native` entry exposes
+`createPostgresFulfillmentCommerceReadPort`. It reads the native shipment spine,
+order items, settlement intent, holds, cycle and inventory reservation facts.
+The host supplies the existing `FulfillmentCommerceReadPolicy`, authentication,
+and a consistent snapshot transaction. An optional shipment destination reader
+overrides the default nonmutating SQL view reader. Reuse
+`evaluateCommerceFulfillmentEligibility` from the commerce entry; fulfillment
+contains no second eligibility implementation.
+
+**Destination reads:** the default reader calls
+`commerce_view_shipment_destination(uuid)` through the supplied executor without
+creating a binding. An explicitly injected reader wins. The preparation reader
+can pin a shipment binding and must not serve side-effect-free operator reads.
+Unavailable and owner-mismatch routine errors map to the corresponding
+`native_fulfillment_destination_*` refusals; other routine errors propagate unchanged. The explicit
+native reader is a reduced projection with the named limits below; it does not
+activate a route or change the unsupported-port factory. The existing commerce
+eligibility function remains injected, and the host explicitly maps captured
+order-mode values instead of the reader choosing application policy.
+
 ### Native parity boundaries
 
 | Capability | Native installation boundary | Required host binding |
@@ -1430,6 +1449,64 @@ capability selection/readiness and dispatch support before returning the shared
 typed refusal for a missing host binding, all before invoking a worker.
 Supplying a host fixture proves that seam's
 handler behavior; it does not establish native parity or activate any route.
+
+Commerce list/detail builders and served handlers accept optional `responseSchemas`.
+Their default remains the managed schemas, constructed from the unchanged managed
+address schema by an internal schema factory. The explicit native
+reader uses `nativeFulfillmentCommerceResponseSchemas` from the existing native
+entry; its additive order type permits a null saved-address id. The managed order
+type and its address validation remain unchanged. Builders also accept an explicit
+`hasShippingAddress` fact (an order-id map for lists, a boolean for detail); absent
+that option, they retain the saved-address pointer's truthiness. No route is enabled
+by these options; an optional injected destination reader overrides the SQL view.
+
+The explicit native commerce reader has these named limits. These limits do not
+change the managed reader or enable a separate parcel address display. Reservation
+summaries use the unchanged newest-first builder, including for multiple rows;
+no quantity-coverage override is applied.
+
+1. **FR01 — Reservation locations:** reservation location id and code are null;
+   this native rail does not carry local lots, locations or stock movements.
+2. **FR02 — Captured header identity:** shipment ids identify native shipments;
+   captured fulfillment client and provider kind are unavailable and remain null.
+3. **FR03 — Parcel lines:** lines are native order items in creation order with
+   captured order-draft product data; parcel-line identity and parcel-specific
+   frozen line data are unavailable, and parcel-line ids are null.
+4. **FR04 — Item reservation links:** exact persisted per-item reservation links
+   are unavailable to the runtime reader, so line reservation-id arrays are empty.
+5. **FR05 — Payment projection:** payment identity and external reference come
+   from the settlement intent, whose recorded states do not include the complete
+   payment-control lifecycle such as refunds and disputes.
+6. **FR06 — Address authority:** a null saved-address id means no saved-address
+   record in this store's native model. A resolved shipment destination does not
+   establish a captured fulfillment-address snapshot or its saved-address identity.
+7. **FR07 — Tracking activity:** tracking uses the newest order-linked tracking
+   reference; the native ledger has no separate active/deactivated flag.
+8. **FR08 — Operation evidence:** latest operation uses only the shipment ledger,
+   retains its native payload and has no actor id; required vocabulary conversions
+   do not reconstruct unavailable operator evidence, and unrepresentable types refuse.
+9. **FR10 — Order mode:** captured draft mode and cycle identity are supplied to
+    the host's mode mapping; legacy rows without captured mode do not prove the
+    original stored order-mode value.
+10. **FR11 — Orders without shipments:** fulfillment detail returns null when no
+    shipment exists and does not provide an order-contact display or fallback.
+11. **FR12 — Contact provenance:** delivery-contact resolution scope labels are
+    not part of this fulfillment projection.
+12. **FR13 — Contact revision:** this projection does not expose a revision for
+    operator contact corrections.
+13. **FR14 — Contact digest:** this projection does not expose a contact digest
+    for identifying or fencing a correction.
+14. **FR15 — Contact comparison:** baseline-versus-effective contact comparison
+    is not available through this projection.
+15. **FR16 — Contact correction scope:** this reader supplies no correction target,
+    correction action or legacy contact-resolution fence.
+16. **FR17 — Unavailable required facts:** native projection errors fail closed
+    when order, payment, destination, line or operation facts cannot be expressed;
+    selected rows are never silently omitted from a page.
+17. **FR18 — Shipping gate fact:** the native eligibility gate uses successful
+    shipment destination resolution instead of a non-null order saved-address
+    pointer; a resolved destination can therefore satisfy this gate without a
+    saved-address record.
 
 The [verified ingress](../../packages/platform/src/fulfillment/verifiedIngress.ts)
 and [reconciliation worker](../../packages/platform/src/fulfillment/providerReconciliationWorker.ts)
@@ -1761,9 +1838,39 @@ A failed facts or completion writer returns a pending attachment while paid
 service remains active. Hosts drain `writer.pending()` and retry `complete()`;
 rows without facts require resubmitting the original purchase facts. Changed
 accepted facts refuse; attachment replay does not reset a later method state.
+After successful completion, including a replay, the writer attempts an optional
+template unit on its existing query executor. A crash before that unit leaves the
+completed purchase without a template, as before; a later replay can fill it in.
+The unit writes only while there are no template lines and `template_version = 1`,
+so it preserves later edits and graduation. Lines and the optional price context
+are atomic with each other, but are separate from completion.
+Both materialization and resolution use admitted logical draft lines saved in
+order metadata. Per SKU, the template sums quantity, takes the earliest zero-based
+ordinal and uses the admitted unit price only when all its lines agree. Different
+prices for one SKU skip the whole template and pair with
+`subscription_template_unavailable`, `ambiguous_line_price`. Add-on roles come
+from retained `renewalTerms.linePricing`, read through the existing completed
+purchase terms reader, with false when no retained role exists. Effective order
+positions split by promotion allocation are never the template or price source.
+The resolver evaluates each original draft line using admission's currency,
+validity, mode-dependent sellable flags and entry precedence. Exactly one matching
+list sets a still-NULL list/currency pair; missing or ambiguous lists leave it NULL
+and log a neutral reason while the template can still be materialized.
+The optional unit catches only SQLSTATE classes 42 (access), 22 (data) and 23
+(integrity), logs `subscription_template_unavailable` plus the SQLSTATE once, and
+keeps the completion response. All other failures propagate. On a caller-bound
+transaction it uses a savepoint to discard failed optional work without aborting
+the transaction. The writer first attempts `SAVEPOINT native_purchase_template`:
+success establishes the savepoint; only SQLSTATE `25P01` identifies independently committed
+pool queries, which continue without one. Other savepoint errors propagate. This
+detection calls no database function and opens no explicit transaction. No runtime
+grant is added; missing template access leaves no template and native edits stay refused, as before this change.
+Graduation retries NULL context with the same resolver inside a best-effort
+savepoint, retaining its existing add-on precedence, service and due anchor.
 The runtime has no direct privileges on the attachment or method-event tables;
-fixed definer readers expose only pending identifiers/readiness and three
-completed snapshot fields. Method reads and cycle correlation use existing
+fixed definer readers expose pending identifiers/readiness and completed snapshot
+fields. `subscription_renewal_purchase_terms(uuid)` additionally returns the sealed
+retained renewal terms to the service role, without direct attachment-table reads. Method reads and cycle correlation use existing
 method/term and activation rows rather than opening either new table.
 
 Reference fields can contain identifying strings, including payer, method,
@@ -1772,16 +1879,25 @@ use opaque references instead of personal text. The attachment and method-event
 tables and method-state references have no privacy-lifecycle erasure path yet;
 they retain the privacy lifecycle's current erasure-coverage limit.
 
-`createNativeRenewalCodec()` supplies the `native.purchase-renewal.v1` dialect.
+`createNativeRenewalCodec()` preserves the `native.purchase-renewal.v1` dialect
+for legacy zero-shipping terms and uses `native.purchase-renewal.v2` when a
+`native.renewal-terms.v1` retained-terms document is present.
 It derives schedule, client, cadence, native template version, lines, money and authorization from durable
 rows, template identity from saved purchase facts, and logical cycle correlation
 from the activation's paid cycle plus the paid-cycle count matched against the
 native counter. Incomplete history refuses freezing. Frozen original retry and
 external-attempt counters are zero; later retry counters belong to the retry
 obligation. Agreement policy is `lock_until_edit`, proration is `none`, and
-renewal `shippingAmountMinor` must be zero on this rail; nonzero shipping is
-refused. Destination references remain null pending native
-destination composition. The frozen wire includes the full nested port snapshots
+the retained document supplies renewal delivery pricing. A shipping-threshold
+agreement freezes currency, flat fee and free threshold; product payable after
+product discounts is paid below the threshold and free at or above it. Fixed
+paid shipping also requires an explicit retained-terms document. The original
+zero-only SQL registration remains available; the package writer calls
+`subscription_register_renewal_purchase_with_shipping(uuid,jsonb)`. Retained
+facts come from the accepted server quote/offer, never mutable current settings
+or browser-supplied prices. The claim binds the destination and snapshots the
+actual retained shipping amount. Old zero-shipping snapshots keep their existing
+marker and fingerprint. The frozen wire includes the full nested port snapshots
 and the flat SQL fields, with no `_host` metadata. Its fingerprint is lowercase
 UTF-8 SHA-256 over JSON with object keys sorted by JavaScript string order and
 array order retained, excluding only the fingerprint field. The revision owns
@@ -1790,6 +1906,30 @@ terms and decode without host closure state. Schedule and authorization identity
 fields use UTC ISO strings with six fraction digits. The SQL millisecond cycle
 key truncates the fraction to three digits without rounding; it is a label,
 while row lookup and comparison retain the full microsecond instant.
+
+A retained acquisition marker fixes the promised second-delivery discount and
+its subtotal/rate basis, configured minimum payable, graduation lines/pricing and
+normal cadences. An unchanged subtotal keeps the exact promised discount; changed
+lines use complete retained list evidence with ceil rounding or the saved rate
+fallback, bounded by the configured minimum. Existing frozen operations win
+before any current-terms read. Before the first unlocked third delivery, a
+subscription-locked transaction graduates an unedited template, preserving
+add-ons and pricing evidence in the subscription event. An edited template may
+normalize its still-introductory cadence; an already selected normal cadence
+stays. Open payment/renewal obligations refuse graduation. Graduation does not
+advance the due anchor, pause service, execute payment or rewrite an old cycle.
+
+Supply the transaction runner to BOTH `createPostgresRenewalStore(executor,
+codec, withTransaction)` and `createPostgresRenewalSettlementPort(executor,
+codec, withTransaction)`. A retained snapshot refuses settlement preparation
+without it. Preparation writes integer effective product positions with retained
+catalogue/allocation evidence and a separate shipping adjustment before the
+existing deferred order-total constraint commits. Matching prepare replay adds
+neither positions nor shipping. Host composition must keep each callback on one
+connection through commit/rollback; a query-per-call pool is not a transaction.
+The settlement factory supplied to the native binding can pass this same runner
+as its third argument. Invoice composition uses the existing charged-total mapper
+with original subtotal, product discount and total, so delivery remains separate.
 
 `createPostgresSandboxRenewalRail` and `createSandboxRenewalPolicy` are explicit,
 no-key simulation, with `succeeded`, `declined` and `ambiguous` scenarios. They
@@ -1812,10 +1952,12 @@ evidence, then authorize recovery; service stays active throughout.
 The [installed PostgreSQL witness](../../tests/postgres/subscriptionPurchaseRenewal.test.ts)
 uses restricted runtime connections, real tarballs, writer failure/rollback,
 database restart and fresh processes. Purchase composition inputs remain fixtures
-until the joined checkout/payment proof. Successful public-run terminal replay
-still encounters `subscription_renewal_claim_not_due`; direct frozen readback is
-durable, but that runner repair is separate. This witness does not
-qualify whole-day lateness extension.
+until the joined checkout/payment proof. Matching succeeded or refused terminal
+history now replays before due eligibility, including after cancellation; changed
+identity, fingerprint or frozen input still refuses. Cancellation never admits
+new or nonterminal work. The [public renewal witness](../../tests/postgres/subscriptionPublicRenewal.test.ts)
+checks zero-write terminal replay, actual unhealthy-method repair, exhaustion,
+stock wait and whole-day payment lateness using genuinely past schedules.
 
 The hosted failure port now carries applied-transition attribution end to end:
 `applyFailedResult` returns optional nullable `paymentAttemptId` and
@@ -1892,6 +2034,13 @@ Recovery checks schedule, generation and expired lease; N3 refuses any prepared,
 acknowledged or settled payment graph. Stock locks and whole-basket rollback
 belong to SQL. A resumed wait requires paid cycle/settlement, consumed stock and
 a local fulfillment obligation; it records no parcel arrival.
+
+Stock-wait admit, refusal recovery and deficits translate SQLSTATE `55P03` into
+recognized inventory-admission busy details. The public `runRenewalBatchRows`
+omits a row throwing recognized busy from its result array, including on the
+normal-due path, and continues without an in-call retry. Busy alone does not
+fail the batch or add an error outcome. Other thrown errors still produce
+`status: "error"` with `reason: "renewal_processing_failed"`.
 
 `createPostgresStockAvailability` exposes read-only new-purchase ATP through the
 native seam. Its fixed 14-day soft priority and native hard holds are both
@@ -2019,11 +2168,40 @@ bound to that same callable. Neither factory installs a timer or selects a
 population. Disabled composition supplies no job; a selected module still needs
 its run port and complete catalogue schema observation.
 
-The [native reference binding](../../server/runtime/public-reference/m10SubscriptionBinding.ts)
-composes the existing renewal runner, mandatory G23, N1 dunning and N3 stock wait
-inside one host-owned durable population lease. Both normal-due and stock-recovery
-rows use the existing `runRenewalBatchRows` isolation: a thrown row yields an
-`error` result with `renewal_processing_failed` and later rows still execute.
+`createNativeSubscriptionBinding` from `@openlup/platform/subscriptions` composes
+renewal, delivery admission, retry and stock wait inside one host-owned durable
+population lease. The [reference binding](../../server/runtime/public-reference/m10SubscriptionBinding.ts)
+joins that pipeline to the existing public `createSubscriptionContribution`
+from `@openlup/platform/composition`, retaining the same job and trigger.
+The pipeline itself returns services, schema and realization admission without
+importing the composition module. Hosts compose those two public factories.
+Public `createNativeRetryDriver`,
+`withNativeDeliveryAlignmentRenewalAdmission`, `createPostgresRenewalSettlementPort`
+and `nativeSubscriptionSchema` also allow explicit host composition. No additional
+package entry or automatic executor is installed. Supply the complete installed
+catalogue identity, readiness observer, transaction lane, original frozen mandate
+and payment-owner ports. The payment readback must identify the exact prepared
+retry attempt; a sandbox host reuses its payment simulator's persisted attempt
+and observation, never the purchase ingress to settle the renewal. The retry
+readback's optional `sourceEvidence` carries the payment owner's source kind,
+observation reference/status/time/fingerprint and exact attempt reference into
+the existing recovery truth transaction. Sandbox recovery requires all six,
+with `verifiedEvidenceRef` equal to `sandbox:<observation ID>` and the exact
+observation instant as `occurredAt`. Ordinary renewal completion does not qualify
+this recovery path. Preserve the original saved method authorization time;
+a prepared ambiguous attempt is reconciled without another dispatch. The native binding locks the subscription and resolves its immutable destination
+in the same writable transaction as final snapshot construction and claim.
+Lower-level callers supply the transaction callback to `createPostgresRenewalStore`.
+The frozen `shippingAddressRef` is the destination UUID; later address changes do
+not rewrite it. Until cycle shipping quotes are available, `shippingQuoteRef`
+is the explicit typed `{ kind: "zero_shipping", shippingAmountMinor: 0 }` marker.
+It is distinguishable from an issued quote reference, and non-zero renewal
+shipping amounts still refuse. Existing frozen operations replay their retained
+wire. A host supplies the batch limit; its existing default is preserved.
+Both normal-due and stock-recovery rows use the existing `runRenewalBatchRows` isolation: a thrown row yields an
+`error` result with `renewal_processing_failed` and later rows still execute. A row
+throwing recognized inventory-admission busy is omitted instead, as described
+under the native stock-wait seam.
 Static admission precedes G23;
 existing cycles, prepared attempts and retries bypass new-cycle G23. Off without
 a captured case performs no G23 call; captured protected cases retain authority
@@ -2051,6 +2229,14 @@ arrival alone cannot emit a resumed notice. No automatic renewal operation
 pauses, suspends or interrupts an active subscription. Managed stock descriptors
 continue to declare SQL surfaces and unavailable TypeScript recovery; the served
 managed runner and account aggregation are unchanged.
+The six native renewal reservation, release, expiry and stock-wait routines
+enter the same inventory admission gate inline, before lock-bearing work, with
+the shared helper's busy and isolation codes. Their invoker rights, original
+execution grants and caller relation privileges remain unchanged. Custom invoker
+runtimes need no new grant; the shared helper stays owner-only. Only stock-wait
+admit maps admission busy errors; the reservation adapter preserves raw errors.
+The shipment destination view reads the pinned document or the order's current
+document without writing or acquiring preparation locks.
 
 `subscriptionLifecycleTemplate` maps existing lifecycle events plus M5 stock-wait
 started/resumed events to M04 templates. Payment failures use the installed
@@ -2067,6 +2253,69 @@ neutral customer skip and operator slide examples through the existing command
 port, preserving actor, time and key. Authentication and client authorization
 precede this facade. M12 retains account aggregation. The installed consumer
 covers enabled execution and readiness, actor and lifecycle-identity refusals.
+
+`createPostgresLifecycleMessages` is a native scheduled-host binding over the
+existing dunning queue, reminder ledger and subscription events. It maps native
+activation and customer pause/resume/cancel/skip/slide/bundle-edit facts to the
+existing lifecycle templates; it does not invent a parcel arrival or service
+pause. Both reminder producers run explicitly in this scheduled operation.
+For address-change events, a host uses either this binding or an outbox handler, not both, because their idempotency keys differ and the customer would receive two mails.
+`run(limit)` accepts 1–100 and mounts no HTTP route or scheduler. Supply one
+exclusive autocommit connection per `withSession` callback, host-composed transactional delivery
+send/read-receipt ports, and a trusted recipient/rendering/access-link binder.
+Session advisory locks serialize matching sends without holding a database
+transaction across delivery. Accepted receipts prevent sequential replay sends;
+dunning finalizers retain the native claim-token fence. Failed delivery changes
+notice/receipt work only. Failed event/reminder receipts stop automatic selection
+after six recorded attempts. Missing recipients, disabled controls and refused
+transactional consent terminally complete event/reminder notices in
+`subscription_notice_refusals`, under the same per-source advisory lock. Those
+rows are excluded before the batch limit and survive connected transfer;
+restoring a recipient, control or consent never resurrects that source. Refusal
+records are not delivery receipts and contain no recipient or rendered content.
+Expired dunning claims at their native attempt
+ceiling remain visible for host repair. These outcomes never pause service.
+Operator-requested `payment_recovery` notices inherit the latest same-case
+customer `payment_failed` template and payload, ordered by `created_at DESC,
+id DESC`. Their own notice ID, key and recovery path remain the delivery
+identity. Missing source history settles skipped with `notice_source_unavailable`.
+
+The optional `dispatch` policy accepts `leaseSeconds` (60), `maxAttempts` (6)
+and `transientBackoffSeconds` (900). The optional `recovered` policy accepts
+`windowSeconds` (172800). These are neutral safety defaults. Starter hosts must
+supply all four values explicitly from their typed configuration. Every supplied
+value must be a positive integer within
+the PostgreSQL integer range. Malformed objects, unknown keys and coercion refuse
+before any producers or claims run. `run(limit)` retains its default of 25.
+
+A returned failed receipt with `retryable: false` settles failed. A failed receipt
+with `retryable: true` or an omitted disposition requeues dunning at the SQL clock
+plus the configured backoff. The run result counts these notices in `requeued`.
+Read, binding, send and finalization exceptions leave native notices sending for
+lease reclaim and increment the invocation's `failed` counter. Accepted receipt
+readback precedes binding and eligibility checks. The same receipt and notice
+key own acknowledgement recovery. At the configured attempt ceiling an expired
+claim remains visible for host repair.
+
+Before recipient lookup, binding or sending, an unaccepted recovered notice
+requires its current case to be `recovered`, with `recovered_at` at or after the
+inclusive SQL-clock window cutoff and matching subscription/client UUIDs.
+Ineligible history settles skipped with `notice_recovery_ineligible`. Accepted
+old history reconciles sent through its existing receipt. The direct queue
+retains one recovered notice per case. The [delivery witness](../../tests/postgres/subscriptionNoticeDelivery.test.ts)
+exercises routing, disposition, recency and tuple-version conservation through
+the restricted runtime. The [task record](plans/oss-m19-v.md) carries the
+separately owned recovery-host handoff and its remaining proof boundary.
+
+Recipient and send-control/consent helpers retain their native rules. The runtime
+can read arbitrary client contacts and invoke reminder producers directly; SQL
+does not authorize end users or jobs. Keep the binding behind the trusted job
+host, never a browser-controlled endpoint. Rendering, locale, link authority and
+transport idempotency on ambiguous acceptance remain host responsibilities;
+captured proof does not qualify a live communications provider. The
+[notice task record](plans/oss-m19-g8.md) assesses the eight function-only grants and
+the [PostgreSQL witness](../../tests/postgres/m19NoticeIsolation.test.ts) exercises
+the selected binding and its failure/replay boundaries.
 
 ## Invoicing contracts
 
@@ -2170,8 +2419,12 @@ facts return typed unsupported without installing facts or consuming the owed
 duty. Clearance and observation host projections remain unsupported in this store.
 Delivery is supported only with the host's explicit M04 envelope projection;
 SQL primitives alone do not establish that envelope.
-The incumbent local-only constructor is preserved for the reference Postgres
-adapter. Its zero-tax order positions do not establish fiscal parity.
+The local-only constructor for the reference Postgres adapter adds effective
+delivery as a separate position: shipping charges less shipping discounts,
+omitting a zero delivery amount. Product positions and delivery close to the
+paid order total. The positive-delivery end-to-end witness remains blocked by
+native checkout conservation, so this source continuation does not prove that
+path. Its zero-tax positions do not establish fiscal parity.
 `INVOICING_MIGRATIONS` separates native child-document corrections and explicit
 host fiscal facts from managed base-row corrections and managed projections.
 The approved durable-duty re-pin voids a stored reversal after a proven
@@ -2234,7 +2487,12 @@ continue, with no uncertain receipt for these unsent failures. Uncertain transpo
 or lost local acknowledgement cannot become another send.
 
 The account-history host projection verifies owner/order before its query and
-keeps correction parent, signed total, currency and download availability. Missing
+keeps correction parent, signed total, currency and download availability. Invoice
+owner/order/document checks compare standard UUID identifiers by value, including
+uppercase and mixed-case spelling. Echoes retain their source spelling; opaque
+host references, provider references and artifact identities remain case-sensitive.
+The [restricted native witness](../../tests/postgres/invoicingCaptured.test.ts)
+checks owned history and PDF access with alternate UUID letter case. Missing
 native parity is typed unsupported with `host_binding_required`. Operator auth
 precedes query and customer ticket ownership precedes PDF fetch/validation. The
 reference browser client consumes the host route without importing the server
@@ -2661,6 +2919,32 @@ The fixture harness prepares dependencies; the upgrade command never installs
 them. Registry unavailability or an integrity mismatch fails the proof.
 
 ## Existing-store transfer and recovery
+
+The finite profile retains immutable order adjustment rows, including renewal
+shipping charges. Capture and restore preserve their row and order identities,
+amounts and timestamps under the existing aggregate limits. Shipping adjustments
+have no promotion reference; related promotion data keeps its existing profile
+boundary. Restore inserts these rows after their order parents in the same
+transaction and preserves the deferred total checks.
+
+The finite native table profile includes dunning cases, fenced notifications,
+reminder-ledger rows and transactional delivery receipts. Restore inserts cases
+before their notifications and retains accepted receipt identities rather than
+creating another delivery. The [notice witness](../../tests/postgres/m19NoticeIsolation.test.ts)
+compares those four row sets after connected capture/restore and repeats the
+restore against the same pristine baseline. No arbitrary table mapping or
+target activation is added.
+
+The finite connected profile includes subscription retry obligations and receipts,
+recovery authorizations and token hashes, stock-wait cases, and their dunning
+case/notification parents. It preserves frozen identity, retry state, expiry,
+revocation, consumed authority and notification leases rather than restarting
+those duties. These customer-linked payloads share the aggregate transfer limits
+and existing erasure-coverage limit. Token hashes retain the authority of valid
+bearers on the destination, so source retirement and exclusive target activation
+remain mandatory host steps. Populated renewal transfer also needs the stock
+profile's inventory/reservation entries; capture refuses absent profile entries
+instead of filtering writer-created facts.
 
 The [local handover witness](../../tests/postgres/runM14EffectHandover.ts)
 combines the existing canonical graph/private-media transfer with three dispatch
