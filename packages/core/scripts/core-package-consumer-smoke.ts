@@ -378,6 +378,8 @@ export function runCorePackageConsumerSmoke(options: CorePackageConsumerSmokeOpt
     const contextExecutable = join(consumerDir, "node_modules", ".bin", "openlup-context");
     assert(existsSync(contextExecutable), "offline installation did not link the local context executable");
     assert(run(contextExecutable, ["--help"], consumerDir).includes("Usage: openlup-context"), "installed context executable did not print usage");
+    const context = JSON.parse(run(contextExecutable, ["search", "extension seam", "--json"], consumerDir));
+    assert(context.hits.some((hit: { owner?: string }) => hit.owner === `https://github.com/openlup/openlup/blob/openlup-core-v${packageJson.version}/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md`), "installed context search did not retain its release-tagged source");
     run(process.execPath, ["smoke.mjs"], consumerDir);
     run(toolBinary("tsc", dependencyRoots), ["-p", "tsconfig.json", "--noEmit"], consumerDir);
     run(toolBinary("tsc", dependencyRoots), ["-p", "tsconfig.bundler.json", "--noEmit"], consumerDir);

@@ -28,6 +28,11 @@ function install(root: string, name: string, version = "0.31.0"): string {
   return directory;
 }
 
+function setSource(directory: string, source: string): void {
+  const file = join(directory, "AGENT_CONTEXT.md");
+  writeFileSync(file, readFileSync(file, "utf8").replaceAll(/"source":"[^"]+"/gu, `"source":${JSON.stringify(source)}`));
+}
+
 describe("installed agent context", () => {
   it("returns readable exact declaration and canonical excerpt spans offline", () => {
     const root = fixture();
@@ -49,6 +54,32 @@ describe("installed agent context", () => {
     const root = fixture();
     install(root, "platform", "0.30.0");
     expect(() => searchContext(root, "retry")).toThrow(/Mixed @openlup/);
+  });
+
+  it("accepts its own installed-version repository URL and retains the offline excerpt citation", () => {
+    const root = fixture();
+    const source = "https://github.com/openlup/openlup/blob/openlup-core-v0.31.0/docs/platform/CANONICAL_CONTRACTS.md";
+    setSource(join(root, "node_modules/@openlup/core"), source);
+    const hit = searchContext(root, "nextRetryAttemptAt").hits.find(item => item.owner);
+    expect(hit).toMatchObject({ owner: source, file: join(root, "node_modules/@openlup/core/AGENT_CONTEXT.md") });
+    const excerpt = readFileSync(hit!.file, "utf8").split("\n").slice(hit!.start - 1, hit!.end).join("\n");
+    expect(excerpt).toContain("nextRetryAttemptAt");
+  });
+
+  it.each([
+    "https://github.com/openlup/openlup/blob/openlup-core-v0.30.0/docs/owner.md",
+    "https://github.com/openlup/openlup/blob/openlup-platform-v0.31.0/docs/owner.md",
+    "https://github.com/openlup/openlup/blob/main/docs/owner.md",
+    "http://github.com/openlup/openlup/blob/openlup-core-v0.31.0/docs/owner.md",
+    "https://example.invalid/openlup/openlup/blob/openlup-core-v0.31.0/docs/owner.md",
+    "https://github.com/openlup/openlup/blob/openlup-core-v0.31.0/../owner.md",
+    "https://github.com/openlup/openlup/blob/openlup-core-v0.31.0/%2e%2e/owner.md",
+    "https://github.com/openlup/openlup/blob/openlup-core-v0.31.0//owner.md",
+    "https://github.com/openlup/openlup/blob/openlup-core-v0.31.0/docs/owner.md#L1",
+  ])("refuses an unbound or nonrelative repository source %s even for an unmatched query", source => {
+    const root = fixture();
+    setSource(join(root, "node_modules/@openlup/core"), source);
+    expect(() => searchContext(root, "unmatchedneedle")).toThrow(/Invalid corpus source/);
   });
 
   it("searches the supported corpus when another same-version OpenLup package has none", () => {
@@ -79,16 +110,18 @@ describe("installed agent context", () => {
     expect(hits.some((hit) => hit.file === join(directory, "AGENT_CONTEXT.md"))).toBe(false);
   });
 
-  it("returns a shared canonical excerpt once across installed packages", () => {
+  it.each([false, true])("returns a shared canonical excerpt once across installed packages (release URLs: %s)", releaseUrls => {
     const root = fixture();
     const excerpt = "## Idempotency\nRetry an outbox dispatch handler with one durable effect.\n";
     for (const [name, id] of [["outbox", "outbox-retry-dispatch-handler"], ["platform", "checkout-payment-idempotency"]]) {
       const directory = install(root, name);
-      const metadata = { id, source: "docs/platform/CANONICAL_CONTRACTS.md", heading: "Idempotency", sha256: createHash("sha256").update(excerpt).digest("hex") };
+      const source = releaseUrls ? `https://github.com/openlup/openlup/blob/openlup-${name}-v0.31.0/docs/platform/CANONICAL_CONTRACTS.md` : "docs/platform/CANONICAL_CONTRACTS.md";
+      const metadata = { id, source, heading: "Idempotency", sha256: createHash("sha256").update(excerpt).digest("hex") };
       writeFileSync(join(directory, "AGENT_CONTEXT.md"), `# Installed context\n<!-- openlup-context-inventory ${JSON.stringify([metadata])} -->\n<!-- openlup-context ${JSON.stringify(metadata)} -->\n${excerpt}<!-- /openlup-context -->\n`);
     }
     const hits = searchContext(root, "outbox retry dispatch handler idempotency").hits;
-    expect(hits.filter((hit) => hit.owner === "docs/platform/CANONICAL_CONTRACTS.md")).toHaveLength(1);
+    expect(hits.filter((hit) => hit.owner?.endsWith("docs/platform/CANONICAL_CONTRACTS.md"))).toHaveLength(1);
+    expect(hits.find((hit) => hit.owner)?.owner).toBe(releaseUrls ? "https://github.com/openlup/openlup/blob/openlup-outbox-v0.31.0/docs/platform/CANONICAL_CONTRACTS.md" : "docs/platform/CANONICAL_CONTRACTS.md");
     expect(hits.find((hit) => hit.owner)?.packageName).toBe("@openlup/outbox");
   });
 

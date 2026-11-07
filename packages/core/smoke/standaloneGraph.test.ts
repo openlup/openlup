@@ -28,6 +28,7 @@ const expectedSmokeFiles = [
   ...graphEntrypoints,
   "smoke/agentsWiringExample.ts",
   "smoke/nullAdapters.ts",
+  "smoke/readmeExample.ts",
   "smoke/standaloneImportGraph.ts",
   "smoke/stubBrand.ts",
 ].sort();

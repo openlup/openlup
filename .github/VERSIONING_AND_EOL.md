@@ -660,9 +660,19 @@ package, measured value, cap and “raise the cap in a reviewed PR”. Raising a
 limit means editing that one value in a reviewed change. Core's standalone
 `release:pack` also retains its existing class and aggregate checks.
 
+The npm developer-experience change enables declaration maps without JavaScript
+source maps. Core and Outbox remain inside their existing caps. On the merged
+main `9922c413` tree, Platform with a declaration map for every shipped
+declaration measures 2,290,602 compressed code bytes and 3,948 code files,
+2,777,108 tarball bytes, 13,259,399 unpacked bytes and 4,069 files. Its caps are
+those measurements times 1.02, rounded up: code bytes 2,055,017 -> 2,336,415;
+code files 3,039 -> 4,027; tarball bytes 2,595,000 -> 2,832,651; unpacked bytes
+12,204,310 -> 13,524,587; total files 3,173 -> 4,151. Every map resolves to a
+shipped source file. `release-gates.json` remains authoritative for the limits.
+
 Measurements below are from base `cf36b01`, set `0.16.0`, on 2026-10-19.
 One KiB is 1,024 bytes. The existing **compressed code** measure concatenates
-`dist` JavaScript/declarations and shipped `src` TypeScript in path order, then
+`dist` JavaScript/declarations, declaration maps and shipped `src` TypeScript in path order, then
 gzips them; it is packed content, not unpacked source bytes or the whole tarball.
 Root documentation/metadata forms the separately compressed docs class. Tarball
 bytes are npm's compressed `.tgz` size; aggregate files include SQL and metadata.
@@ -784,11 +794,14 @@ infer publication or fetch registry measurements.
 
 **Packed content allowlist.** Legitimate current artifacts include root Markdown,
 `LICENSE`, `package.json`, `release-gates.json`, Markdown under `docs/` and `api/`,
-JavaScript/declarations under `dist/`, shipped TypeScript under `src/` (including
+JavaScript/declarations and declaration maps under `dist/`, shipped TypeScript under `src/` (including
 core-source exports), and `sql/*.sql` plus `sql/manifest.json`. The gate permits
-JS/MJS/CJS and declaration TS/MTS/CTS forms in the code directories. Other kinds
+JS/MJS/CJS and declaration TS/MTS/CTS forms in the code directories.
+Declaration `.d.ts.map` files must resolve only to their shipped, tracked source
+and declaration; nonempty map source roots and embedded source contents are refused.
+Declaration references must name the adjacent packed map. Other kinds
 refuse even when tracked. Tests (`*.test.*`, `*.spec.*`, `__tests__`), fixtures,
-source maps, `.env*`, editor directories/files, swap files, `.DS_Store`,
+JavaScript source maps, `.env*`, editor directories/files, swap files, `.DS_Store`,
 `*.tsbuildinfo`, `*.tgz` and coverage refuse with package, file and rule.
 Existing source provenance, export completeness and source-map-reference checks
 remain in force.

@@ -163,7 +163,7 @@ function assertPublishablePackageAudit({
 
 function assertPackagedContent({ packageRoot, packageName, packFiles }: AuditInput): void {
   const textFiles = packFiles.filter((path) => {
-    const isKnownText = extensionlessTextPackFiles.has(path) || /\.(d\.ts|js|json|md|ts)$/.test(path);
+    const isKnownText = extensionlessTextPackFiles.has(path) || /\.(d\.ts(?:\.map)?|js|json|md|ts)$/.test(path);
     assert(isKnownText, `packed core tarball has an unclassified file; classify it before scanning: ${path}`);
     return isKnownText;
   });

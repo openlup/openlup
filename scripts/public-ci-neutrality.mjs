@@ -38,6 +38,8 @@ const adapterSubpathFiles = new Set([
   "server/runtime/communications/a1ReferenceBinding.test.ts",
   "packages/platform/package.json",
   "packages/platform/release-gates.json",
+  // owner-approved via #526/#585 (2026-11-07)
+  "packages/platform/AGENTS.md",
   "packages/platform/test/packageBoundary.test.ts",
   "config/openlup-publication-catalog.json",
   "packages/platform/CHANGELOG.md",
@@ -132,6 +134,8 @@ const paymentAdapterCarriers = new Set([
   "config/openlup-publication-catalog.json", "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
   "docs/platform/CANONICAL_CONTRACTS.md", "scripts/packages/platform-cold-consumer.ts",
   "scripts/packages/platform-cold-consumer.test.ts",
+  // owner-approved via #526/#585 (2026-11-07)
+  "packages/platform/AGENTS.md",
 ]);
 const paymentAdapterSubpath = new RegExp(`(?<![\\w-])payments/(?:${paymentAdapterNames.join("|")})(?![\\w-])`, "g");
 const paymentAdapterReport = new RegExp(`(?<![\\w.-])payments-(?:${paymentAdapterNames.join("|")})\\.api\\.md(?![\\w./-])`, "g");
