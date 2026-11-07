@@ -259,7 +259,7 @@ export function createNpmReleaseChecks(input: {
 // sources; the docs budget counts files at the package root (documentation and
 // metadata). Anything else counts only toward the tarball total.
 export function packFileClass(path: string): "code" | "docs" | "other" {
-  if (/^dist\/.+\.(?:js|d\.ts)$/.test(path) || /^src\/.+\.ts$/.test(path))
+  if (/^dist\/.+\.(?:js|d\.ts(?:\.map)?)$/.test(path) || /^src\/.+\.ts$/.test(path))
     return "code";
   return path.includes("/") ? "other" : "docs";
 }

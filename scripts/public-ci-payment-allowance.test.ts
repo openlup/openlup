@@ -87,7 +87,7 @@ it("keeps the payment vocabulary allowance within exact source/report/ledger pat
   expect(words(witnessPath, witnessContents)).toBe(2);
   expect(neutralityIncreases({}, { [witnessPath]: { "ui-13": witnessCount - words(witnessPath, witnessContents) } })).toHaveLength(0);
   for (const path of ["packages/platform/package.json", "packages/platform/README.md", "scripts/packages/platform-cold-consumer.ts",
-    "packages/platform/changes/a-two.md"]) {
+    "packages/platform/changes/a-two.md", "packages/platform/AGENTS.md"]) {
     expect(words(path, `payments/${vendor}`)).toBe(1);
     expect(words(path, vendor)).toBe(0);
     expect(words(path, `payments/${vendor}-other`)).toBe(0);
@@ -163,7 +163,7 @@ it("keeps the second payment adapter and its market token within the approved al
     ]));
   }
   for (const path of ["packages/platform/package.json", "packages/platform/README.md", "scripts/packages/platform-cold-consumer.ts",
-    "packages/platform/changes/a-two.md"]) {
+    "packages/platform/changes/a-two.md", "packages/platform/AGENTS.md"]) {
     expect(allowedPaymentAdapterWords(path, `payments/${vendor}`, category)).toBe(1);
     expect(allowedPaymentAdapterWords(path, vendor, category)).toBe(0);
     expect(allowedPaymentAdapterWords(path, `payments/${vendor}-other`, category)).toBe(0);

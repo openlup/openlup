@@ -2822,6 +2822,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/smoke/readmeExample.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/smoke/riskStandalone.test.ts",
       "class": "public-output"
     },
@@ -3419,6 +3423,10 @@
     },
     {
       "path": "packages/outbox/vitest.config.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/AGENTS.md",
       "class": "public-output"
     },
     {
@@ -8222,6 +8230,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/agentsWiringExample.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/bff/dispatch.test.ts",
       "class": "public-output"
     },
@@ -11219,6 +11231,10 @@
     },
     {
       "path": "scripts/packages/packages-check.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/platform-agent-guide.test.ts",
       "class": "public-output"
     },
     {
