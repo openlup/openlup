@@ -985,7 +985,9 @@ angle characters, Unicode whitespace and malformed percent encoding refuse with
 an actionable error. Use literal punctuation or percent-encoded filenames and
 ASCII whitespace before optional titles. This keeps ambiguous Markdown from
 silently checking a different file.
-It refuses source maps and source-map references, build-machine home paths, and
+Declaration maps may resolve only to their shipped, tracked source and adjacent
+declaration. It refuses JavaScript source maps, other source-map references,
+build-machine home paths, and
 the operational coordinates the public detector knows. It prints each tarball's
 integrity. `-- --out <dir>` implies `--pack`. It keeps each publishable
 package's tarball in an empty directory, with a `packages-manifest.json` of

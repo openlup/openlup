@@ -6,12 +6,13 @@
   "license": "Apache-2.0",
   "type": "module",
   "engines": {
-    "node": "24.x"
+    "node": ">=24"
   },
   "packageManager": "npm@11.19.0",
   "sideEffects": false,
   "files": [
     "AGENT_CONTEXT.md",
+    "AGENTS.md",
     "dist/**",
     "src/**",
     "sql/**",

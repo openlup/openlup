@@ -955,17 +955,17 @@
   },
   "pack": {
     "code": {
-      "maxPackedBytes": 2055017,
-      "maxFiles": 3039
+      "maxPackedBytes": 2336415,
+      "maxFiles": 4027
     },
     "docs": {
       "maxPackedBytes": 75000,
       "maxFiles": 10
     },
-    "maxPackedBytes": 2595000,
-    "maxUnpackedBytes": 12204310,
-    "maxFiles": 3173,
-    "capReason": "Measured complete installed catalogue plus bounded remaining stores, ordered SQL and distribution reserve; actual plus reserve times 1.02, bytes rounded up to 5,000 and files rounded up. Existing larger caps are retained.",
+    "maxPackedBytes": 2832651,
+    "maxUnpackedBytes": 13524587,
+    "maxFiles": 4151,
+    "capReason": "Measured complete installed catalogue plus bounded remaining stores, ordered SQL and declaration maps for every shipped declaration, on the merged main 9922c413 tree: code 2,290,602 bytes and 3,948 files, tarball 2,777,108 bytes, unpacked 13,259,399 bytes, 4,069 files; caps are measured times 1.02, rounded up.",
     "baseline": {
       "version": "0.35.0",
       "packedBytes": 2097540

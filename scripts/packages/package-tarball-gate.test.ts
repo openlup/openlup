@@ -44,6 +44,20 @@ describe("tarball gate", () => {
     expect(rules(packed([], { "package.json": renamed }))).toEqual(["manifest"]);
     expect(rules(packed([], { "package.json": null }))).toEqual(["manifest"]);
   });
+  it("accepts declaration maps to shipped source and refuses broken or nonlocal maps", () => {
+    const map = { version: 3, file: "a.d.ts", sourceRoot: "", sources: ["../src/a.ts"], names: [], mappings: "" };
+    const declaration = "export declare const a = 1;\n//# sourceMappingURL=a.d.ts.map\n";
+    const entries = (patch = {}) => packed([["dist/a.d.ts.map", JSON.stringify({ ...map, ...patch })]], { "dist/a.d.ts": declaration });
+    expect(rules(entries())).toEqual([]);
+    for (const patch of [{ sources: ["/src/a.ts"] }, { sources: ["../../src/a.ts"] }, { sources: ["../src/missing.ts"] }, { sources: [] }, { sourceRoot: "https://example.invalid/" }, { sourcesContent: ["source"] }, { file: "other.d.ts" }, { version: 2 }]) {
+      expect(rules(entries(patch)), JSON.stringify(patch)).toContain("sourcemap");
+    }
+    expect(rules(entries().filter(({ path }) => path !== "src/a.ts"))).toContain("sourcemap");
+    expect(rules(entries().filter(({ path }) => path !== "dist/a.d.ts"))).toContain("sourcemap");
+    expect(rules(packed([["dist/a.d.ts.map", "not JSON"]]))).toContain("sourcemap");
+    expect(rules(packed([], { "dist/a.d.ts": declaration }))).toContain("sourcemap");
+    expect(rules(packed([["dist/a.d.ts.map", JSON.stringify(map)]], { "dist/a.d.ts": declaration.replace("a.d.ts.map", "../a.d.ts.map") }))).toContain("sourcemap");
+  });
   it("refuses each seeded defect", () => {
     expect(rules(packed([["dist/a.js.map", "{}"]]))).toEqual(["sourcemap"]);
     expect(rules(packed([], { "dist/a.js": "export const a = 1;\n//# sourceMappingURL=data:application/json;base64,e30=\n" }))).toEqual(["sourcemap"]);

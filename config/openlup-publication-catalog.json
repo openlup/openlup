@@ -3422,6 +3422,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/AGENTS.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/AGENT_CONTEXT.md",
       "class": "public-output"
     },
@@ -8222,6 +8226,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/agentsWiringExample.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/bff/dispatch.test.ts",
       "class": "public-output"
     },
@@ -11219,6 +11227,10 @@
     },
     {
       "path": "scripts/packages/packages-check.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/platform-agent-guide.test.ts",
       "class": "public-output"
     },
     {
