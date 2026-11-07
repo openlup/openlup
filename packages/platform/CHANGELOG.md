@@ -98,6 +98,16 @@ their served behavior. This introduces no provider retry worker or erasure path.
   they do not qualify a provider or record physical delivery. Native commerce
   list/detail reads retain their existing refusal.
 
+### Native account reads
+
+- Extend account-support with explicit native reads for owned order persistence,
+  subscription evidence, existing actor snapshots and newsletter withdrawal.
+  Missing saved profile/events sources refuse by section. Historical summaries
+  retain recorded amounts while detail without captured money refuses. Paid
+  activation gaps appear on owned orders, without invented subscriptions.
+  Consent choices/grants use the separate consent lifecycle; saved flags
+  never establish evaluator consent.
+
 ### Native OMS, returns and support store bindings
 
 Expose the existing PostgreSQL OMS control, reduced control-plane, delivered

@@ -24,15 +24,6 @@ Releases moved verbatim out of the packed `CHANGELOG.md`, which keeps the curren
   storage consent or establish delivery or attribution. No SQL migration is
   introduced by this set.
 
-## Unreleased native account reads
-
-- Extend account-support with explicit native reads for owned order persistence,
-  subscription evidence, existing actor snapshots and newsletter withdrawal.
-  Missing saved profile/events sources refuse by section. Historical summaries
-  retain recorded amounts while detail without captured money refuses. Paid
-  activation gaps appear on owned orders, without invented subscriptions.
-  Complete consent choices/grants await their separate change; saved flags
-  never establish evaluator consent.
 ## [0.33.0]
 
 - Publishable on the npm `latest` dist-tag as `0.33.0`, from tag
