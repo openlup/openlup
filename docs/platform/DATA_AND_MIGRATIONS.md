@@ -1489,10 +1489,15 @@ rules; data statements require exact head-class slot entries. CHECK and UNIQUE
 replacements use the named, closed entries below. A whole-file hash does not
 bypass the content checks.
 
-One signature may be replaced by at most one slot. Its before-hash binds the
-latest definition in the pre-class native prefix, and replacement headers stay
-identical apart from the CREATE OR REPLACE introducer. The class-local identity
-reader normalizes scalar aliases, schema-qualified composite/table arguments and
+A signature may be replaced again in a later slot with a later migration time
+only when its before-hash equals the immediately preceding replacement pin's
+after-hash. An unbound predecessor refuses. The actual latest definition in the
+ordered prefix must also match that before-hash; a first replacement still binds
+the pre-class definition. Replacement headers and search_path stay identical to
+that preimage apart from CREATE OR REPLACE, and the PostgreSQL catalog preserves
+owner and ACL. Issued contents, positions and the sealed-prefix rule stay fixed.
+
+The class-local identity reader normalizes scalar aliases, schema-qualified composite/table arguments and
 arrays against exact listed signatures; earlier identity readers stay unchanged.
 Token separators and case folding for closed object/type identities follow ASCII
 SQL spelling; Unicode whitespace lookalikes cannot become listed identifiers or
