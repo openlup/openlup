@@ -1839,9 +1839,12 @@ portion proposal arithmetic. Ordinary edits use frozen `dailyNeed`, never fresh
 profile recommendations. `readFacts` runs at candidate discovery, preview and
 new apply. For the five sized bundle/mix/plan/portion commands,
 `assertCurrentFacts` must lock and reread the host's owned subject/exclusion
-rows, optional opt-in need, and all selected SKU catalogue facts on the supplied
-transaction connection before SQL apply. It compares those reads with the apply
-quote's evidence; locks hold until commit. Catalogue evidence includes variant,
+rows and optional opt-in need, and reread all selected SKU catalogue facts, on
+the supplied transaction connection before SQL apply. It compares those reads
+with the apply quote's evidence; subject locks hold until commit. Catalogue rows
+are reread, not locked, because a restricted runtime may only read them;
+serializing an apply against a concurrent catalogue publication is the named
+publication-fence limit. Catalogue evidence includes variant,
 SKU and group identity, add-on/sellable flags, document revision and digest,
 verification, physical size, demand per unit, exclusion keys and `sellableNow`.
 Selected facts are ordered by canonical variant UUID and exclusion keys are
@@ -3308,7 +3311,9 @@ catalogue it proves the generic utility refuses outbox restoration and leaves
 the source state intact. The existing
 [cold consumer](../../scripts/packages/platform-cold-consumer.ts) executes actual
 private bytes and injected-row refusal without optional peers, then proves
-trigger-free subscription-event loss/recovery using installed artifacts.
+renewal-term-line loss/recovery using installed artifacts. With the sized editor
+installed, subscriptions and subscription events carry INSERT guards, and the
+proof shows the generic utility's typed refusal for both.
 Its outbox check proves identical replay on the earlier catalogue or typed
 refusal when the channel INSERT guard is installed. With the complete 0.34.0
 catalogue, outbox restoration needs the reference-source owner path; the generic
