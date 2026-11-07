@@ -1370,10 +1370,13 @@ Findings have stable `id`, `summary` and `material` fields; a later report close
 one through `closes: ["<id>"]`. Advice uses `material: false`. The `documentation`
 assessment checks stale claims and related examples, including for documentation
 changes. Delta reports identify `candidate.coverage.delta` and include
-`"ordinary": true`. That digest covers the diff with full object names, so every
-clone derives it alike. An edge recorded with abbreviated names before this rule
-still replays wherever those names reproduce; if admission refuses it, replay the
-session's preparations in a clone holding only main and the branch, or use `prepare --new`.
+`"ordinary": true`. That digest covers the diff with full object names, so it does
+not depend on how many objects the local repository holds. An edge recorded with
+abbreviated names before this rule still replays wherever those names reproduce.
+Every later preparation keeps the history, so if admission refuses such an edge,
+rebuild the session in a clone holding only main and the branch: keep the events
+before the refused preparation, repeat each later `prepare` at its recorded head and
+record the same reports, each delta report naming its new delta.
 State stays in `.context/scratch/agent-review/session.json`;
 unchanged preparation preserves evidence and history. `verify` refuses dirty,
 mismatched, partial or missing evidence and unclosed blockers. On the CI-only
