@@ -2286,10 +2286,6 @@
       "class": "public-output"
     },
     {
-      "path": "examples/neutral-store/shared/interim-pricing.ts",
-      "class": "public-output"
-    },
-    {
       "path": "examples/neutral-store/shared/limits.ts",
       "class": "public-output"
     },
