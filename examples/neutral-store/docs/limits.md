@@ -9,7 +9,7 @@ application composition limits; they are not claims of exported package errors.
 
 | Limit | Actions | Named refusal |
 | --- | --- | --- |
-| N1 | Live products, SKUs, price lists, price entries and promotions are seed data: one owned demo-seed step with the install connection, no runtime writer for them and no checkout promotion codes. Bundle drafts, compositions, target prices and activation, and catalogue drafts, are administered by a native human operator through their native writers. | `starter_promotion_write_unavailable` |
+| N1 | Live products, SKUs, price lists, price entries and promotions are seed data: one owned demo-seed step with the install connection, no runtime writer for them and no checkout promotion codes. Bundle drafts, compositions, target prices and activation, and catalogue drafts, are administered by a native human operator through their native writers. An activated bundle is not purchasable in this release. | `starter_promotion_write_unavailable` |
 | N2 | Operator email/phone correction and account linking | `operator_subscription_authority_unavailable` |
 | N3 | Order note and order-address correction | `starter_order_correction_unavailable` |
 | N4 | Replacement request and complete fulfillment cancellation | `host_binding_required` |

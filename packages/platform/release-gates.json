@@ -967,8 +967,8 @@
     "maxFiles": 3173,
     "capReason": "Measured complete installed catalogue plus bounded remaining stores, ordered SQL and distribution reserve; actual plus reserve times 1.02, bytes rounded up to 5,000 and files rounded up. Existing larger caps are retained.",
     "baseline": {
-      "version": "0.35.0",
-      "packedBytes": 2097540
+      "version": "0.36.0",
+      "packedBytes": 2104577
     },
     "browserEntries": {
       "./catalog/contracts": 4096,

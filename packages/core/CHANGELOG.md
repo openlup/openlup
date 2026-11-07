@@ -10,6 +10,17 @@ in the source repository.
 
 ## [Unreleased]
 
+## [0.37.0]
+
+- Publishable on the npm `latest` dist-tag as `0.37.0`, from tag
+  `openlup-core-v0.37.0`.
+
+- Recognize `commerce.settlement.settled`, already emitted by the platform settlement rail, in `PLATFORM_EVENT_VOCABULARY`. A known settlement fact without a registered consumer can remain pending without blocking a later paid receipt on the same order aggregate. This adds no handler, acknowledgement, delivery or SQL seed.
+
+Migration:
+
+Hosts using the complete vocabulary for readiness must supply an explicit owned `ignored` or `dormant` exemption for this type when they select no consumer. The claim allowlist still derives from handlers; readiness refusal for an unhandled, unexempted type is unchanged. No schema, grant or package-version change is needed in this source fix.
+
 ## [0.36.0]
 
 - Publishable on the npm `latest` dist-tag as `0.36.0`, from tag
@@ -19,11 +30,3 @@ in the source repository.
 
 - Publishable on the npm `latest` dist-tag as `0.35.0`, from tag
   `openlup-core-v0.35.0`.
-
-## [0.34.0]
-
-- Publishable on the npm `latest` dist-tag as `0.34.0`, from tag
-  `openlup-core-v0.34.0`.
-
-- Republish with the complete `0.34.0` package set for Platform’s optional
-  measurement consent policies. Core runtime, exports and SQL are unchanged.
