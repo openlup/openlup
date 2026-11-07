@@ -1238,6 +1238,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261106060000_subscription_retry_recovery_truth.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4119,6 +4123,10 @@
     },
     {
       "path": "packages/platform/sql/20261106050000_customer_command_key_isolation.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261106060000_subscription_retry_recovery_truth.sql",
       "class": "public-output"
     },
     {
@@ -28855,6 +28863,10 @@
     },
     {
       "path": "tests/postgres/subscriptionPurchaseTemplateLegacy.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionRecoveryTruth.test.ts",
       "class": "public-output"
     },
     {

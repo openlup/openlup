@@ -3216,6 +3216,20 @@
         "createdFunctions": [],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "RecoveryTruth",
+        "path": "db/platform/migrations/20261106060000_subscription_retry_recovery_truth.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.subscription_retry_record_recovery(uuid,text,jsonb)",
+            "beforeSha256": "a2f9cc370f53e23abe4e0e5d4b47924a0cad238f36c8e00a015bef437ee26eaa",
+            "searchPath": "pg_catalog"
+          }
+        ],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -3500,6 +3514,17 @@
           "signature": "public.dunning_lifecycle_handle_failure(uuid,timestamptz,text,text,integer,timestamptz,text,text)",
           "beforeSha256": "9682edba38b5b397736af12862fd9a8315ae4b2fadf4a9774f502fb337e3d5bb",
           "afterSha256": "445578959cd43bf23bb5caa71a1e531533e678b334bced24f7eacac8be6e4df0"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261106060000_subscription_retry_recovery_truth.sql",
+      "sha256": "99c48e6ea421b83a1273874fd6a490c42c545217d4fdcdfb2e98cdfabdf6c425",
+      "functions": [
+        {
+          "signature": "public.subscription_retry_record_recovery(uuid,text,jsonb)",
+          "beforeSha256": "a2f9cc370f53e23abe4e0e5d4b47924a0cad238f36c8e00a015bef437ee26eaa",
+          "afterSha256": "231cd0be749b3e90f6beb50de1077435f4d51bd94c046e05818df5e9246bb1ee"
         }
       ]
     }
