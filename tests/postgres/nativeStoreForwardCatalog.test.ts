@@ -443,6 +443,35 @@ describe.each([{ serviceRole: true }, { serviceRole: false }])("native store for
   afterAll(async () => { await closePostgres(container, pool); }, postgresTeardownTimeoutMs);
 
   it("replays every unbound native chain unit", () => { expect(replay.applied).toBe(chain.length); });
+  it("installs two replacement slots with pinned bodies and unchanged function attributes and ACL", async () => {
+    const db = await pool.connect(), signature = "public.cat_replaced(text,boolean)";
+    const definition = (body: string) => `CREATE OR REPLACE FUNCTION public.cat_replaced(p text, q boolean DEFAULT false) RETURNS text LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$${body}$$;`;
+    const original = sqlStatements(SYNTHETIC_BASE).find(statement => statement.startsWith("CREATE FUNCTION public.cat_replaced("))!;
+    let beforeSha256 = sqlSha256(original);
+    try {
+      await db.query("BEGIN");
+      let before = await pinned(db, () => snapshot(db));
+      const migrationRole = String((await db.query("SELECT current_user::text AS role")).rows[0].role);
+      for (const body of [" SELECT 'first replacement' ", " SELECT 'second replacement' "]) {
+        const statement = definition(body), afterSha256 = sqlSha256(statement);
+        const slot: CatalogSlot = { createdFunctions: [], replacedFunctions: [{ signature, beforeSha256, searchPath: "pg_catalog, pg_temp" }], grantOnlyFunctions: [] };
+        await db.query(statement);
+        const after = await pinned(db, () => snapshot(db));
+        await pinned(db, async () => assertSlotCatalog(db, slot, before, after, migrationRole));
+        const installed = after.functions.find(fn => fn.oid === before.functions.find(fn => fn.name === "public.cat_replaced(text,boolean)")!.oid)!;
+        expect(installed.src).toBe(body);
+        // afterSha256 binds a split statement; combine its fixed header with PostgreSQL's exact installed body.
+        expect(sqlSha256(definition(installed.src))).toBe(afterSha256);
+        before = after; beforeSha256 = afterSha256;
+      }
+    } finally { await db.query("ROLLBACK"); db.release(); }
+  });
+  it.each(["header", "ACL"])("refuses a second replacement that changes its %s", async change => {
+    const statement = REPLACE_PART.replace("'after'", "'second replacement'");
+    const sql = change === "header" ? statement.replace("LANGUAGE sql", "LANGUAGE sql STABLE") : `${statement} GRANT EXECUTE ON FUNCTION public.cat_replaced(text,boolean) TO authenticated;`;
+    const slot: CatalogSlot = { createdFunctions: [], replacedFunctions: SYNTHETIC_SLOT.replacedFunctions, grantOnlyFunctions: [] };
+    await expect(checkForward(pool, slot, sql, false, REPLACE_PART)).rejects.toThrow(/changed attributes or ACL/u);
+  });
   it("admits a conforming forward", async () => { await checkForward(pool, SYNTHETIC_SLOT, CONFORMING); });
   it("admits only the named new table runtime ACL and policy", async () => { await checkForward(pool, NOTICE_SLOT, forward(CREATED_OK, NOTICE_SQL)); });
   it("admits a widened purpose CHECK that its slot lists", async () => { await checkForward(pool, PURPOSE_SLOT, forward(CREATED_OK, purposeCheck("CHECK (purpose IN ('a','b','c'))"))); });
