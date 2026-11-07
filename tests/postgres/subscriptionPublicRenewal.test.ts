@@ -1,3 +1,4 @@
+import { createPostgresCommerceOmsPort } from "@openlup/platform/commerce/server/postgres";
 import { createPostgresRenewalSettlementPort as mainSettlement } from "../../server/adapters/postgres/commerce/renewalSettlement.js";
 import { connectedNativeStoreTables } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { randomUUID } from "node:crypto";
@@ -353,6 +354,27 @@ it("forwards the payment owner's captured observation into the real recovery wri
   await store.recordRecovery(first.operationId, receipt.receipt_key, receipt.input);
   await expect(store.recordRecovery(first.operationId, receipt.receipt_key, { ...receipt.input, attemptRef: randomUUID() })).rejects.toMatchObject({ code: "23505" });
   expect(await allPublicRows(admin)).toEqual(before);
+});
+
+it("does not report retry-driver success when capture is retained for review after OMS cancellation", async () => {
+  const f = await active(), d = await deps(f.subscriptionId, "declined");
+  const first = await api.runOneAutomaticSubscriptionRenewal(d.input, d.due, now);
+  const row = (await api.createPostgresRetryStore(executor).read(first.operationId))!;
+  const operator = randomUUID();
+  await admin.query("INSERT INTO public.commerce_operators(id,label) VALUES($1,'Synthetic operator')", [operator]);
+  const recovery = retryDriver(d, "succeeded", row.nextRetryAt!), read = recovery.options.payments.readOutcome;
+  let counter: number | undefined;
+  recovery.options.payments.readOutcome = async (...input) => {
+    const result = await read(...input);
+    await createPostgresCommerceOmsPort(executor).cancelOrder({ idempotencyKey: `cancel:${row.orderId}`, orderId: row.orderId, reason: "synthetic cancellation", actorUserId: operator });
+    counter = Number((await runtime.query("SELECT next_cycle_number FROM public.subscription_renewal_terms WHERE subscription_id=$1", [f.subscriptionId])).rows[0].next_cycle_number);
+    return result;
+  };
+  expect(await recovery.driver.run(row.nextRetryAt!, 50)).toEqual([{ operationId: first.operationId, status: "error" }]);
+  expect((await runtime.query("SELECT next_cycle_number FROM public.subscription_renewal_terms WHERE subscription_id=$1", [f.subscriptionId])).rows[0].next_cycle_number).toBe(counter);
+  expect((await api.createPostgresRetryStore(executor).read(first.operationId))!.state).toBe("prepared");
+  expect((await runtime.query("SELECT kind FROM public.subscription_retry_receipts WHERE obligation_id=(SELECT id FROM public.subscription_retry_obligations WHERE renewal_operation_id=$1) AND kind='recovery'", [first.operationId])).rows).toEqual([]);
+  expect((await runtime.query("SELECT review_required_at IS NOT NULL AS review,settlement_transition_id FROM public.payment_truth_events WHERE settlement_intent_id=$1 AND outcome='captured'", [row.settlementIntentId])).rows).toEqual([{ review: true, settlement_transition_id: null }]);
 });
 
 it("captures populated retry, token, destination and draft rows, restores cleanly, completes a pending duty and continues", async () => {
