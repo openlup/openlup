@@ -17,10 +17,12 @@ export interface SizedHostPorts {
   /** Only opt-in derives fresh need. Ordinary edits use the stored dailyNeed carrier. */
   resolveOptInNeed(db: SubscriptionQueryExecutor, context: SizedEditContext): Promise<{ dailyNeed: number; snapshot: Record<string, unknown> }>;
   readCatalog(db: SubscriptionQueryExecutor, context: SizedEditContext): Promise<SizedCatalogFact[]>;
-  /** Same transaction connection: lock owned subject rows, compare exact current facts and optional need facts.
-   * A mismatch throws; the lock must survive until the SQL apply commits. */
+  /** On this transaction connection, lock and reread owned subject rows, optional opt-in need,
+   * and every selected catalogue fact (including stock). Compare with the supplied evidence;
+   * a mismatch throws subscription_edit_invalid_subject_snapshot. Locks hold through commit.
+   * Catalogue evidence is ordered by canonical variant UUID, with sorted exclusion keys. */
   assertCurrentFacts(db: SubscriptionQueryExecutor, context: SizedEditContext, expected: SizedSubjectFacts,
-    optInNeed: Record<string, unknown> | null): Promise<void>;
+    optInNeed: Record<string, unknown> | null, catalogFacts: readonly SizedCatalogFact[]): Promise<void>;
   proposePortion(input: { dailyNeed: number; cadenceDays: number; factor: number;
     current: SizedAgreedLine[]; catalog: readonly SizedCatalogFact[] }): Promise<{ variantId: string; qty: number }[]>;
   quotePort: { createServerAuthoritativeQuote(request: SizedQuoteRequest & { compositionConstraint: Record<string, unknown> }): Promise<{ quote: SizedRecurringQuote }> };

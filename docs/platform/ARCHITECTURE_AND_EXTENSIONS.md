@@ -1838,10 +1838,18 @@ exclusion precedence and equality, verified catalogue documents, stock reads and
 portion proposal arithmetic. Ordinary edits use frozen `dailyNeed`, never fresh
 profile recommendations. `readFacts` runs at candidate discovery, preview and
 new apply. For the five sized bundle/mix/plan/portion commands,
-`assertCurrentFacts` must lock the host's owned rows and compare its
-exact snapshots on the supplied transaction connection before SQL apply; that
-lock survives commit. Individual add-on edits retain the existing exact writer's
-transaction boundary. Missing facts refuse. The platform owns no subject table.
+`assertCurrentFacts` must lock and reread the host's owned subject/exclusion
+rows, optional opt-in need, and all selected SKU catalogue facts on the supplied
+transaction connection before SQL apply. It compares those reads with the apply
+quote's evidence; locks hold until commit. Catalogue evidence includes variant,
+SKU and group identity, add-on/sellable flags, document revision and digest,
+verification, physical size, demand per unit, exclusion keys and `sellableNow`.
+Selected facts are ordered by canonical variant UUID and exclusion keys are
+sorted. The preview ledger nests them in `subjectFacts.catalogFacts`, so the
+existing SQL subject-evidence equality check refuses preview/apply drift even
+when money and frozen lines are unchanged. Stock is reread and compared by this
+host check; this is evidence equality, not a stock reservation. Individual add-on
+edits retain the existing exact writer's transaction boundary. Missing facts refuse. The platform owns no subject table.
 Candidate compatibility is advisory; server policy allows retained/reduced
 conflicting lines while refusing new/increased conflicts. Explicit plan-length
 edits reject retained conflicts too. Withdrawn lines require exact retained

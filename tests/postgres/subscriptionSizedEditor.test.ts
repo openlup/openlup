@@ -7,7 +7,7 @@ import { qualifiedPostgresStartupOptions } from "../../server/adapters/postgres/
 import { createPostgresSizedEditor, readSizedEditContext, quoteSizedEdit, createPostgresRenewalStore, createNativeRenewalCodec,
   SIZED_PARCEL_LEVER_KIND, createPostgresLifecycleMessages, createPostgresRenewalSettlementPort } from "@openlup/platform/subscriptions";
 import { createPostgresFulfillmentStockSyncPort } from "@openlup/platform/fulfillment";
-import type { SizedEditRequest, SizedEditorOptions, SizedQuoteLine, SizedRecurringQuote, SizedEditPolicy } from "@openlup/platform/subscriptions";
+import type { SizedCatalogFact, SizedEditRequest, SizedEditorOptions, SizedQuoteLine, SizedRecurringQuote, SizedEditPolicy } from "@openlup/platform/subscriptions";
 import { createCapturedTransactionalDelivery, createPostgresTransactionalDeliveryStore, createTransactionalDelivery } from "@openlup/platform/communications";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady,
   type PostgresContainer } from "../helpers/postgresContainer.js";
@@ -46,6 +46,15 @@ beforeAll(async () => {
   await owner.query("INSERT INTO public.commerce_settings(key,value_text) VALUES('subscription_minimum_base_units','4'),('subscription_sized_intro_phase',$1)", [JSON.stringify({ fixedThroughCycle: 2, graduationCycle: 3 })]);
   await owner.query("CREATE TABLE public.sized_fixture_subject(subscription_id uuid PRIMARY KEY,client_id uuid NOT NULL,facts jsonb NOT NULL,need integer NOT NULL)");
   await owner.query("GRANT SELECT,UPDATE ON public.sized_fixture_subject TO service_role");
+  await owner.query("CREATE TABLE public.sized_fixture_catalog(variant_id uuid PRIMARY KEY, facts jsonb NOT NULL)");
+  await owner.query("GRANT SELECT,UPDATE ON public.sized_fixture_catalog TO service_role");
+  // Host-owned bounded reader locks native identity without granting runtime catalogue UPDATE.
+  await owner.query(`CREATE FUNCTION public.sized_fixture_lock_catalog(ids uuid[]) RETURNS void
+    LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $$ BEGIN
+    PERFORM s.id FROM public.catalog_skus s JOIN public.sized_fixture_catalog c ON c.variant_id=s.id
+      WHERE s.id=ANY(ids) ORDER BY s.id FOR SHARE OF s,c; END $$`);
+  await owner.query("REVOKE ALL ON FUNCTION public.sized_fixture_lock_catalog(uuid[]) FROM PUBLIC");
+  await owner.query("GRANT EXECUTE ON FUNCTION public.sized_fixture_lock_catalog(uuid[]) TO service_role");
 }, postgresSetupTimeoutMs);
 afterAll(async () => { await closePostgres(container, [owner, installer, runtime, browser].filter(Boolean)); }, postgresTeardownTimeoutMs);
 async function fixture() {
@@ -55,6 +64,9 @@ async function fixture() {
     await owner.query("INSERT INTO public.catalog_products(id,slug,name) VALUES($1,$2,'Refill')", [id, `refill-${id}`]);
     await owner.query("INSERT INTO public.catalog_skus(id,product_id,sku,title,is_addon,sellable_in_subscription) VALUES($1,$1,$2,'Refill',$3,true)", [id, id, extra]);
   }
+  for (const id of [a, b, addon]) await owner.query("INSERT INTO public.sized_fixture_catalog VALUES($1,$2)", [id,
+    { physicalSize: id === b ? 375 : 250, demandPerUnit: 20, documentRevisionId: id, documentDigest: "a".repeat(64),
+      verified: true, exclusions: id === b ? ["restricted"] : [] }]);
   await owner.query("INSERT INTO public.price_lists(id,name,region_code,currency) VALUES($1,'Configured','AA','XXX')", [priceList]);
   await owner.query("INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at,currency_code,price_list_id,composition_constraint) VALUES($1,$2,20,$3,'XXX',$4,$5)", [subscription, client, next, priceList, { kind: "unit_count", value: 4, dailyNeed: 4 }]);
   await owner.query(`INSERT INTO public.subscription_renewal_terms(subscription_id,currency_code,stock_source_key,settlement_channel_key,unattended_charge_authorized_at,authorization_ref)
@@ -72,7 +84,7 @@ async function fixture() {
 }
 type Fixture = Awaited<ReturnType<typeof fixture>>;
 function options(f: Fixture): SizedEditorOptions {
-  return { policy, now: () => f.time,
+  const ports: SizedEditorOptions = { policy, now: () => f.time,
     async withTransaction(work) { const db = await runtime.connect(); try { await db.query("BEGIN"); const result = await work(db); await db.query("COMMIT"); return result; } catch (error) { await db.query("ROLLBACK"); throw error; } finally { db.release(); } },
     async readFacts(db, context, point) {
       f.calls.push(point); const row = (await db.query("SELECT * FROM public.sized_fixture_subject WHERE subscription_id=$1::uuid AND client_id=$2::uuid", [context.subscriptionId, context.clientId])).rows[0];
@@ -85,20 +97,28 @@ function options(f: Fixture): SizedEditorOptions {
       const row = (await db.query("SELECT * FROM public.sized_fixture_subject WHERE subscription_id=$1::uuid AND client_id=$2::uuid", [context.subscriptionId, context.clientId])).rows[0];
       if (!row) throw new Error("subscription_reprice_sized_need_unreadable"); return { dailyNeed: Number(row.need), snapshot: { facts: row.facts, need: row.need } };
     },
-    async assertCurrentFacts(db, context, expected, need) {
+    async assertCurrentFacts(db, context, expected, need, catalogFacts) {
       f.calls.push("transaction"); const row = (await db.query("SELECT * FROM public.sized_fixture_subject WHERE subscription_id=$1::uuid AND client_id=$2::uuid FOR UPDATE", [context.subscriptionId, context.clientId])).rows[0];
       if (!row || JSON.stringify(row.facts) !== JSON.stringify(expected.snapshot) || (need !== null && JSON.stringify({ facts: row.facts, need: row.need }) !== JSON.stringify(need))) throw new Error("subscription_edit_invalid_subject_snapshot");
+      const ids = catalogFacts.map(fact => fact.variantId);
+      await db.query("SELECT public.sized_fixture_lock_catalog($1::uuid[])", [ids]);
+      const current = (await ports.readCatalog(db, context)).filter(fact => ids.includes(fact.variantId))
+        .map(fact => ({ ...fact, exclusions: fact.exclusions === null ? null : [...fact.exclusions].sort() }));
+      if (!(await db.query("SELECT $1::jsonb=$2::jsonb AS matches", [JSON.stringify(current), JSON.stringify(catalogFacts)])).rows[0].matches)
+        throw new Error("subscription_edit_invalid_subject_snapshot");
     },
     async readCatalog(db) {
-      const rows = (await db.query("SELECT id,sku,product_id,is_addon,status,sellable_in_subscription FROM public.catalog_skus WHERE id=ANY($1::uuid[])", [[f.a, f.b, f.addon]])).rows;
-      return rows.map(row => ({ variantId: String(row.id), sku: String(row.sku), groupId: String(row.product_id), isAddon: row.is_addon === true,
-        sellable: row.status === "active" && row.sellable_in_subscription === true, physicalSize: row.id === f.b ? 375 : 250,
-        demandPerUnit: 20, documentRevisionId: String(row.id), documentDigest: "a".repeat(64), verified: true,
-        exclusions: row.id === f.b ? ["restricted"] : [], sellableNow: f.stock }));
+      const rows = (await db.query("SELECT s.*,c.facts FROM public.catalog_skus s JOIN public.sized_fixture_catalog c ON c.variant_id=s.id WHERE s.id=ANY($1::uuid[]) ORDER BY s.id", [[f.a, f.b, f.addon]])).rows;
+      return rows.map(row => {
+        const facts = row.facts as Pick<SizedCatalogFact, "physicalSize" | "demandPerUnit" | "documentRevisionId" | "documentDigest" | "verified" | "exclusions">;
+        return { variantId: String(row.id), sku: String(row.sku), groupId: String(row.product_id), isAddon: row.is_addon === true,
+          sellable: row.status === "active" && row.sellable_in_subscription === true, ...facts, sellableNow: f.stock };
+      });
     },
     proposePortion: async ({ current, factor }) => current.map(line => ({ variantId: line.variantId, qty: Math.max(1, Math.floor(line.qty * factor)) })),
     quotePort: { async createServerAuthoritativeQuote(request) { f.quoted.push(request.lines.map(line => line.sku)); return { quote: fullQuote(request.lines.map(line => quoteLine(line.sku, line.quantity, 137))) }; } },
   };
+  return ports;
 }
 function request(f: Fixture, qty = 4, optIn = true): SizedEditRequest {
   return { subscriptionId: f.subscription, action: "resize_bundle", cadenceDays: 20, compositionConstraint: { kind: "unit_count", value: qty, dailyNeed: 4 },
@@ -233,12 +253,64 @@ it("refuses facts changed between preview and apply even when the agreed money r
   await owner.query("UPDATE public.sized_fixture_subject SET facts=jsonb_set(facts,'{revision}','2') WHERE subscription_id=$1", [f.subscription]);
   const before = await protectedState(f); await expect(value.editor.apply(actor(f), randomUUID(), value.input)).rejects.toThrow("subscription_edit_quote_drift"); expect(await protectedState(f)).toEqual(before);
 });
+it.each(["documentRevisionId", "physicalSize", "exclusions"])("refuses selected %s drift on a cadence-only edit with frozen agreements", async field => {
+  const f = await fixture(); await bind(f);
+  const value = await accepted(f, { subscriptionId: f.subscription, action: "update_plan_length", planDays: 30 });
+  const changed = field === "physicalSize" ? 500 : field === "exclusions" ? ["new-exclusion"] : randomUUID();
+  await owner.query("UPDATE public.sized_fixture_catalog SET facts=jsonb_set(facts,ARRAY[$2],$3::jsonb) WHERE variant_id=$1", [f.a, field, JSON.stringify(changed)]);
+  const before = await protectedState(f);
+  await expect(value.editor.apply(actor(f), randomUUID(), value.input)).rejects.toThrow("subscription_edit_quote_drift");
+  expect(await protectedState(f)).toEqual(before);
+  expect(f.quoted).toEqual([]);
+});
+it("applies a cadence-only edit with unchanged selected catalogue evidence and frozen agreements", async () => {
+  const f = await fixture(); await bind(f);
+  const prior = await readSizedEditContext(runtime, f.client, f.subscription);
+  const value = await accepted(f, { subscriptionId: f.subscription, action: "update_plan_length", planDays: 30 });
+  const snapshot = (await owner.query("SELECT quote_snapshot FROM public.subscription_quote_previews WHERE subscription_id=$1 AND status='previewed'", [f.subscription])).rows[0].quote_snapshot;
+  expect(snapshot.subjectFacts.catalogFacts.map((fact: { variantId: string }) => fact.variantId)).toEqual([f.a, f.addon].sort());
+  expect((await value.editor.apply(actor(f), randomUUID(), value.input)).status).toBe("applied");
+  const after = await readSizedEditContext(runtime, f.client, f.subscription);
+  expect(after.cadenceDays).toBe(30); expect(after.lines.map(line => line.quoteLine)).toEqual(prior.lines.map(line => line.quoteLine));
+  expect(f.quoted).toEqual([]);
+});
+it.each(["documentDigest", "exclusions"])("refuses selected %s changed after apply repricing at the locked host check", async field => {
+  const f = await fixture(); await bind(f); const opts = options(f);
+  const value = await accepted(f, { subscriptionId: f.subscription, action: "update_plan_length", planDays: 30 }, opts);
+  const guard = opts.assertCurrentFacts;
+  opts.assertCurrentFacts = async (...args) => {
+    await owner.query("UPDATE public.sized_fixture_catalog SET facts=jsonb_set(facts,ARRAY[$2],$3::jsonb) WHERE variant_id=$1",
+      [f.a, field, JSON.stringify(field === "exclusions" ? ["new-exclusion"] : "b".repeat(64))]);
+    return guard(...args);
+  };
+  const before = await protectedState(f);
+  await expect(value.editor.apply(actor(f), randomUUID(), value.input)).rejects.toThrow("subscription_edit_invalid_subject_snapshot");
+  expect(await protectedState(f)).toEqual(before);
+});
+it("holds selected catalogue document and identity row locks through the apply transaction", async () => {
+  const f = await fixture(); await bind(f); const opts = options(f), guard = opts.assertCurrentFacts;
+  opts.assertCurrentFacts = async (...args) => {
+    await guard(...args);
+    const concurrent = await owner.connect();
+    try {
+      await concurrent.query("SET lock_timeout='100ms'");
+      for (const table of ["sized_fixture_catalog", "catalog_skus"]) {
+        const id = table === "catalog_skus" ? "id" : "variant_id";
+        const field = table === "catalog_skus" ? "title" : "facts";
+        await expect(concurrent.query(`UPDATE public.${table} SET ${field}=${field} WHERE ${id}=$1`, [f.a])).rejects.toMatchObject({ code: "55P03" });
+      }
+    } finally { await concurrent.query("RESET lock_timeout"); concurrent.release(); }
+  };
+  const value = await accepted(f, { subscriptionId: f.subscription, action: "update_plan_length", planDays: 30 }, opts);
+  expect((await value.editor.apply(actor(f), randomUUID(), value.input)).status).toBe("applied");
+  expect((await owner.query("UPDATE public.sized_fixture_catalog SET facts=facts WHERE variant_id=$1", [f.a])).rowCount).toBe(1);
+});
 async function directEvidence(f: Fixture, input: SizedEditRequest) {
   const ctx = await readSizedEditContext(runtime, f.client, f.subscription, true), opts = options(f);
   const quote = await quoteSizedEdit({ db: runtime, context: ctx, request: input, policy, host: opts, point: "preview" });
   const { subscriptionId: _id, ...raw } = input;
   const requestPayload = { ...raw, expectedTemplateVersion: ctx.templateVersion, acceptedQuoteHash: quote.quoteHash };
-  const snapshot = { lines: quote.lines, cadenceDays: quote.cadenceDays, compositionConstraint: quote.compositionConstraint, subjectFacts: quote.subjectFacts, optInFacts: quote.optInFacts };
+  const snapshot = { lines: quote.lines, cadenceDays: quote.cadenceDays, compositionConstraint: quote.compositionConstraint, subjectFacts: { ...quote.subjectFacts, catalogFacts: quote.catalogFacts }, optInFacts: quote.optInFacts };
   await runtime.query("SELECT public.subscription_quote_preview_record($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)", [f.actor, f.client, f.subscription, input.action, quote.quoteHash, ctx.templateVersion, "2026-11-06T12:15:00Z", raw, snapshot, {}, at]);
   return { ...snapshot, request: requestPayload };
 }

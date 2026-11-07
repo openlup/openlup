@@ -1605,9 +1605,16 @@ through `createOfferDispatchedSubscriptionEditor`. Unchanged exact SKU/count/
 add-on lines retain their complete agreements; only changed lines are quoted.
 The host supplies owned need/exclusion facts, verified catalogue/stock facts,
 portion proposals and a single-connection transaction callback. Its
-`assertCurrentFacts` locks and compares host facts in that transaction before
-the five sized composition actions apply; individual add-on edits keep the
-existing exact writer boundary. Preview never binds; accepted opt-in binds atomically, including when
+`assertCurrentFacts` locks and rereads owned subject/exclusion facts, optional
+opt-in need and every selected SKU's catalogue facts on that connection before
+the five sized composition actions apply. Catalogue evidence includes variant,
+SKU/group identity, add-on/sellable flags, document revision/digest, verification,
+physical size, demand per unit, exclusion keys and `sellableNow`. Facts are ordered
+by canonical variant UUID with sorted exclusion keys. The ledger records them in
+`subjectFacts.catalogFacts`; existing SQL equality compares preview and apply
+evidence. The host compares locked current reads with apply evidence and holds
+locks through commit, including the stock evidence check (no reservation).
+Individual add-on edits keep the existing exact writer boundary. Preview never binds; accepted opt-in binds atomically, including when
 contents are unchanged. Direct/reverse binding writes refuse. Current SKU
 admission is transactional; publication-head fencing and sized acquisition are
 not supplied. The [subscription owner](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)

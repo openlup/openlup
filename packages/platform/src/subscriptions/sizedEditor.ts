@@ -99,7 +99,7 @@ export function createPostgresSizedEditor(options: SizedEditorOptions) {
         const expires = new Date(Date.parse(options.now()) + 15 * 60_000).toISOString();
         await db.query("SELECT public.subscription_quote_preview_record($1::uuid,$2::uuid,$3::uuid,$4::text,$5::text,$6::integer,$7::timestamptz,$8::jsonb,$9::jsonb,$10::jsonb,$11::timestamptz)",
           [actor.actorId, actor.clientId, request.subscriptionId, request.action, priced.quoteHash, priced.expectedTemplateVersion, expires, raw,
-            { lines: priced.lines, cadenceDays: priced.cadenceDays, compositionConstraint: priced.compositionConstraint, subjectFacts: priced.subjectFacts, optInFacts: priced.optInFacts },
+            { lines: priced.lines, cadenceDays: priced.cadenceDays, compositionConstraint: priced.compositionConstraint, subjectFacts: { ...priced.subjectFacts, catalogFacts: priced.catalogFacts }, optInFacts: priced.optInFacts },
             { currentRecurringPrice: priced.currentRecurringPrice, newRecurringPrice: priced.newRecurringPrice, delta: priced.delta }, options.now()]);
         return { ...preview, quoteHash: priced.quoteHash, quoteExpiresAt: expires, currentTotal: priced.currentRecurringPrice,
           newTotal: priced.newRecurringPrice, delta: priced.delta, packageEdit: { currentRecurringPrice: priced.currentRecurringPrice,
@@ -119,10 +119,10 @@ export function createPostgresSizedEditor(options: SizedEditorOptions) {
         const request = normalizeSizedEdit(parsed, context, policy), priced = await quote(db, context, request, "apply");
         if (request.acceptedQuoteHash !== priced.quoteHash) throw new Error("subscription_reprice_quote_not_accepted");
         const addon = ["add_addon", "remove_addon", "update_addon_quantity"].includes(request.action);
-        if (!addon) await options.assertCurrentFacts(db, context, priced.subjectFacts, priced.optInFacts);
+        if (!addon) await options.assertCurrentFacts(db, context, priced.subjectFacts, priced.optInFacts, priced.catalogFacts);
         const { subscriptionId: _id, ...raw } = request;
         const payload = { ...raw, request: raw, lines: priced.lines, cadenceDays: priced.cadenceDays, compositionConstraint: priced.compositionConstraint,
-          subjectFacts: priced.subjectFacts, optInFacts: priced.optInFacts, expectedTemplateVersion: priced.expectedTemplateVersion };
+          subjectFacts: { ...priced.subjectFacts, catalogFacts: priced.catalogFacts }, optInFacts: priced.optInFacts, expectedTemplateVersion: priced.expectedTemplateVersion };
         const result = subscriptionRecord((await (addon ? db.query("SELECT public.subscription_line_edit_apply($1::uuid,$2::uuid,$3::text,$4::uuid,$5::text,$6::jsonb,$7::timestamptz) AS result",
           [actor.actorId, actor.clientId, key, request.subscriptionId, request.action, payload, options.now()])
           : db.query("SELECT public.subscription_sized_edit_apply($1::uuid,$2::uuid,$3::text,$4::uuid,$5::jsonb,$6::timestamptz) AS result",
