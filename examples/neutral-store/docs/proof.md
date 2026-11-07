@@ -355,8 +355,22 @@ config uses the unchanged required purchase spec and disables trace, screenshot
 and video capture because request bodies contain private order capabilities.
 
 Install/seed the complete selected package history using lifecycle. Start one
-host per configuration with the documented `--database-url`, `--configuration`,
-`--port` and `--listen`, using the restricted installer-managed runtime role.
+demonstration Compose project per configuration with `./lifecycle up` and
+`./lifecycle up --configuration coffee`. The application container checks the
+database demonstration marker, creates its private mode-0600 keyring in
+`.context/quote-acceptance-keyring.json` if absent, and passes
+`--quote-acceptance-key-file` to the host. A restart of that container reuses the
+file; recreating it, including `down` followed by `up`, generates a new key and
+unsubmitted quotes need refresh. Keep the projects' loopback origins distinct.
+
+For a host outside lifecycle, supply the documented `--database-url`,
+`--configuration`, `--port`, `--listen` and `--quote-acceptance-key-file <path>`,
+using the restricted installer-managed runtime role. Supply your own private
+JSON keyring: `current` and optional `previous`, each at least 32 characters.
+Keep the file outside served assets and browser configuration, mode 0600, and
+never commit it or write it into `.context/database-ui-hosts.json`. Without the
+flag, subscription quotes refuse `starter_quote_acceptance_key_required` while
+one-time checkout still works.
 Write only loopback UI origins to `.context/database-ui-hosts.json`:
 
 ```json
@@ -386,7 +400,7 @@ Guest one-time and subscription purchases, activation with renewal attachment,
 later sign-in ownership, operator order reads and next-parcel address changes
 have host-level real-PostgreSQL proofs in both configurations. The measured
 three-package application delta is zero bytes against the committed dependency stack.
-The database-backed UI suite passes 98 checks (49 per configuration), including
+An earlier database-backed UI run passed 98 checks (49 per configuration), including
 both unchanged required purchase cases, with no failures, skips or retries.
 Committed source and real-HTTP recovery tests need no starter UI assets or
 Chromium. Real-browser recovery runs are local evidence, not a committed root-job

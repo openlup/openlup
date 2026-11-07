@@ -67,6 +67,10 @@ The optional public origin and insecure-HTTP opt-in are owned configuration and
 upgrade inputs. Origin policy, session handling and native composition stay
 managed. The private captured mailbox and process sessions are generated local
 runtime state, not owned configuration or installed package sources.
+The demonstration container's quote-acceptance keyring is also private generated
+state under `.context/`, admitted only by the existing database demonstration
+marker. The same container reuses it on restart; container recreation discards
+it. Customer environments provision their own keyring outside served assets.
 
 The optional `supportEmail` is owned configuration. Managed support rendering
 uses text nodes only. Partner/review host composition is managed and reuses the
