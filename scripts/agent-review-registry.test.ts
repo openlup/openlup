@@ -74,6 +74,45 @@ describe('closed registry grammar', () => {
 });
 
 describe('real Git coverage histories', () => {
+  it.each([
+    ['repair', 'tests/demo.test.ts', 1],
+    ['repair', 'config/release-gates.json', 2],
+    ['resolution', 'tests/main-fixture.test.ts', 1],
+  ])('keeps coverage when %s widens to %s, with floor %i', async (kind, path, floor) => {
+    const f = await fixture(); const request = JSON.parse(await readFile(f.request, 'utf8'));
+    await writeFile(f.request, JSON.stringify({ ...request, intent: { ...request.intent, scope: ['app.ts'] } }));
+    const prior = await f.review();
+    if (kind === 'resolution') {
+      const main = await f.mainMove(async () => { await f.write(path, 'main fixture\n'); await f.write('app.ts', 'main line\n'); });
+      expect(() => f.git('merge', '--no-ff', '--no-commit', main)).toThrow();
+      await f.write('app.ts', 'resolved\n');
+    }
+    await f.write(path, 'repair fixture\n'); f.commit();
+    await expect(f.cli('prepare', f.request)).resolves.toBe(0);
+    const next = await f.state(); const edge = next.candidate.coverage;
+    if (kind === 'repair') expect(edge).toMatchObject({ kind, proof: { paths: [path] } });
+    else expect(edge).toMatchObject({ kind: 'integration', proof: { kind, resolution: ['app.ts', path] } });
+    expect(prior.history.find(event => event.type === 'prepare').candidate.changedPaths).not.toContain(path);
+    expect(next.history.find(event => event.type === 'prepare').candidate.changedPaths).not.toContain(path);
+    expect(next.history.findLast(event => event.type === 'prepare').candidate.changedPaths).toContain(path);
+    for (let index = 0; index < floor - 1; index++) await f.report({ ordinary: true, delta: edge.delta });
+    await expect(f.cli('verify')).rejects.toThrow(`${floor} independent PASS`);
+    await f.report({ ordinary: true, delta: edge.delta }); await expect(f.cli('verify')).resolves.toBe(0);
+    await expect(validateEconomySession(f.cwd, await f.state())).resolves.toBeUndefined();
+  });
+  it('requires a new full review when criteria change after a reviewed candidate', async () => {
+    const f = await fixture(); await f.review();
+    const request = JSON.parse(await readFile(f.request, 'utf8')); request.intent.criteria = 'Preserve the revised fixture outcome';
+    await writeFile(f.request, JSON.stringify(request)); await f.write('tests/demo.test.ts', 'repair fixture\n'); f.commit();
+    await expect(f.cli('prepare', f.request)).rejects.toThrow('prepare --new');
+    await expect(f.cli('prepare', '--new', f.request)).resolves.toBe(0);
+    expect((await f.state()).candidate.coverage).toBeUndefined();
+    await f.report({ ordinary: true, delta: 'a'.repeat(64) }); await f.report({ ordinary: true, delta: 'b'.repeat(64) });
+    await expect(f.cli('verify')).rejects.toThrow('2 independent PASS');
+    await f.report(); await expect(f.cli('verify')).rejects.toThrow('2 independent PASS');
+    await f.report(); await expect(f.cli('verify')).resolves.toBe(0);
+    await expect(validateEconomySession(f.cwd, await f.state())).resolves.toBeUndefined();
+  });
   it('requires full reports for a first protected candidate and excludes partial observations from full expiry', async () => {
     const f = await fixture(); await f.write('scripts/ci-extra.mjs', 'export const guard = true;\n'); f.commit();
     const partialAt = Date.now(); const fullAt = partialAt + DAY / 2;

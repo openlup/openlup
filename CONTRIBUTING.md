@@ -1343,8 +1343,11 @@ Write ignored `.context/scratch/agent-review/intent.json`:
 ```json
 { "authorSessionId": "<supervisor session id>",
   "intent": { "risk": "<prose|routine|behavior|unknown>",
-    "scope": ["<changed paths>"], "criteria": "<approved criteria>" } }
+    "criteria": "<approved criteria>" } }
 ```
+
+Keep the intent for the life of the change (later candidates may touch more paths);
+changing `risk` or `criteria` requires `prepare --new` and a full review.
 
 Codex may omit `authorSessionId` to use `CODEX_THREAD_ID`. Refresh the local main
 reference before preparation so the cheap merge preflight catches known conflicts.
