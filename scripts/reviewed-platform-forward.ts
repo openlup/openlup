@@ -2041,7 +2041,6 @@ function validateNativeStoreClass(registry: ReviewedForwardRegistry, paths: Set<
   if (!keysAre(control, "sealed,slots") || typeof control.sealed !== "boolean" || !Array.isArray(control.slots)) throw new Error("reviewed native store requires a closed slots list");
   let previous = "";
   const rows = new Set<string>();
-  const replacements = new Set<string>();
   for (const slot of control.slots) {
     const time = nativeStoreTime(slot.path);
     const keys = ["createdFunctions", "dataStatements", "grantOnlyFunctions", "path", "replacedFunctions", "row", ...["purposeCheck", "checkSupersets", "uniqueSupersets", "createdViews", "createdTriggers"].filter(key => Object.hasOwn(slot, key)), ...(slot.existingTableStatements !== undefined ? ["existingTableStatements"] : []), ...(slot.insertSelectTables !== undefined ? ["insertSelectTables"] : [])].sort().join(",");
@@ -2051,10 +2050,6 @@ function validateNativeStoreClass(registry: ReviewedForwardRegistry, paths: Set<
     if (!Array.isArray(slot.replacedFunctions) || !Array.isArray(slot.createdFunctions) || !Array.isArray(slot.grantOnlyFunctions)) throw new Error("reviewed native store requires three closed function lists");
     const functions = nativeStoreFunctions(slot);
     if (slot.replacedFunctions.some(fn => !keysAre(fn, "beforeSha256,searchPath,signature") || !hash(fn.beforeSha256)) || slot.createdFunctions.some(fn => !keysAre(fn, "searchPath,signature")) || functions.some(fn => nativeStoreSignature(fn.signature) !== fn.signature || (fn.searchPath !== null && !/^[a-z_][a-z0-9_]*(?:, [a-z_][a-z0-9_]*)*$/u.test(fn.searchPath)))) throw new Error("reviewed native store closed signature, preimage or search_path drifted");
-    for (const fn of slot.replacedFunctions) {
-      if (replacements.has(fn.signature)) throw new Error("reviewed native store a signature may be replaced by only one slot");
-      replacements.add(fn.signature);
-    }
     for (const fn of slot.grantOnlyFunctions) {
       if (!keysAre(fn, "grantTo,revokeFrom,signature") || nativeStoreSignature(fn.signature) !== fn.signature || !Array.isArray(fn.grantTo) || !Array.isArray(fn.revokeFrom) || fn.grantTo.length + fn.revokeFrom.length === 0 || fn.grantTo.includes("anon") || [...fn.grantTo, ...fn.revokeFrom].some(role => !nativeStoreRoles.includes(role)) || new Set(fn.grantTo).size !== fn.grantTo.length || new Set(fn.revokeFrom).size !== fn.revokeFrom.length) throw new Error("reviewed native store invalid grant-only signature or role capability");
     }
@@ -2092,6 +2087,15 @@ function validateNativeStoreClass(registry: ReviewedForwardRegistry, paths: Set<
       const fixed = functions[position]!;
       if (!keysAre(fn, "afterSha256,beforeSha256,signature") || fn.signature !== fixed.signature || fn.beforeSha256 !== fixed.beforeSha256 || !hash(fn.afterSha256)) throw new Error("reviewed native store feature signature or before-hash drifted");
     }
+  }
+  const replacements = new Map<string, string | undefined>();
+  for (const slot of control.slots) for (const fn of slot.replacedFunctions) {
+    if (replacements.has(fn.signature)) {
+      const predecessor = replacements.get(fn.signature);
+      if (!predecessor) throw new Error("reviewed native store chained replacement requires a bound predecessor");
+      if (fn.beforeSha256 !== predecessor) throw new Error("reviewed native store chained replacement before-hash differs from preceding after-hash");
+    }
+    replacements.set(fn.signature, forwards.find(pin => pin.path === slot.path)?.functions.find(pin => pin.signature === fn.signature)?.afterSha256);
   }
 }
 
@@ -2254,7 +2258,7 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
     if (!source || sqlSha256(source.bytes) !== pin.sha256) throw new Error("reviewed native store prior issued file drifted");
   }
   const functions = nativeStoreFunctions(slot), signatures = [...functions, ...slot.grantOnlyFunctions].map(fn => fn.signature);
-  const names = new Set(signatures.map(signature => signature.split("(")[0]!)), prior = new Map<string, string>(), baseDefinitions = new Map<string, string>(), baseStatements = new Map<string, string>();
+  const names = new Set(signatures.map(signature => signature.split("(")[0]!)), prior = new Map<string, string>(), baseDefinitions = new Map<string, string>(), priorStatements = new Map<string, string>();
   const checks = slot.checkSupersets ?? [], uniques = slot.uniqueSupersets ?? [];
   let checkSource: string | undefined;
   for (const source of preceding) for (const statement of sqlStatements(source.bytes.toString("utf8"), true, false, true)) {
@@ -2265,13 +2269,14 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
       if (!name || (names.has(name.name) && (!nativeWord(tokens, 0, "CREATE") || tokens[functionIndex + 1]?.kind === "quoted" || tokens[functionIndex + 3]?.kind === "quoted"))) throw new Error("reviewed native store unsupported preceding function DDL");
     }
     for (const [signature, digest] of nativeStoreFunctionDefinitions(Buffer.from(statement), signatures, true)) {
-      prior.set(signature, digest);
-      if (source.path < `db/platform/migrations/${nativeStoreTime(control!.slots[0]!.path)}_`) { baseDefinitions.set(signature, digest); baseStatements.set(signature, statement); }
+      prior.set(signature, digest); priorStatements.set(signature, statement);
+      if (source.path < `db/platform/migrations/${nativeStoreTime(control!.slots[0]!.path)}_`) baseDefinitions.set(signature, digest);
     }
     if (slot.purposeCheck && statement.startsWith(`CREATE TABLE ${purposeTable} (`)) checkSource = statement;
     if (slot.purposeCheck && /^(?:ALTER|DROP)\b/iu.test(statement) && /\bTABLE\b/iu.test(statement) && statement.toLowerCase().includes("communication_native_sync_state")) throw new Error("reviewed native store purpose CHECK intervening DDL refused");
   }
-  for (const fn of functions) if ((baseDefinitions.get(fn.signature) ?? null) !== fn.beforeSha256 || (prior.get(fn.signature) ?? null) !== fn.beforeSha256) throw new Error("reviewed native store actual base function before-hash drifted");
+  const chained = new Set(control!.slots.slice(0, control!.slots.indexOf(slot)).flatMap(slot => slot.replacedFunctions.map(fn => fn.signature)));
+  for (const fn of functions) if ((!chained.has(fn.signature) && (baseDefinitions.get(fn.signature) ?? null) !== fn.beforeSha256) || (prior.get(fn.signature) ?? null) !== fn.beforeSha256) throw new Error("reviewed native store actual base function before-hash drifted");
   for (const fn of slot.grantOnlyFunctions) if (!baseDefinitions.has(fn.signature)) throw new Error("reviewed native store grant-only function absent from base chain");
   const statements = sqlStatements(bytes.toString("utf8"), false, false, true), definitions = nativeStoreFunctionDefinitions(bytes, functions.map(fn => fn.signature));
   if (definitions.size !== functions.length || functions.some(fn => definitions.get(fn.signature) !== forward.functions.find(pin => pin.signature === fn.signature)?.afterSha256)) throw new Error("reviewed native store unlisted, missing or drifted function definition");
@@ -2345,7 +2350,7 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
       const signature = [...nativeStoreFunctionDefinitions(Buffer.from(statement), signatures).keys()][0]!, fixed = functions.find(fn => fn.signature === signature);
       if (!fixed || replacement !== (fixed.beforeSha256 !== null)) throw new Error("reviewed native store function creation/replacement class drifted");
       const header = nativeStoreTrim(headerAttributes(statement).replace(/[ \t\n]+/gu, " "));
-      if (fixed.beforeSha256 !== null && nativeStoreTrim(headerAttributes(statement)) !== nativeStoreTrim(headerAttributes(baseStatements.get(signature)!))) throw new Error("reviewed native store replacement header drifted");
+      if (fixed.beforeSha256 !== null && nativeStoreTrim(headerAttributes(statement)) !== nativeStoreTrim(headerAttributes(priorStatements.get(signature)!))) throw new Error("reviewed native store replacement header drifted");
       const rawSearchPath = / SET search_path = ([a-z_][a-z0-9_]*(?:, [a-z_][a-z0-9_]*)*)$/iu.exec(header)?.[1] ?? null;
       if (rawSearchPath && !nativeStoreAscii(rawSearchPath)) throw new Error("reviewed native store non-ASCII search_path refused");
       const searchPath = rawSearchPath?.toLowerCase() ?? null;
