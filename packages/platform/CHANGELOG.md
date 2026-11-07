@@ -15,6 +15,8 @@ in the source repository.
 - Publishable on the npm `latest` dist-tag as `0.37.0`, from tag
   `openlup-platform-v0.37.0`.
 
+- @openlup/platform size growth: 987 shipped declaration maps contribute 227,397 packed bytes in an archive comparison, alongside the native commerce, account and fulfillment surfaces and their complete migration histories.
+
 - Ship declaration maps that navigate to the packaged TypeScript sources,
   consumer-first installation guidance and release-tagged agent source citations.
 - Allow Node `>=24` while
