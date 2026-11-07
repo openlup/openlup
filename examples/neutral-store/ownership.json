@@ -120,6 +120,7 @@
     "client/recovery-page.ts",
     "client/recovery-session.ts",
     "browser/recovery.proof.ts",
+    "browser/renewal.proof.ts",
     "host/acquisition-predecessors.ts",
     "host/quote-composition.ts",
     "installation/quote-seed.ts",

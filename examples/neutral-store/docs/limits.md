@@ -269,6 +269,12 @@ These are local demonstration values, not provider or compliance qualification.
 The accepted origin/session boundary retains its separate limits.
 
 Attempt limits live in one process's memory and reset on restart.
+The demonstration Compose container generates its private quote key only for a
+database carrying the demonstration marker. It reuses that file on restart;
+container recreation rotates it, so unsubmitted subscription quotes must refresh.
+Customer environments supply their own keyring. A host without the key-file
+flag refuses subscription quotes with `starter_quote_acceptance_key_required`;
+one-time checkout remains available.
 Limity prób działają w pamięci jednego procesu i resetują się po ponownym uruchomieniu.
 Checkout applies the configured attempt window, e-mail and requester counts, retention and capacity before contact resolution. Exact replay means the same command key, normalized e-mail and requester; it is free of further quota counts. A retained key with a changed identity is refused before contact resolution, including with a replacement quota callback. The synchronous host binding keeps identity digests within the same retention and capacity bounds; it fails closed when full. Denied quota attempts add nothing to the quota counts. Both process-local records reset on restart. Unpurchased contact retention belongs to the host.
 

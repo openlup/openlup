@@ -92,7 +92,7 @@ exact release archive. The target command is:
 With the selected local candidate artifacts and generated lockfile in place,
 Compose builds the application, starts pinned PostgreSQL 16, runs the one-shot
 installed migration runner and fictional seed, then serves the application at
-`http://127.0.0.1:4319`. No keys, source edits or manual migration are needed.
+`http://127.0.0.1:4319`. No manual key provisioning, source edits or manual migration are needed.
 A healthy application does not by itself establish a completed sandbox purchase.
 
 For authorized UI development after importing the candidate and generating its
@@ -449,8 +449,16 @@ subscription callers receive `acquisition_terms_capability_required` before
 contact, order or payment effects. A private host keyring file may be supplied
 with `--quote-acceptance-key-file`; it contains the existing helper's `current`
 and optional `previous` keys, each at least 32 characters. Keep it outside served
-assets and browser configuration. This application does not provision keys.
-Missing keys refuse acquisition quotes. Acceptance binds the request, money,
+assets and browser configuration; never commit it. Customer environments supply
+their own keys. In the demonstration Compose installation, the application
+container checks the existing database demonstration marker, creates a private
+`.context/quote-acceptance-keyring.json` with mode 0600 if absent, and passes its
+path to the host. Restarting the same container reuses the file. `down` followed
+by `up` recreates the container and generates a new key; unsubmitted old quotes
+then require refresh. The key is generated at runtime, never in the image.
+A host started without the key-file flag refuses subscription quotes with
+`starter_quote_acceptance_key_required`; one-time checkout still works.
+Acceptance binds the request, money,
 policy, second promise and delivery terms; changed terms clear consent and require
 refresh even if the total is unchanged. Expired observations withhold money.
 After an uncertain checkout response, an unchanged retry retains the submitted
