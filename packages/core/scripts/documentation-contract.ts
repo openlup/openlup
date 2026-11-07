@@ -52,6 +52,7 @@ const agentGuideSections = [
   "Using this package in an application",
 ];
 const wiringExamplePath = "smoke/agentsWiringExample.ts";
+const readmeExamplePath = "smoke/readmeExample.ts";
 
 type SurfaceContract = { role?: unknown; maturity?: unknown; packageSmokeEvidence?: unknown };
 
@@ -115,6 +116,12 @@ export function assertDocumentationContract(
   const exports = manifest.exports ?? {};
   const surface = gates.packageSurface ?? {};
   assertSurfaceTable(packageRoot, "README.md", "Package Surface Maturity", true, exports, surface, violations);
+  // The README's opening import example is the smoke file that typecheck:smoke compiles.
+  const readmeExample = readFileSync(join(packageRoot, "README.md"), "utf8").match(/```ts\n(?<code>[\s\S]*?)```/)?.groups?.code;
+  const readmeExampleFile = join(packageRoot, readmeExamplePath);
+  if (!existsSync(readmeExampleFile) || readmeExample !== readFileSync(readmeExampleFile, "utf8")) {
+    violations.push(`README.md: first TypeScript example differs from ${readmeExamplePath}`);
+  }
   assertAgentGuide(packageRoot, gates.kind, exports, surface, packed, violations);
   assertSingleUnreleasedSection(packageRoot, violations);
   assertPackageHygiene(packageRoot, violations);

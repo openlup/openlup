@@ -54,6 +54,7 @@ describe("tarball gate", () => {
     }
     expect(rules(entries().filter(({ path }) => path !== "src/a.ts"))).toContain("sourcemap");
     expect(rules(entries().filter(({ path }) => path !== "dist/a.d.ts"))).toContain("sourcemap");
+    expect(rules(packed([["dist/a.d.ts.map", JSON.stringify(map)]], { "dist/a.d.ts": "export declare const a = 1;\n" }))).toEqual(["sourcemap"]);
     expect(rules(packed([["dist/a.d.ts.map", "not JSON"]]))).toContain("sourcemap");
     expect(rules(packed([], { "dist/a.d.ts": declaration }))).toContain("sourcemap");
     expect(rules(packed([["dist/a.d.ts.map", JSON.stringify(map)]], { "dist/a.d.ts": declaration.replace("a.d.ts.map", "../a.d.ts.map") }))).toContain("sourcemap");

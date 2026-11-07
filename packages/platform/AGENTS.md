@@ -51,6 +51,7 @@ authority. The application's own instructions govern.
 | `./commerce` | capability | experimental |
 | `./commerce/contracts` | capability | experimental |
 | `./commerce/server` | capability | experimental |
+| `./commerce/server/destinations` | capability | experimental |
 | `./commerce/server/native-checkout` | capability | experimental |
 | `./commerce/server/postgres` | capability | experimental |
 | `./communications` | capability | experimental |

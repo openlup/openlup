@@ -30,6 +30,9 @@ export function checkTarballEntries(entry: PackageEntry, entries: readonly Tarba
   const findings: Finding[] = [];
   const finding = (path: string, rule: string, detail: string): void => { findings.push({ subject: `${entry.name}:${path}`, rule, detail }); };
   const packedPaths = new Set(entries.map(({ path }) => path));
+  // A declaration map ships only when its adjacent declaration references it.
+  const declarationMaps: string[] = [];
+  const referencedMaps = new Set<string>();
   if (!packedPaths.has("package.json")) finding("package.json", "manifest", "the tarball has no package.json");
   const manifestBytes = readTracked(`${entry.directory}/package.json`);
   if (manifestBytes) {
@@ -67,11 +70,13 @@ export function checkTarballEntries(entry: PackageEntry, entries: readonly Tarba
               source === `src/${derived[1]}${extension}` && packedPaths.has(source) && !!readTracked(`${entry.directory}/${source}`));
         } catch { /* Malformed JSON is a refused declaration map. */ }
         if (!valid) finding(path, "sourcemap", "declaration map must resolve to its shipped tracked source and declaration");
+        else declarationMaps.push(path);
       } else if (SOURCE_MAP_REFERENCE.test(text)) {
         const expected = `//# sourceMappingURL=${posix.basename(path)}.map`;
         const references = text.split("\n").filter(line => SOURCE_MAP_REFERENCE.test(line));
         if (!path.endsWith(".d.ts") || references.length !== 1 || references[0] !== expected || !packedPaths.has(`${path}.map`))
           finding(path, "sourcemap", "only a local declaration-map reference may ship");
+        else referencedMaps.add(`${path}.map`);
       }
       if (TEST_SOURCE.test(stem)) finding(path, "test-output", "built output of a test file does not ship");
       else if (!SOURCE_EXTENSIONS.some((extension) => readTracked(`${stem}${extension}`))) finding(path, "derived-without-source", `no tracked ${stem}.ts produces it`);
@@ -80,6 +85,9 @@ export function checkTarballEntries(entry: PackageEntry, entries: readonly Tarba
     const tracked = readTracked(`${entry.directory}/${path}`);
     if (!tracked) finding(path, path === "package.json" ? "manifest" : "unlisted-file", "neither a tracked file nor build output of one");
     else if (!equalBytes(tracked, bytes)) finding(path, path === "package.json" ? "manifest" : "changed-file", "differs from the tracked file");
+  }
+  for (const path of declarationMaps) {
+    if (!referencedMaps.has(path)) finding(path, "sourcemap", "declaration map must be referenced by its adjacent declaration");
   }
   return findings;
 }
