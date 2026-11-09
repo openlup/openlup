@@ -156,13 +156,21 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
   const oldRelations = new Map(before.relations.map(row => [row.oid, row]));
   const currentRelations = new Map(after.relations.map(row => [row.oid, row]));
   const replacedUniqueIndexes = new Set(before.constraints.filter(old => slot.uniqueSupersets?.some(entry => entry.table === old.rel && entry.constraint === old.name)).map(old => old.indexOid));
-  const droppedIndexes = new Set<number>();
+  const droppedIndexes = new Set<number>(), listedIndexes = new Set((slot.droppedIndexes ?? []).map(entry => `public.${entry.name}`));
   for (const entry of slot.droppedIndexes ?? []) {
     const name = `public.${entry.name}`, index = before.indexes.find(index => index.name === name);
     if (!index || index.table !== entry.table || before.constraints.some(constraint => constraint.indexOid === index.oid) || after.indexes.some(now => now.oid === index.oid || now.name === name)) fail(`listed index ${name} must be a removed standalone index on ${entry.table}`);
     droppedIndexes.add(index!.oid);
     for (const facts of ["columns", "constraints"] as const) if (JSON.stringify(before[facts].filter(row => row.rel === entry.table)) !== JSON.stringify(after[facts].filter(row => row.rel === entry.table))) fail(`dropped index table ${entry.table} changed ${facts}`);
-    for (const old of before.indexes.filter(old => old.table === entry.table && old.oid !== index!.oid)) if (JSON.stringify(after.indexes.find(now => now.oid === old.oid)) !== JSON.stringify(old)) fail(`other index ${old.name} changed beside a listed drop`);
+    for (const old of before.indexes.filter(old => old.table === entry.table && !listedIndexes.has(old.name))) if (JSON.stringify(after.indexes.find(now => now.oid === old.oid)) !== JSON.stringify(old)) fail(`other index ${old.name} changed beside a listed drop`);
+    // History can reach the index without naming it (escaped identifiers, built SQL), so PostgreSQL
+    // proves that the dropped index is exactly what its pinned CREATE builds.
+    const create = indexStatements.get(entry.beforeSha256) ?? fail(`listed index ${name} has no pinned CREATE`);
+    await db.query("SAVEPOINT pinned_index");
+    try {
+      await db.query(create);
+      if ((await db.query("SELECT pg_get_indexdef($1::regclass) AS definition", [name])).rows[0].definition !== index!.definition) fail(`listed index ${name} differs from its pinned CREATE`);
+    } finally { await db.query("ROLLBACK TO SAVEPOINT pinned_index"); }
   }
   for (const old of before.relations) if (!replacedUniqueIndexes.has(old.oid) && !droppedIndexes.has(old.oid) && JSON.stringify(currentRelations.get(old.oid)) !== JSON.stringify(old)) fail(`existing relation ${old.name} changed its owner, ACL, row security, options or column ACLs`);
   for (const row of after.relations) if (!oldRelations.has(row.oid)) {
@@ -407,6 +415,7 @@ const chain = [manifest.baseline, ...manifest.forward].filter(unit => !boundPath
   if (sha(bytes) !== unit.sha256) throw new Error(`native chain unit differs from the manifest: ${unit.file}`);
   return { path: unit.file, sql: bytes.toString("utf8") };
 });
+const indexStatements = new Map([SYNTHETIC_BASE, ...chain.map(unit => unit.sql), ...bound.map(entry => readFileSync(entry.pin.path, "utf8"))].flatMap(sql => sqlStatements(sql, true, false, true).map(statement => [sqlSha256(statement), statement] as const)));
 const triggerStatements = new Map([TRIGGER_SQL, ...bound.filter(entry => entry.slot.createdTriggers?.length).map(entry => readFileSync(entry.pin.path, "utf8"))].flatMap(sql => sqlStatements(sql).map(statement => [sqlSha256(statement), statement] as const)));
 const PARAMETER_SLOT: CatalogSlot = { ...SYNTHETIC_SLOT, checkSupersets: [
   { table: "public.cat_parameters", constraint: "cat_status", column: "status", values: ["open", "closed", "paused"] },
@@ -417,6 +426,7 @@ const UNIQUE_SLOT: CatalogSlot = { ...SYNTHETIC_SLOT, uniqueSupersets: [{ table:
 const UNIQUE_SQL = "ALTER TABLE public.cat_parameters DROP CONSTRAINT cat_key; ALTER TABLE public.cat_parameters ADD CONSTRAINT cat_key UNIQUE NULLS NOT DISTINCT (id,extra);";
 const DROP_INDEX_SLOT: CatalogSlot = { ...SYNTHETIC_SLOT, droppedIndexes: [{ table: "public.cat_parameters", name: "cat_active_idx", beforeSha256: sqlSha256("CREATE UNIQUE INDEX cat_active_idx ON public.cat_parameters (id) WHERE id IS NOT NULL;") }] };
 const DROP_INDEX_SQL = "DROP INDEX public.cat_active_idx; CREATE INDEX cat_replacement_idx ON public.cat_parameters (id, extra DESC);";
+const DROP_TWO_INDEXES_SLOT: CatalogSlot = { ...DROP_INDEX_SLOT, droppedIndexes: [...DROP_INDEX_SLOT.droppedIndexes!, { table: "public.cat_parameters", name: "cat_other_idx", beforeSha256: sqlSha256("CREATE INDEX cat_other_idx ON public.cat_parameters (extra);") }] };
 
 // The chain creates anon and authenticated itself; service_role comes from the host bootstrap, so it is
 // the one role these two modes toggle for the whole run. With no bound forward this is a plain replay of
@@ -493,6 +503,13 @@ describe.each([{ serviceRole: true }, { serviceRole: false }])("native store for
   });
   it("drops a listed standalone index, preserving its table, constraints, other indexes and ACL", async () => {
     await checkForward(pool, DROP_INDEX_SLOT, forward(CREATED_OK, DROP_INDEX_SQL));
+  });
+  it("drops two listed standalone indexes of one table", async () => {
+    await checkForward(pool, DROP_TWO_INDEXES_SLOT, forward(CREATED_OK, `${DROP_INDEX_SQL} DROP INDEX public.cat_other_idx;`));
+  });
+  it("refuses a listed index that history rebuilt without naming it", async () => {
+    const rebuilt = "DO $$ BEGIN EXECUTE 'DROP INDEX public.cat_' || 'active_idx'; EXECUTE 'CREATE UNIQUE INDEX cat_' || 'active_idx ON public.cat_parameters (extra)'; END $$;";
+    await expect(checkForward(pool, DROP_INDEX_SLOT, forward(CREATED_OK, DROP_INDEX_SQL), false, rebuilt)).rejects.toThrow(/differs from its pinned CREATE/u);
   });
   it.each([
     ["missing drop", "", /must be a removed standalone index/u],

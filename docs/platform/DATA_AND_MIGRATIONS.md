@@ -1555,13 +1555,14 @@ is active. The issued three purchase-reservation texts remain unchanged data.
 
 `droppedIndexes` entries list a qualified `table`, plain index `name` and
 `beforeSha256` of its one plain CREATE [UNIQUE] INDEX statement in the ordered
-prefix. Its table and hash must match; missing or repeated CREATEs and any later
-mention of the index name refuse. Each entry authorizes exactly one
+prefix. Its table and hash must match; a missing or repeated CREATE, any other
+mention of the index name anywhere in the prefix and any Unicode-escaped
+identifier in the prefix refuse. Each entry authorizes exactly one
 `DROP INDEX public.<name>;`. Unlisted, duplicate or missing drops, quoted or
 re-spelled names, IF EXISTS, CONCURRENTLY, CASCADE, RESTRICT and multiple names
 refuse. Constraint-backed indexes are excluded. PostgreSQL verifies that the
-listed standalone index disappears while its table's columns, constraints,
-other indexes and ACL remain unchanged. Issued-slot and sealed-prefix guards
+listed standalone index is exactly what its pinned CREATE builds and disappears
+while its table's columns, constraints, other indexes and ACL remain unchanged. Issued-slot and sealed-prefix guards
 protect this inventory like the other slot fields.
 
 The checkout recovery lifecycle forward replaces the unique live-order index
