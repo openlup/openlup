@@ -22,7 +22,7 @@ const GRANT_OPTION = " WITH GRANT OPTION";
 const POSITIONS = String.raw`':(?:stmt_)?location -?[0-9]+|:stmt_len [0-9]+', ':position'`;
 
 type FunctionRow = { oid: number; name: string; owner: string; attrs: Record<string, unknown>; acl: string[]; src: string };
-type RelationRow = { oid: number; name: string; kind: string; owner: string; rls: boolean; forceRls: boolean; options: string | null; acl: string[]; columnAcls: unknown };
+type RelationRow = { oid: number; name: string; schema: string; relation: string; kind: string; owner: string; rls: boolean; forceRls: boolean; options: string | null; acl: string[]; columnAcls: unknown };
 type Snapshot = {
   indexes: { oid: number; name: string; table: string; definition: string; attrs: unknown }[];
   functions: FunctionRow[]; relations: RelationRow[]; columns: { rel: string; name: string; attrs: Record<string, unknown>; default: string | null }[]; system: { functions: string; relations: string };
@@ -51,11 +51,12 @@ async function snapshot(db: PoolClient): Promise<Snapshot> {
     (to_jsonb(p)-'prosrc'-'proacl'-'proargdefaults')||jsonb_build_object('proargdefaults',regexp_replace(COALESCE(p.proargdefaults::text,''),${POSITIONS},'g')) AS attrs,
     ${aclOf("p.proacl", "'f'", "p.proowner")} AS acl, p.prosrc AS src
     FROM pg_proc p WHERE p.oid >= ${OID_FLOOR} ORDER BY p.oid`)).rows;
-  const relations = (await db.query(`SELECT c.oid::int AS oid, c.oid::regclass::text AS name, c.relkind::text AS kind, c.relowner::regrole::text AS owner,
+  const relations = (await db.query(`SELECT c.oid::int AS oid, c.oid::regclass::text AS name, n.nspname::text AS schema, c.relname::text AS relation,
+    c.relkind::text AS kind, c.relowner::regrole::text AS owner,
     c.relrowsecurity AS rls, c.relforcerowsecurity AS "forceRls", c.reloptions::text AS options,
     ${aclOf("c.relacl", "(CASE WHEN c.relkind='S' THEN 's' ELSE 'r' END)::\"char\"", "c.relowner")} AS acl,
     (SELECT jsonb_agg(jsonb_build_array(a.attname,a.attacl::text) ORDER BY a.attnum) FROM pg_attribute a WHERE a.attrelid=c.oid AND a.attacl IS NOT NULL) AS "columnAcls"
-    FROM pg_class c WHERE c.oid >= ${OID_FLOOR} ORDER BY c.oid`)).rows;
+    FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.oid >= ${OID_FLOOR} ORDER BY c.oid`)).rows;
   // Objects PostgreSQL ships are compared as one digest of the facts that carry privileges; statistics columns are left out
   // because autovacuum changes them between two snapshots.
   const system = (await db.query(`SELECT
@@ -178,10 +179,12 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
   const censusSeen = new Set<string>();
   for (const row of after.relations) if (!oldRelations.has(row.oid)) {
     if (row.owner !== migrationRole) fail(`new relation ${row.name} is owned by ${row.owner}, not the migration role`);
+    // The absorber joins the raw relname, never regclass's quoted display text.
+    const censusIdentity = row.schema === "public" ? `public.${row.relation}` : undefined;
     const classification = clientReferences.has(row.oid)
-      ? (await db.query("SELECT disposition FROM public.client_absorption_policy WHERE table_name=$1", [row.name.slice("public.".length)])).rows : [];
+      ? (await db.query("SELECT disposition FROM public.client_absorption_policy WHERE table_name=$1", [row.relation])).rows : [];
     if (clientReferences.has(row.oid) && classification.length === 0) fail(`new relation ${row.name} has no absorption classification`);
-    if (slot.absorptionCensusTables?.includes(row.name)) {
+    if (censusIdentity && slot.absorptionCensusTables?.includes(censusIdentity)) {
       const role = (await db.query("SELECT oid::int AS oid FROM pg_roles WHERE rolname='service_role'")).rows[0]?.oid as number | undefined;
       const policies = after.guards.policies!.filter(policy => Number(policy.polrelid) === row.oid);
       const expressions = (await db.query("SELECT pg_get_expr(polqual,polrelid) AS qual, pg_get_expr(polwithcheck,polrelid) AS check_expr FROM pg_policy WHERE polrelid=$1::oid", [row.oid])).rows;
@@ -193,10 +196,10 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
       if (row.kind !== "r" || !row.rls || row.forceRls || row.acl.some(item => !item.startsWith(`${row.owner}:`)) || reference.length !== 1
         || JSON.stringify(columns) !== JSON.stringify(role ? [{ column: "client_id", role: "service_role", privilege: "SELECT", grantable: false }] : [])
         || JSON.stringify(classification) !== JSON.stringify([{ disposition: "block" }]) || policies.length !== (role ? 1 : 0)
-        || (role && (policies[0]!.polname !== `${row.name.slice("public.".length)}_absorption_census` || policies[0]!.polcmd !== "r"
+        || (role && (policies[0]!.polname !== `${row.relation}_absorption_census` || policies[0]!.polcmd !== "r"
           || policies[0]!.polpermissive !== true || JSON.stringify(policies[0]!.polroles) !== JSON.stringify([String(role)])
           || expressions[0]?.qual !== "true" || expressions[0]?.check_expr !== null))) fail(`new relation ${row.name} exceeds its absorption census shape`);
-      censusSeen.add(row.name); continue;
+      censusSeen.add(censusIdentity); continue;
     }
     if (row.name === "public.subscription_notice_refusals" && JSON.stringify(slot.insertSelectTables) === JSON.stringify([row.name])) {
       const role = (await db.query("SELECT oid::int AS oid FROM pg_roles WHERE rolname='service_role'")).rows[0]?.oid as number | undefined;
@@ -379,6 +382,8 @@ ALTER TABLE public.cat_client_history ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.cat_client_history FROM PUBLIC;`;
 const classifiedClientTable = (disposition: string) => `${CLIENT_TABLE}
 INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('cat_client_history', '${disposition}', 'Subject history has an explicit disposition.');`;
+const classifiedQuotedClientTable = (disposition: string, key = "CensusHistory") => `${CLIENT_TABLE.replaceAll("public.cat_client_history", 'public."CensusHistory"')}
+INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('${key}', '${disposition}', 'Subject history has an explicit disposition.');`;
 // The statement reported as FC-R1B-001, unchanged: a quoted default hides an `AS $q$` so a static
 // header reader takes a fake search_path attribute list for the real one.
 const HIDDEN_HEADER = "CREATE FUNCTION public.cat_created(p text DEFAULT ' SET search_path = pg_catalog, pg_temp AS $q$') RETURNS text LANGUAGE sql SECURITY DEFINER AS 'select p' SET application_name = x$q$;";
@@ -394,6 +399,8 @@ SELECT 1 AS x$a$, 2 AS y$q$;
 REVOKE ALL ON FUNCTION public.cat_created(text) FROM PUBLIC;`;
 const UNLISTED = "CREATE FUNCTION public.cat_unlisted(p text) RETURNS text LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$ SELECT p $$;\nREVOKE ALL ON FUNCTION public.cat_unlisted(text) FROM PUBLIC;";
 const REFUSALS: [string, string, RegExp, boolean, CatalogSlot][] = [
+  ["a quoted client table with a quoted retain classification key", forward(CREATED_OK, classifiedQuotedClientTable("retain", '"CensusHistory"')), /no absorption classification/u, false, SYNTHETIC_SLOT],
+  ["a quoted client table with a quoted block classification key", forward(CREATED_OK, classifiedQuotedClientTable("block", '"CensusHistory"')), /no absorption classification/u, false, SYNTHETIC_SLOT],
   ["an unlisted, unclassified client-referencing table", forward(CREATED_OK, CLIENT_TABLE), /no absorption classification/u, false, SYNTHETIC_SLOT],
   ["a listed census table without its client foreign key", forward(CREATED_OK, CENSUS_SQL.replace(" REFERENCES public.clients(id)", "")), /absorption census shape/u, false, CENSUS_SLOT],
   ["a listed census table referencing another relation", forward(CREATED_OK, CENSUS_SQL.replace("REFERENCES public.clients(id)", "REFERENCES public.cat_parameters(id)")), /absorption census shape/u, false, CENSUS_SLOT],
@@ -526,6 +533,9 @@ describe.each([{ serviceRole: true }, { serviceRole: false }])("native store for
   });
   it.each(["retain", "block"])("admits an unlisted %s client table with owner-only privileges", async disposition => {
     await checkForward(pool, SYNTHETIC_SLOT, forward(CREATED_OK, classifiedClientTable(disposition)));
+  });
+  it.each(["retain", "block"])("uses raw relname for a quoted client table's %s classification", async disposition => {
+    await checkForward(pool, SYNTHETIC_SLOT, forward(CREATED_OK, classifiedQuotedClientTable(disposition)));
   });
   it("installs two replacement slots with pinned bodies and unchanged function attributes and ACL", async () => {
     const db = await pool.connect(), signature = "public.cat_replaced(text,boolean)";

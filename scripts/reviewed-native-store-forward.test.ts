@@ -1420,7 +1420,7 @@ describe("owned absorption census capability", () => {
     const statement = censusClassification.replace("'block'", `'${disposition}'`);
     expect(() => censusForward(censusShape.replace(censusClassification, statement), slot => { slot.dataStatements = [statement]; })).toThrow(/exact block classifications/u);
   });
-  it.each([[censusTable, censusTable], ["fixture_census"], ["other.fixture_census"], [`public.${"a".repeat(63)}`]])("refuses invalid census inventory %j", (...tables) => {
+  it.each([[censusTable, censusTable], ["fixture_census"], ["other.fixture_census"], [`public.${"a".repeat(63)}`], ['public."CensusHistory"'], ['public."fixture_census"'], ['"public".fixture_census']])("refuses invalid census inventory %j", (...tables) => {
     expect(() => censusForward(censusShape, slot => { slot.absorptionCensusTables = tables as string[]; })).toThrow(/qualified tables/u);
   });
 });

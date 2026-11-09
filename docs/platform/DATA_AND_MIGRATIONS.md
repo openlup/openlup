@@ -1560,7 +1560,8 @@ rules; data statements require exact head-class slot entries. CHECK and UNIQUE
 replacements use the named, closed entries below. A whole-file hash does not
 bypass the content checks.
 
-`absorptionCensusTables` may list qualified `public.<table>` names for new
+`absorptionCensusTables` may list qualified `public.<table>` names with unquoted
+lowercase ASCII identifiers for new
 client-referencing block tables. Each listed table must be created earlier in
 the same slot file. Its own `dataStatements`
 must pin exactly one statement of this form, also present in the forward:
@@ -1588,7 +1589,8 @@ it adds neither a foreign-key parser nor a scan of earlier prefix history.
 Installed foreign keys and effective privileges are PostgreSQL obligations.
 
 Every new relation with a foreign key to `public.clients` must have an
-absorption-policy row after its slot, with any existing disposition. An
+absorption-policy row keyed by its raw `pg_class.relname` after its slot, with any
+existing disposition. Quoted regclass display text is not a classification key. An
 unclassified table refuses, because it would make the absorber refuse every
 lead. This classification check does not grant access: unlisted `block` and
 `retain` tables retain owner-only table ACLs and no column ACLs. Only listed
@@ -1712,18 +1714,25 @@ They cannot be redefined or named by a direct privilege statement. Only their
 pinned conditional role/verb capabilities are admitted, without demanding a new
 PUBLIC revoke. A block naming created functions still requires their revokes;
 a block naming only grant-only functions does not.
-The sole DO exception is one block per role, verb and object kind (FUNCTION or
-TABLE): an exact `pg_roles` existence guard around one constant privilege
-EXECUTE, on admitted targets, for the same role. `anon` admits revokes only;
-`authenticated` and `service_role` admit revokes or EXECUTE grants. Extra
-statements, branches, dynamic strings and PUBLIC grants refuse.
+The conditional DO shell requires an exact `pg_roles` existence guard around
+one constant privilege EXECUTE, on admitted targets, for the same role. Function
+privileges and table revokes retain one block per role, verb and object kind
+(FUNCTION or TABLE). The fixed notice-table allowance below additionally admits
+its grant and policy. Each listed, block-classified, same-slot census table has
+two separate `service_role` conditional blocks: one for `SELECT (client_id)` and
+one for its derived SELECT-only policy with `USING (true)` and no WITH CHECK.
+`anon` admits revokes only; for functions, `authenticated` and `service_role`
+admit revokes or EXECUTE grants. Extra statements, branches, dynamic strings and
+PUBLIC grants refuse.
 
 Only qualified tables created earlier by unconditional `CREATE TABLE public.<name>`
 statements in that same slot's file may use table narrowing: bare `REVOKE ALL ON
 TABLE <table> FROM PUBLIC`, conditional per-role `REVOKE ALL ON TABLE` lists, and
 `ALTER TABLE <table> ENABLE ROW LEVEL SECURITY`. A table from the prefix or
 another slot or an unqualified/IF NOT EXISTS creation refuses. Table grants refuse
-except for the fixed notice-table allowance below.
+except for the fixed notice-table allowance below and the listed census tables'
+client-column SELECT allowance above. Census tables keep owner-only table ACLs
+and receive only their exact column grant and derived SELECT policy.
 The native paid-notice slot alone may name `insertSelectTables`, whose complete
 value is pinned by the reader to `["public.subscription_notice_refusals"]`.
 It is an allowance, so it may precede the table's introduction. It authorizes
@@ -1736,13 +1745,13 @@ GRANT SELECT, INSERT ON public.subscription_notice_refusals TO service_role;
 CREATE POLICY subscription_notice_refusals_runtime ON public.subscription_notice_refusals FOR ALL TO service_role USING (true) WITH CHECK (true);
 ```
 
-The quoted inner statement includes its final semicolon; different spelling,
+The notice-table inner statement includes its final semicolon; different spelling,
 privilege order, an added `TABLE`, extra roles, column grants and grant options
 refuse. The existing revoke and RLS-enable narrowing paths are unchanged.
 The table keeps RLS enabled and only owner plus service-role SELECT/INSERT
 privileges; its one policy has that role alone. With the role absent, the guarded
 grant and policy do not run and the new table stays owner-only with RLS enabled.
-No other row or table gains this capability.
+This INSERT/SELECT allowance applies only to the named notice table.
 
 The existing expand-only grammar and every other class retain their refusals.
 Each feature PR using this narrowing must provide real-PostgreSQL proof that its
@@ -1778,11 +1787,17 @@ operator a forward creates for another operand type cannot hide what it adds:
 - Existing relations of every kind, indexes and TOAST tables included, keep their
   owner, privileges, row security, options and column privileges. Only the index
   of an explicitly listed UNIQUE replacement may be replaced with its new key. A new relation of
-  any kind is owned by the migration role and carries only its owner's table
-  privileges and no column privilege. The pinned notice table above alone may
-  carry service-role SELECT/INSERT with RLS enabled and its single fixed policy;
-  the comparator checks the role, command, predicates and absence of grant options.
-  Every other new relation stays owner-only. Relations are matched by OID, so a forward
+  any kind is owned by the migration role. By default it carries only its owner's
+  table privileges and no column privilege. The pinned notice table may carry
+  service-role SELECT/INSERT with RLS enabled and its single fixed policy.
+  A listed, block-classified, same-slot census table keeps owner-only table ACLs
+  and may carry only `client_id` SELECT for `service_role`, with RLS enabled and
+  its derived permissive SELECT policy (`USING (true)`, no WITH CHECK); each of
+  its two statements uses its own conditional block. The comparator checks the
+  exact roles, commands, predicates and absence of grant options. Unlisted
+  relations retain owner-only privileges and no column ACLs, including classified
+  retain/block tables. Relations and their raw names/namespaces are resolved by OID,
+  so a forward
   that rewrites an existing table, for example by adding a column with a volatile
   default, replaces its TOAST relation and is refused: a known fail-closed limit,
   with a follow-up to compare TOAST relations without OID identity.
