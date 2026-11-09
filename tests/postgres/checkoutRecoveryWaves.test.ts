@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createPostgresCheckoutRecoveryWaves, createPostgresCheckoutRecoveryTokenPort, hashCheckoutRecoveryToken,
-  createOutboxCheckoutRecoveryEmailHandler } from '@openlup/platform/commerce/server';
+  createOutboxCheckoutRecoveryEmailHandler, createOutboxCheckoutExpiredEmailHandler } from '@openlup/platform/commerce/server';
 import { withCheckoutRecoverySendEvidence } from '@openlup/platform/communications';
 import { createCheckoutRecoveryWaveJob } from '@openlup/platform/composition';
 import { createPostgresPlatformJobRunLedger } from '@openlup/platform/job-ledger';
@@ -169,6 +169,60 @@ describe.each(lifecycleProfiles)('checkout recovery waves on %s', profile => {
       expect((await env.owner.query("SELECT event_type FROM public.outbox_events WHERE aggregate_id=$1 AND event_type IN ('commerce.order.cancelled','subscription.cancelled')", [o.id])).rows).toEqual([]);
     }
     expect((await env.owner.query('SELECT state FROM public.subscription_activations WHERE order_id=$1', [refused.id])).rows[0].state).toBe('provisional');
+  });
+
+  it.each(['past-window', 'at-deadline'])('emits exactly one token-less reservation-expiry notice: %s', async boundary => {
+    const o = await order(boundary === 'past-window' ? 24 * 40 : 2);
+    await hold(o.id, -0.5);
+    const selected = createPostgresCheckoutRecoveryWaves(env.runtime,
+      boundary === 'at-deadline' ? { ...policy, recoverySeconds: 7200 } : policy);
+    await selected.expire(1000, NOW); await selected.expire(1000, NOW); await selected.reconcile(1000, NOW);
+    const notices = await expireEvents(o.id);
+    expect(notices).toHaveLength(1); expect(notices[0]!.payload).not.toHaveProperty('recoveryToken');
+    expect(notices[0]!.payload).toMatchObject({ orderUuid: o.id, totalCents: 100, currency: 'XXX' });
+    expect(await tokens(o.id)).toHaveLength(0);
+  });
+
+  it('reconciles an expired-window order together with a fresh one and replays without new capture', async () => {
+    const old = await order(24 * 40), fresh = await order(2);
+    await env.owner.query("UPDATE public.commerce_orders SET status='expired' WHERE id=ANY($1::uuid[])", [[old.id, fresh.id]]);
+    const first = await waves().reconcile(1000, NOW);
+    expect(first.inserted).toBe(2);
+    const olderNotice = await expireEvents(old.id), freshNotice = await expireEvents(fresh.id);
+    expect(olderNotice).toHaveLength(1); expect(olderNotice[0]!.payload).not.toHaveProperty('recoveryToken');
+    expect(await tokens(old.id)).toHaveLength(0);
+    expect(freshNotice).toHaveLength(1);
+    expect(freshNotice[0]!.payload.recoveryToken).toMatch(/^rcv_/); expect(await tokens(fresh.id)).toHaveLength(1);
+    expect(await waves().reconcile(1000, NOW)).toEqual({ checked: 0, inserted: 0 });
+    expect(await expireEvents(old.id)).toEqual(olderNotice); expect(await expireEvents(fresh.id)).toEqual(freshNotice);
+  });
+
+  it('abandons an old safe initial checkout and sends its token-less notice without ordinary cancellation mail', async () => {
+    const o = await order(24 * 40, true);
+    expect(await waves().sweepInitial(1000, at(-24), NOW)).toMatchObject({ swept: 1 });
+    const notices = await expireEvents(o.id); expect(notices).toHaveLength(1);
+    expect(notices[0]!.payload).not.toHaveProperty('recoveryToken'); expect(await tokens(o.id)).toHaveLength(0);
+    const sent: Array<string | null> = [];
+    const handler = createOutboxCheckoutExpiredEmailHandler({
+      emailPort: { findExistingSend: async () => false, sendCheckoutExpiredNotice: async input => {
+        sent.push(input.recoveryToken ?? null); return { ok: true, messageId: 'capture:expired', httpStatus: 200, providerError: null, aborted: false };
+      } } as TransactionalEmailPort,
+      recipientPort: { resolve: async () => ({ email: `${o.client}@example.invalid`, firstName: null }) },
+      lifecyclePort: { read: async () => {
+        const row = (await env.runtime.query(`SELECT o.status, o.metadata->>'subscriptionActivation'='abandoned' AND a.state='compensated' AS abandoned
+          FROM public.commerce_orders o JOIN public.subscription_activations a ON a.order_id=o.id WHERE o.id=$1`, [o.id])).rows[0];
+        return { orderStatus: row.status, subscriptionActivationAbandoned: row.abandoned, paymentStatus: null, hasPayment: false };
+      } },
+      runtime: { formatMoney: (amount, currency) => `${currency} ${amount}`, resolveLocale: () => 'en',
+        parseOutboxPayload: (schema, payload) => { const parsed = schema.safeParse(payload);
+          return parsed.success ? { ok: true, data: parsed.data } : { ok: false, outcome: { kind: 'discard', reason: 'invalid_payload' } }; },
+        mapSendOutcome: outcome => outcome.ok ? { kind: 'processed' } : { kind: 'retry', reason: 'send_failed' } },
+    });
+    expect(await handler.handle(notices[0]!, new AbortController().signal)).toMatchObject({ kind: 'processed' });
+    expect(sent).toEqual([null]);
+    expect(await waves().sweepInitial(1000, at(-24), NOW)).toMatchObject({ swept: 0 });
+    await waves().reconcile(1000, NOW); expect(await expireEvents(o.id)).toEqual(notices);
+    expect((await env.owner.query("SELECT event_type FROM public.outbox_events WHERE aggregate_id=$1 AND event_type IN ('commerce.order.cancelled','subscription.cancelled')", [o.id])).rows).toEqual([]);
   });
 
   it('two connections enqueueing the same wave commit one event and token by outbox uniqueness', async () => {

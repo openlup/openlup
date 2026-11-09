@@ -110,7 +110,9 @@
       "role": "capability",
       "maturity": "experimental",
       "compatibilityPolicy": "internal-candidate",
-      "packageSmokeEvidence": ["test/packageBoundary.test.ts"],
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts"
+      ],
       "entrypoint": "dist/commerce/server/destinations/index.d.ts",
       "snapshot": "api/commerce-destinations.api.md"
     },
@@ -959,13 +961,13 @@
       "maxFiles": 4027
     },
     "docs": {
-      "maxPackedBytes": 79312,
+      "maxPackedBytes": 81037,
       "maxFiles": 10
     },
     "maxPackedBytes": 2898683,
     "maxUnpackedBytes": 13845770,
     "maxFiles": 4151,
-    "capReason": "Measured merged-tree package: code 2,320,140 bytes and 3,984 files, tarball 2,841,846 bytes, unpacked 13,574,284 bytes, 4,111 files; caps are measured times 1.02, rounded up. Existing larger code and file caps are retained. The docs class measured 78,483 gzip bytes on the 0.37.0 set tree; its existing larger cap is retained.",
+    "capReason": "Measured merged-tree package: code 2,320,140 bytes and 3,984 files, tarball 2,841,846 bytes, unpacked 13,574,284 bytes, 4,111 files; caps are measured times 1.02, rounded up. Existing larger code and file caps are retained. The docs class measured 78,483 gzip bytes on the 0.37.0 set tree; its existing larger cap is retained. Checkout recovery documentation measured 79,448 gzip bytes, 136 bytes above its prior cap; the documentation cap is measured times 1.02, rounded up.",
     "baseline": {
       "version": "0.36.0",
       "packedBytes": 2104577

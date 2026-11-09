@@ -1557,6 +1557,9 @@ including retained expiry evidence from the inventory sweeper; it does not expir
 an old order without reservation evidence. It excludes initial subscriptions and
 renewals, retains successful payment facts, and atomically captures one
 `commerce.checkout.expired` event and hash-only token. Existing links are retained.
+A notice must not carry a link that is already expired: when the order-based
+recovery deadline is not later than minting time, the same notice omits the
+token and no token row is inserted. This also applies to initial abandonment.
 `reconcile` repairs absent capture for canonical expired orders and attributed
 initial abandonment. `sweepInitial` takes an explicit UTC cutoff, filters stable
 provider-contact refusals before its limit, locks and rechecks before delegating

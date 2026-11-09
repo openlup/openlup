@@ -210,7 +210,11 @@ BEGIN
    AND EXISTS(SELECT 1 FROM public.subscription_activations a WHERE a.order_id=v_order.id AND a.state='compensated'))
  ) THEN RETURN false; END IF;
  IF v_order.status='cancelled' AND v_order.client_id IS NULL THEN RETURN false; END IF;
- IF v_order.client_id IS NOT NULL THEN raw_token:='rcv_'||replace(gen_random_uuid()::text,'-','')||replace(gen_random_uuid()::text,'-',''); END IF;
+ -- A notice must not contain a link already dead at minting time. Retain the
+ -- token-less notice path and the original order-based deadline.
+ IF v_order.client_id IS NOT NULL
+  AND v_order.created_at+make_interval(secs=>(policy->>'recoverySeconds')::integer)>GREATEST(p_now,now())
+ THEN raw_token:='rcv_'||replace(gen_random_uuid()::text,'-','')||replace(gen_random_uuid()::text,'-',''); END IF;
  INSERT INTO public.outbox_events(aggregate_type,aggregate_id,event_type,idempotency_key,payload,metadata)
  VALUES('commerce_order',v_order.id,'commerce.checkout.expired','checkout_expired:'||v_order.id,
   jsonb_build_object('orderId','order_'||v_order.id,'orderUuid',v_order.id,'totalCents',v_order.total_amount_minor,

@@ -4135,7 +4135,7 @@
     },
     {
       "path": "db/platform/migrations/20261110100000_checkout_recovery_waves.sql",
-      "sha256": "cadae8fc020b0a23b9389502d51c35eb9d91f43f8790487f13401dd010271588",
+      "sha256": "c555084b85507d9ba21f29a3ecb8586d08ff563fd2c87e39521775455eaab454",
       "functions": [
         {
           "signature": "public.commerce_enqueue_checkout_recovery_reminders(integer)",
@@ -4175,7 +4175,7 @@
         {
           "signature": "public.commerce_checkout_expired_event_enqueue(uuid,jsonb,timestamptz)",
           "beforeSha256": null,
-          "afterSha256": "88a82a0bffdce7e34dacfc7fd4527b136b9a76d5fd209bf103ff5dc08a578500"
+          "afterSha256": "8fd3f1cdc18e9ac094d54fbf4e7dfa2dbcf3cfb2594913648ab9ffd9946ceac3"
         },
         {
           "signature": "public.commerce_reconcile_checkout_expired_events(integer,jsonb,timestamptz)",
