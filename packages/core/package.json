@@ -2,6 +2,20 @@
   "name": "@openlup/core",
   "version": "0.37.0",
   "description": "Neutral D2C subscription and bundle commerce kernels; a development preview with no stable API.",
+  "keywords": [
+    "openlup",
+    "subscription",
+    "subscription-commerce",
+    "d2c",
+    "bundles",
+    "pricing",
+    "commerce",
+    "typescript"
+  ],
+  "homepage": "https://github.com/openlup/openlup/tree/main/packages/core#readme",
+  "bugs": {
+    "url": "https://github.com/openlup/openlup/issues"
+  },
   "license": "Apache-2.0",
   "repository": {
     "type": "git",

@@ -3,6 +3,21 @@
   "version": "0.37.0",
   "private": false,
   "description": "Runnable server substrate: Node HTTP runtime, BFF dispatch, scheduler, storage, data gateways and bundle composition; development preview.",
+  "keywords": [
+    "openlup",
+    "subscription",
+    "subscription-commerce",
+    "d2c",
+    "postgresql",
+    "bff",
+    "node-server",
+    "migrations",
+    "typescript"
+  ],
+  "homepage": "https://github.com/openlup/openlup/tree/main/packages/platform#readme",
+  "bugs": {
+    "url": "https://github.com/openlup/openlup/issues"
+  },
   "license": "Apache-2.0",
   "type": "module",
   "engines": {
