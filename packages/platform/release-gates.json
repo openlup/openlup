@@ -130,9 +130,7 @@
       "role": "capability",
       "maturity": "experimental",
       "compatibilityPolicy": "internal-candidate",
-      "packageSmokeEvidence": [
-        "test/packageBoundary.test.ts"
-      ],
+      "packageSmokeEvidence": ["test/packageBoundary.test.ts"],
       "entrypoint": "dist/commerce/server/native-checkout/index.d.ts",
       "snapshot": "api/commerce-native-checkout.api.md"
     },
@@ -955,20 +953,20 @@
   },
   "pack": {
     "code": {
-      "maxPackedBytes": 2390178,
+      "maxPackedBytes": 2390161,
       "maxFiles": 4027
     },
     "docs": {
-      "maxPackedBytes": 81443,
+      "maxPackedBytes": 81230,
       "maxFiles": 10
     },
     "maxPackedBytes": 2898683,
     "maxUnpackedBytes": 13845770,
     "maxFiles": 4236,
-    "capReason": "Measured merged-tree package: code 2,320,140 bytes and 3,984 files, tarball 2,841,846 bytes, unpacked 13,574,284 bytes, 4,111 files; caps are measured times 1.02, rounded up. Existing larger code and file caps are retained. The docs class measured 78,483 gzip bytes on the 0.37.0 set tree; its existing larger cap is retained. Account-event foundation measured code 2,343,311 bytes, docs 79,846 bytes and 4,152 total files; those exceeded caps by 6,896 bytes, 534 bytes and one file respectively. Their new caps are measured times 1.02, rounded up; aggregate byte and other existing caps are retained.",
+    "capReason": "Measured merged-tree package: code 2,320,140 bytes and 3,984 files, tarball 2,841,846 bytes, unpacked 13,574,284 bytes, 4,111 files; caps are measured times 1.02, rounded up. Existing larger code and file caps are retained. The docs class measured 78,483 gzip bytes on the 0.37.0 set tree; its existing larger cap is retained. The docs class measured 79,637 gzip bytes on the 0.38.0 set tree (release notes and package guides); its cap is measured times 1.02, rounded up. Account-event source, SQL and guidance increase the code class and file count; their increased limits use the measured artifact times 1.02, rounded up. Other larger limits are retained.",
     "baseline": {
-      "version": "0.36.0",
-      "packedBytes": 2104577
+      "version": "0.37.0",
+      "packedBytes": 2791358
     },
     "browserEntries": {
       "./catalog/contracts": 4096,

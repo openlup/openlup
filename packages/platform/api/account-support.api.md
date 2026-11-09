@@ -1837,7 +1837,7 @@ export declare const ACCOUNT_SUPPORT_MIGRATIONS: {
         }, {
             readonly position: 108;
             readonly catalogPath: "db/platform/migrations/20261110120000_customer_account_events.sql";
-            readonly sha256: "8fb4111b42de1e7c5a66e20f98c193a58e3d59a4de45a849adf6cb0696808971";
+            readonly sha256: "a22217cedd0cb26352736a046ca2ccc48334a27dd14d494cacff8617323cf9c7";
             readonly url: URL;
         }];
     };

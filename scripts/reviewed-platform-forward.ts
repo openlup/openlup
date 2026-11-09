@@ -614,6 +614,9 @@ function platformSqlTokens(sql: string, reviewedCreationTable = false, native = 
 }
 
 export function isExpandOnlyPlatformForward(sql: string, reviewedCreationTable = false): boolean {
+  return expandOnlyPlatformForward(sql, reviewedCreationTable, false);
+}
+function expandOnlyPlatformForward(sql: string, reviewedCreationTable: boolean, newTableForeignKeyActions: boolean): boolean {
   const parsed = platformSqlTokens(sql, reviewedCreationTable);
   if (!parsed.complete) return false;
   const tokens = parsed.tokens.map(token => token.kind === "string" || token.kind === "number" ? "<literal>" : token.kind === "quoted" ? reviewedCreationTable ? token.value.toUpperCase() : `"${token.value.toUpperCase()}"` : token.value.toUpperCase());
@@ -647,7 +650,7 @@ export function isExpandOnlyPlatformForward(sql: string, reviewedCreationTable =
     // Base admission remains unchanged; the expand-only checks above only add refusals.
     // Pinned new tables use scalar operators/casts and these foreign-key actions.
     // Mask only those actions, leaving standalone DELETE/SET and every other refusal intact.
-    const checked = reviewedCreationTable && /^CREATE TABLE /u.test(text) ? text.replace(/ ON DELETE (?:CASCADE|SET NULL)(?= |$)/gu, "").split(" ") : statement;
+    const checked = (reviewedCreationTable || newTableForeignKeyActions) && /^CREATE TABLE /u.test(text) ? text.replace(/ ON DELETE (?:CASCADE|SET NULL)(?= |$)/gu, "").split(" ") : statement;
     if (checked.some((token) => ["DROP", "TRUNCATE", "RENAME", "OWNER", "SET", "APP", "DELETE", "UPDATE", "REPLACE", "SELECT", "EXECUTE", "CALL", "DETACH", "ATTACH", "INHERIT", "INHERITS", "DISABLE", "ENABLE", "VALIDATE", "AUTHORIZATION"].includes(token))) return false;
     if (text === "BEGIN" || text === "COMMIT") return true;
     if (/^INSERT INTO /u.test(text)) {
@@ -2357,7 +2360,8 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
       }
       if (action.verb === "ADD") {
         const parsed = nativeCheckValues(action.tail, 0, check.column), values = parsed?.values;
-        if (pending?.kind !== "CHECK" || pending.key !== key || !values || parsed!.next !== action.tail.length || canonical(values) !== canonical(check.values)) throw new Error("reviewed native store CHECK must match its listed values");
+        const next = parsed && nativeWord(action.tail, parsed.next, "NOT") && nativeWord(action.tail, parsed.next + 1, "VALID") ? parsed.next + 2 : parsed?.next;
+        if (pending?.kind !== "CHECK" || pending.key !== key || !values || next !== action.tail.length || canonical(values) !== canonical(check.values)) throw new Error("reviewed native store CHECK must match its listed values");
         pending = undefined; completedChecks.add(key); constraintStatement = true; break;
       }
     }
@@ -2444,7 +2448,8 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
     }
     if (slot.dataStatements.includes(statement)) { data.add(statement); continue; }
     const indexCreation = nativeWord(tokens, 0, "CREATE") && nativeWord(tokens, nativeWord(tokens, 1, "UNIQUE") ? 2 : 1, "INDEX");
-    if ((indexCreation || head?.kind === "TABLE") && isExpandOnlyPlatformForward(statement)) {
+    const newTable = head?.verb === "CREATE" && head.kind === "TABLE" && head.table !== null && !tables.has(head.table) && nativeSymbol(tokens, head.next, "(") && Boolean(nativeQualified(tokens, 2));
+    if ((indexCreation || head?.kind === "TABLE") && expandOnlyPlatformForward(statement, false, newTable)) {
       if (head?.verb === "CREATE" && head.table && nativeSymbol(tokens, head.next, "(") && nativeQualified(tokens, 2)) tables.add(head.table);
       continue;
     }
