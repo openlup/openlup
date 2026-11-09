@@ -396,12 +396,15 @@ The public answer does not depend on whether an account exists.
 An admitted new checkout issues a 256-bit recovery token through the native
 PostgreSQL port. Only its SHA-256 hash is stored. PostgreSQL fixes expiry at
 order creation plus 24 hours; this is a database rule, not a configurable value.
-One live link per order: a new link ends the previous link of the same order.
+Checkout links for the same order coexist until expiry or payment; issuing
+another link does not revoke an earlier checkout link. Payment-case links still
+rotate, leaving one live link per case. The separate account actor issuer also
+retains rotation.
 The token is returned only in the creating response and a separate private
 captured checkout-recovery message, never an authentication challenge or event.
 The completion page reads the URL token once and replaces history synchronously
 before configuration fetch or rendering. Request bodies carry the token; memory
-and session storage preserve reload convenience but grant no authority. An unchanged repeated submit for the same order keeps its existing token when the replay response omits it. A different order never inherits that token, and a new token replaces the previous one.
+and session storage preserve reload convenience but grant no authority. An unchanged repeated submit for the same order keeps its existing token when the replay response omits it. A different order never inherits that token. A new token replaces the token stored in this tab; earlier checkout links remain usable until expiry or payment.
 The committed continuity proof consists of the source continuity test and the
 clean-index root proof, which needs only npm ci and the three-package build,
 without a starter build or browser. A real-browser second-submit check was
