@@ -383,6 +383,9 @@ GHCR pull selects the pinned `starter-browser` image through the shared reader
 and pull loop; mirror failure refuses without a vendor fallback or browser
 download. Playwright runs the database config with one worker, traces, video and
 screenshots off, read-only application inputs and temporary container results.
+The private care fixture matches each host to its runtime/owner connections and
+mailbox directory. Only that care directory is writable in the browser, which
+runs with the host user identity to preserve private capture permissions.
 The script captures output privately, scans it for credentials, removes its
 hosts, containers, databases, roles and scratch files on success or failure, and
 prints the public image identity, counts, timings and bounded failure diagnostics. It uploads no artifacts. The job retains

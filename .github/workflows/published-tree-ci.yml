@@ -198,14 +198,15 @@ jobs:
           OPENLUP_PROOF_SERVICE_PORT: ${{ job.services.postgres.ports[5432] }}
         run: node --experimental-strip-types scripts/packages/required-package-gates.ts --out "$RUNNER_TEMP/package-gates" --expected-commit "$(git rev-parse HEAD)"
 
-      - name: Starter database browser journeys
+      - name: Authenticate GitHub Container Registry pulls
         if: steps.reused.outputs.reuse != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_ACTOR: ${{ github.actor }}
-        run: |
-          echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
-          node --experimental-strip-types scripts/starter-browser-ci.mjs --manifest "$RUNNER_TEMP/package-gates/packages-manifest.json" --expected-commit "$(git rev-parse HEAD)"
+        run: echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
+      - name: Starter database browser journeys
+        if: steps.reused.outputs.reuse != 'true'
+        run: node --experimental-strip-types scripts/starter-browser-ci.mjs --manifest "$RUNNER_TEMP/package-gates/packages-manifest.json" --expected-commit "$(git rev-parse HEAD)"
 
   test-full-shard:
     name: test-full-shard (${{ matrix.shard }}/4)

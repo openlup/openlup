@@ -494,7 +494,10 @@ The browser image comes only from authenticated, digest-pinned
 `ghcr.io/openlup/playwright` through the shared image reader and pull loop.
 Mirror failure refuses; CI never downloads browsers or pulls a vendor image.
 The database config retains one worker and disables traces, video and screenshots.
-Application inputs are mounted read-only. Cleanup removes temporary results,
+The runner writes the same private care fixture as `./lifecycle browser` and
+starts each host in its own care state directory. Application inputs are mounted
+read-only; the care directory alone is writable, with the browser running under
+the host user identity to preserve private capture permissions. Cleanup removes temporary results,
 captured messages and private keys; the captured output is scanned in memory. No artifacts are uploaded.
 
 From the source root after the package gates, run the same script with
@@ -507,9 +510,10 @@ the same pinned digest from the Microsoft registry, then pass its complete refer
 this exception whenever `CI` is set. It performs no upstream fallback.
 
 This CI selection covers navigation, localized forms/refusals, cart persistence,
-one-time sandbox purchase and discounted subscription acquisition. Separate
-operator-document, recovery and renewal browser proofs above retain their own
-fixtures and local invocation; they are not selected by the database config.
+one-time sandbox purchase, discounted subscription acquisition and the database
+subscription-care group. Dedicated operator-document, recovery and renewal browser
+proofs above retain their own fixtures and local invocation; those separate specs
+are not selected by the database config.
 A green required job establishes only these selected sandbox journeys, not
 provider, deployment, upgrade or release qualification.
 

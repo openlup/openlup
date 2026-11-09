@@ -12,3 +12,5 @@ export function acquireStarterPostgres(defer: (release: () => Promise<unknown>) 
   ready: typeof import('../tests/helpers/postgresContainer.ts').waitForPostgresTcpReady;
 }): Promise<import('../tests/helpers/postgresContainer.ts').PostgresContainer & { password: string }>;
 export function capturePrivateValues(message: Record<string, unknown>): string[];
+export interface CareBrowserFixture { id: string; baseURL: string; ownerUrl: string; runtimeUrl: string; state: string }
+export function writeBrowserFixtures(app: string, entries: CareBrowserFixture[]): Promise<void>;

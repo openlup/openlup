@@ -99,11 +99,22 @@ export function capturePrivateValues(message) {
   return values;
 }
 
+export async function writeBrowserFixtures(app, entries) {
+  const directory = join(app, '.context/care-browser');
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  await writeFile(join(directory, 'fixtures.json'), JSON.stringify(entries), { mode: 0o600 });
+  await writeFile(join(app, '.context/database-ui-hosts.json'),
+    JSON.stringify(entries.map(({ id, baseURL }) => ({ id, baseURL }))), { mode: 0o600 });
+}
+
 export function browserArguments(app, reference, name, localImage) {
   if (reference !== imageReference(readCiImage('starter-browser')) && (processEnvironment.CI || !localImage || reference !== localBrowserReference())) throw new Error('starter_browser_mirror_required');
   return ['run', '--rm', '--pull=never', '--name', name, '--network=host', '--read-only',
+    '--user', `${process.getuid()}:${process.getgid()}`,
     '--tmpfs', '/tmp:rw,nosuid,nodev', '--ipc=host', '-e', 'CI=true', '-e', 'HOME=/tmp',
-    '--mount', `type=bind,src=${app},dst=/app,readonly`, '--workdir', '/app', reference,
+    '--mount', `type=bind,src=${app},dst=/app,readonly`,
+    '--mount', `type=bind,src=${join(app, '.context/care-browser')},dst=/app/.context/care-browser`,
+    '--workdir', '/app', reference,
     'node', 'node_modules/@playwright/test/cli.js', 'test', '--config', 'playwright.database.config.ts',
     '--workers=1', '--retries=0', '--reporter=dot', '--output=/tmp/test-results'];
 }
@@ -167,16 +178,18 @@ export async function runStarterBrowser(options) {
       const app = join(scratch, 'app');
       defer(async () => {
         // Scan credentials from failed journeys too, before deleting the private fixture.
-        const capture = join(app, '.context/captured-messages');
-        try {
-          for (const file of await readdir(capture)) {
-            const contents = await readFile(join(capture, file), 'utf8');
-            for (const line of contents.split('\n').filter(Boolean)) {
-              const message = JSON.parse(line);
-              privateValues.push(...capturePrivateValues(message));
+        for (const state of [app, ...['supplements', 'coffee'].map(id => join(app, '.context/care-browser', id))]) {
+          const capture = join(state, '.context/captured-messages');
+          try {
+            for (const file of await readdir(capture)) {
+              const contents = await readFile(join(capture, file), 'utf8');
+              for (const line of contents.split('\n').filter(Boolean)) {
+                const message = JSON.parse(line);
+                privateValues.push(...capturePrivateValues(message));
+              }
             }
-          }
-        } catch (error) { if (error.code !== 'ENOENT') throw error; }
+          } catch (error) { if (error.code !== 'ENOENT') throw error; }
+        }
       });
       // Hosts and extracted npm commands receive no ambient database or cloud credentials.
       const env = Object.fromEntries(['PATH', 'HOME', 'TMPDIR', 'TMP', 'TEMP', 'LANG', 'TZ', 'CI']
@@ -243,11 +256,13 @@ export async function runStarterBrowser(options) {
         privateValues.push(key);
         const keyFile = join(scratch, `${configuration}-key.json`);
         await writeFile(keyFile, JSON.stringify({ current: key }), { mode: 0o600 });
+        const state = join(app, '.context/care-browser', configuration);
+        await mkdir(state, { recursive: true, mode: 0o700 });
         const port = await freePort(), baseURL = `http://127.0.0.1:${port}`;
         phase = `host_${configuration}`;
-        const child = spawn(process.execPath, ['--experimental-strip-types', 'host/server.ts', '--configuration', configuration,
+        const child = spawn(process.execPath, ['--experimental-strip-types', join(app, 'host/server.ts'), '--configuration', configuration,
           '--port', String(port), '--listen', '127.0.0.1', '--database-url', runtimeUrl, '--quote-acceptance-key-file', keyFile],
-        { cwd: app, env: { ...env, PGPASSWORD: password }, stdio: ['ignore', 'pipe', 'pipe'] });
+        { cwd: state, env: { ...env, PGPASSWORD: password }, stdio: ['ignore', 'pipe', 'pipe'] });
         let exited = false;
         const stopped = new Promise(done => child.once('exit', () => { exited = true; done(); }));
         child.once('error', () => { exited = true; });
@@ -273,9 +288,12 @@ export async function runStarterBrowser(options) {
           const code = /\b(starter_[a-z_]+|ERR_[A-Z_]+)\b/u.exec(hostOutput)?.[1] ?? 'not_ready';
           throw new Error(`starter_browser_host_${configuration}_${code}`);
         }
-        hosts.push({ id: configuration, baseURL });
+        const browserRuntime = new URL(runtimeUrl);
+        browserRuntime.password = password;
+        hosts.push({ id: configuration, baseURL, ownerUrl: installUrl, runtimeUrl: browserRuntime.href,
+          state: `/app/.context/care-browser/${configuration}` });
       }
-      await writeFile(join(app, '.context/database-ui-hosts.json'), JSON.stringify(hosts), { mode: 0o600 });
+      await writeBrowserFixtures(app, hosts);
       phase = 'journeys';
       const name = `starter-browser-${suffix}`;
       // Registered before launch: a timed-out Docker client may leave its container running.

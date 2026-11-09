@@ -1,9 +1,12 @@
 import { readFileSync } from 'node:fs';
+import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import pg from 'pg';
-import { acquireStarterPostgres, browserArguments, capturePrivateValues, parseArguments, resolveBrowserImage, scanPrivateOutput, withCleanup, withConnectionCleanup } from './starter-browser-ci.mjs';
+import { acquireStarterPostgres, browserArguments, capturePrivateValues, parseArguments, resolveBrowserImage, scanPrivateOutput, withCleanup, withConnectionCleanup, writeBrowserFixtures } from './starter-browser-ci.mjs';
 import { imageReference, readCiImage } from './ci-image-pull.mjs';
 
 const args = ['--manifest', '/tmp/packs/packages-manifest.json', '--expected-commit', 'a'.repeat(40)];
@@ -83,12 +86,32 @@ describe('installed starter browser CI', () => {
     expect(command).toContain('--network=host');
     expect(command).toContain('--read-only');
     expect(command).toContain('type=bind,src=/tmp/starter,dst=/app,readonly');
+    expect(command).toContain('type=bind,src=/tmp/starter/.context/care-browser,dst=/app/.context/care-browser');
+    expect(command[command.indexOf('--user') + 1]).toBe(`${process.getuid!()}:${process.getgid!()}`);
     expect(command).toContain('--workers=1');
     expect(command).toContain('--output=/tmp/test-results');
     expect(command).not.toContain('install');
     expect(() => browserArguments('/tmp/starter', 'mcr.microsoft.com/playwright:latest', 'proof')).toThrow('starter_browser_mirror_required');
     const config = readFileSync('examples/neutral-store/playwright.database.config.ts', 'utf8');
     for (const setting of ["trace: 'off'", "screenshot: 'off'", "video: 'off'", "'journey.spec.ts'", "'acquisition.spec.ts'"]) expect(config).toContain(setting);
+  });
+  it('writes both private care fixtures and credential-free UI origins inside cleanup', async () => {
+    const app = await mkdtemp(join(tmpdir(), 'starter-care-fixtures-'));
+    const entries = ['supplements', 'coffee'].map((id, index) => ({ id, baseURL: `http://127.0.0.1:${4319 + index}`,
+      ownerUrl: `postgresql://installer:synthetic@127.0.0.1/${id}`, runtimeUrl: `postgresql://runtime:synthetic@127.0.0.1/${id}`,
+      state: `/app/.context/care-browser/${id}` }));
+    await expect(withCleanup(async defer => {
+      defer(() => rm(app, { recursive: true, force: true }));
+      await writeBrowserFixtures(app, entries);
+      const fixture = join(app, '.context/care-browser/fixtures.json');
+      expect(JSON.parse(await readFile(fixture, 'utf8'))).toEqual(entries);
+      expect((await stat(fixture)).mode & 0o777).toBe(0o600);
+      expect((await stat(join(app, '.context/care-browser'))).mode & 0o777).toBe(0o700);
+      expect(JSON.parse(await readFile(join(app, '.context/database-ui-hosts.json'), 'utf8')))
+        .toEqual(entries.map(({ id, baseURL }) => ({ id, baseURL })));
+      throw new Error('journey failed');
+    })).rejects.toThrow('journey failed');
+    await expect(stat(app)).rejects.toMatchObject({ code: 'ENOENT' });
   });
   it('cleans browser, hosts, connections, PostgreSQL and scratch after a journey failure', async () => {
     const released: string[] = [];
