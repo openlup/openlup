@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createClassicPackageRepricer, hashPackageEditQuote } from "../../src/subscriptions/classicPackageQuote.js";
+import { createSubscriptionSizingRules } from "../../src/subscriptions/subscriptionSizing.js";
 import { createPostgresPackageEditReadPort } from "../../src/subscriptions/packageEditRead.js";
 import { createDbBackedCommerceQuotePort } from "../../src/pricing/index.js";
 import type { CommerceQuoteCatalogItem, CommercePriceAuthorityPort } from "../../src/pricing/index.js";
@@ -44,6 +45,25 @@ describe("classic full-package quote characterization", () => {
   it("changes only cadence and the nominal stamp on a plan-only edit", async () => {
     const f = fixture(), result = await f.quote({ ...request(), planDays: 21 });
     expect(result).toMatchObject({ cadenceDays: 21, compositionConstraint: { kind: "plan_days", value: 21 }, baseLines: [{ qty: 14 }], delta: money(-300) });
+  });
+  it("composes sizing rules to quote a 28-to-14 plan change with the new nominal stamp and unchanged quantities", async () => {
+    const f = fixture(), constraint = { kind: "plan_days", value: 28, mode: "portion", portionFactor: 0.5, marker: "keep" };
+    f.subscription.cadenceDays = 28; f.subscription.compositionConstraint = constraint;
+    const sizingRead = vi.fn(() => { throw new Error("classic edits must not size quantities"); });
+    const compositionRulesPort = createSubscriptionSizingRules({
+      portionModes: { full: { mode: "full", factor: 1 }, reduced: { mode: "portion", factor: 0.5 } },
+      readDailyNeed: sizingRead, isPlanLengthConstraint: value => value.data.kind === "plan_days",
+      readUnitFacts: async () => [id].map(variantId => ({ variantId, demandPerUnit: 1, maximumQuantity: 99 })), quantityPolicy: sizingRead });
+    const result = await createClassicPackageRepricer({ ...f.ports, readPort: f.readPort, compositionRulesPort }).quote({
+      ...request(), addons: [{ variantId: addon, qty: 3 }] });
+    expect(result).toMatchObject({ cadenceDays: 14, compositionConstraint: { ...constraint, value: 14 },
+      baseLines: [{ variantId: id, qty: 14 }], addonLines: [{ variantId: addon, qty: 3 }] });
+    const inputs = vi.mocked(f.ports.quotePort.createServerAuthoritativeQuote).mock.calls.map(([input]) => input);
+    expect(inputs).toHaveLength(2);
+    expect(inputs[0]).toMatchObject({ cadenceDays: 28, compositionConstraint: constraint });
+    expect(inputs[1]).toMatchObject({ cadenceDays: 14, compositionConstraint: { ...constraint, value: 14 } });
+    for (const input of inputs) expect(input.lines.map(line => line.quantity)).toEqual([14, 3]);
+    expect(sizingRead).not.toHaveBeenCalled();
   });
   it("uses cadence as the nominal plan when the host has no plan-length constraint", async () => {
     const f = fixture(); f.subscription.compositionConstraint = null;

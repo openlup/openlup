@@ -2337,7 +2337,8 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
       }
       if (action.verb === "ADD") {
         const parsed = nativeCheckValues(action.tail, 0, check.column), values = parsed?.values;
-        if (pending?.kind !== "CHECK" || pending.key !== key || !values || parsed!.next !== action.tail.length || canonical(values) !== canonical(check.values)) throw new Error("reviewed native store CHECK must match its listed values");
+        const next = parsed && nativeWord(action.tail, parsed.next, "NOT") && nativeWord(action.tail, parsed.next + 1, "VALID") ? parsed.next + 2 : parsed?.next;
+        if (pending?.kind !== "CHECK" || pending.key !== key || !values || next !== action.tail.length || canonical(values) !== canonical(check.values)) throw new Error("reviewed native store CHECK must match its listed values");
         pending = undefined; completedChecks.add(key); constraintStatement = true; break;
       }
     }

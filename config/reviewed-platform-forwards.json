@@ -3535,6 +3535,19 @@
         ]
       },
       {
+        "row": "exact-levers",
+        "path": "db/platform/migrations/20261109130000_subscription_exact_levers.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.subscription_line_edit_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
         "row": "checkout-recovery-waves",
         "path": "db/platform/migrations/20261110100000_checkout_recovery_waves.sql",
         "replacedFunctions": [
@@ -4134,8 +4147,19 @@
       ]
     },
     {
+      "path": "db/platform/migrations/20261109130000_subscription_exact_levers.sql",
+      "sha256": "9b3bad20bbf946dd0dc5d02617fe18cfe9b32ea16a4798736b9a5a4dbbf1b199",
+      "functions": [
+        {
+          "signature": "public.subscription_line_edit_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "4b0f10f37fb4a3ffa715c440898de8285a695b4544bd2b2770a2e9fcdff2b389"
+        }
+      ]
+    },
+    {
       "path": "db/platform/migrations/20261110100000_checkout_recovery_waves.sql",
-      "sha256": "c555084b85507d9ba21f29a3ecb8586d08ff563fd2c87e39521775455eaab454",
+      "sha256": "ac85e9af005ec3fc5eb6a2411b6d29a6080e44805d4ffee493d55ebf1801fd1f",
       "functions": [
         {
           "signature": "public.commerce_enqueue_checkout_recovery_reminders(integer)",

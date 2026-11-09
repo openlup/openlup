@@ -4,6 +4,6 @@
 
 - Fix a defect: an expired-checkout notice must not carry a link that is already expired; emit the same notice without a token when its recovery deadline has elapsed.
 
-- Package size: documentation measures 79,496 gzip bytes against the prior 79,312-byte cap (+184 B); its new cap is 81,086 B (measured × 1.02, rounded up). Other caps are unchanged.
+- Package size: code measures 2,338,375 gzip bytes against its prior 2,336,415-byte cap (+1,960 B), setting a new cap of 2,385,143 B. Documentation measures 79,487 gzip bytes against its prior 79,312-byte cap (+175 B), setting a new cap of 81,077 B. Both caps are measured × 1.02, rounded up; tarball, unpacked and file caps are unchanged.
 
-Migration: Apply the complete platform chain through `20261110100000_checkout_recovery_waves.sql`. New service entry points use closed execution grants; existing entry-point headers and ACLs remain unchanged. Supply a distinct delivery profile and explicit host timing, lease, batch and copy configuration before enabling a job.
+Migration: Apply the complete platform chain through `20261110100000_checkout_recovery_waves.sql`. The widened order-status CHECK retains `NOT VALID` and does not revalidate historical rows. New service entry points use closed execution grants; existing entry-point headers and ACLs remain unchanged. Supply a distinct delivery profile and explicit host timing, lease, batch and copy configuration before enabling a job.

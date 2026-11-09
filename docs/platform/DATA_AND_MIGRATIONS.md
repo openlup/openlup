@@ -102,6 +102,23 @@ owns quote composition, no-op ordering and renewal behavior. SQL installation
 still requires its separate reviewed forward admission; source presence alone
 is not an admitted or published installation chain.
 
+The subsequent `20261109130000_subscription_exact_levers.sql` forward creates
+only `subscription_line_edit_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz)`.
+It reuses the preview ledger and receipts, adds no table, column, data statement
+or replacement function, pins `pg_catalog, pg_temp`, revokes PUBLIC/browser
+execution and grants execution only to `service_role`. Its seven actions retain
+their separate no-op and line-identity semantics. Portion acceptance binds the
+configured mode/factor pair to the preview and refuses a mismatched selection.
+Base mix independently checks
+its fixed total; plan and portion edits replace only base rows and preserve
+add-on IDs. Every real edit rewrites future renewal term lines and stores full
+accepted pricing in its action event, then accepts the preview and records the
+receipt atomically. Existing cycles, arrivals and frozen renewal snapshots are
+not rewritten. The current selected installation plans append one unit after
+the shared editor, with measured current inventories; issued prefixes remain
+unchanged. See the [subscription contract](ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
+for host sizing configuration and API limits.
+
 
 The account-choice forward also creates the service-only
 `subscription_register_renewal_purchase_with_shipping(uuid,jsonb)` and STABLE
@@ -1596,8 +1613,9 @@ order before rotating links. Actor issuance retains rotation. Checkout issuance
 refuses pending renewal-cycle orders; cancellation, recovery and retry
 authorization keep their existing order-scoped or token-scoped revocation.
 
-The checkout-wave forward adds `expired` to the native order CHECK and uses
-retained purchase-reservation deadlines as the canonical one-time expiry source.
+The checkout-wave forward adds `expired` to the native order CHECK, retaining
+its `NOT VALID` state so historical rows are not revalidated. It uses retained
+purchase-reservation deadlines as the canonical one-time expiry source.
 Event/token capture is atomic and deduplicated by event identity; reconciliation
 repairs absent capture without rotating prior links. Initial abandonment uses a
 compensated provisional activation, attributed cancelled order and stricter
@@ -1614,12 +1632,18 @@ for configured timing and transport-profile limits.
 `uniqueSupersets` entries declare table, constraint, columns and nullsNotDistinct.
 The lexical validator checks only the slot's own SQL: exactly one adjacent
 DROP CONSTRAINT / ADD CONSTRAINT pair per entry, with the exact listed positive
-IN values or plain UNIQUE columns and NULLS NOT DISTINCT mode. Unlisted drops,
-non-adjacent pairs and mismatched additions refuse; the general expression
-grammar is unchanged. The protected real-PostgreSQL catalog control proves
+IN values (with an optional trailing `NOT VALID`) or plain UNIQUE columns and
+NULLS NOT DISTINCT mode. Unlisted drops, non-adjacent pairs and mismatched
+additions refuse; the general expression grammar is unchanged. The protected real-PostgreSQL catalog control proves
 widening against the installed definition immediately before the slot: the old
 constraint must exist in the closed CHECK or UNIQUE shape, every old value or
 key column must remain, and NULLS NOT DISTINCT may be added but never removed.
+CHECK validation state must remain equal: a validated CHECK stays validated, and
+an unvalidated CHECK stays `NOT VALID`. PostgreSQL's `convalidated` proves that
+state; only when both are unvalidated is the trailing `NOT VALID` omitted for
+value-list comparison. This preserves table conventions that check new writes
+without rechecking historical rows. Changing validation state in either direction
+refuses. The lexical validator reads no prefix validation history.
 The installed new definition must equal the entry; other constraints, columns
 and triggers remain protected. No historical SQL anchor is used for these
 entries. The issued account-consent `purposeCheck` retains its original preimage,
@@ -2201,8 +2225,9 @@ client, but that table had row security and no runtime access at all.
 One shared completion tail closes these gaps. It is the approved seventeenth
 qualified identity. Both qualified plans select it once, after their issued
 tails and at the same position among shared units, so later shared forwards
-still append identically. The qualified plan now has 103 units and the
-restricted plan 102; legacy is unchanged.
+still append identically. With the package editor and exact-lever suffixes,
+the qualified plan has 105 units, the restricted plan 104 and legacy 100.
+The completion tail itself adds no legacy unit.
 
 The tail must follow the delivery destination forward. Its guard refuses the
 whole unit unless that table exists in its created state: owned by the

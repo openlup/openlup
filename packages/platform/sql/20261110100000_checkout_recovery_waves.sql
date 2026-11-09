@@ -4,7 +4,7 @@
 -- An event's unique identity arbitrates token insertion in the same transaction.
 ALTER TABLE public.commerce_orders DROP CONSTRAINT commerce_orders_status_check;
 ALTER TABLE public.commerce_orders ADD CONSTRAINT commerce_orders_status_check
- CHECK (status IN ('pending_payment','paid','fulfillment_pending','fulfilled','cancelled','refunded','expired'));
+ CHECK (status IN ('pending_payment','paid','fulfillment_pending','fulfilled','cancelled','refunded','expired')) NOT VALID;
 
 CREATE FUNCTION public.commerce_checkout_recovery_policy(p_policy jsonb)
 RETURNS jsonb LANGUAGE plpgsql IMMUTABLE SET search_path = pg_catalog, pg_temp AS $$

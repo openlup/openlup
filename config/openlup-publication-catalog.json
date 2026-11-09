@@ -1270,6 +1270,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261109130000_subscription_exact_levers.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/20261110100000_checkout_recovery_waves.sql",
       "class": "public-output"
     },
@@ -4215,6 +4219,10 @@
     },
     {
       "path": "packages/platform/sql/20261109120000_subscription_package_editor.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261109130000_subscription_exact_levers.sql",
       "class": "public-output"
     },
     {
@@ -8134,6 +8142,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/subscriptions/contracts/exactEdit.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/subscriptions/contracts/index.ts",
       "class": "public-output"
     },
@@ -8151,6 +8163,10 @@
     },
     {
       "path": "packages/platform/src/subscriptions/contracts/stockWait.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/exactEditQuote.ts",
       "class": "public-output"
     },
     {
@@ -8279,6 +8295,10 @@
     },
     {
       "path": "packages/platform/src/subscriptions/services.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/subscriptionSizing.ts",
       "class": "public-output"
     },
     {
@@ -10386,6 +10406,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/subscriptions/exactEditQuote.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/subscriptions/facades.test.ts",
       "class": "public-output"
     },
@@ -10435,6 +10459,10 @@
     },
     {
       "path": "packages/platform/test/subscriptions/retryTiming.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/subscriptions/subscriptionSizing.test.ts",
       "class": "public-output"
     },
     {
@@ -11643,6 +11671,18 @@
     },
     {
       "path": "scripts/ssg-static-contract.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/starter-browser-ci.d.mts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/starter-browser-ci.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/starter-browser-ci.test.ts",
       "class": "public-output"
     },
     {
@@ -29019,6 +29059,14 @@
     },
     {
       "path": "tests/postgres/subscriptionContinuityBaseline.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionExactEditor.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionExactInstallation.test.ts",
       "class": "public-output"
     },
     {
