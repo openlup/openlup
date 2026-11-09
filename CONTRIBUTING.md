@@ -956,7 +956,8 @@ named `@openlup/<name>` and has its own `MAJOR.MINOR.PATCH` version, exact pins
 to the current versions of other released `@openlup/*` packages, registry semver
 ranges for every other dependency, and curated `exports`: no wildcard or
 directory entries, and every target under `./dist/` except a `core-source`
-target, which stays under `./src/`. It is either `private: true` or carries
+target, which stays under `./src/`, and the `./package.json` entry, which
+exports the manifest itself for tooling and is not a code entry point. It is either `private: true` or carries
 exactly the public, provenance-backed publication settings and a `repository`
 entry. Its `publishConfig.tag` stays `preview`, so only the release workflow's
 explicit `--tag latest` moves `latest`. An unreleased package is always

@@ -125,7 +125,9 @@ function sourceImportAllowed(file: string, specifier: string, graph: ModuleGraph
     || (specifier === "@aws-sdk/client-s3" && file === "blob/s3Client.ts");
 }
 
-function assertModuleExports(modules: string[], graph: ModuleGraph, exports: Record<string, unknown>, hasFile: (path: string) => boolean, nestedEntries: string[] = []): void {
+function assertModuleExports(modules: string[], graph: ModuleGraph, manifestExports: Record<string, unknown>, hasFile: (path: string) => boolean, nestedEntries: string[] = []): void {
+  // `./package.json` exports the manifest for tooling; it is not a module entry.
+  const { "./package.json": _manifestExport, ...exports } = manifestExports;
   expect(Object.keys(graph).sort()).toEqual([
     ...modules, ...nestedEntries.filter((entry) => Object.hasOwn(graph, entry)),
   ].sort());
@@ -147,8 +149,7 @@ function assertModuleExports(modules: string[], graph: ModuleGraph, exports: Rec
   }
 }
 
-// `./package.json` exports the manifest for tooling; it is not a module entry.
-const { "./package.json": manifestExport, ...platformExports } = JSON.parse(readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8")).exports as Record<string, unknown>;
+const platformExports = JSON.parse(readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8")).exports as Record<string, unknown>;
 const moduleDirectories = readdirSync(SOURCE_ROOT, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name);
 
 function relativeImportAllowed(path: string, specifier: string): boolean {
@@ -286,8 +287,11 @@ describe("package source boundary", () => {
 
   it("gives every module its public entry and exactly its declared contracts sub-entry", () => {
     const modules = readdirSync(SOURCE_ROOT, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
-    expect(manifestExport).toBe("./package.json");
-    assertModuleExports(modules, graph, platformExports, (path) => existsSync(join(SOURCE_ROOT, path)), ["account-support/read-contracts", "account-support/postgres", "commerce/server/postgres", "channels/server", "risk/server", "company-identity/server", "operations/server", "marketing/server", "marketing/server/postgres", "commerce/server", "commerce/server/destinations", "commerce/server/native-checkout", "invoicing/postgres", "pricing/browser", "communications/resend", "communications/klaviyo", "payments/stripe", "payments/tpay", "fulfillment/omnipack", "fulfillment/native"]);
+    const manifest = JSON.parse(readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8")) as {
+      exports: Record<string, unknown>;
+    };
+    expect(manifest.exports["./package.json"]).toBe("./package.json");
+    assertModuleExports(modules, graph, manifest.exports, (path) => existsSync(join(SOURCE_ROOT, path)), ["account-support/read-contracts", "account-support/postgres", "commerce/server/postgres", "channels/server", "risk/server", "company-identity/server", "operations/server", "marketing/server", "marketing/server/postgres", "commerce/server", "commerce/server/destinations", "commerce/server/native-checkout", "invoicing/postgres", "pricing/browser", "communications/resend", "communications/klaviyo", "payments/stripe", "payments/tpay", "fulfillment/omnipack", "fulfillment/native"]);
   });
 
   it("bundles the marketing server entry without PostgreSQL adapters or the optional pg peer", async () => {
