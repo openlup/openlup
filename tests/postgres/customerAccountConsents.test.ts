@@ -65,8 +65,9 @@ it.each(profiles)("atomic actor account choices and refusals on %s", async profi
       } });
     await runner.apply();
     expect((await runner.apply()).applied).toEqual([]);
-    // Package editing follows timed auto-resume delivered history in every plan; qualified plans also retain their completion tail.
-    const tail = [{ catalog_path: "db/platform/migrations/20261109120000_subscription_package_editor.sql" },
+    // Checkout recovery waves follow package editing in every complete plan.
+    const tail = [{ catalog_path: "db/platform/migrations/20261110100000_checkout_recovery_waves.sql" },
+      { catalog_path: "db/platform/migrations/20261109120000_subscription_package_editor.sql" },
       { catalog_path: "db/platform/migrations/20261109113000_subscription_auto_resume_delivered_history.sql" },
       { catalog_path: "db/platform/migrations/20261109110000_checkout_recovery_link_lifecycle.sql" },
       { catalog_path: "db/platform/migrations/20261109100000_subscription_retry_resume.sql" },
