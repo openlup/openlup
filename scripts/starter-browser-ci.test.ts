@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { acquireStarterPostgres, browserArguments, capturePrivateValues, parseArguments, resolveBrowserImage, scanPrivateOutput, withCleanup } from './starter-browser-ci.mjs';
+import { EventEmitter } from 'node:events';
+import { acquireStarterPostgres, browserArguments, capturePrivateValues, guardConnection, parseArguments, resolveBrowserImage, scanPrivateOutput, withCleanup } from './starter-browser-ci.mjs';
 import { imageReference, readCiImage } from './ci-image-pull.mjs';
 
 const args = ['--manifest', '/tmp/packs/packages-manifest.json', '--expected-commit', 'a'.repeat(40)];
@@ -135,5 +136,23 @@ describe('installed starter browser CI', () => {
     expect(install).toContain('docker login ghcr.io');
     expect(install).toContain('scripts/starter-browser-ci.mjs --manifest "$RUNNER_TEMP/package-gates/packages-manifest.json"');
     expect(workflow).toContain('needs: [dco, typecheck, install-proof, test, self-check, gitleaks]');
+  });
+});
+
+describe('database connection errors', () => {
+  it('records an idle disconnect instead of letting it escape the cleanup path', async () => {
+    const outputs: string[] = [], released: string[] = [];
+    const pool = guardConnection(new EventEmitter(), outputs);
+    await expect(withCleanup(async defer => {
+      defer(() => { released.push('postgres'); });
+      expect(() => pool.emit('error', new Error('terminating connection due to administrator command'))).not.toThrow();
+      if (outputs.length) throw new Error('starter_browser_install_failed');
+    })).rejects.toThrow('starter_browser_install_failed');
+    expect(outputs).toEqual(['starter_browser_database_connection_lost']);
+    expect(released).toEqual(['postgres']);
+  });
+  it('guards every PostgreSQL client and pool the runner creates', () => {
+    const source = readFileSync('scripts/starter-browser-ci.mjs', 'utf8');
+    expect(source.match(/new pg\.(?:Client|Pool)\(/gu)?.length).toBe(source.match(/guardConnection\(new pg\.(?:Client|Pool)\(/gu)?.length);
   });
 });

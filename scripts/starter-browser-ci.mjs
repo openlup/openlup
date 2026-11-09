@@ -57,6 +57,13 @@ export async function withCleanup(work) {
   return value;
 }
 
+// An idle node-postgres client or pool emits 'error' when its backend disconnects; without a
+// listener Node exits outside withCleanup. Record it so the run fails through its cleanup instead.
+export function guardConnection(connection, outputs) {
+  connection.on('error', () => { outputs.push('starter_browser_database_connection_lost'); });
+  return connection;
+}
+
 export function scanPrivateOutput(output, privateValues = []) {
   if (privateValues.some(value => value && output.includes(value))
     || /(?:[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|postgres(?:ql)?:\/\/|(?:token|quoteAcceptance|cookie|authorization)["']?\s*[:=]\s*["']?\S{16}|(?<![A-Za-z0-9_-])(?:rcv_)?[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-]))/iu.test(output)) {
@@ -179,8 +186,7 @@ export async function runStarterBrowser(options) {
         const postgres = await acquireStarterPostgres(defer);
         cancellation.signal.throwIfAborted();
         privateValues.push(postgres.password);
-        const bootstrap = new pg.Client({ connectionString: postgres.connectionString, connectionTimeoutMillis: 5000 });
-        bootstrap.on('error', () => { outputs.push('starter_browser_database_connection_lost'); });
+        const bootstrap = guardConnection(new pg.Client({ connectionString: postgres.connectionString, connectionTimeoutMillis: 5000 }), outputs);
         defer(() => bootstrap.end());
         await bootstrap.connect();
         const installRole = 'starter_install', runtimeRole = 'starter_runtime', restoreRole = 'starter_restore';
@@ -195,14 +201,14 @@ export async function runStarterBrowser(options) {
         await bootstrap.query(`COMMENT ON DATABASE ${database} IS '${demonstrationMarker}'`);
         const installUrl = `postgresql://${installRole}:${password}@127.0.0.1:${postgres.port}/${database}`;
         const selection = { generation: 'qualified-v2', roleMode: 'installer-managed', bootstrapLogin: 'postgres', migrationLogin: installRole, runtimeLogin: runtimeRole, restoreLogin: restoreRole };
-        const migrationPool = new pg.Pool({ connectionString: installUrl,
-          options: migrations.qualifiedPostgresStartupOptions(selection), connectionTimeoutMillis: 5000 });
+        const migrationPool = guardConnection(new pg.Pool({ connectionString: installUrl,
+          options: migrations.qualifiedPostgresStartupOptions(selection), connectionTimeoutMillis: 5000 }), outputs);
         defer(() => migrationPool.end());
         const runner = migrations.createPlatformPostgresMigrationRunner({ connectionString: installUrl }, { installation: selection, poolFactory: () => migrationPool });
         const first = await runner.apply(), repeat = await runner.apply(), status = await runner.status();
         if (repeat.applied.length || status.pending.length) throw new Error('starter_browser_migration_replay_failed');
         console.log(`Starter ${configuration} migrations: ${first.applied.length}; repeat: ${repeat.applied.length}; elapsed: ${Math.round(performance.now() - started)} ms`);
-        const installer = new pg.Client({ connectionString: installUrl, connectionTimeoutMillis: 5000 });
+        const installer = guardConnection(new pg.Client({ connectionString: installUrl, connectionTimeoutMillis: 5000 }), outputs);
         await installer.connect();
         try {
           const seed = { connection: installer, installRole, runtimeRole };
@@ -212,7 +218,7 @@ export async function runStarterBrowser(options) {
         } finally { await installer.end(); }
         phase = 'runtime';
         const runtimeUrl = `postgresql://${runtimeRole}@127.0.0.1:${postgres.port}/${database}`;
-        const runtime = new pg.Client({ host: '127.0.0.1', port: postgres.port, database, user: runtimeRole, password, connectionTimeoutMillis: 5000 });
+        const runtime = guardConnection(new pg.Client({ host: '127.0.0.1', port: postgres.port, database, user: runtimeRole, password, connectionTimeoutMillis: 5000 }), outputs);
         await runtime.connect();
         try {
           const { rows } = await runtime.query('SELECT session_user,current_user,rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user');

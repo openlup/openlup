@@ -3,6 +3,7 @@ export interface BrowserOptions { manifest: string; commit: string; localImage?:
 export function parseArguments(args: string[]): BrowserOptions;
 export function resolveBrowserImage(io?: typeof imageIo, localImage?: string): Promise<string>;
 export function withCleanup<T>(work: (defer: (release: () => unknown | Promise<unknown>) => void) => Promise<T>): Promise<T>;
+export function guardConnection<T extends { on(event: 'error', listener: (error: Error) => void): unknown }>(connection: T, outputs: string[]): T;
 export function scanPrivateOutput(output: string, privateValues?: string[]): void;
 export function browserArguments(app: string, reference: string, name: string, localImage?: string): string[];
 export function runStarterBrowser(options: BrowserOptions): Promise<void>;
