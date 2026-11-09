@@ -830,8 +830,8 @@ mandatory real-PG/pgTAP catalog evidence.
 The CI-only [image inventory](../../config/ci-images.json) owns logical names,
 upstream repositories, tags, index digests and ordered public-registry sources
 for every mirrored image. It records the install-proof database, which is also
-the raw pgTAP server and the managed-rail test database, and the disposable test
-default. No Supabase CLI, CLI-derived or managed-host image remains in hosted CI. The single mirror
+the raw pgTAP server and the managed-rail test database, the disposable test
+default and the starter browser image. No Supabase CLI, CLI-derived or managed-host image remains in hosted CI. The single mirror
 job reads typed owned pins from its own checkout, validates all of them before
 any exec or registry call, and builds upstream sources and mirror targets itself.
 It runs only pinned first-party actions plus the repository script, re-resolves
@@ -842,7 +842,8 @@ registry to inventory sources for consumers; mirror copying still uses only
 upstreams. The reviewed-batch gate and shared disposable PostgreSQL helper use
 these pins, preserving the exact digest on every fallback. In CI and locally,
 source order is mirror, then GHCR/Docker Hub/ECR for managed, or Docker Hub/ECR
-for native.
+for native. Microsoft registry sources are mirror inputs only: consumers pull
+those images from the organization mirror alone, with no upstream fallback.
 The default helper uses the test pin, resolves once per exact ref per process and
 runs the successful digest-qualified source with `--pull=never`; explicit
 non-inventory overrides keep their existing behavior. Before any shared pull,
