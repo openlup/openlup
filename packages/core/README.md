@@ -184,7 +184,15 @@ The command searches documentation in the installed OpenLup packages offline and
 returns file-and-line citations. Add `--code` for a bounded local application
 source scan, or `--package-code` to inspect the installed packages' `src/` files.
 Both scans are opt-in and may be incomplete; use direct `rg` when a path or
-symbol is known. Add `--json` for structured results. It never downloads
+symbol is known. Add `--json` for structured results, including a `scans` array
+for executed declaration, application and package-source scans. Each summary
+reports its scope, package when applicable, budget-consuming `scannedFiles`,
+`fileLimit` and conservative `limitReached` flag. The flag is true even when
+the count exactly equals the limit; it does not prove another file exists.
+A false flag does not prove exhaustive coverage: filters and other bounds still
+apply. An exact package-source path consumes budget even when its contents are
+not read. Text output notices reached limits, including when there are no hits.
+The top-eight result cap is separate from these scan limits. It never downloads
 packages or starts a service. Its Node-only launcher is isolated from the
 I/O-free kernel exports and adds no runtime dependency.
 

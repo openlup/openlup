@@ -380,6 +380,10 @@ export function runCorePackageConsumerSmoke(options: CorePackageConsumerSmokeOpt
     assert(run(contextExecutable, ["--help"], consumerDir).includes("Usage: openlup-context"), "installed context executable did not print usage");
     const context = JSON.parse(run(contextExecutable, ["search", "extension seam", "--json"], consumerDir));
     assert(context.hits.some((hit: { owner?: string }) => hit.owner === `https://github.com/openlup/openlup/blob/openlup-core-v${packageJson.version}/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md`), "installed context search did not retain its release-tagged source");
+    const sourceContext = JSON.parse(run(contextExecutable, ["search", "nextRetryAttemptAt", "--package-code", "--json"], consumerDir));
+    for (const scope of ["declarations", "package-source"]) {
+      assert(sourceContext.scans.some((scan: { scope: string; packageName?: string; scannedFiles: number }) => scan.scope === scope && scan.packageName === packageName && scan.scannedFiles > 0), `installed context did not report a nonempty ${scope} scan`);
+    }
     run(process.execPath, ["smoke.mjs"], consumerDir);
     run(toolBinary("tsc", dependencyRoots), ["-p", "tsconfig.json", "--noEmit"], consumerDir);
     run(toolBinary("tsc", dependencyRoots), ["-p", "tsconfig.bundler.json", "--noEmit"], consumerDir);

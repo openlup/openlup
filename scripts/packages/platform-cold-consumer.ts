@@ -2188,6 +2188,7 @@ export function proveNeutralStarterConsumer(checkout: string, packs: ReadonlyMap
     run("npm", ["test"]);
     run("npm", ["run", "typecheck"]);
     run("npm", ["run", "build"]);
+    run(process.execPath, ["--experimental-strip-types", "--test", "browser/dev-loop.proof.ts"]);
     console.log("Neutral starter required cold-consumer addition PASS: " + ((performance.now() - started) / 1000).toFixed(3) + " seconds");
   } finally {
     rmSync(extracted, { recursive: true, force: true });
