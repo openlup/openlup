@@ -2,6 +2,28 @@
 
 Releases moved verbatim out of the packed `CHANGELOG.md`, which keeps the current release and the two previous ones.
 
+## [0.34.0]
+
+- Publishable on the npm `latest` dist-tag as `0.34.0`, from tag
+  `openlup-platform-v0.34.0`.
+
+### Measurement consent
+
+- Add optional `consentPolicy` modes to the data-layer factory. The default
+  `analytics-only` mode preserves legacy behavior. `independent` admits optional
+  events under either stored purpose grant; `host-authorized` also admits events
+  before choice and after refusal for explicitly authorized consent-aware host
+  tags. Both opt-in modes emit independent stored purpose signals. Hosts must
+  fence private routes, authorize denied-state transmission and gate every tag
+  by purpose. Explicit all-denial updates remain available; no replay is added.
+- Migration: Upgrade the complete package set together. Existing callers keep
+  `analytics-only` behavior unless the host opts in. In either opt-in mode,
+  update(true) publishes stored purpose flags and update(false) denies all
+  signals; neither changes admission policy or fences routes. The host must
+  authorize every admitted event and its data. Queue admission does not grant
+  storage consent or establish delivery or attribution. No SQL migration is
+  introduced by this set.
+
 ## [0.33.0]
 
 - Publishable on the npm `latest` dist-tag as `0.33.0`, from tag

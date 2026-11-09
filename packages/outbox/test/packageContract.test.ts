@@ -17,7 +17,7 @@ it("the actual API checker rejects declaration drift and accepts its reviewed ma
     const run = () => spawnSync(process.execPath, ["--experimental-strip-types", join(fixture, "scripts/api-contract.ts")], { encoding: "utf8", timeout: 10_000 });
     expect(run().status).toBe(0);
     const contract = JSON.parse(readFileSync(join(fixture, "release-gates.json"), "utf8")).packageSurface["."];
-    const entrypoint = join(fixture, contract.entrypoint), previous = readFileSync(entrypoint, "utf8").trimEnd();
+    const entrypoint = join(fixture, contract.entrypoint), previous = readFileSync(entrypoint, "utf8").replace(/^\/\/# sourceMappingURL=.*$/gm, "").trimEnd();
     const changed = `${previous}\nexport declare const syntheticAddedExport: string;`;
     writeFileSync(entrypoint, changed + "\n");
     const refusal = run(); expect(refusal.status).not.toBe(0); expect(refusal.stderr).toContain("package surface drift");
@@ -42,7 +42,7 @@ it("packs within declared budgets, binds public SQL, imports exact exports and c
     expect(info.size).toBeLessThanOrEqual(budget.maxPackedBytes);
     expect(info.unpackedSize).toBeLessThanOrEqual(budget.maxUnpackedBytes);
     for(const kind of ["code","docs"] as const){
-      const members=files.filter((file:string)=>kind==="code"?/^dist\/.+\.(?:js|d\.ts)$/.test(file)||/^src\/.+\.ts$/.test(file):!file.includes("/")).sort();
+      const members=files.filter((file:string)=>kind==="code"?/^dist\/.+\.(?:js|d\.ts(?:\.map)?)$/.test(file)||/^src\/.+\.ts$/.test(file):!file.includes("/")).sort();
       expect(members.length).toBeLessThanOrEqual(budget[kind].maxFiles);
       expect(gzipSync(Buffer.concat(members.map((file:string)=>readFileSync(join(extracted,"package",file))))).length).toBeLessThanOrEqual(budget[kind].maxPackedBytes);
     }
@@ -56,6 +56,8 @@ it("packs within declared budgets, binds public SQL, imports exact exports and c
     expect(readFileSync(join(directory, "sql", entry.file))).toEqual(readFileSync(join(root, entry.source)));
     const guide = readFileSync(join(directory, "AGENTS.md"), "utf8");
     const example = /```ts\n([\s\S]*?)\n```/.exec(guide)![1];
+    const readme = readFileSync(join(directory, "README.md"), "utf8");
+    expect(/```ts\n([\s\S]*?)\n```/.exec(readme)?.[1]).toBe(example);
     const file = join(scratch, "agent-example.mts"); writeFileSync(file, example);
     execFileSync(join(root, "node_modules/.bin/tsc"), [file, "--ignoreConfig", "--noEmit", "--strict", "--skipLibCheck", "--module", "NodeNext", "--moduleResolution", "NodeNext", "--target", "ES2022"], { cwd: root });
     const refusal = spawnSync("npm", ["run", "prepublishOnly", "--cache", cache], { cwd: directory, encoding: "utf8" });

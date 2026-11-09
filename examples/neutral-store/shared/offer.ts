@@ -1,5 +1,5 @@
 import type { PurchaseMode, StoreConfig } from './config.ts';
-import { priceInterimOffer } from './interim-pricing.ts';
+import { estimateOffer } from './offer-estimate.ts';
 
 export interface CartLine {
   sku: string;
@@ -39,7 +39,8 @@ export type OfferResult =
   | { ok: false; issues: OfferIssue[]; selection?: Cart };
 
 /** UI estimates and host admission use exactly this rule. Engine quotes remain authoritative. */
-export function evaluateOffer(config: StoreConfig, input: unknown): OfferResult {
+export function validateCart(config: StoreConfig, input: unknown):
+  | { ok: true; cart: Cart } | Extract<OfferResult, { ok: false }> {
   if (!isRecord(input) || input.schemaVersion !== 1 || !Array.isArray(input.lines)
     || (input.mode !== 'one_time' && input.mode !== 'subscription')) {
     return fail('cart_invalid');
@@ -79,11 +80,6 @@ export function evaluateOffer(config: StoreConfig, input: unknown): OfferResult 
   const units = lines.reduce((total, line) => total + line.quantity, 0);
   if (units < config.offer.minUnits) issues.push({ code: 'minimum_units', limit: config.offer.minUnits });
   if (units > config.offer.maxUnits) issues.push({ code: 'maximum_units', limit: config.offer.maxUnits });
-  const quote = priceInterimOffer(config, mode, lines);
-  if (![quote.subtotalMinor, quote.modeDiscountMinor, quote.shippingMinor, quote.totalMinor,
-    ...quote.lines.flatMap(line => [line.unitMinor, line.lineMinor])].every(Number.isSafeInteger)) {
-    issues.push({ code: 'amount_overflow' });
-  }
   const cart: Cart = { schemaVersion: 1, configuration: config.id, mode,
     cadenceDays: typeof cadenceDays === 'number' ? cadenceDays : null,
     lines: lines.map(({ sku, quantity }) => ({ sku, quantity })) };
@@ -93,7 +89,18 @@ export function evaluateOffer(config: StoreConfig, input: unknown): OfferResult 
       ? { ok: false, issues, selection: cart }
       : { ok: false, issues };
   }
-  return { ok: true, cart, quote: { ...quote, mode, cadenceDays: cart.cadenceDays } };
+  return { ok: true, cart };
+}
+
+/** Local display estimate only; the native binding is the executable money authority. */
+export function evaluateOffer(config: StoreConfig, input: unknown): OfferResult {
+  const selected = validateCart(config, input);
+  if (!selected.ok) return selected;
+  const { cart } = selected;
+  const quote = estimateOffer(config, cart.mode, cart.lines);
+  if (![quote.subtotalMinor, quote.modeDiscountMinor, quote.shippingMinor, quote.totalMinor,
+    ...quote.lines.flatMap(line => [line.unitMinor, line.lineMinor])].every(Number.isSafeInteger)) return fail('amount_overflow');
+  return { ok: true, cart, quote: { ...quote, mode: cart.mode, cadenceDays: cart.cadenceDays } };
 }
 
 export function emptyCart(config: StoreConfig): Cart {

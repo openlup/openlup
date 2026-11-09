@@ -14,9 +14,9 @@ export const lifecycleProfiles = ["legacy", "qualified-v2", "qualified-admin"] a
 export const lifecycleTimeZone = "UTC";
 export type LifecycleProfile = typeof lifecycleProfiles[number];
 const priorInventories = {
-  "legacy": "4b02a4badcc0dbc9240bc8a84b4bfbd2041611282ad09b1278237cd85cf0b5ca",
-  "qualified-v2": "3f7044a59278c24c70b54d303d46dba0653d4ebdf51653202cd133d4f3aab136",
-  "qualified-admin": "1454db639b9e2140d9b3da9396b1a9a1b5597a3e2e23e313d1650f46bcd59bc1"
+  "legacy": "835f39ab94ae1340e90f95353e7f3c854466bc666b95efb01439b28f4ce2fda5",
+  "qualified-v2": "110468fa4e15f48e27a8bf2f22ccc4021d03ec0986f9cbb677643a322ae870ae",
+  "qualified-admin": "67f5e319f3724f45e1136ad939b11150a07e64d79bfacf746e05c9e28de46fdf"
 } as const;
 export async function lifecycleInstallation(profile: LifecycleProfile) {
   const container = await runPostgresContainer({ name: `lifecycle-closure-${profile}-${process.pid}`, password: "synthetic-conformance" });

@@ -9,7 +9,7 @@ application composition limits; they are not claims of exported package errors.
 
 | Limit | Actions | Named refusal |
 | --- | --- | --- |
-| N1 | Live products, SKUs, price lists, price entries and promotions are seed data: one owned demo-seed step with the install connection, no runtime writer for them and no checkout promotion codes. Bundle drafts, compositions, target prices and activation, and catalogue drafts, are administered by a native human operator through their native writers. | `starter_promotion_write_unavailable` |
+| N1 | Live products, SKUs, price lists, price entries and promotions are seed data: one owned demo-seed step with the install connection, no runtime writer for them and no checkout promotion codes. Bundle drafts, compositions, target prices and activation, and catalogue drafts, are administered by a native human operator through their native writers. An activated bundle is not purchasable in this release. | `starter_promotion_write_unavailable` |
 | N2 | Operator email/phone correction and account linking | `operator_subscription_authority_unavailable` |
 | N3 | Order note and order-address correction | `starter_order_correction_unavailable` |
 | N4 | Replacement request and complete fulfillment cancellation | `host_binding_required` |
@@ -79,18 +79,58 @@ The account order response does not claim a rich customer-order projection.
 Native detail preserves `native_account_order_money_unavailable` when a historical
 order lacks captured money; it never reconstructs purchase truth.
 
-Purchase creation uses the native contact-client factory. Invoice history/artifacts,
-shipment list/detail and dependent label,
-handoff, delivery and tracking bindings, signed unsubscribe and other unmounted
-workflows remain pending. Shipment reads follow destination/reservation facts;
-dispatch preparation alone does not provide them.
-`operator.returns` waits on returns reader; r1a continues to refuse it with
-`host_binding_required`.
-Unbound operations return
-`host_binding_required` after customer/operator admission. These are implementation
-blockers, not additional accepted native limits. An invalid-grant example does
-not prove a valid grant works. Local completion evidence includes real purchase and account browser journeys in
-both configurations; operator order reads have separate host proofs.
+Purchase creation uses the native contact-client factory. Customer invoice history
+and owned captured PDF downloads use the native session principal. Documents are
+explicitly non-fiscal sandbox artifacts. Operator invoice summaries authorize
+before querying local history, duty, retry and delivery evidence, including guest
+orders. Placing and releasing an order hold are unavailable in this release.
+Both operations stay unbound and return `starter_order_hold_unavailable` after
+operator admission with zero effects. Their typed forms retain configured hold
+reasons and the exact hold-reference release target. The later order-control
+composition closes this boundary alongside cancellation and external refund
+marking.
+
+The operation catalogue in `shared/limits.ts` supplies the same code and exact
+localized explanation to action results and the limits page. Named deferred
+actions remain unbound and refuse after customer/operator admission, before any
+native routine. Return forms retain reason codes, order-item quantities and
+refund intent. No operator returns list or detail; the operator approves or
+rejects by the return reference the customer receives. Approval and rejection
+are unavailable in this release. The removed `operator.returns` route returns
+HTTP 404 with `starter_operation_unknown`.
+
+The catalogue covers 14 declared named-refusal operations. The removed reader
+retains its separate HTTP 404 protocol.
+
+| Operations | Named refusal |
+| --- | --- |
+| `return.request` | `starter_return_request_unavailable` |
+| `operator.returnApprove`, `operator.returnReject` | `starter_return_decision_unavailable` |
+| `operator.hold`, `operator.release` | `starter_order_hold_unavailable` |
+| `operator.cancelUnpaid` | `starter_order_cancellation_unavailable` |
+| `operator.externalRefund` | `starter_external_refund_mark_unavailable` |
+| `operator.label`, `operator.handoff`, `operator.delivery` | `starter_shipment_mutation_unavailable` |
+| `tracking.read` | `starter_tracking_access_unavailable` |
+| `subscription.command` | `starter_subscription_command_unavailable` |
+| `research.submit`, `ingest.submit` | `host_binding_required` |
+
+Shipment list/detail use the native commerce reader in one repeatable-read,
+read-only snapshot after native human-admin authorization on each request.
+Unknown input fields and invalid selectors refuse before shipment I/O.
+The destination view never prepares or pins a shipment. A pinned parcel retains
+its destination when the order's current destination changes. This reduced
+projection keeps the captured fulfillment client id, provider kind, parcel-line
+ids and saved-address id null, item reservation links empty, and reservation
+locations null. It supplies
+no contact revision, digest, correction target or baseline comparison. Tracking
+and operation evidence retain the native reader's limits; missing required facts
+refuse rather than omit a selected shipment. See the canonical
+[native read limits](../../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#native-parity-boundaries).
+Shipment mutations remain unavailable. Owned account tracking needs
+its separate account composition proof. Signed unsubscribe retains its separately
+owned pending binding. Other absent bindings return `host_binding_required` after
+admission. An invalid-grant example does not
+prove a valid grant works.
 
 Both example catalogues price in `XTS` test units for fictional market `ZZ` at
 `UTC`. These choices make no real tax, shipping or compliance claim. The selected
@@ -103,7 +143,7 @@ supply an installation capability.
 No generic contact form; the partner inquiry is the durable intake.
 Support is static and shows optional validated `supportEmail` as plain text,
 with an account link. Missing contact configuration is stated explicitly.
-The application declares 52 operations. With a runtime connection, the partner
+The application declares 51 operations. With a runtime connection, the partner
 submit/list/transition and review read/submit/list/moderation actions are mounted.
 Without that connection they remain unbound, like the other native actions.
 
@@ -160,15 +200,19 @@ See the [operator roster recipe](../README.md#operator-support-roster-and-catalo
 
 ## Purchase composition boundaries
 
+Shipping is charged below the configured threshold on products after discounts;
+at or above it shipping is free. Renewals use the accepted agreement and the
+frozen cycle amount, including on replay. These remain local sandbox witnesses.
+
+Dostawa jest płatna poniżej skonfigurowanego progu dla produktów po rabatach;
+od progu włącznie jest bezpłatna. Odnowienia korzystają z zaakceptowanych warunków
+i kwoty utrwalonej dla cyklu, także przy ponowieniu.
+
 The starter runs on its local demonstration database only; a hosted database connection is not part of this release and comes in a later round.
-For now this release does not charge shipping on one-off orders.
-For now this release does not charge shipping on renewals.
 The first-subscription offer is not offered yet and comes in a later part of this release.
 A purchase needs no account; checkout keeps a contact record for the e-mail; the customer signs in with that e-mail to see the purchase.
 
 Starter działa wyłącznie na lokalnej demonstracyjnej bazie danych; połączenie z bazą hostowaną nie należy do tego wydania i pojawi się w późniejszej rundzie.
-Na razie to wydanie nie pobiera opłat za dostawę zamówień jednorazowych.
-Na razie to wydanie nie pobiera opłat za dostawę odnowień.
 Oferta na pierwszą subskrypcję nie jest jeszcze dostępna i pojawi się w późniejszej części tego wydania.
 Aktywowanego pakietu nie można kupić w tym wydaniu; taka możliwość pojawi się w późniejszej rundzie.
 Zakup nie wymaga konta; przy zakupie zapisujemy kontakt dla podanego e-maila; klient loguje się tym e-mailem, aby zobaczyć zakup.
@@ -212,7 +256,7 @@ The configured subscription rate and rounding quantum resolve each unit before
 quantity is applied. Quote lines and installed subscription price entries carry
 that actual unit price. A `mode_discount` component explains the included benefit;
 there is no order promotion or second deduction. First-subscription acquisition
-is a separate later offer. `shared/interim-pricing.ts` owns this temporary rule;
+is a separate later offer. `shared/offer-estimate.ts` owns this temporary rule;
 the later installed quote-engine composition replaces it.
 
 The owned seed writes distinct one-time/subscription price entries. Repeating an
@@ -225,6 +269,12 @@ These are local demonstration values, not provider or compliance qualification.
 The accepted origin/session boundary retains its separate limits.
 
 Attempt limits live in one process's memory and reset on restart.
+The demonstration Compose container generates its private quote key only for a
+database carrying the demonstration marker. It reuses that file on restart;
+container recreation rotates it, so unsubmitted subscription quotes must refresh.
+Customer environments supply their own keyring. A host without the key-file
+flag refuses subscription quotes with `starter_quote_acceptance_key_required`;
+one-time checkout remains available.
 Limity prób działają w pamięci jednego procesu i resetują się po ponownym uruchomieniu.
 Checkout applies the configured attempt window, e-mail and requester counts, retention and capacity before contact resolution. Exact replay means the same command key, normalized e-mail and requester; it is free of further quota counts. A retained key with a changed identity is refused before contact resolution, including with a replacement quota callback. The synchronous host binding keeps identity digests within the same retention and capacity bounds; it fails closed when full. Denied quota attempts add nothing to the quota counts. Both process-local records reset on restart. Unpurchased contact retention belongs to the host.
 
@@ -242,3 +292,15 @@ PostgreSQL integers; each offered mode must have a positive seeded unit price.
 Tax legal-basis text is at most 200 characters and the shared legal revision is
 trimmed, nonempty text of at most 64 characters. Configuration rejects values
 outside these native boundaries before composition.
+
+## Paid-order message capture
+
+The one-shot lifecycle renewal command also drains only paid-order email events,
+including when renewal execution is disabled. A paid order with its emitted
+paid-mail event and contact yields one private filesystem message record;
+unpaid and cancelled purchases emit no paid-mail event. The record dedupes
+reclaimed sends, and processed outbox state prevents another claim. No real mail
+provider is active. This adds no other event dispatcher, transport, SQL or grant.
+Subscription notices retain their separate native owner and existing limits.
+The sibling settlement event is known but unclaimed: it remains pending without
+delivery or a message record, and does not hold the paid receipt behind it.

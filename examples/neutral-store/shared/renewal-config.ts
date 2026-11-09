@@ -1,4 +1,5 @@
 export interface RenewalNoticeText {
+  paid: { subject: string; order: string; item: string; quantity: string; subtotal: string; discount: string; total: string };
   payment_failed: string; payment_expired: string; payment_recovery: string; payment_recovered: string;
   lifecycle: string; active: string; amount: string; retry: string; charge: string;
   repair: string; expires: string; unknown: string; address: string; addressApplied: string; addressNextParcel: string; status: string; minorUnits: string; cause: string;
@@ -31,6 +32,11 @@ export function assertRenewalConfig(config: RenewalConfig): void {
     || !['en', 'pl'].includes(config.notices?.locale)
     || Object.entries(config.notices.countryLocales ?? {}).some(([country, locale]) => !/^[A-Z]{2}$/.test(country) || !['en', 'pl'].includes(locale))
     || !config.notices?.copy?.en || !config.notices?.copy?.pl
+    || Object.values(config.notices.copy).some(copy => !copy.paid
+      || ['subject', 'order', 'item', 'quantity', 'subtotal', 'discount', 'total'].some(key => {
+        const value = copy.paid[key as keyof RenewalNoticeText['paid']];
+        return typeof value !== 'string' || !value.trim();
+      }))
     || Object.values(config.notices.copy).some(copy => copyKeys.some(key => typeof copy[key] !== 'string' || !copy[key].trim()))) {
     throw new Error('starter_renewal_configuration_invalid');
   }

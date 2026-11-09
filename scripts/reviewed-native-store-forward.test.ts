@@ -88,10 +88,10 @@ describe("closed native store class data", () => {
     added.nativeStoreForwardClass!.sealed = false;
     expect(() => changedForwardApprovals(encode(prior), encode(added))).toThrow(/sealed slot prefix/u);
   });
-  it("refuses replacing one normalized signature in a second slot", () => {
+  it("refuses replacing one normalized signature again without a bound predecessor", () => {
     const value = registry();
     value.nativeStoreForwardClass!.slots[1]!.replacedFunctions.push(structuredClone(control.slots[0]!.replacedFunctions[0]!));
-    expect(() => readReviewedForwardRegistry(encode(value))).toThrow(/replaced by only one slot/u);
+    expect(() => readReviewedForwardRegistry(encode(value))).toThrow(/chained replacement requires a bound predecessor/u);
   });
 });
 
@@ -1185,4 +1185,70 @@ it.each(["CHECK", "UNIQUE"])("requires exactly one complete listed %s replacemen
   expect(() => parameterForward(`${sql}\n${sql}`, configure)).toThrow(/duplicate/u);
   expect(() => parameterForward(sql.replaceAll(kind === "CHECK" ? "fixture_status" : "fixture_key", "unlisted"), configure)).toThrow(/closed shapes/u);
   expect(() => parameterForward(sql, slot => { configure(slot); Object.assign((kind === "CHECK" ? slot.checkSupersets : slot.uniqueSupersets)![0]!, { beforeSha256: "0".repeat(64) }); })).toThrow(/invalid .* superset entry/u);
+});
+
+
+function replacementChain(count = 2) {
+  const value = registry(), original = control.slots[0]!.replacedFunctions[0]!;
+  const source = sqlStatements(before.toString()).find(statement => statement.startsWith("CREATE FUNCTION public.fixture_existing("))!;
+  const statements = Array.from({ length: count }, (_, index) => source.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION").replace("'before'", `'chain_${index}'`));
+  value.nativeStoreForwardClass = { sealed: false, slots: control.slots.slice(0, count).map((slot, index) => ({
+    row: slot.row, path: slot.path, replacedFunctions: [{ ...original, beforeSha256: index ? sqlSha256(statements[index - 1]!) : original.beforeSha256 }], createdFunctions: [], grantOnlyFunctions: [], dataStatements: [],
+  })) };
+  statements.forEach((statement, index) => bind(value, index, statement));
+  const admit = (index = count - 1, history = "") => assertNativeStoreForward(value, value.nativeStoreForwardClass!.slots[index]!.path, Buffer.from(statements[index]!), [
+    { path: PLATFORM_BASELINE_FILE, bytes: before },
+    ...statements.slice(0, index).map((statement, index) => ({ path: value.nativeStoreForwardClass!.slots[index]!.path, bytes: Buffer.from(statement) })),
+    ...history ? [{ path: "db/platform/migrations/20261101222500_chain_history.sql", bytes: Buffer.from(history) }] : [],
+  ]);
+  return { value, statements, admit };
+}
+
+describe("chained native replacements", () => {
+  it("accepts a two-slot chain and uses the immediately preceding replacement in a three-slot chain", () => {
+    const two = replacementChain(); expect(() => two.admit(0)).not.toThrow(); expect(() => two.admit()).not.toThrow();
+    const three = replacementChain(3); expect(() => three.admit()).not.toThrow();
+    three.value.nativeStoreForwardClass!.slots[2]!.replacedFunctions[0]!.beforeSha256 = sqlSha256(three.statements[0]!);
+    bind(three.value, 2, three.statements[2]!);
+    expect(() => three.admit()).toThrow("reviewed native store chained replacement before-hash differs from preceding after-hash");
+  });
+  it("refuses a before-hash differing from the preceding pin", () => {
+    const chain = replacementChain(); chain.value.nativeStoreForwardClass!.slots[1]!.replacedFunctions[0]!.beforeSha256 = "0".repeat(64); bind(chain.value, 1, chain.statements[1]!);
+    expect(() => chain.admit()).toThrow("reviewed native store chained replacement before-hash differs from preceding after-hash");
+  });
+  it("refuses an actual prefix definition differing from a valid pin chain", () => {
+    const chain = replacementChain();
+    expect(() => chain.admit(1, chain.statements[0]!.replace("'chain_0'", "'intervening'"))).toThrow("reviewed native store actual base function before-hash drifted");
+  });
+  it.each(["reversed slots", "earlier time"])("refuses %s", attack => {
+    const chain = replacementChain(), slots = chain.value.nativeStoreForwardClass!.slots;
+    if (attack === "reversed slots") slots.reverse();
+    else slots[1]!.path = slots[1]!.path.replace("20261101223000", "20261101221000");
+    expect(() => readReviewedForwardRegistry(encode(chain.value))).toThrow("reviewed native store slot path, row or order drifted");
+  });
+  it.each([2, 3])("refuses chaining onto an unpinned predecessor in %i slots", count => {
+    const chain = replacementChain(count); chain.value.nativeStoreForwards!.splice(count - 2, 1);
+    expect(() => chain.admit()).toThrow("reviewed native store chained replacement requires a bound predecessor");
+  });
+  it("still requires the predecessor SQL to have landed", () => {
+    const chain = replacementChain();
+    expect(() => assertNativeStoreForward(chain.value, chain.value.nativeStoreForwardClass!.slots[1]!.path, Buffer.from(chain.statements[1]!), [{ path: PLATFORM_BASELINE_FILE, bytes: before }])).toThrow("reviewed native store requires every earlier slot landed first");
+  });
+  it("preserves replacement headers even when the new forward is repinned", () => {
+    const chain = replacementChain(); chain.statements[1] = chain.statements[1]!.replace("LANGUAGE sql", "LANGUAGE sql STABLE"); bind(chain.value, 1, chain.statements[1]!);
+    expect(() => chain.admit()).toThrow("reviewed native store replacement header drifted");
+  });
+  it("admits both hosted entry points and freezes an issued slot in the chain through Git objects", () => {
+    nativeGitFixture(({ folder, put, commit }) => {
+      const chain = replacementChain(), prior = structuredClone(chain.value); prior.nativeStoreForwardClass!.slots.pop(); prior.nativeStoreForwards!.pop();
+      put(PLATFORM_BASELINE_FILE, before); put(prior.nativeStoreForwardClass!.slots[0]!.path, chain.statements[0]!); put("config/reviewed-platform-forwards.json", encode(prior)); const base = commit();
+      const path = chain.value.nativeStoreForwardClass!.slots[1]!.path;
+      put(path, chain.statements[1]!); put("config/reviewed-platform-forwards.json", encode(chain.value)); const head = commit();
+      expect(() => assertCoLocatedForwardApproval(folder, base, head)).not.toThrow();
+      expect(() => assertAdmittedPlatformForward(folder, base, head, path, Buffer.from(chain.statements[1]!))).not.toThrow();
+      chain.value.nativeStoreForwardClass!.slots[0]!.replacedFunctions[0]!.searchPath = "public";
+      put("config/reviewed-platform-forwards.json", encode(chain.value)); const edited = commit();
+      expect(() => assertCoLocatedForwardApproval(folder, head, edited)).toThrow("reviewed native store issued bindings and slots are immutable");
+    });
+  });
 });

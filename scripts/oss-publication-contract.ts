@@ -5,6 +5,7 @@ export const PUBLIC_EXECUTION_ENTRYPOINTS = [
   "examples/neutral-store/host/server.ts",
   "examples/neutral-store/lifecycle",
   "examples/neutral-store/lifecycle.mjs",
+  "examples/neutral-store/test/installation.test.ts",
   "packages/core/src/agent-context-cli.ts", "packages/core/src/openlup-context.js",
   "packages/outbox/scripts/api-contract.ts", "packages/outbox/scripts/consumer-proof.ts", "packages/outbox/vitest.config.ts",
   "packages/platform/scripts/api-contract.ts", "packages/platform/scripts/consumer-proof.ts", "packages/platform/vitest.config.ts",

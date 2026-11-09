@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import type { RenewalLine, RenewalRetainedTerms } from "./contracts/renewal.js";
 import { subscriptionRecord, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 import { nativeRenewalTermsSchema } from "./nativeRenewalTerms.js";
+import { bestEffortNativePurchaseTemplate, resolveNativePurchasePriceList } from "./nativePurchasePriceList.js";
 
 /** Server-owned purchase facts. Sandbox authorization is never a real mandate. */
 export interface NativeRenewalPurchaseFacts {
@@ -35,8 +36,49 @@ export function createPostgresPurchaseRenewalWriter(executor: SubscriptionQueryE
       if (Object.hasOwn(facts, "renewalTerms")) nativeRenewalTermsSchema.parse(facts.renewalTerms);
       return response("SELECT public.subscription_register_renewal_purchase_with_shipping($1::uuid,$2::jsonb) AS response", [orderId, JSON.stringify({ ...facts, unattendedChargeAuthorizedAt: nativeInstant(facts.unattendedChargeAuthorizedAt) })]);
     },
-    complete(orderId: string) {
-      return response("SELECT public.subscription_complete_renewal_attachment($1::uuid) AS response", [orderId]);
+    async complete(orderId: string) {
+      const completed = await response("SELECT public.subscription_complete_renewal_attachment($1::uuid) AS response", [orderId]);
+      await bestEffortNativePurchaseTemplate(executor, async () => {
+        const id = String(completed.subscriptionId);
+        const lines = (await executor.query(`SELECT sku.id AS variant_id,
+            sum((item.line->>'quantity')::bigint)::integer AS quantity,(min(item.ordinal)-1)::integer AS sort_order,
+            min((item.line#>>'{unitPriceGross,amountMinor}')::bigint) AS unit_price_minor,
+            count(DISTINCT (item.line#>>'{unitPriceGross,amountMinor}')::bigint)::integer AS price_count,
+            coalesce((SELECT (role->>'isAddon')::boolean FROM jsonb_array_elements(
+              public.subscription_renewal_purchase_terms(s.id)#>'{renewalTerms,linePricing}') role
+              WHERE role->>'sku'=sku.sku),false) AS is_addon,o.currency_code
+          FROM public.subscriptions s JOIN public.commerce_orders o ON o.id=$2::uuid
+          CROSS JOIN LATERAL jsonb_array_elements(o.metadata#>'{orderDraftSnapshot,lines}') WITH ORDINALITY item(line,ordinal)
+          JOIN public.catalog_skus sku ON sku.sku=item.line->>'sku'
+          WHERE s.id=$1::uuid AND s.template_version=1
+            AND NOT EXISTS(SELECT 1 FROM public.subscription_lines WHERE subscription_id=s.id)
+          GROUP BY s.id,sku.id,sku.sku,o.currency_code`, [id, orderId])).rows;
+        if (!lines.length) return;
+        if (lines.some(line => line.price_count !== 1)) {
+          console.warn("subscription_template_unavailable", "ambiguous_line_price");
+          return;
+        }
+        const context = await resolveNativePurchasePriceList(executor, orderId);
+        const contextUpdate = context.priceListId ? `, context AS (
+          UPDATE public.subscriptions s SET price_list_id=$3::uuid,currency_code=$4
+          FROM eligible e WHERE s.id=e.id AND s.price_list_id IS NULL AND s.currency_code IS NULL RETURNING s.id
+        )` : "";
+        // Lines and context are atomic with each other, after the durable completion.
+        await executor.query(`WITH locked AS MATERIALIZED (
+          SELECT id FROM public.subscriptions WHERE id=$1::uuid AND template_version=1 FOR UPDATE
+        ), eligible AS MATERIALIZED (
+          SELECT id FROM locked WHERE NOT EXISTS(SELECT 1 FROM public.subscription_lines WHERE subscription_id=locked.id)
+        ), template AS (
+          INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,is_addon,unit_price_minor,currency_code)
+          SELECT e.id,l.variant_id,l.quantity,l.sort_order,l.is_addon,l.unit_price_minor,l.currency_code
+          FROM eligible e CROSS JOIN jsonb_to_recordset($2::jsonb) AS l(variant_id uuid,quantity integer,sort_order integer,
+            is_addon boolean,unit_price_minor bigint,currency_code text)
+          ON CONFLICT(subscription_id,variant_id) DO NOTHING RETURNING id
+        )${contextUpdate} SELECT id FROM eligible`, context.priceListId
+          ? [id, JSON.stringify(lines), context.priceListId, context.currency] : [id, JSON.stringify(lines)]);
+        if (context.reason) console.warn("subscription_price_list_unresolved", context.reason);
+      });
+      return completed;
     },
     async pending(limit = 100) {
       const rows = (await executor.query("SELECT public.subscription_pending_renewal_attachments($1::integer) AS response", [limit])).rows[0]?.response;

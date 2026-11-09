@@ -6,6 +6,11 @@ import { createPostgresDataGateway, createPostgresRoleFreeTransactionLane, type 
 import { createCapturedCustomerChallengeDelivery, createCustomerIdentityVerifier, createPostgresContactClientRegistrar,
   createPostgresCustomerMePort, resolveCustomerSessionBinding } from "@openlup/platform/identity";
 import { composePurchaseCapabilities } from "../../examples/neutral-store/host/purchase-composition.ts";
+import { ACQUISITION_TERMS_CAPABILITY } from "@openlup/platform/pricing";
+import { buildDemoSeed } from "../../examples/neutral-store/owned/demo-seed.ts";
+import { quoteConfigurations } from "../../examples/neutral-store/owned/quote.config.ts";
+import { isRecord } from "../../examples/neutral-store/shared/offer.ts";
+import { seedQuoteAuthority } from "../../examples/neutral-store/installation/quote-seed.ts";
 import { demoRenewalConfig } from "../../examples/neutral-store/owned/renewal.config.ts";
 import type { ActionContext } from "../../examples/neutral-store/host/bindings.ts";
 import type { StoreConfig } from "../../examples/neutral-store/shared/config.ts";
@@ -20,15 +25,17 @@ afterAll(() => resources.close(), postgresTeardownTimeoutMs);
 const words = { en: "Synthetic collection", pl: "Synthetic collection" };
 const config: StoreConfig = {
   renewal: demoRenewalConfig("journey"),
+  quote: { ...quoteConfigurations.coffee, acquisition: { ...quoteConfigurations.coffee.acquisition, enabled: true, minimumProductPayableMinor: 274 } },
   id: "journey", brand: { name: "Synthetic", strapline: words, description: words },
   theme: { ink: "#111111", paper: "#ffffff", accent: "#222222", accentInk: "#ffffff", border: "#333333" },
-  copy: { heroTitle: words, heroBody: words, offerTitle: words, offerBody: words, shippingNote: words },
+  copy: { heroTitle: words, heroBody: words, offerTitle: words, offerBody: words },
   media: { hero: "/media/synthetic.svg", heroAlt: words },
   market: { country: "ZZ", currency: "XXX", timezone: "UTC", locales: ["en", "pl"] },
   offer: { layout: "cards", minUnits: 1, maxUnits: 10, shippingMinor: 0, freeShippingFromMinor: 0,
-    subscriptionDiscountBps: 0, subscriptionRoundingQuantumMinor: 1, renewalShippingMinor: 0,
+    subscriptionDiscountBps: 0, subscriptionRoundingQuantumMinor: 1,
     cadenceDays: [28], defaultCadenceDays: 28, products: [{ sku: "JOURNEY-GUEST", slug: "item", title: "Synthetic item",
       name: words, description: words, details: words, media: "/media/synthetic.svg", mediaAlt: words, contents: "1",
+      physical: { netWeightG: 1, unitGtin: "0000000000017", issuer: "synthetic" },
       unitPrice: { amountMinor: 137, currency: "XXX" }, permittedPurchaseModes: ["one_time", "subscription"] }] },
   purchase: { recoveryMessage: { subject: words, body: words, expiryLabel: words, orderLabel: words },
     inputLimits: { text: 200, postalCode: 32, email: 160, name: 64, phone: 32 },
@@ -38,6 +45,9 @@ const config: StoreConfig = {
       collectedAt: "2026-01-01T00:00:00.000Z", staleAfter: "2099-01-01T00:00:00.000Z", providerRef: "synthetic", syncRunId: "synthetic" },
     tax: { vatRateBps: 0, category: "standard", legalBasis: "Synthetic fixture" },
     sandbox: { dunningTemplateSlug: "synthetic-refused", recoveryTemplateSlug: "synthetic-recovered", recoveryUrlPath: "/recover" } },
+  documents: { sandbox: { enabled: false, providerRef: "synthetic" } },
+  returns: { reasons: [{ code: "synthetic", label: words }] },
+  orderControls: { holdReasons: [{ code: "manual_support", label: words }] },
   legal: { revision: "synthetic-1", returnsDays: 14, demoOnly: true },
   features: { reviews: false, acquisition: false, research: false, partners: false, risk: false, normalizedIngest: false },
 };
@@ -49,26 +59,39 @@ it.each(["one_time", "subscription"] as const)("joins anonymous %s purchase, tra
   await assertJourneyWithoutIntake(source);
   await assertJourneyWithoutIntake(target);
   const pristine = await captureStoreJourney(target.owner, "guest-pristine");
-  const product = randomUUID(), list = randomUUID();
+  const seed = buildDemoSeed(config);
+  const product = seed.products[0]!.id, sku = seed.skus[0]!.id, list = seed.priceLists[0]!.id;
   await source.owner.query("INSERT INTO public.catalog_products(id,slug,name) VALUES($1,'demo-journey-item','Synthetic item')", [product]);
-  await source.owner.query("INSERT INTO public.catalog_skus(id,product_id,sku,title,sellable_in_subscription) VALUES($1,$1,'JOURNEY-GUEST','Synthetic item',true)", [product]);
+  await source.owner.query("INSERT INTO public.catalog_skus(id,product_id,sku,title,sellable_in_subscription) VALUES($1,$2,'JOURNEY-GUEST','Synthetic item',true)", [sku, product]);
   await source.owner.query("INSERT INTO public.price_lists(id,name,region_code,currency,valid_from) VALUES($1,'Synthetic list','ZZ','XXX','2026-01-01T00:00:00Z')", [list]);
-  await source.owner.query("INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from) VALUES($1,$2,'any',137,'2026-01-01T00:00:00Z')", [list, product]);
+  for (const price of seed.prices) await source.owner.query("INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from) VALUES($1,$2,$3,$4,'2026-01-01T00:00:00Z')",
+    [list, sku, price.mode, price.unit_price_minor]);
+  const installation = await source.owner.connect();
+  try {
+    await installation.query("BEGIN");
+    await seedQuoteAuthority(config, seed, installation);
+    await installation.query("COMMIT");
+  } catch (error) { await installation.query("ROLLBACK"); throw error; }
+  finally { installation.release(); }
   const contacts = [source, target].map(store => createPostgresContactClientRegistrar({ connectionString: store.runtimeUrl }));
   const lanes = [source, target].map(store => createPostgresRoleFreeTransactionLane({ connectionString: store.runtimeUrl }));
   const recoveryMessages: { email: string; orderRef: string; rawToken: string }[] = [];
+  const keyring = { current: randomUUID() + randomUUID() };
   const actions = [source, target].map((store, index) => composePurchaseCapabilities(store.runtime, contacts[index]!, undefined, {
     tokens: createPostgresCheckoutRecoveryTokenPort(lanes[index]!),
     deliver: async message => { recoveryMessages.push(message); },
-  }));
+  }, { keyring }));
   const context: ActionContext = { config, actor: { customerRef: null, operatorRef: null, requesterKey: createHash("sha256").update("synthetic-peer").digest("hex") }, commandKey: `guest-${mode}` };
   const email = `guest-${mode}@example.invalid`;
-  const payload = { email, locale: "en", configuration: config.id, country: "ZZ", termsAccepted: true, termsRevision: config.legal.revision,
+  const input = { email, locale: "en", acquisitionCapability: ACQUISITION_TERMS_CAPABILITY, configuration: config.id, country: "ZZ", termsAccepted: true, termsRevision: config.legal.revision,
     firstName: "Synthetic", lastName: "Buyer", phone: "000000000", line1: "1 Synthetic Lane", city: "Synthetic", postalCode: "00000",
     cart: { schemaVersion: 1, configuration: config.id, mode, cadenceDays: mode === "subscription" ? 28 : null,
       lines: [{ sku: "JOURNEY-GUEST", quantity: 2 }] } };
   try {
     expect((await source.owner.query("SELECT count(*)::int AS count FROM public.clients")).rows).toEqual([{ count: 0 }]);
+    const quote = await actions[0]!["offer.validate"]!(input, context);
+    if (!quote.ok || !isRecord(quote.value)) throw new Error("Guest quote refused");
+    const payload = { ...input, quoteAcceptance: quote.value.quoteAcceptance, expectedTotal: quote.value.expectedTotal };
     const made = await actions[0]!["checkout.create"]!(payload, context);
     expect(made, JSON.stringify(made)).toMatchObject({ ok: true, replayed: false, value: { status: "pending_payment", total: { amountMinor: 274, currency: "XXX" } } });
     if (!made.ok) throw new Error("Guest checkout refused");

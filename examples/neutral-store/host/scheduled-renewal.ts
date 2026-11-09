@@ -7,17 +7,19 @@ import type { StoreConfig } from '../shared/config.ts';
 import { assertRenewalConfig } from '../shared/renewal-config.ts';
 import { createRenewalJob, renewalLedgerReady } from './renewal-job.ts';
 import { composeRenewalSandbox } from './renewal-sandbox.ts';
+import { createPaidMailHost } from './paid-mail.ts';
 
 /** One invocation from the existing lifecycle command; construction starts no scheduler. */
 export async function runScheduledRenewal(connectionString: string, config: StoreConfig) {
   assertRenewalConfig(config.renewal);
-  if (!config.renewal.enabled) return { kind: 'refused' as const, code: 'disabled' };
   const pool = new pg.Pool({ connectionString, max: 4 });
   try {
     const role = (await pool.query(`SELECT session_user AS login,current_user AS role,rolsuper,rolbypassrls
       FROM pg_roles WHERE rolname=current_user`)).rows[0];
     if (role?.login !== 'starter_runtime' || role.role !== 'starter_runtime'
       || role.rolsuper !== false || role.rolbypassrls !== false) throw new Error('starter_runtime_connection_required');
+    const paidMail = await createPaidMailHost({ executor: pool, config }).run();
+    if (!config.renewal.enabled) return { kind: 'refused' as const, code: 'disabled', paidMail };
     const withSession = async <T>(work: (db: pg.PoolClient) => Promise<T>): Promise<T> => {
       const db = await pool.connect(); try { return await work(db); } finally { db.release(); }
     };
@@ -36,7 +38,7 @@ export async function runScheduledRenewal(connectionString: string, config: Stor
       now: () => new Date().toISOString(), failureTemplate: config.purchase.sandbox.dunningTemplateSlug,
       recoveredTemplate: config.purchase.sandbox.recoveryTemplateSlug, recoveryPath: config.purchase.sandbox.recoveryUrlPath });
     const binding = createRenewalJob({ config: config.renewal, withSession, beforeRun: sandbox.refresh,
-      native: { executor: pool, withTransaction, codec, settlement: db => createPostgresRenewalSettlementPort(db, codec),
+      native: { executor: pool, withTransaction, codec, settlement: db => createPostgresRenewalSettlementPort(db, codec, withTransaction),
         inventory: createPostgresRenewalReservationPort(pool), paymentRails: sandbox.paymentRails,
         policy: sandbox.policy, retry: sandbox.retry, failureTemplate: config.purchase.sandbox.dunningTemplateSlug,
         recoveryPath: config.purchase.sandbox.recoveryUrlPath, workerId: `starter:${config.id}`,
@@ -56,6 +58,6 @@ export async function runScheduledRenewal(connectionString: string, config: Stor
         },
       },
     });
-    return await binding.services.run();
+    return { ...await binding.services.run(), paidMail };
   } finally { await pool.end(); }
 }

@@ -355,8 +355,25 @@ config uses the unchanged required purchase spec and disables trace, screenshot
 and video capture because request bodies contain private order capabilities.
 
 Install/seed the complete selected package history using lifecycle. Start one
-host per configuration with the documented `--database-url`, `--configuration`,
-`--port` and `--listen`, using the restricted installer-managed runtime role.
+demonstration Compose project per configuration with `./lifecycle up` and
+`./lifecycle up --configuration coffee`. The application container checks the
+database demonstration marker, creates its private mode-0600 keyring in
+`.context/quote-acceptance-keyring.json` if absent, and passes
+`--quote-acceptance-key-file` to the host. A restart of that container reuses the
+file; recreating it, including `down` followed by `up`, generates a new key and
+unsubmitted quotes need refresh. Compose publishes the fixed loopback port 4319;
+run these lifecycle configurations sequentially. These two lifecycle commands
+do not create the two distinct origins in the browser configuration below.
+
+For the two-origin browser run below, start one host per configuration outside
+lifecycle on distinct loopback ports. Supply the documented `--database-url`,
+`--configuration`, `--port`, `--listen` and `--quote-acceptance-key-file <path>`,
+using the restricted installer-managed runtime role. Supply your own private
+JSON keyring: `current` and optional `previous`, each at least 32 characters.
+Keep the file outside served assets and browser configuration, mode 0600, and
+never commit it or write it into `.context/database-ui-hosts.json`. Without the
+flag, subscription quotes refuse `starter_quote_acceptance_key_required` while
+one-time checkout still works.
 Write only loopback UI origins to `.context/database-ui-hosts.json`:
 
 ```json
@@ -369,6 +386,69 @@ Write only loopback UI origins to `.context/database-ui-hosts.json`:
 ```sh
 npx --no -- playwright test --config playwright.database.config.ts
 ```
+
+### Run the installed browser gate locally
+
+Prerequisites: pinned Node/npm, Docker, `npm ci` at the source root, and
+Chromium installed with `npx --no -- playwright install chromium`. Prepare an
+extracted application with candidate artifacts from the selected committed
+packages using the [candidate recipe](../README.md#run-the-local-application).
+Use new Compose project names so each configuration gets its own fresh database.
+The fixed published port requires sequential runs. From that prepared application:
+
+```sh
+mkdir -p .context
+cat > .context/database-ui-hosts.json <<'JSON'
+[
+  { "id": "supplements", "baseURL": "http://127.0.0.1:4319" },
+  { "id": "coffee", "baseURL": "http://127.0.0.1:4319" }
+]
+JSON
+PROOF_RUN_ID="$(date +%s)"
+for configuration in supplements coffee; do
+  export COMPOSE_PROJECT_NAME="neutral-browser-${configuration}-${PROOF_RUN_ID}"
+  ./lifecycle down
+  ./lifecycle up --configuration "$configuration"
+  npx --no -- playwright test --config playwright.database.config.ts --project "$configuration"
+  ./lifecycle down
+  docker compose down --volumes --rmi local
+done
+```
+
+Each invocation selects only the project matching the active host; the two JSON
+entries intentionally share the sequential loopback origin. Both projects must
+pass, including the unchanged required purchase cases.
+
+Then, from the source root with the same committed packages and Chromium present:
+
+```sh
+unset OPENLUP_STACK_BASE OPENLUP_BUILD_OUT_DIR OPENLUP_SSR_OUT_DIR OPENLUP_REFERENCE_PROFILE OPENLUP_VITEST_EXCLUDE_FILE
+npm test -- --run tests/postgres/neutralStarterE4.test.ts tests/postgres/neutralStoreRecovery.test.ts tests/postgres/neutralStoreRenewal.test.ts --reporter=verbose --maxWorkers=1
+```
+
+`npm test` builds its package prerequisites. Docker supplies disposable real
+PostgreSQL; no external database or provider credentials are needed. The new
+browser cases build their UI assets and disable traces, screenshots and video.
+Private mode-0600 fixture files are removed in teardown. Recovery reuses its
+existing HTTP host; renewal uses the host's selected restricted installation,
+executes the sandbox job once, and signs the customer in through the email and
+captured challenge forms. The account controls show the exact projected next
+charge amount/currency/date and the renewal order reference/total, including the
+first purchase's retained 640-minor shipping charge in that order.
+
+In verbose output require these cases to pass, with both configurations named:
+
+- `runs the separate browser spec in both installed configurations without changing the purchase witness`
+- `runs the recurring recovery browser journey against PostgreSQL`
+- `runs the renewal effect browser journey against PostgreSQL`
+
+The first case also prints two Playwright project passes; each of the other cases
+prints its browser test pass. A downward arrow or skipped `runIf` is missing
+browser evidence, even if the overall command exits zero. Hosted runners without
+Chromium retain the HTTP/database proofs and cannot qualify these browser cases.
+This gate proves local sandbox journeys, not provider, deployment or release
+qualification. Subscription and operator command refusals remain in their
+existing browser journeys; this recipe adds no command workflow.
 
 Record exact source/artifact identities, installed/repeat migration counts,
 both configuration results, capability refusal/replay cases and cleanup. This
@@ -386,11 +466,11 @@ Guest one-time and subscription purchases, activation with renewal attachment,
 later sign-in ownership, operator order reads and next-parcel address changes
 have host-level real-PostgreSQL proofs in both configurations. The measured
 three-package application delta is zero bytes against the committed dependency stack.
-The database-backed UI suite passes 98 checks (49 per configuration), including
+An earlier database-backed UI run passed 98 checks (49 per configuration), including
 both unchanged required purchase cases, with no failures, skips or retries.
-Committed source and real-HTTP recovery tests need no starter UI assets or
-Chromium. Real-browser recovery runs are local evidence, not a committed root-job
-witness. Separate local browser proof covers captured recovery mail opened in a fresh
+The HTTP-only recovery cases need no starter UI assets or Chromium. The guarded
+root browser cases above build their assets when Chromium is present; their
+results remain local evidence. Separate local browser proof covers captured recovery mail opened in a fresh
 context, URL cleanup/reload, an actual host-process restart, paid-link confirmation
 without controls, native-clock expiry and revoked/unknown/cross-order/cancelled
 refusals. Sign-in exposes the order and activated subscription with completed
@@ -443,17 +523,58 @@ postal-code bounds as checkout. Each case has an explicit 30-second timeout;
 run new PostgreSQL cases in the default zone and both offset zones.
 
 
-The committed recurring-recovery and renewal PostgreSQL files pass 21 cases with
+An earlier recurring-recovery and renewal PostgreSQL baseline passed 21 cases with
 no skips on the selected native installation, including its command receipt-lock
 completion. Both operator cases prove issuance, immutable artifact capture/replay,
 missing-artifact and changed-context refusal, process restart and revocation by
 another active human administrator. The authenticated recovery case scans the
 same host log stream for its raw token after real HTTP recovery. Consumer
-installations are isolated per setup and removed in teardown. Browser recovery
-remains separate local evidence; the root proof needs no starter assets or Chromium.
+installations are isolated per setup and removed in teardown. The guarded browser cases above add local recovery and renewal evidence;
+without Chromium the HTTP/database cases still run, but browser proof is missing.
 
 The authenticated recovery proof also releases four concurrent account requests
 from a real PostgreSQL lock barrier and requires every owned renewal projection
 to complete. The host releases its actor transaction before the separate
 renewal read borrows the same bounded pool; queries and authority checks retain
 their existing owners.
+
+## Paid-order message witness
+
+[`neutralStorePaidMail.test.ts`](../../../tests/postgres/neutralStorePaidMail.test.ts)
+installs the canonical catalogue in disposable PostgreSQL and claims through the
+restricted runtime login without extra grants. It invokes the actual lifecycle
+entry with renewals disabled, observes exactly one private paid receipt with
+recipient reference, localized subject and frozen totals, then proves replay is
+inert. A competing claim is fenced; a lost acknowledgement followed by lease
+expiry reuses the original receipt before reading a changed contact. Unpaid and
+cancelled purchases produce none. The same file checks every unselected send
+method's refusal, missing-locale/empty-subject validation, private permissions,
+immutable capture and corrupt-identity refusal. These are local capture witnesses;
+no real mail delivery or provider qualification is claimed.
+
+The same file also creates real purchases through the starter's bound checkout
+and sandbox-payment actions, which emit both settlement and paid-email events.
+The fixture owner changes only the generated events' `created_at` values to
+explicit UTC instants, forcing each sibling order independently of random UUIDs.
+Each order is exercised once: the dispatcher captures one paid receipt and replay
+adds none, while the unclaimed settlement fact retains its row and version and
+creates no message. The settlement-first case fails before the vocabulary fix;
+the paid-first control already passes. No hand-inserted event substitutes for the
+real purchase in these two cases.
+
+
+## Shipping amount witnesses
+
+The installed real-PostgreSQL `neutralStoreQuote.test.ts` witness covers both
+configurations: paid shipping below the threshold, free shipping exactly at and
+above it, and a product discount crossing below it. It compares live quote,
+checkout response and persisted order money. Accepted shipping terms flow through
+activation into renewal pricing and the separate `shipping_charge` adjustment;
+changing current offer settings cannot change the retained agreement. Replaying
+the frozen renewal adds no second charge. Source tests replace the former
+zero-shipping refusals with configurable paid shipping and invalid-value checks.
+Scratch mutations remove the threshold comparison and retained shipping wiring to
+check that these witnesses detect the corresponding regressions. Browser purchase
+recipes retain their existing carts and expectations; both demonstration offers
+charge 640 minor units below a 1,000-minor threshold. These proofs establish no
+provider access, publication or deployment qualification.

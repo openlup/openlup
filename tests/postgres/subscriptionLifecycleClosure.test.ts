@@ -1,8 +1,8 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPostgresCustomerOrderHistoryReadStore } from "@openlup/platform/account-support";
-import { createPostgresSubscriptionCommands } from "@openlup/platform/subscriptions";
+import { createPostgresRetryStore, createPostgresSubscriptionCommands } from "@openlup/platform/subscriptions";
 import type { SubscriptionCommand, SubscriptionLifecycleTerms } from "@openlup/platform/subscriptions/contracts";
 import { fixture as paidParcel } from "../helpers/fulfillmentNative.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
@@ -253,6 +253,46 @@ describe.each(lifecycleProfiles)("subscription lifecycle closure on %s", profile
     expect((await env.owner.query("SELECT id FROM public.commerce_settlement_transitions WHERE intent_id=$1 AND outcome='succeeded'", [f.original.settlementIntentId])).rows).toEqual([]);
   }, 30_000);
 
+  it("keeps public late recovery non-paid after customer pause closes a captured renewal", async () => {
+    const f = await lifecycleDeclined(env.owner), at = later(1);
+    await env.owner.query("UPDATE public.commerce_settlement_intents SET channel_key='sandbox' WHERE id=$1", [f.original.settlementIntentId]);
+    const attempt = await call(env.runtime, "payment_simulator_begin_attempt", [`public-capture:${f.subscription}`, f.original.settlementIntentId, "a".repeat(64), {}, AT]);
+    const observation = await call(env.runtime, "payment_simulator_record_observation", [attempt.id, `public-capture:${attempt.id}`, "b".repeat(64), "captured", at]);
+    const port = createPostgresSubscriptionCommands({ futureTerms: async () => { throw new Error("edit_not_selected"); },
+      withTransaction: async work => { const db = await env.runtime.connect(); try { await db.query("BEGIN"); const result = await work(db); await db.query("COMMIT"); return result; }
+        catch (error) { await db.query("ROLLBACK"); throw error; } finally { db.release(); } } });
+    expect(await port.apply({ actor: { kind: "customer", actorId: f.actor, clientId: f.client }, subscriptionId: f.subscription,
+      idempotencyKey: `public-pause:${f.subscription}`, now: at, action: "pause", pausePreset: "indefinite", reason: null, survey: null, saveOffer: null })).toMatchObject({ outcome: "applied" });
+    const effects = async () => (await env.owner.query(`SELECT jsonb_build_object(
+      'counter',(SELECT next_cycle_number FROM public.subscription_renewal_terms WHERE subscription_id=$1),
+      'stock',(SELECT jsonb_agg(to_jsonb(r) ORDER BY id) FROM public.fulfillment_inventory_reservations r WHERE renewal_operation_id=$2),
+      'receipts',(SELECT coalesce(jsonb_agg(to_jsonb(r) ORDER BY id),'[]'::jsonb) FROM public.subscription_retry_receipts r
+        WHERE obligation_id=(SELECT id FROM public.subscription_retry_obligations WHERE renewal_operation_id=$2) AND kind='recovery'),
+      'obligation',(SELECT to_jsonb(o) FROM public.subscription_retry_obligations o WHERE renewal_operation_id=$2)) AS value`, [f.subscription, f.operation])).rows[0].value;
+    const before = await effects();
+    expect(before.counter).toBe(2);
+    expect(before.stock).toEqual([expect.objectContaining({ status: "released", expires_at: null })]);
+    expect(before.receipts).toEqual([]);
+    expect((await env.owner.query("SELECT id FROM public.payment_truth_events WHERE settlement_intent_id=$1", [f.original.settlementIntentId])).rows).toEqual([]);
+    const input = { evidenceKey: `sandbox:${observation.id}`, occurredAt: at, firstRecordedAt: at, externalRef: `capture:${observation.id}`,
+      amountMinor: f.snapshot.totalAmountMinor, currency: "XXX", template: "payment_recovered", sourceKind: "accepted_event" as const,
+      sourceReference: observation.id, attemptRef: attempt.id, observedStatus: "captured" as const, observedAt: at, payloadFingerprint: "b".repeat(64) };
+    const store = createPostgresRetryStore(env.runtime), key = `public-recover:${f.operation}`;
+    const result = await store.recordRecovery(f.operation, key, input);
+    expect(result).toMatchObject({ state: "waiting", disposition: "payment_failed" });
+    expect(await effects()).toEqual(before);
+    const truth = (await env.owner.query("SELECT id FROM public.payment_truth_events WHERE settlement_intent_id=$1", [f.original.settlementIntentId])).rows;
+    expect(truth).toHaveLength(1);
+    expect(await call(env.owner, "payment_truth_readback", [truth[0].id, false])).toMatchObject({
+      event: { applicationStatus: "review_required", outcome: "captured" }, effects: { paymentResultRecorded: false },
+      financial: { orderStatus: "cancelled", settlementStatus: "cancelled" } });
+    const after = await lifecycleRows(env.owner);
+    expect(await store.recordRecovery(f.operation, key, input)).toEqual(result);
+    expect(await effects()).toEqual(before);
+    expect(await lifecycleRows(env.owner)).toEqual(after);
+    expect((await env.owner.query("SELECT id FROM public.commerce_settlement_transitions WHERE intent_id=$1 AND outcome='succeeded'", [f.original.settlementIntentId])).rows).toEqual([]);
+  }, 30_000);
+
   it("rolls resume forward by whole stored cadences without creating a delivery fact", async () => {
     const f = await lifecycleSubject(env.owner);
     await env.owner.query("UPDATE public.subscriptions SET next_cycle_at='2026-07-07T12:00:00Z' WHERE id=$1", [f.subscription]);
@@ -281,7 +321,17 @@ describe.each(lifecycleProfiles)("subscription lifecycle closure on %s", profile
       await db.query("ROLLBACK");
     } finally { await db.query("ROLLBACK"); db.release(); }
     await env.owner.query("UPDATE public.subscription_dunning_notifications SET status='sending',claim_token=$2,lease_expires_at=$3 WHERE case_id=$1", [f.caseId, randomUUID(), later(1)]);
-    await env.actor(principal, actor => call(actor, "customer_subscription_pause_as_actor", [f.subscription.toUpperCase(), `actor:${f.subscription}`, "indefinite", null]));
+    const key = `actor:${f.subscription}`, derived = `command:${createHash("sha256").update(`${principal}:${key}`).digest("hex")}`;
+    const beforeReserved = await lifecycleRows(env.owner);
+    await expect(env.actor(principal, actor => call(actor, "customer_subscription_pause_as_actor", [f.subscription, derived, "indefinite", null])))
+      .rejects.toMatchObject({ code: "22023", message: "subscription_command_reserved_idempotency_key" });
+    expect(await lifecycleRows(env.owner)).toEqual(beforeReserved);
+    await env.actor(principal, actor => call(actor, "customer_subscription_pause_as_actor", [f.subscription.toUpperCase(), key, "indefinite", null]));
+    expect((await env.owner.query("SELECT idempotency_key,payload#>'{payload,commandKeyIdentity}' AS identity FROM public.subscription_events WHERE subscription_id=$1 AND event_type='subscription.customer_self_service.pause'", [f.subscription])).rows)
+      .toEqual([{ idempotency_key: derived, identity: { derivation: "principal-sha256.v1", actorId: principal } }]);
+    const beforeReplay = await lifecycleRows(env.owner);
+    expect((await env.actor(principal, actor => call(actor, "customer_subscription_pause_as_actor", [f.subscription, key, "indefinite", null]))).subscriptionAction.status).toBe("replayed");
+    expect(await lifecycleRows(env.owner)).toEqual(beforeReplay);
     expect((await env.owner.query("SELECT status,next_retry_at FROM public.subscription_dunning_cases WHERE id=$1", [f.caseId])).rows[0]).toEqual({ status: "paused", next_retry_at: null });
     expect((await env.owner.query("SELECT status FROM public.subscription_dunning_notifications WHERE case_id=$1", [f.caseId])).rows[0].status).toBe("sending");
     expect((await env.owner.query("SELECT status FROM public.commerce_orders WHERE id=$1", [f.original.orderId])).rows[0].status).toBe("cancelled");
