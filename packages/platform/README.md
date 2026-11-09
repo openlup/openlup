@@ -1778,6 +1778,16 @@ Legacy survey/offer strings remain strings. Native order history projects a
 terminalized settlement intent as `cancelled` rather than payment pending.
 No new operator action, retention discount or browser binding is installed.
 
+After the package-editor forward is installed, native
+`createPostgresAccountReadSources` maps `subscriptions.composition_constraint`
+into the existing account `sizeConstraint` field. This gives the classic editor
+its stored nominal-plan seed; constraint meaning remains host-owned. Line prices
+still come from the frozen native subscription lines. Managed/custom account
+sources and existing self-service command bindings keep their own contracts.
+The [subscription owner](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
+describes editor composition, quote acceptance and future renewal terms.
+
+
 `./account-support/postgres` exposes the existing
 `createPostgresCustomerSupportJourneyPort`. Supply a restricted runtime connection
 and a trusted operator ID; close the port when its host scope ends. The native

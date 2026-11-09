@@ -55,4 +55,13 @@ export { createSubscriptionCommandExamples } from "./commandExamples.js";
 export { createSubscriptionServices } from "./services.js";
 export { createPostgresSubscriptionWinback } from "./postgresWinback.js";
 export type { NativeWinbackOptions } from "./postgresWinback.js";
+
+export { createClassicPackageRepricer, hashPackageEditQuote } from "./classicPackageQuote.js";
+export { createPostgresPackageEditReadPort } from "./packageEditRead.js";
+export { createPostgresPackageEditor } from "./packageEditor.js";
+export { mapPackageEditError } from "./packageEditErrors.js";
+export type { PackageEditErrorMapping } from "./packageEditErrors.js";
+export type { PackageEditMoney, PackageEditLine, PackageEditQuoteLine, PackageEditPricedLine, PackageEditRequest, PackageEditQuote,
+  PackageEditSubscription, PackageEditCurrentLine, PackageEditConstraintMapper, PackageEditReadPort, PackageEditQuotePorts,
+  PackageEditLimits, PackageEditorOptions, PackageEditActor, PackageEditBlockedReason, PackageEditPreview, PackageEditApplyResult } from "./packageEditContracts.js";
 export { createPostgresSubscriptionAutoResume } from "./postgresAutoResume.js";

@@ -294,6 +294,8 @@ it("projects typed managed obligations and leaves source history in the operator
   expect(evidence.clients).toHaveLength(1);
   const mapped = await mapManagedRetainedBusiness({ capture: source,
     issuer: "https://issuer.example.invalid/managed", freshTarget: fresh, targetOwner: targetOwner! });
+  expect(mapped.packet.compatible.tables.find(value => value.table === "subscriptions")?.rows.map(row => JSON.parse(row)))
+    .toEqual([expect.objectContaining({ id: subscriptionId, composition_constraint: null })]);
   // Restore compares at UTC, so a target session in another zone must produce no local offset here.
   const zonedOwner = await targetOwner!.connect();
   try {
@@ -390,9 +392,9 @@ it("projects typed managed obligations and leaves source history in the operator
   const sourceRow = async (table: string, id: string) => (await managed.owner.query(`SELECT * FROM public.${table} WHERE id=$1`, [id])).rows[0];
   const sourceSubscription = await sourceRow("subscriptions", subscriptionId), sourceLine = await sourceRow("subscription_lines", lineId);
   const typed = async (sql: string, ...params: unknown[]) => (await targetOwner!.query(sql, params)).rows;
-  expect(await typed("SELECT id,client_id,status,next_cycle_at,cadence_days,price_list_id,currency_code FROM public.subscriptions"))
+  expect(await typed("SELECT id,client_id,status,next_cycle_at,cadence_days,price_list_id,currency_code,composition_constraint FROM public.subscriptions"))
     .toEqual([{ id: subscriptionId, client_id: clientId, status: "active", next_cycle_at: sourceSubscription.next_cycle_at,
-      cadence_days: 28, price_list_id: priceListId, currency_code: "XXX" }]);
+      cadence_days: 28, price_list_id: priceListId, currency_code: "XXX", composition_constraint: null }]);
   expect(await typed("SELECT * FROM public.subscription_renewal_terms"))
     .toEqual([{ subscription_id: subscriptionId, next_cycle_number: 4, currency_code: "XXX", stock_source_key: "retained-sku",
       settlement_channel_key: "synthetic-provider", unattended_charge_authorized_at: new Date("2026-01-01T00:00:00Z"),

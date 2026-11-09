@@ -80,6 +80,29 @@ reads use the service-only `dunning_lifecycle_scan_at_risk_service(integer,integ
 STABLE definer, pinned to `pg_catalog, pg_temp`, which delegates to that implementation.
 No existing function ACL or table privilege is widened by this entry.
 
+The package-editor forward adds an opaque nullable object constraint on
+`subscriptions` and the owner-only, RLS-enabled `subscription_quote_previews`
+ledger. Service-only definers record, take and accept a preview and apply future
+package terms; browser roles have no execution or table access. The eight new
+functions leave existing command routines unchanged. An accepted preview retains
+its request, quote, totals, command key and subscription-event reference. The
+accepted event also carries complete renewal `linePricing`; no per-line agreement
+column or existing cycle/operation snapshot is rewritten.
+
+Quote previews are classified `retain` for client absorption: a preview exists
+only for a subscription its client owns, and subscriptions already block
+absorption, so absorption never reads the owner-only preview table and refuses
+through the subscription instead. Connected native-store capture owns
+these rows, and restore inserts them after clients, subscriptions and subscription
+events. Preview pruning retains accepted history and deletes at most 500
+unaccepted rows expired more than seven days before the request time. The minimum
+base-unit setting is supplied by the host installation, never seeded by this
+forward. The [subscription contract](ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
+owns quote composition, no-op ordering and renewal behavior. SQL installation
+still requires its separate reviewed forward admission; source presence alone
+is not an admitted or published installation chain.
+
+
 The account-choice forward also creates the service-only
 `subscription_register_renewal_purchase_with_shipping(uuid,jsonb)` and STABLE
 `subscription_renewal_purchase_terms(uuid)` definers. Both pin `pg_catalog,
@@ -1897,6 +1920,20 @@ producer and dispatcher together before enabling their schedules. No ledger
 backfill, historical auto-send, reminder deletion or live activation is performed.
 The separate closed class-2 reader/data admission is required before this suffix
 can land; a source-only fixture application does not establish that admission.
+
+The classic package-editor forward appends nullable subscription composition
+storage, a new preview ledger and eight created functions. It replaces no served
+command routine and rewrites no existing agreement, cycle or operation snapshot.
+The canonical manifest and projected package SQL retain identical bytes for all
+selected plans; each installation shape needs its separately measured catalogue
+identity. Apply this additive schema before upgrading native account reads or
+composing the editor. Old generic commands keep their existing contract.
+Preview rows retain linked actor/client and accepted-event references, stay
+unread by client absorption (their subscriptions block it) and travel through
+the finite connected-store profile. They
+have no erasure path yet. [Retained storage](#retained-renewal-storage) owns their
+privilege, pruning, acceptance and renewal-pricing boundaries.
+
 
 The opt-in [complete account consent choices](#complete-account-consent-choices)
 forward adds a distinct actor API and expands only the native sync purpose CHECK.

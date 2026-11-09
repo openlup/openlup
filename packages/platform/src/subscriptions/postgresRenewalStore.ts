@@ -28,7 +28,9 @@ const SNAPSHOT_SQL = `SELECT s.id AS subscription_id,s.client_id,s.cadence_days,
  to_char(t.unattended_charge_authorized_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS unattended_charge_authorized_at,
  ${subscriptionCorrelationSql},m.health_state,public.subscription_renewal_purchase_terms(s.id) AS purchase_facts,
  (SELECT e.payload->'linePricing' FROM public.subscription_events e WHERE e.subscription_id=s.id
-  AND e.event_type='subscription.starter_graduated' ORDER BY e.occurred_at DESC,e.id DESC LIMIT 1) AS graduation_pricing,
+  AND e.event_type IN ('subscription.starter_graduated','subscription.customer_self_service.update_package_template')
+  AND jsonb_typeof(e.payload->'linePricing')='array'
+  ORDER BY e.occurred_at DESC,e.id DESC LIMIT 1) AS graduation_pricing,
  COALESCE((SELECT jsonb_agg(jsonb_build_object('lineOrdinal',l.line_ordinal,'sku',l.sku,'quantity',l.quantity,
  'unitAmountMinor',l.unit_amount_minor) ORDER BY l.line_ordinal) FROM public.subscription_renewal_term_lines l
  WHERE l.subscription_id=s.id),'[]'::jsonb) AS lines
