@@ -10,7 +10,7 @@ export const operations = [
   'operator.cancelUnpaid', 'operator.externalRefund', 'operator.customerSearch',
   'operator.customer', 'operator.recovery', 'operator.shipments', 'operator.shipment',
   'operator.label', 'operator.handoff', 'operator.delivery', 'operator.invoice',
-  'operator.returns', 'operator.returnApprove', 'operator.returnReject',
+  'operator.returnApprove', 'operator.returnReject',
   'operator.bundles', 'operator.bundle', 'operator.bundleCommand', 'operator.catalogDrafts',
   'operator.reviews', 'operator.reviewModerate', 'operator.partners', 'operator.partnerTransition',
   'review.read', 'review.submit', 'unsubscribe.apply',

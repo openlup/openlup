@@ -19,8 +19,8 @@ export function createInvoiceAccess(options: InvoiceAccessOptions = {}) {
       async resolveDownload(input) {
         const history = await accountHistory.read({ accountRef: input.accountRef, orderId: input.orderId });
         if (history.kind !== "found") return history;
-        if (history.accountRef !== input.accountRef || history.orderId !== input.orderId
-          || !history.documents.some(document => document.documentRef === input.documentRef)) return { kind: "denied" };
+        if (!sameInvoiceIdentifier(history.accountRef, input.accountRef) || !sameInvoiceIdentifier(history.orderId, input.orderId)
+          || !history.documents.some(document => sameInvoiceIdentifier(document.documentRef, input.documentRef))) return { kind: "denied" };
         return accountHistory.resolveDownload(input);
       }
     }
@@ -60,4 +60,10 @@ export function deriveCustomerDocumentDeliveryStatus(input: CustomerInvoiceDocum
 
 function normalized(value: string | null): string {
   return value?.trim().toLowerCase() ?? "";
+}
+
+// Keep the owner check module-local; invoicing internals are not an account API.
+function sameInvoiceIdentifier(left: string, right: string): boolean {
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return left === right || (uuid.test(left) && uuid.test(right) && left.toLowerCase() === right.toLowerCase());
 }

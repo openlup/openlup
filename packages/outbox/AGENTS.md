@@ -6,6 +6,30 @@ Kind: `rail`.
 
 The package owns neutral dispatch, registry composition, lease-bound schedules and the default PostgreSQL store. Drivers, application handlers, credentials, producer transactions, host guards and trigger bindings stay in the application. Inside the OpenLup monorepo the root `AGENTS.md` governs.
 
+## Installed context lookup
+
+From the application root, invoke the installed local executable:
+
+```sh
+./node_modules/.bin/openlup-context search "subscription renewal"
+```
+
+This MVP indexes English documentation. Translate Polish or other natural-language
+tasks into concise English domain terms, or search an exact public symbol;
+freeform Polish queries may miss relevant guidance. `--code` scans a bounded
+set of application source paths; `--package-code` scans installed package `src/`
+files. Both are opt-in and may be incomplete; direct `rg` remains available.
+
+Choose the next lookup from the evidence needed: read a known path or symbol
+directly; use `openlup-context` when the package owner or seam is unclear; then
+open its cited source. For work spanning packages, follow the relevant exports,
+callers and tests until each required contract has a witness. A ranked hit is a
+starting point, not proof that all related constraints were found.
+
+Core supplies this Node-only executable. It reads installed local snapshots on
+invocation and grants no application policy, tool permission or external-write
+authority. The application's own instructions govern.
+
 ## Subpath maturity
 
 | Export | Role | Maturity |

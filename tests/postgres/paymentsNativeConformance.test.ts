@@ -149,7 +149,10 @@ it("refuses an unprivileged actor and applies refused settlement without paying 
   expect(refused).toMatchObject({ event: { state: "settled", outcome: "refused" }, financial: { orderStatus: "pending_payment", settlementStatus: "failed" } });
   expect(refused.effects.dunningOpened).toBe(true);
   expect((await pool.query("SELECT * FROM public.subscription_dunning_cases WHERE subscription_id=$1", [f.subscription])).rows).toHaveLength(1);
-  expect((await pool.query("SELECT * FROM public.subscription_dunning_notifications WHERE case_id=(SELECT id FROM public.subscription_dunning_cases WHERE subscription_id=$1)", [f.subscription])).rows).toHaveLength(1);
+  expect((await pool.query("SELECT recipient_kind,status,error FROM public.subscription_dunning_notifications WHERE case_id=(SELECT id FROM public.subscription_dunning_cases WHERE subscription_id=$1) ORDER BY recipient_kind", [f.subscription])).rows).toEqual([
+    { recipient_kind: "customer", status: "queued", error: null },
+    { recipient_kind: "operator", status: "skipped", error: "missing_critical_notification_recipient" },
+  ]);
   const recovered = await truth().ingestEvent({ ...f.input, sourceEventId: `${f.input.sourceEventId}:recovery`, idempotencyKey: `${f.input.idempotencyKey}:recovery` });
   expect(recovered.effects.accountingRequested).toBe(false);
   expect((await pool.query("SELECT status FROM public.subscription_dunning_cases WHERE subscription_id=$1", [f.subscription])).rows).toEqual([{ status: "recovered" }]);

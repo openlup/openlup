@@ -92,17 +92,20 @@ hosted qualification.
 The small installed `AGENT_CONTEXT.md` corpora in core, outbox and platform are
 generated from selected canonical owner sections by
 [`scripts/agent-context/generate.mjs`](../../scripts/agent-context/generate.mjs).
-Run `node scripts/agent-context/generate.mjs` after changing a selected owner;
+Run `node scripts/agent-context/generate.mjs` after changing a selected owner
+or a package version;
 `node scripts/agent-context/generate.mjs --check` refuses stale or missing
 snapshots without writing; `npm run oss:published-tree -- --policy` runs this
 freshness check before the publication and documentation policy. Packaging consumes the checked-in Markdown and never
 generates context during prepack. The generator's focused witness runs with
 `node --test scripts/agent-context/generate.test.mjs`.
 Each excerpt retains its original Markdown bytes, source path, one-based
-inclusive line span and SHA-256. Package-local owner paths are relative to the
-installed package; `docs/platform` owner paths remain repository-relative.
-Relative links retain the original
-source file's base. These small task routes support offline reading; they do
+inclusive line span and SHA-256. Shipped package-local owner paths are relative
+to the installed package; all other owners link to the source repository at
+`openlup-<package>-v<version>`, read from the package manifest. Relative links and
+repository-internal paths or aliases inside verbatim excerpts describe that
+checkout, not required application files. The corpus cap is 14,000 bytes
+(previously 12,000) to retain the existing routes plus explicit release citations. These small task routes support offline reading; they do
 not certify an installed runtime, hosted qualification or compatibility with
 another revision. Canonical owners remain authoritative and the source map
 continues to own broad source navigation.

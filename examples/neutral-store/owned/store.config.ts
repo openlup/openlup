@@ -1,3 +1,4 @@
+import { quoteConfigurations } from './quote.config.ts';
 import { demoRenewalConfig } from './renewal.config.ts';
 import { demoRecoveryConfiguration } from '../shared/recovery-config.ts';
 import type { StoreConfig } from '../shared/config.ts';
@@ -6,6 +7,7 @@ import type { StoreConfig } from '../shared/config.ts';
 export const configurations: Record<string, StoreConfig> = {
   supplements: {
     id: 'supplements',
+    quote: quoteConfigurations.supplements,
     renewal: demoRenewalConfig('supplements'),
     recovery: structuredClone(demoRecoveryConfiguration),
     brand: {
@@ -25,7 +27,6 @@ export const configurations: Record<string, StoreConfig> = {
       },
       offerTitle: { en: 'Build your collection', pl: 'Skomponuj swoją kolekcję' },
       offerBody: { en: 'Choose products and a purchase frequency.', pl: 'Wybierz produkty i częstotliwość zakupu.' },
-      shippingNote: { en: 'For now this release does not charge shipping on one-off orders.', pl: 'Na razie to wydanie nie pobiera opłat za dostawę zamówień jednorazowych.' },
     },
     media: {
       hero: '/media/collection.svg',
@@ -36,14 +37,15 @@ export const configurations: Record<string, StoreConfig> = {
       layout: 'cards',
       minUnits: 1,
       maxUnits: 12,
-      shippingMinor: 0,
-      freeShippingFromMinor: 0,
-      subscriptionDiscountBps: 500, subscriptionRoundingQuantumMinor: 10, renewalShippingMinor: 0,
+      shippingMinor: 640,
+      freeShippingFromMinor: 1000,
+      subscriptionDiscountBps: 500, subscriptionRoundingQuantumMinor: 10,
       cadenceDays: [28, 56],
       defaultCadenceDays: 28,
       products: [
         {
           sku: 'ASTER-DAWN-60', slug: 'dawn', title: 'Dawn',
+          physical: { netWeightG: 100, unitGtin: '0000000000017', issuer: 'demo' },
           name: { en: 'Dawn', pl: 'Świt' },
           description: { en: 'A fictional supplement in a simple amber container.', pl: 'Fikcyjny suplement w prostym bursztynowym opakowaniu.' },
           details: { en: 'Demonstration product. The label is fictional and gives no consumption instructions.', pl: 'Produkt demonstracyjny. Etykieta jest fikcyjna i nie zawiera zaleceń spożycia.' },
@@ -53,6 +55,7 @@ export const configurations: Record<string, StoreConfig> = {
         },
         {
           sku: 'ASTER-NOON-60', slug: 'noon', title: 'Noon',
+          physical: { netWeightG: 100, unitGtin: '0000000000024', issuer: 'demo' },
           name: { en: 'Noon', pl: 'Południe' },
           description: { en: 'A fictional supplement with a pale green label.', pl: 'Fikcyjny suplement z jasnozieloną etykietą.' },
           details: { en: 'An inert catalogue example for testing product selection, prices and recurring orders.', pl: 'Przykład katalogowy do testowania wyboru produktów, cen i zamówień cyklicznych.' },
@@ -62,6 +65,7 @@ export const configurations: Record<string, StoreConfig> = {
         },
         {
           sku: 'ASTER-DUSK-30', slug: 'dusk', title: 'Dusk',
+          physical: { netWeightG: 100, unitGtin: '0000000000031', issuer: 'demo' },
           name: { en: 'Dusk', pl: 'Zmierzch' },
           description: { en: 'A fictional supplement with a muted blue label.', pl: 'Fikcyjny suplement ze stonowaną niebieską etykietą.' },
           details: { en: 'No medical benefit is implied. No physical product is supplied by this application.', pl: 'Nie przypisujemy produktowi korzyści medycznych. Aplikacja nie dostarcza fizycznych produktów.' },
@@ -86,11 +90,23 @@ export const configurations: Record<string, StoreConfig> = {
       tax: { vatRateBps: 0, category: 'standard', legalBasis: 'Fictional local demonstration' },
       sandbox: { dunningTemplateSlug: 'starter-sandbox-refused', recoveryTemplateSlug: 'starter-sandbox-recovered', recoveryUrlPath: '/payment-repair' },
     },
+    documents: { sandbox: { enabled: true, providerRef: 'captured-demo' } },
+    returns: { reasons: [{ code: 'changed_mind', label: { en: 'Changed my mind', pl: 'Zmiana decyzji' } },
+      { code: 'damaged_item', label: { en: 'Damaged item', pl: 'Uszkodzony produkt' } }] },
+    orderControls: { holdReasons: [
+      { code: 'payment_not_succeeded', label: { en: 'Payment review', pl: 'Weryfikacja płatności' } },
+      { code: 'inventory_review', label: { en: 'Inventory review', pl: 'Weryfikacja zapasu' } },
+      { code: 'risk_review', label: { en: 'Risk review', pl: 'Weryfikacja ryzyka' } },
+      { code: 'address_review', label: { en: 'Address review', pl: 'Weryfikacja adresu' } },
+      { code: 'fulfillment_exception', label: { en: 'Fulfillment exception', pl: 'Wyjątek realizacji' } },
+      { code: 'manual_support', label: { en: 'Manual support', pl: 'Obsługa ręczna' } },
+    ] },
     legal: { revision: 'demo-1', returnsDays: 14, demoOnly: true },
     features: { reviews: true, acquisition: true, research: true, partners: true, risk: false, normalizedIngest: true },
   },
   coffee: {
     id: 'coffee',
+    quote: quoteConfigurations.coffee,
     renewal: demoRenewalConfig('coffee'),
     recovery: structuredClone(demoRecoveryConfiguration),
     brand: {
@@ -110,17 +126,17 @@ export const configurations: Record<string, StoreConfig> = {
       },
       offerTitle: { en: 'Make a coffee box', pl: 'Skomponuj pakiet kawy' },
       offerBody: { en: 'Mix the fictional roasts and choose your frequency.', pl: 'Połącz fikcyjne kawy i wybierz częstotliwość.' },
-      shippingNote: { en: 'For now this release does not charge shipping on one-off orders.', pl: 'Na razie to wydanie nie pobiera opłat za dostawę zamówień jednorazowych.' },
     },
     media: { hero: '/media/coffee.svg', heroAlt: { en: 'Illustrated coffee bags', pl: 'Ilustracja torebek kawy' } },
     market: { country: 'ZZ', currency: 'XTS', timezone: 'UTC', locales: ['en', 'pl'] },
     offer: {
-      layout: 'list', minUnits: 1, maxUnits: 12, shippingMinor: 0,
-      freeShippingFromMinor: 0, subscriptionDiscountBps: 500, subscriptionRoundingQuantumMinor: 10, renewalShippingMinor: 0,
+      layout: 'list', minUnits: 1, maxUnits: 12, shippingMinor: 640,
+      freeShippingFromMinor: 1000, subscriptionDiscountBps: 500, subscriptionRoundingQuantumMinor: 10,
       cadenceDays: [14, 28, 56], defaultCadenceDays: 28,
       products: [
         {
           sku: 'PEBBLE-LIGHT-250', slug: 'light-roast', title: 'Light roast',
+          physical: { netWeightG: 250, unitGtin: '0000000000048', issuer: 'demo' },
           name: { en: 'Light roast', pl: 'Jasne palenie' },
           description: { en: 'A fictional light roast in a paper bag.', pl: 'Fikcyjna jasno palona kawa w papierowej torebce.' },
           details: { en: 'Illustrative whole-bean coffee. No actual origin, certification or stock is claimed.', pl: 'Przykładowa kawa ziarnista. Bez deklaracji rzeczywistego pochodzenia, certyfikacji lub zapasu.' },
@@ -130,6 +146,7 @@ export const configurations: Record<string, StoreConfig> = {
         },
         {
           sku: 'PEBBLE-MEDIUM-250', slug: 'medium-roast', title: 'Medium roast',
+          physical: { netWeightG: 250, unitGtin: '0000000000055', issuer: 'demo' },
           name: { en: 'Medium roast', pl: 'Średnie palenie' },
           description: { en: 'A fictional medium roast for your demonstration box.', pl: 'Fikcyjna średnio palona kawa do demonstracyjnego pakietu.' },
           details: { en: 'Use this product to test mixed boxes and recurring cadence. No real coffee is supplied.', pl: 'Ten produkt służy do testowania pakietów mieszanych i częstotliwości. Nie dostarczamy rzeczywistej kawy.' },
@@ -139,6 +156,7 @@ export const configurations: Record<string, StoreConfig> = {
         },
         {
           sku: 'PEBBLE-DARK-250', slug: 'dark-roast', title: 'Dark roast',
+          physical: { netWeightG: 250, unitGtin: '0000000000062', issuer: 'demo' },
           name: { en: 'Dark roast', pl: 'Ciemne palenie' },
           description: { en: 'A fictional dark roast with an illustrated label.', pl: 'Fikcyjna ciemno palona kawa z ilustrowaną etykietą.' },
           details: { en: 'The product, media and prices are fictional demonstration data.', pl: 'Produkt, ilustracje i ceny są fikcyjnymi danymi demonstracyjnymi.' },
@@ -163,6 +181,17 @@ export const configurations: Record<string, StoreConfig> = {
       tax: { vatRateBps: 0, category: 'standard', legalBasis: 'Fictional local demonstration' },
       sandbox: { dunningTemplateSlug: 'starter-sandbox-refused', recoveryTemplateSlug: 'starter-sandbox-recovered', recoveryUrlPath: '/payment-repair' },
     },
+    documents: { sandbox: { enabled: true, providerRef: 'captured-demo' } },
+    returns: { reasons: [{ code: 'changed_mind', label: { en: 'Changed my mind', pl: 'Zmiana decyzji' } },
+      { code: 'damaged_item', label: { en: 'Damaged item', pl: 'Uszkodzony produkt' } }] },
+    orderControls: { holdReasons: [
+      { code: 'payment_not_succeeded', label: { en: 'Payment review', pl: 'Weryfikacja płatności' } },
+      { code: 'inventory_review', label: { en: 'Inventory review', pl: 'Weryfikacja zapasu' } },
+      { code: 'risk_review', label: { en: 'Risk review', pl: 'Weryfikacja ryzyka' } },
+      { code: 'address_review', label: { en: 'Address review', pl: 'Weryfikacja adresu' } },
+      { code: 'fulfillment_exception', label: { en: 'Fulfillment exception', pl: 'Wyjątek realizacji' } },
+      { code: 'manual_support', label: { en: 'Manual support', pl: 'Obsługa ręczna' } },
+    ] },
     legal: { revision: 'demo-1', returnsDays: 14, demoOnly: true },
     features: { reviews: true, acquisition: true, research: true, partners: true, risk: false, normalizedIngest: true },
   },

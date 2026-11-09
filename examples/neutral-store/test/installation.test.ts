@@ -1,10 +1,76 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { cp, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
+import { fileURLToPath } from 'node:url';
 import { configurations } from '../owned/store.config.ts';
 import { buildDemoSeed } from '../owned/demo-seed.ts';
 import { acquisitionAddresses } from '../owned/acquisition-addresses.ts';
 import { applyDemoSeed, demonstrationMarker, installDemonstration,
   type DemonstrationInstallation } from '../installation/install.ts';
+
+test('container demo startup privately creates a key once, reuses it, and refuses a customer database', async () => {
+  const root = fileURLToPath(new URL('../', import.meta.url));
+  await mkdir(resolve(root, '.context'), { recursive: true });
+  const directory = await mkdtemp(resolve(root, '.context/demo-start-'));
+  try {
+    for (const path of ['lifecycle.mjs', 'host', 'shared', 'owned', 'installation']) {
+      await cp(resolve(root, path), resolve(directory, path), { recursive: true });
+    }
+    await writeFile(resolve(directory, 'package.json'), '{"type":"module"}');
+    await mkdir(resolve(directory, 'node_modules/pg'), { recursive: true });
+    await writeFile(resolve(directory, 'node_modules/pg/package.json'), '{"type":"module","exports":"./index.js"}');
+    await writeFile(resolve(directory, 'node_modules/pg/index.js'), `import { readFileSync } from 'node:fs';
+    export default { Client: class {
+      async connect() {} async end() {}
+      async query() { return { rows: [{ marker: JSON.parse(readFileSync(new URL('./marker.json', import.meta.url))) }] }; }
+    } };`);
+    // Observe the actual host handoff without starting HTTP or exposing the private value.
+    await writeFile(resolve(directory, 'host/server.ts'), 'console.log(JSON.stringify(process.argv));');
+    const argv = ['lifecycle.mjs', 'serve-demo', '--configuration', 'supplements', '--port', '4319',
+      '--listen', '0.0.0.0', '--database-url', 'postgresql://starter_runtime@database/neutral_store'];
+    async function start(marker: string) {
+      await writeFile(resolve(directory, 'node_modules/pg/marker.json'), JSON.stringify(marker));
+      const child = spawn(process.execPath, argv, { cwd: directory, stdio: 'pipe' });
+      let output = '';
+      child.stdout.on('data', bytes => { output += String(bytes); });
+      child.stderr.on('data', bytes => { output += String(bytes); });
+      return { code: (await once(child, 'exit'))[0], output };
+    }
+    const first = await start(demonstrationMarker);
+    assert.equal(first.code, 0);
+    const path = resolve(directory, '.context/quote-acceptance-keyring.json');
+    const bytes = await readFile(path, 'utf8');
+    const keyring = JSON.parse(bytes);
+    assert.deepEqual(Object.keys(keyring), ['current']);
+    assert.equal(typeof keyring.current, 'string');
+    assert.ok(keyring.current.length >= 32);
+    assert.equal((await stat(path)).mode & 0o777, 0o600);
+    assert.equal((await stat(resolve(directory, '.context'))).mode & 0o777, 0o700);
+    const hostArguments = JSON.parse(first.output);
+    assert.equal(hostArguments[hostArguments.indexOf('--quote-acceptance-key-file') + 1], path);
+    const restart = await start(demonstrationMarker);
+    assert.equal(restart.code, 0);
+    assert.equal(await readFile(path, 'utf8'), bytes);
+    await writeFile(path, bytes + 'invalid');
+    const corrupt = await start(demonstrationMarker);
+    assert.equal(corrupt.code, 2);
+    assert.equal(corrupt.output.trim(), 'starter_demo_start_failed');
+    await writeFile(path, bytes);
+    const customer = await start('customer-database');
+    assert.equal(customer.code, 2);
+    assert.equal(customer.output.trim(), 'starter_seed_demonstration_database_required');
+    assert.equal(await readFile(path, 'utf8'), bytes);
+    for (const output of [first.output, restart.output, corrupt.output, customer.output, JSON.stringify(argv)]) {
+      assert.equal(output.includes(keyring.current), false);
+    }
+    await rm(resolve(directory, '.context'), { recursive: true });
+    assert.equal((await start('customer-database')).code, 2);
+    await assert.rejects(readFile(path), { code: 'ENOENT' });
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
 
 const seedPriceCount = (config: typeof configurations[string]) => config.offer.products.reduce((sum, product) => sum + product.permittedPurchaseModes.length, 0);
 
@@ -12,10 +78,20 @@ function installation(identity = { login: 'demo_install', role: 'demo_install', 
   const calls: Array<{ text: string; values: unknown[] | undefined }> = [];
   let closed = 0;
   const prices = new Map<string, Record<string, unknown>>();
+  const digests = new Map<string, unknown>();
+  const policies = new Map<string, { id: unknown; digest: unknown }>();
+  const promotions = new Map<string, Record<string, unknown>>();
   const binding: DemonstrationInstallation = {
     installRole: 'demo_install', runtimeRole: 'demo_runtime',
     connection: { query: async (text, values) => {
       calls.push({ text, values });
+      if (text.startsWith('INSERT INTO public.subscription_price_policy_revisions') && values) { digests.set(String(values[0]), values[11]); policies.set(String(values[2]), { id: values[0],digest: values[11] }); }
+      if (text.startsWith('SELECT id,digest')) return { rows: policies.has(String(values?.[0])) ? [policies.get(String(values?.[0]))!] : [] };
+      if (text.startsWith('SELECT p.primary_sku_id')) return { rows: [{ primary_sku_id: null,current_document_revision_id: null,net_weight_g: 0 }] };
+      if (text.startsWith('INSERT INTO public.catalog_product_document_revisions') && values) digests.set(String(values[0]), values[7]);
+      if (text.startsWith('SELECT digest')) return { rows: [{ digest: digests.get(String(values?.[0])) }] };
+      if (text.startsWith('INSERT INTO public.commerce_promotion_definitions') && values) promotions.set(String(values[0]), { definition: values[1], active: values[2] });
+      if (text.startsWith('SELECT definition,active')) return { rows: [promotions.get(String(values?.[0]))!] };
       if (text.startsWith('INSERT INTO public.price_entries') && values) prices.set(String(values[0]),
         Object.fromEntries(['id','price_list_id','variant_id','mode','min_qty','unit_price_minor','amount_kind','active','valid_from'].map((key,i) => [key, values[i]])));
       if (text.startsWith('SELECT id, price_list_id')) return { rows: [prices.get(String(values?.[0]))!] };
@@ -62,10 +138,10 @@ for (const config of Object.values(configurations)) {
     assert.equal(first.calls[0]!.text, 'BEGIN');
     assert.equal(first.calls.at(-1)!.text, 'COMMIT');
     const inserts = first.calls.filter(call => call.text.startsWith('INSERT INTO public.'));
-    assert.equal(inserts.length, config.offer.products.length * 2 + seedPriceCount(config) + 1);
+    assert.equal(inserts.length, config.offer.products.length * 4 + seedPriceCount(config) + 3);
     for (const call of inserts) {
-      assert.match(call.text, call.text.startsWith('INSERT INTO public.price_entries') ? /ON CONFLICT \(id\) DO NOTHING/ : /ON CONFLICT \(id\) DO UPDATE/);
-      assert.match(call.text, /INSERT INTO public\.(catalog_products|catalog_skus|price_lists|price_entries)\b/);
+      assert.match(call.text, call.text.startsWith('INSERT INTO public.catalog_products') || call.text.startsWith('INSERT INTO public.catalog_skus') || call.text.startsWith('INSERT INTO public.price_lists') ? /ON CONFLICT \(id\) DO UPDATE/ : /ON CONFLICT.*DO NOTHING/);
+      assert.match(call.text, /INSERT INTO public\.(catalog_products|catalog_skus|price_lists|price_entries|subscription_price_policy_revisions|catalog_product_document_revisions|catalog_sku_identifiers|commerce_promotion_definitions)\b/);
       assert.ok(call.values?.length);
     }
     const registry = first.calls.filter(call => call.text.startsWith('INSERT INTO acquisition_private.'));

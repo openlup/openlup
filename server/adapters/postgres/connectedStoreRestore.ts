@@ -236,12 +236,13 @@ const order = [
   "identity_operator_invitations", "identity_operator_invitation_events", "identity_privacy_erasures",
   "customer_subject_lifecycle_events", "customer_communication_preferences", "customer_communication_preference_events",
   "platform_operational_controls", "platform_control_operations", "platform_alerts", "platform_alert_notifications", "platform_job_runs",
-  "catalog_products", "catalog_skus", "price_lists", "price_entries",
+  "catalog_products", "catalog_product_document_revisions", "catalog_skus", "catalog_sku_identifiers",
+  "price_lists", "subscription_price_policy_revisions", "price_entries", "commerce_promotion_definitions",
   "subscriptions", "subscription_events", "subscription_pause_windows", "subscription_renewal_terms", "subscription_renewal_term_lines",
   "subscription_method_states",
   "subscription_renewal_operations", "subscription_lines", "subscription_cycles", "commerce_orders", "commerce_order_items",
   "commerce_order_draft_receipts", "fulfillment_stock_operations",
-  "commerce_order_adjustments",
+  "commerce_order_adjustments", "commerce_promotion_claims", "commerce_promotion_claim_events",
   "subscription_activations", "subscription_renewal_attachments", "subscription_method_state_events",
   "commerce_checkout_compensations",
   "fulfillment_stock_current", "fulfillment_inventory_reservations", "fulfillment_inventory_reservation_lines", "fulfillment_purchase_reservation_receipts",
@@ -378,14 +379,12 @@ export async function restoreConnectedNativeStore(input: {
             await insert(client, rows, staged);
           }
           else if (table === "catalog_products") {
-            const value = JSON.parse(row) as { primary_sku_id: string | null; current_document_revision_id: string | null };
-            if (value.current_document_revision_id !== null) fail("unsupported_table", "catalog_product_document_revisions");
-            // The product-to-primary-SKU FK and SKU-to-product FK form a cycle.
-            // Stage this one nullable reference, then install its exact captured
-            // value after all SKU parents exist in the same locked transaction.
-            const staged = value.primary_sku_id === null ? row :
-              (await client.query<{ value: string }>(`SELECT pg_catalog.jsonb_set($1::jsonb,'{primary_sku_id}',
-                'null'::jsonb)::pg_catalog.text AS value`, [row])).rows[0]!.value;
+            // Products reference their SKUs and document revisions, which in
+            // turn reference the product. Stage both nullable pointers, then
+            // install each captured value after its parents exist.
+            const staged = (await client.query<{ value: string }>(`SELECT pg_catalog.jsonb_set(
+              pg_catalog.jsonb_set($1::jsonb,'{primary_sku_id}','null'::jsonb),
+              '{current_document_revision_id}','null'::jsonb)::pg_catalog.text AS value`, [row])).rows[0]!.value;
             await insert(client, rows, staged);
           }
           else {
@@ -404,6 +403,17 @@ export async function restoreConnectedNativeStore(input: {
               AND (pg_catalog.to_jsonb(a)-'state'-'last_observation_id')=(pg_catalog.to_jsonb(x)-'state'-'last_observation_id')
             RETURNING a.id`, [attempt]);
           if (updated.rows.length !== 1) fail("target_conflict", "payment_simulator_attempts");
+        }
+        if (table === "catalog_product_document_revisions") for (const product of source.get("catalog_products")!.rows) {
+          const value = JSON.parse(product) as { current_document_revision_id: string | null };
+          if (value.current_document_revision_id === null) continue;
+          const updated = await client.query(`UPDATE public.catalog_products p SET current_document_revision_id=x.current_document_revision_id
+            FROM pg_catalog.jsonb_populate_record(NULL::public.catalog_products,
+              pg_catalog.jsonb_set($1::jsonb,'{primary_sku_id}','null'::jsonb)) x
+            WHERE p.id=x.id AND p.current_document_revision_id IS NULL AND x.current_document_revision_id IS NOT NULL
+              AND (pg_catalog.to_jsonb(p)-'current_document_revision_id')=(pg_catalog.to_jsonb(x)-'current_document_revision_id')
+            RETURNING p.id`, [product]);
+          if (updated.rows.length !== 1) fail("target_conflict", "catalog_products");
         }
         if (table === "catalog_skus") for (const product of source.get("catalog_products")!.rows) {
           const value = JSON.parse(product) as { id: string; primary_sku_id: string | null };
@@ -567,6 +577,9 @@ function parentOrder(table: TableName, rows: readonly string[]): string[] {
 }
 async function assertInsertTriggers(client: PoolClient): Promise<void> {
   const allowed: Readonly<Record<string, readonly string[]>> = {
+    // These guards retain final intervals and recompute the same definition digest.
+    subscription_price_policy_revisions: ["subscription_price_policy_revisions_10_prevent_overlap"],
+    commerce_promotion_definitions: ["commerce_promotion_definition_fingerprint_trigger"],
     clients: ["customer_subject_capture_lifecycle_trigger"], subscription_cycles: ["trg_subscription_delivery_alignment_guard_cycle_insert"],
     commerce_orders: ["trg_commerce_orders_line_sum"], commerce_order_items: ["trg_commerce_order_items_line_sum"],
     commerce_order_holds: ["trg_fulfillment_emit_shipment_exception", "trg_subscription_delivery_alignment_exception_case"],

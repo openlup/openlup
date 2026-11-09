@@ -3,7 +3,7 @@ import type { PageContext } from './context.ts';
 import type { CopyKey } from '../owned/copy.ts';
 import { act } from './api.ts';
 import { append, button, el, renderValue } from './dom.ts';
-import { limitFor, nativeLimits, otherLimits } from '../shared/limits.ts';
+import { limitFor, nativeLimits, operationLimits, otherLimits } from '../shared/limits.ts';
 
 export interface FieldSpec {
   name: string;
@@ -26,7 +26,9 @@ export interface ActionFormOptions {
   fields?: FieldSpec[];
   input?: () => ActionInput;
   transform?: (values: ActionInput) => ActionInput;
+  prepare?: (values: ActionInput) => Promise<ActionInput | null>;
   onSuccess?: (value: unknown) => void;
+  onFailure?: (code: string) => void;
   display?: (value: unknown) => unknown;
   resultMessage?: (value: unknown) => CopyKey | undefined;
 }
@@ -73,11 +75,13 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
   // Keep command identity on an uncertain transport result. A changed input is a new command.
   let commandKey = crypto.randomUUID();
   let priorInput: string | null = null;
+  let uncertain: { input: string; prepared: ActionInput } | undefined;
   let inFlight = false;
   const reset = button(context.t('newAction'), () => {
     if (inFlight) return;
     commandKey = crypto.randomUUID();
     priorInput = null;
+    uncertain = undefined;
     output.replaceChildren();
   }, 'secondary');
   append(form, el('p', { class: 'muted small' }, context.t('idempotency')),
@@ -90,7 +94,7 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
       for (const { spec, control } of controls) {
         values[spec.name] = spec.type === 'checkbox'
           ? (control as HTMLInputElement).checked
-          : spec.type === 'number' ? Number(control.value) : control.value.trim();
+          : spec.type === 'number' ? (control as HTMLInputElement).valueAsNumber : control.value.trim();
       }
       try {
         if (options.transform) values = options.transform(values);
@@ -98,6 +102,17 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
       } catch {
         output.replaceChildren(refusal(context, 'starter_input_invalid'));
         return;
+      }
+      const input = JSON.stringify(values);
+      if (uncertain?.input === input) values = uncertain.prepared;
+      else if (options.prepare) {
+        uncertain = undefined;
+        inFlight = true; submit.disabled = true; reset.disabled = true;
+        try {
+          const prepared = await options.prepare(values);
+          if (!prepared) return;
+          values = prepared;
+        } finally { inFlight = false; submit.disabled = false; reset.disabled = false; }
       }
       const serialized = JSON.stringify(values);
       if (priorInput !== null && priorInput !== serialized) commandKey = crypto.randomUUID();
@@ -109,15 +124,17 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
       output.replaceChildren(el('p', {}, context.t('loading')));
       try {
         const result = await act(options.operation, values, commandKey);
+        uncertain = !result.ok && ['starter_transport_unavailable', 'starter_response_invalid'].includes(result.code)
+          ? { input, prepared: values } : undefined;
         output.replaceChildren(result.ok
           ? el('section', {}, el('h4', {}, context.t('response')),
             options.resultMessage?.(result.value) ? el('p', {}, context.t(options.resultMessage(result.value)!)) : null,
             renderValue(options.display ? options.display(result.value) : result.value))
-          : refusal(context, result.code));
+          : refusal(context, result.code, operationLimits[options.operation]?.code === result.code ? operationLimits[options.operation]!.explanation[context.locale] : undefined));
         if (result.ok) {
           for (const { spec, control } of controls) if (spec.type === 'password') control.value = '';
           options.onSuccess?.(result.value);
-        }
+        } else options.onFailure?.(result.code);
       } finally {
         inFlight = false;
         submit.disabled = false;
@@ -136,7 +153,7 @@ export function readPanel(context: PageContext, title: CopyKey, operation: Opera
     reload.disabled = true;
     output.replaceChildren(el('p', {}, context.t('loading')));
     const result = await act(operation, input, crypto.randomUUID());
-    output.replaceChildren(result.ok ? renderValue(result.value) : refusal(context, result.code));
+    output.replaceChildren(result.ok ? renderValue(result.value) : refusal(context, result.code, operationLimits[operation]?.code === result.code ? operationLimits[operation]!.explanation[context.locale] : undefined));
     reload.disabled = false;
   }, 'secondary');
   append(section, reload, output);

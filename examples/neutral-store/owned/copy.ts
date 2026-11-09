@@ -1,15 +1,18 @@
 /** Application copy; both locales have exactly the same keys. */
 export const copy = {
   en: {
+    documentRef: 'Document reference', invoiceHistory: 'Invoice history',
+    sandboxInvoice: 'NON-FISCAL sandbox documents', orderItemRef: 'Order item reference',
+    reasonCode: 'Reason code', note: 'Note', refundMode: 'Refund intent',
+    refundFull: 'Full refund intent', refundPartial: 'Partial refund intent', refundNone: 'No refund intent',
+
     attemptLimitsInterim: "Attempt limits live in one process's memory and reset on restart.",
-    renewalShippingInterim: "For now this release does not charge shipping on renewals.",
     acquisitionInterim: "The first-subscription offer is not offered yet and comes in a later part of this release.",
     modePriceBenefit: "Subscription unit-price benefit already included",
 
     simulateIndeterminate: "Simulate indeterminate payment",
     addressApplied: "Shipping address updated.",
     addressNextParcel: "This address change applies from the next parcel. A parcel already in flight keeps its current address.",
-    zeroShipping: "For now this release does not charge shipping on one-off orders.",
     localDatabaseOnly: "The starter runs on its local demonstration database only; a hosted database connection is not part of this release and comes in a later round.",
     bundlePurchaseLater: "An activated bundle is not purchasable in this release and comes in a later round.",
     guestPurchase: "A purchase needs no account; checkout keeps a contact record for the e-mail; the customer signs in with that e-mail to see the purchase.",
@@ -201,7 +204,7 @@ export const copy = {
     label: "Record captured label",
     handoff: "Record sandbox handoff",
     delivery: "Record sandbox delivery",
-    invoiceRequest: "Request captured invoice",
+    invoiceRequest: "Read invoice summary",
     returnsBody: "This fictional store demonstrates the return request destination. It is not a seller policy for a customer environment.",
     returnDays: "Demo request period in days",
     returnReason: "Return reason",
@@ -313,15 +316,18 @@ export const copy = {
     amount_overflow: "The amount cannot be represented safely.",
   },
   pl: {
+    documentRef: 'Numer dokumentu', invoiceHistory: 'Historia faktur',
+    sandboxInvoice: 'Dokumenty testowe, NIEFISKALNE', orderItemRef: 'Numer pozycji zamówienia',
+    reasonCode: 'Kod powodu', note: 'Notatka', refundMode: 'Zamiar zwrotu środków',
+    refundFull: 'Zamiar pełnego zwrotu', refundPartial: 'Zamiar częściowego zwrotu', refundNone: 'Bez zamiaru zwrotu',
+
     attemptLimitsInterim: "Limity prób działają w pamięci jednego procesu i resetują się po ponownym uruchomieniu.",
-    renewalShippingInterim: "Na razie to wydanie nie pobiera opłat za dostawę odnowień.",
     acquisitionInterim: "Oferta na pierwszą subskrypcję nie jest jeszcze dostępna i pojawi się w późniejszej części tego wydania.",
     modePriceBenefit: "Korzyść w cenach jednostkowych subskrypcji jest już uwzględniona",
 
     simulateIndeterminate: "Symuluj nieustalony wynik płatności",
     addressApplied: "Adres dostawy został zmieniony.",
     addressNextParcel: "Zmiana adresu obowiązuje od następnej przesyłki. Przesyłka będąca już w drodze zachowuje dotychczasowy adres.",
-    zeroShipping: "Na razie to wydanie nie pobiera opłat za dostawę zamówień jednorazowych.",
     localDatabaseOnly: "Starter działa wyłącznie na lokalnej demonstracyjnej bazie danych; połączenie z bazą hostowaną nie należy do tego wydania i pojawi się w późniejszej rundzie.",
     bundlePurchaseLater: "Aktywowanego pakietu nie można kupić w tym wydaniu; taka możliwość pojawi się w późniejszej rundzie.",
     guestPurchase: "Zakup nie wymaga konta; przy zakupie zapisujemy kontakt dla podanego e-maila; klient loguje się tym e-mailem, aby zobaczyć zakup.",
@@ -513,7 +519,7 @@ export const copy = {
     label: "Zapisz przechwyconą etykietę",
     handoff: "Zapisz testowe przekazanie",
     delivery: "Zapisz testowe doręczenie",
-    invoiceRequest: "Poproś o przechwyconą fakturę",
+    invoiceRequest: "Odczytaj podsumowanie faktur",
     returnsBody: "Ten fikcyjny sklep pokazuje miejsce składania zwrotów. Nie jest to polityka sprzedawcy dla środowiska klienta.",
     returnDays: "Testowy okres zgłoszenia w dniach",
     returnReason: "Powód zwrotu",

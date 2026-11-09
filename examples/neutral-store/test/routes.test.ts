@@ -34,7 +34,7 @@ test('malformed path encoding is an unknown page, never an exception', () => {
 
 test('both locales supply every copy key and every named-limit action', () => {
   assert.deepEqual(Object.keys(copy.en).sort(), Object.keys(copy.pl).sort());
-  assert.equal(nativeLimits.length, 10);
+  assert.equal(nativeLimits.length, 21);
   for (const limit of nativeLimits) {
     assert.ok(limit.code.trim());
     for (const action of limit.actions) {
@@ -67,7 +67,7 @@ test('operator select choices use copy keys present in both languages', async ()
     }
     return choices.length;
   }
-  assert.equal(checkChoices(source), 7);
+  assert.equal(checkChoices(source), 10);
   // Negative witness: a wire value planted as visible text must be rejected.
   assert.throws(() => checkChoices(source.replace("context.t('reviewPublish')", "'publish'")), /owned copy keys/);
 });
@@ -79,6 +79,6 @@ test('the message intake destination opens the operator partner panel; support i
   assert.deepEqual(messageDestinations.find(item => item.id === 'T07-13'),
     { id: 'T07-13', route: 'support' });
   for (const path of ['/inquiry', '/zapytanie']) assert.equal(resolveRoute(path).key, 'notFound');
-  assert.equal(operations.length, 52);
+  assert.equal(operations.length, 51);
   assert.equal(isOperation(['inquiry', 'submit'].join('.')), false);
 });

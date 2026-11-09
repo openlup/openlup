@@ -68,6 +68,20 @@ describe("retained renewal pricing characterization", () => {
     expect(nativeRenewalPrice(current, current.lines, 3).discountAmountMinor).toBe(0);
   });
 
+  it("computes delivery-two discounts in exact integers beyond float precision", () => {
+    const large = (unitAmountMinor: number, discountBps: number, list?: number) => {
+      const retained = terms();
+      retained.starterPack!.delivery2 = { discountBps, discountMinor: 1, basisSubtotalMinor: 10_000 };
+      retained.linePricing = list === undefined ? [] : [{ sku: "SYNTHETIC-REFILL", quantity: 1, unitAmountMinor, isAddon: false,
+        quoteLine: { pricingComponents: [{ componentType: "base_unit", amountMinor: list }] } }];
+      const current = row(retained, unitAmountMinor);
+      return nativeRenewalPrice(current, current.lines, 2).discountAmountMinor;
+    };
+    // Reference integer results: subtotal - ceil(list × (10 000 - bps) / 10 000), and round(subtotal × bps / 10 000).
+    expect(large(1_275_605_109_999, 1, 1_275_605_109_999)).toBe(127_560_510);
+    expect(large(16_361_442_052_567, 7388)).toBe(12_087_833_388_436);
+  });
+
   it("retains old wire bytes and accepts uppercase schedule UUIDs by value", () => {
     const codec = createNativeRenewalCodec(), current = row();
     const schedule = { subscriptionId: sub.toUpperCase(), scheduledAt: at, scheduledInstant: Date.parse(at) };

@@ -39,6 +39,21 @@ case ownership and ingest needs a complete native binding; those two actions
 remain unmounted and refuse `host_binding_required`.
 Support is a static contact page; see [contact configuration](docs/customization.md#support-contact).
 
+## Order controls and documents
+
+Hold and release retain their typed forms and configured reasons. Both remain
+unbound and return `starter_order_hold_unavailable` after operator admission.
+The host composes
+customer invoice history, owned captured PDF downloads and local operator
+document summaries. The session supplies the actor and invoice
+owner. The captured provider produces explicitly non-fiscal sandbox documents.
+The download stays behind authenticated POST, Origin admission and no-store.
+The browser saves the decoded PDF through a short-lived local object URL.
+Deferred operations share one bilingual catalogue with the limits page and stay
+unbound. The operator returns reader is removed. Shipment list/detail compose
+the native nonmutating reader under the human-admin read boundary; the reduced
+projection retains its explicit unavailable facts. See [limits](docs/limits.md).
+
 ## Start from an exact source archive
 
 The release route is a source archive, followed by the small extraction script.
@@ -77,7 +92,7 @@ exact release archive. The target command is:
 With the selected local candidate artifacts and generated lockfile in place,
 Compose builds the application, starts pinned PostgreSQL 16, runs the one-shot
 installed migration runner and fictional seed, then serves the application at
-`http://127.0.0.1:4319`. No keys, source edits or manual migration are needed.
+`http://127.0.0.1:4319`. No manual key provisioning, source edits or manual migration are needed.
 A healthy application does not by itself establish a completed sandbox purchase.
 
 For authorized UI development after importing the candidate and generating its
@@ -124,9 +139,12 @@ without `--database-url` is still the UI-only preview with pending bindings.
 The native runtime composition binds customer challenge request/redemption,
 sign-out, reduced customer profile/subscription-control and owned order reads,
 newsletter read/withdraw, and the reduced operator order control-plane view.
-Invoice artifacts, the full account projection and shipment reads remain named
-refusals. Guest purchase, account and operator order reads have committed source
-and real-HTTP proofs. Separate local real-browser evidence passes the unchanged
+Invoice history, owned captured PDF access, operator document summaries and
+shipment reads are also bound, alongside authenticated recovery, scheduled sandbox
+renewal and private transactional notices. The full account projection remains a
+named refusal. Deferred order and shipment mutations retain their named limits.
+Guest purchase, account and operator order reads have committed source and
+real-HTTP proofs. Separate local real-browser evidence passes the unchanged
 required journey and recovery checks in both configurations; those browser runs
 are not a committed root-job witness.
 
@@ -394,8 +412,6 @@ or unavailable links. Indexed hash lookup makes no constant-time claim.
 Owning sessions retain order ownership checks. An email alone mints no link for
 an existing order. Recovery grants no account or subscription-command access.
 
-For now this release does not charge shipping on one-off orders.
-For now this release does not charge shipping on renewals.
 The first-subscription offer is not offered yet and comes in a later part of this release. Sandbox outcomes
 are `captured`, `refused`, `expired` and `indeterminate`; other values refuse.
 No real-money provider is selected by this composition.
@@ -405,29 +421,62 @@ Origin on GET or HEAD is not compared. Writes require the exact configured
 origin, the marker header and JSON. The accepted origin policy is unchanged.
 
 
-## Interim subscription pricing
+## Native quote and acquisition composition
 
-`shared/interim-pricing.ts` contains one temporary pricing function shared by the
-browser, host offer evaluation and owned price seed. Subscription units resolve
-from configured `subscriptionDiscountBps` and `subscriptionRoundingQuantumMinor`
-before multiplication by quantity. The native quote carries those reduced unit
-prices, explanatory `mode_discount` components, an empty discounts array and zero
-order discount. No promotion identifier or definition is invented for this mode
-price. The first-subscription acquisition offer is separate and comes later.
+The native host uses the installed quote engine with current catalogue documents,
+exact price-list entries, a canonical subscription policy and native promotion
+reads. Catalogue, builder, cart and checkout projections read `offer.validate` on the
+native host. Failed refreshes withhold the previous money. The local preview
+estimator remains available only for explicit database-less one-time estimates
+and configuration characterization; it delegates unit arithmetic to the package. The install seed
+retains the six compatibility mode-price entries and adds one immutable policy
+revision, current document pointers, physical trade-item facts and one standalone
+acquisition definition. Conflicting policy, document or promotion initialization
+refuses and rolls back. This is a fresh demonstration install, not policy rotation.
 
-Owned configuration also supplies initial/renewal shipping values and demonstration
-purchase input bounds, reservation minutes, per-SKU stock quantities and snapshot
-timestamps, fictional tax inputs and sandbox template/path choices. Validation
-rejects malformed values. Existing protocol/security constraints remain fixed.
-Recovery timing is the fixed native database rule; the existing session boundary is unchanged.
+`owned/quote.config.ts` supplies neutral acquisition rates, effective dates,
+document identity and graduation cadence. Product physical facts remain owned
+catalogue data. `owned/store.config.ts` sets shipping to 640 minor units and the
+free-delivery threshold to 1,000 minor units in both demonstrations. The native
+quote evaluates product payable after product discounts; equality is free.
+Renewals retain the accepted shipping agreement and freeze each cycle's calculated
+amount. Current configuration cannot reprice a retained agreement.
+The second-delivery display uses the retained quote's list basis and configured
+promise through the package adjustment engine.
 
-Checkout order UUIDs match by UUID value across lowercase, uppercase and mixed-case
-input. The host preserves request fields and the existing native response identifiers.
+The browser explicitly declares `subscription-acquisition.v1`. Unsupported
+subscription callers receive `acquisition_terms_capability_required` before
+contact, order or payment effects. A private host keyring file may be supplied
+with `--quote-acceptance-key-file`; it contains the existing helper's `current`
+and optional `previous` keys, each at least 32 characters. Keep it outside served
+assets and browser configuration; never commit it. Customer environments supply
+their own keys. In the demonstration Compose installation, the application
+container checks the existing database demonstration marker, creates a private
+`.context/quote-acceptance-keyring.json` with mode 0600 if absent, and passes its
+path to the host. Restarting the same container reuses the file. `down` followed
+by `up` recreates the container and generates a new key; unsubmitted old quotes
+then require refresh. The key is generated at runtime, never in the image.
+A host started without the key-file flag refuses subscription quotes with
+`starter_quote_acceptance_key_required`; one-time checkout still works.
+Acceptance binds the request, money,
+policy, second promise and delivery terms; changed terms clear consent and require
+refresh even if the total is unchanged. Expired observations withhold money.
+After an uncertain checkout response, an unchanged retry retains the submitted
+acceptance proof and command key so the host can recover the saved receipt.
+Changing the input or explicitly starting a new action prepares a fresh quote;
+the server still validates acceptance before any new draft is admitted.
 
-The install seed gives each SKU and purchase mode a deterministic distinct price
-identity. Identical installation adds no price rows; changed-price conflicts
-refuse loudly. Resolve a deliberate price change through the application's
-onboarding decision rather than relying on a silent seed overwrite.
+The local predecessor seam loads the package eligibility and transactional
+admission factories. Missing exports refuse admission by name. All mounted checkout modes use the
+transaction adapter; acquisition terms never reach a direct lower-level writer. Alias evidence cannot grant a customer session or
+account reads. The host freezes the installed retained-renewal contract in the
+server quote: original mode-price units and full line evidence, the second-delivery
+amount/rate/basis, configured minimum and graduation cadence, and the accepted shipping agreement.
+Acceptance binds those promise values; observation timestamps are not promise
+identity. The full retained evidence is excluded from the browser projection.
+After sandbox capture, the installed purchase-renewal writer records those terms
+before activation. Missing or inconsistent retained evidence refuses creation
+with `starter_quote_refresh_required`. This composition does not itself qualify later renewal or invoicing.
 
 Attempt limits live in one process's memory and reset on restart.
 Checkout applies the configured attempt window, e-mail and requester counts, retention and capacity before contact resolution. Exact replay means the same command key, normalized e-mail and requester; it is free of further quota counts. A retained key with a changed identity is refused before contact resolution, including with a replacement quota callback. The synchronous host binding keeps identity digests within the same retention and capacity bounds; it fails closed when full. Denied quota attempts add nothing to the quota counts. Both process-local records reset on restart. Unpurchased contact retention belongs to the host.
@@ -447,6 +496,10 @@ Tax legal-basis text is at most 200 characters and the shared legal revision is
 trimmed, nonempty text of at most 64 characters. Configuration rejects values
 outside these native boundaries before composition.
 
+Replayed checkout uses its saved quote and compares the complete request binding;
+current observation times cannot silently alter its draft fingerprint. Renewal
+registration uses original quote line prices rather than allocated paid prices.
+Order UUID matching and the native response spelling remain unchanged.
 ## Recovery admission and private capture
 
 The capture is a developer mailbox with no real recipients. Rendered messages
@@ -467,9 +520,10 @@ its explicit disabled default, population, cadence, batch and lease values. The
 installer and public configuration use the same object. After the selected
 installation is complete, an existing local scheduler may invoke
 `./lifecycle renewal --configuration <id> --database-url <restricted-runtime-url>`.
-This one-shot lifecycle entry selects the native renewal service once; it creates
-no timer or second HTTP server. Disabled or structurally unready invocations do
-not claim. Population session exclusion and the durable job ledger serialize
+This one-shot lifecycle entry runs one bounded paid-mail outbox pass and selects
+the native renewal service once; it creates no timer or second HTTP server.
+The renewal enable flag gates renewal claims; the paid-mail pass also runs when
+renewals are disabled. Structurally unready renewal invocations do not claim renewals. Population session exclusion and the durable job ledger serialize
 selected executors, including a callback longer than its lease interval.
 Returned batches record actual checked, updated, failure and deferred counts.
 An invocation that throws without a batch result marks counts unavailable; it
@@ -494,7 +548,8 @@ copy through the separately owned private capture module and M04 receipt owner.
 It preserves one artifact and frozen token expiry per native notice command;
 access-grant references contain the native token UUID. It remains unmounted in this checkpoint; native notice dispatch and the joined
 recovery proof are available, but this row selects no parallel sender. No parallel
-outbox handler is registered. Consent/signed opt-out wait for native purpose
+subscription-notice outbox handler is registered. The separate paid-order
+handler below does not dispatch subscription notices. Consent/signed opt-out wait for native purpose
 support; operator shipment and invoice joins wait for their existing owners.
 Reminder windows, historical closure, winback, escalation and configurable
 subscription policies retain their named interim limits in subscription care.
@@ -515,3 +570,24 @@ including issuance, replay, missing/changed capture, restart and human revocatio
 Active human authority is revalidated on replay. The
 scheduled notice host reads the original operator artifact and preserves its
 rendered content, token and expiry across process restarts.
+
+### Private paid-order receipts
+
+The same `./lifecycle renewal` invocation mounts the package's paid-order email
+handler through [the paid-mail host](host/paid-mail.ts). Only
+`commerce.order.paid.email` is claimable. Other known event types stay untouched.
+The Core vocabulary includes the sibling `commerce.settlement.settled` fact.
+It stays pending without a handler or message record and cannot block the paid
+receipt even when it sorts first on the same order aggregate. This uses the
+known-type claim policy; no host override, acknowledgement or dormant seed is added.
+For a paid order with a resolvable contact and its emitted paid-mail event, the
+pass produces one [private receipt record](host/paid-mail-artifact.ts) under
+`.context/captured-messages`. It reads the order's contact, frozen lines and
+catalogue/discount/charged totals from the installed native tables. Replay and
+reclaimed events reuse the original record. No real mail provider is active.
+
+Subject and summary labels live in the per-locale `paid` values in
+[owned notice copy](owned/renewal-copy.ts). Locale selection uses the same
+`renewal.notices.locale` and `countryLocales` as subscription notice copy.
+Both English and Polish copy must be complete and nonempty. All other email
+send methods refuse with `starter_paid_mail_method_not_selected`.

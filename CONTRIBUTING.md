@@ -985,7 +985,9 @@ angle characters, Unicode whitespace and malformed percent encoding refuse with
 an actionable error. Use literal punctuation or percent-encoded filenames and
 ASCII whitespace before optional titles. This keeps ambiguous Markdown from
 silently checking a different file.
-It refuses source maps and source-map references, build-machine home paths, and
+Declaration maps may resolve only to their shipped, tracked source and adjacent
+declaration. It refuses JavaScript source maps, other source-map references,
+build-machine home paths, and
 the operational coordinates the public detector knows. It prints each tarball's
 integrity. `-- --out <dir>` implies `--pack`. It keeps each publishable
 package's tarball in an empty directory, with a `packages-manifest.json` of
@@ -1343,8 +1345,11 @@ Write ignored `.context/scratch/agent-review/intent.json`:
 ```json
 { "authorSessionId": "<supervisor session id>",
   "intent": { "risk": "<prose|routine|behavior|unknown>",
-    "scope": ["<changed paths>"], "criteria": "<approved criteria>" } }
+    "criteria": "<approved criteria>" } }
 ```
+
+Keep the intent for the life of the change (later candidates may touch more paths);
+changing `risk` or `criteria` requires `prepare --new` and a full review.
 
 Codex may omit `authorSessionId` to use `CODEX_THREAD_ID`. Refresh the local main
 reference before preparation so the cheap merge preflight catches known conflicts.
@@ -1367,7 +1372,14 @@ Findings have stable `id`, `summary` and `material` fields; a later report close
 one through `closes: ["<id>"]`. Advice uses `material: false`. The `documentation`
 assessment checks stale claims and related examples, including for documentation
 changes. Delta reports identify `candidate.coverage.delta` and include
-`"ordinary": true`. State stays in `.context/scratch/agent-review/session.json`;
+`"ordinary": true`. That digest covers the diff with full object names, so it does
+not depend on how many objects the local repository holds. An edge recorded with
+abbreviated names before this rule still replays wherever those names reproduce.
+Every later preparation keeps the history, so if admission refuses such an edge,
+rebuild the session in a clone holding only main and the branch: keep the events
+before the refused preparation, repeat each later `prepare` at its recorded head and
+record the same reports, each delta report naming its new delta.
+State stays in `.context/scratch/agent-review/session.json`;
 unchanged preparation preserves evidence and history. `verify` refuses dirty,
 mismatched, partial or missing evidence and unclosed blockers. On the CI-only
 route no reviewer report is needed. Source admission checks the live head, tree
