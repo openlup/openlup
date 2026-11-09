@@ -113,7 +113,7 @@ export function assertDocumentationContract(
     }
   }
 
-  const exports = manifest.exports ?? {};
+  const exports = codeExports(manifest.exports);
   const surface = gates.packageSurface ?? {};
   assertSurfaceTable(packageRoot, "README.md", "Package Surface Maturity", true, exports, surface, violations);
   // The README's opening import example is the smoke file that typecheck:smoke compiles.
@@ -133,6 +133,12 @@ export function assertDocumentationContract(
 
 // Every tarball carries an agent guide stating the package's kind, the
 // maturity of each subpath and one wiring example that compiles in CI.
+/** The code subpaths of an exports map; `./package.json` exports the manifest for tooling and has no surface row. */
+function codeExports(exports: Record<string, unknown> | undefined): Record<string, unknown> {
+  const { "./package.json": _manifest, ...code } = exports ?? {};
+  return code;
+}
+
 export function assertAgentGuide(
   packageRoot: string,
   kind: unknown,
@@ -326,7 +332,7 @@ if (invokedPath === import.meta.url) {
     const gates = JSON.parse(readFileSync(join(packageRoot, "release-gates.json"), "utf8"));
     const packed = new Set((packDryRun(packageRoot).files ?? []).map(file => file.path));
     const violations: string[] = [];
-    assertAgentGuide(packageRoot, gates.kind, manifest.exports, gates.packageSurface, packed, violations, args[2]);
+    assertAgentGuide(packageRoot, gates.kind, codeExports(manifest.exports), gates.packageSurface, packed, violations, args[2]);
     assert(violations.length === 0, `agent guide contract violations:\n${violations.join("\n")}`);
   } else throw new Error("Usage: documentation-contract.ts [--agent-guide <package-root> <example-source>]");
 }

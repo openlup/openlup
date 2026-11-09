@@ -47,7 +47,9 @@ it("packs within declared budgets, binds public SQL, imports exact exports and c
       expect(gzipSync(Buffer.concat(members.map((file:string)=>readFileSync(join(extracted,"package",file))))).length).toBeLessThanOrEqual(budget[kind].maxPackedBytes);
     }
     const manifest = JSON.parse(readFileSync(join(directory, "package.json"), "utf8"));
-    for (const target of Object.values(manifest.exports) as { types: string; import: string }[]) {
+    const { "./package.json": manifestExport, ...codeExports } = manifest.exports;
+    expect(manifestExport).toBe("./package.json"); expect(files).toContain("package.json");
+    for (const target of Object.values(codeExports) as { types: string; import: string }[]) {
       expect(files).toContain(target.types.slice(2)); expect(files).toContain(target.import.slice(2));
     }
     const sqlManifest = JSON.parse(readFileSync(join(directory, "sql/manifest.json"), "utf8"));

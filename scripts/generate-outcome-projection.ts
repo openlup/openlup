@@ -32,7 +32,8 @@ export function collectOutcomeProjection(root: string): OutcomeProjection {
     const gates = read(`${pkg.directory}/release-gates.json`);
     if (manifest.name !== pkg.name || typeof manifest.version !== "string" || !/^0\.\d+\.\d+$/u.test(manifest.version)) throw new Error("outcome-projection: invalid package identity");
     versions.add(manifest.version);
-    if (!manifest.exports || !gates.packageSurface || JSON.stringify(Object.keys(manifest.exports).sort()) !== JSON.stringify(Object.keys(gates.packageSurface).sort())) throw new Error("outcome-projection: export/evidence inventory mismatch");
+    const entries = Object.keys(manifest.exports ?? {}).filter(entry => entry !== "./package.json").sort();
+    if (!manifest.exports || !gates.packageSurface || JSON.stringify(entries) !== JSON.stringify(Object.keys(gates.packageSurface).sort())) throw new Error("outcome-projection: export/evidence inventory mismatch");
     const proof = (localPath: unknown): Proof => {
       if (typeof localPath !== "string" || !localPath || localPath.includes("\\") || localPath.split("/").some(part => !part || part === "." || part === "..")) throw new Error("outcome-projection: unsafe proof path");
       const absolute = resolve(root, pkg.directory, localPath);
@@ -42,7 +43,7 @@ export function collectOutcomeProjection(root: string): OutcomeProjection {
       if (present && !realpathSync(absolute).startsWith(realpathSync(resolve(root, pkg.directory)) + sep)) throw new Error("outcome-projection: proof escaped package");
       return { path, sha256: present ? digest(readFileSync(absolute)) : null };
     };
-    for (const entry of Object.keys(manifest.exports).sort()) {
+    for (const entry of entries) {
       const surface = gates.packageSurface[entry];
       if (!surface || !Array.isArray(surface.packageSmokeEvidence)) throw new Error("outcome-projection: missing smoke declaration");
       const proofs: Proof[] = surface.packageSmokeEvidence.map(proof);

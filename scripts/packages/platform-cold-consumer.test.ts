@@ -487,7 +487,7 @@ function marketingFixture(mode: "correct" | "extra-export" | "unverified") {
   const metadata = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8"));
   metadata.exports["./communications/klaviyo"] = "./communications/klaviyo/index.js";
   writeFileSync(join(packageRoot, "package.json"), JSON.stringify(metadata));
-  const entry = Object.entries(metadata.exports).find(([, value]) => typeof value === "string")![0].slice(2);
+  const entry = "communications/klaviyo";
   cpSync(join(root, "packages/platform/dist", entry), join(packageRoot, entry), { recursive: true });
   const path = join(packageRoot, entry, "index.js");
   if (mode === "extra-export") writeFileSync(path, readFileSync(path, "utf8") + "\nexport const unexpected = true;\n");

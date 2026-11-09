@@ -72,6 +72,7 @@
     "vitest": "^4.1.12"
   },
   "exports": {
+    "./package.json": "./package.json",
     "./bundle": {
       "core-source": "./src/bundle/contracts.ts",
       "types": "./dist/bundle/contracts.d.ts",
