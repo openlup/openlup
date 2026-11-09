@@ -15,12 +15,16 @@ const repositoryPattern = /^[a-z0-9]+(?:[._-][a-z0-9]+)*(?:\/[a-z0-9]+(?:[._-][a
 export const MIRROR_ONLY_SOURCES = Object.freeze(["mcr.microsoft.com/"]);
 const digestPattern = /^sha256:[a-f0-9]{64}$/u;
 
+// Each upstream registry's exact path for an inventory repository; ECR serves Docker library images under docker/.
+const sourcePaths = Object.freeze({ "docker.io/": (repository) => repository, "public.ecr.aws/": (repository) => `docker/${repository}`,
+  "ghcr.io/": (repository) => repository, ...Object.fromEntries(MIRROR_ONLY_SOURCES.map((prefix) => [prefix, (repository) => repository])) });
+
 function validOwnedSource(source, image) {
   if (typeof source !== "string") return false;
   const [repository, tag, extra] = source.split(":");
+  const prefix = Object.keys(sourcePaths).find((registry) => repository.startsWith(registry));
   return extra === undefined && (tag === undefined || tag === image.tag)
-    && ["docker.io/", "public.ecr.aws/", "ghcr.io/", ...MIRROR_ONLY_SOURCES].some((prefix) => repository.startsWith(prefix))
-    && repositoryPattern.test(repository.slice(repository.indexOf("/") + 1)) && repository.endsWith(`/${image.repository}`);
+    && prefix !== undefined && repository.slice(prefix.length) === sourcePaths[prefix](image.repository);
 }
 
 export function ownedImages(config) {

@@ -52,7 +52,8 @@ describe("CI image mirror planning and digest preservation", () => {
       [{ ...config.images[0], sources: ["evil.test/library/postgres"] }], [{ ...config.images[0], tag: "16; echo unsafe" }]]) {
       expect(() => ownedImages({ images })).toThrow("invalid or duplicate");
     }
-    for (const source of ["ghcr.io/library/postgres:16", "ghcr.io/library/postgres:17:extra", "ghcr.io/other/postgres:17"]) {
+    for (const source of ["ghcr.io/library/postgres:16", "ghcr.io/library/postgres:17:extra", "ghcr.io/other/postgres:17",
+      "docker.io/other/library/postgres", "public.ecr.aws/other/library/postgres", "public.ecr.aws/library/postgres"]) {
       expect(() => ownedImages({ images: [{ ...config.images[0], sources: [source] }] })).toThrow("invalid or duplicate");
     }
   });
@@ -61,7 +62,8 @@ describe("CI image mirror planning and digest preservation", () => {
     const browser = { name: "starter-browser", repository: "playwright", tag: "v1.62.0-noble", digest, sources: ["mcr.microsoft.com/playwright"] };
     expect(ownedImages({ images: [browser] })).toEqual([browser]);
     for (const changed of [{ ...browser, digest: "TODO" }, { ...browser, digest: "" }, { ...browser, sources: ["mcr.microsoft.com/other"] },
-      { ...browser, sources: ["mcr.microsoft.com/playwright:v1.61.0-noble"] }, { ...browser, sources: ["evil.test/playwright"] }]) {
+      { ...browser, sources: ["mcr.microsoft.com/other/playwright"] }, { ...browser, sources: ["mcr.microsoft.com/playwright:v1.61.0-noble"] },
+      { ...browser, sources: ["evil.test/playwright"] }]) {
       expect(() => ownedImages({ images: [changed] })).toThrow("invalid or duplicate");
     }
     const lookup = vi.fn().mockImplementation((ref: string) => ref.split("@")[1]);
