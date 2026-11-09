@@ -1,3 +1,4 @@
+import { DEFAULT_CYCLE_RETRY_CADENCE, nextRetryAttemptAt, type CycleRetryCadence } from "@openlup/core/subscription";
 import type { RenewalRetryObligation } from "./contracts/dunning.js";
 import type { RenewalReadback } from "./contracts/renewal.js";
 import { subscriptionRecord, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
@@ -24,8 +25,18 @@ export interface NativeRetryPreparation {
 export interface NativeRetryRow extends RenewalRetryObligation {
   caseId: string | null; state: "waiting" | "prepared" | "recovered";
 }
+/** Validate and snapshot trusted timing before any handoff or failure write. */
+function retryTiming(cadence?: Pick<CycleRetryCadence, "backoffHours">): { backoffHours: number[] } | undefined {
+  if (cadence === undefined) return undefined;
+  if (!cadence || !Array.isArray(cadence.backoffHours)
+    || cadence.backoffHours.some(hours => typeof hours !== "number" || !Number.isFinite(hours) || hours <= 0 || hours > 2_147_483_647)) {
+    throw new Error("subscription_retry_cadence_invalid");
+  }
+  return { backoffHours: [...cadence.backoffHours] };
+}
 /** No payment execution is implemented here. A replayed prepare always returns execute=false. */
-export function createPostgresRetryStore(executor: SubscriptionQueryExecutor) {
+export function createPostgresRetryStore(executor: SubscriptionQueryExecutor, cadence?: Pick<CycleRetryCadence, "backoffHours">) {
+  const timing = retryTiming(cadence);
   async function invoke(name: string, values: unknown[]) {
     const result = await executor.query(`SELECT public.${name}(${values.map((_, i) => `$${i + 1}`).join(",")}) AS response`, values);
     return result.rows[0]?.response;
@@ -54,7 +65,7 @@ export function createPostgresRetryStore(executor: SubscriptionQueryExecutor) {
       return value.map(row);
     },
     async applyFailure(operationId: string, key: string, input: NativeRetryFailure) {
-      return row(await invoke("subscription_retry_apply_failure", [operationId, key, input]));
+      return row(await invoke("subscription_retry_apply_failure", [operationId, key, input, ...(timing ? [timing] : [])]));
     },
     /** Read the immutable rung receipt against the current case. An interrupted
      * apply still needs propagation; an already advanced case must not be rewritten. */
@@ -89,6 +100,8 @@ export function createPostgresRetryStore(executor: SubscriptionQueryExecutor) {
 }
 
 export interface NativeRetryLifecycleBinding {
+  /** Trusted retry offsets; failure-class termination remains unchanged. */
+  retryCadence?: Pick<CycleRetryCadence, "backoffHours">;
   executor: SubscriptionQueryExecutor;
   withTransaction<T>(work: (executor: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
   /** M07's existing transaction-bound native port; never a provider execution port. */
@@ -104,6 +117,7 @@ export function createPostgresRetryLifecycleBinding(options: NativeRetryLifecycl
   failureHandoff: import("./contracts/dunning.js").RenewalFailureHandoffPort;
   settlement: import("./contracts/renewal.js").RenewalSettlementPort;
 } {
+  const cadence = retryTiming(options.retryCadence);
   const base = options.settlement(options.executor);
   return {
     failureHandoff: {
@@ -112,7 +126,7 @@ export function createPostgresRetryLifecycleBinding(options: NativeRetryLifecycl
           $1::text,$2::uuid,$3::uuid,$4::uuid,$5::integer,$6::timestamptz,$7::text,$8::text,
           $9::timestamptz,$10::bigint,$11::text,$12::text,$13::text) AS response`,
         [input.idempotencyKey, input.subscriptionId, input.cycleId, input.clientId, input.retryAttempt,
-          input.nextRetryAt, input.failureClass, input.failureReason, input.occurredAt, input.amountMinor,
+          cadence ? nextRetryAttemptAt(input.occurredAt, input.retryAttempt, { ...DEFAULT_CYCLE_RETRY_CADENCE, backoffHours: cadence.backoffHours }, input.failureClass) : input.nextRetryAt, input.failureClass, input.failureReason, input.occurredAt, input.amountMinor,
           input.currency, options.failureTemplate, options.recoveryPath]);
         const row = subscriptionRecord(result.rows[0]?.response);
         return { caseId: String(row.caseId), replayed: row.replayed === true };
@@ -161,7 +175,7 @@ export function createPostgresRetryLifecycleBinding(options: NativeRetryLifecycl
           const correlation = options.correlate(subscriptionRecord(handoff.cycle_snapshot), Number(handoff.cycle_number));
           if (correlation.status !== "correlated") throw new Error("subscription_renewal_cycle_correlation_required");
           const recorded = await options.settlement(executor).recordTerminalOutcome(input);
-          const retry = createPostgresRetryStore(executor);
+          const retry = createPostgresRetryStore(executor, cadence);
           await retry.applyFailure(input.operationId, input.eventKey, {
             attemptSequence: 0, logicalCycleNumber: correlation.logicalCycleNumber,
             occurredAt: String(handoff.occurred_at),

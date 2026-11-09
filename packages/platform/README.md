@@ -34,6 +34,14 @@ start with the installed package's README, CHANGELOG and declarations, and consu
 source at a matching release or tag when available. A current-`main` link is not
 proof of compatibility or support for an installed artifact.
 
+The `subscriptions` entry also exposes `createPostgresSubscriptionAutoResume`:
+bind its `run(limit, now)` method to the host scheduler and job ledger after
+installing the complete selected catalogue. Due finite pauses resume only when
+eligible; graceful skips leave their window open for re-evaluation. The host owns
+enablement and cadence. Trusted native retry bindings accept
+`retryCadence: { backoffHours }`; defaults remain `[24,72,168]` and timing cannot
+alter terminating failure classes or an already accepted receipt.
+
 ## Install the portable PostgreSQL schema
 
 `@openlup/platform/migrations` exports `createPlatformPostgresMigrationRunner`.

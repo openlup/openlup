@@ -65,8 +65,9 @@ it.each(profiles)("atomic actor account choices and refusals on %s", async profi
       } });
     await runner.apply();
     expect((await runner.apply()).applied).toEqual([]);
-    // Package editing follows the shared main suffix; qualified plans also retain their completion tail.
-    const tail = [{ catalog_path: "db/platform/migrations/20261106160000_subscription_package_editor.sql" },
+    // Package editing follows retry resume in every plan; qualified plans also retain their completion tail.
+    const tail = [{ catalog_path: "db/platform/migrations/20261109120000_subscription_package_editor.sql" },
+      { catalog_path: "db/platform/migrations/20261109100000_subscription_retry_resume.sql" },
       { catalog_path: "db/platform/migrations/20261106140000_subscriber_winback_policy.sql" },
       { catalog_path: "db/platform/migrations/20261106120000_subscription_notice_producers.sql" },
       { catalog_path: "db/platform/migrations/20261106100000_subscription_lifecycle_closure.sql" },

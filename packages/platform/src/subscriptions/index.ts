@@ -64,3 +64,4 @@ export type { PackageEditErrorMapping } from "./packageEditErrors.js";
 export type { PackageEditMoney, PackageEditLine, PackageEditQuoteLine, PackageEditPricedLine, PackageEditRequest, PackageEditQuote,
   PackageEditSubscription, PackageEditCurrentLine, PackageEditConstraintMapper, PackageEditReadPort, PackageEditQuotePorts,
   PackageEditLimits, PackageEditorOptions, PackageEditActor, PackageEditBlockedReason, PackageEditPreview, PackageEditApplyResult } from "./packageEditContracts.js";
+export { createPostgresSubscriptionAutoResume } from "./postgresAutoResume.js";

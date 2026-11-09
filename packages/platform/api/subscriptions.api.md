@@ -1276,6 +1276,7 @@ export { createPostgresPackageEditor } from "./packageEditor.js";
 export { mapPackageEditError } from "./packageEditErrors.js";
 export type { PackageEditErrorMapping } from "./packageEditErrors.js";
 export type { PackageEditMoney, PackageEditLine, PackageEditQuoteLine, PackageEditPricedLine, PackageEditRequest, PackageEditQuote, PackageEditSubscription, PackageEditCurrentLine, PackageEditConstraintMapper, PackageEditReadPort, PackageEditQuotePorts, PackageEditLimits, PackageEditorOptions, PackageEditActor, PackageEditBlockedReason, PackageEditPreview, PackageEditApplyResult } from "./packageEditContracts.js";
+export { createPostgresSubscriptionAutoResume } from "./postgresAutoResume.js";
 ```
 ## dist/subscriptions/lifecycleMessages.d.ts
 
@@ -1355,10 +1356,13 @@ export declare function createNativeRenewalCodec(): NativeRenewalCodec;
 ## dist/subscriptions/nativeRetryDriver.d.ts
 
 ```ts
+import type { CycleRetryCadence } from "@openlup/core/subscription";
 import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 import type { NativeRetryFailure, NativeRetryPreparation, NativeRetryRow } from "./postgresRetryStore.js";
 import type { RenewalExecutionRequest, RenewalFrozenSnapshot, RenewalPaymentEvidence, RenewalPaymentRail } from "./contracts/renewal.js";
 export interface NativeRetryDriverOptions {
+    /** Trusted timing only; cannot alter terminating failure classes. */
+    retryCadence?: Pick<CycleRetryCadence, "backoffHours">;
     executor: SubscriptionQueryExecutor;
     withTransaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
     decode(snapshot: Record<string, unknown>): RenewalFrozenSnapshot;
@@ -1426,7 +1430,7 @@ export declare function createNativeSubscriptionBinding(input: {
     inventory: AutomaticRenewalRunDeps["inventory"];
     paymentRails: AutomaticRenewalRunDeps["paymentRails"];
     policy: AutomaticRenewalRunDeps["policy"];
-    retry: Pick<NativeRetryDriverOptions, "readFrozenMandate" | "retryInput" | "payments" | "recoveredTemplate">;
+    retry: Pick<NativeRetryDriverOptions, "readFrozenMandate" | "retryInput" | "payments" | "recoveredTemplate" | "retryCadence">;
     failureTemplate: string;
     recoveryPath: string | null;
     workerId: string;
@@ -1599,6 +1603,21 @@ import type { PackageEditReadPort } from "./packageEditContracts.js";
 import { type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 /** The same settings key, column and strict integer domain are used by the definer apply. */
 export declare function createPostgresPackageEditReadPort(db: SubscriptionQueryExecutor): PackageEditReadPort;
+```
+## dist/subscriptions/postgresAutoResume.d.ts
+
+```ts
+import { type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+/** Trusted scheduled job. The host owns scheduling, enablement and run-ledger binding. */
+export declare function createPostgresSubscriptionAutoResume(executor: SubscriptionQueryExecutor): {
+    run(limit?: number, now?: string): Promise<{
+        ok: boolean;
+        scanned: number;
+        resumed: number;
+        skippedRows: number;
+        failed: number;
+    }>;
+};
 ```
 ## dist/subscriptions/postgresCommandStore.d.ts
 
@@ -1790,6 +1809,7 @@ export declare function createPostgresRenewalStore(executor: SubscriptionQueryEx
 ## dist/subscriptions/postgresRetryStore.d.ts
 
 ```ts
+import { type CycleRetryCadence } from "@openlup/core/subscription";
 import type { RenewalRetryObligation } from "./contracts/dunning.js";
 import { type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 /** N1 accepts only verified M07 evidence; the host supplies logical-cycle correlation explicitly. */
@@ -1841,7 +1861,7 @@ export interface NativeRetryRow extends RenewalRetryObligation {
     state: "waiting" | "prepared" | "recovered";
 }
 /** No payment execution is implemented here. A replayed prepare always returns execute=false. */
-export declare function createPostgresRetryStore(executor: SubscriptionQueryExecutor): {
+export declare function createPostgresRetryStore(executor: SubscriptionQueryExecutor, cadence?: Pick<CycleRetryCadence, "backoffHours">): {
     read(operationId: string): Promise<NativeRetryRow | null>;
     candidates(limit: number, now: string): Promise<NativeRetryRow[]>;
     applyFailure(operationId: string, key: string, input: NativeRetryFailure): Promise<NativeRetryRow>;
@@ -1859,6 +1879,8 @@ export declare function createPostgresRetryStore(executor: SubscriptionQueryExec
     noteRowOutcome(operationId: string, key: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
 };
 export interface NativeRetryLifecycleBinding {
+    /** Trusted retry offsets; failure-class termination remains unchanged. */
+    retryCadence?: Pick<CycleRetryCadence, "backoffHours">;
     executor: SubscriptionQueryExecutor;
     withTransaction<T>(work: (executor: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
     /** M07's existing transaction-bound native port; never a provider execution port. */
