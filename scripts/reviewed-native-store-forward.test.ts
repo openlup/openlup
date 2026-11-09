@@ -889,8 +889,12 @@ describe("registry-defined native capabilities", () => {
     const source = unvalidated ? parameterTable.replace("('open','closed'))", "('open','closed')) NOT VALID") : parameterTable;
     expect(() => parameterForward(parameterCheck().replace(/;$/u, " NOT VALID;"), addCheck, "", source)).not.toThrow();
   });
-  it.each(["NOT", "VALID", "NO INHERIT", "NOT VALID NOT VALID", "NOT VALID NO INHERIT", "NOT VALID, ADD COLUMN other text"])("refuses a listed CHECK with other trailing tokens: %s", tail => {
+  it.each(["NOT", "VALID", "NO INHERIT", "NOT VALID NOT VALID", "NOT VALID NO INHERIT"])("refuses a listed CHECK with other trailing tokens: %s", tail => {
     expect(() => parameterForward(parameterCheck().replace(/;$/u, ` ${tail};`), addCheck)).toThrow(/CHECK must match/u);
+  });
+  it("refuses another ALTER action after a NOT VALID CHECK", () => {
+    expect(() => parameterForward(parameterCheck().replace(/;$/u, " NOT VALID, ADD COLUMN other text;"), addCheck))
+      .toThrow("reviewed native store requires the adjacent named constraint replacement");
   });
   it("keeps exact values, binding and adjacency for a NOT VALID CHECK", () => {
     const sql = parameterCheck().replace(/;$/u, " NOT VALID;");
