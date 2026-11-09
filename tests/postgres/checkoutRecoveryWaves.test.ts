@@ -13,6 +13,16 @@ import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from '../helpers/po
 const NOW = '2040-01-02T12:00:00.000Z';
 const at = (hours: number) => new Date(Date.parse(NOW) + hours * 3600000).toISOString();
 const policy = { profile: 'capture' };
+
+const unselectedMail = async (): Promise<never> => { throw new Error('unselected_mail'); };
+const unusedMailPort: TransactionalEmailPort = {
+  findExistingSend: unselectedMail, sendReturnApprovedNotice: unselectedMail, sendReturnRejectedNotice: unselectedMail,
+  sendOrderConfirmation: unselectedMail, sendCheckoutRecovery: unselectedMail, sendOrderPaidConfirmation: unselectedMail,
+  sendPaymentFailedNotice: unselectedMail, sendCheckoutExpiredNotice: unselectedMail, sendOrderCanceledNotice: unselectedMail,
+  sendOrderRefundedNotice: unselectedMail, sendShipmentDispatchedNotice: unselectedMail,
+  sendShipmentDeliveredNotice: unselectedMail, sendShipmentExceptionNotice: unselectedMail,
+};
+
 describe.each(lifecycleProfiles)('checkout recovery waves on %s', profile => {
   let env: LifecycleInstallation;
   beforeAll(async () => {
@@ -61,9 +71,9 @@ describe.each(lifecycleProfiles)('checkout recovery waves on %s', profile => {
     const first = (await events(o.id))[0]!;
     expect(first.payload).toMatchObject({ reminderHours: 1, recoveryToken: expect.stringMatching(/^rcv_/) });
     const sends: string[] = [];
-    const email = withCheckoutRecoverySendEvidence({ findExistingSend: async () => false,
-      sendCheckoutRecovery: async input => { sends.push(input.recoveryToken); return { ok: true, messageId: `capture:${input.outboxEventId}`, httpStatus: 200, providerError: null, aborted: false }; },
-    } as TransactionalEmailPort, waves());
+    const email = withCheckoutRecoverySendEvidence({ ...unusedMailPort, findExistingSend: async () => false,
+      sendCheckoutRecovery: async (input: Parameters<TransactionalEmailPort['sendCheckoutRecovery']>[0]) => { sends.push(input.recoveryToken); return { ok: true, messageId: `capture:${input.outboxEventId}`, httpStatus: 200, providerError: null, aborted: false }; },
+    }, waves());
     const handler = createOutboxCheckoutRecoveryEmailHandler({ emailPort: email,
       recipientPort: { resolve: async () => ({ email: `${o.client}@example.invalid`, firstName: null, country: 'EN' }) },
       lifecyclePort: { read: async () => { const row = (await env.runtime.query('SELECT status FROM public.commerce_orders WHERE id=$1', [o.id])).rows[0];
@@ -204,9 +214,9 @@ describe.each(lifecycleProfiles)('checkout recovery waves on %s', profile => {
     expect(notices[0]!.payload).not.toHaveProperty('recoveryToken'); expect(await tokens(o.id)).toHaveLength(0);
     const sent: Array<string | null> = [];
     const handler = createOutboxCheckoutExpiredEmailHandler({
-      emailPort: { findExistingSend: async () => false, sendCheckoutExpiredNotice: async input => {
+      emailPort: { ...unusedMailPort, findExistingSend: async () => false, sendCheckoutExpiredNotice: async input => {
         sent.push(input.recoveryToken ?? null); return { ok: true, messageId: 'capture:expired', httpStatus: 200, providerError: null, aborted: false };
-      } } as TransactionalEmailPort,
+      } },
       recipientPort: { resolve: async () => ({ email: `${o.client}@example.invalid`, firstName: null }) },
       lifecyclePort: { read: async () => {
         const row = (await env.runtime.query(`SELECT o.status, o.metadata->>'subscriptionActivation'='abandoned' AND a.state='compensated' AS abandoned
