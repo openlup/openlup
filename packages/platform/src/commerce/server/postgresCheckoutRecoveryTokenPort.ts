@@ -20,7 +20,8 @@ export interface PostgresCheckoutRecoveryTokenPort extends CheckoutRecoveryToken
  * never share an actor lane or authorize issuance from an email or order ID alone.
  * No principal or caller-selected client is accepted. The shared expiresAt input
  * is ignored: PostgreSQL computes exactly order.created_at + 24 hours.
- * Issuing a new link ends the previous link of the same order. Replaying the same
+ * New checkout links preserve earlier links of the same order until expiry or payment.
+ * Pending renewal-cycle orders are refused. Replaying the same
  * hash returns its original ID without reactivating or rotating any link.
  * This port neither settles payments nor sends mail.
  */
@@ -78,10 +79,10 @@ export function createPostgresCheckoutRecoveryTokenPort(
       const tokenHash = hashCheckoutRecoveryToken(rawToken);
       return run(async db => {
         // READ COMMITTED obtains fresh token facts after waiting on the order.
-        const order = (await db.query(`SELECT client_id, status,
+        const order = (await db.query(`SELECT client_id, status, subscription_cycle_id,
             created_at + interval '24 hours' > pg_catalog.clock_timestamp() AS unexpired
           FROM public.commerce_orders WHERE id = $1::uuid FOR UPDATE`, [orderId])).rows[0];
-        if (!order || order.status !== "pending_payment" || !order.client_id || !order.unexpired) {
+        if (!order || order.status !== "pending_payment" || !order.client_id || !order.unexpired || order.subscription_cycle_id != null) {
           throw new Error("checkout_recovery_order_not_recoverable");
         }
         if (!(await db.query("SELECT id FROM public.clients WHERE id = $1::uuid FOR UPDATE", [order.client_id])).rows.length) {
@@ -97,8 +98,6 @@ export function createPostgresCheckoutRecoveryTokenPort(
           if (!previous.same_order) throw new Error("checkout_recovery_hash_conflict");
           return text(previous, "id");
         }
-        await db.query(`UPDATE public.commerce_checkout_recovery_tokens
-          SET revoked_at = pg_catalog.clock_timestamp() WHERE order_id = $1::uuid AND revoked_at IS NULL`, [orderId]);
         const inserted = (await db.query(`INSERT INTO public.commerce_checkout_recovery_tokens
             (order_id, client_id, token_hash, expires_at, created_at)
           SELECT id, client_id, $2, created_at + interval '24 hours', pg_catalog.clock_timestamp()

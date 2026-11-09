@@ -3426,6 +3426,27 @@
         "createdFunctions": [],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "C2-4",
+        "path": "db/platform/migrations/20261109110000_checkout_recovery_link_lifecycle.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.dunning_lifecycle_issue_recovery_token(uuid,text,timestamptz)",
+            "beforeSha256": "34d0b636c3f51f5dab9b32e23d5d015d768f62eb2dc5780466c69f13da58ce75",
+            "searchPath": "public, pg_catalog"
+          }
+        ],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "droppedIndexes": [
+          {
+            "table": "public.commerce_checkout_recovery_tokens",
+            "name": "commerce_checkout_recovery_tokens_active_order_idx",
+            "beforeSha256": "410661b103956d6278327e77ae990fa8efed317d4f820148bfb884b666a3cdb3"
+          }
+        ]
       }
     ]
   },
@@ -3849,6 +3870,17 @@
           "signature": "public.subscriber_retention_claim_intent(text,text,timestamptz)",
           "beforeSha256": "3e14882b1e0eb614017491578d399d401759ebc04bebed41824b95e52706d396",
           "afterSha256": "f95531eeea671f6c50beaefad60774df3193cda868bd4492fc443596f38b5133"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261109110000_checkout_recovery_link_lifecycle.sql",
+      "sha256": "ea7422b72a506a351725d0cee5e70a8707b1af35938d537e13434ab520c5539b",
+      "functions": [
+        {
+          "signature": "public.dunning_lifecycle_issue_recovery_token(uuid,text,timestamptz)",
+          "beforeSha256": "34d0b636c3f51f5dab9b32e23d5d015d768f62eb2dc5780466c69f13da58ce75",
+          "afterSha256": "a66f3724b3493d2abd1cf37d9bd3c9edff507233e0b15559ab6f57a371fc7b66"
         }
       ]
     }
