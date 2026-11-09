@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { MIRROR_REGISTRY, ownedImages } from "./ci-image-mirror.mjs";
+import { MIRROR_ONLY_SOURCES, MIRROR_REGISTRY, ownedImages } from "./ci-image-mirror.mjs";
 import { IMAGE_PULL_BUDGET_MS, IMAGE_PULL_FALLBACK_RESERVE_MS, imageIo, imageReference, mirrorUnavailable, pullWithRetry, readCiImage, resolvePinnedImage } from "./ci-image-pull.mjs";
 import { readFileSync } from "node:fs";
+
+const upstreamFallbacks = (image: { sources: string[] }) => image.sources.filter(source => !MIRROR_ONLY_SOURCES.some(prefix => source.startsWith(prefix)));
 
 const pin = readCiImage("test-postgres");
 function witness() {
@@ -70,7 +72,7 @@ describe.each(["test-postgres", "install-proof-postgres"])("mirror-first CI imag
   it("prepends the sole mirror registry without changing JSON upstream inputs", () => {
     const config = JSON.parse(readFileSync("config/ci-images.json", "utf8"));
     for (const image of ownedImages(config)) {
-      expect(readCiImage(image.name).sources).toEqual([`${MIRROR_REGISTRY}/${image.repository}`, ...image.sources]);
+      expect(readCiImage(image.name).sources).toEqual([`${MIRROR_REGISTRY}/${image.repository}`, ...upstreamFallbacks(image)]);
       expect(image.sources.some(source => source.startsWith(`${MIRROR_REGISTRY}/`))).toBe(false);
     }
     expect(() => readCiImage("absent")).toThrow("unknown CI image");
@@ -281,7 +283,7 @@ it("retains every upstream fallback in CI when an organization mirror is private
   vi.stubEnv("CI", "true");
   try {
     const config = JSON.parse(readFileSync("config/ci-images.json", "utf8"));
-    for (const image of ownedImages(config)) {
+    for (const image of ownedImages(config).filter(image => upstreamFallbacks(image).length > 0)) {
       const pin = readCiImage(image.name);
       expect(pin.sources).toEqual([`${MIRROR_REGISTRY}/${image.repository}`, ...image.sources]);
       const { io, pulls } = witness();
@@ -293,4 +295,18 @@ it("retains every upstream fallback in CI when an organization mirror is private
       expect(pulls()).toEqual([imageReference(pin), imageReference(pin, image.sources[0])]);
     }
   } finally { vi.unstubAllEnvs(); }
+});
+
+it("pulls a mirror-only image from the organization mirror alone, never from its upstream", async () => {
+  const config = JSON.parse(readFileSync("config/ci-images.json", "utf8"));
+  const mirrorOnly = ownedImages(config).filter(image => upstreamFallbacks(image).length === 0);
+  expect(mirrorOnly.map(image => image.name)).toEqual(["starter-browser"]);
+  for (const image of mirrorOnly) {
+    const pin = readCiImage(image.name);
+    expect(pin.sources).toEqual([`${MIRROR_REGISTRY}/${image.repository}`]);
+    const { io, pulls } = witness();
+    io.pull.mockImplementation(async () => { throw new Error("unauthorized: HTTP 401"); });
+    await expect(pullWithRetry(pin, io)).rejects.toThrow("no source succeeded");
+    expect(pulls()).toEqual([imageReference(pin)]);
+  }
 });

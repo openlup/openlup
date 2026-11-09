@@ -68,8 +68,7 @@ export function productPage(context: PageContext): HTMLElement {
       el('p', {}, product.details[context.locale]),
       el('p', { class: 'muted' }, `${context.t('packContents')}: ${product.contents}`),
       nativeUnitPrice(context, product),
-      quantity.wrapper, add, output,
-      el('p', { class: 'muted' }, context.config.copy.shippingNote[context.locale])));
+      quantity.wrapper, add, output));
 }
 
 export function builderPage(context: PageContext): HTMLElement {
@@ -192,6 +191,5 @@ function rules(context: PageContext): HTMLElement {
   const offer = context.config.offer;
   return el('aside', { class: 'panel small' }, el('h2', {}, context.t('offerRules')),
     el('p', {}, `${context.t('minUnits')}: ${offer.minUnits} · ${context.t('maxUnits')}: ${offer.maxUnits}`),
-    el('p', {}, context.t('zeroShipping')),
-    el('p', {}, context.t('renewalShippingInterim')), el('p', {}, context.t('acquisitionInterim')));
+    el('p', {}, context.t('acquisitionInterim')));
 }

@@ -1,7 +1,9 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
-import { spawn, type ChildProcess } from 'node:child_process';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
+import { existsSync } from 'node:fs';
+import { chromium } from '@playwright/test';
 import { createServer } from 'node:net';
 import { resolve } from 'node:path';
 import { env as processEnvironment } from 'node:process';
@@ -222,7 +224,83 @@ describe.each(Object.values(configurations))('$id recurring recovery HTTP bounda
     }
   }, postgresTeardownTimeoutMs);
 
+  // Measured 2.28–2.96 s including the UI build; 15 s exceeds four times the maximum.
+  // Local browser evidence is required when Chromium is installed.
+  it.runIf(existsSync(chromium.executablePath()))('runs the recurring recovery browser journey against PostgreSQL', async () => {
+    const f = await declined(true), token = await issue(f);
+    const app = resolve('examples/neutral-store');
+    const fixture = resolve(state, 'recovery-browser.private.json');
+    const configuration = resolve(app, '.context', `recovery-${config.id}.config.mjs`);
+    await mkdir(resolve(app, '.context'), { recursive: true });
+    await writeFile(fixture, JSON.stringify({ token, email: f.email,
+      identityMailbox: resolve(state, '.context/captured-messages/identity.jsonl') }), { mode: 0o600 });
+    await writeFile(configuration, `import {defineConfig} from '@playwright/test';
+export default defineConfig({testDir:'../browser',testMatch:'recovery.proof.ts',workers:1,fullyParallel:false,
+  reporter:'list',metadata:{recoveryFixture:${JSON.stringify(fixture)}},
+  use:{baseURL:${JSON.stringify(base)},headless:true,trace:'off',screenshot:'off',video:'off'}});`);
+    try {
+      execFileSync(process.execPath, [resolve('node_modules/vite/bin/vite.js'), 'build'], { cwd: app, stdio: 'pipe' });
+      process.stdout.write(execFileSync(process.execPath, [resolve('node_modules/@playwright/test/cli.js'),
+        'test', '--config', configuration], { cwd: app, encoding: 'utf8', timeout: 30_000, stdio: 'pipe' }));
+    } catch (error) {
+      if (error && typeof error === 'object' && 'stdout' in error) process.stdout.write(String(error.stdout));
+      throw new Error('starter_recovery_browser_failed');
+    } finally {
+      await rm(fixture, { force: true }); await rm(configuration, { force: true });
+    }
+  }, 15_000);
+
   // Measured 0.85–1.57 s; retain the adjacent HTTP proof's 10 s bound.
+  it('refuses old quote proofs after key rotation without effects and accepts a fresh quote', async () => {
+    const payload = { locale: 'en', email: `rotate-${randomUUID()}@example.test`, configuration: config.id,
+      acquisitionCapability: ACQUISITION_TERMS_CAPABILITY, country: config.market.country,
+      termsAccepted: true, termsRevision: config.legal.revision, firstName: 'Example', lastName: 'Buyer',
+      phone: '000000000', line1: '1 Example Lane', city: 'Example City', postalCode: '00000',
+      cart: { schemaVersion: 1, configuration: config.id, mode: 'subscription',
+        cadenceDays: config.offer.defaultCadenceDays, lines: [{ sku: config.offer.products[0]!.sku, quantity: 1 }] } };
+    const quote = await call('offer.validate', payload);
+    expect(quote.ok && isRecord(quote.value)).toBe(true);
+    if (!quote.ok || !isRecord(quote.value)) throw new Error('rotation_quote_required');
+    const retained = { ...payload, quoteAcceptance: quote.value.quoteAcceptance, expectedTotal: quote.value.expectedTotal };
+    // A separate already-created checkout exercises the unchanged command/proof retry.
+    const priorPayload = { ...payload, email: `prior-${randomUUID()}@example.test` };
+    const priorQuote = await call('offer.validate', priorPayload);
+    if (!priorQuote.ok || !isRecord(priorQuote.value)) throw new Error('rotation_quote_required');
+    const priorInput = { ...priorPayload, quoteAcceptance: priorQuote.value.quoteAcceptance, expectedTotal: priorQuote.value.expectedTotal };
+    const priorKey = randomUUID();
+    const priorCreated = await call('checkout.create', priorInput, undefined, priorKey);
+    if (!priorCreated.ok || !isRecord(priorCreated.value)) throw new Error('rotation_checkout_required');
+    const counts = async () => (await owner.query(`SELECT
+      (SELECT count(*) FROM public.commerce_checkout_resume_drafts) AS drafts,
+      (SELECT count(*) FROM public.commerce_order_draft_receipts) AS receipts,
+      (SELECT count(*) FROM public.commerce_orders) AS orders,
+      (SELECT count(*) FROM public.payment_truth_events) AS payments,
+      (SELECT count(*) FROM public.payment_simulator_attempts) AS attempts,
+      (SELECT count(*) FROM public.commerce_settlement_intents) AS settlements,
+      (SELECT count(*) FROM public.clients) AS contacts`)).rows;
+    const before = await counts();
+    await stopHost();
+    const current = randomBytes(32).toString('base64url'); privateValues.add(current);
+    await writeFile(keyringFile, JSON.stringify({ current }), { mode: 0o600 });
+    await startHost();
+    expect(await call('checkout.create', retained)).toEqual({ ok: false, code: 'starter_quote_refresh_required' });
+    expect(await counts()).toEqual(before);
+    const replay = await call('checkout.create', priorInput, undefined, priorKey);
+    expect(replay.ok).toBe(true);
+    if (!replay.ok || !isRecord(replay.value)) throw new Error('rotation_receipt_required');
+    expect(replay.value.orderRef).toBe(priorCreated.value.orderRef);
+    expect(await counts()).toEqual(before);
+    const fresh = await call('offer.validate', payload);
+    if (!fresh.ok || !isRecord(fresh.value)) throw new Error('rotation_quote_required');
+    const created = await call('checkout.create', { ...payload,
+      quoteAcceptance: fresh.value.quoteAcceptance, expectedTotal: fresh.value.expectedTotal });
+    expect(created.ok).toBe(true);
+    if (!created.ok || !isRecord(created.value)) throw new Error('rotation_checkout_required');
+    const paid = await call('payment.simulate', { orderRef: created.value.orderRef, token: created.value.token, outcome: 'captured' });
+    expect(paid.ok).toBe(true);
+    expect((await owner.query('SELECT status FROM public.commerce_orders WHERE id=$1', [created.value.orderRef])).rows[0]?.status).toBe('paid');
+  }, 30_000);
+
   it('fences every checkout continuation and simulator/activation entry for guest and owner, including a misleading order', async () => {
     const f = await declined(), raw = await issue(f), control = await createOrder(f.email);
     await signIn(f.email);

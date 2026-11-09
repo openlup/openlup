@@ -49,6 +49,7 @@ export function composeRenewalSandbox(input: {
       createSandboxRenewalPolicy(method(args[1].cycleSnapshot.subscriptionId).methodRef).executionInput(...args),
   };
   const retry: Input['retry'] = {
+    retryCadence: { backoffHours: config.retryBackoffHours },
     recoveredTemplate: input.recoveredTemplate,
     async readFrozenMandate(snapshot) {
       const current = await writer.readMethod(snapshot.subscriptionId);

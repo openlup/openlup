@@ -64,6 +64,13 @@
     "docs/limits.md",
     "docs/ownership.md",
     "docs/proof.md",
+    "host/e4-composition.ts",
+    "host/e4-invoice-summary.ts",
+    "client/invoice-download.ts",
+    "test/e4-limits.test.ts",
+    "test/e4-invoice.test.ts",
+    "test/e4-oms.test.ts",
+    "browser/e4.spec.ts",
     "host/bindings.ts",
     "host/e-composition.ts",
     "host/healthcheck.ts",
@@ -115,6 +122,7 @@
     "client/recovery-page.ts",
     "client/recovery-session.ts",
     "browser/recovery.proof.ts",
+    "browser/renewal.proof.ts",
     "host/acquisition-predecessors.ts",
     "host/quote-composition.ts",
     "installation/quote-seed.ts",
@@ -143,7 +151,9 @@
     "host/editor-ports.ts",
     "host/subscription-editors.ts",
     "playwright.editors.config.ts",
-    "shared/subscription-edit.ts"
+    "shared/subscription-edit.ts",
+    "dev.mjs",
+    "browser/dev-loop.proof.ts"
   ],
   "sourceMappings": {
     "AGENTS.md": "AGENTS.template.md"

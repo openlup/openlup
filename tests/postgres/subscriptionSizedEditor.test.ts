@@ -12,7 +12,7 @@ import { createCapturedTransactionalDelivery, createPostgresTransactionalDeliver
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady,
   type PostgresContainer } from "../helpers/postgresContainer.js";
 const at = "2026-11-06T12:00:00.000Z", next = "2026-12-20T12:00:00.000Z";
-const sqlPath = "db/platform/migrations/20261104120000_subscription_sized_editor.sql";
+const sqlPath = "db/platform/migrations/20261109140000_subscription_sized_editor.sql";
 const money = (amountMinor: number) => ({ amountMinor, currency: "XXX" });
 function quoteLine(sku: string, quantity: number, unit = 100): SizedQuoteLine & Record<string, unknown> {
   return { sku, productSlug: "refill", quantity, unitPriceGross: money(unit), lineSubtotalGross: money(unit * quantity),

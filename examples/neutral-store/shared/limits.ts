@@ -1,4 +1,5 @@
 import type { Localized } from './config.ts';
+import type { Operation } from './api.ts';
 import type { CopyKey } from '../owned/copy.ts';
 
 export interface NativeLimit {
@@ -8,13 +9,84 @@ export interface NativeLimit {
   explanation: Localized;
 }
 
+
+/** One immutable catalogue for unmounted operations and their visible explanations. */
+export const operationLimitDefinitions = Object.freeze({
+  returnRequest: Object.freeze({
+    id: 'returnRequest', actions: Object.freeze(["requestReturn"] as const), code: 'starter_return_request_unavailable',
+    explanation: Object.freeze({ en: "Requesting a return is unavailable in this release.",
+      pl: "Zgłoszenie zwrotu jest niedostępne w tym wydaniu." }),
+  }),
+  returnDecision: Object.freeze({
+    id: 'returnDecision', actions: Object.freeze(["approveReturn", "rejectReturn"] as const), code: 'starter_return_decision_unavailable',
+    explanation: Object.freeze({ en: "Approving and rejecting a return are unavailable in this release. These actions use the customer's return reference.",
+      pl: "Zatwierdzanie i odrzucanie zwrotu są niedostępne w tym wydaniu. Te działania używają numeru zgłoszenia otrzymanego przez klienta." }),
+  }),
+  orderHold: Object.freeze({
+    id: 'orderHold', actions: Object.freeze(["hold", "releaseHold"] as const), code: 'starter_order_hold_unavailable',
+    explanation: Object.freeze({ en: "Placing and releasing an order hold are unavailable in this release.",
+      pl: "Wstrzymanie i zwolnienie zamówienia są niedostępne w tym wydaniu." }),
+  }),
+  orderCancellation: Object.freeze({
+    id: 'orderCancellation', actions: Object.freeze(["cancelUnpaid"] as const), code: 'starter_order_cancellation_unavailable',
+    explanation: Object.freeze({ en: "Cancelling an unpaid order is unavailable in this release.",
+      pl: "Anulowanie nieopłaconego zamówienia jest niedostępne w tym wydaniu." }),
+  }),
+  externalRefundMark: Object.freeze({
+    id: 'externalRefundMark', actions: Object.freeze(["externalRefund"] as const), code: 'starter_external_refund_mark_unavailable',
+    explanation: Object.freeze({ en: "Recording an external refund is unavailable in this release.",
+      pl: "Zapisanie informacji o zwrocie środków wykonanym poza sklepem jest niedostępne w tym wydaniu." }),
+  }),
+  shipmentMutation: Object.freeze({
+    id: 'shipmentMutation', actions: Object.freeze(["label", "handoff", "delivery"] as const), code: 'starter_shipment_mutation_unavailable',
+    explanation: Object.freeze({ en: "Recording a label, handing over a parcel and recording delivery are unavailable in this release. Shipment reads remain available.",
+      pl: "Zapisanie etykiety, przekazanie przesyłki i zapisanie doręczenia są niedostępne w tym wydaniu. Odczyt przesyłek pozostaje dostępny." }),
+  }),
+  trackingAccess: Object.freeze({
+    id: 'trackingAccess', actions: Object.freeze(["tracking"] as const), code: 'starter_tracking_access_unavailable',
+    explanation: Object.freeze({ en: "Public tracking lookup is unavailable.",
+      pl: "Publiczne wyszukiwanie przesyłki jest niedostępne." }),
+  }),
+  returnsReader: Object.freeze({
+    id: 'returnsReader', actions: Object.freeze(["returns"] as const), code: 'starter_operation_unknown',
+    explanation: Object.freeze({ en: "No operator returns list or detail; the operator approves or rejects by the return reference the customer receives.",
+      pl: "Nie ma listy ani szczegółów zwrotów dla operatora; operator zatwierdza lub odrzuca zwrot na podstawie numeru zgłoszenia otrzymanego przez klienta." }),
+  }),
+  researchAuthority: Object.freeze({
+    id: 'researchAuthority', actions: Object.freeze(["research"] as const), code: 'host_binding_required',
+    explanation: Object.freeze({ en: "Research submission is unavailable until the host can verify access to the research case.",
+      pl: "Przesłanie odpowiedzi badawczej jest niedostępne, dopóki aplikacja nie może potwierdzić uprawnień do danej sprawy." }),
+  }),
+  ingestBinding: Object.freeze({
+    id: 'ingestBinding', actions: Object.freeze(["ingest"] as const), code: 'host_binding_required',
+    explanation: Object.freeze({ en: "Order import is unavailable until the host supplies the complete trusted import binding.",
+      pl: "Import zamówień jest niedostępny, dopóki aplikacja nie udostępni kompletnego, zaufanego mechanizmu importu." }),
+  }),
+} satisfies Record<string, NativeLimit>);
+
+export const operationLimits: Readonly<Partial<Record<Operation, NativeLimit>>> = Object.freeze({
+  'return.request': operationLimitDefinitions.returnRequest,
+  'operator.returnApprove': operationLimitDefinitions.returnDecision,
+  'operator.returnReject': operationLimitDefinitions.returnDecision,
+  'operator.hold': operationLimitDefinitions.orderHold,
+  'operator.release': operationLimitDefinitions.orderHold,
+  'operator.cancelUnpaid': operationLimitDefinitions.orderCancellation,
+  'operator.externalRefund': operationLimitDefinitions.externalRefundMark,
+  'operator.label': operationLimitDefinitions.shipmentMutation,
+  'operator.handoff': operationLimitDefinitions.shipmentMutation,
+  'operator.delivery': operationLimitDefinitions.shipmentMutation,
+  'tracking.read': operationLimitDefinitions.trackingAccess,
+  'research.submit': operationLimitDefinitions.researchAuthority,
+  'ingest.submit': operationLimitDefinitions.ingestBinding,
+});
+
 /** Application refusals name unavailable composition without claiming new package capabilities. */
 export const nativeLimits: readonly NativeLimit[] = [
   {
     id: 'N1', actions: ['promotion', 'promotionAdmin'], code: 'starter_promotion_write_unavailable',
     explanation: {
-      en: 'Live products, SKUs, price lists, price entries and promotions are seed data: one owned demo-seed step with the install connection, no runtime writer for them and no checkout promotion codes. Bundle drafts, compositions, target prices and activation, and catalogue drafts, are administered by a native human operator through their native writers.',
-      pl: 'Produkty, SKU, cenniki, pozycje cenowe i promocje katalogu bieżącego są danymi początkowymi: jeden własny krok demo-seed połączeniem instalacyjnym, bez zapisu tych danych w czasie działania i bez kodów promocyjnych przy zakupie. Wersjami roboczymi pakietów, ich składem, cenami docelowymi i aktywacją oraz wersjami roboczymi katalogu zarządza natywny operator będący człowiekiem przez natywne mechanizmy zapisu.',
+      en: 'Live products, SKUs, price lists, price entries and promotions are seed data: one owned demo-seed step with the install connection, no runtime writer for them and no checkout promotion codes. Bundle drafts, compositions, target prices and activation, and catalogue drafts, are administered by a native human operator through their native writers. An activated bundle is not purchasable in this release.',
+      pl: 'Produkty, SKU, cenniki, pozycje cenowe i promocje katalogu bieżącego są danymi początkowymi: jeden własny krok demo-seed połączeniem instalacyjnym, bez zapisu tych danych w czasie działania i bez kodów promocyjnych przy zakupie. Wersjami roboczymi pakietów, ich składem, cenami docelowymi i aktywacją oraz wersjami roboczymi katalogu zarządza natywny operator będący człowiekiem przez natywne mechanizmy zapisu. Aktywowanego pakietu nie można kupić w tym wydaniu.',
     },
   },
   {
@@ -94,6 +166,7 @@ export const nativeLimits: readonly NativeLimit[] = [
       pl: 'Logowanie Google jest niedostępne. Osobne natywne powiązania linków jednorazowych i OTP zachowują własne wymagania uprawnień.',
     },
   },
+  ...Object.values(operationLimitDefinitions),
 ];
 
 export const otherLimits = {
@@ -111,4 +184,4 @@ export function limitFor(action: CopyKey): NativeLimit | undefined {
 }
 
 /** Release boundaries rendered from the same localized copy as checkout. */
-export const releaseLimits = ['attemptLimitsInterim', 'localDatabaseOnly', 'bundlePurchaseLater', 'zeroShipping', 'renewalShippingInterim', 'acquisitionInterim', 'guestPurchase', 'guestRecovery'] as const satisfies readonly CopyKey[];
+export const releaseLimits = ['attemptLimitsInterim', 'localDatabaseOnly', 'bundlePurchaseLater', 'acquisitionInterim', 'guestPurchase', 'guestRecovery'] as const satisfies readonly CopyKey[];

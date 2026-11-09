@@ -128,7 +128,7 @@ it("issues for an unlinked contact with only a hash and the exact database deadl
   });
 });
 
-it("replays without rotation, rejects cross-order reuse and rotates only a fresh hash", async () => {
+it("replays without rotation, rejects cross-order reuse and preserves both fresh links", async () => {
   const a = await order(); const b = await order(); const raw = generateCheckoutRecoveryToken();
   const id = await issue(a.orderId, raw);
   expect(await issue(a.orderId, raw)).toBe(id);
@@ -136,8 +136,8 @@ it("replays without rotation, rejects cross-order reuse and rotates only a fresh
   expect((await admin.query("SELECT count(*)::int AS count FROM public.commerce_checkout_recovery_tokens WHERE order_id=$1", [a.orderId])).rows[0].count).toBe(1);
   const fresh = generateCheckoutRecoveryToken(); const next = await issue(a.orderId, fresh);
   expect(next).not.toBe(id);
-  expect(await port.inspect(raw)).toMatchObject({ tokenState: "revoked" });
-  expect(await port.validate(raw)).toBeNull();
+  expect(await port.inspect(raw)).toMatchObject({ tokenState: "active" });
+  expect(await port.validate(raw)).toMatchObject({ tokenId: id });
   expect(await issue(a.orderId, raw)).toBe(id);
   expect(await port.validate(fresh)).toMatchObject({ tokenId: next });
   const replays = await Promise.all(Array.from({ length: 8 }, () => issue(a.orderId, fresh)));

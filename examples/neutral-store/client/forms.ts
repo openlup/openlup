@@ -3,7 +3,7 @@ import type { PageContext } from './context.ts';
 import type { CopyKey } from '../owned/copy.ts';
 import { act } from './api.ts';
 import { append, button, el, renderValue } from './dom.ts';
-import { limitFor, nativeLimits, otherLimits } from '../shared/limits.ts';
+import { limitFor, nativeLimits, operationLimits, otherLimits } from '../shared/limits.ts';
 
 export interface FieldSpec {
   name: string;
@@ -94,7 +94,7 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
       for (const { spec, control } of controls) {
         values[spec.name] = spec.type === 'checkbox'
           ? (control as HTMLInputElement).checked
-          : spec.type === 'number' ? Number(control.value) : control.value.trim();
+          : spec.type === 'number' ? (control as HTMLInputElement).valueAsNumber : control.value.trim();
       }
       try {
         if (options.transform) values = options.transform(values);
@@ -130,7 +130,7 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
           ? el('section', {}, el('h4', {}, context.t('response')),
             options.resultMessage?.(result.value) ? el('p', {}, context.t(options.resultMessage(result.value)!)) : null,
             renderValue(options.display ? options.display(result.value) : result.value))
-          : refusal(context, result.code));
+          : refusal(context, result.code, operationLimits[options.operation]?.code === result.code ? operationLimits[options.operation]!.explanation[context.locale] : undefined));
         if (result.ok) {
           for (const { spec, control } of controls) if (spec.type === 'password') control.value = '';
           options.onSuccess?.(result.value);
@@ -153,7 +153,7 @@ export function readPanel(context: PageContext, title: CopyKey, operation: Opera
     reload.disabled = true;
     output.replaceChildren(el('p', {}, context.t('loading')));
     const result = await act(operation, input, crypto.randomUUID());
-    output.replaceChildren(result.ok ? renderValue(result.value) : refusal(context, result.code));
+    output.replaceChildren(result.ok ? renderValue(result.value) : refusal(context, result.code, operationLimits[operation]?.code === result.code ? operationLimits[operation]!.explanation[context.locale] : undefined));
     reload.disabled = false;
   }, 'secondary');
   append(section, reload, output);

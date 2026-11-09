@@ -13,6 +13,13 @@
       "tag": "16",
       "digest": "sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97",
       "sources": ["docker.io/library/postgres", "public.ecr.aws/docker/library/postgres"]
+    },
+    {
+      "name": "starter-browser",
+      "repository": "playwright",
+      "tag": "v1.62.0-noble",
+      "digest": "sha256:baed2032d533817f3dbe6425de795788430ba345e819a1201337009ba17c9d07",
+      "sources": ["mcr.microsoft.com/playwright"]
     }
   ]
 }

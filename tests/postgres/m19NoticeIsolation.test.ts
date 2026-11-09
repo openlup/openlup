@@ -154,12 +154,16 @@ it("rolls back notice-storage contention cleanly and retries each request once a
     { phase: "open", code: "55P03" }, { phase: "advance", code: "55P03" },
   ]);
   for (const failure of failures) expect(failure.where).toContain("dunning_lifecycle_queue_notice");
-  // The identical requests now succeed, with one durable notice for each rung.
+  // The identical requests now succeed, with one customer notice and one
+  // missing-operator-recipient diagnostic for each rung.
   const retried = await open(runtime, fresh);
   expect(retried).toMatchObject({ caseStatus: "open", replayed: false });
   expect(await open(runtime, fresh)).toEqual({ caseId: retried.caseId, caseStatus: "open", replayed: true });
   expect((await runtime.query(`SELECT count(*)::integer AS notices FROM public.subscription_dunning_notifications
-    WHERE case_id=$1`, [retried.caseId])).rows).toEqual([{ notices: 1 }]);
+    WHERE case_id=$1 AND recipient_kind='customer'`, [retried.caseId])).rows).toEqual([{ notices: 1 }]);
+  expect((await runtime.query(`SELECT status,error FROM public.subscription_dunning_notifications
+    WHERE case_id=$1 AND recipient_kind='operator'`, [retried.caseId])).rows)
+    .toEqual([{ status: "skipped", error: "missing_critical_notification_recipient" }]);
   const advance = () => runtime.query(`SELECT public.dunning_lifecycle_handle_failure(
     $1::uuid,$2::timestamptz,'temporary','synthetic-decline',2,
     '2026-11-05T12:00:00Z'::timestamptz,'subscription-payment-failed-2','/account/recovery')`, [created.caseId, at]);
@@ -168,8 +172,11 @@ it("rolls back notice-storage contention cleanly and retries each request once a
   expect((await runtime.query("SELECT retry_attempt,status FROM public.subscription_dunning_cases WHERE id=$1", [created.caseId])).rows)
     .toEqual([{ retry_attempt: 2, status: "open" }]);
   expect((await runtime.query(`SELECT retry_attempt,count(*)::integer AS notices
-    FROM public.subscription_dunning_notifications WHERE case_id=$1 GROUP BY retry_attempt ORDER BY retry_attempt`, [created.caseId])).rows)
+    FROM public.subscription_dunning_notifications WHERE case_id=$1 AND recipient_kind='customer' GROUP BY retry_attempt ORDER BY retry_attempt`, [created.caseId])).rows)
     .toEqual([{ retry_attempt: 1, notices: 1 }, { retry_attempt: 2, notices: 1 }]);
+  expect((await runtime.query(`SELECT retry_attempt,status,error FROM public.subscription_dunning_notifications
+    WHERE case_id=$1 AND recipient_kind='operator' ORDER BY retry_attempt`, [created.caseId])).rows)
+    .toEqual([1, 2].map(retry_attempt => ({ retry_attempt, status: "skipped", error: "missing_critical_notification_recipient" })));
 });
 
 it("checks the complete existing-routine dispatch path after all eight approved grants", async () => {
@@ -252,14 +259,21 @@ it("checks the complete existing-routine dispatch path after all eight approved 
       expect((await runtime.query("SELECT public.communications_recipient_consent_state($1,$2::text[]) AS result",
         ["a".repeat(64), ["subscription_dunning"]])).rows[0].result).toBe("unknown");
     });
-    await step("dunning_lifecycle_renewal_reminder_enqueue(integer)", () =>
-      runtime.query("SELECT public.dunning_lifecycle_renewal_reminder_enqueue(100)"));
+    await step("dunning_lifecycle_renewal_reminder_enqueue(integer)", async () => {
+      // Eligible producer input; no reminder row is manufactured after refusal.
+      const client = randomUUID(), subscription = randomUUID();
+      await admin.query("INSERT INTO public.clients(id,email) VALUES($1,$2)", [client, `${client}@example.invalid`]);
+      await admin.query(`INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at,updated_at)
+        VALUES($1,$2,28,now()+interval '4 days',now()-interval '6 days')`, [subscription, client]);
+      await admin.query("INSERT INTO public.subscription_method_states(subscription_id,health_state) VALUES($1,'healthy')", [subscription]);
+      return runtime.query("SELECT public.dunning_lifecycle_renewal_reminder_enqueue(100)");
+    });
     await step("dunning_lifecycle_pause_reminder_dispatch(integer)", async () => {
       const paused = await fixture();
       // Explicit synthetic customer pause supplies a real future pause window.
       await runtime.query(`SELECT public.subscription_apply_lifecycle_action($1::uuid,$2,$3::uuid,
         'pause',$4::jsonb,$5::timestamptz)`, [paused.client, `pause:${paused.subscription}`, paused.subscription,
-        { pausePreset: "2_weeks" }, new Date().toISOString()]);
+        { pausePreset: "2_weeks" }, new Date(Date.now() - 12 * 86400000).toISOString()]);
       return runtime.query("SELECT public.dunning_lifecycle_pause_reminder_dispatch(100)");
     });
     await step("subscription_apply_lifecycle_action and event read/dispatch", async () => {
@@ -437,9 +451,11 @@ it("dispatches real activation, lifecycle, renewal and pause-reminder sources th
   const external = (await runtime.query("SELECT external_ref FROM public.commerce_settlement_intents WHERE id=$1", [f.intent])).rows[0].external_ref;
   const activated = (await runtime.query("SELECT public.subscription_activate_from_captured_payment($1,$2::uuid,$3) AS result",
     [`activate:${f.order}`, f.order, createHash("sha256").update(String(external ?? f.intent)).digest("hex")])).rows[0].result;
+  await admin.query("UPDATE public.subscriptions SET next_cycle_at=now()+interval '4 days',updated_at=now()-interval '6 days' WHERE id=$1", [activated.subscriptionId]);
+  await admin.query("INSERT INTO public.subscription_method_states(subscription_id,health_state) VALUES($1,'healthy') ON CONFLICT(subscription_id) DO UPDATE SET health_state='healthy'", [activated.subscriptionId]);
   const paused = await fixture();
   await runtime.query(`SELECT public.subscription_apply_lifecycle_action($1,$2,$3,'pause',$4::jsonb,$5::timestamptz)`,
-    [paused.client, `pause:${paused.subscription}`, paused.subscription, { pausePreset: "2_weeks" }, new Date().toISOString()]);
+    [paused.client, `pause:${paused.subscription}`, paused.subscription, { pausePreset: "2_weeks" }, new Date(Date.now() - 12 * 86400000).toISOString()]);
   const repair = await fixture(); await open(runtime, repair);
   const observed: NativeLifecycleNotice[] = [], captures: string[] = [];
   const store = createPostgresTransactionalDeliveryStore({ connectionString: runtimeUrl });

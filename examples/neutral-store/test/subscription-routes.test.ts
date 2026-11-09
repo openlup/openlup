@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { request } from 'node:http';
 import type { Pool } from 'pg';
 import { composeSubscriptionEditors } from '../host/subscription-editors.ts';
+import { composeSubscriptionCommands } from '../host/native-composition.ts';
 import { dispatchAction, type VerifiedActor } from '../host/bindings.ts';
 import { createApplication } from '../host/server.ts';
 import { configurations } from '../owned/store.config.ts';
@@ -89,4 +90,25 @@ test('the mounted HTTP action preserves the named resize status and requires a s
       const result = await call(operation,true); assert.equal(result.status,409); assert.equal(result.body.code,'starter_subscription_resize_unconfigured');
     }
   } finally { await new Promise<void>((resolve,reject) => server.close(error => error ? reject(error) : resolve())); }
+});
+
+
+test('the composed command retains editor and care ownership checks without falling through',async () => {
+  const calls: Array<{ sql: string; values: unknown[] }> = [];
+  let released = 0;
+  const query = async (sql: string,values: unknown[]) => { calls.push({ sql,values }); return { rows: [] }; };
+  const command = composeSubscriptionCommands({ query,async connect() { return { query,release() { released++; } }; } } as unknown as Pool);
+  const context = { actor,config: configurations.supplements!,commandKey: 'composed-command-123456' };
+  assert.deepEqual(await command({ request: { subscriptionId: id(1),action: 'update_plan_length',planDays: 14 } },context),
+    { ok: false,code: 'subscription_command_forbidden',status: 403 });
+  assert.deepEqual(await command({ subscriptionRef: id(1),action: 'pause',pausePreset: '2_weeks' },context),
+    { ok: false,code: 'starter_subscription_not_found' });
+  assert.equal(calls.length,2); assert.equal(released,1);
+  assert.ok(calls[0]!.sql.includes('SELECT s.configured_offer_version'));
+  assert.ok(calls[1]!.sql.includes('SELECT s.id'));
+  for (const call of calls) assert.deepEqual(call.values,[id(1),id(2),id(3)]);
+  for (const input of [{ request: {} },{ action: 'pause',subscriptionRef: id(1) }]) {
+    assert.equal((await command(input,{ ...context,actor: { customerRef: null,operatorRef: null } })).ok,false);
+  }
+  assert.equal(calls.length,2);
 });

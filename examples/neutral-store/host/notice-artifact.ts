@@ -10,7 +10,7 @@ export const noticeKinds = [
   'subscription.cancelled', 'subscription.paused', 'subscription.resumed',
   'subscription.pause_reminder_due', 'subscription.delivery_rescheduled',
   'subscription.cycle_skipped', 'subscription.address_changed',
-  'subscription.package_changed', 'subscription.renewal_upcoming',
+  'subscription.package_changed', 'subscription.renewal_upcoming', 'subscription.renewal_at_risk',
   'subscription_stock_wait.started', 'subscription_stock_wait.resumed',
 ] as const;
 

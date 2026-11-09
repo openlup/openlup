@@ -105,6 +105,10 @@ describe("package artifact limits", () => {
     const entries = report.files.map(({ path }: { path: string }) => ({ path, bytes: readFileSync(join(directory, path)) }));
     const budget = readPackBudget(root, entry);
     expect(checkTarballEntries(entry, entries, (path) => tracked.has(path) ? readFileSync(resolve(root, path)) : undefined), entry.name).toEqual([]);
+    const packedPaths = new Set(entries.map(({ path }: { path: string }) => path));
+    for (const { path } of entries.filter(({ path }: { path: string }) => path.endsWith(".d.ts"))) {
+      expect(packedPaths.has(`${path}.map`), `${entry.name}:${path} must navigate to shipped source`).toBe(true);
+    }
     expect(checkPackBudget(entry, budget, measurePack(entries, report.size)), entry.name).toEqual([]);
     expect(browserEntryKeysMatch(entry.name, budget.browserEntries), `${entry.name}: ${Object.keys(budget.browserEntries).sort().join(", ")}`).toBe(true);
   }, 30_000);
