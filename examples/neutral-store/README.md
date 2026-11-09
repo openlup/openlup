@@ -259,7 +259,7 @@ The account's subscription cards open separate classic and size-aware editor
 pages. Classic editing changes exact quantities, adds selectable subscription
 base products and removes/restores previously agreed extras at their saved
 quantity. Review is explicit and displays the server's current/new recurring
-prices, signed difference and the account's next-cycle date. Confirmation applies
+prices, signed difference and the preview's next-cycle date. Confirmation applies
 the whole desired set, then reads the account again. The price applies to future
 renewals from that cycle, without the one-time introductory promotion. A minimum
 banner, closed-window notice and payment/cycle blockers prevent unavailable edits.

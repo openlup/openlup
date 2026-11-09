@@ -31,15 +31,16 @@ test('classic minimum and last-line removal answer in words and keep the line',a
   await page.getByRole('button',{ name: 'Remove Item 1 from package',exact: true }).dispatchEvent('click');
   await expect(page.locator(line(1)).getByRole('alert')).toHaveText('At least one base product must remain.');
 });
-test('classic explicit review shows server money, signed delta and account cycle; confirmation refreshes account',async ({ page }) => {
+test('classic explicit review shows server money, signed delta and the preview cycle over a stale account cycle; confirmation refreshes account',async ({ page }) => {
   const state = await editorComponent(page); await page.goto(classic);
   await page.getByRole('button',{ name: 'Every 14 days',exact: true }).click();
   expect(state.requests.some(item => item.operation === 'subscription.preview')).toBe(false);
   await page.getByRole('button',{ name: 'Review changes',exact: true }).click();
   await expect(page.getByTestId('price-review')).toContainText('150.00');
   await expect(page.getByTestId('price-review')).toContainText('+');
-  await expect(page.locator('main')).toContainText('November 20, 2030');
-  await expect(page.locator('main')).not.toContainText('December 1, 2030');
+  // The account read says November 20; the server preview says December 1.
+  await expect(page.locator('main')).toContainText('December 1, 2030');
+  await expect(page.locator('main')).not.toContainText('November 20, 2030');
   await expect(page.locator('main')).toContainText('without the one-time introductory promotion');
   await page.getByRole('button',{ name: 'Confirm changes',exact: true }).click();
   await expect(page).toHaveURL(/\/account\?packageSaved=1$/);

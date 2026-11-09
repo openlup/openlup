@@ -32,8 +32,8 @@ export function classicEditorPage(context: PageContext): HTMLElement {
         el('ul',{},...draft.base.map(line => el('li',{},`${line.qty} × ${label(line.variantId)}`)),
           ...draft.addons.map(line => el('li',{},`${line.qty} × ${label(line.variantId)}`))),
         el('p',{},text(context,'everyDays',{ days: draft.planDays })),
-        el('p',{},text(context,'nextCycle',{ date: date(context,subscription.nextCycleAt) })),
-        el('p',{},text(context,'pricePolicy',{ date: date(context,subscription.nextCycleAt) })),
+        el('p',{},text(context,'nextCycle',{ date: date(context,preview.effectiveCycleAt) })),
+        el('p',{},text(context,'pricePolicy',{ date: date(context,preview.effectiveCycleAt) })),
         el('div',{ class: 'actions' },control(text(context,'back'),() => { preview = null; render(); },applying),
           control(text(context,'confirm'),confirm,applying || !changed())));
     } else {
