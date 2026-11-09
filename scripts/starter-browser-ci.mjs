@@ -62,7 +62,13 @@ export async function withCleanup(work) {
 // fails after its cleanup, including a loss during cleanup.
 export async function withConnectionCleanup(work) {
   const losses = [];
-  const guard = connection => { connection.on('error', () => { losses.push('starter_browser_database_connection_lost'); }); return connection; };
+  const lost = () => { losses.push('starter_browser_database_connection_lost'); };
+  // A pool drops its own idle listener from a client it lends out, so guard every client it creates.
+  const guard = connection => {
+    connection.on('error', lost);
+    if (connection instanceof pg.Pool) connection.on('connect', client => client.on('error', lost));
+    return connection;
+  };
   const value = await withCleanup(defer => work(defer, guard));
   if (losses.length) throw new Error('starter_browser_database_connection_lost');
   return value;

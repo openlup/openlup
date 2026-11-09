@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
+import pg from 'pg';
 import { acquireStarterPostgres, browserArguments, capturePrivateValues, parseArguments, resolveBrowserImage, scanPrivateOutput, withCleanup, withConnectionCleanup } from './starter-browser-ci.mjs';
 import { imageReference, readCiImage } from './ci-image-pull.mjs';
 
@@ -154,6 +155,17 @@ describe('database connection errors', () => {
     await expect(withConnectionCleanup(async (defer, guard) => {
       const client = guard(new EventEmitter());
       defer(() => { client.emit('error', new Error('connection terminated unexpectedly')); });
+      return 'journeys passed';
+    })).rejects.toThrow('starter_browser_database_connection_lost');
+  });
+  it('fails a run whose borrowed pool client disconnects while lent out', async () => {
+    const pool = new pg.Pool({ connectionString: 'postgresql://127.0.0.1:1/unused' });
+    await expect(withConnectionCleanup(async (defer, guard) => {
+      guard(pool);
+      defer(() => pool.end());
+      const borrowed = new EventEmitter();
+      pool.emit('connect', borrowed);
+      expect(() => borrowed.emit('error', new Error('connection terminated unexpectedly'))).not.toThrow();
       return 'journeys passed';
     })).rejects.toThrow('starter_browser_database_connection_lost');
   });
