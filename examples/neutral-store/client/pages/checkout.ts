@@ -48,8 +48,7 @@ export function checkoutPage(context: PageContext): HTMLElement {
       },
     }); quote.attach(form); return form; })(), summary),
     continuation,
-    el('section', { class: 'panel' }, link(context.t('terms'), routes.terms[context.locale]),
-      el('p', {}, context.config.copy.shippingNote[context.locale])),
+    el('section', { class: 'panel' }, link(context.t('terms'), routes.terms[context.locale])),
     nativeActions(context, ['N1', 'N6']));
   return page;
 }

@@ -109,6 +109,18 @@ and the hash boundary. The
 auth and the selected adapter; its existence alone does not expose recovery in
 every profile.
 
+For the native retry binding, a provider capture observation is not sufficient
+to report recovery as paid. Install the recovery-truth forward: only applied
+captured settlement advances the counter, restores stock and records recovery.
+A capture retained for review stays in the payment-truth evidence record; public
+recovery returns `payment_failed` without those effects or a recovered receipt.
+Exact redelivery is idempotent. The retry driver reports a row error so the host
+can reconcile the review instead of treating the operation as successful.
+
+Historical recovery receipts are checked against payment truth before replay.
+Previously misapplied counter or stock changes require reconciliation; this
+forward preserves those historical rows instead of reversing them automatically.
+
 ## Protect delivery
 
 The pure payment clock and physical delivery alignment are separate boundaries.

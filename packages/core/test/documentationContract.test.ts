@@ -32,10 +32,11 @@ function fixture(readme: string): string {
   );
   mkdirSync(join(root, "smoke"));
   writeFileSync(join(root, "smoke", "agentsWiringExample.ts"), wiringExample);
+  writeFileSync(join(root, "smoke", "readmeExample.ts"), readmeExample);
   writeFileSync(join(root, "AGENTS.md"), agentGuide());
   writeFileSync(join(root, "CHANGELOG.md"), "# Changelog\n\n## [Unreleased]\n\n- A change.\n");
   writeFileSync(join(root, ".gitignore"), "/coverage/\n/dist/\n/node_modules/\n/release/\n");
-  writeFileSync(join(root, "README.md"), `${readme}\n${surfaceTable()}`);
+  writeFileSync(join(root, "README.md"), `\`\`\`ts\n${readmeExample}\`\`\`\n\n${readme}\n${surfaceTable()}`);
   writeFileSync(join(root, "MAINTAINERS.md"), "# Maintainers\n");
   writeFileSync(join(root, "docs", "SPLIT_AND_UPGRADE.md"), "# Split and Upgrade\n");
   writeFileSync(join(root, "docs", "guide.md"), "# Guide\n");
@@ -43,6 +44,7 @@ function fixture(readme: string): string {
 }
 
 const wiringExample = 'import { kernel } from "@scope/package";\n\nexport const wired = kernel;\n';
+const readmeExample = 'import { kernel } from "@scope/package";\n';
 
 function agentGuide(overrides: { kind?: string; row?: string; example?: string } = {}): string {
   return [
@@ -380,6 +382,12 @@ describe("extracted-root documentation contract", () => {
     expect(() => check(root)).toThrow(
       "AGENTS.md: wiring example differs from smoke/agentsWiringExample.ts",
     );
+  });
+
+  it("refuses a README example that differs from the type-checked source", () => {
+    const root = fixture("# Fixture\n");
+    writeFileSync(join(root, "smoke", "readmeExample.ts"), readmeExample.replace("kernel", "other"));
+    expect(() => check(root)).toThrow("README.md: first TypeScript example differs from smoke/readmeExample.ts");
   });
 
   it("refuses a changelog with two Unreleased sections", () => {

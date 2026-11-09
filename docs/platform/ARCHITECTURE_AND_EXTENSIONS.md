@@ -1996,7 +1996,13 @@ for cycle correlation and frozen retry authorization.
 A native prepare commits cycle/order/items/settlement/reservation and attempt;
 a native outcome commits settlement, outcome, schedule/counter and reservation.
 Verified recovery must bind the same cycle and commit settlement/receipt/case and
-counter together. Managed create/prepare and failure RPCs remain separate units;
+counter together. The recovery-truth forward gates these paid effects on an
+applied captured settlement from the payment owner. Evidence retained for review
+returns `payment_failed` without changing the obligation, counter, stock or case
+and without a paid recovery receipt. The payment-truth event remains its durable
+review/replay evidence; it does not consume the attempt's recovery receipt. The
+native retry driver reports a row error for reconciliation instead of success.
+Genuinely paid recovery keeps its existing effects and immutable receipt. Managed create/prepare and failure RPCs remain separate units;
 no transaction spans external payment execution. Never interpret missing ACK or
 nullable money as permission to execute again. Frozen revision, fingerprint,
 original timestamp text and nested snapshots survive retries and future edits.

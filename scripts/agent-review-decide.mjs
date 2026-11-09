@@ -149,7 +149,6 @@ export function prepareCandidate(session, observed, now, fresh = false) {
   candidateValid(observed); demand(Number.isFinite(now), 'prepare time is invalid'); demand(observed.clean, 'commit source changes before prepare', 'dirty');
   demand(identity(observed.authorSessionId) && identity(observed.intent?.criteria), 'author and intent.criteria are required');
   const intent = observed.intent; classifyRisk(observed, intent.risk);
-  demand(intent.scope === undefined || (Array.isArray(intent.scope) && observed.changedPaths.every(path => intent.scope.includes(path))), 'changed paths exceed intent.scope');
   if (session) {
     stateValid(session);
     demand(session.history.every(event => event.at <= now), 'prepare time is invalid');

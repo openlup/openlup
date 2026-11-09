@@ -70,7 +70,7 @@ async function observe(f: Fixture, key: string, attempt: string | null, db = f.a
   return (await db.query(`SELECT public.subscription_handle_payment_failure_dunning($1,$2,$3,$4,$5,
     (SELECT retry_attempt FROM public.subscription_cycles WHERE id=$2),
     (SELECT next_retry_at FROM public.subscription_cycles WHERE id=$2),
-    'declined','2026-10-25T09:00:00Z',$6::text,$7::uuid) result`, [`observation:${key}`, CYCLE, SUB, ORDER, f.intent, failureClass, attempt])).rows[0].result.subscriptionDunning;
+    'declined',now(),$6::text,$7::uuid) result`, [`observation:${key}`, CYCLE, SUB, ORDER, f.intent, failureClass, attempt])).rows[0].result.subscriptionDunning;
 }
 async function snapshot(pool: Pool, tables?: string[]) {
   const state: Record<string, unknown> = {};
@@ -100,7 +100,7 @@ async function historicalBodies(db: PoolClient) {
 }
 async function legacyOpen(f: Fixture, key: string) {
   return (await f.a.query(`SELECT public.subscription_handle_payment_failure_dunning($1,$2,$3,$4,$5,
-    (SELECT retry_attempt FROM public.subscription_cycles WHERE id=$2),NULL,'declined','2026-10-25T09:00:00Z','soft_retryable'::text) result`, [key, CYCLE, SUB, ORDER, f.intent])).rows[0].result.subscriptionDunning;
+    (SELECT retry_attempt FROM public.subscription_cycles WHERE id=$2),NULL,'declined',now(),'soft_retryable'::text) result`, [key, CYCLE, SUB, ORDER, f.intent])).rows[0].result.subscriptionDunning;
 }
 async function upgrade(db: PoolClient) {
   await db.query("ALTER TABLE public.subscription_dunning_cases DROP COLUMN failed_payment_attempt_id, DROP COLUMN failure_observation_result");

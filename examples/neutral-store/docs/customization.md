@@ -158,6 +158,11 @@ docker compose exec -T --user node application cat /application/.context/capture
 
 Filesystem access to this demonstration mailbox exposes sign-in tokens. Keep it
 private; the host does not publish it through HTTP.
+The demonstration quote-acceptance keyring is separate private `.context` state,
+generated only after checking the database demonstration marker. A restart of
+the same container preserves it; container recreation requires fresh quotes.
+Customer environments must supply their own keyring with the host's
+`--quote-acceptance-key-file` option, outside served assets and browser config.
 
 ## Catalogue authoring and storefront
 

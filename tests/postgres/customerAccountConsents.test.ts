@@ -67,6 +67,7 @@ it.each(profiles)("atomic actor account choices and refusals on %s", async profi
     expect((await runner.apply()).applied).toEqual([]);
     // Lifecycle closure follows the consent forward in every plan; qualified plans also retain their completion tail.
     const tail = [{ catalog_path: "db/platform/migrations/20261106100000_subscription_lifecycle_closure.sql" },
+      { catalog_path: "db/platform/migrations/20261106060000_subscription_retry_recovery_truth.sql" },
       { catalog_path: "db/platform/migrations/20261106050000_customer_command_key_isolation.sql" },
       ...(profile === "legacy" ? [] : [{ catalog_path: "db/platform/migrations/q2_20261103200000_runtime_lock_and_conflict_completion.sql" }])];
     const ledger = (await owner.query("SELECT catalog_path FROM public.platform_schema_migrations ORDER BY position DESC LIMIT $1", [tail.length + 1])).rows;

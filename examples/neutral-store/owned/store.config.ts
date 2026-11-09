@@ -27,7 +27,6 @@ export const configurations: Record<string, StoreConfig> = {
       },
       offerTitle: { en: 'Build your collection', pl: 'Skomponuj swoją kolekcję' },
       offerBody: { en: 'Choose products and a purchase frequency.', pl: 'Wybierz produkty i częstotliwość zakupu.' },
-      shippingNote: { en: 'For now this release does not charge shipping on one-off orders.', pl: 'Na razie to wydanie nie pobiera opłat za dostawę zamówień jednorazowych.' },
     },
     media: {
       hero: '/media/collection.svg',
@@ -38,9 +37,9 @@ export const configurations: Record<string, StoreConfig> = {
       layout: 'cards',
       minUnits: 1,
       maxUnits: 12,
-      shippingMinor: 0,
-      freeShippingFromMinor: 0,
-      subscriptionDiscountBps: 500, subscriptionRoundingQuantumMinor: 10, renewalShippingMinor: 0,
+      shippingMinor: 640,
+      freeShippingFromMinor: 1000,
+      subscriptionDiscountBps: 500, subscriptionRoundingQuantumMinor: 10,
       cadenceDays: [28, 56],
       defaultCadenceDays: 28,
       products: [
@@ -127,13 +126,12 @@ export const configurations: Record<string, StoreConfig> = {
       },
       offerTitle: { en: 'Make a coffee box', pl: 'Skomponuj pakiet kawy' },
       offerBody: { en: 'Mix the fictional roasts and choose your frequency.', pl: 'Połącz fikcyjne kawy i wybierz częstotliwość.' },
-      shippingNote: { en: 'For now this release does not charge shipping on one-off orders.', pl: 'Na razie to wydanie nie pobiera opłat za dostawę zamówień jednorazowych.' },
     },
     media: { hero: '/media/coffee.svg', heroAlt: { en: 'Illustrated coffee bags', pl: 'Ilustracja torebek kawy' } },
     market: { country: 'ZZ', currency: 'XTS', timezone: 'UTC', locales: ['en', 'pl'] },
     offer: {
-      layout: 'list', minUnits: 1, maxUnits: 12, shippingMinor: 0,
-      freeShippingFromMinor: 0, subscriptionDiscountBps: 500, subscriptionRoundingQuantumMinor: 10, renewalShippingMinor: 0,
+      layout: 'list', minUnits: 1, maxUnits: 12, shippingMinor: 640,
+      freeShippingFromMinor: 1000, subscriptionDiscountBps: 500, subscriptionRoundingQuantumMinor: 10,
       cadenceDays: [14, 28, 56], defaultCadenceDays: 28,
       products: [
         {

@@ -813,7 +813,8 @@ snapshots only. The batch has 16 pins: seven native and nine managed. Pending pi
 `20261022160000`. Native order is N1 → N2 → N3 → seam → allocator → X → Y;
 managed order is M1 → M2 → seam → M3 → M4 → M5 → M6 → F17 helper → F17 parity.
 X (`20261024184500`) restores ATP-counted late-positive recovery after the
-allocator; Y (`20261024184600`) filters paid retry candidates before LIMIT. N3 (`20261024180000`) excludes waiting/stock_secured cases before normal_due pagination while preserving the base reader's eligibility, shape and due-time/UUID order.
+allocator; the recovery-truth forward limits those effects to applied payment
+truth, preserving reviewed captures without stock restoration or counter advance; Y (`20261024184600`) filters paid retry candidates before LIMIT. N3 (`20261024180000`) excludes waiting/stock_secured cases before normal_due pagination while preserving the base reader's eligibility, shape and due-time/UUID order.
 The uninstalled N2 (`20261024170000`) fixture includes raw command-preview
 receipt replay with no public-table counts/columns/xmin delta. The apply
 function is unchanged. Historical N1 approval still uses the exact old 14-pin
@@ -1489,7 +1490,11 @@ carry deferred admission independently of terminal refusal, original schedule
 text independently of its comparison instant, frozen revisions and complete
 claim readback. Verified M07 evidence carries original occurrence, observation
 and first-recorded clocks with nullable money and explicit ambiguity/late-positive
-disposition. A late positive settles the same obligation, never a new charge.
+disposition. A late positive settles the same obligation only when payment truth confirms an
+applied captured settlement, never a new charge. Captures retained for review
+apply no paid retry effects and create no recovered receipt. Their existing
+payment-truth event preserves evidence and idempotent redelivery; the public
+retry store returns `payment_failed`, and the driver reports reconciliation work.
 Only an explicit `succeeded` provider readback may settle success; an unrecognized
 status remains awaiting provider evidence even when it carries matching money.
 A waiting retry row with disposition `payment_failed` and null `nextRetryAt`
