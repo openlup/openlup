@@ -7,6 +7,7 @@ import { createRequire } from 'node:module';
 import { createServer } from 'node:net';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { env as processEnvironment } from 'node:process';
 import { promisify } from 'node:util';
 import pg from 'pg';
 import { runPostgresContainer, waitForPostgresTcpReady } from '../tests/helpers/postgresContainer.ts';
@@ -24,7 +25,7 @@ export function parseArguments(args) {
     result[name] = value;
   }
   if (!result.manifest || !/^[a-f0-9]{40}$/u.test(result.commit ?? '')) throw new Error('starter_browser_arguments_invalid');
-  if (result.localImage && (process.env.CI || result.localImage !== localBrowserReference())) throw new Error('starter_browser_local_image_forbidden');
+  if (result.localImage && (processEnvironment.CI || result.localImage !== localBrowserReference())) throw new Error('starter_browser_local_image_forbidden');
   return result;
 }
 
@@ -34,7 +35,7 @@ function localBrowserReference() {
 
 export async function resolveBrowserImage(io = imageIo, localImage) {
   if (localImage) {
-    if (process.env.CI || localImage !== localBrowserReference()) throw new Error('starter_browser_local_image_forbidden');
+    if (processEnvironment.CI || localImage !== localBrowserReference()) throw new Error('starter_browser_local_image_forbidden');
     const digests = JSON.parse(await io.exec(['image', 'inspect', localImage, '--format', '{{json .RepoDigests}}']));
     if (!digests.includes(localImage.replace(/:[^/@]+@/u, '@'))) throw new Error('starter_browser_local_image_pin_required');
     return localImage;
@@ -69,7 +70,11 @@ export async function withConnectionCleanup(work) {
     if (connection instanceof pg.Pool) connection.on('connect', client => client.on('error', lost));
     return connection;
   };
-  const value = await withCleanup(defer => work(defer, guard));
+  // Helpers create connections too, so an error that no listener handles is recorded for the
+  // whole run instead of ending Node before cleanup.
+  process.on('uncaughtException', lost);
+  let value;
+  try { value = await withCleanup(defer => work(defer, guard)); } finally { process.removeListener('uncaughtException', lost); }
   if (losses.length) throw new Error('starter_browser_database_connection_lost');
   return value;
 }
@@ -95,7 +100,7 @@ export function capturePrivateValues(message) {
 }
 
 export function browserArguments(app, reference, name, localImage) {
-  if (reference !== imageReference(readCiImage('starter-browser')) && (process.env.CI || !localImage || reference !== localBrowserReference())) throw new Error('starter_browser_mirror_required');
+  if (reference !== imageReference(readCiImage('starter-browser')) && (processEnvironment.CI || !localImage || reference !== localBrowserReference())) throw new Error('starter_browser_mirror_required');
   return ['run', '--rm', '--pull=never', '--name', name, '--network=host', '--read-only',
     '--tmpfs', '/tmp:rw,nosuid,nodev', '--ipc=host', '-e', 'CI=true', '-e', 'HOME=/tmp',
     '--mount', `type=bind,src=${app},dst=/app,readonly`, '--workdir', '/app', reference,
@@ -128,7 +133,7 @@ export async function runStarterBrowser(options) {
   const interrupt = () => cancellation.abort();
   process.once('SIGINT', interrupt);
   process.once('SIGTERM', interrupt);
-  const command = async (file, args, cwd = root, env = process.env) => {
+  const command = async (file, args, cwd = root, env = processEnvironment) => {
     try {
       const result = await execute(file, args, { cwd, env, timeout: 300_000, maxBuffer: 32 * 1024 * 1024, signal: cancellation.signal });
       outputs.push(result.stdout, result.stderr);
@@ -175,7 +180,7 @@ export async function runStarterBrowser(options) {
       });
       // Hosts and extracted npm commands receive no ambient database or cloud credentials.
       const env = Object.fromEntries(['PATH', 'HOME', 'TMPDIR', 'TMP', 'TEMP', 'LANG', 'TZ', 'CI']
-        .filter(key => process.env[key] !== undefined).map(key => [key, process.env[key]]));
+        .filter(key => processEnvironment[key] !== undefined).map(key => [key, processEnvironment[key]]));
       await command(process.execPath, ['examples/neutral-store/extract.mjs', app], root, env);
       for (const name of ['core', 'outbox', 'platform']) {
         const artifact = packs.get(`@openlup/${name}`);

@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { spawnSync } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import pg from 'pg';
 import { acquireStarterPostgres, browserArguments, capturePrivateValues, parseArguments, resolveBrowserImage, scanPrivateOutput, withCleanup, withConnectionCleanup } from './starter-browser-ci.mjs';
@@ -168,6 +169,25 @@ describe('database connection errors', () => {
       expect(() => borrowed.emit('error', new Error('connection terminated unexpectedly'))).not.toThrow();
       return 'journeys passed';
     })).rejects.toThrow('starter_browser_database_connection_lost');
+  });
+  it('fails, after cleanup, a run whose unguarded helper connection errors outside any listener', () => {
+    // A child process: inside Vitest the test runner itself would report the uncaught error.
+    const script = `import { EventEmitter } from 'node:events';
+import { withConnectionCleanup } from './scripts/starter-browser-ci.mjs';
+const released = [];
+try {
+  await withConnectionCleanup(async defer => {
+    defer(() => { released.push('postgres'); });
+    const probe = new EventEmitter();
+    await new Promise(resolve => setImmediate(() => { resolve(); probe.emit('error', new Error('Connection terminated unexpectedly')); }));
+    await new Promise(resolve => setImmediate(resolve));
+    return 'journeys passed';
+  });
+  console.log('passed');
+} catch (error) { console.log(error.message, released.join(',')); }`;
+    const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8' });
+    expect(result.status).toBe(0);
+    expect(result.stdout.trim()).toBe('starter_browser_database_connection_lost postgres');
   });
   it('returns the work result when every connection held', async () => {
     await expect(withConnectionCleanup(async (_defer, guard) => { guard(new EventEmitter()); return 'ok'; })).resolves.toBe('ok');
