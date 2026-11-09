@@ -10267,7 +10267,8 @@ export interface PostgresCheckoutRecoveryTokenPort extends CheckoutRecoveryToken
  * never share an actor lane or authorize issuance from an email or order ID alone.
  * No principal or caller-selected client is accepted. The shared expiresAt input
  * is ignored: PostgreSQL computes exactly order.created_at + 24 hours.
- * Issuing a new link ends the previous link of the same order. Replaying the same
+ * New checkout links preserve earlier links of the same order until expiry or payment.
+ * Pending renewal-cycle orders are refused. Replaying the same
  * hash returns its original ID without reactivating or rotating any link.
  * This port neither settles payments nor sends mail.
  */

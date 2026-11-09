@@ -7,6 +7,8 @@ import { basename, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 type InstalledPackage = { name: string; version: string; root: string; manifest: string };
+type ScanSummary = { scope: "declarations" | "application" | "package-source"; packageName?: string; scannedFiles: number; fileLimit: number; limitReached: boolean };
+type ScanResult = { hits: Hit[]; summary?: ScanSummary };
 type Hit = { title: string; file: string; start: number; end: number; owner?: string; packageName: string; score: number; reason: string };
 
 const ignoredWords = new Set(["a", "an", "and", "are", "by", "do", "for", "from", "how", "in", "is", "of", "on", "or", "the", "to", "with", "czy", "dla", "gdzie", "i", "jak", "jest", "na", "oraz", "po", "przez", "się", "w", "z"]);
@@ -145,14 +147,14 @@ function markdownHits(item: InstalledPackage, fileName: string, query: string, t
   return hits;
 }
 
-function declarationHits(item: InstalledPackage, query: string): Hit[] {
+function declarationHits(item: InstalledPackage, query: string): ScanResult {
   const exact = /^[A-Za-z_$][A-Za-z0-9_$]*$/u.test(query.trim());
   const symbol = query.match(/\b[A-Za-z_$][A-Za-z0-9_$]{2,}\b/gu)?.find((word) =>
     (exact && word === query.trim()) || (/^[a-z_$]/u.test(word) && /[A-Z_]/u.test(word.slice(1))));
-  if (!symbol) return [];
+  if (!symbol) return { hits: [] };
   const symbolPattern = new RegExp(`\\b${symbol.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}\\b`, "u");
   const root = join(item.root, "dist");
-  if (!existsSync(root)) return [];
+  if (!existsSync(root)) return { hits: [] };
   const hits: Hit[] = [];
   const pending = [root];
   let seen = 0;
@@ -174,7 +176,7 @@ function declarationHits(item: InstalledPackage, query: string): Hit[] {
       }
     }
   }
-  return hits;
+  return { hits, summary: { scope: "declarations", packageName: item.name, scannedFiles: seen, fileLimit: 1200, limitReached: seen >= 1200 } };
 }
 
 function exportHits(item: InstalledPackage, query: string, terms: string[]): Hit[] {
@@ -193,7 +195,7 @@ function exportHits(item: InstalledPackage, query: string, terms: string[]): Hit
   return hits;
 }
 
-function applicationHits(cwd: string, query: string, terms: string[]): Hit[] {
+function applicationHits(cwd: string, query: string, terms: string[]): ScanResult {
   const hits: Hit[] = [];
   const pending = [cwd];
   let seen = 0;
@@ -215,12 +217,12 @@ function applicationHits(cwd: string, query: string, terms: string[]): Hit[] {
       }
     }
   }
-  return hits;
+  return { hits, summary: { scope: "application", scannedFiles: seen, fileLimit: 2500, limitReached: seen >= 2500 } };
 }
 
-function packageSourceHits(item: InstalledPackage, query: string, terms: string[]): Hit[] {
+function packageSourceHits(item: InstalledPackage, query: string, terms: string[]): ScanResult {
   const root = join(item.root, "src");
-  if (!existsSync(root) || !lstatSync(root).isDirectory()) return [];
+  if (!existsSync(root) || !lstatSync(root).isDirectory()) return { hits: [] };
   const hits: Hit[] = [];
   const pending = [root];
   let seen = 0;
@@ -248,25 +250,40 @@ function packageSourceHits(item: InstalledPackage, query: string, terms: string[
       if (best) hits.push(best);
     }
   }
-  return hits;
+  return { hits, summary: { scope: "package-source", packageName: item.name, scannedFiles: seen, fileLimit: 1200, limitReached: seen >= 1200 } };
 }
 
-export function searchContext(cwd: string, task: string, includeCode = false, includePackageCode = false): { version: string; packages: string[]; hits: Hit[] } {
+export function searchContext(cwd: string, task: string, includeCode = false, includePackageCode = false): { version: string; packages: string[]; hits: Hit[]; scans: ScanSummary[] } {
   const packages = selectedPackages(cwd);
   const query = task.toLocaleLowerCase("en").trim();
   const terms = tokens(task);
   if (!terms.length) throw new Error("Give a specific task, path or symbol to search");
-  const hits = packages.flatMap((item) => [
-    ...corpusHits(item, query, terms),
-    ...markdownHits(item, "AGENTS.md", query, terms),
-    ...markdownHits(item, "README.md", query, terms),
-    ...(item.name === "@openlup/core" ? markdownHits(item, "docs/SUBSCRIPTION_ENGINE.md", query, terms) : []),
-    ...(terms.some((term) => /upgrad|migrat|release|wersj/u.test(term)) ? markdownHits(item, "CHANGELOG.md", query, terms) : []),
-    ...declarationHits(item, task),
-    ...exportHits(item, query, terms),
-  ]);
-  if (includeCode) hits.push(...applicationHits(cwd, query, terms));
-  if (includePackageCode) hits.push(...packages.flatMap((item) => packageSourceHits(item, query, terms)));
+  const scans: ScanSummary[] = [];
+  const hits = packages.flatMap((item) => {
+    const packageHits = [
+      ...corpusHits(item, query, terms),
+      ...markdownHits(item, "AGENTS.md", query, terms),
+      ...markdownHits(item, "README.md", query, terms),
+      ...(item.name === "@openlup/core" ? markdownHits(item, "docs/SUBSCRIPTION_ENGINE.md", query, terms) : []),
+      ...(terms.some((term) => /upgrad|migrat|release|wersj/u.test(term)) ? markdownHits(item, "CHANGELOG.md", query, terms) : []),
+    ];
+    const declarations = declarationHits(item, task);
+    if (declarations.summary) scans.push(declarations.summary);
+    packageHits.push(...declarations.hits, ...exportHits(item, query, terms));
+    return packageHits;
+  });
+  if (includeCode) {
+    const result = applicationHits(cwd, query, terms);
+    hits.push(...result.hits);
+    if (result.summary) scans.push(result.summary);
+  }
+  if (includePackageCode) {
+    for (const item of packages) {
+      const result = packageSourceHits(item, query, terms);
+      hits.push(...result.hits);
+      if (result.summary) scans.push(result.summary);
+    }
+  }
   const installedDocs = new Set(hits.filter((hit) => hit.reason.startsWith("installed ") && hit.file.endsWith(".md"))
     .map((hit) => hit.file));
   const selectedHits = hits.filter((hit) => {
@@ -284,11 +301,14 @@ export function searchContext(cwd: string, task: string, includeCode = false, in
     unique.add(key);
     return true;
   }).slice(0, 8);
-  return { version: packages[0].version, packages: packages.map((item) => item.name), hits: selected };
+  return { version: packages[0].version, packages: packages.map((item) => item.name), hits: selected, scans };
 }
 
 export function formatContextResult(cwd: string, result: ReturnType<typeof searchContext>): string {
   const lines = [`OpenLup ${result.version}: ${result.packages.join(", ")}`];
+  for (const scan of result.scans.filter((item) => item.limitReached)) {
+    lines.push(`Scan limit reached: ${scan.scope}${scan.packageName ? ` [${scan.packageName}]` : ""} ${scan.scannedFiles}/${scan.fileLimit}; inspect a known path with scoped rg.`);
+  }
   if (!result.hits.length) lines.push("No indexed match. This does not prove a public seam is absent; inspect installed exports and declarations.");
   for (const [index, hit] of result.hits.entries()) {
     const path = relative(cwd, hit.file);

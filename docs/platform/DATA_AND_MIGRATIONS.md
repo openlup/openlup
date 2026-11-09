@@ -1566,6 +1566,13 @@ that backs a constraint, and requires the index to disappear while its table's
 columns, constraints, other indexes and ACL remain unchanged. Issued-slot and
 sealed-prefix guards protect this inventory like the other slot fields.
 
+The checkout recovery lifecycle forward replaces the unique live-order index
+with a non-unique `(order_id, created_at DESC)` index. Trusted-host checkout links
+coexist until expiry or payment, while payment-case issuance locks its pending
+order before rotating links. Actor issuance retains rotation. Checkout issuance
+refuses pending renewal-cycle orders; cancellation, recovery and retry
+authorization keep their existing order-scoped or token-scoped revocation.
+
 `checkSupersets` entries declare table, constraint, column and values;
 `uniqueSupersets` entries declare table, constraint, columns and nullsNotDistinct.
 The lexical validator checks only the slot's own SQL: exactly one adjacent
