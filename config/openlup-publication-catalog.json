@@ -1262,6 +1262,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261109113000_subscription_auto_resume_delivered_history.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -1942,6 +1946,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/browser/dev-loop.proof.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/browser/e4.spec.ts",
       "class": "public-output"
     },
@@ -2051,6 +2059,10 @@
     },
     {
       "path": "examples/neutral-store/compose.yaml",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/dev.mjs",
       "class": "public-output"
     },
     {
@@ -4179,6 +4191,10 @@
     },
     {
       "path": "packages/platform/sql/20261109110000_checkout_recovery_link_lifecycle.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261109113000_subscription_auto_resume_delivered_history.sql",
       "class": "public-output"
     },
     {
@@ -28906,6 +28922,14 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/subscriptionAutoResumeDeliveredHistory.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionAutoResumeHistoryCatalog.proof.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/subscriptionCommandLifecycleCases.ts",
       "class": "public-output"
     },
@@ -29275,7 +29299,7 @@
   "packageExecutionSurfaces": [
     {
       "path": "examples/neutral-store/package.json",
-      "digest": "sha256-102a8a5009d38d041fdafc886eb4a8f1fc041a2cd410540a2905ad19da3f76e8"
+      "digest": "sha256-2596e792092af299bdbb6b988b847a29caaa49aaec5d82954a9a6cb47e788d7b"
     },
     {
       "path": "package.json",

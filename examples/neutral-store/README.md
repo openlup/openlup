@@ -9,6 +9,24 @@ three OpenLup packages through public entries, ordinary TypeScript, a small
 browser UI, system fonts and application-owned configuration. The fictional
 supplement and coffee catalogues use the same pages, validation and host seams.
 
+## Local UI edit loop
+
+On macOS or Linux, after extracting the application and preparing its package
+artifacts and dependencies as described below, run `npm run dev`. Optionally
+pass `-- --configuration coffee --port 4320` (the default port is 4319).
+The command builds the browser assets and starts the existing loopback host
+only after a successful build. It rebuilds edited client code and restarts the
+host when its imported configuration changes. Refresh the browser manually to
+see the result. It does not run the database-backed composition.
+
+Build errors appear in the terminal; correct the source and wait for a
+successful rebuild before refreshing. Configuration or port errors can leave
+the Node watch process waiting for a corrective save; a running command does
+not mean the host is listening. A restart may clear process-local sessions.
+Changes to public media are not watched, and client and configuration changes
+are not an atomic reload. The build watcher polls for file changes, which uses
+resources even while idle. Stop the command with Ctrl-C.
+
 ## Current candidate
 
 The installed native catalogue and account stores use the runtime connection.

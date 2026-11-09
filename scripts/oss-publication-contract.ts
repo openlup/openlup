@@ -1,6 +1,8 @@
 /** Every directly runnable file admitted by the bounded public command/container contract. */
 export const PUBLIC_EXECUTION_ENTRYPOINTS = [
   "deploy/neutral-store/prove.mjs",
+  "examples/neutral-store/browser/dev-loop.proof.ts",
+  "examples/neutral-store/dev.mjs",
   "examples/neutral-store/extract.mjs",
   "examples/neutral-store/host/server.ts",
   "examples/neutral-store/lifecycle",
