@@ -7,6 +7,8 @@ const configurations = [
 
 export default defineConfig({
   testDir: './browser',
+  // Care journeys use the private fixtures created by ./lifecycle browser.
+  grepInvert: /database subscription care/,
   workers: 1,
   fullyParallel: false,
   use: { headless: true, trace: 'off', screenshot: 'off', video: 'off' },

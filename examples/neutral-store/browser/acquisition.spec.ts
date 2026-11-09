@@ -50,6 +50,7 @@ test('quote and checkout refuse callers without acquisition capability by name',
   }
 });
 
+test.describe('database subscription care', () => {
 interface Material { id: string; baseURL: string; ownerUrl: string; runtimeUrl: string; state: string }
 interface Purchase { email: string; subscriptionId: string; clientId: string; nextCycleAt: string; cadenceDays: number }
 let material: Material, owner: pg.Pool, runtime: pg.Pool;
@@ -358,4 +359,6 @@ test('operator escalation uses configured recipients and narrow captured fields'
     expect((await messages()).filter(row => row.kind === 'operator_escalation' && row.caseId === obligation.caseId)).toHaveLength(2);
     expect((await messages()).filter(row => row.kind === 'operator_escalation' && row.caseId === next.caseId)).toHaveLength(1);
   } finally { await recipients.close(); }
+});
+
 });
