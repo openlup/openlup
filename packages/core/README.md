@@ -244,7 +244,10 @@ results; `includeApplicationCode` and `includePackageCode` opt into the same
 bounded scans as the CLI flags. Read accepts only ordinary installed
 `node_modules/@openlup/<name>/` files up to 200,000 bytes. Symlinked package roots
 are supported; file realpaths must stay inside the resolved package root. Read
-refuses traversal and never fetches release-tag source URLs. For a repository-only
+refuses traversal and never fetches release-tag source URLs. These checks guard
+against wrong paths and links present when the file is read; they do not defend
+against a process that rewrites `node_modules` during the read, which can already
+change the code the application runs. For a repository-only
 source, read its installed context excerpt; application source hits require your
 client's own file tool. Search tasks are limited to 1,000 characters, and each
 incoming message line to 1 MiB. Oversized messages receive one error and are

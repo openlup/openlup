@@ -22,7 +22,7 @@ const tools = [
   },
   {
     name: "read_openlup_file",
-    description: "Read numbered lines from an installed node_modules/@openlup/<name> file, using its application-relative search path. Inclusive line numbers start at 1. Only ordinary files up to 200,000 bytes are allowed; symlinked package roots are supported, while traversal, repository URLs and file realpaths outside the resolved package root are refused. Application source hits must be read with the client's own file tool. Incoming message lines are limited to 1 MiB; search tasks to 1,000 characters.",
+    description: "Read numbered lines from an installed node_modules/@openlup/<name> file, using its application-relative search path. Inclusive line numbers start at 1. Only ordinary files up to 200,000 bytes are allowed; symlinked package roots are supported, while traversal, repository URLs and file realpaths outside the resolved package root are refused. Checks apply to the filesystem as it stands at read time, not to concurrent rewrites of node_modules. Application source hits must be read with the client's own file tool. Incoming message lines are limited to 1 MiB; search tasks to 1,000 characters.",
     inputSchema: {
       type: "object", properties: {
         path: { type: "string" },
@@ -40,6 +40,9 @@ function requireParams(condition: unknown): asserts condition {
   if (!condition) throw new InvalidParams("Invalid params");
 }
 
+// Confinement checks the installed tree as it stands when read. A writer that rewrites
+// node_modules during a read already controls the code the application loads, so racing
+// directory swaps are outside this tool's boundary; the checks narrow, not close, that window.
 // Module-only test seam; no kernel or package export exposes these hooks.
 type ReadHooks = { beforeFileOpen?: (path: string) => void; afterFileOpen?: (path: string) => void };
 

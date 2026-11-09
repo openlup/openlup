@@ -58,6 +58,8 @@ Use `search_openlup_context` when an owner or seam is unclear, then
 remain opt-in through `includeApplicationCode` and `includePackageCode`. Read
 supports symlinked package roots, but refuses application files, URLs, traversal,
 file realpaths outside the resolved package root and files over 200,000 bytes.
+These checks cover paths and links as they stand at read time, not concurrent
+rewrites of `node_modules`.
 Search tasks are limited to 1,000 characters; incoming message lines to 1 MiB.
 Oversized messages are refused and discarded through the next newline.
 Use the installed excerpt for repository-only citations. Prefer the installed
