@@ -172,12 +172,12 @@ release preparation assembles the shipped CHANGELOG. Follow the
 
 The reviewed release workflow owns provenance-backed publication; direct directory publishing refuses. New API and shipped SQL require the next minor set.
 
-The prepared `0.37.0` set republishes Outbox with unchanged runtime, exports and
-SQL, and an exact `@openlup/core@0.37.0` peer. Upgrade the complete set together;
-no Outbox schema migration is introduced. Read [0.37.0 notes](CHANGELOG.md#0370)
-and Core's settlement-vocabulary migration note. Releases before `0.35.0` are
-retained in the source-only `CHANGELOG-HISTORY.md`.
-Size comparison uses the published `0.36.0` tarball; preparation grants no
+The prepared `0.38.0` set adds package discovery metadata and the
+`./package.json` export, with unchanged Outbox runtime and SQL and an exact
+`@openlup/core@0.38.0` peer. Upgrade the complete set together; no Outbox schema
+migration is introduced. Read [0.38.0 notes](CHANGELOG.md#0380).
+Releases before `0.36.0` are retained in the source-only `CHANGELOG-HISTORY.md`.
+Size comparison uses the published `0.37.0` tarball; preparation grants no
 publication or installation proof.
 
 Checkout recovery is an optional platform consumer of the outbox. Its wave

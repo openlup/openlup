@@ -1,1 +1,0 @@
-- Add opt-in `openlup-context mcp` stdio lookup for installed OpenLup context, with offline search and bounded installed-file reads. No kernel export or runtime dependency changes.
