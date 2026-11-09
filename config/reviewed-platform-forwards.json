@@ -3738,7 +3738,7 @@
     },
     {
       "path": "db/platform/migrations/20261106120000_subscription_notice_producers.sql",
-      "sha256": "8d9a20baf02fdde77106dc7bca5d82a146ed8a2767a0bd638059c8f4f0708b6d",
+      "sha256": "25e5328eb58ec9b0f750a256d67d18d6a07073bdca1eeb4e7532cd901a8f4019",
       "functions": [
         {
           "signature": "public.dunning_lifecycle_queue_notice(uuid,text,text,integer,text)",
@@ -3763,7 +3763,7 @@
         {
           "signature": "public.dunning_lifecycle_scan_at_risk(integer,integer,integer)",
           "beforeSha256": "0df0406d99a666efeba6e756cfbc39c8eba568a8c3f3613750cf41767e17d8fa",
-          "afterSha256": "21ac0affe913a651a7d6bfbfc7127bd10e2bbefc1e1ca0977c5b29678dbaa6ad"
+          "afterSha256": "e4653e04e36f0e01cbff94e3c3237110302ddbc3d2501dbf86858a9e6f565a49"
         },
         {
           "signature": "public.subscription_dunning_queue_operator_notices(uuid,text,integer)",

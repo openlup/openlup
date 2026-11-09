@@ -219,7 +219,7 @@ WITH candidates AS (
     SELECT s.id AS subscription_id,s.client_id,s.next_cycle_at,m.health_state FROM public.subscriptions s
     JOIN public.subscription_method_states m ON m.subscription_id=s.id
     WHERE s.status='active' AND NOT m.narrow_activation_gap AND m.health_state IN ('mandate_not_chargeable_unattended','method_missing')
-      AND s.next_cycle_at>=now()+make_interval(days=>coalesce(p_min_days,0)) AND s.next_cycle_at<=now()+make_interval(days=>coalesce(p_max_days,0))
+      AND s.next_cycle_at>=now()+make_interval(hours=>24*coalesce(p_min_days,0)) AND s.next_cycle_at<=now()+make_interval(hours=>24*coalesce(p_max_days,0))
     ORDER BY s.next_cycle_at LIMIT greatest(coalesce(p_limit,1),1)
   ) SELECT c.* FROM candidates c WHERE NOT EXISTS(SELECT 1 FROM public.subscription_dunning_cases d WHERE d.subscription_id=c.subscription_id AND d.status='open');
 $$;
