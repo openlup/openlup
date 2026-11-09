@@ -7325,6 +7325,7 @@ export type ExpiredRecoveryEligibility = {
 };
 export declare function createExpiredCheckoutRecoveryPolicy<Order extends CheckoutRecoveryOrderSnapshot<unknown, unknown>>(bindings: {
     admitsSubscriptionSubject(order: Order): boolean;
+    recoveryWindowMs?: number;
 }): {
     classifyExpiredRecovery: (input: {
         inspection: CheckoutRecoveryTokenInspection | null;
@@ -9682,6 +9683,9 @@ export { createOfferAvailabilityPort } from "./offerAvailability.js";
 export type { OfferAvailabilityQueryClient } from "./offerAvailability.js";
 export { createPostgresCheckoutRecoveryWaves } from './checkoutRecoveryWaves.js';
 export type { CheckoutRecoveryWavePolicy, CheckoutRecoveryWaveExecutor } from './checkoutRecoveryWaves.js';
+/** Operator order-link command and independently committed PostgreSQL effects. */
+export { createAdminCheckoutPaymentLinkHandler, createPostgresOperatorCheckoutLinkStore } from './operatorCheckoutPaymentLink.js';
+export type { OperatorCheckoutLinkReceipt, OperatorCheckoutLinkPolicy, OperatorCheckoutLinkStore, OperatorCheckoutLinkOrder, OperatorCheckoutLinkExecutor } from './operatorCheckoutPaymentLink.js';
 ```
 ## dist/commerce/server/offerAvailability.d.ts
 
@@ -9707,6 +9711,68 @@ export declare function createOfferAvailabilityPort(client: OfferAvailabilityQue
     now?: () => Date;
 }): CommerceOfferAvailabilityPort;
 export {};
+```
+## dist/commerce/server/operatorCheckoutPaymentLink.d.ts
+
+```ts
+import type { OmsHandlerDeps, OmsHandlerRequest } from './handlerSupport.js';
+import type { CheckoutRecoveryOrderSnapshot } from './checkoutRecoveryOrderPort.js';
+export interface OperatorCheckoutLinkReceipt {
+    operatorId: string;
+    requestId: string;
+    orderId: string;
+    outcome: 'admitted' | 'succeeded' | 'failed';
+    completedStage: 'none' | 'revoked' | 'minted' | 'email_queued';
+    emailRequested: boolean;
+    tokenId?: string;
+}
+export interface OperatorCheckoutLinkPolicy {
+    operatorLifetimeMs: number;
+    recoveryWindowMs: number;
+}
+export interface OperatorCheckoutLinkStore {
+    recordReceipt(receipt: OperatorCheckoutLinkReceipt): Promise<void>;
+    revokeActive(receipt: OperatorCheckoutLinkReceipt): Promise<void>;
+    insert(input: {
+        receipt: OperatorCheckoutLinkReceipt;
+        clientId: string;
+        tokenHash: string;
+        expiresAt: string;
+        issuedAt: string;
+    }): Promise<string>;
+    enqueueRecoveryEmail(input: {
+        receipt: OperatorCheckoutLinkReceipt;
+        tokenId: string;
+        rawToken: string;
+        mode: string;
+    }): Promise<void>;
+}
+export type OperatorCheckoutLinkOrder = CheckoutRecoveryOrderSnapshot<unknown, unknown>;
+export interface OperatorCheckoutLinkExecutor {
+    query(sql: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+/** Each call commits independently, retaining admission and the last completed effect on failure. */
+export declare function createPostgresOperatorCheckoutLinkStore(executor: OperatorCheckoutLinkExecutor): OperatorCheckoutLinkStore & {
+    authorize(eventId: string, claimToken: string): Promise<{
+        authorized: boolean;
+        reason?: string;
+    }>;
+};
+/** The host validates the active administrator seat; identity comes only from that session. */
+export declare function createAdminCheckoutPaymentLinkHandler<Response>({ authorizeAdmin, respond, orderPort, tokenStore, policy, validateRecreate, generateToken, now, }: Pick<OmsHandlerDeps<Response>, 'authorizeAdmin' | 'respond'> & {
+    orderPort: {
+        getRecoveryOrder(input: {
+            orderId: string;
+        }): Promise<OperatorCheckoutLinkOrder | null>;
+    };
+    tokenStore: OperatorCheckoutLinkStore;
+    policy: OperatorCheckoutLinkPolicy;
+    validateRecreate?: (order: OperatorCheckoutLinkOrder) => Promise<boolean>;
+    generateToken?: () => string;
+    now?: () => Date;
+}): (req: OmsHandlerRequest, res: Response) => Promise<void>;
 ```
 ## dist/commerce/server/orderDraftRpcPayload.d.ts
 

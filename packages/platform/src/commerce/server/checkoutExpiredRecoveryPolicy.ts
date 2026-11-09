@@ -15,6 +15,7 @@ export type ExpiredRecoveryEligibility =
 
 export function createExpiredCheckoutRecoveryPolicy<Order extends CheckoutRecoveryOrderSnapshot<unknown, unknown>>(bindings: {
   admitsSubscriptionSubject(order: Order): boolean;
+  recoveryWindowMs?: number;
 }) {
   function classifyExpiredRecovery(input: {
     inspection: CheckoutRecoveryTokenInspection | null;
@@ -50,7 +51,7 @@ export function createExpiredCheckoutRecoveryPolicy<Order extends CheckoutRecove
     if (!order) return { kind: "unavailable" };
     if (order.status === "paid") return { kind: "paid" };
     const createdAt = Date.parse(order.createdAt);
-    if (!Number.isFinite(createdAt) || now.getTime() - createdAt > EXPIRED_CHECKOUT_RECOVERY_WINDOW_MS) {
+    if (!Number.isFinite(createdAt) || now.getTime() - createdAt > (bindings.recoveryWindowMs ?? EXPIRED_CHECKOUT_RECOVERY_WINDOW_MS)) {
       return { kind: "unavailable" };
     }
     if (order.status === "cancelled" && !order.technicallyExpired) return { kind: "cancelled" };

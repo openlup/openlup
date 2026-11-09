@@ -1658,11 +1658,23 @@ columns, constraints, other indexes and ACL remain unchanged. Issued-slot and
 sealed-prefix guards protect this inventory like the other slot fields.
 
 The checkout recovery lifecycle forward replaces the unique live-order index
-with a non-unique `(order_id, created_at DESC)` index. Trusted-host checkout links
-coexist until expiry or payment, while payment-case issuance locks its pending
+with a non-unique `(order_id, created_at DESC)` index. Customer/service checkout links
+coexist until expiry, payment or explicit operator revocation, while payment-case issuance locks its pending
 order before rotating links. Actor issuance retains rotation. Checkout issuance
 refuses pending renewal-cycle orders; cancellation, recovery and retry
 authorization keep their existing order-scoped or token-scoped revocation.
+
+The operator-order-link forward adds the owner-only
+`commerce_operator_link_receipts` table and five service-only definer routines.
+Receipts retain logical operator, request, order and token identities, with no
+client reference or client absorption coupling. No raw receipt-table grant is
+added. Admission commits before revoke/insert; outcome commits after acknowledged
+effects. Failure can therefore leave an admitted attempt, revoked old tokens or
+a minted token without queued mail. The operator issuer revokes prior same-order
+checkout links; customer/service issuers are unchanged. The scoped delivery
+authorizer binds the active claim, exact token digest/row, order/client and
+expiry, and refuses renewal cycles. Flow-specific authorization does not change
+the existing reminder authorizer. See the [operator recipe](PLATFORM_PACKAGE_REFERENCE.md#operator-order-payment-links).
 
 The checkout-wave forward adds `expired` to the native order CHECK, retaining
 its `NOT VALID` state so historical rows are not revalidated. It uses retained

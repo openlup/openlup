@@ -112,6 +112,8 @@ const serverExports = [
   "createPaidOrderOrchestration",
   "createPostgresCheckoutRecoveryTokenPort",
   "createPostgresCheckoutRecoveryWaves",
+  "createAdminCheckoutPaymentLinkHandler",
+  "createPostgresOperatorCheckoutLinkStore",
   "createPostgresOrderReviewAdminReadPort",
   "createPostgresOrderReviewLifecyclePort",
   "createPostgresOrderReviewMediaPort",

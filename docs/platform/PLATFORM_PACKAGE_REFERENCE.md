@@ -1581,3 +1581,59 @@ running scheduler, browser journey, network delivery, real-provider prepared
 storage or expired-order recreation. The current native payment attempt store
 remains sandbox-only. Starter bindings and recreation consumers are separate
 obligations.
+
+
+## Operator order payment links
+
+The development-preview commerce server entry exports
+[`createAdminCheckoutPaymentLinkHandler` and `createPostgresOperatorCheckoutLinkStore`](../../packages/platform/src/commerce/server/operatorCheckoutPaymentLink.ts).
+Use the complete native migration chain, including
+[`20261110110000_operator_checkout_links.sql`](../../db/platform/migrations/20261110110000_operator_checkout_links.sql).
+Inject a restricted service executor whose query calls commit separately. Wrapping
+an entire command in one transaction would lose the durable admission and failure
+stage that the command promises. The public executor interface contains no `pg`
+types and requires no optional database SDK merely to import its declarations.
+
+The host verifies the authenticated active human administrator seat through its
+existing operator authorization, and supplies `authorizeAdmin`, `respond`,
+`orderPort`, `validateRecreate` and explicit positive lifetime configuration.
+Identity comes only from that session; SQL uses the same native active-operator
+registry as existing operator commands and refuses control/machine principals.
+For a neutral demonstration use `operatorLifetimeMs: 3600000` and
+`recoveryWindowMs: 86400000`; bind the same recovery window at redemption.
+No feature flag, scheduler or operator UI is installed by construction.
+
+Pending orders qualify without repricing. Other orders pass the shared
+`createExpiredCheckoutRecoveryPolicy` order predicate with the configured window;
+provide canonical technical-expiry, frozen quote and shipping facts, and the
+selected commercial validator before issuing an expired-order link. Initial
+activations have no native cycle; any non-null `subscriptionCycleId` refuses.
+Paid, manual-cancelled, missing/changed and unrecoverable orders use the existing
+closed refusal vocabulary. The earlier of issuance plus operator lifetime and
+order creation plus recovery window sets expiry. If it is not later than issuance,
+the existing `order_not_recoverable` refusal issues no token.
+
+The command records admission, revokes prior same-order checkout links, inserts
+the replacement, and records succeeded/failed with the last acknowledged stage
+(`none`, `revoked`, `minted`, `email_queued`). A failed admission makes no token
+change; a failed insert after successful revocation leaves no live predecessor.
+These are separate committed effects. Two operators can both finish revocation
+before inserting and leave two live links. A later operator command revokes both.
+Customer/service issuance remains nonrevoking; later customer/service links
+coexist with an operator token. Renewal payment cases retain their separate issuer.
+
+`copy` (also the default) returns the raw token and `emailQueued: false` without
+mail. `email` inserts the existing `commerce.checkout_recovery` event using
+`checkout_recovery:operator:<token-id>`, `operatorIssued: true` and the same raw
+bearer. Replay of that token's enqueue inserts no second event. Queue failure
+returns upstream unavailability without claiming mail is queued. Route these
+events through the existing recovery email handler and the store's scoped
+`authorize(eventId, claimToken)` gate. Its exact token must remain live and bound
+to the claimed order and client. It does not replace automatic-wave authorization.
+Actual rendering, transport, host registration, redemption/recreation and browser
+journeys remain selected host responsibilities.
+
+The [PostgreSQL witnesses](../../tests/postgres/operatorCheckoutPaymentLink.test.ts)
+exercise legacy and both qualified runtimes; the [command characterization](../../packages/platform/test/commerce/operatorCheckoutPaymentLink.test.ts)
+retains bounded failures and effect ordering. These sources do not establish
+hosted, browser or provider qualification.
