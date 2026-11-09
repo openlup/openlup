@@ -52,6 +52,34 @@ before enabling database adapters. It is not evidence of schema compatibility.
 
 ## Retained renewal storage
 
+The subscription-notice forward preserves the reminder ledger's renewal-day
+identity and stores new queued charge facts in `subscription_reminder_ledger.renewal_at`;
+subscription events supply only the legacy fallback. New pause reminders and
+at-risk identities use the existing typed outbox, separate from customer command
+keys, under the dedicated `subscription_notice` aggregate. Pause reminders retain pause-window UUID identity; at-risk caps count
+accepted receipts and disabled outcomes across the outbox and typed legacy events.
+At-risk scan days are elapsed 24-hour periods, including across session daylight-saving transitions.
+The immutable outbox keys retain cause/day history after terminal payload compaction.
+Resolved-pause markers use the same isolated carrier and are not deliverable kinds.
+Legacy notice IDs and their delivery keys stay unchanged. Base `pause_ending`
+ledger rows own their subscription/UTC end-day bucket, so a matching window
+does not create another outbox identity. An unsent legacy row resolves its open
+window by that same day at delivery; no match durably skips the reminder.
+Operator notification rows bind a
+separate critical-recipient FK; customer references retain their client FK.
+Recipient-aware uniqueness admits multiple operators without colliding with the
+customer notice. Existing rows default to dispatch-ineligible operator history;
+only newly produced operator rows become eligible. First-attempt time bounds
+ambiguous retries, and durable acceptance repair precedes horizon failure.
+Operator controls need no seeded rows: absence enables a notice, and the existing
+setter upserts explicit choices. Configured controls or notification recipients
+remain outside the current connected-store transfer profile and refuse capture;
+this existing limitation is not changed by the notice suffix.
+The installed at-risk implementation retains its owner-only EXECUTE ACL. Runtime
+reads use the service-only `dunning_lifecycle_scan_at_risk_service(integer,integer,integer)`
+STABLE definer, pinned to `pg_catalog, pg_temp`, which delegates to that implementation.
+No existing function ACL or table privilege is widened by this entry.
+
 The account-choice forward also creates the service-only
 `subscription_register_renewal_purchase_with_shipping(uuid,jsonb)` and STABLE
 `subscription_renewal_purchase_terms(uuid)` definers. Both pin `pg_catalog,
@@ -1834,6 +1862,21 @@ the constraint definition, trigger function, gateway commit role or table grants
 Other deferred constraints are not changed. Service closure calls still defer
 line-sum checking until transaction completion.
 
+The subscription-notice suffix replaces the installed producer/claim bodies
+without changing their existing signatures or search paths. Its mirrored SQL
+and manifest hashes must travel with the matching package set. It adds a nullable
+operator recipient while preserving the customer FK, replaces uniqueness with
+recipient-aware NULLS NOT DISTINCT identity, and defaults operator freshness to
+false for existing history. The nullable reminder-ledger `renewal_at` column
+retains new queued renewal instants without sharing customer event identities.
+Existing ledger rows are never re-keyed or backfilled; their day uniqueness and
+accepted receipt identities still dedupe, with typed legacy event facts retained
+as a read fallback. New pause facts use the existing event carrier;
+older dispatch code does not recognize those new event kinds. Upgrade the
+producer and dispatcher together before enabling their schedules. No ledger
+backfill, historical auto-send, reminder deletion or live activation is performed.
+The separate closed class-2 reader/data admission is required before this suffix
+can land; a source-only fixture application does not establish that admission.
 
 The opt-in [complete account consent choices](#complete-account-consent-choices)
 forward adds a distinct actor API and expands only the native sync purpose CHECK.

@@ -1476,6 +1476,21 @@ export interface NativeLifecycleMessagesOptions {
     recovered?: {
         windowSeconds?: number;
     };
+    /** Trusted host timing/cap values. Seconds are explicit; day identities remain UTC. */
+    notices?: {
+        renewalMinSeconds?: number;
+        renewalMaxSeconds?: number;
+        ordinaryFreshnessSeconds?: number;
+        starterFreshnessSeconds?: number;
+        pauseWindowSeconds?: number;
+        atRiskMinDays?: number;
+        atRiskMaxDays?: number;
+        atRiskMaxDaysPerCause?: number;
+        operatorLeaseSeconds?: number;
+        operatorMaxAttempts?: number;
+        operatorHorizonSeconds?: number;
+        operatorTransientBackoffSeconds?: number;
+    };
     /** One exclusive, autocommit connection per callback; never a transaction or shared session. */
     withSession<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
     /** Host composes the transactional delivery engine and durable receipt reader. */
@@ -1488,6 +1503,14 @@ export interface NativeLifecycleMessagesOptions {
         email: string;
         firstName: string | null;
         country: string | null;
+    }): Promise<Omit<NoticeCommand, "idempotencyKey">>;
+    /** Explicit operator fields only: no customer payload, recovery path or claim token. */
+    bindOperator?(notice: {
+        notificationId: string;
+        caseId: string;
+        templateSlug: string;
+    }, recipient: {
+        email: string;
     }): Promise<Omit<NoticeCommand, "idempotencyKey">>;
 }
 /** Scheduled trusted-host binding. Existing ledgers own facts; the transactional delivery engine owns delivery receipts.

@@ -119,6 +119,7 @@ describe("real PostgreSQL portable dunning forward", () => {
       GRANT SELECT, UPDATE ON public.commerce_checkout_recovery_tokens TO dunning_repair_runtime;
       GRANT EXECUTE ON FUNCTION ${signature},
         public.dunning_lifecycle_queue_notice(uuid,text,text,integer,text),
+        public.subscription_dunning_queue_operator_notices(uuid,text,integer),
         public.dunning_lifecycle_record_recovery(uuid,timestamptz,text) TO dunning_repair_runtime`);
   });
 
@@ -152,14 +153,19 @@ describe("real PostgreSQL portable dunning forward", () => {
     expect((await db!.query("SELECT status FROM public.subscriptions WHERE id=$1", [subscriptionId])).rows).toEqual([{ status: "active" }]);
     expect((await db!.query("SELECT status,next_retry_at,retry_attempt,expired_at FROM public.subscription_dunning_cases WHERE id=$1", [caseId])).rows)
       .toEqual([{ status: "open", next_retry_at: null, retry_attempt: 4, expired_at: null }]);
-    expect((await db!.query("SELECT notification_kind FROM public.subscription_dunning_notifications WHERE case_id=$1", [caseId])).rows)
-      .toEqual([{ notification_kind: "payment_expired" }]);
+    expect((await db!.query("SELECT recipient_kind,notification_kind,status,error FROM public.subscription_dunning_notifications WHERE case_id=$1 ORDER BY recipient_kind", [caseId])).rows)
+      .toEqual([
+        { recipient_kind: "customer", notification_kind: "payment_expired", status: "queued", error: null },
+        { recipient_kind: "operator", notification_kind: "payment_expired", status: "skipped", error: "missing_critical_notification_recipient" },
+      ]);
     expect((await db!.query("SELECT event_type FROM public.subscription_events WHERE subscription_id=$1", [subscriptionId])).rows)
       .toEqual([{ event_type: "dunning_ladder_exhausted" }]);
     expect((await db!.query("SELECT * FROM public.subscription_pause_windows")).rows).toEqual([]);
   });
 
   it("preserves all subscription and cycle dates and never stacks a cycle", async () => {
+    expect((await db!.query("SELECT has_function_privilege('dunning_repair_runtime','public.subscription_dunning_queue_operator_notices(uuid,text,integer)','EXECUTE') AS producer,has_table_privilege('dunning_repair_runtime','public.notification_recipients','SELECT') AS recipients")).rows)
+      .toEqual([{ producer: true, recipients: false }]);
     const before = await snapshot(db!);
     await fail(null, 5);
     const after = await snapshot(db!);
@@ -180,8 +186,13 @@ describe("real PostgreSQL portable dunning forward", () => {
     expect(await fail(nextRetry, 5)).toMatchObject({ caseStatus: "open", retryAttempt: 5, paused: false, terminal: false });
     expect((await db!.query("SELECT next_retry_at,retry_attempt FROM public.subscription_dunning_cases WHERE id=$1", [caseId])).rows)
       .toEqual([{ next_retry_at: new Date(nextRetry), retry_attempt: 5 }]);
-    expect((await db!.query("SELECT notification_kind FROM public.subscription_dunning_notifications WHERE case_id=$1 ORDER BY notification_kind", [caseId])).rows)
-      .toEqual([{ notification_kind: "payment_expired" }, { notification_kind: "payment_failed" }]);
+    expect((await db!.query("SELECT recipient_kind,notification_kind,status,error FROM public.subscription_dunning_notifications WHERE case_id=$1 ORDER BY recipient_kind,notification_kind", [caseId])).rows)
+      .toEqual([
+        { recipient_kind: "customer", notification_kind: "payment_expired", status: "queued", error: null },
+        { recipient_kind: "customer", notification_kind: "payment_failed", status: "queued", error: null },
+        { recipient_kind: "operator", notification_kind: "payment_expired", status: "skipped", error: "missing_critical_notification_recipient" },
+        { recipient_kind: "operator", notification_kind: "payment_failed", status: "skipped", error: "missing_critical_notification_recipient" },
+      ]);
     expect((await db!.query("SELECT count(*)::integer AS count FROM public.subscription_events")).rows).toEqual([{ count: 1 }]);
     expect((await db!.query("SELECT * FROM public.subscription_pause_windows")).rows).toEqual([]);
   });
@@ -212,8 +223,12 @@ describe("real PostgreSQL portable dunning forward", () => {
     const after = await snapshot(db!);
     expect(after.subscriptions).toEqual(prefixRows.subscriptions);
     expect(after.subscription_cycles).toEqual(prefixRows.subscription_cycles);
-    expect((await db!.query("SELECT notification_kind,status FROM public.subscription_dunning_notifications ORDER BY notification_kind")).rows)
-      .toEqual([{ notification_kind: "payment_expired", status: "skipped" }, { notification_kind: "payment_recovered", status: "queued" }]);
+    expect((await db!.query("SELECT recipient_kind,notification_kind,status,error FROM public.subscription_dunning_notifications ORDER BY recipient_kind,notification_kind")).rows)
+      .toEqual([
+        { recipient_kind: "customer", notification_kind: "payment_expired", status: "skipped", error: "case_recovered" },
+        { recipient_kind: "customer", notification_kind: "payment_recovered", status: "queued", error: null },
+        { recipient_kind: "operator", notification_kind: "payment_expired", status: "skipped", error: "missing_critical_notification_recipient" },
+      ]);
   });
 
   it("preserves invoker/search-path/ACL properties and denies actual browser-role execution", async () => {
