@@ -1262,6 +1262,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261109113000_subscription_auto_resume_delivered_history.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4195,6 +4199,10 @@
     },
     {
       "path": "packages/platform/sql/20261109110000_checkout_recovery_link_lifecycle.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261109113000_subscription_auto_resume_delivered_history.sql",
       "class": "public-output"
     },
     {
@@ -28919,6 +28927,14 @@
     },
     {
       "path": "tests/postgres/subscriptionAlignmentRollbackCases.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionAutoResumeDeliveredHistory.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionAutoResumeHistoryCatalog.proof.ts",
       "class": "public-output"
     },
     {
