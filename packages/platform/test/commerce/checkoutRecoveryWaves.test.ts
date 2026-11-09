@@ -15,20 +15,56 @@ it.each(['method', 'missing-secret', 'wrong-bearer', 'disabled'])('guards %s bef
   expect(result.status).toBe(state === 'method' ? 405 : state === 'missing-secret' ? 503 : state === 'wrong-bearer' ? 401 : 200);
   expect(bind).not.toHaveBeenCalled();
 });
-it('retains every other mail method, confirmed transport result, and dedupe identity', async () => {
-  const sendOrderConfirmation = vi.fn(), findExistingSend = vi.fn(), recordConfirmedSend = vi.fn();
+const ordinaryMailMethods = [
+  'sendReturnApprovedNotice', 'sendReturnRejectedNotice', 'sendOrderConfirmation', 'sendOrderPaidConfirmation',
+  'sendPaymentFailedNotice', 'sendCheckoutExpiredNotice', 'sendOrderCanceledNotice', 'sendOrderRefundedNotice',
+  'sendShipmentDispatchedNotice', 'sendShipmentDeliveredNotice', 'sendShipmentExceptionNotice',
+] as const satisfies readonly Exclude<keyof TransactionalEmailPort, 'findExistingSend' | 'sendCheckoutRecovery'>[];
+
+it.each(['plain', 'frozen'] as const)('delegates every email method without mutating a %s object port', async kind => {
   const outcome = { ok: true, messageId: 'capture:1', httpStatus: 200, providerError: null, aborted: false };
-  const base = { sendOrderConfirmation, findExistingSend, sendCheckoutRecovery: async () => outcome } as unknown as TransactionalEmailPort;
-  const wrapped = withCheckoutRecoverySendEvidence(base, { recordConfirmedSend });
-  expect(wrapped.sendOrderConfirmation).toBe(wrapped.sendOrderConfirmation);
-  expect(wrapped.findExistingSend).toBe(wrapped.findExistingSend);
-  await wrapped.sendOrderConfirmation({} as Parameters<typeof wrapped.sendOrderConfirmation>[0]);
-  await wrapped.findExistingSend('ordinary-template', 'ordinary-event');
-  expect(sendOrderConfirmation).toHaveBeenCalledExactlyOnceWith({});
-  expect(findExistingSend).toHaveBeenCalledExactlyOnceWith('ordinary-template', 'ordinary-event');
-  const input = { outboxEventId: 'event:1' } as Parameters<typeof wrapped.sendCheckoutRecovery>[0];
-  expect(await wrapped.sendCheckoutRecovery(input)).toBe(outcome);
-  expect(recordConfirmedSend).toHaveBeenCalledExactlyOnceWith('event:1', 'capture:1');
+  const base = {
+    findExistingSend: vi.fn<TransactionalEmailPort['findExistingSend']>(async (_template, event) => event === 'ordinary:1'),
+    sendReturnApprovedNotice: vi.fn<TransactionalEmailPort['sendReturnApprovedNotice']>(async () => outcome),
+    sendReturnRejectedNotice: vi.fn<TransactionalEmailPort['sendReturnRejectedNotice']>(async () => outcome),
+    sendOrderConfirmation: vi.fn<TransactionalEmailPort['sendOrderConfirmation']>(async () => outcome),
+    sendCheckoutRecovery: vi.fn<TransactionalEmailPort['sendCheckoutRecovery']>(async () => outcome),
+    sendOrderPaidConfirmation: vi.fn<TransactionalEmailPort['sendOrderPaidConfirmation']>(async () => outcome),
+    sendPaymentFailedNotice: vi.fn<TransactionalEmailPort['sendPaymentFailedNotice']>(async () => outcome),
+    sendCheckoutExpiredNotice: vi.fn<TransactionalEmailPort['sendCheckoutExpiredNotice']>(async () => outcome),
+    sendOrderCanceledNotice: vi.fn<TransactionalEmailPort['sendOrderCanceledNotice']>(async () => outcome),
+    sendOrderRefundedNotice: vi.fn<TransactionalEmailPort['sendOrderRefundedNotice']>(async () => outcome),
+    sendShipmentDispatchedNotice: vi.fn<TransactionalEmailPort['sendShipmentDispatchedNotice']>(async () => outcome),
+    sendShipmentDeliveredNotice: vi.fn<TransactionalEmailPort['sendShipmentDeliveredNotice']>(async () => outcome),
+    sendShipmentExceptionNotice: vi.fn<TransactionalEmailPort['sendShipmentExceptionNotice']>(async () => outcome),
+  } satisfies TransactionalEmailPort;
+  const original = kind === 'frozen' ? Object.freeze(base) : base;
+  const descriptors = Object.getOwnPropertyDescriptors(original), prototype = Object.getPrototypeOf(original);
+  const recordConfirmedSend = vi.fn();
+  const wrapped: TransactionalEmailPort = withCheckoutRecoverySendEvidence(original, { recordConfirmedSend });
+  expect(wrapped).not.toBe(original);
+  expect(Object.keys(wrapped).sort()).toEqual([...ordinaryMailMethods, 'findExistingSend', 'sendCheckoutRecovery'].sort());
+  expect(Object.getOwnPropertyDescriptors(original)).toEqual(descriptors);
+  const input = { to: 'recipient@example.invalid', firstName: null, orderId: 'order:1', outboxEventId: 'ordinary:1',
+    items: [], totals: null, signal: new AbortController().signal };
+  // The facade forwards each opaque domain input unchanged, without interpreting it.
+  for (const method of ordinaryMailMethods) {
+    expect(await wrapped[method](input as never)).toBe(outcome);
+    expect(base[method]).toHaveBeenCalledExactlyOnceWith(input);
+    expect(base[method].mock.contexts[0]).toBe(original);
+  }
+  expect(await wrapped.findExistingSend('ordinary-template', input.outboxEventId)).toBe(true);
+  expect(base.findExistingSend).toHaveBeenCalledExactlyOnceWith('ordinary-template', 'ordinary:1');
+  expect(base.findExistingSend.mock.contexts[0]).toBe(original);
+  expect(recordConfirmedSend).not.toHaveBeenCalled();
+  const recovery = { ...input, recoveryToken: 'rcv_synthetic', mode: 'one_time', reminderHours: 1, outboxEventId: 'recovery:1' };
+  expect(await wrapped.sendCheckoutRecovery(recovery)).toBe(outcome);
+  expect(base.sendCheckoutRecovery).toHaveBeenCalledExactlyOnceWith(recovery);
+  expect(base.sendCheckoutRecovery.mock.contexts[0]).toBe(original);
+  expect(recordConfirmedSend).toHaveBeenCalledExactlyOnceWith('recovery:1', 'capture:1');
+  expect(Object.getOwnPropertyDescriptors(original)).toEqual(descriptors);
+  expect(Object.getPrototypeOf(original)).toBe(prototype);
+  expect(Object.isFrozen(original)).toBe(kind === 'frozen');
 });
 it('delegates prototype methods and private state on a class-backed transactional email port', async () => {
   const outcome = { ok: true, messageId: 'capture:class', httpStatus: 200, providerError: null, aborted: false };
@@ -54,7 +90,10 @@ it('delegates prototype methods and private state on a class-backed transactiona
     sendShipmentExceptionNotice = unselected;
   }
   const original = new EmailPort(), recordConfirmedSend = vi.fn();
-  const wrapped = withCheckoutRecoverySendEvidence(original, { recordConfirmedSend });
+  const descriptors = Object.getOwnPropertyDescriptors(original), prototype = Object.getPrototypeOf(original);
+  const wrapped: TransactionalEmailPort = withCheckoutRecoverySendEvidence(original, { recordConfirmedSend });
+  expect(wrapped).not.toBe(original);
+  expect(Object.getOwnPropertyDescriptors(original)).toEqual(descriptors);
   const ordinary = { to: 'recipient@example.invalid', firstName: null, orderId: 'order:1', outboxEventId: 'ordinary:1',
     items: [], totals: null, signal: new AbortController().signal };
   expect(await wrapped.findExistingSend('order', ordinary.outboxEventId)).toBe(false);
@@ -66,6 +105,8 @@ it('delegates prototype methods and private state on a class-backed transactiona
   expect(await wrapped.sendCheckoutRecovery(recovery)).toBe(outcome);
   expect(await wrapped.findExistingSend('recovery', recovery.outboxEventId)).toBe(true);
   expect(recordConfirmedSend).toHaveBeenCalledExactlyOnceWith('recovery:1', 'capture:class');
+  expect(Object.getOwnPropertyDescriptors(original)).toEqual(descriptors);
+  expect(Object.getPrototypeOf(original)).toBe(prototype);
 });
 it('keeps ambiguous acceptance-write failure visible to the caller', async () => {
   const base = { sendCheckoutRecovery: async () => ({ ok: true, messageId: 'capture:1', httpStatus: 200, providerError: null, aborted: false }) } as unknown as TransactionalEmailPort;
