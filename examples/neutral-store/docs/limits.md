@@ -99,7 +99,7 @@ rejects by the return reference the customer receives. Approval and rejection
 are unavailable in this release. The removed `operator.returns` route returns
 HTTP 404 with `starter_operation_unknown`.
 
-The catalogue covers 14 declared named-refusal operations. The removed reader
+The catalogue covers 13 declared named-refusal operations. The removed reader
 retains its separate HTTP 404 protocol.
 
 | Operations | Named refusal |
@@ -111,7 +111,6 @@ retains its separate HTTP 404 protocol.
 | `operator.externalRefund` | `starter_external_refund_mark_unavailable` |
 | `operator.label`, `operator.handoff`, `operator.delivery` | `starter_shipment_mutation_unavailable` |
 | `tracking.read` | `starter_tracking_access_unavailable` |
-| `subscription.command` | `starter_subscription_command_unavailable` |
 | `research.submit`, `ingest.submit` | `host_binding_required` |
 
 Shipment list/detail use the native commerce reader in one repeatable-read,
@@ -245,7 +244,7 @@ od następnej przesyłki. Przesyłka będąca już w drodze zachowuje dotychczas
 The native customer branch returns the next-parcel outcome. Current-parcel
 operator correction is not offered through this customer action.
 
-Generic subscription commands remain unmounted pending a complete native fit.
+Lifecycle commands are mounted for owned subscriptions. Generic package, plan and bundle editing remain outside this release.
 Authenticated payment recovery authorizes the same native unpaid obligation.
 The selected native installation includes the command receipt-lock completion.
 Operator recovery passes the committed real-HTTP proof in both configurations and
@@ -307,3 +306,26 @@ provider is active. This adds no other event dispatcher, transport, SQL or grant
 Subscription notices retain their separate native owner and existing limits.
 The sibling settlement event is known but unclaimed: it remains pending without
 delivery or a message record, and does not hold the paid receipt behind it.
+
+
+## Subscription care
+
+Skip, slide, pause, resume, cancellation with save offers, order now and
+reactivation use the native command adapter. The host supplies trusted timing;
+no browser value establishes charge eligibility. Pause and cancel remain
+available with an open payment case, subject to the native in-flight fence.
+The scheduled care entry selects finite auto-resume, native notices and winback
+only. Its capture is local; it establishes no real email delivery.
+
+Winback keeps the unseeded default retention gate ON and writes no settings row.
+The portal displays native refusal and host-recorded delivery outcomes. It has
+no retention-consent capture; newsletter/offers do not authorize retention.
+A trusted host may record consent through the native routine. Adopter policy
+changes follow the [owning section](../../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#composed-subscription-module).
+Full account preferences, real payment methods and signed unsubscribe retain
+their separately named boundaries. No generic edit verbs are mounted.
+
+The finite auto-resume host is bound, but its successful journey remains open
+while the native guard blocks historical paid orders. Its success assertions
+remain intact under a named fixme. Customer lifecycle commands are independently
+proved; this does not retain their removed blanket refusal.

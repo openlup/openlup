@@ -74,9 +74,6 @@ test('localized order controls and owned PDF in both languages', async ({ page, 
     await submitRefused(page.locator('main form'), 'tracking.read', { shipmentRef: fixture.orderRef });
     await page.goto(routes.research[locale]);
     await submitRefused(page.locator('main form'), 'research.submit', { caseReference: fixture.orderRef, feedback: 'Example response' });
-    await page.goto(routes.account[locale]);
-    await submitRefused(page.locator('form').filter({ has: page.getByRole('button', { name: copy[locale].reschedule, exact: true }) }),
-      'subscription.command', { subscriptionRef: fixture.orderRef, nextDate: '2026-12-01' });
     await page.goto(routes.invoices[locale]);
     const downloadForm = page.locator('form').filter({ has: page.locator('[name=documentRef]') });
     await downloadForm.locator('[name=orderRef]').fill(fixture.orderRef.toUpperCase());
