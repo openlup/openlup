@@ -9,8 +9,9 @@ it.each(["core", "outbox", "platform"])("maps every %s export directly from its 
   const directory = `../../packages/${name}/`;
   const manifest = read(directory + "package.json"), gates = read(directory + "release-gates.json");
   const rows = consumerEvidence(manifest, gates);
-  expect(rows.map(row => row.specifier)).toEqual(Object.keys(manifest.exports).map(path => manifest.name + (path === "." ? "" : path.slice(1))));
-  for (const [index, subpath] of Object.keys(manifest.exports).entries()) {
+  const subpaths = Object.keys(manifest.exports).filter(path => path !== "./package.json");
+  expect(rows.map(row => row.specifier)).toEqual(subpaths.map(path => manifest.name + (path === "." ? "" : path.slice(1))));
+  for (const [index, subpath] of subpaths.entries()) {
     expect(rows[index].packageSmokeEvidence).toEqual(gates.packageSurface[subpath].packageSmokeEvidence);
     expect(rows[index].sourceCheck.args.slice(4)).toEqual(gates.packageSurface[subpath].packageSmokeEvidence);
     expect(rows[index].sourceCheck.workingDirectory).toBe(`packages/${name}`);

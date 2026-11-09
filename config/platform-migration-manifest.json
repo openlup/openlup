@@ -418,11 +418,15 @@
       "sha256": "fa6847e5a4712be5d5891b55d728fdbd7ff96b6d2a5a81e4bf6150a49e791607"
     },
     {
+      "file": "db/platform/migrations/20261109110000_checkout_recovery_link_lifecycle.sql",
+      "sha256": "ea7422b72a506a351725d0cee5e70a8707b1af35938d537e13434ab520c5539b"
+    },
+    {
       "file": "db/platform/migrations/20261109120000_subscription_package_editor.sql",
       "sha256": "00291b733c89d9fe7e7d8785f90c6a8fe3c2e1d2b7dca4fc66abbc33de748fce"
     }
   ],
-  "objectInventorySha256": "dd56492e0b527b3231383a3941a990361a822c96245c440d2e9a8793d61b60e1",
+  "objectInventorySha256": "0433fcdbad1a3aecfee1318a2a6546c0a0f776c8b0566b091534cf1808def86f",
   "qualified": {
     "baseline": {
       "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -862,16 +866,20 @@
         "sha256": "fa6847e5a4712be5d5891b55d728fdbd7ff96b6d2a5a81e4bf6150a49e791607"
       },
       {
+        "file": "db/platform/migrations/20261109110000_checkout_recovery_link_lifecycle.sql",
+        "sha256": "ea7422b72a506a351725d0cee5e70a8707b1af35938d537e13434ab520c5539b"
+      },
+      {
         "file": "db/platform/migrations/20261109120000_subscription_package_editor.sql",
         "sha256": "00291b733c89d9fe7e7d8785f90c6a8fe3c2e1d2b7dca4fc66abbc33de748fce"
       }
     ],
     "objectInventorySha256": {
       "bootstrapMigrator": {
-        "withRestore": "c2e4056fc89968110a64253cb4934f85f840547986cc28dfd0759522c94a5ee9"
+        "withRestore": "010cc9ea9c8122f8960c59c9e3fe95d1e5b3ab84b77fd9cafbd55882640560b6"
       },
       "separateMigrator": {
-        "withRestore": "725caab38fe4e032c0c8cc037ed1aff4226690d7995f0af0b836c0c9da10ac76"
+        "withRestore": "1e51fb479bf641c2f2f0297ef8258494712aa85417f95a333ffdc7f1a2880e7c"
       }
     }
   },
@@ -1310,13 +1318,17 @@
         "sha256": "fa6847e5a4712be5d5891b55d728fdbd7ff96b6d2a5a81e4bf6150a49e791607"
       },
       {
+        "file": "db/platform/migrations/20261109110000_checkout_recovery_link_lifecycle.sql",
+        "sha256": "ea7422b72a506a351725d0cee5e70a8707b1af35938d537e13434ab520c5539b"
+      },
+      {
         "file": "db/platform/migrations/20261109120000_subscription_package_editor.sql",
         "sha256": "00291b733c89d9fe7e7d8785f90c6a8fe3c2e1d2b7dca4fc66abbc33de748fce"
       }
     ],
     "objectInventorySha256": {
-      "installerManaged": "2d35502e531e5a77b40eaf35168ae1f140e8a5791ab365e3fc48064cb11ee139",
-      "operatorProvisioned": "5a452848201226dc1a589ebd354877ce72a0076d3a61a82151bcff65632c1f40"
+      "installerManaged": "441a731af0951d54357b93dbd61d3f7eeb4c76fd8cf685124e7f3fe557db45c0",
+      "operatorProvisioned": "6d83a8c23ce58a6a7562b443bfd7dbd09b3fad2c13233af076ce43001a5bb138"
     }
   }
 }

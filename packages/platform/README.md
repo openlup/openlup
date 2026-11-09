@@ -405,8 +405,9 @@ They do not reference identity's main entry; `./marketing/server` compiles witho
 trusted host's already admitted order. Inject a dedicated transaction lane with
 effective service-role privileges. The port supports contacts without a principal,
 stores only token hashes and computes expiry as order creation plus 24 hours;
-the shared `expiresAt` argument cannot choose a deadline. Issuing a new link ends
-the previous link of the same order. Inspection preserves initial subscription
+the shared `expiresAt` argument cannot choose a deadline. New checkout links
+preserve earlier links of the same order until expiry or payment. Pending
+renewal-cycle orders are refused. Inspection preserves initial subscription
 mode and cadence from stored quote/activation facts, normalizes consumed links
 for paid confirmation, and grants payment continuation only through validation
 of an active pending order. It sends no mail and performs no settlement. See the

@@ -228,6 +228,7 @@ function readinessModuleScenarioLines(version: string, typed: boolean): string[]
 
 function writeConsumerSmoke(consumerDir: string, packageJson: CorePackageJson): void {
   const specifiers = Object.keys(packageJson.exports)
+    .filter((subpath) => subpath !== "./package.json")
     .sort()
     .map((subpath) => publicSpecifier(packageJson.name, subpath));
   const dynamicImports = JSON.stringify(specifiers, null, 2);

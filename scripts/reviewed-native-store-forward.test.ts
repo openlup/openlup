@@ -1252,3 +1252,93 @@ describe("chained native replacements", () => {
     });
   });
 });
+
+
+const dropIndexCreate = "CREATE UNIQUE INDEX fixture_active_idx ON public.fixture_parameters (id) WHERE status = 'open';";
+const dropIndexSql = "DROP INDEX public.fixture_active_idx;";
+const dropIndexEntry = { table: "public.fixture_parameters", name: "fixture_active_idx", beforeSha256: sqlSha256(dropIndexCreate) };
+function indexDrop(text = dropIndexSql, source = dropIndexCreate, history = "", configure?: (slot: NativeStoreSlot) => void) {
+  parameterForward(text, slot => { slot.droppedIndexes = [{ ...dropIndexEntry, beforeSha256: sqlSha256(source) }]; configure?.(slot); }, history, `${parameterTable}\n${source}`);
+}
+describe("closed native index drops", () => {
+  it("admits a standalone partial unique index drop and non-unique replacement", () => {
+    expect(() => indexDrop(`${dropIndexSql}\nCREATE INDEX fixture_replacement_idx ON public.fixture_parameters (id, extra DESC);`)).not.toThrow();
+    expect(() => indexDrop(dropIndexSql, dropIndexCreate.replace("CREATE UNIQUE", "CREATE"))).not.toThrow();
+  });
+  it("admits several listed standalone drops once each without imposing an order", () => {
+    const second = "CREATE INDEX fixture_second_idx ON public.fixture_parameters (extra);";
+    expect(() => indexDrop(`DROP INDEX public.fixture_second_idx;\n${dropIndexSql}`, dropIndexCreate, second, slot => {
+      slot.droppedIndexes![0]!.beforeSha256 = sqlSha256(dropIndexCreate);
+      slot.droppedIndexes!.push({ ...dropIndexEntry, name: "fixture_second_idx", beforeSha256: sqlSha256(second) });
+    })).not.toThrow();
+  });
+  it.each([
+    "DROP INDEX IF EXISTS public.fixture_active_idx;", "DROP INDEX CONCURRENTLY public.fixture_active_idx;",
+    "DROP INDEX public.fixture_active_idx CASCADE;", "DROP INDEX public.fixture_active_idx RESTRICT;",
+    "DROP INDEX public.fixture_active_idx, public.other_idx;", "DROP INDEX fixture_active_idx;",
+    'DROP INDEX "public"."fixture_active_idx";', 'DROP INDEX public."fixture_active_idx";',
+    "DROP INDEX PUBLIC.fixture_active_idx;", "DROP INDEX public.FIXTURE_ACTIVE_IDX;", "drop index public.fixture_active_idx;",
+    "DROP  INDEX public.fixture_active_idx;", "DROP\nINDEX public.fixture_active_idx;", "DROP INDEX public.fixture_active_idx ;",
+    "DROP/* gap */INDEX public.fixture_active_idx;", "DROP INDEX public.fixture_active_idx_extra;", "DROP INDEX public.other_idx;",
+  ])("refuses non-exact or unlisted drop text: %s", text => {
+    expect(() => indexDrop(text)).toThrow("reviewed native store unlisted, duplicate or non-plain index drop");
+  });
+  it("refuses unlisted, repeated and missing drops", () => {
+    expect(() => indexDrop(dropIndexSql, dropIndexCreate, "", slot => { delete slot.droppedIndexes; })).toThrow("reviewed native store unlisted, duplicate or non-plain index drop");
+    expect(() => indexDrop(`${dropIndexSql}\n${dropIndexSql}`)).toThrow("reviewed native store unlisted, duplicate or non-plain index drop");
+    expect(() => indexDrop("")).toThrow("reviewed native store listed index drop missing");
+  });
+  it("refuses a missing CREATE preimage", () => {
+    expect(() => indexDrop(dropIndexSql, "")).toThrow("reviewed native store dropped index plain CREATE missing from prefix");
+  });
+  it.each([
+    'CREATE UNIQUE INDEX "fixture_active_idx" ON public.fixture_parameters (id);',
+    "CREATE UNIQUE INDEX public.fixture_active_idx ON public.fixture_parameters (id);",
+    "CREATE UNIQUE INDEX CONCURRENTLY fixture_active_idx ON public.fixture_parameters (id);",
+    "CREATE UNIQUE INDEX IF NOT EXISTS fixture_active_idx ON public.fixture_parameters (id);",
+    "ALTER TABLE public.fixture_parameters ADD CONSTRAINT fixture_active_idx PRIMARY KEY (id);",
+    "ALTER TABLE public.fixture_parameters ADD CONSTRAINT fixture_active_idx UNIQUE (id);",
+    "ALTER TABLE public.fixture_parameters ADD CONSTRAINT fixture_active_idx EXCLUDE USING gist (int4range(0, 1) WITH &&);",
+    "CREATE UNIQUE INDEX fixture_active_idx ON public.other_table (id);",
+    "CREATE UNIQUE INDEX fixture_active_idx ON fixture_parameters (id);",
+    'CREATE UNIQUE INDEX fixture_active_idx ON "public"."fixture_parameters" (id);',
+    "CREATE UNIQUE INDEX fixture_active_idx ON public.fixture_parameters$other (id);",
+  ])("refuses a pinned statement that is not a plain CREATE INDEX of its table, including constraint indexes: %s", source => {
+    expect(() => indexDrop(dropIndexSql, source)).toThrow("reviewed native store dropped index preimage is not a plain CREATE INDEX of its table");
+  });
+  it("refuses a hash that pins no prefix statement", () => {
+    expect(() => indexDrop(dropIndexSql, dropIndexCreate, "", slot => { slot.droppedIndexes![0]!.beforeSha256 = "0".repeat(64); })).toThrow("reviewed native store dropped index plain CREATE missing from prefix");
+  });
+  // History is what PostgreSQL executes; the catalog proof compares the dropped index with its pinned CREATE.
+  it.each([
+    'CREATE INDEX "fixture_active_idx" ON public.fixture_parameters (id);\nDROP INDEX public.fixture_active_idx;',
+    String.raw`CREATE INDEX U&"fixture_\0061ctive_idx" ON public.fixture_parameters (id);`,
+    "SELECT 'fixture_active_idx';",
+  ])("leaves earlier prefix history to the PostgreSQL proof: %s", earlier => {
+    const history = `${earlier}\n${dropIndexCreate}`;
+    expect(() => indexDrop(dropIndexSql, history, "", slot => { slot.droppedIndexes![0]!.beforeSha256 = sqlSha256(dropIndexCreate); })).not.toThrow();
+  });
+  it.each([
+    "ALTER INDEX public.fixture_active_idx SET (fillfactor=80);",
+    "DO $$ BEGIN EXECUTE 'DROP INDEX public.fixture_active_idx'; END; $$;",
+    "ALTER TABLE public.fixture_parameters ADD CONSTRAINT adopted_key UNIQUE USING INDEX fixture_active_idx;",
+  ])("leaves later prefix history to the PostgreSQL proof: %s", history => {
+    expect(() => indexDrop(dropIndexSql, dropIndexCreate.replace(" WHERE status = 'open'", ""), history)).not.toThrow();
+  });
+  it.each(["duplicate", "schema-qualified name", "bad table", "bad hash", "extra key"])("refuses invalid inventory: %s", attack => {
+    expect(() => indexDrop(dropIndexSql, dropIndexCreate, "", slot => {
+      const entry = slot.droppedIndexes![0]!;
+      if (attack === "duplicate") slot.droppedIndexes!.push({ ...entry });
+      if (attack === "schema-qualified name") entry.name = "public.fixture_active_idx";
+      if (attack === "bad table") entry.table = "fixture_parameters";
+      if (attack === "bad hash") entry.beforeSha256 = "bad";
+      if (attack === "extra key") Object.assign(entry, { cascade: false });
+    })).toThrow("reviewed native store invalid dropped index inventory");
+  });
+  it.each(["issued", "sealed reservation"])("keeps dropped index inventory immutable in an %s slot", mode => {
+    const prior = registry(); prior.nativeStoreForwardClass!.slots[0]!.droppedIndexes = [{ ...dropIndexEntry }];
+    if (mode === "issued") bind(prior, 0, `${sql()}\n${dropIndexSql}`); else prior.nativeStoreForwardClass!.sealed = true;
+    const next = structuredClone(prior); next.nativeStoreForwardClass!.slots[0]!.droppedIndexes![0]!.beforeSha256 = "0".repeat(64);
+    expect(() => changedForwardApprovals(encode(prior), encode(next))).toThrow(mode === "issued" ? "reviewed native store issued bindings and slots are immutable" : "reviewed native store sealed slot prefix is immutable and cannot be unsealed");
+  });
+});

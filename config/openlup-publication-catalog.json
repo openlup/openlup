@@ -1258,6 +1258,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261109110000_checkout_recovery_link_lifecycle.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/20261109120000_subscription_package_editor.sql",
       "class": "public-output"
     },
@@ -4175,6 +4179,10 @@
     },
     {
       "path": "packages/platform/sql/20261109100000_subscription_retry_resume.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261109110000_checkout_recovery_link_lifecycle.sql",
       "class": "public-output"
     },
     {
@@ -28366,6 +28374,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/checkoutRecoveryLinkLifecycle.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/checkoutRecoveryTokenPort.test.ts",
       "class": "public-output"
     },
@@ -29319,7 +29331,7 @@
     },
     {
       "path": "packages/core/package.json",
-      "digest": "sha256-0a01b40d765409dc9810d29839ecd6a82345ac8095d47e74e997dffa53f0e615"
+      "digest": "sha256-45f672a598c2c3f1d90c2a84fe2ddda11fb54315e2c52462691d2b22ca8dc7a6"
     },
     {
       "path": "packages/outbox/package.json",

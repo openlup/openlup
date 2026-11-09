@@ -120,7 +120,7 @@ describe("admission and full release checks", () => {
 
   function fixture() {
     const root = mkdtempSync(join(tmpdir(), "openlup-core-check-mode-")); roots.push(root);
-    const manifest = readJson<{ name: string; version: string; exports: Record<string, Record<string, string>> }>(join(packageRoot, "package.json"));
+    const manifest = readJson<{ name: string; version: string; exports: Record<string, string | Record<string, string>> }>(join(packageRoot, "package.json"));
     const gates = readJson<{ requiredRepositoryArtifacts: string[]; packageSurface: Record<string, { snapshot: string; packageSmokeEvidence: string[] }> }>(join(packageRoot, "release-gates.json"));
     cpSync(join(packageRoot, "scripts"), join(root, "scripts"), { recursive: true });
     cpSync(join(packageRoot, ".github"), join(root, ".github"), { recursive: true });
@@ -130,7 +130,7 @@ describe("admission and full release checks", () => {
     }
     const packed = [...new Set([
       ...readJson<{ pack: { requiredFiles: string[] } }>(join(packageRoot, "release-gates.json")).pack.requiredFiles,
-      ...Object.values(manifest.exports).flatMap(conditions => Object.values(conditions).map(path => path.slice(2))),
+      ...Object.values(manifest.exports).flatMap(conditions => (typeof conditions === "string" ? [conditions] : Object.values(conditions)).map(path => path.slice(2))),
     ])];
     const surfaces = Object.values(gates.packageSurface).flatMap(surface => [surface.snapshot, ...surface.packageSmokeEvidence]);
     for (const path of [...packed, ...surfaces]) {

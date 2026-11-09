@@ -1576,6 +1576,26 @@ statement must appear once in order, with internal bytes unchanged; an unlisted
 existing-table ALTER cannot fall through to generic ADD admission when the list
 is active. The issued three purchase-reservation texts remain unchanged data.
 
+`droppedIndexes` entries list a qualified `table`, plain index `name` and
+`beforeSha256`. The hash must pin a plain CREATE [UNIQUE] INDEX of that name on
+that table in the ordered prefix; a hash that pins no statement, or pins any
+other statement, refuses. Each entry authorizes exactly one
+`DROP INDEX public.<name>;`. Unlisted, duplicate or missing drops, quoted or
+re-spelled names, IF EXISTS, CONCURRENTLY, CASCADE, RESTRICT and multiple names
+refuse. The prefix history is not read lexically for the index: PostgreSQL
+decides it. The catalog proof rebuilds the pinned CREATE in a savepoint and
+requires the dropped index to have exactly that definition, refuses an index
+that backs a constraint, and requires the index to disappear while its table's
+columns, constraints, other indexes and ACL remain unchanged. Issued-slot and
+sealed-prefix guards protect this inventory like the other slot fields.
+
+The checkout recovery lifecycle forward replaces the unique live-order index
+with a non-unique `(order_id, created_at DESC)` index. Trusted-host checkout links
+coexist until expiry or payment, while payment-case issuance locks its pending
+order before rotating links. Actor issuance retains rotation. Checkout issuance
+refuses pending renewal-cycle orders; cancellation, recovery and retry
+authorization keep their existing order-scoped or token-scoped revocation.
+
 `checkSupersets` entries declare table, constraint, column and values;
 `uniqueSupersets` entries declare table, constraint, columns and nullsNotDistinct.
 The lexical validator checks only the slot's own SQL: exactly one adjacent

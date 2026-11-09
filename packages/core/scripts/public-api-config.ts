@@ -49,7 +49,7 @@ type PackageSurfaceContract = {
 };
 
 type PackageSurfaceConfigInput = {
-  manifest: { exports: Record<string, Record<string, string>> };
+  manifest: { exports: Record<string, string | Record<string, string>> };
   gates: {
     schemaVersion: number;
     kind?: unknown;
@@ -81,7 +81,9 @@ export function assertPackageSurfaceConfig({
   );
   assertEvidenceTaxonomy(gates.evidence);
 
-  const exported = Object.keys(manifest.exports).sort();
+  const { "./package.json": manifestExport, ...codeExports } = manifest.exports;
+  assert(manifestExport === "./package.json", "the manifest is exported as ./package.json for tooling");
+  const exported = Object.keys(codeExports).sort();
   const inventoried = Object.keys(gates.packageSurface).sort();
   assert(isDeepStrictEqual(inventoried, exported), "package surface inventory must exactly match package exports");
   assert(
@@ -111,7 +113,7 @@ export function assertPackageSurfaceConfig({
     assertPackageFile(packageRoot, subpath, "declaration", contract.entrypoint);
     if (requireSnapshots) assertPackageFile(packageRoot, subpath, "snapshot", contract.snapshot);
 
-    const exportEntry = manifest.exports[subpath];
+    const exportEntry = codeExports[subpath] as Record<string, string>;
     assert(
       isDeepStrictEqual(Object.keys(exportEntry), expectedConditions),
       `export condition order drifted for ${subpath}`,

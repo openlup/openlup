@@ -240,7 +240,7 @@ export function createNpmReleaseChecks(input: {
         assert(files.has(required), `packed artifact is missing ${required}`);
       assert(manifest.exports, "package manifest must declare exports");
       for (const [subpath, conditions] of Object.entries(manifest.exports)) {
-        for (const [condition, target] of Object.entries(conditions)) {
+        for (const [condition, target] of Object.entries(typeof conditions === "string" ? { default: conditions } : conditions)) {
           if (typeof target !== "string" || !target.startsWith("./")) continue;
           assert(
             files.has(target.slice(2)),
