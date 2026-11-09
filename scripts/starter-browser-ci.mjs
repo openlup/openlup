@@ -63,7 +63,8 @@ export async function withCleanup(work) {
 // fails after its cleanup, including a loss during cleanup.
 export async function withConnectionCleanup(work) {
   const losses = [];
-  const lost = () => { losses.push('starter_browser_database_connection_lost'); };
+  const recordLoss = code => { losses.push(code); };
+  const lost = () => recordLoss('starter_browser_database_connection_lost');
   // A pool drops its own idle listener from a client it lends out, so guard every client it creates.
   const guard = connection => {
     connection.on('error', lost);
@@ -74,9 +75,30 @@ export async function withConnectionCleanup(work) {
   // whole run instead of ending Node before cleanup.
   process.on('uncaughtException', lost);
   let value;
-  try { value = await withCleanup(defer => work(defer, guard)); } finally { process.removeListener('uncaughtException', lost); }
-  if (losses.length) throw new Error('starter_browser_database_connection_lost');
+  try { value = await withCleanup(defer => work(defer, guard, recordLoss)); } finally { process.removeListener('uncaughtException', lost); }
+  if (losses.length) throw new Error(losses[0]);
   return value;
+}
+
+// A successful browser result cannot erase a host loss, even after its last request.
+export function watchStarterHost(child, configuration, defer, recordLoss) {
+  let exited = false, stopping = false, finish;
+  const stopped = new Promise(done => { finish = done; });
+  const lost = () => { if (!stopping) recordLoss(`starter_browser_host_${configuration}_exited`); };
+  child.once('exit', () => { exited = true; lost(); finish(); });
+  child.on('error', () => {
+    lost();
+    // A failed spawn emits error/close without exit; other errors can leave a live child.
+    if (child.pid === undefined) { exited = true; finish(); }
+  });
+  defer(async () => {
+    if (exited) return;
+    stopping = true;
+    child.kill('SIGTERM');
+    const timer = setTimeout(() => child.kill('SIGKILL'), 5000);
+    try { await stopped; } finally { clearTimeout(timer); }
+  });
+  return () => exited;
 }
 
 export function scanPrivateOutput(output, privateValues = []) {
@@ -162,7 +184,7 @@ export async function runStarterBrowser(options) {
     }
   };
   try {
-    await withConnectionCleanup(async (defer, guard) => {
+    await withConnectionCleanup(async (defer, guard, recordLoss) => {
       const { readCurrentPackManifest, assertInstalledPackages } = await import('./packages/pack-manifest-input.ts');
       const commit = (await command('git', ['rev-parse', 'HEAD'])).trim();
       if (options.commit !== commit) throw new Error('starter_browser_candidate_mismatch');
@@ -263,20 +285,12 @@ export async function runStarterBrowser(options) {
         const child = spawn(process.execPath, ['--experimental-strip-types', join(app, 'host/server.ts'), '--configuration', configuration,
           '--port', String(port), '--listen', '127.0.0.1', '--database-url', runtimeUrl, '--quote-acceptance-key-file', keyFile],
         { cwd: state, env: { ...env, PGPASSWORD: password }, stdio: ['ignore', 'pipe', 'pipe'] });
-        let exited = false;
-        const stopped = new Promise(done => child.once('exit', () => { exited = true; done(); }));
-        child.once('error', () => { exited = true; });
+        const exited = watchStarterHost(child, configuration, defer, recordLoss);
         let hostOutput = '';
         for (const stream of [child.stdout, child.stderr]) stream.on('data', chunk => { hostOutput += String(chunk); outputs.push(String(chunk)); });
-        defer(async () => {
-          if (exited) return;
-          child.kill('SIGTERM');
-          const timer = setTimeout(() => child.kill('SIGKILL'), 5000);
-          try { await stopped; } finally { clearTimeout(timer); }
-        });
         const deadline = performance.now() + 30000;
         let ready = false;
-        while (!exited && performance.now() < deadline) {
+        while (!exited() && performance.now() < deadline) {
           cancellation.signal.throwIfAborted();
           try {
             const response = await fetch(`${baseURL}/api/config`, { signal: AbortSignal.timeout(1000) });

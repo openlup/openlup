@@ -3,10 +3,10 @@ import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { spawnSync } from 'node:child_process';
-import { EventEmitter } from 'node:events';
+import { spawn, spawnSync } from 'node:child_process';
+import { EventEmitter, once } from 'node:events';
 import pg from 'pg';
-import { acquireStarterPostgres, browserArguments, capturePrivateValues, parseArguments, resolveBrowserImage, scanPrivateOutput, withCleanup, withConnectionCleanup, writeBrowserFixtures } from './starter-browser-ci.mjs';
+import { acquireStarterPostgres, browserArguments, capturePrivateValues, parseArguments, resolveBrowserImage, scanPrivateOutput, withCleanup, withConnectionCleanup, writeBrowserFixtures, watchStarterHost } from './starter-browser-ci.mjs';
 import { imageReference, readCiImage } from './ci-image-pull.mjs';
 
 const args = ['--manifest', '/tmp/packs/packages-manifest.json', '--expected-commit', 'a'.repeat(40)];
@@ -195,7 +195,7 @@ describe('database connection errors', () => {
   });
   it('fails, after cleanup, a run whose unguarded helper connection errors outside any listener', () => {
     // A child process: inside Vitest the test runner itself would report the uncaught error.
-    const script = `import { EventEmitter } from 'node:events';
+    const script = `import { EventEmitter, once } from 'node:events';
 import { withConnectionCleanup } from './scripts/starter-browser-ci.mjs';
 const released = [];
 try {
@@ -218,6 +218,62 @@ try {
   it('guards every PostgreSQL client and pool the runner creates', () => {
     const source = readFileSync('scripts/starter-browser-ci.mjs', 'utf8');
     expect(source.match(/new pg\.(?:Client|Pool)\(/gu)?.length).toBe(source.match(/guard\(new pg\.(?:Client|Pool)\(/gu)?.length);
-    expect(source).toContain('await withConnectionCleanup(async (defer, guard) =>');
+    expect(source).toContain('await withConnectionCleanup(async (defer, guard, recordLoss) =>');
+  });
+});
+
+describe('starter host process losses', () => {
+  const start = () => spawn(process.execPath, ['-e',
+    "process.on('message', () => process.exit(0)); process.send('ready');"], { stdio: ['ignore', 'ignore', 'ignore', 'ipc'] });
+  it('fails after cleanup when a ready host exits on its own, including exit zero', async () => {
+    const released: string[] = [];
+    await expect(withConnectionCleanup(async (defer, _guard, recordLoss) => {
+      defer(() => { released.push('container'); });
+      defer(() => { released.push('other host'); });
+      const child = start();
+      const exited = watchStarterHost(child, 'supplements', defer, recordLoss);
+      expect((await once(child, 'message'))[0]).toBe('ready');
+      const stopped = once(child, 'exit');
+      child.send('exit'); await stopped;
+      expect(exited()).toBe(true);
+      expect(released).toEqual([]);
+      return 'journeys passed';
+    })).rejects.toThrow('starter_browser_host_supplements_exited');
+    expect(released).toEqual(['other host', 'container']);
+  });
+  it('accepts an intentional host stop through cleanup', async () => {
+    const child = start();
+    await expect(withConnectionCleanup(async (defer, _guard, recordLoss) => {
+      watchStarterHost(child, 'coffee', defer, recordLoss);
+      expect((await once(child, 'message'))[0]).toBe('ready');
+      return 'journeys passed';
+    })).resolves.toBe('journeys passed');
+    expect(child.signalCode).toBe('SIGTERM');
+  });
+  it('records a real spawn error and fails only after the remaining cleanup', async () => {
+    let cleaned = false;
+    await expect(withConnectionCleanup(async (defer, _guard, recordLoss) => {
+      defer(() => { cleaned = true; });
+      const child = spawn(process.execPath + '-nonexistent', [], { stdio: 'ignore' });
+      watchStarterHost(child, 'coffee', defer, recordLoss);
+      await new Promise(done => child.once('close', done));
+      expect(cleaned).toBe(false);
+      return 'journeys passed';
+    })).rejects.toThrow('starter_browser_host_coffee_exited');
+    expect(cleaned).toBe(true);
+  });
+  it('records an error from a still-live child and then intentionally stops it', async () => {
+    const child = start();
+    let cleaned = false;
+    await expect(withConnectionCleanup(async (defer, _guard, recordLoss) => {
+      defer(() => { cleaned = true; });
+      watchStarterHost(child, 'supplements', defer, recordLoss);
+      await once(child, 'message');
+      child.emit('error', new Error('host process error'));
+      expect(cleaned).toBe(false);
+      return 'journeys passed';
+    })).rejects.toThrow('starter_browser_host_supplements_exited');
+    expect(child.signalCode).toBe('SIGTERM');
+    expect(cleaned).toBe(true);
   });
 });
