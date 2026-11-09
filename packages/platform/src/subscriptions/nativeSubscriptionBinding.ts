@@ -27,7 +27,7 @@ export function createNativeSubscriptionBinding(input: {
   inventory: AutomaticRenewalRunDeps["inventory"];
   paymentRails: AutomaticRenewalRunDeps["paymentRails"];
   policy: AutomaticRenewalRunDeps["policy"];
-  retry: Pick<NativeRetryDriverOptions, "readFrozenMandate" | "retryInput" | "payments" | "recoveredTemplate">;
+  retry: Pick<NativeRetryDriverOptions, "readFrozenMandate" | "retryInput" | "payments" | "recoveredTemplate" | "retryCadence">;
   failureTemplate: string; recoveryPath: string | null;
   workerId: string;
   now(): string;
@@ -45,7 +45,7 @@ export function createNativeSubscriptionBinding(input: {
     },
   }, input.executor, input.now);
   const stock = createPostgresStockWaitStore({ ...input, codec: input.codec });
-  const lifecycle = createPostgresRetryLifecycleBinding({ ...input,
+  const lifecycle = createPostgresRetryLifecycleBinding({ ...input, retryCadence: input.retry.retryCadence,
     correlate: (wire) => input.codec.decode(wire).cycle,
   });
   const retry = createNativeRetryDriver({ ...input, ...input.retry,

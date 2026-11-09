@@ -3319,6 +3319,32 @@ only this exact package path, digest and 0-to-1 tuple with its matching baseline
 key. This preserves canonical bytes without admitting other package SQL,
 changing scanner patterns or raising any existing count.
 
+### Native retry timing and timed resume
+
+`20261109100000_subscription_retry_resume.sql` replaces
+`subscription_retry_open_case(uuid,text,text)`,
+`subscription_auto_resume_due(integer,timestamptz)` and the compatibility
+`subscription_retry_apply_failure(uuid,text,jsonb)` entry, preserving headers,
+invoker security, owners and ACLs. Its service-only timing overload adds a
+separate final `jsonb` argument containing `backoffHours`; the original signature
+delegates with `[24,72,168]`. Positive numeric offsets are hours after each
+failure; array length controls exhaustion, while terminating-class semantics and
+receipt-first replay remain unchanged. The native store registry pins all four
+definitions and the exact forward bytes. No table, backfill or trigger is added.
+
+The open-case fence precedes case propagation under the subscription lock and
+retains terminal-cycle refusal after a later resume. Lifecycle closure already
+terminalizes unpaid artifacts; this forward closes the missing-case observation
+path. Timed resume uses healthy native method state and existing line, case,
+cycle and order ownership relations. Paid orders are associated through their
+cycle, renewal operation or activation. Ineligible windows remain open without
+writes or batch failure. Eligible windows roll forward monotonically, retain
+one system event and close atomically. The result preserves native `skippedRows`.
+The [workflow owner](SUBSCRIPTION_WORKFLOWS.md#lifecycle-and-retry) describes host
+composition and the resumed-confirmation alias. The
+[PostgreSQL witness](../../tests/postgres/subscriptionRetryResume.test.ts) covers
+legacy and both qualified runtime generations.
+
 ### Terminal native notice refusals
 
 The native lifecycle binding retains `subscription_notice_refusals` by the

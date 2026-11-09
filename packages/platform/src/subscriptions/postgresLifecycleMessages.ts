@@ -36,6 +36,7 @@ const aliases: Record<string, string> = {
   "subscription.activated": "subscription.created",
   "subscription.customer_self_service.pause": "subscription.paused",
   "subscription.customer_self_service.resume": "subscription.resumed",
+  "subscription.system.auto_resume": "subscription.resumed",
   "subscription.customer_self_service.cancel": "subscription.cancelled",
   "subscription.customer_self_service.skip_next_cycle": "subscription.cycle_skipped",
   "subscription.customer_self_service.slide_next_cycle": "subscription.delivery_rescheduled",
