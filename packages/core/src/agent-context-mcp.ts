@@ -43,16 +43,17 @@ function requireParams(condition: unknown): asserts condition {
 // Module-only test seam; no kernel or package export exposes these hooks.
 type ReadHooks = { beforeFileOpen?: (path: string) => void; afterFileOpen?: (path: string) => void };
 
-function readOrdinaryFile(path: string, packagePath: string, kind: "Manifest" | "File", hooks: ReadHooks): string {
+function readOrdinaryFile(path: string, packagePath: string, packageRoot: string, kind: "Manifest" | "File", hooks: ReadHooks): string {
   hooks.beforeFileOpen?.(path);
   const descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   try {
     const state = fstatSync(descriptor, { bigint: true });
     if (!state.isFile()) throw new Error("Installed path must be an ordinary file");
     hooks.afterFileOpen?.(path);
-    const verifiedRoot = realpathSync(packagePath);
+    // Trust stays with the root whose manifest was validated; a root that now resolves elsewhere is refused.
+    if (realpathSync(packagePath) !== packageRoot) throw new Error("Installed package root changed while opening; retry the read");
     const verifiedPath = realpathSync(path);
-    if (!verifiedPath.startsWith(`${verifiedRoot}${sep}`)) throw new Error(`${kind} realpath escapes the installed package root`);
+    if (!verifiedPath.startsWith(`${packageRoot}${sep}`)) throw new Error(`${kind} realpath escapes the installed package root`);
     const verifiedState = statSync(verifiedPath, { bigint: true });
     if (verifiedState.dev !== state.dev || verifiedState.ino !== state.ino) throw new Error(`${kind} changed while opening; retry the read`);
     if (state.size > BigInt(maxFileBytes)) throw new Error(`Installed file exceeds ${maxFileBytes} bytes`);
@@ -81,11 +82,11 @@ function readInstalledFile(cwd: string, path: string, startLine = 1, endLine?: n
   const packageRoot = realpathSync(packagePath);
   const manifestPath = realpathSync(join(packageRoot, "package.json"));
   if (!manifestPath.startsWith(`${packageRoot}${sep}`)) throw new Error("Manifest realpath escapes the installed package root");
-  const manifest = JSON.parse(readOrdinaryFile(manifestPath, packagePath, "Manifest", hooks)) as { name?: unknown; version?: unknown };
+  const manifest = JSON.parse(readOrdinaryFile(manifestPath, packagePath, packageRoot, "Manifest", hooks)) as { name?: unknown; version?: unknown };
   if (manifest.name !== `@openlup/${parts[2]}` || typeof manifest.version !== "string" || !manifest.version) throw new Error("Invalid installed package manifest");
   const filePath = realpathSync(join(cwd, ...parts));
   if (!filePath.startsWith(`${packageRoot}${sep}`)) throw new Error("File realpath escapes the installed package root");
-  const content = readOrdinaryFile(filePath, packagePath, "File", hooks);
+  const content = readOrdinaryFile(filePath, packagePath, packageRoot, "File", hooks);
   const lines = content ? content.replace(/\r?\n$/u, "").split(/\r?\n/u) : [];
   const end = endLine ?? lines.length;
   if (endLine !== undefined && endLine < startLine) throw new Error("endLine must be at least startLine");

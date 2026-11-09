@@ -306,7 +306,7 @@ describe("MCP installed file reader", () => {
     expect(swapped).toBe(true);
   });
 
-  it("re-resolves the package root when its installation link changes before open", async () => {
+  it("refuses a read when the installation link moves to another package before open", async () => {
     const root = fixture(), replacementRoot = fixture();
     const packagePath = join(root, "node_modules/@openlup/core");
     const installedPath = `${packagePath}-installed`;
@@ -314,12 +314,31 @@ describe("MCP installed file reader", () => {
     symlinkSync(installedPath, packagePath);
     const target = realpathSync(join(packagePath, "README.md"));
     let swapped = false;
-    await toolError(root, read(), /File realpath escapes the installed package root/, {
+    await toolError(root, read(), /package root changed while opening/, {
       beforeFileOpen(path) {
         if (path !== target || swapped) return;
         swapped = true;
         rmSync(packagePath);
         symlinkSync(join(replacementRoot, "node_modules/@openlup/core"), packagePath);
+      },
+    });
+    expect(swapped).toBe(true);
+  });
+
+  it("refuses a validated package root replaced by an outside symlink before open", async () => {
+    const root = fixture(), outside = fixture();
+    const packagePath = join(root, "node_modules/@openlup/core");
+    const installedPath = `${packagePath}-installed`;
+    renameSync(packagePath, installedPath);
+    symlinkSync(installedPath, packagePath);
+    const target = realpathSync(join(packagePath, "README.md"));
+    let swapped = false;
+    await toolError(root, read(), /package root changed while opening/, {
+      beforeFileOpen(path) {
+        if (path !== target || swapped) return;
+        swapped = true;
+        renameSync(installedPath, `${installedPath}-checked`);
+        symlinkSync(join(outside, "node_modules/@openlup/core"), installedPath);
       },
     });
     expect(swapped).toBe(true);
