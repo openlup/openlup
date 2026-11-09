@@ -457,10 +457,34 @@ for installed PostgreSQL. The required purchase file receives no sign-in step
 or other edit. Later sign-in uses the checkout e-mail and private captured native
 challenge token, never a seeded customer row.
 
-No required CI job currently runs this real-PostgreSQL browser recipe. The
-published-tree workflow's install-proof job runs required-package-gates; its
-starter cold consumer runs source/extracted tests, typecheck and build, with no
-browser invocation. The local purchase acceptance step above owns this proof.
+The required `install-proof` job now runs `journey.spec.ts` and
+`acquisition.spec.ts` in both configurations through
+[`starter-browser-ci.mjs`](../../../scripts/starter-browser-ci.mjs), after the
+package gates. It extracts the starter, installs the verified candidate tarballs,
+uses the job's PostgreSQL service for the complete selected history and repeated
+installation/seed, then starts two loopback hosts on the restricted runtime login.
+The browser image comes only from authenticated, digest-pinned
+`ghcr.io/openlup/playwright` through the shared image reader and pull loop.
+Mirror failure refuses; CI never downloads browsers or pulls a vendor image.
+The database config retains one worker and disables traces, video and screenshots.
+Application inputs are mounted read-only; temporary results, captured output and
+private keys are removed after the output scan. No artifacts are uploaded.
+
+From the source root after the package gates, run the same script with
+`--manifest <package-gates/packages-manifest.json> --expected-commit <full-sha>
+--service-port <local-postgresql-port>`. It requires a disposable PostgreSQL
+service accepting the local `postgres` login and creates/removes only its own
+randomly named databases and roles. Local development may first pull the same
+pinned digest from the Microsoft registry, then pass its complete reference with
+`--local-image`; the script verifies the existing local RepoDigest and refuses
+this exception whenever `CI` is set. It performs no upstream fallback.
+
+This CI selection covers navigation, localized forms/refusals, cart persistence,
+one-time sandbox purchase and discounted subscription acquisition. Separate
+operator-document, recovery and renewal browser proofs above retain their own
+fixtures and local invocation; they are not selected by the database config.
+A green required job establishes only these selected sandbox journeys, not
+provider, deployment, upgrade or release qualification.
 
 Guest one-time and subscription purchases, activation with renewal attachment,
 later sign-in ownership, operator order reads and next-parcel address changes
