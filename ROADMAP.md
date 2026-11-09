@@ -2,13 +2,13 @@
 
 > OpenLup is a development preview, and plans are not release commitments: the order and scope of everything below may change. Read the [README status section](README.md#status-development-preview) before relying on any capability.
 
-Last updated: 2026-11-09 · npm set: 0.37.0
+Last updated: 2026-11-09 · npm set: 0.38.0
 
 ## Current status
 
 | Field | Value |
 | --- | --- |
-| Latest npm set | 0.37.0 |
+| Latest npm set | 0.38.0 |
 | Status | development preview |
 | Stable-framework gate (P1-SF) | open |
 
@@ -74,14 +74,14 @@ Last updated: 2026-11-09 · npm set: 0.37.0
 
 | ID | Name | Status | Release | Summary |
 | --- | --- | --- | --- | --- |
-| m19b1a-pause | Pause and resume | planned | S1b1a | Customers pause for two weeks, one month or indefinitely and resume by hand or on a timer, in the neutral store's customer portal. Pausing closes any open payment-recovery case and revokes its links, and late notices do not revive it. |
-| m19b1a-reminder-timing | Reminder timing and at-risk cap | planned | S1b1a | Configurable timing for renewal and pause-end reminders and a cap on reminders for subscriptions at risk. The timing values are adopter configuration. |
-| m19b1a-operator-escalation | Operator escalation | planned | S1b1a | Subscriptions that automatic payment recovery does not resolve are escalated to the store's operators. |
-| m19b1a-winback | Winback | planned | S1b1a | A scheduled winback flow for customers who have cancelled, with eligibility checked again just before sending. Whether winback needs retention-marketing consent, and the offer values, are adopter configuration. |
-| m19b1a-order-now-reactivate | Order now and reactivate | planned | S1b1a | Customers order their next delivery now or reactivate a subscription from the customer portal. |
-| m19b1a-save-offers | Save offers | planned | S1b1a | Customers who start to cancel are offered alternatives such as skipping or moving a delivery in the customer portal, and the outcome is recorded. |
-| m19b1a-configurable-timing | Configurable timing and terms | planned | S1b1a | Subscription timing and terms become adopter configuration that changes without code edits. |
-| m19b1a-several-live-links | Several live payment links per order | planned | S1b1a | An order can have several live checkout payment links at once, while a payment-recovery case keeps exactly one live link. The flows that send these links come in M19b1b. |
+| m19b1a-pause | Pause and resume | shipped | 0.38.0 | Customers pause for two weeks, one month or indefinitely and resume by hand or on a timer, in the neutral store's customer portal. Pausing closes any open payment-recovery case and revokes its links, and late notices do not revive it. |
+| m19b1a-reminder-timing | Reminder timing and at-risk cap | shipped | 0.38.0 | Configurable timing for renewal and pause-end reminders and a cap on reminders for subscriptions at risk. The timing values are adopter configuration. |
+| m19b1a-operator-escalation | Operator escalation | shipped | 0.38.0 | Subscriptions that automatic payment recovery does not resolve are escalated to the store's operators. |
+| m19b1a-winback | Winback | shipped | 0.38.0 | A scheduled winback flow for customers who have cancelled, with eligibility checked again just before sending. Whether winback needs retention-marketing consent, the cancellation-age window and the message content are adopter configuration. |
+| m19b1a-order-now-reactivate | Order now and reactivate | shipped | 0.38.0 | Customers order their next delivery now or reactivate a subscription from the customer portal. |
+| m19b1a-save-offers | Save offers | shipped | 0.38.0 | Customers who start to cancel are offered alternatives such as skipping or moving a delivery in the customer portal, and the outcome is recorded. |
+| m19b1a-configurable-timing | Configurable timing and terms | shipped | 0.38.0 | Subscription timing and terms are adopter configuration rather than fixed platform values. |
+| m19b1a-several-live-links | Several live payment links per order | shipped | 0.38.0 | An order can have several live checkout payment links at once, while a payment-recovery case keeps exactly one live link. The flows that send these links come in M19b1b. |
 
 ## M19b1b: payment recovery and account
 
