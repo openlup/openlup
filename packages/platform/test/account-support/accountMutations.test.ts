@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createCustomerAccountMutationSchemas, createCustomerAccountMutationHandlers } from "../../src/account-support/index.js";
+import { createCustomerAccountMutationSchemas, createCustomerAccountMutationHandlers, createPostgresCustomerAccountMutationPort, createAccountEventPrivacyContributor } from "../../src/account-support/index.js";
 import { createBffResponder } from "../../src/bff/index.js";
 import type { CustomerAccountMutationHandlerDependencies } from "../../src/account-support/index.js";
 import type { HttpRequest, HttpResponse } from "../../src/http/index.js";
@@ -13,6 +13,49 @@ function handler(auth: CustomerAccountMutationHandlerDependencies["authenticate"
   const port = { updateProfile: vi.fn().mockResolvedValue(profile), requestInvoiceCorrection: vi.fn().mockResolvedValue({ contractVersion: "customer.billing.v1", eventId }), readEvents: vi.fn() };
   return { port, ...createCustomerAccountMutationHandlers({ port, authenticate: auth, messages: { authentication: "Authentication failed", profileInvalid: "Invalid profile", correctionInvalid: "Invalid correction", unlinked: "Unlinked account", invoiceMissing: "Missing invoice", invalidResponse: "Invalid response", failed: "Request failed" } }, schemas, createBffResponder()) };
 }
+describe("account validation policy limits", () => {
+  it.each([
+    {key:{...policy.key,min:7}}, {key:{...policy.key,max:181}},
+    {name:{...policy.name,min:1}}, {name:{...policy.name,max:81}},
+    {correction:{...policy.correction,reasonMin:1}}, {correction:{...policy.correction,reasonMax:501}},
+    {correction:{...policy.correction,fieldsMax:21}}, {correction:{...policy.correction,fieldMax:81}},
+    {correction:{...policy.correction,noteMax:501}},
+    {phone:{...policy.phone,localDigits:8}}, {phone:{...policy.phone,localDigits:10}},
+  ])("refuses a widening policy before constructing a storage port: %j", override => {
+    const query=vi.fn();
+    expect(()=>createPostgresCustomerAccountMutationPort({query},{principalId:clientId,clientId},
+      createCustomerAccountMutationSchemas({...policy,...override}),()=>"2026-11-10T12:00:00.000Z")).toThrow("customer_account_policy_invalid");
+    expect(query).not.toHaveBeenCalled();
+  });
+  it("keeps inclusive limits after normalization and accepts narrower policies", () => {
+    const reference=createCustomerAccountMutationSchemas({...policy,correction:{...policy.correction,noteMax:500}});
+    for(const length of [2,80]) expect(reference.profileRequest.safeParse({idempotencyKey:"profile-1",firstName:`  ${"A".repeat(length)}  `}).success).toBe(true);
+    for(const length of [1,81]) expect(reference.profileRequest.safeParse({idempotencyKey:"profile-1",firstName:"A".repeat(length)}).success).toBe(false);
+    for(const length of [8,180]) expect(reference.profileRequest.safeParse({idempotencyKey:"k".repeat(length)}).success).toBe(true);
+    for(const length of [7,181]) expect(reference.profileRequest.safeParse({idempotencyKey:"k".repeat(length)}).success).toBe(false);
+    const correction={idempotencyKey:"correction-1",invoiceId:clientId,reason:"x".repeat(500),requestedFields:Array(20).fill("f".repeat(80)),note:"n".repeat(500)};
+    expect(reference.correctionRequest.safeParse(correction).success).toBe(true);
+    for(const invalid of [{reason:"x".repeat(7)},{reason:"x".repeat(501)},{requestedFields:Array(21).fill("field")},{requestedFields:["f".repeat(81)]},{requestedFields:[""]},{note:"n".repeat(501)}]) expect(reference.correctionRequest.safeParse({...correction,...invalid}).success).toBe(false);
+    const narrow=createCustomerAccountMutationSchemas({...policy,key:{min:10,max:20},name:{min:3,max:10},correction:{reasonMin:10,reasonMax:40,fieldsMax:2,fieldMax:10,noteMax:20}});
+    expect(narrow.profileRequest.parse({idempotencyKey:"profile-key",firstName:" Ada   Buyer "})).toMatchObject({firstName:"Ada Buyer"});
+    expect(narrow.profileRequest.safeParse({idempotencyKey:"profile-key",firstName:"AB"}).success).toBe(false);
+    expect(narrow.correctionRequest.safeParse({idempotencyKey:"correction-key",invoiceId:clientId,reason:"Correct address",requestedFields:["address"],note:null}).success).toBe(true);
+    expect(narrow.correctionRequest.safeParse({idempotencyKey:"correction-key",invoiceId:clientId,reason:"12345678"}).success).toBe(false);
+  });
+  it("refuses missing, fractional and inconsistent policy limits", () => {
+    for(const key of [{min:undefined,max:180},{min:8.5,max:180},{min:20,max:10}]) expect(()=>createCustomerAccountMutationSchemas({...policy,key} as typeof policy)).toThrow("customer_account_policy_invalid");
+  });
+});
+it("reports unavailable exports while retaining under explicit configured ownership", async()=>{
+  const read=vi.fn(async()=>({available:false,data:null}));
+  const contributor=createAccountEventPrivacyContributor({read,assess:async()=>"retain"});
+  const subject={contactId:clientId,principalId:null,identity:{}};
+  expect(await contributor.export({},subject)).toMatchObject({data:null,coverage:{complete:false,unavailable:["account-support.account-events"]},obligations:[{disposition:"retain"}]});
+  read.mockClear();
+  const assessment=await contributor.assessErasure({},subject);
+  expect(await contributor.eraseOrRetain({},subject,assessment,{principalId:clientId})).toMatchObject({obligations:[{disposition:"retain"}]});
+  expect(read).not.toHaveBeenCalled();
+});
 describe("account request characterizations", () => {
   it("preserves omitted versus null and collapses empty name/phone fields", () => {
     expect(schemas.profileRequest.parse({ idempotencyKey: "profile-1" })).toEqual({ idempotencyKey: "profile-1" });

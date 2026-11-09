@@ -7,13 +7,17 @@ export interface CustomerAccountMutationSchemas {
   correctionRequest: z.ZodType<CustomerInvoiceCorrectionRequest>;
   correctionResponse: z.ZodType<CustomerInvoiceCorrectionResponse>;
 }
-/** Phone extraction intentionally uses the configured local-length/prefix rules, including nondigit stripping. */
+/** Policy may only narrow validation bounds; the phone binding keeps nine local digits and nondigit stripping. */
 export function createCustomerAccountMutationSchemas(policy: CustomerAccountMutationPolicy): CustomerAccountMutationSchemas {
   policy = { key: { ...policy.key }, name: { ...policy.name }, phone: { ...policy.phone }, correction: { ...policy.correction } };
-  if (!/^[1-9][0-9]*$/.test(policy.phone.callingCode) || !Number.isInteger(policy.phone.localDigits) || policy.phone.localDigits < 1
-    || Object.values(policy.key).some(n => !Number.isInteger(n) || n < 1) || policy.key.min > policy.key.max
-    || Object.values(policy.name).some(n => !Number.isInteger(n) || n < 1) || policy.name.min > policy.name.max
-    || Object.values(policy.correction).some(n => !Number.isInteger(n) || n < 1) || policy.correction.reasonMin > policy.correction.reasonMax) throw new Error("customer_account_policy_invalid");
+  const limits = [policy.key.min, policy.key.max, policy.name.min, policy.name.max,
+    policy.correction.reasonMin, policy.correction.reasonMax, policy.correction.fieldsMax, policy.correction.fieldMax, policy.correction.noteMax];
+  if (typeof policy.phone.callingCode !== "string" || !/^[1-9][0-9]*$/.test(policy.phone.callingCode) || policy.phone.localDigits !== 9
+    || limits.some(n => !Number.isInteger(n) || n < 1)
+    || policy.key.min < 8 || policy.key.max > 180 || policy.key.min > policy.key.max
+    || policy.name.min < 2 || policy.name.max > 80 || policy.name.min > policy.name.max
+    || policy.correction.reasonMin < 8 || policy.correction.reasonMax > 500 || policy.correction.reasonMin > policy.correction.reasonMax
+    || policy.correction.fieldsMax > 20 || policy.correction.fieldMax > 80 || policy.correction.noteMax > 500) throw new Error("customer_account_policy_invalid");
   const key = z.string().trim().min(policy.key.min).max(policy.key.max);
   const name = z.string().trim().transform(value => value.replace(/\s+/g, " ")).superRefine((value, ctx) => {
     if (value && (value.length < policy.name.min || value.length > policy.name.max || /https?:\/\/|www\./i.test(value))) ctx.addIssue({ code: "custom", message: "customer_account_name_invalid" });

@@ -1911,9 +1911,12 @@ Select it as the self-service facade's `profile` port. The same port supplies
 responses. Imports mount no route; the starter editors are separate work.
 
 Profile names collapse whitespace; empty/null clear and omitted fields preserve.
-The phone policy supplies the calling prefix and local digit count, preserving
-local/prefixed input extraction. Email is rejected. Replay uses the recorded
-profile-event key and returns current state. Profile update and event append are
+The schema factory refuses policies that widen its limits: keys 8–180, nonempty
+names 2–80, correction reasons 8–500, at most 20 requested fields of 1–80, and
+optional nonempty notes up to 500 characters. Adopters may narrow those limits.
+The phone policy binds the calling prefix and requires nine local digits,
+preserving local/prefixed input extraction. Email is rejected. Replay uses the
+recorded profile-event key and returns current state. Profile update and event append are
 separate query commits: append failure leaves the profile write committed, and a
 retry without a recorded event may mutate again. Do not wrap both in a host
 transaction or claim concurrent exactly-once mutation.
@@ -1931,12 +1934,13 @@ client-column SELECT for absorption census, with the exact SELECT policy.
 Payloads contain personal data. Register `createAccountEventPrivacyContributor`
 in the existing identity registry and require `account-support`: supply a trusted
 payload reader and explicit retain/unresolved policy. Missing coverage is exported
-as unavailable; missing policy refuses erasure. An explicit retain declaration
-leaves event payloads in place and appears in the erasure receipt; identity field
-clearing and cascade do not erase them. No default registration, deletion or
-retention period is installed. The finite connected-store profile carries exact
+as unavailable. Missing reader or unresolved policy refuses erasure. With a
+reader configured, an explicit retain assessment leaves payloads in place and
+appears in the erasure receipt without checking that reader's export availability;
+identity field clearing and cascade do not erase them. No default registration,
+deletion or retention period is installed. The finite connected-store profile carries exact
 rows, following the customer communication-preference event ledger. See the
-[data owner](../../docs/platform/DATA_AND_MIGRATIONS.md#customer-account-event-data).
+[data owner](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#customer-account-event-data).
 
 ### Native account persistence reads
 

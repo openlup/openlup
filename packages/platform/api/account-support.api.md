@@ -1695,7 +1695,7 @@ export interface CustomerAccountMutationSchemas {
     correctionRequest: z.ZodType<CustomerInvoiceCorrectionRequest>;
     correctionResponse: z.ZodType<CustomerInvoiceCorrectionResponse>;
 }
-/** Phone extraction intentionally uses the configured local-length/prefix rules, including nondigit stripping. */
+/** Policy may only narrow validation bounds; the phone binding keeps nine local digits and nondigit stripping. */
 export declare function createCustomerAccountMutationSchemas(policy: CustomerAccountMutationPolicy): CustomerAccountMutationSchemas;
 ```
 ## dist/account-support/customerAccount/postgresAccountMutations.d.ts
