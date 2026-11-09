@@ -1048,3 +1048,53 @@ it.each(["legacy", "qualified-v2"] as const)("bridges real base pause and renewa
     for (const key of acceptedKeys) expect((await owner.query("SELECT state,attempt_count FROM public.transactional_delivery_receipts WHERE idempotency_key=$1", [key])).rows).toEqual([{ state: "accepted", attempt_count: 1 }]);
   } finally { await closePostgres(container, pools); rmSync(prefixRoot, { recursive: true, force: true }); }
 }, 60000);
+
+it.each(["legacy", "qualified-v2", "qualified-admin"] as const)("uses elapsed at-risk bounds across a live DST transition on %s", async generation => {
+  const container = await runPostgresContainer({ name: `notice-elapsed-${generation}-${process.pid}`, password });
+  const pools: Pool[] = [];
+  try {
+    expect(await waitForPostgresTcpReady(container.connectionString)).toBe(true);
+    const owner = new Pool({ connectionString: container.connectionString }); pools.push(owner);
+    const login = (role: string) => { const url = new URL(container.connectionString); url.username = role; return url.toString(); };
+    let installation: PlatformPostgresInstallation = { generation: "legacy" };
+    if (generation !== "legacy") {
+      if (generation === "qualified-admin") await owner.query(`CREATE ROLE elapsed_m LOGIN NOINHERIT NOSUPERUSER CREATEROLE NOCREATEDB NOREPLICATION NOBYPASSRLS PASSWORD '${password}';
+        ALTER DATABASE postgres OWNER TO elapsed_m`);
+      await owner.query(`CREATE ROLE elapsed_r LOGIN NOINHERIT NOSUPERUSER NOCREATEROLE NOCREATEDB NOREPLICATION NOBYPASSRLS PASSWORD '${password}';
+        CREATE ROLE elapsed_s LOGIN NOINHERIT NOSUPERUSER NOCREATEROLE NOCREATEDB NOREPLICATION NOBYPASSRLS PASSWORD '${password}'`);
+      installation = { generation, roleMode: "installer-managed", bootstrapLogin: "postgres", migrationLogin: generation === "qualified-v2" ? "postgres" : "elapsed_m", runtimeLogin: "elapsed_r", restoreLogin: "elapsed_s" };
+    }
+    await install(login(installation.generation === "legacy" ? "postgres" : installation.migrationLogin), installation);
+    const runtime = new Pool({ connectionString: login(generation === "legacy" ? "postgres" : "elapsed_r"),
+      options: generation === "legacy" ? undefined : "-c role=service_role" }); pools.push(runtime);
+    const db = await runtime.connect();
+    try {
+      await db.query("BEGIN");
+      const clock = (await db.query(`SELECT to_char(now() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS at,
+        extract(doy FROM ((now() AT TIME ZONE 'UTC')+interval '1 day'))::int-1 AS spring,
+        extract(doy FROM ((now() AT TIME ZONE 'UTC')+interval '8 days'))::int-1 AS autumn`)).rows[0];
+      // POSIX day numbers are zero-based. Tomorrow's UTC midnight springs forward;
+      // the reverse transition is beyond both bounds, even across a year boundary.
+      await db.query("SELECT set_config('TimeZone',$1,true)", [`XST0XDT,${clock.spring}/0,${clock.autumn}/0`]);
+      expect((await db.query(`SELECT extract(timezone FROM now())::int AS before,
+        extract(timezone FROM now()+interval '48 hours')::int AS after,
+        (extract(epoch FROM(now()+make_interval(days=>2)-now()))/3600)::float8 AS calendar_lower,
+        (extract(epoch FROM(now()+make_interval(days=>5)-now()))/3600)::float8 AS calendar_upper`)).rows)
+        .toEqual([{ before: 0, after: 3600, calendar_lower: 47, calendar_upper: 119 }]);
+      if (generation !== "legacy") expect((await db.query("SELECT current_user,rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user")).rows)
+        .toEqual([{ current_user: "service_role", rolsuper: false, rolbypassrls: false }]);
+      const samples: { id: string; hours: number }[] = [];
+      for (const hours of [47.5, 48, 48.5, 119.5, 120, 120.5]) {
+        const client = randomUUID(), id = randomUUID(); samples.push({ id, hours });
+        await owner.query("INSERT INTO public.clients(id,email) VALUES($1,$2)", [client, `${client}@example.invalid`]);
+        await owner.query(`INSERT INTO public.subscriptions(id,client_id,status,cadence_days,next_cycle_at)
+          VALUES($1,$2,'active',14,$3::timestamptz+$4::double precision*interval '1 hour')`, [id, client, clock.at, hours]);
+        await owner.query("INSERT INTO public.subscription_method_states(subscription_id,health_state) VALUES($1,'method_missing')", [id]);
+      }
+      const found = (await db.query("SELECT subscription_id FROM public.dunning_lifecycle_scan_at_risk_service(2,5,100)")).rows.map(row => row.subscription_id);
+      for (const sample of samples) expect.soft(found.includes(sample.id), `renewal at ${sample.hours} elapsed hours`)
+        .toBe(sample.hours >= 48 && sample.hours <= 120);
+      expect(found).toEqual(samples.filter(sample => sample.hours >= 48 && sample.hours <= 120).map(sample => sample.id));
+    } finally { await db.query("ROLLBACK"); db.release(); }
+  } finally { await closePostgres(container, pools); }
+}, postgresSetupTimeoutMs);

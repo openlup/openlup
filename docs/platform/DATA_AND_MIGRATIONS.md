@@ -58,6 +58,7 @@ subscription events supply only the legacy fallback. New pause reminders and
 at-risk identities use the existing typed outbox, separate from customer command
 keys, under the dedicated `subscription_notice` aggregate. Pause reminders retain pause-window UUID identity; at-risk caps count
 accepted receipts and disabled outcomes across the outbox and typed legacy events.
+At-risk scan days are elapsed 24-hour periods, including across session daylight-saving transitions.
 The immutable outbox keys retain cause/day history after terminal payload compaction.
 Resolved-pause markers use the same isolated carrier and are not deliverable kinds.
 Legacy notice IDs and their delivery keys stay unchanged. Base `pause_ending`

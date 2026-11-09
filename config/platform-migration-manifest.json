@@ -407,14 +407,14 @@
     },
     {
       "file": "db/platform/migrations/20261106120000_subscription_notice_producers.sql",
-      "sha256": "8d9a20baf02fdde77106dc7bca5d82a146ed8a2767a0bd638059c8f4f0708b6d"
+      "sha256": "25e5328eb58ec9b0f750a256d67d18d6a07073bdca1eeb4e7532cd901a8f4019"
     },
     {
       "file": "db/platform/migrations/20261106140000_subscriber_winback_policy.sql",
       "sha256": "092b4f3bbeaf722fe7b860b51f31eb56e87576aeb5ac5a8b76cc3b23f75916ff"
     }
   ],
-  "objectInventorySha256": "95439d6ea707ba2333b8aa76ad1810ac94a7f4b38da6c15c6663cda9c64b464b",
+  "objectInventorySha256": "ebddc222f50ff0d64daf2386e4aa1cf132cfd753c9034e585ac27a86691acdb9",
   "qualified": {
     "baseline": {
       "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -843,7 +843,7 @@
       },
       {
         "file": "db/platform/migrations/20261106120000_subscription_notice_producers.sql",
-        "sha256": "8d9a20baf02fdde77106dc7bca5d82a146ed8a2767a0bd638059c8f4f0708b6d"
+        "sha256": "25e5328eb58ec9b0f750a256d67d18d6a07073bdca1eeb4e7532cd901a8f4019"
       },
       {
         "file": "db/platform/migrations/20261106140000_subscriber_winback_policy.sql",
@@ -852,10 +852,10 @@
     ],
     "objectInventorySha256": {
       "bootstrapMigrator": {
-        "withRestore": "c90e06928ecd34649b251de262a450d522441ec0fd8e03eb590775542ec7db53"
+        "withRestore": "5a04dfba01d072b76793581817920aa45be93f808b0226aa316f6218c209af20"
       },
       "separateMigrator": {
-        "withRestore": "7f8ede9df8f51139244ab23d834ffbedbc733766597982be868d642a42489fe5"
+        "withRestore": "060445cc5d3ad61bca1f74f53abb07019fac347d622a4882272b6142921269c5"
       }
     }
   },
@@ -1283,7 +1283,7 @@
       },
       {
         "file": "db/platform/migrations/20261106120000_subscription_notice_producers.sql",
-        "sha256": "8d9a20baf02fdde77106dc7bca5d82a146ed8a2767a0bd638059c8f4f0708b6d"
+        "sha256": "25e5328eb58ec9b0f750a256d67d18d6a07073bdca1eeb4e7532cd901a8f4019"
       },
       {
         "file": "db/platform/migrations/20261106140000_subscriber_winback_policy.sql",
@@ -1291,8 +1291,8 @@
       }
     ],
     "objectInventorySha256": {
-      "installerManaged": "cb709a738e0a44335346b5165011699c637587b88c2d800ba4518f3392559ca4",
-      "operatorProvisioned": "66d6e836f296347b47b3f0b800789ef07504292eb8f5edd811891b5f7b2c81f9"
+      "installerManaged": "00c610296ea3b54d4d9687dbfe87d7c72f8e4836c69134d76b8a0b8c477af935",
+      "operatorProvisioned": "5fb21559b9e33f5074e1f329407acdd490da1d5c12d4ce92e8e99a155609063c"
     }
   }
 }
