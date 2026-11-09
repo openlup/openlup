@@ -341,4 +341,4 @@ export async function runCli(): Promise<void> {
   catch (error) { process.stderr.write(`openlup-context: ${(error as Error).message}\n`); process.exitCode = 1; }
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) runCli();
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) void runCli();
