@@ -3,6 +3,20 @@
   "version": "0.37.0",
   "private": false,
   "description": "Transactional PostgreSQL outbox rail; development preview.",
+  "keywords": [
+    "openlup",
+    "outbox",
+    "transactional-outbox",
+    "postgresql",
+    "job-queue",
+    "scheduler",
+    "at-least-once",
+    "typescript"
+  ],
+  "homepage": "https://github.com/openlup/openlup/tree/main/packages/outbox#readme",
+  "bugs": {
+    "url": "https://github.com/openlup/openlup/issues"
+  },
   "license": "Apache-2.0",
   "type": "module",
   "repository": {

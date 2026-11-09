@@ -149,14 +149,68 @@ describe("installed agent context", () => {
     expect(() => searchContext(root, "unmatchedneedle")).toThrow(/corpus|context/);
   });
 
-  it.each([["application", 2500], ["declaration", 1200]] as const)("bounds a flat %s directory", (kind, limit) => {
+  it.each([["application", 2500], ["declarations", 1200], ["package-source", 1200]] as const)("reports bounded %s scans across directories", (scope, limit) => {
     const root = fixture();
-    const directory = kind === "application" ? root : join(root, "node_modules/@openlup/core/dist");
-    if (kind === "declaration") rmSync(join(directory, "subscription.d.ts"));
-    for (let index = 0; index <= limit; index++) {
-      writeFileSync(join(directory, `${String(index).padStart(4, "0")}.${kind === "application" ? "ts" : "d.ts"}`), index === limit ? "export const beyondBoundNeedle = 1;\n" : "export const unrelated = 1;\n");
+    const core = join(root, "node_modules/@openlup/core");
+    const directory = scope === "application" ? root : join(core, scope === "declarations" ? "dist" : "src");
+    mkdirSync(directory, { recursive: true });
+    if (scope === "declarations") rmSync(join(directory, "subscription.d.ts"));
+    const extension = scope === "declarations" ? "d.ts" : "ts";
+    const run = () => searchContext(root, "beyondBoundNeedle", scope === "application", scope === "package-source");
+    const summary = () => run().scans.find((scan) => scan.scope === scope);
+    for (let index = 0; index < limit - 1; index++) {
+      writeFileSync(join(directory, `${String(index).padStart(4, "0")}.${extension}`), "export const unrelated = 1;\n");
     }
-    expect(searchContext(root, "beyondBoundNeedle", kind === "application").hits).toEqual([]);
+    expect(summary()).toMatchObject({ scannedFiles: limit - 1, fileLimit: limit, limitReached: false });
+    const nested = join(directory, "nested");
+    mkdirSync(nested);
+    writeFileSync(join(nested, `0000.${extension}`), "export const unrelated = 1;\n");
+    expect(summary()).toMatchObject({ scannedFiles: limit, limitReached: true });
+    writeFileSync(join(nested, `0001.${extension}`), "export const beyondBoundNeedle = 1;\n");
+    const result = run();
+    expect(result.scans.find((scan) => scan.scope === scope)).toMatchObject({ scannedFiles: limit, limitReached: true });
+    expect(result.hits).toEqual([]);
+    if (scope === "application") {
+      const cli = fileURLToPath(new URL("../src/agent-context-cli.ts", import.meta.url));
+      const text = spawnSync(process.execPath, [cli, "search", "beyondBoundNeedle", "--code"], { cwd: root, encoding: "utf8" });
+      expect(text.status, text.stderr).toBe(0);
+      expect(text.stdout).toContain("application 2500/2500; inspect a known path with scoped rg");
+      expect(text.stdout).toContain("does not prove a public seam is absent");
+      const json = spawnSync(process.execPath, [cli, "search", "beyondBoundNeedle", "--code", "--json"], { cwd: root, encoding: "utf8" });
+      expect(json.status, json.stderr).toBe(0);
+      expect(JSON.parse(json.stdout).scans).toContainEqual({ scope: "application", scannedFiles: limit, fileLimit: limit, limitReached: true });
+    }
+  });
+
+  it("omits unrequested and ineligible scans and reports existing empty roots", () => {
+    const root = fixture();
+    const core = join(root, "node_modules/@openlup/core");
+    expect(searchContext(root, "two words").scans).toEqual([]);
+    rmSync(join(core, "dist"), { recursive: true });
+    expect(searchContext(root, "someSymbol", false, true).scans).toEqual([]);
+    mkdirSync(join(core, "dist"));
+    mkdirSync(join(core, "src"));
+    expect(searchContext(root, "someSymbol", true, true).scans).toEqual([
+      { scope: "declarations", packageName: "@openlup/core", scannedFiles: 0, fileLimit: 1200, limitReached: false },
+      { scope: "application", scannedFiles: 0, fileLimit: 2500, limitReached: false },
+      { scope: "package-source", packageName: "@openlup/core", scannedFiles: 0, fileLimit: 1200, limitReached: false },
+    ]);
+  });
+
+  it("does not count excluded application and package source files", () => {
+    const root = fixture();
+    const src = join(root, "node_modules/@openlup/core/src");
+    mkdirSync(src);
+    for (const directory of [root, src]) {
+      writeFileSync(join(directory, "large.ts"), "x".repeat(200_001));
+      writeFileSync(join(directory, "ignored.txt"), "ignored");
+      symlinkSync(join(directory, "large.ts"), join(directory, "link.ts"));
+    }
+    mkdirSync(join(root, ".hidden"));
+    writeFileSync(join(root, ".hidden", "ignored.ts"), "ignored");
+    const scans = searchContext(root, "unmatchedneedle", true, true).scans;
+    expect(scans.find((scan) => scan.scope === "application")?.scannedFiles).toBe(0);
+    expect(scans.find((scan) => scan.scope === "package-source")?.scannedFiles).toBe(0);
   });
 
   it("reports an empty search without claiming the public seam is absent", () => {
@@ -188,7 +242,9 @@ describe("installed agent context", () => {
     writeFileSync(file, "export function packageCheckoutNeedle() { return 1; }\n");
     expect(searchContext(root, "packageCheckoutNeedle").hits).toEqual([]);
     expect(searchContext(root, "packageCheckoutNeedle", false, true).hits[0]).toMatchObject({ file, start: 1, end: 1, reason: "installed package source" });
-    expect(searchContext(root, "src/checkout.ts", false, true).hits[0]).toMatchObject({ file, start: 1, end: 1, reason: "exact installed source path" });
+    const exact = searchContext(root, "src/checkout.ts", false, true);
+    expect(exact.hits[0]).toMatchObject({ file, start: 1, end: 1, reason: "exact installed source path" });
+    expect(exact.scans.find((scan) => scan.scope === "package-source")?.scannedFiles).toBe(1);
     const outside = join(root, "outside.ts");
     writeFileSync(outside, "export const outsidePackageNeedle = 1;\n");
     symlinkSync(outside, join(directory, "outside.ts"));

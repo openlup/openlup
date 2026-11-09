@@ -3394,7 +3394,18 @@ retains terminal-cycle refusal after a later resume. Lifecycle closure already
 terminalizes unpaid artifacts; this forward closes the missing-case observation
 path. Timed resume uses healthy native method state and existing line, case,
 cycle and order ownership relations. Paid orders are associated through their
-cycle, renewal operation or activation. Ineligible windows remain open without
+cycle, renewal operation or activation. The follow-up
+`20261109113000_subscription_auto_resume_delivered_history.sql` replaces only
+`subscription_auto_resume_due(integer,timestamptz)` and chains its before-hash
+to that earlier replacement. Its order guard blocks in-flight `paid` or
+`fulfillment_pending` orders, including an unlinked first order, and an order
+in the retained `paid` / `fulfillment_pending` / `fulfilled` status allowlist
+whose cycle is on `next_cycle_at`. Cancelled pause-closure orders do not block.
+Delivered historical orders no longer keep a
+subscription paused after its first paid order. All other eligibility guards,
+the event, roll-forward, header and ACLs remain unchanged. The
+[delivered-history witness](../../tests/postgres/subscriptionAutoResumeDeliveredHistory.test.ts)
+covers legacy and both qualified runtimes. Ineligible windows remain open without
 writes or batch failure. Eligible windows roll forward monotonically, retain
 one system event and close atomically. The result preserves native `skippedRows`.
 The [workflow owner](SUBSCRIPTION_WORKFLOWS.md#lifecycle-and-retry) describes host

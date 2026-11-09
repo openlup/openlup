@@ -62,12 +62,16 @@ describe.each(lifecycleProfiles)("retry and timed resume on %s", profile => {
       expect(await run()).toMatchObject({ resumed: 1, failed: 0 });
     }
   });
-  it.each(["paid", "fulfillment_pending", "fulfilled"])("skips a %s order including a missing cycle link, preserving its parcel", async status => {
+  it.each(["paid", "fulfillment_pending", "fulfilled"])("skips a %s order in flight or on the next date, preserving its parcel", async status => {
     const f = await paused(), c = await cycle(f.subscription, "skipped");
     const order = randomUUID(), activation = randomUUID();
     await env.owner.query("INSERT INTO public.commerce_orders(id,client_id,subscription_cycle_id,status,currency_code,total_amount_minor) VALUES($1,$2,NULL,$3,'XXX',0)", [order, f.client, status]);
     await env.owner.query(`INSERT INTO public.subscription_activations(id,order_id,client_id,subscription_id,state,cadence_days,declare_idempotency_key,activated_at,payment_fingerprint,activation_idempotency_key)
       VALUES($1::uuid,$2,$3,$4,'active',28,$1::uuid::text,$5,repeat('a',64),$1::uuid::text)`, [activation, order, f.client, f.subscription, AT]);
+    if (status === "fulfilled") {
+      await env.owner.query("UPDATE public.subscription_cycles SET scheduled_at=(SELECT next_cycle_at FROM public.subscriptions WHERE id=$2) WHERE id=$1", [c, f.subscription]);
+      await env.owner.query("UPDATE public.commerce_orders SET subscription_cycle_id=$2 WHERE id=$1", [order, c]);
+    }
     await env.owner.query("INSERT INTO public.fulfillment_ports(port_key,provider_type,routable) VALUES('resume-parcels','3pl',true) ON CONFLICT DO NOTHING");
     await env.owner.query("INSERT INTO public.fulfillment_shipments(order_id,port_key,provider_type,create_idempotency_key) VALUES($1,'resume-parcels','3pl',$2)", [order, `parcel:${order}`]);
     const parcels = (await env.owner.query("SELECT * FROM public.fulfillment_shipments WHERE order_id=$1", [order])).rows;

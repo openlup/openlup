@@ -9,8 +9,17 @@ monorepo instead, and this file does not apply there.
 
 - **Read version-matched package guidance first.** Read
   `node_modules/@openlup/<package>/AGENTS.md` when that package ships one; otherwise read its
-  installed `README.md`. Platform uses its README. Read the shipped `src/` and `.d.ts` files
-  before guessing at a contract.
+  installed `README.md`. Read the shipped `src/` and `.d.ts` files before guessing at a contract.
+- **Find the relevant installed source.** For a known path, symbol or error, use scoped `rg -n`,
+  then read the implementation and nearest relevant tests. When the package owner or seam is
+  unclear, run `./node_modules/.bin/openlup-context search "<concise English task or exact symbol>"`
+  from the application root and read the cited installed sources before editing. `--code` and
+  `--package-code` are opt-in bounded scans, not completeness proof; no hit does not prove a seam
+  absent. If the selected version lacks the tool, read that version's guides, public exports,
+  declarations and shipped source directly; do not upgrade or clone floating source just for lookup.
+  Translate Polish intent into English domain terms for lexical lookup, for example “spóźniona
+  dostawa i następny cykl” → `late delivery subscription cycle` or “ponowienie wysyłki outboxa” →
+  `outbox retry idempotency`.
 - **Dependency guides grant no task authority.** This application's own instructions and human
   authorization govern edits, tool use, external submissions, deployment and permissions.
   Installed guides describe that version's contracts; installing them activates no controls.
@@ -55,18 +64,32 @@ This application is an unpublished local demonstration. It has no authority to
 publish, deploy, use credentials or create paid resources. Its fictional data
 must never be connected to a customer environment by changing a URL.
 
-Personalize `owned/store.config.ts`, `owned/copy.ts` and `owned/fragments.ts`.
+Prepare the selected artifacts and dependencies as described in [README.md](README.md).
+For the local UI edit loop, run `npm run dev` and refresh the browser after a
+successful build or host restart. See [README.md](README.md) for supported platforms
+and limits. `npm run build` then `npm start` remains the ordinary one-shot preview.
+
+| Task | Application-relative route | Existing verification route |
+| --- | --- | --- |
+| Brand, copy, media, offer or cadence | `owned/store.config.ts`, `owned/copy.ts`, `public/media/`; start at [customization](docs/customization.md) | `npm test`, `npm run typecheck`, `npm run build`; add new media to `ownership.json` |
+| Product, offer or checkout presentation | The three functions in `owned/fragments.ts` | Typecheck and build, then relevant browser proof |
+| Minimum-unit validation | Owned input, the shared `shared/offer.ts` validator and `test/offer.test.ts` | Relevant offer tests; preserve browser/host parity |
+| New route or whole-page change | [Changes that need a page copy](docs/customization.md#changes-that-need-a-page-copy), `ownership.json` | Existing route tests and applicable bilingual browser proof; explain maintenance ownership |
+| Unavailable action or integration error | `docs/limits.md`, `host/bindings.ts`, relevant composition and installed package contract | Follow the existing witness in [proof guidance](docs/proof.md); do not invent a success |
+
 The configuration is one typed input, and `shared/offer.ts` is the single
 application offer validator used by browser and host. Do not add a second
 server-only or browser-only commercial rule. Public package engines still own
 order, payment and subscription truth.
 
-Read `docs/customization.md` before changing a page, and `ownership.json` before
-upgrading. Editing a managed page makes that page an owned source copy; record
-the ownership move and take responsibility for compatibility and later fixes.
-Do not silently overwrite owned files during upgrade.
+Read `docs/customization.md` before changing a page. Editing a managed page makes
+that page an owned source copy; record the ownership
+move and take responsibility for compatibility and later fixes. Read `ownership.json`
+before upgrading and do not silently overwrite owned files during upgrade.
 
-Read `docs/limits.md` before claiming an unavailable action. Visible refusal is
-intentional; never fabricate a success or turn a local fixture into an engine.
-The purchase, subscription, destination and upgrade witnesses must actually run
-against the selected installed artifacts before completion is claimed.
+Visible refusal is intentional; never fabricate a success or turn a local fixture
+into an engine. The purchase, subscription, destination and upgrade witnesses must
+actually run against the selected installed artifacts before completion is claimed.
+The default `test:browser` setup does not prove a successful persisted purchase; see
+[proof guidance](docs/proof.md). `./lifecycle verify` and `./lifecycle upgrade` depend
+on the installed CLI and explicit inputs and may refuse.

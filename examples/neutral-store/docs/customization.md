@@ -3,13 +3,19 @@
 Status: bounded development-preview application contract; real upgrade
 preservation remains unproved. This is not a stabilized npm API.
 
+For local UI work on macOS or Linux, prepare the extracted application and run
+`npm run dev` as described in the [README](../README.md#local-ui-edit-loop).
+Edit configuration, fragments or CSS, wait for the build or host restart, then
+refresh manually. Terminal errors mean the current output may be unavailable;
+a successful rebuild and listening host are required before refreshing.
+
 ## One input and three fragments
 
 `owned/store.config.ts` exports the typed configuration. It contains brand
 identity, theme tokens, localized copy, media paths, products and offer rules,
 subscription cadences and market inputs. Both example configurations satisfy
 `StoreConfig` in `shared/config.ts`. No theme framework, configuration service,
-generated client or preview tool is involved.
+generated client or additional theme runtime is involved.
 
 Every owned configuration also supplies `documents.sandbox` (`enabled` and
 `providerRef`), `returns.reasons` (nonempty, uniquely coded choices with English and Polish
@@ -47,8 +53,10 @@ use text nodes rather than interpreting configuration as HTML.
 
 In one configuration, change `brand.name` and its localized strapline; set
 `offer.layout` to `list` or `cards`; and change `offer.minUnits`, for example from
-one unit to three. Restart the host after a configuration edit, rebuild after a
-fragment edit, then open the running app.
+one unit to three. With `npm run dev`, wait for the automatic host restart or
+client rebuild, then refresh the running app. With the one-shot `build` and
+`start` commands, restart the host after a configuration edit and rebuild
+after a fragment edit.
 
 The builder and checkout host both call `evaluateOffer` from `shared/offer.ts`.
 A two-unit box with the example minimum of three must be refused by both. Do
