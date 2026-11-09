@@ -200,7 +200,7 @@ $$;
 CREATE FUNCTION public.commerce_checkout_expired_event_enqueue(p_order_id uuid,p_policy jsonb,p_now timestamptz)
 RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE v_order public.commerce_orders%ROWTYPE; policy jsonb:=public.commerce_checkout_recovery_policy(p_policy);
- raw_token text; event_id uuid;
+ raw_token text; event_id uuid; minted_at timestamptz;
 BEGIN
  SELECT * INTO v_order FROM public.commerce_orders WHERE id=p_order_id FOR UPDATE;
  IF NOT FOUND OR v_order.subscription_cycle_id IS NOT NULL OR NOT (
@@ -212,8 +212,9 @@ BEGIN
  IF v_order.status='cancelled' AND v_order.client_id IS NULL THEN RETURN false; END IF;
  -- A notice must not contain a link already dead at minting time. Retain the
  -- token-less notice path and the original order-based deadline.
+ minted_at:=GREATEST(p_now,clock_timestamp());
  IF v_order.client_id IS NOT NULL
-  AND v_order.created_at+make_interval(secs=>(policy->>'recoverySeconds')::integer)>GREATEST(p_now,now())
+  AND v_order.created_at+make_interval(secs=>(policy->>'recoverySeconds')::integer)>minted_at
  THEN raw_token:='rcv_'||replace(gen_random_uuid()::text,'-','')||replace(gen_random_uuid()::text,'-',''); END IF;
  INSERT INTO public.outbox_events(aggregate_type,aggregate_id,event_type,idempotency_key,payload,metadata)
  VALUES('commerce_order',v_order.id,'commerce.checkout.expired','checkout_expired:'||v_order.id,
@@ -225,9 +226,9 @@ BEGIN
  ON CONFLICT(event_type,idempotency_key) DO NOTHING RETURNING id INTO event_id;
  IF event_id IS NULL THEN RETURN false; END IF;
  IF raw_token IS NOT NULL THEN
-  INSERT INTO public.commerce_checkout_recovery_tokens(order_id,client_id,token_hash,expires_at)
+  INSERT INTO public.commerce_checkout_recovery_tokens(order_id,client_id,token_hash,expires_at,created_at)
   VALUES(v_order.id,v_order.client_id,encode(sha256(convert_to(raw_token,'UTF8')),'hex'),
-   v_order.created_at+make_interval(secs=>(policy->>'recoverySeconds')::integer));
+   v_order.created_at+make_interval(secs=>(policy->>'recoverySeconds')::integer),minted_at);
  END IF;
  RETURN true;
 END; $$;
@@ -365,6 +366,6 @@ DO $$ BEGIN
 END; $$;
 DO $$ BEGIN
  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
-  EXECUTE 'GRANT EXECUTE ON FUNCTION public.commerce_checkout_recovery_payment_blocked(uuid,integer,timestamptz), public.commerce_checkout_recovery_record_sent(uuid,text,text), public.commerce_enqueue_checkout_recovery_reminders(integer,jsonb,timestamptz), public.commerce_reconcile_checkout_expired_events(integer,jsonb,timestamptz), public.commerce_sweep_expired_checkouts(integer,jsonb,timestamptz), public.commerce_sweep_initial_checkouts(integer,timestamptz,jsonb,timestamptz), public.commerce_checkout_recovery_wave_delivery_authorize(uuid,text) TO service_role';
+  EXECUTE 'GRANT EXECUTE ON FUNCTION public.commerce_checkout_recovery_record_sent(uuid,text,text), public.commerce_enqueue_checkout_recovery_reminders(integer,jsonb,timestamptz), public.commerce_reconcile_checkout_expired_events(integer,jsonb,timestamptz), public.commerce_sweep_expired_checkouts(integer,jsonb,timestamptz), public.commerce_sweep_initial_checkouts(integer,timestamptz,jsonb,timestamptz), public.commerce_checkout_recovery_wave_delivery_authorize(uuid,text) TO service_role';
  END IF;
 END; $$;

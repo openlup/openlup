@@ -1,6 +1,6 @@
 import { authorizeCron } from '../scheduler/index.js';
 import type { HttpRequest } from '../http/index.js';
-import type { PlatformJobInvocation, PlatformJobRunLedgerPort } from '../job-ledger/index.js';
+import type { JobLeasePort, PlatformJobInvocation } from '@openlup/core/platform-runtime';
 
 /** Authenticated host invocation; disabled exits before constructing persistence or claiming a lease. */
 export function createCheckoutRecoveryWaveJob(options: {
@@ -9,7 +9,7 @@ export function createCheckoutRecoveryWaveJob(options: {
   leaseSeconds: number;
   batchSize: number;
   bind(): Promise<{
-    ledger: Pick<PlatformJobRunLedgerPort, 'claimJobRun' | 'finishJobRun'>;
+    ledger: JobLeasePort;
     enqueue(limit: number, now: string): Promise<{ enqueued_1h: number; enqueued_20h: number }>;
   }>;
 }) {

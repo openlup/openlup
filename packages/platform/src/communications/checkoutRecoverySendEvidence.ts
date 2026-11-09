@@ -14,15 +14,22 @@ export function withCheckoutRecoverySendEvidence<Port extends RecoveryEmailSendP
   emailPort: Port,
   evidence: { recordConfirmedSend(eventId: string, deliveryReference: string): Promise<void> },
 ): Port {
-  return {
-    ...emailPort,
-    async sendCheckoutRecovery(input) {
-      const outcome = await emailPort.sendCheckoutRecovery(input);
-      const classified = classifyEmailSendOutcome({ ...outcome, resendId: outcome.messageId });
-      if (classified.sentAtEligible) {
-        await evidence.recordConfirmedSend(input.outboxEventId, outcome.messageId ?? `confirmed:${input.outboxEventId}`);
-      }
-      return outcome;
-    },
+  const sendCheckoutRecovery: RecoveryEmailSendPort['sendCheckoutRecovery'] = async input => {
+    const outcome = await emailPort.sendCheckoutRecovery(input);
+    const classified = classifyEmailSendOutcome({ ...outcome, resendId: outcome.messageId });
+    if (classified.sentAtEligible) {
+      await evidence.recordConfirmedSend(input.outboxEventId, outcome.messageId ?? `confirmed:${input.outboxEventId}`);
+    }
+    return outcome;
   };
+  const boundMethods = new Map<unknown, unknown>();
+  return new Proxy(emailPort, {
+    get(_target, property) {
+      if (property === 'sendCheckoutRecovery') return sendCheckoutRecovery;
+      const value: unknown = Reflect.get(emailPort, property, emailPort);
+      if (typeof value !== 'function') return value;
+      if (!boundMethods.has(value)) boundMethods.set(value, value.bind(emailPort));
+      return boundMethods.get(value);
+    },
+  });
 }

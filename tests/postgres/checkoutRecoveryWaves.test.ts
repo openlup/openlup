@@ -57,6 +57,29 @@ describe.each(lifecycleProfiles)('checkout recovery waves on %s', profile => {
       VALUES($1::uuid,$2::uuid,'sandbox',$3::text,100,'XXX',$1::text,$4::timestamptz,CASE WHEN $3::text='settled' THEN $4::timestamptz END)`, [key, id, status, time]);
     return key;
   }
+  async function paymentFact(intentId: string, kind: string, time: string) {
+    // Deliberately leave the intent unsettled and isolate each native evidence source.
+    if (kind.endsWith('-truth')) {
+      const key = randomUUID();
+      await env.owner.query(`INSERT INTO public.payment_truth_events(source_event_id,event_fingerprint,ingest_idempotency_key,
+        settlement_intent_id,outcome,amount_minor,currency_code,source_evidence,occurred_at,updated_at)
+        VALUES($1,$2,$1,$3,$4,100,'XXX','{}',$5,$5)`, [key, 'c'.repeat(64), intentId, kind.split('-')[0], time]);
+    } else {
+      const attempt = randomUUID();
+      await env.owner.query(`INSERT INTO public.payment_simulator_attempts(id,settlement_intent_id,request_key,request_fingerprint,
+        dispatched_at,updated_at,authorization_ref,unattended_charge_authorized_at,method_ref,method_evidence_ref)
+        VALUES($1::uuid,$2::uuid,$1::uuid::text,$3,$4,$4,'authorization',$4,'method','evidence')`, [attempt, intentId, 'a'.repeat(64), time]);
+      if (kind !== 'dispatched') {
+        const observation = randomUUID();
+        await env.owner.query(`INSERT INTO public.payment_simulator_observations(id,attempt_id,event_key,event_fingerprint,outcome,occurred_at)
+          VALUES($1::uuid,$2::uuid,$1::uuid::text,$3,$4,$5)`, [observation, attempt, 'b'.repeat(64), kind.split('-')[0], time]);
+        await env.owner.query('UPDATE public.payment_simulator_attempts SET state=$2,last_observation_id=$3 WHERE id=$1',
+          [attempt, kind.split('-')[0], observation]);
+      }
+    }
+    expect((await env.owner.query('SELECT status,settled_at FROM public.commerce_settlement_intents WHERE id=$1', [intentId])).rows)
+      .toEqual([{ status: 'failed', settled_at: null }]);
+  }
   async function hold(id: string, hours: number, status = 'held') {
     const key = randomUUID();
     await env.owner.query(`INSERT INTO public.fulfillment_inventory_reservations(id,purchase_order_id,operation_fingerprint,source_key,status,expires_at,created_at,updated_at,terminal_reason)
@@ -141,6 +164,57 @@ describe.each(lifecycleProfiles)('checkout recovery waves on %s', profile => {
       await waves().enqueue(1000, NOW);
       expect(await events(o.id)).toHaveLength(['no-payment', 'stale', 'initial'].includes(state) ? 1 : 0);
       expect(await tokens(o.id)).toHaveLength(['no-payment', 'stale', 'initial'].includes(state) ? 1 : 0);
+    });
+
+  it('keeps the payment predicate owner-only, including qualified runtime roles', async () => {
+    const signature = 'public.commerce_checkout_recovery_payment_blocked(uuid,integer,timestamptz)';
+    expect((await env.owner.query(`SELECT rolname,has_function_privilege(oid,$1,'EXECUTE') AS allowed
+      FROM pg_roles WHERE rolname IN ('anon','authenticated','service_role') ORDER BY rolname`, [signature])).rows)
+      .toEqual(['anon', 'authenticated', 'service_role'].map(rolname => ({ rolname, allowed: false })));
+    expect((await env.owner.query(`SELECT EXISTS(SELECT 1 FROM pg_proc p,
+      aclexplode(COALESCE(p.proacl,acldefault('f',p.proowner))) a
+      WHERE p.oid=$1::regprocedure AND a.grantee=0 AND a.privilege_type='EXECUTE') AS allowed`, [signature])).rows)
+      .toEqual([{ allowed: false }]);
+    const db = await env.owner.connect();
+    try {
+      await db.query('BEGIN'); await db.query('SET LOCAL ROLE service_role');
+      await expect(db.query('SELECT public.commerce_checkout_recovery_payment_blocked($1,120,$2)', [randomUUID(), NOW]))
+        .rejects.toMatchObject({ code: '42501' });
+    } finally { await db.query('ROLLBACK'); db.release(); }
+  });
+
+  it.each(['dispatched', 'indeterminate', 'indeterminate-truth', 'captured-attempt', 'captured-truth'])(
+    'checks isolated %s evidence at enqueue and final-wave authorization while the intent remains unsettled', async kind => {
+      const activitySeconds = 120, selected = createPostgresCheckoutRecoveryWaves(env.runtime, { ...policy, activitySeconds });
+      // Paired blocking/allowing assertions catch removal of either the evidence branch or its age boundary.
+      for (const ageSeconds of [activitySeconds - 1, activitySeconds, activitySeconds + 1]) {
+        const blocked = kind.startsWith('captured') || ageSeconds < activitySeconds;
+        const queued = await order();
+        await paymentFact(await intent(queued.id, 'failed'), kind, new Date(Date.parse(NOW) - ageSeconds * 1000).toISOString());
+        await selected.enqueue(1000, NOW);
+        expect(await events(queued.id), `enqueue ${kind} age=${ageSeconds}`).toHaveLength(blocked ? 0 : 1);
+        expect(await tokens(queued.id)).toHaveLength(blocked ? 0 : 1);
+
+        const sending = await order(21);
+        await selected.enqueue(1000, NOW);
+        const first = (await events(sending.id))[0]!;
+        await selected.recordConfirmedSend(first.id, 'capture:payment-matrix');
+        await selected.enqueue(1000, NOW);
+        const final = (await events(sending.id)).find(event => event.payload.reminderHours === 20)!;
+        expect(final.metadata.activitySeconds).toBe(activitySeconds);
+        const claim = randomUUID();
+        await env.owner.query("UPDATE public.outbox_events SET status='processing',metadata=metadata||$2::jsonb WHERE id=$1", [final.id, { claimToken: claim }]);
+        const db = await env.runtime.connect();
+        try {
+          await db.query('BEGIN');
+          // now() is frozen here: exact cutoff tests use the authorization transaction's UTC instant.
+          const activityTime = (await db.query(`SELECT to_char(now()-make_interval(secs=>$1), 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS time`, [ageSeconds])).rows[0].time;
+          await paymentFact(await intent(sending.id, 'failed'), kind, activityTime);
+          expect(await createPostgresCheckoutRecoveryWaves(db, { ...policy, activitySeconds }).authorize(final.id, claim),
+            `authorize ${kind} age=${ageSeconds}`).toMatchObject(blocked
+              ? { authorized: false, reason: 'checkout_recovery_no_longer_allowed' } : { authorized: true });
+        } finally { await db.query('ROLLBACK'); db.release(); }
+      }
     });
 
   it('uses reservation expiry, preserves earlier links, and reconciles one expired notice atomically under replay', async () => {
@@ -233,6 +307,39 @@ describe.each(lifecycleProfiles)('checkout recovery waves on %s', profile => {
     expect(await waves().sweepInitial(1000, at(-24), NOW)).toMatchObject({ swept: 0 });
     await waves().reconcile(1000, NOW); expect(await expireEvents(o.id)).toEqual(notices);
     expect((await env.owner.query("SELECT event_type FROM public.outbox_events WHERE aggregate_id=$1 AND event_type IN ('commerce.order.cancelled','subscription.cancelled')", [o.id])).rows).toEqual([]);
+  });
+
+  it('rechecks the current clock after waiting on the order lock across its link deadline', async () => {
+    const o = await order();
+    await env.owner.query("UPDATE public.commerce_orders SET status='expired' WHERE id=$1", [o.id]);
+    const a = await env.owner.connect(), b = await env.runtime.connect();
+    let pending: ReturnType<ReturnType<typeof createPostgresCheckoutRecoveryWaves>['reconcile']> | undefined;
+    try {
+      await a.query('BEGIN');
+      // The reservation expiry is already durable. Move only the link window inside the held lock.
+      const locked = (await a.query(`UPDATE public.commerce_orders
+        SET created_at=clock_timestamp()+interval '3 seconds'-interval '60 seconds' WHERE id=$1
+        RETURNING created_at+interval '60 seconds' AS deadline,clock_timestamp() AS invoked_at`, [o.id])).rows[0];
+      await b.query('BEGIN');
+      const { pid, started_at: startedAt } = (await b.query('SELECT pg_backend_pid() AS pid,now() AS started_at')).rows[0];
+      expect(startedAt.getTime()).toBeLessThan(locked.deadline.getTime());
+      pending = createPostgresCheckoutRecoveryWaves(b, { ...policy, recoverySeconds: 60 }).reconcile(1000, locked.invoked_at.toISOString());
+      pending.catch(() => {});
+      let blocked = false;
+      for (let tries = 0; tries < 100 && !blocked; tries++) {
+        blocked = (await env.owner.query('SELECT cardinality(pg_blocking_pids($1))>0 AS blocked', [pid])).rows[0].blocked;
+        if (!blocked) await new Promise(resolve => setTimeout(resolve, 10));
+      }
+      expect(blocked).toBe(true);
+      await a.query('SELECT pg_sleep(GREATEST(0,EXTRACT(EPOCH FROM ($1::timestamptz-clock_timestamp())))+0.025)', [locked.deadline.toISOString()]);
+      expect((await a.query('SELECT clock_timestamp()>$1 AS passed', [locked.deadline])).rows[0].passed).toBe(true);
+      await a.query('COMMIT'); await pending; await b.query('COMMIT');
+      const notices = await expireEvents(o.id);
+      expect(notices).toHaveLength(1); expect(notices[0]!.payload).not.toHaveProperty('recoveryToken');
+      expect(await tokens(o.id)).toHaveLength(0);
+      await waves().reconcile(1000, NOW);
+      expect(await expireEvents(o.id)).toEqual(notices); expect(await tokens(o.id)).toHaveLength(0);
+    } finally { await a.query('ROLLBACK'); await pending?.catch(() => {}); await b.query('ROLLBACK'); a.release(); b.release(); }
   });
 
   it('two connections enqueueing the same wave commit one event and token by outbox uniqueness', async () => {
