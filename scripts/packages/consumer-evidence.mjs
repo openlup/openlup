@@ -1,6 +1,6 @@
 /** Project existing packageSmokeEvidence; never store a second export catalogue. */
 export function consumerEvidence(manifest, gates) {
-  const exports = Object.keys(manifest.exports ?? {}), surface = gates.packageSurface ?? {};
+  const exports = Object.keys(manifest.exports ?? {}).filter(subpath => subpath !== "./package.json"), surface = gates.packageSurface ?? {};
   if (JSON.stringify([...exports].sort()) !== JSON.stringify(Object.keys(surface).sort())) {
     throw new Error("CONSUMER_EVIDENCE:export_mismatch: align packageSurface with the selected manifest exports");
   }

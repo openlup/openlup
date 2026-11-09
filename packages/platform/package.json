@@ -53,6 +53,7 @@
     "zod": "^4.6.6"
   },
   "exports": {
+    "./package.json": "./package.json",
     "./fulfillment/native": {
       "types": "./dist/fulfillment/native/index.d.ts",
       "import": "./dist/fulfillment/native/index.js",

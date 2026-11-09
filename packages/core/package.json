@@ -57,7 +57,7 @@
     "release:sbom": "node --experimental-strip-types ./scripts/release-check.ts sbom",
     "test:consumer": "node --experimental-strip-types ./scripts/core-package-consumer-smoke.ts",
     "test:coverage": "npm run build && npm run test:runtime-import && vitest run --config vitest.config.ts --coverage && node --experimental-strip-types ./test/assertNoZeroCoverage.ts",
-    "test:runtime-import": "node -e \"const p=require('./package.json'); Promise.all(Object.keys(p.exports).map((s)=>import(s==='.'?p.name:p.name+'/'+s.slice(2)))).then((m)=>console.log('core runtime import ok', m.length))\"",
+    "test:runtime-import": "node -e \"const p=require('./package.json'); Promise.all(Object.keys(p.exports).filter((s)=>s!=='./package.json').map((s)=>import(s==='.'?p.name:p.name+'/'+s.slice(2)))).then((m)=>console.log('core runtime import ok', m.length))\"",
     "test:smoke": "npm run build && npm run test:runtime-import && vitest run --config vitest.config.ts",
     "typecheck:smoke": "tsc -p tsconfig.smoke.json --noEmit"
   },
@@ -72,6 +72,7 @@
     "vitest": "^4.1.12"
   },
   "exports": {
+    "./package.json": "./package.json",
     "./bundle": {
       "core-source": "./src/bundle/contracts.ts",
       "types": "./dist/bundle/contracts.d.ts",

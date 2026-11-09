@@ -96,8 +96,8 @@ measured budget decision. Passing a local pack does not authorize publication.
 
 ## Package Surface Maturity
 
-Every current export is an internal candidate, experimental kernel, or testing
-surface. Its declaration snapshot is a reviewable drift proof, not a public API
+Every current code export is an internal candidate, experimental kernel, or
+testing surface; the `./package.json` export is the manifest itself. Its declaration snapshot is a reviewable drift proof, not a public API
 promise.
 
 | Export | Role | Maturity | Package smoke |
@@ -232,7 +232,7 @@ In the monorepo, required CI supplies `OPENLUP_PACK_MANIFEST` and
 publishable set and both tarball digests, then uses the named core artifact
 without rebuilding or repacking it. A missing or damaged supplied input refuses;
 it never falls back to a source-directory install. The consumer still audits the
-packed files, imports every public export, checks NodeNext and Bundler types,
+packed files, imports every public code export, checks NodeNext and Bundler types,
 and builds with Vite. It installs Zod from a separately packed locked runtime
 input and uses explicitly located host TypeScript/Vite tools. The isolated
 consumer records the core artifact hashes and rejects package symlinks or

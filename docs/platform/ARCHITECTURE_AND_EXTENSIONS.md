@@ -573,7 +573,7 @@ transports; the helper cannot sandbox an arbitrary factory's I/O.
 
 ## Find consumer evidence for an export
 
-Every export's existing `packageSurface[export].packageSmokeEvidence` in its
+Every code export's existing `packageSurface[export].packageSmokeEvidence` in its
 installed `release-gates.json` remains the evidence source. The
 [documentation contract](../../packages/core/scripts/documentation-contract.ts)
 already binds source witness paths to the package's surface table. The
@@ -591,7 +591,8 @@ const read = name => JSON.parse(readFileSync(`${directory}/${name}`, "utf8"));
 console.log(JSON.stringify(consumerEvidence(read("package.json"), read("release-gates.json")), null, 2));
 ```
 
-The JSON contains one row for each actual export, its original source witness
+The JSON contains one row for each code export (the manifest export has
+none), its original source witness
 paths, maturity and a `consumerCheck` executable/argument array. Run that array
 from the consumer directory to import that installed entry with its selected
 peers. An import failure identifies an unavailable artifact, dependency or entry;
@@ -603,7 +604,7 @@ stated install/build prerequisites. Tests are not assumed to ship in the tarball
 Use the conformance
 runner above with your own fixtures for adapter behaviour. The projection's
 [deterministic tests](../../scripts/packages/consumer-evidence.test.ts) cover all
-current core, outbox and platform exports and refuse missing evidence.
+current core, outbox and platform code exports and refuse missing evidence.
 
 ## Source ejection
 

@@ -7,11 +7,12 @@ supported installation is claimed.
 
 The [generated projection](OUTCOME_PROJECTION.md) derives its package entries,
 class counts, API snapshots and executable proof links from `config/openlup-packages.json`,
-the package manifests and each export's existing `packageSmokeEvidence`. It
+the package manifests and each code export's existing `packageSmokeEvidence`
+(the manifest export carries none). It
 introduces no independently maintained capability list or private register.
-Rows group every export by its existing top-level class and link common proof
+Rows group every code export by its existing top-level class and link common proof
 parents, keeping per-provider details in their source owners. Counts and the
-fingerprint retain every export; grouping never turns partial evidence complete.
+fingerprint retain every code export; grouping never turns partial evidence complete.
 
 From the source checkout, with its recorded Node version:
 

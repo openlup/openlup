@@ -99,6 +99,7 @@ function assertPacklist(packageJson: CorePackageJson, packFiles: string[]): void
   ]);
 
   for (const [subpath, entry] of Object.entries(packageJson.exports)) {
+    if (subpath === "./package.json") continue;
     requiredFiles.add(packageTargetPath(entry["core-source"]));
     requiredFiles.add(packageTargetPath(entry.node));
     requiredFiles.add(packageTargetPath(entry.types));
