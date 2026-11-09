@@ -32,8 +32,8 @@ function launch(args: string[]) {
 async function request(port: number, path: string) {
   try { const response = await fetch(`http://127.0.0.1:${port}${path}`); return response.ok ? await response.text() : false; } catch { return false; }
 }
-function processRows(): number[][] {
-  const result = spawnSync('ps', ['-A', '-o', 'pid=', '-o', 'ppid='], { encoding: 'utf8' });
+function processRows(environment?: NodeJS.ProcessEnv): number[][] {
+  const result = spawnSync('ps', ['-A', '-o', 'pid=', '-o', 'ppid='], { encoding: 'utf8', env: environment });
   assert.equal(result.status, 0, `ps inventory failed: ${result.error?.message ?? result.stderr}`);
   const lines = result.stdout.trim().split('\n');
   assert(lines.length > 0 && lines.every(line => /^\s*\d+\s+\d+\s*$/.test(line)), 'valid nonempty process inventory required');
@@ -49,17 +49,17 @@ function descendants(pid: number): number[] {
 }
 function alive(pid: number) { try { process.kill(pid, 0); return true; } catch { return false; } }
 const observedGroups = new Map<ChildProcess, { group: number; pids: number[] }>();
-function observe(child: ChildProcess) {
-  const rows = processRows();
+function observe(child: ChildProcess, environment?: NodeJS.ProcessEnv) {
+  const rows = processRows(environment);
   const group = rows.find(([, parent]) => parent === child.pid)?.[0];
   const pids = descendants(child.pid!);
   if (group) observedGroups.set(child, { group, pids });
   return pids;
 }
-async function stop(child: ChildProcess, signal: NodeJS.Signals) {
+async function stop(child: ChildProcess, signal: NodeJS.Signals, observationEnvironment?: NodeJS.ProcessEnv) {
   let observed: number[] = [];
   let observationError: unknown;
-  try { observed = observe(child); } catch (error) { observationError = error; }
+  try { observed = observe(child, observationEnvironment); } catch (error) { observationError = error; }
   // The directly spawned launcher is owned even if process observation fails.
   child.kill(signal);
   await until(() => child.exitCode !== null || child.signalCode !== null, 'launcher exit');
@@ -97,16 +97,13 @@ test('cleanup signals owned launcher when process observation fails', { timeout:
   processRows();
   const port = await freePort();
   const run = launch(['--port', String(port)]);
-  const previousPath = process.env.PATH;
   try {
     await until(async () => !!(await request(port, '/api/config')), 'fault-injection host');
     const faultPids = descendants(run.child.pid!);
     assert(faultPids.length >= 2, 'fault-injection descendants must be observable');
-    process.env.PATH = '/nonexistent-starter-proof-path';
-    await assert.rejects(stop(run.child, 'SIGTERM'), /ps inventory failed/);
+    await assert.rejects(stop(run.child, 'SIGTERM', { PATH: '/nonexistent-starter-proof-path' }), /ps inventory failed/);
     await until(() => faultPids.every(pid => !alive(pid)), 'fault-injection descendants exit');
   } finally {
-    if (previousPath === undefined) delete process.env.PATH; else process.env.PATH = previousPath;
     await cleanup(run.child);
   }
 });
