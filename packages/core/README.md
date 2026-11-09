@@ -215,6 +215,49 @@ before changing a contract; a result locates
 evidence, and does not grant application policy or execution authority. The
 snapshot and command do not establish a registry release or stable support.
 
+## Agent context over MCP
+
+Connect an MCP client to the installed context tool over stdio. Set the working
+directory to your application root (the directory containing `node_modules`):
+
+```json
+{
+  "mcpServers": {
+    "openlup-context": {
+      "command": "npx",
+      "args": ["openlup-context", "mcp"],
+      "cwd": "/path/to/your-application"
+    }
+  }
+}
+```
+
+The example assumes core is already installed; use the local executable
+`./node_modules/.bin/openlup-context mcp` directly if your client must never let
+`npx` fetch a missing command. Configure the working directory in your client's
+settings if it does not accept `cwd`.
+
+Use `search_openlup_context` when the owner or extension seam is unclear, then
+`read_openlup_file` with the returned application-relative path and optional
+inclusive `startLine`/`endLine` (starting at 1). Search also returns structured
+results; `includeApplicationCode` and `includePackageCode` opt into the same
+bounded scans as the CLI flags. Read accepts only ordinary installed
+`node_modules/@openlup/<name>/` files up to 200,000 bytes. Symlinked package roots
+are supported; file realpaths must stay inside the resolved package root. Read
+refuses traversal and never fetches release-tag source URLs. These checks guard
+against wrong paths and links present when the file is read; they do not defend
+against a process that rewrites `node_modules` during the read, which can already
+change the code the application runs. For a repository-only
+source, read its installed context excerpt; application source hits require your
+client's own file tool. Search tasks are limited to 1,000 characters, and each
+incoming message line to 1 MiB. Oversized messages receive one error and are
+discarded through the next newline; the server continues serving. End stdin to
+stop the process.
+
+The server uses local files and Node built-ins, with no network access or extra
+runtime dependency. Kernel exports never load it. The same development-preview
+limits and application-owned instructions apply as for CLI lookup.
+
 ## Local verification from source
 
 The following developer commands require a source checkout of this package;

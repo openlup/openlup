@@ -1,4 +1,4 @@
-import { createPostgresAccountReadSources, createPostgresCustomerOrderHistoryReadStore } from '@openlup/platform/account-support';
+import { editCutoff, createPostgresAccountReadSources, createPostgresCustomerOrderHistoryReadStore } from '@openlup/platform/account-support';
 
 interface Executor { query(sql: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }> }
 const unavailable = async (): Promise<never> => { throw new Error('starter_account_section_unavailable'); };
@@ -47,7 +47,7 @@ export async function readAccountRenewal(executor: Executor, scope: { principalI
   const rows = await sources.readSubscriptionRows(clientId, 50);
   const ids = rows.map(row => String(row.id));
   const nextCycles = new Map(rows.map(row => [String(row.id), typeof row.next_cycle_at === 'string' ? row.next_cycle_at : null]));
-  const [actions, payments, alignments, charges, addressEvents] = await Promise.all([
+  const [actions, payments, alignments, charges, addressEvents, blockers, pauses, winback] = await Promise.all([
     sources.readActionStates(ids), sources.readPaymentEvidence(ids), sources.readDeliveryAlignments(nextCycles),
     sources.readNextCharges(rows), executor.query(`SELECT DISTINCT ON(e.subscription_id) e.subscription_id,e.payload
       FROM public.subscription_events e JOIN public.subscriptions s ON s.id=e.subscription_id
@@ -55,8 +55,17 @@ export async function readAccountRenewal(executor: Executor, scope: { principalI
       WHERE s.id=ANY($1::uuid[]) AND c.id=$2::uuid AND c.principal_id=$3::uuid
         AND e.event_type='subscription.customer_self_service.change_shipping_address'
       ORDER BY e.subscription_id,e.occurred_at DESC,e.id DESC`, [ids, clientId, scope.principalId]),
+    sources.readSubscriptionBlockers(ids, nextCycles), sources.readPauseWindows(ids),
+    executor.query(`SELECT DISTINCT ON(i.subscription_id) i.subscription_id,i.status,i.refusal,i.delivery_reference
+      FROM public.subscriber_retention_intents i JOIN public.subscriptions s ON s.id=i.subscription_id
+      JOIN public.clients c ON c.id=s.client_id WHERE s.id=ANY($1::uuid[]) AND c.id=$2::uuid
+        AND c.principal_id=$3::uuid AND i.kind='winback' ORDER BY i.subscription_id,i.created_at DESC,i.id DESC`,
+    [ids, clientId, scope.principalId]),
   ]);
   return { subscriptions: rows.map(row => ({ subscriptionId: row.id, status: row.status,
+    nextCycleAt: nextCycles.get(String(row.id)) ?? null, editCutoffAt: editCutoff(nextCycles.get(String(row.id)) ?? null, typeof row.edit_window_hours === 'number' ? row.edit_window_hours : null),
+    blocker: blockers.get(String(row.id)) ?? null, pause: pauses.get(String(row.id)) ?? null,
+    winback: winback.rows.find(intent => intent.subscription_id === row.id) ?? null,
     chargeAt: charges.get(String(row.id))?.chargeAt ?? null, nextCharge: charges.get(String(row.id)) ?? null,
     promisedArrival: { available: false as const }, action: actions.get(String(row.id)) ?? null,
     payment: payments.get(String(row.id)) ?? null, deliveryAlignment: alignments.get(String(row.id)) ?? null,

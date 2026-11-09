@@ -1,3 +1,7 @@
+import type { SubscriptionCommand } from '@openlup/platform/subscriptions/contracts';
+import { createPostgresSubscriptionCommands } from '@openlup/platform/subscriptions';
+import { isUuid } from './recurring-fence.ts';
+import { assertSubscriptionCare } from '../shared/renewal-config.ts';
 import { readAccountRenewal } from './account-renewal.ts';
 import { composeOperatorRecovery } from './operator-recovery.ts';
 import { composeAuthenticatedRecovery } from './authenticated-recovery.ts';
@@ -90,6 +94,7 @@ export async function composeNativeBindings(connectionString: string, origin: Or
     context.setCookie(sessions.cookie(session.accessToken));
     return success({ expiresAt: session.expiresAt });
   };
+  actions['subscription.command'] = composeSubscriptionCare(pool);
   actions['auth.request'] = async (payload, context) => {
     if (!email(payload.email, context.config.purchase.inputLimits.email)) return refused('starter_input_invalid');
     const started = Date.now();
@@ -187,5 +192,60 @@ export async function composeNativeBindings(connectionString: string, origin: Or
       return profile ? { ...requester, customerRef: profile.clientId, operatorRef: null, principalRef: session.principalId, sessionToken: token } : { ...nobody(), ...requester };
     },
     async close() { sessions.close(); await Promise.all([capabilities.close(), checkoutRecoveryTokenLane.close(), contacts.close(), operators.close(), pool.end()]); },
+  };
+}
+
+/** The session supplies authority; the package owns lifecycle, timing, receipts and all writes. */
+export function composeSubscriptionCare(pool: pg.Pool, now = () => new Date().toISOString()): ActionBinding {
+  return async (input, context) => {
+    const refuse = (code: string) => ({ ok: false as const, code });
+    if (!context.actor.principalRef || !context.actor.customerRef) return refuse('customer_session_required');
+    const allowed = ['action', 'subscriptionRef', 'reason', 'pausePreset', 'survey', 'saveOffer', 'newNextCycleAt', 'confirmedChargeTiming', 'locale'];
+    if (Object.keys(input).some(key => !allowed.includes(key)) || !isUuid(input.subscriptionRef)
+      || typeof input.action !== 'string' || !['skip', 'slide', 'pause', 'resume', 'cancel', 'order_now', 'reactivate'].includes(input.action)
+      || (input.reason != null && (typeof input.reason !== 'string' || input.reason.length > 2000))) return refuse('starter_input_invalid');
+    const owner = (await pool.query(`SELECT s.id FROM public.subscriptions s JOIN public.clients c ON c.id=s.client_id
+      WHERE s.id=$1::uuid AND c.id=$2::uuid AND c.principal_id=$3::uuid`,
+    [input.subscriptionRef, context.actor.customerRef, context.actor.principalRef])).rows[0];
+    if (!owner) return refuse('starter_subscription_not_found');
+    assertSubscriptionCare(context.config.renewal.subscriptionCare);
+    const port = createPostgresSubscriptionCommands({
+      lifecycleTerms: context.config.renewal.subscriptionCare.terms,
+      retentionReasonCodes: context.config.renewal.subscriptionCare.retentionReasons,
+      async withTransaction(work) {
+        const db = await pool.connect();
+        try { await db.query('BEGIN'); const value = await work(db); await db.query('COMMIT'); return value; }
+        catch (error) { await db.query('ROLLBACK'); throw error; }
+        finally { db.release(); }
+      },
+      async futureTerms() { return { outcome: 'refused', reason: 'subscription_command_unsupported_action' }; },
+    });
+    const base = { actor: { kind: 'customer' as const, actorId: context.actor.principalRef, clientId: context.actor.customerRef },
+      subscriptionId: String(owner.id), idempotencyKey: context.commandKey, now: now() };
+    const reason = typeof input.reason === 'string' ? input.reason : null;
+    let command: SubscriptionCommand;
+    switch (input.action) {
+      case 'order_now': case 'reactivate':
+        if (input.confirmedChargeTiming !== true) return refuse('subscription_command_charge_timing_not_confirmed');
+        command = { ...base, action: input.action, confirmedChargeTiming: true }; break;
+      case 'pause':
+        if (!['2_weeks', '1_month', 'indefinite'].includes(String(input.pausePreset))) return refuse('starter_input_invalid');
+        command = { ...base, action: 'pause', pausePreset: String(input.pausePreset), reason,
+          survey: input.survey as Extract<SubscriptionCommand, { action: 'pause' }>['survey'] ?? null,
+          saveOffer: input.saveOffer as Extract<SubscriptionCommand, { action: 'pause' }>['saveOffer'] ?? null }; break;
+      case 'slide':
+        if (typeof input.newNextCycleAt !== 'string' || !Number.isFinite(Date.parse(input.newNextCycleAt))) return refuse('starter_input_invalid');
+        command = { ...base, action: 'slide', newNextCycleAt: input.newNextCycleAt, reason, confirmedChargeTiming: input.confirmedChargeTiming === true }; break;
+      case 'cancel':
+        command = { ...base, action: 'cancel', reason, confirmedChargeTiming: input.confirmedChargeTiming === true,
+          survey: input.survey as Extract<SubscriptionCommand, { action: 'cancel' }>['survey'] ?? null,
+          saveOffer: input.saveOffer as Extract<SubscriptionCommand, { action: 'cancel' }>['saveOffer'] ?? null }; break;
+      default:
+        command = { ...base, action: input.action as 'skip' | 'resume', reason, confirmedChargeTiming: input.confirmedChargeTiming === true };
+    }
+    const result = await port.apply(command);
+    if ('supported' in result) return refuse(result.refusalCode);
+    if (result.outcome === 'refused') return refuse(result.reason);
+    return { ok: true, value: result, replayed: result.outcome === 'replayed' };
   };
 }

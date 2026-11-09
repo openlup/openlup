@@ -30,12 +30,12 @@ const target=(key:string)=>({sourceKey:key,messageId:`network:${key}`,recipientE
 const work=(key:string)=>({sourceKey:key,contactId:key,normalizedEmail:email,eventType:"subscribe" as const,purpose:"marketing_newsletter" as const});
 const provider={providerKind:"synthetic",capabilities:{subscribe:true,unsubscribe:true,suppress:true,unsuppress:false,doubleOptIn:false,emailChange:false,listMembership:false,webhookIdempotency:false,retryAfter:false},sync:async()=>({status:"sent" as const})};
 const snapshot=async(pool:Pool)=>{
- const result:Record<string,unknown>={};
+ const result:Record<string,{row:Record<string,unknown>}[]>={};
  for(const table of ["clients","subscriptions","subscription_events","platform_human_principals","platform_human_memberships","transactional_delivery_receipts"])
    result[table]=(await pool.query(`SELECT to_jsonb(t) AS row FROM public.${table} t ORDER BY to_jsonb(t)::text`)).rows;
  return result;
 };
-let before:Record<string,unknown>;
+let before:Awaited<ReturnType<typeof snapshot>>;
 beforeAll(async()=>{
  if(!await dockerAvailable())throw new Error("B3 requires real PostgreSQL");
  expect(nativeIndex).toBe(69);
@@ -54,6 +54,8 @@ beforeAll(async()=>{
  await upgrade.query("INSERT INTO public.outbox_events(aggregate_type,aggregate_id,event_type,idempotency_key,payload) VALUES ('synthetic',$1,'synthetic.commerce','preserve','{}')",[C]);
  await upgrade.query("INSERT INTO public.communication_recipient_consents(recipient_fingerprint,purpose,state) VALUES ($1,'marketing_newsletter','denied')",[hash(email)]);
  before=await snapshot(upgrade);
+ // The later package-editor forward adds only a nullable subscription field.
+ before.subscriptions=before.subscriptions.map(({row})=>({row:{...row,composition_constraint:null}}));
  await runner(fresh).apply();
  await fresh.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES ($1,'admin@example.invalid')",[A]);
  await fresh.query("INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at) VALUES ($1,'admin','active','legacy',now())",[A]);

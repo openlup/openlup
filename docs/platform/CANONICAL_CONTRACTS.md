@@ -587,6 +587,18 @@ privileges and complete catalogue installation are described in
 
 ## Compatibility posture
 
+The classic package-editor unit appends one native migration to each selected
+source plan while preserving earlier file identities. Its package SQL copy is
+projected from the same canonical bytes. Installation-shape catalogue digests
+and current migration counts require fresh PostgreSQL measurements; a manifest
+entry alone is not admission evidence. Apply that forward before selecting the
+new editor or updated native account reads. The host supplies
+`subscription_minimum_base_units` in `commerce_settings.value_text` as a strict
+positive integer; absent or malformed configuration refuses quoting and apply.
+The [data owner](DATA_AND_MIGRATIONS.md#retained-renewal-storage) describes the
+ledger, one absorption classification and retained agreement evidence.
+
+
 The channel suffix established the preceding selected-plan prefix of
 91 legacy units, 95 qualified units and 94 restricted units.
 

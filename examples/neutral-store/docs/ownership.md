@@ -173,3 +173,22 @@ cannot override retained terms or a frozen cycle's shipping amount.
 PostgreSQL runner supplies the private mailbox and expected account/order values;
 the customer uses only sign-in and account read controls. Fixture files and
 Playwright configurations under `.context/` are generated private state.
+
+
+## Subscription care ownership
+
+`owned/renewal.config.ts` owns neutral timing, cancellation taxonomy,
+notice windows, operator caps and retry offsets.
+General portal and care-message copy remains in `owned/copy.ts`. The managed
+portal, command binder and scheduled care entry compose installed native owners.
+The private care capture reuses the existing filesystem protocol and native
+transactional receipts. Run summaries and message bodies are generated state.
+The account's owned read includes native winback status/refusal and receipt
+reference; it provides no consent writer. The native default retention gate ON
+is retained without seeding settings. Generic edit commands remain unmounted.
+
+`./lifecycle browser` is the managed local PostgreSQL recipe for the
+database browser configuration. Its private fixture connections and host state
+live under `.context/care-browser`, never in the archive. It owns and removes
+only its newly created containers and child processes. The installed package
+migration runner owns the database schema; no starter migration or grant is added.
