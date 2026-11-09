@@ -1254,6 +1254,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261109100000_subscription_retry_resume.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4163,6 +4167,10 @@
     },
     {
       "path": "packages/platform/sql/20261106140000_subscriber_winback_policy.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261109100000_subscription_retry_resume.sql",
       "class": "public-output"
     },
     {
@@ -8126,6 +8134,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/subscriptions/postgresAutoResume.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/subscriptions/postgresCommandStore.ts",
       "class": "public-output"
     },
@@ -10274,6 +10286,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/subscriptions/autoResume.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/subscriptions/contracts.test.ts",
       "class": "public-output"
     },
@@ -10315,6 +10331,10 @@
     },
     {
       "path": "packages/platform/test/subscriptions/renewalKeys.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/subscriptions/retryTiming.test.ts",
       "class": "public-output"
     },
     {
@@ -28963,6 +28983,14 @@
     },
     {
       "path": "tests/postgres/subscriptionRetryLifecycleCases.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionRetryResume.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionRetryResumeCatalog.proof.ts",
       "class": "public-output"
     },
     {

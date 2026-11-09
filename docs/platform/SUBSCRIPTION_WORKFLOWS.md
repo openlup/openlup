@@ -54,6 +54,31 @@ termination. These functions do not perform I/O or determine whether a physical
 parcel arrived. [Purity tests](../../packages/core/test/subscriptionPurity.test.ts)
 challenge the package boundary; delivery protection belongs to the durable rail.
 
+Native retry timing uses `CycleRetryCadence.backoffHours` through the trusted
+`retryCadence` binding option (or the retry store's second argument). Defaults
+remain 24, 72 and 168 hours from each failure: three retry slots and no next
+retry after failure four. The array length is the retry budget. A timing override
+cannot change the `hard_do_not_retry` stop, and receipt replay retains the
+accepted schedule. Browser payloads cannot supply this configuration.
+
+The native open-case entry locks the subscription and refuses observations for
+non-active subscriptions or cycles outside `payment_pending` before case or
+notice writes. Terminalized cycles remain fenced after resume or reactivation.
+
+`createPostgresSubscriptionAutoResume` in `@openlup/platform/subscriptions`
+exposes `run(limit, now)` for a host-owned scheduled job. It selects due finite
+pause windows with row-skip-locked admission. Missing healthy stored-method
+state, next date or lines, open recovery, any uncollected cycle, a paid cycle
+on the next date, or a qualifying paid/fulfilling order causes a graceful skip.
+The window stays open for the next tick; skips leave `ok` true. Indefinite
+windows remain paused. Eligible resumes roll forward by whole stored cadences,
+retain a later date, close the window and write one `subscription.system.auto_resume`
+event under `subscription_auto_resume:<window>`, including the eligibility policy.
+The lifecycle dispatcher sends that event with the existing resumed confirmation.
+Scheduling, enablement and job-ledger composition belong to the host.
+Resume creates no delivery arrival or replacement confirmation; paid cycles and
+parcels retain their existing lifecycle.
+
 ## Renew one cycle
 
 The hosted charge and failure files are application policy facades over the

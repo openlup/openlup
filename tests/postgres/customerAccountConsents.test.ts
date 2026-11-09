@@ -66,7 +66,8 @@ it.each(profiles)("atomic actor account choices and refusals on %s", async profi
     await runner.apply();
     expect((await runner.apply()).applied).toEqual([]);
     // Notice production follows lifecycle closure in every plan; qualified plans also retain their completion tail.
-    const tail = [{ catalog_path: "db/platform/migrations/20261106140000_subscriber_winback_policy.sql" },
+    const tail = [{ catalog_path: "db/platform/migrations/20261109100000_subscription_retry_resume.sql" },
+      { catalog_path: "db/platform/migrations/20261106140000_subscriber_winback_policy.sql" },
       { catalog_path: "db/platform/migrations/20261106120000_subscription_notice_producers.sql" },
       { catalog_path: "db/platform/migrations/20261106100000_subscription_lifecycle_closure.sql" },
       { catalog_path: "db/platform/migrations/20261106060000_subscription_retry_recovery_truth.sql" },
