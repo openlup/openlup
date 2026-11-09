@@ -69,7 +69,11 @@ notice writes. Terminalized cycles remain fenced after resume or reactivation.
 exposes `run(limit, now)` for a host-owned scheduled job. It selects due finite
 pause windows with row-skip-locked admission. Missing healthy stored-method
 state, next date or lines, open recovery, any uncollected cycle, a paid cycle
-on the next date, or a qualifying paid/fulfilling order causes a graceful skip.
+on the next date, an in-flight order (`paid` or `fulfillment_pending`), or an
+order in the existing `paid` / `fulfillment_pending` / `fulfilled` allowlist
+whose cycle is on the next date causes a graceful skip. Cancelled orders left
+by pause closure do not block. A delivered
+(`fulfilled`) historical order does not block, including the first paid order.
 The window stays open for the next tick; skips leave `ok` true. Indefinite
 windows remain paused. Eligible resumes roll forward by whole stored cadences,
 retain a later date, close the window and write one `subscription.system.auto_resume`
