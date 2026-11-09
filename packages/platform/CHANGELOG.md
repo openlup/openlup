@@ -10,6 +10,98 @@ in the source repository.
 
 ## [Unreleased]
 
+## [0.38.0]
+
+- Publishable on the npm `latest` dist-tag as `0.38.0`, from tag
+  `openlup-platform-v0.38.0`.
+
+Checkout recovery links for one admitted purchase now coexist until expiry or
+payment. Identical-hash replay and cross-order refusal remain unchanged. Pending
+renewal-cycle orders refuse checkout issuance. Payment-case links still rotate,
+with issuance serialized on the pending order; the separate actor issuer also
+retains rotation. Install the complete native migration chain before using the
+updated checkout issuer.
+
+Add the opt-in classic package repricer and PostgreSQL preview/apply binding. Content-keyed one-use previews accept a separate apply key; future renewal terms retain accepted line pricing. Both quote and apply read the configured minimum base units. Apply the package-editor forward through the selected migration plan before composing native account reads or the editor. Hosts supply authenticated ownership, composition mapping and a promotion-free server-authoritative quote engine.
+
+- Declare npm `keywords`, a `homepage` pointing at the package README in the
+  source repository, and the issue tracker as `bugs`, so registry search and
+  package pages lead to the documentation and to issue reports.
+
+Replay a completed classic package-edit key before repricing or configuration reads, preserving its originally recorded result after a price change. Fresh commands still require a matching current quote.
+
+- Export `./package.json`, so tooling and agents can read the installed
+  version and metadata with `import.meta.resolve("@openlup/platform/package.json")` or
+  a JSON import. It adds no code entry point.
+
+Fence late retry case observations after lifecycle closure, including after a
+later resume. Timed auto-resume now skips ineligible windows without failure,
+rolls forward by whole cadences and records one system event; the lifecycle
+messenger maps that event to the resumed confirmation.
+
+Expose `createPostgresSubscriptionAutoResume` through `subscriptions` and trusted
+`CycleRetryCadence.backoffHours` configuration through native retry stores and
+bindings. Defaults and terminating failure-class behavior remain unchanged.
+Install the complete native migration catalogue before selecting these entries.
+
+Migration: Existing retry-store callers keep their one-argument construction and
+24/72/168-hour defaults. To override timing, pass `{ backoffHours }` as the
+store's second argument or `retryCadence` in the native binding's retry options.
+Install the complete catalogue including the new timing overload first. Hosts
+may then bind `createPostgresSubscriptionAutoResume(executor).run` to their
+scheduler; construction schedules no work. No browser policy field is added.
+
+- Add an explicitly selected native winback worker with subscription-wide send
+  deduplication, configurable cancellation age and retention consent, failed-send
+  retry and durable receipt recovery, including retained episode-key acceptances.
+
+Migration: apply `20261106140000_subscriber_winback_policy.sql` through the
+complete selected catalogue before composing `createPostgresSubscriptionWinback`.
+Provide the existing delivery rail and localized account-link binding. Configure
+`subscriber_winback_policy` explicitly; omitted fields retain consent required
+and the inclusive 14-day / exclusive 120-day window. Account consent capture and
+charge-confirmed reactivation remain host composition.
+
+- Close recovery and unpaid obligations on explicit pause/cancellation. Add
+  confirmed order-now/reactivation commands, trusted lifecycle timing terms and
+  structured retention evidence through the existing subscription entries.
+
+Migration: apply the lifecycle-closure forward before selecting these command
+bindings. Hosts may provide `lifecycleTerms` and `retentionReasonCodes`; existing
+SQL signatures retain their prior timing defaults. Send literal charge-timing
+confirmation for order now/reactivation. Stored receipt replays keep their
+accepted results; legacy survey strings remain supported.
+
+Native subscription reminder production now applies configured eligibility before
+consuming the renewal-day identity and retains the exact queued charge instant.
+Pause notices use window identity and recheck resolution before delivery. At-risk
+notices retain cause/day history for accepted deliveries and disabled templates.
+Operator notices use distinct recipients, fresh-only eligibility and fenced claims.
+
+The existing subscriptions entry gains optional notice timing/cap configuration
+and an explicit operator binder. Hosts continue to own calendar labels, copy,
+delivery-window estimation and recipient-bound rendering through the trusted binder.
+Imported or uncorrelated starter history uses standard freshness and may miss an
+early reminder. Real provider acceptance/idempotency remains a host prerequisite.
+
+- Fix timed auto-resume remaining paused after its first paid order has been
+  delivered. Historical fulfilled orders no longer block; in-flight orders and
+  orders in the existing paid/fulfilling/fulfilled allowlist on the next date
+  still prevent stacked deliveries. Cancelled pause-closure orders do not block.
+
+Migration: apply `20261109113000_subscription_auto_resume_delivered_history.sql`
+through the complete selected catalogue. The function header, privileges, other
+eligibility guards, event identity and whole-cadence roll-forward are unchanged.
+
+Add seven exact subscription edit levers through the existing preview/apply
+binding, preserving individual line IDs, fixed-total mix, configured plan/portion
+sizing, accepted recurring pricing and replay-first receipts. Reduced mode must
+strictly reduce units; full restoration is permitted. Install the additive
+exact-lever migration after the shared package editor. Host routes and portal
+controls remain application composition.
+
+These levers are opt-in and API-only; hosts supply routes and portal controls.
+
 ## [0.37.0]
 
 - Publishable on the npm `latest` dist-tag as `0.37.0`, from tag
@@ -290,38 +382,3 @@ local copies; after, the same reference import paths delegate to the existing
 `marketing/server/postgres` factory with unchanged observable contracts. Install
 no new SQL or grants for this delegation. Existing compatible adopter SQL remains
 owned by that adopter; this source refactor grants no publication or activation.
-
-## [0.35.0]
-
-- Publishable on the npm `latest` dist-tag as `0.35.0`, from tag
-  `openlup-platform-v0.35.0`.
-
-- Add experimental normalized channel contracts/helpers and Node ingest, retained paid-source, webhook/operator, pull and recovery bindings at existing Platform subpaths. Existing commerce owners retain order, payment, inventory and fulfillment effects.
-- Preserve original capture/approval/BOM/money/payment identities and page/CAS receipts. Managed retained conversion uses the existing ATP hook and unchanged allocator; portable physical conversion refuses by name. Privacy lifecycle export/erasure is unavailable.
-
-### Account newsletter withdrawal
-
-- Portable PostgreSQL account newsletter opt-out now atomically denies newsletter
-  permission, including repeated opt-outs, while preserving suppression and other
-  purposes. Opting back in changes the account preference but leaves the evaluator
-  refusing until an explicit grant is recorded separately.
-- An opt-out recorded before this version does not change an existing `granted`
-  row until an operator runs the idempotent upgrade statement in the data and
-  migrations guide. The account setter schedules no external provider sync, and
-  a denial stays tied to the old email fingerprint after an email change.
-- Newsletter withdrawal uses database-specific lowercase rules; addresses containing
-  Turkish `İ` or context-dependent Greek `Σ` can still differ from JavaScript, and
-  C-locale databases also differ for `Ä`; this withdrawal path assumes a UTF8 database.
-- Account withdrawal records newsletter denial without duplicating the evaluator's
-  address-acceptance rule. An evaluator-refused address remains refused even if a
-  denial is recorded under its fingerprint.
-
-Migration: Before selecting the channel surface, an existing same-rail catalogue lacks the two M17 units. After selecting it, install the complete catalogue through `20261030121000_channel_retained_basis.sql` and `20261030122000_channel_purchased_source.sql`; the sparse package assets are not an installation chain. The Risk API snapshot only reorders unchanged enum members, so Risk callers need no code or SQL migration.
-
-Install the complete selected catalogue including the newsletter withdrawal forward and the two new channel forwards; sparse `CHANNEL_INGEST_MIGRATIONS` package assets are byte-identical projections, not an install chain. Hosts explicitly supply provider decoding, owner ports, currency policy and enablement. Importing the package enables no route, job, simulator or provider. No hosted or provider qualification is implied.
-
-For account opt-outs recorded before this set, an operator must run the idempotent [newsletter withdrawal upgrade statement](https://github.com/openlup/openlup/blob/openlup-platform-v0.35.0/docs/platform/DATA_AND_MIGRATIONS.md#account-newsletter-withdrawal-upgrade). Installing or replaying the forward alone does not change an existing granted recipient-consent row.
-
-With the complete 0.35.0 catalogue, `outbox_events` also needs the owner path, so the generic utility refuses it; that owner path is reference-source only.
-
-With the complete 0.35.0 catalogue, `outbox_events` also needs the owner path, so the generic utility refuses it; that owner path is reference-source only.
