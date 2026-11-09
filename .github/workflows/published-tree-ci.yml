@@ -139,6 +139,10 @@ jobs:
     if: ${{ github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+      packages: read
     services:
       postgres:
         image: postgres:17@sha256:ae69c452f483507a6b99fb654cf93aad7fe156ffd2c56247707eef4e36d3c12b
@@ -193,6 +197,16 @@ jobs:
           OPENLUP_PROOF_SERVICE_CONTAINER: ${{ job.services.postgres.id }}
           OPENLUP_PROOF_SERVICE_PORT: ${{ job.services.postgres.ports[5432] }}
         run: node --experimental-strip-types scripts/packages/required-package-gates.ts --out "$RUNNER_TEMP/package-gates" --expected-commit "$(git rev-parse HEAD)"
+
+      - name: Authenticate GitHub Container Registry pulls
+        if: steps.reused.outputs.reuse != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_ACTOR: ${{ github.actor }}
+        run: echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
+      - name: Starter database browser journeys
+        if: steps.reused.outputs.reuse != 'true'
+        run: node --experimental-strip-types scripts/starter-browser-ci.mjs --manifest "$RUNNER_TEMP/package-gates/packages-manifest.json" --expected-commit "$(git rev-parse HEAD)"
 
   test-full-shard:
     name: test-full-shard (${{ matrix.shard }}/4)
