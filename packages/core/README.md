@@ -246,7 +246,10 @@ bounded scans as the CLI flags. Read accepts only ordinary installed
 are supported; file realpaths must stay inside the resolved package root. Read
 refuses traversal and never fetches release-tag source URLs. For a repository-only
 source, read its installed context excerpt; application source hits require your
-client's own file tool. End stdin to stop the process.
+client's own file tool. Search tasks are limited to 1,000 characters, and each
+incoming message line to 1 MiB. Oversized messages receive one error and are
+discarded through the next newline; the server continues serving. End stdin to
+stop the process.
 
 The server uses local files and Node built-ins, with no network access or extra
 runtime dependency. Kernel exports never load it. The same development-preview

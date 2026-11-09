@@ -58,6 +58,8 @@ Use `search_openlup_context` when an owner or seam is unclear, then
 remain opt-in through `includeApplicationCode` and `includePackageCode`. Read
 supports symlinked package roots, but refuses application files, URLs, traversal,
 file realpaths outside the resolved package root and files over 200,000 bytes.
+Search tasks are limited to 1,000 characters; incoming message lines to 1 MiB.
+Oversized messages are refused and discarded through the next newline.
 Use the installed excerpt for repository-only citations. Prefer the installed
 local executable directly if `npx` must never fetch a missing command. See
 [Agent context over MCP](README.md#agent-context-over-mcp) for client settings and

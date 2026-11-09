@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { PassThrough, Readable, Writable } from "node:stream";
@@ -34,25 +34,25 @@ const search = (args: Record<string, unknown> = { task: "retry" }) => call("sear
 const initialize = (protocolVersion = "2025-06-18") => request("initialize", { protocolVersion, capabilities: {}, clientInfo: { name: "test", version: "1" } });
 
 // Capture the wire bytes, including a final partial line on EOF.
-async function exchange(cwd: string, messages: unknown[], raw = false) {
+async function exchange(cwd: string, messages: unknown[], raw = false, hooks: Parameters<typeof runMcp>[3] = {}) {
   let stdout = "";
   const output = new Writable({ write(chunk, _encoding, callback) { stdout += chunk.toString(); callback(); } });
-  const chunks = raw ? messages as string[] : messages.map(message => `${JSON.stringify(message)}\n`);
-  await runMcp(cwd, Readable.from(chunks), output);
+  const chunks = raw ? messages as (string | Buffer)[] : messages.map(message => `${JSON.stringify(message)}\n`);
+  await runMcp(cwd, Readable.from(chunks), output, hooks);
   return stdout.trim() ? stdout.trim().split("\n").map(line => JSON.parse(line)) : [];
 }
-async function result(cwd: string, message: unknown) { return (await exchange(cwd, [message]))[0]; }
-async function toolError(cwd: string, message: unknown, expected: RegExp) {
-  const response = await result(cwd, message);
+async function result(cwd: string, message: unknown, hooks: Parameters<typeof runMcp>[3] = {}) { return (await exchange(cwd, [message], false, hooks))[0]; }
+async function toolError(cwd: string, message: unknown, expected: RegExp, hooks: Parameters<typeof runMcp>[3] = {}) {
+  const response = await result(cwd, message, hooks);
   expect(response.error).toBeUndefined();
   expect(response.result).toMatchObject({ isError: true, content: [{ type: "text", text: expect.stringMatching(expected) }] });
 }
 
 describe("installed context MCP protocol", () => {
-  it.each(["2025-06-18", "2025-03-26", "2024-11-05", "2099-01-01"])("negotiates %s and reads its own installed server version", async version => {
+  it.each([["2025-06-18", "2025-06-18"], ["2024-11-05", "2024-11-05"], ["2025-03-26", "2025-06-18"], ["2099-01-01", "2025-06-18"]])("negotiates %s to %s and reads its own installed server version", async (version, expected) => {
     const response = await result(temporaryRoot(), initialize(version));
     expect(response).toMatchObject({ jsonrpc: "2.0", id: 1, result: {
-      protocolVersion: version === "2099-01-01" ? "2025-06-18" : version,
+      protocolVersion: expected,
       capabilities: { tools: {} },
       serverInfo: { name: "openlup-context", version: JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version },
       instructions: expect.stringContaining("Search concise English"),
@@ -63,8 +63,8 @@ describe("installed context MCP protocol", () => {
     {}, { capabilities: {} }, { clientInfo: {} }, { capabilities: {}, clientInfo: {} },
     { clientInfo: { name: "minimal" } }, { capabilities: { roots: {} }, clientInfo: { version: "1" } },
   ])("accepts missing or partial initialization metadata: %j", async metadata => {
-    const response = await result(temporaryRoot(), request("initialize", { protocolVersion: "2025-03-26", ...metadata }));
-    expect(response).toMatchObject({ jsonrpc: "2.0", id: 1, result: { protocolVersion: "2025-03-26", capabilities: { tools: {} } } });
+    const response = await result(temporaryRoot(), request("initialize", { protocolVersion: "2024-11-05", ...metadata }));
+    expect(response).toMatchObject({ jsonrpc: "2.0", id: 1, result: { protocolVersion: "2024-11-05", capabilities: { tools: {} } } });
     expect(response.error).toBeUndefined();
   });
 
@@ -72,6 +72,38 @@ describe("installed context MCP protocol", () => {
     const replies = await exchange(fixture(), ["\n \t\r\n", `${JSON.stringify(request("ping"))}\n`, "   \n\t\n", `${JSON.stringify(request("ping", undefined, 2))}\n`, " \t"], true);
     expect(replies).toEqual([{ jsonrpc: "2.0", id: 1, result: {} }, { jsonrpc: "2.0", id: 2, result: {} }]);
     expect(await exchange(fixture(), ["\n \t\r\n"], true)).toEqual([]);
+  });
+
+  it.each(["2025-06-18", "2024-11-05"])("rejects batches after negotiating %s and continues serving", async version => {
+    const replies = await exchange(fixture(), [initialize(version), [request("ping", undefined, 2), request("ping", undefined, 3)], request("ping", undefined, 4)]);
+    expect(replies[0].result.protocolVersion).toBe(version);
+    expect(replies[1]).toMatchObject({ jsonrpc: "2.0", id: null, error: { code: -32600 } });
+    expect(replies[2]).toEqual({ jsonrpc: "2.0", id: 4, result: {} });
+    expect(replies).toHaveLength(3);
+  });
+
+  it("accepts a line of exactly 1 MiB and processes another message in the same chunk", async () => {
+    const message = JSON.stringify(request("ping"));
+    const replies = await exchange(fixture(), [message + " ".repeat(1024 * 1024 - Buffer.byteLength(message)) + "\n" + JSON.stringify(request("ping", undefined, 2)) + "\n"], true);
+    expect(replies).toEqual([{ jsonrpc: "2.0", id: 1, result: {} }, { jsonrpc: "2.0", id: 2, result: {} }]);
+  });
+
+  it.each([false, true])("refuses an oversized line once and resumes after its newline (chunked=%s)", async chunked => {
+    const valid = JSON.stringify(request("ping", undefined, 2));
+    const chunks = [" ".repeat(1024 * 1024), "x", valid, "discarded".repeat(150_000), `\n${valid}\n`];
+    const replies = await exchange(fixture(), chunked ? chunks : [chunks.join("")], true);
+    expect(replies).toEqual([
+      { jsonrpc: "2.0", id: null, error: { code: -32600, message: "Message exceeds 1 MiB" } },
+      { jsonrpc: "2.0", id: 2, result: {} },
+    ]);
+  });
+
+  it("counts UTF-8 bytes and emits one refusal per oversized line, including at EOF", async () => {
+    const message = JSON.stringify(request("ping", { padding: "ż".repeat(600_000) }));
+    expect(message.length).toBeLessThan(1024 * 1024);
+    const replies = await exchange(fixture(), [Buffer.from(`${message}\n${message}`)], true);
+    expect(replies).toHaveLength(2);
+    for (const reply of replies) expect(reply).toMatchObject({ id: null, error: { code: -32600, message: "Message exceeds 1 MiB" } });
   });
 
   it("lists exact tool input schemas without an inexact output schema", async () => {
@@ -150,6 +182,14 @@ describe("MCP installed context search", () => {
     const hit = response.structuredContent.hits[0];
     expect((await result(root, read(hit.file, { startLine: hit.start, endLine: hit.end }))).result.content[0].text).toContain("4: ## Retry policy\n5: Use nextRetryAttemptAt");
     await toolError(root, read(hit.owner), /source URL is not installed/);
+  });
+
+  it("accepts 1,000-character tasks and returns a tool error above the limit", async () => {
+    const root = fixture();
+    const accepted = await result(root, search({ task: "x".repeat(1_000) }));
+    expect(accepted.result.isError).toBeUndefined();
+    expect(accepted.result.structuredContent.hits).toEqual([]);
+    await toolError(root, search({ task: "x".repeat(1_001) }), /Search task exceeds 1000 characters/);
   });
 
   it("only searches application and package code when requested and refreshes edits", async () => {
@@ -241,6 +281,65 @@ describe("MCP installed file reader", () => {
     const root = fixture();
     symlinkSync("README.md", join(root, prefix, "alias.md"));
     expect((await result(root, read(`${prefix}alias.md`))).result.content[0].text).toContain("1: # Installed package");
+  });
+
+  it.each(["File", "Manifest"] as const)("refuses a %s parent swapped outside between resolution and open", async kind => {
+    const root = fixture(), outside = temporaryRoot();
+    const directory = join(root, prefix, kind === "File" ? "src" : "metadata");
+    mkdirSync(directory);
+    const target = join(directory, kind === "File" ? "entry.md" : "package.json");
+    if (kind === "Manifest") {
+      renameSync(join(root, prefix, "package.json"), target);
+      symlinkSync("metadata/package.json", join(root, prefix, "package.json"));
+    } else writeFileSync(target, "inside file");
+    writeFileSync(join(outside, kind === "File" ? "entry.md" : "package.json"), kind === "File" ? "outside secret" : JSON.stringify({ name: "@openlup/core", version: "0.37.0" }));
+    const resolvedTarget = realpathSync(target);
+    let swapped = false;
+    await toolError(root, kind === "File" ? read(`${prefix}src/entry.md`) : read(), new RegExp(`${kind} realpath escapes the installed package root`), {
+      beforeFileOpen(path) {
+        if (path !== resolvedTarget || swapped) return;
+        swapped = true;
+        renameSync(directory, `${directory}-checked`);
+        symlinkSync(outside, directory);
+      },
+    });
+    expect(swapped).toBe(true);
+  });
+
+  it("re-resolves the package root when its installation link changes before open", async () => {
+    const root = fixture(), replacementRoot = fixture();
+    const packagePath = join(root, "node_modules/@openlup/core");
+    const installedPath = `${packagePath}-installed`;
+    renameSync(packagePath, installedPath);
+    symlinkSync(installedPath, packagePath);
+    const target = realpathSync(join(packagePath, "README.md"));
+    let swapped = false;
+    await toolError(root, read(), /File realpath escapes the installed package root/, {
+      beforeFileOpen(path) {
+        if (path !== target || swapped) return;
+        swapped = true;
+        rmSync(packagePath);
+        symlinkSync(join(replacementRoot, "node_modules/@openlup/core"), packagePath);
+      },
+    });
+    expect(swapped).toBe(true);
+  });
+
+  it.each(["File", "Manifest"] as const)("refuses a %s inode changed after open even when its path stays inside the package", async kind => {
+    const root = fixture();
+    const target = join(root, prefix, kind === "File" ? "README.md" : "package.json");
+    const replacement = readFileSync(target);
+    const resolvedTarget = realpathSync(target);
+    let swapped = false;
+    await toolError(root, read(), new RegExp(`${kind} changed while opening`), {
+      afterFileOpen(path) {
+        if (path !== resolvedTarget || swapped) return;
+        swapped = true;
+        renameSync(target, `${target}.previous`);
+        writeFileSync(target, replacement);
+      },
+    });
+    expect(swapped).toBe(true);
   });
 
   it("refuses a FIFO without opening a blocking stream", async () => {
