@@ -3546,6 +3546,43 @@
         ],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "sized-editor",
+        "path": "db/platform/migrations/20261109140000_subscription_sized_editor.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.subscription_sized_edit_context(uuid,uuid,boolean)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscriptions_configured_offer_guard()",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscriptions_bind_sized_opt_in_from_edit()",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_sized_edit_apply(uuid,uuid,text,uuid,jsonb,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "createdTriggers": [
+          {
+            "name": "subscriptions_configured_offer_guard",
+            "table": "public.subscriptions",
+            "sha256": "69a6dda27a9cc7d2a530a0c1ea9bb8d6b138c29f179180cc6ad69b4eb20565ec"
+          },
+          {
+            "name": "subscription_events_bind_sized_opt_in",
+            "table": "public.subscription_events",
+            "sha256": "9b61a17c80950d490017c12d0eda335216267eea65022e99d8b19f7d61fbdfed"
+          }
+        ]
       }
     ]
   },
@@ -4074,6 +4111,32 @@
           "signature": "public.subscription_line_edit_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
           "beforeSha256": null,
           "afterSha256": "4b0f10f37fb4a3ffa715c440898de8285a695b4544bd2b2770a2e9fcdff2b389"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261109140000_subscription_sized_editor.sql",
+      "sha256": "13129ea49660b1b8ffb95fdaf99be2676e2f43f36086d99895c4a797bb842b1d",
+      "functions": [
+        {
+          "signature": "public.subscription_sized_edit_context(uuid,uuid,boolean)",
+          "beforeSha256": null,
+          "afterSha256": "a277688c5d9af19823b9d11e19d88158d46bd65a57c249c165543ac3aaf7ce2d"
+        },
+        {
+          "signature": "public.subscriptions_configured_offer_guard()",
+          "beforeSha256": null,
+          "afterSha256": "06cddc28517a7c62e35a1daca5ea284464cca86d75dd67dadcf1f6d12a2f06a6"
+        },
+        {
+          "signature": "public.subscriptions_bind_sized_opt_in_from_edit()",
+          "beforeSha256": null,
+          "afterSha256": "22f9850fa3019b86ca8e0d2a7b50445da17a1a87541aa559429ccfc93b21e79c"
+        },
+        {
+          "signature": "public.subscription_sized_edit_apply(uuid,uuid,text,uuid,jsonb,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "215849e52f090c6cca9bb8c8213338a655d8b5ffb939f59b94327cecb817b075"
         }
       ]
     }

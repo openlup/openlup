@@ -260,6 +260,10 @@ restore, and accepted delivery evidence keeps its original idempotency key.
 The [notice witness](../../tests/postgres/m19NoticeIsolation.test.ts) compares all
 four row sets after real connected capture/restore and repeats the restore.
 
+Connected native restore refuses any subscription whose `configured_offer_version`
+is not `classic` with `unsupported_table` for `subscriptions` before any target
+data write; sized offer bindings have no transfer mapping in this preview.
+
 Channel source captures, purchased-line claims and pull pages have no transfer
 mapping in this profile. Native restore imports ordinary outbox rows through the
 locked owner path and refuses the three protected channel evidence types before
