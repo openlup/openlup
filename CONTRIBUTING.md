@@ -372,6 +372,27 @@ sharding, discovery and test-author guidance.
 
 The required `install-proof` job runs the shared package gate after both reference-profile builds, independently of the required `test` job in a separate checkout and installation. It discovers every publishable package from `config/openlup-packages.json` and its actual npm workspace, and refuses missing `api:check`, `ci:required` or `test:consumer` scripts before packing. The existing cold producer emits one current-set manifest. All API checks run before any package's `ci:required`, which receives the same verified manifest and exact checkout commit through `OPENLUP_PACK_MANIFEST` and `OPENLUP_PACK_COMMIT`. Cold preparation clears each workspace per target, so the API phase restores each package's built declarations and prerequisites through the existing build helper; it leaves the retained tarballs untouched and includes that cost in its timing. There is no missing-script skip or package-name routing table. A new module must supply installed-artifact consumer coverage, meaningful failure cases and its owning required batch; script declarations alone do not prove that those assertions are sound. Review checks that the batch actually invokes its consumer and preserves its required tests. Keep API checks out of that batch because the shared phase already runs them.
 
+The same required job then runs the starter's installed PostgreSQL browser
+journeys through [`starter-browser-ci.mjs`](scripts/starter-browser-ci.mjs).
+It reuses the verified candidate manifest and acquires an isolated disposable
+PostgreSQL 16 per configuration through the shared test helper and `test-postgres`
+inventory pin. The job's PostgreSQL 17 service retains its existing package proofs. The runner
+installs and seeds both demonstration configurations, verifies migration replay
+and the restricted runtime identity, and starts two loopback hosts. An authenticated
+GHCR pull selects the pinned `starter-browser` image through the shared reader
+and pull loop; mirror failure refuses without a vendor fallback or browser
+download. Playwright runs the database config with one worker, traces, video and
+screenshots off, read-only application inputs and temporary container results.
+The private care fixture matches each host to its runtime/owner connections and
+mailbox directory. Only that care directory is writable in the browser, which
+runs with the host user identity to preserve private capture permissions.
+The script captures output privately, scans it for credentials, removes its
+hosts, containers, databases, roles and scratch files on success or failure, and
+prints the public image identity, counts, timings and bounded failure diagnostics. It uploads no artifacts. The job retains
+its 20-minute limit and existing required-check dependencies. See the
+[starter proof recipe](examples/neutral-store/docs/proof.md#database-backed-purchase-acceptance-recipe)
+for the selected journeys and the separate local proofs.
+
 Dependency security has two boundaries. PR/merge-group admission refuses newly
 selected vulnerable production dependencies against the exact comparison base;
 an advisory affecting an unchanged dependency inherited from that base remains a

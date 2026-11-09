@@ -1668,12 +1668,18 @@ authorization keep their existing order-scoped or token-scoped revocation.
 `uniqueSupersets` entries declare table, constraint, columns and nullsNotDistinct.
 The lexical validator checks only the slot's own SQL: exactly one adjacent
 DROP CONSTRAINT / ADD CONSTRAINT pair per entry, with the exact listed positive
-IN values or plain UNIQUE columns and NULLS NOT DISTINCT mode. Unlisted drops,
-non-adjacent pairs and mismatched additions refuse; the general expression
-grammar is unchanged. The protected real-PostgreSQL catalog control proves
+IN values (with an optional trailing `NOT VALID`) or plain UNIQUE columns and
+NULLS NOT DISTINCT mode. Unlisted drops, non-adjacent pairs and mismatched
+additions refuse; the general expression grammar is unchanged. The protected real-PostgreSQL catalog control proves
 widening against the installed definition immediately before the slot: the old
 constraint must exist in the closed CHECK or UNIQUE shape, every old value or
 key column must remain, and NULLS NOT DISTINCT may be added but never removed.
+CHECK validation state must remain equal: a validated CHECK stays validated, and
+an unvalidated CHECK stays `NOT VALID`. PostgreSQL's `convalidated` proves that
+state; only when both are unvalidated is the trailing `NOT VALID` omitted for
+value-list comparison. This preserves table conventions that check new writes
+without rechecking historical rows. Changing validation state in either direction
+refuses. The lexical validator reads no prefix validation history.
 The installed new definition must equal the entry; other constraints, columns
 and triggers remain protected. No historical SQL anchor is used for these
 entries. The issued account-consent `purposeCheck` retains its original preimage,
