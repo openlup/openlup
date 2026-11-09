@@ -497,12 +497,12 @@ schema and its consumer.
 
 ## Release notes
 
-The prepared `0.37.0` set recognizes the already-emitted settlement event in
-Core's outbox vocabulary and adds Platform's native commerce and application
-tooling surfaces. Upgrade all packages together and read [the set notes](CHANGELOG.md#0370),
-including the explicit exemption needed when a host selects no settlement consumer.
-Core introduces no schema migration. Size comparison uses the published `0.36.0`
-tarball; releases before `0.35.0` remain in the source-only
+The prepared `0.38.0` set adds opt-in installed-context lookup over MCP,
+scan-coverage reporting and package discovery metadata. Core's kernel runtime
+and SQL are unchanged. Upgrade all packages together and read
+[the set notes](CHANGELOG.md#0380), including the additive JSON scan metadata.
+Core introduces no schema migration. Size comparison uses the published `0.37.0`
+tarball; releases before `0.36.0` remain in the source-only
 `CHANGELOG-HISTORY.md`. Preparation establishes no npm publication.
 
 The set requires Zod `^4.6.6` for GHSA-mrhx-c7xc-m3w5.
