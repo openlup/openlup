@@ -22,8 +22,16 @@ export async function refusedNoticeSources(owner: Pool, source: "event" | "remin
     await owner.query("INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at) VALUES($1,$2,28,'2001-01-01T00:00:00Z')", [subscription, client]);
     if (source === "event") await owner.query(`INSERT INTO public.subscription_events(id,subscription_id,event_type,idempotency_key)
       VALUES($1,$2,$3,$4)`, [id, subscription, refused ? "subscription.activated" : "subscription.customer_self_service.cancel", `terminal-fixture:${id}`]);
-    else await owner.query(`INSERT INTO public.subscription_reminder_ledger(id,subscription_id,reminder_kind,reminder_day)
-      VALUES($1,$2,$3,'2001-01-01')`, [id, subscription, refused ? "renewal_due_soon" : "pause_ending"]);
+    else if (refused) await owner.query(`INSERT INTO public.subscription_reminder_ledger(id,subscription_id,reminder_kind,reminder_day)
+      VALUES($1,$2,'renewal_due_soon','2001-01-01')`, [id, subscription]);
+    else {
+      // The eligible pause source must pass the live-window check before this policy witness can dispatch it.
+      await owner.query(`SELECT public.subscription_apply_lifecycle_action($1,$2,$3,'pause',
+        '{"pausePreset":"2_weeks"}'::jsonb,now()-interval '12 days')`, [client, `terminal-pause:${id}`, subscription]);
+      await owner.query(`INSERT INTO public.subscription_reminder_ledger(id,subscription_id,reminder_kind,reminder_day)
+        SELECT $1,subscription_id,'pause_ending',(ends_at AT TIME ZONE 'UTC')::date
+        FROM public.subscription_pause_windows WHERE subscription_id=$2 AND idempotency_key=$3`, [id, subscription, `terminal-pause:${id}`]);
+    }
     if (refused && refusal === "consent_refused") await owner.query("SELECT public.communications_record_recipient_consent($1,'transactional','suppressed',now())",
       [createHash("sha256").update(`${client}@example.invalid`).digest("hex")]);
   }

@@ -35,6 +35,38 @@ runtime dependency. Results locate source evidence; they grant no application
 policy, tool permission or external-write authority. The application's own
 instructions govern.
 
+## Agent context over MCP
+
+An MCP client can use the same offline lookup without issuing shell searches.
+After installing core, configure stdio with the application root as its working
+directory:
+
+```json
+{
+  "mcpServers": {
+    "openlup-context": {
+      "command": "npx",
+      "args": ["openlup-context", "mcp"],
+      "cwd": "/path/to/your-application"
+    }
+  }
+}
+```
+
+Use `search_openlup_context` when an owner or seam is unclear, then
+`read_openlup_file` on its installed paths with inclusive line ranges. Code scans
+remain opt-in through `includeApplicationCode` and `includePackageCode`. Read
+supports symlinked package roots, but refuses application files, URLs, traversal,
+file realpaths outside the resolved package root and files over 200,000 bytes.
+These checks cover paths and links as they stand at read time, not concurrent
+rewrites of `node_modules`.
+Search tasks are limited to 1,000 characters; incoming message lines to 1 MiB.
+Oversized messages are refused and discarded through the next newline.
+Use the installed excerpt for repository-only citations. Prefer the installed
+local executable directly if `npx` must never fetch a missing command. See
+[Agent context over MCP](README.md#agent-context-over-mcp) for client settings and
+limits. This tool grants no additional application or external-write authority.
+
 ## Subpath maturity
 
 | Export | Role | Maturity |
@@ -103,8 +135,10 @@ export function readPlatformReadiness(input: PlatformEnvInput): PlatformBundleRe
 ## Sources and declarations
 
 The tarball ships its TypeScript sources under `src/` and its JavaScript and
-declarations under `dist/`. Each export's `types` condition names its
-declaration file, and its `core-source` condition names its source file. Read
+declarations under `dist/`. Each code export's `types` condition names its
+declaration file, its declaration map navigates to shipped `src/`, and its
+`core-source` condition names its source file; `./package.json` exports the
+manifest itself, for reading the installed version. Read
 those before guessing at a contract.
 
 ## Readiness codes

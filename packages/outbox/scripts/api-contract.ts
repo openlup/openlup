@@ -11,9 +11,11 @@ const update = process.argv.includes("--update");
 let snapshotsChanged = false;
 
 const manifest = readJson("package.json");
+const { "./package.json": manifestExport, ...codeExports } = manifest.exports;
+assert(manifestExport === "./package.json", "the manifest is exported as ./package.json for tooling");
 assert(gates.kind === "rail", "outbox must remain a rail");
-assert(JSON.stringify(Object.keys(manifest.exports).sort()) === JSON.stringify(Object.keys(gates.packageSurface).sort()), "every exact export needs a snapshot");
-for (const [subpath, target] of Object.entries(manifest.exports)) {
+assert(JSON.stringify(Object.keys(codeExports).sort()) === JSON.stringify(Object.keys(gates.packageSurface).sort()), "every exact export needs a snapshot");
+for (const [subpath, target] of Object.entries(codeExports)) {
   const contract = gates.packageSurface[subpath];
   assert(JSON.stringify(Object.keys(target)) === JSON.stringify(["types", "import", "default"]), "rail export condition order drift");
   assert(target.types === `./${contract.entrypoint}` && target.import === target.default && target.import === target.types.replace(/\.d\.ts$/, ".js"), "declarations and runtime exports differ");
@@ -49,7 +51,7 @@ function renderSnapshot(subpath, contract, entrypoint) {
   const declarations = collectDeclarationGraph(entrypoint);
   const sections = declarations.map((file) => {
     const path = toPosix(relative(packageRoot, file));
-    const source = readFileSync(file, "utf8").trimEnd();
+    const source = readFileSync(file, "utf8").replace(/^\/\/# sourceMappingURL=.*$/gm, "").trimEnd();
     return `## ${path}\n\n\`\`\`ts\n${source}\n\`\`\``;
   });
 

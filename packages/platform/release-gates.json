@@ -955,20 +955,20 @@
   },
   "pack": {
     "code": {
-      "maxPackedBytes": 2104587,
-      "maxFiles": 3039
+      "maxPackedBytes": 2409255,
+      "maxFiles": 4117
     },
     "docs": {
-      "maxPackedBytes": 75000,
+      "maxPackedBytes": 81011,
       "maxFiles": 10
     },
-    "maxPackedBytes": 2650003,
-    "maxUnpackedBytes": 12511913,
-    "maxFiles": 3173,
-    "capReason": "Measured complete installed catalogue plus bounded remaining stores, ordered SQL and distribution reserve; actual plus reserve times 1.02, bytes rounded up to 5,000 and files rounded up. Existing larger caps are retained.",
+    "maxPackedBytes": 2898683,
+    "maxUnpackedBytes": 13845770,
+    "maxFiles": 4252,
+    "capReason": "Measured integration: main tarball 2,860,932 bytes and unpacked 13,673,451 bytes; merged tarball 2,894,139 bytes and unpacked 13,837,971 bytes. Unpacked growth is 164,520 bytes, within the approved 194,642-byte integration allowance. Crossing code, documentation and file caps use measured times 1.02, rounded up; larger existing caps are retained.",
     "baseline": {
-      "version": "0.35.0",
-      "packedBytes": 2097540
+      "version": "0.36.0",
+      "packedBytes": 2104577
     },
     "browserEntries": {
       "./catalog/contracts": 4096,

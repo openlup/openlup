@@ -14,7 +14,7 @@
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": false,
     "declaration": true,
-    "declarationMap": false,
+    "declarationMap": true,
     "sourceMap": false,
     "rootDir": "src",
     "outDir": "dist"

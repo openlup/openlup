@@ -30,7 +30,12 @@ it("dispatches transferred paid and failed-renewal notices once through durable 
   expect(issued).toEqual({ issued: true, orderId: expect.any(String) });
   const recovery = (await source.runtime.query("SELECT id,order_id,client_id,token_hash FROM public.commerce_checkout_recovery_tokens WHERE token_hash=$1", [tokenHash])).rows[0];
   expect(recovery).toMatchObject({ order_id: issued.orderId, client_id: purchase.clientId, token_hash: tokenHash });
-  const notice = (await source.runtime.query("SELECT id,payload,recovery_url_path FROM public.subscription_dunning_notifications WHERE case_id=$1 AND notification_kind='payment_failed'", [retry.caseId])).rows;
+  const notices = (await source.runtime.query("SELECT id,recipient_kind,payload,recovery_url_path,status,error FROM public.subscription_dunning_notifications WHERE case_id=$1 AND notification_kind='payment_failed' ORDER BY recipient_kind", [retry.caseId])).rows;
+  expect(notices).toEqual([
+    expect.objectContaining({ recipient_kind: "customer", status: "queued", error: null }),
+    expect.objectContaining({ recipient_kind: "operator", status: "skipped", error: "missing_critical_notification_recipient", recovery_url_path: null }),
+  ]);
+  const notice = notices.filter(row => row.recipient_kind === "customer");
   expect(notice).toHaveLength(1);
   expect(notice[0].recovery_url_path).toBe("/recover");
   const before = await journeyCensus(source.owner), packet = await captureStoreJourney(source.owner, "notices-pending");

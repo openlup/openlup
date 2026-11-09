@@ -130,7 +130,7 @@ describe.each(["UTC", "Etc/GMT-9", "Etc/GMT+5"])("native notice policy in %s", z
     }
     await admin.query("UPDATE public.subscription_dunning_notifications SET created_at='2026-01-01',status='sent' WHERE case_id=$1", [f.caseId]);
     await admin.query("UPDATE public.subscription_dunning_notifications SET created_at='2025-01-01' WHERE id=$1", [f.noticeId]);
-    const source = (await runtime.query("SELECT * FROM public.subscription_dunning_notifications WHERE case_id=$1 ORDER BY created_at DESC,id DESC LIMIT 1", [f.caseId])).rows[0];
+    const source = (await runtime.query("SELECT * FROM public.subscription_dunning_notifications WHERE case_id=$1 AND recipient_kind='customer' AND notification_kind='payment_failed' ORDER BY created_at DESC,id DESC LIMIT 1", [f.caseId])).rows[0];
     // Precondition only: the owner executes the real operator routine. This does not establish runtime issuance.
     const authority = createPostgresOperatorAuthority({ async run(work) {
       const db = await admin.connect();

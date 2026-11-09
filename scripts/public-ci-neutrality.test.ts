@@ -318,7 +318,7 @@ describe("tree-wide neutrality ratchet", () => {
     const carriers = ["packages/platform/package.json", "packages/platform/release-gates.json", "packages/platform/test/packageBoundary.test.ts",
       "packages/platform/README.md", "config/openlup-publication-catalog.json", "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
       "docs/platform/CANONICAL_CONTRACTS.md", "scripts/packages/platform-cold-consumer.ts", "scripts/packages/platform-cold-consumer.test.ts",
-      "packages/platform/changes/a-three.md"];
+      "packages/platform/changes/a-three.md", "packages/platform/AGENTS.md"];
     for (const path of carriers) put(root, path, `fulfillment/${vendor}\n`);
     for (const path of [carriers[1], carriers[4]]) put(root, path, `fulfillment/${vendor} fulfillment-${vendor}.api.md\n`);
     expect(cli(root, base).status).toBe(0);
@@ -382,7 +382,8 @@ describe("tree-wide neutrality ratchet", () => {
       ["packages/platform/changes/a-three.mdx", `fulfillment/${vendor}`, "ui-15"]);
     const carriers = ["packages/platform/package.json", "packages/platform/release-gates.json", "packages/platform/test/packageBoundary.test.ts",
       "packages/platform/README.md", "config/openlup-publication-catalog.json", "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
-      "docs/platform/CANONICAL_CONTRACTS.md", "scripts/packages/platform-cold-consumer.ts", "scripts/packages/platform-cold-consumer.test.ts"];
+      "docs/platform/CANONICAL_CONTRACTS.md", "scripts/packages/platform-cold-consumer.ts", "scripts/packages/platform-cold-consumer.test.ts",
+      "packages/platform/AGENTS.md"];
     for (const path of carriers) {
       for (const outside of [`x/${path}`, `${path}x`, `${path}/extra`, `x\n${path}`, `${path}\nx`, path.toUpperCase()]) {
         plants.push([outside, `fulfillment/${vendor}`, "ui-15"]);
@@ -560,7 +561,7 @@ describe("tree-wide neutrality ratchet", () => {
   it("limits changelog and fragment vocabulary to complete adapter subpaths in the platform carriers", () => {
     const { root, base } = installed();
     const vendor = String.fromCharCode(114, 101, 115, 101, 110, 100);
-    const carriers = ["packages/platform/CHANGELOG.md", "packages/platform/changes/a-one.md"];
+    const carriers = ["packages/platform/CHANGELOG.md", "packages/platform/changes/a-one.md", "packages/platform/AGENTS.md"];
     for (const path of carriers) put(root, path, `- Add communications/${vendor}.\n`);
     expect(cli(root, base).status).toBe(0);
     for (const wrong of ["packages/core/CHANGELOG.md", "packages/core/changes/a-one.md", "packages/platform/changes/nested/a.md", "packages/platform/changes/a.txt"]) {

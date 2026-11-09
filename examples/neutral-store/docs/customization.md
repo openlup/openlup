@@ -3,13 +3,27 @@
 Status: bounded development-preview application contract; real upgrade
 preservation remains unproved. This is not a stabilized npm API.
 
+For local UI work on macOS or Linux, prepare the extracted application and run
+`npm run dev` as described in the [README](../README.md#local-ui-edit-loop).
+Edit configuration, fragments or CSS, wait for the build or host restart, then
+refresh manually. Terminal errors mean the current output may be unavailable;
+a successful rebuild and listening host are required before refreshing.
+
 ## One input and three fragments
 
 `owned/store.config.ts` exports the typed configuration. It contains brand
 identity, theme tokens, localized copy, media paths, products and offer rules,
 subscription cadences and market inputs. Both example configurations satisfy
 `StoreConfig` in `shared/config.ts`. No theme framework, configuration service,
-generated client or preview tool is involved.
+generated client or additional theme runtime is involved.
+
+Every owned configuration also supplies `documents.sandbox` (`enabled` and
+`providerRef`), `returns.reasons` (nonempty, uniquely coded choices with English and Polish
+labels), and `orderControls.holdReasons` (nonempty native reason codes with
+English and Polish labels). These required document/return/hold settings are checked by
+`assertConfig`; missing document, return or hold configuration blocks startup
+with `starter_order_controls_configuration_invalid`. Keep them when adding
+or replacing a configuration, even while the related mutation is unavailable.
 
 The application owns `configurations`, `defaultConfigurationId` and
 `selectConfiguration` in `owned/store.config.ts`. Add another typed configuration
@@ -39,8 +53,10 @@ use text nodes rather than interpreting configuration as HTML.
 
 In one configuration, change `brand.name` and its localized strapline; set
 `offer.layout` to `list` or `cards`; and change `offer.minUnits`, for example from
-one unit to three. Restart the host after a configuration edit, rebuild after a
-fragment edit, then open the running app.
+one unit to three. With `npm run dev`, wait for the automatic host restart or
+client rebuild, then refresh the running app. With the one-shot `build` and
+`start` commands, restart the host after a configuration edit and rebuild
+after a fragment edit.
 
 The builder and checkout host both call `evaluateOffer` from `shared/offer.ts`.
 A two-unit box with the example minimum of three must be refused by both. Do
@@ -150,6 +166,11 @@ docker compose exec -T --user node application cat /application/.context/capture
 
 Filesystem access to this demonstration mailbox exposes sign-in tokens. Keep it
 private; the host does not publish it through HTTP.
+The demonstration quote-acceptance keyring is separate private `.context` state,
+generated only after checking the database demonstration marker. A restart of
+the same container preserves it; container recreation requires fresh quotes.
+Customer environments must supply their own keyring with the host's
+`--quote-acceptance-key-file` option, outside served assets and browser config.
 
 ## Catalogue authoring and storefront
 

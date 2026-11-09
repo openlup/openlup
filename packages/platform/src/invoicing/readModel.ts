@@ -1,6 +1,7 @@
 import type { InvoiceHostPorts, InvoiceIdentity, InvoiceProviderPort, InvoiceStorePort } from "./contracts/index.js";
 import { assertInvoicePdf } from "./artifacts.js";
 import { opaqueReference, readInvoiceReadback } from "./readback.js";
+import { sameInvoiceIdentifier } from "./uuidIdentity.js";
 
 const unsupported = () => ({ kind: "unsupported", code: "host_binding_required", retryable: false, effectMayHaveSucceeded: false } as const);
 const unknown = () => ({ kind: "unknown", code: "unknown" } as const);
@@ -22,7 +23,7 @@ export function createInvoiceReadModel(ports: {
       try {
         const result = await ports.accountHistory.read(input);
         if (result.kind !== "found") return result.kind === "unsupported" ? unsupported() : result.kind === "denied" ? { kind: "denied" } : unknown();
-        if (result.accountRef !== input.accountRef || result.orderId !== input.orderId) return { kind: "denied" };
+        if (!sameInvoiceIdentifier(result.accountRef, input.accountRef) || !sameInvoiceIdentifier(result.orderId, input.orderId)) return { kind: "denied" };
         return {
           kind: "found", accountRef: input.accountRef, orderId: input.orderId,
           documents: result.documents.map(document => ({
@@ -44,7 +45,7 @@ export function createInvoiceReadModel(ports: {
       try {
         const ticket = await ports.accountHistory.resolveDownload(input);
         if (ticket.kind !== "authorized") return ticket.kind === "unsupported" ? unsupported() : ticket.kind === "denied" ? { kind: "denied" as const } : unknown();
-        if (ticket.identity.documentRef !== input.documentRef || !opaqueReference(ticket.artifactRef)) return { kind: "denied" as const };
+        if (!sameInvoiceIdentifier(ticket.identity.documentRef, input.documentRef) || !opaqueReference(ticket.artifactRef)) return { kind: "denied" as const };
         const pdf = await ports.artifacts.download({ identity: ticket.identity, artifactRef: ticket.artifactRef });
         if (pdf.kind !== "downloaded") return pdf.kind === "unsupported" ? unsupported() : unknown();
         assertInvoicePdf(pdf);

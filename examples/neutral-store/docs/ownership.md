@@ -67,6 +67,10 @@ The optional public origin and insecure-HTTP opt-in are owned configuration and
 upgrade inputs. Origin policy, session handling and native composition stay
 managed. The private captured mailbox and process sessions are generated local
 runtime state, not owned configuration or installed package sources.
+The demonstration container's quote-acceptance keyring is also private generated
+state under `.context/`, admitted only by the existing database demonstration
+marker. The same container reuses it on restart; container recreation discards
+it. Customer environments provision their own keyring outside served assets.
 
 The optional `supportEmail` is owned configuration. Managed support rendering
 uses text nodes only. Partner/review host composition is managed and reuses the
@@ -113,7 +117,7 @@ request bodies carry private capabilities. The required purchase spec remains
 byte-identical. Focused regressions live in `test/checkout-recovery.test.ts`.
 
 
-The one temporary mode-price function is managed in `shared/interim-pricing.ts`.
+The one temporary mode-price function is managed in `shared/offer-estimate.ts`.
 Its rate/quantum and demonstration purchase values are owned typed configuration;
 `owned/demo-seed.ts` uses the same function for distinct per-mode price entries.
 The installer compares existing authored price facts and refuses a changed-price
@@ -126,12 +130,15 @@ Checkout applies the configured attempt window, e-mail and requester counts, ret
 An admitted new checkout issues a 256-bit recovery token through the native
 PostgreSQL port. Only its SHA-256 hash is stored. PostgreSQL fixes expiry at
 order creation plus 24 hours; this is a database rule, not a configurable value.
-One live link per order: a new link ends the previous link of the same order.
+Checkout links for the same order coexist until expiry or payment; issuing
+another link does not revoke an earlier checkout link. Payment-case links still
+rotate, leaving one live link per case. The separate account actor issuer also
+retains rotation.
 The token is returned only in the creating response and a separate private
 captured checkout-recovery message, never an authentication challenge or event.
 The completion page reads the URL token once and replaces history synchronously
 before configuration fetch or rendering. Request bodies carry the token; memory
-and session storage preserve reload convenience but grant no authority. An unchanged repeated submit for the same order keeps its existing token when the replay response omits it. A different order never inherits that token, and a new token replaces the previous one.
+and session storage preserve reload convenience but grant no authority. An unchanged repeated submit for the same order keeps its existing token when the replay response omits it. A different order never inherits that token. A new token replaces the token stored in this tab; earlier checkout links remain usable until expiry or payment.
 Native inspection allows payment only for an active pending order, recognizes
 an already-paid order without payment controls, and refuses expired, cancelled
 or unavailable links. Indexed hash lookup makes no constant-time claim.
@@ -154,3 +161,34 @@ remain private generated data. [Owned locale copy](../owned/renewal-copy.ts)
 supplies the paid subject and line labels through shared configuration validation.
 The lifecycle command runs one bounded pass without starting a scheduler or a
 real mail provider. Native subscription notices keep their existing owner.
+
+
+Shipping fee and free-delivery threshold are owned offer values. The managed
+quote binding passes them to the installed shipping policy; it owns no threshold
+calculation. The purchase binding retains the accepted shipping agreement for
+renewals. There is no separate `renewalShippingMinor` setting: current configuration
+cannot override retained terms or a frozen cycle's shipping amount.
+
+`browser/renewal.proof.ts` is a managed, fixture-backed local recipe. Its source
+PostgreSQL runner supplies the private mailbox and expected account/order values;
+the customer uses only sign-in and account read controls. Fixture files and
+Playwright configurations under `.context/` are generated private state.
+
+
+## Subscription care ownership
+
+`owned/renewal.config.ts` owns neutral timing, cancellation taxonomy,
+notice windows, operator caps and retry offsets.
+General portal and care-message copy remains in `owned/copy.ts`. The managed
+portal, command binder and scheduled care entry compose installed native owners.
+The private care capture reuses the existing filesystem protocol and native
+transactional receipts. Run summaries and message bodies are generated state.
+The account's owned read includes native winback status/refusal and receipt
+reference; it provides no consent writer. The native default retention gate ON
+is retained without seeding settings. Generic edit commands remain unmounted.
+
+`./lifecycle browser` is the managed local PostgreSQL recipe for the
+database browser configuration. Its private fixture connections and host state
+live under `.context/care-browser`, never in the archive. It owns and removes
+only its newly created containers and child processes. The installed package
+migration runner owns the database schema; no starter migration or grant is added.

@@ -1,3 +1,4 @@
+import type { AdminCommerceOrderHoldRequest } from '@openlup/platform/commerce/contracts';
 import { estimateOffer } from './offer-estimate.ts';
 import { assertQuoteConfiguration, type QuoteConfiguration } from './quote-config.ts';
 import { isValidGtin } from '@openlup/platform/catalog/contracts';
@@ -48,7 +49,6 @@ export interface StoreConfig {
     heroBody: Localized;
     offerTitle: Localized;
     offerBody: Localized;
-    shippingNote: Localized;
   };
   media: {
     hero: string;
@@ -69,7 +69,6 @@ export interface StoreConfig {
     freeShippingFromMinor: number;
     subscriptionDiscountBps: number;
     subscriptionRoundingQuantumMinor: number;
-    renewalShippingMinor: number;
     cadenceDays: readonly number[];
     defaultCadenceDays: number;
   };
@@ -85,6 +84,9 @@ export interface StoreConfig {
     tax: { vatRateBps: number; legalBasis: string; category: string };
     sandbox: { dunningTemplateSlug: string; recoveryTemplateSlug: string; recoveryUrlPath: string };
   };
+  documents: { sandbox: { enabled: boolean; providerRef: string } };
+  returns: { reasons: readonly { code: string; label: Localized }[] };
+  orderControls: { holdReasons: readonly { code: AdminCommerceOrderHoldRequest['reason']; label: Localized }[] };
   legal: {
     revision: string;
     returnsDays: number;
@@ -125,18 +127,18 @@ export function assertConfig(config: StoreConfig): void {
     if (!/^#[0-9a-f]{6}$/i.test(token)) throw new Error('starter_theme_invalid');
   }
   for (const amount of [offer.minUnits, offer.maxUnits, offer.shippingMinor,
-    offer.freeShippingFromMinor, offer.subscriptionDiscountBps, offer.renewalShippingMinor,
+    offer.freeShippingFromMinor, offer.subscriptionDiscountBps,
     offer.subscriptionRoundingQuantumMinor]) {
     if (!Number.isSafeInteger(amount) || amount < 0) throw new Error('starter_offer_invalid');
   }
-  if (offer.subscriptionRoundingQuantumMinor < 1 || offer.minUnits < 1 || offer.maxUnits < offer.minUnits || offer.maxUnits > 100
+  if (offer.shippingMinor > 2147483647 || offer.freeShippingFromMinor > 2147483647
+    || offer.subscriptionRoundingQuantumMinor < 1 || offer.minUnits < 1 || offer.maxUnits < offer.minUnits || offer.maxUnits > 100
     || offer.subscriptionDiscountBps > 10000 || offer.cadenceDays.length === 0
     || !offer.cadenceDays.includes(offer.defaultCadenceDays)
     || !Number.isSafeInteger(offer.defaultCadenceDays) || offer.defaultCadenceDays < 1 || offer.defaultCadenceDays > 120
     || offer.cadenceDays.some(day => !Number.isSafeInteger(day) || day < 1 || day > 120)) {
     throw new Error('starter_offer_invalid');
   }
-  if (offer.renewalShippingMinor !== 0) throw new Error('starter_renewal_shipping_unsupported');
   const purchase = config.purchase;
   if (!purchase?.recoveryMessage || (['subject', 'body', 'expiryLabel', 'orderLabel'] as const).some(key => {
     const value = purchase.recoveryMessage[key];
@@ -164,6 +166,15 @@ export function assertConfig(config: StoreConfig): void {
     || !/^\/[a-zA-Z0-9/_-]+$/.test(purchase.sandbox.recoveryUrlPath)
     || !Number.isFinite(Date.parse(purchase.stock.collectedAt)) || !Number.isFinite(Date.parse(purchase.stock.staleAfter))
     || Date.parse(purchase.stock.staleAfter) <= Date.parse(purchase.stock.collectedAt)) throw new Error('starter_purchase_configuration_invalid');
+  if (!config.documents || typeof config.documents.sandbox.enabled !== 'boolean'
+    || !config.documents.sandbox.providerRef.trim() || !config.returns?.reasons.length
+    || !config.orderControls?.holdReasons.length) throw new Error('starter_order_controls_configuration_invalid');
+  for (const choices of [config.returns.reasons, config.orderControls.holdReasons]) {
+    if (new Set(choices.map(choice => choice.code)).size !== choices.length || choices.some(choice =>
+      !choice.code.trim() || !choice.label.en.trim() || !choice.label.pl.trim())) {
+      throw new Error('starter_order_controls_configuration_invalid');
+    }
+  }
   const seen = new Set<string>();
   const slugs = new Set<string>();
   if (offer.products.length === 0) throw new Error('starter_catalog_empty');

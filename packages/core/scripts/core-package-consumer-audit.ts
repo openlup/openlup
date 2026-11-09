@@ -99,6 +99,7 @@ function assertPacklist(packageJson: CorePackageJson, packFiles: string[]): void
   ]);
 
   for (const [subpath, entry] of Object.entries(packageJson.exports)) {
+    if (subpath === "./package.json") continue;
     requiredFiles.add(packageTargetPath(entry["core-source"]));
     requiredFiles.add(packageTargetPath(entry.node));
     requiredFiles.add(packageTargetPath(entry.types));
@@ -163,7 +164,7 @@ function assertPublishablePackageAudit({
 
 function assertPackagedContent({ packageRoot, packageName, packFiles }: AuditInput): void {
   const textFiles = packFiles.filter((path) => {
-    const isKnownText = extensionlessTextPackFiles.has(path) || /\.(d\.ts|js|json|md|ts)$/.test(path);
+    const isKnownText = extensionlessTextPackFiles.has(path) || /\.(d\.ts(?:\.map)?|js|json|md|ts)$/.test(path);
     assert(isKnownText, `packed core tarball has an unclassified file; classify it before scanning: ${path}`);
     return isKnownText;
   });

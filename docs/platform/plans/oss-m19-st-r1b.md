@@ -34,7 +34,8 @@ An admitted new order receives a generated 256-bit recovery token through the
 native PostgreSQL token port and a host-composed captured recovery message.
 PostgreSQL stores only the SHA-256 hash and fixes expiry at order creation plus
 24 hours. This is a database rule, not an adopter-configurable lifetime.
-One live link per order: a new link ends the previous link of the same order.
+Checkout links coexist until expiry or payment; issuing another does not revoke
+the earlier link. Pending renewal-cycle orders refuse checkout issuance.
 The service capability belongs only to the host's admitted-order producer;
 an email or arbitrary order ID never grants issuance for an existing order.
 

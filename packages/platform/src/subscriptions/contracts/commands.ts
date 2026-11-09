@@ -2,10 +2,25 @@ export interface SubscriptionCommandContext {
   actor: { kind: "customer" | "operator"; actorId: string; clientId: string };
   subscriptionId: string; idempotencyKey: string; now: string;
 }
+/** Trusted host policy; never part of a browser command payload. */
+export interface SubscriptionLifecycleTerms {
+  pauseDays: number; pauseMonths: number; slideMinDays: number; slideMaxDays: number;
+  orderNowDelayMinutes: number; reactivateDelayDays: number;
+}
+export interface SubscriptionCancelSurvey {
+  reasonCode?: string; comment?: string | null; acceptedSaveOfferId?: string | null;
+}
+export interface SubscriptionSaveOffer {
+  offerId: string; kind: "pause" | "skip" | "reschedule" | "plan_length" | "recipe_mix" | "support_callback";
+  accepted: boolean; externalOfferRef?: string | null;
+}
 export type SubscriptionCommand = SubscriptionCommandContext & (
-  | { action: "pause"; pausePreset: string; reason: string | null; survey: string | null; saveOffer: string | null }
-  | { action: "resume" | "skip" | "cancel"; reason: string | null; confirmedChargeTiming: boolean }
-  | { action: "slide"; newNextCycleAt: string; confirmedChargeTiming: boolean }
+  | { action: "pause"; pausePreset: string; reason: string | null; survey: SubscriptionCancelSurvey | string | null; saveOffer: SubscriptionSaveOffer | string | null }
+  | { action: "resume" | "skip"; reason: string | null; confirmedChargeTiming: boolean }
+  | { action: "cancel"; reason: string | null; confirmedChargeTiming: boolean;
+      survey?: SubscriptionCancelSurvey | string | null; saveOffer?: SubscriptionSaveOffer | string | null }
+  | { action: "order_now" | "reactivate"; confirmedChargeTiming: true }
+  | { action: "slide"; reason?: string | null; newNextCycleAt: string; confirmedChargeTiming: boolean }
   | { action: "edit_future_terms"; shippingAddressId: string; planDays: number; cadenceDays: number;
       expectedTemplateVersion: number;
       /** Empty string means no quote (semantic no-op). */
