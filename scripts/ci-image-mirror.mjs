@@ -10,14 +10,16 @@ import { pathToFileURL } from "node:url";
 export const MIRROR_REGISTRY = "ghcr.io/openlup";
 
 const tagPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
-const repositoryPattern = /^[a-z0-9]+(?:[._-][a-z0-9]+)*(?:\/[a-z0-9]+(?:[._-][a-z0-9]+)*)+$/u;
+const repositoryPattern = /^[a-z0-9]+(?:[._-][a-z0-9]+)*(?:\/[a-z0-9]+(?:[._-][a-z0-9]+)*)*$/u;
+// The Microsoft registry is a mirror input only: hosted pulls use the organization mirror.
+export const MIRROR_ONLY_SOURCES = Object.freeze(["mcr.microsoft.com/"]);
 const digestPattern = /^sha256:[a-f0-9]{64}$/u;
 
 function validOwnedSource(source, image) {
   if (typeof source !== "string") return false;
   const [repository, tag, extra] = source.split(":");
   return extra === undefined && (tag === undefined || tag === image.tag)
-    && ["docker.io/", "public.ecr.aws/", "ghcr.io/"].some((prefix) => repository.startsWith(prefix))
+    && ["docker.io/", "public.ecr.aws/", "ghcr.io/", ...MIRROR_ONLY_SOURCES].some((prefix) => repository.startsWith(prefix))
     && repositoryPattern.test(repository.slice(repository.indexOf("/") + 1)) && repository.endsWith(`/${image.repository}`);
 }
 

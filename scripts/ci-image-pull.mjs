@@ -2,7 +2,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import ciImages from "../config/ci-images.json" with { type: "json" };
-import { MIRROR_REGISTRY, ownedImages } from "./ci-image-mirror.mjs";
+import { MIRROR_ONLY_SOURCES, MIRROR_REGISTRY, ownedImages } from "./ci-image-mirror.mjs";
 
 const execFileAsync = promisify(execFile);
 // A cold PG17 pull includes a ~358 MB layer that classic Docker cannot resume.
@@ -26,8 +26,8 @@ export const imageIo = {
 };
 
 export function readCiImages() {
-  return ownedImages(ciImages)
-    .map(image => ({ ...image, sources: [`${MIRROR_REGISTRY}/${image.repository}`, ...image.sources] }));
+  return ownedImages(ciImages).map(image => ({ ...image, sources: [`${MIRROR_REGISTRY}/${image.repository}`,
+    ...image.sources.filter(source => !MIRROR_ONLY_SOURCES.some(prefix => source.startsWith(prefix)))] }));
 }
 
 export function readCiImage(name) {
@@ -76,7 +76,7 @@ export async function pullWithRetry(image, io = imageIo, budgetMs = IMAGE_PULL_B
     return io.exec(args, Math.max(1, Math.ceil(Math.min(timeout, remaining))));
   } };
   // Every pull is digest-pinned; a tag alone never selects an image.
-  if (!/^[a-z0-9]+(?:[._/-][a-z0-9]+)+$/u.test(image.repository)
+  if (!/^[a-z0-9]+(?:[._/-][a-z0-9]+)*$/u.test(image.repository)
     || !/^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/u.test(image.tag)
     || typeof image.digest !== "string" || !/^sha256:[a-f0-9]{64}$/u.test(image.digest)
     || !Array.isArray(image.sources) || image.sources.length === 0

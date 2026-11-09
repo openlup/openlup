@@ -5,6 +5,7 @@ export type ResolvedImage = { source: string; target: string; digest: string };
 export type RegistryInspect = (reference: string) => string | null;
 
 export const MIRROR_REGISTRY: "ghcr.io/openlup";
+export const MIRROR_ONLY_SOURCES: readonly ["mcr.microsoft.com/"];
 export function ownedImages(config: unknown): OwnedCiImage[];
 export function inspect(reference: string): string | null;
 export function resolveImage(image: CiImage, registryInspect?: RegistryInspect): ResolvedImage;
