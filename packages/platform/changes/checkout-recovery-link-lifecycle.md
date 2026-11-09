@@ -1,5 +1,3 @@
-# Checkout recovery link lifecycle
-
 Checkout recovery links for one admitted purchase now coexist until expiry or
 payment. Identical-hash replay and cross-order refusal remain unchanged. Pending
 renewal-cycle orders refuse checkout issuance. Payment-case links still rotate,
