@@ -203,10 +203,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_ACTOR: ${{ github.actor }}
-          OPENLUP_PROOF_SERVICE_PORT: ${{ job.services.postgres.ports[5432] }}
         run: |
           echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
-          node --experimental-strip-types scripts/starter-browser-ci.mjs --manifest "$RUNNER_TEMP/package-gates/packages-manifest.json" --expected-commit "$(git rev-parse HEAD)" --service-port "$OPENLUP_PROOF_SERVICE_PORT"
+          node --experimental-strip-types scripts/starter-browser-ci.mjs --manifest "$RUNNER_TEMP/package-gates/packages-manifest.json" --expected-commit "$(git rev-parse HEAD)"
 
   test-full-shard:
     name: test-full-shard (${{ matrix.shard }}/4)

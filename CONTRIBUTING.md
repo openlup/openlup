@@ -374,16 +374,18 @@ The required `install-proof` job runs the shared package gate after both referen
 
 The same required job then runs the starter's installed PostgreSQL browser
 journeys through [`starter-browser-ci.mjs`](scripts/starter-browser-ci.mjs).
-It reuses the verified candidate manifest and job PostgreSQL service, installs
-and seeds both demonstration configurations, verifies migration replay and the
-restricted runtime identity, and starts two loopback hosts. One authenticated
+It reuses the verified candidate manifest and acquires an isolated disposable
+PostgreSQL 16 per configuration through the shared test helper and `test-postgres`
+inventory pin. The job's PostgreSQL 17 service retains its existing package proofs. The runner
+installs and seeds both demonstration configurations, verifies migration replay
+and the restricted runtime identity, and starts two loopback hosts. An authenticated
 GHCR pull selects the pinned `starter-browser` image through the shared reader
 and pull loop; mirror failure refuses without a vendor fallback or browser
 download. Playwright runs the database config with one worker, traces, video and
 screenshots off, read-only application inputs and temporary container results.
 The script captures output privately, scans it for credentials, removes its
-hosts, container, databases, roles and scratch files on success or failure, and
-prints only counts and elapsed timings. It uploads no artifacts. The job retains
+hosts, containers, databases, roles and scratch files on success or failure, and
+prints the public image identity, counts, timings and bounded failure diagnostics. It uploads no artifacts. The job retains
 its 20-minute limit and existing required-check dependencies. See the
 [starter proof recipe](examples/neutral-store/docs/proof.md#database-backed-purchase-acceptance-recipe)
 for the selected journeys and the separate local proofs.

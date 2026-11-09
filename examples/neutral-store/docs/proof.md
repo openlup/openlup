@@ -461,21 +461,25 @@ The required `install-proof` job now runs `journey.spec.ts` and
 `acquisition.spec.ts` in both configurations through
 [`starter-browser-ci.mjs`](../../../scripts/starter-browser-ci.mjs), after the
 package gates. It extracts the starter, installs the verified candidate tarballs,
-uses the job's PostgreSQL service for the complete selected history and repeated
-installation/seed, then starts two loopback hosts on the restricted runtime login.
+starts an isolated disposable PostgreSQL 16 per configuration through the shared
+test helper and pinned `test-postgres` image. Each receives the complete selected
+history, repeated installation and its own repeated seed; two loopback hosts use
+the restricted runtime login. Separate installations preserve a unique active
+price list for each demonstration market. The job's existing PostgreSQL 17 service
+is unchanged.
 The browser image comes only from authenticated, digest-pinned
 `ghcr.io/openlup/playwright` through the shared image reader and pull loop.
 Mirror failure refuses; CI never downloads browsers or pulls a vendor image.
 The database config retains one worker and disables traces, video and screenshots.
-Application inputs are mounted read-only; temporary results, captured output and
-private keys are removed after the output scan. No artifacts are uploaded.
+Application inputs are mounted read-only. Cleanup removes temporary results,
+captured messages and private keys; the captured output is scanned in memory. No artifacts are uploaded.
 
 From the source root after the package gates, run the same script with
-`--manifest <package-gates/packages-manifest.json> --expected-commit <full-sha>
---service-port <local-postgresql-port>`. It requires a disposable PostgreSQL
-service accepting the local `postgres` login and creates/removes only its own
-randomly named databases and roles. Local development may first pull the same
-pinned digest from the Microsoft registry, then pass its complete reference with
+`--manifest <package-gates/packages-manifest.json> --expected-commit <full-sha>`.
+Docker supplies the disposable PostgreSQL 16 installation; the shared helper
+preserves its existing mirror/upstream pull rules and cleanup. The runner removes
+its database containers on success and failure. Local development may first pull
+the same pinned digest from the Microsoft registry, then pass its complete reference with
 `--local-image`; the script verifies the existing local RepoDigest and refuses
 this exception whenever `CI` is set. It performs no upstream fallback.
 
