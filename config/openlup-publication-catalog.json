@@ -1274,6 +1274,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261109150000_subscription_auto_resume_paid_history.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4219,6 +4223,10 @@
     },
     {
       "path": "packages/platform/sql/20261109130000_subscription_exact_levers.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261109150000_subscription_auto_resume_paid_history.sql",
       "class": "public-output"
     },
     {
