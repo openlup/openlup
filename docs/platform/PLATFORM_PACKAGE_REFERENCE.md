@@ -1510,3 +1510,71 @@ Failures use static messages (`checkout_recovery_service_required`,
 `checkout_recovery_response_invalid`, `checkout_recovery_storage_failed`), without
 driver details, raw credentials or attached causes. This adapter adds no SQL,
 grants, reminder producer, mail sender or automatic binding.
+
+## Checkout recovery waves and expiry
+
+The development-preview `@openlup/platform/commerce/server` entry supplies
+[`createPostgresCheckoutRecoveryWaves`](../../packages/platform/src/commerce/server/checkoutRecoveryWaves.ts).
+Inject the qualified restricted runtime executor and an explicit policy profile:
+
+```ts
+const recovery = createPostgresCheckoutRecoveryWaves(executor, {
+  profile: "capture",
+  firstOffsetSeconds: 3600,
+  finalOffsetSeconds: 72000,
+  checkoutSeconds: 86400,
+  recoverySeconds: 2592000,
+  activitySeconds: 900,
+});
+```
+
+These values are neutral example configuration. The legacy integer SQL entry
+retains these defaults; the configured overload accepts explicit UTC invocation
+time. Existing payload wave labels `1` and `20` identify first/final content;
+offsets remain separate scheduling inputs. The host supplies localized copy to
+the existing content factory, rather than copying product content into SQL.
+
+Wrap only recovery mail with `withCheckoutRecoverySendEvidence(emailPort,
+recovery)` from `@openlup/platform/communications`. It uses the shared transport outcome classifier, then records a
+confirmed acceptance in the existing transactional receipt store. The receipt
+fingerprint binds event, recipient reference, template and profile. The profile
+must uniquely identify the selected delivery transport: acceptance by a selected
+captured transport proves captured delivery only. Never reuse its profile to
+claim network delivery. Generic acceptance and processed outbox state cannot
+replace this evidence. Receipt-write failure remains visible to the caller;
+the selected transport must retain the event's idempotency across retries.
+Other mail methods and the existing dedupe binding remain unchanged.
+
+`createCheckoutRecoveryWaveJob` from `@openlup/platform/composition` receives an enabled predicate, configured job
+name/lease/batch and a lazy binding for the existing job ledger and `enqueue`.
+`createCheckoutRecoveryWaveHttpEntry` composes its method/bearer guard from a
+host-supplied secret reader. The disabled path constructs no persistence and
+claims no lease. A lease refusal performs no enqueue. Host schedules and process
+activation are supplied separately.
+
+The service's `expire` reads elapsed native purchase-reservation deadlines,
+including retained expiry evidence from the inventory sweeper; it does not expire
+an old order without reservation evidence. It excludes initial subscriptions and
+renewals, retains successful payment facts, and atomically captures one
+`commerce.checkout.expired` event and hash-only token. Existing links are retained.
+`reconcile` repairs absent capture for canonical expired orders and attributed
+initial abandonment. `sweepInitial` takes an explicit UTC cutoff, filters stable
+provider-contact refusals before its limit, locks and rechecks before delegating
+native compensation, and emits the recovery notice without ordinary cancellation
+mail. A compensated provisional activation is not a cancelled live subscription.
+The expired-mail lifecycle reader must expose `subscriptionActivationAbandoned`
+only for the durable sweep marker and compensated activation.
+
+The [forward](../../db/platform/migrations/20261110100000_checkout_recovery_waves.sql)
+retains existing function headers/ACLs. New routines revoke PUBLIC/browser
+execution; only the selected entry points grant service-role execution. The
+scoped `commerce_checkout_recovery_wave_delivery_authorize` wrapper exposes the
+existing owner-authorized automatic reminder check without widening its ACL or
+admitting operator/buyer flows. No raw table grant is added.
+
+The [PostgreSQL witness](../../tests/postgres/checkoutRecoveryWaves.test.ts)
+exercises legacy and both qualified runtime profiles. It does not establish a
+running scheduler, browser journey, network delivery, real-provider prepared
+storage or expired-order recreation. The current native payment attempt store
+remains sandbox-only. Starter bindings and recreation consumers are separate
+obligations.

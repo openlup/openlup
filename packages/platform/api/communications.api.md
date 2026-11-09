@@ -270,6 +270,29 @@ export declare function createCapturedTransactionalDelivery(options?: {
     outcome?: CapturedTransactionalDeliveryOutcomeSource;
 }): CapturedTransactionalDeliveryPort;
 ```
+## dist/communications/checkoutRecoverySendEvidence.d.ts
+
+```ts
+import { type EmailSendSkipReason } from './emailTransport.js';
+interface RecoveryEmailSendPort {
+    sendCheckoutRecovery(input: {
+        outboxEventId: string;
+    }): Promise<{
+        ok: boolean;
+        messageId: string | null;
+        providerError: string | null;
+        aborted: boolean;
+        skipReason?: EmailSendSkipReason | null;
+    }>;
+}
+/** Adds confirmed-send evidence only for recovery mail. Other email methods and dedupe retain their binding.
+ * The selected transport must preserve the outbox event's idempotency on ambiguous retries.
+ * Acceptance is evidence for this exact transport profile, including a selected captured profile. */
+export declare function withCheckoutRecoverySendEvidence<Port extends RecoveryEmailSendPort>(emailPort: Port, evidence: {
+    recordConfirmedSend(eventId: string, deliveryReference: string): Promise<void>;
+}): Port;
+export {};
+```
 ## dist/communications/communicationSync.d.ts
 
 ```ts
@@ -1563,6 +1586,7 @@ export * from "./postgresNotificationRecipients.js";
 export * from "./postgresConsentEvaluator.js";
 export type * from "./contracts/marketingSync.js";
 export * from "./testing/adapterConformance.js";
+export { withCheckoutRecoverySendEvidence } from './checkoutRecoverySendEvidence.js';
 ```
 ## dist/communications/integrationEventSignature.d.ts
 

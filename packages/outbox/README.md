@@ -179,3 +179,10 @@ and Core's settlement-vocabulary migration note. Releases before `0.35.0` are
 retained in the source-only `CHANGELOG-HISTORY.md`.
 Size comparison uses the published `0.36.0` tarball; preparation grants no
 publication or installation proof.
+
+Checkout recovery is an optional platform consumer of the outbox. Its wave
+producer inserts each event and recovery-token digest atomically; event uniqueness
+arbitrates concurrent enqueue. Its final-wave gate reads confirmed delivery
+receipts independently of dispatch completion. See the
+[platform recovery recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#checkout-recovery-waves-and-expiry)
+for transport profiles, reservation-backed expiry and host-binding limits.

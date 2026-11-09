@@ -1596,6 +1596,20 @@ order before rotating links. Actor issuance retains rotation. Checkout issuance
 refuses pending renewal-cycle orders; cancellation, recovery and retry
 authorization keep their existing order-scoped or token-scoped revocation.
 
+The checkout-wave forward adds `expired` to the native order CHECK and uses
+retained purchase-reservation deadlines as the canonical one-time expiry source.
+Event/token capture is atomic and deduplicated by event identity; reconciliation
+repairs absent capture without rotating prior links. Initial abandonment uses a
+compensated provisional activation, attributed cancelled order and stricter
+provider-contact refusal before the scan limit and under locks. It does not
+cancel a live subscription. New functions use fixed definer search paths and
+closed service execution; both replaced entry points retain their headers and
+ACLs. The scoped runtime authorizer delegates to the existing owner-only check.
+First-send evidence uses the existing transactional receipts, with an event,
+template, recipient and profile fingerprint; outbox completion is independent.
+See the [composition recipe](PLATFORM_PACKAGE_REFERENCE.md#checkout-recovery-waves-and-expiry)
+for configured timing and transport-profile limits.
+
 `checkSupersets` entries declare table, constraint, column and values;
 `uniqueSupersets` entries declare table, constraint, columns and nullsNotDistinct.
 The lexical validator checks only the slot's own SQL: exactly one adjacent

@@ -1270,6 +1270,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261110100000_checkout_recovery_waves.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4214,6 +4218,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261110100000_checkout_recovery_waves.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -5198,6 +5206,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/server/checkoutRecoveryWaves.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/server/checkoutRefusalContinuation.ts",
       "class": "public-output"
     },
@@ -5511,6 +5523,10 @@
     },
     {
       "path": "packages/platform/src/communications/capturedTransactionalDelivery.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/checkoutRecoverySendEvidence.ts",
       "class": "public-output"
     },
     {
@@ -5923,6 +5939,10 @@
     },
     {
       "path": "packages/platform/src/composition/catalogContribution.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/composition/checkoutRecoveryWaves.ts",
       "class": "public-output"
     },
     {
@@ -8531,6 +8551,10 @@
     },
     {
       "path": "packages/platform/test/commerce/checkoutRecoveryToken.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/checkoutRecoveryWaves.test.ts",
       "class": "public-output"
     },
     {
@@ -28403,6 +28427,10 @@
     },
     {
       "path": "tests/postgres/checkoutRecoveryTokenPort.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/checkoutRecoveryWaves.test.ts",
       "class": "public-output"
     },
     {

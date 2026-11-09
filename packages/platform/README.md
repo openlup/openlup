@@ -413,6 +413,27 @@ for paid confirmation, and grants payment continuation only through validation
 of an active pending order. It sends no mail and performs no settlement. See the
 [recovery recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#postgresql-checkout-recovery-tokens).
 
+`./commerce/server` exports `createPostgresCheckoutRecoveryWaves`.
+`./composition` supplies `createCheckoutRecoveryWaveJob` and
+`createCheckoutRecoveryWaveHttpEntry`; `./communications` supplies
+`withCheckoutRecoverySendEvidence`. Apply the complete migration chain before
+selecting them. Reminder waves atomically mint distinct links without revoking
+older checkout links. Pending initial purchases remain eligible; renewal-cycle
+orders refuse. Successful or recent active payment evidence suppresses nudges.
+The final wave requires a confirmed first-wave receipt bound to its event,
+template and selected delivery profile, independently of outbox completion.
+Skipped, disabled, ambiguous and failed sends do not create that evidence.
+The existing recovery email handler remains the consumer.
+
+The same service composition supplies reservation-backed one-time expiry,
+initial-activation abandonment and expired-notice reconciliation. One-time expiry
+uses retained purchase-reservation deadlines, never order age. Initial sweeps
+retain any provider-contact evidence and never cancel live subscriptions. Timing,
+batch, lease, profile identity and copy are host configuration. The HTTP adapter
+authenticates before the flag check; disabling the job constructs no persistence.
+No host is started. Starter schedules/pages and expired-order recreation remain
+separate work. See the [wave recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#checkout-recovery-waves-and-expiry).
+
 `./commerce/server/postgres` also exports
 `createPostgresCommercePriceAuthorityReadPort(executor)`. Allocate it once per
 request and pass it to `createConcurrentCommercePriceAuthorityPort` from
