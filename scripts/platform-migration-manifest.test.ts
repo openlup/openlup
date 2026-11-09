@@ -250,12 +250,14 @@ describe("canonical qualified migration selection", () => {
     if (current.schemaVersion !== 3) throw new Error("current qualified source must be schema 3");
     const content = readFileSync(`scripts/fixtures/reviewed-m14-qualified/${QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE}`, "utf8");
     const lock = { file: QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE, sha256: sha256(content) };
-    const migrations = readPlatformMigrations(process.cwd()).migrations.filter(entry => !["db/platform/migrations/20261106050000_customer_command_key_isolation.sql", "db/platform/migrations/20261106060000_subscription_retry_recovery_truth.sql"].includes(entry.file));
+    // Pin this admission fixture to the point where the completion tail was appended.
+    // Later shared forwards, including lifecycle closure, are exercised separately below.
+    const next = structuredClone(current);
+    const afterLock = new Set(next.qualified.forward.slice(next.qualified.forward.findIndex(({ file }) => file === lock.file) + 1).map(({ file }) => file));
+    for (const plan of [next, next.qualified, next.qualifiedAdmin]) plan.forward = plan.forward.filter(({ file }) => !afterLock.has(file));
+    const migrations = readPlatformMigrations(process.cwd()).migrations.filter(({ file }) => !afterLock.has(file));
     expect(migrations.find(({ file }) => file === lock.file)?.content).toBe(content);
     expect(isQualifiedPlatformMigrationPath(lock.file)).toBe(true);
-    // Freeze the complete inventory at this tail; later shared forwards append after it.
-    const next = structuredClone(current);
-    for (const plan of [next, next.qualified, next.qualifiedAdmin]) plan.forward = plan.forward.filter(entry => !["db/platform/migrations/20261106050000_customer_command_key_isolation.sql", "db/platform/migrations/20261106060000_subscription_retry_recovery_truth.sql"].includes(entry.file));
     expect([next.qualified.forward.at(-1), next.qualifiedAdmin.forward.at(-1)]).toEqual([lock, lock]);
     const previous = structuredClone(next);
     for (const plan of [previous.qualified, previous.qualifiedAdmin]) plan.forward = plan.forward.filter(({ file }) => file !== lock.file);

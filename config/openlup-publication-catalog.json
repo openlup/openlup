@@ -1242,6 +1242,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261106100000_subscription_lifecycle_closure.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4139,6 +4143,10 @@
     },
     {
       "path": "packages/platform/sql/20261106060000_subscription_retry_recovery_truth.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261106100000_subscription_lifecycle_closure.sql",
       "class": "public-output"
     },
     {
@@ -8059,6 +8067,10 @@
     },
     {
       "path": "packages/platform/src/subscriptions/lifecycleMessages.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/lifecycleTerms.ts",
       "class": "public-output"
     },
     {
@@ -28847,6 +28859,18 @@
     },
     {
       "path": "tests/postgres/subscriptionContinuityBaseline.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionLifecycleClosure.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionLifecycleClosureFixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionLifecycleContractWitnesses.test.ts",
       "class": "public-output"
     },
     {

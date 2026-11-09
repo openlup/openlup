@@ -2156,8 +2156,48 @@ text never pass through. Under the actor/key lock, preview and apply compare
 the original host request before calling `futureTerms`: a stored terminal receipt
 returns immediately, and a matching stored preview supplies its already-bound
 translation to apply. Later host address/catalogue changes cannot preempt replay;
-changed requests still refuse as idempotency conflicts. The adapter refuses pause without writing. Existing native lifecycle
-callers remain unchanged. Native multi-cycle prepaid and the M07 prepared-attempt
+changed requests still refuse as idempotency conflicts. The lifecycle-closure forward enables explicit pause through this adapter. Pause
+closes open cases as `paused`, revokes their recovery tokens, skips queued notices
+and terminalizes unpaid cycles as `skipped`, their nonsettled intents as
+`cancelled`, and payable unpaid orders as `cancelled`. A sending notice remains
+owned by its dispatcher. Cancellation converges on the same unpaid cleanup with
+`cancelled` cycles; paid cycles and existing parcels keep their obligations.
+Prepared, live-leased or ambiguous payment work refuses closure atomically.
+The fixed authenticated pause wrapper delegates to the same closure while
+retaining its original authority.
+It fires the explicitly named order line-sum constraint at the end of commerce
+cleanup while still in its definer context, then puts that constraint back into
+deferred mode. The invoker trigger and its definition stay unchanged; service
+calls keep deferred checking. A mismatch still raises `23514` and rolls back.
+Its error detail exposes the caller's own order identifier and declared/line
+amounts, after the wrapper's owner check; no commerce-table read grant is added.
+
+
+`SubscriptionLifecycleTerms` configures pause days/calendar months, slide bounds,
+order-now delay and reactivation delay through `binding.lifecycleTerms`. These
+trusted terms are a separate SQL argument; customer payloads cannot override
+them. Existing SQL signatures retain compatibility values. New overloads have
+no defaults and admit exactly the existing action set. Generic quote/edit
+branches and preview are unchanged. Lifecycle skip, changed-date slide and order
+now use the stored edit window: exact cutoff passes, later requests refuse.
+Pause, resume, cancel and reactivation have their separate eligibility rules.
+`order_now` and `reactivate` require literal `confirmedChargeTiming: true`,
+healthy method evidence and renewal terms. They schedule eligibility without
+executing payment in the command. Reactivation clears cancellation markers and
+increments the template version once.
+
+Structured `SubscriptionCancelSurvey` and `SubscriptionSaveOffer` accompany
+pause/cancel commands; slide accepts a retention reason. The host may inject
+`retentionReasonCodes`; legacy string callers retain string payloads. The
+nonmaterialized `subscription_retention_outcomes` view selects pause/cancel
+events carrying a survey or offer field, without a price change or discount
+grant. Legacy strings are not parsed into structured projection values. It has no browser
+or service-role SELECT grant. The account-support transcription preserves these
+same command carriers. The new lifecycle terms contain no retained purchase,
+pricing, cadence-offer or acquisition override. Stored receipts replay before
+reading changed host timing policy; a changed command still conflicts.
+Timed auto-resume, its system-event alias and starter portal mounting are
+separate integrations. Native multi-cycle prepaid and the M07 prepared-attempt
 store retain named unsupported declarations. The unbound native descriptor keeps stock recovery unavailable;
 the explicitly selected M10 reference binding declares it selected, with the
 composed PostgreSQL witness. N1 retry recovery is selected after its store proofs. The
