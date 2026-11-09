@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
-import { acquireStarterPostgres, browserArguments, capturePrivateValues, guardConnection, parseArguments, resolveBrowserImage, scanPrivateOutput, withCleanup } from './starter-browser-ci.mjs';
+import { acquireStarterPostgres, browserArguments, capturePrivateValues, parseArguments, resolveBrowserImage, scanPrivateOutput, withCleanup, withConnectionCleanup } from './starter-browser-ci.mjs';
 import { imageReference, readCiImage } from './ci-image-pull.mjs';
 
 const args = ['--manifest', '/tmp/packs/packages-manifest.json', '--expected-commit', 'a'.repeat(40)];
@@ -140,19 +140,29 @@ describe('installed starter browser CI', () => {
 });
 
 describe('database connection errors', () => {
-  it('records an idle disconnect instead of letting it escape the cleanup path', async () => {
-    const outputs: string[] = [], released: string[] = [];
-    const pool = guardConnection(new EventEmitter(), outputs);
-    await expect(withCleanup(async defer => {
+  it('fails a run whose work succeeded after an idle disconnect, and still releases every resource', async () => {
+    const released: string[] = [];
+    await expect(withConnectionCleanup(async (defer, guard) => {
+      const pool = guard(new EventEmitter());
       defer(() => { released.push('postgres'); });
       expect(() => pool.emit('error', new Error('terminating connection due to administrator command'))).not.toThrow();
-      if (outputs.length) throw new Error('starter_browser_install_failed');
-    })).rejects.toThrow('starter_browser_install_failed');
-    expect(outputs).toEqual(['starter_browser_database_connection_lost']);
+      return 'journeys passed';
+    })).rejects.toThrow('starter_browser_database_connection_lost');
     expect(released).toEqual(['postgres']);
+  });
+  it('fails a run whose connection is lost during cleanup', async () => {
+    await expect(withConnectionCleanup(async (defer, guard) => {
+      const client = guard(new EventEmitter());
+      defer(() => { client.emit('error', new Error('connection terminated unexpectedly')); });
+      return 'journeys passed';
+    })).rejects.toThrow('starter_browser_database_connection_lost');
+  });
+  it('returns the work result when every connection held', async () => {
+    await expect(withConnectionCleanup(async (_defer, guard) => { guard(new EventEmitter()); return 'ok'; })).resolves.toBe('ok');
   });
   it('guards every PostgreSQL client and pool the runner creates', () => {
     const source = readFileSync('scripts/starter-browser-ci.mjs', 'utf8');
-    expect(source.match(/new pg\.(?:Client|Pool)\(/gu)?.length).toBe(source.match(/guardConnection\(new pg\.(?:Client|Pool)\(/gu)?.length);
+    expect(source.match(/new pg\.(?:Client|Pool)\(/gu)?.length).toBe(source.match(/guard\(new pg\.(?:Client|Pool)\(/gu)?.length);
+    expect(source).toContain('await withConnectionCleanup(async (defer, guard) =>');
   });
 });

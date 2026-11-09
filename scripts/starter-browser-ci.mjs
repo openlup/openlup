@@ -58,10 +58,14 @@ export async function withCleanup(work) {
 }
 
 // An idle node-postgres client or pool emits 'error' when its backend disconnects; without a
-// listener Node exits outside withCleanup. Record it so the run fails through its cleanup instead.
-export function guardConnection(connection, outputs) {
-  connection.on('error', () => { outputs.push('starter_browser_database_connection_lost'); });
-  return connection;
+// listener Node exits outside withCleanup. Guarded connections record the loss, and the run
+// fails after its cleanup, including a loss during cleanup.
+export async function withConnectionCleanup(work) {
+  const losses = [];
+  const guard = connection => { connection.on('error', () => { losses.push('starter_browser_database_connection_lost'); }); return connection; };
+  const value = await withCleanup(defer => work(defer, guard));
+  if (losses.length) throw new Error('starter_browser_database_connection_lost');
+  return value;
 }
 
 export function scanPrivateOutput(output, privateValues = []) {
@@ -136,7 +140,7 @@ export async function runStarterBrowser(options) {
     }
   };
   try {
-    await withCleanup(async defer => {
+    await withConnectionCleanup(async (defer, guard) => {
       const { readCurrentPackManifest, assertInstalledPackages } = await import('./packages/pack-manifest-input.ts');
       const commit = (await command('git', ['rev-parse', 'HEAD'])).trim();
       if (options.commit !== commit) throw new Error('starter_browser_candidate_mismatch');
@@ -186,7 +190,7 @@ export async function runStarterBrowser(options) {
         const postgres = await acquireStarterPostgres(defer);
         cancellation.signal.throwIfAborted();
         privateValues.push(postgres.password);
-        const bootstrap = guardConnection(new pg.Client({ connectionString: postgres.connectionString, connectionTimeoutMillis: 5000 }), outputs);
+        const bootstrap = guard(new pg.Client({ connectionString: postgres.connectionString, connectionTimeoutMillis: 5000 }));
         defer(() => bootstrap.end());
         await bootstrap.connect();
         const installRole = 'starter_install', runtimeRole = 'starter_runtime', restoreRole = 'starter_restore';
@@ -201,14 +205,14 @@ export async function runStarterBrowser(options) {
         await bootstrap.query(`COMMENT ON DATABASE ${database} IS '${demonstrationMarker}'`);
         const installUrl = `postgresql://${installRole}:${password}@127.0.0.1:${postgres.port}/${database}`;
         const selection = { generation: 'qualified-v2', roleMode: 'installer-managed', bootstrapLogin: 'postgres', migrationLogin: installRole, runtimeLogin: runtimeRole, restoreLogin: restoreRole };
-        const migrationPool = guardConnection(new pg.Pool({ connectionString: installUrl,
-          options: migrations.qualifiedPostgresStartupOptions(selection), connectionTimeoutMillis: 5000 }), outputs);
+        const migrationPool = guard(new pg.Pool({ connectionString: installUrl,
+          options: migrations.qualifiedPostgresStartupOptions(selection), connectionTimeoutMillis: 5000 }));
         defer(() => migrationPool.end());
         const runner = migrations.createPlatformPostgresMigrationRunner({ connectionString: installUrl }, { installation: selection, poolFactory: () => migrationPool });
         const first = await runner.apply(), repeat = await runner.apply(), status = await runner.status();
         if (repeat.applied.length || status.pending.length) throw new Error('starter_browser_migration_replay_failed');
         console.log(`Starter ${configuration} migrations: ${first.applied.length}; repeat: ${repeat.applied.length}; elapsed: ${Math.round(performance.now() - started)} ms`);
-        const installer = guardConnection(new pg.Client({ connectionString: installUrl, connectionTimeoutMillis: 5000 }), outputs);
+        const installer = guard(new pg.Client({ connectionString: installUrl, connectionTimeoutMillis: 5000 }));
         await installer.connect();
         try {
           const seed = { connection: installer, installRole, runtimeRole };
@@ -218,7 +222,7 @@ export async function runStarterBrowser(options) {
         } finally { await installer.end(); }
         phase = 'runtime';
         const runtimeUrl = `postgresql://${runtimeRole}@127.0.0.1:${postgres.port}/${database}`;
-        const runtime = guardConnection(new pg.Client({ host: '127.0.0.1', port: postgres.port, database, user: runtimeRole, password, connectionTimeoutMillis: 5000 }), outputs);
+        const runtime = guard(new pg.Client({ host: '127.0.0.1', port: postgres.port, database, user: runtimeRole, password, connectionTimeoutMillis: 5000 }));
         await runtime.connect();
         try {
           const { rows } = await runtime.query('SELECT session_user,current_user,rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user');
