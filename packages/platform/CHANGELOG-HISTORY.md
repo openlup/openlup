@@ -2,6 +2,40 @@
 
 Releases moved verbatim out of the packed `CHANGELOG.md`, which keeps the current release and the two previous ones.
 
+## [0.35.0]
+
+- Publishable on the npm `latest` dist-tag as `0.35.0`, from tag
+  `openlup-platform-v0.35.0`.
+
+- Add experimental normalized channel contracts/helpers and Node ingest, retained paid-source, webhook/operator, pull and recovery bindings at existing Platform subpaths. Existing commerce owners retain order, payment, inventory and fulfillment effects.
+- Preserve original capture/approval/BOM/money/payment identities and page/CAS receipts. Managed retained conversion uses the existing ATP hook and unchanged allocator; portable physical conversion refuses by name. Privacy lifecycle export/erasure is unavailable.
+
+### Account newsletter withdrawal
+
+- Portable PostgreSQL account newsletter opt-out now atomically denies newsletter
+  permission, including repeated opt-outs, while preserving suppression and other
+  purposes. Opting back in changes the account preference but leaves the evaluator
+  refusing until an explicit grant is recorded separately.
+- An opt-out recorded before this version does not change an existing `granted`
+  row until an operator runs the idempotent upgrade statement in the data and
+  migrations guide. The account setter schedules no external provider sync, and
+  a denial stays tied to the old email fingerprint after an email change.
+- Newsletter withdrawal uses database-specific lowercase rules; addresses containing
+  Turkish `İ` or context-dependent Greek `Σ` can still differ from JavaScript, and
+  C-locale databases also differ for `Ä`; this withdrawal path assumes a UTF8 database.
+- Account withdrawal records newsletter denial without duplicating the evaluator's
+  address-acceptance rule. An evaluator-refused address remains refused even if a
+  denial is recorded under its fingerprint.
+
+Migration: Before selecting the channel surface, an existing same-rail catalogue lacks the two M17 units. After selecting it, install the complete catalogue through `20261030121000_channel_retained_basis.sql` and `20261030122000_channel_purchased_source.sql`; the sparse package assets are not an installation chain. The Risk API snapshot only reorders unchanged enum members, so Risk callers need no code or SQL migration.
+
+Install the complete selected catalogue including the newsletter withdrawal forward and the two new channel forwards; sparse `CHANNEL_INGEST_MIGRATIONS` package assets are byte-identical projections, not an install chain. Hosts explicitly supply provider decoding, owner ports, currency policy and enablement. Importing the package enables no route, job, simulator or provider. No hosted or provider qualification is implied.
+
+For account opt-outs recorded before this set, an operator must run the idempotent [newsletter withdrawal upgrade statement](https://github.com/openlup/openlup/blob/openlup-platform-v0.35.0/docs/platform/DATA_AND_MIGRATIONS.md#account-newsletter-withdrawal-upgrade). Installing or replaying the forward alone does not change an existing granted recipient-consent row.
+
+With the complete 0.35.0 catalogue, `outbox_events` also needs the owner path, so the generic utility refuses it; that owner path is reference-source only.
+
+With the complete 0.35.0 catalogue, `outbox_events` also needs the owner path, so the generic utility refuses it; that owner path is reference-source only.
 ## [0.34.0]
 
 - Publishable on the npm `latest` dist-tag as `0.34.0`, from tag

@@ -7,7 +7,7 @@ Shipped package-local sources are relative to this package. Other sources link t
 Repository paths, imports and relative links inside verbatim excerpts describe that source checkout, not files to find or create in your application.
 Consult installed declarations and README for the installed version.
 
-<!-- openlup-context-inventory [{"id":"configure-dispatch","source":"README.md","heading":"Dispatch configuration and optional diagnostics","startLine":49,"endLine":65,"sha256":"e7a3e7c564b70a20f0ab73d6d1df54a03f44540c10d5615e57371942ec6d71da"},{"id":"install-outbox","source":"README.md","heading":"PostgreSQL installation and transactions","startLine":66,"endLine":75,"sha256":"7b0ce57ce577ee91f317b0b766d3a15d3a3c6eee54849241c307b58bfd44070c"},{"id":"outbox-retry-dispatch-handler-idempotency","source":"https://github.com/openlup/openlup/blob/openlup-outbox-v0.37.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Idempotency","startLine":250,"endLine":272,"sha256":"2d719cee94edefe6eccf76aa9c34bbf8a40cdb7e478e313b4a939e769c2e4d71"}] -->
+<!-- openlup-context-inventory [{"id":"configure-dispatch","source":"README.md","heading":"Dispatch configuration and optional diagnostics","startLine":49,"endLine":65,"sha256":"e7a3e7c564b70a20f0ab73d6d1df54a03f44540c10d5615e57371942ec6d71da"},{"id":"install-outbox","source":"README.md","heading":"PostgreSQL installation and transactions","startLine":66,"endLine":75,"sha256":"7b0ce57ce577ee91f317b0b766d3a15d3a3c6eee54849241c307b58bfd44070c"},{"id":"outbox-retry-dispatch-handler-idempotency","source":"https://github.com/openlup/openlup/blob/openlup-outbox-v0.38.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Idempotency","startLine":250,"endLine":272,"sha256":"2d719cee94edefe6eccf76aa9c34bbf8a40cdb7e478e313b4a939e769c2e4d71"}] -->
 
 ## configure-dispatch: Configure dispatch and diagnostics
 
@@ -52,9 +52,9 @@ Prune defaults to 30 days for processed and 90 for discarded, in batches of 500.
 
 ## outbox-retry-dispatch-handler-idempotency: Keep handler effects idempotent across retries
 
-Source: [OpenLup source repository at openlup-outbox-v0.37.0](https://github.com/openlup/openlup/blob/openlup-outbox-v0.37.0/docs/platform/CANONICAL_CONTRACTS.md#L250-L272).
+Source: [OpenLup source repository at openlup-outbox-v0.38.0](https://github.com/openlup/openlup/blob/openlup-outbox-v0.38.0/docs/platform/CANONICAL_CONTRACTS.md#L250-L272).
 
-<!-- openlup-context {"id":"outbox-retry-dispatch-handler-idempotency","source":"https://github.com/openlup/openlup/blob/openlup-outbox-v0.37.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Idempotency","startLine":250,"endLine":272,"sha256":"2d719cee94edefe6eccf76aa9c34bbf8a40cdb7e478e313b4a939e769c2e4d71"} -->
+<!-- openlup-context {"id":"outbox-retry-dispatch-handler-idempotency","source":"https://github.com/openlup/openlup/blob/openlup-outbox-v0.38.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Idempotency","startLine":250,"endLine":272,"sha256":"2d719cee94edefe6eccf76aa9c34bbf8a40cdb7e478e313b4a939e769c2e4d71"} -->
 ## Idempotency
 The native bundle contention witness characterizes the existing global event
 key, without adding payload/entity binding. Two absent-key transactions on
