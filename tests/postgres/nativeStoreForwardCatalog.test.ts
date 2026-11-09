@@ -536,7 +536,8 @@ describe.each([{ serviceRole: true }, { serviceRole: false }])("native store for
     ["cat_existing_table", "cat_existing_table_pkey", ""],
     ["cat_parameters", "cat_key", ""],
     ["cat_exclusion", "cat_exclusion_key", "CREATE TABLE public.cat_exclusion (span int4range, CONSTRAINT cat_exclusion_key EXCLUDE USING gist (span WITH &&));"],
-  ] as const)("refuses a constraint-backed index on %s", async (table, name, setup) => {
+    ["cat_parameters", "cat_adopted_idx", "CREATE UNIQUE INDEX cat_adopted_idx ON public.cat_parameters (status); ALTER TABLE public.cat_parameters ADD CONSTRAINT cat_adopted_idx UNIQUE USING INDEX cat_adopted_idx;"],
+  ] as const)("refuses a constraint-backed index (%s %s)", async (table, name, setup) => {
     const slot = { ...SYNTHETIC_SLOT, droppedIndexes: [{ table: `public.${table}`, name, beforeSha256: "0".repeat(64) }] };
     await expect(checkForward(pool, slot, forward(CREATED_OK, `ALTER TABLE public.${table} DROP CONSTRAINT ${name} CASCADE;`), false, setup)).rejects.toThrow(/must be a removed standalone index/u);
   });
