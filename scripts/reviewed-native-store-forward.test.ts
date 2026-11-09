@@ -1306,6 +1306,8 @@ describe("closed native index drops", () => {
     'CREATE INDEX "fixture_active_idx" ON public.fixture_parameters (id);',
     "CREATE INDEX IF NOT EXISTS fixture_active_idx ON public.fixture_parameters (id);",
     "SELECT 'fixture_active_idx';",
+    String.raw`CREATE INDEX U&"fixture_\0061ctive_idx" ON public.fixture_parameters (id);`,
+    String.raw`SELECT 1 AS u&"\0061";`,
   ])("refuses an earlier mention before the pinned plain CREATE: %s", earlier => {
     const history = `${earlier}\n${dropIndexSql}\n${dropIndexCreate}`;
     expect(() => indexDrop(dropIndexSql, history, "", slot => { slot.droppedIndexes![0]!.beforeSha256 = sqlSha256(dropIndexCreate); })).toThrow("reviewed native store dropped index has another CREATE or mention");

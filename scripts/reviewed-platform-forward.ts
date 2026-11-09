@@ -2276,6 +2276,8 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
     }
     // The whole prefix may mention a listed index once: in its single plain CREATE.
     for (const index of droppedIndexes) {
+      // An escaped identifier can name the index without its raw text.
+      if (/u&"/iu.test(statement)) throw new Error("reviewed native store dropped index has another CREATE or mention");
       if (!statement.toLowerCase().includes(index.name)) continue;
       const at = nativeWord(tokens, 1, "UNIQUE") ? 2 : 1;
       if (indexCreates.has(index.name) || !nativeWord(tokens, 0, "CREATE") || !nativeWord(tokens, at, "INDEX") || tokens[at + 1]?.kind !== "word" || nativeIdentifier(tokens[at + 1]) !== index.name) throw new Error("reviewed native store dropped index has another CREATE or mention");
