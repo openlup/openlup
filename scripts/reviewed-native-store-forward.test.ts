@@ -1299,42 +1299,31 @@ describe("closed native index drops", () => {
     "ALTER TABLE public.fixture_parameters ADD CONSTRAINT fixture_active_idx PRIMARY KEY (id);",
     "ALTER TABLE public.fixture_parameters ADD CONSTRAINT fixture_active_idx UNIQUE (id);",
     "ALTER TABLE public.fixture_parameters ADD CONSTRAINT fixture_active_idx EXCLUDE USING gist (int4range(0, 1) WITH &&);",
-  ])("refuses a non-plain CREATE preimage, including constraint indexes: %s", source => {
-    expect(() => indexDrop(dropIndexSql, source)).toThrow("reviewed native store dropped index has another CREATE or mention");
-  });
-  it.each([
-    'CREATE INDEX "fixture_active_idx" ON public.fixture_parameters (id);',
-    "CREATE INDEX IF NOT EXISTS fixture_active_idx ON public.fixture_parameters (id);",
-    "SELECT 'fixture_active_idx';",
-    String.raw`CREATE INDEX U&"fixture_\0061ctive_idx" ON public.fixture_parameters (id);`,
-    String.raw`SELECT 1 AS u&"\0061";`,
-  ])("refuses an earlier mention before the pinned plain CREATE: %s", earlier => {
-    const history = `${earlier}\n${dropIndexSql}\n${dropIndexCreate}`;
-    expect(() => indexDrop(dropIndexSql, history, "", slot => { slot.droppedIndexes![0]!.beforeSha256 = sqlSha256(dropIndexCreate); })).toThrow("reviewed native store dropped index has another CREATE or mention");
-  });
-  it.each([
     "CREATE UNIQUE INDEX fixture_active_idx ON public.other_table (id);",
     "CREATE UNIQUE INDEX fixture_active_idx ON fixture_parameters (id);",
     'CREATE UNIQUE INDEX fixture_active_idx ON "public"."fixture_parameters" (id);',
     "CREATE UNIQUE INDEX fixture_active_idx ON public.fixture_parameters$other (id);",
-  ])("refuses another table or a non-plain table identity even with the source hash: %s", source => {
-    expect(() => indexDrop(dropIndexSql, source)).toThrow("reviewed native store dropped index preimage drifted or is not a plain CREATE INDEX");
+  ])("refuses a pinned statement that is not a plain CREATE INDEX of its table, including constraint indexes: %s", source => {
+    expect(() => indexDrop(dropIndexSql, source)).toThrow("reviewed native store dropped index preimage is not a plain CREATE INDEX of its table");
   });
-  it("refuses a wrong CREATE hash", () => {
-    expect(() => indexDrop(dropIndexSql, dropIndexCreate, "", slot => { slot.droppedIndexes![0]!.beforeSha256 = "0".repeat(64); })).toThrow("reviewed native store dropped index preimage drifted or is not a plain CREATE INDEX");
+  it("refuses a hash that pins no prefix statement", () => {
+    expect(() => indexDrop(dropIndexSql, dropIndexCreate, "", slot => { slot.droppedIndexes![0]!.beforeSha256 = "0".repeat(64); })).toThrow("reviewed native store dropped index plain CREATE missing from prefix");
+  });
+  // History is what PostgreSQL executes; the catalog proof compares the dropped index with its pinned CREATE.
+  it.each([
+    'CREATE INDEX "fixture_active_idx" ON public.fixture_parameters (id);\nDROP INDEX public.fixture_active_idx;',
+    String.raw`CREATE INDEX U&"fixture_\0061ctive_idx" ON public.fixture_parameters (id);`,
+    "SELECT 'fixture_active_idx';",
+  ])("leaves earlier prefix history to the PostgreSQL proof: %s", earlier => {
+    const history = `${earlier}\n${dropIndexCreate}`;
+    expect(() => indexDrop(dropIndexSql, history, "", slot => { slot.droppedIndexes![0]!.beforeSha256 = sqlSha256(dropIndexCreate); })).not.toThrow();
   });
   it.each([
-    dropIndexCreate, dropIndexSql, "ALTER INDEX public.fixture_active_idx RENAME TO other_idx;",
-    "ALTER INDEX public.fixture_active_idx SET (fillfactor=80);", 'ALTER\nINDEX "public" . "fixture_active_idx" RENAME TO other_idx;',
+    "ALTER INDEX public.fixture_active_idx SET (fillfactor=80);",
     "DO $$ BEGIN EXECUTE 'DROP INDEX public.fixture_active_idx'; END; $$;",
-    String.raw`DO E'BEGIN\n EXECUTE ''DROP INDEX public.fixture_active_idx''; END;';`,
-    "SELECT 'fixture_active_idx';",
-  ])("refuses repeated CREATEs and every later mention: %s", history => {
-    expect(() => indexDrop(dropIndexSql, dropIndexCreate, history)).toThrow("reviewed native store dropped index has another CREATE or mention");
-  });
-  it("refuses a plain unique index subsequently adopted by a constraint", () => {
-    const source = dropIndexCreate.replace(" WHERE status = 'open'", "");
-    expect(() => indexDrop(dropIndexSql, source, "ALTER TABLE public.fixture_parameters ADD CONSTRAINT adopted_key UNIQUE USING INDEX fixture_active_idx;")).toThrow("reviewed native store dropped index has another CREATE or mention");
+    "ALTER TABLE public.fixture_parameters ADD CONSTRAINT adopted_key UNIQUE USING INDEX fixture_active_idx;",
+  ])("leaves later prefix history to the PostgreSQL proof: %s", history => {
+    expect(() => indexDrop(dropIndexSql, dropIndexCreate.replace(" WHERE status = 'open'", ""), history)).not.toThrow();
   });
   it.each(["duplicate", "schema-qualified name", "bad table", "bad hash", "extra key"])("refuses invalid inventory: %s", attack => {
     expect(() => indexDrop(dropIndexSql, dropIndexCreate, "", slot => {

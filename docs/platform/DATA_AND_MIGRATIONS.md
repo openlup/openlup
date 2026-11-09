@@ -1554,16 +1554,17 @@ existing-table ALTER cannot fall through to generic ADD admission when the list
 is active. The issued three purchase-reservation texts remain unchanged data.
 
 `droppedIndexes` entries list a qualified `table`, plain index `name` and
-`beforeSha256` of its one plain CREATE [UNIQUE] INDEX statement in the ordered
-prefix. Its table and hash must match; a missing or repeated CREATE, any other
-mention of the index name anywhere in the prefix and any Unicode-escaped
-identifier in the prefix refuse. Each entry authorizes exactly one
+`beforeSha256`. The hash must pin a plain CREATE [UNIQUE] INDEX of that name on
+that table in the ordered prefix; a hash that pins no statement, or pins any
+other statement, refuses. Each entry authorizes exactly one
 `DROP INDEX public.<name>;`. Unlisted, duplicate or missing drops, quoted or
 re-spelled names, IF EXISTS, CONCURRENTLY, CASCADE, RESTRICT and multiple names
-refuse. Constraint-backed indexes are excluded. PostgreSQL verifies that the
-listed standalone index is exactly what its pinned CREATE builds and disappears
-while its table's columns, constraints, other indexes and ACL remain unchanged. Issued-slot and sealed-prefix guards
-protect this inventory like the other slot fields.
+refuse. The prefix history is not read lexically for the index: PostgreSQL
+decides it. The catalog proof rebuilds the pinned CREATE in a savepoint and
+requires the dropped index to have exactly that definition, refuses an index
+that backs a constraint, and requires the index to disappear while its table's
+columns, constraints, other indexes and ACL remain unchanged. Issued-slot and
+sealed-prefix guards protect this inventory like the other slot fields.
 
 The checkout recovery lifecycle forward replaces the unique live-order index
 with a non-unique `(order_id, created_at DESC)` index. Trusted-host checkout links
