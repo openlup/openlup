@@ -2274,10 +2274,11 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
       prior.set(signature, digest); priorStatements.set(signature, statement);
       if (source.path < `db/platform/migrations/${nativeStoreTime(control!.slots[0]!.path)}_`) baseDefinitions.set(signature, digest);
     }
+    // The whole prefix may mention a listed index once: in its single plain CREATE.
     for (const index of droppedIndexes) {
-      if (indexCreates.has(index.name) && statement.toLowerCase().includes(index.name)) throw new Error("reviewed native store dropped index has multiple CREATEs or a later mention");
+      if (!statement.toLowerCase().includes(index.name)) continue;
       const at = nativeWord(tokens, 1, "UNIQUE") ? 2 : 1;
-      if (!nativeWord(tokens, 0, "CREATE") || !nativeWord(tokens, at, "INDEX") || tokens[at + 1]?.kind !== "word" || nativeIdentifier(tokens[at + 1]) !== index.name) continue;
+      if (indexCreates.has(index.name) || !nativeWord(tokens, 0, "CREATE") || !nativeWord(tokens, at, "INDEX") || tokens[at + 1]?.kind !== "word" || nativeIdentifier(tokens[at + 1]) !== index.name) throw new Error("reviewed native store dropped index has another CREATE or mention");
       const table = nativeQualified(tokens, at + 3);
       if (!complete || !nativeWord(tokens, at + 2, "ON") || tokens[at + 3]?.kind !== "word" || tokens[at + 5]?.kind !== "word" || table?.name !== index.table || (!nativeSymbol(tokens, table.next, "(") && !nativeWord(tokens, table.next, "USING")) || !nativeSymbol(tokens, tokens.length - 1, ";") || sqlSha256(statement) !== index.beforeSha256) throw new Error("reviewed native store dropped index preimage drifted or is not a plain CREATE INDEX");
       indexCreates.add(index.name);

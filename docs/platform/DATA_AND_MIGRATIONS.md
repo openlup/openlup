@@ -1555,8 +1555,8 @@ is active. The issued three purchase-reservation texts remain unchanged data.
 
 `droppedIndexes` entries list a qualified `table`, plain index `name` and
 `beforeSha256` of its one plain CREATE [UNIQUE] INDEX statement in the ordered
-prefix. Its table and hash must match; missing or repeated CREATEs and any later
-mention of the index name refuse. Each entry authorizes exactly one
+prefix. Its table and hash must match; a missing or repeated CREATE and any
+other mention of the index name anywhere in the prefix refuse. Each entry authorizes exactly one
 `DROP INDEX public.<name>;`. Unlisted, duplicate or missing drops, quoted or
 re-spelled names, IF EXISTS, CONCURRENTLY, CASCADE, RESTRICT and multiple names
 refuse. Constraint-backed indexes are excluded. PostgreSQL verifies that the
