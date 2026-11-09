@@ -3369,7 +3369,9 @@ catalogue it proves the generic utility refuses outbox restoration and leaves
 the source state intact. The existing
 [cold consumer](../../scripts/packages/platform-cold-consumer.ts) executes actual
 private bytes and injected-row refusal without optional peers, then proves
-trigger-free subscription-event loss/recovery using installed artifacts.
+renewal-term-line loss/recovery using installed artifacts. With the sized editor
+installed, subscriptions and subscription events carry INSERT guards, and the
+proof shows the generic utility's typed refusal for both.
 Its outbox check proves identical replay on the earlier catalogue or typed
 refusal when the channel INSERT guard is installed. With the complete 0.34.0
 catalogue, outbox restoration needs the reference-source owner path; the generic
