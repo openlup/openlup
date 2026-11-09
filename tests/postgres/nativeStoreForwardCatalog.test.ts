@@ -9,7 +9,7 @@ import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardow
 // The static native-store class is a first gate for ordinary mistakes. This test is the
 // truth for function identity, attributes and ACLs: it applies a forward to a real
 // database and compares what PostgreSQL itself reports with the slot's lists.
-type CatalogSlot = Pick<NativeStoreSlot, "createdFunctions" | "replacedFunctions" | "grantOnlyFunctions" | "purposeCheck" | "insertSelectTables" | "checkSupersets" | "uniqueSupersets" | "droppedIndexes" | "createdViews" | "createdTriggers">;
+type CatalogSlot = Pick<NativeStoreSlot, "createdFunctions" | "replacedFunctions" | "grantOnlyFunctions" | "purposeCheck" | "insertSelectTables" | "absorptionCensusTables" | "checkSupersets" | "uniqueSupersets" | "droppedIndexes" | "createdViews" | "createdTriggers">;
 // PostgreSQL creates its own objects below this OID; every object a forward adds is at or above it.
 const FIRST_USER_OID = 16384;
 // The floor is typed as oid, so every comparison with it resolves to pg_catalog's own oid >= oid and oid < oid. A bare integer
@@ -173,8 +173,27 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
     } finally { await db.query("ROLLBACK TO SAVEPOINT pinned_index"); }
   }
   for (const old of before.relations) if (!replacedUniqueIndexes.has(old.oid) && !droppedIndexes.has(old.oid) && JSON.stringify(currentRelations.get(old.oid)) !== JSON.stringify(old)) fail(`existing relation ${old.name} changed its owner, ACL, row security, options or column ACLs`);
+  const censusSeen = new Set<string>();
   for (const row of after.relations) if (!oldRelations.has(row.oid)) {
     if (row.owner !== migrationRole) fail(`new relation ${row.name} is owned by ${row.owner}, not the migration role`);
+    if (slot.absorptionCensusTables?.includes(row.name)) {
+      const role = (await db.query("SELECT oid::int AS oid FROM pg_roles WHERE rolname='service_role'")).rows[0]?.oid as number | undefined;
+      const policies = after.guards.policies!.filter(policy => Number(policy.polrelid) === row.oid);
+      const expressions = (await db.query("SELECT pg_get_expr(polqual,polrelid) AS qual, pg_get_expr(polwithcheck,polrelid) AS check_expr FROM pg_policy WHERE polrelid=$1::oid", [row.oid])).rows;
+      const columns = (await db.query(`SELECT a.attname AS column, x.grantee::regrole::text AS role, x.privilege_type AS privilege, x.is_grantable AS grantable
+        FROM pg_attribute a, LATERAL aclexplode(a.attacl) x WHERE a.attrelid=$1::oid ORDER BY 1,2,3`, [row.oid])).rows;
+      const classification = (await db.query("SELECT disposition FROM public.client_absorption_policy WHERE table_name=$1", [row.name.slice("public.".length)])).rows;
+      const reference = (await db.query(`SELECT 1 FROM pg_constraint f JOIN pg_attribute a ON a.attrelid=f.conrelid AND f.conkey=ARRAY[a.attnum]
+        JOIN pg_attribute target ON target.attrelid=f.confrelid AND f.confkey=ARRAY[target.attnum]
+        WHERE f.contype='f' AND f.conrelid=$1::oid AND f.confrelid='public.clients'::regclass AND a.attname='client_id' AND target.attname='id'`, [row.oid])).rows;
+      if (row.kind !== "r" || !row.rls || row.forceRls || row.acl.some(item => !item.startsWith(`${row.owner}:`)) || reference.length !== 1
+        || JSON.stringify(columns) !== JSON.stringify(role ? [{ column: "client_id", role: "service_role", privilege: "SELECT", grantable: false }] : [])
+        || JSON.stringify(classification) !== JSON.stringify([{ disposition: "block" }]) || policies.length !== (role ? 1 : 0)
+        || (role && (policies[0]!.polname !== `${row.name.slice("public.".length)}_absorption_census` || policies[0]!.polcmd !== "r"
+          || policies[0]!.polpermissive !== true || JSON.stringify(policies[0]!.polroles) !== JSON.stringify([String(role)])
+          || expressions[0]?.qual !== "true" || expressions[0]?.check_expr !== null))) fail(`new relation ${row.name} exceeds its absorption census shape`);
+      censusSeen.add(row.name); continue;
+    }
     if (row.name === "public.subscription_notice_refusals" && JSON.stringify(slot.insertSelectTables) === JSON.stringify([row.name])) {
       const role = (await db.query("SELECT oid::int AS oid FROM pg_roles WHERE rolname='service_role'")).rows[0]?.oid as number | undefined;
       const acl = row.acl.filter(item => !item.startsWith(`${row.owner}:`));
@@ -186,6 +205,7 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
     } else for (const item of row.acl) if (!item.startsWith(`${row.owner}:`)) fail(`new relation ${row.name} grants ${item}`);
     if (row.columnAcls !== null) fail(`new relation ${row.name} has column privileges ${JSON.stringify(row.columnAcls)}`);
   }
+  if (slot.absorptionCensusTables?.some(table => !censusSeen.has(table))) fail("absorption census requires a new relation in this slot");
 
   const newViews = after.relations.filter(row => !oldRelations.has(row.oid) && row.kind === "v").map(row => row.name).sort();
   if (JSON.stringify(newViews) !== JSON.stringify((slot.createdViews ?? []).map(view => view.name).sort())) fail("created views differ from the slot list");
@@ -284,6 +304,8 @@ async function checkForward(pool: Pool, slot: CatalogSlot, forward: string, keep
 
 // ---- Synthetic cases: the comparator itself, on real PostgreSQL ---------------------------------
 const SYNTHETIC_BASE = `
+CREATE TABLE public.clients (id uuid PRIMARY KEY);
+CREATE TABLE public.client_absorption_policy (table_name text PRIMARY KEY, disposition text NOT NULL, note text);
 CREATE TABLE public.cat_existing_table (id int PRIMARY KEY, owner_ref uuid NOT NULL);
 CREATE TABLE public.cat_parameters (id uuid, extra uuid, owner_ref uuid, status text, kind text, CONSTRAINT cat_status CHECK (status IN ('open','closed')), CONSTRAINT cat_kind CHECK (kind IN ('first','second')), CONSTRAINT cat_key UNIQUE (id));
 CREATE TABLE public.communication_native_sync_state (purpose text NOT NULL CONSTRAINT communication_native_sync_state_purpose_check CHECK (purpose IN ('a','b')));
@@ -340,6 +362,14 @@ const NOTICE_TABLE = "CREATE TABLE public.subscription_notice_refusals (id int);
 const NOTICE_GRANT = guarded("service_role", "GRANT SELECT, INSERT ON", "public.subscription_notice_refusals TO service_role;");
 const NOTICE_POLICY = guarded("service_role", "CREATE POLICY subscription_notice_refusals_runtime ON", "public.subscription_notice_refusals FOR ALL TO service_role USING (true) WITH CHECK (true);");
 const NOTICE_SQL = [NOTICE_TABLE, NOTICE_GRANT, NOTICE_POLICY].join("\n");
+const CENSUS_SLOT: CatalogSlot = { ...SYNTHETIC_SLOT, absorptionCensusTables: ["public.cat_census"] };
+const CENSUS_CLASSIFICATION = "INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('cat_census', 'block', 'Subject history prevents absorption.');";
+const CENSUS_SQL = `CREATE TABLE public.cat_census (id uuid PRIMARY KEY, client_id uuid REFERENCES public.clients(id), payload jsonb);
+ALTER TABLE public.cat_census ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.cat_census FROM PUBLIC;
+${CENSUS_CLASSIFICATION}
+${guarded("service_role", "GRANT SELECT (client_id) ON TABLE", "public.cat_census TO service_role;")}
+${guarded("service_role", "CREATE POLICY cat_census_absorption_census ON", "public.cat_census FOR SELECT TO service_role USING (true);")}`;
 // The statement reported as FC-R1B-001, unchanged: a quoted default hides an `AS $q$` so a static
 // header reader takes a fake search_path attribute list for the real one.
 const HIDDEN_HEADER = "CREATE FUNCTION public.cat_created(p text DEFAULT ' SET search_path = pg_catalog, pg_temp AS $q$') RETURNS text LANGUAGE sql SECURITY DEFINER AS 'select p' SET application_name = x$q$;";
@@ -355,6 +385,11 @@ SELECT 1 AS x$a$, 2 AS y$q$;
 REVOKE ALL ON FUNCTION public.cat_created(text) FROM PUBLIC;`;
 const UNLISTED = "CREATE FUNCTION public.cat_unlisted(p text) RETURNS text LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$ SELECT p $$;\nREVOKE ALL ON FUNCTION public.cat_unlisted(text) FROM PUBLIC;";
 const REFUSALS: [string, string, RegExp, boolean, CatalogSlot][] = [
+  ["a census table with an extra column grant", forward(CREATED_OK, CENSUS_SQL + "\nGRANT SELECT (payload) ON TABLE public.cat_census TO service_role;"), /absorption census shape/u, true, CENSUS_SLOT],
+  ["a census table with a table grant", forward(CREATED_OK, CENSUS_SQL + "\nGRANT SELECT ON TABLE public.cat_census TO service_role;"), /absorption census shape/u, true, CENSUS_SLOT],
+  ["a census table with a second policy", forward(CREATED_OK, CENSUS_SQL + "\nCREATE POLICY census_extra ON public.cat_census FOR SELECT TO service_role USING (true);"), /absorption census shape/u, true, CENSUS_SLOT],
+  ["a census table without block classification", forward(CREATED_OK, CENSUS_SQL.replace(CENSUS_CLASSIFICATION, "")), /absorption census shape/u, false, CENSUS_SLOT],
+  ["a census table with retain classification", forward(CREATED_OK, CENSUS_SQL.replace("'block'", "'retain'")), /absorption census shape/u, false, CENSUS_SLOT],
   ["another new relation with the named table's runtime ACL", forward(CREATED_OK, guarded("service_role", "GRANT SELECT, INSERT ON", "public.cat_created_table TO service_role;")), /new relation public\.cat_created_table grants service_role:/u, true, NOTICE_SLOT],
   ["the named runtime table without RLS", forward(CREATED_OK, NOTICE_SQL.replace("ENABLE ROW LEVEL SECURITY", "DISABLE ROW LEVEL SECURITY")), /pinned INSERT\/SELECT shape/u, true, NOTICE_SLOT],
   ["the named runtime table with an extra privilege", forward(CREATED_OK, NOTICE_SQL.replace("GRANT SELECT, INSERT", "GRANT SELECT, INSERT, UPDATE")), /pinned INSERT\/SELECT shape/u, true, NOTICE_SLOT],
@@ -472,6 +507,9 @@ describe.each([{ serviceRole: true }, { serviceRole: false }])("native store for
   afterAll(async () => { await closePostgres(container, pool); }, postgresTeardownTimeoutMs);
 
   it("replays every unbound native chain unit", () => { expect(replay.applied).toBe(chain.length); });
+  it("admits only the client census column and SELECT policy on a new block-classified table", async () => {
+    await checkForward(pool, CENSUS_SLOT, forward(CREATED_OK, CENSUS_SQL));
+  });
   it("installs two replacement slots with pinned bodies and unchanged function attributes and ACL", async () => {
     const db = await pool.connect(), signature = "public.cat_replaced(text,boolean)";
     const definition = (body: string) => `CREATE OR REPLACE FUNCTION public.cat_replaced(p text, q boolean DEFAULT false) RETURNS text LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$${body}$$;`;

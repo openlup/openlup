@@ -123,6 +123,9 @@ stock waits, privacy erasures and subscription command receipts. The absorber
 still refuses an unclassified client-referencing table. Classification and access
 to any other earlier-row table remain that table's integration responsibility;
 the forward neither widens table grants nor changes the absorber.
+For a new block-classified table, the [absorption census slot shape](#closed-native-store-forwards)
+provides the existing absorber with client-column access while keeping personal
+payloads unreadable. Its classification and access belong to that table's forward.
 
 ## Partner acquisition data
 
@@ -1539,6 +1542,41 @@ role statements refuse. Tables and indexes retain the existing expand-only
 rules; data statements require exact head-class slot entries. CHECK and UNIQUE
 replacements use the named, closed entries below. A whole-file hash does not
 bypass the content checks.
+
+`absorptionCensusTables` may list qualified `public.<table>` names for new
+client-referencing block tables. Each listed table must be created earlier in
+the same slot file with a single-column `client_id` foreign key to
+`public.clients(id)`, inline or as a table constraint. Its own `dataStatements`
+must pin exactly one statement of this form, also present in the forward:
+
+```sql
+INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('example_history', 'block', 'Customer history prevents absorption.');
+```
+
+For each table, exactly these two additional statements are admitted, each in
+the existing constant `service_role` conditional shell:
+
+```sql
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT SELECT (client_id) ON TABLE public.example_history TO service_role;'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'CREATE POLICY example_history_absorption_census ON public.example_history FOR SELECT TO service_role USING (true);'; END IF; END; $$;
+```
+
+The fixed policy name is `<table>_absorption_census` and must fit PostgreSQL's
+63-byte identifier limit. Missing or duplicate statements, unlisted or
+earlier-slot tables, other columns, roles, verbs, policy expressions or names,
+WITH CHECK, non-block or missing classification, and statements outside the
+conditional shell refuse. This capability grants no payload access and does
+not change the fixed notice-table INSERT/SELECT exception.
+
+The [PostgreSQL catalogue witness](../../tests/postgres/nativeStoreForwardCatalog.test.ts)
+independently requires a new relation, migration ownership, enabled RLS,
+owner-only table ACL, exactly `client_id` SELECT for `service_role`, and exactly
+the named permissive SELECT policy with `true` and no check. With that role
+absent there are no column grants or policies. The client foreign key and stored
+`block` classification are checked in PostgreSQL as well. Every other new
+relation retains the existing ACL refusals. The [absorber witness](../../tests/postgres/qualifiedRuntimeLockCompletion.test.ts)
+proves block, successful absorption and replay on legacy and both qualified
+installations, with payload reads and writes denied on the restricted runtimes.
 
 A signature may be replaced again in a later slot with a later migration time
 only when its before-hash equals the immediately preceding replacement pin's
