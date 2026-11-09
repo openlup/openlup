@@ -288,9 +288,9 @@ describe("complete public CI", () => {
   });
   it("limits registry authentication to non-reused image-pull jobs with read permissions", () => {
     expect(workflow.split("\njobs:\n")[0]).toContain("permissions:\n  contents: read\n  actions: read\n");
-    expect(workflow.match(/packages: read/gu)).toHaveLength(2);
-    expect(workflow.match(/docker login/gu)).toHaveLength(2);
-    for (const [name, command] of [["test-full-shard", "npm test --"], ["pgtap", "node scripts/public-ci-pgtap.mjs"]]) {
+    expect(workflow.match(/packages: read/gu)).toHaveLength(3);
+    expect(workflow.match(/docker login/gu)).toHaveLength(3);
+    for (const [name, command] of [["test-full-shard", "npm test --"], ["pgtap", "node scripts/public-ci-pgtap.mjs"], ["install-proof", "node --experimental-strip-types scripts/starter-browser-ci.mjs"]]) {
       const job = workflowJob(name);
       expect(job).toContain("    permissions:\n      contents: read\n      actions: read\n      packages: read\n");
       const login = job.split("      - name: Authenticate GitHub Container Registry pulls\n")[1]?.split(/(?=^ {6}- )/mu)[0];
@@ -320,6 +320,8 @@ describe("complete public CI", () => {
       "npm run build",
       "npm run build:public-reference",
       'node --experimental-strip-types scripts/packages/required-package-gates.ts --out "$RUNNER_TEMP/package-gates" --expected-commit "$(git rev-parse HEAD)"',
+      'echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin',
+      'node --experimental-strip-types scripts/starter-browser-ci.mjs --manifest "$RUNNER_TEMP/package-gates/packages-manifest.json" --expected-commit "$(git rev-parse HEAD)"',
     ]);
   });
   it("partitions complete root discovery across exactly four independent runners and fails closed", () => {

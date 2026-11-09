@@ -16,8 +16,8 @@ export interface PackageEditQuote {
   cadenceDays: number; expectedTemplateVersion: number; compositionConstraint: Record<string, unknown> | null;
 }
 export type PackageEditBlockedReason = "not_active" | "payment_blocked" | "cycle_locked" | "missing_payment_method" | "edit_window_closed";
-export interface PackageEditPreview {
-  preview: { subscriptionId: string; action: "update_package_template"; canApply: boolean; blockedReason: PackageEditBlockedReason | null;
+export interface PackageEditPreview<Action extends string = "update_package_template"> {
+  preview: { subscriptionId: string; action: Action; canApply: boolean; blockedReason: PackageEditBlockedReason | null;
     nextCycleAt: string | null; editCutoffAt: string | null; templateVersion: number };
   lockedCycle: { locked: boolean; status: "blocked_preflight" | "dunning" | null };
   futureTemplate: { templateVersion: number; effectiveCycleAt: string | null; priceAgreementPolicy: "lock_until_edit" };
@@ -25,8 +25,8 @@ export interface PackageEditPreview {
   packageEdit?: Pick<PackageEditQuote, "currentRecurringPrice" | "newRecurringPrice" | "delta" | "quoteHash"> & {
     effectiveCycleAt: string | null; priceAgreementPolicy: "lock_until_edit" };
 }
-export interface PackageEditApplyResult {
-  status: "applied" | "replayed" | "noop"; subscriptionId: string; action: "update_package_template";
+export interface PackageEditApplyResult<Action extends string = "update_package_template"> {
+  status: "applied" | "replayed" | "noop"; subscriptionId: string; action: Action;
   subscriptionStatus: string; nextCycleAt: string | null; templateVersion: number; eventId: string | null;
   originalStatus?: "applied" | "noop";
 }

@@ -480,10 +480,42 @@ for installed PostgreSQL. The required purchase file receives no sign-in step
 or other edit. Later sign-in uses the checkout e-mail and private captured native
 challenge token, never a seeded customer row.
 
-No required CI job currently runs this real-PostgreSQL browser recipe. The
-published-tree workflow's install-proof job runs required-package-gates; its
-starter cold consumer runs source/extracted tests, typecheck and build, with no
-browser invocation. The local purchase acceptance step above owns this proof.
+The required `install-proof` job now runs `journey.spec.ts` and
+`acquisition.spec.ts` in both configurations through
+[`starter-browser-ci.mjs`](../../../scripts/starter-browser-ci.mjs), after the
+package gates. It extracts the starter, installs the verified candidate tarballs,
+starts an isolated disposable PostgreSQL 16 per configuration through the shared
+test helper and pinned `test-postgres` image. Each receives the complete selected
+history, repeated installation and its own repeated seed; two loopback hosts use
+the restricted runtime login. Separate installations preserve a unique active
+price list for each demonstration market. The job's existing PostgreSQL 17 service
+is unchanged.
+The browser image comes only from authenticated, digest-pinned
+`ghcr.io/openlup/playwright` through the shared image reader and pull loop.
+Mirror failure refuses; CI never downloads browsers or pulls a vendor image.
+The database config retains one worker and disables traces, video and screenshots.
+The runner writes the same private care fixture as `./lifecycle browser` and
+starts each host in its own care state directory. Application inputs are mounted
+read-only; the care directory alone is writable, with the browser running under
+the host user identity to preserve private capture permissions. Cleanup removes temporary results,
+captured messages and private keys; the captured output is scanned in memory. No artifacts are uploaded.
+
+From the source root after the package gates, run the same script with
+`--manifest <package-gates/packages-manifest.json> --expected-commit <full-sha>`.
+Docker supplies the disposable PostgreSQL 16 installation; the shared helper
+preserves its existing mirror/upstream pull rules and cleanup. The runner removes
+its database containers on success and failure. Local development may first pull
+the same pinned digest from the Microsoft registry, then pass its complete reference with
+`--local-image`; the script verifies the existing local RepoDigest and refuses
+this exception whenever `CI` is set. It performs no upstream fallback.
+
+This CI selection covers navigation, localized forms/refusals, cart persistence,
+one-time sandbox purchase, discounted subscription acquisition and the database
+subscription-care group. Dedicated operator-document, recovery and renewal browser
+proofs above retain their own fixtures and local invocation; those separate specs
+are not selected by the database config.
+A green required job establishes only these selected sandbox journeys, not
+provider, deployment, upgrade or release qualification.
 
 Guest one-time and subscription purchases, activation with renewal attachment,
 later sign-in ownership, operator order reads and next-parcel address changes

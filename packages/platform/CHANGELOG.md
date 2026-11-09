@@ -93,6 +93,15 @@ Migration: apply `20261109113000_subscription_auto_resume_delivered_history.sql`
 through the complete selected catalogue. The function header, privileges, other
 eligibility guards, event identity and whole-cadence roll-forward are unchanged.
 
+Add seven exact subscription edit levers through the existing preview/apply
+binding, preserving individual line IDs, fixed-total mix, configured plan/portion
+sizing, accepted recurring pricing and replay-first receipts. Reduced mode must
+strictly reduce units; full restoration is permitted. Install the additive
+exact-lever migration after the shared package editor. Host routes and portal
+controls remain application composition.
+
+These levers are opt-in and API-only; hosts supply routes and portal controls.
+
 ## [0.37.0]
 
 - Publishable on the npm `latest` dist-tag as `0.37.0`, from tag

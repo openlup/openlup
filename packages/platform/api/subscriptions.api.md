@@ -397,6 +397,73 @@ export interface RenewalFailureHandoffPort {
     }>;
 }
 ```
+## dist/subscriptions/contracts/exactEdit.d.ts
+
+```ts
+import type { PackageEditApplyResult, PackageEditLine, PackageEditPreview, PackageEditQuoteLine, PackageEditRequest } from "./packageEdit.js";
+export type ExactSubscriptionEditAction = "swap_base_line" | "add_addon" | "remove_addon" | "update_addon_quantity" | "update_plan_length" | "update_base_mix" | "update_portion";
+interface Acceptance {
+    subscriptionId: string;
+    expectedTemplateVersion?: number;
+    acceptedQuoteHash?: string;
+}
+/** Exact levers retain their individual semantics; quantities are not a combined package edit. */
+export type ExactSubscriptionEditRequest = Acceptance & ({
+    action: "swap_base_line";
+    fromVariantId: string;
+    toVariantId: string;
+} | {
+    action: "add_addon";
+    variantId: string;
+    qty: number;
+} | {
+    action: "update_addon_quantity";
+    variantId: string;
+    qty: number;
+} | {
+    action: "remove_addon";
+    variantId: string;
+} | {
+    action: "update_plan_length";
+    planDays: number;
+} | {
+    action: "update_base_mix";
+    base: PackageEditLine[];
+} | {
+    action: "update_portion";
+    portionMode: string;
+});
+export type SubscriptionEditRequest = PackageEditRequest | ExactSubscriptionEditRequest;
+export type ExactSubscriptionEditPreview = PackageEditPreview<ExactSubscriptionEditAction>;
+export type ExactSubscriptionEditApplyResult = PackageEditApplyResult<ExactSubscriptionEditAction>;
+export interface ExactSubscriptionEditPricedLine extends PackageEditLine {
+    lineId: string | null;
+    isAddon: boolean;
+    sortOrder: number;
+    quoteLine: PackageEditQuoteLine;
+}
+/** Server evidence, never accepted from customer input. New base sets have null line IDs. */
+export interface ExactSubscriptionEditQuote {
+    quoteHash: string;
+    expectedTemplateVersion: number;
+    cadenceDays: number;
+    compositionConstraint: Record<string, unknown> | null;
+    lines: ExactSubscriptionEditPricedLine[];
+    portionModes?: SubscriptionPortionModes;
+}
+/** Both factors and mode identifiers belong to the application configuration. */
+export interface SubscriptionPortionModes {
+    full: {
+        mode: string;
+        factor: number;
+    };
+    reduced: {
+        mode: string;
+        factor: number;
+    };
+}
+export {};
+```
 ## dist/subscriptions/contracts/messages.d.ts
 
 ```ts
@@ -486,10 +553,10 @@ export interface PackageEditQuote {
     compositionConstraint: Record<string, unknown> | null;
 }
 export type PackageEditBlockedReason = "not_active" | "payment_blocked" | "cycle_locked" | "missing_payment_method" | "edit_window_closed";
-export interface PackageEditPreview {
+export interface PackageEditPreview<Action extends string = "update_package_template"> {
     preview: {
         subscriptionId: string;
-        action: "update_package_template";
+        action: Action;
         canApply: boolean;
         blockedReason: PackageEditBlockedReason | null;
         nextCycleAt: string | null;
@@ -515,10 +582,10 @@ export interface PackageEditPreview {
         priceAgreementPolicy: "lock_until_edit";
     };
 }
-export interface PackageEditApplyResult {
+export interface PackageEditApplyResult<Action extends string = "update_package_template"> {
     status: "applied" | "replayed" | "noop";
     subscriptionId: string;
-    action: "update_package_template";
+    action: Action;
     subscriptionStatus: string;
     nextCycleAt: string | null;
     templateVersion: number;
@@ -1216,6 +1283,19 @@ export interface StockWaitStorePort {
     }>;
 }
 ```
+## dist/subscriptions/exactEditQuote.d.ts
+
+```ts
+import type { ExactSubscriptionEditQuote, ExactSubscriptionEditRequest, SubscriptionPortionModes } from "./contracts/exactEdit.js";
+import type { PackageEditQuotePorts, PackageEditReadPort } from "./packageEditContracts.js";
+/** Recurring-only quotes; individual line edits preserve the current order and identity. */
+export declare function createExactSubscriptionRepricer(deps: PackageEditQuotePorts & {
+    readPort: PackageEditReadPort;
+    portionModes?: SubscriptionPortionModes;
+}): {
+    quote(input: ExactSubscriptionEditRequest): Promise<ExactSubscriptionEditQuote | null>;
+};
+```
 ## dist/subscriptions/index.d.ts
 
 ```ts
@@ -1276,6 +1356,10 @@ export { createPostgresPackageEditor } from "./packageEditor.js";
 export { mapPackageEditError } from "./packageEditErrors.js";
 export type { PackageEditErrorMapping } from "./packageEditErrors.js";
 export type { PackageEditMoney, PackageEditLine, PackageEditQuoteLine, PackageEditPricedLine, PackageEditRequest, PackageEditQuote, PackageEditSubscription, PackageEditCurrentLine, PackageEditConstraintMapper, PackageEditReadPort, PackageEditQuotePorts, PackageEditLimits, PackageEditorOptions, PackageEditActor, PackageEditBlockedReason, PackageEditPreview, PackageEditApplyResult } from "./packageEditContracts.js";
+export type { ExactSubscriptionEditAction, ExactSubscriptionEditRequest, SubscriptionEditRequest, ExactSubscriptionEditPreview, ExactSubscriptionEditApplyResult, ExactSubscriptionEditPricedLine, ExactSubscriptionEditQuote, SubscriptionPortionModes } from "./contracts/exactEdit.js";
+export { createExactSubscriptionRepricer } from "./exactEditQuote.js";
+export { createSubscriptionSizingRules, apportionSubscriptionUnits } from "./subscriptionSizing.js";
+export type { SubscriptionSizingUnit, SubscriptionSizingPolicy } from "./subscriptionSizing.js";
 export { createPostgresSubscriptionAutoResume } from "./postgresAutoResume.js";
 ```
 ## dist/subscriptions/lifecycleMessages.d.ts
@@ -1494,6 +1578,7 @@ import type { PackageEditMoney, PackageEditQuoteLine } from "./contracts/package
 export type { PackageEditMoney, PackageEditLine, PackageEditQuoteLine, PackageEditPricedLine, PackageEditRequest, PackageEditQuote, PackageEditBlockedReason, PackageEditPreview, PackageEditApplyResult } from "./contracts/packageEdit.js";
 import type { CompositionConstraint, CompositionRulesPort } from "@openlup/core/bundle";
 import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+import type { SubscriptionPortionModes } from "./contracts/exactEdit.js";
 /** Trusted host ports; neither identity nor price evidence comes from a browser. */
 export interface PackageEditSubscription {
     cadenceDays: number;
@@ -1563,6 +1648,8 @@ export interface PackageEditLimits {
     maximumQuantity: number;
 }
 export interface PackageEditorOptions extends PackageEditQuotePorts {
+    /** Required only for the exact portion lever. */
+    portionModes?: SubscriptionPortionModes;
     /** One connection through commit/rollback; authorization precedes this factory. */
     withTransaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
     limits: PackageEditLimits;
@@ -1583,18 +1670,29 @@ export interface PackageEditErrorMapping {
     reason?: string;
 }
 /** Raw preview-ledger errors use the generic upstream path; apply admits durable domain tokens. */
-export declare function mapPackageEditError(error: unknown, phase: "preview" | "apply"): PackageEditErrorMapping;
+export declare function mapPackageEditError(error: unknown, phase: "preview" | "apply", action?: string): PackageEditErrorMapping;
 ```
 ## dist/subscriptions/packageEditor.d.ts
 
 ```ts
+import type { ExactSubscriptionEditAction, ExactSubscriptionEditRequest, SubscriptionEditRequest } from "./contracts/exactEdit.js";
 import type { PackageEditActor, PackageEditApplyResult, PackageEditPreview, PackageEditRequest, PackageEditorOptions } from "./packageEditContracts.js";
+type EditAction = "update_package_template" | ExactSubscriptionEditAction;
 /** Host authentication supplies actor/client; only the desired set and acceptance are customer input.
  * SQL owns the final locked guard, one-use ledger acceptance and future-template transaction. */
 export declare function createPostgresPackageEditor(options: PackageEditorOptions): {
-    preview(actor: PackageEditActor, input: PackageEditRequest): Promise<PackageEditPreview>;
-    apply(actor: PackageEditActor, idempotencyKey: string, input: PackageEditRequest): Promise<PackageEditApplyResult>;
+    preview: {
+        (actor: PackageEditActor, input: PackageEditRequest): Promise<PackageEditPreview>;
+        (actor: PackageEditActor, input: ExactSubscriptionEditRequest): Promise<PackageEditPreview<ExactSubscriptionEditAction>>;
+        (actor: PackageEditActor, input: SubscriptionEditRequest): Promise<PackageEditPreview<EditAction>>;
+    };
+    apply: {
+        (actor: PackageEditActor, key: string, input: PackageEditRequest): Promise<PackageEditApplyResult>;
+        (actor: PackageEditActor, key: string, input: ExactSubscriptionEditRequest): Promise<PackageEditApplyResult<ExactSubscriptionEditAction>>;
+        (actor: PackageEditActor, key: string, input: SubscriptionEditRequest): Promise<PackageEditApplyResult<EditAction>>;
+    };
 };
+export {};
 ```
 ## dist/subscriptions/packageEditRead.d.ts
 
@@ -2229,4 +2327,47 @@ export declare const NATIVE_SUBSCRIPTION_CAPABILITIES: Readonly<{
     readonly executorCount: 1;
     readonly defaultEnabled: false;
 }>;
+```
+## dist/subscriptions/subscriptionSizing.d.ts
+
+```ts
+import type { CompositionConstraint, CompositionRulesPort } from "@openlup/core/bundle";
+import type { SubscriptionPortionModes } from "./contracts/exactEdit.js";
+/** Host facts already expressed in a common demand unit. Capacity includes host policy. */
+export interface SubscriptionSizingUnit {
+    variantId: string;
+    demandPerUnit: number;
+    maximumQuantity: number;
+}
+export interface SubscriptionSizingPolicy {
+    portionModes: SubscriptionPortionModes;
+    readDailyNeed(constraint: CompositionConstraint): number;
+    isPlanLengthConstraint(constraint: CompositionConstraint): boolean;
+    readUnitFacts(variantIds: string[]): Promise<SubscriptionSizingUnit[]>;
+    quantityPolicy(input: {
+        units: SubscriptionSizingUnit[];
+        dailyNeed: number;
+        planDays: number;
+    }): Promise<{
+        totalUnits: number;
+        maxExceeded: boolean;
+        selectedCapacityConstrained?: boolean;
+    }>;
+}
+/** Preserve every selection, round proportions deterministically, then transfer units
+ * toward demand coverage. A failed allocation is unservable, never a partial selection. */
+export declare function apportionSubscriptionUnits(input: {
+    totalUnits: number;
+    targetDemand: number;
+    current: readonly {
+        variantId: string;
+        qty: number;
+    }[];
+    units: readonly SubscriptionSizingUnit[];
+}): {
+    variantId: string;
+    qty: number;
+}[];
+/** Application demand and quantity policy stay behind the existing core composition seam. */
+export declare function createSubscriptionSizingRules(policy: SubscriptionSizingPolicy): CompositionRulesPort;
 ```

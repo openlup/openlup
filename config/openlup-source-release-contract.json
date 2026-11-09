@@ -5,8 +5,8 @@
     "npm": "11.19.0"
   },
   "inventory": {
-    "digest": "sha256-933914e3014e1c5adc5028df7d7fb66d651fa63ab339655c2530ab5119057c3f",
-    "classDigest": "sha256-a17f527d3f4812044b48d9cd430627612454d6e16fb7dbbff63745f6e1a881bf"
+    "digest": "sha256-dd364c9c3ad04ef65b5f2fbbceb3e1b667eb82387bf7dc4f8971ff01537d54a1",
+    "classDigest": "sha256-a89ed7d4b6d41251f5bdf35cbd3df3d06051721651e7ea8197584b901baace47"
   },
   "packages": {
     "manifestDigest": "sha256-04f247d6d2c34d471469d7d436d3951a0ab1165336b5ee43d762566b26b2737a",
@@ -15,7 +15,7 @@
   },
   "platformMigrationManifest": {
     "path": "config/platform-migration-manifest.json",
-    "digest": "sha256-fc3393edc292af73f5a59f1c3d93e9aa4e5b15eec12020ae62c960fc5d1421d3"
+    "digest": "sha256-83775f4b2de030d020d8fc0462c8e9cb83450758bef2dc12bc0610466af13c0b"
   },
   "databaseSchema": {
     "path": "src/integrations/supabase/types.ts",
@@ -25,7 +25,7 @@
   },
   "policy": {
     "registryDigest": "sha256-19738c711bef792342483d6153060495dee23b69076e260a5a344c9089c0cc03",
-    "publicationCatalogDigest": "sha256-aa0a55d6b027abb583affeb2a2872aaca28a50c30ca692a527b0f65fcc264337"
+    "publicationCatalogDigest": "sha256-60496d5e0709b535a3de7f74660efcda981ec879a3da3fe437ad48596b4972b6"
   },
   "compatibility": {
     "typecheck": {
