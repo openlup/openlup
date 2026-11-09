@@ -140,10 +140,13 @@ describe.each(profiles)("native winback: %s", profile => {
     const eventCount = () => owner.query("SELECT count(*)::integer AS n FROM public.subscription_events WHERE event_type='subscription.winback.email_sent' AND subscription_id=ANY($1::uuid[])",[selected]).then(r => r.rows[0]!.n);
     const accepted = { state: "accepted" as const, deliveryReference: "delivery:winback", attemptCount: 1 };
     const failed = { state: "failed" as const, deliveryReference: null, attemptCount: 1 };
+    const readReceipt: NativeWinbackOptions["delivery"]["readReceipt"] = async key => {
+      const row = (await runtime.query("SELECT * FROM public.transactional_delivery_read_receipt($1)",[key])).rows[0];
+      return row ? { state: row.state, deliveryReference: row.delivery_reference, attemptCount: row.attempt_count } : null;
+    };
     const worker = (overrides: Partial<NativeWinbackOptions> = {}) => createPostgresSubscriptionWinback({
       withSession: async work => { const db = await runtime.connect(); try { return await work(db); } finally { db.release(); } },
-      delivery: { readReceipt: async key => { const row = (await runtime.query("SELECT * FROM public.transactional_delivery_read_receipt($1)",[key])).rows[0];
-        return row ? { state: row.state, deliveryReference: row.delivery_reference, attemptCount: row.attempt_count } : null; },
+      delivery: { readReceipt,
         send: async command => { await query("transactional_delivery_record_accepted",[command.idempotencyKey,hash(command.idempotencyKey),accepted.deliveryReference]); return accepted; } },
       bind: async input => ({ recipientReference: `client:${input.clientId}`, templateReference: "subscriber-winback-v1" }), ...overrides });
     beforeAll(async () => { runtime = pool(runtimeUrl,`-c TimeZone=${zone}`,4); await owner.query("SELECT set_config('TimeZone',$1,false)",[zone]); });
@@ -268,6 +271,60 @@ describe.each(profiles)("native winback: %s", profile => {
       await owner.query("UPDATE public.subscriber_retention_intents SET dispatch_claim_expires_at=now()-interval '1 second'");
       expect(await worker().run()).toMatchObject({deduped:1,sent:0,failed:0});
       expect((await intents())[0]!.status).toBe("accepted"); expect(await eventCount()).toBe(1); expect(send).toHaveBeenCalledTimes(1);
+    });
+    it("recovers an accepted episode-key receipt from an expired native claim without sending", async () => {
+      await policy({requireRetentionConsent:false}); const f = await seed(); await plan();
+      const intent = (await intents())[0]!;
+      const claim = await query("subscriber_retention_claim_intent",[intent.idempotency_key,intent.fingerprint]);
+      expect(claim).toMatchObject({status:"dispatching"});
+      // Native transport accepted under its episode key, then the process died before settlement.
+      await query("transactional_delivery_record_accepted",[intent.idempotency_key,hash(intent.idempotency_key),accepted.deliveryReference]);
+      await owner.query("UPDATE public.subscriber_retention_intents SET dispatch_claim_expires_at=now()-interval '1 second' WHERE id=$1",[intent.id]);
+      expect(await readReceipt(`winback:${f.id}`)).toBeNull();
+      const send = vi.fn(async () => accepted), bind = vi.fn(async () => ({recipientReference:`client:${f.client}`,templateReference:"subscriber-winback-v1"}));
+      expect(await worker({delivery:{readReceipt,send},bind}).run()).toMatchObject({scanned:1,deduped:1,sent:0,failed:0});
+      expect(send).not.toHaveBeenCalled(); expect(bind).not.toHaveBeenCalled();
+      expect((await intents())[0]).toMatchObject({status:"accepted",delivery_reference:accepted.deliveryReference,attempt_count:1,
+        dispatch_claim_reference:null,dispatch_claim_expires_at:null});
+      expect(await eventCount()).toBe(1); expect(await readReceipt(`winback:${f.id}`)).toBeNull();
+      expect(await worker({delivery:{readReceipt,send},bind}).run()).toMatchObject({scanned:0,deduped:0,sent:0,failed:0});
+      expect(send).not.toHaveBeenCalled(); expect(bind).not.toHaveBeenCalled(); expect(await eventCount()).toBe(1);
+    });
+    it.each(["planned","failed"] as const)("dedupes an accepted episode-key receipt on a %s intent before claiming", async status => {
+      await policy({requireRetentionConsent:false}); const f = await seed(); await plan();
+      const intent = (await intents())[0]!;
+      if (status === "failed") {
+        const claim = await query("subscriber_retention_claim_intent",[intent.idempotency_key,intent.fingerprint]);
+        await query("subscriber_retention_record_delivery",[intent.idempotency_key,intent.fingerprint,"failed",null,1,claim.dispatchClaimReference]);
+        await query("transactional_delivery_record_failed",[`winback:${f.id}`,hash(`winback:${f.id}`),"transport_failed"]);
+      }
+      await query("transactional_delivery_record_accepted",[intent.idempotency_key,hash(intent.idempotency_key),accepted.deliveryReference]);
+      const send = vi.fn(async () => accepted), bind = vi.fn(async () => ({recipientReference:`client:${f.client}`,templateReference:"subscriber-winback-v1"}));
+      for (let pass=0;pass<2;pass++) {
+        expect(await worker({delivery:{readReceipt,send},bind}).run()).toMatchObject({scanned:1,deduped:1,sent:0,failed:0});
+        expect((await intents())[0]).toMatchObject({status,dispatch_claim_reference:null});
+        expect(await eventCount()).toBe(0);
+      }
+      expect(send).not.toHaveBeenCalled(); expect(bind).not.toHaveBeenCalled();
+    });
+    it.each(["missing","failed"] as const)("keeps a %s episode-key receipt retryable under the subscription key", async state => {
+      await policy({requireRetentionConsent:false}); const f = await seed(); await plan();
+      const intent = (await intents())[0]!;
+      if (state === "failed") await query("transactional_delivery_record_failed",[intent.idempotency_key,hash(intent.idempotency_key),"transport_failed"]);
+      const send = vi.fn(async (command: {idempotencyKey:string}) => {
+        expect(command.idempotencyKey).toBe(`winback:${f.id}`);
+        await query("transactional_delivery_record_accepted",[command.idempotencyKey,hash(command.idempotencyKey),accepted.deliveryReference]); return accepted;
+      });
+      expect(await worker({delivery:{readReceipt,send}}).run()).toMatchObject({sent:1,deduped:0,failed:0});
+      expect(send).toHaveBeenCalledTimes(1); expect((await intents())[0]!.status).toBe("accepted"); expect(await eventCount()).toBe(1);
+      expect(await worker({delivery:{readReceipt,send}}).run()).toMatchObject({scanned:0,sent:0}); expect(send).toHaveBeenCalledTimes(1);
+    });
+    it("validates an episode-key acceptance before binding, claiming or sending", async () => {
+      await policy({requireRetentionConsent:false}); const f = await seed(); await plan(); const intent = (await intents())[0]!;
+      const send = vi.fn(async () => accepted), bind = vi.fn(async () => ({recipientReference:`client:${f.client}`,templateReference:"subscriber-winback-v1"}));
+      const invalidRead = async (key: string) => key === intent.idempotency_key ? {...accepted,attemptCount:0} : null;
+      expect(await worker({delivery:{readReceipt:invalidRead,send},bind}).run()).toMatchObject({failed:1,sent:0,deduped:0});
+      expect(send).not.toHaveBeenCalled(); expect(bind).not.toHaveBeenCalled(); expect((await intents())[0]!.status).toBe("planned"); expect(await eventCount()).toBe(0);
     });
     it("serializes two sessions under the subscription-wide send identity", async () => {
       await policy({requireRetentionConsent:false}); await seed(); await plan();

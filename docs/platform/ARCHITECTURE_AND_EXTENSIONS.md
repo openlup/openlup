@@ -2129,7 +2129,7 @@ the delivery key `winback:<subscription UUID>` suppresses repeat sends across
 episodes. The native receipt rail has only accepted and failed states: accepted
 is its non-failed outcome, while failed remains retryable. An accepted send is
 recorded before its cancellation event. Session exclusion serializes sends for
-one subscription; a persisted receipt reconciles an ambiguous transport result.
+one subscription; a persisted receipt under the subscription key or retained episode intent key reconciles an ambiguous transport result before claiming or sending.
 The worker rechecks source, subscription, consent and controls after host binding
 and immediately before send. Reactivation after planning refuses delivery.
 

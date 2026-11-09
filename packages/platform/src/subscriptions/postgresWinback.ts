@@ -36,7 +36,11 @@ export function createPostgresSubscriptionWinback(options: NativeWinbackOptions)
           const locked = (await db.query("SELECT pg_try_advisory_lock(hashtextextended($1,0)) AS locked", [key])).rows[0]?.locked;
           if (locked !== true) { result.busy++; continue; }
           try {
-            const previous = await options.delivery.readReceipt(key);
+            let previous = await options.delivery.readReceipt(key);
+            // Native sends used the episode intent key before subscription-wide delivery keys.
+            if (previous?.state !== "accepted") {
+              previous = await options.delivery.readReceipt(String(candidate.idempotency_key));
+            }
             if (previous?.state === "accepted") {
               validateReceipt(previous);
               // Recover acceptance after a crash before the original claim was settled.

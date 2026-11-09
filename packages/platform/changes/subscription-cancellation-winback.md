@@ -1,6 +1,6 @@
 - Add an explicitly selected native winback worker with subscription-wide send
   deduplication, configurable cancellation age and retention consent, failed-send
-  retry and durable receipt recovery.
+  retry and durable receipt recovery, including retained episode-key acceptances.
 
 Migration: apply `20261106140000_subscriber_winback_policy.sql` through the
 complete selected catalogue before composing `createPostgresSubscriptionWinback`.
