@@ -26,7 +26,7 @@ type RelationRow = { oid: number; name: string; kind: string; owner: string; rls
 type Snapshot = {
   indexes: { oid: number; name: string; table: string; definition: string; attrs: unknown }[];
   functions: FunctionRow[]; relations: RelationRow[]; columns: { rel: string; name: string; attrs: Record<string, unknown>; default: string | null }[]; system: { functions: string; relations: string };
-  relationOids: number[]; constraintOids: number[]; constraints: { rel: string; name: string; def: string; indexOid: number }[]; guards: Record<string, Record<string, unknown>[]>;
+  relationOids: number[]; constraintOids: number[]; constraints: { rel: string; name: string; def: string; validated: boolean; indexOid: number }[]; guards: Record<string, Record<string, unknown>[]>;
 };
 // Every guard catalog is read whole through to_jsonb, with its OID and volatile columns left out and parser positions in
 // node trees normalized, so a new guard is one entry here. `relation` names the column that ties a row to a relation:
@@ -63,7 +63,7 @@ async function snapshot(db: PoolClient): Promise<Snapshot> {
     md5(COALESCE((SELECT string_agg(jsonb_build_array(c.oid,c.relname,c.relnamespace,c.relowner,c.relkind,c.relrowsecurity,c.relforcerowsecurity,c.reloptions,c.relacl::text)::text, E'\\n' ORDER BY c.oid) FROM pg_class c WHERE c.oid < ${OID_FLOOR}),'')
       || COALESCE((SELECT string_agg(a.attrelid||'.'||a.attname||'='||a.attacl::text, E'\\n' ORDER BY a.attrelid,a.attnum) FROM pg_attribute a WHERE a.attrelid < ${OID_FLOOR} AND a.attacl IS NOT NULL),'')) AS relations`)).rows[0];
   // The relation is schema-qualified explicitly: regclass text omits a schema that is on the search path.
-  const constraints = (await db.query(`SELECT COALESCE(n.nspname||'.'||c.relname, 'type:'||con.contypid::regtype::text) AS rel, con.conname AS name, pg_get_constraintdef(con.oid) AS def, con.conindid::int AS "indexOid"
+  const constraints = (await db.query(`SELECT COALESCE(n.nspname||'.'||c.relname, 'type:'||con.contypid::regtype::text) AS rel, con.conname AS name, pg_get_constraintdef(con.oid) AS def, con.convalidated AS validated, con.conindid::int AS "indexOid"
     FROM pg_constraint con LEFT JOIN pg_class c ON c.oid=con.conrelid LEFT JOIN pg_namespace n ON n.oid=c.relnamespace
     WHERE con.contype <> 'n' ORDER BY 1,2`)).rows;
   const columns = (await db.query(`SELECT n.nspname||'.'||c.relname AS rel, a.attname AS name,
@@ -87,8 +87,8 @@ async function snapshot(db: PoolClient): Promise<Snapshot> {
 
 const norm = (path: string) => `search_path=${path.replace(/\s+/gu, " ").trim()}`;
 const quotedValues = (list: string) => (list.match(/'((?:[^']|'')*)'/gu) ?? []).map(value => value.slice(1, -1).replaceAll("''", "'"));
-// The only shape the purpose CHECK may take, as PostgreSQL deparses it. A NOT IN, an OR, NOT VALID or NO INHERIT
-// spelling does not match and so never reads as a list of allowed values.
+// Only the positive IN shape PostgreSQL deparses reads as a value list. The superset guard
+// strips NOT VALID only after proving equal validation states; other clauses remain refused.
 const checkValues = (def: string, column: string) => {
   const shape = new RegExp(`^CHECK \\(\\(${column} = ANY \\(ARRAY\\[((?:'(?:[^']|'')*'::text)(?:, '(?:[^']|'')*'::text)*)\\]\\)\\)\\)$`, "u");
   const match = shape.exec(def); return match ? quotedValues(match[1]!) : null;
@@ -197,9 +197,11 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
   const sorted = (values: string[]) => JSON.stringify([...new Set(values)].sort());
   for (const entry of checks) {
     const old = before.constraints.find(old => old.rel === entry.table && old.name === entry.constraint);
-    const oldValues = old ? checkValues(old.def, entry.column) : null;
-    const def = nowConstraints.get(`${entry.table}.${entry.constraint}`), newValues = def ? checkValues(def, entry.column) : null;
-    if (!oldValues || !newValues || oldValues.some(value => !newValues.includes(value)) || sorted(entry.values) !== sorted(newValues)) fail(`CHECK changed beyond its listed widening: ${def}`);
+    const current = after.constraints.find(row => row.rel === entry.table && row.name === entry.constraint);
+    if (old && current && old.validated !== current.validated) fail(`CHECK changed its validation state: ${entry.table}.${entry.constraint}`);
+    const values = (row: Snapshot["constraints"][number] | undefined) => row ? checkValues(row.validated ? row.def : row.def.replace(/ NOT VALID$/u, ""), entry.column) : null;
+    const oldValues = values(old), newValues = values(current);
+    if (!oldValues || !newValues || oldValues.some(value => !newValues.includes(value)) || sorted(entry.values) !== sorted(newValues)) fail(`CHECK changed beyond its listed widening: ${current?.def}`);
   }
   for (const entry of uniques) {
     const old = before.constraints.find(old => old.rel === entry.table && old.name === entry.constraint);
@@ -422,6 +424,8 @@ const PARAMETER_SLOT: CatalogSlot = { ...SYNTHETIC_SLOT, checkSupersets: [
   { table: "public.cat_parameters", constraint: "cat_kind", column: "kind", values: ["first", "second", "third"] },
 ] };
 const PARAMETER_CHECKS = "ALTER TABLE public.cat_parameters DROP CONSTRAINT cat_status; ALTER TABLE public.cat_parameters ADD CONSTRAINT cat_status CHECK (status IN ('open','closed','paused')); ALTER TABLE public.cat_parameters DROP CONSTRAINT cat_kind; ALTER TABLE public.cat_parameters ADD CONSTRAINT cat_kind CHECK (kind IN ('first','second','third'));";
+const UNVALIDATED_PARAMETER_SETUP = "ALTER TABLE public.cat_parameters DROP CONSTRAINT cat_status; ALTER TABLE public.cat_parameters ADD CONSTRAINT cat_status CHECK (status IN ('open','closed')) NOT VALID;";
+const UNVALIDATED_PARAMETER_CHECKS = PARAMETER_CHECKS.replace("('open','closed','paused'));", "('open','closed','paused')) NOT VALID;");
 const UNIQUE_SLOT: CatalogSlot = { ...SYNTHETIC_SLOT, uniqueSupersets: [{ table: "public.cat_parameters", constraint: "cat_key", columns: ["id", "extra"], nullsNotDistinct: true }] };
 const UNIQUE_SQL = "ALTER TABLE public.cat_parameters DROP CONSTRAINT cat_key; ALTER TABLE public.cat_parameters ADD CONSTRAINT cat_key UNIQUE NULLS NOT DISTINCT (id,extra);";
 const DROP_INDEX_SLOT: CatalogSlot = { ...SYNTHETIC_SLOT, droppedIndexes: [{ table: "public.cat_parameters", name: "cat_active_idx", beforeSha256: sqlSha256("CREATE UNIQUE INDEX cat_active_idx ON public.cat_parameters (id) WHERE id IS NOT NULL;") }] };
@@ -546,6 +550,27 @@ describe.each([{ serviceRole: true }, { serviceRole: false }])("native store for
   it("admits a widened purpose CHECK that its slot lists", async () => { await checkForward(pool, PURPOSE_SLOT, forward(CREATED_OK, purposeCheck("CHECK (purpose IN ('a','b','c'))"))); });
   it("admits multiple named CHECK widenings after unrelated additive DDL", async () => {
     await checkForward(pool, PARAMETER_SLOT, forward(CREATED_OK, PARAMETER_CHECKS), false, "ALTER TABLE public.cat_parameters ADD COLUMN unrelated uuid; ALTER TABLE public.cat_parameters ADD CONSTRAINT cat_unrelated CHECK (unrelated IS NULL) NOT VALID;");
+  });
+  it("preserves an unvalidated CHECK while widening without rechecking historical rows", async () => {
+    const setup = UNVALIDATED_PARAMETER_SETUP.replace("ALTER TABLE public.cat_parameters ADD", "INSERT INTO public.cat_parameters(status) VALUES ('historical'); ALTER TABLE public.cat_parameters ADD");
+    await checkForward(pool, PARAMETER_SLOT, forward(CREATED_OK, UNVALIDATED_PARAMETER_CHECKS), false, setup);
+  });
+  it.each([
+    { beforeValidated: false, afterValidated: true },
+    { beforeValidated: true, afterValidated: false },
+  ])("refuses CHECK validation state $beforeValidated -> $afterValidated", async ({ beforeValidated, afterValidated }) => {
+    await expect(checkForward(pool, PARAMETER_SLOT, forward(CREATED_OK, afterValidated ? PARAMETER_CHECKS : UNVALIDATED_PARAMETER_CHECKS), false,
+      beforeValidated ? "" : UNVALIDATED_PARAMETER_SETUP)).rejects.toThrow(/CHECK changed its validation state/u);
+  });
+  it("refuses a narrowed unvalidated CHECK even when its ADD exactly matches its slot", async () => {
+    const slot = { ...PARAMETER_SLOT, checkSupersets: [{ ...PARAMETER_SLOT.checkSupersets![0]!, values: ["open", "paused"] }, PARAMETER_SLOT.checkSupersets![1]!] };
+    await expect(checkForward(pool, slot, forward(CREATED_OK, UNVALIDATED_PARAMETER_CHECKS.replace("'open','closed','paused'", "'open','paused'")), false,
+      UNVALIDATED_PARAMETER_SETUP)).rejects.toThrow(/CHECK changed beyond its listed widening/u);
+  });
+  it.each(["before", "after"])("refuses a non-list unvalidated CHECK %s the slot", async side => {
+    const setup = side === "before" ? UNVALIDATED_PARAMETER_SETUP.replace("status IN ('open','closed')", "status <> 'blocked'") : UNVALIDATED_PARAMETER_SETUP;
+    const sql = side === "after" ? UNVALIDATED_PARAMETER_CHECKS.replace("status IN ('open','closed','paused')", "status <> 'blocked'") : UNVALIDATED_PARAMETER_CHECKS;
+    await expect(checkForward(pool, PARAMETER_SLOT, forward(CREATED_OK, sql), false, setup)).rejects.toThrow(/CHECK changed beyond its listed widening/u);
   });
   it("refuses a narrowed CHECK even when its ADD exactly matches its slot", async () => {
     const slot = { ...SYNTHETIC_SLOT, checkSupersets: [{ ...PARAMETER_SLOT.checkSupersets![0]!, values: ["open", "paused"] }] };
