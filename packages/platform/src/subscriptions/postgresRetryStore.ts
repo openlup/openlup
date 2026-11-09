@@ -41,7 +41,7 @@ export function createPostgresRetryStore(executor: SubscriptionQueryExecutor) {
       failureClass: r.failure_class == null ? null : String(r.failure_class),
       failureReason: r.failure_reason == null ? null : String(r.failure_reason), occurredAt: String(r.failed_at),
       identityKey: String(r.identity_key), requestFingerprint: String(r.operation_fingerprint),
-      disposition: r.state === "recovered" ? "paid" : r.state === "prepared" || r.next_retry_at != null ? "retry_scheduled" : "payment_failed",
+      disposition: r.disposition === "payment_failed" ? "payment_failed" : r.state === "recovered" ? "paid" : r.state === "prepared" || r.next_retry_at != null ? "retry_scheduled" : "payment_failed",
       caseId: r.case_id == null ? null : String(r.case_id), state: r.state as NativeRetryRow["state"] };
   }
   return {

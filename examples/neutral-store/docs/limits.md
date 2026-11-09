@@ -9,7 +9,7 @@ application composition limits; they are not claims of exported package errors.
 
 | Limit | Actions | Named refusal |
 | --- | --- | --- |
-| N1 | Live products, SKUs, price lists, price entries and promotions are seed data: one owned demo-seed step with the install connection, no runtime writer for them and no checkout promotion codes. Bundle drafts, compositions, target prices and activation, and catalogue drafts, are administered by a native human operator through their native writers. | `starter_promotion_write_unavailable` |
+| N1 | Live products, SKUs, price lists, price entries and promotions are seed data: one owned demo-seed step with the install connection, no runtime writer for them and no checkout promotion codes. Bundle drafts, compositions, target prices and activation, and catalogue drafts, are administered by a native human operator through their native writers. An activated bundle is not purchasable in this release. | `starter_promotion_write_unavailable` |
 | N2 | Operator email/phone correction and account linking | `operator_subscription_authority_unavailable` |
 | N3 | Order note and order-address correction | `starter_order_correction_unavailable` |
 | N4 | Replacement request and complete fulfillment cancellation | `host_binding_required` |
@@ -200,15 +200,19 @@ See the [operator roster recipe](../README.md#operator-support-roster-and-catalo
 
 ## Purchase composition boundaries
 
+Shipping is charged below the configured threshold on products after discounts;
+at or above it shipping is free. Renewals use the accepted agreement and the
+frozen cycle amount, including on replay. These remain local sandbox witnesses.
+
+Dostawa jest płatna poniżej skonfigurowanego progu dla produktów po rabatach;
+od progu włącznie jest bezpłatna. Odnowienia korzystają z zaakceptowanych warunków
+i kwoty utrwalonej dla cyklu, także przy ponowieniu.
+
 The starter runs on its local demonstration database only; a hosted database connection is not part of this release and comes in a later round.
-For now this release does not charge shipping on one-off orders.
-For now this release does not charge shipping on renewals.
 The first-subscription offer is not offered yet and comes in a later part of this release.
 A purchase needs no account; checkout keeps a contact record for the e-mail; the customer signs in with that e-mail to see the purchase.
 
 Starter działa wyłącznie na lokalnej demonstracyjnej bazie danych; połączenie z bazą hostowaną nie należy do tego wydania i pojawi się w późniejszej rundzie.
-Na razie to wydanie nie pobiera opłat za dostawę zamówień jednorazowych.
-Na razie to wydanie nie pobiera opłat za dostawę odnowień.
 Oferta na pierwszą subskrypcję nie jest jeszcze dostępna i pojawi się w późniejszej części tego wydania.
 Aktywowanego pakietu nie można kupić w tym wydaniu; taka możliwość pojawi się w późniejszej rundzie.
 Zakup nie wymaga konta; przy zakupie zapisujemy kontakt dla podanego e-maila; klient loguje się tym e-mailem, aby zobaczyć zakup.
@@ -252,7 +256,7 @@ The configured subscription rate and rounding quantum resolve each unit before
 quantity is applied. Quote lines and installed subscription price entries carry
 that actual unit price. A `mode_discount` component explains the included benefit;
 there is no order promotion or second deduction. First-subscription acquisition
-is a separate later offer. `shared/interim-pricing.ts` owns this temporary rule;
+is a separate later offer. `shared/offer-estimate.ts` owns this temporary rule;
 the later installed quote-engine composition replaces it.
 
 The owned seed writes distinct one-time/subscription price entries. Repeating an
@@ -265,6 +269,12 @@ These are local demonstration values, not provider or compliance qualification.
 The accepted origin/session boundary retains its separate limits.
 
 Attempt limits live in one process's memory and reset on restart.
+The demonstration Compose container generates its private quote key only for a
+database carrying the demonstration marker. It reuses that file on restart;
+container recreation rotates it, so unsubmitted subscription quotes must refresh.
+Customer environments supply their own keyring. A host without the key-file
+flag refuses subscription quotes with `starter_quote_acceptance_key_required`;
+one-time checkout remains available.
 Limity prób działają w pamięci jednego procesu i resetują się po ponownym uruchomieniu.
 Checkout applies the configured attempt window, e-mail and requester counts, retention and capacity before contact resolution. Exact replay means the same command key, normalized e-mail and requester; it is free of further quota counts. A retained key with a changed identity is refused before contact resolution, including with a replacement quota callback. The synchronous host binding keeps identity digests within the same retention and capacity bounds; it fails closed when full. Denied quota attempts add nothing to the quota counts. Both process-local records reset on restart. Unpurchased contact retention belongs to the host.
 

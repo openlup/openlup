@@ -156,6 +156,14 @@ it("refuses a reused cluster catalogue before the proof can create global roles"
   try {
     expect(await waitForPostgresTcpReady(container.connectionString)).toBe(true);
     pool = new Pool({ connectionString: container.connectionString });
+    const waitForClosedSessions = async () => {
+      // In 20 local PostgreSQL 16 shutdowns, zero other sessions were observed
+      // within 3.11ms; allow 1s (>300x, rounded) for scheduling on loaded runners.
+      await expect.poll(async () => (await pool!.query(`SELECT count(*)::int AS connected
+        FROM pg_stat_activity WHERE backend_type='client backend' AND pid<>pg_backend_pid()`)).rows[0].connected,
+      { timeout: 1000, interval: 10, message: "Other client backends still connected after test pool shutdown" }).toBe(0);
+    };
+    await waitForClosedSessions();
     await expect(assertFreshClusterCatalogue(pool, "postgres", "postgres")).resolves.toBeUndefined();
     for (const [occupy, clear] of [
       ["CREATE DATABASE recipe_other", "DROP DATABASE recipe_other"],
@@ -171,6 +179,7 @@ it("refuses a reused cluster catalogue before the proof can create global roles"
     const held = await other.connect();
     try { await expect(assertFreshClusterCatalogue(pool, "postgres", "postgres")).rejects.toThrow("fresh_cluster_required"); }
     finally { held.release(); await other.end(); }
+    await waitForClosedSessions();
     await expect(assertFreshClusterCatalogue(pool, "postgres", "postgres")).resolves.toBeUndefined();
     for (const role of rdsControlRoles) await pool.query(`CREATE ROLE ${role} ${role === "rdsadmin" ? "LOGIN PASSWORD 'synthetic-monitor'" : "NOLOGIN"}`);
     await pool.query("CREATE DATABASE rdsadmin OWNER rdsadmin");
@@ -195,6 +204,7 @@ it("refuses a reused cluster catalogue before the proof can create global roles"
       await expect(assertFreshClusterCatalogue(pool, "postgres", "postgres")).rejects.toThrow("fresh_cluster_required");
     } finally {
       monitoring.release(); await monitor.end();
+      await waitForClosedSessions();
       await pool.query("DROP DATABASE rdsadmin");
       for (const role of rdsControlRoles) await pool.query(`DROP ROLE ${role}`);
     }

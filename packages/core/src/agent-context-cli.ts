@@ -76,6 +76,12 @@ function lineNumber(text: string, offset: number): number {
   return count;
 }
 
+function corpusSourcePath(item: InstalledPackage, source: string): string {
+  if (typeof source !== "string") return "";
+  const prefix = `https://github.com/openlup/openlup/blob/openlup-${item.name.slice("@openlup/".length)}-v${item.version}/`;
+  return source.startsWith(prefix) ? source.slice(prefix.length) : source;
+}
+
 function corpusHits(item: InstalledPackage, query: string, terms: string[]): Hit[] {
   const file = join(item.root, "AGENT_CONTEXT.md");
   const content = readText(file);
@@ -92,7 +98,8 @@ function corpusHits(item: InstalledPackage, query: string, terms: string[]): Hit
   const pattern = /<!-- openlup-context (\{[^\n]*\}) -->\n/g;
   for (const match of content.matchAll(pattern)) {
     const metadata = JSON.parse(match[1]) as { id: string; source: string; heading: string; sha256: string };
-    if (!/^[a-z0-9-]+$/u.test(metadata.id) || !/^[\w./-]+\.md$/u.test(metadata.source) || metadata.source.split("/").includes("..")) throw new Error(`Invalid corpus source in ${file}`);
+    const source = corpusSourcePath(item, metadata.source);
+    if (!/^[a-z0-9-]+$/u.test(metadata.id) || !/^[\w./-]+\.md$/u.test(source) || source.startsWith("/") || source.split("/").includes("..")) throw new Error(`Invalid corpus source in ${file}`);
     sections.push(metadata);
     const start = match.index + match[0].length;
     const end = content.indexOf("<!-- /openlup-context -->", start);
@@ -270,8 +277,9 @@ export function searchContext(cwd: string, task: string, includeCode = false, in
   selectedHits.sort((left, right) => right.score - left.score || left.file.localeCompare(right.file) || left.start - right.start);
   const unique = new Set<string>();
   const selected = selectedHits.filter((hit) => {
+    const item = packages.find((candidate) => candidate.name === hit.packageName);
     const key = hit.reason === "canonical owner excerpt" && hit.owner
-      ? `owner:${hit.owner}:${hit.title}` : `${hit.file}:${hit.start}:${hit.end}`;
+      ? `owner:${corpusSourcePath(item!, hit.owner)}:${hit.title}` : `${hit.file}:${hit.start}:${hit.end}`;
     if (unique.has(key)) return false;
     unique.add(key);
     return true;
