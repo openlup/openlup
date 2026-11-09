@@ -79,3 +79,10 @@ export { readPostgresCustomerAccountClient } from "./postgresAccountReadScope.js
 export type { NativeAccountReadScope, NativePaidActivationGap, NativePaidActivationGapReadSource } from "./postgresAccountReadScope.js";
 export { createPostgresCustomerSubscriptionSnapshotPort, createPostgresCustomerNewsletterPreferencesPort } from "./postgresCustomerActorReads.js";
 export type { NativeAccountRpcExecutor } from "./postgresCustomerActorReads.js";
+export { createCustomerAccountMutationSchemas } from "./customerAccount/accountMutationSchemas.js";
+export type { CustomerAccountMutationSchemas } from "./customerAccount/accountMutationSchemas.js";
+export { createPostgresCustomerAccountMutationPort, CustomerAccountMutationRefused } from "./customerAccount/postgresAccountMutations.js";
+export { createCustomerAccountMutationHandlers } from "./customerAccount/accountMutationHandlers.js";
+export type { CustomerAccountMutationHandlerDependencies } from "./customerAccount/accountMutationHandlers.js";
+export { createAccountEventPrivacyContributor } from "./customerAccount/accountEventPrivacy.js";
+export type { AccountEventPrivacyJson, AccountEventPrivacyObligation, AccountEventPrivacyDocument, AccountEventPrivacySubject, AccountEventPrivacyAssessment, AccountEventPrivacyContributor, AccountEventPrivacyDependencies } from "./customerAccount/accountEventPrivacy.js";

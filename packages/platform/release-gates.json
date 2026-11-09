@@ -955,17 +955,17 @@
   },
   "pack": {
     "code": {
-      "maxPackedBytes": 2336415,
+      "maxPackedBytes": 2390178,
       "maxFiles": 4027
     },
     "docs": {
-      "maxPackedBytes": 79312,
+      "maxPackedBytes": 81443,
       "maxFiles": 10
     },
     "maxPackedBytes": 2898683,
     "maxUnpackedBytes": 13845770,
-    "maxFiles": 4151,
-    "capReason": "Measured merged-tree package: code 2,320,140 bytes and 3,984 files, tarball 2,841,846 bytes, unpacked 13,574,284 bytes, 4,111 files; caps are measured times 1.02, rounded up. Existing larger code and file caps are retained. The docs class measured 78,483 gzip bytes on the 0.37.0 set tree; its existing larger cap is retained.",
+    "maxFiles": 4236,
+    "capReason": "Measured merged-tree package: code 2,320,140 bytes and 3,984 files, tarball 2,841,846 bytes, unpacked 13,574,284 bytes, 4,111 files; caps are measured times 1.02, rounded up. Existing larger code and file caps are retained. The docs class measured 78,483 gzip bytes on the 0.37.0 set tree; its existing larger cap is retained. Account-event foundation measured code 2,343,311 bytes, docs 79,846 bytes and 4,152 total files; those exceeded caps by 6,896 bytes, 534 bytes and one file respectively. Their new caps are measured times 1.02, rounded up; aggregate byte and other existing caps are retained.",
     "baseline": {
       "version": "0.36.0",
       "packedBytes": 2104577

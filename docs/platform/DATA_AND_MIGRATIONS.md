@@ -144,6 +144,40 @@ For a new block-classified table, the [absorption census slot shape](#closed-nat
 provides the existing absorber with client-column access while keeping personal
 payloads unreadable. Its classification and access belong to that table's forward.
 
+## Customer account event data
+
+The forward `20261110120000_customer_account_events.sql` creates
+`customer_account_events`: UUID identity, client FK with DELETE CASCADE, event and
+entity type/ID, JSON payload, occurred/created timestamps and the client/occurred
+index. RLS is enabled. The service runtime receives only the client-column census
+grant/policy plus EXECUTE on owned append, latest-20 metadata history, profile
+update and correction-request routines. The table is explicitly block-classified
+for lead absorption; a history-free lead can still absorb and replay.
+
+Profile writes precede a separate event append; failures can leave an updated
+profile without a replay event. A recorded key returns current profile state
+without another write/event. Correction keys are stored without deduplication,
+and ownership is through the invoice document's order. Invoice bytes and fiscal
+state are unchanged. The [package recipe](../../packages/platform/README.md#customer-account-events-and-mutations)
+owns validation policy and handler composition.
+
+Payloads and client/document/key links are personal data, including free-text
+reason/note/requested fields and submitted names/phone. The explicit identity
+contributor requires a privileged subject reader and retain/unresolved owner
+policy. Export reports unavailable coverage; unresolved disposition refuses
+erasure. Retention preserves payloads and is recorded in the receipt. Existing
+identity client-field clearing does not cover this table, and no automatic
+retention period or deletion is supplied.
+
+Finite connected-store transfer classifies this as an owned table and carries its
+exact PostgreSQL row text, like `customer_communication_preference_events`:
+both are customer-owned personal-data histories with JSON payloads. This extends
+the finite capture/restore inventory only; the smaller compatible-row utility's
+allowlist remains unchanged. No schema/control/credential transfer or target
+activation is authorized by these rows. Saved addresses and billing tables remain
+separate changes. The account migration descriptor is sparse; install the entire
+selected native catalogue rather than just its two exported units.
+
 ## Partner acquisition data
 
 Partners owns the `partner_inquiry` slice of `acquisition_private.cases`, its

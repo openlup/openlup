@@ -140,3 +140,7 @@ export type {
   OperatorAuthorityCapabilities
 } from "./capabilities.js";
 export type { NativeCustomerSubscriptionSnapshot, NativeCustomerNewsletterPreferences } from "./account.js";
+export type {
+  CustomerProfileUpdateRequest, CustomerProfileUpdateResponse, CustomerInvoiceCorrectionRequest, CustomerInvoiceCorrectionResponse,
+  CustomerAccountMutationPort, CustomerAccountMutationPolicy, CustomerAccountMutationRefusalCode,
+} from "./mutations.js";
