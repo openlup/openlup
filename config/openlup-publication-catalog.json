@@ -1254,6 +1254,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261109110000_checkout_recovery_link_lifecycle.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4163,6 +4167,10 @@
     },
     {
       "path": "packages/platform/sql/20261106140000_subscriber_winback_policy.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261109110000_checkout_recovery_link_lifecycle.sql",
       "class": "public-output"
     },
     {
@@ -28299,6 +28307,10 @@
     },
     {
       "path": "tests/postgres/channelPurchase.conformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/checkoutRecoveryLinkLifecycle.test.ts",
       "class": "public-output"
     },
     {
