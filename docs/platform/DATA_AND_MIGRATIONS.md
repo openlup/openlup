@@ -1632,6 +1632,7 @@ the quote after it, so one statement for the splitter would be several for the
 database. A backslash inside a dollar body is data, and the earlier files of the
 prefix keep the older reading.
 Adding columns or new CHECKs to an existing table retains the expand-only path.
+A new table may declare foreign-key `ON DELETE CASCADE` or `ON DELETE SET NULL` actions; only those actions are masked before the default expand-only check, with all other expression and statement refusals retained.
 Any slot may also list exact complete ALTER TABLE texts in
 `existingTableStatements`. PostgreSQL checks target existence when applying the
 plain ALTER TABLE; IF EXISTS is refused. The closed actions are ADD COLUMN, named ADD CONSTRAINT

@@ -111,6 +111,28 @@ describe("native store SQL shapes and pins", () => {
     "ALTER TABLE public.communication_native_sync_state ADD COLUMN fixture_nullable timestamptz;",
     "ALTER TABLE public.communication_native_sync_state ADD CONSTRAINT fixture_additive_check CHECK (purpose IN ('marketing_launch_offer','marketing_newsletter'));",
   ])("retains expand-only DDL: %s", statement => { expect(() => check(`${sql()}\n${statement}`)).not.toThrow(); });
+  it.each(["CASCADE", "SET NULL"])("admits only a new table's foreign-key ON DELETE %s action", action => {
+    const statement = `CREATE TABLE public.fixture_table (client_id uuid REFERENCES public.clients(id) ON DELETE ${action});`;
+    expect(isExpandOnlyPlatformForward(statement)).toBe(false);
+    expect(() => check(`${sql()}\n${statement}`)).not.toThrow();
+    const normalized = statement.toLowerCase().replace("on delete", "on /* action */\n delete");
+    expect(() => check(`${sql()}\n${normalized}`)).not.toThrow();
+  });
+  it.each([
+    "ALTER TABLE public.clients ADD COLUMN other_id uuid REFERENCES public.clients(id) ON DELETE CASCADE;",
+    "ALTER TABLE public.clients ADD COLUMN other_id uuid REFERENCES public.clients(id) ON DELETE SET NULL;",
+    "DELETE FROM public.clients;",
+    "SET search_path = public;",
+    "CREATE TABLE public.fixture_table (id bigint DEFAULT nextval('public.fixture_sequence'));",
+    "CREATE TABLE public.fixture_table (value text CHECK (public.fixture_check(value)));",
+    "CREATE TABLE public.fixture_table (LIKE public.clients INCLUDING ALL);",
+    "CREATE TABLE public.fixture_table AS SELECT id FROM public.clients;",
+    "CREATE TABLE public.fixture_table AS TABLE public.clients;",
+    "CREATE TABLE public.fixture_table AS VALUES (1);",
+    "CREATE TABLE public.fixture_table (payload jsonb DEFAULT '{}'::jsonb);",
+  ])("keeps default-mode refusals outside new-table FK actions: %s", statement => {
+    expect(() => check(`${sql()}\n${statement}`)).toThrow(/reviewed native store/u);
+  });
   it.each([
     ["unknown signature", () => `${sql()}\nCREATE FUNCTION public.fixture_unlisted() RETURNS text LANGUAGE sql AS $$ SELECT ''; $$;`],
     ["missing revoke", () => sql().replace(revoke, "")],
