@@ -31,7 +31,7 @@ resources even while idle. Stop the command with Ctrl-C.
 
 The installed native catalogue and account stores use the runtime connection.
 The composition root binds guest checkout, sandbox payment and customer
-subscription address changes through public native factories. Host and browser
+subscription address and lifecycle changes through public native factories. Host and browser
 purchase/recovery proofs run on real PostgreSQL in both configurations. `./lifecycle up` installs
 the packaged PostgreSQL history and fictional catalogue before starting the UI.
 Final release pins and lockfile wait for the selected set.
@@ -567,14 +567,9 @@ sections keep their existing refusal.
 The [notice binder](host/lifecycle-notices.ts) renders configured English/Polish
 copy through the separately owned private capture module and M04 receipt owner.
 It preserves one artifact and frozen token expiry per native notice command;
-access-grant references contain the native token UUID. It remains unmounted in this checkpoint; native notice dispatch and the joined
-recovery proof are available, but this row selects no parallel sender. No parallel
+access-grant references contain the native token UUID. The one-shot care command mounts the native lifecycle dispatcher with this binder. No parallel
 subscription-notice outbox handler is registered. The separate paid-order
-handler below does not dispatch subscription notices. Consent/signed opt-out wait for native purpose
-support; operator shipment and invoice joins wait for their existing owners.
-Reminder windows, historical closure, winback, escalation and configurable
-subscription policies retain their named interim limits in subscription care.
-This checkpoint makes no full notice-parity or release claim.
+handler below does not dispatch subscription notices. Signed opt-out retains its separate pending binding. The care command also selects native reminders, at-risk warnings and operator escalation with owned timing and caps; it activates no other retention planner.
 
 Authenticated recurring recovery captures its entry token synchronously before
 application requests and the login trip, then uses the server-owned
@@ -612,3 +607,77 @@ Subject and summary labels live in the per-locale `paid` values in
 `renewal.notices.locale` and `countryLocales` as subscription notice copy.
 Both English and Polish copy must be complete and nonempty. All other email
 send methods refuse with `starter_paid_mail_method_not_selected`.
+
+## Subscription care candidate
+
+The account page reads owned subscriptions and offers skip, reschedule, pause,
+resume, cancellation, order now and reactivation. Cycle edits honor the native
+payment, method, cycle and edit-window facts. Pause and cancellation remain
+available during an open payment case; the native command still refuses an
+in-flight charge. Pause defaults to two weeks and also offers one month or an
+indefinite window. Cancellation asks for a reason, offers a skip, reschedule or
+pause, and records acceptance or refusal through the native command. A
+reschedule offer starts from the current renewal and displays its actual target.
+Generic package, plan and bundle editing are outside this release.
+
+Order now and reactivation require an explicit charge-timing confirmation.
+Owned [care values](owned/renewal.config.ts) supply pause durations,
+slide bounds and charge-eligibility delays. The owned renewal configuration
+supplies retry hours. These enter trusted native constructors; request bodies
+cannot replace them. A charge-eligibility date is not an arrival promise.
+
+After local installation, an existing scheduler can run one bounded pass:
+
+```sh
+./lifecycle care --configuration supplements --database-url <restricted-runtime-url>
+```
+
+The command invokes finite auto-resume, drains the native notice dispatcher and
+runs winback only. It creates no timer or HTTP endpoint. A session lock and the
+native job ledger exclude another care invocation. Message bodies and bounded
+run outcomes are private files in `.context/captured-messages`; native delivery
+receipts retain idempotency. No real email provider is active. Operator escalation
+uses active native critical-notification recipients and a narrow binder containing
+only the notification, template and case references. Recipient provisioning remains
+the existing native operator capability, never a starter seed or a customer action.
+
+Captured reminders link to the localized account with the owned subscription
+selected. At-risk links also open its payment section. Sign-in preserves that
+local account destination and rechecks ownership. Captured winback links open the
+localized account, where a cancelled subscription requires the same reactivation
+confirmation. The account displays the native recorded winback status, refusal
+and delivery reference, including `consent_missing`.
+
+The retention-consent gate stays at its unseeded native default ON. The starter
+writes no settings row and provides no retention-consent capture. With the
+existing native subscriber-retention delivery control enabled, a trusted host
+can record consent through the existing native routine; newsletter/offers choices
+do not grant it. An adopter wanting the gate OFF follows the existing
+[winback policy owner](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#composed-subscription-module).
+Local proof covers both the refused case and a separate host-authorized outcome.
+
+From this application directory, with the selected package set installed, run
+`./lifecycle browser`. It creates two throwaway PostgreSQL 16 databases, applies the public qualified installation,
+loads the owned demo catalogue, starts both restricted hosts, then runs every
+spec selected by `playwright.database.config.ts` with one worker. The command
+creates both the UI-origin file and the private
+`.context/care-browser/fixtures.json` required only by the database subscription
+care group. The default preview browser command excludes that group. It tears down
+only its own hosts and containers; database storage is temporary. Docker, Node 24,
+Chromium and the application dependencies are prerequisites. Captures and fixture
+connections stay in private `.context/care-browser` files. Traces, screenshots and
+video are off. Fixture clocks adjust timestamps in these synthetic databases;
+subscriptions and payment cases are created through their native purchase and
+renewal commands. Separate operator/document proof recipes retain their own
+fixtures and scope. The candidate changes below retain the local-preview release boundary.
+
+### Candidate changes
+
+This candidate adds lifecycle controls, cancellation save offers, charge-timing
+confirmations and localized notice landings. Native care scheduling and private
+capture are composed. The clock-driven auto-resume journey delivers the paid first
+order, advances beyond the finite pause and renewal date, and proves whole-cadence
+roll-forward plus one locally captured resumed confirmation in both configurations.
+The disposable fixture records synthetic parcel transitions through the native
+shipment rail and supplies the external host's fulfilled-order fact. No operator
+delivery action, settings seed, real provider or release activation is included.

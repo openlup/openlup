@@ -47,11 +47,6 @@ export const operationLimitDefinitions = Object.freeze({
     explanation: Object.freeze({ en: "Public tracking lookup is unavailable.",
       pl: "Publiczne wyszukiwanie przesyłki jest niedostępne." }),
   }),
-  subscriptionCommand: Object.freeze({
-    id: 'subscriptionCommand', actions: Object.freeze(["subscriptions"] as const), code: 'starter_subscription_command_unavailable',
-    explanation: Object.freeze({ en: "Subscription changes through this action are unavailable in this release. Existing subscriptions continue.",
-      pl: "Zmiany subskrypcji przez to działanie są niedostępne w tym wydaniu. Istniejące subskrypcje działają dalej." }),
-  }),
   returnsReader: Object.freeze({
     id: 'returnsReader', actions: Object.freeze(["returns"] as const), code: 'starter_operation_unknown',
     explanation: Object.freeze({ en: "No operator returns list or detail; the operator approves or rejects by the return reference the customer receives.",
@@ -81,7 +76,6 @@ export const operationLimits: Readonly<Partial<Record<Operation, NativeLimit>>> 
   'operator.handoff': operationLimitDefinitions.shipmentMutation,
   'operator.delivery': operationLimitDefinitions.shipmentMutation,
   'tracking.read': operationLimitDefinitions.trackingAccess,
-  'subscription.command': operationLimitDefinitions.subscriptionCommand,
   'research.submit': operationLimitDefinitions.researchAuthority,
   'ingest.submit': operationLimitDefinitions.ingestBinding,
 });

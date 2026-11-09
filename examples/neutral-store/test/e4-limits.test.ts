@@ -20,7 +20,6 @@ const dispositions: Array<[Operation, string]> = [
   ['operator.handoff', 'starter_shipment_mutation_unavailable'],
   ['operator.delivery', 'starter_shipment_mutation_unavailable'],
   ['tracking.read', 'starter_tracking_access_unavailable'],
-  ['subscription.command', 'starter_subscription_command_unavailable'],
   ['research.submit', 'host_binding_required'], ['ingest.submit', 'host_binding_required'],
 ];
 const context: ActionContext = { actor: { customerRef: 'customer', operatorRef: 'operator' },

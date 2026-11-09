@@ -349,6 +349,29 @@ support, catalogue administration or release qualification follows.
 
 ## Database-backed purchase acceptance recipe
 
+For the complete purchase and subscription-care gate, run from the installed
+application directory:
+
+```sh
+./lifecycle browser
+```
+
+This command creates fresh PostgreSQL installations and restricted hosts for
+both configurations, then writes `.context/database-ui-hosts.json` with loopback
+UI origins and `.context/care-browser/fixtures.json` with private care material.
+The care file matches each project ID and origin to its runtime/owner connections
+and mailbox directory; it is mode 0600 and never served or committed. Trace,
+screenshot and video capture stay off. The command runs both acquisition tests
+and the `database subscription care` group, then removes its hosts and containers.
+To run just those affected specs with the same setup, use
+`./lifecycle browser browser/acquisition.spec.ts`.
+
+Only the care group requires the private care file. The default
+`npm run test:browser` preview excludes that group and does not need it; its
+unchanged purchase witnesses still require a native database host to pass.
+The manual host recipes below run the purchase baseline with that group excluded.
+They do not qualify subscription care; use `./lifecycle browser` for that gate.
+
 Default Playwright starts database-less previews for navigation and visible
 refusals. Those hosts cannot qualify purchase. The separate database-backed
 config uses the unchanged required purchase spec and disables trace, screenshot
@@ -384,7 +407,7 @@ Write only loopback UI origins to `.context/database-ui-hosts.json`:
 ```
 
 ```sh
-npx --no -- playwright test --config playwright.database.config.ts
+npx --no -- playwright test --config playwright.database.config.ts --grep-invert 'database subscription care'
 ```
 
 ### Run the installed browser gate locally
@@ -409,7 +432,7 @@ for configuration in supplements coffee; do
   export COMPOSE_PROJECT_NAME="neutral-browser-${configuration}-${PROOF_RUN_ID}"
   ./lifecycle down
   ./lifecycle up --configuration "$configuration"
-  npx --no -- playwright test --config playwright.database.config.ts --project "$configuration"
+  npx --no -- playwright test --config playwright.database.config.ts --project "$configuration" --grep-invert 'database subscription care'
   ./lifecycle down
   docker compose down --volumes --rmi local
 done
