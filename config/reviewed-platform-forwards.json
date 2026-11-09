@@ -3476,6 +3476,20 @@
             "beforeSha256": "410661b103956d6278327e77ae990fa8efed317d4f820148bfb884b666a3cdb3"
           }
         ]
+      },
+      {
+        "row": "auto-resume-delivered-history",
+        "path": "db/platform/migrations/20261109113000_subscription_auto_resume_delivered_history.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.subscription_auto_resume_due(integer,timestamptz)",
+            "beforeSha256": "3936d69e3b54693b234804580eacc2f28cffc26d76199c381c49193a9792badc",
+            "searchPath": "public, pg_catalog"
+          }
+        ],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -3936,6 +3950,17 @@
           "signature": "public.dunning_lifecycle_issue_recovery_token(uuid,text,timestamptz)",
           "beforeSha256": "34d0b636c3f51f5dab9b32e23d5d015d768f62eb2dc5780466c69f13da58ce75",
           "afterSha256": "a66f3724b3493d2abd1cf37d9bd3c9edff507233e0b15559ab6f57a371fc7b66"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261109113000_subscription_auto_resume_delivered_history.sql",
+      "sha256": "e6e1dc7bf9cd5b5b55b84a9a03868ebc4e07b46046a5462d4d264f462ce8674a",
+      "functions": [
+        {
+          "signature": "public.subscription_auto_resume_due(integer,timestamptz)",
+          "beforeSha256": "3936d69e3b54693b234804580eacc2f28cffc26d76199c381c49193a9792badc",
+          "afterSha256": "f247d1bc5d64df49b0d989ef00b03372d0036f7dcfe25fe5e64a4dc1e46926ee"
         }
       ]
     }
