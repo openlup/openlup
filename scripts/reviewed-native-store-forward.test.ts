@@ -1342,3 +1342,85 @@ describe("closed native index drops", () => {
     expect(() => changedForwardApprovals(encode(prior), encode(next))).toThrow(mode === "issued" ? "reviewed native store issued bindings and slots are immutable" : "reviewed native store sealed slot prefix is immutable and cannot be unsealed");
   });
 });
+
+const censusTable = "public.fixture_census";
+const censusCreate = `CREATE TABLE ${censusTable} (id uuid PRIMARY KEY, client_id uuid NOT NULL REFERENCES public.clients(id), payload jsonb);`;
+const censusClassification = "INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('fixture_census', 'block', 'Customer history prevents absorption.');";
+const censusGrant = `GRANT SELECT (client_id) ON TABLE ${censusTable} TO service_role;`;
+const censusPolicy = `CREATE POLICY fixture_census_absorption_census ON ${censusTable} FOR SELECT TO service_role USING (true);`;
+const censusShape = [censusCreate, `ALTER TABLE ${censusTable} ENABLE ROW LEVEL SECURITY;`, `REVOKE ALL ON TABLE ${censusTable} FROM PUBLIC;`, censusClassification, noticeDo(censusGrant), noticeDo(censusPolicy)].join("\n");
+function censusForward(text = censusShape, mutate: (slot: NativeStoreSlot) => void = () => {}, earlier = false) {
+  const value = registry(), index = earlier ? 1 : 0, slot = value.nativeStoreForwardClass!.slots[index]!;
+  const preceding = [{ path: PLATFORM_BASELINE_FILE, bytes: before }];
+  if (earlier) {
+    const prior = `${sql()}\n${censusCreate}`, pin = bind(value, 0, prior);
+    preceding.push({ path: pin.path, bytes: Buffer.from(prior) });
+  }
+  slot.absorptionCensusTables = [censusTable]; slot.dataStatements = [censusClassification]; mutate(slot);
+  const complete = `${sql(index)}\n${text}`, pin = bind(value, index, complete);
+  assertNativeStoreForward(value, pin.path, Buffer.from(complete), preceding);
+}
+describe("owned absorption census capability", () => {
+  it("admits the two exact guarded statements on a same-slot client-referencing block table", () => {
+    expect(() => censusForward()).not.toThrow();
+  });
+  it("admits a named single-column table FK as well as an inline FK", () => {
+    expect(() => censusForward(censusShape.replace("client_id uuid NOT NULL REFERENCES public.clients(id)", "client_id uuid NOT NULL, CONSTRAINT fixture_owner FOREIGN KEY (client_id) REFERENCES public.clients(id)"))).not.toThrow();
+  });
+  it("admits more than one independently classified census table", () => {
+    const other = censusShape.replaceAll("fixture_census", "fixture_another");
+    expect(() => censusForward(`${censusShape}\n${other}`, slot => {
+      slot.absorptionCensusTables!.push("public.fixture_another");
+      slot.dataStatements.push(censusClassification.replaceAll("fixture_census", "fixture_another"));
+    })).not.toThrow();
+  });
+  it.each([
+    ["wrong column", censusGrant, censusGrant.replace("(client_id)", "(payload)")],
+    ["extra column", censusGrant, censusGrant.replace("(client_id)", "(client_id, payload)")],
+    ["table grant", censusGrant, censusGrant.replace(" (client_id)", "")],
+    ["wrong grant role", censusGrant, censusGrant.replace("TO service_role", "TO authenticated")],
+    ["write verb", censusGrant, censusGrant.replace("GRANT SELECT", "GRANT UPDATE")],
+    ["grant option", censusGrant, censusGrant.replace("service_role;", "service_role WITH GRANT OPTION;")],
+    ["FOR ALL", censusPolicy, censusPolicy.replace("FOR SELECT", "FOR ALL")],
+    ["non-true USING", censusPolicy, censusPolicy.replace("USING (true)", "USING (false)")],
+    ["WITH CHECK", censusPolicy, censusPolicy.replace("USING (true);", "USING (true) WITH CHECK (true);")],
+    ["wrong policy role", censusPolicy, censusPolicy.replace("TO service_role", "TO authenticated")],
+    ["wrong policy name", censusPolicy, censusPolicy.replace("fixture_census_absorption_census", "fixture_other_policy")],
+    ["restrictive policy", censusPolicy, censusPolicy.replace("FOR SELECT", "AS RESTRICTIVE FOR SELECT")],
+  ])("refuses %s", (_label, original, replacement) => {
+    expect(() => censusForward(censusShape.replace(original!, replacement!))).toThrow(/closed shapes|conditional privilege/u);
+  });
+  it.each([censusGrant, censusPolicy])("refuses an unguarded census statement: %s", statement => {
+    expect(() => censusForward(censusShape.replace(noticeDo(statement), statement))).toThrow(/service_role conditional shell/u);
+  });
+  it.each([censusGrant, censusPolicy])("refuses duplicate or missing census statements: %s", statement => {
+    expect(() => censusForward(`${censusShape}\n${noticeDo(statement)}`)).toThrow(/duplicate absorption census/u);
+    expect(() => censusForward(censusShape.replace(noticeDo(statement), ""))).toThrow(/exactly one grant and policy/u);
+  });
+  it("refuses another conditional shell role even when the target role is service_role", () => {
+    expect(() => censusForward(censusShape.replaceAll("rolname='service_role'", "rolname='authenticated'"))).toThrow(/service_role conditional shell/u);
+  });
+  it("refuses unlisted tables", () => {
+    expect(() => censusForward(censusShape, slot => { delete slot.absorptionCensusTables; })).toThrow(/conditional privilege/u);
+  });
+  it("refuses an earlier slot's table", () => {
+    expect(() => censusForward(censusShape.replace(censusCreate, ""), undefined, true)).toThrow(/same slot/u);
+  });
+  it("requires the table to be created before its census grant", () => {
+    expect(() => censusForward(`${noticeDo(censusGrant)}\n${censusShape.replace(noticeDo(censusGrant), "")}`)).toThrow(/created earlier/u);
+  });
+  it("leaves installed foreign-key semantics to the PostgreSQL catalogue guard", () => {
+    expect(() => censusForward(censusShape.replace("client_id uuid NOT NULL REFERENCES public.clients(id)", "client_id uuid"))).not.toThrow();
+  });
+  it("requires classification in both the slot and SQL", () => {
+    expect(() => censusForward(censusShape, slot => { slot.dataStatements = []; })).toThrow(/exact block classifications/u);
+    expect(() => censusForward(censusShape.replace(censusClassification, ""))).toThrow(/named data statement missing/u);
+  });
+  it.each(["retain", "carry"])("refuses %s classification", disposition => {
+    const statement = censusClassification.replace("'block'", `'${disposition}'`);
+    expect(() => censusForward(censusShape.replace(censusClassification, statement), slot => { slot.dataStatements = [statement]; })).toThrow(/exact block classifications/u);
+  });
+  it.each([[censusTable, censusTable], ["fixture_census"], ["other.fixture_census"], [`public.${"a".repeat(63)}`], ['public."CensusHistory"'], ['public."fixture_census"'], ['"public".fixture_census']])("refuses invalid census inventory %j", (...tables) => {
+    expect(() => censusForward(censusShape, slot => { slot.absorptionCensusTables = tables as string[]; })).toThrow(/qualified tables/u);
+  });
+});

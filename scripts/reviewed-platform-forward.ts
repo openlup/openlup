@@ -66,7 +66,7 @@ type NativeStoreFunction = { signature: string; beforeSha256: string | null; sea
 type NativeStoreGrantOnly = { signature: string; grantTo: string[]; revokeFrom: string[] };
 export type NativeStoreCheck = { table: string; constraint: string; column: string; values: string[] };
 export type NativeStoreUnique = { table: string; constraint: string; columns: string[]; nullsNotDistinct: boolean };
-export type NativeStoreSlot = { row: string; path: string; replacedFunctions: NativeStoreFunction[]; createdFunctions: { signature: string; searchPath: string | null }[]; grantOnlyFunctions: NativeStoreGrantOnly[]; dataStatements: string[]; insertSelectTables?: string[]; existingTableStatements?: string[]; checkSupersets?: NativeStoreCheck[]; uniqueSupersets?: NativeStoreUnique[]; droppedIndexes?: { table: string; name: string; beforeSha256: string }[]; createdViews?: { name: string; sha256: string }[]; createdTriggers?: { name: string; table: string; sha256: string }[]; purposeCheck?: { beforeSha256: string; values: string[] } };
+export type NativeStoreSlot = { row: string; path: string; replacedFunctions: NativeStoreFunction[]; createdFunctions: { signature: string; searchPath: string | null }[]; grantOnlyFunctions: NativeStoreGrantOnly[]; dataStatements: string[]; insertSelectTables?: string[]; absorptionCensusTables?: string[]; existingTableStatements?: string[]; checkSupersets?: NativeStoreCheck[]; uniqueSupersets?: NativeStoreUnique[]; droppedIndexes?: { table: string; name: string; beforeSha256: string }[]; createdViews?: { name: string; sha256: string }[]; createdTriggers?: { name: string; table: string; sha256: string }[]; purposeCheck?: { beforeSha256: string; values: string[] } };
 export type NativeStoreForwardClass = { sealed: boolean; slots: NativeStoreSlot[] };
 export type ReviewedForwardRegistry = { nativeStoreForwardClass?: NativeStoreForwardClass; nativeStoreForwards?: ForwardBinding[]; qualifiedInstallations?: (PortableCreationBinding | ForwardBinding)[]; channelIngestForwards?: BatchedForwardBinding[]; supportAuthorityForwards?: SupportAuthorityForwardBinding[]; managedCommerceForwards?: ManagedCommerceForwardBinding[]; batchedForwards?: BatchedForwardBinding[]; schemaVersion: 1; baselineSha256: string; replacementForwards: ForwardBinding[]; creationForwards: ForwardBinding[]; runtimeForwards?: RuntimeForwardBinding[]; portableReplacementForwards?: ForwardBinding[]; portableCreationForwards?: PortableCreationBinding[]; managedInvoicingForwards?: ForwardBinding[] };
 export const sqlSha256 = (bytes: Buffer | string): string => createHash("sha256").update(bytes).digest("hex");
@@ -1961,6 +1961,13 @@ export function nativeStoreFunctionDefinitions(bytes: Buffer, signatures: readon
 const nativeStoreInsertSelectTables = ["public.subscription_notice_refusals"];
 const nativeStoreInsertSelectGrant = "GRANT SELECT, INSERT ON public.subscription_notice_refusals TO service_role;";
 const nativeStoreInsertSelectPolicy = "CREATE POLICY subscription_notice_refusals_runtime ON public.subscription_notice_refusals FOR ALL TO service_role USING (true) WITH CHECK (true);";
+const absorptionCensusPolicy = (table: string) => `${table.slice("public.".length)}_absorption_census`;
+const absorptionCensusGrant = (table: string) => `GRANT SELECT (client_id) ON TABLE ${table} TO service_role;`;
+const absorptionCensusSelect = (table: string) => `CREATE POLICY ${absorptionCensusPolicy(table)} ON ${table} FOR SELECT TO service_role USING (true);`;
+function absorptionCensusClassified(slot: NativeStoreSlot, table: string): boolean {
+  const insert = new RegExp(`^INSERT INTO public\\.client_absorption_policy \\(table_name, disposition, note\\) VALUES \\('${table.slice("public.".length)}', 'block', '(?:[^']|'')*'\\);$`, "u");
+  return slot.dataStatements.filter(statement => insert.test(statement)).length === 1;
+}
 const purposeTable = "public.communication_native_sync_state";
 const purposeConstraint = "communication_native_sync_state_purpose_check";
 const keysAre = (value: object, keys: string) => Object.keys(value).sort().join(",") === keys;
@@ -2043,7 +2050,7 @@ function validateNativeStoreClass(registry: ReviewedForwardRegistry, paths: Set<
   const rows = new Set<string>();
   for (const slot of control.slots) {
     const time = nativeStoreTime(slot.path);
-    const keys = ["createdFunctions", "dataStatements", "grantOnlyFunctions", "path", "replacedFunctions", "row", ...["purposeCheck", "checkSupersets", "uniqueSupersets", "droppedIndexes", "createdViews", "createdTriggers"].filter(key => Object.hasOwn(slot, key)), ...(slot.existingTableStatements !== undefined ? ["existingTableStatements"] : []), ...(slot.insertSelectTables !== undefined ? ["insertSelectTables"] : [])].sort().join(",");
+    const keys = ["createdFunctions", "dataStatements", "grantOnlyFunctions", "path", "replacedFunctions", "row", ...["purposeCheck", "checkSupersets", "uniqueSupersets", "droppedIndexes", "createdViews", "createdTriggers", "absorptionCensusTables"].filter(key => Object.hasOwn(slot, key)), ...(slot.existingTableStatements !== undefined ? ["existingTableStatements"] : []), ...(slot.insertSelectTables !== undefined ? ["insertSelectTables"] : [])].sort().join(",");
     if (!keysAre(slot, keys) || typeof slot.row !== "string" || !/^[A-Za-z][A-Za-z0-9_-]*$/u.test(slot.row) || rows.has(slot.row) || !time || time <= previous || paths.has(slot.path)) throw new Error("reviewed native store slot path, row or order drifted");
     previous = time; rows.add(slot.row);
     paths.add(slot.path);
@@ -2056,6 +2063,12 @@ function validateNativeStoreClass(registry: ReviewedForwardRegistry, paths: Set<
     const signatures = [...functions, ...slot.grantOnlyFunctions].map(fn => fn.signature);
     if (new Set(signatures).size !== signatures.length) throw new Error("reviewed native store function lists must be disjoint and unique");
     if (!Array.isArray(slot.dataStatements) || slot.dataStatements.some(sql => typeof sql !== "string" || !/^(?:INSERT|UPDATE|DELETE) /u.test(sql) || sqlStatements(sql).length !== 1) || new Set(slot.dataStatements).size !== slot.dataStatements.length) throw new Error("reviewed native store data statements must be exact named statements");
+    if (slot.absorptionCensusTables !== undefined && (!Array.isArray(slot.absorptionCensusTables)
+      || new Set(slot.absorptionCensusTables).size !== slot.absorptionCensusTables.length
+      || slot.absorptionCensusTables.some(table => !nativeStoreTable(table) || absorptionCensusPolicy(table).length > 63
+        || slot.insertSelectTables?.includes(table) || !absorptionCensusClassified(slot, table)))) {
+      throw new Error("reviewed native store absorption census requires unique qualified tables and exact block classifications");
+    }
     if (slot.insertSelectTables !== undefined) {
       if (slot.row !== "G8") throw new Error("reviewed native store insertSelectTables is G8-only");
       if (JSON.stringify(slot.insertSelectTables) !== JSON.stringify(nativeStoreInsertSelectTables)) throw new Error("reviewed native store insertSelectTables is pinned by the checker");
@@ -2139,7 +2152,7 @@ const nativeStoreRolePrivilege = /^DO \$\$[ \t\n]*BEGIN[ \t\n]+IF EXISTS[ \t\n]*
 
 // The sole DO exception. Keep its grammar and role policy together so a later
 // control can tighten or remove it without changing the generic SQL splitter.
-function nativeStorePrivilege(statement: string, tables: Set<string>, insertSelectTables: string[], views = new Set<string>(), triggerFunctions = new Set<string>()): { kind: "RLS" } | { kind: "POLICY" } | { kind: "FUNCTION" | "TABLE"; targets: string[]; role: string; grant: boolean; conditional: boolean } | null {
+function nativeStorePrivilege(statement: string, tables: Set<string>, insertSelectTables: string[], views = new Set<string>(), triggerFunctions = new Set<string>(), censusTables: string[] = []): { kind: "RLS" } | { kind: "POLICY" } | { kind: "CENSUS"; table: string; action: "grant" | "policy" } | { kind: "FUNCTION" | "TABLE"; targets: string[]; role: string; grant: boolean; conditional: boolean } | null {
   let sql = statement, exactSql = statement, roleGuard: string | undefined;
   const conditional = /^DO\b/iu.test(statement);
   if (conditional) {
@@ -2148,6 +2161,12 @@ function nativeStorePrivilege(statement: string, tables: Set<string>, insertSele
     if (!nativeStoreAscii(block[2]!)) throw new Error("reviewed native store conditional privilege requires ASCII identifiers and verbs");
     exactSql = block[2]!;
     roleGuard = block[1]!.toLowerCase(); sql = block[2]!.replace(/;?$/u, ";");
+  }
+  for (const table of censusTables) {
+    const action = exactSql === absorptionCensusGrant(table) ? "grant" : exactSql === absorptionCensusSelect(table) ? "policy" : null;
+    if (!action) continue;
+    if (!conditional || roleGuard !== "service_role") throw new Error("reviewed native store absorption census requires the service_role conditional shell");
+    return { kind: "CENSUS", table, action };
   }
   if (exactSql === nativeStoreInsertSelectGrant || exactSql === nativeStoreInsertSelectPolicy) {
     if (!insertSelectTables.includes(nativeStoreInsertSelectTables[0]!)) throw new Error("reviewed native store INSERT/SELECT requires the pinned G8 table");
@@ -2303,6 +2322,7 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   const existingTableStatements = slot.existingTableStatements ?? [];
   const revoked = new Set<string>(), defined = new Set<string>(), blocks = new Set<string>(), data = new Set<string>(), tables = new Set<string>();
   const dropped = new Set<string>(), triggers = new Set<string>(), views = new Set<string>(), revokedViews = new Set<string>(), completedChecks = new Set<string>(), completedUniques = new Set<string>();
+  const censusTables = slot.absorptionCensusTables ?? [], censusGrants = new Set<string>(), censusPolicies = new Set<string>();
   let pending: { kind: "CHECK" | "UNIQUE"; key: string } | undefined;
   let droppedCheck = false, addedCheck = false, existingTablePosition = 0, insertSelectPolicy = false;
   for (const statement of statements) {
@@ -2374,8 +2394,14 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
       if (/--|\/\*|["\\]/u.test(header) || searchPath !== fixed.searchPath || (/\bSECURITY DEFINER\b/iu.test(header) && !searchPath) || (header.match(/\bSET search_path\b/giu)?.length ?? 0) > 1) throw new Error("reviewed native store unpinned SECURITY DEFINER or search_path");
       defined.add(signature); continue;
     }
-    const privilege = nativeStorePrivilege(statement, tables, slot.insertSelectTables ?? [], views, triggerFunctions);
+    const privilege = nativeStorePrivilege(statement, tables, slot.insertSelectTables ?? [], views, triggerFunctions, censusTables);
     if (privilege) {
+      if (privilege.kind === "CENSUS") {
+        if (!tables.has(privilege.table)) throw new Error("reviewed native store absorption census requires a table created earlier in the same slot");
+        const seen = privilege.action === "grant" ? censusGrants : censusPolicies;
+        if (seen.has(privilege.table)) throw new Error("reviewed native store duplicate absorption census privilege");
+        seen.add(privilege.table); continue;
+      }
       if (privilege.kind === "POLICY") {
         if (insertSelectPolicy) throw new Error("reviewed native store INSERT/SELECT permits at most one policy");
         insertSelectPolicy = true; continue;
@@ -2432,5 +2458,6 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   if (views.size !== (slot.createdViews?.length ?? 0)) throw new Error("reviewed native store created view missing");
   if ([...views].some(view => !revokedViews.has(view))) throw new Error("reviewed native store created view missing PUBLIC revoke");
   if (data.size !== slot.dataStatements.length) throw new Error("reviewed native store named data statement missing");
+  if (censusTables.some(table => !censusGrants.has(table) || !censusPolicies.has(table))) throw new Error("reviewed native store absorption census requires exactly one grant and policy per listed table");
   if (existingTablePosition !== existingTableStatements.length) throw new Error("reviewed native store existing-table statement missing");
 }
