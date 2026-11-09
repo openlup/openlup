@@ -1250,6 +1250,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261106140000_subscriber_winback_policy.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4155,6 +4159,10 @@
     },
     {
       "path": "packages/platform/sql/20261106120000_subscription_notice_producers.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261106140000_subscriber_winback_policy.sql",
       "class": "public-output"
     },
     {
@@ -8147,6 +8155,10 @@
     },
     {
       "path": "packages/platform/src/subscriptions/postgresStockWaitStore.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/postgresWinback.ts",
       "class": "public-output"
     },
     {
@@ -28963,6 +28975,10 @@
     },
     {
       "path": "tests/postgres/subscriptionStockWaitCases.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionWinback.test.ts",
       "class": "public-output"
     },
     {

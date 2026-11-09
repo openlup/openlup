@@ -1171,6 +1171,8 @@ export { subscriptionLifecycleTemplate, createSubscriptionLifecycleMessages } fr
 export { createPostgresLifecycleMessages, type NativeLifecycleMessagesOptions, type NativeLifecycleNotice } from "./postgresLifecycleMessages.js";
 export { createSubscriptionCommandExamples } from "./commandExamples.js";
 export { createSubscriptionServices } from "./services.js";
+export { createPostgresSubscriptionWinback } from "./postgresWinback.js";
+export type { NativeWinbackOptions } from "./postgresWinback.js";
 ```
 ## dist/subscriptions/lifecycleMessages.d.ts
 
@@ -1718,6 +1720,51 @@ export declare function createPostgresStockWaitStore(options: NativeStockWaitBin
         reason: "not_stock_only" | "external_ownership" | "stale_snapshot" | "lease_active" | "inventory_unavailable";
     }>;
 };
+```
+## dist/subscriptions/postgresWinback.d.ts
+
+```ts
+import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+type WinbackCommand = {
+    idempotencyKey: string;
+    recipientReference: string;
+    templateReference: string;
+};
+type WinbackReceipt = {
+    state: "accepted" | "failed";
+    deliveryReference: string | null;
+    attemptCount: number;
+};
+export interface NativeWinbackOptions {
+    /** An exclusive autocommit session, never a transaction spanning transport. */
+    withSession<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
+    /** The existing durable delivery rail owns ambiguous acceptance and retries. */
+    delivery: {
+        readReceipt(key: string): Promise<WinbackReceipt | null>;
+        send(command: WinbackCommand): Promise<WinbackReceipt>;
+    };
+    /** Trusted host binds neutral content and the localized account landing. */
+    bind(input: {
+        subscriptionId: string;
+        clientId: string;
+        email: string;
+        firstName: string | null;
+        country: string | null;
+    }): Promise<Omit<WinbackCommand, "idempotencyKey">>;
+}
+/** Explicit winback-only selection; no dispatcher alias or other retention planner. */
+export declare function createPostgresSubscriptionWinback(options: NativeWinbackOptions): {
+    run(limit?: number): Promise<{
+        plan: unknown;
+        scanned: number;
+        sent: number;
+        deduped: number;
+        refused: number;
+        failed: number;
+        busy: number;
+    }>;
+};
+export {};
 ```
 ## dist/subscriptions/renewalCycleFailureMechanism.d.ts
 
