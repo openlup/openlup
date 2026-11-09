@@ -55,3 +55,4 @@ export { createSubscriptionCommandExamples } from "./commandExamples.js";
 export { createSubscriptionServices } from "./services.js";
 export { createPostgresSubscriptionWinback } from "./postgresWinback.js";
 export type { NativeWinbackOptions } from "./postgresWinback.js";
+export { createPostgresSubscriptionAutoResume } from "./postgresAutoResume.js";
