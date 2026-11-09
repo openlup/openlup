@@ -67,6 +67,10 @@ The optional public origin and insecure-HTTP opt-in are owned configuration and
 upgrade inputs. Origin policy, session handling and native composition stay
 managed. The private captured mailbox and process sessions are generated local
 runtime state, not owned configuration or installed package sources.
+The demonstration container's quote-acceptance keyring is also private generated
+state under `.context/`, admitted only by the existing database demonstration
+marker. The same container reuses it on restart; container recreation discards
+it. Customer environments provision their own keyring outside served assets.
 
 The optional `supportEmail` is owned configuration. Managed support rendering
 uses text nodes only. Partner/review host composition is managed and reuses the
@@ -113,7 +117,7 @@ request bodies carry private capabilities. The required purchase spec remains
 byte-identical. Focused regressions live in `test/checkout-recovery.test.ts`.
 
 
-The one temporary mode-price function is managed in `shared/interim-pricing.ts`.
+The one temporary mode-price function is managed in `shared/offer-estimate.ts`.
 Its rate/quantum and demonstration purchase values are owned typed configuration;
 `owned/demo-seed.ts` uses the same function for distinct per-mode price entries.
 The installer compares existing authored price facts and refuses a changed-price
@@ -154,3 +158,15 @@ remain private generated data. [Owned locale copy](../owned/renewal-copy.ts)
 supplies the paid subject and line labels through shared configuration validation.
 The lifecycle command runs one bounded pass without starting a scheduler or a
 real mail provider. Native subscription notices keep their existing owner.
+
+
+Shipping fee and free-delivery threshold are owned offer values. The managed
+quote binding passes them to the installed shipping policy; it owns no threshold
+calculation. The purchase binding retains the accepted shipping agreement for
+renewals. There is no separate `renewalShippingMinor` setting: current configuration
+cannot override retained terms or a frozen cycle's shipping amount.
+
+`browser/renewal.proof.ts` is a managed, fixture-backed local recipe. Its source
+PostgreSQL runner supplies the private mailbox and expected account/order values;
+the customer uses only sign-in and account read controls. Fixture files and
+Playwright configurations under `.context/` are generated private state.

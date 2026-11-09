@@ -136,7 +136,7 @@ it("W2 credits only the matching due cycle, excludes paid/cancelled credit and r
     await budget(f, 12, 2, 6);
   }
   await db.query("SAVEPOINT unsupported_cycle");
-  await expect(db.query("UPDATE public.subscription_cycles SET status='skipped' WHERE subscription_id=$1", [own])).rejects.toMatchObject({ code: "23514", constraint: "subscription_cycles_status_check" });
+  await expect(db.query("UPDATE public.subscription_cycles SET status='unsupported' WHERE subscription_id=$1", [own])).rejects.toMatchObject({ code: "23514", constraint: "subscription_cycles_status_check" });
   await db.query("ROLLBACK TO SAVEPOINT unsupported_cycle");
 });
 

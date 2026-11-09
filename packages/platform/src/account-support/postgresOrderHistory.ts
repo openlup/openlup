@@ -43,7 +43,7 @@ export function createPostgresCustomerOrderHistoryReadStore(
       const result = await rows(`SELECT DISTINCT ON(intent.order_id) intent.order_id,intent.status
         FROM public.commerce_settlement_intents intent JOIN owned_orders o ON o.id=intent.order_id
         WHERE o.id=ANY($3::uuid[]) ORDER BY intent.order_id,intent.updated_at DESC,intent.id DESC`, [orderIds]);
-      return new Map(result.map(row => [text(row.order_id), row.status === "settled" ? "succeeded" : row.status === "failed" ? "failed" : "pending"]));
+      return new Map(result.map(row => [text(row.order_id), row.status === "settled" ? "succeeded" : row.status === "failed" ? "failed" : row.status === "cancelled" ? "cancelled" : "pending"]));
     },
     async readFulfillments(owner, orderIds) {
       if (owner !== clientId) return [];

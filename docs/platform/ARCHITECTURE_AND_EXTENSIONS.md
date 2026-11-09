@@ -1825,6 +1825,40 @@ reference composition and activation remain host choices.
 
 ## Subscription contracts
 
+Native notice production uses the existing lifecycle binding and its trusted
+`bind` callback. Queued renewal payloads retain `renewalAt`; the binder derives
+charge, delivery-window and edit-deadline labels from that instant and its owned
+calendar policy. Renewal facts live in the dedicated reminder ledger, isolated
+from customer-chosen lifecycle keys. Existing ledger IDs and accepted delivery
+keys remain authoritative; typed legacy renewal facts are still readable.
+`phaseFactsAllowed` is false after rescheduling; `phaseFacts`
+then contains no current acquisition/amount document. Pause notices carry a
+window UUID and the cadence-aligned next delivery, and resolved windows are
+durably suppressed before binding. Existing source names, aliases and
+`subscription-notice:<source>:<id>` delivery keys retain their meaning.
+
+The optional `notices` policy supplies positive integer timing/cap values. The
+binding passes timing explicitly to additive renewal and pause producer overloads.
+The original signatures delegate with the documented defaults in the forward;
+there is no session policy state.
+Starter freshness additionally requires the retained marker and correlated
+native paid evidence, while the notice phase counts every materialized cycle.
+Imported or uncorrelated starter histories may miss the early reminder and use
+standard freshness. Complete identity-preserving native store transfer retains
+the cycle census; standalone restore-role row imports do not prove that premise.
+
+At-risk discovery uses a service-only SQL definer entry; the replaced internal scan
+remains owner-only. At-risk notices use template controls without substituting a
+marketing consent gate. Valid accepted receipts and keyed disabled-template outcomes spend their
+cause/day allowance; failures, missing recipients and invalid-reference anomalies
+do not. Outcome events are neither deliverable aliases nor policy refusals.
+Transport idempotency must cover ambiguous acceptance across retry. Operator
+escalation requires `bindOperator`; its explicit input contains only notice ID,
+case ID and template, with recipient email separately. Operator claims never enter
+the customer claim and preserve fresh eligibility, receipt repair and manual
+review at the configured idempotency horizon. No live-provider qualification is
+established by these captured-delivery mechanisms.
+
 The opt-in classic package editor uses `createClassicPackageRepricer` and
 `createPostgresPackageEditor` from `@openlup/platform/subscriptions`. The host
 supplies authenticated actor/client ownership, request bounds, the existing
@@ -2031,7 +2065,13 @@ for cycle correlation and frozen retry authorization.
 A native prepare commits cycle/order/items/settlement/reservation and attempt;
 a native outcome commits settlement, outcome, schedule/counter and reservation.
 Verified recovery must bind the same cycle and commit settlement/receipt/case and
-counter together. Managed create/prepare and failure RPCs remain separate units;
+counter together. The recovery-truth forward gates these paid effects on an
+applied captured settlement from the payment owner. Evidence retained for review
+returns `payment_failed` without changing the obligation, counter, stock or case
+and without a paid recovery receipt. The payment-truth event remains its durable
+review/replay evidence; it does not consume the attempt's recovery receipt. The
+native retry driver reports a row error for reconciliation instead of success.
+Genuinely paid recovery keeps its existing effects and immutable receipt. Managed create/prepare and failure RPCs remain separate units;
 no transaction spans external payment execution. Never interpret missing ACK or
 nullable money as permission to execute again. Frozen revision, fingerprint,
 original timestamp text and nested snapshots survive retries and future edits.
@@ -2114,8 +2154,33 @@ active subscription; late settlement/delivery supplies the later-only shift.
 Stock secured is not payment, realization is not parcel arrival, and no payment
 I/O runs inside these SQL transactions. M4 retains M2 recovery eligibility and
 excludes waits before the normal LIMIT. M5 maps started/resumed transactional
-notices and immediately admits positive customer cancellations to the existing
-120-day, cancellation-episode-deduplicated winback scan.
+notices and admits positive customer cancellations to the configured winback
+scan after its minimum cancellation age.
+
+`createPostgresSubscriptionWinback` explicitly selects winback only, outside the
+lifecycle notice dispatcher. A customer cancellation event must match the
+current cancelled episode. The existing native intent key identifies that episode;
+the delivery key `winback:<subscription UUID>` suppresses repeat sends across
+episodes. The native receipt rail has only accepted and failed states: accepted
+is its non-failed outcome, while failed remains retryable. An accepted send is
+recorded before its cancellation event. Session exclusion serializes sends for
+one subscription; a persisted receipt under the subscription key or retained episode intent key reconciles an ambiguous transport result before claiming or sending.
+The worker rechecks source, subscription, consent and controls after host binding
+and immediately before send. Reactivation after planning refuses delivery.
+
+The trusted host configures `commerce_settings.value_text` at key
+`subscriber_winback_policy` with a JSON object. Omitted fields preserve the
+installed native behavior: `requireRetentionConsent: true`,
+`minCancellationAgeDays: 14`, `maxCancellationAgeDays: 120`.
+The window includes the minimum and excludes the maximum. Unknown fields,
+invalid types and inverted bounds refuse; no policy row is seeded by installation.
+Only winback can disable this consent gate. Starter composition must explicitly
+set it true; an adopter can explicitly set it false. The account choices API exposes
+newsletter and offers, not retention; a trusted host can record
+`retention_marketing` consent in the native consent store. Starter integration
+must show consent refusal and host-recorded consent, or add its own capture.
+Rendering, the localized account landing and reactivation confirmation remain
+host composition; this worker neither mounts pages nor activates recap/review.
 
 Managed ATP subtracts live provider hard holds, fulfillable-location safety and
 remaining active subscription demand within 14 days. Only the concrete
@@ -2185,8 +2250,48 @@ text never pass through. Under the actor/key lock, preview and apply compare
 the original host request before calling `futureTerms`: a stored terminal receipt
 returns immediately, and a matching stored preview supplies its already-bound
 translation to apply. Later host address/catalogue changes cannot preempt replay;
-changed requests still refuse as idempotency conflicts. The adapter refuses pause without writing. Existing native lifecycle
-callers remain unchanged. Native multi-cycle prepaid and the M07 prepared-attempt
+changed requests still refuse as idempotency conflicts. The lifecycle-closure forward enables explicit pause through this adapter. Pause
+closes open cases as `paused`, revokes their recovery tokens, skips queued notices
+and terminalizes unpaid cycles as `skipped`, their nonsettled intents as
+`cancelled`, and payable unpaid orders as `cancelled`. A sending notice remains
+owned by its dispatcher. Cancellation converges on the same unpaid cleanup with
+`cancelled` cycles; paid cycles and existing parcels keep their obligations.
+Prepared, live-leased or ambiguous payment work refuses closure atomically.
+The fixed authenticated pause wrapper delegates to the same closure while
+retaining its original authority.
+It fires the explicitly named order line-sum constraint at the end of commerce
+cleanup while still in its definer context, then puts that constraint back into
+deferred mode. The invoker trigger and its definition stay unchanged; service
+calls keep deferred checking. A mismatch still raises `23514` and rolls back.
+Its error detail exposes the caller's own order identifier and declared/line
+amounts, after the wrapper's owner check; no commerce-table read grant is added.
+
+
+`SubscriptionLifecycleTerms` configures pause days/calendar months, slide bounds,
+order-now delay and reactivation delay through `binding.lifecycleTerms`. These
+trusted terms are a separate SQL argument; customer payloads cannot override
+them. Existing SQL signatures retain compatibility values. New overloads have
+no defaults and admit exactly the existing action set. Generic quote/edit
+branches and preview are unchanged. Lifecycle skip, changed-date slide and order
+now use the stored edit window: exact cutoff passes, later requests refuse.
+Pause, resume, cancel and reactivation have their separate eligibility rules.
+`order_now` and `reactivate` require literal `confirmedChargeTiming: true`,
+healthy method evidence and renewal terms. They schedule eligibility without
+executing payment in the command. Reactivation clears cancellation markers and
+increments the template version once.
+
+Structured `SubscriptionCancelSurvey` and `SubscriptionSaveOffer` accompany
+pause/cancel commands; slide accepts a retention reason. The host may inject
+`retentionReasonCodes`; legacy string callers retain string payloads. The
+nonmaterialized `subscription_retention_outcomes` view selects pause/cancel
+events carrying a survey or offer field, without a price change or discount
+grant. Legacy strings are not parsed into structured projection values. It has no browser
+or service-role SELECT grant. The account-support transcription preserves these
+same command carriers. The new lifecycle terms contain no retained purchase,
+pricing, cadence-offer or acquisition override. Stored receipts replay before
+reading changed host timing policy; a changed command still conflicts.
+Timed auto-resume, its system-event alias and starter portal mounting are
+separate integrations. Native multi-cycle prepaid and the M07 prepared-attempt
 store retain named unsupported declarations. The unbound native descriptor keeps stock recovery unavailable;
 the explicitly selected M10 reference binding declares it selected, with the
 composed PostgreSQL witness. N1 retry recovery is selected after its store proofs. The
@@ -2290,10 +2395,23 @@ precede this facade. M12 retains account aggregation. The installed consumer
 covers enabled execution and readiness, actor and lifecycle-identity refusals.
 
 `createPostgresLifecycleMessages` is a native scheduled-host binding over the
-existing dunning queue, reminder ledger and subscription events. It maps native
+existing dunning queue, reminder ledger, typed outbox and subscription events. It maps native
 activation and customer pause/resume/cancel/skip/slide/bundle-edit facts to the
 existing lifecycle templates; it does not invent a parcel arrival or service
 pause. Both reminder producers run explicitly in this scheduled operation.
+New system notice keys live in the typed outbox rather than the customer command
+event namespace, under a separate `subscription_notice` aggregate so pending notices
+do not block ordinary subscription outbox work. Legacy event reads require the notice's own event type; existing IDs
+and `subscription-notice:<source>:<id>` keys remain valid across the carrier change.
+Base pause ledger reminders keep their original reminder source and key. Their
+subscription/UTC end-day bucket prevents a second window notice, and unsent rows
+undergo the same live-window check before delivery. A resumed or missing window
+is durably skipped; an open match supplies its window facts without re-keying history.
+The at-risk cause/day cap counts accepted and disabled history from both carriers,
+using retained typed keys after terminal outbox payload compaction.
+Accepted or terminally skipped outbox notices are completed, including receipt-first
+reconciliation after an interrupted completion. Customer lifecycle confirmations
+keep their own event IDs and receipts.
 For address-change events, a host uses either this binding or an outbox handler, not both, because their idempotency keys differ and the customer would receive two mails.
 `run(limit)` accepts 1–100 and mounts no HTTP route or scheduler. Supply one
 exclusive autocommit connection per `withSession` callback, host-composed transactional delivery
@@ -2522,7 +2640,12 @@ continue, with no uncertain receipt for these unsent failures. Uncertain transpo
 or lost local acknowledgement cannot become another send.
 
 The account-history host projection verifies owner/order before its query and
-keeps correction parent, signed total, currency and download availability. Missing
+keeps correction parent, signed total, currency and download availability. Invoice
+owner/order/document checks compare standard UUID identifiers by value, including
+uppercase and mixed-case spelling. Echoes retain their source spelling; opaque
+host references, provider references and artifact identities remain case-sensitive.
+The [restricted native witness](../../tests/postgres/invoicingCaptured.test.ts)
+checks owned history and PDF access with alternate UUID letter case. Missing
 native parity is typed unsupported with `host_binding_required`. Operator auth
 precedes query and customer ticket ownership precedes PDF fetch/validation. The
 reference browser client consumes the host route without importing the server

@@ -3189,8 +3189,247 @@
         }
       },
       {
+        "row": "customer-command-key-isolation",
+        "path": "db/platform/migrations/20261106050000_customer_command_key_isolation.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.customer_subscription_pause_as_actor(uuid,text,text,text)",
+            "beforeSha256": "ad6184a829ff9538885bd9acbfecb99dc1f7c7af4282afb2b5832b437be8eacf",
+            "searchPath": "pg_catalog"
+          },
+          {
+            "signature": "public.customer_subscription_preview_bundle_as_actor(uuid,text,jsonb,jsonb,jsonb,integer,integer)",
+            "beforeSha256": "d1df1dd5d72f894632ad5cf6daa739ddae72b264340caa129ac887bd36dde0a1",
+            "searchPath": "pg_catalog"
+          },
+          {
+            "signature": "public.customer_subscription_apply_bundle_as_actor(uuid,text,text,jsonb,jsonb,jsonb,integer,integer)",
+            "beforeSha256": "d2c82e5591e1fa8fa98a6d829307ce335c9a9c808989a2879f58c5d6704c26a8",
+            "searchPath": "pg_catalog"
+          },
+          {
+            "signature": "public.dunning_lifecycle_handle_failure(uuid,timestamptz,text,text,integer,timestamptz,text,text)",
+            "beforeSha256": "9682edba38b5b397736af12862fd9a8315ae4b2fadf4a9774f502fb337e3d5bb",
+            "searchPath": "public, pg_catalog"
+          }
+        ],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
+        "row": "RecoveryTruth",
+        "path": "db/platform/migrations/20261106060000_subscription_retry_recovery_truth.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.subscription_retry_record_recovery(uuid,text,jsonb)",
+            "beforeSha256": "a2f9cc370f53e23abe4e0e5d4b47924a0cad238f36c8e00a015bef437ee26eaa",
+            "searchPath": "pg_catalog"
+          }
+        ],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
+        "row": "C2-1",
+        "path": "db/platform/migrations/20261106100000_subscription_lifecycle_closure.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.subscription_command_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
+            "beforeSha256": "46cc96287603231687d1fa54f413087e1b6596e9ec8c2c1e5700e4a0951789be",
+            "searchPath": "pg_catalog"
+          },
+          {
+            "signature": "public.subscription_apply_lifecycle_action(uuid,text,uuid,text,jsonb,timestamptz)",
+            "beforeSha256": "f80de5fe4097578d2d3f86e50f80e0040da22ddeef1cd11d6e7ba8a3088e8a0e",
+            "searchPath": "public, pg_catalog"
+          },
+          {
+            "signature": "public.customer_subscription_pause_as_actor(uuid,text,text,text)",
+            "beforeSha256": "ae7d65c5bd6e613246e8194b5f510a763687023ae7d9cb18e4eb61fc3979aa57",
+            "searchPath": "pg_catalog"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.subscription_terminalize_unpaid_artifacts(uuid,timestamptz,text,text)",
+            "searchPath": "pg_catalog"
+          },
+          {
+            "signature": "public.subscription_pause_close_recovery(uuid,text,uuid,timestamptz)",
+            "searchPath": "pg_catalog"
+          },
+          {
+            "signature": "public.subscription_apply_lifecycle_action(uuid,text,uuid,text,jsonb,timestamptz,jsonb)",
+            "searchPath": "pg_catalog"
+          },
+          {
+            "signature": "public.subscription_command_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz,jsonb)",
+            "searchPath": "pg_catalog"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "existingTableStatements": [],
+        "dataStatements": [],
+        "createdViews": [
+          {
+            "name": "public.subscription_retention_outcomes",
+            "sha256": "aec39e774670351c944ebe7ea18c9da7496cc76416fdee15254e6e191d77b115"
+          }
+        ],
+        "checkSupersets": [
+          {
+            "table": "public.subscription_dunning_cases",
+            "constraint": "subscription_dunning_cases_status_check",
+            "column": "status",
+            "values": [
+              "open",
+              "recovered",
+              "expired",
+              "cancelled",
+              "paused"
+            ]
+          },
+          {
+            "table": "public.subscription_cycles",
+            "constraint": "subscription_cycles_status_check",
+            "column": "status",
+            "values": [
+              "planned",
+              "payment_pending",
+              "paid",
+              "cancelled",
+              "skipped"
+            ]
+          },
+          {
+            "table": "public.commerce_settlement_intents",
+            "constraint": "commerce_settlement_intents_status_check",
+            "column": "status",
+            "values": [
+              "created",
+              "settled",
+              "failed",
+              "cancelled"
+            ]
+          }
+        ]
+      },
+      {
+        "row": "C2-3",
+        "path": "db/platform/migrations/20261106120000_subscription_notice_producers.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.dunning_lifecycle_queue_notice(uuid,text,text,integer,text)",
+            "beforeSha256": "3d364c7e36f4973bbf8f131ca528ffeb59e0b1cd247b39b2e17a24b3e60e56fb",
+            "searchPath": "public, pg_catalog"
+          },
+          {
+            "signature": "public.subscription_dunning_claim_batch(integer,integer,integer)",
+            "beforeSha256": "d0b16d650a638e022eba3cff5318d1ddad4ed861cc6313d836faee71a860cecb",
+            "searchPath": "public, pg_catalog"
+          },
+          {
+            "signature": "public.dunning_lifecycle_renewal_reminder_enqueue(integer)",
+            "beforeSha256": "b4fbc21b216322c7de50b0d9b93a5724553c939148b2e11878d8e20a0399ee13",
+            "searchPath": "public, pg_catalog"
+          },
+          {
+            "signature": "public.dunning_lifecycle_pause_reminder_dispatch(integer)",
+            "beforeSha256": "8becebebf448ed150e32f1d9aa31745ea8ae269731eea5ed2f2fc800974b3d93",
+            "searchPath": "public, pg_catalog"
+          },
+          {
+            "signature": "public.dunning_lifecycle_scan_at_risk(integer,integer,integer)",
+            "beforeSha256": "0df0406d99a666efeba6e756cfbc39c8eba568a8c3f3613750cf41767e17d8fa",
+            "searchPath": "public, pg_catalog"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.subscription_dunning_queue_operator_notices(uuid,text,integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_dunning_claim_operator_batch(integer,integer,integer,integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_dunning_operator_delivery_eligible(uuid,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.dunning_lifecycle_renewal_reminder_enqueue(integer,integer,integer,integer,integer)",
+            "searchPath": "pg_catalog"
+          },
+          {
+            "signature": "public.dunning_lifecycle_pause_reminder_dispatch(integer,integer)",
+            "searchPath": "pg_catalog"
+          },
+          {
+            "signature": "public.dunning_lifecycle_scan_at_risk_service(integer,integer,integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "existingTableStatements": [
+          "ALTER TABLE public.subscription_dunning_notifications ALTER COLUMN recipient_ref DROP NOT NULL;",
+          "ALTER TABLE public.subscription_dunning_notifications ADD COLUMN operator_recipient_ref uuid REFERENCES public.notification_recipients(id);",
+          "ALTER TABLE public.subscription_dunning_notifications ADD COLUMN operator_dispatch_eligible boolean NOT NULL DEFAULT false;",
+          "ALTER TABLE public.subscription_dunning_notifications ADD COLUMN first_attempt_at timestamptz;",
+          "ALTER TABLE public.subscription_dunning_notifications ADD CONSTRAINT subscription_dunning_notifications_recipient_binding_check CHECK ((recipient_kind='customer' AND recipient_ref IS NOT NULL AND operator_recipient_ref IS NULL) OR (recipient_kind='operator' AND (NOT operator_dispatch_eligible OR recipient_ref IS NULL)));",
+          "ALTER TABLE public.subscription_reminder_ledger ADD COLUMN renewal_at timestamptz;"
+        ],
+        "uniqueSupersets": [
+          {
+            "table": "public.subscription_dunning_notifications",
+            "constraint": "subscription_dunning_notifications_case_kind_attempt_key",
+            "columns": [
+              "case_id",
+              "notification_kind",
+              "retry_attempt",
+              "recipient_kind",
+              "recipient_ref",
+              "operator_recipient_ref"
+            ],
+            "nullsNotDistinct": true
+          }
+        ]
+      },
+      {
+        "row": "C2-5",
+        "path": "db/platform/migrations/20261106140000_subscriber_winback_policy.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.subscriber_retention_plan_due(text,integer,timestamptz)",
+            "beforeSha256": "cdcdc7de6fe13e33dc724e9d59ef934cb6ec49eda1e0c3a5ec8126cff5911c71",
+            "searchPath": "public, pg_catalog"
+          },
+          {
+            "signature": "public.subscriber_retention_eligibility_refusal(text,text,timestamptz)",
+            "beforeSha256": "73db45b446497d31fa49e8afba95834fcd757c19120a49acf02ab5909e76de6c",
+            "searchPath": "public, pg_catalog"
+          },
+          {
+            "signature": "public.subscriber_retention_create_intent(text,text,uuid,text,text,text,text,integer,text,text,text)",
+            "beforeSha256": "1f3da9d3303a17b2e32e6a984a6cd2691c89b126e00cfcf07c894c2647547ba2",
+            "searchPath": "public, pg_catalog"
+          },
+          {
+            "signature": "public.subscriber_retention_claim_intent(text,text,timestamptz)",
+            "beforeSha256": "3e14882b1e0eb614017491578d399d401759ebc04bebed41824b95e52706d396",
+            "searchPath": "public, pg_catalog"
+          }
+        ],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
         "row": "package-editor",
-        "path": "db/platform/migrations/20261104100000_subscription_package_editor.sql",
+        "path": "db/platform/migrations/20261106160000_subscription_package_editor.sql",
         "replacedFunctions": [],
         "createdFunctions": [
           {
@@ -3492,7 +3731,172 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261104100000_subscription_package_editor.sql",
+      "path": "db/platform/migrations/20261106050000_customer_command_key_isolation.sql",
+      "sha256": "c8ab11f943b18dcbb57c50f9aa51dd7f181b59374b3fc1ba0c1e4548d50404a4",
+      "functions": [
+        {
+          "signature": "public.customer_subscription_pause_as_actor(uuid,text,text,text)",
+          "beforeSha256": "ad6184a829ff9538885bd9acbfecb99dc1f7c7af4282afb2b5832b437be8eacf",
+          "afterSha256": "ae7d65c5bd6e613246e8194b5f510a763687023ae7d9cb18e4eb61fc3979aa57"
+        },
+        {
+          "signature": "public.customer_subscription_preview_bundle_as_actor(uuid,text,jsonb,jsonb,jsonb,integer,integer)",
+          "beforeSha256": "d1df1dd5d72f894632ad5cf6daa739ddae72b264340caa129ac887bd36dde0a1",
+          "afterSha256": "b57ff76022d478222166a787f5b519a0267ba2986e0be922a7f4088581ca548d"
+        },
+        {
+          "signature": "public.customer_subscription_apply_bundle_as_actor(uuid,text,text,jsonb,jsonb,jsonb,integer,integer)",
+          "beforeSha256": "d2c82e5591e1fa8fa98a6d829307ce335c9a9c808989a2879f58c5d6704c26a8",
+          "afterSha256": "ed57f54c925c1e91403b966cf796c4198a3a93aa5573534a9a8921ea0aa1c4a2"
+        },
+        {
+          "signature": "public.dunning_lifecycle_handle_failure(uuid,timestamptz,text,text,integer,timestamptz,text,text)",
+          "beforeSha256": "9682edba38b5b397736af12862fd9a8315ae4b2fadf4a9774f502fb337e3d5bb",
+          "afterSha256": "445578959cd43bf23bb5caa71a1e531533e678b334bced24f7eacac8be6e4df0"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261106060000_subscription_retry_recovery_truth.sql",
+      "sha256": "99c48e6ea421b83a1273874fd6a490c42c545217d4fdcdfb2e98cdfabdf6c425",
+      "functions": [
+        {
+          "signature": "public.subscription_retry_record_recovery(uuid,text,jsonb)",
+          "beforeSha256": "a2f9cc370f53e23abe4e0e5d4b47924a0cad238f36c8e00a015bef437ee26eaa",
+          "afterSha256": "231cd0be749b3e90f6beb50de1077435f4d51bd94c046e05818df5e9246bb1ee"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261106100000_subscription_lifecycle_closure.sql",
+      "sha256": "ba8067a2d8b18f95eb4a446a8a08ca8e1f49fe05d759e925145a0d0f7e089874",
+      "functions": [
+        {
+          "signature": "public.subscription_command_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
+          "beforeSha256": "46cc96287603231687d1fa54f413087e1b6596e9ec8c2c1e5700e4a0951789be",
+          "afterSha256": "8412a5a368a61bea25754535f9f44d1da068b7680efc0c81bbc1e4ad0fb8953c"
+        },
+        {
+          "signature": "public.subscription_apply_lifecycle_action(uuid,text,uuid,text,jsonb,timestamptz)",
+          "beforeSha256": "f80de5fe4097578d2d3f86e50f80e0040da22ddeef1cd11d6e7ba8a3088e8a0e",
+          "afterSha256": "3f257ea6ace6f4082749317bb85ff440fd1b1c223387ab78610ad92c2f4179ff"
+        },
+        {
+          "signature": "public.customer_subscription_pause_as_actor(uuid,text,text,text)",
+          "beforeSha256": "ae7d65c5bd6e613246e8194b5f510a763687023ae7d9cb18e4eb61fc3979aa57",
+          "afterSha256": "5d7dcbe4157360f1d721a6278e680fc5ec59bad449b48704c990ea3ade123332"
+        },
+        {
+          "signature": "public.subscription_terminalize_unpaid_artifacts(uuid,timestamptz,text,text)",
+          "beforeSha256": null,
+          "afterSha256": "1a0f9b5d93d7d3c2a4a850d4d5c9ed6d764c1bc9a83371c17f0f6aba07ce0ac7"
+        },
+        {
+          "signature": "public.subscription_pause_close_recovery(uuid,text,uuid,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "2c1435b6736e1ea884ad2796cac0f51e48ce5d8956103485f479a698afc21615"
+        },
+        {
+          "signature": "public.subscription_apply_lifecycle_action(uuid,text,uuid,text,jsonb,timestamptz,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "b29fd0262d579ecb1d6afabe5863bfbe99069f286f193335904e82acd5523bcb"
+        },
+        {
+          "signature": "public.subscription_command_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "759206c10b90521bbf09f64e782c2b4ad451ca2ece82e5b01f9b1ea2169a6b07"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261106120000_subscription_notice_producers.sql",
+      "sha256": "25e5328eb58ec9b0f750a256d67d18d6a07073bdca1eeb4e7532cd901a8f4019",
+      "functions": [
+        {
+          "signature": "public.dunning_lifecycle_queue_notice(uuid,text,text,integer,text)",
+          "beforeSha256": "3d364c7e36f4973bbf8f131ca528ffeb59e0b1cd247b39b2e17a24b3e60e56fb",
+          "afterSha256": "c6d67e728b87bbfefd5348daff7cbd44f0b026449247b57eec7a1ef6d9067c29"
+        },
+        {
+          "signature": "public.subscription_dunning_claim_batch(integer,integer,integer)",
+          "beforeSha256": "d0b16d650a638e022eba3cff5318d1ddad4ed861cc6313d836faee71a860cecb",
+          "afterSha256": "7b4e3b525002baa2567fad962677f0f4ead4f7cfd0eb575d81ab2d57f1874a83"
+        },
+        {
+          "signature": "public.dunning_lifecycle_renewal_reminder_enqueue(integer)",
+          "beforeSha256": "b4fbc21b216322c7de50b0d9b93a5724553c939148b2e11878d8e20a0399ee13",
+          "afterSha256": "78014e87ce7d688f33f7dd3dcf90bfa5b884a3abc11e084ad4b0a8a0e201e033"
+        },
+        {
+          "signature": "public.dunning_lifecycle_pause_reminder_dispatch(integer)",
+          "beforeSha256": "8becebebf448ed150e32f1d9aa31745ea8ae269731eea5ed2f2fc800974b3d93",
+          "afterSha256": "baa8915601fab970c5c9858452b900c7e2c4bad3ccf9a1e58d0b29e9db92335b"
+        },
+        {
+          "signature": "public.dunning_lifecycle_scan_at_risk(integer,integer,integer)",
+          "beforeSha256": "0df0406d99a666efeba6e756cfbc39c8eba568a8c3f3613750cf41767e17d8fa",
+          "afterSha256": "e4653e04e36f0e01cbff94e3c3237110302ddbc3d2501dbf86858a9e6f565a49"
+        },
+        {
+          "signature": "public.subscription_dunning_queue_operator_notices(uuid,text,integer)",
+          "afterSha256": "920dc7f28b92246140a9904e06a637ddb2f9320e3daa2abbb0106b4cd536b36f",
+          "beforeSha256": null
+        },
+        {
+          "signature": "public.subscription_dunning_claim_operator_batch(integer,integer,integer,integer)",
+          "afterSha256": "3cdb3dc3e24c9b07b882b3ca62033cd5911220fe649227cb30a8f082434ec6bd",
+          "beforeSha256": null
+        },
+        {
+          "signature": "public.subscription_dunning_operator_delivery_eligible(uuid,uuid)",
+          "afterSha256": "373e071168d639b1a1e83c3280a9b68e35103d46db1297551a4976f1b300cf7d",
+          "beforeSha256": null
+        },
+        {
+          "signature": "public.dunning_lifecycle_renewal_reminder_enqueue(integer,integer,integer,integer,integer)",
+          "afterSha256": "6ad044408c80e48e40b2299963d2989d9c87b5a08ba82c7b33b89a0222a13365",
+          "beforeSha256": null
+        },
+        {
+          "signature": "public.dunning_lifecycle_pause_reminder_dispatch(integer,integer)",
+          "afterSha256": "753e7eeb41bba5e927fc1caa2b6c0f79b8a080462013e37a3ef8cf3d855ff3d5",
+          "beforeSha256": null
+        },
+        {
+          "signature": "public.dunning_lifecycle_scan_at_risk_service(integer,integer,integer)",
+          "afterSha256": "1a4deadb15e641c43dea07c589db9a85eaebca45ffb4fbff160345e0c0c65136",
+          "beforeSha256": null
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261106140000_subscriber_winback_policy.sql",
+      "sha256": "092b4f3bbeaf722fe7b860b51f31eb56e87576aeb5ac5a8b76cc3b23f75916ff",
+      "functions": [
+        {
+          "signature": "public.subscriber_retention_plan_due(text,integer,timestamptz)",
+          "beforeSha256": "cdcdc7de6fe13e33dc724e9d59ef934cb6ec49eda1e0c3a5ec8126cff5911c71",
+          "afterSha256": "5ceacf9f8fecaa607b8a642f79311987ed6e404e2600382088568b2c4185c643"
+        },
+        {
+          "signature": "public.subscriber_retention_eligibility_refusal(text,text,timestamptz)",
+          "beforeSha256": "73db45b446497d31fa49e8afba95834fcd757c19120a49acf02ab5909e76de6c",
+          "afterSha256": "78cf2753a20afcead6eaf4d192abef83b67c7a951e5f1e964fa3330b54938935"
+        },
+        {
+          "signature": "public.subscriber_retention_create_intent(text,text,uuid,text,text,text,text,integer,text,text,text)",
+          "beforeSha256": "1f3da9d3303a17b2e32e6a984a6cd2691c89b126e00cfcf07c894c2647547ba2",
+          "afterSha256": "7233fdef109f3911bd9e80d30b6ede11bcbc8ad6ff77c51bf68c135b0f332eb8"
+        },
+        {
+          "signature": "public.subscriber_retention_claim_intent(text,text,timestamptz)",
+          "beforeSha256": "3e14882b1e0eb614017491578d399d401759ebc04bebed41824b95e52706d396",
+          "afterSha256": "f95531eeea671f6c50beaefad60774df3193cda868bd4492fc443596f38b5133"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261106160000_subscription_package_editor.sql",
       "sha256": "00291b733c89d9fe7e7d8785f90c6a8fe3c2e1d2b7dca4fc66abbc33de748fce",
       "functions": [
         {

@@ -109,6 +109,18 @@ and the hash boundary. The
 auth and the selected adapter; its existence alone does not expose recovery in
 every profile.
 
+For the native retry binding, a provider capture observation is not sufficient
+to report recovery as paid. Install the recovery-truth forward: only applied
+captured settlement advances the counter, restores stock and records recovery.
+A capture retained for review stays in the payment-truth evidence record; public
+recovery returns `payment_failed` without those effects or a recovered receipt.
+Exact redelivery is idempotent. The retry driver reports a row error so the host
+can reconcile the review instead of treating the operation as successful.
+
+Historical recovery receipts are checked against payment truth before replay.
+Previously misapplied counter or stock changes require reconciliation; this
+forward preserves those historical rows instead of reversing them automatically.
+
 ## Protect delivery
 
 The pure payment clock and physical delivery alignment are separate boundaries.
@@ -176,8 +188,14 @@ composition and unchanged address evidence. Preview stores the quoted next
 agreement; send its accepted hash with the same actor/key and command to apply.
 N2 commits future lines, cadence, event and actual-command receipt together,
 without proration or repricing the current obligation. Applied/noop replay keeps
-its original state, revision and event; conflicts, expired/stale quotes, locked
-cycles and dunning refuse. The serving adapter refuses pause without writes.
+its original state, revision and event; conflicts, expired/stale quotes and locked
+cycles refuse. Open dunning still refuses future-term changes; explicit pause
+and cancellation use their lifecycle paths. With the lifecycle-closure forward installed, a
+valid explicit pause reaches the serving adapter even during open dunning: it
+closes recovery, terminalizes unpaid artifacts and writes the pause window and
+event atomically. Live or prepared payment work still refuses closure. Captured
+evidence arriving after unpaid closure is retained for operator review, including
+on redelivery, without reopening the terminal cycle.
 The existing native activation spine still requires captured-payment evidence;
 commands cannot synthesize activation or execute a charge.
 [Real-PG cases](../../tests/postgres/subscriptionCommandLifecycleCases.ts) cover

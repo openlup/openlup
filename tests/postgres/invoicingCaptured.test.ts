@@ -8,7 +8,7 @@ import { pathToFileURL } from "node:url";
 import { env as processEnvironment } from "node:process";
 import { Pool } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { createPostgresInvoiceStore, runNativeInvoiceIssueJob } from "@openlup/platform/invoicing";
+import { createPostgresInvoiceStore, runNativeInvoiceIssueJob, invoicePdfFilename as pdfFilename } from "@openlup/platform/invoicing";
 import type { InvoiceFacts, InvoiceHostPorts } from "@openlup/platform/invoicing/contracts";
 import type * as Native from "@openlup/platform/invoicing/postgres";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
@@ -147,6 +147,16 @@ it("runs packed provider issue, replay, owned history/PDF and full reversal thro
   expect(original).toMatchObject({ kind: "found", documents: [{ totalGrossMinor: 900, currency: "XXX", role: "original", downloadAvailable: true, isCurrent: true }] });
   if (original.kind !== "found") throw Error("history unavailable");
   const documentRef = original.documents[0]!.documentRef;
+  expect(documentRef).toMatch(/[a-f]/);
+  for (const spell of [(id: string) => id.toUpperCase(), (id: string) => id.replace(/[ace]/g, letter => letter.toUpperCase())]) {
+    const input = { accountRef: spell(f.principal), orderId: spell(f.orderId), documentRef: spell(documentRef) };
+    expect(await access.history(input)).toMatchObject({ kind: "found", accountRef: input.accountRef, orderId: input.orderId,
+      documents: [{ documentRef }] });
+    expect(await ports.resolveDownload(input)).toMatchObject({ kind: "authorized", identity: { documentRef } });
+    expect(await access.download(input)).toMatchObject({ kind: "downloaded", fileName: pdfFilename(original.documents[0]!.invoiceRef) });
+    expect(await access.download({ ...input, accountRef: spell(foreign.principal) })).toEqual({ kind: "denied" });
+    expect(await access.download({ ...input, orderId: spell(foreign.orderId) })).toEqual({ kind: "denied" });
+  }
   expect(await access.download({ accountRef: foreign.principal, orderId: f.orderId, documentRef })).toEqual({ kind: "denied" });
   expect(await ports.resolveDownload({ accountRef: f.principal, orderId: foreign.orderId, documentRef })).toEqual({ kind: "denied" });
   expect(await access.download({ accountRef: f.principal, orderId: f.orderId, documentRef: randomUUID() })).toEqual({ kind: "denied" });
@@ -163,7 +173,8 @@ it("runs packed provider issue, replay, owned history/PDF and full reversal thro
   expect(corrected).toMatchObject({ kind: "found", documents: [{ documentRef, status: "corrected", downloadAvailable: true },
     { parentDocumentRef: documentRef, role: "correction", artifact: "correction", totalGrossMinor: -900, currency: "XXX", downloadAvailable: true }] });
   if (corrected.kind !== "found") throw Error("correction history unavailable");
-  expect(await access.download({ accountRef: f.principal, orderId: f.orderId, documentRef: corrected.documents[1]!.documentRef })).toMatchObject({ kind: "downloaded", parentDocumentRef: documentRef });
+  expect(await access.download({ accountRef: f.principal, orderId: f.orderId, documentRef: corrected.documents[1]!.documentRef.toUpperCase() })).toMatchObject({ kind: "downloaded", parentDocumentRef: documentRef });
   expect((await runtime.query("SELECT count(*)::int AS count FROM public.invoicing_document_observations WHERE observation->>'format'='openlup.captured-invoice.v1'")).rows).toEqual([{ count: 2 }]);
   expect(await captured.provider.void({ ...claim.identity, operation: "remote_void" })).toMatchObject({ kind: "unsupported" });
-}, postgresSetupTimeoutMs);
+// Local restricted integration measured 9.14 s including setup; allow runner headroom.
+}, 60_000);

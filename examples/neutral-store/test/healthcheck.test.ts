@@ -75,5 +75,8 @@ test('default lifecycle leaves compose.yaml healthcheck in place', async () => {
     assert.equal((await once(child, 'exit'))[0], 0);
     const override = JSON.parse(await readFile(resolve(directory, 'override.json'), 'utf8'));
     assert.equal(Object.hasOwn(override.services.application, 'healthcheck'), false);
+    assert.deepEqual(override.services.application.command.slice(0, 4),
+      ['node', '--experimental-strip-types', 'lifecycle.mjs', 'serve-demo']);
+    assert.equal(Object.hasOwn(override.services.application, 'environment'), false);
   } finally { await rm(directory, { recursive: true, force: true }); }
 });

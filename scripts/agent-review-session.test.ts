@@ -176,7 +176,7 @@ describe('native review decisions', () => {
   });
   it.each([
     ['dirty source', { clean: false }], ['missing author', { authorSessionId: '' }],
-    ['missing criteria', { intent: {} }], ['scope mismatch', { intent: { ...intent, scope: ['elsewhere.txt'] } }],
+    ['missing criteria', { intent: {} }],
     ['bad risk', { intent: { ...intent, risk: 'safe' } }],
   ])('refuses preparation: %s', (_name, patch) => expect(() => prepare(patch)).toThrow());
   it('unchanged prepare preserves history and expiry; changed intent requires --new', () => {

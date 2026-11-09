@@ -19,18 +19,48 @@ export interface SubscriptionCommandContext {
     idempotencyKey: string;
     now: string;
 }
+/** Trusted host policy; never part of a browser command payload. */
+export interface SubscriptionLifecycleTerms {
+    pauseDays: number;
+    pauseMonths: number;
+    slideMinDays: number;
+    slideMaxDays: number;
+    orderNowDelayMinutes: number;
+    reactivateDelayDays: number;
+}
+export interface SubscriptionCancelSurvey {
+    reasonCode?: string;
+    comment?: string | null;
+    acceptedSaveOfferId?: string | null;
+}
+export interface SubscriptionSaveOffer {
+    offerId: string;
+    kind: "pause" | "skip" | "reschedule" | "plan_length" | "recipe_mix" | "support_callback";
+    accepted: boolean;
+    externalOfferRef?: string | null;
+}
 export type SubscriptionCommand = SubscriptionCommandContext & ({
     action: "pause";
     pausePreset: string;
     reason: string | null;
-    survey: string | null;
-    saveOffer: string | null;
+    survey: SubscriptionCancelSurvey | string | null;
+    saveOffer: SubscriptionSaveOffer | string | null;
 } | {
-    action: "resume" | "skip" | "cancel";
+    action: "resume" | "skip";
     reason: string | null;
     confirmedChargeTiming: boolean;
 } | {
+    action: "cancel";
+    reason: string | null;
+    confirmedChargeTiming: boolean;
+    survey?: SubscriptionCancelSurvey | string | null;
+    saveOffer?: SubscriptionSaveOffer | string | null;
+} | {
+    action: "order_now" | "reactivate";
+    confirmedChargeTiming: true;
+} | {
     action: "slide";
+    reason?: string | null;
     newNextCycleAt: string;
     confirmedChargeTiming: boolean;
 } | {
@@ -275,7 +305,7 @@ export interface RenewalFailureHandoffPort {
 export type { RenewalSchedule, RenewalIdentity, RenewalAdmission, RenewalLine, RenewalCycleCorrelation, RenewalTemplateSnapshot, RenewalPricingSnapshot, RenewalShippingTerms, RenewalLinePricing, RenewalStarterMarker, RenewalRetainedTerms, RenewalRetainedShippingMarker, RenewalOrderSnapshot, RenewalFrozenSnapshot, RenewalDue, RenewalOperationState, RenewalReadback, RenewalPaymentEvidence, RenewalTransactionUnits, RenewalReservationResult, RenewalPreparedSettlement, RenewalStorePort, RenewalSettlementPort, RenewalExecutionRequest, RenewalPaymentRail, RenewalResult } from "./renewal.js";
 export type { DunningCaseOpenInput, DunningCaseOpened, DunningCaseAdvanced, DunningRefusalCode, DunningCaseLifecyclePort, RenewalRetryState, RenewalRetryObligation, RenewalRecoveryAuthorization, RenewalFailureHandoffPort } from "./dunning.js";
 export type { StockWaitRecoveryBinding, StockWaitDeficit, StockWaitCase, StockWaitFrozenCase, StockWaitStorePort } from "./stockWait.js";
-export type { SubscriptionCommandContext, SubscriptionCommand, SubscriptionBundleLine, SubscriptionCommandReceipt, SubscriptionCommandRefusal, SubscriptionUnsupportedCode, SubscriptionUnsupported, SubscriptionCapabilities, SubscriptionCommandPort, SubscriptionActivationPort } from "./commands.js";
+export type { SubscriptionLifecycleTerms, SubscriptionCancelSurvey, SubscriptionSaveOffer, SubscriptionCommandContext, SubscriptionCommand, SubscriptionBundleLine, SubscriptionCommandReceipt, SubscriptionCommandRefusal, SubscriptionUnsupportedCode, SubscriptionUnsupported, SubscriptionCapabilities, SubscriptionCommandPort, SubscriptionActivationPort } from "./commands.js";
 export type { SubscriptionLifecycleFact, SubscriptionLifecycleMessageDescriptor, SubscriptionLifecycleMessagePort } from "./messages.js";
 export type { SubscriptionRenewalOutcome, HostedRenewalDue, SubscriptionRenewalChargeResult, SubscriptionCycleSnapshotResult, SubscriptionCycleOrderInput, SubscriptionCycleOrderResult, SubscriptionReservationPreflightResult, SubscriptionRenewalPersistencePort, FailurePropagationKind, FailurePropagationContext, CycleRetryState, DunningCaseOpenOutcome, CycleChargeFailurePropagationPort, FailurePropagationResult, RenewalPrepareInput, RenewalAttemptResult, RenewalIntentResult, RenewalPaymentPort, RenewalExecutionPort, RenewalDeliveryAdmission, RenewalAllowedAdmission, RenewalDeliveryClient, RenewalFailureDeps, RenewalPreflightDeps, RenewalCycleDeps, RenewalExecutionContext, RenewalOutcomeContext, RenewalReplayContext, RenewalPreparedAttemptPrepareInput, RenewalPreparedAttemptPersistenceResult, RenewalPreparedAttemptFinalizeInput, RenewalPreparedAttemptPersistencePort } from "./renewal.js";
 export type { PackageEditMoney, PackageEditLine, PackageEditQuoteLine, PackageEditPricedLine, PackageEditRequest, PackageEditQuote, PackageEditBlockedReason, PackageEditPreview, PackageEditApplyResult } from "./packageEdit.js";

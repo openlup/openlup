@@ -2,12 +2,42 @@ import { seedQuoteAuthority } from './quote-seed.ts';
 import type { StoreConfig } from '../shared/config.ts';
 import { buildDemoSeed } from '../owned/demo-seed.ts';
 import { acquisitionAddresses } from '../owned/acquisition-addresses.ts';
+import { randomBytes } from 'node:crypto';
+import { constants } from 'node:fs';
+import { lstat, mkdir, open } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { readQuoteAcceptanceKeyring } from '../host/quote-secret.ts';
 
 export const demonstrationMarker = 'openlup-neutral-store-demo-v1';
 
 /** One dedicated install session, never a runtime pool or HTTP binding. */
 export interface InstallConnection {
   query(text: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
+}
+
+/** Container-local demo material; never provision a customer installation. */
+export async function prepareDemonstrationQuoteKey(connection: InstallConnection, directory: string): Promise<string> {
+  const { rows } = await connection.query(`SELECT pg_catalog.shobj_description(oid, 'pg_database') AS marker
+    FROM pg_catalog.pg_database WHERE datname = pg_catalog.current_database()`);
+  if (rows[0]?.marker !== demonstrationMarker) throw new Error('starter_seed_demonstration_database_required');
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  const parent = await lstat(directory);
+  if (!parent.isDirectory() || (parent.mode & 0o777) !== 0o700
+    || parent.uid !== process.getuid?.()) throw new Error('starter_quote_acceptance_key_invalid');
+  const path = resolve(directory, 'quote-acceptance-keyring.json');
+  let handle;
+  try {
+    handle = await open(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+    await handle.writeFile(JSON.stringify({ current: randomBytes(32).toString('base64url') }) + '\n');
+    await handle.sync();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+  } finally { await handle?.close(); }
+  const file = await lstat(path);
+  if (!file.isFile() || (file.mode & 0o777) !== 0o600
+    || file.uid !== process.getuid?.()) throw new Error('starter_quote_acceptance_key_invalid');
+  await readQuoteAcceptanceKeyring(path);
+  return path;
 }
 
 export interface DemonstrationInstallation {

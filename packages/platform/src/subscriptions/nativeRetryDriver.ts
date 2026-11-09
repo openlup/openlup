@@ -120,10 +120,10 @@ export function createNativeRetryDriver(options: NativeRetryDriverOptions) {
         }
         if (evidence.status === "succeeded" && evidence.amountMinor === snapshot.pricingSnapshot.totalAmountMinor
           && evidence.currency === snapshot.pricingSnapshot.currency) {
-          await store.recordRecovery(operationId, evidence.eventKey, { ...evidence.sourceEvidence, ...(evidence.sourceEvidence ? { observedAt: nativeInstant(evidence.sourceEvidence.observedAt) } : {}), prepareKey, evidenceKey: evidence.verifiedEvidenceRef,
+          const recovered = await store.recordRecovery(operationId, evidence.eventKey, { ...evidence.sourceEvidence, ...(evidence.sourceEvidence ? { observedAt: nativeInstant(evidence.sourceEvidence.observedAt) } : {}), prepareKey, evidenceKey: evidence.verifiedEvidenceRef,
             occurredAt: nativeInstant(evidence.occurredAt), firstRecordedAt: nativeInstant(evidence.firstRecordedAt), externalRef: evidence.externalAttemptRef,
             amountMinor: evidence.amountMinor, currency: evidence.currency, template: options.recoveredTemplate });
-          results.push({ operationId, status: "succeeded" });
+          results.push({ operationId, status: recovered.disposition === "paid" ? "succeeded" : "error" });
         } else if (evidence.status === "failed" && evidence.disposition === "observed") {
           await propagateFailure(operationId, evidence.eventKey, { attemptSequence: prepared.attemptSequence,
             logicalCycleNumber: row.logicalCycleNumber, occurredAt: nativeInstant(evidence.occurredAt),

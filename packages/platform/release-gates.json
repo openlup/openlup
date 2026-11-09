@@ -955,20 +955,20 @@
   },
   "pack": {
     "code": {
-      "maxPackedBytes": 2055017,
-      "maxFiles": 3039
+      "maxPackedBytes": 2336415,
+      "maxFiles": 4027
     },
     "docs": {
-      "maxPackedBytes": 75000,
+      "maxPackedBytes": 79312,
       "maxFiles": 10
     },
-    "maxPackedBytes": 2595000,
-    "maxUnpackedBytes": 12254845,
-    "maxFiles": 3173,
-    "capReason": "Measured complete installed catalogue plus bounded remaining stores, ordered SQL and distribution reserve; actual plus reserve times 1.02, bytes rounded up to 5,000 and files rounded up. Existing larger caps are retained.",
+    "maxPackedBytes": 2898683,
+    "maxUnpackedBytes": 13845770,
+    "maxFiles": 4151,
+    "capReason": "Measured merged-tree package: code 2,320,140 bytes and 3,984 files, tarball 2,841,846 bytes, unpacked 13,574,284 bytes, 4,111 files; caps are measured times 1.02, rounded up. Existing larger code and file caps are retained. The docs class measured 78,483 gzip bytes on the 0.37.0 set tree; its existing larger cap is retained.",
     "baseline": {
-      "version": "0.35.0",
-      "packedBytes": 2097540
+      "version": "0.36.0",
+      "packedBytes": 2104577
     },
     "browserEntries": {
       "./catalog/contracts": 4096,
