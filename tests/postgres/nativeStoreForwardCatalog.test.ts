@@ -173,16 +173,20 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
     } finally { await db.query("ROLLBACK TO SAVEPOINT pinned_index"); }
   }
   for (const old of before.relations) if (!replacedUniqueIndexes.has(old.oid) && !droppedIndexes.has(old.oid) && JSON.stringify(currentRelations.get(old.oid)) !== JSON.stringify(old)) fail(`existing relation ${old.name} changed its owner, ACL, row security, options or column ACLs`);
+  const clientReferences = new Set((await db.query(`SELECT DISTINCT conrelid::int AS oid FROM pg_constraint
+    WHERE contype='f' AND confrelid=to_regclass('public.clients')`)).rows.map(row => Number(row.oid)));
   const censusSeen = new Set<string>();
   for (const row of after.relations) if (!oldRelations.has(row.oid)) {
     if (row.owner !== migrationRole) fail(`new relation ${row.name} is owned by ${row.owner}, not the migration role`);
+    const classification = clientReferences.has(row.oid)
+      ? (await db.query("SELECT disposition FROM public.client_absorption_policy WHERE table_name=$1", [row.name.slice("public.".length)])).rows : [];
+    if (clientReferences.has(row.oid) && classification.length === 0) fail(`new relation ${row.name} has no absorption classification`);
     if (slot.absorptionCensusTables?.includes(row.name)) {
       const role = (await db.query("SELECT oid::int AS oid FROM pg_roles WHERE rolname='service_role'")).rows[0]?.oid as number | undefined;
       const policies = after.guards.policies!.filter(policy => Number(policy.polrelid) === row.oid);
       const expressions = (await db.query("SELECT pg_get_expr(polqual,polrelid) AS qual, pg_get_expr(polwithcheck,polrelid) AS check_expr FROM pg_policy WHERE polrelid=$1::oid", [row.oid])).rows;
       const columns = (await db.query(`SELECT a.attname AS column, x.grantee::regrole::text AS role, x.privilege_type AS privilege, x.is_grantable AS grantable
         FROM pg_attribute a, LATERAL aclexplode(a.attacl) x WHERE a.attrelid=$1::oid ORDER BY 1,2,3`, [row.oid])).rows;
-      const classification = (await db.query("SELECT disposition FROM public.client_absorption_policy WHERE table_name=$1", [row.name.slice("public.".length)])).rows;
       const reference = (await db.query(`SELECT 1 FROM pg_constraint f JOIN pg_attribute a ON a.attrelid=f.conrelid AND f.conkey=ARRAY[a.attnum]
         JOIN pg_attribute target ON target.attrelid=f.confrelid AND f.confkey=ARRAY[target.attnum]
         WHERE f.contype='f' AND f.conrelid=$1::oid AND f.confrelid='public.clients'::regclass AND a.attname='client_id' AND target.attname='id'`, [row.oid])).rows;
@@ -370,6 +374,11 @@ REVOKE ALL ON TABLE public.cat_census FROM PUBLIC;
 ${CENSUS_CLASSIFICATION}
 ${guarded("service_role", "GRANT SELECT (client_id) ON TABLE", "public.cat_census TO service_role;")}
 ${guarded("service_role", "CREATE POLICY cat_census_absorption_census ON", "public.cat_census FOR SELECT TO service_role USING (true);")}`;
+const CLIENT_TABLE = `CREATE TABLE public.cat_client_history (id uuid PRIMARY KEY, subject_id uuid REFERENCES public.clients(id));
+ALTER TABLE public.cat_client_history ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.cat_client_history FROM PUBLIC;`;
+const classifiedClientTable = (disposition: string) => `${CLIENT_TABLE}
+INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('cat_client_history', '${disposition}', 'Subject history has an explicit disposition.');`;
 // The statement reported as FC-R1B-001, unchanged: a quoted default hides an `AS $q$` so a static
 // header reader takes a fake search_path attribute list for the real one.
 const HIDDEN_HEADER = "CREATE FUNCTION public.cat_created(p text DEFAULT ' SET search_path = pg_catalog, pg_temp AS $q$') RETURNS text LANGUAGE sql SECURITY DEFINER AS 'select p' SET application_name = x$q$;";
@@ -385,10 +394,15 @@ SELECT 1 AS x$a$, 2 AS y$q$;
 REVOKE ALL ON FUNCTION public.cat_created(text) FROM PUBLIC;`;
 const UNLISTED = "CREATE FUNCTION public.cat_unlisted(p text) RETURNS text LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$ SELECT p $$;\nREVOKE ALL ON FUNCTION public.cat_unlisted(text) FROM PUBLIC;";
 const REFUSALS: [string, string, RegExp, boolean, CatalogSlot][] = [
+  ["an unlisted, unclassified client-referencing table", forward(CREATED_OK, CLIENT_TABLE), /no absorption classification/u, false, SYNTHETIC_SLOT],
+  ["a listed census table without its client foreign key", forward(CREATED_OK, CENSUS_SQL.replace(" REFERENCES public.clients(id)", "")), /absorption census shape/u, false, CENSUS_SLOT],
+  ["a listed census table referencing another relation", forward(CREATED_OK, CENSUS_SQL.replace("REFERENCES public.clients(id)", "REFERENCES public.cat_parameters(id)")), /absorption census shape/u, false, CENSUS_SLOT],
+  ["a retained table with an unlisted column grant", forward(CREATED_OK, classifiedClientTable("retain") + "\nGRANT SELECT (subject_id) ON TABLE public.cat_client_history TO service_role;"), /column privileges/u, true, SYNTHETIC_SLOT],
+  ["an unlisted block table with a table grant", forward(CREATED_OK, classifiedClientTable("block") + "\nGRANT SELECT ON TABLE public.cat_client_history TO service_role;"), /new relation .* grants/u, true, SYNTHETIC_SLOT],
   ["a census table with an extra column grant", forward(CREATED_OK, CENSUS_SQL + "\nGRANT SELECT (payload) ON TABLE public.cat_census TO service_role;"), /absorption census shape/u, true, CENSUS_SLOT],
   ["a census table with a table grant", forward(CREATED_OK, CENSUS_SQL + "\nGRANT SELECT ON TABLE public.cat_census TO service_role;"), /absorption census shape/u, true, CENSUS_SLOT],
   ["a census table with a second policy", forward(CREATED_OK, CENSUS_SQL + "\nCREATE POLICY census_extra ON public.cat_census FOR SELECT TO service_role USING (true);"), /absorption census shape/u, true, CENSUS_SLOT],
-  ["a census table without block classification", forward(CREATED_OK, CENSUS_SQL.replace(CENSUS_CLASSIFICATION, "")), /absorption census shape/u, false, CENSUS_SLOT],
+  ["a census table without block classification", forward(CREATED_OK, CENSUS_SQL.replace(CENSUS_CLASSIFICATION, "")), /no absorption classification/u, false, CENSUS_SLOT],
   ["a census table with retain classification", forward(CREATED_OK, CENSUS_SQL.replace("'block'", "'retain'")), /absorption census shape/u, false, CENSUS_SLOT],
   ["another new relation with the named table's runtime ACL", forward(CREATED_OK, guarded("service_role", "GRANT SELECT, INSERT ON", "public.cat_created_table TO service_role;")), /new relation public\.cat_created_table grants service_role:/u, true, NOTICE_SLOT],
   ["the named runtime table without RLS", forward(CREATED_OK, NOTICE_SQL.replace("ENABLE ROW LEVEL SECURITY", "DISABLE ROW LEVEL SECURITY")), /pinned INSERT\/SELECT shape/u, true, NOTICE_SLOT],
@@ -509,6 +523,9 @@ describe.each([{ serviceRole: true }, { serviceRole: false }])("native store for
   it("replays every unbound native chain unit", () => { expect(replay.applied).toBe(chain.length); });
   it("admits only the client census column and SELECT policy on a new block-classified table", async () => {
     await checkForward(pool, CENSUS_SLOT, forward(CREATED_OK, CENSUS_SQL));
+  });
+  it.each(["retain", "block"])("admits an unlisted %s client table with owner-only privileges", async disposition => {
+    await checkForward(pool, SYNTHETIC_SLOT, forward(CREATED_OK, classifiedClientTable(disposition)));
   });
   it("installs two replacement slots with pinned bodies and unchanged function attributes and ACL", async () => {
     const db = await pool.connect(), signature = "public.cat_replaced(text,boolean)";

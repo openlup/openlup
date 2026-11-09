@@ -1968,21 +1968,6 @@ function absorptionCensusClassified(slot: NativeStoreSlot, table: string): boole
   const insert = new RegExp(`^INSERT INTO public\\.client_absorption_policy \\(table_name, disposition, note\\) VALUES \\('${table.slice("public.".length)}', 'block', '(?:[^']|'')*'\\);$`, "u");
   return slot.dataStatements.filter(statement => insert.test(statement)).length === 1;
 }
-// Reuse the column-list splitter and tokens: only a single-column FK to clients(id)
-// proves that the existing absorber will include this relation in its census.
-function absorptionCensusClientReference(statement: string, open: PlatformSqlToken, close: PlatformSqlToken): boolean {
-  const parts = nativeStoreArguments(statement.slice(open.end, close.start)).map(part => platformSqlTokens(part, false, true).tokens);
-  const reference = (tokens: readonly PlatformSqlToken[], at: number) => at >= 0 && nativeWord(tokens, at, "REFERENCES")
-    && nativeQualified(tokens, at + 1)?.name === "public.clients" && nativeSymbol(tokens, at + 4, "(")
-    && nativeIdentifier(tokens[at + 5]) === "id" && nativeSymbol(tokens, at + 6, ")");
-  const column = parts.find(tokens => nativeIdentifier(tokens[0]) === "client_id");
-  return Boolean(column && (reference(column, column.findIndex((_token, index) => nativeWord(column, index, "REFERENCES")))
-    || parts.some(tokens => {
-      const start = nativeWord(tokens, 0, "CONSTRAINT") ? 2 : 0;
-      return nativeWord(tokens, start, "FOREIGN") && nativeWord(tokens, start + 1, "KEY") && nativeSymbol(tokens, start + 2, "(")
-        && nativeIdentifier(tokens[start + 3]) === "client_id" && nativeSymbol(tokens, start + 4, ")") && reference(tokens, start + 5);
-    })));
-}
 const purposeTable = "public.communication_native_sync_state";
 const purposeConstraint = "communication_native_sync_state_purpose_check";
 const keysAre = (value: object, keys: string) => Object.keys(value).sort().join(",") === keys;
@@ -2337,7 +2322,7 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   const existingTableStatements = slot.existingTableStatements ?? [];
   const revoked = new Set<string>(), defined = new Set<string>(), blocks = new Set<string>(), data = new Set<string>(), tables = new Set<string>();
   const dropped = new Set<string>(), triggers = new Set<string>(), views = new Set<string>(), revokedViews = new Set<string>(), completedChecks = new Set<string>(), completedUniques = new Set<string>();
-  const censusTables = slot.absorptionCensusTables ?? [], censusReferences = new Set<string>(), censusGrants = new Set<string>(), censusPolicies = new Set<string>();
+  const censusTables = slot.absorptionCensusTables ?? [], censusGrants = new Set<string>(), censusPolicies = new Set<string>();
   let pending: { kind: "CHECK" | "UNIQUE"; key: string } | undefined;
   let droppedCheck = false, addedCheck = false, existingTablePosition = 0, insertSelectPolicy = false;
   for (const statement of statements) {
@@ -2412,7 +2397,7 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
     const privilege = nativeStorePrivilege(statement, tables, slot.insertSelectTables ?? [], views, triggerFunctions, censusTables);
     if (privilege) {
       if (privilege.kind === "CENSUS") {
-        if (!censusReferences.has(privilege.table)) throw new Error("reviewed native store absorption census requires a client-referencing table created earlier in the same slot");
+        if (!tables.has(privilege.table)) throw new Error("reviewed native store absorption census requires a table created earlier in the same slot");
         const seen = privilege.action === "grant" ? censusGrants : censusPolicies;
         if (seen.has(privilege.table)) throw new Error("reviewed native store duplicate absorption census privilege");
         seen.add(privilege.table); continue;
@@ -2460,11 +2445,7 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
     if (slot.dataStatements.includes(statement)) { data.add(statement); continue; }
     const indexCreation = nativeWord(tokens, 0, "CREATE") && nativeWord(tokens, nativeWord(tokens, 1, "UNIQUE") ? 2 : 1, "INDEX");
     if ((indexCreation || head?.kind === "TABLE") && isExpandOnlyPlatformForward(statement)) {
-      if (head?.verb === "CREATE" && head.table && nativeSymbol(tokens, head.next, "(") && nativeQualified(tokens, 2)) {
-        tables.add(head.table);
-        if (censusTables.includes(head.table) && nativeSymbol(tokens, tokens.length - 2, ")")
-          && absorptionCensusClientReference(statement, tokens[head.next]!, tokens.at(-2)!)) censusReferences.add(head.table);
-      }
+      if (head?.verb === "CREATE" && head.table && nativeSymbol(tokens, head.next, "(") && nativeQualified(tokens, 2)) tables.add(head.table);
       continue;
     }
     throw new Error("reviewed native store refuses statement outside its closed shapes");

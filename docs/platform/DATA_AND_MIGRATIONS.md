@@ -1545,8 +1545,7 @@ bypass the content checks.
 
 `absorptionCensusTables` may list qualified `public.<table>` names for new
 client-referencing block tables. Each listed table must be created earlier in
-the same slot file with a single-column `client_id` foreign key to
-`public.clients(id)`, inline or as a table constraint. Its own `dataStatements`
+the same slot file. Its own `dataStatements`
 must pin exactly one statement of this form, also present in the forward:
 
 ```sql
@@ -1567,13 +1566,24 @@ earlier-slot tables, other columns, roles, verbs, policy expressions or names,
 WITH CHECK, non-block or missing classification, and statements outside the
 conditional shell refuse. This capability grants no payload access and does
 not change the fixed notice-table INSERT/SELECT exception.
+The census validator checks only the slot's own statements and registry entry;
+it adds neither a foreign-key parser nor a scan of earlier prefix history.
+Installed foreign keys and effective privileges are PostgreSQL obligations.
+
+Every new relation with a foreign key to `public.clients` must have an
+absorption-policy row after its slot, with any existing disposition. An
+unclassified table refuses, because it would make the absorber refuse every
+lead. This classification check does not grant access: unlisted `block` and
+`retain` tables retain owner-only table ACLs and no column ACLs. Only listed
+census tables receive the exact census privilege exception.
 
 The [PostgreSQL catalogue witness](../../tests/postgres/nativeStoreForwardCatalog.test.ts)
 independently requires a new relation, migration ownership, enabled RLS,
 owner-only table ACL, exactly `client_id` SELECT for `service_role`, and exactly
 the named permissive SELECT policy with `true` and no check. With that role
-absent there are no column grants or policies. The client foreign key and stored
-`block` classification are checked in PostgreSQL as well. Every other new
+absent there are no column grants or policies. Its single-column `client_id`
+foreign key to `public.clients(id)` and stored `block` classification are checked
+in PostgreSQL as well. Every other new
 relation retains the existing ACL refusals. The [absorber witness](../../tests/postgres/qualifiedRuntimeLockCompletion.test.ts)
 proves block, successful absorption and replay on legacy and both qualified
 installations, with payload reads and writes denied on the restricted runtimes.

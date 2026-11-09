@@ -1409,8 +1409,8 @@ describe("owned absorption census capability", () => {
   it("requires the table to be created before its census grant", () => {
     expect(() => censusForward(`${noticeDo(censusGrant)}\n${censusShape.replace(noticeDo(censusGrant), "")}`)).toThrow(/created earlier/u);
   });
-  it.each(["client_id uuid", "client_id uuid REFERENCES public.fixture_row(id)", "client_id text REFERENCES public.clients(email)", "other_client uuid REFERENCES public.clients(id), client_id uuid"])('refuses a census without its client FK: %s', column => {
-    expect(() => censusForward(censusShape.replace("client_id uuid NOT NULL REFERENCES public.clients(id)", column))).toThrow(/client-referencing table/u);
+  it("leaves installed foreign-key semantics to the PostgreSQL catalogue guard", () => {
+    expect(() => censusForward(censusShape.replace("client_id uuid NOT NULL REFERENCES public.clients(id)", "client_id uuid"))).not.toThrow();
   });
   it("requires classification in both the slot and SQL", () => {
     expect(() => censusForward(censusShape, slot => { slot.dataStatements = []; })).toThrow(/exact block classifications/u);
