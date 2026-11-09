@@ -2878,6 +2878,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/src/agent-context-mcp.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/src/bundle/contracts.ts",
       "class": "public-output"
     },
@@ -3167,6 +3171,10 @@
     },
     {
       "path": "packages/core/test/agent-context-cli.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/test/agent-context-mcp.test.ts",
       "class": "public-output"
     },
     {

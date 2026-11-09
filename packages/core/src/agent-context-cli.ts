@@ -13,7 +13,7 @@ const ignoredWords = new Set(["a", "an", "and", "are", "by", "do", "for", "from"
 const codeExtensions = new Set([".ts", ".tsx", ".js", ".jsx", ".mts", ".cts", ".mjs", ".cjs"]);
 const corpusPackages = new Set(["@openlup/core", "@openlup/outbox", "@openlup/platform"]);
 const skippedDirectories = new Set(["node_modules", ".git", ".next", ".turbo", "coverage", "dist", "build", ".cache"]);
-const usage = "Usage: openlup-context search <task> [--code] [--package-code] [--json]\nRun from the application root after installing @openlup/core.\n";
+const usage = "Usage: openlup-context search <task> [--code] [--package-code] [--json]\n       openlup-context mcp\nRun from the application root after installing @openlup/core.\n";
 
 function readText(path: string): string | undefined {
   try { return readFileSync(path, "utf8"); }
@@ -287,9 +287,24 @@ export function searchContext(cwd: string, task: string, includeCode = false, in
   return { version: packages[0].version, packages: packages.map((item) => item.name), hits: selected };
 }
 
-function main(): void {
+export function formatContextResult(cwd: string, result: ReturnType<typeof searchContext>): string {
+  const lines = [`OpenLup ${result.version}: ${result.packages.join(", ")}`];
+  if (!result.hits.length) lines.push("No indexed match. This does not prove a public seam is absent; inspect installed exports and declarations.");
+  for (const [index, hit] of result.hits.entries()) {
+    const path = relative(cwd, hit.file);
+    lines.push(`${index + 1}. ${hit.title} [${hit.packageName}]\n   ${path}:${hit.start}-${hit.end} (${hit.reason})${hit.owner ? `; source ${hit.owner}` : ""}`);
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+async function main(): Promise<void> {
   const args = process.argv.slice(2);
   if (args.length === 0 || args.includes("--help") || args.includes("-h")) { process.stdout.write(usage); return; }
+  if (args[0] === "mcp" && args.length === 1) {
+    const { runMcp } = await import("./agent-context-mcp.js");
+    await runMcp(process.cwd(), process.stdin, process.stdout);
+    return;
+  }
   if (args[0] !== "search") throw new Error(usage.trim());
   if (args.some((arg) => arg.startsWith("--") && !["--code", "--package-code", "--json"].includes(arg))) throw new Error(usage.trim());
   const json = args.includes("--json");
@@ -298,16 +313,11 @@ function main(): void {
   const task = args.slice(1).filter((arg) => !arg.startsWith("--")).join(" ").trim();
   const result = searchContext(process.cwd(), task, code, packageCode);
   if (json) { process.stdout.write(`${JSON.stringify(result)}\n`); return; }
-  process.stdout.write(`OpenLup ${result.version}: ${result.packages.join(", ")}\n`);
-  if (!result.hits.length) { process.stdout.write("No indexed match. This does not prove a public seam is absent; inspect installed exports and declarations.\n"); return; }
-  for (const [index, hit] of result.hits.entries()) {
-    const path = relative(process.cwd(), hit.file);
-    process.stdout.write(`${index + 1}. ${hit.title} [${hit.packageName}]\n   ${path}:${hit.start}-${hit.end} (${hit.reason})${hit.owner ? `; source ${hit.owner}` : ""}\n`);
-  }
+  process.stdout.write(formatContextResult(process.cwd(), result));
 }
 
-export function runCli(): void {
-  try { main(); }
+export async function runCli(): Promise<void> {
+  try { await main(); }
   catch (error) { process.stderr.write(`openlup-context: ${(error as Error).message}\n`); process.exitCode = 1; }
 }
 

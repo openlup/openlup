@@ -222,6 +222,7 @@
       "when": "Installed offline agent context lookup and its command launcher",
       "paths": [
         "packages/core/src/agent-context-cli.ts",
+        "packages/core/src/agent-context-mcp.ts",
         "packages/core/src/openlup-context.js"
       ],
       "doc": "packages/core/README.md",
