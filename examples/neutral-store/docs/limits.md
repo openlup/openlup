@@ -325,7 +325,8 @@ changes follow the [owning section](../../../docs/platform/ARCHITECTURE_AND_EXTE
 Full account preferences, real payment methods and signed unsubscribe retain
 their separately named boundaries. No generic edit verbs are mounted.
 
-The finite auto-resume host is bound, but its successful journey remains open
-while the native guard blocks historical paid orders. Its success assertions
-remain intact under a named fixme. Customer lifecycle commands are independently
-proved; this does not retain their removed blanket refusal.
+The finite auto-resume host is bound and proved in both configurations after a
+synthetically delivered first order. A clock past the finite pause and renewal
+date produces an active subscription, a date rolled forward by whole cadences
+and one locally captured resumed confirmation, including replay. The fixture
+supplies external fulfillment facts; operator delivery mutations remain unavailable.

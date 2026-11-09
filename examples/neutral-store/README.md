@@ -675,7 +675,9 @@ fixtures and scope. The candidate changes below retain the local-preview release
 
 This candidate adds lifecycle controls, cancellation save offers, charge-timing
 confirmations and localized notice landings. Native care scheduling and private
-capture are composed. The successful timed auto-resume journey remains open:
-the native guard currently blocks historical paid orders, so that journey keeps
-its unchanged success assertions under an explicit fixme. No package or SQL
-change, settings seed, real provider or release activation is included.
+capture are composed. The clock-driven auto-resume journey delivers the paid first
+order, advances beyond the finite pause and renewal date, and proves whole-cadence
+roll-forward plus one locally captured resumed confirmation in both configurations.
+The disposable fixture records synthetic parcel transitions through the native
+shipment rail and supplies the external host's fulfilled-order fact. No operator
+delivery action, settings seed, real provider or release activation is included.

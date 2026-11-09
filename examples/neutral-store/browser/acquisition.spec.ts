@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import pg from 'pg';
 import * as subscriptions from '@openlup/platform/subscriptions';
+import { createPostgresFulfillmentShipmentSpinePort } from '@openlup/platform/fulfillment';
 import { createPostgresRenewalReservationPort } from '@openlup/platform/inventory';
 import { createPostgresAccountLinkStore, createPostgresOperatorIdentityStore } from '@openlup/platform/identity';
 import { createPostgresNotificationRecipientsPort } from '@openlup/platform/communications';
@@ -52,7 +53,7 @@ test('quote and checkout refuse callers without acquisition capability by name',
 
 test.describe('database subscription care', () => {
 interface Material { id: string; baseURL: string; ownerUrl: string; runtimeUrl: string; state: string }
-interface Purchase { email: string; subscriptionId: string; clientId: string; nextCycleAt: string; cadenceDays: number }
+interface Purchase { orderRef: string; email: string; subscriptionId: string; clientId: string; nextCycleAt: string; cadenceDays: number }
 let material: Material, owner: pg.Pool, runtime: pg.Pool;
 test.beforeAll(async ({ baseURL }, info) => {
   const entries: Material[] = JSON.parse(await readFile('.context/care-browser/fixtures.json', 'utf8'));
@@ -84,7 +85,7 @@ async function purchase(page: Page): Promise<Purchase> {
   const row = (await runtime.query(`SELECT s.id,s.client_id,s.next_cycle_at,s.cadence_days FROM public.subscriptions s
     JOIN public.subscription_activations a ON a.subscription_id=s.id WHERE a.order_id=$1::uuid`, [created.value.orderRef])).rows[0];
   if (!row) throw new Error('starter_care_browser_activation_required');
-  return { email, subscriptionId: String(row.id), clientId: String(row.client_id), nextCycleAt: row.next_cycle_at.toISOString(), cadenceDays: Number(row.cadence_days) };
+  return { orderRef: created.value.orderRef, email, subscriptionId: String(row.id), clientId: String(row.client_id), nextCycleAt: row.next_cycle_at.toISOString(), cadenceDays: Number(row.cadence_days) };
 }
 async function signIn(page: Page, email: string, locale: Locale, landing?: string, operator = false) {
   await page.goto(landing ?? routes.auth[locale]);
@@ -268,15 +269,42 @@ test('pause remains available during an open payment case and closes that case',
   expect((await runtime.query('SELECT status FROM public.subscription_dunning_cases WHERE id=$1', [obligation.caseId])).rows[0].status).toBe('paused');
 });
 test('clock-driven finite auto-resume captures the resumed confirmation once', async ({ page }) => {
-  test.fixme(true, 'Native auto-resume guard still blocks historical paid orders.');
   const f = await purchase(page); await signIn(page, f.email, 'en'); await pause(page, f, 'en');
-  const window = (await runtime.query('SELECT ends_at FROM public.subscription_pause_windows WHERE subscription_id=$1 AND resumed_at IS NULL', [f.subscriptionId])).rows[0];
-  const at = new Date(window.ends_at.getTime() + 1000).toISOString();
-  await runCare('en', at); expect((await state(f)).status).toBe('active');
+  // The disposable fixture supplies carrier facts; no operator delivery action is mounted.
+  await owner.query("INSERT INTO public.fulfillment_ports(port_key,provider_type,routable) VALUES('care-parcels','simulator',true) ON CONFLICT DO NOTHING");
+  const parcels = createPostgresFulfillmentShipmentSpinePort(runtime, { portKey: 'care-parcels' });
+  const parcel = await parcels.createShipment({ idempotencyKey: `parcel:${f.orderRef}`, orderId: f.orderRef });
+  const shipment = { shipmentId: parcel.shipmentId, requestedAt: new Date().toISOString() };
+  await parcels.recordLabel({ ...shipment, idempotencyKey: `label:${f.orderRef}` });
+  await parcels.handOff({ ...shipment, idempotencyKey: `handoff:${f.orderRef}` });
+  expect(await parcels.recordTracking({ ...shipment, idempotencyKey: `delivered:${f.orderRef}`, status: 'delivered' })).toMatchObject({ status: 'delivered' });
+  // Model the external host's fulfilled-order fact, as in the native history fixture.
+  await owner.query("UPDATE public.commerce_orders SET status='fulfilled' WHERE id=$1", [f.orderRef]);
+  const history = async () => (await runtime.query(`SELECT o.status AS order_status,c.status AS cycle_status,p.status AS parcel_status
+    FROM public.commerce_orders o JOIN public.subscription_cycles c ON c.id=o.subscription_cycle_id
+    JOIN public.fulfillment_shipments p ON p.order_id=o.id WHERE o.id=$1`, [f.orderRef])).rows[0];
+  const delivered = { order_status: 'fulfilled', cycle_status: 'paid', parcel_status: 'delivered' };
+  expect(await history()).toEqual(delivered);
+  const window = (await runtime.query('SELECT starts_at,ends_at,pause_preset FROM public.subscription_pause_windows WHERE subscription_id=$1 AND resumed_at IS NULL', [f.subscriptionId])).rows[0];
+  expect(window.pause_preset).toBe('2_weeks');
+  expect(window.ends_at.getTime() - window.starts_at.getTime()).toBe(14 * 86400000);
+  const cadenceMs = f.cadenceDays * 86400000;
+  const previousNext = Date.parse(f.nextCycleAt);
+  const clock = Math.max(window.ends_at.getTime(), previousNext + cadenceMs) + 1000;
+  const at = new Date(clock).toISOString();
+  const expectedNext = new Date(previousNext + (Math.floor((clock - previousNext) / cadenceMs) + 1) * cadenceMs);
+  expect(expectedNext.getTime()).toBeGreaterThan(clock);
+  await runCare('en', at);
+  expect(await state(f)).toEqual({ status: 'active', next_cycle_at: expectedNext });
+  expect((await runtime.query('SELECT resumed_at FROM public.subscription_pause_windows WHERE subscription_id=$1', [f.subscriptionId])).rows[0].resumed_at).toEqual(new Date(at));
   const message = await notice(f, 'subscription.resumed'); expect(message.subject).toBe(copy.en.careResumed);
   await page.getByRole('button', { name: copy.en.careRead, exact: true }).click();
   await expect(cardFor(page, f).locator('[data-care-state]')).toHaveAttribute('data-care-state', 'active');
+  const nextDate = await cardFor(page, f).locator('p').filter({ hasText: `${copy.en.careNext}:` }).innerText();
+  expect(Date.parse(nextDate.slice(copy.en.careNext.length + 2))).toBe(expectedNext.getTime());
   await runCare('en', at);
+  expect(await state(f)).toEqual({ status: 'active', next_cycle_at: expectedNext });
+  expect(await history()).toEqual(delivered);
   expect((await messages()).filter(row => row.subscriptionId === f.subscriptionId && row.kind === 'subscription.resumed')).toHaveLength(1);
 });
 for (const locale of ['en', 'pl'] as const) for (const kind of ['subscription.renewal_upcoming', 'subscription.pause_reminder_due', 'subscription.renewal_at_risk']) {
