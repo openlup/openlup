@@ -64,4 +64,10 @@ export type { PackageEditErrorMapping } from "./packageEditErrors.js";
 export type { PackageEditMoney, PackageEditLine, PackageEditQuoteLine, PackageEditPricedLine, PackageEditRequest, PackageEditQuote,
   PackageEditSubscription, PackageEditCurrentLine, PackageEditConstraintMapper, PackageEditReadPort, PackageEditQuotePorts,
   PackageEditLimits, PackageEditorOptions, PackageEditActor, PackageEditBlockedReason, PackageEditPreview, PackageEditApplyResult } from "./packageEditContracts.js";
+
+export type { ExactSubscriptionEditAction, ExactSubscriptionEditRequest, SubscriptionEditRequest, ExactSubscriptionEditPreview,
+  ExactSubscriptionEditApplyResult, ExactSubscriptionEditPricedLine, ExactSubscriptionEditQuote, SubscriptionPortionModes } from "./contracts/exactEdit.js";
+export { createExactSubscriptionRepricer } from "./exactEditQuote.js";
+export { createSubscriptionSizingRules, apportionSubscriptionUnits } from "./subscriptionSizing.js";
+export type { SubscriptionSizingUnit, SubscriptionSizingPolicy } from "./subscriptionSizing.js";
 export { createPostgresSubscriptionAutoResume } from "./postgresAutoResume.js";

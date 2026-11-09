@@ -1890,9 +1890,55 @@ The package-editor forward must be admitted and installed through the selected
 migration plan before this API is composed. It writes future line/cadence terms
 and the accepted full `linePricing` on its existing package-change event. Renewal
 reads the newest event that carries a `linePricing` array among graduation and
-classic package edits, ordered by occurrence time and event ID, falling back to
+classic and exact package edits, ordered by occurrence time and event ID, falling back to
 retained purchase pricing. Frozen renewal operations keep their existing snapshot. Package editing
 never moves the due anchor, writes an arrival or interrupts active service.
+
+The same editor binding accepts `ExactSubscriptionEditRequest` for seven separate
+API levers. These requests include their `action`; the classic request retains
+its existing shape and result type. There are no supplied portal controls or
+starter host routes for these levers.
+
+| Action | Future-template effect |
+| --- | --- |
+| `swap_base_line` | Substitute the requested variant in place, preserving ID, quantity, add-on flag and sort order; refuse an existing target or missing source. |
+| `add_addon` | Append a new add-on with a newly assigned ID. |
+| `remove_addon` | Remove an existing add-on, including a retired one; missing add-ons refuse. |
+| `update_addon_quantity` | Change the existing add-on quantity without replacing its ID. |
+| `update_plan_length` | Resize the current base selection through the host composition port and set cadence to the requested plan days. |
+| `update_base_mix` | Replace the base set at the same total base-unit count, checked in both the repricer and SQL. |
+| `update_portion` | Resize at the current cadence and patch the configured mode/factor; only reduced mode requires a strict unit reduction. Returning to full is permitted. |
+
+Base-set edits replace base IDs and preserve add-on IDs, relocking the complete
+remaining template at current recurring prices. Individual line edits preserve
+the other IDs. Swap-to-self, unchanged add-on quantity, and unchanged plan/mix/
+portion sets are SQL no-ops after the ordinary ownership/payment/version guards
+and before preview acceptance or the locked-cycle check. Missing add-on removal
+is a refusal. A reduced-mode request can fail its repricer before SQL's same-mode
+no-op. Exact previews return hash/expiry and persist their ordered pricing
+evidence with empty totals; they do not attach the classic price summary.
+An exact plan change persists the accepted quote’s composition constraint. The
+host sizing policy changes its `value` only for a plan-length constraint; a
+unit-count constraint keeps its value and other host data as cadence changes.
+
+`createExactSubscriptionRepricer` uses the recurring-only quote engine and the
+existing `CompositionRulesPort.resizeComposition` seam. The optional
+`createSubscriptionSizingRules` implementation accepts host daily-need facts,
+unit demand/capacity, quantity policy and `SubscriptionPortionModes` configuration.
+It preserves selection, apportions proportions with deterministic remainder,
+transfers units toward demand coverage and refuses unservable results. Neither
+mode factors nor a vertical demand formula are platform constants. Quantity
+floors remain with the applicable host sizing policy; the classic editor's
+configured minimum is not an extra blanket guard on these individual levers.
+There is no stored customer-exclusion check or subscription-line inventory gate.
+
+Every real exact edit emits `subscription.customer_self_service.<action>` with
+full accepted `linePricing`. Renewal selects these events along with classic
+edits and graduation; the lifecycle dispatcher aliases all seven to the existing
+`subscription.package_changed` notice. Receipt replay still precedes repricing.
+The service-only exact-lever migration must be installed after the shared editor
+ledger migration. It does not change delivery-alignment or replacement-arrival
+authority.
 
 
 Native purchase renewal attachment uses
