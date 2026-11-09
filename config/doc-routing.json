@@ -222,6 +222,7 @@
       "when": "Installed offline agent context lookup and its command launcher",
       "paths": [
         "packages/core/src/agent-context-cli.ts",
+        "packages/core/src/agent-context-mcp.ts",
         "packages/core/src/openlup-context.js"
       ],
       "doc": "packages/core/README.md",
@@ -623,11 +624,13 @@
       "when": "Runnable server substrate: Node HTTP runtime, BFF dispatch, scheduling, storage, data gateways and bundle composition",
       "paths": [
         "packages/platform/README.md",
+        "packages/platform/AGENTS.md",
         "packages/platform/package.json",
         "packages/platform/CHANGELOG.md",
         "packages/platform/CHANGELOG-HISTORY.md",
         "packages/platform/api/**",
         "packages/platform/test/**",
+        "scripts/packages/platform-agent-guide.test.ts",
         "packages/platform/release-gates.json",
         "packages/platform/scripts/**",
         "packages/platform/vitest.config.ts",

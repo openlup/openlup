@@ -1,25 +1,24 @@
 # Commerce Core
 
-`@openlup/core` is the kernel of the `@openlup/*` package family: the
-framework-independent TypeScript contracts and logic for subscription and
-bundle commerce that the other packages and an application's composition read.
-Agents start with [AGENTS.md](AGENTS.md). Its "Using this package in an
-application" section, which `docs:check` requires, tells an application's agent
-not to edit or patch the installed package and to upgrade every `@openlup/*`
-package together.
+`@openlup/core` provides framework-independent TypeScript contracts and pure logic
+for subscription and bundle commerce. An application binds its ports and owns
+composition. This is a development preview: pin an exact version and upgrade all
+`@openlup/*` packages together after reading their changelogs.
 
-The prepared `0.36.0` set adds Platform's neutral partner acquisition entries and
-reference delegation. Core runtime, exports and SQL are unchanged since `0.35.0`.
-Upgrade all packages together and read [the set notes](CHANGELOG.md#0360);
-Core introduces no schema migration. Size comparison uses the published `0.35.0`
-tarball; releases before `0.34.0` remain in the source-only
-`CHANGELOG-HISTORY.md`. Preparation establishes no npm publication.
+```sh
+npm install --save-exact @openlup/core
+```
 
-The prepared set requires Zod `^4.6.6` for GHSA-mrhx-c7xc-m3w5.
-Oversized constrained collections fail before per-element errors accumulate;
-bounded valid inputs and public exports are preserved. Both dependency locks
-select the fixed runtime. The build uses the existing development-only Node
-types for Zod's standard `URL` declaration; Core adds no runtime Node import.
+```ts
+import { platformEnvSchema } from "@openlup/core/platform-runtime";
+
+const env = platformEnvSchema.parse({ APP_BASE_URL: "https://shop.example" });
+```
+
+Start with [AGENTS.md](AGENTS.md) for installed context lookup, subpath maturity
+and a complete wiring example that compiles in CI. Node 24 or newer is required.
+Declarations in `dist/` include declaration maps to the shipped `src/` files for
+editor source navigation; JavaScript source maps are not shipped.
 
 ## Channel and stability
 
@@ -97,8 +96,8 @@ measured budget decision. Passing a local pack does not authorize publication.
 
 ## Package Surface Maturity
 
-Every current export is an internal candidate, experimental kernel, or testing
-surface. Its declaration snapshot is a reviewable drift proof, not a public API
+Every current code export is an internal candidate, experimental kernel, or
+testing surface; the `./package.json` export is the manifest itself. Its declaration snapshot is a reviewable drift proof, not a public API
 promise.
 
 | Export | Role | Maturity | Package smoke |
@@ -185,7 +184,15 @@ The command searches documentation in the installed OpenLup packages offline and
 returns file-and-line citations. Add `--code` for a bounded local application
 source scan, or `--package-code` to inspect the installed packages' `src/` files.
 Both scans are opt-in and may be incomplete; use direct `rg` when a path or
-symbol is known. Add `--json` for structured results. It never downloads
+symbol is known. Add `--json` for structured results, including a `scans` array
+for executed declaration, application and package-source scans. Each summary
+reports its scope, package when applicable, budget-consuming `scannedFiles`,
+`fileLimit` and conservative `limitReached` flag. The flag is true even when
+the count exactly equals the limit; it does not prove another file exists.
+A false flag does not prove exhaustive coverage: filters and other bounds still
+apply. An exact package-source path consumes budget even when its contents are
+not read. Text output notices reached limits, including when there are no hits.
+The top-eight result cap is separate from these scan limits. It never downloads
 packages or starts a service. Its Node-only launcher is isolated from the
 I/O-free kernel exports and adds no runtime dependency.
 
@@ -197,11 +204,59 @@ contract coverage.
 Nested Markdown headings return separate spans; copied excerpts of an already
 indexed installed page do not take another result slot. Each package's root
 `AGENT_CONTEXT.md` contains small excerpts of canonical
-repository guidance, with source paths, line ranges and excerpt digests. Read
-the package version from its installed `package.json` and check the cited source
+repository guidance, with shipped local sources or repository links at
+`openlup-core-v<version>`, line ranges and excerpt digests. Repository paths and
+aliases inside excerpts belong to that checkout, not the application.
+Repository citations must name that package's own release tag at its installed
+version; another package, version, branch or host is refused. The same canonical
+owner and heading take one result slot across package release tags. No link is
+fetched. Read the package version from its installed `package.json` and check the cited source
 before changing a contract; a result locates
 evidence, and does not grant application policy or execution authority. The
 snapshot and command do not establish a registry release or stable support.
+
+## Agent context over MCP
+
+Connect an MCP client to the installed context tool over stdio. Set the working
+directory to your application root (the directory containing `node_modules`):
+
+```json
+{
+  "mcpServers": {
+    "openlup-context": {
+      "command": "npx",
+      "args": ["openlup-context", "mcp"],
+      "cwd": "/path/to/your-application"
+    }
+  }
+}
+```
+
+The example assumes core is already installed; use the local executable
+`./node_modules/.bin/openlup-context mcp` directly if your client must never let
+`npx` fetch a missing command. Configure the working directory in your client's
+settings if it does not accept `cwd`.
+
+Use `search_openlup_context` when the owner or extension seam is unclear, then
+`read_openlup_file` with the returned application-relative path and optional
+inclusive `startLine`/`endLine` (starting at 1). Search also returns structured
+results; `includeApplicationCode` and `includePackageCode` opt into the same
+bounded scans as the CLI flags. Read accepts only ordinary installed
+`node_modules/@openlup/<name>/` files up to 200,000 bytes. Symlinked package roots
+are supported; file realpaths must stay inside the resolved package root. Read
+refuses traversal and never fetches release-tag source URLs. These checks guard
+against wrong paths and links present when the file is read; they do not defend
+against a process that rewrites `node_modules` during the read, which can already
+change the code the application runs. For a repository-only
+source, read its installed context excerpt; application source hits require your
+client's own file tool. Search tasks are limited to 1,000 characters, and each
+incoming message line to 1 MiB. Oversized messages receive one error and are
+discarded through the next newline; the server continues serving. End stdin to
+stop the process.
+
+The server uses local files and Node built-ins, with no network access or extra
+runtime dependency. Kernel exports never load it. The same development-preview
+limits and application-owned instructions apply as for CLI lookup.
 
 ## Local verification from source
 
@@ -228,7 +283,7 @@ In the monorepo, required CI supplies `OPENLUP_PACK_MANIFEST` and
 publishable set and both tarball digests, then uses the named core artifact
 without rebuilding or repacking it. A missing or damaged supplied input refuses;
 it never falls back to a source-directory install. The consumer still audits the
-packed files, imports every public export, checks NodeNext and Bundler types,
+packed files, imports every public code export, checks NodeNext and Bundler types,
 and builds with Vite. It installs Zod from a separately packed locked runtime
 input and uses explicitly located host TypeScript/Vite tools. The isolated
 consumer records the core artifact hashes and rejects package symlinks or
@@ -418,6 +473,15 @@ vocabulary. Handlers must keep effects idempotent and honor the abort signal.
 The separate `@openlup/outbox` rail owns claiming and settlement ports; its host
 adapter and worker supply durable storage, transactions and external delivery.
 
+`PLATFORM_EVENT_VOCABULARY` includes `commerce.settlement.settled`, emitted by
+the platform settlement rail beside the paid-order events. A host that passes
+this vocabulary as the rail's known-type list can leave a settlement fact
+pending without blocking a later paid receipt on the same order aggregate.
+The claim allowlist still comes from registered handlers. A known type without
+a handler is retained without acknowledgement or delivery; no dormant seed is
+required. Readiness evaluation separately requires an explicit owned
+`ignored` or `dormant` exemption when that selected type has no handler.
+
 ## Platform runtime contracts
 
 The `./platform-runtime` export describes shared host capabilities and runtime
@@ -430,3 +494,19 @@ The `./standard-schema` export exposes the framework-neutral schema interface
 used by package contracts. It keeps browser-safe consumers independent of a
 schema library runtime; validation behavior still belongs to each declared
 schema and its consumer.
+
+## Release notes
+
+The prepared `0.37.0` set recognizes the already-emitted settlement event in
+Core's outbox vocabulary and adds Platform's native commerce and application
+tooling surfaces. Upgrade all packages together and read [the set notes](CHANGELOG.md#0370),
+including the explicit exemption needed when a host selects no settlement consumer.
+Core introduces no schema migration. Size comparison uses the published `0.36.0`
+tarball; releases before `0.35.0` remain in the source-only
+`CHANGELOG-HISTORY.md`. Preparation establishes no npm publication.
+
+The set requires Zod `^4.6.6` for GHSA-mrhx-c7xc-m3w5.
+Oversized constrained collections fail before per-element errors accumulate;
+bounded valid inputs and public exports are preserved. Both dependency locks
+select the fixed runtime. The build uses the existing development-only Node
+types for Zod's standard `URL` declaration; Core adds no runtime Node import.

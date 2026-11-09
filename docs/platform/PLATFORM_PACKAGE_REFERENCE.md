@@ -1480,9 +1480,13 @@ The `expiresAt` input is ignored: PostgreSQL computes and stores exactly
 an elapsed deadline. Only the SHA-256 hash reaches storage. The caller retains
 the raw credential for its separately authorized delivery and never logs it.
 
-Issuing a new link ends the previous link of the same order. Identical hash/order
-replay returns its original token ID without rotating or reactivating links;
-reuse for another order refuses. The unique unrevoked-order index remains.
+New checkout links preserve earlier links of the same order until expiry or
+payment. Identical hash/order replay returns its original token ID without
+reactivating links; reuse for another order refuses. Pending orders with a
+`subscription_cycle_id` are renewal orders and refuse checkout issuance. Initial
+subscription purchases remain eligible before paid activation attaches a cycle.
+Payment-case issuance and the separate actor issuer still rotate earlier links;
+case issuance serializes on the pending order before revocation and insertion.
 
 Inspection uses the installed native routine's priority: revoked, expired,
 consumed, active. `consumed` becomes `order_not_recoverable`; unknown states

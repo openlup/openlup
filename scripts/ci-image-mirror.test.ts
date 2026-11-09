@@ -2,7 +2,7 @@ import type { OwnedCiImage } from "./ci-image-mirror.mjs";
 import { existsSync, readFileSync } from "node:fs";
 import { env as processEnvironment } from "node:process";
 import { describe, expect, it, vi } from "vitest";
-import { inspect, mirrorImage, mirrorImages, ownedImages, resolveImage, resolvePlan } from "./ci-image-mirror.mjs";
+import { MIRROR_REGISTRY, inspect, mirrorImage, mirrorImages, ownedImages, resolveImage, resolvePlan } from "./ci-image-mirror.mjs";
 import { execFileSync } from "node:child_process";
 
 vi.mock("node:child_process", () => ({ execFileSync: vi.fn() }));
@@ -47,14 +47,27 @@ describe("CI image mirror planning and digest preservation", () => {
 
   it("validates the owned pins and refuses duplicates, mutable or unsafe refs", () => {
     const config = JSON.parse(readFileSync("config/ci-images.json", "utf8"));
-    expect(ownedImages(config).map(({ name }) => name)).toEqual(["install-proof-postgres", "test-postgres"]);
+    expect(ownedImages(config).map(({ name }) => name)).toEqual(["install-proof-postgres", "test-postgres", "starter-browser"]);
     for (const images of [[config.images[0], config.images[0]], [{ ...config.images[0], digest: "TODO" }],
       [{ ...config.images[0], sources: ["evil.test/library/postgres"] }], [{ ...config.images[0], tag: "16; echo unsafe" }]]) {
       expect(() => ownedImages({ images })).toThrow("invalid or duplicate");
     }
-    for (const source of ["ghcr.io/library/postgres:16", "ghcr.io/library/postgres:17:extra", "ghcr.io/other/postgres:17"]) {
+    for (const source of ["ghcr.io/library/postgres:16", "ghcr.io/library/postgres:17:extra", "ghcr.io/other/postgres:17",
+      "docker.io/other/library/postgres", "public.ecr.aws/other/library/postgres", "public.ecr.aws/library/postgres"]) {
       expect(() => ownedImages({ images: [{ ...config.images[0], sources: [source] }] })).toThrow("invalid or duplicate");
     }
+  });
+
+  it("admits a pinned Microsoft registry source like any other upstream and refuses it without a digest", () => {
+    const browser = { name: "starter-browser", repository: "playwright", tag: "v1.62.0-noble", digest, sources: ["mcr.microsoft.com/playwright"] };
+    expect(ownedImages({ images: [browser] })).toEqual([browser]);
+    for (const changed of [{ ...browser, digest: "TODO" }, { ...browser, digest: "" }, { ...browser, sources: ["mcr.microsoft.com/other"] },
+      { ...browser, sources: ["mcr.microsoft.com/other/playwright"] }, { ...browser, sources: ["mcr.microsoft.com/playwright:v1.61.0-noble"] },
+      { ...browser, sources: ["evil.test/playwright"] }]) {
+      expect(() => ownedImages({ images: [changed] })).toThrow("invalid or duplicate");
+    }
+    const lookup = vi.fn().mockImplementation((ref: string) => ref.split("@")[1]);
+    expect(resolveImage(browser, lookup)).toEqual({ source: `mcr.microsoft.com/playwright@${digest}`, target: `${MIRROR_REGISTRY}/playwright:v1.62.0-noble`, digest });
   });
 
   it("refuses missing, empty or mistyped owned fields before any exec or registry call", () => {

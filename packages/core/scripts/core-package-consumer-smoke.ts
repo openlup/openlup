@@ -228,6 +228,7 @@ function readinessModuleScenarioLines(version: string, typed: boolean): string[]
 
 function writeConsumerSmoke(consumerDir: string, packageJson: CorePackageJson): void {
   const specifiers = Object.keys(packageJson.exports)
+    .filter((subpath) => subpath !== "./package.json")
     .sort()
     .map((subpath) => publicSpecifier(packageJson.name, subpath));
   const dynamicImports = JSON.stringify(specifiers, null, 2);
@@ -283,6 +284,32 @@ function writeConsumerSmoke(consumerDir: string, packageJson: CorePackageJson): 
 
   writeConsumerTsConfig(consumerDir, "tsconfig.json", "NodeNext", "NodeNext");
   writeConsumerTsConfig(consumerDir, "tsconfig.bundler.json", "ESNext", "Bundler");
+}
+
+function assertInstalledContextMcp(executable: string, consumerDir: string, version: string): void {
+  const messages = [
+    { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "packed-consumer", version: "1" } } },
+    { jsonrpc: "2.0", method: "notifications/initialized" },
+    { jsonrpc: "2.0", id: 2, method: "tools/list" },
+    { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "search_openlup_context", arguments: { task: "extension seam" } } },
+    { jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "read_openlup_file", arguments: { path: "node_modules/@openlup/core/AGENT_CONTEXT.md", startLine: 1, endLine: 3 } } },
+  ];
+  const stdout = execFileSync(executable, ["mcp"], {
+    cwd: consumerDir, encoding: "utf8", env: consumerEnvironment(), timeout: 10_000,
+    input: messages.map(message => JSON.stringify(message)).join("\n") + "\n",
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  const replies = stdout.trim().split("\n").map(line => JSON.parse(line));
+  assert(JSON.stringify(replies.map(reply => reply.id)) === "[1,2,3,4]", "installed MCP stdout must contain only request replies and finish on EOF");
+  assert(replies.every(reply => reply.jsonrpc === "2.0" && !reply.error && !reply.result.isError), "installed MCP request failed");
+  assert(replies[0].result.protocolVersion === "2025-06-18" && replies[0].result.serverInfo.name === "openlup-context" && replies[0].result.serverInfo.version === version, "installed MCP initialize identity differs");
+  assert(JSON.stringify(replies[0].result.capabilities) === '{"tools":{}}', "installed MCP capabilities differ");
+  assert(replies[1].result.tools.map((tool: { name: string }) => tool.name).join(",") === "search_openlup_context,read_openlup_file", "installed MCP tools differ");
+  const search = replies[2].result;
+  assert(search.structuredContent.version === version && search.structuredContent.hits.some((hit: { owner?: string; file: string }) => hit.owner?.includes(`openlup-core-v${version}/`) && hit.file === "node_modules/@openlup/core/AGENT_CONTEXT.md"), "installed MCP search did not return relative installed context and release source");
+  assert(search.content[0].text.includes("node_modules/@openlup/core/"), "installed MCP search did not format citations");
+  assert(replies[3].result.content[0].text.includes("1: # @openlup/core agent context"), "installed MCP file range did not contain numbered installed lines");
+  console.log("core installed context MCP smoke ok (initialize, tools/list, search, read, EOF)");
 }
 
 export function runCorePackageConsumerSmoke(options: CorePackageConsumerSmokeOptions = {}): void {
@@ -378,6 +405,13 @@ export function runCorePackageConsumerSmoke(options: CorePackageConsumerSmokeOpt
     const contextExecutable = join(consumerDir, "node_modules", ".bin", "openlup-context");
     assert(existsSync(contextExecutable), "offline installation did not link the local context executable");
     assert(run(contextExecutable, ["--help"], consumerDir).includes("Usage: openlup-context"), "installed context executable did not print usage");
+    const context = JSON.parse(run(contextExecutable, ["search", "extension seam", "--json"], consumerDir));
+    assert(context.hits.some((hit: { owner?: string }) => hit.owner === `https://github.com/openlup/openlup/blob/openlup-core-v${packageJson.version}/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md`), "installed context search did not retain its release-tagged source");
+    const sourceContext = JSON.parse(run(contextExecutable, ["search", "nextRetryAttemptAt", "--package-code", "--json"], consumerDir));
+    for (const scope of ["declarations", "package-source"]) {
+      assert(sourceContext.scans.some((scan: { scope: string; packageName?: string; scannedFiles: number }) => scan.scope === scope && scan.packageName === packageName && scan.scannedFiles > 0), `installed context did not report a nonempty ${scope} scan`);
+    }
+    assertInstalledContextMcp(contextExecutable, consumerDir, packageJson.version);
     run(process.execPath, ["smoke.mjs"], consumerDir);
     run(toolBinary("tsc", dependencyRoots), ["-p", "tsconfig.json", "--noEmit"], consumerDir);
     run(toolBinary("tsc", dependencyRoots), ["-p", "tsconfig.bundler.json", "--noEmit"], consumerDir);

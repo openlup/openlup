@@ -71,10 +71,24 @@ test('invalid stock bounds, quantities, input limits and hold lifetime refuse', 
 });
 
 
-test('nonzero renewal shipping refuses while the native contract requires zero', () => {
-  const config = structuredClone(Object.values(configurations)[0]!);
-  config.offer.renewalShippingMinor = 300;
-  assert.throws(() => assertConfig(config), /starter_renewal_shipping_unsupported/);
+for (const field of ['shippingMinor', 'freeShippingFromMinor'] as const) {
+  for (const value of [-1, 1.5, undefined, 2147483648]) test(`invalid ${field} refuses: ${value}`, () => {
+    const config = structuredClone(Object.values(configurations)[0]!);
+    Object.assign(config.offer, { [field]: value });
+    assert.throws(() => assertConfig(config), /starter_offer_invalid/);
+  });
+}
+
+test('shipping terms accept paid delivery and a configurable threshold in both offers', () => {
+  for (const original of Object.values(configurations)) {
+    const config = structuredClone(original);
+    config.offer.shippingMinor = 640; config.offer.freeShippingFromMinor = 5000;
+    assertConfig(config);
+    const result = evaluateOffer(config, { schemaVersion: 1, configuration: config.id, mode: 'one_time',
+      cadenceDays: null, lines: [{ sku: config.offer.products[0]!.sku, quantity: 1 }] });
+    assert.ok(result.ok); assert.equal(result.quote.shippingMinor, 640);
+    assert.equal(result.quote.totalMinor, result.quote.subtotalMinor + 640);
+  }
 });
 
 

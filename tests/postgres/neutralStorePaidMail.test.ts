@@ -10,6 +10,7 @@ import { createPaidMailHost } from '../../examples/neutral-store/host/paid-mail.
 import { createPrivateCapture } from '../../examples/neutral-store/host/private-capture.ts';
 import { createPaidMailArtifacts, paidMailKey } from '../../examples/neutral-store/host/paid-mail-artifact.ts';
 import { configurations } from '../../examples/neutral-store/owned/store.config.ts';
+import { applyDemoSeed, demonstrationMarker } from '../../examples/neutral-store/installation/install.ts';
 import { assertRenewalConfig } from '../../examples/neutral-store/shared/renewal-config.ts';
 import type { StoreConfig } from '../../examples/neutral-store/shared/config.ts';
 import type { PaidMailArtifactV1 } from '../../examples/neutral-store/host/paid-mail-artifact.ts';
@@ -32,6 +33,8 @@ beforeAll(async () => {
   const runner = createPlatformPostgresMigrationRunner({ connectionString: container.connectionString }, { installation, poolFactory: () => migration });
   await runner.apply();
   expect((await runner.status()).pending).toEqual([]);
+  await owner.query(`COMMENT ON DATABASE neutral_store IS '${demonstrationMarker}'`);
+  await applyDemoSeed(config(), { connection: owner, installRole: 'postgres', runtimeRole: 'starter_runtime', close: async () => {} });
   const url = new URL(container.connectionString); url.username = 'starter_runtime'; url.password = 'synthetic-conformance';
   runtimeUrl = url.toString(); runtime = new Pool({ connectionString: runtimeUrl });
 }, 60_000);
@@ -184,3 +187,83 @@ it('the paid artifact preserves atomic bytes and refuses corrupt identities with
     await expect(artifacts.writeOnce(key, { ...record, outboxEventId: randomUUID() })).rejects.toThrow('starter_paid_mail_identity_unavailable');
   });
 });
+
+
+async function realPurchase(directory: string, owned: StoreConfig): Promise<string> {
+  const script = `
+    import {readFileSync} from 'node:fs';
+    import {randomUUID,createHash} from 'node:crypto';
+    import {composeNativeBindings} from ${JSON.stringify(new URL('../../examples/neutral-store/host/native-composition.ts', import.meta.url).href)};
+    import {createOriginPolicy} from ${JSON.stringify(new URL('../../examples/neutral-store/host/origin-policy.ts', import.meta.url).href)};
+    import {dispatchAction} from ${JSON.stringify(new URL('../../examples/neutral-store/host/bindings.ts', import.meta.url).href)};
+    const {url,config}=JSON.parse(readFileSync(0,'utf8'));
+    const bindings=await composeNativeBindings(url,createOriginPolicy(config,4319));
+    const context=()=>({config,commandKey:randomUUID(),actor:{customerRef:null,operatorRef:null,
+      requesterKey:createHash('sha256').update(randomUUID()).digest('hex'),requestOrigin:'http://localhost:4319'}});
+    try {
+      const created=await dispatchAction(bindings,'checkout.create',{
+        locale:'en',email:randomUUID()+'@example.test',configuration:config.id,country:config.market.country,
+        termsAccepted:true,termsRevision:config.legal.revision,firstName:'Example',lastName:'Buyer',
+        phone:'000000000',line1:'1 Example Lane',city:'Example City',postalCode:'00000',
+        cart:{schemaVersion:1,configuration:config.id,mode:'one_time',cadenceDays:null,
+          lines:[{sku:config.offer.products[0].sku,quantity:1}]}},context());
+      if(!created.ok) throw new Error('paid_mail_purchase_create_'+created.code);
+      const paid=await dispatchAction(bindings,'payment.simulate',{
+        orderRef:created.value.orderRef,token:created.value.token,outcome:'captured'},context());
+      if(!paid.ok || paid.value.status!=='paid') throw new Error('paid_mail_purchase_settlement_required');
+      process.stdout.write(JSON.stringify({orderId:created.value.orderRef}));
+    } finally {await bindings.close();}
+  `;
+  return new Promise((done, fail) => {
+    const child = spawn(process.execPath, ['--experimental-strip-types', '--input-type=module', '-e', script],
+      { cwd: directory, stdio: ['pipe', 'pipe', 'pipe'] });
+    let output = '', errors = '';
+    const timer = setTimeout(() => { child.kill('SIGTERM'); fail(new Error('paid_mail_purchase_timeout')); }, 15_000);
+    child.stdout.on('data', data => { output += data; }); child.stderr.on('data', data => { errors += data; });
+    child.once('error', error => { clearTimeout(timer); fail(error); });
+    child.once('exit', code => {
+      clearTimeout(timer);
+      if (code !== 0) {
+        const named = errors.match(/Error: (paid_mail_purchase_[A-Za-z0-9_]+)/);
+        fail(new Error(named?.[1] ?? 'paid_mail_purchase_failed'));
+      } else done(JSON.parse(output).orderId);
+    });
+    child.stdin.end(JSON.stringify({ url: runtimeUrl, config: owned }));
+  });
+}
+
+// Measured 428–435 ms per real-purchase case; 4x fits within the existing 10 s bound.
+it.each(['settlement first', 'paid first'] as const)('a real purchase captures one paid receipt with %s and leaves settlement pending without delivery', async order => {
+  await local(async directory => {
+    const owned = config(), orderId = await realPurchase(directory, owned);
+    expect((await runtime.query('SELECT status FROM public.commerce_settlement_intents WHERE order_id=$1', [orderId])).rows)
+      .toEqual([{ status: 'settled' }]);
+    const events = (await owner.query(`SELECT id,event_type,aggregate_type,aggregate_id FROM public.outbox_events
+      WHERE aggregate_id=$1 AND event_type=ANY($2::text[])`, [orderId, ['commerce.settlement.settled', 'commerce.order.paid.email']])).rows;
+    expect(events).toHaveLength(2);
+    for (const event of events) expect(event).toMatchObject({ aggregate_type: 'commerce_order', aggregate_id: orderId });
+    const settlement = events.find(event => event.event_type === 'commerce.settlement.settled')!;
+    const mail = events.find(event => event.event_type === 'commerce.order.paid.email')!;
+    // The owner can alter these generated rows. Explicit instants remove the random UUID tie-break.
+    await owner.query(`UPDATE public.outbox_events SET created_at=CASE WHEN id=$1::uuid THEN $3::timestamptz ELSE $4::timestamptz END
+      WHERE id=ANY($2::uuid[])`, [settlement.id, [settlement.id, mail.id],
+    order === 'settlement first' ? '2026-10-20T12:00:01Z' : '2026-10-20T12:00:02Z',
+    order === 'settlement first' ? '2026-10-20T12:00:02Z' : '2026-10-20T12:00:01Z']);
+    expect((await owner.query('SELECT id FROM public.outbox_events WHERE id=ANY($1::uuid[]) ORDER BY created_at,id', [[settlement.id, mail.id]])).rows.map(row => row.id))
+      .toEqual(order === 'settlement first' ? [settlement.id, mail.id] : [mail.id, settlement.id]);
+    const before = (await owner.query('SELECT to_jsonb(e)::text AS row,xmin::text AS version FROM public.outbox_events e WHERE id=$1', [settlement.id])).rows;
+    const mailbox = join(directory, 'paid-mail'), capture = createPrivateCapture(mailbox);
+    const host = createPaidMailHost({ executor: runtime, config: owned, capture });
+    expect([...host.registry.keys()]).toEqual(['commerce.order.paid.email']);
+    expect(await host.run()).toMatchObject({ claimed: 1, processed: 1 });
+    expect(await createPaidMailArtifacts(capture).read(paidMailKey(mail.id)))
+      .toMatchObject({ kind: 'order_paid', orderId: `order_${orderId}` });
+    expect(await capture.read(paidMailKey(settlement.id))).toBeNull();
+    expect(await readdir(mailbox)).toHaveLength(1);
+    expect((await owner.query('SELECT to_jsonb(e)::text AS row,xmin::text AS version FROM public.outbox_events e WHERE id=$1', [settlement.id])).rows).toEqual(before);
+    expect((await runtime.query('SELECT status,attempts,processed_at FROM public.outbox_events WHERE id=$1', [settlement.id])).rows[0])
+      .toEqual({ status: 'pending', attempts: 0, processed_at: null });
+    expect(await host.run()).toMatchObject({ claimed: 0, processed: 0 });
+    expect(await readdir(mailbox)).toHaveLength(1);
+  });
+}, 10_000);

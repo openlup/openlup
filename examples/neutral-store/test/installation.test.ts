@@ -1,10 +1,76 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { cp, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
+import { fileURLToPath } from 'node:url';
 import { configurations } from '../owned/store.config.ts';
 import { buildDemoSeed } from '../owned/demo-seed.ts';
 import { acquisitionAddresses } from '../owned/acquisition-addresses.ts';
 import { applyDemoSeed, demonstrationMarker, installDemonstration,
   type DemonstrationInstallation } from '../installation/install.ts';
+
+test('container demo startup privately creates a key once, reuses it, and refuses a customer database', async () => {
+  const root = fileURLToPath(new URL('../', import.meta.url));
+  await mkdir(resolve(root, '.context'), { recursive: true });
+  const directory = await mkdtemp(resolve(root, '.context/demo-start-'));
+  try {
+    for (const path of ['lifecycle.mjs', 'host', 'shared', 'owned', 'installation']) {
+      await cp(resolve(root, path), resolve(directory, path), { recursive: true });
+    }
+    await writeFile(resolve(directory, 'package.json'), '{"type":"module"}');
+    await mkdir(resolve(directory, 'node_modules/pg'), { recursive: true });
+    await writeFile(resolve(directory, 'node_modules/pg/package.json'), '{"type":"module","exports":"./index.js"}');
+    await writeFile(resolve(directory, 'node_modules/pg/index.js'), `import { readFileSync } from 'node:fs';
+    export default { Client: class {
+      async connect() {} async end() {}
+      async query() { return { rows: [{ marker: JSON.parse(readFileSync(new URL('./marker.json', import.meta.url))) }] }; }
+    } };`);
+    // Observe the actual host handoff without starting HTTP or exposing the private value.
+    await writeFile(resolve(directory, 'host/server.ts'), 'console.log(JSON.stringify(process.argv));');
+    const argv = ['lifecycle.mjs', 'serve-demo', '--configuration', 'supplements', '--port', '4319',
+      '--listen', '0.0.0.0', '--database-url', 'postgresql://starter_runtime@database/neutral_store'];
+    async function start(marker: string) {
+      await writeFile(resolve(directory, 'node_modules/pg/marker.json'), JSON.stringify(marker));
+      const child = spawn(process.execPath, argv, { cwd: directory, stdio: 'pipe' });
+      let output = '';
+      child.stdout.on('data', bytes => { output += String(bytes); });
+      child.stderr.on('data', bytes => { output += String(bytes); });
+      return { code: (await once(child, 'exit'))[0], output };
+    }
+    const first = await start(demonstrationMarker);
+    assert.equal(first.code, 0);
+    const path = resolve(directory, '.context/quote-acceptance-keyring.json');
+    const bytes = await readFile(path, 'utf8');
+    const keyring = JSON.parse(bytes);
+    assert.deepEqual(Object.keys(keyring), ['current']);
+    assert.equal(typeof keyring.current, 'string');
+    assert.ok(keyring.current.length >= 32);
+    assert.equal((await stat(path)).mode & 0o777, 0o600);
+    assert.equal((await stat(resolve(directory, '.context'))).mode & 0o777, 0o700);
+    const hostArguments = JSON.parse(first.output);
+    assert.equal(hostArguments[hostArguments.indexOf('--quote-acceptance-key-file') + 1], path);
+    const restart = await start(demonstrationMarker);
+    assert.equal(restart.code, 0);
+    assert.equal(await readFile(path, 'utf8'), bytes);
+    await writeFile(path, bytes + 'invalid');
+    const corrupt = await start(demonstrationMarker);
+    assert.equal(corrupt.code, 2);
+    assert.equal(corrupt.output.trim(), 'starter_demo_start_failed');
+    await writeFile(path, bytes);
+    const customer = await start('customer-database');
+    assert.equal(customer.code, 2);
+    assert.equal(customer.output.trim(), 'starter_seed_demonstration_database_required');
+    assert.equal(await readFile(path, 'utf8'), bytes);
+    for (const output of [first.output, restart.output, corrupt.output, customer.output, JSON.stringify(argv)]) {
+      assert.equal(output.includes(keyring.current), false);
+    }
+    await rm(resolve(directory, '.context'), { recursive: true });
+    assert.equal((await start('customer-database')).code, 2);
+    await assert.rejects(readFile(path), { code: 'ENOENT' });
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
 
 const seedPriceCount = (config: typeof configurations[string]) => config.offer.products.reduce((sum, product) => sum + product.permittedPurchaseModes.length, 0);
 

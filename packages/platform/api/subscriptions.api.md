@@ -117,18 +117,48 @@ export interface SubscriptionCommandContext {
     idempotencyKey: string;
     now: string;
 }
+/** Trusted host policy; never part of a browser command payload. */
+export interface SubscriptionLifecycleTerms {
+    pauseDays: number;
+    pauseMonths: number;
+    slideMinDays: number;
+    slideMaxDays: number;
+    orderNowDelayMinutes: number;
+    reactivateDelayDays: number;
+}
+export interface SubscriptionCancelSurvey {
+    reasonCode?: string;
+    comment?: string | null;
+    acceptedSaveOfferId?: string | null;
+}
+export interface SubscriptionSaveOffer {
+    offerId: string;
+    kind: "pause" | "skip" | "reschedule" | "plan_length" | "recipe_mix" | "support_callback";
+    accepted: boolean;
+    externalOfferRef?: string | null;
+}
 export type SubscriptionCommand = SubscriptionCommandContext & ({
     action: "pause";
     pausePreset: string;
     reason: string | null;
-    survey: string | null;
-    saveOffer: string | null;
+    survey: SubscriptionCancelSurvey | string | null;
+    saveOffer: SubscriptionSaveOffer | string | null;
 } | {
-    action: "resume" | "skip" | "cancel";
+    action: "resume" | "skip";
     reason: string | null;
     confirmedChargeTiming: boolean;
 } | {
+    action: "cancel";
+    reason: string | null;
+    confirmedChargeTiming: boolean;
+    survey?: SubscriptionCancelSurvey | string | null;
+    saveOffer?: SubscriptionSaveOffer | string | null;
+} | {
+    action: "order_now" | "reactivate";
+    confirmedChargeTiming: true;
+} | {
     action: "slide";
+    reason?: string | null;
     newNextCycleAt: string;
     confirmedChargeTiming: boolean;
 } | {
@@ -1318,6 +1348,8 @@ export { subscriptionLifecycleTemplate, createSubscriptionLifecycleMessages } fr
 export { createPostgresLifecycleMessages, type NativeLifecycleMessagesOptions, type NativeLifecycleNotice } from "./postgresLifecycleMessages.js";
 export { createSubscriptionCommandExamples } from "./commandExamples.js";
 export { createSubscriptionServices } from "./services.js";
+export { createPostgresSubscriptionWinback } from "./postgresWinback.js";
+export type { NativeWinbackOptions } from "./postgresWinback.js";
 export { createClassicPackageRepricer, hashPackageEditQuote } from "./classicPackageQuote.js";
 export { createPostgresPackageEditReadPort } from "./packageEditRead.js";
 export { createPostgresPackageEditor } from "./packageEditor.js";
@@ -1328,6 +1360,7 @@ export type { ExactSubscriptionEditAction, ExactSubscriptionEditRequest, Subscri
 export { createExactSubscriptionRepricer } from "./exactEditQuote.js";
 export { createSubscriptionSizingRules, apportionSubscriptionUnits } from "./subscriptionSizing.js";
 export type { SubscriptionSizingUnit, SubscriptionSizingPolicy } from "./subscriptionSizing.js";
+export { createPostgresSubscriptionAutoResume } from "./postgresAutoResume.js";
 ```
 ## dist/subscriptions/lifecycleMessages.d.ts
 
@@ -1407,10 +1440,13 @@ export declare function createNativeRenewalCodec(): NativeRenewalCodec;
 ## dist/subscriptions/nativeRetryDriver.d.ts
 
 ```ts
+import type { CycleRetryCadence } from "@openlup/core/subscription";
 import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 import type { NativeRetryFailure, NativeRetryPreparation, NativeRetryRow } from "./postgresRetryStore.js";
 import type { RenewalExecutionRequest, RenewalFrozenSnapshot, RenewalPaymentEvidence, RenewalPaymentRail } from "./contracts/renewal.js";
 export interface NativeRetryDriverOptions {
+    /** Trusted timing only; cannot alter terminating failure classes. */
+    retryCadence?: Pick<CycleRetryCadence, "backoffHours">;
     executor: SubscriptionQueryExecutor;
     withTransaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
     decode(snapshot: Record<string, unknown>): RenewalFrozenSnapshot;
@@ -1478,7 +1514,7 @@ export declare function createNativeSubscriptionBinding(input: {
     inventory: AutomaticRenewalRunDeps["inventory"];
     paymentRails: AutomaticRenewalRunDeps["paymentRails"];
     policy: AutomaticRenewalRunDeps["policy"];
-    retry: Pick<NativeRetryDriverOptions, "readFrozenMandate" | "retryInput" | "payments" | "recoveredTemplate">;
+    retry: Pick<NativeRetryDriverOptions, "readFrozenMandate" | "retryInput" | "payments" | "recoveredTemplate" | "retryCadence">;
     failureTemplate: string;
     recoveryPath: string | null;
     workerId: string;
@@ -1666,10 +1702,25 @@ import { type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 /** The same settings key, column and strict integer domain are used by the definer apply. */
 export declare function createPostgresPackageEditReadPort(db: SubscriptionQueryExecutor): PackageEditReadPort;
 ```
+## dist/subscriptions/postgresAutoResume.d.ts
+
+```ts
+import { type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+/** Trusted scheduled job. The host owns scheduling, enablement and run-ledger binding. */
+export declare function createPostgresSubscriptionAutoResume(executor: SubscriptionQueryExecutor): {
+    run(limit?: number, now?: string): Promise<{
+        ok: boolean;
+        scanned: number;
+        resumed: number;
+        skippedRows: number;
+        failed: number;
+    }>;
+};
+```
 ## dist/subscriptions/postgresCommandStore.d.ts
 
 ```ts
-import type { SubscriptionCommand, SubscriptionCommandPort, SubscriptionCommandRefusal } from "./contracts/commands.js";
+import type { SubscriptionCommand, SubscriptionCommandPort, SubscriptionCommandRefusal, SubscriptionLifecycleTerms } from "./contracts/commands.js";
 import { type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 export interface NativeSubscriptionCommand {
     actorId: string;
@@ -1681,6 +1732,10 @@ export interface NativeSubscriptionCommand {
     now: string;
 }
 export interface NativeSubscriptionCommandBinding {
+    /** Server-owned timing policy, separate from customer fields. Omit for compatibility timings. */
+    lifecycleTerms?: SubscriptionLifecycleTerms;
+    /** Optional adopter taxonomy; the package validates shape without owning reason values. */
+    retentionReasonCodes?: readonly string[];
     /** The callback must use one connection and commit/rollback the complete unit. */
     withTransaction<T>(work: (executor: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
     /** Validate address ownership and refuse address mutation; resolve SKUs and
@@ -1701,7 +1756,7 @@ export interface NativeSubscriptionCommandBinding {
 }
 /** N2 owns normalization, locking, quote acceptance, receipts and all writes.
  * Preview is a separate persisted transaction; apply never executes payment. */
-export declare function createPostgresSubscriptionCommandStore(binding: Pick<NativeSubscriptionCommandBinding, "withTransaction">): {
+export declare function createPostgresSubscriptionCommandStore(binding: Pick<NativeSubscriptionCommandBinding, "withTransaction" | "lifecycleTerms" | "retentionReasonCodes">): {
     preview(input: NativeSubscriptionCommand): Promise<Record<string, unknown>>;
     apply(input: NativeSubscriptionCommand): Promise<Record<string, unknown>>;
 };
@@ -1760,6 +1815,21 @@ export interface NativeLifecycleMessagesOptions {
     recovered?: {
         windowSeconds?: number;
     };
+    /** Trusted host timing/cap values. Seconds are explicit; day identities remain UTC. */
+    notices?: {
+        renewalMinSeconds?: number;
+        renewalMaxSeconds?: number;
+        ordinaryFreshnessSeconds?: number;
+        starterFreshnessSeconds?: number;
+        pauseWindowSeconds?: number;
+        atRiskMinDays?: number;
+        atRiskMaxDays?: number;
+        atRiskMaxDaysPerCause?: number;
+        operatorLeaseSeconds?: number;
+        operatorMaxAttempts?: number;
+        operatorHorizonSeconds?: number;
+        operatorTransientBackoffSeconds?: number;
+    };
     /** One exclusive, autocommit connection per callback; never a transaction or shared session. */
     withSession<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
     /** Host composes the transactional delivery engine and durable receipt reader. */
@@ -1772,6 +1842,14 @@ export interface NativeLifecycleMessagesOptions {
         email: string;
         firstName: string | null;
         country: string | null;
+    }): Promise<Omit<NoticeCommand, "idempotencyKey">>;
+    /** Explicit operator fields only: no customer payload, recovery path or claim token. */
+    bindOperator?(notice: {
+        notificationId: string;
+        caseId: string;
+        templateSlug: string;
+    }, recipient: {
+        email: string;
     }): Promise<Omit<NoticeCommand, "idempotencyKey">>;
 }
 /** Scheduled trusted-host binding. Existing ledgers own facts; the transactional delivery engine owns delivery receipts.
@@ -1829,6 +1907,7 @@ export declare function createPostgresRenewalStore(executor: SubscriptionQueryEx
 ## dist/subscriptions/postgresRetryStore.d.ts
 
 ```ts
+import { type CycleRetryCadence } from "@openlup/core/subscription";
 import type { RenewalRetryObligation } from "./contracts/dunning.js";
 import { type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 /** N1 accepts only verified M07 evidence; the host supplies logical-cycle correlation explicitly. */
@@ -1880,7 +1959,7 @@ export interface NativeRetryRow extends RenewalRetryObligation {
     state: "waiting" | "prepared" | "recovered";
 }
 /** No payment execution is implemented here. A replayed prepare always returns execute=false. */
-export declare function createPostgresRetryStore(executor: SubscriptionQueryExecutor): {
+export declare function createPostgresRetryStore(executor: SubscriptionQueryExecutor, cadence?: Pick<CycleRetryCadence, "backoffHours">): {
     read(operationId: string): Promise<NativeRetryRow | null>;
     candidates(limit: number, now: string): Promise<NativeRetryRow[]>;
     applyFailure(operationId: string, key: string, input: NativeRetryFailure): Promise<NativeRetryRow>;
@@ -1898,6 +1977,8 @@ export declare function createPostgresRetryStore(executor: SubscriptionQueryExec
     noteRowOutcome(operationId: string, key: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
 };
 export interface NativeRetryLifecycleBinding {
+    /** Trusted retry offsets; failure-class termination remains unchanged. */
+    retryCadence?: Pick<CycleRetryCadence, "backoffHours">;
     executor: SubscriptionQueryExecutor;
     withTransaction<T>(work: (executor: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
     /** M07's existing transaction-bound native port; never a provider execution port. */
@@ -1979,6 +2060,51 @@ export declare function createPostgresStockWaitStore(options: NativeStockWaitBin
         reason: "not_stock_only" | "external_ownership" | "stale_snapshot" | "lease_active" | "inventory_unavailable";
     }>;
 };
+```
+## dist/subscriptions/postgresWinback.d.ts
+
+```ts
+import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+type WinbackCommand = {
+    idempotencyKey: string;
+    recipientReference: string;
+    templateReference: string;
+};
+type WinbackReceipt = {
+    state: "accepted" | "failed";
+    deliveryReference: string | null;
+    attemptCount: number;
+};
+export interface NativeWinbackOptions {
+    /** An exclusive autocommit session, never a transaction spanning transport. */
+    withSession<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
+    /** The existing durable delivery rail owns ambiguous acceptance and retries. */
+    delivery: {
+        readReceipt(key: string): Promise<WinbackReceipt | null>;
+        send(command: WinbackCommand): Promise<WinbackReceipt>;
+    };
+    /** Trusted host binds neutral content and the localized account landing. */
+    bind(input: {
+        subscriptionId: string;
+        clientId: string;
+        email: string;
+        firstName: string | null;
+        country: string | null;
+    }): Promise<Omit<WinbackCommand, "idempotencyKey">>;
+}
+/** Explicit winback-only selection; no dispatcher alias or other retention planner. */
+export declare function createPostgresSubscriptionWinback(options: NativeWinbackOptions): {
+    run(limit?: number): Promise<{
+        plan: unknown;
+        scanned: number;
+        sent: number;
+        deduped: number;
+        refused: number;
+        failed: number;
+        busy: number;
+    }>;
+};
+export {};
 ```
 ## dist/subscriptions/renewalCycleFailureMechanism.d.ts
 

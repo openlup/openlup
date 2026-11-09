@@ -1,13 +1,23 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
+import { createServer } from 'node:net';
+import { existsSync } from 'node:fs';
+import { env as processEnvironment } from 'node:process';
+import { chromium } from '@playwright/test';
+import { Pool } from 'pg';
+import { createPostgresAccountLinkStore } from '@openlup/platform/identity';
+import { ACQUISITION_TERMS_CAPABILITY } from '@openlup/platform/pricing';
+import { createPlatformPostgresMigrationRunner, qualifiedPostgresStartupOptions } from '@openlup/platform/migrations';
+import { applyDemoSeed, demonstrationMarker } from '../../examples/neutral-store/installation/install.ts';
+import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from '../helpers/postgresContainer.js';
 import { pathToFileURL } from 'node:url';
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createPostgresTransactionalDeliveryStore } from '@openlup/platform/communications';
 import { createPrivateCapture } from '../../examples/neutral-store/host/private-capture.ts';
 import { createLifecycleNoticeHost } from '../../examples/neutral-store/host/lifecycle-notices.ts';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { configurations } from '../../examples/neutral-store/owned/store.config.ts';
 import { composeRenewalSandbox } from '../../examples/neutral-store/host/renewal-sandbox.ts';
 import { createRenewalJob, renewalLedgerReady, summarizeRenewalRun } from '../../examples/neutral-store/host/renewal-job.ts';
@@ -309,3 +319,122 @@ it('maps a known transactional command conflict to a final disposition without d
     expect((await runtime.query('SELECT count(*)::int AS n FROM public.commerce_checkout_recovery_tokens WHERE order_id=(SELECT order_id FROM public.subscription_retry_obligations WHERE subscription_id=$1)', [purchase.subscriptionId])).rows[0].n).toBe(1);
   } finally { await receipts.close(); await rm(directory, { recursive: true, force: true }); }
 }, 30000);
+
+// Measured 5.8–6.0 s including installation and UI build; 30 s exceeds four times the maximum.
+// The job writes through the sandbox; the customer only reads through the UI.
+it.runIf(existsSync(chromium.executablePath())).each(Object.values(configurations))('$id: runs the renewal effect browser journey against PostgreSQL', async configurationInput => {
+  const config = structuredClone(configurationInput); config.offer.freeShippingFromMinor = 100_000;
+  const app = resolve('examples/neutral-store');
+  const root = resolve('.context/scratch'); await mkdir(root, { recursive: true });
+  const directory = await mkdtemp(resolve(root, 'starter-renewal-browser-'));
+  const fixture = resolve(directory, 'fixture.private.json');
+  const configuration = resolve(app, '.context', `renewal-${config.id}.config.mjs`);
+  let host: ChildProcess | undefined, container: PostgresContainer | undefined;
+  const pools: Pool[] = [];
+  try {
+    // The HTTP host requires its selected starter login and database. The other
+    // cases' installed-consumer fixture deliberately uses a different profile.
+    container = await runPostgresContainer({ name: `starter-renewal-browser-${config.id}-${process.pid}`, database: 'neutral_store', password: 'synthetic-conformance' });
+    if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error('starter_browser_postgres_required');
+    const owner = new Pool({ connectionString: container.connectionString }); pools.push(owner);
+    for (const role of ['starter_runtime', 'starter_restore']) await owner.query(`CREATE ROLE ${role} LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-conformance'`);
+    const selection = { generation: 'qualified-v2', roleMode: 'installer-managed', bootstrapLogin: 'postgres', migrationLogin: 'postgres', runtimeLogin: 'starter_runtime', restoreLogin: 'starter_restore' } as const;
+    const migration = new Pool({ connectionString: container.connectionString, options: qualifiedPostgresStartupOptions(selection) }); pools.push(migration);
+    const runner = createPlatformPostgresMigrationRunner({ connectionString: container.connectionString }, { installation: selection, poolFactory: () => migration });
+    await runner.apply(); expect((await runner.status()).pending).toEqual([]);
+    await owner.query(`COMMENT ON DATABASE neutral_store IS '${demonstrationMarker}'`);
+    await applyDemoSeed(config, { connection: owner, installRole: 'postgres', runtimeRole: 'starter_runtime', close: async () => {} });
+    const connection = new URL(container.connectionString); connection.username = 'starter_runtime'; connection.password = ''; connection.protocol = 'postgresql:';
+    const privateConnection = new URL(connection); privateConnection.password = 'synthetic-conformance';
+    const runtime = new Pool({ connectionString: privateConnection.toString() }); pools.push(runtime);
+    const executor = { query: (sql: string, values?: unknown[]) => runtime.query(sql, values) };
+    const transaction = async <T>(work: (db: typeof executor) => Promise<T>) => {
+      const db = await runtime.connect();
+      try { await db.query('BEGIN'); const result = await work(db); await db.query('COMMIT'); return result; }
+      catch (error) { await db.query('ROLLBACK'); throw error; } finally { db.release(); }
+    };
+    const probe = createServer().listen(0, '127.0.0.1'); await once(probe, 'listening');
+    const address = probe.address(); if (!address || typeof address === 'string') throw new Error('starter_browser_port_required');
+    await new Promise<void>(done => probe.close(() => done()));
+    const base = `http://127.0.0.1:${address.port}`;
+    const keyring = resolve(directory, 'quote-keyring.private.json');
+    await writeFile(keyring, JSON.stringify({ current: randomBytes(32).toString('base64url') }), { mode: 0o600 });
+    // Select fictional nonzero shipping in this process before loading the real host.
+    const setup = `import {configurations} from ${JSON.stringify(pathToFileURL(resolve(app, 'owned/store.config.ts')).href)};
+configurations[${JSON.stringify(config.id)}].offer.freeShippingFromMinor=100000;`;
+    host = spawn(process.execPath, ['--experimental-strip-types', '--import', `data:text/javascript,${encodeURIComponent(setup)}`, resolve(app, 'host/server.ts'), '--configuration', config.id,
+      '--port', String(address.port), '--database-url', connection.toString(), '--quote-acceptance-key-file', keyring],
+    { cwd: directory, env: { ...processEnvironment, PGPASSWORD: 'synthetic-conformance' }, stdio: ['ignore', 'pipe', 'pipe'] });
+    let output = '';
+    host.stdout!.on('data', data => { output += String(data); }); host.stderr!.on('data', () => {});
+    await vi.waitFor(() => { expect(output).toContain('Neutral store local candidate:'); }, { timeout: 15_000 });
+    const call = async (operation: string, payload: Record<string, unknown>) => {
+      const response = await fetch(`${base}/api/actions/${operation}`, { method: 'POST', headers: {
+        Origin: base, 'Content-Type': 'application/json', 'X-Starter-Request': '1', 'Idempotency-Key': randomUUID(),
+      }, body: JSON.stringify(payload) });
+      const result = await response.json(); expect(result.ok).toBe(true); return result.value;
+    };
+    const email = `renewal-${randomUUID()}@example.test`;
+    const accountConnection = new URL(connection); accountConnection.password = 'synthetic-conformance';
+    const accounts = createPostgresAccountLinkStore({ connectionString: accountConnection.toString() });
+    try { await accounts.createAccount({ email, principalId: randomUUID(), acquisitionSource: 'fixture', lifecycleStage: 'customer' }); }
+    finally { await accounts.close(); }
+    const payload = { locale: 'en', email, configuration: config.id, acquisitionCapability: ACQUISITION_TERMS_CAPABILITY,
+      country: config.market.country, termsAccepted: true, termsRevision: config.legal.revision,
+      firstName: 'Example', lastName: 'Buyer', phone: '000000000', line1: '1 Example Lane', city: 'Example City', postalCode: '00000',
+      cart: { schemaVersion: 1, configuration: config.id, mode: 'subscription', cadenceDays: config.offer.defaultCadenceDays,
+        lines: [{ sku: config.offer.products[0]!.sku, quantity: 1 }] } };
+    const quote = await call('offer.validate', payload);
+    const purchase = await call('checkout.create', { ...payload, quoteAcceptance: quote.quoteAcceptance, expectedTotal: quote.expectedTotal });
+    await call('payment.simulate', { orderRef: purchase.orderRef, token: purchase.token, outcome: 'captured' });
+    const subscriptionId = (await runtime.query('SELECT subscription_id FROM public.subscription_activations WHERE order_id=$1', [purchase.orderRef])).rows[0].subscription_id;
+    const client = (await runtime.query('SELECT id,principal_id FROM public.clients WHERE email=$1', [email])).rows[0];
+    const dueAt = (await runtime.query('SELECT next_cycle_at FROM public.subscriptions WHERE id=$1', [subscriptionId])).rows[0].next_cycle_at.toISOString();
+    const codec = api.createNativeRenewalCodec();
+    const owned = structuredClone(config.renewal); owned.enabled = true; owned.sandbox.initial = 'succeeded';
+    const sandbox = composeRenewalSandbox({ executor, withTransaction: transaction, codec, config: owned,
+      now: () => dueAt, failureTemplate: 'failed', recoveredTemplate: 'recovered', recoveryPath: '/recover' });
+    const job = createRenewalJob({ config: owned, beforeRun: sandbox.refresh,
+      async withSession(work) { const db = await runtime.connect(); try { return await work(db); } finally { db.release(); } },
+      native: { executor, withTransaction: transaction, codec, settlement: db => api.createPostgresRenewalSettlementPort(db, codec, transaction),
+        inventory: inventory.createPostgresRenewalReservationPort(executor), paymentRails: sandbox.paymentRails,
+        policy: sandbox.policy, retry: sandbox.retry, failureTemplate: 'failed', recoveryPath: '/recover', workerId: 'starter-browser-proof',
+        now: () => dueAt, catalogue: { version: 'complete-test-catalogue', migration: 'native-test-catalogue' },
+        readiness: async () => ({ state: 'ready', candidate: { artifact: 'fixture', configuration: config.id,
+          environment: 'disposable', database: 'fixture', schema: 'complete' }, loadedPackages: [], issues: [] }) } });
+    expect(await job.services.run()).toMatchObject({ renewals: [{ status: 'succeeded' }] });
+    const projection = await readAccountRenewal(executor, { principalId: client.principal_id, clientId: client.id });
+    const renewal = projection.subscriptions.find(row => row.subscriptionId === subscriptionId)!;
+    const order = (await runtime.query(`SELECT o.id,o.total_amount_minor::int AS total_cents,o.currency_code AS currency,
+      (SELECT sum(amount_minor)::int FROM public.commerce_order_adjustments WHERE order_id=o.id AND kind='shipping_charge') AS shipping,
+      op.cycle_snapshot FROM public.commerce_orders o JOIN public.subscription_cycles cycle ON cycle.id=o.subscription_cycle_id
+      JOIN public.subscription_renewal_operations op ON op.id=cycle.renewal_operation_id
+      WHERE cycle.subscription_id=$1`, [subscriptionId])).rows[0];
+    const initialShipping = (await runtime.query("SELECT sum(amount_minor)::int AS shipping FROM public.commerce_order_adjustments WHERE order_id=$1 AND kind='shipping_charge'", [purchase.orderRef])).rows[0].shipping;
+    expect(initialShipping).toBe(640);
+    expect(order.shipping).toBe(initialShipping);
+    const frozen = codec.decode(order.cycle_snapshot).pricingSnapshot;
+    expect(order.total_cents).toBe(frozen.totalAmountMinor);
+    expect(order.total_cents).toBe(frozen.productSubtotalAmountMinor! - frozen.discountAmountMinor! + initialShipping);
+    expect(order.id).not.toBe(purchase.orderRef);
+    expect(Date.parse(String(renewal.chargeAt))).toBe(Date.parse(dueAt) + config.offer.defaultCadenceDays * 86_400_000);
+    await writeFile(fixture, JSON.stringify({ email, identityMailbox: resolve(directory, '.context/captured-messages/identity.jsonl'),
+      subscriptionId, nextCharge: renewal.nextCharge, order: { orderId: order.id, total: { amountMinor: order.total_cents, currency: order.currency } } }), { mode: 0o600 });
+    await mkdir(resolve(app, '.context'), { recursive: true });
+    await writeFile(configuration, `import {defineConfig} from '@playwright/test';
+export default defineConfig({testDir:'../browser',testMatch:'renewal.proof.ts',workers:1,fullyParallel:false,
+  reporter:'list',metadata:{renewalFixture:${JSON.stringify(fixture)}},
+  use:{baseURL:${JSON.stringify(base)},headless:true,trace:'off',screenshot:'off',video:'off'}});`);
+    execFileSync(process.execPath, [resolve('node_modules/vite/bin/vite.js'), 'build'], { cwd: app, stdio: 'pipe' });
+    try { process.stdout.write(execFileSync(process.execPath, [resolve('node_modules/@playwright/test/cli.js'), 'test', '--config', configuration],
+      { cwd: app, encoding: 'utf8', timeout: 30_000, stdio: 'pipe' })); }
+    catch (error) {
+      if (error && typeof error === 'object' && 'stdout' in error) process.stdout.write(String(error.stdout));
+      throw new Error('starter_renewal_browser_failed');
+    }
+  } finally {
+    if (host && host.exitCode === null && host.signalCode === null) { const exited = once(host, 'exit'); host.kill('SIGTERM'); await exited; }
+    await closePostgres(container, pools);
+    await rm(directory, { recursive: true, force: true }); await rm(configuration, { force: true });
+  }
+}, 30_000);

@@ -282,7 +282,7 @@ const CORE_SCRIPTS = {
   "release:sbom": "node --experimental-strip-types ./scripts/release-check.ts sbom",
   "test:consumer": "node --experimental-strip-types ./scripts/core-package-consumer-smoke.ts",
   "test:coverage": "npm run build && npm run test:runtime-import && vitest run --config vitest.config.ts --coverage && node --experimental-strip-types ./test/assertNoZeroCoverage.ts",
-  "test:runtime-import": "node -e \"const p=require('./package.json'); Promise.all(Object.keys(p.exports).map((s)=>import(s==='.'?p.name:p.name+'/'+s.slice(2)))).then((m)=>console.log('core runtime import ok', m.length))\"",
+  "test:runtime-import": "node -e \"const p=require('./package.json'); Promise.all(Object.keys(p.exports).filter((s)=>s!=='./package.json').map((s)=>import(s==='.'?p.name:p.name+'/'+s.slice(2)))).then((m)=>console.log('core runtime import ok', m.length))\"",
   "test:smoke": "npm run build && npm run test:runtime-import && vitest run --config vitest.config.ts",
   "typecheck:smoke": "tsc -p tsconfig.smoke.json --noEmit",
 };
@@ -319,7 +319,7 @@ const SYNTHETIC_TREE: Record<string, string> = {
   "src/integrations/supabase/types.ts": "export type SyntheticDatabase = never;\n",
   "package.json": json({ name: "synthetic-root", private: true, scripts: Object.fromEntries(PUBLIC_PACKAGE_COMMANDS.map(({ name, command }) => [name, command])) }),
   "package-lock.json": json({ name: "synthetic-root", lockfileVersion: 3 }),
-  "examples/neutral-store/package.json": json({ name: "synthetic-starter", private: true, scripts: { build: "vite build", start: "node --experimental-strip-types host/server.ts", typecheck: "tsc --noEmit", test: "node --experimental-strip-types --test", "test:browser": "playwright test" } }),
+  "examples/neutral-store/package.json": json({ name: "synthetic-starter", private: true, scripts: { dev: "node --experimental-strip-types dev.mjs", build: "vite build", start: "node --experimental-strip-types host/server.ts", typecheck: "tsc --noEmit", test: "node --experimental-strip-types --test", "test:browser": "playwright test" } }),
   "packages/core/package.json": json({ name: "synthetic-core", scripts: CORE_SCRIPTS, bin: { "openlup-context": "./src/openlup-context.js" } }),
   "packages/core/package-lock.json": json({ name: "synthetic-core", lockfileVersion: 3 }),
   "packages/outbox/package.json": json({ name: "synthetic-outbox", scripts: OUTBOX_SCRIPTS }),

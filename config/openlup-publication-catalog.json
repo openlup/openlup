@@ -1234,11 +1234,43 @@
       "class": "public-output"
     },
     {
-      "path": "db/platform/migrations/20261104100000_subscription_package_editor.sql",
+      "path": "db/platform/migrations/20261106050000_customer_command_key_isolation.sql",
       "class": "public-output"
     },
     {
-      "path": "db/platform/migrations/20261104110000_subscription_exact_levers.sql",
+      "path": "db/platform/migrations/20261106060000_subscription_retry_recovery_truth.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261106100000_subscription_lifecycle_closure.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261106120000_subscription_notice_producers.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261106140000_subscriber_winback_policy.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261109100000_subscription_retry_resume.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261109110000_checkout_recovery_link_lifecycle.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261109113000_subscription_auto_resume_delivered_history.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261109120000_subscription_package_editor.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261109130000_subscription_exact_levers.sql",
       "class": "public-output"
     },
     {
@@ -1818,6 +1850,14 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m19-st-e4.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m19-st-e4u.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m19-st-qa.md",
       "class": "public-output"
     },
@@ -1914,6 +1954,14 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/browser/dev-loop.proof.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/browser/e4.spec.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/browser/journey.spec.ts",
       "class": "public-output"
     },
@@ -1931,6 +1979,10 @@
     },
     {
       "path": "examples/neutral-store/browser/recovery.proof.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/browser/renewal.proof.ts",
       "class": "public-output"
     },
     {
@@ -1955,6 +2007,10 @@
     },
     {
       "path": "examples/neutral-store/client/forms.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/client/invoice-download.ts",
       "class": "public-output"
     },
     {
@@ -2014,6 +2070,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/dev.mjs",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/docs/customization.md",
       "class": "platform-documentation"
     },
@@ -2063,6 +2123,14 @@
     },
     {
       "path": "examples/neutral-store/host/e-composition.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/host/e4-composition.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/host/e4-invoice-summary.ts",
       "class": "public-output"
     },
     {
@@ -2311,6 +2379,18 @@
     },
     {
       "path": "examples/neutral-store/test/checkout-recovery.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/e4-invoice.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/e4-limits.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/e4-oms.test.ts",
       "class": "public-output"
     },
     {
@@ -2782,6 +2862,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/smoke/readmeExample.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/smoke/riskStandalone.test.ts",
       "class": "public-output"
     },
@@ -2815,6 +2899,10 @@
     },
     {
       "path": "packages/core/src/agent-context-cli.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/src/agent-context-mcp.ts",
       "class": "public-output"
     },
     {
@@ -3110,6 +3198,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/test/agent-context-mcp.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/test/assertNoZeroCoverage.ts",
       "class": "public-output"
     },
@@ -3379,6 +3471,10 @@
     },
     {
       "path": "packages/outbox/vitest.config.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/AGENTS.md",
       "class": "public-output"
     },
     {
@@ -4086,11 +4182,43 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/sql/20261104100000_subscription_package_editor.sql",
+      "path": "packages/platform/sql/20261106050000_customer_command_key_isolation.sql",
       "class": "public-output"
     },
     {
-      "path": "packages/platform/sql/20261104110000_subscription_exact_levers.sql",
+      "path": "packages/platform/sql/20261106060000_subscription_retry_recovery_truth.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261106100000_subscription_lifecycle_closure.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261106120000_subscription_notice_producers.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261106140000_subscriber_winback_policy.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261109100000_subscription_retry_resume.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261109110000_checkout_recovery_link_lifecycle.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261109113000_subscription_auto_resume_delivered_history.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261109120000_subscription_package_editor.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261109130000_subscription_exact_levers.sql",
       "class": "public-output"
     },
     {
@@ -6798,6 +6926,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/invoicing/uuidIdentity.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/job-ledger/index.ts",
       "class": "public-output"
     },
@@ -8026,6 +8158,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/subscriptions/lifecycleTerms.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/subscriptions/nativeInstant.ts",
       "class": "public-output"
     },
@@ -8078,6 +8214,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/subscriptions/postgresAutoResume.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/subscriptions/postgresCommandStore.ts",
       "class": "public-output"
     },
@@ -8087,6 +8227,10 @@
     },
     {
       "path": "packages/platform/src/subscriptions/postgresLifecycleMessages.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/postgresNoticeExtensions.ts",
       "class": "public-output"
     },
     {
@@ -8103,6 +8247,10 @@
     },
     {
       "path": "packages/platform/src/subscriptions/postgresStockWaitStore.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/postgresWinback.ts",
       "class": "public-output"
     },
     {
@@ -8211,6 +8359,10 @@
     },
     {
       "path": "packages/platform/test/account-support/subscriptionCommandCodec.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/agentsWiringExample.ts",
       "class": "public-output"
     },
     {
@@ -10218,6 +10370,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/subscriptions/autoResume.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/subscriptions/classicPackageQuote.test.ts",
       "class": "public-output"
     },
@@ -10275,6 +10431,10 @@
     },
     {
       "path": "packages/platform/test/subscriptions/renewalKeys.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/subscriptions/retryTiming.test.ts",
       "class": "public-output"
     },
     {
@@ -11231,6 +11391,10 @@
     },
     {
       "path": "scripts/packages/packages-check.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/platform-agent-guide.test.ts",
       "class": "public-output"
     },
     {
@@ -28262,6 +28426,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/checkoutRecoveryLinkLifecycle.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/checkoutRecoveryTokenPort.test.ts",
       "class": "public-output"
     },
@@ -28323,6 +28491,10 @@
     },
     {
       "path": "tests/postgres/customerAccountConsents.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/customerCommandKeyIsolation.test.ts",
       "class": "public-output"
     },
     {
@@ -28626,6 +28798,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/neutralStarterE4.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/neutralStorePaidMail.test.ts",
       "class": "public-output"
     },
@@ -28826,6 +29002,14 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/subscriptionAutoResumeDeliveredHistory.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionAutoResumeHistoryCatalog.proof.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/subscriptionCommandLifecycleCases.ts",
       "class": "public-output"
     },
@@ -28846,6 +29030,18 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/subscriptionLifecycleClosure.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionLifecycleClosureFixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionLifecycleContractWitnesses.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/subscriptionManagedStock.test.ts",
       "class": "public-output"
     },
@@ -28859,6 +29055,10 @@
     },
     {
       "path": "tests/postgres/subscriptionNoticeDelivery.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionNoticeProducers.test.ts",
       "class": "public-output"
     },
     {
@@ -28886,6 +29086,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/subscriptionRecoveryTruth.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/subscriptionRenewalAdapterCases.ts",
       "class": "public-output"
     },
@@ -28910,6 +29114,14 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/subscriptionRetryResume.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionRetryResumeCatalog.proof.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/subscriptionStockAccountingCases.ts",
       "class": "public-output"
     },
@@ -28919,6 +29131,10 @@
     },
     {
       "path": "tests/postgres/subscriptionStockWaitCases.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionWinback.test.ts",
       "class": "public-output"
     },
     {
@@ -29175,7 +29391,7 @@
   "packageExecutionSurfaces": [
     {
       "path": "examples/neutral-store/package.json",
-      "digest": "sha256-102a8a5009d38d041fdafc886eb4a8f1fc041a2cd410540a2905ad19da3f76e8"
+      "digest": "sha256-2596e792092af299bdbb6b988b847a29caaa49aaec5d82954a9a6cb47e788d7b"
     },
     {
       "path": "package.json",
@@ -29183,7 +29399,7 @@
     },
     {
       "path": "packages/core/package.json",
-      "digest": "sha256-0a01b40d765409dc9810d29839ecd6a82345ac8095d47e74e997dffa53f0e615"
+      "digest": "sha256-45f672a598c2c3f1d90c2a84fe2ddda11fb54315e2c52462691d2b22ca8dc7a6"
     },
     {
       "path": "packages/outbox/package.json",

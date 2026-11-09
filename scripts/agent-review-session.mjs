@@ -156,7 +156,7 @@ export async function proveReviewIntegration(cwd, previous, current, portable = 
   const kind = resolution.length ? 'resolution' : conflicts.length ? 'registry-union' : 'git';
   return { kind: portable ? 'portable-' + kind : kind, tree: current.tree, own, moved, ...(resolution.length ? { resolution, prediction, modeChanged } : {}) };
 }
-export async function captureCoverageEdge(cwd, session, observed, now, historicalKind) {
+export async function captureCoverageEdge(cwd, session, observed, now, historicalKind, { abbreviatedIndex = false } = {}) {
   if (!session || !observed.rules ||
     digest(observed.intent) !== digest(session.history.findLast(event => event.type === 'prepare').intent) ||
     observed.authorSessionId !== session.history.findLast(event => event.type === 'prepare').authorSessionId) return undefined;
@@ -185,8 +185,11 @@ export async function captureCoverageEdge(cwd, session, observed, now, historica
     if (!await ancestor(git, cwd, session.candidate.head, observed.head) || commits || !delta.changedPaths.length) return undefined;
     proof = { paths: delta.changedPaths, modeChanged: delta.modeChanged }; kind = 'repair';
   }
+  // Full object names keep the digest identical in every clone; abbreviated ones
+  // lengthen with the number of objects in the repository that runs git.
+  const index = abbreviatedIndex ? [] : ['--full-index'];
   return { kind, previous: digest(session.history), from: { base: session.candidate.base, head: session.candidate.head, tree: session.candidate.tree },
-    delta: digest(await git(cwd, 'diff', '--binary', '--no-renames', from, to)), proof };
+    delta: digest(await git(cwd, 'diff', '--binary', ...index, '--no-renames', from, to)), proof };
 }
 // Trusted admission and local verify rederive every recorded exceptional edge.
 export async function validateEconomySession(cwd, session, runGit = git) {
@@ -203,8 +206,12 @@ export async function validateEconomySession(cwd, session, runGit = git) {
         const prefix = session.history.slice(0, session.history[index - 1]?.type === 'rules' ? index - 1 : index); const prior = prefix.findLast(item => item.type === 'prepare');
         const version = prefix.some(item => item.type === 'rules' || item.candidate?.rules?.version === 3) ? 3 : 2;
         const before = { ...session, version, candidate: prior.candidate, history: prefix, preparedAt: prior.at };
-        const edge = await captureCoverageEdge(cwd, before, { ...actual, rules, intent: event.intent, authorSessionId: event.authorSessionId }, event.at, event.candidate.coverage.proof?.kind);
-        demand(edge && digest(edge) === digest(event.candidate.coverage), 'recorded coverage proof differs');
+        const observed = { ...actual, rules, intent: event.intent, authorSessionId: event.authorSessionId };
+        const recorded = digest(event.candidate.coverage); const kind = event.candidate.coverage.proof?.kind;
+        const edge = await captureCoverageEdge(cwd, before, observed, event.at, kind);
+        // An edge recorded before full-index digests replays through the abbreviated diff it was recorded with.
+        const legacy = edge && digest(edge) !== recorded ? await captureCoverageEdge(cwd, before, observed, event.at, kind, { abbreviatedIndex: true }) : undefined;
+        demand(edge && (digest(edge) === recorded || (legacy && digest(legacy) === recorded)), 'recorded coverage proof differs');
       }
     }
   }

@@ -169,7 +169,7 @@ for (const name of ["@openlup/core", "@openlup/platform"]) {
 export function assertExportInventory(consumer: string): readonly string[] {
   const metadata = JSON.parse(readFileSync(join(consumer, "node_modules/@openlup/platform/package.json"), "utf8"));
   const expected = [...NON_ADAPTER_ENTRIES, ...ADAPTER_ENTRIES].map(name => `./${name}`).sort();
-  if (JSON.stringify(Object.keys(metadata.exports).sort()) !== JSON.stringify(expected)) throw new Error("Platform export inventory needs classification");
+  if (JSON.stringify(Object.keys(metadata.exports).filter(entry => entry !== "./package.json").sort()) !== JSON.stringify(expected)) throw new Error("Platform export inventory needs classification");
   return NON_ADAPTER_ENTRIES;
 }
 
@@ -2188,6 +2188,7 @@ export function proveNeutralStarterConsumer(checkout: string, packs: ReadonlyMap
     run("npm", ["test"]);
     run("npm", ["run", "typecheck"]);
     run("npm", ["run", "build"]);
+    run(process.execPath, ["--experimental-strip-types", "--test", "browser/dev-loop.proof.ts"]);
     console.log("Neutral starter required cold-consumer addition PASS: " + ((performance.now() - started) / 1000).toFixed(3) + " seconds");
   } finally {
     rmSync(extracted, { recursive: true, force: true });

@@ -65,10 +65,20 @@ it.each(profiles)("atomic actor account choices and refusals on %s", async profi
       } });
     await runner.apply();
     expect((await runner.apply()).applied).toEqual([]);
-    // Qualified plans retain their lock/conflict tail; the package editor appends after it.
-    const tail = profile === "legacy" ? [] : [{ catalog_path: "db/platform/migrations/q2_20261103200000_runtime_lock_and_conflict_completion.sql" }];
-    const ledger = (await owner.query("SELECT catalog_path FROM public.platform_schema_migrations ORDER BY position DESC LIMIT $1", [tail.length + 3])).rows;
-    expect(ledger).toEqual([{ catalog_path: "db/platform/migrations/20261104110000_subscription_exact_levers.sql" }, { catalog_path: "db/platform/migrations/20261104100000_subscription_package_editor.sql" }, ...tail, { catalog_path: file }]);
+    // Package editing follows timed auto-resume delivered history in every plan; qualified plans also retain their completion tail.
+    const tail = [{ catalog_path: "db/platform/migrations/20261109130000_subscription_exact_levers.sql" },
+      { catalog_path: "db/platform/migrations/20261109120000_subscription_package_editor.sql" },
+      { catalog_path: "db/platform/migrations/20261109113000_subscription_auto_resume_delivered_history.sql" },
+      { catalog_path: "db/platform/migrations/20261109110000_checkout_recovery_link_lifecycle.sql" },
+      { catalog_path: "db/platform/migrations/20261109100000_subscription_retry_resume.sql" },
+      { catalog_path: "db/platform/migrations/20261106140000_subscriber_winback_policy.sql" },
+      { catalog_path: "db/platform/migrations/20261106120000_subscription_notice_producers.sql" },
+      { catalog_path: "db/platform/migrations/20261106100000_subscription_lifecycle_closure.sql" },
+      { catalog_path: "db/platform/migrations/20261106060000_subscription_retry_recovery_truth.sql" },
+      { catalog_path: "db/platform/migrations/20261106050000_customer_command_key_isolation.sql" },
+      ...(profile === "legacy" ? [] : [{ catalog_path: "db/platform/migrations/q2_20261103200000_runtime_lock_and_conflict_completion.sql" }])];
+    const ledger = (await owner.query("SELECT catalog_path FROM public.platform_schema_migrations ORDER BY position DESC LIMIT $1", [tail.length + 1])).rows;
+    expect(ledger).toEqual([...tail, { catalog_path: file }]);
     const served = (await owner.query("SELECT prosrc FROM pg_proc WHERE oid='public.customer_communication_preferences_set_as_actor(boolean,timestamptz)'::regprocedure")).rows[0].prosrc;
     expect(readFileSync("db/platform/migrations/20261030110000_customer_newsletter_withdrawal.sql", "utf8")).toContain(`AS $$${served}$$;`);
     const header = (await owner.query("SELECT prosecdef,proconfig FROM pg_proc WHERE oid='public.customer_account_communication_choice_set_as_actor(uuid,text,boolean,text)'::regprocedure")).rows[0];

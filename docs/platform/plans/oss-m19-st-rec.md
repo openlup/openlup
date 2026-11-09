@@ -6,7 +6,9 @@ Add `createPostgresCheckoutRecoveryTokenPort` to the existing commerce server
 entry, implementing the checkout recovery token port over installed PostgreSQL
 storage and routines. A trusted host may issue a token only for an order it has
 already admitted. Preserve initial subscription mode and cadence from persisted
-order facts. Issuing a new link ends the previous link of the same order.
+order facts. The original implementation rotated earlier checkout links. The
+current [checkout recovery contract](../PLATFORM_PACKAGE_REFERENCE.md#postgresql-checkout-recovery-tokens)
+preserves earlier links until expiry or payment and refuses pending renewal orders.
 
 ## Authority and delivery boundary
 

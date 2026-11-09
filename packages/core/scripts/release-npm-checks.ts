@@ -240,7 +240,7 @@ export function createNpmReleaseChecks(input: {
         assert(files.has(required), `packed artifact is missing ${required}`);
       assert(manifest.exports, "package manifest must declare exports");
       for (const [subpath, conditions] of Object.entries(manifest.exports)) {
-        for (const [condition, target] of Object.entries(conditions)) {
+        for (const [condition, target] of Object.entries(typeof conditions === "string" ? { default: conditions } : conditions)) {
           if (typeof target !== "string" || !target.startsWith("./")) continue;
           assert(
             files.has(target.slice(2)),
@@ -259,7 +259,7 @@ export function createNpmReleaseChecks(input: {
 // sources; the docs budget counts files at the package root (documentation and
 // metadata). Anything else counts only toward the tarball total.
 export function packFileClass(path: string): "code" | "docs" | "other" {
-  if (/^dist\/.+\.(?:js|d\.ts)$/.test(path) || /^src\/.+\.ts$/.test(path))
+  if (/^dist\/.+\.(?:js|d\.ts(?:\.map)?)$/.test(path) || /^src\/.+\.ts$/.test(path))
     return "code";
   return path.includes("/") ? "other" : "docs";
 }

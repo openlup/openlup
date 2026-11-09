@@ -528,7 +528,9 @@ the SQL side therefore charges earlier than the engine would.
 table admits only `active`, `paused` and `cancelled`, so it has no activation
 statuses and no `completed`. It has no status-transition trigger: each lifecycle
 function checks its own source status. It can send a win-back message to a
-cancelled subscriber, but no function reactivates a cancelled subscription.
+cancelled subscriber. With the lifecycle-closure forward, its trusted command
+port also reactivates a cancelled subscription after charge-timing confirmation,
+using healthy method and renewal-term evidence and leaving old unpaid cycles terminal.
 Its dunning rail, `dunning_lifecycle_handle_failure`, keeps active subscriptions
 active on dunning exhaustion (invariant repair). A NULL next retry leaves the
 case open and repairable through `dunning_lifecycle_record_recovery`, queues the
@@ -539,8 +541,8 @@ refusal on rung one also has no next retry. No caller in this tree invokes it
 today. A future caller must not call it with NULL unless
 `isDunningLadderExhausted` holds for the refused cycle. A case cut short earlier
 must stay open without that call. An adopter on the portable chain therefore cannot store a
-completed or provisional subscription, and cannot reactivate a cancelled one,
-until a forward migration closes the gap under the compatibility lifecycle in
+completed or provisional subscription. The lifecycle command port is described
+by the subscription owner; additional status-matrix changes still follow the compatibility lifecycle in
 [Data and migrations](DATA_AND_MIGRATIONS.md).
 
 ## Subscription delivery alignment
@@ -823,7 +825,8 @@ snapshots only. The batch has 16 pins: seven native and nine managed. Pending pi
 `20261022160000`. Native order is N1 → N2 → N3 → seam → allocator → X → Y;
 managed order is M1 → M2 → seam → M3 → M4 → M5 → M6 → F17 helper → F17 parity.
 X (`20261024184500`) restores ATP-counted late-positive recovery after the
-allocator; Y (`20261024184600`) filters paid retry candidates before LIMIT. N3 (`20261024180000`) excludes waiting/stock_secured cases before normal_due pagination while preserving the base reader's eligibility, shape and due-time/UUID order.
+allocator; the recovery-truth forward limits those effects to applied payment
+truth, preserving reviewed captures without stock restoration or counter advance; Y (`20261024184600`) filters paid retry candidates before LIMIT. N3 (`20261024180000`) excludes waiting/stock_secured cases before normal_due pagination while preserving the base reader's eligibility, shape and due-time/UUID order.
 The uninstalled N2 (`20261024170000`) fixture includes raw command-preview
 receipt replay with no public-table counts/columns/xmin delta. The apply
 function is unchanged. Historical N1 approval still uses the exact old 14-pin
@@ -839,8 +842,8 @@ mandatory real-PG/pgTAP catalog evidence.
 The CI-only [image inventory](../../config/ci-images.json) owns logical names,
 upstream repositories, tags, index digests and ordered public-registry sources
 for every mirrored image. It records the install-proof database, which is also
-the raw pgTAP server and the managed-rail test database, and the disposable test
-default. No Supabase CLI, CLI-derived or managed-host image remains in hosted CI. The single mirror
+the raw pgTAP server and the managed-rail test database, the disposable test
+default and the starter browser image. No Supabase CLI, CLI-derived or managed-host image remains in hosted CI. The single mirror
 job reads typed owned pins from its own checkout, validates all of them before
 any exec or registry call, and builds upstream sources and mirror targets itself.
 It runs only pinned first-party actions plus the repository script, re-resolves
@@ -851,7 +854,8 @@ registry to inventory sources for consumers; mirror copying still uses only
 upstreams. The reviewed-batch gate and shared disposable PostgreSQL helper use
 these pins, preserving the exact digest on every fallback. In CI and locally,
 source order is mirror, then GHCR/Docker Hub/ECR for managed, or Docker Hub/ECR
-for native.
+for native. Microsoft registry sources are mirror inputs only: consumers pull
+those images from the organization mirror alone, with no upstream fallback.
 The default helper uses the test pin, resolves once per exact ref per process and
 runs the successful digest-qualified source with `--pull=never`; explicit
 non-inventory overrides keep their existing behavior. Before any shared pull,
@@ -1499,7 +1503,11 @@ carry deferred admission independently of terminal refusal, original schedule
 text independently of its comparison instant, frozen revisions and complete
 claim readback. Verified M07 evidence carries original occurrence, observation
 and first-recorded clocks with nullable money and explicit ambiguity/late-positive
-disposition. A late positive settles the same obligation, never a new charge.
+disposition. A late positive settles the same obligation only when payment truth confirms an
+applied captured settlement, never a new charge. Captures retained for review
+apply no paid retry effects and create no recovered receipt. Their existing
+payment-truth event preserves evidence and idempotent redelivery; the public
+retry store returns `payment_failed`, and the driver reports reconciliation work.
 Only an explicit `succeeded` provider readback may settle success; an unrecognized
 status remains awaiting provider evidence even when it carries matching money.
 A waiting retry row with disposition `payment_failed` and null `nextRetryAt`

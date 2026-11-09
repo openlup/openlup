@@ -74,6 +74,76 @@ describe('closed registry grammar', () => {
 });
 
 describe('real Git coverage histories', () => {
+  it.each([
+    ['repair', 'tests/demo.test.ts', 1],
+    ['repair', 'config/release-gates.json', 2],
+    ['resolution', 'tests/main-fixture.test.ts', 1],
+  ])('keeps coverage when %s widens to %s, with floor %i', async (kind, path, floor) => {
+    const f = await fixture(); const request = JSON.parse(await readFile(f.request, 'utf8'));
+    await writeFile(f.request, JSON.stringify({ ...request, intent: { ...request.intent, scope: ['app.ts'] } }));
+    const prior = await f.review();
+    if (kind === 'resolution') {
+      const main = await f.mainMove(async () => { await f.write(path, 'main fixture\n'); await f.write('app.ts', 'main line\n'); });
+      expect(() => f.git('merge', '--no-ff', '--no-commit', main)).toThrow();
+      await f.write('app.ts', 'resolved\n');
+    }
+    await f.write(path, 'repair fixture\n'); f.commit();
+    await expect(f.cli('prepare', f.request)).resolves.toBe(0);
+    const next = await f.state(); const edge = next.candidate.coverage;
+    if (kind === 'repair') expect(edge).toMatchObject({ kind, proof: { paths: [path] } });
+    else expect(edge).toMatchObject({ kind: 'integration', proof: { kind, resolution: ['app.ts', path] } });
+    expect(prior.history.find(event => event.type === 'prepare').candidate.changedPaths).not.toContain(path);
+    expect(next.history.find(event => event.type === 'prepare').candidate.changedPaths).not.toContain(path);
+    expect(next.history.findLast(event => event.type === 'prepare').candidate.changedPaths).toContain(path);
+    for (let index = 0; index < floor - 1; index++) await f.report({ ordinary: true, delta: edge.delta });
+    await expect(f.cli('verify')).rejects.toThrow(`${floor} independent PASS`);
+    await f.report({ ordinary: true, delta: edge.delta }); await expect(f.cli('verify')).resolves.toBe(0);
+    await expect(validateEconomySession(f.cwd, await f.state())).resolves.toBeUndefined();
+  });
+  it('requires a new full review when criteria change after a reviewed candidate', async () => {
+    const f = await fixture(); await f.review();
+    const request = JSON.parse(await readFile(f.request, 'utf8')); request.intent.criteria = 'Preserve the revised fixture outcome';
+    await writeFile(f.request, JSON.stringify(request)); await f.write('tests/demo.test.ts', 'repair fixture\n'); f.commit();
+    await expect(f.cli('prepare', f.request)).rejects.toThrow('prepare --new');
+    await expect(f.cli('prepare', '--new', f.request)).resolves.toBe(0);
+    expect((await f.state()).candidate.coverage).toBeUndefined();
+    await f.report({ ordinary: true, delta: 'a'.repeat(64) }); await f.report({ ordinary: true, delta: 'b'.repeat(64) });
+    await expect(f.cli('verify')).rejects.toThrow('2 independent PASS');
+    await f.report(); await expect(f.cli('verify')).rejects.toThrow('2 independent PASS');
+    await f.report(); await expect(f.cli('verify')).resolves.toBe(0);
+    await expect(validateEconomySession(f.cwd, await f.state())).resolves.toBeUndefined();
+  });
+  describe('delta digests across clones with different object counts', () => {
+    const repaired = async () => {
+      const f = await fixture(); const prior = await f.review();
+      await f.write('tests/demo.test.ts', 'repair fixture\n'); f.commit(); await f.cli('prepare', f.request);
+      const other = await mkdtemp(join(process.cwd(), '.context/scratch/review-economy-clone-')); roots.push(other);
+      execFileSync('/usr/bin/git', ['clone', '-q', '--no-local', f.cwd, other]);
+      // 40,000 extra objects lengthen git's automatic abbreviation from seven to eight digits.
+      const blobs = Array.from({ length: 40000 }, (_, index) => `blob\ndata ${`extra ${index}\n`.length}\nextra ${index}\n`).join('');
+      execFileSync('/usr/bin/git', ['-C', other, 'fast-import', '--quiet'], { input: blobs });
+      const plain = (cwd: string) => execFileSync('/usr/bin/git', ['-C', cwd, 'diff', '--binary', '--no-renames', prior.candidate.head, f.git('rev-parse', 'HEAD')], { encoding: 'utf8' });
+      expect(plain(other)).not.toBe(plain(f.cwd));
+      return { f, other, plain, session: await f.state() };
+    };
+    it('derives the same recorded delta in both clones', async () => {
+      const { f, other, session } = await repaired();
+      await f.report({ ordinary: true, delta: session.candidate.coverage.delta }); await expect(f.cli('verify')).resolves.toBe(0);
+      await expect(validateEconomySession(f.cwd, await f.state())).resolves.toBeUndefined();
+      await expect(validateEconomySession(other, await f.state())).resolves.toBeUndefined();
+    }, 30_000);
+    it('replays an edge recorded with abbreviated names where they reproduce, and refuses any other digest', async () => {
+      const { f, other, plain, session } = await repaired();
+      const legacy = digest(plain(f.cwd)); expect(legacy).not.toBe(session.candidate.coverage.delta);
+      session.candidate.coverage.delta = legacy; session.history.findLast(event => event.type === 'prepare').candidate.coverage.delta = legacy;
+      await writeFile(join(f.scratch, 'agent-review/session.json'), JSON.stringify(session));
+      await f.report({ ordinary: true, delta: legacy }); await expect(f.cli('verify')).resolves.toBe(0);
+      await expect(validateEconomySession(f.cwd, await f.state())).resolves.toBeUndefined();
+      await expect(validateEconomySession(other, await f.state())).rejects.toThrow('recorded coverage proof differs');
+      session.candidate.coverage.delta = 'a'.repeat(64); session.history.findLast(event => event.type === 'prepare').candidate.coverage.delta = 'a'.repeat(64);
+      await expect(validateEconomySession(f.cwd, session)).rejects.toThrow('recorded coverage proof differs');
+    }, 30_000);
+  });
   it('requires full reports for a first protected candidate and excludes partial observations from full expiry', async () => {
     const f = await fixture(); await f.write('scripts/ci-extra.mjs', 'export const guard = true;\n'); f.commit();
     const partialAt = Date.now(); const fullAt = partialAt + DAY / 2;

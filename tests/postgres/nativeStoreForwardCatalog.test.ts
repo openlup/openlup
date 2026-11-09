@@ -9,7 +9,7 @@ import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardow
 // The static native-store class is a first gate for ordinary mistakes. This test is the
 // truth for function identity, attributes and ACLs: it applies a forward to a real
 // database and compares what PostgreSQL itself reports with the slot's lists.
-type CatalogSlot = Pick<NativeStoreSlot, "createdFunctions" | "replacedFunctions" | "grantOnlyFunctions" | "purposeCheck" | "insertSelectTables" | "checkSupersets" | "uniqueSupersets" | "createdViews" | "createdTriggers">;
+type CatalogSlot = Pick<NativeStoreSlot, "createdFunctions" | "replacedFunctions" | "grantOnlyFunctions" | "purposeCheck" | "insertSelectTables" | "checkSupersets" | "uniqueSupersets" | "droppedIndexes" | "createdViews" | "createdTriggers">;
 // PostgreSQL creates its own objects below this OID; every object a forward adds is at or above it.
 const FIRST_USER_OID = 16384;
 // The floor is typed as oid, so every comparison with it resolves to pg_catalog's own oid >= oid and oid < oid. A bare integer
@@ -24,6 +24,7 @@ const POSITIONS = String.raw`':(?:stmt_)?location -?[0-9]+|:stmt_len [0-9]+', ':
 type FunctionRow = { oid: number; name: string; owner: string; attrs: Record<string, unknown>; acl: string[]; src: string };
 type RelationRow = { oid: number; name: string; kind: string; owner: string; rls: boolean; forceRls: boolean; options: string | null; acl: string[]; columnAcls: unknown };
 type Snapshot = {
+  indexes: { oid: number; name: string; table: string; definition: string; attrs: unknown }[];
   functions: FunctionRow[]; relations: RelationRow[]; columns: { rel: string; name: string; attrs: Record<string, unknown>; default: string | null }[]; system: { functions: string; relations: string };
   relationOids: number[]; constraintOids: number[]; constraints: { rel: string; name: string; def: string; indexOid: number }[]; guards: Record<string, Record<string, unknown>[]>;
 };
@@ -70,13 +71,18 @@ async function snapshot(db: PoolClient): Promise<Snapshot> {
     FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace
     LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum
     WHERE c.relkind IN ('r','p') AND a.attnum>0 ORDER BY 1,a.attnum`)).rows;
+  const indexes = (await db.query(`SELECT c.oid::int AS oid, n.nspname||'.'||c.relname AS name,
+    tn.nspname||'.'||t.relname AS table, pg_get_indexdef(c.oid) AS definition,
+    regexp_replace(to_jsonb(i)::text, ${POSITIONS}, 'g')::jsonb AS attrs
+    FROM pg_index i JOIN pg_class c ON c.oid=i.indexrelid JOIN pg_namespace n ON n.oid=c.relnamespace
+    JOIN pg_class t ON t.oid=i.indrelid JOIN pg_namespace tn ON tn.oid=t.relnamespace ORDER BY c.oid`)).rows;
   const relationOids = (await db.query("SELECT oid::int AS oid FROM pg_class ORDER BY oid")).rows.map(row => row.oid as number);
   const constraintOids = (await db.query("SELECT oid::int AS oid FROM pg_constraint ORDER BY oid")).rows.map(row => row.oid as number);
   const guards: Snapshot["guards"] = {};
   for (const guard of GUARDS) guards[guard.id] = (await db.query(`SELECT COALESCE(jsonb_agg(r ORDER BY r),'[]'::jsonb) AS rows FROM (
     SELECT regexp_replace((to_jsonb(t)${["oid", ...guard.drop ?? []].map(key => ` - '${key}'`).join("")})::text, ${POSITIONS}, 'g')::jsonb AS r
     FROM ${guard.catalog} t WHERE ${guard.where ?? "true"}) s`)).rows[0].rows;
-  return { functions, relations, columns, system, relationOids, constraintOids, constraints, guards };
+  return { functions, relations, columns, indexes, system, relationOids, constraintOids, constraints, guards };
 }
 
 const norm = (path: string) => `search_path=${path.replace(/\s+/gu, " ").trim()}`;
@@ -150,7 +156,23 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
   const oldRelations = new Map(before.relations.map(row => [row.oid, row]));
   const currentRelations = new Map(after.relations.map(row => [row.oid, row]));
   const replacedUniqueIndexes = new Set(before.constraints.filter(old => slot.uniqueSupersets?.some(entry => entry.table === old.rel && entry.constraint === old.name)).map(old => old.indexOid));
-  for (const old of before.relations) if (!replacedUniqueIndexes.has(old.oid) && JSON.stringify(currentRelations.get(old.oid)) !== JSON.stringify(old)) fail(`existing relation ${old.name} changed its owner, ACL, row security, options or column ACLs`);
+  const droppedIndexes = new Set<number>(), listedIndexes = new Set((slot.droppedIndexes ?? []).map(entry => `public.${entry.name}`));
+  for (const entry of slot.droppedIndexes ?? []) {
+    const name = `public.${entry.name}`, index = before.indexes.find(index => index.name === name);
+    if (!index || index.table !== entry.table || before.constraints.some(constraint => constraint.indexOid === index.oid) || after.indexes.some(now => now.oid === index.oid || now.name === name)) fail(`listed index ${name} must be a removed standalone index on ${entry.table}`);
+    droppedIndexes.add(index!.oid);
+    for (const facts of ["columns", "constraints"] as const) if (JSON.stringify(before[facts].filter(row => row.rel === entry.table)) !== JSON.stringify(after[facts].filter(row => row.rel === entry.table))) fail(`dropped index table ${entry.table} changed ${facts}`);
+    for (const old of before.indexes.filter(old => old.table === entry.table && !listedIndexes.has(old.name))) if (JSON.stringify(after.indexes.find(now => now.oid === old.oid)) !== JSON.stringify(old)) fail(`other index ${old.name} changed beside a listed drop`);
+    // History can reach the index without naming it (escaped identifiers, built SQL), so PostgreSQL
+    // proves that the dropped index is exactly what its pinned CREATE builds.
+    const create = indexStatements.get(entry.beforeSha256) ?? fail(`listed index ${name} has no pinned CREATE`);
+    await db.query("SAVEPOINT pinned_index");
+    try {
+      await db.query(create);
+      if ((await db.query("SELECT pg_get_indexdef($1::regclass) AS definition", [name])).rows[0].definition !== index!.definition) fail(`listed index ${name} differs from its pinned CREATE`);
+    } finally { await db.query("ROLLBACK TO SAVEPOINT pinned_index"); }
+  }
+  for (const old of before.relations) if (!replacedUniqueIndexes.has(old.oid) && !droppedIndexes.has(old.oid) && JSON.stringify(currentRelations.get(old.oid)) !== JSON.stringify(old)) fail(`existing relation ${old.name} changed its owner, ACL, row security, options or column ACLs`);
   for (const row of after.relations) if (!oldRelations.has(row.oid)) {
     if (row.owner !== migrationRole) fail(`new relation ${row.name} is owned by ${row.owner}, not the migration role`);
     if (row.name === "public.subscription_notice_refusals" && JSON.stringify(slot.insertSelectTables) === JSON.stringify([row.name])) {
@@ -272,7 +294,9 @@ REVOKE ALL ON FUNCTION public.cat_grant_only(text) FROM PUBLIC;
 CREATE FUNCTION public.cat_trigger_fn() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$;
 CREATE TRIGGER cat_base_trigger BEFORE INSERT ON public.cat_existing_table FOR EACH ROW EXECUTE FUNCTION public.cat_trigger_fn();
 CREATE VIEW public.cat_view AS SELECT id FROM public.cat_existing_table;
-CREATE TABLE public.cat_child (parent_id int REFERENCES public.cat_existing_table(id));`;
+CREATE TABLE public.cat_child (parent_id int REFERENCES public.cat_existing_table(id));
+CREATE UNIQUE INDEX cat_active_idx ON public.cat_parameters (id) WHERE id IS NOT NULL;
+CREATE INDEX cat_other_idx ON public.cat_parameters (extra);`;
 // A default argument stores parser locations, which move when the replacement sits at another file offset.
 const SYNTHETIC_SLOT: CatalogSlot = {
   replacedFunctions: [{ signature: "public.cat_replaced(text,boolean)", beforeSha256: null, searchPath: "pg_catalog, pg_temp" }],
@@ -391,6 +415,7 @@ const chain = [manifest.baseline, ...manifest.forward].filter(unit => !boundPath
   if (sha(bytes) !== unit.sha256) throw new Error(`native chain unit differs from the manifest: ${unit.file}`);
   return { path: unit.file, sql: bytes.toString("utf8") };
 });
+const indexStatements = new Map([SYNTHETIC_BASE, ...chain.map(unit => unit.sql), ...bound.map(entry => readFileSync(entry.pin.path, "utf8"))].flatMap(sql => sqlStatements(sql, true, false, true).map(statement => [sqlSha256(statement), statement] as const)));
 const triggerStatements = new Map([TRIGGER_SQL, ...bound.filter(entry => entry.slot.createdTriggers?.length).map(entry => readFileSync(entry.pin.path, "utf8"))].flatMap(sql => sqlStatements(sql).map(statement => [sqlSha256(statement), statement] as const)));
 const PARAMETER_SLOT: CatalogSlot = { ...SYNTHETIC_SLOT, checkSupersets: [
   { table: "public.cat_parameters", constraint: "cat_status", column: "status", values: ["open", "closed", "paused"] },
@@ -399,6 +424,10 @@ const PARAMETER_SLOT: CatalogSlot = { ...SYNTHETIC_SLOT, checkSupersets: [
 const PARAMETER_CHECKS = "ALTER TABLE public.cat_parameters DROP CONSTRAINT cat_status; ALTER TABLE public.cat_parameters ADD CONSTRAINT cat_status CHECK (status IN ('open','closed','paused')); ALTER TABLE public.cat_parameters DROP CONSTRAINT cat_kind; ALTER TABLE public.cat_parameters ADD CONSTRAINT cat_kind CHECK (kind IN ('first','second','third'));";
 const UNIQUE_SLOT: CatalogSlot = { ...SYNTHETIC_SLOT, uniqueSupersets: [{ table: "public.cat_parameters", constraint: "cat_key", columns: ["id", "extra"], nullsNotDistinct: true }] };
 const UNIQUE_SQL = "ALTER TABLE public.cat_parameters DROP CONSTRAINT cat_key; ALTER TABLE public.cat_parameters ADD CONSTRAINT cat_key UNIQUE NULLS NOT DISTINCT (id,extra);";
+const DROP_INDEX_SLOT: CatalogSlot = { ...SYNTHETIC_SLOT, droppedIndexes: [{ table: "public.cat_parameters", name: "cat_active_idx", beforeSha256: sqlSha256("CREATE UNIQUE INDEX cat_active_idx ON public.cat_parameters (id) WHERE id IS NOT NULL;") }] };
+const DROP_INDEX_SQL = "DROP INDEX public.cat_active_idx; CREATE INDEX cat_replacement_idx ON public.cat_parameters (id, extra DESC);";
+const DROP_TWO_INDEXES_SLOT: CatalogSlot = { ...DROP_INDEX_SLOT, droppedIndexes: [...DROP_INDEX_SLOT.droppedIndexes!, { table: "public.cat_parameters", name: "cat_other_idx", beforeSha256: sqlSha256("CREATE INDEX cat_other_idx ON public.cat_parameters (extra);") }] };
+
 // The chain creates anon and authenticated itself; service_role comes from the host bootstrap, so it is
 // the one role these two modes toggle for the whole run. With no bound forward this is a plain replay of
 // the chain, so the replay is proved before the first feature change relies on it.
@@ -443,6 +472,75 @@ describe.each([{ serviceRole: true }, { serviceRole: false }])("native store for
   afterAll(async () => { await closePostgres(container, pool); }, postgresTeardownTimeoutMs);
 
   it("replays every unbound native chain unit", () => { expect(replay.applied).toBe(chain.length); });
+  it("installs two replacement slots with pinned bodies and unchanged function attributes and ACL", async () => {
+    const db = await pool.connect(), signature = "public.cat_replaced(text,boolean)";
+    const definition = (body: string) => `CREATE OR REPLACE FUNCTION public.cat_replaced(p text, q boolean DEFAULT false) RETURNS text LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$${body}$$;`;
+    const original = sqlStatements(SYNTHETIC_BASE).find(statement => statement.startsWith("CREATE FUNCTION public.cat_replaced("))!;
+    let beforeSha256 = sqlSha256(original);
+    try {
+      await db.query("BEGIN");
+      let before = await pinned(db, () => snapshot(db));
+      const migrationRole = String((await db.query("SELECT current_user::text AS role")).rows[0].role);
+      for (const body of [" SELECT 'first replacement' ", " SELECT 'second replacement' "]) {
+        const statement = definition(body), afterSha256 = sqlSha256(statement);
+        const slot: CatalogSlot = { createdFunctions: [], replacedFunctions: [{ signature, beforeSha256, searchPath: "pg_catalog, pg_temp" }], grantOnlyFunctions: [] };
+        await db.query(statement);
+        const after = await pinned(db, () => snapshot(db));
+        await pinned(db, async () => assertSlotCatalog(db, slot, before, after, migrationRole));
+        const installed = after.functions.find(fn => fn.oid === before.functions.find(fn => fn.name === "public.cat_replaced(text,boolean)")!.oid)!;
+        expect(installed.src).toBe(body);
+        // afterSha256 binds a split statement; combine its fixed header with PostgreSQL's exact installed body.
+        expect(sqlSha256(definition(installed.src))).toBe(afterSha256);
+        before = after; beforeSha256 = afterSha256;
+      }
+    } finally { await db.query("ROLLBACK"); db.release(); }
+  });
+  it.each(["header", "ACL"])("refuses a second replacement that changes its %s", async change => {
+    const statement = REPLACE_PART.replace("'after'", "'second replacement'");
+    const sql = change === "header" ? statement.replace("LANGUAGE sql", "LANGUAGE sql STABLE") : `${statement} GRANT EXECUTE ON FUNCTION public.cat_replaced(text,boolean) TO authenticated;`;
+    const slot: CatalogSlot = { createdFunctions: [], replacedFunctions: SYNTHETIC_SLOT.replacedFunctions, grantOnlyFunctions: [] };
+    await expect(checkForward(pool, slot, sql, false, REPLACE_PART)).rejects.toThrow(/changed attributes or ACL/u);
+  });
+  it("drops a listed standalone index, preserving its table, constraints, other indexes and ACL", async () => {
+    await checkForward(pool, DROP_INDEX_SLOT, forward(CREATED_OK, DROP_INDEX_SQL));
+  });
+  it("drops two listed standalone indexes of one table", async () => {
+    await checkForward(pool, DROP_TWO_INDEXES_SLOT, forward(CREATED_OK, `${DROP_INDEX_SQL} DROP INDEX public.cat_other_idx;`));
+  });
+  it("refuses a listed index that history rebuilt without naming it", async () => {
+    const rebuilt = "DO $$ BEGIN EXECUTE 'DROP INDEX public.cat_' || 'active_idx'; EXECUTE 'CREATE UNIQUE INDEX cat_' || 'active_idx ON public.cat_parameters (extra)'; END $$;";
+    await expect(checkForward(pool, DROP_INDEX_SLOT, forward(CREATED_OK, DROP_INDEX_SQL), false, rebuilt)).rejects.toThrow(/differs from its pinned CREATE/u);
+  });
+  it.each([
+    ["missing drop", "", /must be a removed standalone index/u],
+    ["recreated listed name", `${DROP_INDEX_SQL} CREATE INDEX cat_active_idx ON public.cat_parameters (id);`, /must be a removed standalone index/u],
+    ["renamed instead of dropped", "ALTER INDEX public.cat_active_idx RENAME TO cat_renamed_idx;", /must be a removed standalone index/u],
+    ["added column", `${DROP_INDEX_SQL} ALTER TABLE public.cat_parameters ADD COLUMN unexpected text;`, /changed columns/u],
+    ["column default", `${DROP_INDEX_SQL} ALTER TABLE public.cat_parameters ALTER COLUMN status SET DEFAULT 'open';`, /changed columns/u],
+    ["dropped constraint", `${DROP_INDEX_SQL} ALTER TABLE public.cat_parameters DROP CONSTRAINT cat_status;`, /changed constraints/u],
+    ["added constraint", `${DROP_INDEX_SQL} ALTER TABLE public.cat_parameters ADD CONSTRAINT cat_unlisted CHECK (kind IS NOT NULL);`, /changed constraints/u],
+    ["other index dropped", `${DROP_INDEX_SQL} DROP INDEX public.cat_other_idx;`, /other index .* changed/u],
+    ["other index altered", `${DROP_INDEX_SQL} ALTER INDEX public.cat_other_idx SET (fillfactor=80);`, /other index .* changed/u],
+    ["table ACL", `${DROP_INDEX_SQL} GRANT SELECT ON public.cat_parameters TO authenticated;`, /existing relation .* changed/u],
+  ] as const)("refuses a listed index drop with %s", async (_label, sql, error) => {
+    await expect(checkForward(pool, DROP_INDEX_SLOT, forward(CREATED_OK, sql))).rejects.toThrow(error);
+  });
+  it.each(["missing index", "different table", "unlisted"])("refuses a catalog drop with %s inventory", async attack => {
+    const slot = structuredClone(DROP_INDEX_SLOT);
+    if (attack === "missing index") slot.droppedIndexes![0]!.name = "cat_missing_idx";
+    if (attack === "different table") slot.droppedIndexes![0]!.table = "public.cat_existing_table";
+    if (attack === "unlisted") delete slot.droppedIndexes;
+    await expect(checkForward(pool, slot, forward(CREATED_OK, DROP_INDEX_SQL))).rejects.toThrow(/must be a removed standalone index|existing relation .* changed/u);
+  });
+  it.each([
+    ["cat_existing_table", "cat_existing_table_pkey", ""],
+    ["cat_parameters", "cat_key", ""],
+    ["cat_exclusion", "cat_exclusion_key", "CREATE TABLE public.cat_exclusion (span int4range, CONSTRAINT cat_exclusion_key EXCLUDE USING gist (span WITH &&));"],
+    ["cat_parameters", "cat_adopted_idx", "CREATE UNIQUE INDEX cat_adopted_idx ON public.cat_parameters (status); ALTER TABLE public.cat_parameters ADD CONSTRAINT cat_adopted_idx UNIQUE USING INDEX cat_adopted_idx;"],
+  ] as const)("refuses a constraint-backed index (%s %s)", async (table, name, setup) => {
+    const slot = { ...SYNTHETIC_SLOT, droppedIndexes: [{ table: `public.${table}`, name, beforeSha256: "0".repeat(64) }] };
+    await expect(checkForward(pool, slot, forward(CREATED_OK, `ALTER TABLE public.${table} DROP CONSTRAINT ${name} CASCADE;`), false, setup)).rejects.toThrow(/must be a removed standalone index/u);
+  });
   it("admits a conforming forward", async () => { await checkForward(pool, SYNTHETIC_SLOT, CONFORMING); });
   it("admits only the named new table runtime ACL and policy", async () => { await checkForward(pool, NOTICE_SLOT, forward(CREATED_OK, NOTICE_SQL)); });
   it("admits a widened purpose CHECK that its slot lists", async () => { await checkForward(pool, PURPOSE_SLOT, forward(CREATED_OK, purposeCheck("CHECK (purpose IN ('a','b','c'))"))); });

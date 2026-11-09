@@ -1,3 +1,4 @@
+import type { CycleRetryCadence } from "@openlup/core/subscription";
 import { nativeInstant } from "./nativeInstant.js";
 import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 import { createPostgresRetryStore } from "./postgresRetryStore.js";
@@ -5,6 +6,8 @@ import type { NativeRetryFailure, NativeRetryPreparation, NativeRetryRow, Native
 import type { RenewalExecutionRequest, RenewalFrozenSnapshot, RenewalPaymentEvidence, RenewalPaymentRail } from "./contracts/renewal.js";
 
 export interface NativeRetryDriverOptions {
+  /** Trusted timing only; cannot alter terminating failure classes. */
+  retryCadence?: Pick<CycleRetryCadence, "backoffHours">;
   executor: SubscriptionQueryExecutor;
   withTransaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
   decode(snapshot: Record<string, unknown>): RenewalFrozenSnapshot;
@@ -34,14 +37,14 @@ export function canonicalUuid(value: unknown): string | null {
 }
 
 export function createNativeRetryDriver(options: NativeRetryDriverOptions) {
-  const store = createPostgresRetryStore(options.executor);
+  const store = createPostgresRetryStore(options.executor, options.retryCadence);
   async function propagateFailure(operationId: string, key: string, input: NativeRetryFailure) {
     return options.withTransaction(async db => {
       // Serialize with SQL's subscription -> operation order. The receipt/case
       // observation and optional propagation are one transaction.
       await db.query(`SELECT id FROM public.subscriptions WHERE id=(SELECT subscription_id
         FROM public.subscription_renewal_operations WHERE id=$1::uuid) FOR UPDATE`, [operationId]);
-      const retry = createPostgresRetryStore(db);
+      const retry = createPostgresRetryStore(db, options.retryCadence);
       const prior = await retry.failureProgress(operationId, key);
       const obligation = await retry.applyFailure(operationId, key, input); // validates replay identity
       const progress = await retry.failureProgress(operationId, key);
@@ -120,10 +123,10 @@ export function createNativeRetryDriver(options: NativeRetryDriverOptions) {
         }
         if (evidence.status === "succeeded" && evidence.amountMinor === snapshot.pricingSnapshot.totalAmountMinor
           && evidence.currency === snapshot.pricingSnapshot.currency) {
-          await store.recordRecovery(operationId, evidence.eventKey, { ...evidence.sourceEvidence, ...(evidence.sourceEvidence ? { observedAt: nativeInstant(evidence.sourceEvidence.observedAt) } : {}), prepareKey, evidenceKey: evidence.verifiedEvidenceRef,
+          const recovered = await store.recordRecovery(operationId, evidence.eventKey, { ...evidence.sourceEvidence, ...(evidence.sourceEvidence ? { observedAt: nativeInstant(evidence.sourceEvidence.observedAt) } : {}), prepareKey, evidenceKey: evidence.verifiedEvidenceRef,
             occurredAt: nativeInstant(evidence.occurredAt), firstRecordedAt: nativeInstant(evidence.firstRecordedAt), externalRef: evidence.externalAttemptRef,
             amountMinor: evidence.amountMinor, currency: evidence.currency, template: options.recoveredTemplate });
-          results.push({ operationId, status: "succeeded" });
+          results.push({ operationId, status: recovered.disposition === "paid" ? "succeeded" : "error" });
         } else if (evidence.status === "failed" && evidence.disposition === "observed") {
           await propagateFailure(operationId, evidence.eventKey, { attemptSequence: prepared.attemptSequence,
             logicalCycleNumber: row.logicalCycleNumber, occurredAt: nativeInstant(evidence.occurredAt),

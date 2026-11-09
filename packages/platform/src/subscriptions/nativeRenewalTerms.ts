@@ -167,9 +167,15 @@ export async function graduateNativeRenewal(db: SubscriptionQueryExecutor, row: 
   }
   await db.query("UPDATE public.subscriptions SET cadence_days=$2,template_version=template_version+1,updated_at=now() WHERE id=$1::uuid", [id, marker.graduation.cadenceDays]);
   const mode = full ? "full" : "cadence_only";
+  const eventType = full ? "subscription.starter_graduated" : "subscription.starter_cadence_normalized";
+  let eventKey = `${full ? "starter-graduation" : "starter-cadence-normalize"}:${id}:${marker.basisTemplateVersion}`;
+  // Preserve pre-upgrade customer history, including a pre-claimed fallback key.
+  while ((await db.query(`SELECT 1 FROM public.subscription_events
+    WHERE subscription_id=$1::uuid AND idempotency_key=$2 AND event_type<>$3`, [id, eventKey, eventType])).rows.length) {
+    eventKey = `system:${eventKey}`;
+  }
   await db.query(`INSERT INTO public.subscription_events(subscription_id,event_type,idempotency_key,payload)
-    VALUES($1::uuid,$2,$3,$4::jsonb)`, [id, full ? "subscription.starter_graduated" : "subscription.starter_cadence_normalized",
-    `${full ? "starter-graduation" : "starter-cadence-normalize"}:${id}:${marker.basisTemplateVersion}`,
+    VALUES($1::uuid,$2,$3,$4::jsonb)`, [id, eventType, eventKey,
     JSON.stringify({ mode, basisTemplateVersion: marker.basisTemplateVersion, templateVersion: Number(row.template_version) + 1,
       cadenceDays: marker.graduation.cadenceDays, before: original, lines: finalLines, linePricing: finalPricing,
       ...(full && marker.graduation.sizeConstraint ? { sizeConstraint: marker.graduation.sizeConstraint } : {}),

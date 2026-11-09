@@ -53,6 +53,9 @@ export { subscriptionLifecycleTemplate, createSubscriptionLifecycleMessages } fr
 export { createPostgresLifecycleMessages, type NativeLifecycleMessagesOptions, type NativeLifecycleNotice } from "./postgresLifecycleMessages.js";
 export { createSubscriptionCommandExamples } from "./commandExamples.js";
 export { createSubscriptionServices } from "./services.js";
+export { createPostgresSubscriptionWinback } from "./postgresWinback.js";
+export type { NativeWinbackOptions } from "./postgresWinback.js";
+
 export { createClassicPackageRepricer, hashPackageEditQuote } from "./classicPackageQuote.js";
 export { createPostgresPackageEditReadPort } from "./packageEditRead.js";
 export { createPostgresPackageEditor } from "./packageEditor.js";
@@ -67,3 +70,4 @@ export type { ExactSubscriptionEditAction, ExactSubscriptionEditRequest, Subscri
 export { createExactSubscriptionRepricer } from "./exactEditQuote.js";
 export { createSubscriptionSizingRules, apportionSubscriptionUnits } from "./subscriptionSizing.js";
 export type { SubscriptionSizingUnit, SubscriptionSizingPolicy } from "./subscriptionSizing.js";
+export { createPostgresSubscriptionAutoResume } from "./postgresAutoResume.js";

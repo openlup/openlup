@@ -1,17 +1,33 @@
 {
   "name": "@openlup/platform",
-  "version": "0.36.0",
+  "version": "0.37.0",
   "private": false,
   "description": "Runnable server substrate: Node HTTP runtime, BFF dispatch, scheduler, storage, data gateways and bundle composition; development preview.",
+  "keywords": [
+    "openlup",
+    "subscription",
+    "subscription-commerce",
+    "d2c",
+    "postgresql",
+    "bff",
+    "node-server",
+    "migrations",
+    "typescript"
+  ],
+  "homepage": "https://github.com/openlup/openlup/tree/main/packages/platform#readme",
+  "bugs": {
+    "url": "https://github.com/openlup/openlup/issues"
+  },
   "license": "Apache-2.0",
   "type": "module",
   "engines": {
-    "node": "24.x"
+    "node": ">=24"
   },
   "packageManager": "npm@11.19.0",
   "sideEffects": false,
   "files": [
     "AGENT_CONTEXT.md",
+    "AGENTS.md",
     "dist/**",
     "src/**",
     "sql/**",
@@ -32,7 +48,7 @@
     "api:update": "npm run build && node --experimental-strip-types ./scripts/api-contract.ts --update"
   },
   "peerDependencies": {
-    "@openlup/core": "0.36.0",
+    "@openlup/core": "0.37.0",
     "pg": "^8.22.0",
     "@aws-sdk/client-s3": "^3.1144.0",
     "@types/pg": "^8.20.0"
@@ -52,6 +68,7 @@
     "zod": "^4.6.6"
   },
   "exports": {
+    "./package.json": "./package.json",
     "./fulfillment/native": {
       "types": "./dist/fulfillment/native/index.d.ts",
       "import": "./dist/fulfillment/native/index.js",

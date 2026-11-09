@@ -7,13 +7,15 @@ import { basename, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 type InstalledPackage = { name: string; version: string; root: string; manifest: string };
+type ScanSummary = { scope: "declarations" | "application" | "package-source"; packageName?: string; scannedFiles: number; fileLimit: number; limitReached: boolean };
+type ScanResult = { hits: Hit[]; summary?: ScanSummary };
 type Hit = { title: string; file: string; start: number; end: number; owner?: string; packageName: string; score: number; reason: string };
 
 const ignoredWords = new Set(["a", "an", "and", "are", "by", "do", "for", "from", "how", "in", "is", "of", "on", "or", "the", "to", "with", "czy", "dla", "gdzie", "i", "jak", "jest", "na", "oraz", "po", "przez", "się", "w", "z"]);
 const codeExtensions = new Set([".ts", ".tsx", ".js", ".jsx", ".mts", ".cts", ".mjs", ".cjs"]);
 const corpusPackages = new Set(["@openlup/core", "@openlup/outbox", "@openlup/platform"]);
 const skippedDirectories = new Set(["node_modules", ".git", ".next", ".turbo", "coverage", "dist", "build", ".cache"]);
-const usage = "Usage: openlup-context search <task> [--code] [--package-code] [--json]\nRun from the application root after installing @openlup/core.\n";
+const usage = "Usage: openlup-context search <task> [--code] [--package-code] [--json]\n       openlup-context mcp\nRun from the application root after installing @openlup/core.\n";
 
 function readText(path: string): string | undefined {
   try { return readFileSync(path, "utf8"); }
@@ -76,6 +78,12 @@ function lineNumber(text: string, offset: number): number {
   return count;
 }
 
+function corpusSourcePath(item: InstalledPackage, source: string): string {
+  if (typeof source !== "string") return "";
+  const prefix = `https://github.com/openlup/openlup/blob/openlup-${item.name.slice("@openlup/".length)}-v${item.version}/`;
+  return source.startsWith(prefix) ? source.slice(prefix.length) : source;
+}
+
 function corpusHits(item: InstalledPackage, query: string, terms: string[]): Hit[] {
   const file = join(item.root, "AGENT_CONTEXT.md");
   const content = readText(file);
@@ -92,7 +100,8 @@ function corpusHits(item: InstalledPackage, query: string, terms: string[]): Hit
   const pattern = /<!-- openlup-context (\{[^\n]*\}) -->\n/g;
   for (const match of content.matchAll(pattern)) {
     const metadata = JSON.parse(match[1]) as { id: string; source: string; heading: string; sha256: string };
-    if (!/^[a-z0-9-]+$/u.test(metadata.id) || !/^[\w./-]+\.md$/u.test(metadata.source) || metadata.source.split("/").includes("..")) throw new Error(`Invalid corpus source in ${file}`);
+    const source = corpusSourcePath(item, metadata.source);
+    if (!/^[a-z0-9-]+$/u.test(metadata.id) || !/^[\w./-]+\.md$/u.test(source) || source.startsWith("/") || source.split("/").includes("..")) throw new Error(`Invalid corpus source in ${file}`);
     sections.push(metadata);
     const start = match.index + match[0].length;
     const end = content.indexOf("<!-- /openlup-context -->", start);
@@ -138,14 +147,14 @@ function markdownHits(item: InstalledPackage, fileName: string, query: string, t
   return hits;
 }
 
-function declarationHits(item: InstalledPackage, query: string): Hit[] {
+function declarationHits(item: InstalledPackage, query: string): ScanResult {
   const exact = /^[A-Za-z_$][A-Za-z0-9_$]*$/u.test(query.trim());
   const symbol = query.match(/\b[A-Za-z_$][A-Za-z0-9_$]{2,}\b/gu)?.find((word) =>
     (exact && word === query.trim()) || (/^[a-z_$]/u.test(word) && /[A-Z_]/u.test(word.slice(1))));
-  if (!symbol) return [];
+  if (!symbol) return { hits: [] };
   const symbolPattern = new RegExp(`\\b${symbol.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}\\b`, "u");
   const root = join(item.root, "dist");
-  if (!existsSync(root)) return [];
+  if (!existsSync(root)) return { hits: [] };
   const hits: Hit[] = [];
   const pending = [root];
   let seen = 0;
@@ -167,7 +176,7 @@ function declarationHits(item: InstalledPackage, query: string): Hit[] {
       }
     }
   }
-  return hits;
+  return { hits, summary: { scope: "declarations", packageName: item.name, scannedFiles: seen, fileLimit: 1200, limitReached: seen >= 1200 } };
 }
 
 function exportHits(item: InstalledPackage, query: string, terms: string[]): Hit[] {
@@ -186,7 +195,7 @@ function exportHits(item: InstalledPackage, query: string, terms: string[]): Hit
   return hits;
 }
 
-function applicationHits(cwd: string, query: string, terms: string[]): Hit[] {
+function applicationHits(cwd: string, query: string, terms: string[]): ScanResult {
   const hits: Hit[] = [];
   const pending = [cwd];
   let seen = 0;
@@ -208,12 +217,12 @@ function applicationHits(cwd: string, query: string, terms: string[]): Hit[] {
       }
     }
   }
-  return hits;
+  return { hits, summary: { scope: "application", scannedFiles: seen, fileLimit: 2500, limitReached: seen >= 2500 } };
 }
 
-function packageSourceHits(item: InstalledPackage, query: string, terms: string[]): Hit[] {
+function packageSourceHits(item: InstalledPackage, query: string, terms: string[]): ScanResult {
   const root = join(item.root, "src");
-  if (!existsSync(root) || !lstatSync(root).isDirectory()) return [];
+  if (!existsSync(root) || !lstatSync(root).isDirectory()) return { hits: [] };
   const hits: Hit[] = [];
   const pending = [root];
   let seen = 0;
@@ -241,25 +250,40 @@ function packageSourceHits(item: InstalledPackage, query: string, terms: string[
       if (best) hits.push(best);
     }
   }
-  return hits;
+  return { hits, summary: { scope: "package-source", packageName: item.name, scannedFiles: seen, fileLimit: 1200, limitReached: seen >= 1200 } };
 }
 
-export function searchContext(cwd: string, task: string, includeCode = false, includePackageCode = false): { version: string; packages: string[]; hits: Hit[] } {
+export function searchContext(cwd: string, task: string, includeCode = false, includePackageCode = false): { version: string; packages: string[]; hits: Hit[]; scans: ScanSummary[] } {
   const packages = selectedPackages(cwd);
   const query = task.toLocaleLowerCase("en").trim();
   const terms = tokens(task);
   if (!terms.length) throw new Error("Give a specific task, path or symbol to search");
-  const hits = packages.flatMap((item) => [
-    ...corpusHits(item, query, terms),
-    ...markdownHits(item, "AGENTS.md", query, terms),
-    ...markdownHits(item, "README.md", query, terms),
-    ...(item.name === "@openlup/core" ? markdownHits(item, "docs/SUBSCRIPTION_ENGINE.md", query, terms) : []),
-    ...(terms.some((term) => /upgrad|migrat|release|wersj/u.test(term)) ? markdownHits(item, "CHANGELOG.md", query, terms) : []),
-    ...declarationHits(item, task),
-    ...exportHits(item, query, terms),
-  ]);
-  if (includeCode) hits.push(...applicationHits(cwd, query, terms));
-  if (includePackageCode) hits.push(...packages.flatMap((item) => packageSourceHits(item, query, terms)));
+  const scans: ScanSummary[] = [];
+  const hits = packages.flatMap((item) => {
+    const packageHits = [
+      ...corpusHits(item, query, terms),
+      ...markdownHits(item, "AGENTS.md", query, terms),
+      ...markdownHits(item, "README.md", query, terms),
+      ...(item.name === "@openlup/core" ? markdownHits(item, "docs/SUBSCRIPTION_ENGINE.md", query, terms) : []),
+      ...(terms.some((term) => /upgrad|migrat|release|wersj/u.test(term)) ? markdownHits(item, "CHANGELOG.md", query, terms) : []),
+    ];
+    const declarations = declarationHits(item, task);
+    if (declarations.summary) scans.push(declarations.summary);
+    packageHits.push(...declarations.hits, ...exportHits(item, query, terms));
+    return packageHits;
+  });
+  if (includeCode) {
+    const result = applicationHits(cwd, query, terms);
+    hits.push(...result.hits);
+    if (result.summary) scans.push(result.summary);
+  }
+  if (includePackageCode) {
+    for (const item of packages) {
+      const result = packageSourceHits(item, query, terms);
+      hits.push(...result.hits);
+      if (result.summary) scans.push(result.summary);
+    }
+  }
   const installedDocs = new Set(hits.filter((hit) => hit.reason.startsWith("installed ") && hit.file.endsWith(".md"))
     .map((hit) => hit.file));
   const selectedHits = hits.filter((hit) => {
@@ -270,18 +294,37 @@ export function searchContext(cwd: string, task: string, includeCode = false, in
   selectedHits.sort((left, right) => right.score - left.score || left.file.localeCompare(right.file) || left.start - right.start);
   const unique = new Set<string>();
   const selected = selectedHits.filter((hit) => {
+    const item = packages.find((candidate) => candidate.name === hit.packageName);
     const key = hit.reason === "canonical owner excerpt" && hit.owner
-      ? `owner:${hit.owner}:${hit.title}` : `${hit.file}:${hit.start}:${hit.end}`;
+      ? `owner:${corpusSourcePath(item!, hit.owner)}:${hit.title}` : `${hit.file}:${hit.start}:${hit.end}`;
     if (unique.has(key)) return false;
     unique.add(key);
     return true;
   }).slice(0, 8);
-  return { version: packages[0].version, packages: packages.map((item) => item.name), hits: selected };
+  return { version: packages[0].version, packages: packages.map((item) => item.name), hits: selected, scans };
 }
 
-function main(): void {
+export function formatContextResult(cwd: string, result: ReturnType<typeof searchContext>): string {
+  const lines = [`OpenLup ${result.version}: ${result.packages.join(", ")}`];
+  for (const scan of result.scans.filter((item) => item.limitReached)) {
+    lines.push(`Scan limit reached: ${scan.scope}${scan.packageName ? ` [${scan.packageName}]` : ""} ${scan.scannedFiles}/${scan.fileLimit}; inspect a known path with scoped rg.`);
+  }
+  if (!result.hits.length) lines.push("No indexed match. This does not prove a public seam is absent; inspect installed exports and declarations.");
+  for (const [index, hit] of result.hits.entries()) {
+    const path = relative(cwd, hit.file);
+    lines.push(`${index + 1}. ${hit.title} [${hit.packageName}]\n   ${path}:${hit.start}-${hit.end} (${hit.reason})${hit.owner ? `; source ${hit.owner}` : ""}`);
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+async function main(): Promise<void> {
   const args = process.argv.slice(2);
   if (args.length === 0 || args.includes("--help") || args.includes("-h")) { process.stdout.write(usage); return; }
+  if (args[0] === "mcp" && args.length === 1) {
+    const { runMcp } = await import("./agent-context-mcp.js");
+    await runMcp(process.cwd(), process.stdin, process.stdout);
+    return;
+  }
   if (args[0] !== "search") throw new Error(usage.trim());
   if (args.some((arg) => arg.startsWith("--") && !["--code", "--package-code", "--json"].includes(arg))) throw new Error(usage.trim());
   const json = args.includes("--json");
@@ -290,17 +333,12 @@ function main(): void {
   const task = args.slice(1).filter((arg) => !arg.startsWith("--")).join(" ").trim();
   const result = searchContext(process.cwd(), task, code, packageCode);
   if (json) { process.stdout.write(`${JSON.stringify(result)}\n`); return; }
-  process.stdout.write(`OpenLup ${result.version}: ${result.packages.join(", ")}\n`);
-  if (!result.hits.length) { process.stdout.write("No indexed match. This does not prove a public seam is absent; inspect installed exports and declarations.\n"); return; }
-  for (const [index, hit] of result.hits.entries()) {
-    const path = relative(process.cwd(), hit.file);
-    process.stdout.write(`${index + 1}. ${hit.title} [${hit.packageName}]\n   ${path}:${hit.start}-${hit.end} (${hit.reason})${hit.owner ? `; source ${hit.owner}` : ""}\n`);
-  }
+  process.stdout.write(formatContextResult(process.cwd(), result));
 }
 
-export function runCli(): void {
-  try { main(); }
+export async function runCli(): Promise<void> {
+  try { await main(); }
   catch (error) { process.stderr.write(`openlup-context: ${(error as Error).message}\n`); process.exitCode = 1; }
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) runCli();
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) void runCli();
