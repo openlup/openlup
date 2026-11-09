@@ -58,6 +58,10 @@ describe.each(lifecycleProfiles)("checkout recovery link lifecycle on %s", profi
   it("refuses renewal checkout issuance while retaining case rotation and console replay", async () => {
     const f = await lifecycleDeclined(env.owner);
     const before = (await env.owner.query("SELECT id FROM public.commerce_checkout_recovery_tokens WHERE order_id=$1", [f.original.orderId])).rows;
+    // Pin the other issuance prerequisites so expiry or contact absence cannot prove this refusal.
+    expect((await env.owner.query(`SELECT status,client_id,subscription_cycle_id,
+      created_at + interval '24 hours' > clock_timestamp() AS unexpired FROM public.commerce_orders WHERE id=$1`, [f.original.orderId])).rows)
+      .toEqual([{ status: "pending_payment", client_id: f.client, subscription_cycle_id: f.original.cycleId, unexpired: true }]);
     await expect(issue(f.original.orderId, randomUUID())).rejects.toThrow("checkout_recovery_order_not_recoverable");
     expect((await env.owner.query("SELECT id FROM public.commerce_checkout_recovery_tokens WHERE order_id=$1", [f.original.orderId])).rows).toEqual(before);
     await env.owner.query("UPDATE public.clients SET lifecycle_stage='customer' WHERE id=$1", [f.client]);
