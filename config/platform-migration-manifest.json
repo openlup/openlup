@@ -432,9 +432,13 @@
     {
       "file": "db/platform/migrations/20261109130000_subscription_exact_levers.sql",
       "sha256": "9b3bad20bbf946dd0dc5d02617fe18cfe9b32ea16a4798736b9a5a4dbbf1b199"
+    },
+    {
+      "file": "db/platform/migrations/20261109140000_subscription_sized_editor.sql",
+      "sha256": "13129ea49660b1b8ffb95fdaf99be2676e2f43f36086d99895c4a797bb842b1d"
     }
   ],
-  "objectInventorySha256": "9804c177932924bc6c3ae9781a1b8dc5eefbfea200123573babe339d4e87e04b",
+  "objectInventorySha256": "08ddd53604b395798110e64d210441812421bdef3166ab2762315677a2adf68b",
   "qualified": {
     "baseline": {
       "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -888,14 +892,18 @@
       {
         "file": "db/platform/migrations/20261109130000_subscription_exact_levers.sql",
         "sha256": "9b3bad20bbf946dd0dc5d02617fe18cfe9b32ea16a4798736b9a5a4dbbf1b199"
+      },
+      {
+        "file": "db/platform/migrations/20261109140000_subscription_sized_editor.sql",
+        "sha256": "13129ea49660b1b8ffb95fdaf99be2676e2f43f36086d99895c4a797bb842b1d"
       }
     ],
     "objectInventorySha256": {
       "bootstrapMigrator": {
-        "withRestore": "9bd7f594987579de1cffc342ca469b263595856bfc5581f2b210e173f9d18dad"
+        "withRestore": "96ddf1a5f37ddfad7d2a91a3a81d129c23fb412d51191f9ceb1001bf314b3641"
       },
       "separateMigrator": {
-        "withRestore": "6297abc8d99fb09369753a5c047e325d502ba7a2b41b91e6f74c93061a3bbbf9"
+        "withRestore": "7bd070a2a4ce5b970a819ba4fa8e1c6067d3e816149f6c12944fec8c5f5eb2e1"
       }
     }
   },
@@ -1348,11 +1356,15 @@
       {
         "file": "db/platform/migrations/20261109130000_subscription_exact_levers.sql",
         "sha256": "9b3bad20bbf946dd0dc5d02617fe18cfe9b32ea16a4798736b9a5a4dbbf1b199"
+      },
+      {
+        "file": "db/platform/migrations/20261109140000_subscription_sized_editor.sql",
+        "sha256": "13129ea49660b1b8ffb95fdaf99be2676e2f43f36086d99895c4a797bb842b1d"
       }
     ],
     "objectInventorySha256": {
-      "installerManaged": "5d513955339d9a1f85fa4d53b5b8111cdb3bfec7084fee14b590435276fd3df7",
-      "operatorProvisioned": "87e3d0dccbde971ee9ebfa2b90082d178839de12702a228b997e79c2ee0d2480"
+      "installerManaged": "3e5c66ff8976a49dcedc96c3755a045e9f49063a927dc65b0d25f942de3c2094",
+      "operatorProvisioned": "9b854121f9371622a311f30cc57e8939ef22a30a17271f4559857997389fe568"
     }
   }
 }
