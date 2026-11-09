@@ -171,7 +171,9 @@ retention period or deletion is supplied.
 
 Finite connected-store transfer classifies this as an owned table and carries its
 exact PostgreSQL row text, like `customer_communication_preference_events`:
-both are customer-owned personal-data histories with JSON payloads. This extends
+both are customer-owned personal-data histories with JSON payloads. Restore inserts
+account events after their client parents; populated-ledger witnesses check exact
+rows on a pristine qualified target and a replay that leaves rows unchanged. This extends
 the finite capture/restore inventory only; the smaller compatible-row utility's
 allowlist remains unchanged. No schema/control/credential transfer or target
 activation is authorized by these rows. Saved addresses and billing tables remain

@@ -6,8 +6,8 @@ import { readSelectedCatalogProjection, selectedCatalogProjectionPayload } from 
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
 export type AccountProfile = "legacy" | "bootstrap" | "separate" | "admin-managed" | "admin-operator";
 /** The existing account-consent installation matrix, also used to measure complete-inventory pins. */
-export async function installAccountMutations(profile: AccountProfile, measure = false) {
-  const container = await runPostgresContainer({ name: `account-mutations-${profile}-${process.pid}`, password: "synthetic-conformance" });
+export async function installAccountMutations(profile: AccountProfile, measure = false, label = "source") {
+  const container = await runPostgresContainer({ name: `account-mutations-${profile}-${label}-${process.pid}`, password: "synthetic-conformance" });
   const pools: Pool[] = [];
   const pool = (url: string, options?: string) => { const value = new Pool({ connectionString: url, options }); pools.push(value); return value; };
   try {
@@ -45,6 +45,6 @@ export async function installAccountMutations(profile: AccountProfile, measure =
     } });
     try { await runner.apply(); }
     catch (error) { if (!measure || !inventory || !(error instanceof Error) || !error.message.includes("object inventory SHA-256 mismatch")) throw error; }
-    return { owner, migrator, runtime: profile === "legacy" ? owner : pool(login(r)), runner, inventory, close: () => closePostgres(container, pools) };
+    return { owner, migrator, installation, runtime: profile === "legacy" ? owner : pool(login(r)), runner, inventory, close: () => closePostgres(container, pools) };
   } catch (error) { await closePostgres(container, pools); throw error; }
 }

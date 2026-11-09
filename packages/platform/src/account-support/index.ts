@@ -83,6 +83,6 @@ export { createCustomerAccountMutationSchemas } from "./customerAccount/accountM
 export type { CustomerAccountMutationSchemas } from "./customerAccount/accountMutationSchemas.js";
 export { createPostgresCustomerAccountMutationPort, CustomerAccountMutationRefused } from "./customerAccount/postgresAccountMutations.js";
 export { createCustomerAccountMutationHandlers } from "./customerAccount/accountMutationHandlers.js";
-export type { CustomerAccountMutationHandlerDependencies } from "./customerAccount/accountMutationHandlers.js";
+export type { CustomerAccountMutationHandlerDependencies, CustomerAccountMutationHandlerRequest, CustomerAccountMutationHandlerResponder } from "./customerAccount/accountMutationHandlers.js";
 export { createAccountEventPrivacyContributor } from "./customerAccount/accountEventPrivacy.js";
 export type { AccountEventPrivacyJson, AccountEventPrivacyObligation, AccountEventPrivacyDocument, AccountEventPrivacySubject, AccountEventPrivacyAssessment, AccountEventPrivacyContributor, AccountEventPrivacyDependencies } from "./customerAccount/accountEventPrivacy.js";

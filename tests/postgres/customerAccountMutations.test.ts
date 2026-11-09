@@ -6,6 +6,7 @@ import { createPostgresPrivacyStore, createIdentityPersonalDataContributor, crea
 import type { PrivacyJson } from "@openlup/platform/identity/contracts";
 import type { AccountSupportCapabilities } from "@openlup/platform/account-support/contracts";
 import { NATIVE_SUBSCRIPTION_CAPABILITIES } from "@openlup/platform/subscriptions";
+import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
 import { captureConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { installAccountMutations, type AccountProfile } from "./customerAccountMutations.fixture.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
@@ -50,11 +51,47 @@ for (const profile of ["legacy", "bootstrap", "separate", "admin-managed", "admi
     await db.owner.query("INSERT INTO public.clients(id,principal_id,email,created_at,updated_at) VALUES($1,$2,$3,$4,$4)",[clientId,principalId,`${clientId}@example.invalid`,AT]);
     const port=createPostgresCustomerAccountMutationPort(db.runtime,{principalId,clientId},schemas,()=>AT);
     await port.updateProfile(principalId,{idempotencyKey:"transfer-profile",firstName:"Transferred"});
-    const packet=await captureConnectedNativeStore({sourceId:"account-event-source",catalogueId:db.inventory,maximumRows:10000,maximumBytes:64*1024*1024,source:{async withSnapshot(work){const client=await db.owner.connect();try{await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");const result=await work({query:(sql,values)=>client.query(sql,values?[...values]:undefined)});await client.query("COMMIT");return result;}catch(error){await client.query("ROLLBACK");throw error;}finally{client.release();}}}});
+    await port.updateProfile(principalId,{idempotencyKey:"transfer-profile-next",lastName:"Example",phone:"500 100 100"});
+    const capture=(store: typeof db)=>captureConnectedNativeStore({
+      sourceId:"account-event-source",catalogueId:store.inventory,maximumRows:10000,maximumBytes:64*1024*1024,
+      source:{async withSnapshot(work){
+        const client=await store.migrator.connect();
+        const restricted=store.installation.generation === "qualified-admin";
+        try {
+          // Match the restricted connected-restore fixture's host-owned capture window.
+          if (restricted) await client.query("GRANT platform_acquisition_owner TO account_m WITH ADMIN FALSE, INHERIT TRUE, SET FALSE GRANTED BY account_m");
+          await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
+          const result=await work({query:(sql,values)=>client.query(sql,values?[...values]:undefined)});
+          await client.query("COMMIT"); return result;
+        } catch(error) { await client.query("ROLLBACK"); throw error; }
+        finally {
+          try { if (restricted) await client.query("REVOKE platform_acquisition_owner FROM account_m GRANTED BY account_m"); }
+          finally { client.release(); }
+        }
+      }},
+    });
+    const packet=await capture(db);
     expect(packet.owned.some(row=>row.table==="customer_communication_preference_events")).toBe(true);
     const expected=(await db.owner.query("SELECT to_jsonb(e)::text AS value FROM public.customer_account_events e ORDER BY id")).rows.map(row=>row.value);
+    expect(expected).toHaveLength(2);
     expect(packet.owned.find(row=>row.table==="customer_account_events")?.rows).toEqual(expected);
-  });
+    if (profile === "legacy") return; // Finite restore requires a qualified target.
+    const target=await installAccountMutations(profile,false,"target");
+    try {
+      if (target.installation.generation === "legacy") throw new Error("qualified_restore_target_required");
+      const freshTarget=await capture(target);
+      const input={owner:target.migrator,installation:target.installation,packet,freshTarget};
+      expect(await restoreConnectedNativeStore(input)).toMatchObject({replayed:false});
+      const restored=()=>target.owner.query("SELECT to_jsonb(e)::text AS value,xmin::text FROM public.customer_account_events e ORDER BY id").then(result=>result.rows);
+      const before=await restored();
+      expect(before.map(row=>row.value)).toEqual(expected);
+      const clients=await target.owner.query("SELECT to_jsonb(c) AS row,xmin::text FROM public.clients c WHERE id=$1",[clientId]);
+      expect(clients.rows).toMatchObject([{row:{id:clientId,first_name:"Transferred",last_name:"Example",phone:"+99500100100"}}]);
+      expect(await restoreConnectedNativeStore(input)).toMatchObject({replayed:true});
+      expect(await restored()).toEqual(before);
+      expect((await target.owner.query("SELECT to_jsonb(c) AS row,xmin::text FROM public.clients c WHERE id=$1",[clientId])).rows).toEqual(clients.rows);
+    } finally { await target.close(); }
+  }, postgresSetupTimeoutMs);
   it("updates through the selected self-service profile port with normalized readback and omitted/null/empty distinctions", async () => {
     const f=await fixture(), facade=createSelfServiceCommandFacade({context:{...f.scope,graph:"native"},capabilities,profile:f.port});
     expect(await facade.profile.updateProfile(f.principalId,{idempotencyKey:"profile-normalized",firstName:" Ada   Buyer ",phone:"500 100 100"})).toMatchObject({profile:{firstName:"Ada Buyer",lastName:"Family",phone:"+99500100100"}});
