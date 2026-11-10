@@ -496,7 +496,9 @@ customer. Replay normalizes key/note whitespace, UUIDs, line order and defaults.
 Hosts declare a subset of the database's stored reason set. Codes outside the
 stored set receive a clean command refusal. New line SKUs use a trimmed supplied value, then the
 order-item snapshot SKU, then `unknown`. Historical NULL SKUs mean not recorded;
-historical receipts replay against their stored fingerprints. Partial approval
+historical receipts replay against their stored fingerprints. Trimmed key aliases
+are resolved before creation; a unique matching receipt replays its own ID, and
+ambiguous matches receive the uniform refusal without changing historical rows. Partial approval
 requires an amount. Approved/rejected decisions each emit one intent event;
 requests emit none. These commands do not receive goods, restock or execute refunds.
 Native destinations use `./commerce/server/destinations` and the complete SQL

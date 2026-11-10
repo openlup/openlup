@@ -9,7 +9,8 @@ DECLARE
   request public.commerce_return_requests%ROWTYPE;
   receipt public.commerce_return_operations%ROWTYPE;
   client uuid; v_line jsonb; v_item public.commerce_order_items%ROWTYPE;
-  qty integer; normalized jsonb; fingerprint text; constraint_name text;
+  qty integer; normalized jsonb; fingerprint text; legacy_fingerprint text; constraint_name text;
+  candidate_count integer := 0; match_count integer := 0; matched_request_id uuid;
   command_key text := btrim(p_idempotency_key);
 BEGIN
   IF p_idempotency_key IS NULL OR char_length(command_key)<8 OR p_order_id IS NULL
@@ -27,54 +28,56 @@ BEGIN
   SELECT * INTO target FROM public.commerce_orders WHERE id=p_order_id AND client_id=client FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'commerce_return_request_create_order_not_found' USING ERRCODE='22023'; END IF;
 
-  -- New receipts have action-scoped keys; historical native receipts keep their raw keys.
-  SELECT * INTO receipt FROM public.commerce_return_operations
-    WHERE operation_type='requested' AND ((idempotency_key=command_key||':requested' AND command_fingerprint LIKE 'canonical-v1:%')
-      OR (idempotency_key=p_idempotency_key AND command_fingerprint NOT LIKE 'canonical-v1:%'));
-  IF FOUND THEN
-    SELECT * INTO request FROM public.commerce_return_requests WHERE id=receipt.return_request_id;
-    IF request.order_id IS DISTINCT FROM p_order_id OR request.requested_by IS DISTINCT FROM client
-      OR receipt.actor_id IS DISTINCT FROM p_requested_by THEN
-      RAISE EXCEPTION 'commerce_return_request_create_order_not_found' USING ERRCODE='22023';
-    END IF;
+  -- Resolve every known-version alias; never select an arbitrary receipt.
+  IF EXISTS(SELECT 1 FROM public.commerce_return_operations op
+    JOIN public.commerce_return_requests r ON r.id=op.return_request_id WHERE op.operation_type='requested' AND (
+        (op.idempotency_key=command_key||':requested' AND op.command_fingerprint ~ '^canonical-v1:[0-9a-f]{64}$')
+        OR (btrim(op.idempotency_key)=command_key AND op.command_fingerprint ~ '^[0-9a-f]{64}$'))
+      AND (r.order_id IS DISTINCT FROM p_order_id OR r.requested_by IS DISTINCT FROM client
+        OR op.actor_id IS DISTINCT FROM p_requested_by)) THEN
+    RAISE EXCEPTION 'commerce_return_request_create_order_not_found' USING ERRCODE='22023';
   END IF;
   PERFORM pg_advisory_xact_lock(hashtextextended('commerce-return-request:'||client::text||':'||command_key,0));
-  SELECT * INTO receipt FROM public.commerce_return_operations
-    WHERE operation_type='requested' AND ((idempotency_key=command_key||':requested' AND command_fingerprint LIKE 'canonical-v1:%')
-      OR (idempotency_key=p_idempotency_key AND command_fingerprint NOT LIKE 'canonical-v1:%'));
-  IF FOUND THEN
-    SELECT * INTO request FROM public.commerce_return_requests WHERE id=receipt.return_request_id;
-    IF request.order_id IS DISTINCT FROM p_order_id OR request.requested_by IS DISTINCT FROM client
-      OR receipt.actor_id IS DISTINCT FROM p_requested_by THEN
-      RAISE EXCEPTION 'commerce_return_request_create_order_not_found' USING ERRCODE='22023';
-    END IF;
+  IF EXISTS(SELECT 1 FROM public.commerce_return_operations op
+    JOIN public.commerce_return_requests r ON r.id=op.return_request_id WHERE op.operation_type='requested' AND (
+        (op.idempotency_key=command_key||':requested' AND op.command_fingerprint ~ '^canonical-v1:[0-9a-f]{64}$')
+        OR (btrim(op.idempotency_key)=command_key AND op.command_fingerprint ~ '^[0-9a-f]{64}$'))
+      AND (r.order_id IS DISTINCT FROM p_order_id OR r.requested_by IS DISTINCT FROM client
+        OR op.actor_id IS DISTINCT FROM p_requested_by)) THEN
+    RAISE EXCEPTION 'commerce_return_request_create_order_not_found' USING ERRCODE='22023';
   END IF;
   IF EXISTS(SELECT 1 FROM jsonb_array_elements(p_lines) line WHERE line->>'orderItemId' IS NOT NULL GROUP BY (line->>'orderItemId')::uuid HAVING count(*)>1) THEN
     RAISE EXCEPTION 'commerce_return_request_create_duplicate_line' USING ERRCODE='22023';
   END IF;
-  IF receipt.id IS NOT NULL THEN
-    IF receipt.command_fingerprint LIKE 'canonical-v1:%' THEN
-      SELECT jsonb_agg(line ORDER BY line) INTO normalized FROM (
-        SELECT jsonb_build_object('orderItemId',(value->>'orderItemId')::uuid,
-          'quantity',NULLIF(value->>'quantity','')::integer,
-          'sku',COALESCE(NULLIF(btrim(value->>'sku'),''),CASE WHEN target.renewal_operation_id IS NOT NULL
-          THEN target.metadata#>>ARRAY['cycleSnapshot','lines',(COALESCE(item.source_line_ordinal,item.line_ordinal)-1)::text,'sku']
-          ELSE target.metadata#>>ARRAY['orderDraftSnapshot','lines',(COALESCE(item.source_line_ordinal,item.line_ordinal)-1)::text,'sku'] END,'unknown'),
-          'restockDisposition',COALESCE(NULLIF(btrim(value->>'restockDisposition'),''),'restock')) AS line
-        FROM jsonb_array_elements(p_lines) LEFT JOIN public.commerce_order_items item
-          ON item.id=(value->>'orderItemId')::uuid AND item.order_id=p_order_id) lines;
-      fingerprint := 'canonical-v1:'||encode(sha256(convert_to(jsonb_build_object('orderId',p_order_id,
-        'requestedBy',p_requested_by,'reasonCode',p_reason_code,'customerNote',NULLIF(btrim(COALESCE(p_customer_note,'')),''),
-        'lines',normalized)::text,'UTF8')),'hex');
-    ELSE
-      -- Old rows never recorded SKU. Compare the stored raw command fingerprint,
-      -- without reconstructing information or rewriting a historical receipt.
-      fingerprint := encode(sha256(convert_to(concat_ws('|',p_order_id::text,p_requested_by::text,
+  SELECT jsonb_agg(line ORDER BY line) INTO normalized FROM (
+    SELECT jsonb_build_object('orderItemId',(value->>'orderItemId')::uuid,
+      'quantity',NULLIF(value->>'quantity','')::integer,
+      'sku',COALESCE(NULLIF(btrim(value->>'sku'),''),CASE WHEN target.renewal_operation_id IS NOT NULL
+      THEN target.metadata#>>ARRAY['cycleSnapshot','lines',(COALESCE(item.source_line_ordinal,item.line_ordinal)-1)::text,'sku']
+      ELSE target.metadata#>>ARRAY['orderDraftSnapshot','lines',(COALESCE(item.source_line_ordinal,item.line_ordinal)-1)::text,'sku'] END,'unknown'),
+      'restockDisposition',COALESCE(NULLIF(btrim(value->>'restockDisposition'),''),'restock')) AS line
+    FROM jsonb_array_elements(p_lines) LEFT JOIN public.commerce_order_items item
+      ON item.id=(value->>'orderItemId')::uuid AND item.order_id=p_order_id) lines;
+  fingerprint := 'canonical-v1:'||encode(sha256(convert_to(jsonb_build_object('orderId',p_order_id,
+    'requestedBy',p_requested_by,'reasonCode',p_reason_code,'customerNote',NULLIF(btrim(COALESCE(p_customer_note,'')),''),
+    'lines',normalized)::text,'UTF8')),'hex');
+  legacy_fingerprint := encode(sha256(convert_to(concat_ws('|',p_order_id::text,p_requested_by::text,
         p_reason_code,p_lines::text,COALESCE(p_customer_note,'')),'UTF8')),'hex');
+  FOR receipt IN SELECT op.* FROM public.commerce_return_operations op WHERE op.operation_type='requested' AND (
+        (op.idempotency_key=command_key||':requested' AND op.command_fingerprint ~ '^canonical-v1:[0-9a-f]{64}$')
+        OR (btrim(op.idempotency_key)=command_key AND op.command_fingerprint ~ '^[0-9a-f]{64}$')) LOOP
+    candidate_count := candidate_count+1;
+    IF receipt.command_fingerprint=(CASE WHEN receipt.command_fingerprint ~ '^canonical-v1:[0-9a-f]{64}$'
+      THEN fingerprint ELSE legacy_fingerprint END) THEN
+      match_count := match_count+1;
+      matched_request_id := receipt.return_request_id;
     END IF;
-    IF fingerprint IS DISTINCT FROM receipt.command_fingerprint THEN
+  END LOOP;
+  IF candidate_count>0 THEN
+    IF match_count<>1 THEN
       RAISE EXCEPTION 'commerce_return_request_create_order_not_found' USING ERRCODE='22023';
     END IF;
+    SELECT * INTO request FROM public.commerce_return_requests WHERE id=matched_request_id;
     RETURN jsonb_build_object('returnRequestId',request.id,'status',request.status,'replayed',true);
   END IF;
   IF NOT pg_try_advisory_xact_lock(hashtextextended('commerce-return-request-key:'||command_key,0)) THEN
@@ -154,6 +157,7 @@ AS $$
 DECLARE
   request public.commerce_return_requests%ROWTYPE;
   command_key text := btrim(p_idempotency_key)||':approved';
+  receipt_count integer;
 BEGIN
   IF p_idempotency_key IS NULL OR char_length(btrim(p_idempotency_key))<8 OR p_return_request_id IS NULL OR p_approved_by IS NULL
     OR p_refund_mode IS NULL OR p_refund_mode NOT IN ('full','partial','none') OR (p_refund_mode='partial' AND (p_refund_amount_cents IS NULL OR p_refund_amount_cents<0)) THEN
@@ -164,9 +168,16 @@ BEGIN
   END IF;
   SELECT * INTO request FROM public.commerce_return_requests WHERE id=p_return_request_id FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'commerce_return_approve_not_found' USING ERRCODE='22023'; END IF;
-  IF EXISTS(SELECT 1 FROM public.commerce_return_operations WHERE idempotency_key=command_key
-    OR (idempotency_key=p_idempotency_key AND operation_type='approved' AND command_fingerprint NOT LIKE 'canonical-v1:%')) THEN
+  SELECT count(*) INTO receipt_count FROM public.commerce_return_operations
+    WHERE operation_type='approved' AND (
+      (idempotency_key=command_key AND command_fingerprint='canonical-v1:decision')
+      OR (btrim(idempotency_key)=btrim(p_idempotency_key) AND command_fingerprint ~ '^[0-9a-f]{64}$'));
+  IF receipt_count>1 THEN RAISE EXCEPTION 'commerce_return_approve_not_found' USING ERRCODE='22023'; END IF;
+  IF receipt_count=1 THEN
     RETURN jsonb_build_object('returnRequestId',request.id,'status',request.status,'replayed',true);
+  END IF;
+  IF EXISTS(SELECT 1 FROM public.commerce_return_operations WHERE idempotency_key=command_key) THEN
+    RAISE EXCEPTION 'commerce_return_approve_not_found' USING ERRCODE='22023';
   END IF;
   IF request.status<>'requested' THEN RAISE EXCEPTION 'commerce_return_approve_invalid_state' USING ERRCODE='22023'; END IF;
   UPDATE public.commerce_return_requests SET status='approved',
@@ -192,6 +203,7 @@ AS $$
 DECLARE
   request public.commerce_return_requests%ROWTYPE;
   command_key text := btrim(p_idempotency_key)||':rejected';
+  receipt_count integer;
 BEGIN
   IF p_idempotency_key IS NULL OR char_length(btrim(p_idempotency_key))<8 OR p_return_request_id IS NULL OR p_approved_by IS NULL
      THEN
@@ -202,9 +214,16 @@ BEGIN
   END IF;
   SELECT * INTO request FROM public.commerce_return_requests WHERE id=p_return_request_id FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'commerce_return_reject_not_found' USING ERRCODE='22023'; END IF;
-  IF EXISTS(SELECT 1 FROM public.commerce_return_operations WHERE idempotency_key=command_key
-    OR (idempotency_key=p_idempotency_key AND operation_type='rejected' AND command_fingerprint NOT LIKE 'canonical-v1:%')) THEN
+  SELECT count(*) INTO receipt_count FROM public.commerce_return_operations
+    WHERE operation_type='rejected' AND (
+      (idempotency_key=command_key AND command_fingerprint='canonical-v1:decision')
+      OR (btrim(idempotency_key)=btrim(p_idempotency_key) AND command_fingerprint ~ '^[0-9a-f]{64}$'));
+  IF receipt_count>1 THEN RAISE EXCEPTION 'commerce_return_reject_not_found' USING ERRCODE='22023'; END IF;
+  IF receipt_count=1 THEN
     RETURN jsonb_build_object('returnRequestId',request.id,'status',request.status,'replayed',true);
+  END IF;
+  IF EXISTS(SELECT 1 FROM public.commerce_return_operations WHERE idempotency_key=command_key) THEN
+    RAISE EXCEPTION 'commerce_return_reject_not_found' USING ERRCODE='22023';
   END IF;
   IF request.status<>'requested' THEN RAISE EXCEPTION 'commerce_return_reject_invalid_state' USING ERRCODE='22023'; END IF;
   UPDATE public.commerce_return_requests SET status='rejected',

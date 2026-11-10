@@ -21,6 +21,7 @@ for (const profile of ['legacy', 'qualified-v2', 'qualified-admin'] as const) de
   let container: PostgresContainer, owner: Pool, runtime: Pool;
   const pools: Pool[] = [];
   let historical: Awaited<ReturnType<typeof subject>>, historicalResult: { returnRequestId: string }, historicalRows: unknown;
+  const upgrade: Record<string, { f: Subject; key: string; id: string }> = {};
   const historicalKey = randomUUID(), historicalDecisionKey = randomUUID();
   let historicalDecision: { returnRequestId: string };
   beforeAll(async () => {
@@ -49,6 +50,12 @@ for (const profile of ['legacy', 'qualified-v2', 'qualified-admin'] as const) de
     historicalResult = await request(historical, historicalKey, historical.lines);
     historicalDecision = await request(historical, randomUUID());
     await approve(historical, historicalDecision.returnRequestId, historicalDecisionKey, 'full', null, 'old note');
+    for (const label of ['plain', 'padded', 'same', 'different', 'approved', 'rejected']) {
+      const f = await subject(), key = randomUUID();
+      const raw = ['padded', 'different'].includes(label) ? ` ${key} ` : ['approved', 'rejected'].includes(label) ? `${key}:${label}` : key;
+      const result = await request(f, raw, f.lines, 'legacy');
+      upgrade[label] = { f, key, id: result.returnRequestId };
+    }
     historicalRows = await rows();
     expect((await owner.query("SELECT 1 FROM pg_attribute WHERE attrelid='public.commerce_return_lines'::regclass AND attname='sku'")).rows).toEqual([]);
     await runner().apply();
@@ -67,11 +74,11 @@ for (const profile of ['legacy', 'qualified-v2', 'qualified-admin'] as const) de
       SELECT $4::uuid,id,1,2,100,200 FROM o UNION ALL SELECT $5::uuid,id,2,2,100,200 FROM o`, [order, client, status, ...items]);
     return { principal, client, order, actor, items, lines: items.map(orderItemId => ({ orderItemId, quantity: 1 })) };
   }
-  const request = (f: Subject, key = randomUUID(), lines: unknown = f.lines, note: string | null = null, db: Executor = runtime, reason: string | null = 'other') => call(db,
+  const request = (f: Subject, key: string = randomUUID(), lines: unknown = f.lines, note: string | null = null, db: Executor = runtime, reason: string | null = 'other') => call(db,
     'SELECT public.commerce_return_request_create($1,$2,$3,$4,$5,$6) AS value', [key, f.order, JSON.stringify(lines), reason, note, f.principal]);
-  const approve = (f: Subject, id: string, key = randomUUID(), mode = 'full', amount: number | null = null, note: string | null = null, db: Executor = runtime) => call(db,
+  const approve = (f: Subject, id: string, key: string = randomUUID(), mode = 'full', amount: number | null = null, note: string | null = null, db: Executor = runtime) => call(db,
     'SELECT public.commerce_return_approve($1,$2,$3,$4,$5,$6) AS value', [key, id, f.actor, mode, amount, note]);
-  const reject = (f: Subject, id: string, key = randomUUID(), note: string | null = null) => call(runtime,
+  const reject = (f: Subject, id: string, key: string = randomUUID(), note: string | null = null) => call(runtime,
     'SELECT public.commerce_return_reject($1,$2,$3,$4) AS value', [key, id, f.actor, note]);
   const rows = async () => (await owner.query(`SELECT 'requests' AS kind,to_jsonb(t) AS row,xmin::text AS version FROM public.commerce_return_requests t
     UNION ALL SELECT 'lines',to_jsonb(t)-'sku',xmin::text FROM public.commerce_return_lines t
@@ -93,6 +100,49 @@ for (const profile of ['legacy', 'qualified-v2', 'qualified-admin'] as const) de
     await expect(request(historical, historicalKey, historical.lines.map(line => ({ ...line, sku: 'unrecorded' })))).rejects.toThrow('order_not_found');
     expect(await approve(historical, historicalDecision.returnRequestId, historicalDecisionKey, 'full', null, 'changed note')).toMatchObject({ replayed: true, status: 'approved' });
     expect(await rows()).toEqual(historicalRows); expect(await events(historicalDecision.returnRequestId)).toEqual([]);
+  });
+
+  it.each(['plain', 'padded'])('resolves the %s historical key alias before any new request', async label => {
+    const { f, key, id } = upgrade[label], before = await rows();
+    for (const spelling of [key, ` ${key} `]) expect(await request(f, spelling, f.lines, 'legacy')).toEqual({ returnRequestId: id, status: 'requested', replayed: true });
+    expect(await rows()).toEqual(before);
+    expect((await owner.query('SELECT count(*)::int AS n FROM public.commerce_return_requests WHERE order_id=$1', [f.order])).rows).toEqual([{ n: 1 }]);
+  });
+
+  it('resolves unique historical/canonical matches and uniformly refuses ambiguous upgrade receipts', async () => {
+    const current = (await owner.query("SELECT pg_get_functiondef('public.commerce_return_request_create_owned(text,uuid,jsonb,text,text,uuid)'::regprocedure) AS definition")).rows[0].definition;
+    const pushed = execFileSync('git', ['show', 'f14e2503b648674b446d87cdfc98f894814f4c28:db/platform/migrations/20261110210000_return_request_decisions.sql'], { encoding: 'utf8' });
+    const previous = pushed.match(/CREATE FUNCTION public\.commerce_return_request_create_owned\([\s\S]*?\n\$\$;/)![0].replace('CREATE FUNCTION', 'CREATE OR REPLACE FUNCTION');
+    let same: { returnRequestId: string }, different: { returnRequestId: string };
+    try {
+      // Reproduce both upgrade sequences using the exact pushed writer, then restore the repair.
+      await owner.query(previous);
+      same = await request(upgrade.same.f, ` ${upgrade.same.key} `, upgrade.same.f.lines, 'legacy');
+      different = await request(upgrade.different.f, upgrade.different.key, upgrade.different.f.lines, 'canonical');
+    } finally { await owner.query(current); }
+    expect(same.returnRequestId).not.toBe(upgrade.same.id);
+    expect(different.returnRequestId).not.toBe(upgrade.different.id);
+    const before = await rows();
+    for (const spelling of [upgrade.same.key, ` ${upgrade.same.key} `])
+      await expect(request(upgrade.same.f, spelling, upgrade.same.f.lines, 'legacy')).rejects.toMatchObject({ code: '22023', message: 'commerce_return_request_create_order_not_found' });
+    for (const spelling of [upgrade.different.key, ` ${upgrade.different.key} `]) {
+      expect(await request(upgrade.different.f, spelling, upgrade.different.f.lines, 'legacy')).toMatchObject({ returnRequestId: upgrade.different.id, replayed: true });
+      expect(await request(upgrade.different.f, spelling, upgrade.different.f.lines, 'canonical')).toMatchObject({ returnRequestId: different.returnRequestId, replayed: true });
+      await expect(request(upgrade.different.f, spelling, upgrade.different.f.lines, 'changed')).rejects.toMatchObject({ code: '22023', message: 'commerce_return_request_create_order_not_found' });
+    }
+    expect(await rows()).toEqual(before);
+    for (const label of ['same', 'different']) expect((await owner.query('SELECT count(*)::int AS n FROM public.commerce_return_requests WHERE order_id=$1', [upgrade[label].f.order])).rows).toEqual([{ n: 2 }]);
+  });
+
+  it.each(['approved', 'rejected'])('never replays a historical request as an %s decision', async kind => {
+    const { f, key } = upgrade[kind], target = await request(f), before = await rows();
+    const decide = (commandKey: string) => kind === 'approved' ? approve(f, target.returnRequestId, commandKey) : reject(f, target.returnRequestId, commandKey);
+    await expect(decide(key)).rejects.toMatchObject({ code: '22023', message: `commerce_return_${kind === 'approved' ? 'approve' : 'reject'}_not_found` });
+    expect(await rows()).toEqual(before); expect(await events(target.returnRequestId)).toEqual([]);
+    const valid = randomUUID(); expect(await decide(valid)).toMatchObject({ status: kind, replayed: false });
+    expect(await decide(valid)).toMatchObject({ status: kind, replayed: true });
+    expect(await events(target.returnRequestId)).toHaveLength(1);
+    expect((await events(target.returnRequestId))[0].event_type).toBe(`commerce.return.${kind}`);
   });
 
   it('keeps qualified runtime restricted, including INSERT-only return lines and owner-only emitter', async () => {
@@ -128,13 +178,13 @@ for (const profile of ['legacy', 'qualified-v2', 'qualified-admin'] as const) de
       await expect(request(f, randomUUID(), [line])).rejects.toThrow(message);
     expect(await rows()).toEqual(before);
     expect(await request(f, randomUUID(), f.lines.map(line => ({ ...line, quantity: 2 })))).toMatchObject({ status: 'requested' });
-    const key = randomUUID(), accepted = await request(f, key);
+    const key: string = randomUUID(), accepted = await request(f, key);
     expect(await request(f, key)).toEqual({ ...accepted, replayed: true });
     expect((await owner.query('SELECT count(*)::int AS n FROM public.commerce_return_lines WHERE return_request_id=$1', [accepted.returnRequestId])).rows).toEqual([{ n: 2 }]);
   });
 
   it('canonicalizes key, note, UUID casing, line order, SKU and disposition defaults', async () => {
-    const f = await subject(), key = randomUUID(), before = await effects();
+    const f = await subject(), key: string = randomUUID(), before = await effects();
     const made = await request(f, ` ${key} `, [{ ...f.lines[0], sku: ' supplied ', restockDisposition: ' quarantine ' }, f.lines[1]], ' note ');
     const accepted = await rows();
     expect((await owner.query('SELECT order_item_id,sku,restock_disposition FROM public.commerce_return_lines WHERE return_request_id=$1 ORDER BY order_item_id', [made.returnRequestId])).rows)
@@ -175,7 +225,7 @@ for (const profile of ['legacy', 'qualified-v2', 'qualified-admin'] as const) de
   });
 
   it('serializes concurrent same-customer replay and refuses a foreign in-flight global key without waiting', async () => {
-    const f = await subject(), other = await subject(), key = randomUUID(), db = await runtime.connect();
+    const f = await subject(), other = await subject(), key: string = randomUUID(), db = await runtime.connect();
     try {
       await db.query('BEGIN'); const first = await request(f, key, f.lines, null, db);
       const replay = request(f, key);
@@ -187,7 +237,7 @@ for (const profile of ['legacy', 'qualified-v2', 'qualified-admin'] as const) de
   });
 
   it('requires an amount for partial approval and emits exactly one decision with no financial or stock effect', async () => {
-    const f = await subject(), made = await request(f), key = randomUUID(), before = await effects(), requested = await rows();
+    const f = await subject(), made = await request(f), key: string = randomUUID(), before = await effects(), requested = await rows();
     for (const amount of [null, -1]) await expect(approve(f, made.returnRequestId, key, 'partial', amount)).rejects.toThrow('invalid_input');
     expect(await rows()).toEqual(requested); expect(await events(made.returnRequestId)).toEqual([]);
     expect(await approve(f, made.returnRequestId, key, 'partial', 0, ' note ')).toMatchObject({ status: 'approved', replayed: false });
@@ -228,7 +278,7 @@ for (const profile of ['legacy', 'qualified-v2', 'qualified-admin'] as const) de
     expect(await events(made.returnRequestId)).toHaveLength(1);
     const inserted = (await runtime.query("INSERT INTO public.commerce_return_requests(order_id,requested_by,reason_code,status) VALUES($1,$2,'other','approved') RETURNING id", [f.order, f.client])).rows[0].id;
     expect(await events(inserted)).toHaveLength(1);
-    const pending = await request(f), key = randomUUID(), db = await runtime.connect(), original = await rows();
+    const pending = await request(f), key: string = randomUUID(), db = await runtime.connect(), original = await rows();
     try { await db.query('BEGIN'); await approve(f, pending.returnRequestId, key, 'full', null, null, db); await db.query('ROLLBACK'); }
     finally { db.release(); }
     expect(await rows()).toEqual(original); expect(await events(pending.returnRequestId)).toEqual([]); expect(await effects()).toEqual(before);

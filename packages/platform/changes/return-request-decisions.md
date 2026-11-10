@@ -12,3 +12,8 @@ Migration: apply the complete native catalogue through
 `20261110210000_return_request_decisions.sql`. Existing primitive headers and
 privileges remain unchanged. Historical replay uses a bounded owned command;
 there is no additional runtime SELECT grant on return lines.
+
+Historical and canonical key aliases are resolved by operation type and stored
+fingerprint version before creation. Unique matches replay their own request ID;
+ambiguous matches refuse uniformly. A historical request cannot act as a decision
+receipt through a suffixed key. Existing receipts are retained unchanged.
