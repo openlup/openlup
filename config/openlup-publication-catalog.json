@@ -1286,6 +1286,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261110150000_fulfillment_operator_journeys.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4338,6 +4342,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261110150000_fulfillment_operator_journeys.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -6255,6 +6263,10 @@
     },
     {
       "path": "packages/platform/src/fulfillment/native/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/native/operatorMutations.ts",
       "class": "public-output"
     },
     {
@@ -28739,6 +28751,10 @@
     },
     {
       "path": "tests/postgres/fulfillmentNativeConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fulfillmentOperatorJourneys.test.ts",
       "class": "public-output"
     },
     {
