@@ -406,7 +406,7 @@ SELECT p.principal_id, p.email, m.role, m.membership_state
 FROM public.platform_human_principals p
 JOIN public.platform_human_memberships m USING (principal_id)
 WHERE lower(btrim(p.email)) = lower(btrim('operator@example.test'))
-  AND m.membership_state = 'active' AND m.role IN ('admin', 'distributor')
+  AND m.membership_state = 'active' AND m.role = 'admin'
   AND NOT EXISTS (SELECT 1 FROM public.platform_control_operators o
                   WHERE o.principal_id = p.principal_id);
 ```
@@ -437,10 +437,31 @@ principal does not yet exist. Native `customer_support_read_failed` intentionall
 hides the SQL cause; the UI names the roster prerequisite without asserting that
 every read failure means not provisioned. No second authority is built here.
 
+#### Commerce operator roster for hold and release admission
+
+The owner provisions one Commerce row per activated human **admin**, with the
+same principal UUID, through the owner connection above:
+
+```sql
+INSERT INTO public.commerce_operators (id, label)
+VALUES ('<activated-principal-id>'::uuid, 'Human administrator')
+ON CONFLICT (id) DO NOTHING;
+```
+
+Require active `admin` membership and no `platform_control_operators` row of any
+state; distributors do not qualify. The resolver never inserts this row. Never
+delete the Commerce row: withdraw access by revoking the human membership through
+the identity owner instead. `commerce_order_holds.created_by` uses ON DELETE SET
+NULL; deleting the row would make a human `fulfillment_exception` hold appear
+system-created and eligible for automatic release. This existing hazard is
+reported, not repaired. Hold/release starter routes retain their named
+unavailable limit until their separate binding is delivered; this is an
+installation prerequisite, not activation of those routes.
+
 With the runtime connection, operator customer search/detail and bundle
 list/detail/commands plus catalogue draft list/detail/create/revise/abandon are
 composed. Bundle commands and catalogue draft writes are restricted to a native
-human admin/distributor session, rechecked per request; actor identity and command
+human admin session, rechecked per request; actor identity and command
 key come only from the accepted host context. `owned/catalogue.ts` owns the
 fictional authoring type. The support port is constructed per request for that
 operator and closed in `finally`, including failed reads; it has no operator cache.
@@ -483,17 +504,20 @@ attaches the order to that existing client, without an account read or rewrite.
 The public answer does not depend on whether an account exists.
 
 An admitted new checkout issues a 256-bit recovery token through the native
-PostgreSQL port. Only its SHA-256 hash is stored. PostgreSQL fixes expiry at
-order creation plus 24 hours; this is a database rule, not a configurable value.
-Checkout links for the same order coexist until expiry or payment; issuing
-another link does not revoke an earlier checkout link. Payment-case links still
-rotate, leaving one live link per case. The separate account actor issuer also
-retains rotation.
+PostgreSQL port. Only its SHA-256 hash is stored. Checkout creation, reminder
+waves and signed-in recovery issue links that expire 24 hours after order
+creation and preserve earlier links. Links in checkout-expiry notices instead
+expire 30 days after order creation and show the terminal order state without
+payment controls. An operator-issued checkout link revokes all earlier links
+for that order and expires at the earlier of issuance plus 24 hours or order
+creation plus 30 days. Payment prevents further payment through any link;
+other links remain subject to their own expiry and the operator revocation rule.
+Payment-case links rotate separately, leaving one live link per case.
 The token is returned only in the creating response and a separate private
 captured checkout-recovery message, never an authentication challenge or event.
 The completion page reads the URL token once and replaces history synchronously
 before configuration fetch or rendering. Request bodies carry the token; memory
-and session storage preserve reload convenience but grant no authority. An unchanged repeated submit for the same order keeps its existing token when the replay response omits it. A different order never inherits that token. A new token replaces the token stored in this tab; earlier checkout links remain usable until expiry or payment.
+and session storage preserve reload convenience but grant no authority. An unchanged repeated submit for the same order keeps its existing token when the replay response omits it. A different order never inherits that token. A new token replaces the token stored in this tab; this storage update does not revoke other links. Operator issuance revokes them through the native issuer.
 The committed continuity proof consists of the source continuity test and the
 clean-index root proof, which needs only npm ci and the three-package build,
 without a starter build or browser. A real-browser second-submit check was
@@ -729,9 +753,11 @@ do not grant it. An adopter wanting the gate OFF follows the existing
 Local proof covers both the refused case and a separate host-authorized outcome.
 
 From this application directory, with the selected package set installed, run
-`./lifecycle browser`. It creates two throwaway PostgreSQL 16 databases, applies the public qualified installation,
-loads the owned demo catalogue, starts both restricted hosts, then runs every
-spec selected by `playwright.database.config.ts` with one worker. The command
+`./lifecycle browser`. It reads the selections from `browser-groups.mjs`. Each
+group gets a fresh pair of throwaway PostgreSQL 16 databases with the public
+qualified installation and owned demo catalogue, plus two restricted hosts.
+The groups run every test selected by `playwright.database.config.ts` once,
+with one worker. The command
 creates both the UI-origin file and the private
 `.context/care-browser/fixtures.json` required only by the database subscription
 care group. The default preview browser command excludes that group. It tears down
@@ -753,3 +779,80 @@ roll-forward plus one locally captured resumed confirmation in both configuratio
 The disposable fixture records synthetic parcel transitions through the native
 shipment rail and supplies the external host's fulfilled-order fact. No operator
 delivery action, settings seed, real provider or release activation is included.
+
+
+### Checkout and account candidate changes
+
+The account now edits first name, last name and phone through the installed
+account mutation port. Email remains read-only. Failed saves keep the draft;
+profile replay returns current state. The demonstration phone policy accepts
+nine local digits under fictional calling code 999. These values in `owned/acquisition-policy.ts` make no
+real-market claim. Current invoice entries offer a correction request with
+reason, requested fields and optional note. The response acknowledges a stored
+account event; it does not issue a correction, refund or operator ticket.
+Repeated invoice request keys intentionally create separate events.
+
+Owned pending orders offer signed-in recovery. The native actor entry selects
+the exact order or initial declaration and supplies the account/fresh-checkout
+fallback. It sends no mail and preserves earlier checkout links. Operator
+order detail offers copy or queued email, expiry and refusal results. Eligible
+expired one-time orders must match a fresh native quote before a link is issued. Its native
+issuer deliberately revokes earlier checkout links and caps the new link at
+issuance plus 24 hours or order creation plus 30 days, whichever comes first.
+The communications operator
+roster documented above is also required for this command. Queued email is not
+a delivery claim.
+
+After installation, an existing local scheduler can invoke one bounded pass:
+
+```sh
+./lifecycle checkout-recovery --configuration supplements --database-url <restricted-runtime-url>
+```
+
+Use `--port` for this local host's actual listening port, or the configured public
+origin. The invocation composes the native job lease, first/final wave producer,
+canonical expiry and initial-checkout sweeps, reconciliation and the existing
+outbox handlers. Private messages reuse the atomic local capture protocol.
+Only confirmed capture in the selected profile qualifies the final wave.
+Checkout expiry links show the source order's terminal state; recreation,
+payment guidance, token payment and inline retry remain outside this candidate.
+The embedded-browser buyer-link control remains unavailable until sandbox
+continuation issuance is bound. No continuation cookie is minted here.
+
+The operator reads the current order and parcel before requesting a replacement
+or complete fulfillment cancellation. Replacement shows the frozen destination,
+reason and exception-hold consequences and requires confirmation. Cancellation
+also requires confirmation; the native command owns provider fences and recorded
+reservation release. These actions do not confirm arrival, dispatch a real
+parcel, create a refund or move a subscription cycle earlier. Hold/release,
+unpaid cancellation, external refund marking and other shipment mutations keep
+their named refusals.
+
+For replacement/cancellation, the database owner provisions one durable Commerce
+operator row per active human admin, using the principal ID found in the roster
+recipe. Run only through the owner connection, never the runtime host:
+
+```sql
+INSERT INTO public.commerce_operators (id, label)
+VALUES ('<activated-principal-id>'::uuid, 'Demonstration administrator')
+ON CONFLICT (id) DO NOTHING;
+```
+
+Never delete this Commerce row: existing holds refer to it. Withdraw authority by
+revoking the human membership through the native identity owner. The runtime has
+no provisioning endpoint. Every operator command and replay rechecks an active
+human admin session. A distributor, customer, revoked member or machine principal
+cannot gain mutation authority from a body field or a roster row.
+
+Run the candidate portal journeys with `./lifecycle browser
+browser/acquisition.spec.ts --grep 'portal '`, or include them in the complete
+`./lifecycle browser` recipe. Both configurations and languages run on real
+PostgreSQL with one worker and traces, screenshots and video off. No production,
+provider or release activation is included.
+
+The complete browser recipe uses separate throwaway installations for subscription
+care, the account/checkout/parcel portal and the purchase baseline. Each selected
+journey runs once with one worker. This keeps each group within the unchanged
+per-process checkout quotas; it neither increases limits nor bypasses admission.
+Policy values live beside the existing owned acquisition policy, so replacing the
+owned configuration registry does not create new required module exports.

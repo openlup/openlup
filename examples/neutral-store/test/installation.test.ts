@@ -17,7 +17,7 @@ test('container demo startup privately creates a key once, reuses it, and refuse
   await mkdir(resolve(root, '.context'), { recursive: true });
   const directory = await mkdtemp(resolve(root, '.context/demo-start-'));
   try {
-    for (const path of ['lifecycle.mjs', 'host', 'shared', 'owned', 'installation']) {
+    for (const path of ['lifecycle.mjs', 'browser-groups.mjs', 'host', 'shared', 'owned', 'installation']) {
       await cp(resolve(root, path), resolve(directory, path), { recursive: true });
     }
     await writeFile(resolve(directory, 'package.json'), '{"type":"module"}');

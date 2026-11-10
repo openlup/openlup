@@ -1,3 +1,4 @@
+import installationInventory from "./current-installation-inventory.json" with { type: "json" };
 import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
@@ -11,10 +12,10 @@ import {
 
 const exec = promisify(execFile);
 // Frozen 92-unit issued-prefix measurements remain independent expectations.
-// The current complete 123-unit installation also includes lifecycle closure and notice production after the shared suffix and completion tail.
+// Complete current installations are measured independently through production projectors.
 const shapes = [
-  { name: "bootstrap-restore", currentSha256: "a416f1484f56e165ab3d57cac16fe28739f7f9388c3ea7f9baaf7c297f6680f2", separate: false, sha256: "c4f6bb9daa5882877149a78e13d07594b7e8653c3a3ba39f508477b072548f9b" },
-  { name: "separate-restore", currentSha256: "84912492b8acd3dd9cb588933fb84252275468cf273d1ed27d49160cc1846160", separate: true, sha256: "624cc57789e3aaf36d0b61bdad420fc4eb0b63c2a7eb09358e5c18240ec13f82" },
+  { name: "bootstrap-restore", currentSha256: installationInventory.current.profiles["bootstrap"].objectInventorySha256, separate: false, sha256: "c4f6bb9daa5882877149a78e13d07594b7e8653c3a3ba39f508477b072548f9b" },
+  { name: "separate-restore", currentSha256: installationInventory.current.profiles["separate"].objectInventorySha256, separate: true, sha256: "624cc57789e3aaf36d0b61bdad420fc4eb0b63c2a7eb09358e5c18240ec13f82" },
 ] as const;
 const profiles = [
   { name: "reference", roleMode: "installer-managed", prefix: "q2_reference" },
@@ -55,7 +56,7 @@ for (const profile of profiles) for (const shape of shapes) {
         migrationIsBootstrap: !shape.separate, hasRestore: true,
       });
       const count = 1 + current.forward.length;
-      expect(count).toBe(123);
+      expect(count).toBe(installationInventory.current.profiles[shape.separate ? "separate" : "bootstrap"].count);
       expect(current.objectInventorySha256).toBe(shape.currentSha256);
       expect(result).toMatchObject({
         inventorySha256: shape.currentSha256, issuedInventorySha256: shape.sha256, issuedLedgerRows: 92,
