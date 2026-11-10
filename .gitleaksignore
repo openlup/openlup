@@ -25,3 +25,7 @@ bca9f16ced27bfeb5d7be2d6e0179f59b246c90f:server/adapters/postgres/checkoutRecove
 # disposable PostgreSQL fixture. This exact historical finding is not an
 # external-service credential; retain full-history scanning for all other findings.
 761b1cdfe078ece5739ec0bb37f4298e114012ed:tests/postgres/runM14EffectHandover.ts:generic-api-key:102
+# Saved-address documentation prose, not a credential: the generic-api-key
+# heuristic matches the words "key bounds, trim/collapse" in a package README
+# sentence. This exact finding covers only that immutable commit.
+9e1874cfb7a4d2bde57523892ec15dfa8b0cc4bc:packages/platform/README.md:generic-api-key:2328
