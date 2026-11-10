@@ -83,7 +83,7 @@ for (const profile of ['legacy','bootstrap','separate','admin-managed','admin-op
     expect((await target.owner.query('SELECT shipping_saved_address_id,billing_saved_address_id FROM public.subscriptions WHERE id=$1', [subscription])).rows).toEqual([{ shipping_saved_address_id: id, billing_saved_address_id: id }]);
     expect((await target.owner.query('SELECT to_jsonb(e) AS row FROM public.customer_account_events e WHERE client_id=$1 ORDER BY id', [f.client])).rows.map(row => row.row)).toEqual(history.map(row => row.row));
     expect(await restoreConnectedNativeStore(request)).toMatchObject({ replayed: true }); expect(await actual()).toEqual(first);
-  });
+  }, postgresSetupTimeoutMs);
   it('reads, saves, updates and canonically reuses only the owned address', async () => {
     const f = await customer(); expect(await f.port.getAddressBook(f.principal)).toMatchObject({ addresses: [], ordererProfiles: [] });
     const first = await f.port.upsertAddress(f.principal, { ...input(), line1: ' Example  Street 1 ', recipientName: null, isDefault: true }); const id = addressId(first);
