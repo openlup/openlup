@@ -3583,6 +3583,20 @@
             "sha256": "9b61a17c80950d490017c12d0eda335216267eea65022e99d8b19f7d61fbdfed"
           }
         ]
+      },
+      {
+        "row": "timed-auto-resume-paid-history",
+        "path": "db/platform/migrations/20261109150000_subscription_auto_resume_paid_history.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.subscription_auto_resume_due(integer,timestamptz)",
+            "beforeSha256": "f247d1bc5d64df49b0d989ef00b03372d0036f7dcfe25fe5e64a4dc1e46926ee",
+            "searchPath": "public, pg_catalog"
+          }
+        ],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -4137,6 +4151,17 @@
           "signature": "public.subscription_sized_edit_apply(uuid,uuid,text,uuid,jsonb,timestamptz)",
           "beforeSha256": null,
           "afterSha256": "215849e52f090c6cca9bb8c8213338a655d8b5ffb939f59b94327cecb817b075"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261109150000_subscription_auto_resume_paid_history.sql",
+      "sha256": "518e2a148b6ec79ece01ce7fe346674f1bff60e8ab98db226f5531ef4b6b0c87",
+      "functions": [
+        {
+          "signature": "public.subscription_auto_resume_due(integer,timestamptz)",
+          "beforeSha256": "f247d1bc5d64df49b0d989ef00b03372d0036f7dcfe25fe5e64a4dc1e46926ee",
+          "afterSha256": "69288d1ec2691429e0d3993f75cda86142c56247e4e90ce3cdcd4b2ba9635269"
         }
       ]
     }

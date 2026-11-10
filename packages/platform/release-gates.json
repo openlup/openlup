@@ -961,9 +961,9 @@
       "maxFiles": 10
     },
     "maxPackedBytes": 2898683,
-    "maxUnpackedBytes": 13845770,
+    "maxUnpackedBytes": 14123067,
     "maxFiles": 4252,
-    "capReason": "Final code measured 2,362,014 gzip bytes across 4,036 files; total 4,168 files. Larger parent caps retained.",
+    "capReason": "Final code measured 2,362,014 gzip bytes across 4,036 files; total 4,168 files. Larger parent caps retained. Unpacked contents measured 13,846,144 bytes; unpacked cap adds 2% headroom.",
     "baseline": {
       "version": "0.37.0",
       "packedBytes": 2791358
