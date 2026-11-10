@@ -4259,7 +4259,7 @@
     },
     {
       "path": "db/platform/migrations/20261110110000_operator_checkout_links.sql",
-      "sha256": "4160442e67a370057c33db8bcba87e98244ab3617649f43458cc7971cea3b18c",
+      "sha256": "51690c8e903d3acb8679a7bfdac311bfbdcc6aa6b7d924ea17edbc92424e349b",
       "functions": [
         {
           "signature": "public.commerce_operator_link_receipt(uuid,uuid,uuid,text,text,boolean,uuid)",
@@ -4279,7 +4279,7 @@
         {
           "signature": "public.commerce_operator_link_enqueue(uuid,uuid,uuid,text,text)",
           "beforeSha256": null,
-          "afterSha256": "077a018ac4affba1766e3c6dab2efe0170d1f242593d01211f1a4ea827c3bcc0"
+          "afterSha256": "1004c2a870e64cc0ffc3658504f285049180ae1309a2b178ab1fc60bda712a23"
         },
         {
           "signature": "public.commerce_operator_link_delivery_authorize(uuid,text)",

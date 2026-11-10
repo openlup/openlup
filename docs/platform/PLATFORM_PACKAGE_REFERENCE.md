@@ -1626,7 +1626,7 @@ coexist with an operator token. Renewal payment cases retain their separate issu
 `copy` (also the default) returns the raw token and `emailQueued: false` without
 mail. `email` inserts the existing `commerce.checkout_recovery` event using
 `checkout_recovery:operator:<token-id>`, `operatorIssued: true` and the same raw
-bearer. Replay of that token's enqueue inserts no second event. Queue failure
+bearer. The event retains the `admin_payment_link` source marker. Replay of that token's enqueue inserts no second event. Queue failure
 returns upstream unavailability without claiming mail is queued. Route these
 events through the existing recovery email handler and the store's scoped
 `authorize(eventId, claimToken)` gate. Its exact token must remain live and bound

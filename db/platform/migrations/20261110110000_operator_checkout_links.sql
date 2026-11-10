@@ -103,7 +103,7 @@ BEGIN
  INSERT INTO public.outbox_events(aggregate_type,aggregate_id,event_type,idempotency_key,payload,metadata)
  VALUES('commerce_order',receipt.order_id,'commerce.checkout_recovery','checkout_recovery:operator:'||token.id,
   jsonb_build_object('orderId',receipt.order_id,'recoveryToken',p_raw_token,'mode',p_mode,'operatorIssued',true,'expiresAt',token.expires_at),
-  jsonb_build_object('source','operator_checkout_payment_link'))
+  jsonb_build_object('source','admin_payment_link'))
  ON CONFLICT(event_type,idempotency_key) DO NOTHING;
 END; $$;
 REVOKE ALL ON FUNCTION public.commerce_operator_link_enqueue(uuid,uuid,uuid,text,text) FROM PUBLIC;

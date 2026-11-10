@@ -441,10 +441,10 @@
       },
       {
         "file": "db/platform/migrations/20261110110000_operator_checkout_links.sql",
-        "sha256": "4160442e67a370057c33db8bcba87e98244ab3617649f43458cc7971cea3b18c"
+        "sha256": "51690c8e903d3acb8679a7bfdac311bfbdcc6aa6b7d924ea17edbc92424e349b"
       }
     ],
-    "objectInventorySha256": "be1b9b07815c466d5718adc0add3e90dad22ba804c5d023231e62dabc56a28d5",
+    "objectInventorySha256": "38d0a3bfcb42b1c9ffece5d38b6d59a3e13bba032bc61f7c03ebd3c14a6c4e83",
     "qualified": {
       "baseline": {
         "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -905,15 +905,15 @@
         },
         {
           "file": "db/platform/migrations/20261110110000_operator_checkout_links.sql",
-          "sha256": "4160442e67a370057c33db8bcba87e98244ab3617649f43458cc7971cea3b18c"
+          "sha256": "51690c8e903d3acb8679a7bfdac311bfbdcc6aa6b7d924ea17edbc92424e349b"
         }
       ],
       "objectInventorySha256": {
         "bootstrapMigrator": {
-          "withRestore": "2f80409c75ead39539355a6fded7ee5a474f2e4cac58e91d5b1b2381b5689e3b"
+          "withRestore": "b3183e5ca14985a310938bfa3165dbd1e4b7e7839bfd496bbb7a3e68b3e29f74"
         },
         "separateMigrator": {
-          "withRestore": "1929299643576234a156f168f980b2f302c319c4c6022cdb8d1c4258bbc30ba9"
+          "withRestore": "e379be70083651d8de69bd5e821117f98932add159bbfca9608a01fe31f3b769"
         }
       }
     },
@@ -1373,12 +1373,12 @@
         },
         {
           "file": "db/platform/migrations/20261110110000_operator_checkout_links.sql",
-          "sha256": "4160442e67a370057c33db8bcba87e98244ab3617649f43458cc7971cea3b18c"
+          "sha256": "51690c8e903d3acb8679a7bfdac311bfbdcc6aa6b7d924ea17edbc92424e349b"
         }
       ],
       "objectInventorySha256": {
-        "installerManaged": "20709af13fdfddb3116078cdf5dd04cc41e02fd457feba6eb828c4464c518622",
-        "operatorProvisioned": "199f27238924b116d6edefa724cef32130a71dcb3a808b8a8f12288e0a9da3af"
+        "installerManaged": "3c259a9fca788b63915fffaad573653dd3c110b0da51bda2488b11dd63addad9",
+        "operatorProvisioned": "644f971049142caf5c10e39aff342bf1a774bc380e70acb689da39ea02b3149f"
       }
     }
   },
@@ -1931,7 +1931,7 @@
     {
       "file": "20261110110000_operator_checkout_links.sql",
       "source": "db/platform/migrations/20261110110000_operator_checkout_links.sql",
-      "sha256": "4160442e67a370057c33db8bcba87e98244ab3617649f43458cc7971cea3b18c"
+      "sha256": "51690c8e903d3acb8679a7bfdac311bfbdcc6aa6b7d924ea17edbc92424e349b"
     },
     {
       "file": "q2_00000000000000_platform_baseline.sql",

@@ -97,7 +97,7 @@ describe.each(lifecycleProfiles)('operator checkout links on %s',profile=>{
   const rows=await tokens(f.id),r=(await receipts(f.id))[0],receipt=context(f.id);receipt.requestId=r.request_id;receipt.emailRequested=true;
   await store().enqueueRecoveryEmail({receipt,tokenId:rows[0].id,rawToken:result.data!.token,mode:'one_time'});
   const events=(await env.owner.query("SELECT * FROM public.outbox_events WHERE aggregate_id=$1 AND event_type='commerce.checkout_recovery'",[f.id])).rows;
-  expect(events).toHaveLength(1);expect(events[0].payload).toMatchObject({operatorIssued:true,recoveryToken:result.data!.token});
+  expect(events).toHaveLength(1);expect(events[0].metadata).toEqual({source:'admin_payment_link'});expect(events[0].payload).toMatchObject({operatorIssued:true,recoveryToken:result.data!.token});
   expect((await receipts(f.id)).at(-1)).toMatchObject({outcome:'succeeded',completed_stage:'email_queued'});
   const event=events[0];await env.owner.query("UPDATE public.outbox_events SET status='processing',metadata=metadata||'{\"claimToken\":\"claim\"}' WHERE id=$1",[event.id]);
   expect(await store().authorize(event.id,'wrong')).toMatchObject({authorized:false,reason:'claim_not_active'});
