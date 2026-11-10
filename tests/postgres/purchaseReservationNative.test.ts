@@ -332,42 +332,53 @@ it("retains SQL-only expiry identity across spellings, zones and microsecond cha
 });
 it("refuses malformed, elapsed, missing, stale, unavailable and foreign-item requests without partial holds", async () => {
   const f = await stock(3), input = await purchase(f, [2, 2]);
-  for (const expiresAt of [AT, later(-1), "infinity"]) {
-    await expect(port().reserveOrderItems({ ...input, expiresAt })).rejects.toThrow("fulfillment_purchase_reservation_elapsed_expiry");
+  // ErrorResponse can precede transaction abort and admission-lock release.
+  // One session queues the next probe behind ReadyForQuery instead of entering
+  // on another pooled connection while the previous refusal is still aborting.
+  const db = await runtime.connect(), scoped = createPostgresPurchaseReservationPort(db);
+  const scopedRelease = (reservationId: string) => scoped.releaseReservation({
+    idempotencyKey: randomUUID(), reservationId, reason: "cancelled", now: AT,
+  });
+  try {
+    for (const expiresAt of [AT, later(-1), "infinity"]) {
+      await expect(scoped.reserveOrderItems({ ...input, expiresAt })).rejects.toThrow("fulfillment_purchase_reservation_elapsed_expiry");
+    }
+    for (const [delta, reason] of [
+      [{ items: [] }, "inventory_reservation_items_invalid"],
+      [{ items: [{ ...input.items[0], quantity: 0 }] }, "inventory_reservation_item_invalid"],
+      [{ items: [{ ...input.items[0], orderItemId: randomUUID() }] }, "fulfillment_purchase_reservation_item_mismatch"],
+      [{ items: [input.items[0], input.items[0]] }, "inventory_reservation_item_invalid"],
+      [{ stockSourceKey: randomUUID() }, "inventory_external_provider_stock_missing"],
+      [{ idempotencyKey: "short" }, "fulfillment_purchase_reservation_invalid_input"],
+    ] as const) await expect(scoped.reserveOrderItems({ ...input, ...delta })).rejects.toThrow(reason);
+    await expect(db.query(`SELECT public.fulfillment_reserve_purchase_order_items($1,$2,$3,$4,'failed',$5,'{}',$6)`,
+      [input.idempotencyKey, input.orderId, f.source, JSON.stringify(input.items), input.expiresAt, AT])).rejects.toThrow("inventory_reservation_payment_status_not_reservable");
+    await expect(scoped.reserveOrderItems(input)).rejects.toThrow("inventory_external_provider_insufficient_available_stock");
+    expect(await rows(input.orderId)).toEqual([]);
+    const args: unknown[] = [input.idempotencyKey, input.orderId, f.source, JSON.stringify(input.items), "created", input.expiresAt, "{}", AT];
+    for (const [index, value, reason] of [
+      [1, randomUUID(), "fulfillment_purchase_reservation_order_invalid"],
+      [2, "invalid source", "fulfillment_purchase_reservation_invalid_input"],
+      [3, "{}", "inventory_reservation_items_invalid"],
+      [3, JSON.stringify([{ ...input.items[0], skuId: "invalid" }]), "inventory_reservation_item_invalid"],
+      [6, "[]", "fulfillment_purchase_reservation_invalid_input"],
+      [7, "infinity", "fulfillment_purchase_reservation_invalid_input"],
+    ] as const) {
+      const changed = [...args]; changed[index] = value;
+      await expect(db.query(`SELECT public.fulfillment_reserve_purchase_order_items($1,$2,$3,$4,$5,$6,$7,$8)`, changed)).rejects.toThrow(reason);
+    }
+    await expect(scoped.releaseReservation({ idempotencyKey: randomUUID(), reservationId: randomUUID(), reason: "", now: AT })).rejects.toThrow("fulfillment_purchase_release_invalid_input");
+    await expect(db.query("SELECT public.fulfillment_expire_purchase_reservations(NULL,1)")).rejects.toThrow("fulfillment_purchase_expiry_invalid_input");
+    await admin.query("UPDATE public.fulfillment_stock_current SET stale_after=$2,last_synced_at=$3 WHERE source_key=$1", [f.source, AT, later(-1)]);
+    await expect(scoped.reserveOrderItems(input)).rejects.toThrow("inventory_external_provider_stock_stale");
+    expect(await rows(input.orderId)).toEqual([]);
+    await expect(scopedRelease(randomUUID())).rejects.toThrow("inventory_reservation_not_found");
+    await expect(scopedRelease((await admin.query("SELECT id FROM public.fulfillment_inventory_reservations WHERE renewal_operation_id=$1", [inherited.operation])).rows[0].id))
+      .rejects.toThrow("inventory_reservation_not_found");
+    for (const limit of [0, 1001]) await expect(scoped.expireReservations({ now: AT, limit })).rejects.toThrow("fulfillment_purchase_expiry_invalid_input");
+  } finally {
+    try { await db.query("ROLLBACK"); } finally { db.release(); }
   }
-  for (const [delta, reason] of [
-    [{ items: [] }, "inventory_reservation_items_invalid"],
-    [{ items: [{ ...input.items[0], quantity: 0 }] }, "inventory_reservation_item_invalid"],
-    [{ items: [{ ...input.items[0], orderItemId: randomUUID() }] }, "fulfillment_purchase_reservation_item_mismatch"],
-    [{ items: [input.items[0], input.items[0]] }, "inventory_reservation_item_invalid"],
-    [{ stockSourceKey: randomUUID() }, "inventory_external_provider_stock_missing"],
-    [{ idempotencyKey: "short" }, "fulfillment_purchase_reservation_invalid_input"],
-  ] as const) await expect(port().reserveOrderItems({ ...input, ...delta })).rejects.toThrow(reason);
-  await expect(runtime.query(`SELECT public.fulfillment_reserve_purchase_order_items($1,$2,$3,$4,'failed',$5,'{}',$6)`,
-    [input.idempotencyKey, input.orderId, f.source, JSON.stringify(input.items), input.expiresAt, AT])).rejects.toThrow("inventory_reservation_payment_status_not_reservable");
-  await expect(port().reserveOrderItems(input)).rejects.toThrow("inventory_external_provider_insufficient_available_stock");
-  expect(await rows(input.orderId)).toEqual([]);
-  const args: unknown[] = [input.idempotencyKey, input.orderId, f.source, JSON.stringify(input.items), "created", input.expiresAt, "{}", AT];
-  for (const [index, value, reason] of [
-    [1, randomUUID(), "fulfillment_purchase_reservation_order_invalid"],
-    [2, "invalid source", "fulfillment_purchase_reservation_invalid_input"],
-    [3, "{}", "inventory_reservation_items_invalid"],
-    [3, JSON.stringify([{ ...input.items[0], skuId: "invalid" }]), "inventory_reservation_item_invalid"],
-    [6, "[]", "fulfillment_purchase_reservation_invalid_input"],
-    [7, "infinity", "fulfillment_purchase_reservation_invalid_input"],
-  ] as const) {
-    const changed = [...args]; changed[index] = value;
-    await expect(runtime.query(`SELECT public.fulfillment_reserve_purchase_order_items($1,$2,$3,$4,$5,$6,$7,$8)`, changed)).rejects.toThrow(reason);
-  }
-  await expect(port().releaseReservation({ idempotencyKey: randomUUID(), reservationId: randomUUID(), reason: "", now: AT })).rejects.toThrow("fulfillment_purchase_release_invalid_input");
-  await expect(runtime.query("SELECT public.fulfillment_expire_purchase_reservations(NULL,1)")).rejects.toThrow("fulfillment_purchase_expiry_invalid_input");
-  await admin.query("UPDATE public.fulfillment_stock_current SET stale_after=$2,last_synced_at=$3 WHERE source_key=$1", [f.source, AT, later(-1)]);
-  await expect(port().reserveOrderItems(input)).rejects.toThrow("inventory_external_provider_stock_stale");
-  expect(await rows(input.orderId)).toEqual([]);
-  await expect(release(randomUUID())).rejects.toThrow("inventory_reservation_not_found");
-  await expect(release((await admin.query("SELECT id FROM public.fulfillment_inventory_reservations WHERE renewal_operation_id=$1", [inherited.operation])).rows[0].id))
-    .rejects.toThrow("inventory_reservation_not_found");
-  for (const limit of [0, 1001]) await expect(port().expireReservations({ now: AT, limit })).rejects.toThrow("fulfillment_purchase_expiry_invalid_input");
 });
 it("rolls back all created headers and lines when the final durable receipt cannot be written", async () => {
   const f = await stock(), input = await purchase(f, [2, 3]), db = await admin.connect();
