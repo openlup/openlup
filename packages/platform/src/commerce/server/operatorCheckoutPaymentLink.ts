@@ -44,9 +44,13 @@ export function createPostgresOperatorCheckoutLinkStore(executor: OperatorChecko
     async recordReceipt(r) { await call('SELECT public.commerce_operator_link_receipt($1::uuid,$2::uuid,$3::uuid,$4::text,$5::text,$6::boolean,$7::uuid) AS result',
       [r.operatorId,r.requestId,r.orderId,r.outcome,r.completedStage,r.emailRequested,r.tokenId ?? null]); },
     async revokeActive(r) { await call('SELECT public.commerce_operator_link_revoke($1::uuid,$2::uuid) AS result', [r.operatorId,r.requestId]); },
-    insert: ({ receipt: r, clientId, tokenHash, expiresAt, issuedAt }) => call<string>(
-      'SELECT public.commerce_operator_link_insert($1::uuid,$2::uuid,$3::uuid,$4::text,$5::timestamptz,$6::timestamptz) AS result',
-      [r.operatorId,r.requestId,clientId,tokenHash,expiresAt,issuedAt]),
+    async insert({ receipt: r, clientId, tokenHash, expiresAt, issuedAt }) {
+      const id = await call<unknown>(
+        'SELECT public.commerce_operator_link_insert($1::uuid,$2::uuid,$3::uuid,$4::text,$5::timestamptz,$6::timestamptz) AS result',
+        [r.operatorId,r.requestId,clientId,tokenHash,expiresAt,issuedAt]);
+      if (typeof id !== 'string' || id === '') throw new Error('checkout_payment_link_insert_failed');
+      return id;
+    },
     async enqueueRecoveryEmail({ receipt: r, tokenId, rawToken, mode }) { await call(
       'SELECT public.commerce_operator_link_enqueue($1::uuid,$2::uuid,$3::uuid,$4::text,$5::text) AS result', [r.operatorId,r.requestId,tokenId,rawToken,mode]); },
     authorize: (eventId, claimToken) => call('SELECT public.commerce_operator_link_delivery_authorize($1::uuid,$2::text) AS result',[eventId,claimToken]),
@@ -109,7 +113,7 @@ export function createAdminCheckoutPaymentLinkHandler<Response>({
         tokenHash: hashCheckoutRecoveryToken(rawToken), expiresAt, issuedAt: at.toISOString() });
       receipt.tokenId = tokenId; receipt.completedStage = 'minted';
       if (receipt.emailRequested) {
-        await tokenStore.enqueueRecoveryEmail({ receipt: { ...receipt }, tokenId, rawToken, mode: 'one_time' });
+        await tokenStore.enqueueRecoveryEmail({ receipt: { ...receipt }, tokenId, rawToken, mode: order.mode === 'subscription_cycle' ? 'subscription_cycle' : 'one_time' });
         receipt.completedStage = 'email_queued';
       }
       const response = adminCommerceOrderPaymentLinkResponseSchema.safeParse({ token: rawToken,expiresAt,orderRef: order.orderRef,emailQueued: receipt.emailRequested });

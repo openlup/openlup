@@ -1607,7 +1607,8 @@ Pending orders qualify without repricing. Other orders pass the shared
 `createExpiredCheckoutRecoveryPolicy` order predicate with the configured window;
 provide canonical technical-expiry, frozen quote and shipping facts, and the
 selected commercial validator before issuing an expired-order link. Initial
-activations have no native cycle; any non-null `subscriptionCycleId` refuses.
+activations have no native cycle; their persisted order mode still selects
+subscription mail copy. Any non-null `subscriptionCycleId` refuses.
 Paid, manual-cancelled, missing/changed and unrecoverable orders use the existing
 closed refusal vocabulary. The earlier of issuance plus operator lifetime and
 order creation plus recovery window sets expiry. If it is not later than issuance,

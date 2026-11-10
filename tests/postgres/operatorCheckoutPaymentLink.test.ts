@@ -28,8 +28,8 @@ describe.each(lifecycleProfiles)('operator checkout links on %s',profile=>{
   return {id,client};
  }
  async function read(id:string):Promise<OperatorCheckoutLinkOrder|null>{
-  const row=(await env.owner.query('SELECT * FROM public.commerce_orders WHERE id=$1',[id])).rows[0];if(!row)return null;
-  return {orderId:row.id,orderRef:`order_${row.id}`,orderNumber:row.id,clientId:row.client_id,status:row.status,mode:'one_time_order',totalMinor:100,currency:'XXX',cadenceDays:null,
+  const row=(await env.owner.query('SELECT o.*, a.cadence_days AS activation_cadence FROM public.commerce_orders o LEFT JOIN public.subscription_activations a ON a.order_id=o.id WHERE o.id=$1',[id])).rows[0];if(!row)return null;
+  return {orderId:row.id,orderRef:`order_${row.id}`,orderNumber:row.id,clientId:row.client_id,status:row.status,mode:row.activation_cadence==null?'one_time_order':'subscription_cycle',totalMinor:100,currency:'XXX',cadenceDays:row.activation_cadence??null,
    createdAt:row.created_at.toISOString(),customerEmail:null,customerName:null,paymentIntentId:null,paymentIntentStatus:null,subscriptionId:null,subscriptionCycleId:row.subscription_cycle_id,
    technicallyExpired:row.metadata?.source==='checkout_reservation_expiry',quoteSnapshot:row.metadata?.quoteSnapshot,shippingAddressId:row.metadata?.shippingAddressId};
  }
@@ -60,6 +60,14 @@ describe.each(lifecycleProfiles)('operator checkout links on %s',profile=>{
   const rows=await tokens(f.id);expect(rows).toHaveLength(1);expect(rows[0]).toMatchObject({token_hash:hashCheckoutRecoveryToken(result.data!.token),revoked_at:null});
   expect((await receipts(f.id)).map(x=>[x.outcome,x.completed_stage])).toEqual([['admitted','none'],['succeeded','minted']]);
   expect((await env.owner.query('SELECT id FROM public.outbox_events WHERE aggregate_id=$1',[f.id])).rows).toEqual([]);
+ });
+ it('keeps a pending initial activation eligible and queues its persisted subscription copy',async()=>{
+  const f=await order();
+  await env.owner.query('UPDATE public.commerce_orders SET metadata=$2::jsonb WHERE id=$1',[f.id,{orderDraftSnapshot:{context:{mode:'subscription',cadenceDays:28}}}]);
+  await call(env.runtime,'subscription_declare_provisional_activation',[`declare:${f.id}`,f.id,28,NOW]);
+  const result=await issue(f.id,{email:true});expect(result.data?.emailQueued).toBe(true);
+  expect((await env.owner.query("SELECT payload->>'mode' AS mode FROM public.outbox_events WHERE aggregate_id=$1 AND event_type='commerce.checkout_recovery'",[f.id])).rows).toEqual([{mode:'subscription_cycle'}]);
+  expect(await service().validate(result.data!.token,new Date(NOW))).toMatchObject({orderId:f.id,mode:'subscription_cycle'});
  });
  it('uses eligible expiry facts, validates commercial terms and caps at the earlier deadline',async()=>{
   const f=await order(27,'expired');await env.owner.query("UPDATE public.commerce_orders SET metadata=metadata||$2::jsonb WHERE id=$1",[f.id,{source:'checkout_reservation_expiry',quoteSnapshot:{},shippingAddressId:randomUUID()}]);
@@ -105,6 +113,12 @@ describe.each(lifecycleProfiles)('operator checkout links on %s',profile=>{
    expect((await receipts(f.id)).at(-1)).toMatchObject({outcome:'failed',completed_stage:stage==='insert'?'revoked':'minted'});
    expect((await tokens(f.id)).filter(t=>t.revoked_at===null)).toHaveLength(stage==='insert'?0:1);
   }
+ });
+ it('retains admitted evidence when both outcome writes are unavailable',async()=>{
+  const f=await order(),real=store();
+  const unavailable:OperatorCheckoutLinkStore={...real,recordReceipt:async r=>{if(r.outcome!=='admitted')throw Error('outcome unavailable');await real.recordReceipt(r);}};
+  const result=await issue(f.id,{email:true,store:unavailable});expect(result.code).toBe('UPSTREAM_UNAVAILABLE');expect(result.data).toBeUndefined();
+  expect((await receipts(f.id)).map(r=>r.outcome)).toEqual(['admitted']);expect((await tokens(f.id)).filter(t=>t.revoked_at===null)).toHaveLength(1);
  });
  it('requires admission, retains its operator scope, and refuses raw receipt access',async()=>{
   const f=await order(),r=context(f.id);await expect(store().revokeActive(r)).rejects.toMatchObject({code:'42501'});

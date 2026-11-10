@@ -1,5 +1,5 @@
 import { describe,expect,it,vi } from 'vitest';
-import { createAdminCheckoutPaymentLinkHandler,hashCheckoutRecoveryToken,
+import { createAdminCheckoutPaymentLinkHandler,hashCheckoutRecoveryToken,createExpiredCheckoutRecoveryPolicy,createPostgresOperatorCheckoutLinkStore,
   type OperatorCheckoutLinkOrder,type OperatorCheckoutLinkStore,type OperatorCheckoutLinkReceipt } from '../../src/commerce/server/index.js';
 const NOW='2040-01-02T12:00:00.000Z',DAY=86400000;
 const orderId='11111111-1111-4111-8111-111111111111',operatorId='22222222-2222-4222-8222-222222222222';
@@ -69,4 +69,25 @@ describe('operator checkout link command characterization',()=>{
  it('records a minted failure when the response is unrepresentable',async()=>{
   const x=await run({snapshot:order({orderRef:''})});expect(x.result.code).toBe('INVALID_RESPONSE');expect(x.receipts.at(-1)).toMatchObject({outcome:'failed',completedStage:'minted'});
  });
+});
+
+
+it('keeps initial-subscription mail mode without admitting renewal cycles',async()=>{
+ const x=await run({snapshot:order({mode:'subscription_cycle',cadenceDays:28}),body:{orderId,delivery:'email'}});
+ expect(x.result.data?.emailQueued).toBe(true);expect(x.store.enqueueRecoveryEmail).toHaveBeenCalledWith(expect.objectContaining({mode:'subscription_cycle'}));
+ expect(x.validate).not.toHaveBeenCalled();
+});
+it('uses the configured recovery window in the shared order predicate',()=>{
+ const snapshot={...expired(),createdAt:new Date(Date.parse(NOW)-2*DAY).toISOString()};
+ for(const [window,kind] of [[DAY,'unavailable'],[3*DAY,'eligible']] as const){
+  const p=createExpiredCheckoutRecoveryPolicy<OperatorCheckoutLinkOrder>({admitsSubscriptionSubject:()=>false,recoveryWindowMs:window});
+  expect(p.classifyOrderRecoveryEligibility(snapshot,new Date(NOW))).toEqual({kind});
+ }
+});
+
+
+it.each([null,''])('refuses a token write that returns no row identity (%s)',async result=>{
+ const tokenStore=createPostgresOperatorCheckoutLinkStore({query:async()=>({rows:[{result}]})});
+ await expect(tokenStore.insert({receipt:{operatorId,requestId:orderId,orderId,outcome:'admitted',completedStage:'revoked',emailRequested:false},
+ clientId:orderId,tokenHash:'a'.repeat(64),expiresAt:NOW,issuedAt:NOW})).rejects.toThrow('checkout_payment_link_insert_failed');
 });
