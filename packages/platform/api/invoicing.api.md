@@ -1851,22 +1851,16 @@ export declare function runNativeInvoiceIssueJob(input: {
     ok: boolean;
 }>;
 /** Explicit billing selection. Buyer selection freezes with invoice request, before later host fiscal work.
- * Generic/unselected invoice stores retain their existing behavior; historical installed facts are not backfilled. */
+ * Generic/unselected invoice stores retain their existing behavior; existing obligations are never backfilled. */
 export declare function createPostgresBillingInvoiceStore(db: {
     query(text: string, values?: unknown[]): Promise<{
         rows: Record<string, unknown>[];
     }>;
 }, options?: Parameters<typeof createPostgresInvoiceStore>[1]): {
+    sweep: (limit: number) => ReturnType<InvoiceStorePort["sweep"]>;
     captureDuty(v: Parameters<InvoiceStorePort["captureDuty"]>[0]): ReturnType<InvoiceStorePort["captureDuty"]>;
     installFacts(v: Parameters<InvoiceStorePort["installFacts"]>[0]): ReturnType<InvoiceStorePort["installFacts"]>;
     readCapturedBuyer(orderId: string): Promise<import("./contracts/facts.js").InvoiceBuyerSelection | null>;
-    sweep(limit: number): Promise<{
-        readonly collected: number;
-        readonly claims: readonly {
-            readonly dutyId: string;
-            readonly token: string;
-        }[];
-    } | import("./contracts/provider.js").InvoiceUnsupported>;
     prepareFacts(input: {
         readonly dutyId: string;
         readonly token: string;

@@ -2369,8 +2369,9 @@ Finite restore targets qualified installations; legacy installations are capture
 The finite connected-store profile carries exact saved rows and event history,
 restores addresses after clients and before subscription pointers, and replays
 without rewriting them. The smaller compatible-row copier remains a separate
-closed profile. Delivery/payment preferences, checkout hints, billing profiles,
-subscription saved-ID commands and browser journeys are later capabilities.
+closed profile. Billing profiles are available through the explicit binding below.
+Delivery/payment preferences, checkout hints, subscription saved-ID commands and
+browser journeys remain separate capabilities.
 
 ### Customer billing profiles and frozen invoice buyers
 
@@ -2400,7 +2401,9 @@ the generic invoice store. The simplicity pre-check found that full fiscal-fact
 installation is a separate call after invoice request. The selected request
 wrapper therefore freezes ONE buyer component atomically with the existing
 invoice-request transaction. `readCapturedBuyer(orderId)` supplies that immutable
-component for subsequent host fiscal composition; the selected installer refuses
+component for subsequent host fiscal composition. Its retained-source sweep uses
+the same atomic capture boundary; pre-existing duties or documents never acquire
+a component on replay, even before full facts are installed. The selected installer refuses
 facts that contradict it. It preserves order buyer facts first, then the default
 or latest owned profile/billing-or-both address, then the marked shipping fallback.
 Handoff requests read the owned parcel destination; paid requests read the order.
@@ -2413,7 +2416,7 @@ references when present; it adds no fields to historical input that lacks them.
 The host still owns identifier normalization, fiscal kind, clearance, money,
 lines and seller policy. A full-fact revision is immutable. Profile edits after
 buyer capture cannot change an existing request, issued artifact or replay;
-a later invoice request sees the new profile. Existing historical installed
+a later invoice request sees the new profile. Existing historical duties and installed
 facts without a buyer component remain unchanged. This is no fiscal provider
 qualification, invoice rewrite or automatic checkout application: checkout hints
 remain explicitly unapplied. Starter billing pages belong to a later binding.

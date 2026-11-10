@@ -3989,6 +3989,10 @@
           {
             "signature": "public.customer_billing_install_invoice_facts(uuid,jsonb,text)",
             "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_billing_sweep_invoice_duties(integer)",
+            "searchPath": "pg_catalog, pg_temp"
           }
         ],
         "grantOnlyFunctions": [],
@@ -4881,7 +4885,7 @@
     },
     {
       "path": "db/platform/migrations/20261110260000_customer_billing_profiles.sql",
-      "sha256": "aef0a4ff414e435d3257807036995a8da54ecdcd16749ebc75bb7adb5c8d799c",
+      "sha256": "2e79d84391f30ef629b40bb9e306308242b228a3a3c5e36ae2839cbcad6abf6e",
       "functions": [
         {
           "signature": "public.customer_billing_profiles_read(uuid,uuid)",
@@ -4921,7 +4925,7 @@
         {
           "signature": "public.customer_billing_capture_invoice(text,text,uuid,uuid,jsonb,timestamptz)",
           "beforeSha256": null,
-          "afterSha256": "8103ab8c300d5dac0065dd7b60d8ee24f0606602bf84b9d02069bfa82ebce96e"
+          "afterSha256": "b446bab985bb56c28326e5743d91cc24f7d421bfa86bc6ae36004f52ff518052"
         },
         {
           "signature": "public.customer_billing_buyer_read(uuid)",
@@ -4932,6 +4936,11 @@
           "signature": "public.customer_billing_install_invoice_facts(uuid,jsonb,text)",
           "beforeSha256": null,
           "afterSha256": "2c6a5bcba3d9d12f3c4b5045b933ac146c7e2284b1458ed9fc15d1bcc005de0b"
+        },
+        {
+          "signature": "public.customer_billing_sweep_invoice_duties(integer)",
+          "beforeSha256": null,
+          "afterSha256": "f993cdf4150e49b24fcc253df116a4cc275b137ea301f8808bf854de16a1f089"
         }
       ]
     }

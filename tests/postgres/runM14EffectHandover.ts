@@ -50,7 +50,7 @@ const selected = selectPlatformMigrationManifest(JSON.parse(readFileSync(join(ro
 const expectedUnits = [selected.baseline, ...selected.forward];
 const expectedTail = expectedUnits.at(-1);
 assert(expectedTail, "Selected canonical manifest must contain its baseline");
-if (!catchup) assert.equal(selected.objectInventorySha256, "eb57ef9fbb1d54e32ba772b3b014d4e4016d66f533be0a68ff8e709a6e1f6feb");
+if (!catchup) assert.equal(selected.objectInventorySha256, "b9b889e194552a94ac9da27d85790af22749507687c75dd8f35f84eabff3db1f");
 const connectedTableCount = connectedNativeStoreTables.length;
 assert.equal(connectedTableCount, 130, "Keep the complete finite connected graph in sync");
 if (!image || !/^sha256:[0-9a-f]{64}$/.test(image)) throw new Error("Supply one already-local immutable Node24.21.0 image ID; this witness never pulls/builds images");

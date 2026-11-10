@@ -3682,7 +3682,10 @@ then marked shipping fallback. Paid capture uses the order destination; handoff
 capture uses the owned parcel destination. Later full fiscal composition reads
 the component; the selected installer checks its retained fields before calling
 the existing immutable full-facts owner. Generic unselected invoice capture is
-unchanged. Historical installed facts receive no component backfill. The public
+unchanged. The selected retained-source sweep calls the same atomic wrapper.
+Creation eligibility is checked under the existing invoice order advisory lock;
+a prior duty or document never acquires a component on replay, including an owed
+duty without installed facts. Historical obligations receive no component backfill. The public
 buyer contract adds optional fields only, and provider projection carries line2
 and provenance without flattening or fabrication. No existing SQL function,
 trigger, grant or fiscal policy is replaced.

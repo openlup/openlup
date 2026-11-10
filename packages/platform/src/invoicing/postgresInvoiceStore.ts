@@ -345,11 +345,12 @@ export async function runNativeInvoiceIssueJob(input: {
 
 
 /** Explicit billing selection. Buyer selection freezes with invoice request, before later host fiscal work.
- * Generic/unselected invoice stores retain their existing behavior; historical installed facts are not backfilled. */
+ * Generic/unselected invoice stores retain their existing behavior; existing obligations are never backfilled. */
 export function createPostgresBillingInvoiceStore(db: { query(text: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }> }, options?: Parameters<typeof createPostgresInvoiceStore>[1]) {
  const store = createPostgresInvoiceStore(db,options);
  const call = async <T>(name: string,values: unknown[]): Promise<T> => (await db.query(`SELECT public.${name}(${values.map((_,i)=>`$${i+1}`).join(',')}) AS value`,values)).rows[0]?.value as T;
  return { ...store,
+  sweep: (limit: number): ReturnType<InvoiceStorePort['sweep']> => call('customer_billing_sweep_invoice_duties',[limit]),
   async captureDuty(v: Parameters<InvoiceStorePort['captureDuty']>[0]): ReturnType<InvoiceStorePort['captureDuty']> {
    try { return await call('customer_billing_capture_invoice',[v.requestKey,v.sourceKind,v.sourceId,v.orderId,v.evidence,v.occurredAt]); }
    catch(error) { if (isConflict(error)) return {kind:'conflict',code:'identity_mismatch'};throw error; }

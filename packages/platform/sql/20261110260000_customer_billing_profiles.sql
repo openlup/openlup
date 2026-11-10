@@ -53,12 +53,19 @@ CREATE FUNCTION public.customer_billing_erase(p_client uuid) RETURNS jsonb LANGU
 BEGIN DELETE FROM public.customer_orderer_profiles WHERE client_id=p_client; RETURN 'true'; END; $$;
 
 CREATE FUNCTION public.customer_billing_capture_invoice(p_key text,p_source text,p_source_id uuid,p_order uuid,p_evidence jsonb,p_at timestamptz) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
-DECLARE answer jsonb; duty uuid; purchase public.commerce_orders; customer public.clients; profile public.customer_orderer_profiles; billing public.customer_saved_addresses; shipping jsonb; destination jsonb; explicit jsonb; buyer jsonb; address jsonb; buyer_source text; address_source text; display_name text; email text; company text; tax text;
+DECLARE answer jsonb; duty uuid; purchase public.commerce_orders; customer public.clients; profile public.customer_orderer_profiles; billing public.customer_saved_addresses; shipping jsonb; destination jsonb; explicit jsonb; buyer jsonb; address jsonb; buyer_source text; address_source text; display_name text; email text; company text; tax text; prior_obligation boolean:=true;
 BEGIN
+ -- Decide creation eligibility under the request owner's existing order lock.
+ -- An older duty/document never acquires buyer selection on a later replay.
+ IF p_source IN ('paid','handoff') THEN
+  IF NOT pg_try_advisory_xact_lock(hashtextextended('invoicing:'||p_order::text,0)) THEN RAISE EXCEPTION 'invoicing_capture_busy' USING ERRCODE='55P03'; END IF;
+  prior_obligation:=EXISTS(SELECT 1 FROM public.invoicing_duties WHERE order_id=p_order AND parent_duty_id IS NULL)
+   OR EXISTS(SELECT 1 FROM public.accounting_documents WHERE order_id=p_order AND correction_of_document_id IS NULL);
+ END IF;
  answer:=public.invoicing_request_with_seller_policy(p_key,p_source,p_source_id,p_order,p_evidence,p_at);
  IF p_source NOT IN ('paid','handoff') THEN RETURN answer; END IF;
  duty:=(answer->>'dutyId')::uuid;
- IF duty IS NULL OR EXISTS(SELECT 1 FROM public.invoicing_buyer_snapshots WHERE duty_id=duty) OR EXISTS(SELECT 1 FROM public.invoicing_fact_revisions WHERE duty_id=duty) THEN RETURN answer; END IF;
+ IF prior_obligation OR duty IS NULL OR EXISTS(SELECT 1 FROM public.invoicing_buyer_snapshots WHERE duty_id=duty) OR EXISTS(SELECT 1 FROM public.invoicing_fact_revisions WHERE duty_id=duty) THEN RETURN answer; END IF;
  SELECT * INTO purchase FROM public.commerce_orders WHERE id=p_order;
  SELECT * INTO customer FROM public.clients WHERE id=purchase.client_id;
  IF p_source='handoff' THEN
@@ -107,6 +114,41 @@ BEGIN
  RETURN public.invoicing_install_facts(p_duty,p_facts,p_revision);
 END; $$;
 
+CREATE FUNCTION public.customer_billing_sweep_invoice_duties(p_limit integer)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE v_source record; v_duty record; v_seen integer:=0; v_attempt integer; v_claims jsonb:='[]'; v_timeout text:=current_setting('lock_timeout');
+BEGIN
+  FOR v_source IN SELECT * FROM public.invoicing_due_sources ORDER BY occurred_at,source_id LIMIT least(greatest(coalesce(p_limit,10),1),100) LOOP
+    BEGIN
+      PERFORM set_config('lock_timeout','100ms',true);
+      PERFORM public.customer_billing_capture_invoice(v_source.source_key,v_source.source_kind,v_source.source_id,v_source.order_id,v_source.evidence,v_source.occurred_at);
+      PERFORM set_config('lock_timeout',v_timeout,true);
+      v_seen:=v_seen+1;
+    EXCEPTION WHEN OTHERS OR query_canceled THEN
+      SELECT coalesce(max(attempts),0)+1 INTO v_attempt FROM public.invoicing_capture_faults WHERE source_kind=v_source.source_kind AND source_id=v_source.source_id;
+      INSERT INTO public.invoicing_capture_faults(order_id,source_kind,source_id,attempts,state,available_at)
+        VALUES(v_source.order_id,v_source.source_kind,v_source.source_id,v_attempt,CASE WHEN v_attempt>=8 THEN 'faulted' ELSE 'retryable' END,
+          now()+make_interval(secs=>least(3600,60*power(2,least(v_attempt-1,6)))::integer));
+    END;
+  END LOOP;
+  FOR v_duty IN SELECT d.* FROM public.invoicing_duties d
+    JOIN public.invoicing_fact_revisions f ON f.duty_id=d.id
+    WHERE d.request_id IS NULL AND d.status IN ('owed','blocked') AND d.available_at<=now()
+      AND d.reversal IS NULL
+      AND (d.fact_token IS NULL OR d.fact_lease_until<=now())
+    ORDER BY d.created_at,d.id LIMIT least(greatest(coalesce(p_limit,10),1),100) FOR UPDATE OF d SKIP LOCKED LOOP
+    IF v_duty.fact_attempts>=8 THEN
+      UPDATE public.invoicing_duties SET status='faulted',fact_token=NULL,fact_lease_until=NULL,last_result='{"kind":"faulted"}' WHERE id=v_duty.id;
+      CONTINUE;
+    END IF;
+    UPDATE public.invoicing_duties SET fact_attempts=fact_attempts+1,fact_token=gen_random_uuid(),fact_lease_until=now()+interval '5 minutes'
+      WHERE id=v_duty.id RETURNING * INTO v_duty;
+    v_claims:=v_claims||jsonb_build_array(jsonb_build_object('dutyId',v_duty.id,'token',v_duty.fact_token));
+  END LOOP;
+  RETURN jsonb_build_object('collected',v_seen,'claims',v_claims);
+END;
+$$;
+
 ALTER TABLE public.customer_orderer_profiles ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE public.invoicing_buyer_snapshots ENABLE ROW LEVEL SECURITY;
@@ -117,17 +159,17 @@ REVOKE ALL ON TABLE public.customer_orderer_profiles FROM PUBLIC;
 
 REVOKE ALL ON TABLE public.invoicing_buyer_snapshots FROM PUBLIC;
 
-REVOKE ALL ON FUNCTION public.customer_billing_profiles_read(uuid,uuid), public.customer_billing_profiles_clear_defaults(uuid,uuid,timestamptz), public.customer_billing_profile_write(uuid,uuid,uuid,jsonb,timestamptz), public.customer_billing_profile_delete(uuid,uuid,uuid), public.customer_billing_prepare_erasure(), public.customer_billing_export(uuid), public.customer_billing_erase(uuid), public.customer_billing_capture_invoice(text,text,uuid,uuid,jsonb,timestamptz), public.customer_billing_buyer_read(uuid), public.customer_billing_install_invoice_facts(uuid,jsonb,text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.customer_billing_profiles_read(uuid,uuid), public.customer_billing_profiles_clear_defaults(uuid,uuid,timestamptz), public.customer_billing_profile_write(uuid,uuid,uuid,jsonb,timestamptz), public.customer_billing_profile_delete(uuid,uuid,uuid), public.customer_billing_prepare_erasure(), public.customer_billing_export(uuid), public.customer_billing_erase(uuid), public.customer_billing_capture_invoice(text,text,uuid,uuid,jsonb,timestamptz), public.customer_billing_buyer_read(uuid), public.customer_billing_install_invoice_facts(uuid,jsonb,text), public.customer_billing_sweep_invoice_duties(integer) FROM PUBLIC;
 
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN EXECUTE 'REVOKE ALL ON TABLE public.customer_orderer_profiles, public.invoicing_buyer_snapshots FROM anon'; END IF; END; $$;
 
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.customer_billing_profiles_read(uuid,uuid), public.customer_billing_profiles_clear_defaults(uuid,uuid,timestamptz), public.customer_billing_profile_write(uuid,uuid,uuid,jsonb,timestamptz), public.customer_billing_profile_delete(uuid,uuid,uuid), public.customer_billing_prepare_erasure(), public.customer_billing_export(uuid), public.customer_billing_erase(uuid), public.customer_billing_capture_invoice(text,text,uuid,uuid,jsonb,timestamptz), public.customer_billing_buyer_read(uuid), public.customer_billing_install_invoice_facts(uuid,jsonb,text) FROM anon'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.customer_billing_profiles_read(uuid,uuid), public.customer_billing_profiles_clear_defaults(uuid,uuid,timestamptz), public.customer_billing_profile_write(uuid,uuid,uuid,jsonb,timestamptz), public.customer_billing_profile_delete(uuid,uuid,uuid), public.customer_billing_prepare_erasure(), public.customer_billing_export(uuid), public.customer_billing_erase(uuid), public.customer_billing_capture_invoice(text,text,uuid,uuid,jsonb,timestamptz), public.customer_billing_buyer_read(uuid), public.customer_billing_install_invoice_facts(uuid,jsonb,text), public.customer_billing_sweep_invoice_duties(integer) FROM anon'; END IF; END; $$;
 
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN EXECUTE 'REVOKE ALL ON TABLE public.customer_orderer_profiles, public.invoicing_buyer_snapshots FROM authenticated'; END IF; END; $$;
 
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.customer_billing_profiles_read(uuid,uuid), public.customer_billing_profiles_clear_defaults(uuid,uuid,timestamptz), public.customer_billing_profile_write(uuid,uuid,uuid,jsonb,timestamptz), public.customer_billing_profile_delete(uuid,uuid,uuid), public.customer_billing_prepare_erasure(), public.customer_billing_export(uuid), public.customer_billing_erase(uuid), public.customer_billing_capture_invoice(text,text,uuid,uuid,jsonb,timestamptz), public.customer_billing_buyer_read(uuid), public.customer_billing_install_invoice_facts(uuid,jsonb,text) FROM authenticated'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.customer_billing_profiles_read(uuid,uuid), public.customer_billing_profiles_clear_defaults(uuid,uuid,timestamptz), public.customer_billing_profile_write(uuid,uuid,uuid,jsonb,timestamptz), public.customer_billing_profile_delete(uuid,uuid,uuid), public.customer_billing_prepare_erasure(), public.customer_billing_export(uuid), public.customer_billing_erase(uuid), public.customer_billing_capture_invoice(text,text,uuid,uuid,jsonb,timestamptz), public.customer_billing_buyer_read(uuid), public.customer_billing_install_invoice_facts(uuid,jsonb,text), public.customer_billing_sweep_invoice_duties(integer) FROM authenticated'; END IF; END; $$;
 
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.customer_billing_profiles_read(uuid,uuid), public.customer_billing_profiles_clear_defaults(uuid,uuid,timestamptz), public.customer_billing_profile_write(uuid,uuid,uuid,jsonb,timestamptz), public.customer_billing_profile_delete(uuid,uuid,uuid), public.customer_billing_prepare_erasure(), public.customer_billing_export(uuid), public.customer_billing_erase(uuid), public.customer_billing_capture_invoice(text,text,uuid,uuid,jsonb,timestamptz), public.customer_billing_buyer_read(uuid), public.customer_billing_install_invoice_facts(uuid,jsonb,text) TO service_role'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.customer_billing_profiles_read(uuid,uuid), public.customer_billing_profiles_clear_defaults(uuid,uuid,timestamptz), public.customer_billing_profile_write(uuid,uuid,uuid,jsonb,timestamptz), public.customer_billing_profile_delete(uuid,uuid,uuid), public.customer_billing_prepare_erasure(), public.customer_billing_export(uuid), public.customer_billing_erase(uuid), public.customer_billing_capture_invoice(text,text,uuid,uuid,jsonb,timestamptz), public.customer_billing_buyer_read(uuid), public.customer_billing_install_invoice_facts(uuid,jsonb,text), public.customer_billing_sweep_invoice_duties(integer) TO service_role'; END IF; END; $$;
 
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT SELECT (client_id) ON TABLE public.customer_orderer_profiles TO service_role;'; END IF; END; $$;
 
