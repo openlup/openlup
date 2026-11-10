@@ -67,7 +67,7 @@ test('operator select choices use copy keys present in both languages', async ()
     }
     return choices.length;
   }
-  assert.equal(checkChoices(source), 10);
+  assert.equal(checkChoices(source), 12);
   // Negative witness: a wire value planted as visible text must be rejected.
   assert.throws(() => checkChoices(source.replace("context.t('reviewPublish')", "'publish'")), /owned copy keys/);
 });
