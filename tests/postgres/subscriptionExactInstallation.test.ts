@@ -54,16 +54,17 @@ it.each(["legacy", "bootstrap", "separate", "admin-managed", "admin-operator"] a
       } });
     await runner.apply();
     expect((await runner.apply()).applied).toEqual([]);
-    const expected = profile === "legacy" ? 117 : admin ? 121 : 122;
+    const expected = profile === "legacy" ? 118 : admin ? 122 : 123;
     expect((await owner.query("SELECT count(*)::int AS n FROM public.platform_schema_migrations")).rows[0].n).toBe(expected);
-    expect((await owner.query("SELECT catalog_path,position FROM public.platform_schema_migrations ORDER BY position DESC LIMIT 7")).rows)
-      .toEqual([{ catalog_path: "db/platform/migrations/20261110150000_fulfillment_operator_journeys.sql", position: expected - 1 },
-        { catalog_path: "db/platform/migrations/20261110140000_fulfillment_parcel_contacts.sql", position: expected - 2 },
-        { catalog_path: "db/platform/migrations/20261110120000_customer_account_events.sql", position: expected - 3 },
-        { catalog_path: "db/platform/migrations/20261110115000_customer_checkout_links.sql", position: expected - 4 },
-        { catalog_path: "db/platform/migrations/20261110110000_operator_checkout_links.sql", position: expected - 5 },
-        { catalog_path: "db/platform/migrations/20261110105000_subscription_pause_duration.sql", position: expected - 6 },
-        { catalog_path: "db/platform/migrations/20261110100000_checkout_recovery_waves.sql", position: expected - 7 }]);
+    expect((await owner.query("SELECT catalog_path,position FROM public.platform_schema_migrations ORDER BY position DESC LIMIT 8")).rows)
+      .toEqual([{ catalog_path: "db/platform/migrations/20261110155000_fulfillment_parcel_status_fence.sql", position: expected - 1 },
+        { catalog_path: "db/platform/migrations/20261110150000_fulfillment_operator_journeys.sql", position: expected - 2 },
+        { catalog_path: "db/platform/migrations/20261110140000_fulfillment_parcel_contacts.sql", position: expected - 3 },
+        { catalog_path: "db/platform/migrations/20261110120000_customer_account_events.sql", position: expected - 4 },
+        { catalog_path: "db/platform/migrations/20261110115000_customer_checkout_links.sql", position: expected - 5 },
+        { catalog_path: "db/platform/migrations/20261110110000_operator_checkout_links.sql", position: expected - 6 },
+        { catalog_path: "db/platform/migrations/20261110105000_subscription_pause_duration.sql", position: expected - 7 },
+        { catalog_path: "db/platform/migrations/20261110100000_checkout_recovery_waves.sql", position: expected - 8 }]);
     const signature = "public.subscription_line_edit_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz)";
     expect((await owner.query("SELECT prosecdef,proconfig FROM pg_proc WHERE oid=$1::regprocedure", [signature])).rows)
       .toEqual([{ prosecdef: true, proconfig: ["search_path=pg_catalog, pg_temp"] }]);

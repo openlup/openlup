@@ -1310,6 +1310,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261110155000_fulfillment_parcel_status_fence.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4383,6 +4387,10 @@
     },
     {
       "path": "packages/platform/sql/20261110150000_fulfillment_operator_journeys.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261110155000_fulfillment_parcel_status_fence.sql",
       "class": "public-output"
     },
     {
@@ -28875,6 +28883,10 @@
     },
     {
       "path": "tests/postgres/fulfillmentParcelContacts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fulfillmentParcelStatusFence.test.ts",
       "class": "public-output"
     },
     {
