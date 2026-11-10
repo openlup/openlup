@@ -785,7 +785,7 @@ subscription care, the new portal journeys and the purchase baseline. Tests use
 one worker and tracing, screenshots and video off. Independent processes and
 installations keep each group inside the normal checkout quota; production quota
 values and admission paths are unchanged. Focus the portal with `./lifecycle
-browser browser/acquisition.spec.ts --grep 'portal '`. Each of its ten definitions
-runs in both languages and both configurations, for forty cases. The external
+browser browser/acquisition.spec.ts --grep 'portal '`. Each of its eleven definitions
+runs in both languages and both configurations, for forty-four cases. The external
 parcel fixture freezes synthetic carrier contact and supplies normalized provider
 facts through existing native owners. It mounts no dispatch or delivery action.
