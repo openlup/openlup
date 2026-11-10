@@ -67,11 +67,11 @@ export function completionPage(context: PageContext): HTMLElement {
       return;
     }
     if (result.value.status === 'paid') {
-      state.replaceChildren(el('p', {}, context.t('recoveryPaid')), renderValue({ status: 'paid' }));
+      state.replaceChildren(el('p', {}, context.t('recoveryPaid')), renderValue(result.value));
       return;
     }
     if (result.value.status !== 'pending_payment') {
-      state.replaceChildren(el('p', {}, context.t(result.value.status === 'cancelled' ? 'recoveryCancelled' : 'recoveryUnavailable')));
+      state.replaceChildren(el('p', {}, context.t(result.value.status === 'cancelled' ? 'recoveryCancelled' : result.value.status === 'expired' ? 'recoveryExpired' : 'recoveryUnavailable')), renderValue({ orderRef: result.value.orderRef, status: result.value.status }));
       return;
     }
     rememberPurchase(context.config.id, { ...currentPurchase(context.config.id), orderRef: result.value.orderRef });

@@ -1,3 +1,5 @@
+import { readPostgresCustomerAccountClient, createPostgresCustomerAccountMutationPort, createCustomerAccountMutationSchemas } from '@openlup/platform/account-support';
+import { customerAccountPolicy } from '../owned/store.config.ts';
 import type { SubscriptionCommand } from '@openlup/platform/subscriptions/contracts';
 import { createPostgresSubscriptionCommands } from '@openlup/platform/subscriptions';
 import { isUuid } from './recurring-fence.ts';
@@ -21,10 +23,10 @@ import type { ActionBinding, ApplicationBindings, VerifiedActor } from './bindin
 import type { PromotionAcceptanceKeyring } from '@openlup/platform/promotions';
 import type { OriginPolicy } from './origin-policy.ts';
 import { createSessions } from './sessions.ts';
-import { createPostgresCheckoutRecoveryTokenPort } from '@openlup/platform/commerce/server';
+import { createCheckoutRecoveryStartHandler, createPostgresCustomerCheckoutRecoveryStartPort, createPostgresCheckoutRecoveryTokenPort } from '@openlup/platform/commerce/server';
 import { createCheckoutRecoveryDelivery } from './checkout-recovery.ts';
 import { composePurchaseCapabilities } from './purchase-composition.ts';
-import { composeE4Capabilities } from './e4-composition.ts';
+import { portalResponder, composePortalCapabilities, composeE4Capabilities } from './e4-composition.ts';
 import { composeExistingCapabilities } from './e-composition.ts';
 import { composeSubscriptionEditors, readEditorSubscriptions } from './subscription-editors.ts';
 
@@ -82,8 +84,25 @@ export async function composeNativeBindings(connectionString: string, origin: Or
       return authorization.ok && authorization.principalId.toLowerCase() === context.actor.operatorRef?.toLowerCase();
     }), ...composePurchaseCapabilities(pool, contacts, undefined, recovery, { ...(quoteAcceptanceKeyring ? { keyring: quoteAcceptanceKeyring } : {}) }),
     ...composeAuthenticatedRecovery(pool), ...composeOperatorRecovery(pool), ...composeSubscriptionEditors(pool) };
+  Object.assign(actions, composePortalCapabilities(pool, async context => {
+    const auth = await operatorAuth.authorize(context.actor.sessionToken ?? '', { allowedRoles: ['admin'] });
+    return auth.ok && auth.principalId.toLowerCase() === context.actor.operatorRef?.toLowerCase();
+  }));
   const asCustomer = <T>(principalId: string, work: (db: PgGatewayClient) => Promise<T>) =>
     gateway.asActor({ role: 'authenticated', sub: principalId }, db => work(db as PgGatewayClient));
+  actions['checkout.recoveryStart'] = async (payload, context) => {
+    if (!context.actor.principalRef) return refused('customer_session_required');
+    if (Object.keys(payload).some(key => !['orderRef', 'subscriptionRef', 'locale'].includes(key))) return refused('starter_input_invalid');
+    return asCustomer(context.actor.principalRef, async db => {
+      const response = { result: refused('starter_recovery_unavailable') as Awaited<ReturnType<ActionBinding>> };
+      const handler = createCheckoutRecoveryStartHandler<typeof response>({ recoveryEnabled: () => true,
+        authenticateUser: async () => ({ ok: true, userId: context.actor.principalRef! }),
+        createPort: () => createPostgresCustomerCheckoutRecoveryStartPort(db), respond: portalResponder, lifetimeMs: 86400000 });
+      await handler({ method: 'POST', body: { ...(payload.orderRef !== undefined ? { orderId: payload.orderRef } : {}),
+        ...(payload.subscriptionRef !== undefined ? { subscriptionId: payload.subscriptionRef } : {}) } }, response);
+      return response.result;
+    });
+  };
   const email = (value: unknown, limit: number): value is string => typeof value === 'string' && value.trim().length <= limit
     && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
   const pad = (started: number) => setTimeout(Math.max(0, 400 - (Date.now() - started)));
@@ -127,8 +146,13 @@ export async function composeNativeBindings(connectionString: string, origin: Or
     // Release the actor transaction before the projection borrows this pool.
     return success({
       ...account,
+      profile: account.profile && context.actor.customerRef ? { ...account.profile,
+        phone: (await readPostgresCustomerAccountClient(pool, { principalId: principal, clientId: context.actor.customerRef }))?.phone ?? null } : account.profile,
       renewal: context.actor.customerRef ? await readAccountRenewal(pool, { principalId: principal, clientId: context.actor.customerRef }) : null,
       subscriptionEditors: await readEditorSubscriptions(pool, context.actor),
+      accountEvents: context.actor.customerRef ? await createPostgresCustomerAccountMutationPort(pool,
+        { principalId: principal, clientId: context.actor.customerRef }, createCustomerAccountMutationSchemas(customerAccountPolicy),
+        () => new Date().toISOString()).readEvents(principal) : [],
       fullProjection: { ok: false, code: 'starter_account_projection_binding_required' },
     });
   };
@@ -140,7 +164,8 @@ export async function composeNativeBindings(connectionString: string, origin: Or
     });
     // Native owned headers, explicitly selected fields. No metadata or invented rich projection.
     const present = (row: Record<string, unknown>) => ({ orderId: row.id, status: row.status,
-      total: { amountMinor: row.total_cents, currency: row.currency }, createdAt: row.created_at });
+      total: { amountMinor: row.total_cents, currency: row.currency }, createdAt: row.created_at,
+      recoverableCheckout: row.status === 'pending_payment' && row.subscription_cycle_id == null });
     const orderId = payload.orderRef ?? payload.orderId;
     if (orderId !== undefined) {
       if (!uuid(orderId)) return refused('starter_input_invalid');

@@ -487,8 +487,7 @@ PostgreSQL port. Only its SHA-256 hash is stored. PostgreSQL fixes expiry at
 order creation plus 24 hours; this is a database rule, not a configurable value.
 Checkout links for the same order coexist until expiry or payment; issuing
 another link does not revoke an earlier checkout link. Payment-case links still
-rotate, leaving one live link per case. The separate account actor issuer also
-retains rotation.
+rotate, leaving one live link per case. Signed-in checkout recovery also preserves earlier checkout links.
 The token is returned only in the creating response and a separate private
 captured checkout-recovery message, never an authentication challenge or event.
 The completion page reads the URL token once and replaces history synchronously
@@ -753,3 +752,70 @@ roll-forward plus one locally captured resumed confirmation in both configuratio
 The disposable fixture records synthetic parcel transitions through the native
 shipment rail and supplies the external host's fulfilled-order fact. No operator
 delivery action, settings seed, real provider or release activation is included.
+
+
+### Checkout and account candidate changes
+
+The account now edits first name, last name and phone through the installed
+account mutation port. Email remains read-only. Failed saves keep the draft;
+profile replay returns current state. The demonstration phone policy accepts
+nine local digits under fictional calling code 999. These owned values make no
+real-market claim. Current invoice entries offer a correction request with
+reason, requested fields and optional note. The response acknowledges a stored
+account event; it does not issue a correction, refund or operator ticket.
+Repeated invoice request keys intentionally create separate events.
+
+Owned pending orders offer signed-in recovery. The native actor entry selects
+the exact order or initial declaration and supplies the account/fresh-checkout
+fallback. It sends no mail and preserves earlier checkout links. Operator
+order detail offers copy or queued email, expiry and refusal results. Its native
+issuer deliberately revokes earlier checkout links. The communications operator
+roster documented above is also required for this command. Queued email is not
+a delivery claim.
+
+After installation, an existing local scheduler can invoke one bounded pass:
+
+```sh
+./lifecycle checkout-recovery --configuration supplements --database-url <restricted-runtime-url>
+```
+
+Use `--port` for this local host's actual listening port, or the configured public
+origin. The invocation composes the native job lease, first/final wave producer,
+canonical expiry and initial-checkout sweeps, reconciliation and the existing
+outbox handlers. Private messages reuse the atomic local capture protocol.
+Only confirmed capture in the selected profile qualifies the final wave.
+Checkout expiry links show the source order's terminal state; recreation,
+payment guidance, token payment and inline retry remain outside this candidate.
+The embedded-browser buyer-link control remains unavailable until sandbox
+continuation issuance is bound. No continuation cookie is minted here.
+
+The operator reads the current order and parcel before requesting a replacement
+or complete fulfillment cancellation. Replacement shows the frozen destination,
+reason and exception-hold consequences and requires confirmation. Cancellation
+also requires confirmation; the native command owns provider fences and recorded
+reservation release. These actions do not confirm arrival, dispatch a real
+parcel, create a refund or move a subscription cycle earlier. Hold/release,
+unpaid cancellation, external refund marking and other shipment mutations keep
+their named refusals.
+
+For replacement/cancellation, the database owner provisions one durable Commerce
+operator row per active human admin, using the principal ID found in the roster
+recipe. Run only through the owner connection, never the runtime host:
+
+```sql
+INSERT INTO public.commerce_operators (id, label)
+VALUES ('<activated-principal-id>'::uuid, 'Demonstration administrator')
+ON CONFLICT (id) DO NOTHING;
+```
+
+Never delete this Commerce row: existing holds refer to it. Withdraw authority by
+revoking the human membership through the native identity owner. The runtime has
+no provisioning endpoint. Every operator command and replay rechecks an active
+human admin session. A distributor, customer, revoked member or machine principal
+cannot gain mutation authority from a body field or a roster row.
+
+Run the candidate portal journeys with `./lifecycle browser
+browser/acquisition.spec.ts --grep 'portal '`, or include them in the complete
+`./lifecycle browser` recipe. Both configurations and languages run on real
+PostgreSQL with one worker and traces, screenshots and video off. No production,
+provider or release activation is included.

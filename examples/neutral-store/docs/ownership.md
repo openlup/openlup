@@ -149,8 +149,7 @@ PostgreSQL port. Only its SHA-256 hash is stored. PostgreSQL fixes expiry at
 order creation plus 24 hours; this is a database rule, not a configurable value.
 Checkout links for the same order coexist until expiry or payment; issuing
 another link does not revoke an earlier checkout link. Payment-case links still
-rotate, leaving one live link per case. The separate account actor issuer also
-retains rotation.
+rotate, leaving one live link per case. Signed-in checkout recovery also preserves earlier checkout links.
 The token is returned only in the creating response and a separate private
 captured checkout-recovery message, never an authentication challenge or event.
 The completion page reads the URL token once and replaces history synchronously
@@ -210,3 +209,28 @@ database browser configuration. Its private fixture connections and host state
 live under `.context/care-browser`, never in the archive. It owns and removes
 only its newly created containers and child processes. The installed package
 migration runner owns the database schema; no starter migration or grant is added.
+
+
+## Account, checkout and parcel controls
+
+`owned/store.config.ts` owns account validation, fictional phone and checkout
+wave/link timing values. EN/PL copy stays in `owned/copy.ts`. The managed account
+and operator pages bind native capabilities through `host/e4-composition.ts` and
+`host/native-composition.ts`. The host derives identity and command keys from the
+accepted session/request. Profile update and event append retain their separate
+native commits; correction requests retain their append-only repeated-key behavior.
+The account reads only owned event metadata, never private event payloads.
+
+`host/paid-mail.ts` additionally owns a separate bounded checkout-recovery entry
+using the native job lease, producer and scoped outbox authorization. It registers
+only checkout recovery and expiry handlers in that invocation. Paid receipts and
+subscription notices keep their separate selections. Captures are generated
+private state, never tracked configuration or served assets. A captured send's
+native profile receipt gates the final wave; an enqueue or skipped send does not.
+
+Human admins require the documented owner-provisioned Commerce operator row for
+parcel operations, plus the separate communications roster for operator links.
+Neither the runtime host nor installer provisions those rows. Never delete a
+Commerce operator row; withdraw by revoking membership. Native ports own provider,
+stock, fingerprint and replay fences. No arrival attestation caller exists.
+Continuation issuance and the embedded-browser buyer control remain deferred.

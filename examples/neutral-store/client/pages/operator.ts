@@ -1,11 +1,12 @@
+import { act } from '../api.ts';
 import type { PageContext } from '../context.ts';
 import type { Operation } from '../../shared/api.ts';
 import type { CopyKey } from '../../owned/copy.ts';
 import { operationLimitDefinitions } from '../../shared/limits.ts';
 import { isRecord } from '../../shared/offer.ts';
 import { routes } from '../../shared/routes.ts';
-import { el, link } from '../dom.ts';
-import { actionForm, nativeActions, otherRefusal, readPanel, refusedAction, type FieldSpec } from '../forms.ts';
+import { el, link, append, renderValue } from '../dom.ts';
+import { refusal, actionForm, nativeActions, otherRefusal, readPanel, refusedAction, type FieldSpec } from '../forms.ts';
 
 const orderRef: FieldSpec = { name: 'orderRef', label: 'orderRef' };
 const customerRef: FieldSpec = { name: 'customerRef', label: 'customerRef' };
@@ -31,7 +32,7 @@ export function operatorPage(context: PageContext): HTMLElement {
     el('section', { id: 'risk', class: 'panel' }, el('h2', {}, context.t('risk')),
       el('p', {}, context.t('riskBody')), refusedAction(context, 'riskAction', 'starter_risk_disabled')),
     marketInputs(context), ingestActions(context),
-    nativeActions(context, ['N1', 'N2', 'N3', 'N4', 'N9']));
+    nativeActions(context, ['N1', 'N2', 'N3', 'N9']));
 }
 
 function operatorTokenForm(context: PageContext): HTMLElement {
@@ -50,7 +51,7 @@ function orderActions(context: PageContext): HTMLElement {
   return el('section', { id: 'orders', class: 'panel' }, el('h2', {}, context.t('orders')),
     readPanel(context, 'orders', 'operator.orders'),
     el('div', { class: 'form-grid' },
-      make('operator.order', 'read', []),
+      operatorOrderPortal(context),
       make('operator.hold', 'hold', [{ name: 'reason', label: 'reasonCode', type: 'select',
         options: context.config.orderControls.holdReasons.map(choice => ({ value: choice.code, text: choice.label[context.locale] })) },
         { name: 'note', label: 'note', type: 'textarea', required: false, maxLength: 1000 }]),
@@ -230,4 +231,67 @@ function ingestActions(context: PageContext): HTMLElement {
         return { order };
       },
     }));
+}
+
+
+/** Fresh detail owns the target and consequences; native commands recheck admission. */
+function operatorOrderPortal(context: PageContext): HTMLElement {
+  const controls = el('div', { 'data-order-controls': '' });
+  const outcome = el('div', { 'data-parcel-result': '', role: 'status', 'aria-live': 'polite' });
+  let generation = 0;
+  async function show(value: unknown) {
+    const current = ++generation; controls.replaceChildren();
+    if (!isRecord(value) || !isRecord(value.order) || typeof value.order.orderId !== 'string') return;
+    const order = value.order, orderId = order.orderId as string;
+    const mutationCompleted = (result: unknown) => {
+      if (current !== generation) return;
+      outcome.replaceChildren(renderValue(result));
+      void (async () => {
+        const fresh = await act('operator.order', { orderRef: orderId }, crypto.randomUUID());
+        if (current === generation && fresh.ok) await show(fresh.value);
+      })();
+    };
+    append(controls, el('h3', {}, orderId), renderValue(value));
+    if (!order.activeHoldReasons || !Array.isArray(order.activeHoldReasons)) return;
+    const holds = order.activeHoldReasons;
+    if (['pending_payment', 'expired', 'cancelled'].includes(String(order.status))) {
+      const linkOutput = el('div', { 'aria-live': 'polite' });
+      append(controls, actionForm(context, { operation: 'operator.paymentLink', title: 'paymentLink', submit: 'paymentLink',
+        fields: [{ name: 'delivery', label: 'linkDelivery', type: 'select', options: [
+          { value: 'copy', text: context.t('linkCopy') }, { value: 'email', text: context.t('linkEmail') }] }],
+        input: () => ({ orderRef: orderId }), display: value => isRecord(value) ? { expiresAt: value.expiresAt, emailQueued: value.emailQueued } : value,
+        onSuccess(result) {
+          if (current !== generation || !isRecord(result) || typeof result.token !== 'string') return;
+          const path = routes.completion[context.locale] + '?' + new URLSearchParams({ token: result.token });
+          const url = new URL(path, location.origin).href;
+          const input = el('input', { value: url, readonly: true, 'aria-label': context.t('paymentLink') });
+          linkOutput.replaceChildren(input, link(context.t('completion'), path), el('p', {}, context.t('linkQueued')));
+        } }), linkOutput);
+    }
+    const shipment = await act('operator.shipment', { orderRef: orderId }, crypto.randomUUID());
+    if (current !== generation) return;
+    if (!shipment.ok || !isRecord(shipment.value) || !isRecord(shipment.value.order)) return;
+    const parcel = shipment.value.order;
+    append(controls, renderValue(parcel));
+    const blocked = holds.some(reason => ['payment_not_succeeded', 'risk_review', 'address_review', 'inventory_review', 'manual_support'].includes(String(reason)));
+    if (['paid', 'fulfillment_pending', 'fulfilled'].includes(String(order.status))) {
+      const form = actionForm(context, { operation: 'operator.replacement', title: 'requestReplacement', submit: 'requestReplacement',
+        fields: [{ name: 'reason', label: 'reasonCode', type: 'select', options: [
+          ['damaged', 'replacementDamaged'], ['lost', 'replacementLost'], ['returned_undelivered', 'replacementReturned'], ['other', 'careOther'],
+        ].map(([value, key]) => ({ value: value!, text: context.t(key as CopyKey) })) },
+        { name: 'confirmed', label: 'replacementConfirm', type: 'checkbox' }], input: () => ({ orderRef: orderId }), onSuccess: mutationCompleted });
+      append(controls, el('p', {}, context.t('replacementEffect')), form);
+      if (blocked) { for (const control of form.querySelectorAll<HTMLButtonElement>('button')) control.disabled = true; append(form, refusal(context, 'starter_fulfillment_active_hold')); }
+    }
+    if (typeof parcel.id === 'string' && !['delivered', 'cancelled'].includes(String(parcel.status))) append(controls,
+      actionForm(context, { operation: 'operator.cancelFulfillment', title: 'cancelFulfillment', submit: 'cancelFulfillment',
+        fields: [{ name: 'reason', label: 'reason', maxLength: 1000 }, { name: 'confirmed', label: 'fulfillmentCancelConfirm', type: 'checkbox' }],
+        input: () => ({ shipmentRef: parcel.id }), onSuccess: mutationCompleted }));
+  }
+  const reader = actionForm(context, { operation: 'operator.order', title: 'read', submit: 'read', fields: [orderRef], onSuccess: value => {
+    const target = reader.querySelector<HTMLInputElement>('[name=orderRef]')!.value.trim().toLowerCase();
+    if (isRecord(value) && isRecord(value.order) && String(value.order.orderId).toLowerCase() === target) void show(value);
+  } });
+  reader.addEventListener('input', () => { generation++; controls.replaceChildren(); outcome.replaceChildren(); });
+  return el('div', {}, reader, outcome, controls);
 }
