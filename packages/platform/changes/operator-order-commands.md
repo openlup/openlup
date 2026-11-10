@@ -13,3 +13,6 @@ use a bounded owned command rather than additional table grants.
 - Package size: documentation measured 83,296 B against an 83,177 B cap
   (+119 B); the documentation cap is now 84,962 B, including 2% headroom.
   The whole-tarball packed cap is unchanged.
+
+Manual refund marks retain non-object order metadata under `previousMetadata`
+and always record the manual source explicitly.

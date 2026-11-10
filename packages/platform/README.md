@@ -485,7 +485,9 @@ unpaid cancellation locks the current payment aggregate and refuses in-flight,
 captured or indeterminate payment before writing one operator audit and releasing
 the order's held purchase reservations. Late captures remain review-required.
 Manual external-refund marking accepts paid orders only and records status without
-a payment-provider call, refund notification or accounting reversal event.
+a payment-provider call, refund notification or accounting reversal event. Existing
+object metadata keeps its keys; other metadata is retained under `previousMetadata`
+before the command writes its top-level source.
 Genuine refund sources retain their event duties. Neither operation changes an
 active subscription's lifecycle or schedule.
 Native destinations use `./commerce/server/destinations` and the complete SQL

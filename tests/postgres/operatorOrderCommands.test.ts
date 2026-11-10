@@ -192,6 +192,36 @@ for (const profile of lifecycleProfiles) describe(`operator order commands on ${
     await expect(mark(f, key, 'changed')).rejects.toMatchObject({ code: '23505' });
   });
 
+  it.each([
+    ['object', '{"retained":{"value":1},"source":"previous"}'],
+    ['array', '[{"retained":1},null]'],
+    ['JSON null', 'null'],
+    ['SQL NULL', null]
+  ] as const)('keeps manual refund status-only for %s metadata and preserves replay', async (shape, metadata) => {
+    const f = await subject('paid', true), key = randomUUID(), before = await subscription(f);
+    // SQL NULL is a defensive fixture: the canonical column is NOT NULL.
+    // Only the fixture owner relaxes it, and the runtime command restores an object.
+    if (shape === 'SQL NULL') await h.owner.query('ALTER TABLE public.commerce_orders ALTER COLUMN metadata DROP NOT NULL');
+    try {
+      await h.owner.query('UPDATE public.commerce_orders SET metadata=$2::jsonb WHERE id=$1', [f.order, metadata]);
+      expect(await mark(f, key)).toMatchObject({ status: 'refunded', replayed: false });
+    } finally {
+      if (shape === 'SQL NULL') await h.owner.query('ALTER TABLE public.commerce_orders ALTER COLUMN metadata SET NOT NULL');
+    }
+    const stored = (await h.owner.query('SELECT metadata FROM public.commerce_orders WHERE id=$1', [f.order])).rows[0].metadata;
+    expect(stored.source).toBe('admin_manual_refund');
+    if (shape === 'object') expect(stored.retained).toEqual({ value: 1 });
+    else expect(stored.previousMetadata).toEqual(metadata === null ? null : JSON.parse(metadata));
+    const after = await snapshot(f);
+    expect(await mark(f, key)).toMatchObject({ status: 'refunded', replayed: true });
+    expect(await mark(f)).toMatchObject({ status: 'refunded', replayed: true });
+    expect(await snapshot(f)).toEqual(after);
+    expect(await audit(f)).toHaveLength(1); expect(await events(f)).toEqual([]); expect(await subscription(f)).toEqual(before);
+    const genuine = await subject('paid');
+    await h.runtime.query("UPDATE public.commerce_orders SET status='refunded',refunded_at=$2,metadata=jsonb_build_object('source','payment.control.v0') WHERE id=$1", [genuine.order, AT]);
+    expect(await events(genuine)).toEqual([expect.objectContaining({ event_type: 'commerce.order.refunded', payload: expect.objectContaining({ orderUuid: genuine.order }) })]);
+  });
+
   it('manually marks only paid orders, inertly replays, and writes no refund notification/reversal event', async () => {
     const f = await subject('paid', true), before = await subscription(f), key = randomUUID();
     expect(await mark(f, key)).toMatchObject({ status: 'refunded', replayed: false });

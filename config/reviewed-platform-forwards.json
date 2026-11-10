@@ -4740,7 +4740,7 @@
     },
     {
       "path": "db/platform/migrations/20261110200000_operator_order_commands.sql",
-      "sha256": "b322303eff77d0d2febbc550ce51dfc50f6b740754dda736e5055f2fc99b153d",
+      "sha256": "c5de471e952fc3bac4a5c618729e506b17a24b5d0f629f35593e67ac2afa884f",
       "functions": [
         {
           "signature": "public.oms_cancel_unpaid_order(text,uuid,text,uuid,jsonb,timestamptz)",
@@ -4750,7 +4750,7 @@
         {
           "signature": "public.oms_mark_refunded(text,uuid,text,uuid,jsonb,timestamptz)",
           "beforeSha256": "be957b74bb52219208dfb0fc60f7c63b3002993cde8444aacc94e893e4309e55",
-          "afterSha256": "96d549a0c93b6582a650daa9eed446fed9ed5d1785355ae2314f3fb921eb29d8"
+          "afterSha256": "e66cd3284645ce866589552b59f70eba5ae72c990a7a7b3a5383aacfd48c0f60"
         },
         {
           "signature": "public.commerce_order_emit_refunded_notification()",

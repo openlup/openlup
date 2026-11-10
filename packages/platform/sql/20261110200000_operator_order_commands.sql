@@ -165,7 +165,10 @@ BEGIN
      SET status = 'refunded',
          refunded_at = p_requested_at,
          updated_at = p_requested_at,
-         metadata = metadata || jsonb_build_object('source', 'admin_manual_refund', 'refund', jsonb_build_object(
+         -- Keep non-object metadata losslessly while making the source explicit.
+         metadata = (CASE WHEN jsonb_typeof(metadata) = 'object' THEN metadata
+           ELSE jsonb_build_object('previousMetadata', metadata) END)
+           || jsonb_build_object('source', 'admin_manual_refund', 'refund', jsonb_build_object(
            'reason', p_reason, 'actorId', p_actor_id,
            'request', COALESCE(p_metadata, '{}'::jsonb)))
    WHERE id = p_order_id;
