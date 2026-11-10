@@ -827,8 +827,8 @@ export declare const channelPullPageEventSchema: z.ZodObject<{
     occurredAt: z.ZodString;
     rawSourceDigest: z.ZodString;
     disposition: z.ZodEnum<{
-        purchase: "purchase";
         unresolved: "unresolved";
+        purchase: "purchase";
     }>;
     captureRef: z.ZodNullable<z.ZodGUID>;
 }, z.core.$strict>;
@@ -870,8 +870,8 @@ export declare const channelPullPageSchema: z.ZodObject<{
         occurredAt: z.ZodString;
         rawSourceDigest: z.ZodString;
         disposition: z.ZodEnum<{
-            purchase: "purchase";
             unresolved: "unresolved";
+            purchase: "purchase";
         }>;
         captureRef: z.ZodNullable<z.ZodGUID>;
     }, z.core.$strict>>;
@@ -2392,7 +2392,7 @@ export declare function createChannelPurchasedSourceStore(options: {
                 externalOrderRevision: string | null;
                 occurredAt: string;
                 rawSourceDigest: string;
-                disposition: "purchase" | "unresolved";
+                disposition: "unresolved" | "purchase";
                 captureRef: string | null;
             }[];
             observedHead: {
@@ -2634,7 +2634,7 @@ export declare const createManagedChannelPurchasedSourceStore: (input: {
                 externalOrderRevision: string | null;
                 occurredAt: string;
                 rawSourceDigest: string;
-                disposition: "purchase" | "unresolved";
+                disposition: "unresolved" | "purchase";
                 captureRef: string | null;
             }[];
             observedHead: {
@@ -2881,7 +2881,7 @@ export declare function createPostgresChannelPurchasedSourceStore(input: {
                 externalOrderRevision: string | null;
                 occurredAt: string;
                 rawSourceDigest: string;
-                disposition: "purchase" | "unresolved";
+                disposition: "unresolved" | "purchase";
                 captureRef: string | null;
             }[];
             observedHead: {

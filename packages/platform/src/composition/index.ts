@@ -25,3 +25,5 @@ export { createCommerceContribution } from "./commerceContribution.js";
 export { createAccountSupportContribution } from "./accountSupportContribution.js";
 export { createMarketingContribution } from "./marketingContribution.js";
 export { createRiskContribution } from "./riskContribution.js";
+
+export { createCheckoutRecoveryWaveJob, createCheckoutRecoveryWaveHttpEntry } from './checkoutRecoveryWaves.js';

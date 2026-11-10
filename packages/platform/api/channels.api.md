@@ -694,8 +694,8 @@ export declare const channelPullPageEventSchema: z.ZodObject<{
     occurredAt: z.ZodString;
     rawSourceDigest: z.ZodString;
     disposition: z.ZodEnum<{
-        purchase: "purchase";
         unresolved: "unresolved";
+        purchase: "purchase";
     }>;
     captureRef: z.ZodNullable<z.ZodGUID>;
 }, z.core.$strict>;
@@ -737,8 +737,8 @@ export declare const channelPullPageSchema: z.ZodObject<{
         occurredAt: z.ZodString;
         rawSourceDigest: z.ZodString;
         disposition: z.ZodEnum<{
-            purchase: "purchase";
             unresolved: "unresolved";
+            purchase: "purchase";
         }>;
         captureRef: z.ZodNullable<z.ZodGUID>;
     }, z.core.$strict>>;

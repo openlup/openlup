@@ -3,3 +3,5 @@
 - Legacy contact resolution preserves canonical-override fences, validates the destination and freezes the inferred contact atomically. Replacement creation remains a separate capability.
 
 Migration: Apply the complete appended native catalogue before using native parcel preparation. Hosts composing personal-data operations must register `createFulfillmentParcelContactPrivacyContributor` from `@openlup/platform/identity` and require contributor ID `fulfillment-parcel-contacts`; retain the existing identity contributor and subscription erasure veto. The reference Node composition does this explicitly.
+
+- @openlup/platform size growth: Private parcel contact capture, privacy and finite transfer fit the inherited package limits after integration; no cap adjustment is required.

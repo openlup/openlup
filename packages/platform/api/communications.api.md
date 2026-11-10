@@ -270,6 +270,58 @@ export declare function createCapturedTransactionalDelivery(options?: {
     outcome?: CapturedTransactionalDeliveryOutcomeSource;
 }): CapturedTransactionalDeliveryPort;
 ```
+## dist/communications/checkoutRecoverySendEvidence.d.ts
+
+```ts
+import { type EmailSendSkipReason } from './emailTransport.js';
+interface EmailSendOutcome {
+    ok: boolean;
+    messageId: string | null;
+    httpStatus: number;
+    providerError: string | null;
+    providerErrorCode?: string | null;
+    aborted: boolean;
+    skipReason?: EmailSendSkipReason | null;
+}
+interface TransactionalEmailEvidencePort {
+    findExistingSend(templateSlug: string, outboxEventId: string): Promise<boolean>;
+    sendReturnApprovedNotice(...args: never[]): Promise<EmailSendOutcome>;
+    sendReturnRejectedNotice(...args: never[]): Promise<EmailSendOutcome>;
+    sendOrderConfirmation(...args: never[]): Promise<EmailSendOutcome>;
+    sendCheckoutRecovery(input: {
+        outboxEventId: string;
+    }): Promise<EmailSendOutcome>;
+    sendOrderPaidConfirmation(...args: never[]): Promise<EmailSendOutcome>;
+    sendPaymentFailedNotice(...args: never[]): Promise<EmailSendOutcome>;
+    sendCheckoutExpiredNotice(...args: never[]): Promise<EmailSendOutcome>;
+    sendOrderCanceledNotice(...args: never[]): Promise<EmailSendOutcome>;
+    sendOrderRefundedNotice(...args: never[]): Promise<EmailSendOutcome>;
+    sendShipmentDispatchedNotice(...args: never[]): Promise<EmailSendOutcome>;
+    sendShipmentDeliveredNotice(...args: never[]): Promise<EmailSendOutcome>;
+    sendShipmentExceptionNotice(...args: never[]): Promise<EmailSendOutcome>;
+}
+/** Adds confirmed-send evidence only for recovery mail. Other email methods and dedupe retain their binding.
+ * The selected transport must preserve the outbox event's idempotency on ambiguous retries.
+ * Acceptance is evidence for this exact transport profile, including a selected captured profile. */
+export declare function withCheckoutRecoverySendEvidence<Port extends TransactionalEmailEvidencePort>(emailPort: Port, evidence: {
+    recordConfirmedSend(eventId: string, deliveryReference: string): Promise<void>;
+}): {
+    findExistingSend: (templateSlug: string, outboxEventId: string) => Promise<boolean>;
+    sendReturnApprovedNotice: (...args: Parameters<Port["sendReturnApprovedNotice"]>) => Promise<EmailSendOutcome>;
+    sendReturnRejectedNotice: (...args: Parameters<Port["sendReturnRejectedNotice"]>) => Promise<EmailSendOutcome>;
+    sendOrderConfirmation: (...args: Parameters<Port["sendOrderConfirmation"]>) => Promise<EmailSendOutcome>;
+    sendCheckoutRecovery(input: Parameters<Port["sendCheckoutRecovery"]>[0]): Promise<EmailSendOutcome>;
+    sendOrderPaidConfirmation: (...args: Parameters<Port["sendOrderPaidConfirmation"]>) => Promise<EmailSendOutcome>;
+    sendPaymentFailedNotice: (...args: Parameters<Port["sendPaymentFailedNotice"]>) => Promise<EmailSendOutcome>;
+    sendCheckoutExpiredNotice: (...args: Parameters<Port["sendCheckoutExpiredNotice"]>) => Promise<EmailSendOutcome>;
+    sendOrderCanceledNotice: (...args: Parameters<Port["sendOrderCanceledNotice"]>) => Promise<EmailSendOutcome>;
+    sendOrderRefundedNotice: (...args: Parameters<Port["sendOrderRefundedNotice"]>) => Promise<EmailSendOutcome>;
+    sendShipmentDispatchedNotice: (...args: Parameters<Port["sendShipmentDispatchedNotice"]>) => Promise<EmailSendOutcome>;
+    sendShipmentDeliveredNotice: (...args: Parameters<Port["sendShipmentDeliveredNotice"]>) => Promise<EmailSendOutcome>;
+    sendShipmentExceptionNotice: (...args: Parameters<Port["sendShipmentExceptionNotice"]>) => Promise<EmailSendOutcome>;
+};
+export {};
+```
 ## dist/communications/communicationSync.d.ts
 
 ```ts
@@ -1563,6 +1615,7 @@ export * from "./postgresNotificationRecipients.js";
 export * from "./postgresConsentEvaluator.js";
 export type * from "./contracts/marketingSync.js";
 export * from "./testing/adapterConformance.js";
+export { withCheckoutRecoverySendEvidence } from './checkoutRecoverySendEvidence.js';
 ```
 ## dist/communications/integrationEventSignature.d.ts
 
