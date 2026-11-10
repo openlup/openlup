@@ -189,3 +189,7 @@ export type { OperatorCheckoutLinkReceipt, OperatorCheckoutLinkPolicy, OperatorC
 
 export { createCheckoutRecoveryStartHandler,createCheckoutPaymentLinkHandler,createPostgresCustomerCheckoutRecoveryStartPort,createPostgresBuyerCheckoutLinkPort,CheckoutLinkNotRecoverableError } from './customerCheckoutLinks.js';
 export type { CustomerCheckoutRecoveryContext,CustomerCheckoutRecoveryPendingOrder,CustomerCheckoutRecoveryStartPort,CheckoutLinkQueryExecutor,BuyerCheckoutLinkPolicy,BuyerCheckoutLinkPort } from './customerCheckoutLinks.js';
+export { createCheckoutRecoveryInspection, createCheckoutRecoveryValidationPolicy } from './checkoutRecoveryInspection.js';
+export type { NativeCheckoutRecoveryOrder, CheckoutRecoveryValidationPort, CheckoutRecoveryInspectionResult, CheckoutRecoveryInspectionPaymentResolution } from './checkoutRecoveryInspection.js';
+export { createPostgresCheckoutRecoveryOrderPort } from './postgresCheckoutRecoveryOrderPort.js';
+export type { CheckoutRecoveryReadExecutor } from './postgresCheckoutRecoveryOrderPort.js';

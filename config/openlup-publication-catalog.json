@@ -1318,6 +1318,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261110170000_checkout_recovery_inspection.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4414,6 +4418,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261110170000_checkout_recovery_inspection.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -5414,6 +5422,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/server/checkoutRecoveryInspection.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/server/checkoutRecoveryOrderPort.ts",
       "class": "public-output"
     },
@@ -5707,6 +5719,10 @@
     },
     {
       "path": "packages/platform/src/commerce/server/postgres/returnsControl.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/postgresCheckoutRecoveryOrderPort.ts",
       "class": "public-output"
     },
     {
@@ -8835,6 +8851,10 @@
     },
     {
       "path": "packages/platform/test/commerce/checkoutPaymentContinuationCredential.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/checkoutRecoveryInspection.test.ts",
       "class": "public-output"
     },
     {
@@ -28747,6 +28767,14 @@
     },
     {
       "path": "tests/postgres/channelPurchase.conformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/checkoutRecoveryInspection.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/checkoutRecoveryInspectionUpgrade.test.ts",
       "class": "public-output"
     },
     {

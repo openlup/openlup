@@ -154,7 +154,9 @@ restore binding. The earlier finite native witness passed with two owned
 `qualified-v2` installations and actual restricted runtime media access;
 the earlier 90-unit attempt stopped during source runtime media confirmation.
 The fixed selected graph preserves PostgreSQL JSON text, including bigint and
-timestamp precision. Capture observes one actual read-only repeatable-read
+timestamp precision. Order restore places both recovery roots and immediate
+predecessors before their children without rewriting row text. Cycles and lineage
+parents absent from the captured set refuse with `target_conflict`. Capture observes one actual read-only repeatable-read
 transaction and checks all non-system user schemas. Capture sets local
 `row_security=off` in that snapshot so a login whose reads would be filtered
 refuses rather than exporting apparently empty tables. The caller supplies a

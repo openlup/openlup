@@ -57,7 +57,7 @@ export async function runReleasedSchemaUpgradeProof(input: { database?: PoolConf
     "qualified-admin", { roleMode: input.installation.roleMode }) : manifest;
   const selectedUnits = [selected.baseline, ...selected.forward];
   const units = selectedUnits;
-  assert.equal(units.length, input.installation ? 123 : 119);
+  assert.equal(units.length, input.installation ? 124 : 120);
   const releasedUnits = units.findIndex(unit => unit.file === backfillPath);
   // The frozen released-prefix SHA below stays fixed; every later suffix comes from the selected plan.
   assert.ok(releasedUnits > 0);
@@ -197,7 +197,8 @@ export async function runReleasedSchemaUpgradeProof(input: { database?: PoolConf
     assert.deepEqual((await current.status()).pending, []);
     assert.deepEqual((await pool.query(`SELECT source_kind,source_id FROM public.invoicing_cutover
       ORDER BY source_kind,source_id`)).rows, sources);
-    assert.deepEqual((await pool.query("SELECT * FROM public.commerce_orders WHERE id=$1", [retained.order])).rows, priorOrder);
+    assert.deepEqual((await pool.query("SELECT * FROM public.commerce_orders WHERE id=$1", [retained.order])).rows,
+      priorOrder.map(order => ({ ...order, recovery_root_order_id: null, recreated_from_order_id: null })));
 
     // An optional pinned local package supplies actual previous application
     // code. The CI path still proves the complete database upgrade offline.

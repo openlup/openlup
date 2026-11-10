@@ -7516,6 +7516,81 @@ export interface ExpectedCheckoutQuote {
     acquisitionTerms?: AcquisitionTermsExpectation;
 }
 ```
+## dist/commerce/server/checkoutRecoveryInspection.d.ts
+
+```ts
+import type { CheckoutRecoveryOrderSnapshot, CheckoutRecoveryOrderReadPort } from './checkoutRecoveryOrderPort.js';
+import { type CheckoutRecoveryTokenPort } from './checkoutRecoveryToken.js';
+export interface NativeCheckoutRecoveryOrder extends CheckoutRecoveryOrderSnapshot<unknown, string> {
+    initialDeclarationId: string | null;
+    initialActivationState: string | null;
+}
+export interface CheckoutRecoveryValidationPort<Order> {
+    validate(order: Order): Promise<boolean>;
+}
+/** Adopter-owned content-loss fence. Unsupported snapshots refuse before quoting or other validation work. */
+export declare function createCheckoutRecoveryValidationPolicy<Order>(input: {
+    supports(order: Order): boolean;
+    validation: CheckoutRecoveryValidationPort<Order>;
+}): CheckoutRecoveryValidationPort<Order>;
+export type CheckoutRecoveryInspectionPaymentResolution<Action = unknown> = {
+    kind: 'paid';
+} | {
+    kind: 'retry_new';
+} | {
+    kind: 'resume_existing';
+    clientAction: Action;
+} | {
+    kind: 'awaiting_provider';
+} | {
+    kind: 'manual_review';
+};
+export type CheckoutRecoveryInspectionResult<Action = unknown> = {
+    recoverable: false;
+    fallback: 'fresh_checkout' | 'customer_account';
+    terminalStatus?: 'paid' | 'cancelled' | 'order_changed';
+    paidOrder?: {
+        orderId: string;
+        orderRef: string;
+        clientId: string;
+    };
+} | {
+    recoverable: true;
+    recoveryKind?: 'retry_existing' | 'recreate_expired';
+    order: Pick<NativeCheckoutRecoveryOrder, 'orderId' | 'orderRef' | 'orderNumber' | 'clientId' | 'paymentIntentId' | 'mode' | 'cadenceDays' | 'createdAt'> & {
+        total: {
+            amountMinor: number;
+            currency: string;
+        };
+    };
+    paymentResolution?: Exclude<CheckoutRecoveryInspectionPaymentResolution<Action>, {
+        kind: 'paid';
+    }>;
+};
+/** Read-only presentation. No issuer, writer, attempt starter or payment authority is returned. */
+export declare function createCheckoutRecoveryInspection<Action = unknown>(deps: {
+    tokenPort: Pick<CheckoutRecoveryTokenPort, 'validate' | 'inspect'>;
+    orderPort: CheckoutRecoveryOrderReadPort<NativeCheckoutRecoveryOrder>;
+    validation?: CheckoutRecoveryValidationPort<NativeCheckoutRecoveryOrder>;
+    clientHasLiveOrPendingSubscription(input: {
+        clientId: string;
+    }): Promise<boolean>;
+    paymentResolver?: {
+        resolve(input: {
+            orderId: string;
+            paymentIntentId: string | null;
+            intentStatus?: string | null;
+        }): Promise<CheckoutRecoveryInspectionPaymentResolution<Action>>;
+    };
+    recoveryWindowMs?: number;
+    now?: () => Date;
+}): {
+    inspect(input: {
+        token: string;
+        capabilities?: readonly string[];
+    }): Promise<CheckoutRecoveryInspectionResult<Action>>;
+};
+```
 ## dist/commerce/server/checkoutRecoveryOrderPort.d.ts
 
 ```ts
@@ -9809,6 +9884,10 @@ export { createAdminCheckoutPaymentLinkHandler, createPostgresOperatorCheckoutLi
 export type { OperatorCheckoutLinkReceipt, OperatorCheckoutLinkPolicy, OperatorCheckoutLinkStore, OperatorCheckoutLinkOrder, OperatorCheckoutLinkExecutor } from './operatorCheckoutPaymentLink.js';
 export { createCheckoutRecoveryStartHandler, createCheckoutPaymentLinkHandler, createPostgresCustomerCheckoutRecoveryStartPort, createPostgresBuyerCheckoutLinkPort, CheckoutLinkNotRecoverableError } from './customerCheckoutLinks.js';
 export type { CustomerCheckoutRecoveryContext, CustomerCheckoutRecoveryPendingOrder, CustomerCheckoutRecoveryStartPort, CheckoutLinkQueryExecutor, BuyerCheckoutLinkPolicy, BuyerCheckoutLinkPort } from './customerCheckoutLinks.js';
+export { createCheckoutRecoveryInspection, createCheckoutRecoveryValidationPolicy } from './checkoutRecoveryInspection.js';
+export type { NativeCheckoutRecoveryOrder, CheckoutRecoveryValidationPort, CheckoutRecoveryInspectionResult, CheckoutRecoveryInspectionPaymentResolution } from './checkoutRecoveryInspection.js';
+export { createPostgresCheckoutRecoveryOrderPort } from './postgresCheckoutRecoveryOrderPort.js';
+export type { CheckoutRecoveryReadExecutor } from './postgresCheckoutRecoveryOrderPort.js';
 ```
 ## dist/commerce/server/offerAvailability.d.ts
 
@@ -10482,6 +10561,19 @@ export declare function createOutboxShipmentExceptionEmailHandler<Locale extends
     emailPort: TransactionalEmailPort<Locale>;
     recipientPort: OrderRecipientPort;
 }): OutboxHandler;
+```
+## dist/commerce/server/postgresCheckoutRecoveryOrderPort.d.ts
+
+```ts
+import type { CheckoutRecoveryOrderReadPort } from './checkoutRecoveryOrderPort.js';
+import type { NativeCheckoutRecoveryOrder } from './checkoutRecoveryInspection.js';
+export interface CheckoutRecoveryReadExecutor {
+    query(sql: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+/** Service-only reader. The caller must bind the result to validated/inspected bearer ownership. */
+export declare function createPostgresCheckoutRecoveryOrderPort(executor: CheckoutRecoveryReadExecutor): CheckoutRecoveryOrderReadPort<NativeCheckoutRecoveryOrder>;
 ```
 ## dist/commerce/server/postgresCheckoutRecoveryTokenPort.d.ts
 

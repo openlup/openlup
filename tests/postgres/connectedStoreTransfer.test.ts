@@ -1487,3 +1487,73 @@ it("refuses a real sized opt-in before target writes while the classic source st
   expect((await restore(classic)).replayed).toBe(false);
   expect(await census(target.owner)).toEqual(classicRows);
 }, 30_000);
+
+
+const lineageIds = {
+  root: "ffffffff-ffff-4fff-bfff-ffffffffffff",
+  r1: "88888888-8888-4888-8888-888888888888",
+  r2: "11111111-1111-4111-8111-111111111111",
+  rootOnly: "00000000-0000-4000-8000-000000000001",
+};
+async function lineageStore() {
+  const native = await installation(`lineage-source-${targetNumber}`), client = randomUUID();
+  await native.owner.query("INSERT INTO public.clients(id,email) VALUES($1,'lineage@example.invalid')", [client]);
+  const db = await native.owner.connect();
+  try {
+    await db.query("BEGIN");
+    for (const [id, root, predecessor] of [
+      [lineageIds.root, null, null], [lineageIds.r1, lineageIds.root, lineageIds.root],
+      [lineageIds.r2, lineageIds.root, lineageIds.r1], [lineageIds.rootOnly, lineageIds.root, null],
+    ]) {
+      await db.query(`INSERT INTO public.commerce_orders(id,client_id,total_amount_minor,currency_code,
+        recovery_root_order_id,recreated_from_order_id,created_at,updated_at,metadata)
+        VALUES($1,$2,100,'XXX',$3,$4,'2026-09-01T00:00:00.123456Z','2026-09-02T00:00:00.654321Z',
+          '{"sequence":9007199254740993,"label":"Synthetic lineage"}')`, [id, client, root, predecessor]);
+      await db.query(`INSERT INTO public.commerce_order_items(order_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor)
+        VALUES($1,1,1,100,100)`, [id]);
+    }
+    await db.query("COMMIT");
+  } catch (error) { await db.query("ROLLBACK"); throw error; } finally { db.release(); }
+  return native;
+}
+function sealLineageCapture(copy: ConnectedNativeStoreCapture) {
+  const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
+  const { sha256: _inner, ...inner } = copy.compatible; copy.compatible.sha256 = hash(inner);
+  const { sha256: _outer, ...outer } = copy; copy.sha256 = hash(outer);
+  return copy;
+}
+it("restores both order-lineage parents before children without changing captured row text", async () => {
+  const native = await lineageStore(), carried = await capture(native.owner, "lineage-source");
+  const orders = carried.compatible.tables.find(table => table.table === "commerce_orders")!;
+  expect(orders.rows.map(row => JSON.parse(row).id)).toEqual([lineageIds.rootOnly, lineageIds.r2, lineageIds.r1, lineageIds.root]);
+  const before = await census(native.owner), originalPacket = JSON.stringify(carried);
+  expect((await restore(carried)).replayed).toBe(false);
+  expect(await census(target.owner)).toEqual(before);
+  expect((await census(target.owner)).commerce_orders).toEqual(orders.rows);
+  expect(JSON.stringify(carried)).toBe(originalPacket);
+  expect((await restore(carried)).replayed).toBe(true);
+  expect(await census(target.owner)).toEqual(before);
+}, 30_000);
+it.each(["recovery_root_order_id", "recreated_from_order_id"] as const)("refuses a captured order cycle through %s with no target writes", async field => {
+  const native = await lineageStore();
+  // Both referenced rows exist; PostgreSQL permits this cycle. The importer
+  // must refuse it explicitly rather than depending on row insertion order.
+  await native.owner.query(`UPDATE public.commerce_orders SET ${field}=$2 WHERE id=$1`, [lineageIds.root, lineageIds.r2]);
+  const carried = await capture(native.owner, `lineage-cycle-${field}`), before = await census(target.owner);
+  await expect(restore(carried)).rejects.toMatchObject({ code: "target_conflict", table: "commerce_orders" });
+  expect(await census(target.owner)).toEqual(before);
+}, 30_000);
+it.each(["recovery_root_order_id", "recreated_from_order_id"] as const)("refuses a parent absent from the captured set for %s with no target writes", async field => {
+  const native = await lineageStore(), carried = await capture(native.owner, `lineage-missing-${field}`);
+  // Remove a real parent from the captured set. Keep the remaining PostgreSQL
+  // row strings and their precision, including the now-dangling reference.
+  const retained = new Set(field === "recovery_root_order_id" ? [lineageIds.rootOnly]
+    : [lineageIds.root, lineageIds.r2, lineageIds.rootOnly]);
+  const orders = carried.compatible.tables.find(table => table.table === "commerce_orders")!;
+  orders.rows = orders.rows.filter(row => retained.has(JSON.parse(row).id));
+  const items = carried.compatible.tables.find(table => table.table === "commerce_order_items")!;
+  items.rows = items.rows.filter(row => retained.has(JSON.parse(row).order_id));
+  const before = await census(target.owner);
+  await expect(restore(sealLineageCapture(carried))).rejects.toMatchObject({ code: "target_conflict", table: "commerce_orders" });
+  expect(await census(target.owner)).toEqual(before);
+}, 30_000);
