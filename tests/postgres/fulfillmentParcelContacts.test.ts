@@ -23,7 +23,7 @@ function frozen() {
   return { schemaVersion: 1, source: 'contact', revision: 1, recipientName: 'Retained recipient', contactEmail: 'parcel@example.test',
     contactPhone: '+000001', line1: 'Synthetic 1', line2: null, city: 'Example', postalCode: '00000', country: 'ZZ',
     deliveryInstructions: null, courierInstructions: null,
-    selectedDelivery: { providerKind: 'warehouse-a', carrierKind: 'carrier-a', service: 'service-a', deliveryKind: 'courier' } };
+    selectedDelivery: { providerKind: 'warehouse-a', providerRef: 'warehouse-a', carrierKind: 'carrier-a', service: 'service-a', deliveryKind: 'courier' } };
 }
 function profile(): FulfillmentCapabilityDescriptor {
   const operations = Object.fromEntries(['dispatch','readback','exactAbsence','verifyObservation','syncStock','syncProducts','labelCreate','labelRead','labelVoid','cancel','pickupPoint','courierPickup']
@@ -38,25 +38,27 @@ for (const generation of lifecycleProfiles) describe(`private parcel contact on 
   let h: LifecycleInstallation;
   beforeAll(async () => { h = await lifecycleInstallation(generation); }, postgresSetupTimeoutMs);
   afterAll(async () => { await h?.close(); }, postgresTeardownTimeoutMs);
-  async function subject() {
+  async function subject(dispatch = false) {
     const f = await fixture(h.owner, null);
     const candidate = { ...request(), fulfillmentRef: f.shipment, orderRef: f.order };
     candidate.recipient = { ...candidate.recipient, name: 'Retained recipient', email: 'parcel@example.test', phone: '+000001' };
     await createPostgresDestinationPort(h.runtime).registerOrder({ idempotencyKey: `destination-${randomUUID()}`,
       orderId: f.order, address: { recipientName: candidate.recipient.name!, line1: candidate.recipient.line1,
         city: candidate.recipient.city, postalCode: candidate.recipient.postalCode, country: 'ZZ', contactPhone: candidate.recipient.phone! }, now: '2026-11-01T00:00:00Z' });
+    const prepared: FulfillmentDispatchRequest[] = [];
     const binding = createNativeFulfillmentBinding({ enabled: true,
       transactions: { async run(work) { const db = await h.runtime.connect();
         try { await db.query('BEGIN'); const value = await work(db); await db.query('COMMIT'); return value; }
         catch (error) { await db.query('ROLLBACK'); throw error; } finally { db.release(); } }, async close() {} },
       preparation: { async readAuthoritative() { return { candidate, withheld: false }; } },
-      services: { selection: candidate.selection, capability: profile(), readiness: async () => ({ ready: true }), listCandidates: async () => [],
-        provider: { async prepare() { throw new Error('No dispatch selected'); }, async dispatch() { throw new Error('No dispatch selected'); } },
+      services: { selection: candidate.selection, capability: profile(), readiness: async () => ({ ready: true }), listCandidates: async () => dispatch ? [candidate] : [],
+        provider: { async prepare(value) { if (!dispatch) throw new Error('No dispatch selected'); prepared.push(value);
+          return { kind: 'refused', refusal: { reason: 'not_dispatchable', phase: 'prepare', retryable: false } }; }, async dispatch() { throw new Error('No dispatch selected'); } },
         keys: { request: value => value.requestKey, mappedAttempt: key => key, acceptance: ref => ({ providerAttemptKey: ref, labelKey: ref }) },
         config: { mode: 'live', batchLimit: 1 } }, version: 'fixture', requiredSchema: { version: 'fixture', migration: 'fixture', objects: [] } });
     const rows = async () => (await h.owner.query('SELECT contact,captured_at,erased_at FROM public.fulfillment_parcel_contacts WHERE shipment_id=$1', [f.shipment])).rows;
     const resolve = async () => (await h.migration.query('SELECT public.fulfillment_resolve_parcel_contact($1) AS value', [f.shipment])).rows[0].value;
-    return { ...f, candidate, binding, rows, resolve };
+    return { ...f, candidate, binding, rows, resolve, prepared };
   }
   it('captures during real preparation, replays concurrently and keeps private payload out of public results and dispatch evidence', async () => {
     const f = await subject();
@@ -77,18 +79,64 @@ for (const generation of lifecycleProfiles) describe(`private parcel contact on 
       await expect(h.runtime.query('SELECT public.fulfillment_resolve_parcel_contact($1)', [f.shipment])).rejects.toMatchObject({ code: '42501' });
     }
   });
-  it('minimizes host input, preserves frozen values after defaults change and permits pre-submission correction', async () => {
-    const f = await subject();
+  it('captures and resolves the complete native pickup selection, including both provider references', async () => {
+    const f = await subject(true);
+    f.candidate.selection = { ...f.candidate.selection, deliveryKind: 'parcel-locker', pickupPoint: { id: 'NATIVE-POINT', provider: 'point-provider', name: 'Native point',
+      address: { line1: 'Point street', postalCode: '00000', city: 'Point city', country: 'ZZ' } } };
+    await f.binding.prepare(f.shipment);
+    const expected = { ...frozen(), selectedDelivery: { ...frozen().selectedDelivery, deliveryKind: 'parcel-locker', pickupPoint: f.candidate.selection.pickupPoint } };
+    expect((await f.rows())[0].contact).toEqual(expected);
+    expect(await f.resolve()).toEqual(expected);
+    await f.binding.services.runDispatch();
+    expect(f.prepared).toHaveLength(1);
+    expect(f.prepared[0].selection).toEqual(f.candidate.selection);
+  });
+  it('minimizes host input and freezes the complete pickup selection across changed defaults and draft preparation', async () => {
+    const f = await subject(true);
+    f.candidate.selection = { ...f.candidate.selection, deliveryKind: 'parcel-locker', pickupPoint: { id: 'POINT', provider: 'pickup-provider', name: 'Point',
+      address: { line1: 'Point street', city: 'Point city', postalCode: '00000', country: 'ZZ' } } };
     const input = { ...frozen(), credentials: 'never-store', selectedDelivery: {
-      providerKind: 'warehouse-a', pickupPoint: { id: 'POINT', name: 'Point', token: 'never-store', address: { line1: 'Point street', city: 'Point city', postalCode: '00000', country: 'ZZ', password: 'never-store' } } } };
+      ...frozen().selectedDelivery, deliveryKind: 'parcel-locker', pickupPoint: { ...f.candidate.selection.pickupPoint, token: 'never-store',
+        address: { ...f.candidate.selection.pickupPoint!.address, password: 'never-store' } } } };
     await h.runtime.query('SELECT public.fulfillment_capture_parcel_contact($1,$2)', [f.shipment, input]);
     expect(JSON.stringify(await f.rows())).not.toContain('never-store');
     const retained = await f.resolve();
-    await h.owner.query("UPDATE public.clients SET email='changed@example.test',phone='+99999',first_name='Changed' WHERE id=$1", [f.client]);
-    expect(await f.resolve()).toEqual(retained);
-    f.candidate.recipient.name = 'Corrected before submission'; f.candidate.contactRevision.revision = 2;
+    expect(retained.selectedDelivery).toEqual({ ...frozen().selectedDelivery, deliveryKind: 'parcel-locker', pickupPoint: f.candidate.selection.pickupPoint });
     await f.binding.prepare(f.shipment);
-    expect((await f.rows())[0].contact).toMatchObject({ recipientName: 'Corrected before submission', revision: 2 });
+    const before = await f.rows(), expected = structuredClone(f.candidate);
+    const replay = await h.runtime.query('SELECT public.fulfillment_capture_parcel_contact($1,$2) AS value', [f.shipment, retained]);
+    expect(replay.rows[0].value).toMatchObject({ replayed: true, contact: retained });
+    const store = createPostgresFulfillmentDispatchStore(h.runtime, { async prepare() { return { disposition: 'ready', contactRevision: 1 }; }, async readCandidate() { return null; } });
+    expect(await store.claim({ requestKey: `draft-${f.shipment}`, fulfillmentRef: f.shipment, orderRef: f.order, parcelRef: null, mode: 'live',
+      evidence: { commandFingerprint: 'a'.repeat(64), contactRevision: f.candidate.contactRevision, providerRef: 'warehouse-a', carrierRef: 'carrier-a', serviceRef: 'service-a' } })).toMatchObject({ kind: 'claimed' });
+    expect((await h.owner.query('SELECT status FROM public.fulfillment_dispatch_refs WHERE shipment_id=$1', [f.shipment])).rows).toEqual([{ status: 'draft' }]);
+    await h.owner.query("UPDATE public.clients SET email='changed@example.test',phone='+99999',first_name='Changed' WHERE id=$1", [f.client]);
+    f.candidate.recipient = { ...f.candidate.recipient, name: 'Changed default', email: 'changed@example.test', phone: '+99999' };
+    f.candidate.selection = { providerRef: 'changed-provider', carrierRef: 'changed-carrier', serviceRef: 'changed-service', deliveryKind: 'courier', pickupPoint: null };
+    expect(await f.binding.prepare(f.shipment)).toEqual({ disposition: 'ready', contactRevision: 1 });
+    await f.binding.services.runDispatch();
+    expect(f.prepared).toHaveLength(1);
+    expect(f.prepared[0].recipient).toEqual(expected.recipient);
+    expect(f.prepared[0].selection).toEqual(expected.selection);
+    expect(await f.rows()).toEqual(before);
+    expect(await f.resolve()).toEqual(retained);
+  });
+  it('freezes every reference selection field during legacy inference and reuses it during native preparation', async () => {
+    const f = await subject(true), selection = { providerKind: 'warehouse-a', providerRef: 'configuration-reference', carrierKind: 'carrier-a',
+      carrierCode: 'carrier-wire', service: 'service-a', serviceCode: 'service-wire', deliveryKind: 'parcel-locker', kind: 'parcel-locker',
+      pickupPoint: { id: 'LEGACY-POINT', pointId: 'legacy-wire', provider: 'legacy-pickup-provider', name: 'Legacy point',
+        address: { line1: 'Legacy point street', postalCode: '00000', city: 'Point city', country: 'ZZ' } } };
+    await h.owner.query('UPDATE public.commerce_orders SET metadata=$2 WHERE id=$1', [f.order, { runtimeFinalize: { selectedDelivery: selection } }]);
+    const resolved = await f.resolve();
+    expect(resolved.selectedDelivery).toEqual(selection);
+    const before = await f.rows();
+    await f.binding.prepare(f.shipment);
+    await f.binding.services.runDispatch();
+    expect(f.prepared).toHaveLength(1);
+    expect(f.prepared[0].selection).toEqual({ providerRef: 'warehouse-a', carrierRef: 'carrier-a', serviceRef: 'service-a', deliveryKind: 'parcel-locker',
+      pickupPoint: { id: 'LEGACY-POINT', provider: 'legacy-pickup-provider', name: 'Legacy point', address: selection.pickupPoint.address } });
+    expect(await f.rows()).toEqual(before);
+    expect(await f.resolve()).toEqual(resolved);
   });
   it('exports through the privacy contributor and erases without resurrecting through preparation or legacy inference', async () => {
     const f = await subject(); await f.binding.prepare(f.shipment);

@@ -2,7 +2,7 @@ import { createFulfillmentServices, createPostgresFulfillmentDispatchStore } fro
 import type { FulfillmentDispatchRequest, FulfillmentServicesOptions } from '../contracts/index.js';
 import type { RequiredSchema } from '@openlup/core/readiness';
 import type { PostgresRoleFreeTransactionLane as PostgresFulfillmentTransactionLane } from '../../data/index.js';
-import { parcelContact } from './parcelContact.js';
+import { applyParcelContact, parcelContact } from './parcelContact.js';
 
 type Executor = { query(sql: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }> };
 type Attribution = { fulfillmentRef: string; actorUserId: string; idempotencyKey: string };
@@ -29,7 +29,7 @@ export function createNativeFulfillmentBinding(input: {
     if (!rows[0]) throw new Error('fulfillment_preparation_shipment_missing');
     return rows[0];
   }
-  async function synchronize(db: Executor, ref: string, order: unknown) {
+  async function synchronize(db: Executor, ref: string, order: unknown, sourceEdit = false, readContact = false) {
     const { candidate, withheld } = await preparation!.readAuthoritative(db, ref);
     if (!candidate) {
       await db.query('DELETE FROM public.fulfillment_dispatch_contexts WHERE shipment_id=$1', [ref]);
@@ -41,21 +41,35 @@ export function createNativeFulfillmentBinding(input: {
       || !Number.isSafeInteger(revision.revision) || revision.revision < 0
       || !Number.isSafeInteger(revision.schemaVersion) || revision.schemaVersion < 1 || !revision.source.trim()
       || typeof withheld !== 'boolean') throw new Error('fulfillment_preparation_identity_invalid');
-    // Recipient data has its own private, erasable owner; dispatch evidence stays minimal.
+    // Operational revision and withholding remain authoritative host facts.
+    // Only an explicit source edit can reroute an existing context.
+    const pinned = { schemaVersion: revision.schemaVersion, source: revision.source, revision: revision.revision };
     await db.query(`INSERT INTO public.fulfillment_dispatch_contexts(shipment_id,contact_revision,provider_ref,withheld)
       VALUES($1,$2,$3,$4) ON CONFLICT(shipment_id) DO UPDATE
-      SET contact_revision=EXCLUDED.contact_revision,provider_ref=EXCLUDED.provider_ref,withheld=EXCLUDED.withheld`,
-    [ref, JSON.stringify({ schemaVersion: revision.schemaVersion, source: revision.source, revision: revision.revision }), provider, withheld]);
-    await db.query('SELECT public.fulfillment_capture_parcel_contact($1::uuid,$2::jsonb)', [ref, JSON.stringify(parcelContact(candidate))]);
-    return { candidate, disposition: withheld ? 'withheld' as const : 'ready' as const, contactRevision: revision.revision };
+      SET contact_revision=EXCLUDED.contact_revision,${sourceEdit ? 'provider_ref=EXCLUDED.provider_ref,' : ''}withheld=EXCLUDED.withheld`,
+    [ref, JSON.stringify(pinned), provider, withheld]);
+    // The capture command keeps preparation metadata-only. Candidate reads require
+    // its retained payload, including a previously inferred contact.
+    const captured = await db.query('SELECT public.fulfillment_capture_parcel_contact($1::uuid,$2::jsonb) AS value', [ref, JSON.stringify(parcelContact(candidate))]);
+    const contact = captured.rows[0]?.value as { erased?: boolean; contact?: unknown };
+    if (contact?.erased) {
+      await db.query('DELETE FROM public.fulfillment_dispatch_contexts WHERE shipment_id=$1', [ref]);
+      return { candidate: null, disposition: 'withheld' as const, contactRevision: null };
+    }
+    let frozen: FulfillmentDispatchRequest | null = null;
+    if (readContact) {
+      if (!contact || !('contact' in contact)) throw new Error('fulfillment_preparation_contact_missing');
+      frozen = { ...applyParcelContact(candidate, contact.contact), contactRevision: pinned };
+    }
+    return { candidate: frozen, disposition: withheld ? 'withheld' as const : 'ready' as const, contactRevision: pinned.revision };
   }
-  const readPrepared = (ref: string) => run(async db => {
+  const readPrepared = (ref: string, readContact = false) => run(async db => {
     const shipment = await lock(db, ref);
-    return synchronize(db, ref, shipment.order_id);
+    return synchronize(db, ref, shipment.order_id, false, readContact);
   });
   const store = bound ? createPostgresFulfillmentDispatchStore(executor, {
     async prepare(ref) { const { disposition, contactRevision } = await readPrepared(ref); return { disposition, contactRevision }; },
-    async readCandidate(ref) { return (await readPrepared(ref)).candidate; },
+    async readCandidate(ref) { return (await readPrepared(ref, true)).candidate; },
   }) : null;
   const services = createFulfillmentServices({ ...input.services, enabled: input.enabled, store });
   async function whenReady<T>(work: () => Promise<T>) {
@@ -79,7 +93,7 @@ export function createNativeFulfillmentBinding(input: {
         return run(async db => {
           const shipment = await lock(db, attribution.fulfillmentRef);
           await apply(db, attribution);
-          const { disposition, contactRevision } = await synchronize(db, attribution.fulfillmentRef, shipment.order_id);
+          const { disposition, contactRevision } = await synchronize(db, attribution.fulfillmentRef, shipment.order_id, true);
           return { disposition, contactRevision };
         });
       });
