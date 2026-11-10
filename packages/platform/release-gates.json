@@ -123,7 +123,8 @@
         "test/commerce/browserBoundary.test.ts",
         "test/commerce/browserSafety.test.ts",
         "test/commerce/paymentRecoveryGuidance.test.ts",
-        "test/commerce/checkoutRecoveryPay.test.ts"
+        "test/commerce/checkoutRecoveryPay.test.ts",
+        "test/commerce/checkoutInlineRecovery.test.ts"
       ],
       "entrypoint": "dist/commerce/server/index.d.ts",
       "snapshot": "api/commerce-server.api.md"
@@ -454,7 +455,8 @@
         "test/payments/adapterConformance.test.ts",
         "test/payments/postgresPaymentTruth.test.ts",
         "test/commerce/paymentRecoveryGuidance.test.ts",
-        "test/commerce/checkoutRecoveryPay.test.ts"
+        "test/commerce/checkoutRecoveryPay.test.ts",
+        "test/commerce/checkoutInlineRecovery.test.ts"
       ],
       "entrypoint": "dist/payments/index.d.ts",
       "snapshot": "api/payments.api.md"

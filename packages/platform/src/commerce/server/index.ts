@@ -207,3 +207,6 @@ export { createCheckoutRecoveryPayService, createCheckoutRecoveryTokenPay, Check
 export type { CheckoutRecoveryPayInput, CheckoutRecoveryPayResult, CheckoutRecoveryAttemptPort, CheckoutRecoveryPayService } from './checkoutRecoveryPay.js';
 export { withCheckoutRecoveryPaymentHold } from './checkoutRecoveryPaymentHold.js';
 export type { CheckoutRecoveryMethodHold } from './checkoutRecoveryPaymentHold.js';
+
+export { createCheckoutInlineRecovery, checkoutInlineRecoveryTransitionKey, CheckoutInlineRecoveryError } from './checkoutInlineRecovery.js';
+export type { CheckoutInlineRecoveryRequest, CheckoutInlineRecoveryAdmission, CheckoutInlineRecoveryAttemptPort } from './checkoutInlineRecovery.js';

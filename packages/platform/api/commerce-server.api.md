@@ -7366,6 +7366,110 @@ export declare function createExpiredCheckoutRecoveryPolicy<Order extends Checko
 export declare function quotesMatchForRecovery(frozen: RecoveryQuoteSnapshot, fresh: RecoveryQuoteSnapshot): boolean;
 export {};
 ```
+## dist/commerce/server/checkoutInlineRecovery.d.ts
+
+```ts
+import type { CheckoutContinuationAction, CheckoutPaymentContinuationCodec } from './checkoutPaymentContinuationCredential.js';
+import type { NativeCheckoutRecoveryOrder } from './checkoutRecoveryInspection.js';
+import type { CheckoutRecoveryOrderReadPort } from './checkoutRecoveryOrderPort.js';
+import type { CheckoutRecoveryPayResult } from './checkoutRecoveryPay.js';
+import { type CheckoutRecoveryMethodHold } from './checkoutRecoveryPaymentHold.js';
+import { type PaymentRecoveryReadDeps } from './paymentRecoveryGuidance.js';
+export interface CheckoutInlineRecoveryRequest<Method> {
+    headers: {
+        cookie?: unknown;
+        authorization?: unknown;
+    };
+    orderId: string;
+    clientId: string;
+    paymentIntentId: string;
+    journeyId: string;
+    expectedPaymentAttemptId: string;
+    retryRequestId: string;
+    executionRail: string;
+    methodKey: string;
+    method: Method;
+}
+export interface CheckoutInlineRecoveryAdmission {
+    replayOnly: boolean;
+    purchaseContext: 'one_time' | 'subscription_initial' | null;
+    previousMethodKey: string | null;
+    actions: readonly string[];
+    restriction: string | null;
+}
+export interface CheckoutInlineRecoveryAttemptPort<Method> {
+    assertExecutionRail(rail: string): void;
+    readPreviousMethod(input: {
+        orderId: string;
+        paymentIntentId: string;
+        paymentAttemptId: string;
+        executionRail: string;
+    }): Promise<string | null>;
+    begin(input: {
+        order: NativeCheckoutRecoveryOrder;
+        request: Omit<CheckoutInlineRecoveryRequest<Method>, 'headers' | 'method'>;
+        admission: CheckoutInlineRecoveryAdmission;
+        method: Method;
+    }): Promise<CheckoutRecoveryPayResult & {
+        executionRail: string;
+    }>;
+}
+export declare class CheckoutInlineRecoveryError extends Error {
+    readonly kind: 'bad_request' | 'unauthorized' | 'conflict' | 'upstream_unavailable';
+    readonly code: string;
+    constructor(kind: 'bad_request' | 'unauthorized' | 'conflict' | 'upstream_unavailable', code: string);
+}
+export declare function checkoutInlineRecoveryTransitionKey(expectedPaymentAttemptId: string): string;
+/** Cookie-only exact transition. Host transport and method/purchase eligibility remain injected policy. */
+export declare function createCheckoutInlineRecovery<Method>(deps: {
+    codec: CheckoutPaymentContinuationCodec;
+    guidance: Pick<PaymentRecoveryReadDeps, 'port' | 'projectGuidance'>;
+    orderPort: CheckoutRecoveryOrderReadPort<NativeCheckoutRecoveryOrder>;
+    attemptPort: CheckoutInlineRecoveryAttemptPort<Method>;
+    executionAllowed(input: {
+        methodKey: string;
+        executionRail: string;
+        purchaseContext: 'one_time' | 'subscription_initial';
+    }): boolean;
+    activeActionResolver?: {
+        readActiveAction(input: {
+            orderId: string;
+            clientId: string;
+            paymentIntentId: string;
+            paymentAttemptId: string;
+            executionRail: string;
+        }): Promise<CheckoutContinuationAction | null>;
+    };
+    hold?: {
+        readHolds(): Promise<readonly CheckoutRecoveryMethodHold[]>;
+        classify(input: {
+            order: NativeCheckoutRecoveryOrder;
+            method: Method;
+        }): {
+            kind: string;
+            method: string;
+        } | null;
+        offeredMethods(kind: string): ReadonlySet<string>;
+        isFirstPurchase?(order: NativeCheckoutRecoveryOrder): Promise<boolean | null>;
+    };
+}): {
+    retry(request: CheckoutInlineRecoveryRequest<Method>): Promise<{
+        result: {
+            orderRef: string;
+            clientAction: CheckoutContinuationAction;
+            orderId: string;
+            paymentIntentId: string;
+            clientId: string;
+            paymentAttemptId: string;
+            status: "processing" | "failed" | "expired" | "paid";
+            replayed: boolean;
+            failureReason: string | null;
+            executionRail: string;
+        };
+        setCookie: string;
+    }>;
+};
+```
 ## dist/commerce/server/checkoutInvoiceBuyerSnapshot.d.ts
 
 ```ts
@@ -10065,6 +10169,8 @@ export { createCheckoutRecoveryPayService, createCheckoutRecoveryTokenPay, Check
 export type { CheckoutRecoveryPayInput, CheckoutRecoveryPayResult, CheckoutRecoveryAttemptPort, CheckoutRecoveryPayService } from './checkoutRecoveryPay.js';
 export { withCheckoutRecoveryPaymentHold } from './checkoutRecoveryPaymentHold.js';
 export type { CheckoutRecoveryMethodHold } from './checkoutRecoveryPaymentHold.js';
+export { createCheckoutInlineRecovery, checkoutInlineRecoveryTransitionKey, CheckoutInlineRecoveryError } from './checkoutInlineRecovery.js';
+export type { CheckoutInlineRecoveryRequest, CheckoutInlineRecoveryAdmission, CheckoutInlineRecoveryAttemptPort } from './checkoutInlineRecovery.js';
 ```
 ## dist/commerce/server/nativeExpiredCheckoutRecovery.d.ts
 

@@ -1907,10 +1907,63 @@ bypass the wrapper; unknown first-purchase evidence or a failed hold read permit
 payment. Subscription evidence must establish that the subscription was never
 live. Holding every offered method ignores the hold for that checkout kind.
 Control keys, offered-method policy and the hold trigger belong to the adopter.
-The same service wrapper can be used by a later inline consumer.
+The exact inline consumer reuses this service wrapper.
 
 The [PostgreSQL witnesses](../../tests/postgres/checkoutRecoveryPay.test.ts)
 exercise replay, retries, method binding, terminal races, renewal/token refusals,
 verified settlement and hold composition on legacy and both qualified runtimes.
 [Package characterizations](../../packages/platform/test/commerce/checkoutRecoveryPay.test.ts)
 cover the neutral port and injected hold rules.
+
+## Exact inline checkout retry
+
+The native sandbox preview provides `createCheckoutInlineRecovery` and
+`createPostgresSandboxInlineRecoveryAttemptPort` through the existing
+`commerce/server` and `payments` entries. Bind the existing continuation codec
+with the host's exact cookie name. The request's journey, order, client, intent
+and expected attempt must match the signed cookie before any durable read.
+Bearer headers never authorize this path.
+
+Bind the existing atomic guidance port and order reader, the sandbox attempt
+port, an explicit registry mapping synthetic method facts to method keys, and
+an `executionAllowed` policy for offered methods and purchase contexts. Unknown
+method identities refuse. Opaque method references never imply a method or
+refusal taxonomy; native generic refusal evidence remains generic. The host
+owns that registry and eligibility policy. No real-provider capability is added;
+other rails retain `native_prepared_attempt_store_unsupported` and the existing
+[payment-owner limit](#expired-checkout-recreation).
+
+A fresh transition requires the exact failed predecessor and failed intent, a
+payable checkout and an admitted one-time or provisional initial declaration.
+Renewal cycles and previously live subscriptions refuse. The same method needs
+`change_instrument` or `correct_data` without a method-wide prohibition; another
+method needs `change_method`. `authenticate` alone never authorizes a fresh
+attempt. The token-pay hold wrapper also gates fresh inline attempts, using the
+same injected hold/read policy. Replay bypasses new-payment policy.
+
+`checkoutInlineRecoveryTransitionKey(expectedAttemptId)` preserves
+`checkout-inline-recovery:<expectedAttemptId>`. The native prepare key appends
+`:payment-execution:prepare-attempt`. The existing sandbox request key and a
+server-computed fingerprint bind the transition, retry nonce and selected rail;
+there is no nonce ledger. The same order/intent/attempt locks protect the exact
+predecessor CAS, cancellation and captured-observation fence before the attempt
+owner runs. No order, intent or reservation is created by retry.
+
+Response-loss replay requires the current replacement to belong to that key,
+nonce and rail. Method input and transient codes add no replay comparisons.
+The native owner returns the existing attempt without redispatching. A failed
+replacement returns its failed result; a live replacement permits action
+readback or safe polling when readback is null or lagging. Native financial
+intent status may still describe the preceding refusal while its replacement
+attempt is dispatched; that durable attempt supplies the processing result.
+Every successful response returns `setCookie` for the exact replacement attempt
+and selected rail. The host writes it as the response's Set-Cookie header and
+exposes only the result body. Reusing the old predecessor with that new cookie
+refuses; a later failed replacement can become the next exact transition.
+
+The [inline PostgreSQL witnesses](../../tests/postgres/checkoutInlineRecovery.test.ts)
+cover competing tabs/nonces, CAS and terminal races, fresh-process replay,
+replacement cookies, method actions, holds and renewal refusal on all three
+runtimes. [Package characterizations](../../packages/platform/test/commerce/checkoutInlineRecovery.test.ts)
+cover authority-first behavior, result validation and polling fallback. Host
+route mounting, starter UI and browser journeys remain separate.

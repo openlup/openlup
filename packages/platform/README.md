@@ -2337,3 +2337,16 @@ declarations remain eligible. Hold policy/read ports stay host-owned. Other
 channels keep the named native refusal. See the
 [composition recipe](../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md#checkout-token-payment)
 and [PostgreSQL witnesses](../../tests/postgres/checkoutRecoveryPay.test.ts).
+
+### Exact inline checkout retry
+
+`createCheckoutInlineRecovery` composes the exact configured continuation codec,
+atomic guidance, native order reader, registered synthetic methods and
+`createPostgresSandboxInlineRecoveryAttemptPort`. It requires the exact failed
+predecessor, failed intent and permitted method action. Cookie authority is
+checked before reads; bearer authority cannot widen it. The existing hold
+wrapper gates fresh attempts. Durable nonce/rail replay returns the replacement
+cookie and existing result without redispatch, including safe polling when
+readback lags. Renewal cycles and observed success refuse. See the
+[composition recipe](../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md#exact-inline-checkout-retry)
+and [PostgreSQL witnesses](../../tests/postgres/checkoutInlineRecovery.test.ts).

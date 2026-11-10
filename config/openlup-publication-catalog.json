@@ -5394,6 +5394,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/server/checkoutInlineRecovery.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/server/checkoutInvoiceBuyerSnapshot.ts",
       "class": "public-output"
     },
@@ -7710,6 +7714,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/payments/sandboxInlineRecovery.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/payments/sandboxRecoveryGuidance.ts",
       "class": "public-output"
     },
@@ -8867,6 +8875,10 @@
     },
     {
       "path": "packages/platform/test/commerce/checkoutExpiredRecoveryPolicy.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/checkoutInlineRecovery.test.ts",
       "class": "public-output"
     },
     {
@@ -28803,6 +28815,10 @@
     },
     {
       "path": "tests/postgres/channelPurchase.conformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/checkoutInlineRecovery.test.ts",
       "class": "public-output"
     },
     {

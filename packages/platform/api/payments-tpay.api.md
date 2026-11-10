@@ -978,6 +978,12 @@ export interface SandboxPaymentSimulator {
         idempotencyKey: string;
         requestFingerprint: string;
         methodFacts?: SandboxMethodFacts;
+        inlineRetry?: {
+            orderId: string;
+            clientId: string;
+            expectedAttemptId: string;
+            context: Record<string, unknown>;
+        };
         checkoutRecovery?: {
             orderId: string;
             clientId: string;

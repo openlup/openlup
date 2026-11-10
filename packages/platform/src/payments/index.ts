@@ -26,3 +26,5 @@ export type { ExpiredPaymentSafetyOrder } from './expiredCheckoutSafety.js';
 export { normalizeSandboxPaymentRecoveryEvidence } from './sandboxRecoveryGuidance.js';
 
 export { createPostgresSandboxCheckoutRecoveryAttemptPort } from './sandboxCheckoutRecoveryPay.js';
+
+export { createPostgresSandboxInlineRecoveryAttemptPort } from "./sandboxInlineRecovery.js";
