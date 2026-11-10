@@ -1518,7 +1518,7 @@ describe("replacement of an earlier native-store creation", () => {
     const original = sqlStatements(readFileSync(creation.path, "utf8")).find(statement =>
       nativeStoreFunctionDefinitions(Buffer.from(statement), [signature], true).has(signature))!;
     const text = original.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION").replace("'ok',true,", "'ok',true,'capabilityWitness',true,");
-    // Prove the first replacement at its historical prefix, independently of later issued replacements.
+    // The first-replacement proof uses the exact historical prefix, independently of later issued replacements.
     const slot: NativeStoreSlot = { row: "created-function-replacement", path: "db/platform/migrations/20261106120002_fixture_created_replacement.sql",
       replacedFunctions: [{ signature, beforeSha256: predecessor.afterSha256, searchPath: "pg_catalog" }],
       createdFunctions: [], grantOnlyFunctions: [], dataStatements: [] };
