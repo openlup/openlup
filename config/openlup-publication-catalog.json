@@ -1274,6 +1274,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261109140000_subscription_sized_editor.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4219,6 +4223,10 @@
     },
     {
       "path": "packages/platform/sql/20261109130000_subscription_exact_levers.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261109140000_subscription_sized_editor.sql",
       "class": "public-output"
     },
     {
@@ -8098,6 +8106,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/subscriptions/agreedPlanQuote.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/subscriptions/automaticRenewal.ts",
       "class": "public-output"
     },
@@ -8139,6 +8151,10 @@
     },
     {
       "path": "packages/platform/src/subscriptions/contracts/renewal.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/contracts/sizedEdit.ts",
       "class": "public-output"
     },
     {
@@ -8275,6 +8291,34 @@
     },
     {
       "path": "packages/platform/src/subscriptions/services.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/sizedComposition.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/sizedEditContext.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/sizedEditPorts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/sizedEditQuote.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/sizedEditor.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/sizedParcelLever.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/sizedParcelProjection.ts",
       "class": "public-output"
     },
     {
@@ -10435,6 +10479,18 @@
     },
     {
       "path": "packages/platform/test/subscriptions/retryTiming.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/subscriptions/sizedEditor.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/subscriptions/sizedFixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/subscriptions/sizedParcelProjection.test.ts",
       "class": "public-output"
     },
     {
@@ -29131,6 +29187,14 @@
     },
     {
       "path": "tests/postgres/subscriptionRetryResumeCatalog.proof.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionSizedEditor.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionSizedInstallation.test.ts",
       "class": "public-output"
     },
     {
