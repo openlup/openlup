@@ -3918,6 +3918,20 @@
         "createdFunctions": [],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "oms-human-operator-admission",
+        "path": "db/platform/migrations/20261110160000_oms_human_operator_admission.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.oms_control_resolve_operator(uuid)",
+            "beforeSha256": "1cb5fa4b679dbc931b5338a05ec94a22ffb220b8abcc2e20be3e78f170fbb931",
+            "searchPath": "pg_catalog"
+          }
+        ],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -4771,6 +4785,17 @@
           "signature": "public.fulfillment_operator_cancel_order(text,uuid,text,uuid,jsonb)",
           "beforeSha256": "b53b8d12aeda66101cb9bdcccc74e5043e4636e135ff86770a71f8628a51370b",
           "afterSha256": "16c3d801305130ba35e979861098fcdbc4b1b35aef6d6d6105880268fa47f49e"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261110160000_oms_human_operator_admission.sql",
+      "sha256": "df298f82f8b17219419e659bdb8bd4720d7b1de0c9c97c753c6444bfff624be8",
+      "functions": [
+        {
+          "signature": "public.oms_control_resolve_operator(uuid)",
+          "beforeSha256": "1cb5fa4b679dbc931b5338a05ec94a22ffb220b8abcc2e20be3e78f170fbb931",
+          "afterSha256": "cdbcdf2318564cfdb6ceeaceb8ed9e12e7954ecf2a6b3d84f046ee4c5491a786"
         }
       ]
     }

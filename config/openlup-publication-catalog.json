@@ -1314,6 +1314,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261110160000_oms_human_operator_admission.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4391,6 +4395,10 @@
     },
     {
       "path": "packages/platform/sql/20261110155000_fulfillment_parcel_status_fence.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261110160000_oms_human_operator_admission.sql",
       "class": "public-output"
     },
     {
@@ -29179,6 +29187,18 @@
     },
     {
       "path": "tests/postgres/omsControlPlaneNative.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/omsHumanAdmission.fixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/omsHumanAdmission.host.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/omsHumanAdmission.test.ts",
       "class": "public-output"
     },
     {

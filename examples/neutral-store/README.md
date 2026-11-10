@@ -437,6 +437,27 @@ principal does not yet exist. Native `customer_support_read_failed` intentionall
 hides the SQL cause; the UI names the roster prerequisite without asserting that
 every read failure means not provisioned. No second authority is built here.
 
+#### Commerce operator roster for hold and release admission
+
+The owner provisions one Commerce row per activated human **admin**, with the
+same principal UUID, through the owner connection above:
+
+```sql
+INSERT INTO public.commerce_operators (id, label)
+VALUES ('<activated-principal-id>'::uuid, 'Human administrator')
+ON CONFLICT (id) DO NOTHING;
+```
+
+Require active `admin` membership and no `platform_control_operators` row of any
+state; distributors do not qualify. The resolver never inserts this row. Never
+delete the Commerce row: withdraw access by revoking the human membership through
+the identity owner instead. `commerce_order_holds.created_by` uses ON DELETE SET
+NULL; deleting the row would make a human `fulfillment_exception` hold appear
+system-created and eligible for automatic release. This existing hazard is
+reported, not repaired. Hold/release starter routes retain their named
+unavailable limit until their separate binding is delivered; this is an
+installation prerequisite, not activation of those routes.
+
 With the runtime connection, operator customer search/detail and bundle
 list/detail/commands plus catalogue draft list/detail/create/revise/abandon are
 composed. Bundle commands and catalogue draft writes are restricted to a native
