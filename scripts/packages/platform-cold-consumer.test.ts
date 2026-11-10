@@ -192,6 +192,7 @@ it("accepts ordinary confined packages and independently verifies absent peers",
     "payments/contracts",
     "shipping",
     "shipping/contracts",
+    "shipping/postgres",
   ]));
 });
 it.each(OPTIONAL_PEERS)("refuses a physically installed optional peer: %s", peer => {

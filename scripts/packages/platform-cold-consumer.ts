@@ -73,6 +73,7 @@ export const NON_ADAPTER_ENTRIES = [
   "scheduler",
   "shipping",
   "shipping/contracts",
+  "shipping/postgres",
 ] as const;
 // identity, communications, promotions and catalog are adapter entries: their declarations reach data/pg types.
 // Its cold runtime import/refusal is below; declarations compile after selecting peers.
@@ -2255,6 +2256,27 @@ export function runPlatformColdConsumer(checkout = root, environment = processEn
     assertConsumerIsolation(consumer, checkout);
     const entries = assertExportInventory(consumer);
     for (const entry of entries) consumerNode(consumer, `await import("@openlup/platform/${entry}");`);
+    consumerNode(consumer, `
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { createPostgresCustomerSavedAddressPort, CustomerSavedAddressRefused,
+  createCustomerSavedAddressRequestSchemas, CUSTOMER_SAVED_ADDRESS_MIGRATIONS } from "@openlup/platform/shipping/postgres";
+const scope = { principalId: "11111111-1111-4111-8111-111111111111", clientId: "22222222-2222-4222-8222-222222222222" };
+const policy = { country: "ZZ", countryAliases: [], phonePrefix: "99", normalizeTaxId: value => value,
+  isValidTaxId: () => true, messages: { name: "name", country: "country", phone: "phone", postalCode: "postal", taxId: "tax" } };
+let calls = 0;
+const port = createPostgresCustomerSavedAddressPort({ query: async sql => {
+  calls++; assert(sql.includes("customer_saved_addresses_read")); return { rows: [{ result: [] }] };
+} }, scope, { validation: policy, readOrdererProfiles: async () => [], now: () => "2026-11-10T12:00:00.000Z", inUseMessage: "Address in use" });
+assert.equal(calls, 0);
+assert.deepEqual(await port.getAddressBook(scope.principalId), { contractVersion: "customer.addresses.v1", addresses: [], ordererProfiles: [] });
+await assert.rejects(port.getAddressBook("33333333-3333-4333-8333-333333333333"), error => error instanceof CustomerSavedAddressRefused && error.code === "address_scope_mismatch");
+assert.equal(calls, 1);
+const request = createCustomerSavedAddressRequestSchemas(policy).customerAddressUpsertRequestSchema.safeParse({
+  idempotencyKey: "saved-address-key", kind: "shipping", line1: "Example 1", city: "Example", postalCode: "12345", recipientName: null });
+assert.equal(request.success, true); assert.equal(request.data.recipientName, null);
+assert(readFileSync(CUSTOMER_SAVED_ADDRESS_MIGRATIONS[0].url, "utf8").includes("CREATE TABLE public.customer_saved_addresses"));
+`);
     consumerNode(consumer, `
 import assert from "node:assert/strict";
 import * as catalog from "@openlup/platform/catalog";

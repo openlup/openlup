@@ -2347,7 +2347,7 @@ while foreign updates and mismatched customer scopes refuse.
 
 Delete refuses an address referenced by an active or paused subscription's saved
 shipping or billing pointer. Nullable pointer columns are storage for that guard;
-saved-address subscription selection is not supplied by this port. Existing G3
+saved-address subscription selection is not supplied by this port. Existing
 destinations and claimed renewal snapshots are unchanged.
 
 Saved rows, canonical keys, contact/tax/free-text/metadata and linked event
