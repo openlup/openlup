@@ -79,7 +79,9 @@ try{
  it('keeps unresolved attempts retry-later and failed attempts recoverable on the same intent',async()=>{
   const f=await fixture(),first=await pay(f),key=`pay:${randomUUID()}`;
   await expect(pay(f,key)).rejects.toMatchObject({code:'provider_attempt_in_flight',kind:'upstream_unavailable'});
-  await simulator().recordObservation({attemptId:first.paymentAttemptId,idempotencyKey:`decline:${first.paymentAttemptId}`,outcome:'refused',occurredAt:at()});
+  const refused=await simulator().recordObservation({attemptId:first.paymentAttemptId,idempotencyKey:`decline:${first.paymentAttemptId}`,outcome:'refused',occurredAt:at()});
+  expect(await simulator().ingress.receive({rawBody:new TextEncoder().encode(JSON.stringify({settlementIntentId:f.paymentIntentId,attemptId:first.paymentAttemptId,observationId:refused.id})),headers:{},receivedAt:at()})).toMatchObject({status:200});
+  expect((await reader().getRecoveryOrder({orderId:f.orderId}))?.paymentIntentStatus).toBe('failed');
   // A repeated click reads a durable synchronous refusal as a failed result.
   const row=(await env.owner.query('SELECT request_key FROM public.payment_simulator_attempts WHERE id=$1',[first.paymentAttemptId])).rows[0];
   expect(await pay(f,String(row.request_key).replace(/:payment-execution$/,''))).toMatchObject({status:'failed',failureReason:'generic_decline',replayed:true});
