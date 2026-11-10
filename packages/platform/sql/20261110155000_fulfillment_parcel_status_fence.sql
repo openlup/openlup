@@ -15,6 +15,9 @@ CREATE OR REPLACE FUNCTION public.commerce_fulfillment_enqueue_provider_command(
 ) RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog AS $$
 DECLARE v_command public.commerce_fulfillment_provider_commands%ROWTYPE; v_order_id uuid; v_idempotency_key_fingerprint text; v_parcel_status text;
 BEGIN
+  IF pg_catalog.current_setting('transaction_isolation')<>'read committed' THEN
+    RAISE EXCEPTION 'inventory_admission_isolation_unsupported' USING ERRCODE='22023';
+  END IF;
   IF p_shipment_id IS NULL OR p_provider_kind !~ '^[a-z][a-z0-9_-]{0,63}$'
     OR p_command_kind <> 'dispatch_create' OR p_contract_version <> '1'
     OR p_idempotency_key !~* '^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$'
@@ -64,6 +67,9 @@ CREATE OR REPLACE FUNCTION public.commerce_fulfillment_claim_provider_commands(
 ) RETURNS SETOF jsonb LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog AS $$
 DECLARE v_command public.commerce_fulfillment_provider_commands%ROWTYPE; v_token uuid; v_now timestamptz := now(); v_from text;
 BEGIN
+  IF pg_catalog.current_setting('transaction_isolation')<>'read committed' THEN
+    RAISE EXCEPTION 'inventory_admission_isolation_unsupported' USING ERRCODE='22023';
+  END IF;
   IF p_provider_kind !~ '^[a-z][a-z0-9_-]{0,63}$' OR p_command_kind <> 'dispatch_create'
     OR p_claim_owner !~ '^[a-f0-9]{64}$' OR p_limit NOT BETWEEN 1 AND 100 OR p_lease_seconds NOT BETWEEN 10 AND 900
   THEN RAISE EXCEPTION 'fulfillment_provider_command_claim_invalid_input' USING ERRCODE = '22023'; END IF;
@@ -107,6 +113,9 @@ CREATE OR REPLACE FUNCTION public.commerce_fulfillment_mark_command_submitting(
 ) RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog AS $$
 DECLARE v_command public.commerce_fulfillment_provider_commands%ROWTYPE; v_shipment_id uuid; v_parcel_status text;
 BEGIN
+  IF pg_catalog.current_setting('transaction_isolation')<>'read committed' THEN
+    RAISE EXCEPTION 'inventory_admission_isolation_unsupported' USING ERRCODE='22023';
+  END IF;
   SELECT shipment_id INTO v_shipment_id FROM public.commerce_fulfillment_provider_commands WHERE id=p_command_id;
   IF FOUND THEN
     PERFORM pg_catalog.pg_advisory_xact_lock_shared(1179665228,pg_catalog.hashtext(v_shipment_id::text));
@@ -136,6 +145,9 @@ DECLARE
   v_existing public.fulfillment_shipment_operations%ROWTYPE;
   v_shipment public.fulfillment_shipments%ROWTYPE;
 BEGIN
+  IF pg_catalog.current_setting('transaction_isolation')<>'read committed' THEN
+    RAISE EXCEPTION 'inventory_admission_isolation_unsupported' USING ERRCODE='22023';
+  END IF;
   IF p_idempotency_key IS NULL OR char_length(btrim(p_idempotency_key)) < 8
     OR p_shipment_id IS NULL OR p_reason IS NULL OR btrim(p_reason) = ''
   THEN
@@ -195,6 +207,9 @@ CREATE OR REPLACE FUNCTION public.fulfillment_operator_cancel_order(p_idempotenc
 DECLARE parcel public.fulfillment_shipments; purchase public.commerce_orders; prior public.fulfillment_operator_receipts;
  answer jsonb; ids uuid[]:=ARRAY[]::uuid[]; disposition text; confirmed boolean; recorded boolean; recorded_mode text; old_op public.fulfillment_shipment_operations;
 BEGIN
+  IF pg_catalog.current_setting('transaction_isolation')<>'read committed' THEN
+    RAISE EXCEPTION 'inventory_admission_isolation_unsupported' USING ERRCODE='22023';
+  END IF;
  PERFORM pg_advisory_xact_lock(hashtextextended('parcel-cancel-key|'||p_idempotency_key,0));
  SELECT * INTO prior FROM public.fulfillment_operator_receipts WHERE kind='cancel' AND idempotency_key=p_idempotency_key;
  IF FOUND THEN

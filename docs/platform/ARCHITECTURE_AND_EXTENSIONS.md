@@ -1789,6 +1789,8 @@ its status. Enqueue and submission raise the existing
 parcels before its batch limit and rechecks after acquiring the shared lock.
 Cancelled queued records keep their status, availability and transition history.
 Live-parcel ordering, replay and claim/version refusals are unchanged.
+These five routines require READ COMMITTED isolation and refuse other isolation levels
+before reading or locking state.
 
 The two-int advisory class is `1179665228` (`0x4650434c`, `FPCL`), reserved for
 fulfillment parcel cancellation. The second integer is

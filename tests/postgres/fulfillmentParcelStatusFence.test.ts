@@ -204,5 +204,57 @@ for(const profile of lifecycleProfiles)describe(`parcel status fence on ${profil
       const before=await census(f.shipment);expect((await db.runtime.query(claimSql,[provider,'f'.repeat(64)])).rows).toEqual([]);expect(await census(f.shipment)).toEqual(before);
     }finally{await preparation.query('ROLLBACK');await cancellation.query('ROLLBACK');preparation.release();cancellation.release();}
   },15000);
+  async function isolationCensus(shipment:string,order:string){
+    const state=(await db.owner.query(`SELECT
+      (SELECT to_jsonb(s)||jsonb_build_object('rowVersion',s.xmin::text) FROM public.fulfillment_shipments s WHERE id=$1) AS parcel,
+      (SELECT to_jsonb(o)||jsonb_build_object('rowVersion',o.xmin::text) FROM public.commerce_orders o WHERE id=$2) AS purchase,
+      (SELECT COALESCE(jsonb_agg(to_jsonb(o) ORDER BY o.id),'[]') FROM public.fulfillment_shipment_operations o WHERE shipment_id=$1) AS parcel_operations,
+      (SELECT COALESCE(jsonb_agg(to_jsonb(o) ORDER BY o.id),'[]') FROM public.commerce_order_operations o WHERE order_id=$2) AS order_operations,
+      (SELECT COALESCE(jsonb_agg(to_jsonb(r) ORDER BY r.id),'[]') FROM public.fulfillment_inventory_reservations r) AS reservations,
+      (SELECT COALESCE(jsonb_agg(to_jsonb(r) ORDER BY r.idempotency_key),'[]') FROM public.fulfillment_operator_receipts r WHERE command->>'shipmentId'=$1::text) AS receipts`,[shipment,order])).rows;
+    return {state,ledger:await census(shipment)};
+  }
+  for(const isolation of ['REPEATABLE READ','SERIALIZABLE']){
+    it.each(['enqueue','claim','submit','native cancel','operator cancel'])('refuses %s at entry under '+isolation+' without changing state',async axis=>{
+      const f=await fixture(db.owner),provider=`isolation_${randomUUID().replaceAll('-','')}`,actor=randomUUID();
+      await db.owner.query("INSERT INTO public.commerce_operators(id,label) VALUES($1,'Fixture operator')",[actor]);
+      let claimed:Record<string,unknown>|undefined;
+      if(axis==='claim'||axis==='submit')await db.runtime.query(enqueueSql,args(f.shipment,provider));
+      if(axis==='submit')claimed=(await db.runtime.query(claimSql,[provider,'f'.repeat(64)])).rows[0].value;
+      const before=await isolationCensus(f.shipment,f.order),work=await db.runtime.connect();
+      try{
+        await work.query('BEGIN ISOLATION LEVEL '+isolation);
+        const invocation=axis==='enqueue'?()=>work.query(enqueueSql,args(f.shipment,provider))
+          :axis==='claim'?()=>work.query(claimSql,[provider,'f'.repeat(64)])
+          :axis==='submit'?()=>work.query(submitSql,fenceArgs(claimed!))
+          :axis==='native cancel'?()=>cancel(work,f.shipment)
+          :()=>work.query("SELECT public.fulfillment_operator_cancel_order($1,$2,'Synthetic cancellation',$3)",[`cancel-${randomUUID()}`,f.shipment,actor]);
+        await expect(invocation()).rejects.toMatchObject({code:'22023',message:'inventory_admission_isolation_unsupported'});
+        await work.query('ROLLBACK');
+        expect(await isolationCensus(f.shipment,f.order)).toEqual(before);
+      }finally{await work.query('ROLLBACK');work.release();}
+    });
+  }
+  it.each(['claim','submit'])('refuses stale-snapshot REPEATABLE READ %s before waiting behind uncommitted cancellation',async axis=>{
+    const f=await fixture(db.owner),provider=`snapshot_${randomUUID().replaceAll('-','')}`;
+    await db.runtime.query(enqueueSql,args(f.shipment,provider));
+    const claimed=axis==='submit'?(await db.runtime.query(claimSql,[provider,'f'.repeat(64)])).rows[0].value:undefined;
+    const before=await census(f.shipment),cancellation=await db.runtime.connect(),work=await db.runtime.connect();
+    try{
+      await work.query("BEGIN ISOLATION LEVEL REPEATABLE READ; SET LOCAL statement_timeout='1s'");
+      // Establish the old snapshot before cancellation takes its exclusive gate.
+      expect((await work.query('SELECT status FROM public.fulfillment_shipments WHERE id=$1',[f.shipment])).rows).toEqual([{status:'created'}]);
+      await cancellation.query('BEGIN');await cancel(cancellation,f.shipment);
+      const blocking=(await cancellation.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+      expect((await db.owner.query("SELECT mode FROM pg_locks WHERE pid=$1 AND locktype='advisory' AND classid=1179665228 AND objsubid=2 AND granted",[blocking])).rows).toEqual([{mode:'ExclusiveLock'}]);
+      const pending=axis==='claim'?work.query(claimSql,[provider,'f'.repeat(64)]):work.query(submitSql,fenceArgs(claimed));
+      await expect(pending).rejects.toMatchObject({code:'22023',message:'inventory_admission_isolation_unsupported'});
+      await work.query('ROLLBACK');
+      expect(await census(f.shipment)).toEqual(before);
+      await cancellation.query('COMMIT');
+      expect(await census(f.shipment)).toEqual(before);
+      expect((await db.owner.query('SELECT status FROM public.fulfillment_shipments WHERE id=$1',[f.shipment])).rows).toEqual([{status:'cancelled'}]);
+    }finally{await cancellation.query('ROLLBACK');await work.query('ROLLBACK');cancellation.release();work.release();}
+  });
 
 });

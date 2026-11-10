@@ -13,8 +13,8 @@ const exec = promisify(execFile);
 // Frozen 92-unit issued-prefix measurements remain independent expectations.
 // The current complete 123-unit installation also includes lifecycle closure and notice production after the shared suffix and completion tail.
 const shapes = [
-  { name: "bootstrap-restore", currentSha256: "b539b0ea97df6a12d06975478fc1707d58e6c5e80f572d34d97d43f5d97b7e88", separate: false, sha256: "c4f6bb9daa5882877149a78e13d07594b7e8653c3a3ba39f508477b072548f9b" },
-  { name: "separate-restore", currentSha256: "affa43ea508bfff83b540e3b7c6c74da007835353d5b03a3e8fcfe41add988b0", separate: true, sha256: "624cc57789e3aaf36d0b61bdad420fc4eb0b63c2a7eb09358e5c18240ec13f82" },
+  { name: "bootstrap-restore", currentSha256: "7f668d1f928964e1dac5af501754d5f236c1fb77fc5b46ad2a2e34e714d292c6", separate: false, sha256: "c4f6bb9daa5882877149a78e13d07594b7e8653c3a3ba39f508477b072548f9b" },
+  { name: "separate-restore", currentSha256: "089b277fc2c08758c8161dbbee3632874b9bb9145d7c78346e1137ad32247286", separate: true, sha256: "624cc57789e3aaf36d0b61bdad420fc4eb0b63c2a7eb09358e5c18240ec13f82" },
 ] as const;
 const profiles = [
   { name: "reference", roleMode: "installer-managed", prefix: "q2_reference" },

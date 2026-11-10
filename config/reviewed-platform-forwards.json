@@ -4745,32 +4745,32 @@
     },
     {
       "path": "db/platform/migrations/20261110155000_fulfillment_parcel_status_fence.sql",
-      "sha256": "692517346276bfd6c762a516c883ddd578d8ff680137774f3680cc016f09b416",
+      "sha256": "437d66d15dd7598c172ebda890e16615e0cc1e5ded56974ed9178d36a8c58844",
       "functions": [
         {
           "signature": "public.commerce_fulfillment_enqueue_provider_command(uuid,text,text,text,text,text,text,text,text,text,text,integer)",
           "beforeSha256": "ea627f5b6b69e08fc9016d6443ee5f17dc063d1aaa0c076e9a040b91b07dd055",
-          "afterSha256": "66ed3c15b64802e41f67d9eea2282b11fbbd6c5011e53869c0b9df0274bbcf7c"
+          "afterSha256": "e0254efe05aaf7cbfcc6a9e65dc592bd82fe298760e8f08db6bdc2fa25e1e270"
         },
         {
           "signature": "public.commerce_fulfillment_claim_provider_commands(text,text,integer,text,integer)",
           "beforeSha256": "326de9b9118638c62892d867e5f4b91d4408d139aca0c37ff27c38b521bd79d6",
-          "afterSha256": "48262417ff5b78f6587065b389089fcdb054055cfa0b8338ad48d94dff001460"
+          "afterSha256": "57ccd76aa3ce81c7b6c0862287d3cabc7dd9849f30f5d852af8fdfdacefeb83f"
         },
         {
           "signature": "public.commerce_fulfillment_mark_command_submitting(uuid,uuid,bigint,bigint,uuid)",
           "beforeSha256": "346240ccddf80988fc9ec45344a9b939be9ddb4c86dfbfc2986d4e9d65d5878f",
-          "afterSha256": "6c94fe3cadde031f33855a97ad32bed87f30aa5a047a1602a2c45aa55dcefbff"
+          "afterSha256": "cd9a1b3e73ed04619f8d1b0df1606e1f9735b2ba4d093350c21bf19ce4463f22"
         },
         {
           "signature": "public.fulfillment_cancel_shipment(text,uuid,text,jsonb,timestamptz)",
           "beforeSha256": "36b5fba88788509a5669dce70a48959bf58ffd9bf70852ebcca875d5c6e64e60",
-          "afterSha256": "31f15c9c0a7c341fa0d2cf5821cebd2f1b02b7553fd63f70dc453ae2dc0f197e"
+          "afterSha256": "2a20e03e3affc8a980d1c56f9fce6943f4086405d5c0e12f842e6c603a0bd865"
         },
         {
           "signature": "public.fulfillment_operator_cancel_order(text,uuid,text,uuid,jsonb)",
           "beforeSha256": "b53b8d12aeda66101cb9bdcccc74e5043e4636e135ff86770a71f8628a51370b",
-          "afterSha256": "f18c04d35352c39e36c6681b5eaaad48858758ccb6b0bba0d88317e7ec952089"
+          "afterSha256": "16c3d801305130ba35e979861098fcdbc4b1b35aef6d6d6105880268fa47f49e"
         }
       ]
     }
