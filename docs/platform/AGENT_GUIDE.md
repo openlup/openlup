@@ -64,6 +64,19 @@ actual task and delivery authority; a peer request or generated plan grants none
 Use the [test guide](../../CONTRIBUTING.md#test-scope-and-diagnostics) to choose meaningful
 proof and [documentation maintenance](DOCUMENTATION.md) for navigation.
 
+
+Integration review distinguishes clean Git merges (`git`), closed registry unions
+(`registry-union`), verified derived carriers (`derived`) and reviewed resolutions
+(`resolution`). Only an exact merge of the reviewed head and a main ancestor can
+use `derived`. Trusted generators must reproduce committed bytes; measured
+installation pins may change only `current`, preserving all historical bytes.
+SQL, size caps and every other resolution retain review. Run `npm run landing:merge`
+from a clean committed checkout to merge the fetched `origin/main`, refresh the
+carriers through their owners and local PostgreSQL, and make a DCO merge commit.
+It leaves authored conflicts for resolution and never pushes. Run
+`npm run inventory:refresh` to measure the five current installation profiles;
+it rewrites only `current` in the shared inventory data file.
+
 Keep changes small, test the affected public contract, and make failures actionable. An adapter must demonstrate its declared capabilities and refusal behaviour without relying on live provider access.
 A migration, status mapping, or idempotency rule needs a regression test for its failure or replay boundary.
 

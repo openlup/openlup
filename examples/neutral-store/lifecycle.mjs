@@ -118,6 +118,17 @@ if (command === 'candidate') {
   process.exit(process.exitCode ?? 0);
 } else if (command === 'browser') {
   await databaseBrowserRecipe(args);
+} else if (command === 'checkout-recovery') {
+  const { selectConfiguration } = await import('./owned/store.config.ts');
+  const { parseHostArguments } = await import('./shared/config.ts');
+  const { runCheckoutRecovery } = await import('./host/paid-mail.ts');
+  const { default: pg } = await import('pg');
+  const options = parseHostArguments(args), config = selectConfiguration(options.configuration);
+  if (!options.databaseUrl) throw new Error('starter_runtime_connection_required');
+  const pool = new pg.Pool({ connectionString: options.databaseUrl });
+  try { process.stdout.write(JSON.stringify(await runCheckoutRecovery({ executor: pool, config,
+    publicOrigin: config.publicOrigin ?? `http://127.0.0.1:${options.port}` })) + '\n'); }
+  finally { await pool.end(); }
 } else if (command === 'care') {
   const { selectConfiguration } = await import('./owned/store.config.ts');
   const { parseHostArguments, assertConfig } = await import('./shared/config.ts');

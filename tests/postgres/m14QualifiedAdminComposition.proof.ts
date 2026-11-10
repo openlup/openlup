@@ -1,3 +1,4 @@
+import installationInventory from "./current-installation-inventory.json" with { type: "json" };
 // Disposable PG16 production-path qualification for the explicit restricted generation.
 import assert from "node:assert/strict";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
@@ -60,7 +61,7 @@ export async function runQualifiedAdminCompositionProof(input: { roleMode: "inst
   const issuedExpected = [issued.baseline, ...issued.forward];
   assert.equal(issuedExpected.length, 91);
   const expected = [manifest.baseline, ...manifest.forward];
-  assert.equal(expected.length, 125);
+  assert.equal(expected.length, installationInventory.current.profiles[input.roleMode === "installer-managed" ? "admin-managed" : "admin-operator"].count);
   assert.deepEqual(expected.slice(0, issuedExpected.length), issuedExpected);
   for (const entry of expected) assert.equal(hash(readFileSync(entry.file, "utf8")), entry.sha256);
   const migrationUrl = new URL(loginUrl(m));

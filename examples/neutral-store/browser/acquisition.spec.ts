@@ -1,3 +1,7 @@
+import { createPostgresCommerceOmsPort } from '@openlup/platform/commerce/server/postgres';
+import { createPostgresInvoiceStore, runNativeInvoiceIssueJob } from '@openlup/platform/invoicing';
+import { createCapturedPostgresInvoiceProvider } from '@openlup/platform/invoicing/postgres';
+import { runCheckoutRecovery } from '../host/paid-mail.ts';
 import { readFile, readdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
@@ -5,7 +9,7 @@ import pg from 'pg';
 import * as subscriptions from '@openlup/platform/subscriptions';
 import { createPostgresFulfillmentShipmentSpinePort } from '@openlup/platform/fulfillment';
 import { createPostgresRenewalReservationPort } from '@openlup/platform/inventory';
-import { createPostgresAccountLinkStore, createPostgresOperatorIdentityStore } from '@openlup/platform/identity';
+import { createDirectOperatorInvitationStore, createDirectOperatorIdentityDirectory, createPostgresAccountLinkStore, createPostgresOperatorIdentityStore } from '@openlup/platform/identity';
 import { createPostgresNotificationRecipientsPort } from '@openlup/platform/communications';
 import { configurations } from '../owned/store.config.ts';
 import type { Locale } from '../shared/config.ts';
@@ -88,6 +92,8 @@ async function purchase(page: Page): Promise<Purchase> {
   return { orderRef: created.value.orderRef, email, subscriptionId: String(row.id), clientId: String(row.client_id), nextCycleAt: row.next_cycle_at.toISOString(), cadenceDays: Number(row.cadence_days) };
 }
 async function signIn(page: Page, email: string, locale: Locale, landing?: string, operator = false) {
+  const path = resolve(material.state, '.context/captured-messages/identity.jsonl');
+  const prior = (await readFile(path, 'utf8').catch(() => '')).trim().split('\n').filter(Boolean).map(line => JSON.parse(line)).filter(row => row.email === email).at(-1)?.token;
   await page.goto(landing ?? routes.auth[locale]);
   if (landing) await page.locator('main').getByRole('link', { name: copy[locale].signIn, exact: true }).click();
   if (operator) {
@@ -97,11 +103,10 @@ async function signIn(page: Page, email: string, locale: Locale, landing?: strin
     await page.getByRole('button', { name: copy[locale].sendSignIn, exact: true }).click();
     await expect(page.locator('.action-result').first()).toContainText('accepted');
   }
-  const path = resolve(material.state, '.context/captured-messages/identity.jsonl');
   let token: string | undefined;
   await expect.poll(async () => {
     const messages = (await readFile(path, 'utf8').catch(() => '')).trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
-    token = messages.filter(row => row.email === email).at(-1)?.token; return !!token;
+    token = messages.filter(row => row.email === email && row.token !== prior).at(-1)?.token; return !!token;
   }).toBe(true);
   if (!token) throw new Error('starter_care_browser_challenge_required');
   if (operator) { expect((await call(page, 'auth.operator', { token })).ok).toBe(true); return; }
@@ -389,4 +394,461 @@ test('operator escalation uses configured recipients and narrow captured fields'
   } finally { await recipients.close(); }
 });
 
+
+
+async function pendingCheckout(page: Page, locale: Locale, mode: 'one_time' | 'subscription' = 'one_time') {
+  const config = configurations[material.id]!, email = `portal-${randomUUID()}@example.test`;
+  const accounts = createPostgresAccountLinkStore({ connectionString: material.runtimeUrl });
+  try { await accounts.createAccount({ email, principalId: randomUUID(), acquisitionSource: 'local-demonstration', lifecycleStage: 'customer' }); } finally { await accounts.close(); }
+  const input = { locale, configuration: config.id, email, country: config.market.country,
+    firstName: 'Example', lastName: 'Buyer', phone: '000000000', line1: '1 Example Lane', city: 'Example City', postalCode: '00000',
+    termsAccepted: true, termsRevision: config.legal.revision, ...(mode === 'subscription' ? { acquisitionCapability: 'subscription-acquisition.v1' } : {}),
+    cart: { schemaVersion: 1, configuration: config.id, mode, cadenceDays: mode === 'subscription' ? config.offer.defaultCadenceDays : null,
+      lines: [{ sku: config.offer.products[0]!.sku, quantity: config.offer.minUnits }] } };
+  const quote = await call(page, 'offer.validate', input); expect(quote.ok).toBe(true);
+  const created = await call(page, 'checkout.create', { ...input, quoteAcceptance: quote.value?.quoteAcceptance, expectedTotal: quote.value?.expectedTotal });
+  expect(created.ok).toBe(true);
+  return { email, orderRef: created.value.orderRef as string, token: created.value.token as string };
+}
+async function portalOperator(page: Page, locale: Locale, role: 'admin' | 'distributor' = 'admin') {
+  let root = (await owner.query(`SELECT p.principal_id,p.email FROM public.platform_human_principals p
+    JOIN public.platform_human_memberships m USING(principal_id) WHERE m.role='admin' AND m.membership_state='active' LIMIT 1`)).rows[0];
+  if (!root) {
+    const identity = createPostgresOperatorIdentityStore({ connectionString: material.ownerUrl });
+    const email = `portal-root-${randomUUID()}@example.test`;
+    try { const result = await identity.bootstrapFirstAdministrator({ email }); root = { principal_id: result.principalId, email }; } finally { await identity.close(); }
+    await signIn(page, root.email, locale, undefined, true);
+  }
+  // Each test uses a new native invitation; challenge quotas stay enabled and unchanged.
+  const invitations = createDirectOperatorInvitationStore({ connectionString: material.ownerUrl });
+  const directory = createDirectOperatorIdentityDirectory({ connectionString: material.ownerUrl });
+  const email = `portal-admin-${randomUUID()}@example.test`;
+  let principal: string;
+  try {
+    principal = (await directory.ensurePrincipal({ email, redirectTo: material.baseURL + routes.admin[locale] })).principalId;
+    const result = await invitations.issue({ actorPrincipalId: root.principal_id, targetPrincipalId: principal, email, role, ttlSeconds: 600 });
+    expect(result.code).toBe('INVITATION_CREATED');
+  } finally { await invitations.close(); await directory.close(); }
+  // The database owner provisions these durable rows. No host or installer writer exists.
+  await owner.query("INSERT INTO public.commerce_operators(id,label) VALUES($1,'Demonstration administrator') ON CONFLICT DO NOTHING", [principal]);
+  await owner.query('INSERT INTO public.platform_communication_operators(principal_id,active) VALUES($1,true) ON CONFLICT(principal_id) DO UPDATE SET active=true', [principal]);
+  await signIn(page, email, locale, undefined, true); await page.goto(routes.admin[locale]);
+  return principal;
+}
+async function operatorDetail(page: Page, orderId: string, locale: Locale) {
+  const reader = page.locator('#orders form').filter({ has: page.locator('[name=orderRef]') }).first();
+  await reader.locator('[name=orderRef]').fill(orderId.toUpperCase());
+  await reader.getByRole('button', { name: copy[locale].read, exact: true }).click();
+  const controls = page.locator('[data-order-controls]'); await expect(controls).toContainText(orderId);
+  return controls;
+}
+async function accessible(section: Locator) {
+  for (const control of await section.locator('input:visible,textarea:visible,select:visible,button:visible').all()) await expect(control).toHaveAccessibleName(/.+/);
+}
+async function checkoutMail(locale: Locale) {
+  const config = structuredClone(configurations[material.id]!);
+  config.renewal.notices.locale = locale; config.renewal.notices.countryLocales = { ZZ: locale };
+  return runCheckoutRecovery({ executor: runtime, config, publicOrigin: material.baseURL,
+    capture: createPrivateCapture(resolve(material.state, '.context/captured-messages')) });
+}
+async function parcel(orderRef: string) {
+  await owner.query("INSERT INTO public.fulfillment_ports(port_key,provider_type,routable) VALUES('portal-parcels','simulator',true) ON CONFLICT DO NOTHING");
+  const result = await createPostgresFulfillmentShipmentSpinePort(runtime, { portKey: 'portal-parcels' })
+    .createShipment({ idempotencyKey: `portal-parcel:${orderRef}`, orderId: orderRef });
+  // The external dispatch host freezes carrier contact. The starter mounts no dispatch or arrival writer.
+  await runtime.query('SELECT public.fulfillment_capture_parcel_contact($1,$2)', [result.shipmentId,
+    { schemaVersion: 1, source: 'contact', revision: 1, recipientName: 'Example Buyer', contactEmail: 'parcel@example.test',
+      contactPhone: '+999123456789', line1: '1 Example Lane', line2: null, city: 'Example City', postalCode: '00000', country: 'ZZ',
+      deliveryInstructions: null, courierInstructions: null, selectedDelivery: { providerKind: configurations[material.id]!.purchase.stock.providerRef,
+        carrierKind: 'synthetic-carrier', service: 'synthetic-service', deliveryKind: 'courier' } }]);
+  return result;
+}
+async function issuedInvoice(orderId: string) {
+  const config = configurations[material.id]!, providerRef = config.documents.sandbox.providerRef;
+  const order = (await runtime.query('SELECT total_amount_minor,currency_code FROM public.commerce_orders WHERE id=$1', [orderId])).rows[0];
+  const intent = (await runtime.query('SELECT id FROM public.commerce_settlement_intents WHERE order_id=$1', [orderId])).rows[0].id;
+  const total = Number(order.total_amount_minor), currency = String(order.currency_code);
+  const proof = { evidenceRef: 'synthetic-money', fingerprint: 'a'.repeat(64), observedAt: '2026-11-01T12:00:00Z' };
+  const store = createPostgresInvoiceStore(runtime, { seller: { read: async () => ({ kind: 'found',
+    seller: { name: 'Synthetic seller', address: { line1: '1 Example Street', postalCode: '00000', city: 'Example' },
+      taxIdentifier: { scheme: 'synthetic', value: 'seller' }, bankAccount: null, routingRef: null }, revisionRef: 'seller-v1' }) } });
+  const duty = await store.captureDuty({ requestKey: `invoice:${orderId}`, sourceKind: 'paid', sourceId: randomUUID(), orderId,
+    occurredAt: proof.observedAt, evidence: { settlementIntentId: intent, amountMinor: total, currency } });
+  if ('kind' in duty) throw new Error('portal_invoice_duty_required');
+  await store.installFacts({ dutyId: duty.dutyId, facts: { factRevision: `facts:${orderId}`, policyVersion: 'sandbox-v1',
+    refs: { orderId, orderRef: orderId, invoiceRef: `INVOICE/${orderId}` },
+    dates: { issueDate: '2026-11-01', sellDate: '2026-11-01', handedOverAt: null, paymentCompletedAt: proof.observedAt },
+    documentKind: 'sandbox-document', clearanceRequired: false, currency,
+    buyer: { name: 'Example Customer', email: null, taxIdentifier: null, companyName: null, address: null },
+    payment: { intentRef: intent, providerRef: 'sandbox-money', providerPaymentRef: null, amountMinor: total, currency, localSettlementState: 'matched' },
+    orderMoney: null, lines: [{ description: 'Synthetic item', quantity: 1, unitNetMinor: total, unitGrossMinor: total,
+      totalNetMinor: total, totalTaxMinor: 0, totalGrossMinor: total, taxRateBps: 0, positionKind: 'item',
+      catalogTotalGrossMinor: null, discountAllocatedMinor: null, shippingGrossMinor: null, shippingDiscountMinor: null }],
+    totalNetMinor: total, totalTaxMinor: 0, totalGrossMinor: total, chargedTotalGrossMinor: total } });
+  const sweep = await store.sweep(100); if ('kind' in sweep) throw new Error('portal_invoice_sweep_required');
+  const lease = sweep.claims.find(row => row.dutyId === duty.dutyId)!;
+  const prepared = await store.prepareFacts(lease); if ('kind' in prepared || prepared.status !== 'ready') throw new Error('portal_invoice_facts_required');
+  await store.finishFacts({ ...lease, result: { ...prepared, status: 'ready' } });
+  const money = { read: async () => ({ kind: 'observed' as const, status: 'succeeded' as const, amountMinor: total, currency, proof }) };
+  expect(await runNativeInvoiceIssueJob({ store, provider: createCapturedPostgresInvoiceProvider(runtime, config.documents.sandbox).provider,
+    money, readLocalPayment: () => money.read(), providerRef, orderId })).toMatchObject({ failures: 0 });
+  return (await runtime.query('SELECT id FROM public.accounting_documents WHERE order_id=$1', [orderId])).rows[0].id as string;
+}
+
+for (const locale of ['en', 'pl'] as const) {
+  test(`${locale}: portal recovery waves retain both links and land on the exact order`, async ({ page, context }) => {
+    const f = await pendingCheckout(page, locale);
+    // Time-only fixture: the order and intent remain the ones created by checkout.
+    await owner.query("UPDATE public.commerce_orders SET created_at=now()-interval '21 hours' WHERE id=$1", [f.orderRef]);
+    await owner.query("UPDATE public.commerce_settlement_intents SET created_at=now()-interval '21 hours',updated_at=now()-interval '21 hours' WHERE order_id=$1", [f.orderRef]);
+    await checkoutMail(locale); await checkoutMail(locale);
+    const captured = (await messages()).filter(row => row.kind === 'checkout_recovery' && row.orderId === f.orderRef);
+    expect(captured).toHaveLength(2);
+    for (const message of captured) {
+      expect(message.locale).toBe(locale); expect(message.recoveryUrl).toBeTruthy();
+      await page.goto(String(message.recoveryUrl));
+      await expect(page.locator('main')).toContainText(f.orderRef);
+      await expect(page.getByRole('button', { name: copy[locale].simulatePaid, exact: true })).toBeVisible();
+      expect(new URL(page.url()).searchParams.has('token')).toBe(false); await accessible(page.locator('main'));
+    }
+    await page.getByRole('button', { name: copy[locale].simulatePaid, exact: true }).click();
+    await expect(page.locator('main')).toContainText(copy[locale].recoveryPaid);
+    await context.clearCookies();
+    for (const message of captured) {
+      await page.goto(String(message.recoveryUrl)); await expect(page.locator('main')).toContainText(copy[locale].recoveryPaid);
+      await expect(page.getByRole('button', { name: copy[locale].simulatePaid, exact: true })).toHaveCount(0);
+    }
+    expect((await runtime.query("SELECT count(*)::int AS n FROM public.payment_truth_events e JOIN public.commerce_settlement_intents i ON i.id=e.settlement_intent_id WHERE i.order_id=$1 AND e.outcome='captured'", [f.orderRef])).rows[0].n).toBe(1);
+  });
+
+
+  test(`${locale}: portal expired-checkout notice retains the source order and offers no payment`, async ({ page }) => {
+    const f = await pendingCheckout(page, locale);
+    await owner.query("UPDATE public.commerce_orders SET created_at=now()-interval '2 hours' WHERE id=$1", [f.orderRef]);
+    await owner.query("UPDATE public.fulfillment_inventory_reservations SET created_at=now()-interval '2 hours',expires_at=now()-interval '1 hour' WHERE purchase_order_id=$1", [f.orderRef]);
+    await checkoutMail(locale);
+    const message = (await messages()).find(row => row.kind === 'checkout_expired' && row.orderId === `order_${f.orderRef}`)!;
+    expect(message).toBeTruthy(); expect(message.locale).toBe(locale);
+    await page.goto(String(message.recoveryUrl));
+    await expect(page.locator('main')).toContainText(copy[locale].recoveryExpired);
+    await expect(page.locator('main')).toContainText(f.orderRef);
+    await expect(page.getByRole('button', { name: copy[locale].simulatePaid, exact: true })).toHaveCount(0);
+  });
+
+
+  test(`${locale}: portal abandoned initial checkout notice cannot activate or pay a subscription`, async ({ page }) => {
+    const f = await pendingCheckout(page, locale, 'subscription');
+    await owner.query("UPDATE public.commerce_orders SET created_at=now()-interval '3 hours' WHERE id=$1", [f.orderRef]);
+    await owner.query("UPDATE public.subscription_activations SET declared_at=now()-interval '3 hours' WHERE order_id=$1", [f.orderRef]);
+    await checkoutMail(locale);
+    const message = (await messages()).find(row => row.kind === 'checkout_expired' && row.orderId === `order_${f.orderRef}`)!;
+    expect(message).toBeTruthy(); await page.goto(String(message.recoveryUrl));
+    await expect(page.locator('main')).toContainText(copy[locale].recoveryCancelled);
+    await expect(page.locator('main')).toContainText(f.orderRef);
+    await expect(page.getByRole('button', { name: copy[locale].simulatePaid, exact: true })).toHaveCount(0);
+    expect((await runtime.query('SELECT state,subscription_id FROM public.subscription_activations WHERE order_id=$1', [f.orderRef])).rows[0]).toEqual({ state: 'compensated', subscription_id: null });
+    expect((await runtime.query("SELECT count(*)::int AS n FROM public.outbox_events WHERE aggregate_id=$1 AND event_type='commerce.order.cancelled'", [f.orderRef])).rows[0].n).toBe(0);
+  });
+
+  test(`${locale}: portal signed-in recovery selects owned pending checkout and sends no mail`, async ({ page, context }) => {
+    const f = await pendingCheckout(page, locale);
+    const second = await pendingCheckout(page, locale, 'subscription');
+    expect((await call(page, 'checkout.recoveryStart', { orderRef: f.orderRef })).code).toBe('customer_session_required');
+    await signIn(page, f.email, locale);
+    const before = (await runtime.query('SELECT count(*)::int AS n FROM public.outbox_events')).rows[0].n;
+    const result = await call(page, 'checkout.recoveryStart', { orderRef: f.orderRef }); expect(result.ok).toBe(true);
+    expect(result.value.recoverable).toBe(true);
+    expect((await runtime.query('SELECT count(*)::int AS n FROM public.outbox_events')).rows[0].n).toBe(before);
+    const again = await call(page, 'checkout.recoveryStart', { orderRef: f.orderRef }); expect(again.value.token === result.value.token).toBe(false);
+    expect((await call(page, 'checkout.read', { token: result.value.token })).ok).toBe(true);
+    const foreign = await call(page, 'checkout.recoveryStart', { orderRef: second.orderRef }); expect(foreign.value.recoverable).toBe(false);
+    const card = page.locator(`[data-order="${f.orderRef}"]`); await expect(card).toBeVisible(); await accessible(card);
+    await card.getByRole('button', { name: copy[locale].completeOrderPayment, exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(routes.completion[locale])); await expect(page.locator('main')).toContainText(f.orderRef);
+    await context.clearCookies(); await signIn(page, second.email, locale);
+    const initial = (await runtime.query('SELECT id FROM public.subscription_activations WHERE order_id=$1', [second.orderRef])).rows[0].id;
+    expect((await call(page, 'checkout.recoveryStart', { subscriptionRef: initial })).value.recoverable).toBe(true);
+  });
+
+  test(`${locale}: portal profile edit normalizes, preserves failed drafts and replays current state`, async ({ page }) => {
+    const f = await pendingCheckout(page, locale); await signIn(page, f.email, locale);
+    const section = page.locator('[data-profile-editor]'); await expect(section.locator('form')).toBeVisible(); await accessible(section);
+    await expect(section).toContainText(f.email); await expect(section.locator('[name=email]')).toHaveCount(0);
+    await section.locator('[name=firstName]').fill('  Example   Name '); await section.locator('[name=lastName]').fill('');
+    await section.locator('[name=phone]').fill('123 456 789');
+    await section.getByRole('button', { name: copy[locale].save, exact: true }).click();
+    await expect(section.locator('[name=firstName]')).toHaveValue('Example Name');
+    await expect(section.locator('[name=phone]')).toHaveValue('+999123456789');
+    await section.locator('[name=firstName]').fill('x'); await section.getByRole('button', { name: copy[locale].save, exact: true }).click();
+    await expect(section.locator('.action-result')).toContainText('starter_input_invalid');
+    await expect(section.locator('[name=firstName]')).toHaveValue('x');
+    expect((await call(page, 'account.profile', { email: 'different@example.test' })).code).toBe('starter_input_invalid');
+    const key = randomUUID(); expect((await call(page, 'account.profile', { firstName: 'Recorded' }, key)).ok).toBe(true);
+    expect((await call(page, 'account.profile', { firstName: 'Current', phone: null })).ok).toBe(true);
+    expect((await call(page, 'account.profile', { firstName: 'Recorded' }, key)).value.profile.firstName).toBe('Current');
+    await page.reload(); await expect(section.locator('[name=firstName]')).toHaveValue('Current');
+    await expect(section.locator('[name=phone]')).toHaveValue('');
+  });
+
+  test(`${locale}: portal invoice correction records a request without changing the document`, async ({ page, context }) => {
+    const f = await pendingCheckout(page, locale);
+    expect((await call(page, 'payment.simulate', { orderRef: f.orderRef, token: f.token, outcome: 'captured' })).ok).toBe(true);
+    const invoiceId = await issuedInvoice(f.orderRef); await signIn(page, f.email, locale); await page.goto(routes.invoices[locale]);
+    const before = (await runtime.query('SELECT to_jsonb(d) AS value FROM public.accounting_documents d WHERE id=$1', [invoiceId])).rows[0].value;
+    const reader = page.locator('form').filter({ has: page.locator('[name=orderRef]') }).filter({ hasNot: page.locator('[name=documentRef]') }).first();
+    await reader.locator('[name=orderRef]').fill(f.orderRef); await reader.getByRole('button', { name: copy[locale].read, exact: true }).click();
+    const form = page.locator('[data-invoice-corrections] form'); await expect(form).toBeVisible(); await accessible(form);
+    await form.locator('[name=reason]').fill('x'); await form.getByRole('button', { name: copy[locale].save, exact: true }).click();
+    await expect(form.locator('.action-result')).toContainText('starter_input_invalid'); await expect(form.locator('[name=reason]')).toHaveValue('x');
+    await form.locator('[name=reason]').fill('Correct the fictional recipient'); await form.locator('[name=requestedFields]').fill('name, address');
+    await form.getByRole('button', { name: copy[locale].save, exact: true }).click(); await expect(form).toContainText(copy[locale].correctionRecorded);
+    const key = randomUUID(), input = { invoiceId, reason: 'Correct the fictional recipient', requestedFields: ['name'] };
+    const first = await call(page, 'account.invoiceCorrection', input, key), second = await call(page, 'account.invoiceCorrection', input, key);
+    expect(first.ok && second.ok).toBe(true); expect(first.value.eventId === second.value.eventId).toBe(false);
+    expect((await call(page, 'account.read', {})).value.accountEvents.filter((row: { eventType: string }) => row.eventType === 'customer.invoice_correction_requested')).toHaveLength(3);
+    expect((await runtime.query('SELECT to_jsonb(d) AS value FROM public.accounting_documents d WHERE id=$1', [invoiceId])).rows[0].value).toEqual(before);
+    await context.clearCookies(); const other = await pendingCheckout(page, locale); await signIn(page, other.email, locale);
+    expect((await call(page, 'account.invoiceCorrection', input)).code).toBe('starter_invoice_not_found');
+  });
+
+  test(`${locale}: portal operator copies and emails a checkout link with native revocation`, async ({ page, context }) => {
+    const f = await pendingCheckout(page, locale); await portalOperator(page, locale);
+    const panel = await operatorDetail(page, f.orderRef, locale);
+    const form = panel.locator('form').filter({ has: page.locator('[name=delivery]') }); await expect(form).toBeVisible(); await accessible(form);
+    await form.getByRole('button', { name: copy[locale].paymentLink, exact: true }).click();
+    await expect(panel.locator('input[readonly]')).toBeVisible();
+    expect((await call(page, 'checkout.read', { token: f.token })).ok).toBe(false);
+    const before = (await runtime.query("SELECT count(*)::int AS n FROM public.outbox_events WHERE aggregate_id=$1 AND event_type='commerce.checkout_recovery'", [f.orderRef])).rows[0].n; expect(before).toBe(0);
+    await form.locator('[name=delivery]').selectOption('email'); await form.getByRole('button', { name: copy[locale].paymentLink, exact: true }).click();
+    await expect(form.locator('.action-result')).toContainText('true');
+    await owner.query("UPDATE public.commerce_settlement_intents SET updated_at=now()-interval '2 hours' WHERE order_id=$1", [f.orderRef]);
+    await checkoutMail(locale);
+    const message = (await messages()).find(row => row.kind === 'checkout_recovery' && row.orderId === f.orderRef)!; expect(message).toBeTruthy();
+    await context.clearCookies(); await page.goto(String(message.recoveryUrl)); await expect(page.locator('main')).toContainText(f.orderRef);
+    await page.getByRole('button', { name: copy[locale].simulatePaid, exact: true }).click(); await expect(page.locator('main')).toContainText(copy[locale].recoveryPaid);
+    await portalOperator(page, locale); expect((await call(page, 'operator.paymentLink', { orderRef: f.orderRef, delivery: 'copy' })).ok).toBe(false);
+  });
+
+
+  test(`${locale}: portal operator completion navigation replaces a different pending purchase`, async ({ page }) => {
+    const other = await pendingCheckout(page, locale), issued = await pendingCheckout(page, locale);
+    const previous = new URL(routes.completion[locale], material.baseURL); previous.searchParams.set('token', other.token);
+    await page.goto(previous.href);
+    await expect(page.locator('main')).toContainText(other.orderRef);
+    await expect(page.getByRole('button', { name: copy[locale].simulatePaid, exact: true })).toBeVisible();
+    await portalOperator(page, locale);
+    const panel = await operatorDetail(page, issued.orderRef, locale);
+    const form = panel.locator('form').filter({ has: page.locator('[name=delivery]') }); await accessible(form);
+    await form.getByRole('button', { name: copy[locale].paymentLink, exact: true }).click();
+    const completion = panel.getByRole('link', { name: copy[locale].completion, exact: true });
+    await expect(completion).toHaveAccessibleName(copy[locale].completion);
+    await completion.click();
+    await expect(page.locator('main')).toContainText(issued.orderRef);
+    await expect(page.locator('main')).not.toContainText(other.orderRef);
+    expect(new URL(page.url()).searchParams.has('token')).toBe(false);
+    const payment = page.getByRole('button', { name: copy[locale].simulatePaid, exact: true });
+    await expect(payment).toHaveAccessibleName(copy[locale].simulatePaid); await payment.click();
+    await expect(page.locator('main')).toContainText(copy[locale].recoveryPaid);
+    await expect(page.locator('main')).toContainText(issued.orderRef);
+    expect((await runtime.query('SELECT id,status FROM public.commerce_orders WHERE id=ANY($1::uuid[]) ORDER BY id',
+      [[issued.orderRef, other.orderRef]])).rows).toEqual([
+      { id: issued.orderRef, status: 'paid' }, { id: other.orderRef, status: 'pending_payment' },
+    ].sort((a, b) => a.id.localeCompare(b.id)));
+  });
+
+  test(`${locale}: portal delayed checkout response cannot replace the displayed issued purchase`, async ({ page }) => {
+    const issued = await pendingCheckout(page, locale); await portalOperator(page, locale);
+    await page.goto(routes.builder[locale]);
+    await page.getByLabel(copy[locale].purchaseMode, { exact: true }).selectOption('one_time');
+    await page.getByRole('spinbutton').first().fill(String(configurations[material.id]!.offer.minUnits));
+    await page.getByRole('button', { name: copy[locale].addBox, exact: true }).click();
+    await page.getByRole('button', { name: copy[locale].checkout, exact: true }).click();
+    const buyerEmail = `delayed-${randomUUID()}@example.test`;
+    await page.getByLabel(copy[locale].email, { exact: true }).fill(buyerEmail);
+    const quoted = page.waitForResponse(row => row.url().endsWith('/api/actions/offer.validate')
+      && row.request().postDataJSON().email === buyerEmail);
+    await page.getByLabel(copy[locale].email, { exact: true }).blur();
+    await (await quoted).finished();
+    await page.evaluate(() => new Promise<void>(done => requestAnimationFrame(() => done())));
+    await page.getByLabel(copy[locale].termsAccept).check();
+    let release!: () => void;
+    const gate = new Promise<void>(done => { release = done; });
+    let createdStatus = 'not_submitted';
+    let received!: (order: string) => void;
+    const pending = new Promise<string>(done => { received = done; });
+    let finished!: () => void;
+    const delivered = new Promise<void>(done => { finished = done; });
+    await page.route('**/api/actions/checkout.create', async route => {
+      const response = await route.fetch(), body = await response.json();
+      createdStatus = body.ok ? 'created' : body.code;
+      expect(body.ok, body.code).toBe(true); received(body.value.orderRef);
+      await gate; await route.fulfill({ response }); finished();
+    });
+    await test.step('submit the pending checkout', async () => {
+      await page.getByRole('button', { name: copy[locale].placeOrder, exact: true }).click();
+      await expect.poll(() => createdStatus).toBe('created');
+    });
+    const other = await pending;
+    await page.locator('footer').getByRole('link', { name: copy[locale].admin, exact: true }).click();
+    const panel = await operatorDetail(page, issued.orderRef, locale);
+    const form = panel.locator('form').filter({ has: page.locator('[name=delivery]') }); await accessible(form);
+    await form.getByRole('button', { name: copy[locale].paymentLink, exact: true }).click();
+    await panel.getByRole('link', { name: copy[locale].completion, exact: true }).click();
+    await expect(page.locator('main')).toContainText(issued.orderRef);
+    const lateResponse = page.waitForResponse(row => row.url().endsWith('/api/actions/checkout.create'));
+    await test.step('deliver the late checkout response', async () => {
+      release(); await delivered; await (await lateResponse).finished();
+    });
+    await page.evaluate(() => new Promise<void>(done => requestAnimationFrame(() => done())));
+    // The completed response must not replace the active page's reload convenience.
+    await expect.poll(() => page.evaluate(configuration => {
+      const value = JSON.parse(sessionStorage.getItem(`neutral-store:purchase:v2:${configuration}`) ?? 'null');
+      return value?.orderRef;
+    }, material.id)).toBe(issued.orderRef);
+    const paymentRequest = page.waitForRequest(row => row.url().endsWith('/api/actions/payment.simulate'));
+    const payment = page.getByRole('button', { name: copy[locale].simulatePaid, exact: true });
+    await expect(payment).toHaveAccessibleName(copy[locale].simulatePaid); await payment.click();
+    expect((await paymentRequest).postDataJSON().orderRef).toBe(issued.orderRef);
+    await expect(page.locator('main')).toContainText(copy[locale].recoveryPaid);
+    expect((await runtime.query('SELECT status FROM public.commerce_orders WHERE id=$1', [issued.orderRef])).rows[0].status).toBe('paid');
+    expect((await runtime.query('SELECT status FROM public.commerce_orders WHERE id=$1', [other])).rows[0].status).toBe('pending_payment');
+    await page.reload(); await expect(page.locator('main')).toContainText(issued.orderRef);
+    await expect(page.locator('main')).toContainText(copy[locale].recoveryPaid);
+  });
+
+  test(`${locale}: portal distributor cannot read OMS or mutate and replay catalog drafts and payment links`, async ({ page }) => {
+    const f = await pendingCheckout(page, locale); await portalOperator(page, locale);
+    expect((await call(page, 'operator.orders', {})).ok).toBe(true);
+    expect((await call(page, 'operator.order', { orderRef: f.orderRef })).ok).toBe(true);
+    const draftForm = page.locator('#catalogue-drafts form').filter({ has: page.locator('[name=payload]') }); await accessible(draftForm);
+    const sent = page.waitForRequest(row => row.url().endsWith('/api/actions/operator.catalogDrafts'));
+    const response = page.waitForResponse(row => row.url().endsWith('/api/actions/operator.catalogDrafts'));
+    await draftForm.getByRole('button', { name: copy[locale].save, exact: true }).click();
+    const created = await (await response).json(); expect(created.ok, created.code).toBe(true);
+    const draftRequest = await sent, draftInput = draftRequest.postDataJSON(), draftKey = draftRequest.headers()['idempotency-key']!;
+    expect((await call(page, 'operator.catalogDrafts', draftInput, draftKey)).replayed).toBe(true);
+    const linkInput = { orderRef: f.orderRef, delivery: 'copy' }, linkKey = randomUUID();
+    expect((await call(page, 'operator.paymentLink', linkInput, linkKey)).ok).toBe(true);
+    const before = (await call(page, 'operator.catalogDrafts', { action: 'get', draftId: created.value.record.draftId })).value;
+    await portalOperator(page, locale, 'distributor');
+    for (const [operation, input, key] of [
+      ['operator.orders', {}, randomUUID()], ['operator.order', { orderRef: f.orderRef }, randomUUID()],
+      ['operator.catalogDrafts', { ...draftInput, draftId: randomUUID() }, randomUUID()],
+      ['operator.catalogDrafts', draftInput, draftKey],
+      ['operator.paymentLink', linkInput, randomUUID()], ['operator.paymentLink', linkInput, linkKey],
+    ] as const) {
+      const result = await call(page, operation, input, key);
+      expect(result.code, operation).toBe('operator_required'); expect(result.value, operation).toBeUndefined();
+    }
+    await portalOperator(page, locale);
+    expect((await call(page, 'operator.catalogDrafts', { action: 'get', draftId: created.value.record.draftId })).value).toEqual(before);
+  });
+
+  test(`${locale}: portal operator expired links revalidate frozen commercial facts`, async ({ page }) => {
+    const f = await pendingCheckout(page, locale);
+    await owner.query("UPDATE public.commerce_orders SET created_at=now()-interval '2 hours' WHERE id=$1", [f.orderRef]);
+    await owner.query("UPDATE public.fulfillment_inventory_reservations SET created_at=now()-interval '2 hours',expires_at=now()-interval '1 hour' WHERE purchase_order_id=$1", [f.orderRef]);
+    await checkoutMail(locale); await portalOperator(page, locale);
+    const result = await call(page, 'operator.paymentLink', { orderRef: f.orderRef, delivery: 'copy' });
+    expect(result.ok, result.code).toBe(true);
+    const url = new URL(routes.completion[locale], material.baseURL); url.searchParams.set('token', result.value.token);
+    await page.goto(url.href); await expect(page.locator('main')).toContainText(copy[locale].recoveryExpired);
+    await expect(page.locator('main')).toContainText(f.orderRef);
+    // Corrupt only this synthetic frozen money snapshot: the current quote must no longer match it.
+    await owner.query("UPDATE public.commerce_orders SET metadata=jsonb_set(metadata,'{quoteSnapshot,quote,totalGross,amountMinor}',to_jsonb(total_amount_minor+1)) WHERE id=$1", [f.orderRef]);
+    expect((await call(page, 'operator.paymentLink', { orderRef: f.orderRef, delivery: 'copy' })).code).toBe('starter_checkout_order_changed');
+  });
+
+  test(`${locale}: portal operator replacement requires confirmation and retains in-flight alignment`, async ({ page }) => {
+    const f = await purchase(page), original = await parcel(f.orderRef), before = await state(f);
+    const actor = await portalOperator(page, locale);
+    const hold = await createPostgresCommerceOmsPort(runtime).createHold({ idempotencyKey: randomUUID(), orderId: f.orderRef,
+      actorUserId: actor, reason: 'fulfillment_exception' });
+    const panel = await operatorDetail(page, f.orderRef, locale);
+    const form = panel.locator('form').filter({ has: page.locator('[name=confirmed]') }).first();
+    await expect(form).toBeVisible(); await accessible(form); await expect(panel).toContainText('1 Example Lane');
+    await form.locator('[name=reason]').selectOption('lost');
+    expect((await call(page, 'operator.replacement', { orderRef: f.orderRef, reason: 'lost' })).code).toBe('starter_input_invalid');
+    await form.locator('[name=confirmed]').check();
+    const sentRequest = page.waitForRequest(row => row.url().endsWith('/api/actions/operator.replacement'));
+    const response = page.waitForResponse(row => row.url().endsWith('/api/actions/operator.replacement'));
+    await form.getByRole('button', { name: copy[locale].requestReplacement, exact: true }).click();
+    const result = await (await response).json(); expect(result.ok, result.code).toBe(true);
+    await expect(page.locator('[data-parcel-result]')).toContainText(original.shipmentId);
+    expect(result.value.releasedHoldIds).toEqual([hold.hold.id]);
+    const replayKey = (await sentRequest).headers()['idempotency-key']!;
+    expect((await call(page, 'operator.replacement', { orderRef: f.orderRef, reason: 'lost', confirmed: true }, replayKey)).replayed).toBe(true);
+    expect((await call(page, 'operator.replacement', { orderRef: f.orderRef, reason: 'damaged', confirmed: true }, replayKey)).ok).toBe(false);
+    const replacement = result.value.replacement.fulfillmentOrderId;
+    expect((await runtime.query('SELECT status,replaces_shipment_id FROM public.fulfillment_shipments WHERE id=$1', [replacement])).rows[0]).toEqual({ status: 'created', replaces_shipment_id: original.shipmentId });
+    await expect(page.locator('[data-order-controls]')).toContainText(replacement);
+    expect((await state(f)).next_cycle_at).toEqual(before.next_cycle_at);
+    const key = randomUUID(), request = { orderRef: f.orderRef, reason: 'lost', confirmed: true };
+    expect((await call(page, 'operator.replacement', request, key)).ok).toBe(false);
+    await expect(page.getByRole('button', { name: /confirm.*deliver|potwierdź.*doręczenie/i })).toHaveCount(0);
+  });
+
+  test(`${locale}: portal complete fulfillment cancellation releases only recorded reservations and replays`, async ({ page }) => {
+    const f = await pendingCheckout(page, locale);
+    expect((await call(page, 'payment.simulate', { orderRef: f.orderRef, token: f.token, outcome: 'captured' })).ok).toBe(true);
+    const shipment = await parcel(f.orderRef); await portalOperator(page, locale);
+    const panel = await operatorDetail(page, f.orderRef, locale);
+    const form = panel.locator('form').filter({ has: page.locator('[name=confirmed]') }).last(); await expect(form).toBeVisible(); await accessible(form);
+    await form.locator('[name=reason]').fill('Cancel this fictional parcel'); await form.locator('[name=confirmed]').check();
+    const request = page.waitForRequest(row => row.url().endsWith('/api/actions/operator.cancelFulfillment'));
+    await form.getByRole('button', { name: copy[locale].cancelFulfillment, exact: true }).click();
+    const sent = await request, key = sent.headers()['idempotency-key']!;
+    await expect(page.locator('[data-parcel-result]')).toContainText('cancelled');
+    const replay = await call(page, 'operator.cancelFulfillment', { shipmentRef: shipment.shipmentId, reason: 'Cancel this fictional parcel', confirmed: true }, key);
+    expect(replay.ok).toBe(true); expect(replay.replayed).toBe(true);
+    expect((await call(page, 'operator.cancelFulfillment', { shipmentRef: shipment.shipmentId, reason: 'Changed reason', confirmed: true }, key)).ok).toBe(false);
+    expect((await runtime.query('SELECT status FROM public.commerce_orders WHERE id=$1', [f.orderRef])).rows[0].status).toBe('paid');
+    expect((await runtime.query("SELECT count(*)::int AS n FROM public.fulfillment_inventory_reservations WHERE purchase_order_id=$1 AND status IN ('held','committed')", [f.orderRef])).rows[0].n).toBe(0);
+  });
+
+  test(`${locale}: portal provider cancellation keeps payment and invoice facts and rejects revoked replay`, async ({ page }) => {
+    const f = await pendingCheckout(page, locale);
+    expect((await call(page, 'payment.simulate', { orderRef: f.orderRef, token: f.token, outcome: 'captured' })).ok).toBe(true);
+    const original = await parcel(f.orderRef), document = await issuedInvoice(f.orderRef), actor = await portalOperator(page, locale);
+    const request = { shipmentRef: original.shipmentId, reason: 'Provider confirmed cancellation', confirmed: true };
+    // External provider fixture, matching native dispatch ownership and normalized cancellation evidence.
+    await owner.query('INSERT INTO public.fulfillment_dispatch_contexts(shipment_id,contact_revision,provider_ref,withheld) VALUES($1,$2,$3,false)',
+      [original.shipmentId, { schemaVersion: 1, source: 'contact', revision: 1 }, configurations[material.id]!.purchase.stock.providerRef]);
+    await owner.query("INSERT INTO public.fulfillment_dispatch_refs(request_key,shipment_id,order_id,mode,evidence) VALUES($1,$2,$3,'live','{}')", [randomUUID(), original.shipmentId, f.orderRef]);
+    const stock = async () => (await runtime.query('SELECT id,status FROM public.fulfillment_inventory_reservations WHERE purchase_order_id=$1 ORDER BY id', [f.orderRef])).rows;
+    const beforeStock = await stock();
+    expect((await call(page, 'operator.cancelFulfillment', request)).code).toBe('starter_fulfillment_provider_dispatch_active');
+    expect(await stock()).toEqual(beforeStock);
+    await owner.query("UPDATE public.fulfillment_dispatch_refs SET status='cancelled' WHERE shipment_id=$1", [original.shipmentId]);
+    await owner.query("UPDATE public.fulfillment_shipments SET status='exception' WHERE id=$1", [original.shipmentId]);
+    const event = randomUUID();
+    await runtime.query('SELECT public.fulfillment_record_observation($1,$2,$3,$4)', [event, original.shipmentId,
+      { providerStatus: { primary: 'CANCELLED' }, fact: { occurredAt: '2026-11-03T00:00:00Z' }, correlation: { fulfillmentRef: original.shipmentId } }, '2026-11-10T12:00:00Z']);
+    await runtime.query('SELECT public.fulfillment_record_operator_status_evidence($1,$2)', [event, original.shipmentId]);
+    const externalOms = createPostgresCommerceOmsPort(runtime);
+    const hold = await externalOms.createHold({ idempotencyKey: randomUUID(), orderId: f.orderRef, reason: 'fulfillment_exception', actorUserId: actor });
+    expect((await call(page, 'operator.cancelFulfillment', request)).code).toBe('starter_fulfillment_active_hold');
+    await externalOms.releaseHold({ idempotencyKey: randomUUID(), holdId: hold.hold.id, actorUserId: actor });
+    const facts = async () => ({ money: (await runtime.query('SELECT to_jsonb(i) AS value FROM public.commerce_settlement_intents i WHERE order_id=$1', [f.orderRef])).rows,
+      invoice: (await runtime.query('SELECT to_jsonb(d) AS value FROM public.accounting_documents d WHERE id=$1', [document])).rows });
+    const before = await facts(), panel = await operatorDetail(page, f.orderRef, locale);
+    const form = panel.locator('form').filter({ has: page.locator('[name=confirmed]') }).last();
+    await form.locator('[name=reason]').fill(request.reason); await form.locator('[name=confirmed]').check();
+    await form.getByRole('button', { name: copy[locale].cancelFulfillment, exact: true }).click();
+    await expect(page.locator('[data-parcel-result]')).toContainText('cancelled');
+    expect((await runtime.query('SELECT status FROM public.commerce_orders WHERE id=$1', [f.orderRef])).rows[0].status).toBe('cancelled');
+    expect(await facts()).toEqual(before);
+    expect((await runtime.query("SELECT count(*)::int AS n FROM public.outbox_events WHERE aggregate_id=$1 AND event_type='commerce.order.cancelled'", [f.orderRef])).rows[0].n).toBe(0);
+    const key = randomUUID(); expect((await call(page, 'operator.cancelFulfillment', request, key)).replayed).toBe(true);
+    const root = (await owner.query("SELECT principal_id FROM public.platform_human_memberships WHERE membership_state='active' AND role='admin' AND principal_id<>$1 LIMIT 1", [actor])).rows[0].principal_id;
+    const invitations = createDirectOperatorInvitationStore({ connectionString: material.ownerUrl });
+    try { await invitations.remove({ actorPrincipalId: root, targetPrincipalId: actor }); } finally { await invitations.close(); }
+    expect((await call(page, 'operator.cancelFulfillment', request, key)).code).toBe('operator_required');
+    await portalOperator(page, locale, 'distributor');
+    expect((await call(page, 'operator.cancelFulfillment', request)).code).toBe('operator_required');
+    expect((await call(page, 'operator.cancelFulfillment', request, key)).code).toBe('operator_required');
+    expect((await call(page, 'operator.replacement', { orderRef: f.orderRef, reason: 'lost', confirmed: true })).code).toBe('operator_required');
+  });
+
+}
 });
