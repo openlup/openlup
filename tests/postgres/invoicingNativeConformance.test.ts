@@ -100,7 +100,7 @@ it("fresh complete install and exact pre-M09 prefix upgrade preserve rows/histor
   expect((await h.pool.query("SELECT * FROM public.payment_truth_events WHERE id=$1",[h.legacy.eventId])).rows).toEqual([{...(h.legacy.row as Record<string, unknown>), review_required_at: null}]);
   expect(h.upgradeFiles).toEqual(units.slice(prefixLength).map(unit=>unit.file));
   expect((await h.pool.query("SELECT * FROM public.platform_schema_migrations WHERE position<$1 ORDER BY position",[prefixLength])).rows).toEqual(h.prefixHistory);
-  expect((await h.pool.query("SELECT * FROM public.commerce_orders WHERE id=$1",[h.witness.order])).rows).toEqual(h.prefixRows);
+  expect((await h.pool.query("SELECT * FROM public.commerce_orders WHERE id=$1",[h.witness.order])).rows).toEqual(h.prefixRows.map(row=>({...row as Record<string, unknown>,recovery_root_order_id:null,recreated_from_order_id:null})));
   for(const unit of units.slice(prefixLength)) {
     const canonical=readFileSync(unit.file);
     expect(sha256(canonical)).toBe(unit.sha256);

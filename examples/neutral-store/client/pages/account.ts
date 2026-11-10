@@ -1,3 +1,4 @@
+import { rememberPurchase } from '../purchase.ts';
 import { act } from '../api.ts';
 import { careAvailability, saveOfferKind, saveRescheduleTarget, type CareAction, type PortalSubscription } from '../../shared/renewal-config.ts';
 import { currentRecoveryToken } from '../recovery-session.ts';
@@ -17,21 +18,36 @@ export function accountPage(context: PageContext): HTMLElement {
     el('div', { class: 'actions' }, link(context.t('signIn'), routes.auth[context.locale] + '?' + new URLSearchParams({ returnTo: accountReturn(context) }), 'button-link'),
       link(context.t('invoices'), routes.invoices[context.locale], 'button-link secondary')),
     readPanel(context, 'account', 'account.read'),
-    readPanel(context, 'orders', 'account.orders'),
+    orderPortal(context), profileEditor(context),
     subscriptionPortal(context),
     subscriptionEditorEntries(context),
     addressForm(context, 'subscription.address'),
     communicationChoices(context),
-    nativeActions(context, ['N5', 'N6', 'N7', 'N8', 'N9']),
+    nativeActions(context, ['N5', 'N6', 'N8', 'N9']),
     actionForm(context, { operation: 'auth.signOut', submit: 'signOut' }));
 }
 
 export function invoicesPage(context: PageContext): HTMLElement {
+  const corrections = el('section', { 'data-invoice-corrections': '' });
   return el('div', {}, el('h1', {}, context.t('orders')),
     readPanel(context, 'orders', 'account.orders'),
     el('p', {}, context.t('sandboxInvoice')),
     actionForm(context, { operation: 'account.invoice', title: 'invoiceHistory', submit: 'read',
-      fields: [{ name: 'orderRef', label: 'orderRef' }] }),
+      fields: [{ name: 'orderRef', label: 'orderRef' }], onSuccess(value) {
+        corrections.replaceChildren();
+        if (!isRecord(value) || !Array.isArray(value.documents)) return;
+        for (const document of value.documents) {
+          if (!isRecord(document) || document.isCurrent !== true || typeof document.documentRef !== 'string') continue;
+          append(corrections, actionForm(context, { operation: 'account.invoiceCorrection', title: 'invoiceCorrection', submit: 'save',
+            fields: [{ name: 'reason', label: 'reason', type: 'textarea', maxLength: 500 },
+              { name: 'requestedFields', label: 'correctionFields', required: false, maxLength: 500 },
+              { name: 'note', label: 'note', type: 'textarea', required: false, maxLength: 500 }],
+            transform: values => ({ invoiceId: document.documentRef, reason: values.reason,
+              requestedFields: String(values.requestedFields).split(',').map(value => value.trim()).filter(Boolean), note: values.note || null }),
+            resultMessage: () => 'correctionRecorded' }));
+        }
+      } }),
+    corrections,
     actionForm(context, {
       operation: 'account.invoice', title: 'invoices', submit: 'download',
       fields: [{ name: 'orderRef', label: 'orderRef' }, { name: 'documentRef', label: 'documentRef' }],
@@ -219,4 +235,53 @@ export function accountReturn(context: PageContext): string {
   const path = new URL(routes.account[context.locale], location.origin);
   for (const key of ['sub', 'sekcja']) { const value = context.query.get(key); if (value) path.searchParams.set(key, value); }
   return path.pathname + path.search;
+}
+
+
+/** The owned pending order supplies the target; the actor port decides recoverability. */
+function orderPortal(context: PageContext): HTMLElement {
+  const output = el('div', { 'aria-live': 'polite' });
+  const section = el('section', { class: 'panel', 'data-account-orders': '' }, el('h2', {}, context.t('orders')),
+    button(context.t('readStatus'), refresh), output);
+  async function refresh() {
+    const result = await act('account.orders', {}, crypto.randomUUID());
+    output.replaceChildren();
+    if (!result.ok) { append(output, refusal(context, result.code)); return; }
+    if (!isRecord(result.value) || !Array.isArray(result.value.orders)) return;
+    for (const order of result.value.orders) {
+      if (!isRecord(order) || typeof order.orderId !== 'string') continue;
+      const card = el('article', { class: 'panel', 'data-order': order.orderId }, el('h3', {}, order.orderId), renderValue(order));
+      if (order.recoverableCheckout === true) append(card, actionForm(context, { operation: 'checkout.recoveryStart', submit: 'completeOrderPayment',
+        input: () => ({ orderRef: order.orderId }), onSuccess(value) {
+          if (!isRecord(value)) return;
+          if (value.recoverable === true && typeof value.token === 'string') {
+            rememberPurchase(context.config.id, { token: value.token, orderRef: order.orderId });
+            context.navigate(routes.completion[context.locale]);
+          } else context.navigate(value.fallback === 'fresh_checkout' ? routes.builder[context.locale] : routes.account[context.locale]);
+        } }));
+      append(output, card);
+    }
+  }
+  void refresh(); return section;
+}
+
+function profileEditor(context: PageContext): HTMLElement {
+  const output = el('div', { 'aria-live': 'polite' });
+  const section = el('section', { class: 'panel', 'data-profile-editor': '' }, el('h2', {}, context.t('editProfile')), output);
+  async function refresh() {
+    const result = await act('account.read', {}, crypto.randomUUID());
+    if (!section.isConnected) return;
+    output.replaceChildren();
+    if (!result.ok || !isRecord(result.value) || !isRecord(result.value.profile)) {
+      append(output, refusal(context, result.ok ? 'customer_session_required' : result.code)); return;
+    }
+    const profile = result.value.profile;
+    append(output, el('p', {}, `${context.t('email')}: ${String(profile.email ?? '')}`),
+      actionForm(context, { operation: 'account.profile', submit: 'save', fields: [
+        { name: 'firstName', label: 'firstName', required: false, maxLength: 80, value: String(profile.firstName ?? '') },
+        { name: 'lastName', label: 'lastName', required: false, maxLength: 80, value: String(profile.lastName ?? '') },
+        { name: 'phone', label: 'phone', required: false, type: 'tel', maxLength: 30, value: String(profile.phone ?? '') }],
+      onSuccess: () => { void refresh(); } }));
+  }
+  void refresh(); return section;
 }

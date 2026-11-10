@@ -958,17 +958,17 @@
   },
   "pack": {
     "code": {
-      "maxPackedBytes": 2409255,
-      "maxFiles": 4117
+      "maxPackedBytes": 2459923,
+      "maxFiles": 4211
     },
     "docs": {
       "maxPackedBytes": 86252,
       "maxFiles": 10
     },
-    "maxPackedBytes": 2962854,
-    "maxUnpackedBytes": 14408428,
-    "maxFiles": 4252,
-    "capReason": "Measured saved-address package contents use 2% headroom where they cross the main budget; other caps and the released baseline are retained.",
+    "maxPackedBytes": 3023741,
+    "maxUnpackedBytes": 14432601,
+    "maxFiles": 4339,
+    "capReason": "Retain the higher approved parent byte budgets; 4,128 measured code files receive 2% headroom (4,211).",
     "baseline": {
       "version": "0.37.0",
       "packedBytes": 2791358

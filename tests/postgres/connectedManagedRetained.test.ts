@@ -414,7 +414,8 @@ it("projects typed managed obligations and leaves source history in the operator
   const sourcePaidOrder = await sourceRow("commerce_orders", paidOrderId), sourceOrder = await sourceRow("commerce_orders", orderId);
   const sourcePaidIntent = await sourceRow("commerce_payment_intents", paidIntentId), sourceIntent = await sourceRow("commerce_payment_intents", intentId);
   const noOrderLinks = { subscription_cycle_id: null, cancelled_at: null, refunded_at: null, source_channel_id: null, source_order_ref: null,
-    renewal_operation_id: null, renewal_operation_fingerprint: null, currency_code: "XXX", source_kind: "storefront", client_id: clientId };
+    renewal_operation_id: null, renewal_operation_fingerprint: null, recovery_root_order_id: null, recreated_from_order_id: null,
+    currency_code: "XXX", source_kind: "storefront", client_id: clientId };
   expect(await typed("SELECT * FROM public.commerce_orders WHERE id=$1", paidOrderId))
     .toEqual([{ ...noOrderLinks, id: paidOrderId, status: "paid", created_at: sourcePaidOrder.created_at, updated_at: sourcePaidOrder.updated_at,
       paid_at: paidTransition.occurred_at, total_amount_minor: "900", metadata: { sourceNote: "synthetic", sourceSequence: 9007199254740991, rate: 1.5 } }]);
