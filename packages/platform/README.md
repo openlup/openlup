@@ -2298,7 +2298,7 @@ for session binding, PostgreSQL ports, lifetimes and host delivery/UI obligation
 
 ## Saved customer address book
 
-`@openlup/platform/shipping/postgres` exports
+`@openlup/platform/shipping` exports
 `createPostgresCustomerSavedAddressPort`, `CustomerSavedAddressRefused`,
 `createCustomerSavedAddressRequestSchemas`, their structural executor/scope/options
 and validation-policy types, and `CUSTOMER_SAVED_ADDRESS_MIGRATIONS`. No public
@@ -2315,7 +2315,7 @@ The returned object implements the existing address-book and mutation ports:
 
 ```ts
 import { createPostgresCustomerSavedAddressPort,
-  createCustomerSavedAddressRequestSchemas } from '@openlup/platform/shipping/postgres';
+  createCustomerSavedAddressRequestSchemas } from '@openlup/platform/shipping';
 const requests = createCustomerSavedAddressRequestSchemas(localPolicy);
 const addresses = createPostgresCustomerSavedAddressPort(database, trustedScope, {
   validation: localPolicy,

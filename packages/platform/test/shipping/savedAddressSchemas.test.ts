@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createCustomerSavedAddressRequestSchemas } from '@openlup/platform/shipping/postgres';
+import { createCustomerSavedAddressRequestSchemas } from '@openlup/platform/shipping';
 const policy = { country: 'ZZ', countryAliases: ['example'], phonePrefix: '99', normalizeTaxId: (value: string | null) => value?.replace(/\D/g, '') || null,
   isValidTaxId: (value: string) => value === '1234563218', messages: { name: 'name', country: 'country', phone: 'phone', postalCode: 'postal', taxId: 'tax' } };
 const input = { idempotencyKey: 'address-key', kind: 'shipping', line1: ' Example 1 ', city: ' Example ', postalCode: '12345' };

@@ -3886,10 +3886,6 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/api/shipping-postgres.api.md",
-      "class": "public-output"
-    },
-    {
       "path": "packages/platform/api/shipping.api.md",
       "class": "public-output"
     },
@@ -8311,10 +8307,6 @@
     },
     {
       "path": "packages/platform/src/shipping/pickupPointSearchPort.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/src/shipping/postgres/index.ts",
       "class": "public-output"
     },
     {

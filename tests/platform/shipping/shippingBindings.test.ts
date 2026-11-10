@@ -1,4 +1,4 @@
-import { CustomerSavedAddressRefused } from "@openlup/platform/shipping/postgres";
+import { CustomerSavedAddressRefused } from "@openlup/platform/shipping";
 import { expect, it, vi } from "vitest";
 import { checkReadiness, type ReadinessInput } from "@openlup/core/readiness";
 import { createShippingBindings } from "@openlup/platform/shipping";

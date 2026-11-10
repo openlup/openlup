@@ -1,4 +1,4 @@
-import { createPostgresCustomerSavedAddressPort, type SavedAddressQueryExecutor, type CustomerSavedAddressValidationPolicy } from '@openlup/platform/shipping/postgres';
+import { createPostgresCustomerSavedAddressPort, type SavedAddressQueryExecutor, type CustomerSavedAddressValidationPolicy } from '@openlup/platform/shipping';
 import type { CustomerAddressesResponse } from '@openlup/platform/shipping/contracts';
 export const ADDRESS_AT = '2026-11-10T19:00:00.000Z';
 export const addressValidation: CustomerSavedAddressValidationPolicy = {

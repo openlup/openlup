@@ -1,4 +1,4 @@
-import { CustomerSavedAddressRefused } from "@openlup/platform/shipping/postgres";
+import { CustomerSavedAddressRefused } from "@openlup/platform/shipping";
 import { createPostgresShippingRateDataPort } from "../../adapters/postgres/commerceSettings.js";
 import { createPostgresShippingRateTransactionLane, type PostgresDataGatewayEnv, type PostgresDataGatewayOptions } from "../../adapters/postgres/dataGateway.js";
 import { SHIPPING_MIGRATIONS, createShippingBindings, type ShippingBindingDependencies, type ShippingBindings } from "@openlup/platform/shipping";

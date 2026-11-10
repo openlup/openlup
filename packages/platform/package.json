@@ -219,11 +219,6 @@
       "import": "./dist/inventory/contracts/index.js",
       "default": "./dist/inventory/contracts/index.js"
     },
-    "./shipping/postgres": {
-      "types": "./dist/shipping/postgres/index.d.ts",
-      "import": "./dist/shipping/postgres/index.js",
-      "default": "./dist/shipping/postgres/index.js"
-    },
     "./shipping": {
       "types": "./dist/shipping/index.d.ts",
       "import": "./dist/shipping/index.js",

@@ -30,3 +30,11 @@ export const SHIPPING_MIGRATIONS = [
   { id: "20260807140000_read_parity_catalog", catalogPath: "db/platform/migrations/20260807140000_read_parity_catalog.sql", position: 1, sha256: "fcf3827028c1651ae42a7c7d7472153825a3121c936d58a3d105befc7dece9ea", url: new URL("../../sql/20260807140000_read_parity_catalog.sql", import.meta.url) },
   { id: "20261021200000_shipping_flat_rate_seed", catalogPath: "db/platform/migrations/20261021200000_shipping_flat_rate_seed.sql", position: 72, sha256: "34f8696f515a2cc072395db5a3de2d9b09643d13236ee3851d0d78123f907eae", url: new URL("../../sql/20261021200000_shipping_flat_rate_seed.sql", import.meta.url) },
 ] as const;
+
+export { createPostgresCustomerSavedAddressPort, CustomerSavedAddressRefused } from "./postgresAddressBook.js";
+export type { SavedAddressQueryExecutor, CustomerSavedAddressScope, CustomerSavedAddressOptions, CustomerSavedAddressRefusalCode, CustomerSavedAddressPort } from "./postgresAddressBook.js";
+export { createCustomerSavedAddressRequestSchemas } from "./customerSavedAddressSchemas.js";
+export type { CustomerSavedAddressValidationPolicy, CustomerSavedAddressRequestSchemas } from "./customerSavedAddressSchemas.js";
+
+/** Sparse asset reference; install the complete selected native catalogue. */
+export const CUSTOMER_SAVED_ADDRESS_MIGRATIONS = [{ id: '20261110190000_customer_saved_addresses', catalogPath: 'db/platform/migrations/20261110190000_customer_saved_addresses.sql', position: 116, sha256: '0cf335d6a2497015d9218a6ab64fe888a3143290d7f6605a115c848eee4c042a', url: new URL('../../sql/20261110190000_customer_saved_addresses.sql', import.meta.url) }] as const;

@@ -103,7 +103,6 @@ authority. The application's own instructions govern.
 | `./scheduler` | rail | experimental |
 | `./shipping` | capability | experimental |
 | `./shipping/contracts` | capability | experimental |
-| `./shipping/postgres` | capability | experimental |
 | `./subscriptions` | capability | experimental |
 | `./subscriptions/contracts` | capability | experimental |
 
