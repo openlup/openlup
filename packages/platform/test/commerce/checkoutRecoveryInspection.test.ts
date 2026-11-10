@@ -67,3 +67,8 @@ it('applies the adopter content-loss fence before quote/draft/provider validatio
 it('binds the original client before a matching-client latest descendant can be considered',async()=>{
  const f=fixture();f.original.mockResolvedValue(order({clientId:'other'}));expect(await f.inspect()).toMatchObject({recoverable:false});expect(f.latest).not.toHaveBeenCalled();expect(f.validate).not.toHaveBeenCalled();
 });
+
+it.each(['one_time_order','subscription_cycle'] as const)('keeps the recovery-window refusal before manual cancellation (%s)',async mode=>{
+ const f=fixture({mode,status:'cancelled',technicallyExpired:false,createdAt:'2039-01-01T12:00:00Z'});f.inspection.mode=mode;
+ expect(await f.inspect()).toEqual({recoverable:false,fallback:mode==='one_time_order'?'fresh_checkout':'customer_account'});expect(f.validate).not.toHaveBeenCalled();
+});

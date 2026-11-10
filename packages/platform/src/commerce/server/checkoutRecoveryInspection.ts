@@ -84,14 +84,15 @@ export function createCheckoutRecoveryInspection<Action = unknown>(deps: {
       if (!order || order.clientId !== inspection.clientId || order.subscriptionCycleId !== null) return fallback(inspection);
       if (classifyCheckoutRecoveryTokenState(inspection.tokenState) === 'continuation' && order.status === 'pending_payment' && order.paymentIntentId && !order.technicallyExpired) return present(order, inspection, 'retry_existing');
       if (order.status === 'paid') return fallback(order, 'paid', order);
-      // Native initial checkout has a declaration, not a renewal cycle. Apply the
-      // unchanged order predicate only after proving its compensated declaration.
-      if (order.status === 'cancelled' && !order.technicallyExpired) return fallback(order, 'cancelled');
+      // Native initial checkout has a declaration, not a renewal cycle. Reuse
+      // the order predicate, then require its compensated declaration for admission.
       const initial = order.mode === 'subscription_cycle';
-      if (initial && (!order.initialDeclarationId || order.initialActivationState !== 'compensated')) return fallback(order, 'order_changed');
       const eligibility = policy.classifyExpiredRecovery({ inspection, order: initial ? { ...order, mode: 'one_time_order' } : order, now: deps.now?.() ?? new Date() });
       if (eligibility.kind === 'cancelled') return fallback(order, 'cancelled');
-      if (eligibility.kind === 'eligible') return await deps.validation.validate(order) ? present(order, inspection, 'recreate_expired') : fallback(order, 'order_changed');
+      if (eligibility.kind === 'eligible') {
+        if (initial && (!order.initialDeclarationId || order.initialActivationState !== 'compensated')) return fallback(order, 'order_changed');
+        return await deps.validation.validate(order) ? present(order, inspection, 'recreate_expired') : fallback(order, 'order_changed');
+      }
     }
     if (inspection.status === 'paid') {
       const paid = await deps.orderPort.getRecoveryOrder({ orderId: inspection.orderId });

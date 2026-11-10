@@ -63,7 +63,7 @@ it.each(['legacy','bootstrap','separate','admin-managed','admin-operator'] as co
     const runner=(sourceRoot=completeRoot)=>createPostgresMigrationRunner({connectionString:migrationUrl},{root:sourceRoot,installation,poolFactory:()=>migrator});
     await runner(root).apply();
     const client=randomUUID(),order=randomUUID();
-    await owner.query('INSERT INTO public.clients(id)VALUES($1)',[client]);
+    await owner.query('INSERT INTO public.clients(id,email)VALUES($1,$2)',[client,`${client}@example.invalid`]);
     await owner.query("INSERT INTO public.commerce_orders(id,client_id,total_amount_minor,currency_code,created_at)VALUES($1,$2,0,'XXX','2040-01-01T12:00:00Z')",[order,client]);
     const before=(await owner.query('SELECT to_jsonb(o) AS value FROM public.commerce_orders o WHERE id=$1',[order])).rows[0].value;
     const result=await runner().apply();expect(result.applied).toEqual([ownForward]);
