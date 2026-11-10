@@ -3762,6 +3762,36 @@
         ],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "account-events",
+        "path": "db/platform/migrations/20261110120000_customer_account_events.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.customer_account_event_append(uuid,uuid,text,text,uuid,jsonb,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_account_event_history(uuid,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_account_profile_update(uuid,uuid,jsonb,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_invoice_correction_request(uuid,uuid,uuid,jsonb,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [
+          "INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('customer_account_events', 'block', 'Account history belongs to its customer and prevents lead absorption.');"
+        ],
+        "absorptionCensusTables": [
+          "public.customer_account_events"
+        ]
       }
     ]
   },
@@ -4481,6 +4511,32 @@
           "signature": "public.commerce_buyer_checkout_link_delivery_authorize(uuid,text)",
           "beforeSha256": null,
           "afterSha256": "c99a38492ef7f1eabf91b3e1dc16bc16e5dffa626b605a145dea4b779ea58817"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261110120000_customer_account_events.sql",
+      "sha256": "a22217cedd0cb26352736a046ca2ccc48334a27dd14d494cacff8617323cf9c7",
+      "functions": [
+        {
+          "signature": "public.customer_account_event_append(uuid,uuid,text,text,uuid,jsonb,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "2ea42ddb89e9d91a0833885933f4fcebe7dc8ff1db24b019ceb689935a93de28"
+        },
+        {
+          "signature": "public.customer_account_event_history(uuid,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "969f83f37aa09f6bf8f08992f679dc6f304997b1ed536c551c6349095473a962"
+        },
+        {
+          "signature": "public.customer_account_profile_update(uuid,uuid,jsonb,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "75c526f555f60ec357ae542780fafc81c47764b966195d8499cc63b254a840f0"
+        },
+        {
+          "signature": "public.customer_invoice_correction_request(uuid,uuid,uuid,jsonb,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "9f04e7ea3e7b166aa3e6d734509d7cb5f4e3f7c65dea84578a8a738d23e5d2a5"
         }
       ]
     }

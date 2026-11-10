@@ -1924,7 +1924,7 @@ apply never previews. `createPaymentMethodComposition` adapts generic M07
 setupMethod to paymentMethod.execute without owner imports. Native repair is a
 [registered follow-up](https://github.com/openlup/openlup/blob/main/docs/platform/plans/oss-m12-account-support.md#follow-up-register).
 The default-off reference binding mounts nothing; browser key retention and
-native profile/start remain unselected.
+native start remains unselected; profile editing has the explicit native port below.
 
 
 R4 adds `createOperatorRecovery`, `createManagedOperatorAuthority`,
@@ -1962,6 +1962,47 @@ their owner meaning. Contribution descriptors install no routes, handlers,
 schedules or workers. See the
 [reference recipe](https://github.com/openlup/openlup/blob/main/docs/platform/RUNTIME_AND_SELF_HOSTING.md#opt-in-disposable-subscription-reference)
 for the host's schema and transport obligations.
+
+### Customer account events and mutations
+
+`createPostgresCustomerAccountMutationPort` binds a trusted principal/client scope,
+`createCustomerAccountMutationSchemas` with adopter validation values, and a clock.
+Select it as the self-service facade's `profile` port. The same port supplies
+`requestInvoiceCorrection` and metadata-only `readEvents` (latest 20). Bind
+`createCustomerAccountMutationHandlers` to host authentication, copy and BFF
+responses. Imports mount no route; the starter editors are separate work.
+
+Profile names collapse whitespace; empty/null clear and omitted fields preserve.
+The schema factory refuses policies that widen its limits: keys 8–180, nonempty
+names 2–80, correction reasons 8–500, at most 20 requested fields of 1–80, and
+optional nonempty notes up to 500 characters. Adopters may narrow those limits.
+The phone policy binds the calling prefix and requires nine local digits,
+preserving local/prefixed input extraction. Email is rejected. Replay uses the
+recorded profile-event key and returns current state. Profile update and event append are
+separate query commits: append failure leaves the profile write committed, and a
+retry without a recorded event may mutate again. Do not wrap both in a host
+transaction or claim concurrent exactly-once mutation.
+
+Correction requests check document ownership through its order, then append an
+acknowledged event. The key is stored without deduplication; repeated submissions
+produce distinct event IDs. No current/issued status gate, fiscal correction,
+operator consumer, notification or refund is supplied.
+
+Install the complete selected prefix through `20261110120000_customer_account_events.sql`.
+The new ledger has client cascade, occurred-time index, enabled RLS and closed
+owned routines. Runtime EXECUTE grants go only to service_role; its table access is
+client-column SELECT for absorption census, with the exact SELECT policy.
+
+Payloads contain personal data. Register `createAccountEventPrivacyContributor`
+in the existing identity registry and require `account-support`: supply a trusted
+payload reader and explicit retain/unresolved policy. Missing coverage is exported
+as unavailable. Missing reader or unresolved policy refuses erasure. With a
+reader configured, an explicit retain assessment leaves payloads in place and
+appears in the erasure receipt without checking that reader's export availability;
+identity field clearing and cascade do not erase them. No default registration,
+deletion or retention period is installed. The finite connected-store profile carries exact
+rows, following the customer communication-preference event ledger. See the
+[data owner](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#customer-account-event-data).
 
 ### Native account persistence reads
 

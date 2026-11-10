@@ -1001,6 +1001,7 @@ export type { AccountSupportLaneUnavailable } from "./capabilities.js";
 export type { OperatorOwnerReceipt, NativeOperatorSubscriptionResult, OperatorAuthorityUnavailable, OperatorEmailCorrectionResult, OperatorPhoneCorrectionResult, CustomerRecoveryAuthorityResult, LeadAbsorptionCarried, OperatorLeadAbsorptionResult, OperatorEmailCorrectionClaim, OperatorIdentityMovePort, OperatorEmailCorrectionAdmission, OperatorEmailCorrectionPhase, OperatorEmailCorrectionSettlement, OperatorEmailCorrectionExecution, OperatorAccountLinkRefusal, OperatorAccountLinkResult, OperatorAccountLinkRequest, OperatorAccountLinkIdentityPort, OperatorSubscriptionInput, OperatorEmailInput, OperatorPhoneInput, OperatorLinkInput, OperatorRecoveryInput, OperatorAbsorptionInput, ManagedOperatorAuthorityPort, NativeOperatorAuthorityPort, LinkThenSubscriptionResult } from "./operator.js";
 export type { OperatorAuthorityCapabilities } from "./capabilities.js";
 export type { NativeCustomerSubscriptionSnapshot, NativeCustomerNewsletterPreferences } from "./account.js";
+export type { CustomerProfileUpdateRequest, CustomerProfileUpdateResponse, CustomerInvoiceCorrectionRequest, CustomerInvoiceCorrectionResponse, CustomerAccountMutationPort, CustomerAccountMutationPolicy, CustomerAccountMutationRefusalCode, } from "./mutations.js";
 ```
 ## dist/account-support/contracts/invoice.d.ts
 
@@ -1084,6 +1085,60 @@ export type AccountInvoiceHistoryResult = Awaited<ReturnType<InvoiceAccessPort["
 export type AccountInvoiceHistoryDocument = Extract<AccountInvoiceHistoryResult, {
     kind: "found";
 }>["documents"][number];
+```
+## dist/account-support/contracts/mutations.d.ts
+
+```ts
+import type { AccountEvent, AccountProfile } from "./account.js";
+export interface CustomerProfileUpdateRequest {
+    idempotencyKey: string;
+    firstName?: string | null;
+    lastName?: string | null;
+    phone?: string | null;
+}
+export interface CustomerProfileUpdateResponse {
+    contractVersion: "customer.self_service.v1";
+    profile: AccountProfile;
+}
+export interface CustomerInvoiceCorrectionRequest {
+    idempotencyKey: string;
+    invoiceId: string;
+    reason: string;
+    requestedFields?: string[];
+    note?: string | null;
+}
+export interface CustomerInvoiceCorrectionResponse {
+    contractVersion: "customer.billing.v1";
+    eventId: string;
+}
+export interface CustomerAccountMutationPort {
+    updateProfile(userId: string, input: CustomerProfileUpdateRequest): Promise<CustomerProfileUpdateResponse | null>;
+    requestInvoiceCorrection(userId: string, input: CustomerInvoiceCorrectionRequest): Promise<CustomerInvoiceCorrectionResponse | null>;
+    readEvents(userId: string): Promise<AccountEvent[] | null>;
+}
+/** Validation values are selected by the adopter; a phone binding preserves its accepted input set. */
+export interface CustomerAccountMutationPolicy {
+    key: {
+        min: number;
+        max: number;
+    };
+    name: {
+        min: number;
+        max: number;
+    };
+    phone: {
+        callingCode: string;
+        localDigits: number;
+    };
+    correction: {
+        reasonMin: number;
+        reasonMax: number;
+        fieldsMax: number;
+        fieldMax: number;
+        noteMax: number;
+    };
+}
+export type CustomerAccountMutationRefusalCode = "customer_account_invalid_input" | "customer_principal_mismatch";
 ```
 ## dist/account-support/contracts/operator.d.ts
 
@@ -1524,6 +1579,139 @@ export declare function createCustomer360ReadFacade<Search, Snapshot, SummaryReq
 };
 export {};
 ```
+## dist/account-support/customerAccount/accountEventPrivacy.d.ts
+
+```ts
+/** Structural privacy contracts: identity owns validation, authorization and orchestration. */
+export type AccountEventPrivacyJson = null | boolean | number | string | AccountEventPrivacyJson[] | {
+    [key: string]: AccountEventPrivacyJson;
+};
+export interface AccountEventPrivacyObligation {
+    owner: string;
+    resource: string;
+    disposition: "erase" | "retain" | "unresolved";
+    reasonCode: string;
+    remote: boolean;
+}
+export interface AccountEventPrivacyDocument {
+    contributorId: string;
+    version: string;
+    data: AccountEventPrivacyJson;
+    coverage: {
+        complete: boolean;
+        included: string[];
+        unavailable: string[];
+    };
+    obligations: AccountEventPrivacyObligation[];
+}
+export interface AccountEventPrivacySubject {
+    contactId: string | null;
+    principalId: string | null;
+    identity: {
+        [key: string]: AccountEventPrivacyJson;
+    };
+}
+export interface AccountEventPrivacyAssessment {
+    obligations: AccountEventPrivacyObligation[];
+}
+/** Structural identity contributor; authorization and transaction ownership remain in identity. */
+export interface AccountEventPrivacyContributor<Context> {
+    id: string;
+    version: string;
+    ownedResources: readonly string[];
+    prepareErasure(context: Context): Promise<void>;
+    export(context: Context, subject: AccountEventPrivacySubject): Promise<AccountEventPrivacyDocument>;
+    assessErasure(context: Context, subject: AccountEventPrivacySubject): Promise<AccountEventPrivacyAssessment>;
+    eraseOrRetain(context: Context, subject: AccountEventPrivacySubject, assessment: AccountEventPrivacyAssessment, actor: {
+        principalId: string;
+    }): Promise<{
+        contributorId: string;
+        version: string;
+        obligations: AccountEventPrivacyObligation[];
+    }>;
+}
+export interface AccountEventPrivacyDependencies<Context> {
+    /** Explicit privileged subject reader, including payloads. No customer-history or census grant implies this access. */
+    read: null | ((context: Context, subject: AccountEventPrivacySubject) => Promise<{
+        available: boolean;
+        data: AccountEventPrivacyJson;
+    }>);
+    /** Only explicit retention or unresolved policy; no automatic retention period or deletion. */
+    assess: null | ((context: Context, subject: AccountEventPrivacySubject) => Promise<"retain" | "unresolved">);
+}
+export declare function createAccountEventPrivacyContributor<Context>(input: AccountEventPrivacyDependencies<Context>): AccountEventPrivacyContributor<Context>;
+```
+## dist/account-support/customerAccount/accountMutationHandlers.d.ts
+
+```ts
+import type { CustomerAccountMutationPort } from "../contracts/mutations.js";
+import type { CustomerAccountMutationSchemas } from "./accountMutationSchemas.js";
+/** Host transport shape; importing this handler does not require Node HTTP types. */
+export interface CustomerAccountMutationHandlerRequest {
+    method?: string;
+    body?: unknown;
+}
+export interface CustomerAccountMutationHandlerResponder<Response> {
+    sendMethodNotAllowed(res: Response, methods: readonly string[]): void;
+    sendBffSuccess(res: Response, data: unknown): void;
+    sendBffError(res: Response, code: "UNAUTHORIZED" | "FORBIDDEN" | "BAD_REQUEST" | "INVALID_RESPONSE" | "NOT_FOUND" | "UPSTREAM_UNAVAILABLE", message: string, options?: {
+        details: unknown;
+    }): void;
+}
+export interface CustomerAccountMutationHandlerDependencies<Request extends CustomerAccountMutationHandlerRequest = CustomerAccountMutationHandlerRequest> {
+    port: CustomerAccountMutationPort;
+    authenticate(req: Request): Promise<{
+        ok: true;
+        userId: string;
+    } | {
+        ok: false;
+        code: "UNAUTHORIZED" | "FORBIDDEN";
+        message: string;
+    }>;
+    /** Application-owned messages, including validation and transport failures. */
+    messages: {
+        authentication: string;
+        profileInvalid: string;
+        correctionInvalid: string;
+        unlinked: string;
+        invoiceMissing: string;
+        invalidResponse: string;
+        failed: string;
+    };
+}
+export declare function createCustomerAccountMutationHandlers<Request extends CustomerAccountMutationHandlerRequest, Response>(deps: CustomerAccountMutationHandlerDependencies<Request>, schemas: CustomerAccountMutationSchemas, responder: CustomerAccountMutationHandlerResponder<Response>): {
+    profile: (req: Request, res: Response) => Promise<void>;
+    invoiceCorrection: (req: Request, res: Response) => Promise<void>;
+};
+```
+## dist/account-support/customerAccount/accountMutationSchemas.d.ts
+
+```ts
+import { z } from "zod";
+import type { CustomerAccountMutationPolicy, CustomerProfileUpdateRequest, CustomerProfileUpdateResponse, CustomerInvoiceCorrectionRequest, CustomerInvoiceCorrectionResponse } from "../contracts/mutations.js";
+export interface CustomerAccountMutationSchemas {
+    profileRequest: z.ZodType<CustomerProfileUpdateRequest>;
+    profileResponse: z.ZodType<CustomerProfileUpdateResponse>;
+    correctionRequest: z.ZodType<CustomerInvoiceCorrectionRequest>;
+    correctionResponse: z.ZodType<CustomerInvoiceCorrectionResponse>;
+}
+/** Policy may only narrow validation bounds; the phone binding keeps nine local digits and nondigit stripping. */
+export declare function createCustomerAccountMutationSchemas(policy: CustomerAccountMutationPolicy): CustomerAccountMutationSchemas;
+```
+## dist/account-support/customerAccount/postgresAccountMutations.d.ts
+
+```ts
+import type { OperatorQueryExecutor } from "../postgresOperatorAuthority.js";
+import type { NativeAccountReadScope } from "../postgresAccountReadScope.js";
+import type { CustomerAccountMutationPort, CustomerAccountMutationRefusalCode } from "../contracts/mutations.js";
+import type { CustomerAccountMutationSchemas } from "./accountMutationSchemas.js";
+export declare class CustomerAccountMutationRefused extends Error {
+    readonly code: CustomerAccountMutationRefusalCode;
+    constructor(code: CustomerAccountMutationRefusalCode);
+}
+/** Query calls are separate commits: do not wrap profile update plus append in a host transaction. */
+export declare function createPostgresCustomerAccountMutationPort(executor: OperatorQueryExecutor, scope: NativeAccountReadScope, schemas: CustomerAccountMutationSchemas, now: () => string): CustomerAccountMutationPort;
+```
 ## dist/account-support/customerAccountReadDiagnostics.d.ts
 
 ```ts
@@ -1576,6 +1764,13 @@ export { readPostgresCustomerAccountClient } from "./postgresAccountReadScope.js
 export type { NativeAccountReadScope, NativePaidActivationGap, NativePaidActivationGapReadSource } from "./postgresAccountReadScope.js";
 export { createPostgresCustomerSubscriptionSnapshotPort, createPostgresCustomerNewsletterPreferencesPort } from "./postgresCustomerActorReads.js";
 export type { NativeAccountRpcExecutor } from "./postgresCustomerActorReads.js";
+export { createCustomerAccountMutationSchemas } from "./customerAccount/accountMutationSchemas.js";
+export type { CustomerAccountMutationSchemas } from "./customerAccount/accountMutationSchemas.js";
+export { createPostgresCustomerAccountMutationPort, CustomerAccountMutationRefused } from "./customerAccount/postgresAccountMutations.js";
+export { createCustomerAccountMutationHandlers } from "./customerAccount/accountMutationHandlers.js";
+export type { CustomerAccountMutationHandlerDependencies, CustomerAccountMutationHandlerRequest, CustomerAccountMutationHandlerResponder } from "./customerAccount/accountMutationHandlers.js";
+export { createAccountEventPrivacyContributor } from "./customerAccount/accountEventPrivacy.js";
+export type { AccountEventPrivacyJson, AccountEventPrivacyObligation, AccountEventPrivacyDocument, AccountEventPrivacySubject, AccountEventPrivacyAssessment, AccountEventPrivacyContributor, AccountEventPrivacyDependencies } from "./customerAccount/accountEventPrivacy.js";
 ```
 ## dist/account-support/invoiceAccess.d.ts
 
@@ -1648,6 +1843,11 @@ export declare const ACCOUNT_SUPPORT_MIGRATIONS: {
             readonly position: 87;
             readonly catalogPath: "db/platform/migrations/20261026120000_account_support_operator_authority.sql";
             readonly sha256: "ac1e31679179e712d7558e7b1d82e8113f264abf9aaa44c2562ab988acdc7508";
+            readonly url: URL;
+        }, {
+            readonly position: 108;
+            readonly catalogPath: "db/platform/migrations/20261110120000_customer_account_events.sql";
+            readonly sha256: "a22217cedd0cb26352736a046ca2ccc48334a27dd14d494cacff8617323cf9c7";
             readonly url: URL;
         }];
     };

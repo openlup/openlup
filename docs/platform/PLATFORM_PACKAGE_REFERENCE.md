@@ -1114,6 +1114,14 @@ qualification result; the [task record](plans/oss-m19-g12.md) carries executed p
 
 ## Account and support contracts
 
+The [customer account mutation recipe](../../packages/platform/README.md#customer-account-events-and-mutations)
+adds an explicit PostgreSQL profile/correction port, strict request schemas and
+host-bound handlers. Browser request/result types stay in the type-only contracts
+entry. Select this native port as `profile` in `createSelfServiceCommandFacade`;
+unselected facade lanes retain their existing refusal. The host supplies policy,
+verified identity, per-query commit behavior, copy and route mounting. Saved
+addresses, billing profiles and starter editors remain outside this slice.
+
 For inert composition, `createAccountSupportBindings({ graph, capabilities,
 operations, commerce })` captures prebound owner callables for one graph.
 `createAccountSupportServices({ enabled, capabilities, operations, readiness })`
@@ -1282,7 +1290,7 @@ Collection never redeems or charges. A45/A46 token handlers remain in reference
 source. Native repair authorization/scheduling is a
 [registered follow-up](plans/oss-m12-account-support.md#follow-up-register).
 The [default-off recipe](RUNTIME_AND_SELF_HOSTING.md#opt-in-disposable-subscription-reference)
-selects no browser route; native profile/start and browser key retention remain
+selects no browser route; native start and browser key retention remain
 R5 limits.
 
 

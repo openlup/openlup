@@ -934,8 +934,7 @@ returns the SelfServiceCommandFacade envelope. Its trailing defaulted
 `ControlSnapshot = unknown` generic retains the selected control snapshot type
 through the reference selector and facade. This recipe opens
 no route, provider, store or executor and grants no activation. R5 must settle
-native browser key retention before connecting preview/apply UI; native profile,
-start and managed-shaped redeem remain unselected.
+native browser key retention before connecting preview/apply UI; native start and managed-shaped redeem remain unselected.
 
 The inert M09 reference binding admits invoicing only when explicitly enabled,
 selected and ready. Server startup checks an explicitly supplied invoicing
@@ -1192,6 +1191,13 @@ has not been installed or certified by this profile.
 The Node reference start function accepts an admitted outbox candidate and a host schedule binding. For a selected rail it binds dispatch/prune before opening the listener; a refused candidate or absent schedule binding opens no listener. Host composition supplies its driver, lease, effect handlers, known vocabulary and migration observation. Immediate and scheduled work share the packed rail engine, with candidate identity checked at every entrance. The default static CLI selects no outbox adapter and provides no deployed outbox proof.
 
 ### Account and support read bindings
+
+Customer profile and invoice-correction handlers are supplied as explicitly bound
+package mechanisms; [account mutation composition](../../packages/platform/README.md#customer-account-events-and-mutations)
+requires host authentication and a principal/client scope. Each profile query and
+its subsequent event append commits separately. No default route, starter editor,
+mail consumer or fiscal operation is installed. Hosts using these writes must also
+register the ledger's privacy contributor and retention disposition.
 
 The unmounted `createM12AccountReadSelection` and `createM12SupportReadBinding`
 reference factories require explicit host enablement and selection. Importing
