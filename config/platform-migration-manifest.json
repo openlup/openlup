@@ -444,9 +444,13 @@
     {
       "file": "db/platform/migrations/20261110100000_checkout_recovery_waves.sql",
       "sha256": "8aea584e8cad970301bf8a1170a70432ae1d5701a08bd4cde1a1ef469536e4f6"
+    },
+    {
+      "file": "db/platform/migrations/20261110160000_oms_human_operator_admission.sql",
+      "sha256": "df298f82f8b17219419e659bdb8bd4720d7b1de0c9c97c753c6444bfff624be8"
     }
   ],
-  "objectInventorySha256": "e14425fda126682da8ea8ca19f97aa5c15c9fb64ac6ece0bde4dbeaa1ed99c9e",
+  "objectInventorySha256": "5b4524e2bbe183c6488dd3e90be7a90f4a60fde743bc5ad999efa99c8fbb35ec",
   "qualified": {
     "baseline": {
       "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -912,14 +916,18 @@
       {
         "file": "db/platform/migrations/20261110100000_checkout_recovery_waves.sql",
         "sha256": "8aea584e8cad970301bf8a1170a70432ae1d5701a08bd4cde1a1ef469536e4f6"
+      },
+      {
+        "file": "db/platform/migrations/20261110160000_oms_human_operator_admission.sql",
+        "sha256": "df298f82f8b17219419e659bdb8bd4720d7b1de0c9c97c753c6444bfff624be8"
       }
     ],
     "objectInventorySha256": {
       "bootstrapMigrator": {
-        "withRestore": "d96d63142a344bb26f37836aed5d1b49abb8ca3bc63780194a7c2cf054064210"
+        "withRestore": "7b5c312a55a2e2700c80f371deccc7e03ae4d38e109e5bfa4ae88fccd3cfe5b7"
       },
       "separateMigrator": {
-        "withRestore": "384344ba26d58777ad9836eed30d2515279214b9231a9dc1392552764717b6af"
+        "withRestore": "e5fa647248d57d3189b659d7bd6ffa41b9ed087c2a35304d233ac3e3d19bf59b"
       }
     }
   },
@@ -1384,11 +1392,15 @@
       {
         "file": "db/platform/migrations/20261110100000_checkout_recovery_waves.sql",
         "sha256": "8aea584e8cad970301bf8a1170a70432ae1d5701a08bd4cde1a1ef469536e4f6"
+      },
+      {
+        "file": "db/platform/migrations/20261110160000_oms_human_operator_admission.sql",
+        "sha256": "df298f82f8b17219419e659bdb8bd4720d7b1de0c9c97c753c6444bfff624be8"
       }
     ],
     "objectInventorySha256": {
-      "installerManaged": "7fc7555a051ef82d6071c443d74b21cc3253506870cbe585df14a4ded7a8d07f",
-      "operatorProvisioned": "dd106769a80fcbfda0c7c3c09826e843cd431d16c5e94b302f4a545532fec2bb"
+      "installerManaged": "90d9cd7099c2cac63d8605f8b8c354607f3785f3ce569b5597f174c0a9f71d09",
+      "operatorProvisioned": "809d94784ee2de91fa068a7ff8d695ff04bf7349fccbdf3ce38b7a24170cc070"
     }
   }
 }

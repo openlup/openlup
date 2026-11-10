@@ -457,7 +457,17 @@ external-refund marking and return request/approve/reject. Control-plane reads
 remain the reduced `control_plane_v1` projection. Rich OMS reads, notes, address
 correction and replacement requests retain their existing refusal. Returns record
 intent; they do not receive, restock or execute a refund. The host authenticates
-and authorizes each operation. See the [composition recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#native-oms-and-support-stores).
+and authorizes each operation. The native operator resolver accepts an existing
+Commerce operator whose UUID is either an active control principal or an active
+human `admin` membership with no control row of any state. A human distributor,
+revoked member or admin without a Commerce row does not resolve. No authority is
+provisioned by the resolver. Human hosts must enforce admin-only admission and
+resolve again before every command and replay; the existing machine path is
+unchanged. The owner provisions a Commerce row for each human admin and never
+deletes it; withdraw human access by revoking membership. Deletion would set
+`commerce_order_holds.created_by` to NULL, making a human fulfillment-exception
+hold eligible for automatic release. This existing FK hazard is not changed.
+See the [composition recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#native-oms-and-support-stores).
 Native destinations use `./commerce/server/destinations` and the complete SQL
 catalogue. Hosts authorize parent reads and bind checkout/dispatch explicitly.
 The confirmation outbox is durable; native mail dispatch is unbound.

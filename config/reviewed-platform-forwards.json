@@ -3677,6 +3677,20 @@
             ]
           }
         ]
+      },
+      {
+        "row": "oms-human-operator-admission",
+        "path": "db/platform/migrations/20261110160000_oms_human_operator_admission.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.oms_control_resolve_operator(uuid)",
+            "beforeSha256": "1cb5fa4b679dbc931b5338a05ec94a22ffb220b8abcc2e20be3e78f170fbb931",
+            "searchPath": "pg_catalog"
+          }
+        ],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -4313,6 +4327,17 @@
           "signature": "public.commerce_checkout_recovery_wave_delivery_authorize(uuid,text)",
           "beforeSha256": null,
           "afterSha256": "2986769812018314738ce36190761aae7dc55cab5637e10ef95da6d1acbe4330"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261110160000_oms_human_operator_admission.sql",
+      "sha256": "df298f82f8b17219419e659bdb8bd4720d7b1de0c9c97c753c6444bfff624be8",
+      "functions": [
+        {
+          "signature": "public.oms_control_resolve_operator(uuid)",
+          "beforeSha256": "1cb5fa4b679dbc931b5338a05ec94a22ffb220b8abcc2e20be3e78f170fbb931",
+          "afterSha256": "cdbcdf2318564cfdb6ceeaceb8ed9e12e7954ecf2a6b3d84f046ee4c5491a786"
         }
       ]
     }
