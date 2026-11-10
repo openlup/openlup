@@ -6,11 +6,12 @@ import { createHash } from 'node:crypto';
 import { createPostgresCommerceQuoteCatalogReadPort, canonicalCatalogDraftJson } from '@openlup/platform/catalog';
 import { createPostgresCommercePriceAuthorityReadPort } from '@openlup/platform/commerce/server/postgres';
 import { createCommercePriceAuthorityPort, createDbBackedCommerceQuotePort, AcquisitionTermsError,
-  CommerceQuoteCatalogReadError, ACQUISITION_TERMS_CAPABILITY, projectPublicQuoteSnapshot, acquisitionProjectionFreshness, projectAcquisitionTerms,
+  ACQUISITION_TERMS_CAPABILITY, projectPublicQuoteSnapshot, acquisitionProjectionFreshness, projectAcquisitionTerms,
   type AcquisitionQuoteRequest, type ResolvedAcquisitionTerms, type CreateQuoteResponse } from '@openlup/platform/pricing';
 import { createPostgresCommercePromoDataPort, createQuotePromoDiscounts, createQuotePromotionV2,
   createQuoteAutomaticPromotions, createQuotePromotionCodeAdjustments, createQuoteShippingPromotions,
   createPromotionQuoteAcceptance, type PromotionAcceptanceKeyring } from '@openlup/platform/promotions';
+import { verifyProductDocument } from './editor-catalogue.ts';
 import { createAcquisitionFinancialPolicy } from '../owned/acquisition-policy.ts';
 import { isRecord, validateCart, type OfferQuote } from '../shared/offer.ts';
 import type { ActionContext } from './bindings.ts';
@@ -69,17 +70,7 @@ export function createNativeQuoteService(db: Pool, predecessors: AcquisitionPred
     const port = createDbBackedCommerceQuotePort<Request, import('@openlup/platform/pricing').CommerceQuoteCatalogItem, Record<string, never>,
       { mode: Request['mode']; cadenceDays: number | null; promoCodes: string[]; starterRequest: string; acquisitionCapability?: typeof ACQUISITION_TERMS_CAPABILITY; starterRenewalTerms?: RenewalRetainedTerms }>({
       quoteCatalogReadPort: createPostgresCommerceQuoteCatalogReadPort(db, { verifyDocument: async (input,envelope) => {
-        if (!isRecord(input) || input.schemaVersion !== config.quote.document.schemaId
-          || input.schemaVersion !== envelope.documentRevision.schemaId || Object.keys(input).length !== 7
-          || typeof input.productId !== 'string' || input.productId.toLowerCase() !== envelope.product.id.toLowerCase()
-          || typeof input.skuId !== 'string' || input.skuId.toLowerCase() !== envelope.sku.id.toLowerCase()
-          || input.productSlug !== envelope.product.slug || input.revisionNo !== envelope.documentRevision.revisionNo
-          || input.sourceRef !== envelope.documentRevision.sourceRef || !isRecord(input.physical)
-          || input.physical.netWeightG !== envelope.sku.netContent.unscaled
-          || !envelope.identifiers.some(identifier => identifier.isPrimary && identifier.kind === 'gtin'
-            && identifier.issuer === (input.physical as Record<string,unknown>).issuer
-            && identifier.normalizedValue === (input.physical as Record<string,unknown>).unitGtin)) throw new CommerceQuoteCatalogReadError('catalog_document_schema_invalid');
-        if (digest(input) !== envelope.documentRevision.digest) throw new CommerceQuoteCatalogReadError('catalog_document_digest_mismatch');
+        verifyProductDocument(input, envelope, config.quote.document.schemaId);
       } }),
       isStrictD1Quote: true, commercePriceAuthorityPort: createCommercePriceAuthorityPort(createPostgresCommercePriceAuthorityReadPort(db)),
       taxProfile, supportedTaxProfiles: [taxProfile], regionCode: config.market.country, currency: config.market.currency,

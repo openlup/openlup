@@ -260,6 +260,10 @@ restore, and accepted delivery evidence keeps its original idempotency key.
 The [notice witness](../../tests/postgres/m19NoticeIsolation.test.ts) compares all
 four row sets after real connected capture/restore and repeats the restore.
 
+Connected native restore refuses any subscription whose `configured_offer_version`
+is not `classic` with `unsupported_table` for `subscriptions` before any target
+data write; sized offer bindings have no transfer mapping in this preview.
+
 Channel source captures, purchased-line claims and pull pages have no transfer
 mapping in this profile. Native restore imports ordinary outbox rows through the
 locked owner path and refuses the three protected channel evidence types before
@@ -1638,9 +1642,15 @@ Any slot may also list exact complete ALTER TABLE texts in
 plain ALTER TABLE; IF EXISTS is refused. The closed actions are ADD COLUMN, named ADD CONSTRAINT
 under the existing expression checks, ALTER COLUMN DROP NOT NULL, and VALIDATE
 CONSTRAINT. The restricted FOREIGN KEY ... ON DELETE RESTRICT NOT VALID form
-preserves the issued purchase-reservation companions. Other drops, column type
-changes, renames and ownership changes refuse even when listed. Every listed
-statement must appear once in order, with internal bytes unchanged; an unlisted
+preserves the issued purchase-reservation companions. A listed named single-column
+FOREIGN KEY may also use ON DELETE SET NULL or CASCADE, with optional NOT VALID,
+only after the same ordered list adds that column (including an ADD COLUMN and
+named constraint companion in one ALTER). The catalogue proves the column did
+not exist before the slot, the exact referenced table/key, delete action and
+validation state, with prior columns, constraints and ACLs unchanged.
+SET NULL/CASCADE on pre-existing columns and dropped or rewritten foreign keys
+remain refused. Other drops, column type changes, renames and ownership changes
+refuse even when listed. Every listed statement must appear once in order, with internal bytes unchanged; an unlisted
 existing-table ALTER cannot fall through to generic ADD admission when the list
 is active. The issued three purchase-reservation texts remain unchanged data.
 
@@ -1709,8 +1719,10 @@ existing guarded role revokes are allowed. Every GRANT on a created view refuses
 Views gain no RLS or table-grant capability. The real catalog checks the declared
 new view inventory, ownership and owner-only privileges.
 
-`createdTriggers` entries name a fresh trigger, an existing prefix table and the
-exact CREATE TRIGGER statement hash. Only BEFORE/AFTER INSERT, DELETE or UPDATE
+`createdTriggers` entries name a fresh trigger, a qualified target table and the
+exact CREATE TRIGGER statement hash. The target must exist in the prefix or be
+created by an earlier plain CREATE TABLE in this same slot, owned by the migrator.
+Only BEFORE/AFTER INSERT, DELETE or UPDATE
 (with an optional OF column list), combined with OR, FOR EACH ROW and a
 zero-argument public function are admitted. That function must be created in the
 same slot, explicitly return trigger with SECURITY INVOKER and a pinned search
@@ -1718,7 +1730,8 @@ path, revoke PUBLIC and receive no EXECUTE grant. Conditional revokes remain
 allowed. WHEN, transition relations, constraint/statement/instead-of triggers,
 trigger mutation and unlisted or drifted statements refuse. Creation stays plain:
 OR REPLACE and conditional existence forms refuse. PostgreSQL rejects duplicate
-triggers and missing targets; the catalog witness checks prefix-table membership,
+triggers and missing targets; the catalog witness proves prefix membership or
+earlier same-slot table creation and ownership,
 name freshness, enabled binding, events and owner-only function ACL.
 
 The destination slot registers four created function signatures and pinned
@@ -1730,8 +1743,12 @@ duties. Synthetic shape acceptance establishes no implemented destination API.
 
 Each created function must revoke all PUBLIC privileges before its grants and
 conditional blocks. SECURITY DEFINER requires the slot's exact pinned
-`search_path`, such as `pg_catalog, pg_temp`. Grant-only signatures must exist in
-the pre-class native prefix and be disjoint from the replaced/created lists.
+`search_path`, such as `pg_catalog, pg_temp`. A replacement may preserve a legacy
+compact `SET search_path=pg_catalog` header: extraction normalizes the assignment
+for its schema-list pin only; the header itself must remain byte-for-byte equal.
+New functions retain their existing spaced spelling, and no other SET grammar,
+schema-token or catalogue proconfig check changes. Grant-only signatures must
+exist in the pre-class native prefix and be disjoint from the replaced/created lists.
 They cannot be redefined or named by a direct privilege statement. Only their
 pinned conditional role/verb capabilities are admitted, without demanding a new
 PUBLIC revoke. A block naming created functions still requires their revokes;
@@ -3500,13 +3517,19 @@ cycle and order ownership relations. Paid orders are associated through their
 cycle, renewal operation or activation. The follow-up
 `20261109113000_subscription_auto_resume_delivered_history.sql` replaces only
 `subscription_auto_resume_due(integer,timestamptz)` and chains its before-hash
-to that earlier replacement. Its order guard blocks in-flight `paid` or
-`fulfillment_pending` orders, including an unlinked first order, and an order
-in the retained `paid` / `fulfillment_pending` / `fulfilled` status allowlist
-whose cycle is on `next_cycle_at`. Cancelled pause-closure orders do not block.
-Delivered historical orders no longer keep a
-subscription paused after its first paid order. All other eligibility guards,
-the event, roll-forward, header and ACLs remain unchanged. The
+to that earlier replacement. The completing follow-up
+`20261109150000_subscription_auto_resume_paid_history.sql` replaces that same
+function and chains its before-hash to the delivered-history replacement. The
+order guard mirrors customer resume: `paid`, `fulfillment_pending` or `fulfilled`
+orders block for a cycle of this subscription scheduled at `next_cycle_at`.
+An associated order without a cycle blocks only for an unfinished renewal
+operation (`claimed`, `reserved`, `attempt_prepared`) or activation (`provisional`).
+Terminal operations (`succeeded`, `refused`) and activations (`active`,
+`compensated`) do not keep that order in flight. Native shipment delivery leaves
+an order `paid`; paid orders of past cycles and completed activations therefore
+do not keep a timed pause open. Cancelled pause-closure orders do not block.
+All other eligibility guards, the event, roll-forward, header and ACLs remain
+unchanged. The
 [delivered-history witness](../../tests/postgres/subscriptionAutoResumeDeliveredHistory.test.ts)
 covers legacy and both qualified runtimes. Ineligible windows remain open without
 writes or batch failure. Eligible windows roll forward monotonically, retain

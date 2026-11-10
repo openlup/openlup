@@ -240,11 +240,82 @@ An existing unmarked database fails closed before role or schema changes. Only
 a successful database creation in that invocation can set the marker. An
 interruption between creation and marking deliberately leaves a refused database.
 
-Clients, stock and settings use native writers; they are never seeded here.
+The install writes one product document per catalogue product, with a `variants`
+list shared by checkout and the editors. Each variant carries its SKU identity,
+physical trade-item facts, demand per unit and exclusions; sizes share the same
+catalogue product. Both readers verify the selected SKU against the current
+product document. The install also supplies exact physical SKU facts and identifiers. It writes the configured
+`subscription_minimum_base_units`, `subscription_sized_intro_phase` and the
+demonstration subject fixture to `commerce_settings`. The public native stock
+writer records the configured fictional observations. Clients are not seeded.
 Subscription renewal terms, term lines and method states belong to the native
 purchase path and must never be hand-written by this application. After the
 catalogue seed, purchase uses zero hand-written business rows. This data step
 is not a schema installer, price editor, promotion engine or customer import.
+
+## Customer subscription editors
+
+The account's subscription cards open separate classic and size-aware editor
+pages. Classic editing changes exact quantities, adds selectable subscription
+base products and removes/restores previously agreed extras at their saved
+quantity. Review is explicit and displays the server's current/new recurring
+prices, signed difference and the preview's next-cycle date. Confirmation applies
+the whole desired set, then reads the account again. The price applies to future
+renewals from that cycle, without the one-time introductory promotion. A minimum
+banner, closed-window notice and payment/cycle blockers prevent unavailable edits.
+
+Classic customers can enter the size-aware invitation without changing their
+offer. Even unchanged contents require priced review and explicit consent;
+abandonment keeps classic servicing. The size-aware page changes one group's
+exact size at its full count, changes counts independently and preserves counts
+when cadence changes. Its coverage summary uses synthetic fixture units and
+gives no usage advice. Conflicting selections require repair before review.
+Catalogue refresh clears confirmation while retaining recoverable quantities;
+an uncertain save requires account readback before another preview.
+
+The host mounts `subscription.preview`, `subscription.command` and
+`subscription.catalog` under the existing customer session. Preview/apply receive
+`{ request: <package request> }`; the session supplies actor/client identity and
+the `Idempotency-Key` header supplies command identity. The account response adds
+the narrow `subscriptionEditors` projection, including stored composition
+constraint, offer version, frozen line amounts and edit eligibility. This is
+separate from the still-unavailable full account projection. The host checks the
+selected offer again under its transaction's subscription lock before pricing.
+
+Seven exact commands are API-only: `swap_base_line`, `add_addon`,
+`remove_addon`, `update_addon_quantity`, `update_base_mix`, `update_plan_length`
+and `update_portion`. There are no portal controls for them. Demand-driven
+plan-length and portion resizing refuse with
+`starter_subscription_resize_unconfigured`; classic plan choices and size-aware
+cadence choices preserve explicit counts. See the [named limits](docs/limits.md).
+
+`owned/subscription-editing.ts` builds the typed neutral values carried by
+`StoreConfig.subscriptionEditing`: minimums, bounds, plan choices, sizes,
+cadences, portion identifiers/factors and seeded subject facts. The fixture's
+explicit current-empty exclusions override inherited exclusions. Candidate,
+preview and apply read that installed fixture; the apply port locks its row and
+compares exact snapshots on the same transaction connection. It also rereads
+all selected SKU catalogue facts through the shared document reader and compares
+them in canonical UUID order with sorted exclusion keys. Catalogue rows remain
+read-only and unlocked; this comparison does not serialize concurrent catalogue
+publication (the named publication-fence limit). There is no need-entry form. Classic candidates are unfiltered because this demonstration
+has no classic exclusion facts.
+
+`host/editor-mail.ts` exports `composeSizedPaidEmailNote`, compatible with the
+paid-email handler's `describeParcel` callback. It composes quantities and exact
+physical identities from the frozen order and the renewal cycle's frozen
+cadence. Unprovable facts omit the note. The lifecycle renewal entry mounts the
+paid-email handler through `host/paid-mail.ts` with this callback. Proven sized
+renewal parcel notes appear in its private captured receipts when the stored
+subscription binding is sized at send time. Classic bindings and acquisition
+receipts omit the note.
+
+The editor proof includes 68 focused source tests, 42 component cases and 34
+database-backed browser/API journeys (17 per configuration), all passing locally.
+Native subscription purchase materializes its editable lines and price context.
+Existing subscriptions without that template refuse with
+`starter_subscription_template_unavailable`; there is no fallback read or
+fixture backfill. See [editor proof](docs/proof.md#subscription-editor-proof).
 
 ## Reset an interrupted first install
 
@@ -450,8 +521,8 @@ reads. Catalogue, builder, cart and checkout projections read `offer.validate` o
 native host. Failed refreshes withhold the previous money. The local preview
 estimator remains available only for explicit database-less one-time estimates
 and configuration characterization; it delegates unit arithmetic to the package. The install seed
-retains the six compatibility mode-price entries and adds one immutable policy
-revision, current document pointers, physical trade-item facts and one standalone
+retains compatibility mode-price entries for every seeded SKU and adds one immutable
+policy revision, current shared product-document pointers, physical trade-item facts and one standalone
 acquisition definition. Conflicting policy, document or promotion initialization
 refuses and rolls back. This is a fresh demonstration install, not policy rotation.
 
@@ -618,7 +689,8 @@ in-flight charge. Pause defaults to two weeks and also offers one month or an
 indefinite window. Cancellation asks for a reason, offers a skip, reschedule or
 pause, and records acceptance or refusal through the native command. A
 reschedule offer starts from the current renewal and displays its actual target.
-Generic package, plan and bundle editing are outside this release.
+Package and cadence editing use the separate customer editors above; demand-driven
+plan-length and portion resizing remain unconfigured.
 
 Order now and reactivation require an explicit charge-timing confirmation.
 Owned [care values](owned/renewal.config.ts) supply pause durations,
