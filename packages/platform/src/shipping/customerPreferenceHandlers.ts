@@ -20,8 +20,8 @@ function handler(options: CustomerPreferenceHandlerOptions, kind: 'payment' | 'd
       const version = kind === 'payment' ? 'customer.preferences.v1' : 'customer.delivery_preferences.v1';
       let value: unknown;
       if (req.method === 'GET') value = kind === 'payment' ? await options.port.listPaymentPreferences(auth.userId) : await options.port.listDeliveryPreferences(auth.userId);
-      else if (kind === 'payment') { const input = schemas.payment.safeParse(req.body);if (!input.success) { r.sendBffError(res,'BAD_REQUEST',options.messages.invalid);return; }value = await options.port.upsertPaymentPreference(auth.userId,input.data); }
-      else { const input = schemas.delivery.safeParse(req.body);if (!input.success) { r.sendBffError(res,'BAD_REQUEST',options.messages.invalid);return; }value = await options.port.upsertDeliveryPreference(auth.userId,input.data); }
+      else if (kind === 'payment') { const input = schemas.payment.safeParse(req.body);if (!input.success) { r.sendBffError(res,'BAD_REQUEST',options.messages.invalid,{ details: input.error.flatten() });return; }value = await options.port.upsertPaymentPreference(auth.userId,input.data); }
+      else { const input = schemas.delivery.safeParse(req.body);if (!input.success) { r.sendBffError(res,'BAD_REQUEST',options.messages.invalid,{ details: input.error.flatten() });return; }value = await options.port.upsertDeliveryPreference(auth.userId,input.data); }
       if (value === null) { r.sendBffError(res,'FORBIDDEN',options.messages.unlinked);return; }
       const schema = kind === 'payment' ? schemas.paymentResponse : schemas.deliveryResponse;
       const valid = req.method === 'GET' ? schema.array().safeParse(value) : schema.safeParse(value);

@@ -26,7 +26,7 @@ for (const kind of ['payment','delivery'] as const) it(`binds ${kind} GET/PATCH,
  const handler = (kind === 'payment' ? createCustomerPaymentPreferencesHandler : createCustomerDeliveryPreferencesHandler)(options);
  const get = response();await handler({ method: 'GET',query: { userId: 'planted' } } as never,get as never);expect(get.status).toHaveBeenCalledWith(200);
  const patch = response();await handler({ method: 'PATCH',body: kind === 'payment' ? { scope: 'any',methodKind: 'card' } : courierPreference } as never,patch as never);expect(patch.status).toHaveBeenCalledWith(200);
- const invalid = response();await handler({ method: 'PATCH',body: {} } as never,invalid as never);expect(invalid.status).toHaveBeenCalledWith(400);
+ const invalid = response();await handler({ method: 'PATCH',body: {} } as never,invalid as never);expect(invalid.status).toHaveBeenCalledWith(400);expect(invalid.json.mock.calls[0][0].error.details).toEqual(expect.objectContaining({ fieldErrors: expect.any(Object) }));
  const method = response();await handler({ method: 'DELETE' } as never,method as never);expect(method.status).toHaveBeenCalledWith(405);
  allowed = false;const denied = response();await handler({ method: 'GET' } as never,denied as never);expect(denied.status).toHaveBeenCalledWith(401);
 });
