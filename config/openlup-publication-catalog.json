@@ -1322,6 +1322,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261110230000_operator_shipment_commands.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4422,6 +4426,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261110230000_operator_shipment_commands.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -6399,6 +6407,10 @@
     },
     {
       "path": "packages/platform/src/fulfillment/native/parcelContact.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/native/shipmentCommands.ts",
       "class": "public-output"
     },
     {
@@ -28943,6 +28955,10 @@
     },
     {
       "path": "tests/postgres/fulfillmentRenewalAdmission.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fulfillmentShipmentCommands.test.ts",
       "class": "public-output"
     },
     {

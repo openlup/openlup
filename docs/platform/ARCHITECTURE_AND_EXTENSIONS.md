@@ -1450,7 +1450,9 @@ order-mode values instead of the reader choosing application policy.
 | Complete parcel cancellation | The explicit operator port releases exactly the parcel’s recorded reservations; latest provider-confirmed cancellation has its own paid-order transaction | Authenticated operator; provider observations recorded through the native shipment spine |
 | Legacy parcel reservations | A parcel created before association capture cancels with `reservations_not_recorded` and released count 0; reservations are not released automatically | The operator corrects stock by hand |
 | Legacy paid-order mode | Provider-confirmed paid cancellation refuses with `commerce_fulfillment_provider_cancel_order_mode_unproven` when no mode was recorded | The operator handles cancellation by hand or outside this path; cycle, renewal, activation and email defaults do not supply mode |
-| Other operator lifecycle mutations | The native shipment spine port does not carry their operator transaction | Actor-bound mutation callbacks and replay receipts |
+| Label, handoff and tracking evidence | `createPostgresFulfillmentShipmentCommandPort` commits each command with server actor, replay evidence and a convertible shipment operation; handoff consumes the frozen parcel set once | Authenticated administrator; configured provider/tracking evidence; accounting wrapper after committed handoff |
+| Legacy handoff stock | A parcel without a recorded reservation set hands off with `reservationDisposition: "reservations_not_recorded"` and `consumedReservationCount: 0`; parent stock is never reconstructed | The operator corrects stock by hand |
+| Historical tracking namespace | A number on another order without recorded provider identity refuses with `tracking_reference_unattributed` and the conflicting order reference. Rarely, the same number at a different carrier produces a false refusal. Same-order reuse records the supplied provider identity; there is no backfill | The operator checks the referenced order through authorized reads and resolves the carrier/reference evidence by hand before retrying |
 | Commerce orders list/detail and shipments overview | No equivalent native commerce read | Host read callbacks for orders list, detail and shipments overview; payment status passes through the existing payments projection using core payment-intent statuses |
 | Dispatch preparation writer | Explicit host preparation binding synchronizes revision, provider and withholding under the shipment lock, including authoritative edits | Required host reader/edit closures and transaction lane; disabled, capability-selection/readiness and unsupported-dispatch refusals precede the shared typed refusal for an absent binding, all before any worker |
 | Enforcing delivery alignment | The [host admission decorator](../../server/runtime/subscription/deliveryAlignmentRenewalStore.ts) preserves static terms and captured cases, skips off/no-case admission and obtains one-use schedule receipts before new cycles. Native denials return non-terminal `deferred` results, leaving claims retryable at the same schedule after lease expiry; static refusals remain terminal | A host that composes the native automatic-renewal runner must wrap its store port with the decorator; until it does, native delivery-alignment mode stays off or shadow. No runner composer, factory or production entrypoint is supplied |
@@ -1536,11 +1538,15 @@ no quantity-coverage override is applied.
 6. **FR06 — Address authority:** a null saved-address id means no saved-address
    record in this store's native model. A resolved shipment destination does not
    establish a captured fulfillment-address snapshot or its saved-address identity.
-7. **FR07 — Tracking activity:** tracking uses the newest order-linked tracking
-   reference; the native ledger has no separate active/deactivated flag.
-8. **FR08 — Operation evidence:** latest operation uses only the shipment ledger,
-   retains its native payload and has no actor id; required vocabulary conversions
-   do not reconstruct unavailable operator evidence, and unrepresentable types refuse.
+7. **FR07 — Tracking activity:** tracking uses the newest reference attributed to
+   the selected parcel. Same-order reuse reattributes that provider/number pair;
+   displaced native reference facts remain in the private label receipt. The
+   native ledger has no separate active/deactivated flag.
+8. **FR08 — Operation evidence:** latest operation uses only the shipment ledger
+   and retains its safe native payload. New operator shipment commands record
+   their authenticated actor; historical actors stay null. Full provider evidence
+   remains in private receipts. Required vocabulary conversions do not reconstruct
+   unavailable evidence, and unrepresentable types refuse.
 9. **FR10 — Order mode:** captured draft mode and cycle identity are supplied to
     the host's mode mapping; legacy rows without captured mode do not prove the
     original stored order-mode value.

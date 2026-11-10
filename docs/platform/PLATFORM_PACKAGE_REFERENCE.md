@@ -1738,3 +1738,41 @@ order links, restrictive unvalidated self-FKs and a unique non-null predecessor
 index. Historical links stay null. No backfill, writer or new traversal/tie-break
 policy is included. See the [PostgreSQL witness](../../tests/postgres/checkoutRecoveryInspection.test.ts)
 and [composition characterizations](../../packages/platform/test/commerce/checkoutRecoveryInspection.test.ts).
+
+
+### Native operator shipment commands
+
+The experimental `createPostgresFulfillmentShipmentCommandPort` from
+`@openlup/platform/fulfillment/native` takes a structural SQL executor. Install
+the complete selected catalogue through `20261110230000_operator_shipment_commands.sql`.
+Bind its three methods to the existing authenticated admin label, handoff and
+tracking handlers. The handlers derive `actorUserId` on the server. Construction
+mounts no route or operator UI and makes no carrier call.
+
+Label recording commits a succeeded evidence snapshot, provider/tracking
+correlation, actor and operation together. Same-key replay returns the original
+parcel's current status. A provider/number pair on another order conflicts;
+same-order reuse attributes it to the selected parcel. Raw provider data remains
+in a private receipt. Public operation payloads contain safe command facts.
+
+Handoff accepts packed or labelled parcels, consumes only the frozen purchase
+or renewal reservation IDs and commits the stock effect with its audit. Terminal
+handoff is inert replay. The result includes `reservationDisposition` and
+`consumedReservationCount`. See the [historical stock and tracking limits](ARCHITECTURE_AND_EXTENSIONS.md#native-parity-boundaries)
+for manual resolution when facts were never recorded.
+
+Compose `withAccountingInvoiceShadowTrigger` from `@openlup/platform/invoicing`
+around a command port whose executor commits before returning (for example an
+autocommit pool). With an outer transaction lane, commit that lane before
+returning its handoff method to the wrapper. Supply the host's provider, duty keys and
+channel policy reader. Leave `failOnAccountingError` false for fail-soft document
+handling: document failure does not undo a successful handoff.
+
+Tracking requires the corresponding label/handoff state and a same-order
+reference when one is supplied. Delivered parcels refuse regression. An explicit
+zone in `rawEvent.occurredAt` supplies provider chronology; unusable chronology
+falls back to receipt time on the first delivery. Delivered replay may repair
+arrival earlier through the arrival recorder, never later, without rewriting the
+original operation or repeating delivery alignment. A late actual arrival may
+extend the next cycle; evidence that a parcel has only been labelled or is in
+transit never confirms arrival of a replacement.
