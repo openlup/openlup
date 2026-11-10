@@ -29,6 +29,7 @@
     "packages/core/dist/subscription/types.js",
     "packages/platform/dist/commerce/checkoutCommandSchemas.js",
     "packages/platform/dist/commerce/checkoutHelpers.js",
+    "packages/platform/dist/commerce/checkoutRecoveryStartSchemas.js",
     "packages/platform/dist/commerce/checkoutResumeSchemas.js",
     "packages/platform/dist/commerce/checkoutSchemas.js",
     "packages/platform/dist/commerce/commerceReturnsPort.js",
