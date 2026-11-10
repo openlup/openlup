@@ -111,6 +111,28 @@ describe("native store SQL shapes and pins", () => {
     "ALTER TABLE public.communication_native_sync_state ADD COLUMN fixture_nullable timestamptz;",
     "ALTER TABLE public.communication_native_sync_state ADD CONSTRAINT fixture_additive_check CHECK (purpose IN ('marketing_launch_offer','marketing_newsletter'));",
   ])("retains expand-only DDL: %s", statement => { expect(() => check(`${sql()}\n${statement}`)).not.toThrow(); });
+  it.each(["CASCADE", "SET NULL"])("admits only a new table's foreign-key ON DELETE %s action", action => {
+    const statement = `CREATE TABLE public.fixture_table (client_id uuid REFERENCES public.clients(id) ON DELETE ${action});`;
+    expect(isExpandOnlyPlatformForward(statement)).toBe(false);
+    expect(() => check(`${sql()}\n${statement}`)).not.toThrow();
+    const normalized = statement.toLowerCase().replace("on delete", "on /* action */\n delete");
+    expect(() => check(`${sql()}\n${normalized}`)).not.toThrow();
+  });
+  it.each([
+    "ALTER TABLE public.clients ADD COLUMN other_id uuid REFERENCES public.clients(id) ON DELETE CASCADE;",
+    "ALTER TABLE public.clients ADD COLUMN other_id uuid REFERENCES public.clients(id) ON DELETE SET NULL;",
+    "DELETE FROM public.clients;",
+    "SET search_path = public;",
+    "CREATE TABLE public.fixture_table (id bigint DEFAULT nextval('public.fixture_sequence'));",
+    "CREATE TABLE public.fixture_table (value text CHECK (public.fixture_check(value)));",
+    "CREATE TABLE public.fixture_table (LIKE public.clients INCLUDING ALL);",
+    "CREATE TABLE public.fixture_table AS SELECT id FROM public.clients;",
+    "CREATE TABLE public.fixture_table AS TABLE public.clients;",
+    "CREATE TABLE public.fixture_table AS VALUES (1);",
+    "CREATE TABLE public.fixture_table (payload jsonb DEFAULT '{}'::jsonb);",
+  ])("keeps default-mode refusals outside new-table FK actions: %s", statement => {
+    expect(() => check(`${sql()}\n${statement}`)).toThrow(/reviewed native store/u);
+  });
   it.each([
     ["unknown signature", () => `${sql()}\nCREATE FUNCTION public.fixture_unlisted() RETURNS text LANGUAGE sql AS $$ SELECT ''; $$;`],
     ["missing revoke", () => sql().replace(revoke, "")],
@@ -885,6 +907,24 @@ describe("registry-defined native capabilities", () => {
     const history = "ALTER TABLE public.fixture_parameters ADD COLUMN unrelated uuid;\nALTER TABLE public.fixture_parameters ADD CONSTRAINT unrelated_fk FOREIGN KEY (unrelated) REFERENCES public.fixture_row(id) ON DELETE RESTRICT NOT VALID;";
     expect(() => parameterForward(`${parameterCheck()}\n${parameterCheck("fixture_kind", "kind", "'first','second','third'")}`, slot => { addCheck(slot); slot.checkSupersets!.push({ ...slot.checkSupersets![0]!, constraint: "fixture_kind", column: "kind", values: ["first", "second", "third"] }); }, history)).not.toThrow();
   });
+  it.each([false, true])("admits a listed CHECK with trailing NOT VALID without reading prefix validation state (%s)", unvalidated => {
+    const source = unvalidated ? parameterTable.replace("('open','closed'))", "('open','closed')) NOT VALID") : parameterTable;
+    expect(() => parameterForward(parameterCheck().replace(/;$/u, " NOT VALID;"), addCheck, "", source)).not.toThrow();
+  });
+  it.each(["NOT", "VALID", "NO INHERIT", "NOT VALID NOT VALID", "NOT VALID NO INHERIT"])("refuses a listed CHECK with other trailing tokens: %s", tail => {
+    expect(() => parameterForward(parameterCheck().replace(/;$/u, ` ${tail};`), addCheck)).toThrow(/CHECK must match/u);
+  });
+  it("refuses another ALTER action after a NOT VALID CHECK", () => {
+    expect(() => parameterForward(parameterCheck().replace(/;$/u, " NOT VALID, ADD COLUMN other text;"), addCheck))
+      .toThrow("reviewed native store requires the adjacent named constraint replacement");
+  });
+  it("keeps exact values, binding and adjacency for a NOT VALID CHECK", () => {
+    const sql = parameterCheck().replace(/;$/u, " NOT VALID;");
+    expect(() => parameterForward(sql.replace("'open','closed','paused'", "'open','paused'"), addCheck)).toThrow(/CHECK must match/u);
+    expect(() => parameterForward(sql.replaceAll("fixture_status", "other_status"), addCheck)).toThrow(/closed shapes/u);
+    expect(() => parameterForward(sql.replace(";\n", ";\nCREATE TABLE public.gap (id uuid);\n"), addCheck)).toThrow(/adjacent/u);
+    expect(() => parameterForward(sql, () => {})).toThrow(/closed shapes/u);
+  });
   it("requires CHECK ADD values to equal the slot and the pair to be adjacent", () => {
     expect(() => parameterForward(parameterCheck(undefined, undefined, "'open','paused'"), addCheck)).toThrow("reviewed native store CHECK must match its listed values");
     expect(() => parameterForward(parameterCheck().replace(";\n", ";\nCREATE TABLE public.gap (id uuid);\n"), addCheck)).toThrow(/adjacent/u);
@@ -1340,5 +1380,178 @@ describe("closed native index drops", () => {
     if (mode === "issued") bind(prior, 0, `${sql()}\n${dropIndexSql}`); else prior.nativeStoreForwardClass!.sealed = true;
     const next = structuredClone(prior); next.nativeStoreForwardClass!.slots[0]!.droppedIndexes![0]!.beforeSha256 = "0".repeat(64);
     expect(() => changedForwardApprovals(encode(prior), encode(next))).toThrow(mode === "issued" ? "reviewed native store issued bindings and slots are immutable" : "reviewed native store sealed slot prefix is immutable and cannot be unsealed");
+  });
+});
+
+const censusTable = "public.fixture_census";
+const censusCreate = `CREATE TABLE ${censusTable} (id uuid PRIMARY KEY, client_id uuid NOT NULL REFERENCES public.clients(id), payload jsonb);`;
+const censusClassification = "INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('fixture_census', 'block', 'Customer history prevents absorption.');";
+const censusGrant = `GRANT SELECT (client_id) ON TABLE ${censusTable} TO service_role;`;
+const censusPolicy = `CREATE POLICY fixture_census_absorption_census ON ${censusTable} FOR SELECT TO service_role USING (true);`;
+const censusShape = [censusCreate, `ALTER TABLE ${censusTable} ENABLE ROW LEVEL SECURITY;`, `REVOKE ALL ON TABLE ${censusTable} FROM PUBLIC;`, censusClassification, noticeDo(censusGrant), noticeDo(censusPolicy)].join("\n");
+function censusForward(text = censusShape, mutate: (slot: NativeStoreSlot) => void = () => {}, earlier = false) {
+  const value = registry(), index = earlier ? 1 : 0, slot = value.nativeStoreForwardClass!.slots[index]!;
+  const preceding = [{ path: PLATFORM_BASELINE_FILE, bytes: before }];
+  if (earlier) {
+    const prior = `${sql()}\n${censusCreate}`, pin = bind(value, 0, prior);
+    preceding.push({ path: pin.path, bytes: Buffer.from(prior) });
+  }
+  slot.absorptionCensusTables = [censusTable]; slot.dataStatements = [censusClassification]; mutate(slot);
+  const complete = `${sql(index)}\n${text}`, pin = bind(value, index, complete);
+  assertNativeStoreForward(value, pin.path, Buffer.from(complete), preceding);
+}
+describe("owned absorption census capability", () => {
+  it("admits the two exact guarded statements on a same-slot client-referencing block table", () => {
+    expect(() => censusForward()).not.toThrow();
+  });
+  it("admits a named single-column table FK as well as an inline FK", () => {
+    expect(() => censusForward(censusShape.replace("client_id uuid NOT NULL REFERENCES public.clients(id)", "client_id uuid NOT NULL, CONSTRAINT fixture_owner FOREIGN KEY (client_id) REFERENCES public.clients(id)"))).not.toThrow();
+  });
+  it("admits more than one independently classified census table", () => {
+    const other = censusShape.replaceAll("fixture_census", "fixture_another");
+    expect(() => censusForward(`${censusShape}\n${other}`, slot => {
+      slot.absorptionCensusTables!.push("public.fixture_another");
+      slot.dataStatements.push(censusClassification.replaceAll("fixture_census", "fixture_another"));
+    })).not.toThrow();
+  });
+  it.each([
+    ["wrong column", censusGrant, censusGrant.replace("(client_id)", "(payload)")],
+    ["extra column", censusGrant, censusGrant.replace("(client_id)", "(client_id, payload)")],
+    ["table grant", censusGrant, censusGrant.replace(" (client_id)", "")],
+    ["wrong grant role", censusGrant, censusGrant.replace("TO service_role", "TO authenticated")],
+    ["write verb", censusGrant, censusGrant.replace("GRANT SELECT", "GRANT UPDATE")],
+    ["grant option", censusGrant, censusGrant.replace("service_role;", "service_role WITH GRANT OPTION;")],
+    ["FOR ALL", censusPolicy, censusPolicy.replace("FOR SELECT", "FOR ALL")],
+    ["non-true USING", censusPolicy, censusPolicy.replace("USING (true)", "USING (false)")],
+    ["WITH CHECK", censusPolicy, censusPolicy.replace("USING (true);", "USING (true) WITH CHECK (true);")],
+    ["wrong policy role", censusPolicy, censusPolicy.replace("TO service_role", "TO authenticated")],
+    ["wrong policy name", censusPolicy, censusPolicy.replace("fixture_census_absorption_census", "fixture_other_policy")],
+    ["restrictive policy", censusPolicy, censusPolicy.replace("FOR SELECT", "AS RESTRICTIVE FOR SELECT")],
+  ])("refuses %s", (_label, original, replacement) => {
+    expect(() => censusForward(censusShape.replace(original!, replacement!))).toThrow(/closed shapes|conditional privilege/u);
+  });
+  it.each([censusGrant, censusPolicy])("refuses an unguarded census statement: %s", statement => {
+    expect(() => censusForward(censusShape.replace(noticeDo(statement), statement))).toThrow(/service_role conditional shell/u);
+  });
+  it.each([censusGrant, censusPolicy])("refuses duplicate or missing census statements: %s", statement => {
+    expect(() => censusForward(`${censusShape}\n${noticeDo(statement)}`)).toThrow(/duplicate absorption census/u);
+    expect(() => censusForward(censusShape.replace(noticeDo(statement), ""))).toThrow(/exactly one grant and policy/u);
+  });
+  it("refuses another conditional shell role even when the target role is service_role", () => {
+    expect(() => censusForward(censusShape.replaceAll("rolname='service_role'", "rolname='authenticated'"))).toThrow(/service_role conditional shell/u);
+  });
+  it("refuses unlisted tables", () => {
+    expect(() => censusForward(censusShape, slot => { delete slot.absorptionCensusTables; })).toThrow(/conditional privilege/u);
+  });
+  it("refuses an earlier slot's table", () => {
+    expect(() => censusForward(censusShape.replace(censusCreate, ""), undefined, true)).toThrow(/same slot/u);
+  });
+  it("requires the table to be created before its census grant", () => {
+    expect(() => censusForward(`${noticeDo(censusGrant)}\n${censusShape.replace(noticeDo(censusGrant), "")}`)).toThrow(/created earlier/u);
+  });
+  it("leaves installed foreign-key semantics to the PostgreSQL catalogue guard", () => {
+    expect(() => censusForward(censusShape.replace("client_id uuid NOT NULL REFERENCES public.clients(id)", "client_id uuid"))).not.toThrow();
+  });
+  it("requires classification in both the slot and SQL", () => {
+    expect(() => censusForward(censusShape, slot => { slot.dataStatements = []; })).toThrow(/exact block classifications/u);
+    expect(() => censusForward(censusShape.replace(censusClassification, ""))).toThrow(/named data statement missing/u);
+  });
+  it.each(["retain", "carry"])("refuses %s classification", disposition => {
+    const statement = censusClassification.replace("'block'", `'${disposition}'`);
+    expect(() => censusForward(censusShape.replace(censusClassification, statement), slot => { slot.dataStatements = [statement]; })).toThrow(/exact block classifications/u);
+  });
+  it.each([[censusTable, censusTable], ["fixture_census"], ["other.fixture_census"], [`public.${"a".repeat(63)}`], ['public."CensusHistory"'], ['public."fixture_census"'], ['"public".fixture_census']])("refuses invalid census inventory %j", (...tables) => {
+    expect(() => censusForward(censusShape, slot => { slot.absorptionCensusTables = tables as string[]; })).toThrow(/qualified tables/u);
+  });
+});
+
+describe("slot-local legacy headers and fresh-column FK actions", () => {
+  const compact = "CREATE FUNCTION public.fixture_compact(p_id uuid) RETURNS text LANGUAGE sql SECURITY INVOKER SET search_path=pg_catalog AS $$ SELECT 'before'; $$;";
+  const replacement = compact.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION").replace("'before'", "'after'");
+  const compactForward = (statement: string, path = "pg_catalog") => parameterForward(statement, slot => {
+    slot.replacedFunctions.push({signature:"public.fixture_compact(uuid)", searchPath:path, beforeSha256:nativeStoreFunctionDefinitions(Buffer.from(compact), ["public.fixture_compact(uuid)"]).get("public.fixture_compact(uuid)")!});
+  }, compact);
+  it("admits a replacement preserving its compact legacy search_path header", () => {
+    expect(() => compactForward(replacement)).not.toThrow();
+  });
+  it.each(["search_path = pg_catalog", "search_path= pg_catalog", "search_path =pg_catalog", "search_path=public"])("refuses compact legacy header drift: %s", spelling => {
+    expect(() => compactForward(replacement.replace("search_path=pg_catalog",spelling))).toThrow("replacement header drifted");
+  });
+  it("still refuses compact spelling on a newly created function and a mismatched legacy pin", () => {
+    expect(() => check(sql().replace("search_path = pg_catalog, pg_temp", "search_path=pg_catalog, pg_temp"))).toThrow();
+    expect(() => compactForward(replacement,"public")).toThrow("unpinned SECURITY DEFINER or search_path");
+  });
+  const column = "ALTER TABLE public.fixture_parameters ADD COLUMN parent_id uuid;";
+  const fk = (action: string, suffix: string) => `ALTER TABLE public.fixture_parameters ADD CONSTRAINT fixture_parent_fk FOREIGN KEY (parent_id) REFERENCES public.fixture_row(id) ON DELETE ${action}${suffix};`;
+  const listed = (statements: string[]) => parameterForward(statements.join("\n"), slot => {slot.existingTableStatements = statements;});
+  it.each(["CASCADE", "SET NULL"])("admits a declared fresh-column FK with %s and either validation state", action => {
+    for (const suffix of ["", " NOT VALID"]) expect(() => listed([column,fk(action,suffix)])).not.toThrow();
+  });
+  it("admits the same exact ADD COLUMN and named FK actions in one ALTER", () => {
+    expect(() => listed([column.slice(0,-1)+", "+fk("SET NULL"," NOT VALID").split(" ADD CONSTRAINT ")[1]!.replace(/^/,"ADD CONSTRAINT ")])).not.toThrow();
+  });
+  it("refuses an FK action without an earlier declared ADD COLUMN", () => {
+    for (const statements of [[fk("CASCADE","")],[fk("SET NULL",""),column]]) expect(() => listed(statements)).toThrow("requires an earlier same-slot ADD COLUMN");
+  });
+  it.each(["SET DEFAULT", "CASCADE DEFERRABLE", "SET NULL ON UPDATE CASCADE"])("refuses a broader fresh-column FK action: %s", action => {
+    expect(() => listed([column,fk(action,"")])).toThrow("existing-table statement is not expand-only");
+  });
+  it("refuses dropping or rewriting an existing FK through the companion list", () => {
+    expect(() => listed(["ALTER TABLE public.fixture_parameters DROP CONSTRAINT fixture_parent_fk;",column,fk("CASCADE","")])).toThrow("existing-table statement is not expand-only");
+    expect(() => parameterForward(`${column}\n${fk("CASCADE","")}`,()=>{})).toThrow("outside its closed shapes");
+  });
+  it("admits a listed trigger on its earlier same-slot created table", () => {
+    const statement=triggerBefore.replace("public.fixture_parameters","public.fixture_fresh");
+    expect(() => parameterForward(`CREATE TABLE public.fixture_fresh(id uuid,extra uuid);\n${triggerFunction}\n${triggerRevoke}\n${statement}`,slot=>{
+      slot.createdFunctions.push({signature:"public.fixture_trigger_guard()",searchPath:"pg_catalog, pg_temp"});
+      slot.createdTriggers=[{name:"fixture_trigger_guard",table:"public.fixture_fresh",sha256:sqlSha256(statement)}];
+    })).not.toThrow();
+  });
+});
+
+describe("replacement of an earlier native-store creation", () => {
+  function subject() {
+    const value = structuredClone(production), signature = "public.dunning_lifecycle_pause_reminder_dispatch(integer,integer)";
+    const creation = value.nativeStoreForwardClass!.slots.find(slot => slot.createdFunctions.some(fn => fn.signature === signature))!;
+    const creationPin = value.nativeStoreForwards!.find(pin => pin.path === creation.path)!;
+    const predecessor = creationPin.functions.find(fn => fn.signature === signature)!;
+    const original = sqlStatements(readFileSync(creation.path, "utf8")).find(statement =>
+      nativeStoreFunctionDefinitions(Buffer.from(statement), [signature], true).has(signature))!;
+    const text = original.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION").replace("'ok',true,", "'ok',true,'capabilityWitness',true,");
+    const slot: NativeStoreSlot = { row: "created-function-replacement", path: "db/platform/migrations/20990101000000_fixture_created_replacement.sql",
+      replacedFunctions: [{ signature, beforeSha256: predecessor.afterSha256, searchPath: "pg_catalog" }],
+      createdFunctions: [], grantOnlyFunctions: [], dataStatements: [] };
+    value.nativeStoreForwardClass!.slots.push(slot);
+    const pin = { path: slot.path, sha256: sqlSha256(text), functions: [{ signature, beforeSha256: predecessor.afterSha256, afterSha256: sqlSha256(text) }] };
+    value.nativeStoreForwards!.push(pin);
+    const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")) as { baseline: { file: string }; forward: { file: string }[] };
+    const prefix = [manifest.baseline, ...manifest.forward].map(unit => ({ path: unit.file, bytes: readFileSync(unit.file) }));
+    return { value, slot, pin, prefix, text, signature, creation, creationPin, predecessor, original };
+  }
+  it("admits the listed reminder replacement chained to its exact creation pin", () => {
+    const s = subject();
+    expect(s.predecessor.beforeSha256).toBeNull();
+    expect(sqlSha256(s.original)).toBe(s.predecessor.afterSha256);
+    expect(s.text).not.toBe(s.original.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION"));
+    expect(() => readReviewedForwardRegistry(encode(s.value))).not.toThrow();
+    expect(() => assertNativeStoreForward(s.value, s.slot.path, Buffer.from(s.text), s.prefix)).not.toThrow();
+  });
+  it.each(["unlisted", "wrong before hash", "drifted creation pin", "missing creation pin", "prefix drift", "changed header", "changed signature"])("refuses %s", attack => {
+    const s = subject();
+    let text = s.text;
+    if (attack === "unlisted") { s.slot.replacedFunctions = []; s.pin.functions = []; }
+    if (attack === "wrong before hash") s.slot.replacedFunctions[0]!.beforeSha256 = s.pin.functions[0]!.beforeSha256 = "0".repeat(64);
+    if (attack === "drifted creation pin") s.predecessor.afterSha256 = s.slot.replacedFunctions[0]!.beforeSha256 = s.pin.functions[0]!.beforeSha256 = "0".repeat(64);
+    if (attack === "missing creation pin") s.value.nativeStoreForwards = s.value.nativeStoreForwards!.filter(pin => pin !== s.creationPin);
+    if (attack === "prefix drift") s.prefix.push({ path: "db/platform/migrations/20980101000000_fixture_prior_definition.sql", bytes: Buffer.from(text.replace("capabilityWitness", "prefixDrift")) });
+    if (attack === "changed header") text = text.replace("LANGUAGE plpgsql", "LANGUAGE plpgsql SECURITY DEFINER");
+    if (attack === "changed signature") text = text.replace("p_pause_window_seconds integer", "p_pause_window_seconds bigint");
+    s.pin.sha256 = sqlSha256(text);
+    if (s.pin.functions[0]) s.pin.functions[0].afterSha256 = sqlSha256(text);
+    const message = attack === "unlisted" || attack === "changed signature" ? /unlisted signature/u
+      : attack === "wrong before hash" ? /before-hash differs from preceding after-hash/u
+      : attack === "missing creation pin" ? /bound predecessor/u
+      : attack === "changed header" ? /replacement header drifted/u : /actual base function before-hash drifted/u;
+    expect(() => assertNativeStoreForward(s.value, s.slot.path, Buffer.from(text), s.prefix)).toThrow(message);
   });
 });

@@ -12,6 +12,7 @@ import {
 } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 import { AT, later, renewal } from "./subscriptionNativeFixture.js";
+import { nativeHarness } from "../helpers/fulfillmentNative.js";
 
 // One generation per installer shape: superuser installer and operator-provisioned non-superuser M.
 // The shared inventory witness measures every qualified role mode's grants, policies and row security.
@@ -82,6 +83,11 @@ for (const generation of ["qualified-v2", "qualified-admin"] as const) describe(
     await owner.query("INSERT INTO public.platform_communication_operators(principal_id,active) VALUES($1,true)", [operatorId]);
     return { operatorId, principal };
   };
+
+  it("preserves block, absorption and replay with only the absorption census column", async () => {
+    const { operatorId } = await operatorFixture();
+    await absorptionCensusWitness(owner, runtime, operatorId, true);
+  });
 
   it("binds row security and enumerates every role with access to the term lines", async () => {
     expect((await runtime.query("SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname=session_user")).rows).toEqual([{ rolsuper: false, rolbypassrls: false }]);
@@ -377,5 +383,66 @@ for (const generation of ["qualified-v2", "qualified-admin"] as const) describe(
       "DELETE FROM public.commerce_promotion_claim_events WHERE claim_id=$1",
     ]) await expect(runtime.query(sql, [claim]), sql).rejects.toMatchObject({ code: "42501" });
     expect(await events()).toEqual([{ event_key: "redeemed:paid", transition: "redeemed" }]);
+  });
+});
+
+/** Same absorption fixture and invoker route as the destination census witness above. */
+async function absorptionCensusWitness(owner: Pool, runtime: Pool, operatorId: string, restricted: boolean) {
+  const table = "public.census_subject_history";
+  const guarded = (sql: string) => `DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE '${sql}'; END IF; END; $$;`;
+  await owner.query(`CREATE TABLE ${table} (id uuid PRIMARY KEY, client_id uuid NOT NULL REFERENCES public.clients(id), payload jsonb, occurred_at timestamptz NOT NULL);
+    ALTER TABLE ${table} ENABLE ROW LEVEL SECURITY;
+    REVOKE ALL ON TABLE ${table} FROM PUBLIC;
+    INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('census_subject_history', 'block', 'Subject history prevents absorption.');
+    ${guarded(`GRANT SELECT (client_id) ON TABLE ${table} TO service_role;`)}
+    ${guarded(`CREATE POLICY census_subject_history_absorption_census ON ${table} FOR SELECT TO service_role USING (true);`)}`);
+  try {
+    const customer = randomUUID(), free = randomUUID(), blocked = randomUUID(), event = randomUUID();
+    for (const [id, stage] of [[customer, "customer"], [free, "lead"], [blocked, "lead"]]) {
+      await owner.query("INSERT INTO public.clients(id,email,lifecycle_stage,created_at,updated_at) VALUES($1,$2,$3,$4,$4)", [id, `${id}@example.invalid`, stage, AT]);
+    }
+    await owner.query(`INSERT INTO ${table}(id,client_id,payload,occurred_at) VALUES($1,$2,$3,$4)`, [event, blocked, { note: "Synthetic private history" }, AT]);
+    const key = `census-free-${randomUUID()}`, blockedKey = `census-blocked-${randomUUID()}`;
+    const absorb = (lead: string, idempotencyKey: string) => runtime.query("SELECT public.customer_support_absorb_lead_v1($1,$2,$3,$4,$5,$6) AS result",
+      [operatorId, customer, lead, `${lead}@example.invalid`, idempotencyKey, AT]).then(result => result.rows[0].result);
+    const business = async () => ({
+      clients: (await owner.query("SELECT to_jsonb(c) AS row,xmin::text FROM public.clients c WHERE id=ANY($1::uuid[]) ORDER BY id", [[customer, free, blocked]])).rows,
+      history: (await owner.query(`SELECT to_jsonb(h) AS row,xmin::text FROM ${table} h ORDER BY id`)).rows,
+    });
+    const receipts = async () => (await owner.query(`SELECT * FROM (SELECT to_jsonb(c) AS row,xmin::text FROM public.customer_support_subscription_commands c WHERE idempotency_key=ANY($1::text[])
+      UNION ALL SELECT to_jsonb(a),xmin::text FROM public.customer_support_subscription_audit_events a WHERE idempotency_key=ANY($1::text[])) receipts ORDER BY row::text`, [[key, blockedKey]])).rows;
+    const before = await business();
+    const refused = await absorb(blocked, blockedKey);
+    expect(refused).toEqual({ outcome: "refused", action: "absorb_lead", leadId: blocked, refusalCode: "lead_has_commercial_footprint", blockingTables: ["census_subject_history"] });
+    expect(await business()).toEqual(before);
+    const applied = await absorb(free, key);
+    expect(applied, JSON.stringify(applied)).toMatchObject({ outcome: "applied", leadId: free, customerId: customer });
+    expect((await owner.query("SELECT email FROM public.clients WHERE id=$1", [free])).rows).toEqual([{ email: `absorbed+${free.replaceAll("-", "")}@absorbed.invalid` }]);
+    const after = await business(), recorded = await receipts();
+    expect(await absorb(free, key)).toEqual({ ...applied, outcome: "replayed" });
+    expect(await absorb(blocked, blockedKey)).toEqual(refused);
+    expect(await business()).toEqual(after); expect(await receipts()).toEqual(recorded);
+    expect(after.history).toEqual(before.history);
+    if (restricted) {
+      expect((await runtime.query(`SELECT count(*)::int AS count FROM ${table} WHERE client_id=$1`, [blocked])).rows).toEqual([{ count: 1 }]);
+      await expect(runtime.query(`SELECT payload FROM ${table}`)).rejects.toMatchObject({ code: "42501" });
+      await expect(runtime.query(`UPDATE ${table} SET client_id=client_id`)).rejects.toMatchObject({ code: "42501" });
+    }
+  } finally {
+    await owner.query(`DROP TABLE ${table}`);
+    await owner.query("DELETE FROM public.client_absorption_policy WHERE table_name='census_subject_history'");
+  }
+}
+
+describe("legacy absorption census", () => {
+  const h = nativeHarness("absorption-census");
+  beforeAll(() => h.start(), postgresSetupTimeoutMs);
+  afterAll(() => h.stop(), postgresTeardownTimeoutMs);
+  it("preserves block, absorption and replay on the legacy installation", async () => {
+    const operatorId = randomUUID();
+    await h.pool.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,$2)", [operatorId, `${operatorId}@example.invalid`]);
+    await h.pool.query("INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at) VALUES($1,'admin','active','legacy',$2)", [operatorId, AT]);
+    await h.pool.query("INSERT INTO public.platform_communication_operators(principal_id,active) VALUES($1,true)", [operatorId]);
+    await absorptionCensusWitness(h.pool, h.pool, operatorId, false);
   });
 });

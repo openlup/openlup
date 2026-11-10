@@ -140,6 +140,9 @@ stock waits, privacy erasures and subscription command receipts. The absorber
 still refuses an unclassified client-referencing table. Classification and access
 to any other earlier-row table remain that table's integration responsibility;
 the forward neither widens table grants nor changes the absorber.
+For a new block-classified table, the [absorption census slot shape](#closed-native-store-forwards)
+provides the existing absorber with client-column access while keeping personal
+payloads unreadable. Its classification and access belong to that table's forward.
 
 ## Partner acquisition data
 
@@ -1561,13 +1564,61 @@ rules; data statements require exact head-class slot entries. CHECK and UNIQUE
 replacements use the named, closed entries below. A whole-file hash does not
 bypass the content checks.
 
-A signature may be replaced again in a later slot with a later migration time
-only when its before-hash equals the immediately preceding replacement pin's
-after-hash. An unbound predecessor refuses. The actual latest definition in the
-ordered prefix must also match that before-hash; a first replacement still binds
-the pre-class definition. Replacement headers and search_path stay identical to
-that preimage apart from CREATE OR REPLACE, and the PostgreSQL catalog preserves
-owner and ACL. Issued contents, positions and the sealed-prefix rule stay fixed.
+`absorptionCensusTables` may list qualified `public.<table>` names with unquoted
+lowercase ASCII identifiers for new
+client-referencing block tables. Each listed table must be created earlier in
+the same slot file. Its own `dataStatements`
+must pin exactly one statement of this form, also present in the forward:
+
+```sql
+INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('example_history', 'block', 'Customer history prevents absorption.');
+```
+
+For each table, exactly these two additional statements are admitted, each in
+the existing constant `service_role` conditional shell:
+
+```sql
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT SELECT (client_id) ON TABLE public.example_history TO service_role;'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'CREATE POLICY example_history_absorption_census ON public.example_history FOR SELECT TO service_role USING (true);'; END IF; END; $$;
+```
+
+The fixed policy name is `<table>_absorption_census` and must fit PostgreSQL's
+63-byte identifier limit. Missing or duplicate statements, unlisted or
+earlier-slot tables, other columns, roles, verbs, policy expressions or names,
+WITH CHECK, non-block or missing classification, and statements outside the
+conditional shell refuse. This capability grants no payload access and does
+not change the fixed notice-table INSERT/SELECT exception.
+The census validator checks only the slot's own statements and registry entry;
+it adds neither a foreign-key parser nor a scan of earlier prefix history.
+Installed foreign keys and effective privileges are PostgreSQL obligations.
+
+Every new relation with a foreign key to `public.clients` must have an
+absorption-policy row keyed by its raw `pg_class.relname` after its slot, with any
+existing disposition. Quoted regclass display text is not a classification key. An
+unclassified table refuses, because it would make the absorber refuse every
+lead. This classification check does not grant access: unlisted `block` and
+`retain` tables retain owner-only table ACLs and no column ACLs. Only listed
+census tables receive the exact census privilege exception.
+
+The [PostgreSQL catalogue witness](../../tests/postgres/nativeStoreForwardCatalog.test.ts)
+independently requires a new relation, migration ownership, enabled RLS,
+owner-only table ACL, exactly `client_id` SELECT for `service_role`, and exactly
+the named permissive SELECT policy with `true` and no check. With that role
+absent there are no column grants or policies. Its single-column `client_id`
+foreign key to `public.clients(id)` and stored `block` classification are checked
+in PostgreSQL as well. Every other new
+relation retains the existing ACL refusals. The [absorber witness](../../tests/postgres/qualifiedRuntimeLockCompletion.test.ts)
+proves block, successful absorption and replay on legacy and both qualified
+installations, with payload reads and writes denied on the restricted runtimes.
+
+An explicitly listed replacement may chain to the exact creation pin of an
+earlier reviewed native-store slot, or to the immediately preceding replacement
+pin. Its before-hash must equal that predecessor's after-hash. An unbound
+predecessor refuses. The actual latest definition in the complete ordered prefix
+must also match that before-hash; a first replacement without an earlier class
+creation or replacement still binds the pre-class definition. Replacement headers
+and search_path stay identical to that preimage apart from CREATE OR REPLACE, and
+the PostgreSQL catalog preserves owner and ACL. Issued contents, positions and the sealed-prefix rule stay fixed.
 
 The class-local identity reader normalizes scalar aliases, schema-qualified composite/table arguments and
 arrays against exact listed signatures; earlier identity readers stay unchanged.
@@ -1586,14 +1637,21 @@ the quote after it, so one statement for the splitter would be several for the
 database. A backslash inside a dollar body is data, and the earlier files of the
 prefix keep the older reading.
 Adding columns or new CHECKs to an existing table retains the expand-only path.
+A new table may declare foreign-key `ON DELETE CASCADE` or `ON DELETE SET NULL` actions; only those actions are masked before the default expand-only check, with all other expression and statement refusals retained.
 Any slot may also list exact complete ALTER TABLE texts in
 `existingTableStatements`. PostgreSQL checks target existence when applying the
 plain ALTER TABLE; IF EXISTS is refused. The closed actions are ADD COLUMN, named ADD CONSTRAINT
 under the existing expression checks, ALTER COLUMN DROP NOT NULL, and VALIDATE
 CONSTRAINT. The restricted FOREIGN KEY ... ON DELETE RESTRICT NOT VALID form
-preserves the issued purchase-reservation companions. Other drops, column type
-changes, renames and ownership changes refuse even when listed. Every listed
-statement must appear once in order, with internal bytes unchanged; an unlisted
+preserves the issued purchase-reservation companions. A listed named single-column
+FOREIGN KEY may also use ON DELETE SET NULL or CASCADE, with optional NOT VALID,
+only after the same ordered list adds that column (including an ADD COLUMN and
+named constraint companion in one ALTER). The catalogue proves the column did
+not exist before the slot, the exact referenced table/key, delete action and
+validation state, with prior columns, constraints and ACLs unchanged.
+SET NULL/CASCADE on pre-existing columns and dropped or rewritten foreign keys
+remain refused. Other drops, column type changes, renames and ownership changes
+refuse even when listed. Every listed statement must appear once in order, with internal bytes unchanged; an unlisted
 existing-table ALTER cannot fall through to generic ADD admission when the list
 is active. The issued three purchase-reservation texts remain unchanged data.
 
@@ -1621,12 +1679,18 @@ authorization keep their existing order-scoped or token-scoped revocation.
 `uniqueSupersets` entries declare table, constraint, columns and nullsNotDistinct.
 The lexical validator checks only the slot's own SQL: exactly one adjacent
 DROP CONSTRAINT / ADD CONSTRAINT pair per entry, with the exact listed positive
-IN values or plain UNIQUE columns and NULLS NOT DISTINCT mode. Unlisted drops,
-non-adjacent pairs and mismatched additions refuse; the general expression
-grammar is unchanged. The protected real-PostgreSQL catalog control proves
+IN values (with an optional trailing `NOT VALID`) or plain UNIQUE columns and
+NULLS NOT DISTINCT mode. Unlisted drops, non-adjacent pairs and mismatched
+additions refuse; the general expression grammar is unchanged. The protected real-PostgreSQL catalog control proves
 widening against the installed definition immediately before the slot: the old
 constraint must exist in the closed CHECK or UNIQUE shape, every old value or
 key column must remain, and NULLS NOT DISTINCT may be added but never removed.
+CHECK validation state must remain equal: a validated CHECK stays validated, and
+an unvalidated CHECK stays `NOT VALID`. PostgreSQL's `convalidated` proves that
+state; only when both are unvalidated is the trailing `NOT VALID` omitted for
+value-list comparison. This preserves table conventions that check new writes
+without rechecking historical rows. Changing validation state in either direction
+refuses. The lexical validator reads no prefix validation history.
 The installed new definition must equal the entry; other constraints, columns
 and triggers remain protected. No historical SQL anchor is used for these
 entries. The issued account-consent `purposeCheck` retains its original preimage,
@@ -1641,8 +1705,10 @@ existing guarded role revokes are allowed. Every GRANT on a created view refuses
 Views gain no RLS or table-grant capability. The real catalog checks the declared
 new view inventory, ownership and owner-only privileges.
 
-`createdTriggers` entries name a fresh trigger, an existing prefix table and the
-exact CREATE TRIGGER statement hash. Only BEFORE/AFTER INSERT, DELETE or UPDATE
+`createdTriggers` entries name a fresh trigger, a qualified target table and the
+exact CREATE TRIGGER statement hash. The target must exist in the prefix or be
+created by an earlier plain CREATE TABLE in this same slot, owned by the migrator.
+Only BEFORE/AFTER INSERT, DELETE or UPDATE
 (with an optional OF column list), combined with OR, FOR EACH ROW and a
 zero-argument public function are admitted. That function must be created in the
 same slot, explicitly return trigger with SECURITY INVOKER and a pinned search
@@ -1650,7 +1716,8 @@ path, revoke PUBLIC and receive no EXECUTE grant. Conditional revokes remain
 allowed. WHEN, transition relations, constraint/statement/instead-of triggers,
 trigger mutation and unlisted or drifted statements refuse. Creation stays plain:
 OR REPLACE and conditional existence forms refuse. PostgreSQL rejects duplicate
-triggers and missing targets; the catalog witness checks prefix-table membership,
+triggers and missing targets; the catalog witness proves prefix membership or
+earlier same-slot table creation and ownership,
 name freshness, enabled binding, events and owner-only function ACL.
 
 The destination slot registers four created function signatures and pinned
@@ -1662,24 +1729,35 @@ duties. Synthetic shape acceptance establishes no implemented destination API.
 
 Each created function must revoke all PUBLIC privileges before its grants and
 conditional blocks. SECURITY DEFINER requires the slot's exact pinned
-`search_path`, such as `pg_catalog, pg_temp`. Grant-only signatures must exist in
-the pre-class native prefix and be disjoint from the replaced/created lists.
+`search_path`, such as `pg_catalog, pg_temp`. A replacement may preserve a legacy
+compact `SET search_path=pg_catalog` header: extraction normalizes the assignment
+for its schema-list pin only; the header itself must remain byte-for-byte equal.
+New functions retain their existing spaced spelling, and no other SET grammar,
+schema-token or catalogue proconfig check changes. Grant-only signatures must
+exist in the pre-class native prefix and be disjoint from the replaced/created lists.
 They cannot be redefined or named by a direct privilege statement. Only their
 pinned conditional role/verb capabilities are admitted, without demanding a new
 PUBLIC revoke. A block naming created functions still requires their revokes;
 a block naming only grant-only functions does not.
-The sole DO exception is one block per role, verb and object kind (FUNCTION or
-TABLE): an exact `pg_roles` existence guard around one constant privilege
-EXECUTE, on admitted targets, for the same role. `anon` admits revokes only;
-`authenticated` and `service_role` admit revokes or EXECUTE grants. Extra
-statements, branches, dynamic strings and PUBLIC grants refuse.
+The conditional DO shell requires an exact `pg_roles` existence guard around
+one constant privilege EXECUTE, on admitted targets, for the same role. Function
+privileges and table revokes retain one block per role, verb and object kind
+(FUNCTION or TABLE). The fixed notice-table allowance below additionally admits
+its grant and policy. Each listed, block-classified, same-slot census table has
+two separate `service_role` conditional blocks: one for `SELECT (client_id)` and
+one for its derived SELECT-only policy with `USING (true)` and no WITH CHECK.
+`anon` admits revokes only; for functions, `authenticated` and `service_role`
+admit revokes or EXECUTE grants. Extra statements, branches, dynamic strings and
+PUBLIC grants refuse.
 
 Only qualified tables created earlier by unconditional `CREATE TABLE public.<name>`
 statements in that same slot's file may use table narrowing: bare `REVOKE ALL ON
 TABLE <table> FROM PUBLIC`, conditional per-role `REVOKE ALL ON TABLE` lists, and
 `ALTER TABLE <table> ENABLE ROW LEVEL SECURITY`. A table from the prefix or
 another slot or an unqualified/IF NOT EXISTS creation refuses. Table grants refuse
-except for the fixed notice-table allowance below.
+except for the fixed notice-table allowance below and the listed census tables'
+client-column SELECT allowance above. Census tables keep owner-only table ACLs
+and receive only their exact column grant and derived SELECT policy.
 The native paid-notice slot alone may name `insertSelectTables`, whose complete
 value is pinned by the reader to `["public.subscription_notice_refusals"]`.
 It is an allowance, so it may precede the table's introduction. It authorizes
@@ -1692,13 +1770,13 @@ GRANT SELECT, INSERT ON public.subscription_notice_refusals TO service_role;
 CREATE POLICY subscription_notice_refusals_runtime ON public.subscription_notice_refusals FOR ALL TO service_role USING (true) WITH CHECK (true);
 ```
 
-The quoted inner statement includes its final semicolon; different spelling,
+The notice-table inner statement includes its final semicolon; different spelling,
 privilege order, an added `TABLE`, extra roles, column grants and grant options
 refuse. The existing revoke and RLS-enable narrowing paths are unchanged.
 The table keeps RLS enabled and only owner plus service-role SELECT/INSERT
 privileges; its one policy has that role alone. With the role absent, the guarded
 grant and policy do not run and the new table stays owner-only with RLS enabled.
-No other row or table gains this capability.
+This INSERT/SELECT allowance applies only to the named notice table.
 
 The existing expand-only grammar and every other class retain their refusals.
 Each feature PR using this narrowing must provide real-PostgreSQL proof that its
@@ -1734,11 +1812,17 @@ operator a forward creates for another operand type cannot hide what it adds:
 - Existing relations of every kind, indexes and TOAST tables included, keep their
   owner, privileges, row security, options and column privileges. Only the index
   of an explicitly listed UNIQUE replacement may be replaced with its new key. A new relation of
-  any kind is owned by the migration role and carries only its owner's table
-  privileges and no column privilege. The pinned notice table above alone may
-  carry service-role SELECT/INSERT with RLS enabled and its single fixed policy;
-  the comparator checks the role, command, predicates and absence of grant options.
-  Every other new relation stays owner-only. Relations are matched by OID, so a forward
+  any kind is owned by the migration role. By default it carries only its owner's
+  table privileges and no column privilege. The pinned notice table may carry
+  service-role SELECT/INSERT with RLS enabled and its single fixed policy.
+  A listed, block-classified, same-slot census table keeps owner-only table ACLs
+  and may carry only `client_id` SELECT for `service_role`, with RLS enabled and
+  its derived permissive SELECT policy (`USING (true)`, no WITH CHECK); each of
+  its two statements uses its own conditional block. The comparator checks the
+  exact roles, commands, predicates and absence of grant options. Unlisted
+  relations retain owner-only privileges and no column ACLs, including classified
+  retain/block tables. Relations and their raw names/namespaces are resolved by OID,
+  so a forward
   that rewrites an existing table, for example by adding a column with a volatile
   default, replaces its TOAST relation and is refused: a known fail-closed limit,
   with a follow-up to compare TOAST relations without OID identity.
