@@ -2325,3 +2325,15 @@ Opaque native method references establish no method or operation; those guidance
 fields remain unknown. Non-sandbox channels retain the existing named refusal.
 The host keeps status capability opt-in, its legacy display fallback and response
 shape. See the [atomic guidance recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#atomic-checkout-payment-guidance).
+
+### Checkout token payment
+
+The sandbox preview composes `createCheckoutRecoveryPayService`,
+`createCheckoutRecoveryTokenPay` and `withCheckoutRecoveryPaymentHold` from
+`commerce/server` with `createPostgresSandboxCheckoutRecoveryAttemptPort` from
+`payments`. It retries on the same order/intent, binds method facts to the request
+key and rechecks checkout authority under locks. Renewal cycles refuse; initial
+declarations remain eligible. Hold policy/read ports stay host-owned. Other
+channels keep the named native refusal. See the
+[composition recipe](../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md#checkout-token-payment)
+and [PostgreSQL witnesses](../../tests/postgres/checkoutRecoveryPay.test.ts).

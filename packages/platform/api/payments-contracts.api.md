@@ -978,6 +978,11 @@ export interface SandboxPaymentSimulator {
         idempotencyKey: string;
         requestFingerprint: string;
         methodFacts?: SandboxMethodFacts;
+        checkoutRecovery?: {
+            orderId: string;
+            clientId: string;
+            recoveryTokenId: string;
+        };
         at: string;
     }): Promise<SandboxPaymentAttempt & {
         replayed: boolean;

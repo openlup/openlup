@@ -36,7 +36,7 @@ export interface SandboxPaymentAttempt {
 export interface SandboxPaymentSimulator {
   /** A fresh row conservatively records dispatch. Replayed rows never authorize redispatch. */
   beginAttempt(input: { settlementIntentId: string; idempotencyKey: string; requestFingerprint: string;
-    methodFacts?: SandboxMethodFacts; at: string }): Promise<SandboxPaymentAttempt & { replayed: boolean }>;
+    methodFacts?: SandboxMethodFacts; checkoutRecovery?: { orderId: string; clientId: string; recoveryTokenId: string }; at: string }): Promise<SandboxPaymentAttempt & { replayed: boolean }>;
   /** Host-authorized synthetic source. Recording alone never pays an order. */
   recordObservation(input: { attemptId: string; idempotencyKey: string; outcome: SandboxPaymentOutcome;
     occurredAt: string }): Promise<{ id: string; replayed: boolean }>;

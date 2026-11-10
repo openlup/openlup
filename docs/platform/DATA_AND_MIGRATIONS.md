@@ -3666,3 +3666,15 @@ materializing reader nor treats observed capture as completed settlement.
 Current complete-installation inventories include the new function; historical
 prefixes are unchanged. The [composition recipe](PLATFORM_PACKAGE_REFERENCE.md#atomic-checkout-payment-guidance)
 owns capability opt-in, neutral normalization and the sandbox profile limits.
+
+### Checkout attempt admission
+
+`20261110250000_checkout_recovery_attempt.sql` creates only
+`commerce_checkout_recovery_attempt_begin(text,uuid,uuid,uuid,text,jsonb,timestamptz)`.
+This fixed-path procedural definer locks the existing order then intent, checks
+checkout authority/provenance and delegates to `payment_simulator_begin_attempt`.
+The JSON argument carries a recovery-token identity and synthetic method facts.
+Only service EXECUTE is granted. No existing function, table, trigger, column or
+historical row is changed. The ordered plans append one unit; current complete
+inventories advance while issued and released prefixes remain fixed. See the
+[token payment recipe](PLATFORM_PACKAGE_REFERENCE.md#checkout-token-payment).

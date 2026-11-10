@@ -1318,6 +1318,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261110250000_checkout_recovery_attempt.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4402,6 +4406,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261110250000_checkout_recovery_attempt.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -5407,6 +5415,14 @@
     },
     {
       "path": "packages/platform/src/commerce/server/checkoutRecoveryOrderPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/checkoutRecoveryPay.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/checkoutRecoveryPaymentHold.ts",
       "class": "public-output"
     },
     {
@@ -7690,6 +7706,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/payments/sandboxCheckoutRecoveryPay.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/payments/sandboxRecoveryGuidance.ts",
       "class": "public-output"
     },
@@ -8859,6 +8879,10 @@
     },
     {
       "path": "packages/platform/test/commerce/checkoutRecoveryInspection.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/checkoutRecoveryPay.test.ts",
       "class": "public-output"
     },
     {
@@ -28795,6 +28819,10 @@
     },
     {
       "path": "tests/postgres/checkoutRecoveryLinkLifecycle.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/checkoutRecoveryPay.test.ts",
       "class": "public-output"
     },
     {

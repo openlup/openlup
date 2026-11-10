@@ -1860,3 +1860,57 @@ mandate-wait display. Guidance is inspection only and authorizes no new payment.
 The host owns rendering and route mounting. See the
 [PostgreSQL witnesses](../../tests/postgres/checkoutPaymentGuidance.test.ts) and
 [package characterizations](../../packages/platform/test/commerce/paymentRecoveryGuidance.test.ts).
+
+## Checkout token payment
+
+The native sandbox preview provides `createCheckoutRecoveryPayService` and
+`createCheckoutRecoveryTokenPay` from `@openlup/platform/commerce/server`.
+Bind the neutral `CheckoutRecoveryAttemptPort` to
+`createPostgresSandboxCheckoutRecoveryAttemptPort` from
+`@openlup/platform/payments`. The executor is structural; importing or composing
+these factories requires no `pg` types. Keep the executor at READ COMMITTED.
+The host owns transport, request validation, feature availability and rendering.
+
+The token composition derives the order and client from validated authority.
+An explicit `followLatest` follows the root's latest recovery order only after
+inspection proves continuation authority and original ownership. Expired
+inspection alone never pays an order. Expired recreation remains the separate
+[recreation service](#expired-checkout-recreation).
+
+The service starts another attempt on the existing intent and leaves the order
+and inventory reservation in place. The existing native reader's `pending`
+projection means a created intent; unresolved dispatch is fenced by the attempt
+owner under locks. Order/client/intent, token expiry/revocation, initial checkout
+provenance, money and observed capture are rechecked by the service-only
+`commerce_checkout_recovery_attempt_begin` function under order/intent locks.
+Non-null renewal cycles are refused; a provisional initial declaration remains
+eligible. Captured observations prevent another dispatch even before settlement
+converges. A repeated request key and fingerprint returns its original attempt;
+changing method facts under that key refuses. Use a fresh per-click key after a
+terminal failure to choose another synthetic method on the same intent.
+
+`CheckoutRecoveryPayError.kind` distinguishes `upstream_unavailable` for in-flight
+or uncertain execution from `conflict` for dead checkout authority. A known
+refusal stays a recoverable `failed` result. Invalid local method facts roll back
+before dispatch and permit a corrected retry. The sandbox owner records dispatch
+atomically when it creates an attempt: it has no external preparation or
+finalization phase. Observations and verified ingress retain ownership of money
+results; the pay service never settles from a browser result or a rehearsal
+shortcut. Other channels retain `native_prepared_attempt_store_unsupported` and
+the existing [payment-owner limit](#expired-checkout-recreation).
+
+Wrap the service with `withCheckoutRecoveryPaymentHold` before binding token pay.
+Inject the host's method classification, offered methods, active-hold read and
+first-purchase lookup. Only a first purchase created strictly after its method's
+hold can be withheld. Recreated orders, foreign-root chains and renewal cycles
+bypass the wrapper; unknown first-purchase evidence or a failed hold read permits
+payment. Subscription evidence must establish that the subscription was never
+live. Holding every offered method ignores the hold for that checkout kind.
+Control keys, offered-method policy and the hold trigger belong to the adopter.
+The same service wrapper can be used by a later inline consumer.
+
+The [PostgreSQL witnesses](../../tests/postgres/checkoutRecoveryPay.test.ts)
+exercise replay, retries, method binding, terminal races, renewal/token refusals,
+verified settlement and hold composition on legacy and both qualified runtimes.
+[Package characterizations](../../packages/platform/test/commerce/checkoutRecoveryPay.test.ts)
+cover the neutral port and injected hold rules.

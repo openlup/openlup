@@ -24,3 +24,5 @@ export { createPostgresSandboxPaymentSimulator } from "./postgresSandboxPaymentS
 export { createPostgresSandboxExpiredCheckoutSafety } from './expiredCheckoutSafety.js';
 export type { ExpiredPaymentSafetyOrder } from './expiredCheckoutSafety.js';
 export { normalizeSandboxPaymentRecoveryEvidence } from './sandboxRecoveryGuidance.js';
+
+export { createPostgresSandboxCheckoutRecoveryAttemptPort } from './sandboxCheckoutRecoveryPay.js';
