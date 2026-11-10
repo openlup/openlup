@@ -285,7 +285,7 @@ function operatorOrderPortal(context: PageContext): HTMLElement {
     }
     if (typeof parcel.id === 'string' && !['delivered', 'cancelled'].includes(String(parcel.status))) append(controls,
       actionForm(context, { operation: 'operator.cancelFulfillment', title: 'cancelFulfillment', submit: 'cancelFulfillment',
-        fields: [{ name: 'reason', label: 'reason', maxLength: 1000 }, { name: 'confirmed', label: 'fulfillmentCancelConfirm', type: 'checkbox' }],
+        fields: [{ name: 'reason', label: 'reason', maxLength: 240 }, { name: 'confirmed', label: 'fulfillmentCancelConfirm', type: 'checkbox' }],
         input: () => ({ shipmentRef: parcel.id }), onSuccess: mutationCompleted }));
   }
   const reader = actionForm(context, { operation: 'operator.order', title: 'read', submit: 'read', fields: [orderRef], onSuccess: value => {

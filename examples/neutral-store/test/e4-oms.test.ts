@@ -99,3 +99,11 @@ test('a disabled local checkout-recovery pass creates no job or database work', 
   assert.deepEqual(await runCheckoutRecovery({ executor, config: context.config, publicOrigin: 'http://127.0.0.1:4319', enabled: false }),
     { enqueued: { ok: true, skipped: true, reason: 'checkout_recovery_disabled' } });
 });
+
+
+test('fulfillment cancellation retains the native 240-character reason boundary', async () => {
+  const pool = { query() { throw new Error('oversized_reason_store_touched'); } } as unknown as Pool;
+  const action = composePortalCapabilities(pool, async () => true)['operator.cancelFulfillment']!;
+  assert.deepEqual(await action({ shipmentRef: 'abcdefab-cdef-4abc-8def-abcdefabcdef', reason: 'x'.repeat(241), confirmed: true }, context),
+    { ok: false, code: 'starter_input_invalid' });
+});

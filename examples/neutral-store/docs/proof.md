@@ -775,3 +775,17 @@ check that these witnesses detect the corresponding regressions. Browser purchas
 recipes retain their existing carts and expectations; both demonstration offers
 charge 640 minor units below a 1,000-minor threshold. These proofs establish no
 provider access, publication or deployment qualification.
+
+
+## Account, checkout and parcel candidate
+
+Run `./lifecycle browser` from the application directory for the complete database
+configuration. It creates fresh installations for three sequential groups:
+subscription care, the new portal journeys and the purchase baseline. Tests use
+one worker and tracing, screenshots and video off. Independent processes and
+installations keep each group inside the normal checkout quota; production quota
+values and admission paths are unchanged. Focus the portal with `./lifecycle
+browser browser/acquisition.spec.ts --grep 'portal '`. Each of its ten definitions
+runs in both languages and both configurations, for forty cases. The external
+parcel fixture freezes synthetic carrier contact and supplies normalized provider
+facts through existing native owners. It mounts no dispatch or delivery action.

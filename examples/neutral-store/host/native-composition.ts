@@ -1,5 +1,5 @@
 import { readPostgresCustomerAccountClient, createPostgresCustomerAccountMutationPort, createCustomerAccountMutationSchemas } from '@openlup/platform/account-support';
-import { customerAccountPolicy } from '../owned/store.config.ts';
+import { customerAccountPolicy } from '../owned/acquisition-policy.ts';
 import type { SubscriptionCommand } from '@openlup/platform/subscriptions/contracts';
 import { createPostgresSubscriptionCommands } from '@openlup/platform/subscriptions';
 import { isUuid } from './recurring-fence.ts';

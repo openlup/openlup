@@ -3,7 +3,7 @@ import type { OrderPaymentLifecyclePort } from '@openlup/platform/commerce';
 import { createPostgresPlatformJobRunLedger } from '@openlup/platform/job-ledger';
 import { createCheckoutRecoveryWaveJob } from '@openlup/platform/composition';
 import { withCheckoutRecoverySendEvidence } from '@openlup/platform/communications';
-import { checkoutRecoverySchedule, checkoutWavePolicy } from '../owned/store.config.ts';
+import { checkoutRecoverySchedule, checkoutWavePolicy } from '../owned/acquisition-policy.ts';
 import { copy } from '../owned/copy.ts';
 import { routes } from '../shared/routes.ts';
 import { PLATFORM_EVENT_VOCABULARY } from '@openlup/core/outbox';

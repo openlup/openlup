@@ -759,7 +759,7 @@ delivery action, settings seed, real provider or release activation is included.
 The account now edits first name, last name and phone through the installed
 account mutation port. Email remains read-only. Failed saves keep the draft;
 profile replay returns current state. The demonstration phone policy accepts
-nine local digits under fictional calling code 999. These owned values make no
+nine local digits under fictional calling code 999. These values in `owned/acquisition-policy.ts` make no
 real-market claim. Current invoice entries offer a correction request with
 reason, requested fields and optional note. The response acknowledges a stored
 account event; it does not issue a correction, refund or operator ticket.
@@ -819,3 +819,10 @@ browser/acquisition.spec.ts --grep 'portal '`, or include them in the complete
 `./lifecycle browser` recipe. Both configurations and languages run on real
 PostgreSQL with one worker and traces, screenshots and video off. No production,
 provider or release activation is included.
+
+The complete browser recipe uses separate throwaway installations for subscription
+care, the account/checkout/parcel portal and the purchase baseline. Each selected
+journey runs once with one worker. This keeps each group within the unchanged
+per-process checkout quotas; it neither increases limits nor bypasses admission.
+Policy values live beside the existing owned acquisition policy, so replacing the
+owned configuration registry does not create new required module exports.

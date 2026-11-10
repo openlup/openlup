@@ -213,8 +213,8 @@ migration runner owns the database schema; no starter migration or grant is adde
 
 ## Account, checkout and parcel controls
 
-`owned/store.config.ts` owns account validation, fictional phone and checkout
-wave/link timing values. EN/PL copy stays in `owned/copy.ts`. The managed account
+`owned/acquisition-policy.ts` owns account validation, fictional phone and checkout
+wave/link timing values. English and Polish copy stays in `owned/copy.ts`. The managed account
 and operator pages bind native capabilities through `host/e4-composition.ts` and
 `host/native-composition.ts`. The host derives identity and command keys from the
 accepted session/request. Profile update and event append retain their separate

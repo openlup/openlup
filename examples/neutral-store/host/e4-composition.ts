@@ -2,7 +2,7 @@ import { createCustomerAccountMutationSchemas, createPostgresCustomerAccountMuta
 import { createAdminCheckoutPaymentLinkHandler, createPostgresOperatorCheckoutLinkStore, type OperatorCheckoutLinkOrder } from '@openlup/platform/commerce/server';
 import { createPostgresFulfillmentOperatorPort } from '@openlup/platform/fulfillment/native';
 import { CommerceFulfillmentConflictError } from '@openlup/platform/fulfillment';
-import { customerAccountPolicy, checkoutLinkPolicy } from '../owned/store.config.ts';
+import { customerAccountPolicy, checkoutLinkPolicy } from '../owned/acquisition-policy.ts';
 import type { Pool } from 'pg';
 import { evaluateCommerceFulfillmentEligibility, uuidSchema } from '@openlup/platform/commerce';
 import { createInvoiceAccess } from '@openlup/platform/account-support';
@@ -121,7 +121,7 @@ export function composePortalCapabilities(pool: Pool, authorizeOperator: (contex
     const allowed = replacement ? ['orderRef', 'reason', 'confirmed', 'locale'] : ['shipmentRef', 'reason', 'confirmed', 'locale'];
     if (Object.keys(payload).some(key => !allowed.includes(key)) || payload.confirmed !== true
       || !uuid(replacement ? payload.orderRef : payload.shipmentRef)
-      || typeof payload.reason !== 'string' || !payload.reason.trim() || payload.reason.length > 1000
+      || typeof payload.reason !== 'string' || !payload.reason.trim() || payload.reason.trim().length > 240
       || (replacement && !['damaged', 'lost', 'returned_undelivered', 'other'].includes(payload.reason))) return refused('starter_input_invalid');
     const port = createPostgresFulfillmentOperatorPort(pool, { providerRef: context.config.purchase.stock.providerRef,
       stockSourceKey: `starter-demo:${context.config.id}` });
@@ -129,7 +129,7 @@ export function composePortalCapabilities(pool: Pool, authorizeOperator: (contex
     try {
       const value = replacement ? await port.requestReplacementShipment({ ...base, orderId: payload.orderRef as string,
         reason: payload.reason as 'damaged' | 'lost' | 'returned_undelivered' | 'other' })
-        : await port.cancelCommerceFulfillmentOrder({ ...base, fulfillmentOrderId: payload.shipmentRef as string, reason: payload.reason });
+        : await port.cancelCommerceFulfillmentOrder({ ...base, fulfillmentOrderId: payload.shipmentRef as string, reason: payload.reason.trim() });
       return { ok: true, value, replayed: value.replayed };
     } catch (error) {
       if (error instanceof CommerceFulfillmentConflictError) {

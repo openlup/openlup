@@ -168,6 +168,16 @@ if (command === 'candidate') {
 
 /** Disposable installed-PostgreSQL recipe; never a production or customer database. */
 async function databaseBrowserRecipe(argv) {
+  if (argv.length === 0) {
+    // Independent installations keep each public journey group within unchanged host attempt quotas.
+    // Each selected test still runs once with one worker; no quota or refusal is bypassed.
+    for (const selection of [
+      ['browser/acquisition.spec.ts', '--grep', 'database subscription care', '--grep-invert', 'portal '],
+      ['browser/acquisition.spec.ts', '--grep', 'portal '],
+      ['--grep-invert', 'database subscription care'],
+    ]) await databaseBrowserRecipe(selection);
+    return;
+  }
   const { spawn } = await import('node:child_process');
   const { once } = await import('node:events');
   const { randomBytes, randomUUID } = await import('node:crypto');
