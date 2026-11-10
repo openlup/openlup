@@ -111,6 +111,28 @@ describe("native store SQL shapes and pins", () => {
     "ALTER TABLE public.communication_native_sync_state ADD COLUMN fixture_nullable timestamptz;",
     "ALTER TABLE public.communication_native_sync_state ADD CONSTRAINT fixture_additive_check CHECK (purpose IN ('marketing_launch_offer','marketing_newsletter'));",
   ])("retains expand-only DDL: %s", statement => { expect(() => check(`${sql()}\n${statement}`)).not.toThrow(); });
+  it.each(["CASCADE", "SET NULL"])("admits only a new table's foreign-key ON DELETE %s action", action => {
+    const statement = `CREATE TABLE public.fixture_table (client_id uuid REFERENCES public.clients(id) ON DELETE ${action});`;
+    expect(isExpandOnlyPlatformForward(statement)).toBe(false);
+    expect(() => check(`${sql()}\n${statement}`)).not.toThrow();
+    const normalized = statement.toLowerCase().replace("on delete", "on /* action */\n delete");
+    expect(() => check(`${sql()}\n${normalized}`)).not.toThrow();
+  });
+  it.each([
+    "ALTER TABLE public.clients ADD COLUMN other_id uuid REFERENCES public.clients(id) ON DELETE CASCADE;",
+    "ALTER TABLE public.clients ADD COLUMN other_id uuid REFERENCES public.clients(id) ON DELETE SET NULL;",
+    "DELETE FROM public.clients;",
+    "SET search_path = public;",
+    "CREATE TABLE public.fixture_table (id bigint DEFAULT nextval('public.fixture_sequence'));",
+    "CREATE TABLE public.fixture_table (value text CHECK (public.fixture_check(value)));",
+    "CREATE TABLE public.fixture_table (LIKE public.clients INCLUDING ALL);",
+    "CREATE TABLE public.fixture_table AS SELECT id FROM public.clients;",
+    "CREATE TABLE public.fixture_table AS TABLE public.clients;",
+    "CREATE TABLE public.fixture_table AS VALUES (1);",
+    "CREATE TABLE public.fixture_table (payload jsonb DEFAULT '{}'::jsonb);",
+  ])("keeps default-mode refusals outside new-table FK actions: %s", statement => {
+    expect(() => check(`${sql()}\n${statement}`)).toThrow(/reviewed native store/u);
+  });
   it.each([
     ["unknown signature", () => `${sql()}\nCREATE FUNCTION public.fixture_unlisted() RETURNS text LANGUAGE sql AS $$ SELECT ''; $$;`],
     ["missing revoke", () => sql().replace(revoke, "")],
@@ -884,6 +906,24 @@ describe("registry-defined native capabilities", () => {
   it("admits multiple CHECK widenings after unrelated additive DDL", () => {
     const history = "ALTER TABLE public.fixture_parameters ADD COLUMN unrelated uuid;\nALTER TABLE public.fixture_parameters ADD CONSTRAINT unrelated_fk FOREIGN KEY (unrelated) REFERENCES public.fixture_row(id) ON DELETE RESTRICT NOT VALID;";
     expect(() => parameterForward(`${parameterCheck()}\n${parameterCheck("fixture_kind", "kind", "'first','second','third'")}`, slot => { addCheck(slot); slot.checkSupersets!.push({ ...slot.checkSupersets![0]!, constraint: "fixture_kind", column: "kind", values: ["first", "second", "third"] }); }, history)).not.toThrow();
+  });
+  it.each([false, true])("admits a listed CHECK with trailing NOT VALID without reading prefix validation state (%s)", unvalidated => {
+    const source = unvalidated ? parameterTable.replace("('open','closed'))", "('open','closed')) NOT VALID") : parameterTable;
+    expect(() => parameterForward(parameterCheck().replace(/;$/u, " NOT VALID;"), addCheck, "", source)).not.toThrow();
+  });
+  it.each(["NOT", "VALID", "NO INHERIT", "NOT VALID NOT VALID", "NOT VALID NO INHERIT"])("refuses a listed CHECK with other trailing tokens: %s", tail => {
+    expect(() => parameterForward(parameterCheck().replace(/;$/u, ` ${tail};`), addCheck)).toThrow(/CHECK must match/u);
+  });
+  it("refuses another ALTER action after a NOT VALID CHECK", () => {
+    expect(() => parameterForward(parameterCheck().replace(/;$/u, " NOT VALID, ADD COLUMN other text;"), addCheck))
+      .toThrow("reviewed native store requires the adjacent named constraint replacement");
+  });
+  it("keeps exact values, binding and adjacency for a NOT VALID CHECK", () => {
+    const sql = parameterCheck().replace(/;$/u, " NOT VALID;");
+    expect(() => parameterForward(sql.replace("'open','closed','paused'", "'open','paused'"), addCheck)).toThrow(/CHECK must match/u);
+    expect(() => parameterForward(sql.replaceAll("fixture_status", "other_status"), addCheck)).toThrow(/closed shapes/u);
+    expect(() => parameterForward(sql.replace(";\n", ";\nCREATE TABLE public.gap (id uuid);\n"), addCheck)).toThrow(/adjacent/u);
+    expect(() => parameterForward(sql, () => {})).toThrow(/closed shapes/u);
   });
   it("requires CHECK ADD values to equal the slot and the pair to be adjacent", () => {
     expect(() => parameterForward(parameterCheck(undefined, undefined, "'open','paused'"), addCheck)).toThrow("reviewed native store CHECK must match its listed values");
