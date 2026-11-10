@@ -245,7 +245,8 @@ BEGIN
   IF EXISTS(SELECT 1 FROM public.commerce_order_holds WHERE order_id=purchase.id AND status='active') THEN
    RAISE EXCEPTION 'commerce_fulfillment_provider_cancel_active_hold' USING ERRCODE='22023'; END IF;
   UPDATE public.fulfillment_inventory_reservations SET status='released',terminal_reason='order_cancelled',updated_at=now()
-   WHERE purchase_order_id=purchase.id AND status IN ('held','committed');
+   WHERE (purchase_order_id=purchase.id OR (renewal_operation_id=purchase.renewal_operation_id
+     AND operation_fingerprint=purchase.renewal_operation_fingerprint)) AND status IN ('held','committed');
   UPDATE public.commerce_orders SET status='cancelled',cancelled_at=now(),updated_at=now(),metadata=metadata||jsonb_build_object('source','operator_provider_cancel_confirmed','suppressOrderCanceledEmail',true,
    'providerCancellation',jsonb_build_object('reason',p_reason,'actorUserId',p_actor_id,'confirmedAt',now())) WHERE id=purchase.id;
   INSERT INTO public.commerce_order_operations(order_id,actor_id,operation_type,source,idempotency_key,payload)

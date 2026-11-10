@@ -4290,7 +4290,7 @@
     },
     {
       "path": "db/platform/migrations/20261110150000_fulfillment_operator_journeys.sql",
-      "sha256": "ad0ebf9cee47ab832dd433aa4e4fa392dde47222cf9fd1df12e2ecc19af62f8b",
+      "sha256": "4ce34b89e7afa857f0083517c08d421a8afc5932763a1b0855db583ccbeb4320",
       "functions": [
         {
           "signature": "public.fulfillment_open_shipment(text,uuid,text,jsonb,timestamptz)",
@@ -4330,7 +4330,7 @@
         {
           "signature": "public.fulfillment_operator_cancel_order(text,uuid,text,uuid,jsonb)",
           "beforeSha256": null,
-          "afterSha256": "ffa092cc935a1852976695e0477609cdf2360c6398baaf7cf3fab5c9cbfb4c7d"
+          "afterSha256": "95c25d85184a7e3d631d1a2d119b7fac837fff926985dc21f2e70af74ca61993"
         }
       ]
     }

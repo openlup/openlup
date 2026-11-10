@@ -312,6 +312,27 @@ for (const generation of lifecycleProfiles) describe(`operator parcel journeys o
     await h.owner.query("UPDATE public.commerce_order_holds SET status='released',released_at=now() WHERE order_id=$1", [f.order]);
     expect(await cancel(f)).toMatchObject({ status: 'cancelled' });
   });
+  it('releases every order-owned reservation form while using only recorded mode as cancellation authority', async () => {
+    const f = await subject(h.owner), unrelated = await reserve(h.runtime, f), renewal = await renewalFixture(h.owner);
+    const linked = { ...f, order: renewal.order, shipment: renewal.shipment, client: renewal.client };
+    const renewalReservation = randomUUID(), purchaseReservation = randomUUID(), consumed = randomUUID();
+    await h.owner.query("UPDATE public.commerce_orders SET renewal_operation_id=$2,renewal_operation_fingerprint=repeat('a',64),metadata='{}' WHERE id=$1", [renewal.order, renewal.operation]);
+    await h.owner.query("INSERT INTO public.commerce_settlement_intents(order_id,channel_key,status,amount_minor,currency_code,open_idempotency_key,settled_at) VALUES($1,'sandbox','settled',900,'XXX',$2,'2026-11-01T00:00:00Z')", [renewal.order, `settled-${renewal.order}`]);
+    await h.owner.query("UPDATE public.fulfillment_shipments SET status='exception' WHERE id=$1", [renewal.shipment]);
+    await h.owner.query("INSERT INTO public.fulfillment_inventory_reservations(id,renewal_operation_id,operation_fingerprint,source_key,status) VALUES($1,$2,repeat('a',64),$3,'committed')", [renewalReservation, renewal.operation, f.source]);
+    await h.owner.query("INSERT INTO public.fulfillment_inventory_reservations(id,purchase_order_id,operation_fingerprint,source_key,status,expires_at) VALUES($1,$2,repeat('a',64),$3,'held',now()+interval '1 day'),($4,$2,repeat('a',64),$3,'consumed',NULL)", [purchaseReservation, renewal.order, f.source, consumed]);
+    for (const reservation of [renewalReservation, purchaseReservation, consumed]) await h.owner.query("INSERT INTO public.fulfillment_inventory_reservation_lines(reservation_id,operation_fingerprint,sku,quantity) VALUES($1,repeat('a',64),$2,1)", [reservation, f.sku]);
+    await evidence(linked, 'CANCELLED', '2026-11-03T00:00:00Z');
+    const rows = async () => (await h.owner.query('SELECT id,status,updated_at FROM public.fulfillment_inventory_reservations WHERE id=ANY($1::uuid[]) ORDER BY id', [[renewalReservation,purchaseReservation,consumed,unrelated]])).rows;
+    const before = await rows();
+    await expect(cancel(linked)).rejects.toThrow('order_mode_unproven'); expect(await rows()).toEqual(before);
+    await h.owner.query("UPDATE public.commerce_orders SET metadata=jsonb_build_object('orderDraftSnapshot',jsonb_build_object('context',jsonb_build_object('mode','one_time'))) WHERE id=$1", [renewal.order]);
+    const key = `cancel-${randomUUID()}`; expect(await cancel(linked, renewal.shipment, key)).toMatchObject({ status: 'cancelled', releasedReservationCount: 0 });
+    const after = await rows();
+    for (const id of [renewalReservation,purchaseReservation]) expect(after.find(row => row.id===id)?.status).toBe('released');
+    for (const id of [consumed,unrelated]) expect(after.find(row => row.id===id)).toEqual(before.find(row => row.id===id));
+    expect(await cancel(linked, renewal.shipment, key)).toMatchObject({ replayed: true }); expect(await rows()).toEqual(after);
+  });
   it('selects the latest parcel laterally without duplicating order pages or changing counts and detail', async () => {
     const one = await subject(h.owner), two = await subject(h.owner), result = await replace(one);
     if (!('replacement' in result)) throw new Error('Expected replacement');
