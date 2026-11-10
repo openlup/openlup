@@ -1538,10 +1538,11 @@ no quantity-coverage override is applied.
 6. **FR06 — Address authority:** a null saved-address id means no saved-address
    record in this store's native model. A resolved shipment destination does not
    establish a captured fulfillment-address snapshot or its saved-address identity.
-7. **FR07 — Tracking activity:** tracking uses the newest reference attributed to
-   the selected parcel. Same-order reuse reattributes that provider/number pair;
-   displaced native reference facts remain in the private label receipt. The
-   native ledger has no separate active/deactivated flag.
+7. **FR07 — Tracking activity:** newly attributed references follow the selected
+   parcel. Historical references without provider identity retain the existing
+   newest order-linked fallback. Same-order reuse records provider identity and
+   parcel attribution; displaced facts remain in the private label receipt.
+   The native ledger has no separate active/deactivated flag.
 8. **FR08 — Operation evidence:** latest operation uses only the shipment ledger
    and retains its safe native payload. New operator shipment commands record
    their authenticated actor; historical actors stay null. Full provider evidence

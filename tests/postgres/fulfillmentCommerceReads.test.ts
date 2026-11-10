@@ -200,11 +200,14 @@ it('forwards the same database timestamp spelling in list and detail, including 
   if (zone === 'default') expect(detail.order).toMatchObject({ createdAt: '2026-06-05T10:00:00.123456+00:00', updatedAt: '2026-06-05T10:01:00.654321+00:00' });
 });
 
-it('uses the newest order tracking reference for both the current and an earlier shipment', async () => {
+it('retains newest order tracking for unattributed historical references on current and earlier shipments', async () => {
   const f = await fixture(), replacement = randomUUID();
   await owner.query("INSERT INTO public.fulfillment_shipments(id,order_id,port_key,provider_type,status,create_idempotency_key,sequence_no,replaces_shipment_id,replacement_reason) VALUES($1,$2,'read-port','3pl','created',$1::uuid::text,1,$3,'lost')", [replacement, f.order, f.shipment]);
   await owner.query("INSERT INTO public.shipment_external_refs(shipment_id,ref_role,external_id,recorded_at) VALUES($1,'tracking','earlier-ref','2026-06-01T00:00:00Z'),($2,'tracking','current-ref','2026-06-02T00:00:00Z')", [f.shipment, replacement]);
   expect(await port().getCommerceFulfillmentOrderDetail({ fulfillmentOrderId: f.shipment })).toMatchObject({ order: { providerTrackingId: 'current-ref' } });
+  expect(await port().getCommerceFulfillmentOrderDetail({ orderId: f.order })).toMatchObject({ order: { id: replacement, providerTrackingId: 'current-ref' } });
+  await owner.query("UPDATE public.shipment_external_refs SET provider_kind='carrier' WHERE shipment_id=ANY($1::uuid[])", [[f.shipment, replacement]]);
+  expect(await port().getCommerceFulfillmentOrderDetail({ fulfillmentOrderId: f.shipment })).toMatchObject({ order: { providerTrackingId: 'earlier-ref' } });
   expect(await port().getCommerceFulfillmentOrderDetail({ orderId: f.order })).toMatchObject({ order: { id: replacement, providerTrackingId: 'current-ref' } });
 });
 

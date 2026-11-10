@@ -47,8 +47,8 @@ export function createPostgresFulfillmentCommerceReadPort(input: {
       (SELECT to_jsonb(op) FROM public.fulfillment_shipment_operations op WHERE shipment_id=$2::uuid
         ORDER BY occurred_at DESC LIMIT 1) AS operation,
       (SELECT r.external_id FROM public.shipment_external_refs r JOIN public.fulfillment_shipments s ON s.id=r.shipment_id
-        WHERE s.order_id=o.id AND r.shipment_id=$2::uuid AND r.ref_role='tracking' ORDER BY r.recorded_at DESC,r.id DESC LIMIT 1) AS tracking,
-      (SELECT r.provider_kind FROM public.shipment_external_refs r WHERE r.shipment_id=$2::uuid AND r.ref_role='tracking' ORDER BY r.recorded_at DESC,r.id DESC LIMIT 1) AS tracking_provider,
+        WHERE s.order_id=o.id AND (r.shipment_id=$2::uuid OR r.provider_kind IS NULL) AND r.ref_role='tracking' ORDER BY r.recorded_at DESC LIMIT 1) AS tracking,
+      (SELECT r.provider_kind FROM public.shipment_external_refs r JOIN public.fulfillment_shipments s ON s.id=r.shipment_id WHERE s.order_id=o.id AND (r.shipment_id=$2::uuid OR r.provider_kind IS NULL) AND r.ref_role='tracking' ORDER BY r.recorded_at DESC LIMIT 1) AS tracking_provider,
       (SELECT jsonb_agg(to_jsonb(r) ORDER BY r.created_at DESC)
         FROM public.fulfillment_inventory_reservations r WHERE r.purchase_order_id=o.id
           OR (r.renewal_operation_id=o.renewal_operation_id AND r.operation_fingerprint=o.renewal_operation_fingerprint)) AS reservations
