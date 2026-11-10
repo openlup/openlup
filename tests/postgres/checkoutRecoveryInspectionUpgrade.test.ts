@@ -43,6 +43,13 @@ it.each(['legacy','bootstrap','separate','admin-managed','admin-operator'] as co
     const migrationUrl = login(installation.generation === "legacy" ? "postgres" : installation.migrationLogin);
     const migrator = pool(migrationUrl, installation.generation === "qualified-v2" ? qualifiedPostgresStartupOptions(installation) : installation.generation === "qualified-admin" ? qualifiedAdminPostgresStartupOptions(installation) : undefined);
     const prefix=JSON.parse(readFileSync('config/platform-migration-manifest.json','utf8'));
+    const introductionTail='db/platform/migrations/20261110115000_customer_checkout_links.sql';
+    for(const plan of[prefix,prefix.qualified,prefix.qualifiedAdmin]){
+      const end=plan.forward.findIndex((unit:{file:string})=>unit.file===introductionTail);
+      const own=plan.forward.find((unit:{file:string})=>unit.file===ownForward);
+      if(end<0||!own)throw new Error('frozen inspection introduction prefix missing');
+      plan.forward=[...plan.forward.slice(0,end+1),own];
+    }
     const root=resolve('.context/scratch/c32a/history-'+profile);
     const oldInventories={"legacy": "ec9aef09204a3ecbd524694ed6d849b910f164c23549b80bb55e9ed83f9e3570", "qualified": {"bootstrapMigrator": {"withRestore": "2d21bacb9a13484bb3765a098e16b38cf8f68d5214744e8a1460d74baefec30a"}, "separateMigrator": {"withRestore": "ef6d3bf861b092092c1c5d60d492ef324100d6f3a8d73b92f194c29e0ba6a66f"}}, "admin": {"installerManaged": "bd3529be129c914159f4d8ea734753fe713bdb9c820e0f5e0dc595a60777762a", "operatorProvisioned": "dd688244f730d5bf9d4d8827aaa4d67155c6dc160178f96ac76263eef613c432"}};
     prefix.objectInventorySha256=oldInventories.legacy;

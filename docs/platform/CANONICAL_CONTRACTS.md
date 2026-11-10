@@ -1648,8 +1648,8 @@ payload and idempotency key. Preview copies that payload without acceptedQuoteHa
 apply never previews. Only a checked previewed record reaches an injected host
 projection; other owner records retain identity. The projection must supply any
 legacy telemetry from trusted host facts. Native browser key retention remains
-unselected until the host retains one key across preview/apply. Native profile,
-recovery start and managed-shaped redeem have no selected native implementation.
+unselected until the host retains one key across preview/apply. Native profile edits and invoice correction requests have an explicitly selected
+PostgreSQL port; recovery start and managed-shaped redeem remain unselected.
 The facade returns every R1 output lane plus native legacy/control, with required
 host-supplied AccountSupportCapabilities. Input lanes are optional. Every output
 lane guards the verified principal;

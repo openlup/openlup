@@ -1298,6 +1298,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261110120000_customer_account_events.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/20261110170000_checkout_recovery_inspection.sql",
       "class": "public-output"
     },
@@ -4366,6 +4370,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261110120000_customer_account_events.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20261110170000_checkout_recovery_inspection.sql",
       "class": "public-output"
     },
@@ -4462,6 +4470,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/account-support/contracts/mutations.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/account-support/contracts/operator.ts",
       "class": "public-output"
     },
@@ -4471,6 +4483,22 @@
     },
     {
       "path": "packages/platform/src/account-support/customer360.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/account-support/customerAccount/accountEventPrivacy.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/account-support/customerAccount/accountMutationHandlers.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/account-support/customerAccount/accountMutationSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/account-support/customerAccount/postgresAccountMutations.ts",
       "class": "public-output"
     },
     {
@@ -8495,6 +8523,10 @@
     },
     {
       "path": "packages/platform/src/subscriptions/subscriptionSizing.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/account-support/accountMutations.test.ts",
       "class": "public-output"
     },
     {
@@ -28759,6 +28791,14 @@
     },
     {
       "path": "tests/postgres/customerAccountConsents.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/customerAccountMutations.fixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/customerAccountMutations.test.ts",
       "class": "public-output"
     },
     {
