@@ -481,14 +481,14 @@ Native destinations use `./commerce/server/destinations` and the complete SQL
 catalogue. Hosts authorize parent reads and bind checkout/dispatch explicitly.
 The confirmation outbox is durable; native mail dispatch is unbound.
 Addresses and identifying reference strings persist. Use opaque references;
-address export/erasure is unavailable. No saved address book is provided.
+destination-row export/erasure is unavailable in this port. This destination port provides no mutable address book; select the separate [saved-address port](#saved-customer-address-book) when needed.
 
 
 Native destinations use `./commerce/server/destinations` and the complete SQL
 catalogue. Hosts authorize parent reads and bind checkout/dispatch explicitly.
 The confirmation outbox is durable; native mail dispatch is unbound.
 Full postal addresses, contact phone numbers, command reasons and identifying reference strings persist. Use opaque references;
-there is no address export or erasure path. No saved address book is provided.
+there is no destination-row export or erasure path through this port. This destination port provides no mutable address book; select the separate [saved-address port](#saved-customer-address-book) when needed.
 The port's PostgreSQL routines are included in the native migration chain.
 Address-change events retain the optional command reason in their top-level and nested payloads.
 The shipment reader and dispatch enqueue must share one transaction; otherwise the host owns the intervening window.
@@ -2042,7 +2042,7 @@ order-summary DTO remains unchanged.
 `createPostgresAccountReadSources` implements native subscriptions, accepted line
 prices, blockers, pause windows, method/stock-wait evidence, delivery alignment
 and dunning/cycle action states. Extension and next-charge policy are required
-host inputs. Saved addresses, billing profiles, payment/delivery preferences and
+host inputs. Saved addresses (available through the selected shipping port), billing profiles, payment/delivery preferences and
 account events are optional explicit sources: each missing section throws
 `host_binding_required` with its section name. The same limit applies to the
 private-profile view. These refusals do not prevent independent reads of owned
@@ -2295,3 +2295,74 @@ navigation tokens and cookie-authorized buyer mail with atomic bucket deduplicat
 Both preserve earlier links and refuse renewal-cycle orders. See the
 [customer recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#customer-checkout-recovery-entry-points)
 for session binding, PostgreSQL ports, lifetimes and host delivery/UI obligations.
+
+## Saved customer address book
+
+`@openlup/platform/shipping/postgres` exports
+`createPostgresCustomerSavedAddressPort`, `CustomerSavedAddressRefused`,
+`createCustomerSavedAddressRequestSchemas`, their structural executor/scope/options
+and validation-policy types, and `CUSTOMER_SAVED_ADDRESS_MIGRATIONS`. No public
+signature requires `pg`. Browser DTOs remain in `./shipping/contracts`; the SQL
+factory is a server entry point. The migration descriptor is sparse: install the
+complete selected native catalogue through `20261110190000_customer_saved_addresses.sql`.
+
+Construct the port with a trusted `principalId`/`clientId` pair, a query executor,
+an explicit raw billing-profile reader, a clock and
+localized in-use message. The database checks `clients.principal_id` on every
+customer operation. Do not derive the scope from request bodies. Billing-profile
+storage is separate; an empty reader is an explicit host choice, not a fallback.
+The returned object implements the existing address-book and mutation ports:
+
+```ts
+import { createPostgresCustomerSavedAddressPort,
+  createCustomerSavedAddressRequestSchemas } from '@openlup/platform/shipping/postgres';
+const requests = createCustomerSavedAddressRequestSchemas(localPolicy);
+const addresses = createPostgresCustomerSavedAddressPort(database, trustedScope, {
+  validation: localPolicy,
+  readOrdererProfiles, now: () => new Date().toISOString(), inUseMessage: copy.addressInUse,
+});
+```
+
+The local policy supplies an ISO country/default and aliases, calling prefix,
+tax normalization/validation and messages. The request mechanism retains fixed
+length/key bounds, trim/collapse rules, local nine-digit phone normalization,
+local five-digit postal formatting, foreign-format behavior and shipping-only
+company/tax omission. Neutral demo values can use `ZZ` and calling prefix `99`.
+Bind `requests` and the host response validator into the existing customer address
+handler schemas and recognize
+`CustomerSavedAddressRefused` with code `address_in_use` as a mutation conflict.
+`createShippingBindings` accepts an explicitly selected complete native book and
+mutation port; an unbound or incomplete native writer still refuses. Construction
+mounts no route, and starter pages remain separately bound work.
+
+Save updates an owned ID, reuses the canonical match, or inserts. Defaults clear
+only the same customer and exact kind (`shipping`, `billing`, `both` are distinct).
+Clear, write and account-event append are separate calls/commits; do not wrap
+them in a transaction when retaining this contract. A failed write can leave the
+prior default clear committed, and an append failure leaves the address write
+committed. A recorded client/event/key replays the current book without repeating
+mutation or append; concurrent exactly-once behavior is not promised. A missing
+or foreign entity ID on delete is a zero-row acknowledgement with an event,
+while foreign updates and mismatched customer scopes refuse.
+
+Delete refuses an address referenced by an active or paused subscription's saved
+shipping or billing pointer. Nullable pointer columns are storage for that guard;
+saved-address subscription selection is not supplied by this port. Existing G3
+destinations and claimed renewal snapshots are unchanged.
+
+Saved rows, canonical keys, contact/tax/free-text/metadata and linked event
+payloads are personal data. Compose
+`createCustomerSavedAddressPrivacyContributor` from `./identity` with the existing
+identity/subscription owners and require contributor ID `customer-saved-addresses`
+in the privacy registry. Its preparation lock precedes identity row locks and
+waiting writers recheck ownership after unlinking. It exports exact saved rows and erases them through an
+owned subject-client routine even after identity unlinks the principal. Compose
+the separate account-event contributor and explicit retention policy: erasing the
+address book does not erase retained event payloads or immutable destination
+copies. No retention period or blanket erasure claim is supplied.
+
+The finite connected-store profile carries exact saved rows and event history,
+restores addresses after clients and before subscription pointers, and replays
+without rewriting them. The smaller compatible-row copier remains a separate
+closed profile. Delivery/payment preferences, checkout hints, billing profiles,
+subscription saved-ID commands and browser journeys are later capabilities.

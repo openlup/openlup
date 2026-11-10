@@ -1326,7 +1326,8 @@ Native email, phone and account link refuse before opening SQL. A subscription
 host authorization and the complete native catalogue installed; construction
 mounts no route. The command checks its idempotency key and expected version,
 updates the future destination and records its audit and confirmation effects
-atomically. It provides no saved address book.
+atomically. That destination command provides no saved address book; the separate
+[`shipping/postgres` port](../../packages/platform/README.md#saved-customer-address-book) supplies owned address-book storage.
 
 If dispatch owns the current parcel, the result is `applied_from_next_parcel`,
 with `appliesFrom: "next_parcel"`, `futureDestinationId` and `replayed`. Tell the

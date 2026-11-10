@@ -8920,7 +8920,7 @@ export interface ShippingBindingDependencies {
     nativeRateReadiness?: ReadinessReport;
     /** Same-database Core observation of the applied shipping seed and required objects. */
     nativeRateSchema?: SchemaObservation;
-    nativeStore?: Omit<Store, "addressMutationPort"> | null;
+    nativeStore?: Store | null;
     responder: BffResponder;
     selection?: {
         port: DeliverySelectionPort;

@@ -494,7 +494,9 @@ from the vendor subpath; this adds no route or browser exposure.
 
 The [M06 shipping binding](../../server/runtime/public-reference/m06ShippingBinding.ts)
 composes selected selection, address and flat-rate ports with host schemas and
-authority. Native address writes remain refused. Native flat-rate save requires a
+authority. Native address writes require an explicitly selected complete
+[saved-address port](../../packages/platform/README.md#saved-customer-address-book);
+unbound or incomplete native writers remain refused. Native flat-rate save requires a
 selected native rate port, a Core report in state `ready` and a same-database
 `nativeRateSchema` observation of the shipping seed; the managed BFFs retain their flags and
 authorization. Construction mounts nothing.
@@ -997,7 +999,9 @@ The direct truth host separately opens one database scope per runtime unit and
 closes it after success or failure through the package binding.
 
 The inert [shipping binding](../../server/runtime/public-reference/m06ShippingBinding.ts)
-requires selected ports and host authority. Native address writes remain refused.
+requires selected ports and host authority. Native address writes require an explicitly selected complete
+[saved-address port](../../packages/platform/README.md#saved-customer-address-book);
+unbound or incomplete native writers remain refused.
 Native flat-rate save requires a selected native rate port, a Core report in
 state `ready` and a same-database `nativeRateSchema` observation. Construct the
 reference binding to obtain its merged contribution requirements and call
