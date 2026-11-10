@@ -64,6 +64,7 @@ test('default lifecycle leaves compose.yaml healthcheck in place', async () => {
   try {
     for (const path of ['host', 'shared', 'owned']) await cp(resolve(root, path), resolve(directory, path), { recursive: true });
     await cp(resolve(root, 'lifecycle.mjs'), resolve(directory, 'lifecycle.mjs'));
+    await cp(resolve(root, 'browser-groups.mjs'), resolve(directory, 'browser-groups.mjs'));
     await writeFile(resolve(directory, 'package.json'), '{"type":"module"}');
     const config = structuredClone(Object.values(configurations)[0]!);
     delete config.publicOrigin;

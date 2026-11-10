@@ -729,9 +729,11 @@ do not grant it. An adopter wanting the gate OFF follows the existing
 Local proof covers both the refused case and a separate host-authorized outcome.
 
 From this application directory, with the selected package set installed, run
-`./lifecycle browser`. It creates two throwaway PostgreSQL 16 databases, applies the public qualified installation,
-loads the owned demo catalogue, starts both restricted hosts, then runs every
-spec selected by `playwright.database.config.ts` with one worker. The command
+`./lifecycle browser`. It reads the selections from `browser-groups.mjs`. Each
+group gets a fresh pair of throwaway PostgreSQL 16 databases with the public
+qualified installation and owned demo catalogue, plus two restricted hosts.
+The groups run every test selected by `playwright.database.config.ts` once,
+with one worker. The command
 creates both the UI-origin file and the private
 `.context/care-browser/fixtures.json` required only by the database subscription
 care group. The default preview browser command excludes that group. It tears down

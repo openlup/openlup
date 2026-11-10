@@ -1986,6 +1986,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/browser-groups.d.mts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/browser-groups.mjs",
       "class": "public-output"
     },

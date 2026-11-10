@@ -83,6 +83,7 @@
     "installation/install.ts",
     "lifecycle",
     "lifecycle.mjs",
+    "browser-groups.d.mts",
     "browser-groups.mjs",
     "test/browser-groups.test.ts",
     "ownership.json",
