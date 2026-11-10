@@ -29150,6 +29150,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/subscriptionPauseDuration.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/subscriptionPublicRenewal.test.ts",
       "class": "public-output"
     },

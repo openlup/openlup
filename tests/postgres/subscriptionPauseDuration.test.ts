@@ -28,7 +28,7 @@ describe.each(lifecycleProfiles)("pause duration on %s", profile => {
     return { ...f, window, start, end, next };
   }
   const run = (now: string) => createPostgresSubscriptionAutoResume(env.runtime).run(100, now);
-  async function resumed(f: Awaited<ReturnType<typeof paused>>, now: string, expected: string) {
+  async function resumed(f: { subscription: string; next: string }, now: string, expected: string) {
     expect(await run(now)).toMatchObject({ ok: true, resumed: 1, skippedRows: 0, failed: 0 });
     expect((await env.owner.query("SELECT status,next_cycle_at FROM public.subscriptions WHERE id=$1", [f.subscription])).rows)
       .toEqual([{ status: "active", next_cycle_at: new Date(expected) }]);
