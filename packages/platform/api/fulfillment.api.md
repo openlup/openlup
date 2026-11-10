@@ -765,6 +765,8 @@ export interface FulfillmentOperatorMutationResult {
     orderId: string;
     status: 'created' | 'packed' | 'label_pending' | 'label_created' | 'handed_over' | 'in_transit' | 'delivered' | 'exception' | 'cancelled';
     replayed: boolean;
+    releasedReservationCount?: number;
+    reservationDisposition?: 'recorded' | 'reservations_not_recorded';
 }
 export interface FulfillmentOperatorMutationPort {
     createCommerceFulfillmentOrder(request: AdminCommerceFulfillmentCreateRequest & {
@@ -2289,6 +2291,11 @@ export declare const adminCommerceFulfillmentMutationResponseSchema: z.ZodObject
         in_transit: "in_transit";
     }>;
     replayed: z.ZodBoolean;
+    releasedReservationCount: z.ZodOptional<z.ZodNumber>;
+    reservationDisposition: z.ZodOptional<z.ZodEnum<{
+        recorded: "recorded";
+        reservations_not_recorded: "reservations_not_recorded";
+    }>>;
 }, z.core.$strict>;
 export type AdminCommerceFulfillmentOrdersListRequest = z.infer<typeof adminCommerceFulfillmentOrdersListRequestSchema>;
 export type AdminCommerceFulfillmentOrderDetailRequest = z.infer<typeof adminCommerceFulfillmentOrderDetailRequestSchema>;

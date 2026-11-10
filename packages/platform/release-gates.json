@@ -110,7 +110,9 @@
       "role": "capability",
       "maturity": "experimental",
       "compatibilityPolicy": "internal-candidate",
-      "packageSmokeEvidence": ["test/packageBoundary.test.ts"],
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts"
+      ],
       "entrypoint": "dist/commerce/server/destinations/index.d.ts",
       "snapshot": "api/commerce-destinations.api.md"
     },
@@ -130,7 +132,9 @@
       "role": "capability",
       "maturity": "experimental",
       "compatibilityPolicy": "internal-candidate",
-      "packageSmokeEvidence": ["test/packageBoundary.test.ts"],
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts"
+      ],
       "entrypoint": "dist/commerce/server/native-checkout/index.d.ts",
       "snapshot": "api/commerce-native-checkout.api.md"
     },
@@ -957,13 +961,13 @@
       "maxFiles": 4117
     },
     "docs": {
-      "maxPackedBytes": 84877,
+      "maxPackedBytes": 85055,
       "maxFiles": 10
     },
     "maxPackedBytes": 2962854,
-    "maxUnpackedBytes": 14123067,
+    "maxUnpackedBytes": 14408428,
     "maxFiles": 4252,
-    "capReason": "Final code measured 2,362,014 gzip bytes across 4,036 files; total 4,168 files. Larger parent caps retained. Unpacked contents measured 13,846,144 bytes; unpacked cap adds 2% headroom. Merged recovery tarball measured 2,904,758 B; packed cap adds 2% headroom. Documentation cap adds 2% headroom for the merged guides.",
+    "capReason": "Final code measured 2,362,014 gzip bytes across 4,036 files; total 4,168 files. Larger parent caps retained. Unpacked contents measured 13,846,144 bytes; unpacked cap adds 2% headroom. Merged recovery tarball measured 2,904,758 B; packed cap adds 2% headroom. Documentation cap adds 2% headroom for the merged guides. Operator integration unpacked contents measured 14125909 bytes; the unpacked limit adds 2% headroom.",
     "baseline": {
       "version": "0.37.0",
       "packedBytes": 2791358

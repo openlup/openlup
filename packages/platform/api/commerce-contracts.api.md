@@ -402,7 +402,7 @@ type OmsControlPlaneHold = {
 };
 type OmsControlPlaneOperation = {
     id: string;
-    action: "hold_created" | "hold_released" | "order_cancelled" | "order_refunded";
+    action: "hold_created" | "hold_released" | "order_cancelled" | "order_refunded" | "replacement_shipment_requested";
     holdId: null | string;
     actorId: null | string;
     occurredAt: string;
