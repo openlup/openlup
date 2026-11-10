@@ -1,32 +1,12 @@
-import { derivePaymentRecoveryGuidance, type PaymentRecoveryAttempt } from "@openlup/core/payment";
+import { readAuthorizedPaymentRecovery as readPackagedRecovery, type PaymentRecoverySnapshot, type PaymentRecoverySnapshotPort, type CheckoutPaymentRecoveryGuidance as PackagedGuidance } from "@openlup/platform/commerce/server";
+export type { PaymentRecoverySnapshot, PaymentRecoverySnapshotPort } from "@openlup/platform/commerce/server";
 import { deriveAsyncCheckoutStatus } from "../../../src/domains/commerce/paymentStatus.js";
 import type { PaymentStatusContinuationRequest } from "../../../src/domains/commerce/paymentContinuationContracts.js";
 import type { CheckoutPaymentRecoveryGuidance } from "../../../src/domains/commerce/paymentRecoveryGuidanceContracts.js";
 import type { PaymentFailureDisplayReason } from "../../../src/domains/commerce/paymentFailureDisplayContracts.js";
-import type { PaymentStatusSnapshot } from "./commercePaymentStatusHandler.js";
 import type { CheckoutPaymentContinuationClaims } from "./checkoutPaymentContinuationCredential.js";
 import type { CheckoutRecoveryTokenPort } from "./checkoutRecoveryToken.js";
 
-interface PaymentRecoverySnapshotAttempt extends PaymentRecoveryAttempt {
-  /** Exact server-owned execution provenance for conservative legacy fallback. */
-  provider?: string;
-  providerFlow?: string | null;
-}
-
-export interface PaymentRecoverySnapshot extends PaymentStatusSnapshot {
-  eligible: boolean;
-  purchaseContext: "one_time" | "subscription_initial" | null;
-  /** Raw lifecycle state from the same atomic snapshot; mutation gates must not infer it from presentation state. */
-  subscriptionStatus: string | null;
-  tokenAuthorized: boolean;
-  historyComplete: boolean;
-  /** Durable provider success exists anywhere on this exact payment aggregate. */
-  observedSuccess: boolean;
-  attempts: PaymentRecoverySnapshotAttempt[];
-}
-export interface PaymentRecoverySnapshotPort {
-  getGuidanceSnapshot(input: { orderId: string; paymentIntentId: string; recoveryTokenId?: string }): Promise<PaymentRecoverySnapshot | null>;
-}
 /**
  * Maps a recorded failure reason to the bucket a surface may render, or null
  * when this deployment cannot say. The mapping reads provider reason codes, so
@@ -48,60 +28,25 @@ export async function readAuthorizedPaymentRecovery(input: {
   deps: PaymentRecoveryReadDeps;
   now?: number;
 }): Promise<{ snapshot: PaymentRecoverySnapshot; guidance: CheckoutPaymentRecoveryGuidance | null } | null> {
-  const { request, claims, deps } = input;
-  const cookieBound = Boolean(claims && claims.expiresAt > (input.now ?? Date.now()) / 1000
-    && claims.orderId === request.orderId && claims.clientId === request.clientId
-    && claims.paymentIntentId === request.paymentIntentId && claims.journeyId === request.journeyId);
-  try {
-    const raw = typeof input.authorization === "string" && input.authorization.length <= 2048
-      ? /^Bearer (\S+)$/i.exec(input.authorization)?.[1] : undefined;
-    const token = raw && deps.tokenPort ? await deps.tokenPort.validate(raw) : null;
-    const tokenBound = token?.orderId === request.orderId && token?.clientId === request.clientId;
-    if (!cookieBound && !tokenBound) return null;
-    const snapshot = await deps.port.getGuidanceSnapshot({
-      orderId: request.orderId, paymentIntentId: request.paymentIntentId,
-      ...(tokenBound && token ? { recoveryTokenId: token.tokenId } : {}),
-    });
-    if (!snapshot) return null;
-    const exact = snapshot.orderId === request.orderId && snapshot.paymentIntentId === request.paymentIntentId
-      && snapshot.clientId === request.clientId;
-    if (!exact) return null;
-    const authorized = (cookieBound && snapshot.paymentAttemptId === claims?.paymentAttemptId
-      && snapshot.provider === claims?.executionRail) || (tokenBound && snapshot.tokenAuthorized);
-    if (!authorized || !snapshot.eligible || !snapshot.purchaseContext) return { snapshot, guidance: null };
-    const status = deriveAsyncCheckoutStatus({ intentStatus: snapshot.intentStatus,
-      attemptStatus: snapshot.attemptStatus, orderStatus: snapshot.orderStatus });
-    const exactDisplay = exactFailureDisplayGuidance(snapshot, status, deps.resolveFailureDisplay);
-    const projected = derivePaymentRecoveryGuidance({
-      paymentState: status === "paid" || status === "failed" || status === "expired" ? status : "pending",
-      activeAttemptId: snapshot.paymentAttemptId, attempts: snapshot.attempts, historyComplete: snapshot.historyComplete,
-    });
-    // A durable unsupported recurring-method refusal is more specific than a
-    // conservative normalized projection. Keep the exact server-owned display,
-    // provider, flow and purchase-context proof even when evidence exists but
-    // was reduced to generic_decline because its provider advice is absent.
-    if (exactDisplay?.cause === "recurring_setup_failed") return { snapshot, guidance: exactDisplay };
-    if (!projected) return { snapshot, guidance: exactDisplay };
-    // The persisted mandate decision is the only authority for "this agreement
-    // cannot be registered": normalized evidence names the operation, never that
-    // cause. When the exact display cannot prove it, the projection still must
-    // not offer the refused BLIK agreement again — only another method.
-    const mandateRefused = deps.resolveFailureDisplay(snapshot.failureReason) === "blik_recurring_unsupported_bank"
-      && projected.method?.kind === "blik";
-    const restriction = mandateRefused ? "method"
-      : projected.advice?.code === "do_not_try_again" && projected.advice.scope !== "unknown"
-        ? projected.advice.scope : null;
-    return { snapshot, guidance: { version: 1, paymentAttemptId: projected.paymentAttemptId,
-      purchaseContext: snapshot.purchaseContext,
-      cause: !mandateRefused ? projected.cause
-        : projected.operation === "recurring_setup" ? "recurring_setup_failed" : "generic_decline",
-      methodKind: projected.method?.kind ?? null, methodKey: projected.method?.recoveryMethodKey ?? null,
-      operation: projected.operation, restriction,
-      actions: mandateRefused ? ["change_method"] : [...projected.actions],
-      consecutiveRefusals: projected.consecutiveRefusals, emphasis: projected.emphasis } };
-  } catch {
-    return null;
-  }
+  return readPackagedRecovery({...input,deps:{port:input.deps.port,tokenPort:input.deps.tokenPort,
+    projectGuidance(snapshot,status,projected){
+      const exactDisplay = exactFailureDisplayGuidance(snapshot, status === "pending" ? "processing" : status, input.deps.resolveFailureDisplay);
+      if (exactDisplay?.cause === "recurring_setup_failed") return exactDisplay;
+      if (!projected) return exactDisplay;
+      const mandateRefused = input.deps.resolveFailureDisplay(snapshot.failureReason) === "blik_recurring_unsupported_bank"
+        && projected.method?.kind === "blik";
+      const restriction = mandateRefused ? "method"
+        : projected.advice?.code === "do_not_try_again" && projected.advice.scope !== "unknown"
+          ? projected.advice.scope : null;
+      return { version: 1, paymentAttemptId: projected.paymentAttemptId,
+        purchaseContext: snapshot.purchaseContext!,
+        cause: !mandateRefused ? projected.cause
+          : projected.operation === "recurring_setup" ? "recurring_setup_failed" : "generic_decline",
+        methodKind: projected.method?.kind ?? null, methodKey: projected.method?.recoveryMethodKey ?? null,
+        operation: projected.operation, restriction,
+        actions: mandateRefused ? ["change_method"] : [...projected.actions],
+        consecutiveRefusals: projected.consecutiveRefusals, emphasis: projected.emphasis };
+    }}});
 }
 
 /**
@@ -115,7 +60,7 @@ function exactFailureDisplayGuidance(
   snapshot: PaymentRecoverySnapshot,
   status: ReturnType<typeof deriveAsyncCheckoutStatus>,
   resolveFailureDisplay: PaymentFailureDisplayResolver,
-): CheckoutPaymentRecoveryGuidance | null {
+): PackagedGuidance | null {
   if (status !== "failed" || snapshot.intentStatus !== "failed" || snapshot.attemptStatus !== "failed"
     || !snapshot.paymentAttemptId || !snapshot.purchaseContext || !snapshot.historyComplete
     || snapshot.observedSuccess || snapshot.attempts[0]?.id !== snapshot.paymentAttemptId

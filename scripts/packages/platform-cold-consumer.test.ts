@@ -733,6 +733,8 @@ process.stdout.write(JSON.stringify(Object.fromEntries(Object.entries(entry).map
     createExpiredCheckoutRecoveryService: "function",
     ExpiredCheckoutRecoveryError: "function",
     createPostgresExpiredCheckoutRecoveryPort: "function",
+    readAuthorizedPaymentRecovery: "function",
+    createPostgresPaymentRecoveryGuidancePort: "function",
     createPostgresExpiredCheckoutDraftPort: "function",
     createPostgresExpiredCheckoutRuntime: "function",
     createPostgresExpiredCheckoutCompensation: "function",
@@ -1301,4 +1303,25 @@ const port=createPostgresExpiredCheckoutRecoveryPort(db,{recoveryWindowMs:1000})
 process.stdout.write(JSON.stringify({validation,reason,prior,writer:typeof port.prepareReplacement}));
 `));
  expect(result).toEqual({validation:false,reason:'unavailable',prior:'unavailable',writer:'function'});
+});
+
+it('executes the installed atomic guidance port and validation-only composition without database peers', () => {
+  const consumer = pristinePackedA1Fixture();
+  assertConsumerIsolation(consumer, root);
+  const result = JSON.parse(consumerNode(consumer, `
+const {createPostgresPaymentRecoveryGuidancePort,readAuthorizedPaymentRecovery}=await import('@openlup/platform/commerce/server');
+const {normalizeSandboxPaymentRecoveryEvidence}=await import('@openlup/platform/payments');
+const orderId='11111111-1111-4111-8111-111111111111',clientId='22222222-2222-4222-8222-222222222222',paymentIntentId='33333333-3333-4333-8333-333333333333',attemptId='44444444-4444-4444-8444-444444444444',tokenId='55555555-5555-4555-8555-555555555555';
+const calls=[];
+const port=createPostgresPaymentRecoveryGuidancePort({query:async(sql,values)=>{calls.push({sql,values});return{rows:[{result:{
+ snapshot:{orderId,clientId,paymentIntentId,orderStatus:'pending_payment',intentStatus:'created',paymentAttemptId:attemptId,attemptStatus:'refused',provider:'sandbox',providerPaymentId:null,updatedAt:'2040-01-01T00:00:00Z',failureReason:null,orderMode:'one_time',activationState:null,subscriptionId:null,subscriptionStatus:null,paidAt:null,hasExactGap:false},
+ eligible:true,tokenAuthorized:true,observedSuccess:false,historyComplete:true,
+ attempts:[{id:attemptId,status:'refused',provider:'sandbox',providerPaymentId:null,providerFlow:null,createdAt:'2040-01-01T00:00:00Z',evidence:[{version:1,source:'observation',sourceId:tokenId,observationId:tokenId,paymentAttemptId:attemptId,paymentIntentId,outcome:'refused',refusalVerified:true}]}]
+}}]};}},normalizeSandboxPaymentRecoveryEvidence);
+const value=await readAuthorizedPaymentRecovery({request:{orderId,clientId,paymentIntentId},claims:null,authorization:'Bearer installed-example',deps:{port,tokenPort:{validate:async()=>({tokenId,orderId,clientId,status:'pending_payment',mode:'one_time_order'})}}});
+process.stdout.write(JSON.stringify({guidance:value.guidance,calls}));
+`));
+  expect(result.guidance).toMatchObject({ methodKey: null, operation: null, actions: ['change_instrument', 'change_method'] });
+  expect(result.calls).toHaveLength(1);
+  expect(result.calls[0].sql).toMatch(/^SELECT public\.commerce_checkout_payment_guidance_snapshot\(/u);
 });

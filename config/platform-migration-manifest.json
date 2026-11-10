@@ -472,9 +472,13 @@
     {
       "file": "db/platform/migrations/20261110180000_checkout_recovery_recreation.sql",
       "sha256": "4cd2c288635a96bd7baab00fa5414bcb0d0de5352a7089f1c4a9f55631e3912f"
+    },
+    {
+      "file": "db/platform/migrations/20261110220000_checkout_payment_guidance.sql",
+      "sha256": "7b6d46e974b3b2cbd1153d5cd4cc5858bff5da3156d72722e7318d1acae22bd3"
     }
   ],
-  "objectInventorySha256": "3861040325c80740fbf6dd0618eddff76b6568a53a2ad99c7fb9983021603f99",
+  "objectInventorySha256": "54f4f1adcd4c4d8a15a7d67dbb3101bc255d4eb5c8c3d3979fc6ebf90804a996",
   "qualified": {
     "baseline": {
       "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -968,14 +972,18 @@
       {
         "file": "db/platform/migrations/20261110180000_checkout_recovery_recreation.sql",
         "sha256": "4cd2c288635a96bd7baab00fa5414bcb0d0de5352a7089f1c4a9f55631e3912f"
+      },
+      {
+        "file": "db/platform/migrations/20261110220000_checkout_payment_guidance.sql",
+        "sha256": "7b6d46e974b3b2cbd1153d5cd4cc5858bff5da3156d72722e7318d1acae22bd3"
       }
     ],
     "objectInventorySha256": {
       "bootstrapMigrator": {
-        "withRestore": "72083ad0db160dab16fc26720b97aa43975c99b3cbecbe2575b3e1c41e1bc447"
+        "withRestore": "e75b8d858a37ede18960fae70767e21405d09b5dbbc67cdce41214f0d48461c3"
       },
       "separateMigrator": {
-        "withRestore": "19639a8ff02eb58e1c47d10e0edf32344531788c83b5d23cb83b570948505a0d"
+        "withRestore": "37bab3a0f1ac52a0b3f4de1cc0e7e2861d43f3d088992282ff222ca635d9f80d"
       }
     }
   },
@@ -1468,11 +1476,15 @@
       {
         "file": "db/platform/migrations/20261110180000_checkout_recovery_recreation.sql",
         "sha256": "4cd2c288635a96bd7baab00fa5414bcb0d0de5352a7089f1c4a9f55631e3912f"
+      },
+      {
+        "file": "db/platform/migrations/20261110220000_checkout_payment_guidance.sql",
+        "sha256": "7b6d46e974b3b2cbd1153d5cd4cc5858bff5da3156d72722e7318d1acae22bd3"
       }
     ],
     "objectInventorySha256": {
-      "installerManaged": "89d8b0a3be7ac6e1546f886f994f2fe7821c95596136c3ab49bbeee313fe9b6a",
-      "operatorProvisioned": "5f92de6bbe7aee109d3b8b41144c3add09276a98f3e830b779ab976675589fea"
+      "installerManaged": "72bef7b73d6ec1f2532ee2573c405694382ab97e1c1b6215a3b63b8c2481a9ee",
+      "operatorProvisioned": "e820dc4392418e4161633e8c2623e381d3a1da93ab21897389077321b5502f94"
     }
   }
 }

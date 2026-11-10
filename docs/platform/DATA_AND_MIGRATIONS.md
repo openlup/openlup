@@ -3653,3 +3653,16 @@ locks. Runtime first payment admission also rechecks source evidence under the
 source order lock before any replacement stock or payment write. A fresh initial declaration belongs to the replacement; the predecessor
 is never reopened. See the [recreation composition](PLATFORM_PACKAGE_REFERENCE.md#expired-checkout-recreation)
 for commercial validation, transaction binding, compensation and profile limits.
+
+### Atomic checkout guidance read
+
+`20261110220000_checkout_payment_guidance.sql` creates only
+`commerce_checkout_payment_guidance_snapshot(uuid,uuid,uuid DEFAULT NULL)`.
+The SQL/STABLE definer fixes `search_path = pg_catalog, pg_temp` and exposes only
+service EXECUTE. It replaces no function and adds no table, trigger or backfill.
+Pure joins read checkout provenance, token authority, native attempts and bounded
+correlated observations/truth/readback evidence together. It neither calls a
+materializing reader nor treats observed capture as completed settlement.
+Current complete-installation inventories include the new function; historical
+prefixes are unchanged. The [composition recipe](PLATFORM_PACKAGE_REFERENCE.md#atomic-checkout-payment-guidance)
+owns capability opt-in, neutral normalization and the sandbox profile limits.
