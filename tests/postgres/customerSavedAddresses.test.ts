@@ -10,7 +10,7 @@ import { installAccountMutations, type AccountProfile } from './customerAccountM
 import { ADDRESS_AT as at, savedAddressPort, addressId } from './customerSavedAddresses.fixture.js';
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from '../helpers/postgresContainer.js';
 const input = () => ({ idempotencyKey: randomUUID(), kind: 'shipping' as const, line1: 'Example Street 1', city: 'Example City', postalCode: '12345', recipientName: 'Example Recipient' });
-for (const profile of ['legacy','bootstrap','admin-managed'] as AccountProfile[]) describe(`saved address ownership on ${profile}`, () => {
+for (const profile of ['legacy','bootstrap','separate','admin-managed','admin-operator'] as AccountProfile[]) describe(`saved address ownership on ${profile}`, () => {
   let db: Awaited<ReturnType<typeof installAccountMutations>>;
   beforeAll(async () => { db = await installAccountMutations(profile); }, postgresSetupTimeoutMs);
   afterAll(async () => { if (db) await db.close(); }, postgresTeardownTimeoutMs);
@@ -35,13 +35,38 @@ for (const profile of ['legacy','bootstrap','admin-managed'] as AccountProfile[]
         finally { try { if (restricted) await client.query('REVOKE platform_acquisition_owner FROM account_m GRANTED BY account_m'); } finally { client.release(); } }
       } } });
   }
-  it('transfers exact classified rows, pointers and event payloads and replays without rewriting them', async () => {
+  it(profile === 'legacy' ? 'captures exact address rows, pointers and event payloads and refuses legacy restores without target writes' : 'transfers exact classified rows, pointers and event payloads and replays without rewriting them', async () => {
     const f = await customer(), id = addressId(await f.port.upsertAddress(f.principal, { ...input(), kind: 'both', companyName: 'Private Company', taxId: '1234563218', deliveryNotes: 'Private instructions' }));
     const subscription = randomUUID(); await db.owner.query("INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at,status,shipping_saved_address_id,billing_saved_address_id) VALUES($1,$2,28,$3,'cancelled',$4,$4)", [subscription,f.client,at,id]);
     await db.owner.query("UPDATE public.customer_saved_addresses SET metadata=$2::jsonb,last_used_at=$3 WHERE id=$1", [id,JSON.stringify({ pickupHistory: ['retained private location'] }),at]);
     const packet = await capture(db), expected = await rows(f.client), history = await events(f.client);
     expect(packet.owned.find(table => table.table === 'customer_saved_addresses')?.rows).toHaveLength(1);
-    if (profile === 'legacy') return;
+    if (profile === 'legacy') {
+      expect(packet.owned.find(table => table.table === 'customer_saved_addresses')?.rows.map(row => JSON.parse(row))).toEqual(expected.map(row => row.row));
+      const pointers = (await db.owner.query('SELECT to_jsonb(s) AS row FROM public.subscriptions s WHERE id=$1', [subscription])).rows.map(row => row.row);
+      expect(packet.compatible.tables.find(table => table.table === 'subscriptions')?.rows.map(row => JSON.parse(row))).toEqual(pointers);
+      expect(pointers[0]).toMatchObject({ shipping_saved_address_id: id, billing_saved_address_id: id });
+      expect(packet.owned.find(table => table.table === 'customer_account_events')?.rows.map(row => JSON.parse(row))).toEqual(history.map(row => row.row));
+      const target = await installAccountMutations('bootstrap', false, 'legacy-refusal-target');
+      try {
+        if (target.installation.generation === 'legacy') throw new Error('qualified_target_required');
+        const freshTarget = await capture(target);
+        const unchanged = async (store: typeof db, before: typeof packet) => {
+          const after = await capture(store);
+          expect(after.compatible).toEqual(before.compatible); expect(after.owned).toEqual(before.owned);
+          expect(after.outsideProfileCensus).toEqual(before.outsideProfileCensus); expect(after.emptyOutsideProfile).toEqual(before.emptyOutsideProfile);
+        };
+        // Deliberately bypass the qualified-only input type to prove the runtime refusal.
+        const legacyInstallation = db.installation as unknown as Parameters<typeof restoreConnectedNativeStore>[0]['installation'];
+        await expect(restoreConnectedNativeStore({ owner: db.migrator, installation: legacyInstallation, packet: freshTarget, freshTarget: packet }))
+          .rejects.toMatchObject({ name: 'PostgresTransferError', code: 'invalid_input' });
+        await unchanged(db, packet);
+        await expect(restoreConnectedNativeStore({ owner: target.migrator, installation: target.installation, packet, freshTarget }))
+          .rejects.toMatchObject({ name: 'PostgresTransferError', code: 'schema_conflict' });
+        await unchanged(target, freshTarget);
+      } finally { await target.close(); }
+      return;
+    }
     const target = await installAccountMutations(profile, false, 'address-target');
     try {
       if (target.installation.generation === 'legacy') throw new Error('qualified_target_required');

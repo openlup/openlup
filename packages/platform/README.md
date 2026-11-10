@@ -2364,6 +2364,7 @@ the separate account-event contributor and explicit retention policy: erasing th
 address book does not erase retained event payloads or immutable destination
 copies. No retention period or blanket erasure claim is supplied.
 
+Finite restore targets qualified installations; legacy installations are capture sources.
 The finite connected-store profile carries exact saved rows and event history,
 restores addresses after clients and before subscription pointers, and replays
 without rewriting them. The smaller compatible-row copier remains a separate
