@@ -958,17 +958,17 @@
   },
   "pack": {
     "code": {
-      "maxPackedBytes": 2409255,
-      "maxFiles": 4117
+      "maxPackedBytes": 2461707,
+      "maxFiles": 4207
     },
     "docs": {
-      "maxPackedBytes": 86252,
+      "maxPackedBytes": 88659,
       "maxFiles": 10
     },
-    "maxPackedBytes": 3025439,
+    "maxPackedBytes": 3038725,
     "maxUnpackedBytes": 14408428,
-    "maxFiles": 4252,
-    "capReason": "Measured saved-address package contents use 2% headroom where they cross the main budget; other caps and the released baseline are retained.",
+    "maxFiles": 4352,
+    "capReason": "Measured saved selection, scoped preferences and renewal support use 2% headroom in crossed package budgets; the released baseline and uncrossed caps are retained.",
     "baseline": {
       "version": "0.37.0",
       "packedBytes": 2791358

@@ -1422,6 +1422,14 @@ export interface CustomerMePort {
     getCustomerMe(principalId: string): Promise<CustomerMeResponse | null>;
 }
 ```
+## dist/identity/customerPreferencePrivacy.d.ts
+
+```ts
+import type { PersonalDataContributor } from './privacyPorts.js';
+import type { PgQueryExecutor } from '../data/index.js';
+/** Compose with identity authorization, the subscriptions veto and account-event ownership. */
+export declare function createCustomerPreferencePrivacyContributor(): PersonalDataContributor<PgQueryExecutor>;
+```
 ## dist/identity/customerSessionBinding.d.ts
 
 ```ts
@@ -1629,6 +1637,7 @@ export * from "./postgresContactClientRegistrar.js";
 export * from "./contracts/oidc.js";
 export { createFulfillmentParcelContactPrivacyContributor } from './parcelContactPrivacy.js';
 export { createCustomerSavedAddressPrivacyContributor } from "./savedAddressPrivacy.js";
+export { createCustomerPreferencePrivacyContributor } from './customerPreferencePrivacy.js';
 ```
 ## dist/identity/inviteAdminUserUseCase.d.ts
 

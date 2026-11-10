@@ -1,3 +1,4 @@
+import { preferencePort, courierPreference } from './customerPreferences.fixture.js';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createPostgresDestinationPort } from '@openlup/platform/commerce/server/destinations';
@@ -123,9 +124,14 @@ for (const profile of ['legacy','bootstrap','separate','admin-managed','admin-op
     expect(await port().read('order',prepared.orderId)).toMatchObject({ destinationId: id,address: immutable.value.address });
     await rpc('commerce_acknowledge_subscription_renewal_attempt',[claim.operationId,claim.operationFingerprint,'synthetic-ack',at]);
     await rpc('commerce_record_subscription_renewal_outcome',[claim.operationId,randomUUID(),claim.operationFingerprint,'succeeded','synthetic-ack',null,at]);
+    expect((await db.owner.query('SELECT metadata FROM public.commerce_orders WHERE id=$1',[prepared.orderId])).rows[0].metadata).not.toHaveProperty('selectedDelivery');
+    await preferencePort(db.runtime,f.principal,f.client).upsertDeliveryPreference(f.principal,courierPreference);
     const next = (await db.owner.query('SELECT next_cycle_at FROM public.subscriptions WHERE id=$1', [f.subscription])).rows[0].next_cycle_at.toISOString();
     const future = await store.claimDue({ snapshot: snapshot(next,2),workerId: 'fixture',now: next });
     expect(future.cycleSnapshot.orderSnapshot.shippingAddressRef).not.toBe(id);
+    await rpc('fulfillment_reserve_subscription_renewal',[future.operationId,future.claimToken,900,next]);
+    const futureOrder = await rpc('commerce_prepare_subscription_renewal',[future.operationId,future.claimToken,next]);
+    expect((await db.owner.query('SELECT metadata FROM public.commerce_orders WHERE id=$1',[futureOrder.orderId])).rows[0].metadata).toMatchObject({ selectedDelivery: { providerKind: 'warehouse-a',serviceCode: 'standard' } });
     expect((await destinations(f)).find(d => d.value.id === future.cycleSnapshot.orderSnapshot.shippingAddressRef)?.value.address).toMatchObject({ savedAddressId: f.id,line1: 'Future Street 2' });
     expect((await destinations(f)).find(d => d.value.id === id)).toEqual(immutable);
     expect(await port().read('order',prepared.orderId)).toMatchObject({ destinationId: id,address: immutable.value.address });

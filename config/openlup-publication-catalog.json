@@ -6718,6 +6718,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/identity/customerPreferencePrivacy.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/identity/customerSessionBinding.ts",
       "class": "public-output"
     },
@@ -8286,6 +8290,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/shipping/contracts/preferences.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/shipping/contracts/shippingRate.ts",
       "class": "public-output"
     },
@@ -8295,6 +8303,14 @@
     },
     {
       "path": "packages/platform/src/shipping/customerAddressesHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/customerPreferenceHandlers.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/customerPreferenceSchemas.ts",
       "class": "public-output"
     },
     {
@@ -8331,6 +8347,10 @@
     },
     {
       "path": "packages/platform/src/shipping/postgresAddressBook.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/postgresCustomerPreferences.ts",
       "class": "public-output"
     },
     {
@@ -28674,6 +28694,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/platform/shipping/customerPreferences.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/platform/shipping/deliveryAddressContinuityCharacterization.test.ts",
       "class": "public-output"
     },
@@ -28843,6 +28867,14 @@
     },
     {
       "path": "tests/postgres/customerNewsletterWithdrawal.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/customerPreferences.fixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/customerPreferences.test.ts",
       "class": "public-output"
     },
     {

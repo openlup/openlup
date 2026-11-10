@@ -3671,8 +3671,9 @@ subscription destination reader and typed-address command without changing their
 headers, owners or ACLs. The wrapper retains principal/client ownership,
 subscription-event replay precedence, shipping/both-kind validation and the
 existing lifecycle/locked-cycle refusals. It persists the existing saved pointer;
-a successful typed command clears it. No table, column or raw DML grant is added.
-Only `service_role` receives EXECUTE on the new closed definer routine.
+a successful typed command clears it. This selection adds no column or raw DML grant;
+the same forward also creates the private preference tables described below.
+Only `service_role` receives EXECUTE on the new closed definer routines.
 
 New subscription reads create an immutable snapshot of the selected saved row,
 including its explicit ID and nullable recipient. Prior destination rows and
@@ -3682,3 +3683,38 @@ and carrier-completeness checks remain decisive; frozen nulls are preserved.
 Saved snapshots use the existing destination personal-data and finite-transfer
 boundary. No new destination export/erasure path or blanket erasure coverage is
 claimed. See [the package composition](../../packages/platform/README.md#saved-subscription-shipping-selection).
+
+
+## Scoped customer preference data
+
+The saved-selection forward also creates `customer_payment_preferences` and
+`customer_delivery_preferences`, with client cascade, one row per client/scope,
+recent-selection indexes, enabled RLS and owner-only raw access. Both are `block`
+classified with the admitted service-role client-ID census grant and SELECT policy.
+Owned definer routines provide principal/client-checked read/upsert, redacted
+checkout hints, private renewal selection and explicit subject export/erasure.
+PUBLIC and browser roles receive no routine or raw table access; only
+`service_role` receives routine EXECUTE. Payment values and provider families are
+closed, with a bijective adopter policy for public values; delivery stores the
+configured provider reference separately. No account-event append, instrument or
+provider action is performed by a preference save.
+
+`commerce_prepare_subscription_renewal` is the only native fresh cycle-order
+writer. Its listed replacement retains its header, ACL and complete body except
+for passing new order metadata through the selector. Explicit selections are
+preserved; complete subscription/any preferences precede the earliest anchor
+order. No trigger is added. Claims, replay, payment selection, delivery alignment
+and the monotonic schedule clamp retain their existing owners and behavior.
+
+All preference columns, scope history and pickup/address JSON are personal data.
+The required `customer-preferences` identity contributor exports exact rows and
+erases by subject client, without relying on client clearing or cascade. Its
+preparation lock precedes identity locks; waiting saves recheck ownership.
+Other privacy vetoes and retained account events stay separately owned. No
+retention period is supplied. Finite native capture/qualified restore carries exact
+rows after clients, with unchanged replay. Legacy installations are capture
+sources; the compatible-row copier is unchanged. Managed-source nonempty
+preferences have no typed projection and explicitly refuse. See the
+[composition recipe](../../packages/platform/README.md#customer-delivery-and-payment-preferences)
+for the trusted checkout-client boundary, required billing-hint reader and
+redacted `applied:false` defaults. No defaults are applied during import.

@@ -1,3 +1,25 @@
+CREATE TABLE public.customer_payment_preferences (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(), client_id uuid NOT NULL REFERENCES public.clients(id) ON DELETE CASCADE,
+ scope text NOT NULL CHECK (scope IN ('one_time','subscription','any')), method_kind text NOT NULL CHECK (method_kind IN ('instant','card','transfer')),
+ last_selected_at timestamptz NOT NULL DEFAULT now(), source text NOT NULL DEFAULT 'hidden_customer_preferences',
+ created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(), UNIQUE(client_id,scope)
+);
+
+CREATE INDEX customer_payment_preferences_client_recent ON public.customer_payment_preferences(client_id,last_selected_at DESC);
+
+CREATE TABLE public.customer_delivery_preferences (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(), client_id uuid NOT NULL REFERENCES public.clients(id) ON DELETE CASCADE,
+ scope text NOT NULL CHECK (scope IN ('one_time','subscription','any')), delivery_kind text NOT NULL CHECK (delivery_kind IN ('courier','parcel-locker')),
+ provider_kind text NOT NULL CHECK (provider_kind IN ('warehouse','carrier','manual','simulator')),
+ provider_ref text NOT NULL, carrier_kind text NOT NULL, carrier_code text NOT NULL, service_code text NOT NULL,
+ pickup_point_id text, pickup_point_name text, pickup_point_address jsonb,
+ CONSTRAINT customer_delivery_preferences_pickup_check CHECK (delivery_kind IN ('courier') OR pickup_point_id IS NOT NULL),
+ last_selected_at timestamptz NOT NULL DEFAULT now(), source text NOT NULL DEFAULT 'customer_account',
+ created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(), UNIQUE(client_id,scope)
+);
+
+CREATE INDEX customer_delivery_preferences_client_recent ON public.customer_delivery_preferences(client_id,last_selected_at DESC);
+
 CREATE OR REPLACE FUNCTION public.commerce_read_destination(p_scope text,p_id uuid)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE d public.commerce_destinations; o public.commerce_orders; s public.subscriptions;
@@ -241,10 +263,246 @@ BEGIN
   'subscriptionStatus',s.status,'nextCycleAt',s.next_cycle_at,'templateVersion',s.template_version,'eventId',event_id);
 END; $$;
 
-REVOKE ALL ON FUNCTION public.subscription_select_saved_shipping_address(uuid,uuid,text,uuid,jsonb,timestamptz) FROM PUBLIC;
+CREATE FUNCTION public.customer_preferences_read(p_actor uuid,p_client uuid)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+ IF NOT EXISTS(SELECT 1 FROM public.clients WHERE id=p_client AND principal_id=p_actor) THEN RETURN NULL; END IF;
+ RETURN jsonb_build_object('payment',coalesce((SELECT jsonb_agg(to_jsonb(p) ORDER BY last_selected_at DESC) FROM public.customer_payment_preferences p WHERE client_id=p_client),'[]'),
+ 'delivery',coalesce((SELECT jsonb_agg(to_jsonb(p) ORDER BY last_selected_at DESC) FROM public.customer_delivery_preferences p WHERE client_id=p_client),'[]'));
+END; $$;
 
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.subscription_select_saved_shipping_address(uuid,uuid,text,uuid,jsonb,timestamptz) FROM anon'; END IF; END; $$;
+CREATE FUNCTION public.customer_preference_save(p_actor uuid,p_client uuid,p_kind text,p_data jsonb,p_now timestamptz)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE answer jsonb;
+BEGIN
+ IF p_kind='payment' THEN LOCK TABLE public.customer_payment_preferences IN ROW EXCLUSIVE MODE;
+ ELSIF p_kind='delivery' THEN LOCK TABLE public.customer_delivery_preferences IN ROW EXCLUSIVE MODE;
+ ELSE RAISE EXCEPTION 'customer_preference_invalid_kind' USING ERRCODE='22023'; END IF;
+ IF NOT EXISTS(SELECT 1 FROM public.clients WHERE id=p_client AND principal_id=p_actor) THEN RETURN NULL; END IF;
+ IF p_kind='payment' THEN
+  INSERT INTO public.customer_payment_preferences(client_id,scope,method_kind,last_selected_at,updated_at)
+  VALUES(p_client,p_data->>'scope',p_data->>'methodKind',p_now,p_now)
+  ON CONFLICT(client_id,scope) DO UPDATE SET method_kind=EXCLUDED.method_kind,last_selected_at=p_now,updated_at=p_now
+  RETURNING to_jsonb(customer_payment_preferences.*) INTO answer;
+ ELSE
+  INSERT INTO public.customer_delivery_preferences(client_id,scope,delivery_kind,provider_kind,provider_ref,carrier_kind,carrier_code,service_code,pickup_point_id,pickup_point_name,pickup_point_address,last_selected_at,updated_at)
+  VALUES(p_client,p_data->>'scope',p_data->>'deliveryKind',p_data->>'providerFamily',p_data->>'providerKind',p_data->>'carrierKind',p_data->>'carrierCode',p_data->>'serviceCode',p_data#>>'{pickupPoint,id}',p_data#>>'{pickupPoint,name}',nullif(p_data#>'{pickupPoint,address}','null'::jsonb),p_now,p_now)
+  ON CONFLICT(client_id,scope) DO UPDATE SET delivery_kind=EXCLUDED.delivery_kind,provider_kind=EXCLUDED.provider_kind,provider_ref=EXCLUDED.provider_ref,
+   carrier_kind=EXCLUDED.carrier_kind,carrier_code=EXCLUDED.carrier_code,service_code=EXCLUDED.service_code,pickup_point_id=EXCLUDED.pickup_point_id,
+   pickup_point_name=EXCLUDED.pickup_point_name,pickup_point_address=EXCLUDED.pickup_point_address,last_selected_at=p_now,updated_at=p_now
+  RETURNING to_jsonb(customer_delivery_preferences.*) INTO answer;
+ END IF;
+ RETURN answer;
+END; $$;
 
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.subscription_select_saved_shipping_address(uuid,uuid,text,uuid,jsonb,timestamptz) FROM authenticated'; END IF; END; $$;
+CREATE FUNCTION public.customer_renewal_delivery_selection(p_subscription uuid,p_metadata jsonb)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE selection jsonb; owner_id uuid;
+BEGIN
+ p_metadata:=coalesce(p_metadata,'{}');
+ IF p_metadata ? 'selectedDelivery' OR p_metadata#>'{runtimeFinalize,selectedDelivery}' IS NOT NULL THEN RETURN p_metadata; END IF;
+ SELECT client_id INTO owner_id FROM public.subscriptions WHERE id=p_subscription;
+ SELECT jsonb_build_object('kind',p.delivery_kind,'deliveryKind',p.delivery_kind,'providerKind',p.provider_ref,
+  'carrierKind',p.carrier_kind,'carrierCode',p.carrier_code,'serviceCode',p.service_code,
+  'pickupPoint',CASE WHEN p.delivery_kind='parcel-locker' THEN jsonb_build_object('id',p.pickup_point_id,'provider',p.carrier_kind,'name',p.pickup_point_name,'address',p.pickup_point_address) ELSE 'null'::jsonb END)
+ INTO selection FROM public.customer_delivery_preferences p WHERE client_id=owner_id AND scope IN ('subscription','any')
+ AND (delivery_kind='courier' OR (pickup_point_id IS NOT NULL AND pickup_point_name IS NOT NULL AND pickup_point_address IS NOT NULL))
+ ORDER BY CASE scope WHEN 'subscription' THEN 0 ELSE 1 END,last_selected_at DESC,updated_at DESC LIMIT 1;
+ IF selection IS NULL OR jsonb_typeof(selection)<>'object' THEN
+  SELECT coalesce(o.metadata->'selectedDelivery',o.metadata#>'{runtimeFinalize,selectedDelivery}') INTO selection
+  FROM public.commerce_orders o WHERE o.client_id=owner_id AND
+   (EXISTS(SELECT 1 FROM public.subscription_cycles c WHERE c.id=o.subscription_cycle_id AND c.subscription_id=p_subscription)
+    OR EXISTS(SELECT 1 FROM public.subscription_activations a WHERE a.order_id=o.id AND a.subscription_id=p_subscription))
+   AND (o.metadata ? 'selectedDelivery' OR o.metadata#>'{runtimeFinalize,selectedDelivery}' IS NOT NULL) ORDER BY o.created_at ASC LIMIT 1;
+ END IF;
+ IF selection IS NOT NULL AND jsonb_typeof(selection)='object' THEN RETURN p_metadata||jsonb_build_object('selectedDelivery',selection); END IF;
+ RETURN p_metadata;
+END; $$;
 
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.subscription_select_saved_shipping_address(uuid,uuid,text,uuid,jsonb,timestamptz) TO service_role'; END IF; END; $$;
+CREATE FUNCTION public.customer_preferences_prepare_erasure()
+RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+BEGIN LOCK TABLE public.customer_payment_preferences,public.customer_delivery_preferences IN SHARE ROW EXCLUSIVE MODE; RETURN true; END; $$;
+
+CREATE FUNCTION public.customer_preferences_export(p_client uuid)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+BEGIN RETURN jsonb_build_object('payment',coalesce((SELECT jsonb_agg(to_jsonb(p) ORDER BY id) FROM public.customer_payment_preferences p WHERE client_id=p_client),'[]'),
+ 'delivery',coalesce((SELECT jsonb_agg(to_jsonb(p) ORDER BY id) FROM public.customer_delivery_preferences p WHERE client_id=p_client),'[]')); END; $$;
+
+CREATE FUNCTION public.customer_preferences_erase(p_client uuid)
+RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+BEGIN DELETE FROM public.customer_payment_preferences WHERE client_id=p_client; DELETE FROM public.customer_delivery_preferences WHERE client_id=p_client; RETURN true; END; $$;
+
+CREATE FUNCTION public.customer_default_address_hints(p_client uuid)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+BEGIN RETURN jsonb_build_object('shipping',(SELECT id FROM public.customer_saved_addresses WHERE client_id=p_client AND kind IN ('shipping','both') ORDER BY is_default DESC,updated_at DESC LIMIT 1),
+ 'billing',(SELECT id FROM public.customer_saved_addresses WHERE client_id=p_client AND kind IN ('billing','both') ORDER BY is_default DESC,updated_at DESC LIMIT 1),
+ 'payment',coalesce((SELECT jsonb_agg(jsonb_build_object('scope',scope,'methodKind',method_kind) ORDER BY last_selected_at DESC) FROM public.customer_payment_preferences WHERE client_id=p_client),'[]'));
+END; $$;
+
+CREATE OR REPLACE FUNCTION public.commerce_prepare_subscription_renewal(
+  p_operation_id uuid,
+  p_claim_token uuid,
+  p_now timestamptz DEFAULT now()
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SET search_path = pg_catalog
+AS $$
+DECLARE
+  v_operation public.subscription_renewal_operations%ROWTYPE;
+  v_reservation public.fulfillment_inventory_reservations%ROWTYPE;
+  v_cycle_id uuid;
+  v_order_id uuid;
+  v_intent_id uuid;
+  v_line jsonb;
+  v_line_ordinal integer := 0;
+  v_sku_id uuid;
+  v_quantity integer;
+  v_unit_amount bigint;
+  v_total bigint;
+  v_currency text;
+  v_channel text;
+BEGIN
+  SELECT subscription_id INTO v_operation.subscription_id
+    FROM public.subscription_renewal_operations WHERE id = p_operation_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'commerce_renewal_operation_not_found' USING ERRCODE = '22023';
+  END IF;
+  PERFORM id FROM public.subscriptions
+   WHERE id = v_operation.subscription_id FOR UPDATE;
+
+  SELECT * INTO v_operation FROM public.subscription_renewal_operations
+   WHERE id = p_operation_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'commerce_renewal_operation_not_found' USING ERRCODE = '22023';
+  END IF;
+  IF v_operation.claim_token <> p_claim_token
+    OR v_operation.lease_expires_at <= COALESCE(p_now, now())
+  THEN
+    RAISE EXCEPTION 'commerce_renewal_stale_claim' USING ERRCODE = '40001';
+  END IF;
+
+  SELECT cycle.id, order_row.id, intent.id
+    INTO v_cycle_id, v_order_id, v_intent_id
+    FROM public.subscription_cycles cycle
+    JOIN public.commerce_orders order_row ON order_row.subscription_cycle_id = cycle.id
+    JOIN public.commerce_settlement_intents intent ON intent.order_id = order_row.id
+   WHERE cycle.renewal_operation_id = p_operation_id;
+  IF FOUND THEN
+    IF v_operation.state <> 'attempt_prepared' THEN
+      RAISE EXCEPTION 'commerce_renewal_artifact_state_conflict' USING ERRCODE = '23505';
+    END IF;
+    RETURN jsonb_build_object(
+      'contractVersion', 'platform.subscription.renewal.v1', 'replayed', true,
+      'operationId', p_operation_id, 'operationFingerprint', v_operation.operation_fingerprint,
+      'cycleId', v_cycle_id, 'orderId', v_order_id, 'settlementIntentId', v_intent_id,
+      'state', v_operation.state);
+  END IF;
+  IF v_operation.state <> 'reserved' THEN
+    RAISE EXCEPTION 'commerce_renewal_reservation_required' USING ERRCODE = '22023';
+  END IF;
+
+  SELECT * INTO v_reservation FROM public.fulfillment_inventory_reservations
+   WHERE renewal_operation_id = p_operation_id FOR UPDATE;
+  IF NOT FOUND OR v_reservation.status <> 'held'
+    OR v_reservation.expires_at <= COALESCE(p_now, now())
+    OR v_reservation.operation_fingerprint <> v_operation.operation_fingerprint
+  THEN
+    RAISE EXCEPTION 'commerce_renewal_active_reservation_required' USING ERRCODE = '22023';
+  END IF;
+
+  v_currency := v_operation.cycle_snapshot->>'currency';
+  v_channel := v_operation.cycle_snapshot->>'settlementChannelKey';
+  v_total := (v_operation.cycle_snapshot->>'totalAmountMinor')::bigint;
+  IF v_currency !~ '^[A-Z]{3}$' OR btrim(COALESCE(v_channel, '')) = '' OR v_total < 1 THEN
+    RAISE EXCEPTION 'commerce_renewal_invalid_snapshot' USING ERRCODE = '22023';
+  END IF;
+
+  INSERT INTO public.subscription_cycles (
+    subscription_id, scheduled_at, status, renewal_operation_id,
+    renewal_operation_fingerprint, updated_at
+  ) VALUES (
+    v_operation.subscription_id, v_operation.scheduled_at, 'payment_pending', p_operation_id,
+    v_operation.operation_fingerprint, COALESCE(p_now, now())
+  ) RETURNING id INTO v_cycle_id;
+
+  INSERT INTO public.commerce_orders (
+    client_id, subscription_cycle_id, status, currency_code, total_amount_minor,
+    source_kind, metadata, renewal_operation_id, renewal_operation_fingerprint, updated_at
+  ) SELECT subscription.client_id, v_cycle_id, 'pending_payment', v_currency, v_total,
+           'storefront', public.customer_renewal_delivery_selection(v_operation.subscription_id,jsonb_build_object(
+             'source', 'subscription.renewal',
+             'renewalIdentityKey', v_operation.identity_key,
+             'renewalOperationFingerprint', v_operation.operation_fingerprint,
+             'cycleSnapshot', v_operation.cycle_snapshot)),
+           p_operation_id, v_operation.operation_fingerprint, COALESCE(p_now, now())
+      FROM public.subscriptions subscription WHERE subscription.id = v_operation.subscription_id
+  RETURNING id INTO v_order_id;
+
+  FOR v_line IN SELECT value FROM jsonb_array_elements(v_operation.cycle_snapshot->'lines')
+  LOOP
+    v_line_ordinal := v_line_ordinal + 1;
+    v_quantity := (v_line->>'quantity')::integer;
+    v_unit_amount := (v_line->>'unitAmountMinor')::bigint;
+    SELECT id INTO v_sku_id FROM public.catalog_skus WHERE sku = v_line->>'sku';
+    IF NOT FOUND OR v_quantity < 1 OR v_unit_amount < 0 THEN
+      RAISE EXCEPTION 'commerce_renewal_invalid_line' USING ERRCODE = '22023';
+    END IF;
+    INSERT INTO public.commerce_order_items (
+      order_id, sku_id, line_ordinal, quantity, unit_amount_minor, line_amount_minor
+    ) VALUES (
+      v_order_id, v_sku_id, v_line_ordinal, v_quantity, v_unit_amount,
+      v_quantity * v_unit_amount);
+  END LOOP;
+
+  PERFORM public.commerce_open_settlement_intent(
+    v_operation.identity_key || ':settlement', v_order_id, v_channel, v_total, v_currency,
+    jsonb_build_object(
+      'renewalOperationId', p_operation_id,
+      'renewalOperationFingerprint', v_operation.operation_fingerprint),
+    COALESCE(p_now, now()));
+  SELECT id INTO v_intent_id FROM public.commerce_settlement_intents WHERE order_id = v_order_id;
+  UPDATE public.commerce_settlement_intents
+     SET renewal_operation_id = p_operation_id,
+         renewal_operation_fingerprint = v_operation.operation_fingerprint,
+         updated_at = COALESCE(p_now, now())
+   WHERE id = v_intent_id;
+  UPDATE public.fulfillment_inventory_reservations
+     SET status = 'committed', expires_at = NULL, updated_at = COALESCE(p_now, now())
+   WHERE id = v_reservation.id;
+  UPDATE public.subscription_renewal_operations
+     SET state = 'attempt_prepared', attempt_prepared_at = COALESCE(p_now, now()),
+         updated_at = COALESCE(p_now, now())
+   WHERE id = p_operation_id RETURNING * INTO v_operation;
+
+  RETURN jsonb_build_object(
+    'contractVersion', 'platform.subscription.renewal.v1', 'replayed', false,
+    'operationId', p_operation_id, 'operationFingerprint', v_operation.operation_fingerprint,
+    'cycleId', v_cycle_id, 'orderId', v_order_id, 'settlementIntentId', v_intent_id,
+    'state', v_operation.state);
+END;
+$$;
+
+ALTER TABLE public.customer_payment_preferences ENABLE ROW LEVEL SECURITY;
+
+INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('customer_payment_preferences', 'block', 'Customer preference history stays with its owner.');
+
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT SELECT (client_id) ON TABLE public.customer_payment_preferences TO service_role;'; END IF; END; $$;
+
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'CREATE POLICY customer_payment_preferences_absorption_census ON public.customer_payment_preferences FOR SELECT TO service_role USING (true);'; END IF; END; $$;
+
+ALTER TABLE public.customer_delivery_preferences ENABLE ROW LEVEL SECURITY;
+
+INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('customer_delivery_preferences', 'block', 'Customer preference history stays with its owner.');
+
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT SELECT (client_id) ON TABLE public.customer_delivery_preferences TO service_role;'; END IF; END; $$;
+
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'CREATE POLICY customer_delivery_preferences_absorption_census ON public.customer_delivery_preferences FOR SELECT TO service_role USING (true);'; END IF; END; $$;
+
+REVOKE ALL ON FUNCTION public.subscription_select_saved_shipping_address(uuid,uuid,text,uuid,jsonb,timestamptz), public.customer_preferences_read(uuid,uuid), public.customer_preference_save(uuid,uuid,text,jsonb,timestamptz), public.customer_renewal_delivery_selection(uuid,jsonb), public.customer_preferences_prepare_erasure(), public.customer_preferences_export(uuid), public.customer_preferences_erase(uuid), public.customer_default_address_hints(uuid) FROM PUBLIC;
+
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.subscription_select_saved_shipping_address(uuid,uuid,text,uuid,jsonb,timestamptz), public.customer_preferences_read(uuid,uuid), public.customer_preference_save(uuid,uuid,text,jsonb,timestamptz), public.customer_renewal_delivery_selection(uuid,jsonb), public.customer_preferences_prepare_erasure(), public.customer_preferences_export(uuid), public.customer_preferences_erase(uuid), public.customer_default_address_hints(uuid) FROM anon'; END IF; END; $$;
+
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.subscription_select_saved_shipping_address(uuid,uuid,text,uuid,jsonb,timestamptz), public.customer_preferences_read(uuid,uuid), public.customer_preference_save(uuid,uuid,text,jsonb,timestamptz), public.customer_renewal_delivery_selection(uuid,jsonb), public.customer_preferences_prepare_erasure(), public.customer_preferences_export(uuid), public.customer_preferences_erase(uuid), public.customer_default_address_hints(uuid) FROM authenticated'; END IF; END; $$;
+
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.subscription_select_saved_shipping_address(uuid,uuid,text,uuid,jsonb,timestamptz), public.customer_preferences_read(uuid,uuid), public.customer_preference_save(uuid,uuid,text,jsonb,timestamptz), public.customer_renewal_delivery_selection(uuid,jsonb), public.customer_preferences_prepare_erasure(), public.customer_preferences_export(uuid), public.customer_preferences_erase(uuid), public.customer_default_address_hints(uuid) TO service_role'; END IF; END; $$;

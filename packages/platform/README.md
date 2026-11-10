@@ -2369,8 +2369,8 @@ Finite restore targets qualified installations; legacy installations are capture
 The finite connected-store profile carries exact saved rows and event history,
 restores addresses after clients and before subscription pointers, and replays
 without rewriting them. The smaller compatible-row copier remains a separate
-closed profile. Delivery/payment preferences, checkout hints, billing profiles,
-and browser journeys are later capabilities.
+closed profile. Delivery/payment preferences and checkout hints are described
+below; billing-profile persistence and browser journeys remain separately bound work.
 
 
 ### Saved subscription shipping selection
@@ -2419,3 +2419,65 @@ erasure does not erase immutable destination copies; this port adds no
 export/erasure operation for destination rows. Starter selection pages and routes
 remain separately bound work. The new SQL routine grants EXECUTE only to
 `service_role`; PUBLIC and browser roles remain closed.
+
+
+### Customer delivery and payment preferences
+
+The same `20261110240000_subscription_saved_address_selection.sql` forward adds
+private scoped preferences and a delivery selector used by the renewal writer.
+Use `createPostgresCustomerPreferencePort`, `createCustomerPreferenceSchemas`,
+`createCustomerPaymentPreferencesHandler` and
+`createCustomerDeliveryPreferencesHandler` from `@openlup/platform/shipping`.
+Browser input/output types live in `@openlup/platform/shipping/contracts`.
+Bind a server-authenticated principal/client pair and a structural query executor;
+no connection or provider SDK is created. Handlers support GET/PATCH, use only
+the authenticated user ID, validate strict request/response envelopes, and require
+host authentication, responder and copy configuration. They mount no routes.
+
+`CustomerPreferencePolicy` supplies exactly three payment values (canonical
+families `instant`, `card`, `transfer`) and four provider values (`warehouse`,
+`carrier`, `manual`, `simulator`). Each map must contain distinct nonempty values;
+extra families refuse construction. These are bijective labels, not extra payment
+methods or providers. SQL stores the closed canonical family and, for delivery,
+the configured provider reference. The same policy must be used for reads and
+writes. Scopes are `one_time`, `subscription` and `any`. Saves upsert one row per
+client/scope and update its selection time; they do not touch payment instruments,
+mandates, account events or provider state. Carrier and pickup fields retain the
+fixed trim/length validation. A locker requires a pickup point, but its address
+may be null when saved; incomplete locker addresses are skipped by renewal.
+
+The renewal writer calls the private selector only when constructing fresh order
+metadata. An explicit top-level `selectedDelivery` key (including null), or a
+nested runtime-finalization selection, is preserved. Otherwise a complete
+subscription preference wins over `any`, followed by the earliest qualifying
+subscription order's selection. Only an object is copied. No trigger, raw
+preference read grant or payment-selection change is added. The renewal owner's
+claim, replay, delivery clamp and cycle scheduling stay unchanged: late delivery
+extends the next cycle and never stacks deliveries.
+
+`createPostgresCustomerDefaultsPort` binds a client ID established by the trusted
+checkout identity owner, including a provisioned client without a linked account.
+Do not bind it to an unverified request ID. Its required `readOrdererHints` port
+returns billing-profile IDs ordered by default first, then latest update; this
+change supplies no billing-profile store. The snapshot chooses scoped payment
+then `any`, and default/most recent shipping or billing IDs (including `both`).
+It returns redacted hints with `applied: false`; nothing is automatically applied
+and no contact, free text, provider secret or delivery instruction is exposed.
+The authenticated preference port also exposes this snapshot for its bound client.
+
+Preference rows, client links and pickup history are personal data. Compose
+`createCustomerPreferencePrivacyContributor` from `@openlup/platform/identity`
+and require `customer-preferences` in the existing privacy registry, alongside
+the identity/subscription veto and account-event owners. It exports exact rows
+and erases only the subject's rows, using a preparation lock before identity row
+locks. Waiting saves recheck ownership after unlinking. There is no automatic
+retention period. Both tables are `block` classified for lead absorption;
+service_role has only client-ID census SELECT at table level and EXECUTE on the
+closed routines, with no raw preference access for browser roles.
+
+Finite native capture carries exact preference rows. Qualified restore inserts
+them after their clients and replay leaves them unchanged. Legacy installations
+are capture sources. The smaller compatible-row copier is unchanged; a managed
+source with nonempty preferences has no typed projection and refuses as an
+unsupported relation. Restore does not apply defaults, select payment instruments
+or activate a target. Starter pages and routes remain separately bound work.
