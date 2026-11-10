@@ -11,9 +11,13 @@ import { ADDRESS_AT as at, savedAddressPort, addressId } from './customerSavedAd
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from '../helpers/postgresContainer.js';
 const input = () => ({ idempotencyKey: randomUUID(), kind: 'shipping' as const, line1: 'Example Street 1', city: 'Example City', postalCode: '12345', recipientName: 'Example Recipient' });
 for (const profile of ['legacy','bootstrap','separate','admin-managed','admin-operator'] as AccountProfile[]) describe(`saved address ownership on ${profile}`, () => {
-  let db: Awaited<ReturnType<typeof installAccountMutations>>;
-  beforeAll(async () => { db = await installAccountMutations(profile); }, postgresSetupTimeoutMs);
-  afterAll(async () => { if (db) await db.close(); }, postgresTeardownTimeoutMs);
+  let db: Awaited<ReturnType<typeof installAccountMutations>>, transferTarget: typeof db;
+  // Provision the isolated restore target under the existing database setup deadline.
+  beforeAll(async () => {
+    db = await installAccountMutations(profile);
+    transferTarget = await installAccountMutations(profile === 'legacy' ? 'bootstrap' : profile, false, 'address-target');
+  }, postgresSetupTimeoutMs);
+  afterAll(async () => { try { if (transferTarget) await transferTarget.close(); } finally { if (db) await db.close(); } }, postgresTeardownTimeoutMs);
   async function customer() {
     const client = randomUUID(), principal = randomUUID();
     await db.owner.query('INSERT INTO public.platform_human_principals(principal_id,email,created_at) VALUES($1,$2,$3)', [principal,`${principal}@example.invalid`,at]);
@@ -47,37 +51,33 @@ for (const profile of ['legacy','bootstrap','separate','admin-managed','admin-op
       expect(packet.compatible.tables.find(table => table.table === 'subscriptions')?.rows.map(row => JSON.parse(row))).toEqual(pointers);
       expect(pointers[0]).toMatchObject({ shipping_saved_address_id: id, billing_saved_address_id: id });
       expect(packet.owned.find(table => table.table === 'customer_account_events')?.rows.map(row => JSON.parse(row))).toEqual(history.map(row => row.row));
-      const target = await installAccountMutations('bootstrap', false, 'legacy-refusal-target');
-      try {
-        if (target.installation.generation === 'legacy') throw new Error('qualified_target_required');
-        const freshTarget = await capture(target);
-        const unchanged = async (store: typeof db, before: typeof packet) => {
-          const after = await capture(store);
-          expect(after.compatible).toEqual(before.compatible); expect(after.owned).toEqual(before.owned);
-          expect(after.outsideProfileCensus).toEqual(before.outsideProfileCensus); expect(after.emptyOutsideProfile).toEqual(before.emptyOutsideProfile);
-        };
-        // Deliberately bypass the qualified-only input type to prove the runtime refusal.
-        const legacyInstallation = db.installation as unknown as Parameters<typeof restoreConnectedNativeStore>[0]['installation'];
-        await expect(restoreConnectedNativeStore({ owner: db.migrator, installation: legacyInstallation, packet: freshTarget, freshTarget: packet }))
-          .rejects.toMatchObject({ name: 'PostgresTransferError', code: 'invalid_input' });
-        await unchanged(db, packet);
-        await expect(restoreConnectedNativeStore({ owner: target.migrator, installation: target.installation, packet, freshTarget }))
-          .rejects.toMatchObject({ name: 'PostgresTransferError', code: 'schema_conflict' });
-        await unchanged(target, freshTarget);
-      } finally { await target.close(); }
+      const target = transferTarget;
+      if (target.installation.generation === 'legacy') throw new Error('qualified_target_required');
+      const freshTarget = await capture(target);
+      const unchanged = async (store: typeof db, before: typeof packet) => {
+        const after = await capture(store);
+        expect(after.compatible).toEqual(before.compatible); expect(after.owned).toEqual(before.owned);
+        expect(after.outsideProfileCensus).toEqual(before.outsideProfileCensus); expect(after.emptyOutsideProfile).toEqual(before.emptyOutsideProfile);
+      };
+      // Deliberately bypass the qualified-only input type to prove the runtime refusal.
+      const legacyInstallation = db.installation as unknown as Parameters<typeof restoreConnectedNativeStore>[0]['installation'];
+      await expect(restoreConnectedNativeStore({ owner: db.migrator, installation: legacyInstallation, packet: freshTarget, freshTarget: packet }))
+        .rejects.toMatchObject({ name: 'PostgresTransferError', code: 'invalid_input' });
+      await unchanged(db, packet);
+      await expect(restoreConnectedNativeStore({ owner: target.migrator, installation: target.installation, packet, freshTarget }))
+        .rejects.toMatchObject({ name: 'PostgresTransferError', code: 'schema_conflict' });
+      await unchanged(target, freshTarget);
       return;
     }
-    const target = await installAccountMutations(profile, false, 'address-target');
-    try {
-      if (target.installation.generation === 'legacy') throw new Error('qualified_target_required');
-      const request = { owner: target.migrator, installation: target.installation, packet, freshTarget: await capture(target) };
-      expect(await restoreConnectedNativeStore(request)).toMatchObject({ replayed: false });
-      const actual = async () => (await target.owner.query('SELECT to_jsonb(a) AS row,xmin::text FROM public.customer_saved_addresses a WHERE client_id=$1 ORDER BY id', [f.client])).rows;
-      const first = await actual(); expect(first.map(row => row.row)).toEqual(expected.map(row => row.row));
-      expect((await target.owner.query('SELECT shipping_saved_address_id,billing_saved_address_id FROM public.subscriptions WHERE id=$1', [subscription])).rows).toEqual([{ shipping_saved_address_id: id, billing_saved_address_id: id }]);
-      expect((await target.owner.query('SELECT to_jsonb(e) AS row FROM public.customer_account_events e WHERE client_id=$1 ORDER BY id', [f.client])).rows.map(row => row.row)).toEqual(history.map(row => row.row));
-      expect(await restoreConnectedNativeStore(request)).toMatchObject({ replayed: true }); expect(await actual()).toEqual(first);
-    } finally { await target.close(); }
+    const target = transferTarget;
+    if (target.installation.generation === 'legacy') throw new Error('qualified_target_required');
+    const request = { owner: target.migrator, installation: target.installation, packet, freshTarget: await capture(target) };
+    expect(await restoreConnectedNativeStore(request)).toMatchObject({ replayed: false });
+    const actual = async () => (await target.owner.query('SELECT to_jsonb(a) AS row,xmin::text FROM public.customer_saved_addresses a WHERE client_id=$1 ORDER BY id', [f.client])).rows;
+    const first = await actual(); expect(first.map(row => row.row)).toEqual(expected.map(row => row.row));
+    expect((await target.owner.query('SELECT shipping_saved_address_id,billing_saved_address_id FROM public.subscriptions WHERE id=$1', [subscription])).rows).toEqual([{ shipping_saved_address_id: id, billing_saved_address_id: id }]);
+    expect((await target.owner.query('SELECT to_jsonb(e) AS row FROM public.customer_account_events e WHERE client_id=$1 ORDER BY id', [f.client])).rows.map(row => row.row)).toEqual(history.map(row => row.row));
+    expect(await restoreConnectedNativeStore(request)).toMatchObject({ replayed: true }); expect(await actual()).toEqual(first);
   });
   it('reads, saves, updates and canonically reuses only the owned address', async () => {
     const f = await customer(); expect(await f.port.getAddressBook(f.principal)).toMatchObject({ addresses: [], ordererProfiles: [] });

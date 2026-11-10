@@ -99,8 +99,8 @@ describe("real PostgreSQL portable dunning forward", () => {
     await upgrade.query(`INSERT INTO public.subscription_dunning_cases(id,subscription_id,cycle_id,client_id,retry_attempt,next_retry_at,idempotency_key)
       VALUES ($1,$2,$3,$4,4,$5,'synthetic:last-rung')`, [caseId, subscriptionId, cycleId, clientId, at]);
     prefixRows = await snapshot(upgrade);
-    // Later editor forwards add the nullable constraint and the classic offer default.
-    prefixRows.subscriptions = prefixRows.subscriptions.map(({ row }) => ({ row: { ...row, composition_constraint: null, configured_offer_version: "classic" } }));
+    // Later forwards add editor defaults and nullable saved-address pointers.
+    prefixRows.subscriptions = prefixRows.subscriptions.map(({ row }) => ({ row: { ...row, composition_constraint: null, configured_offer_version: "classic", shipping_saved_address_id: null, billing_saved_address_id: null } }));
     prefixAcl = await privileges(upgrade);
     upgradeApplied = (await runner(upgrade).apply()).applied;
     freshApplied = (await runner(fresh).apply()).applied;

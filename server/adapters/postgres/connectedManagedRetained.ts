@@ -661,7 +661,8 @@ export async function mapManagedRetainedBusiness(input: {
     const lists = (raw.get(priceListEligibility) ?? []).filter(value => value.subscription_id === row.id);
     if (lists.length !== 1) fail("target_conflict", "public.price_lists");
     projected.subscriptions!.push(project("subscriptions", row, { price_list_id: lists[0]!.price_list_id,
-      currency_code: row.currency, composition_constraint: null, configured_offer_version: "classic" }));
+      currency_code: row.currency, composition_constraint: null, configured_offer_version: "classic",
+      shipping_saved_address_id: null, billing_saved_address_id: null }));
     const currentLines = subscriptionLines.filter(line => line.subscription_id === row.id);
     const activeMethods = methods.filter(method => method.subscription_id === row.id && method.status === "active" && method.active === true);
     if (!currentLines.length || activeMethods.length !== 1) fail("target_conflict", "public.subscriptions");
