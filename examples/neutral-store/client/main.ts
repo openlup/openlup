@@ -73,6 +73,7 @@ async function start(): Promise<void> {
     render(true);
   }
   function render(focus: boolean): void {
+    captureCompletionEntry();
     captureRecoveryEntry();
     const route = resolveRoute(location.pathname);
     const locale = route.locale;

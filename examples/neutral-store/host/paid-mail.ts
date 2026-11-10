@@ -1,3 +1,11 @@
+import { createPostgresCheckoutRecoveryWaves, createPostgresOperatorCheckoutLinkStore, createOutboxCheckoutRecoveryEmailHandler, createOutboxCheckoutExpiredEmailHandler } from '@openlup/platform/commerce/server';
+import type { OrderPaymentLifecyclePort } from '@openlup/platform/commerce';
+import { createPostgresPlatformJobRunLedger } from '@openlup/platform/job-ledger';
+import { createCheckoutRecoveryWaveJob } from '@openlup/platform/composition';
+import { withCheckoutRecoverySendEvidence } from '@openlup/platform/communications';
+import { checkoutRecoverySchedule, checkoutWavePolicy } from '../owned/acquisition-policy.ts';
+import { copy } from '../owned/copy.ts';
+import { routes } from '../shared/routes.ts';
 import { PLATFORM_EVENT_VOCABULARY } from '@openlup/core/outbox';
 import type { SqlExecutor } from '@openlup/core/readiness';
 import { readOutboxDispatchConfig, runOutboxDispatchWorker, uniqueRegistry } from '@openlup/outbox';
@@ -112,4 +120,91 @@ export function createPaidMailHost(input: { executor: SqlExecutor; config: Store
       config: { ...readOutboxDispatchConfig({}), batchSize: config.renewal.batchLimit, softBudgetMs: 15_000 },
       logger: { warn: () => {}, error: () => {} } });
   } };
+}
+
+/** One bounded local checkout-recovery pass, using the installed job and outbox owners. */
+export async function runCheckoutRecovery(input: { executor: import('pg').Pool; config: StoreConfig; publicOrigin: string;
+  capture?: PrivateCapture; now?: string; enabled?: boolean }) {
+  const { executor, config } = input, at = input.now ?? new Date().toISOString(), schedule = checkoutRecoverySchedule;
+  const policy = checkoutWavePolicy;
+  const waves = createPostgresCheckoutRecoveryWaves(executor, policy);
+  const capture = input.capture ?? createPrivateCapture();
+  const job = createCheckoutRecoveryWaveJob({ enabled: () => input.enabled ?? schedule.enabled,
+    jobName: `starter-checkout:${config.id}`, leaseSeconds: schedule.leaseSeconds, batchSize: schedule.batchSize,
+    async bind() { return { ledger: createPostgresPlatformJobRunLedger(executor, {
+      releaseCorrelation: () => ({ artifact: 'local-candidate' }), defaultFailureReason: 'checkout_recovery_failed' }),
+      enqueue: waves.enqueue }; } });
+  const enqueued = await job({ triggerKind: 'scheduler', invocationSource: 'local-demonstration' }, at);
+  if ('skipped' in enqueued && enqueued.skipped || !enqueued.ok) return { enqueued };
+  const expired = await waves.expire(schedule.batchSize, at);
+  const initial = await waves.sweepInitial(schedule.batchSize, new Date(Date.parse(at) - schedule.initialTimeoutSeconds * 1000).toISOString(), at);
+  const reconciled = await waves.reconcile(schedule.batchSize, at);
+  const locale = (country: string | null | undefined): Locale =>
+    (country ? config.renewal.notices.countryLocales?.[country.toUpperCase()] : undefined) ?? config.renewal.notices.locale;
+  const recipients: OrderRecipientPort = { async resolve(id) {
+    const row = (await executor.query(`SELECT c.email,c.first_name,c.country FROM public.commerce_orders o
+      JOIN public.clients c ON c.id=o.client_id WHERE o.id=$1::uuid`, [id])).rows[0];
+    return row?.email ? { email: row.email, firstName: row.first_name, country: row.country } : null;
+  } };
+  const lifecycle: OrderPaymentLifecyclePort = { async read(id) {
+    const row = (await executor.query(`SELECT o.status,o.metadata,i.status AS payment_status,i.updated_at
+      FROM public.commerce_orders o LEFT JOIN LATERAL (SELECT status,updated_at FROM public.commerce_settlement_intents
+      WHERE order_id=o.id ORDER BY updated_at DESC,id DESC LIMIT 1) i ON true WHERE o.id=$1::uuid`, [id])).rows[0];
+    return row ? { orderStatus: row.status, hasPayment: row.payment_status === 'settled',
+      paymentStatus: row.payment_status === 'settled' ? 'succeeded' : row.payment_status,
+      paymentUpdatedAt: row.updated_at ? new Date(row.updated_at).toISOString() : null,
+      subscriptionActivationAbandoned: row.metadata?.subscriptionActivation === 'abandoned' } : null;
+  } };
+  const key = (eventId: string) => `checkout-mail:${eventId}`;
+  const send = async (send: { to: string; orderId: string; recoveryToken?: string | null; outboxEventId: string; locale?: Locale; signal: AbortSignal }, expired: boolean, final = false) => {
+    send.signal.throwIfAborted();
+    const language = send.locale ?? locale(null), selected = copy[language];
+    const url = new URL(routes.completion[language], input.publicOrigin);
+    if (send.recoveryToken) url.searchParams.set('token', send.recoveryToken);
+    const messageKey = key(send.outboxEventId);
+    if (!await capture.read(messageKey)) await capture.writeOnce(messageKey, { schemaVersion: 1,
+      kind: expired ? 'checkout_expired' : 'checkout_recovery', outboxEventId: send.outboxEventId,
+      orderId: send.orderId, recipient: send.to, locale: language,
+      subject: expired ? selected.checkoutExpiredSubject : final ? selected.checkoutFinalSubject : selected.checkoutFirstSubject,
+      body: [expired ? selected.checkoutExpiredBody : selected.checkoutMailBody, ...(send.recoveryToken ? [url.href] : [])].join('\n'),
+      recoveryUrl: send.recoveryToken ? url.href : null });
+    if (!await capture.read(messageKey)) throw new Error('starter_private_capture_unavailable');
+    return { ok: true, messageId: messageKey, httpStatus: 200, providerError: null, aborted: false };
+  };
+  const email: TransactionalEmailPort<Locale> = {
+    findExistingSend: async (_template, eventId) => await capture.read(key(eventId)) !== null,
+    sendCheckoutRecovery: sendInput => send(sendInput, false, sendInput.reminderHours > 1),
+    sendCheckoutExpiredNotice: sendInput => send(sendInput, true),
+    sendReturnApprovedNotice: refuse, sendReturnRejectedNotice: refuse, sendOrderConfirmation: refuse,
+    sendOrderPaidConfirmation: refuse, sendPaymentFailedNotice: refuse, sendOrderCanceledNotice: refuse,
+    sendOrderRefundedNotice: refuse, sendShipmentDispatchedNotice: refuse, sendShipmentDeliveredNotice: refuse,
+    sendShipmentExceptionNotice: refuse,
+  };
+  const runtime: Pick<CommerceEmailRuntime<Locale>, 'resolveLocale' | 'formatMoney' | 'parseOutboxPayload' | 'mapSendOutcome'> = {
+    resolveLocale: locale, formatMoney: (amount, currency) => `${currency} ${amount}`,
+    parseOutboxPayload: (schema, payload) => { const parsed = schema.safeParse(payload); return parsed.success
+      ? { ok: true, data: parsed.data } : { ok: false, outcome: { kind: 'discard', reason: 'invalid_payload' } }; },
+    mapSendOutcome: outcome => outcome.ok ? { kind: 'processed' } : { kind: 'retry', reason: 'checkout_capture_failed' },
+  };
+  const automatic = createOutboxCheckoutRecoveryEmailHandler({ runtime,
+    emailPort: withCheckoutRecoverySendEvidence(email, waves), recipientPort: recipients, lifecyclePort: lifecycle });
+  const operator = createOutboxCheckoutRecoveryEmailHandler({ runtime, emailPort: email, recipientPort: recipients, lifecyclePort: lifecycle });
+  const expiredHandler = createOutboxCheckoutExpiredEmailHandler({ runtime, emailPort: email, recipientPort: recipients, lifecyclePort: lifecycle });
+  const registry = uniqueRegistry([
+    { ...automatic, async handle(row, signal) {
+      const operatorIssued = row.metadata.source === 'admin_payment_link';
+      const gate = operatorIssued ? await createPostgresOperatorCheckoutLinkStore(executor).authorize(row.id, String(row.metadata.claimToken))
+        : await waves.authorize(row.id, String(row.metadata.claimToken));
+      if (!gate.authorized) return gate.reason === 'checkout_recovery_no_longer_allowed'
+        ? { kind: 'retry' as const, reason: gate.reason }
+        : { kind: 'processed' as const, detail: { skipped: gate.reason ?? 'not_authorized' } };
+      // Reclaimed automatic mail must restore confirmed evidence even when the private send already exists.
+      if (!operatorIssued && await capture.read(key(row.id))) await waves.recordConfirmedSend(row.id, key(row.id));
+      return (operatorIssued ? operator : automatic).handle(row, signal);
+    } }, expiredHandler,
+  ]);
+  const delivered = await runOutboxDispatchWorker({ store: createPostgresOutboxStore(executor), registry,
+    knownEventTypes: PLATFORM_EVENT_VOCABULARY.map(entry => entry.eventType),
+    config: { ...readOutboxDispatchConfig({}), batchSize: schedule.batchSize, softBudgetMs: schedule.softBudgetMs }, logger: { warn: () => {}, error: () => {} } });
+  return { enqueued, expired, initial, reconciled, delivered };
 }

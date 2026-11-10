@@ -727,6 +727,16 @@ process.stdout.write(JSON.stringify(Object.fromEntries(Object.entries(entry).map
     createCheckoutRecoveryStartHandler: "function",
     createCheckoutPaymentLinkHandler: "function",
     createPostgresCustomerCheckoutRecoveryStartPort: "function",
+    createCheckoutRecoveryInspection: "function",
+    createCheckoutRecoveryValidationPolicy: "function",
+    createPostgresCheckoutRecoveryOrderPort: "function",
+    createExpiredCheckoutRecoveryService: "function",
+    ExpiredCheckoutRecoveryError: "function",
+    createPostgresExpiredCheckoutRecoveryPort: "function",
+    createPostgresExpiredCheckoutDraftPort: "function",
+    createPostgresExpiredCheckoutRuntime: "function",
+    createPostgresExpiredCheckoutCompensation: "function",
+    checkoutRecoveryExecutionFingerprint: "function",
     createPostgresBuyerCheckoutLinkPort: "function",
     CheckoutLinkNotRecoverableError: "function",
     createPostgresOrderReviewAdminReadPort: "function",
@@ -1276,4 +1286,19 @@ process.stdout.write(JSON.stringify({responses,calls}));
   ]);
   expect(result.calls[1].values[1]).not.toBe('rcv_installed_start');
   expect(result.calls[2].values.slice(0,3)).toEqual(['11111111-1111-4111-8111-111111111111','22222222-2222-4222-8222-222222222222','rcv_installed_buyer']);
+});
+
+it('executes installed recreation refusals and the neutral sandbox safety port without database peers',()=>{
+ const consumer=pristinePackedA1Fixture();assertConsumerIsolation(consumer,root);
+ const result=JSON.parse(consumerNode(consumer,`
+const {createExpiredCheckoutRecoveryService,createPostgresExpiredCheckoutRecoveryPort}=await import('@openlup/platform/commerce/server');
+const {createPostgresSandboxExpiredCheckoutSafety}=await import('@openlup/platform/payments');
+const db={query:async()=>({rows:[]})},service=createExpiredCheckoutRecoveryService({supports:()=>false});
+const validation=await service.validate({});let reason;
+try{await service.recreate({order:{},clientId:'client'});}catch(error){reason=error.reason;}
+const prior=await createPostgresSandboxExpiredCheckoutSafety(db).verifyPriorPayment({orderId:'missing',totalMinor:100,currency:'XXX'});
+const port=createPostgresExpiredCheckoutRecoveryPort(db,{recoveryWindowMs:1000});
+process.stdout.write(JSON.stringify({validation,reason,prior,writer:typeof port.prepareReplacement}));
+`));
+ expect(result).toEqual({validation:false,reason:'unavailable',prior:'unavailable',writer:'function'});
 });

@@ -1318,6 +1318,14 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261110170000_checkout_recovery_inspection.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261110180000_checkout_recovery_recreation.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4414,6 +4422,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261110170000_checkout_recovery_inspection.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261110180000_checkout_recovery_recreation.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -5414,6 +5430,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/server/checkoutRecoveryInspection.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/server/checkoutRecoveryOrderPort.ts",
       "class": "public-output"
     },
@@ -5574,6 +5594,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/server/expiredCheckoutRecovery.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/server/handlerSupport.ts",
       "class": "public-output"
     },
@@ -5583,6 +5607,10 @@
     },
     {
       "path": "packages/platform/src/commerce/server/native-checkout/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/nativeExpiredCheckoutRecovery.ts",
       "class": "public-output"
     },
     {
@@ -5710,7 +5738,15 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/server/postgresCheckoutRecoveryOrderPort.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/server/postgresCheckoutRecoveryTokenPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/postgresExpiredCheckoutRecovery.ts",
       "class": "public-output"
     },
     {
@@ -7614,6 +7650,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/payments/expiredCheckoutSafety.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/payments/index.ts",
       "class": "public-output"
     },
@@ -8838,6 +8878,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/commerce/checkoutRecoveryInspection.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/commerce/checkoutRecoveryToken.test.ts",
       "class": "public-output"
     },
@@ -9059,6 +9103,10 @@
     },
     {
       "path": "packages/platform/test/commerce/effects/commerceSalesChannelSeam.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/expiredCheckoutRecovery.test.ts",
       "class": "public-output"
     },
     {
@@ -28770,7 +28818,19 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/checkoutRecoveryInspection.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/checkoutRecoveryInspectionUpgrade.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/checkoutRecoveryLinkLifecycle.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/checkoutRecoveryRecreation.test.ts",
       "class": "public-output"
     },
     {

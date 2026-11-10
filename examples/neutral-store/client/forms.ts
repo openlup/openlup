@@ -77,8 +77,12 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
   let priorInput: string | null = null;
   let uncertain: { input: string; prepared: ActionInput } | undefined;
   let inFlight = false;
+  let generation = 0;
+  form.addEventListener('input', () => { ++generation; });
+  form.addEventListener('change', () => { ++generation; });
   const reset = button(context.t('newAction'), () => {
     if (inFlight) return;
+    ++generation;
     commandKey = crypto.randomUUID();
     priorInput = null;
     uncertain = undefined;
@@ -88,7 +92,9 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
     el('div', { class: 'actions' }, submit, reset), output);
   form.addEventListener('submit', event => {
     event.preventDefault();
-    if (inFlight || !form.reportValidity()) return;
+    if (inFlight || !form.isConnected || !form.reportValidity()) return;
+    const requestGeneration = ++generation;
+    const current = () => form.isConnected && generation === requestGeneration;
     void (async () => {
       let values: ActionInput = {};
       for (const { spec, control } of controls) {
@@ -110,10 +116,11 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
         inFlight = true; submit.disabled = true; reset.disabled = true;
         try {
           const prepared = await options.prepare(values);
-          if (!prepared) return;
+          if (!current() || !prepared) return;
           values = prepared;
         } finally { inFlight = false; submit.disabled = false; reset.disabled = false; }
       }
+      if (!current()) return;
       const serialized = JSON.stringify(values);
       if (priorInput !== null && priorInput !== serialized) commandKey = crypto.randomUUID();
       priorInput = serialized;
@@ -124,6 +131,7 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
       output.replaceChildren(el('p', {}, context.t('loading')));
       try {
         const result = await act(options.operation, values, commandKey);
+        if (!current()) return;
         uncertain = !result.ok && ['starter_transport_unavailable', 'starter_response_invalid'].includes(result.code)
           ? { input, prepared: values } : undefined;
         output.replaceChildren(result.ok

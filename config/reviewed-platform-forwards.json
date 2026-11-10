@@ -3932,6 +3932,41 @@
         "createdFunctions": [],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "checkout-recovery-inspection",
+        "path": "db/platform/migrations/20261110170000_checkout_recovery_inspection.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.commerce_checkout_recovery_order_snapshot(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_checkout_recovery_latest_order_snapshot(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "existingTableStatements": [
+          "ALTER TABLE public.commerce_orders\n  ADD COLUMN recovery_root_order_id uuid,\n  ADD COLUMN recreated_from_order_id uuid;",
+          "ALTER TABLE public.commerce_orders\n  ADD CONSTRAINT commerce_orders_recovery_root_order_id_fkey\n  FOREIGN KEY (recovery_root_order_id) REFERENCES public.commerce_orders(id)\n  ON DELETE RESTRICT NOT VALID;",
+          "ALTER TABLE public.commerce_orders\n  ADD CONSTRAINT commerce_orders_recreated_from_order_id_fkey\n  FOREIGN KEY (recreated_from_order_id) REFERENCES public.commerce_orders(id)\n  ON DELETE RESTRICT NOT VALID;"
+        ]
+      },
+      {
+        "row": "checkout-recovery-recreation",
+        "path": "db/platform/migrations/20261110180000_checkout_recovery_recreation.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.commerce_prepare_expired_checkout_recovery(text,uuid,uuid,bigint,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -4796,6 +4831,33 @@
           "signature": "public.oms_control_resolve_operator(uuid)",
           "beforeSha256": "1cb5fa4b679dbc931b5338a05ec94a22ffb220b8abcc2e20be3e78f170fbb931",
           "afterSha256": "cdbcdf2318564cfdb6ceeaceb8ed9e12e7954ecf2a6b3d84f046ee4c5491a786"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261110170000_checkout_recovery_inspection.sql",
+      "sha256": "b230c4e9d84994c98c43551e087e478a9d6ac8e0fc449aa7a6a476eff72498dc",
+      "functions": [
+        {
+          "signature": "public.commerce_checkout_recovery_order_snapshot(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "442896545c19a00c6ba1c3162e940205357bc0e8fe51ec8f33d38a168686a965"
+        },
+        {
+          "signature": "public.commerce_checkout_recovery_latest_order_snapshot(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "5a901a19e954ce11c4d34fe8c7a551277c3b2b846f272883a7a4665c28d839f6"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261110180000_checkout_recovery_recreation.sql",
+      "sha256": "4cd2c288635a96bd7baab00fa5414bcb0d0de5352a7089f1c4a9f55631e3912f",
+      "functions": [
+        {
+          "signature": "public.commerce_prepare_expired_checkout_recovery(text,uuid,uuid,bigint,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "776cb4cde206c1e9a0286eadf8477fb062debe7a631f5db42f73be60f906f7f9"
         }
       ]
     }

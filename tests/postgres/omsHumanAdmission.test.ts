@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import { fork, type ChildProcess } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { once } from "node:events";
@@ -8,6 +9,7 @@ import { createPostgresCommerceOmsControlPlane } from "@openlup/platform/commerc
 import { assertNativeStoreForward, nativeStoreFunctionDefinitions, readReviewedForwardRegistry, sqlStatements } from "../../scripts/reviewed-platform-forward.js";
 import { installOmsHuman, type OmsProfile } from "./omsHumanAdmission.fixture.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
+const forwardPath="db/platform/migrations/20261110160000_oms_human_operator_admission.sql";
 const at="2026-11-10T16:00:00.000Z";
 for(const profile of ["legacy","bootstrap","separate","admin-managed","admin-operator"] as OmsProfile[]) describe(`human OMS admission on ${profile}`,()=>{
   let db:Awaited<ReturnType<typeof installOmsHuman>>,child:ChildProcess|undefined,url:string;
@@ -81,7 +83,8 @@ for(const profile of ["legacy","bootstrap","separate","admin-managed","admin-ope
     try{await connection.query("BEGIN");const current=await facts();expect(current[0]).toMatchObject({prosecdef:false,provolatile:"s",proconfig:["search_path=pg_catalog"]});
       await connection.query(sqlStatements(original.toString()).find(sql=>sql.startsWith("CREATE FUNCTION"))!.replace("CREATE FUNCTION","CREATE OR REPLACE FUNCTION"));expect(await facts()).toEqual(current);
     }finally{await connection.query("ROLLBACK");connection.release();}
-    const registry=readReviewedForwardRegistry(readFileSync("config/reviewed-platform-forwards.json"));const slot=registry.nativeStoreForwardClass!.slots.at(-1)!;
+    const registry=readReviewedForwardRegistry(readFileSync("config/reviewed-platform-forwards.json"));const slot=registry.nativeStoreForwardClass!.slots.find(slot=>slot.path===forwardPath);
+    assert(slot,`Missing native-store slot: ${forwardPath}`);
     expect(slot.replacedFunctions[0]!.beforeSha256).toBe(nativeStoreFunctionDefinitions(original,[signature],true).get(signature));
     const forward=readFileSync(slot.path,"utf8");expect(forward).not.toMatch(/\bINSERT\b/u);expect(forward).not.toMatch(/\bGRANT\b/u);
     expect((await db.owner.query("SELECT EXISTS(SELECT 1 FROM pg_proc p,LATERAL aclexplode(p.proacl) a WHERE p.oid=$1::regprocedure AND a.grantee=0 AND a.privilege_type='EXECUTE') allowed",[signature])).rows[0].allowed).toBe(false);
@@ -91,10 +94,14 @@ for(const profile of ["legacy","bootstrap","separate","admin-managed","admin-ope
 
 it("admits the exact resolver replacement and refuses a different recorded preimage",()=>{
   const registry=readReviewedForwardRegistry(readFileSync("config/reviewed-platform-forwards.json"));
-  const slot=registry.nativeStoreForwardClass!.slots.at(-1)!,bytes=readFileSync(slot.path);
+  const slot=registry.nativeStoreForwardClass!.slots.find(slot=>slot.path===forwardPath);
+  assert(slot,`Missing native-store slot: ${forwardPath}`);
+  const pin=registry.nativeStoreForwards!.find(pin=>pin.path===forwardPath);
+  assert(pin,`Missing native-store forward: ${forwardPath}`);
+  const bytes=readFileSync(slot.path);
   const prefix=readdirSync("db/platform/migrations").filter(file=>/^\d{14}_.+\.sql$/u.test(file)).sort().map(file=>({path:`db/platform/migrations/${file}`,bytes:readFileSync(`db/platform/migrations/${file}`)})).filter(file=>file.path<slot.path);
   expect(()=>assertNativeStoreForward(registry,slot.path,bytes,prefix)).not.toThrow();
   slot.replacedFunctions[0]!.beforeSha256="0".repeat(64);
-  registry.nativeStoreForwards!.at(-1)!.functions[0]!.beforeSha256="0".repeat(64);
+  pin.functions[0]!.beforeSha256="0".repeat(64);
   expect(()=>assertNativeStoreForward(registry,slot.path,bytes,prefix)).toThrow("actual base function before-hash drifted");
 });

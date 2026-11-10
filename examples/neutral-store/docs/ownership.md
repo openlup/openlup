@@ -145,17 +145,20 @@ Attempt limits live in one process's memory and reset on restart.
 Checkout applies the configured attempt window, e-mail and requester counts, retention and capacity before contact resolution. Exact replay means the same command key, normalized e-mail and requester; it is free of further quota counts. A retained key with a changed identity is refused before contact resolution, including with a replacement quota callback. The synchronous host binding keeps identity digests within the same retention and capacity bounds; it fails closed when full. Denied quota attempts add nothing to the quota counts. Both process-local records reset on restart. Unpurchased contact retention belongs to the host.
 
 An admitted new checkout issues a 256-bit recovery token through the native
-PostgreSQL port. Only its SHA-256 hash is stored. PostgreSQL fixes expiry at
-order creation plus 24 hours; this is a database rule, not a configurable value.
-Checkout links for the same order coexist until expiry or payment; issuing
-another link does not revoke an earlier checkout link. Payment-case links still
-rotate, leaving one live link per case. The separate account actor issuer also
-retains rotation.
+PostgreSQL port. Only its SHA-256 hash is stored. Checkout creation, reminder
+waves and signed-in recovery issue links that expire 24 hours after order
+creation and preserve earlier links. Links in checkout-expiry notices instead
+expire 30 days after order creation and show the terminal order state without
+payment controls. An operator-issued checkout link revokes all earlier links
+for that order and expires at the earlier of issuance plus 24 hours or order
+creation plus 30 days. Payment prevents further payment through any link;
+other links remain subject to their own expiry and the operator revocation rule.
+Payment-case links rotate separately, leaving one live link per case.
 The token is returned only in the creating response and a separate private
 captured checkout-recovery message, never an authentication challenge or event.
 The completion page reads the URL token once and replaces history synchronously
 before configuration fetch or rendering. Request bodies carry the token; memory
-and session storage preserve reload convenience but grant no authority. An unchanged repeated submit for the same order keeps its existing token when the replay response omits it. A different order never inherits that token. A new token replaces the token stored in this tab; earlier checkout links remain usable until expiry or payment.
+and session storage preserve reload convenience but grant no authority. An unchanged repeated submit for the same order keeps its existing token when the replay response omits it. A different order never inherits that token. A new token replaces the token stored in this tab; this storage update does not revoke other links. Operator issuance revokes them through the native issuer.
 Native inspection allows payment only for an active pending order, recognizes
 an already-paid order without payment controls, and refuses expired, cancelled
 or unavailable links. Indexed hash lookup makes no constant-time claim.
@@ -210,3 +213,28 @@ database browser configuration. Its private fixture connections and host state
 live under `.context/care-browser`, never in the archive. It owns and removes
 only its newly created containers and child processes. The installed package
 migration runner owns the database schema; no starter migration or grant is added.
+
+
+## Account, checkout and parcel controls
+
+`owned/acquisition-policy.ts` owns account validation, fictional phone and checkout
+wave/link timing values. English and Polish copy stays in `owned/copy.ts`. The managed account
+and operator pages bind native capabilities through `host/e4-composition.ts` and
+`host/native-composition.ts`. The host derives identity and command keys from the
+accepted session/request. Profile update and event append retain their separate
+native commits; correction requests retain their append-only repeated-key behavior.
+The account reads only owned event metadata, never private event payloads.
+
+`host/paid-mail.ts` additionally owns a separate bounded checkout-recovery entry
+using the native job lease, producer and scoped outbox authorization. It registers
+only checkout recovery and expiry handlers in that invocation. Paid receipts and
+subscription notices keep their separate selections. Captures are generated
+private state, never tracked configuration or served assets. A captured send's
+native profile receipt gates the final wave; an enqueue or skipped send does not.
+
+Human admins require the documented owner-provisioned Commerce operator row for
+parcel operations, plus the separate communications roster for operator links.
+Neither the runtime host nor installer provisions those rows. Never delete a
+Commerce operator row; withdraw by revoking membership. Native ports own provider,
+stock, fingerprint and replay fences. No arrival attestation caller exists.
+Continuation issuance and the embedded-browser buyer control remain deferred.

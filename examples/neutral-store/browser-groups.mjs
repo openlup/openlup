@@ -13,4 +13,5 @@ export function journeySelections(patterns) {
 // Add a specific group here; earlier groups and the remainder exclude it automatically.
 export const browserJourneyGroups = journeySelections([
   'database subscription care',
+  'portal ',
 ]);

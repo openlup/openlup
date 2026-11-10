@@ -3644,3 +3644,30 @@ time after blocking writes and roll back elapsed issuance. The additive buyer
 delivery gate leaves automatic and operator authorizers unchanged. See the
 [entry-point recipe](PLATFORM_PACKAGE_REFERENCE.md#customer-checkout-recovery-entry-points)
 for the host authority boundary and configured deadlines.
+
+### Checkout recovery lineage
+
+`20261110170000_checkout_recovery_inspection.sql` adds nullable
+`commerce_orders.recovery_root_order_id` and `recreated_from_order_id`, each with
+an `ON DELETE RESTRICT NOT VALID` self-FK. Existing rows remain null; new writes
+must satisfy both constraints. The partial root/created index serves the latest
+reader, and the partial unique predecessor index permits one immediate replacement.
+The two stable definer snapshots grant execution only to `service_role`, with no
+new raw-table grants. Their [package composition](PLATFORM_PACKAGE_REFERENCE.md#checkout-recovery-inspection)
+binds client ownership and separates expired inspection from payment authority.
+This forward contains no recreation writer or historical backfill.
+
+### Expired checkout preparation
+
+`20261110180000_checkout_recovery_recreation.sql` adds the service-only definer
+`commerce_prepare_expired_checkout_recovery(text,uuid,uuid,bigint,timestamptz)`.
+It replaces no function and adds no table, lifecycle CHECK, trigger or backfill.
+It uses the existing recovery lineage, draft receipt, destination, provisional
+activation and sandbox payment owners. Its fixed path is `pg_catalog, pg_temp`;
+PUBLIC, anon and authenticated have no EXECUTE grant. Exact linked replay precedes
+fresh checks; a replacement with either lineage field already populated refuses
+fresh preparation. The source payment/window checks follow blocking aggregate
+locks. Runtime first payment admission also rechecks source evidence under the
+source order lock before any replacement stock or payment write. A fresh initial declaration belongs to the replacement; the predecessor
+is never reopened. See the [recreation composition](PLATFORM_PACKAGE_REFERENCE.md#expired-checkout-recreation)
+for commercial validation, transaction binding, compensation and profile limits.
