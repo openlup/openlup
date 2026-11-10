@@ -258,6 +258,8 @@ const order = [
   "commerce_destinations", "commerce_destination_bindings", "fulfillment_parcel_contacts", "subscription_command_receipts",
   "customer_support_subscription_commands", "customer_support_subscription_audit_events",
   "fulfillment_dispatch_refs", "fulfillment_paid_handoffs", "fulfillment_observations", "fulfillment_stock_movements",
+  "fulfillment_parcel_reservation_sets", "fulfillment_parcel_lines", "fulfillment_parcel_line_reservations",
+  "fulfillment_operator_receipts", "fulfillment_operator_status_evidence",
   "commerce_order_holds", "commerce_order_operations", "subscription_delivery_alignment_cases", "subscription_delivery_alignment_admission_receipts", "subscription_delivery_alignment_arrivals",
   "subscription_dunning_cases", "subscription_dunning_notifications",
   "commerce_checkout_recovery_tokens", "subscription_retry_obligations", "subscription_retry_receipts",

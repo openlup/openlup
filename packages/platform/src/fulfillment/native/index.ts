@@ -1,8 +1,7 @@
 import { createFulfillmentServices, createPostgresFulfillmentDispatchStore } from '../index.js';
 import type { FulfillmentDispatchRequest, FulfillmentServicesOptions } from '../contracts/index.js';
 import type { RequiredSchema } from '@openlup/core/readiness';
-import type { PostgresRoleFreeTransactionLane as PostgresFulfillmentTransactionLane } from '../../data/index.js';
-import { parcelContact } from './parcelContact.js';
+import { parcelContact, applyFrozenParcel } from './parcelContact.js';
 
 type Executor = { query(sql: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }> };
 type Attribution = { fulfillmentRef: string; actorUserId: string; idempotencyKey: string };
@@ -10,7 +9,10 @@ type Attribution = { fulfillmentRef: string; actorUserId: string; idempotencyKey
 /** Inert, explicit native composition. Secrets and source mapping belong to host closures. */
 export function createNativeFulfillmentBinding(input: {
   enabled?: boolean;
-  transactions: PostgresFulfillmentTransactionLane | null;
+  transactions: {
+    run<T>(work: (db: unknown) => Promise<T>): Promise<T>;
+    close(): Promise<void>;
+  } | null;
   preparation?: {
     /** Read authoritative contact/selection/withholding using this locked transaction only. */
     readAuthoritative(db: Executor, fulfillmentRef: string): Promise<{ candidate: FulfillmentDispatchRequest | null; withheld: boolean }>;
@@ -25,15 +27,21 @@ export function createNativeFulfillmentBinding(input: {
   const executor: Executor = { query: (sql, values) => run(db => db.query(sql, values)) };
   async function lock(db: Executor, ref: string) {
     await db.query("SELECT pg_advisory_xact_lock(hashtextextended('native-dispatch|' || $1::uuid::text,0))", [ref]);
-    const { rows } = await db.query('SELECT id, order_id FROM public.fulfillment_shipments WHERE id=$1 FOR UPDATE', [ref]);
+    const { rows } = await db.query('SELECT id, order_id, replaces_shipment_id FROM public.fulfillment_shipments WHERE id=$1 FOR UPDATE', [ref]);
     if (!rows[0]) throw new Error('fulfillment_preparation_shipment_missing');
     return rows[0];
   }
-  async function synchronize(db: Executor, ref: string, order: unknown) {
-    const { candidate, withheld } = await preparation!.readAuthoritative(db, ref);
+  async function synchronize(db: Executor, ref: string, order: unknown, replacement: unknown) {
+    const prepared = await preparation!.readAuthoritative(db, ref);
+    let candidate = prepared.candidate;
+    const { withheld } = prepared;
     if (!candidate) {
       await db.query('DELETE FROM public.fulfillment_dispatch_contexts WHERE shipment_id=$1', [ref]);
       return { candidate: null, disposition: 'withheld' as const, contactRevision: null };
+    }
+    if (replacement) {
+      const result = await db.query('SELECT public.fulfillment_read_replacement_preparation($1::uuid) AS value', [ref]);
+      candidate = applyFrozenParcel(candidate, result.rows[0]?.value);
     }
     const revision = candidate.contactRevision;
     const provider = candidate.selection.providerRef;
@@ -51,7 +59,7 @@ export function createNativeFulfillmentBinding(input: {
   }
   const readPrepared = (ref: string) => run(async db => {
     const shipment = await lock(db, ref);
-    return synchronize(db, ref, shipment.order_id);
+    return synchronize(db, ref, shipment.order_id, shipment.replaces_shipment_id);
   });
   const store = bound ? createPostgresFulfillmentDispatchStore(executor, {
     async prepare(ref) { const { disposition, contactRevision } = await readPrepared(ref); return { disposition, contactRevision }; },
@@ -79,7 +87,7 @@ export function createNativeFulfillmentBinding(input: {
         return run(async db => {
           const shipment = await lock(db, attribution.fulfillmentRef);
           await apply(db, attribution);
-          const { disposition, contactRevision } = await synchronize(db, attribution.fulfillmentRef, shipment.order_id);
+          const { disposition, contactRevision } = await synchronize(db, attribution.fulfillmentRef, shipment.order_id, shipment.replaces_shipment_id);
           return { disposition, contactRevision };
         });
       });
@@ -88,3 +96,5 @@ export function createNativeFulfillmentBinding(input: {
 }
 
 export { createPostgresFulfillmentCommerceReadPort, nativeFulfillmentCommerceResponseSchemas, type NativeFulfillmentCommerceOrder, type NativeFulfillmentCommerceReadPort } from "./commerceReads.js";
+
+export { createPostgresFulfillmentOperatorPort, createPostgresParcelReservationConsumption } from "./operatorMutations.js";

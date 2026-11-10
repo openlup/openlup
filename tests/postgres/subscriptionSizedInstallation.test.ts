@@ -9,11 +9,11 @@ import { readSelectedCatalogProjection, selectedCatalogProjectionPayload } from 
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 const inventories = {
-  "legacy": "a1f517261729b58eed44e29162c4276b985d6af60a4dcbd2ccfed499faf1f7de",
-  "bootstrap": "dd9b1ec302adb71ee4a5bab84f034ec5370e36fa4be1f18ae00f8f7107f48040",
-  "separate": "3d457b30fd1d84e28feadbc7aab41ce293556e09a0fd26b3de4794baa0cd33da",
-  "admin-managed": "f229557efe2880555df707e3403f1c61572695253ae280520ad56ce93ce26955",
-  "admin-operator": "c4120ace14d380577a7692ada513a50d66f6ad1a065c8eb2beaa6bbcbcc3f8dc",
+  "legacy": "37098a74a43d8e65fd8843de0c4c3e2d17af04dbf30169fa2c881df1e6e91239",
+  "bootstrap": "16aaf9b620394b1662cd9b5bde52093107ffbcba376a953bd0f7a2e0d6a31fdb",
+  "separate": "796a0bb34d543231676f10fbaeb152e5a16e747ce754deaa37e3b7074681350a",
+  "admin-managed": "2fcba64172cd49806b5a1fcc427fb9e4a4850d0003efc726e5b16c24ebc99a2d",
+  "admin-operator": "ab627329b3c8dc53866c2635b06e7295c2f23c5a9690d89247c57376e9599c2f",
 } as const;
 it.each(["legacy", "bootstrap", "separate", "admin-managed", "admin-operator"] as const)("installs the sized editor on %s with the selected ownership and binding ACLs", async profile => {
   const container = await runPostgresContainer({ name: `sized-install-${profile}-${process.pid}`, password: "synthetic-conformance" });
@@ -52,7 +52,7 @@ it.each(["legacy", "bootstrap", "separate", "admin-managed", "admin-operator"] a
         writeFileSync(`.context/scratch/sized-edit/inventory-${profile}.json`, JSON.stringify({ profile, sha256: hash(payload) })); return payload;
       } });
     await runner.apply(); expect((await runner.apply()).applied).toEqual([]);
-    expect((await owner.query("SELECT count(*)::int n FROM public.platform_schema_migrations")).rows[0].n).toBe(profile === "legacy" ? 111 : admin ? 115 : 116);
+    expect((await owner.query("SELECT count(*)::int n FROM public.platform_schema_migrations")).rows[0].n).toBe(profile === "legacy" ? 112 : admin ? 116 : 117);
     for (const [signature, definer, service] of [
       ["public.subscription_sized_edit_context(uuid,uuid,boolean)", true, true],
       ["public.subscription_sized_edit_apply(uuid,uuid,text,uuid,jsonb,timestamptz)", true, true],

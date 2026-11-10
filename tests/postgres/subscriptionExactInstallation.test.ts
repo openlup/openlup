@@ -54,11 +54,11 @@ it.each(["legacy", "bootstrap", "separate", "admin-managed", "admin-operator"] a
       } });
     await runner.apply();
     expect((await runner.apply()).applied).toEqual([]);
-    const expected = profile === "legacy" ? 111 : admin ? 115 : 116;
+    const expected = profile === "legacy" ? 112 : admin ? 116 : 117;
     expect((await owner.query("SELECT count(*)::int AS n FROM public.platform_schema_migrations")).rows[0].n).toBe(expected);
     expect((await owner.query("SELECT catalog_path,position FROM public.platform_schema_migrations ORDER BY position DESC LIMIT 2")).rows)
-      .toEqual([{ catalog_path: "db/platform/migrations/20261110140000_fulfillment_parcel_contacts.sql", position: expected - 1 },
-        { catalog_path: "db/platform/migrations/20261109150000_subscription_auto_resume_paid_history.sql", position: expected - 2 }]);
+      .toEqual([{ catalog_path: "db/platform/migrations/20261110150000_fulfillment_operator_journeys.sql", position: expected - 1 },
+        { catalog_path: "db/platform/migrations/20261110140000_fulfillment_parcel_contacts.sql", position: expected - 2 }]);
     const signature = "public.subscription_line_edit_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz)";
     expect((await owner.query("SELECT prosecdef,proconfig FROM pg_proc WHERE oid=$1::regprocedure", [signature])).rows)
       .toEqual([{ prosecdef: true, proconfig: ["search_path=pg_catalog, pg_temp"] }]);
