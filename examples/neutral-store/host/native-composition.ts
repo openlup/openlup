@@ -1,3 +1,4 @@
+import { composeExpiredRecovery } from './expired-recovery.ts';
 import { readPostgresCustomerAccountClient, createPostgresCustomerAccountMutationPort, createCustomerAccountMutationSchemas } from '@openlup/platform/account-support';
 import { customerAccountPolicy } from '../owned/acquisition-policy.ts';
 import type { SubscriptionCommand } from '@openlup/platform/subscriptions/contracts';
@@ -90,6 +91,7 @@ export async function composeNativeBindings(connectionString: string, origin: Or
   }, quoteAcceptanceKeyring));
   const asCustomer = <T>(principalId: string, work: (db: PgGatewayClient) => Promise<T>) =>
     gateway.asActor({ role: 'authenticated', sub: principalId }, db => work(db as PgGatewayClient));
+  Object.assign(actions, composeExpiredRecovery(pool, connectionString, recovery.tokens, quoteAcceptanceKeyring));
   actions['checkout.recoveryStart'] = async (payload, context) => {
     if (!context.actor.principalRef) return refused('customer_session_required');
     if (Object.keys(payload).some(key => !['orderRef', 'subscriptionRef', 'locale'].includes(key))) return refused('starter_input_invalid');

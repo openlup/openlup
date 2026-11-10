@@ -59,8 +59,8 @@ Support is a static contact page; see [contact configuration](docs/customization
 
 ## Order controls and documents
 
-Hold and release retain their typed forms and configured reasons. Both remain
-unbound and return `starter_order_hold_unavailable` after operator admission.
+Hold and release use their typed forms and configured reasons. Each invocation,
+including replay, requires an active human admin and a resolved Commerce operator.
 The host composes
 customer invoice history, owned captured PDF downloads and local operator
 document summaries. The session supplies the actor and invoice
@@ -454,9 +454,8 @@ delete the Commerce row: withdraw access by revoking the human membership throug
 the identity owner instead. `commerce_order_holds.created_by` uses ON DELETE SET
 NULL; deleting the row would make a human `fulfillment_exception` hold appear
 system-created and eligible for automatic release. This existing hazard is
-reported, not repaired. Hold/release starter routes retain their named
-unavailable limit until their separate binding is delivered; this is an
-installation prerequisite, not activation of those routes.
+reported, not repaired. The starter resolves this roster before every hold or
+release command and replay.
 
 With the runtime connection, operator customer search/detail and bundle
 list/detail/commands plus catalogue draft list/detail/create/revise/abandon are
@@ -507,8 +506,9 @@ An admitted new checkout issues a 256-bit recovery token through the native
 PostgreSQL port. Only its SHA-256 hash is stored. Checkout creation, reminder
 waves and signed-in recovery issue links that expire 24 hours after order
 creation and preserve earlier links. Links in checkout-expiry notices instead
-expire 30 days after order creation and show the terminal order state without
-payment controls. An operator-issued checkout link revokes all earlier links
+expire 30 days after order creation and retain the terminal source order.
+Eligible expiry can start a replacement through the single Pay action; the
+source order itself cannot be paid. An operator-issued checkout link revokes all earlier links
 for that order and expires at the earlier of issuance plus 24 hours or order
 creation plus 30 days. Payment prevents further payment through any link;
 other links remain subject to their own expiry and the operator revocation rule.
@@ -814,8 +814,8 @@ origin. The invocation composes the native job lease, first/final wave producer,
 canonical expiry and initial-checkout sweeps, reconciliation and the existing
 outbox handlers. Private messages reuse the atomic local capture protocol.
 Only confirmed capture in the selected profile qualifies the final wave.
-Checkout expiry links show the source order's terminal state; recreation,
-payment guidance, token payment and inline retry remain outside this candidate.
+Checkout expiry links show the source order's terminal state; existing-order token payment,
+payment guidance and inline retry remain outside this candidate.
 The embedded-browser buyer-link control remains unavailable until sandbox
 continuation issuance is bound. No continuation cookie is minted here.
 
@@ -824,8 +824,8 @@ or complete fulfillment cancellation. Replacement shows the frozen destination,
 reason and exception-hold consequences and requires confirmation. Cancellation
 also requires confirmation; the native command owns provider fences and recorded
 reservation release. These actions do not confirm arrival, dispatch a real
-parcel, create a refund or move a subscription cycle earlier. Hold/release,
-unpaid cancellation, external refund marking and other shipment mutations keep
+parcel, create a refund or move a subscription cycle earlier.
+Unpaid cancellation, external refund marking and other shipment mutations keep
 their named refusals.
 
 For replacement/cancellation, the database owner provisions one durable Commerce
@@ -856,3 +856,42 @@ journey runs once with one worker. This keeps each group within the unchanged
 per-process checkout quotas; it neither increases limits nor bypasses admission.
 Policy values live beside the existing owned acquisition policy, so replacing the
 owned configuration registry does not create new required module exports.
+
+
+## Expired checkout recovery and order holds
+
+Expired checkout entry inspects the original order and its latest recovery
+lineage. Paid and manually cancelled orders have no Pay control. Eligible
+expired orders retain a single Pay action: native frozen re-quote validation,
+prior sandbox non-settlement evidence and stock admission precede replacement
+payment start. Changed commercial facts, unsupported starter content and stock
+refusals cannot start payment. Durable draft, lineage and attempt receipts keep
+replay on one replacement and one attempt. Replacement-attempt simulator controls
+remain bound to the inspected bearer, lineage and durable execution receipt;
+reload reads the same attempt. Existing-order token payment, guidance, inline
+retry and embedded-browser continuation issuance remain unavailable.
+
+Hold and release resolve the human administrator before every command and replay.
+The database owner provisions one `commerce_operators` row per human admin, with
+`id` equal to the native principal ID. Never delete this row: holds retain its
+attribution. Withdraw access by revoking the membership through the identity
+owner. Distributors and admins without the Commerce row cannot issue or replay
+these commands. A locked upcoming cycle refuses an address change with
+`payment_blocked`; existing order and parcel destinations remain unchanged.
+
+The additional real-PostgreSQL journeys run in the `recovery extension ` group
+from the single shared `browser-groups.mjs` source. Each group uses a fresh
+installation pair, one worker and traces, screenshots and video off. Checkout
+quota and all runner guards remain unchanged.
+
+
+Recovery re-quoting uses the email in the original immutable private checkout
+capture, keyed by the source checkout's root order. It never substitutes the
+current account email or a later profile edit. Missing, corrupt or erased capture
+refuses recreation before a quote, draft or payment starts. This is the starter's
+owned frozen-source binding, separate from bearer authorization. The capture
+remains personal data under the existing private-mailbox export and erasure
+procedure; include it in the owner's private-state inventory and remove it when
+that procedure requires erasure. Erasure does not trigger reconstruction from
+an account, a profile or another notice. Private captures remain outside served
+assets, logs, traces and public reports.

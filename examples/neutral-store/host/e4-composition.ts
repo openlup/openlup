@@ -1,3 +1,4 @@
+import { composeOrderHolds } from './order-holds.ts';
 import { createPostgresDestinationPort } from '@openlup/platform/commerce/server/destinations';
 import { createNativeQuoteService } from './quote-composition.ts';
 import { installedAcquisitionPredecessors } from './acquisition-predecessors.ts';
@@ -64,6 +65,7 @@ ApplicationBindings['actions'] {
     }
   };
   return {
+    ...composeOrderHolds(pool, authorizeOperator),
     'operator.shipments': shipmentRead(false),
     'operator.shipment': shipmentRead(true),
     'account.invoice': async (payload, context) => {

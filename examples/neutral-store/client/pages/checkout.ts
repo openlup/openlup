@@ -58,7 +58,36 @@ export function completionPage(context: PageContext): HTMLElement {
   const page = el('div', {}, el('h1', {}, context.t('completion')), state,
     link(context.t('account'), routes.account[context.locale]));
   const credential = Object.freeze({ ...currentPurchase(context.config.id) });
+  const showStarted = (result: unknown) => {
+    if (!isRecord(result) || typeof result.latestOrderRef !== 'string' || typeof result.attemptRef !== 'string') return;
+    const started = Object.freeze({ token: credential.token, orderRef: result.latestOrderRef, attemptRef: result.attemptRef });
+    state.replaceChildren(renderValue(result), ...(['captured', 'refused', 'expired', 'indeterminate'] as const).map(outcome =>
+      actionForm(context, { operation: 'checkout.recovery',
+        submit: outcome === 'captured' ? 'simulatePaid' : outcome === 'refused' ? 'simulateDeclined' : outcome === 'expired' ? 'simulateExpired' : 'simulateIndeterminate',
+        input: () => ({ ...started, action: 'simulate', outcome }), onSuccess: () => { void inspect(); } })));
+  };
   const inspect = async () => {
+    const recovered = credential.token ? await act('checkout.recovery', { token: credential.token, action: 'inspect' }, crypto.randomUUID()) : null;
+    if (!page.isConnected) return;
+    if (recovered?.ok && isRecord(recovered.value)) {
+      const value = recovered.value;
+      if (isRecord(value.recreatedAttempt)) { showStarted(value.recreatedAttempt); return; }
+      if (value.terminalStatus === 'paid') {
+        state.replaceChildren(el('p', {}, context.t('recoveryPaid')), renderValue(value)); return;
+      }
+      if (value.recoverable === true && value.recoveryKind === 'recreate_expired') {
+        const pay = actionForm(context, { operation: 'checkout.recovery', submit: 'recoveryPay',
+          input: () => ({ token: credential.token, action: 'pay' }),
+          onSuccess: showStarted,
+          onFailure: code => { state.replaceChildren(el('p', {}, context.t(code === 'starter_recovery_order_changed' ? 'recoveryChanged' : 'recoveryUnavailable')), link(context.t('builder'), routes.builder[context.locale])); },
+        });
+        state.replaceChildren(renderValue(value), pay); return;
+      }
+      if (value.terminalStatus === 'order_changed' || value.terminalStatus === 'cancelled') {
+        state.replaceChildren(el('p', {}, context.t(value.terminalStatus === 'cancelled' ? 'recoveryCancelled' : 'recoveryChanged')), renderValue(value),
+          link(context.t('builder'), routes.builder[context.locale])); return;
+      }
+    }
     const result = await act('checkout.read', credential, crypto.randomUUID());
     if (!page.isConnected) return;
     if (!result.ok || !isRecord(result.value)) {

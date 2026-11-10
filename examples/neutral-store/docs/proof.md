@@ -785,8 +785,8 @@ provider access, publication or deployment qualification.
 ## Account, checkout and parcel candidate
 
 Run `./lifecycle browser` from the application directory for the complete database
-configuration. It creates fresh installations for three sequential groups:
-subscription care, the new portal journeys and the purchase baseline. Tests use
+configuration. It creates fresh installations for four sequential groups:
+subscription care, portal journeys, recovery extensions and the purchase baseline. Tests use
 one worker and tracing, screenshots and video off. Independent processes and
 installations keep each group inside the normal checkout quota; production quota
 values and admission paths are unchanged. Focus the portal with `./lifecycle
@@ -798,7 +798,35 @@ facts through existing native owners. It mounts no dispatch or delivery action.
 
 The recovery journeys distinguish issuer rules: checkout, reminder-wave and
 signed-in recovery links expire at order creation plus 24 hours and preserve
-earlier links; checkout-expiry notices use creation plus 30 days and a terminal
-landing without payment controls. Operator issuance revokes earlier links for
+earlier links; checkout-expiry notices use creation plus 30 days and retain the
+terminal source order. Eligible recovery now offers replacement payment while
+the source itself remains terminal. Operator issuance revokes earlier links for
 the order and uses the earlier of issuance plus 24 hours or creation plus
 30 days. Payment prevents a further payment through any link.
+
+
+## Expired checkout recovery and order holds
+
+Expired checkout entry inspects the original order and its latest recovery
+lineage. Paid and manually cancelled orders have no Pay control. Eligible
+expired orders retain a single Pay action: native frozen re-quote validation,
+prior sandbox non-settlement evidence and stock admission precede replacement
+payment start. Changed commercial facts, unsupported starter content and stock
+refusals cannot start payment. Durable draft, lineage and attempt receipts keep
+replay on one replacement and one attempt. Replacement-attempt simulator controls
+remain bound to the inspected bearer, lineage and durable execution receipt;
+reload reads the same attempt. Existing-order token payment, guidance, inline
+retry and embedded-browser continuation issuance remain unavailable.
+
+Hold and release resolve the human administrator before every command and replay.
+The database owner provisions one `commerce_operators` row per human admin, with
+`id` equal to the native principal ID. Never delete this row: holds retain its
+attribution. Withdraw access by revoking the membership through the identity
+owner. Distributors and admins without the Commerce row cannot issue or replay
+these commands. A locked upcoming cycle refuses an address change with
+`payment_blocked`; existing order and parcel destinations remain unchanged.
+
+The additional real-PostgreSQL journeys run in the `recovery extension ` group
+from the single shared `browser-groups.mjs` source. Each group uses a fresh
+installation pair, one worker and traces, screenshots and video off. Checkout
+quota and all runner guards remain unchanged.

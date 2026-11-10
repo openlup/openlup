@@ -37,3 +37,16 @@ async function captureRecoveryMessage(message: CheckoutRecoveryMessage): Promise
   const committed = await capture.read(key);
   if (!committed) throw new Error('starter_private_capture_unavailable');
 }
+
+/** The original immutable capture is this application's frozen re-quote email source.
+ * Missing, erased, malformed or foreign captures are never repaired from a profile. */
+export async function readFrozenCheckoutEmail(orderRef: string, capture = createPrivateCapture()): Promise<string | null> {
+  try {
+    const value = await capture.read(`checkout-recovery:${orderRef.toLowerCase()}`);
+    if (!value || typeof value !== 'object' || Array.isArray(value)
+      || value.kind !== 'checkout-recovery' || value.orderRef !== orderRef.toLowerCase()
+      || typeof value.email !== 'string' || value.email !== value.email.trim().toLowerCase()
+      || value.email.length > 160 || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value.email)) return null;
+    return value.email;
+  } catch { return null; }
+}

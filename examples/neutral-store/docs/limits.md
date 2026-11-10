@@ -86,12 +86,9 @@ Purchase creation uses the native contact-client factory. Customer invoice histo
 and owned captured PDF downloads use the native session principal. Documents are
 explicitly non-fiscal sandbox artifacts. Operator invoice summaries authorize
 before querying local history, duty, retry and delivery evidence, including guest
-orders. Placing and releasing an order hold are unavailable in this release.
-Both operations stay unbound and return `starter_order_hold_unavailable` after
-operator admission with zero effects. Their typed forms retain configured hold
-reasons and the exact hold-reference release target. The later order-control
-composition closes this boundary alongside cancellation and external refund
-marking.
+orders. Placing and releasing order holds require an active human admin and a
+provisioned Commerce operator. Every invocation, including replay, repeats those
+checks. Release targets the exact hold reference.
 
 The operation catalogue in `shared/limits.ts` supplies the same code and exact
 localized explanation to action results and the limits page. Named deferred
@@ -109,7 +106,6 @@ retains its separate HTTP 404 protocol.
 | --- | --- |
 | `return.request` | `starter_return_request_unavailable` |
 | `operator.returnApprove`, `operator.returnReject` | `starter_return_decision_unavailable` |
-| `operator.hold`, `operator.release` | `starter_order_hold_unavailable` |
 | `operator.cancelUnpaid` | `starter_order_cancellation_unavailable` |
 | `operator.externalRefund` | `starter_external_refund_mark_unavailable` |
 | `operator.label`, `operator.handoff`, `operator.delivery` | `starter_shipment_mutation_unavailable` |
@@ -251,8 +247,9 @@ An admitted new checkout issues a 256-bit recovery token through the native
 PostgreSQL port. Only its SHA-256 hash is stored. Checkout creation, reminder
 waves and signed-in recovery issue links that expire 24 hours after order
 creation and preserve earlier links. Links in checkout-expiry notices instead
-expire 30 days after order creation and show the terminal order state without
-payment controls. An operator-issued checkout link revokes all earlier links
+expire 30 days after order creation and retain the terminal source order.
+Eligible expiry can start a replacement through the single Pay action; the
+source order itself cannot be paid. An operator-issued checkout link revokes all earlier links
 for that order and expires at the earlier of issuance plus 24 hours or order
 creation plus 30 days. Payment prevents further payment through any link;
 other links remain subject to their own expiry and the operator revocation rule.
@@ -382,7 +379,46 @@ The local checkout-recovery pass captures first/final and expired notices.
 Signed-in starts preserve checkout links and send no email; operator issuance
 revokes earlier checkout links and optionally queues mail. A completed capture
 is evidence for this demonstration transport only. Expired checkouts retain a
-terminal landing; recreation, payment guidance, token pay, inline retry and the
+terminal landing; existing-order token payment, payment guidance, inline retry and the
 embedded-browser buyer-link control remain unavailable. No continuation issuer
-is mounted. Hold/release and every other separately named operation limit remain.
+is mounted. Every other separately named operation limit remains.
 See the [candidate recipe and owner steps](../README.md#checkout-and-account-candidate-changes).
+
+
+## Expired checkout recovery and order holds
+
+Expired checkout entry inspects the original order and its latest recovery
+lineage. Paid and manually cancelled orders have no Pay control. Eligible
+expired orders retain a single Pay action: native frozen re-quote validation,
+prior sandbox non-settlement evidence and stock admission precede replacement
+payment start. Changed commercial facts, unsupported starter content and stock
+refusals cannot start payment. Durable draft, lineage and attempt receipts keep
+replay on one replacement and one attempt. Replacement-attempt simulator controls
+remain bound to the inspected bearer, lineage and durable execution receipt;
+reload reads the same attempt. Existing-order token payment, guidance, inline
+retry and embedded-browser continuation issuance remain unavailable.
+
+Hold and release resolve the human administrator before every command and replay.
+The database owner provisions one `commerce_operators` row per human admin, with
+`id` equal to the native principal ID. Never delete this row: holds retain its
+attribution. Withdraw access by revoking the membership through the identity
+owner. Distributors and admins without the Commerce row cannot issue or replay
+these commands. A locked upcoming cycle refuses an address change with
+`payment_blocked`; existing order and parcel destinations remain unchanged.
+
+The additional real-PostgreSQL journeys run in the `recovery extension ` group
+from the single shared `browser-groups.mjs` source. Each group uses a fresh
+installation pair, one worker and traces, screenshots and video off. Checkout
+quota and all runner guards remain unchanged.
+
+
+Recovery re-quoting uses the email in the original immutable private checkout
+capture, keyed by the source checkout's root order. It never substitutes the
+current account email or a later profile edit. Missing, corrupt or erased capture
+refuses recreation before a quote, draft or payment starts. This is the starter's
+owned frozen-source binding, separate from bearer authorization. The capture
+remains personal data under the existing private-mailbox export and erasure
+procedure; include it in the owner's private-state inventory and remove it when
+that procedure requires erasure. Erasure does not trigger reconstruction from
+an account, a profile or another notice. Private captures remain outside served
+assets, logs, traces and public reports.

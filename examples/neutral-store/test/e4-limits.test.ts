@@ -12,8 +12,6 @@ const dispositions: Array<[Operation, string]> = [
   ['return.request', 'starter_return_request_unavailable'],
   ['operator.returnApprove', 'starter_return_decision_unavailable'],
   ['operator.returnReject', 'starter_return_decision_unavailable'],
-  ['operator.hold', 'starter_order_hold_unavailable'],
-  ['operator.release', 'starter_order_hold_unavailable'],
   ['operator.cancelUnpaid', 'starter_order_cancellation_unavailable'],
   ['operator.externalRefund', 'starter_external_refund_mark_unavailable'],
   ['operator.label', 'starter_shipment_mutation_unavailable'],
@@ -53,7 +51,7 @@ test('actor admission precedes the named refusal and ignores body identities and
 
 test('the removed reader retains the HTTP 404 protocol', async () => {
   assert.equal(isOperation('operator.returns'), false);
-  assert.equal(operations.length, 59);
+  assert.equal(operations.length, 60);
   const bindings = pendingBindings();
   bindings.authenticate = async () => { throw new Error('removed_reader_authenticated'); };
   const server = createApplication(bindings).listen(0, '127.0.0.1');
