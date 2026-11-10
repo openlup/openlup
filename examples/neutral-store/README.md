@@ -406,7 +406,7 @@ SELECT p.principal_id, p.email, m.role, m.membership_state
 FROM public.platform_human_principals p
 JOIN public.platform_human_memberships m USING (principal_id)
 WHERE lower(btrim(p.email)) = lower(btrim('operator@example.test'))
-  AND m.membership_state = 'active' AND m.role IN ('admin', 'distributor')
+  AND m.membership_state = 'active' AND m.role = 'admin'
   AND NOT EXISTS (SELECT 1 FROM public.platform_control_operators o
                   WHERE o.principal_id = p.principal_id);
 ```
@@ -440,7 +440,7 @@ every read failure means not provisioned. No second authority is built here.
 With the runtime connection, operator customer search/detail and bundle
 list/detail/commands plus catalogue draft list/detail/create/revise/abandon are
 composed. Bundle commands and catalogue draft writes are restricted to a native
-human admin/distributor session, rechecked per request; actor identity and command
+human admin session, rechecked per request; actor identity and command
 key come only from the accepted host context. `owned/catalogue.ts` owns the
 fictional authoring type. The support port is constructed per request for that
 operator and closed in `finally`, including failed reads; it has no operator cache.

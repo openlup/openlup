@@ -209,7 +209,7 @@ export async function composeNativeBindings(connectionString: string, origin: Or
       if (!found) return { ...nobody(), ...requester };
       const { session, token } = found;
       if (session.kind === 'operator') {
-        const authorized = await operatorAuth.authorize(token);
+        const authorized = await operatorAuth.authorize(token, { allowedRoles: ['admin'] });
         // Reduced reads require native human admin authority, not a Commerce
         // mutation actor. The control-plane resolver cannot provision that actor.
         return authorized.ok ? { ...requester, customerRef: null, operatorRef: authorized.principalId,

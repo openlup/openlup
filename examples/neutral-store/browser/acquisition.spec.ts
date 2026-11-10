@@ -630,6 +630,60 @@ for (const locale of ['en', 'pl'] as const) {
   });
 
 
+  test(`${locale}: portal operator completion navigation replaces a different pending purchase`, async ({ page }) => {
+    const other = await pendingCheckout(page, locale), issued = await pendingCheckout(page, locale);
+    const previous = new URL(routes.completion[locale], material.baseURL); previous.searchParams.set('token', other.token);
+    await page.goto(previous.href);
+    await expect(page.locator('main')).toContainText(other.orderRef);
+    await expect(page.getByRole('button', { name: copy[locale].simulatePaid, exact: true })).toBeVisible();
+    await portalOperator(page, locale);
+    const panel = await operatorDetail(page, issued.orderRef, locale);
+    const form = panel.locator('form').filter({ has: page.locator('[name=delivery]') }); await accessible(form);
+    await form.getByRole('button', { name: copy[locale].paymentLink, exact: true }).click();
+    const completion = panel.getByRole('link', { name: copy[locale].completion, exact: true });
+    await expect(completion).toHaveAccessibleName(copy[locale].completion);
+    await completion.click();
+    await expect(page.locator('main')).toContainText(issued.orderRef);
+    await expect(page.locator('main')).not.toContainText(other.orderRef);
+    expect(new URL(page.url()).searchParams.has('token')).toBe(false);
+    const payment = page.getByRole('button', { name: copy[locale].simulatePaid, exact: true });
+    await expect(payment).toHaveAccessibleName(copy[locale].simulatePaid); await payment.click();
+    await expect(page.locator('main')).toContainText(copy[locale].recoveryPaid);
+    await expect(page.locator('main')).toContainText(issued.orderRef);
+    expect((await runtime.query('SELECT id,status FROM public.commerce_orders WHERE id=ANY($1::uuid[]) ORDER BY id',
+      [[issued.orderRef, other.orderRef]])).rows).toEqual([
+      { id: issued.orderRef, status: 'paid' }, { id: other.orderRef, status: 'pending_payment' },
+    ].sort((a, b) => a.id.localeCompare(b.id)));
+  });
+
+  test(`${locale}: portal distributor cannot read OMS or mutate and replay catalog drafts and payment links`, async ({ page }) => {
+    const f = await pendingCheckout(page, locale); await portalOperator(page, locale);
+    expect((await call(page, 'operator.orders', {})).ok).toBe(true);
+    expect((await call(page, 'operator.order', { orderRef: f.orderRef })).ok).toBe(true);
+    const draftForm = page.locator('#catalogue-drafts form').filter({ has: page.locator('[name=payload]') }); await accessible(draftForm);
+    const sent = page.waitForRequest(row => row.url().endsWith('/api/actions/operator.catalogDrafts'));
+    const response = page.waitForResponse(row => row.url().endsWith('/api/actions/operator.catalogDrafts'));
+    await draftForm.getByRole('button', { name: copy[locale].save, exact: true }).click();
+    const created = await (await response).json(); expect(created.ok, created.code).toBe(true);
+    const draftRequest = await sent, draftInput = draftRequest.postDataJSON(), draftKey = draftRequest.headers()['idempotency-key']!;
+    expect((await call(page, 'operator.catalogDrafts', draftInput, draftKey)).replayed).toBe(true);
+    const linkInput = { orderRef: f.orderRef, delivery: 'copy' }, linkKey = randomUUID();
+    expect((await call(page, 'operator.paymentLink', linkInput, linkKey)).ok).toBe(true);
+    const before = (await call(page, 'operator.catalogDrafts', { action: 'get', draftId: created.value.record.draftId })).value;
+    await portalOperator(page, locale, 'distributor');
+    for (const [operation, input, key] of [
+      ['operator.orders', {}, randomUUID()], ['operator.order', { orderRef: f.orderRef }, randomUUID()],
+      ['operator.catalogDrafts', { ...draftInput, draftId: randomUUID() }, randomUUID()],
+      ['operator.catalogDrafts', draftInput, draftKey],
+      ['operator.paymentLink', linkInput, randomUUID()], ['operator.paymentLink', linkInput, linkKey],
+    ] as const) {
+      const result = await call(page, operation, input, key);
+      expect(result.code, operation).toBe('operator_required'); expect(result.value, operation).toBeUndefined();
+    }
+    await portalOperator(page, locale);
+    expect((await call(page, 'operator.catalogDrafts', { action: 'get', draftId: created.value.record.draftId })).value).toEqual(before);
+  });
+
   test(`${locale}: portal operator expired links revalidate frozen commercial facts`, async ({ page }) => {
     const f = await pendingCheckout(page, locale);
     await owner.query("UPDATE public.commerce_orders SET created_at=now()-interval '2 hours' WHERE id=$1", [f.orderRef]);
@@ -732,6 +786,7 @@ for (const locale of ['en', 'pl'] as const) {
     expect((await call(page, 'operator.cancelFulfillment', request, key)).code).toBe('operator_required');
     await portalOperator(page, locale, 'distributor');
     expect((await call(page, 'operator.cancelFulfillment', request)).code).toBe('operator_required');
+    expect((await call(page, 'operator.cancelFulfillment', request, key)).code).toBe('operator_required');
     expect((await call(page, 'operator.replacement', { orderRef: f.orderRef, reason: 'lost', confirmed: true })).code).toBe('operator_required');
   });
 
