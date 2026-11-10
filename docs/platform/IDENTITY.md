@@ -837,7 +837,7 @@ registers `createFulfillmentParcelContactPrivacyContributor` from
 `@openlup/platform/identity` in this same transaction and requires
 contributor ID `fulfillment-parcel-contacts`. Other hosts must register it when
 using native parcel preparation. It exports only that subject's parcel contacts
-and erases the payload, retaining a nonpersonal erasure marker. Preparation and
+and erases the payload, retaining a payload-free erasure marker. Preparation and
 legacy inference cannot recreate an erased contact. Replacement resolution then
 refuses the erased contact as an invalid frozen contact. Existing subscription
 vetoes and other contributors remain binding; this is not a complete platform
