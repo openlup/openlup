@@ -17,10 +17,10 @@ for (const profile of lifecycleProfiles) describe(`operator shipment commands on
   async function subject() {
     const f = await fixture(h.owner), actor = randomUUID();
     await h.owner.query('INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,$2)', [actor, `${actor}@example.invalid`]);
-    return { ...f, shipment: String(f.shipment), actor: String(actor) };
+    return { ...f, actor: String(actor) };
   }
   type Subject = Awaited<ReturnType<typeof subject>>;
-  const label = (f: Subject, key: string = randomUUID(), tracking: string = randomUUID(), provider = 'carrier-a') => port().recordCommerceFulfillmentLabel({
+  const label = (f: Omit<Subject, 'shipment'> & { shipment: string }, key: string = randomUUID(), tracking: string = randomUUID(), provider = 'carrier-a') => port().recordCommerceFulfillmentLabel({
     idempotencyKey: key, fulfillmentOrderId: f.shipment, actorUserId: f.actor, providerKind: provider, providerTrackingId: tracking,
     labelUrl: 'https://labels.example.invalid/unit', deliveryEstimateDays: 3, rawProviderPayload: { captured: 'private evidence' }, metadata: { note: 'operator' },
   });
@@ -31,14 +31,14 @@ for (const profile of lifecycleProfiles) describe(`operator shipment commands on
   async function census() {
     const result: Record<string, unknown> = {};
     for (const table of ['fulfillment_shipments', 'shipment_external_refs', 'fulfillment_shipment_operations', 'fulfillment_operator_receipts', 'fulfillment_inventory_reservations',
-      'subscription_delivery_alignment_arrivals', 'subscription_delivery_alignment_cases', 'subscriptions', 'outbox_events']) {
+      'subscription_delivery_alignment_arrivals', 'subscription_delivery_alignment_cases', 'subscriptions', 'outbox_events', 'commerce_order_holds']) {
       result[table] = (await h.owner.query(`SELECT to_jsonb(t) AS row,xmin::text AS version FROM public.${table} t ORDER BY to_jsonb(t)::text`)).rows;
     }
     return result;
   }
-  async function stockSubject(renewal: boolean) {
+  async function stockSubject(renewal: boolean, historical = false) {
     const f = await subject(), source = randomUUID(), product = randomUUID(), skuId = randomUUID(), sku = `UNIT-${randomUUID()}`;
-    await h.owner.query('DELETE FROM public.fulfillment_shipments WHERE id=$1', [f.shipment]);
+    if (!historical) await h.owner.query('DELETE FROM public.fulfillment_shipments WHERE id=$1', [f.shipment]);
     await h.owner.query("INSERT INTO public.catalog_products(id,slug,name) VALUES($1,$2,'Unit')", [product, product]);
     await h.owner.query("INSERT INTO public.catalog_skus(id,product_id,sku,title) VALUES($1,$2,$3,'Unit')", [skuId, product, sku]);
     await h.owner.query("UPDATE public.commerce_orders SET metadata=$2 WHERE id=$1", [f.order, { orderDraftSnapshot: { context: { mode: renewal ? 'subscription_cycle' : 'one_time' }, lines: [{ sku, quantity: 1, title: 'Unit' }] } }]);
@@ -56,7 +56,7 @@ for (const profile of lifecycleProfiles) describe(`operator shipment commands on
     }
     const store = createPostgresPaidFulfillmentHandoffStore(h.runtime, 'fixture-port');
     const obligation = await store.ensureObligation({ requestKey: `paid-${f.order}`, orderRef: f.order, paidFactRef: `paid-fact:${f.order}` });
-    f.shipment = obligation.fulfillmentRef;
+    f.shipment = obligation.fulfillmentRef as typeof f.shipment;
     await store.acknowledge({ requestKey: `paid-${f.order}`, fulfillmentRef: f.shipment });
     return { ...f, reservation, source, sku, skuId };
   }
@@ -121,9 +121,10 @@ for (const profile of lifecycleProfiles) describe(`operator shipment commands on
     expect(results.filter(r => r.status === 'rejected')).toHaveLength(1);
   });
   it('hands off missing historical reservations with the named zero-consumption result and inert replay', async () => {
-    const f = await subject(); await label(f); const key = randomUUID();
+    const f = await stockSubject(false, true); await label(f); const key = randomUUID();
     const result = await handoff(f, key);
     expect(result).toMatchObject({ status: 'handed_over', consumedReservationCount: 0, reservationDisposition: 'reservations_not_recorded', replayed: false });
+    expect((await h.owner.query('SELECT status FROM public.fulfillment_inventory_reservations WHERE id=$1', [f.reservation])).rows).toEqual([{ status: 'held' }]);
     expect((await h.owner.query("SELECT count(*)::int n FROM public.outbox_events WHERE event_type='commerce.fulfillment.handed_over' AND aggregate_id=$1", [f.order])).rows[0].n).toBe(1);
     const before = await census();
     expect(await handoff(f, key)).toEqual({ ...result, replayed: true });
@@ -142,6 +143,32 @@ for (const profile of lifecycleProfiles) describe(`operator shipment commands on
     expect((await h.owner.query('SELECT id,status FROM public.fulfillment_inventory_reservations WHERE id=ANY($1::uuid[]) ORDER BY id', [[f.reservation, unrelated]])).rows).toEqual([
       { id: f.reservation, status: 'consumed' }, { id: unrelated, status: 'held' },
     ].sort((a, b) => a.id.localeCompare(b.id)));
+  });
+  it('takes the exact consumer key before the parcel while a concurrent consumer resumes', async () => {
+    const f = await stockSubject(false); await label(f); const key = randomUUID();
+    const consumer = await h.runtime.connect(), handoffDb = await h.runtime.connect();
+    const consumeKey = "jsonb_build_array('operator-handoff',$1::text,$2::uuid)::text";
+    let pending: Promise<{ value?: unknown; error?: unknown }> | undefined;
+    try {
+      await consumer.query('BEGIN');
+      await consumer.query(`SELECT pg_advisory_xact_lock(hashtextextended('parcel-consume-key|'||${consumeKey},0))`, [key, f.shipment]);
+      const blocker = (await consumer.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+      const waiter = (await handoffDb.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+      pending = createPostgresFulfillmentShipmentCommandPort(handoffDb).handOffCommerceFulfillmentOrder({ idempotencyKey: key, fulfillmentOrderId: f.shipment, actorUserId: f.actor })
+        .then(value => ({ value }), error => ({ error }));
+      let blocked = false; const deadline = Date.now() + 5000;
+      while (Date.now() < deadline) {
+        if ((await h.owner.query('SELECT $1::int=ANY(pg_blocking_pids($2)) AS blocked', [blocker, waiter])).rows[0].blocked) { blocked = true; break; }
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+      expect(blocked).toBe(true);
+      // Resuming the actual consumer must not wait for a parcel held by handoff.
+      await consumer.query(`SELECT public.fulfillment_consume_parcel_reservations(${consumeKey},$2::uuid)`, [key, f.shipment]);
+      const stock = (await consumer.query('SELECT status,xmin::text AS version FROM public.fulfillment_inventory_reservations WHERE id=$1', [f.reservation])).rows;
+      await consumer.query('COMMIT');
+      expect(await pending).toMatchObject({ value: { status: 'handed_over', consumedReservationCount: 1 } });
+      expect((await h.owner.query('SELECT status,xmin::text AS version FROM public.fulfillment_inventory_reservations WHERE id=$1', [f.reservation])).rows).toEqual(stock);
+    } finally { await consumer.query('ROLLBACK'); if (pending) await pending; consumer.release(); handoffDb.release(); }
   });
   it('replays each recorded handoff result after an exception and another label/handoff', async () => {
     const f = await stockSubject(false), firstKey = randomUUID(), nextKey = randomUUID();
@@ -170,6 +197,13 @@ for (const profile of lifecycleProfiles) describe(`operator shipment commands on
     await track(f, randomUUID(), 'delivered', at, tracking);
     await expect(track(f, randomUUID(), 'in_transit')).rejects.toMatchObject({ details: { code: 'tracking_after_delivered_forbidden' } });
     await expect(label(f)).rejects.toMatchObject({ details: { code: 'label_invalid_status' } });
+  });
+  it('rolls back arrival, alignment and schedule when the delivery actor audit fails', async () => {
+    const f = await subject(); await openCase(h.owner, f); await label(f); await handoff(f);
+    const before = await census();
+    await expect(port().recordCommerceFulfillmentTrackingEvent({ idempotencyKey: randomUUID(), fulfillmentOrderId: f.shipment,
+      actorUserId: randomUUID(), status: 'delivered', rawEvent: { occurredAt: '2026-09-04T12:00:00Z' } })).rejects.toMatchObject({ code: '23503' });
+    expect(await census()).toEqual(before);
   });
   it('repairs explicit-zone arrival earlier on same/new key without replacing original evidence or side effects', async () => {
     const f = await subject(), key = randomUUID(); await label(f); await handoff(f);
@@ -238,13 +272,17 @@ for (const profile of lifecycleProfiles) describe(`operator shipment commands on
     await label(f, randomUUID(), tracking); await label({ ...f, shipment: sibling }, randomUUID(), tracking);
     const reads = createPostgresFulfillmentCommerceReadPort({ executor: h.runtime, policy: { evaluateCommerceFulfillmentEligibility }, orderMode: () => 'one_time' });
     const current = await reads.getCommerceFulfillmentOrderDetail({ fulfillmentOrderId: sibling.toUpperCase() });
-    expect(current?.order.latestOperation).toMatchObject({ type: 'label_created', actorUserId: f.actor });
+    if (!current || !('order' in current)) throw new Error('Expected native shipment detail');
+    expect(current.order.latestOperation).toMatchObject({ type: 'label_created', actorUserId: f.actor });
     expect(JSON.stringify(current)).not.toContain('private evidence');
     // The old sibling no longer presents the tracking number reattributed to this parcel.
     const original = await reads.getCommerceFulfillmentOrderDetail({ fulfillmentOrderId: f.shipment });
-    expect(original?.order.providerTrackingId).toBeNull();
+    if (!original || !('order' in original)) throw new Error('Expected original shipment detail');
+    expect(original.order.providerTrackingId).toBeNull();
     await track({ ...f, shipment: sibling }, randomUUID(), 'exception');
-    expect((await reads.getCommerceFulfillmentOrderDetail({ fulfillmentOrderId: sibling }))?.order.latestOperation).toMatchObject({ type: 'tracking_event_recorded' });
+    const exception = await reads.getCommerceFulfillmentOrderDetail({ fulfillmentOrderId: sibling });
+    if (!exception || !('order' in exception)) throw new Error('Expected exception shipment detail');
+    expect(exception.order.latestOperation).toMatchObject({ type: 'tracking_event_recorded' });
   });
   it('canonicalizes UUID values and preserves strict replay for ordinary arrival keys', async () => {
     const f = await subject(), key = randomUUID(); await label({ ...f, shipment: f.shipment.toUpperCase(), actor: f.actor.toUpperCase() }, key);

@@ -86,6 +86,8 @@ CREATE FUNCTION public.fulfillment_operator_hand_off(p_key text,p_shipment uuid,
 DECLARE parcel public.fulfillment_shipments; prior public.fulfillment_operator_receipts; answer jsonb; consumed jsonb:='[]'; disposition text;
 BEGIN
  PERFORM pg_advisory_xact_lock(hashtextextended('operator-handoff-key|'||coalesce(p_key,''),0));
+ -- Match the exact consumer's key -> parcel lock order before taking the parcel.
+ PERFORM pg_advisory_xact_lock(hashtextextended('parcel-consume-key|'||jsonb_build_array('operator-handoff',p_key,p_shipment)::text,0));
  PERFORM pg_advisory_xact_lock(hashtextextended('native-dispatch|'||p_shipment::text,0));
  SELECT * INTO parcel FROM public.fulfillment_shipments WHERE id=p_shipment FOR UPDATE;
  IF NOT FOUND THEN RAISE EXCEPTION 'commerce_fulfillment_not_found' USING ERRCODE='22023'; END IF;
