@@ -260,6 +260,10 @@ restore, and accepted delivery evidence keeps its original idempotency key.
 The [notice witness](../../tests/postgres/m19NoticeIsolation.test.ts) compares all
 four row sets after real connected capture/restore and repeats the restore.
 
+Connected native restore refuses any subscription whose `configured_offer_version`
+is not `classic` with `unsupported_table` for `subscriptions` before any target
+data write; sized offer bindings have no transfer mapping in this preview.
+
 Channel source captures, purchased-line claims and pull pages have no transfer
 mapping in this profile. Native restore imports ordinary outbox rows through the
 locked owner path and refuses the three protected channel evidence types before
@@ -3498,13 +3502,19 @@ cycle and order ownership relations. Paid orders are associated through their
 cycle, renewal operation or activation. The follow-up
 `20261109113000_subscription_auto_resume_delivered_history.sql` replaces only
 `subscription_auto_resume_due(integer,timestamptz)` and chains its before-hash
-to that earlier replacement. Its order guard blocks in-flight `paid` or
-`fulfillment_pending` orders, including an unlinked first order, and an order
-in the retained `paid` / `fulfillment_pending` / `fulfilled` status allowlist
-whose cycle is on `next_cycle_at`. Cancelled pause-closure orders do not block.
-Delivered historical orders no longer keep a
-subscription paused after its first paid order. All other eligibility guards,
-the event, roll-forward, header and ACLs remain unchanged. The
+to that earlier replacement. The completing follow-up
+`20261109150000_subscription_auto_resume_paid_history.sql` replaces that same
+function and chains its before-hash to the delivered-history replacement. The
+order guard mirrors customer resume: `paid`, `fulfillment_pending` or `fulfilled`
+orders block for a cycle of this subscription scheduled at `next_cycle_at`.
+An associated order without a cycle blocks only for an unfinished renewal
+operation (`claimed`, `reserved`, `attempt_prepared`) or activation (`provisional`).
+Terminal operations (`succeeded`, `refused`) and activations (`active`,
+`compensated`) do not keep that order in flight. Native shipment delivery leaves
+an order `paid`; paid orders of past cycles and completed activations therefore
+do not keep a timed pause open. Cancelled pause-closure orders do not block.
+All other eligibility guards, the event, roll-forward, header and ACLs remain
+unchanged. The
 [delivered-history witness](../../tests/postgres/subscriptionAutoResumeDeliveredHistory.test.ts)
 covers legacy and both qualified runtimes. Ineligible windows remain open without
 writes or batch failure. Eligible windows roll forward monotonically, retain
