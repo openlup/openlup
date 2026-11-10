@@ -7,6 +7,8 @@ const configurations = [
 
 export default defineConfig({
   testDir: './browser',
+  // Editor proofs use their component or installed-database configuration.
+  testIgnore: ['**/editor-components.spec.ts', '**/subscription-journeys.spec.ts', '**/subscription-api.spec.ts'],
   // Care journeys use the private fixtures created by ./lifecycle browser.
   grepInvert: /database subscription care/,
   workers: 1,
