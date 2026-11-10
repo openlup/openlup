@@ -44,7 +44,9 @@ test('classic explicit review shows server money, signed delta and the preview c
   await expect(page.locator('main')).toContainText('without the one-time introductory promotion');
   await page.getByRole('button',{ name: 'Confirm changes',exact: true }).click();
   await expect(page).toHaveURL(/\/account\?packageSaved=1$/);
-  await expect(page.getByTestId('subscription-editor-entries').getByRole('link',{ name: 'Edit package',exact: true })).toBeVisible();
+  const editor = page.locator(`[data-editor-subscription="${state.sub.subscriptionId}"]`);
+  await expect(editor).toHaveCount(1);
+  await expect(editor.getByRole('link',{ name: 'Edit package',exact: true })).toBeVisible();
   const care = page.locator(`[data-subscription="${state.sub.subscriptionId}"]`);
   await expect(care).toHaveCount(1);
   await expect(care.getByRole('button',{ name: 'Skip one delivery',exact: true })).toBeEnabled();
