@@ -108,11 +108,13 @@ function fixture() {
   const platformMetadata = JSON.parse(readFileSync(platformManifest, "utf8"));
   platformMetadata.exports["./portability"] = { types: "./portability/index.d.ts", default: "./portability/index.js" };
   platformMetadata.exports["./lifecycle"] = { types: "./lifecycle/index.d.ts", default: "./lifecycle/index.js" };
+  platformMetadata.exports["./commerce/server/destinations"].types = "./destinations/index.d.ts";
   platformMetadata.exports["./account-support/contracts"].default = "./contracts.js";
   platformMetadata.exports["./marketing/server"].types = "./marketing-server.d.ts";
   writeFileSync(platformManifest, JSON.stringify(platformMetadata));
   cpSync(join(root, "packages/platform/dist/portability"), join(consumer, "node_modules/@openlup/platform/portability"), { recursive: true });
   cpSync(join(root, "packages/platform/dist/lifecycle"), join(consumer, "node_modules/@openlup/platform/lifecycle"), { recursive: true });
+  cpSync(join(root, "packages/platform/dist/commerce/server/destinations"), join(consumer, "node_modules/@openlup/platform/destinations"), { recursive: true });
   writeFileSync(join(consumer, "node_modules/@openlup/platform/contracts.js"), "export {};\n");
   // The server port extends the browser contract with historical commands.
   writeFileSync(join(consumer, "node_modules/@openlup/platform/marketing-server.d.ts"), [
@@ -840,7 +842,7 @@ it("M11 K2 exercises installed commerce compensation without optional peers", ()
   assertConsumerIsolation(consumer, root);
   proveCommerceServerConsumer(consumer);
   for (const name of ["@types/node", "undici-types"]) cpSync(join(root, "node_modules", name), join(consumer, "node_modules", name), { recursive: true });
-  compileConsumer(consumer, ["commerce", "commerce/contracts", "commerce/server", "pricing/browser"], join(root, "node_modules/typescript/lib/tsc.js"));
+  compileConsumer(consumer, ["commerce", "commerce/contracts", "commerce/server", "commerce/server/destinations", "pricing/browser"], join(root, "node_modules/typescript/lib/tsc.js"));
 }, 30_000);
 
 it("payments and fulfillment: installed packed consumer proves injected execution, truth scope, fulfillment services, default-off and contribution", () => {

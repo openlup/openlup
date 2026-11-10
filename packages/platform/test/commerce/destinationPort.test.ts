@@ -37,8 +37,7 @@ it("keeps the existing typed reader and adds an explicitly saved-aware reader", 
   } };
   let value: DestinationReadDocument = typed;
   const port = createPostgresDestinationPort({ query: async () => ({ rows: [{ result: value }] }) });
-  // This assignment is the existing consumer contract, checked by the public typecheck.
-  const d: DestinationDocument = await port.read("order", "order");
+  const d = await port.read("order", "order");
   expect(d).toEqual(typed);
   value = { ...typed,address: { ...typed.address,savedAddressId: "saved",recipientName: null } };
   expect(await port.readWithSaved("order", "order")).toEqual(value);
