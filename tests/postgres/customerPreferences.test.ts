@@ -73,11 +73,16 @@ for (const profile of ['legacy','bootstrap','separate','admin-managed','admin-op
  });
  it('returns redacted unapplied hints through the trusted checkout client owner, including an unlinked client',async () => {
   const f = await subject();await f.port.upsertPaymentPreference(f.principal,{ scope: 'any',methodKind: 'instant' });await f.port.upsertPaymentPreference(f.principal,{ scope: 'subscription',methodKind: 'card' });
-  const billing = randomUUID(),defaults = createPostgresCustomerDefaultsPort(db.runtime,{ clientId: f.client },preferencePolicy,async () => [{ id: billing,isDefault: true }]);
+  const both = randomUUID(),shipping = randomUUID(),billingAddress = randomUUID();
+  for (const [id,kind,isDefault,updated] of [[both,'both',true,at],[shipping,'shipping',false,'2026-11-12T00:00:00.000Z'],[billingAddress,'billing',true,'2026-11-13T00:00:00.000Z']]) {
+   await db.owner.query('INSERT INTO public.customer_saved_addresses(id,client_id,kind,line1,city,postal_code,is_default,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',[id,f.client,kind,'Private Street 1','Private City','12345',isDefault,at,updated]);
+  }
+  const billing = randomUUID(),defaults = createPostgresCustomerDefaultsPort(db.runtime,{ clientId: f.client },preferencePolicy,async () => [{ id: randomUUID(),isDefault: false },{ id: billing,isDefault: true }]);
   await db.owner.query('UPDATE public.clients SET principal_id=NULL WHERE id=$1',[f.client]);
   const value = await defaults.getCustomerDefaultsSnapshot({ clientId: f.client,checkoutKind: 'subscription_initial' });
-  expect(value.payment).toMatchObject({ methodKind: 'card',applied: false });expect(value.addresses).toMatchObject({ defaultOrdererProfileId: billing,applied: false,hasDeliveryNotes: false });
-  expect(value.redactedFields).toContain('payment_secret');expect(JSON.stringify(value)).not.toContain('warehouse-a');
+  expect(value.payment).toMatchObject({ methodKind: 'card',applied: false });expect(value.addresses).toMatchObject({ defaultOrdererProfileId: billing,defaultShippingAddressId: both,defaultBillingAddressId: billingAddress,applied: false,hasDeliveryNotes: false });
+  expect((await defaults.getCustomerDefaultsSnapshot({ clientId: f.client,checkoutKind: 'one_time' })).payment.methodKind).toBe('instant');
+  expect(JSON.stringify(value)).not.toContain('Private');expect(value.redactedFields).toContain('payment_secret');expect(JSON.stringify(value)).not.toContain('warehouse-a');
   await expect(defaults.getCustomerDefaultsSnapshot({ clientId: randomUUID(),checkoutKind: 'one_time' })).rejects.toThrow('customer_preference_scope_mismatch');
  });
  it('classifies both private tables, denies browser/raw access and erases only the subject through explicit coverage',async () => {
