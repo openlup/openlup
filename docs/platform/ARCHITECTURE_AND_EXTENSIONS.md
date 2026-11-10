@@ -1466,7 +1466,11 @@ customer defaults change. Privacy erasure removes each generation's contact
 through the existing contributor and makes a later replacement refuse.
 
 Ordinary cancellation releases only recorded parcel IDs; its result includes
-`releasedReservationCount` and `reservationDisposition`. A provider-confirmed
+`releasedReservationCount` and `reservationDisposition`. Under the parcel lock it
+refuses a live direct-dispatch reference, permanent external dispatch evidence,
+or an accepted, submitting or uncertain provider command, before releasing stock.
+This check does not prevent the command ledger from admitting a later command
+after cancellation commits. A provider-confirmed
 paid cancellation requires the latest provider observation to say cancelled, an
 exception parcel, recorded mode exactly `one_time`, succeeded payment and no
 active holds. Other recorded modes retain the ineligible refusal. It cancels the

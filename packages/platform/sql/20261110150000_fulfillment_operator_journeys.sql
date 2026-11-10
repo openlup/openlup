@@ -219,7 +219,8 @@ BEGIN
    RAISE EXCEPTION 'commerce_fulfillment_cancel_idempotency_conflict' USING ERRCODE='23505'; END IF;
   RETURN prior.result||jsonb_build_object('replayed',true);
  END IF;
- -- Share the preparation lock so no dispatch may begin between evidence and cancellation.
+ -- Serialize the cancellation check with parcel preparation and command admission.
+ -- Later command admission/submission still depends on the command ledger's own fences.
  PERFORM pg_advisory_xact_lock(hashtextextended('native-dispatch|'||p_shipment_id::text,0));
  SELECT * INTO parcel FROM public.fulfillment_shipments WHERE id=p_shipment_id FOR UPDATE;
  IF NOT FOUND THEN RAISE EXCEPTION 'commerce_fulfillment_not_found' USING ERRCODE='22023'; END IF;
@@ -252,7 +253,10 @@ BEGIN
   INSERT INTO public.commerce_order_operations(order_id,actor_id,operation_type,source,idempotency_key,payload)
    VALUES(purchase.id,p_actor_id,'order_cancelled','commerce.fulfillment.provider_cancel_confirmed',p_idempotency_key||':order',jsonb_build_object('reason',p_reason,'metadata',coalesce(p_metadata,'{}'),'providerStatus','CANCELLED'));
  ELSE
-  IF EXISTS(SELECT 1 FROM public.fulfillment_dispatch_refs WHERE shipment_id=parcel.id AND status NOT IN ('failed','cancelled')) THEN
+  PERFORM id FROM public.commerce_fulfillment_provider_commands WHERE shipment_id=parcel.id ORDER BY id FOR UPDATE;
+  IF EXISTS(SELECT 1 FROM public.fulfillment_dispatch_refs WHERE shipment_id=parcel.id AND status NOT IN ('failed','cancelled'))
+   OR EXISTS(SELECT 1 FROM public.shipment_external_refs WHERE shipment_id=parcel.id AND ref_role='dispatch')
+   OR EXISTS(SELECT 1 FROM public.commerce_fulfillment_provider_commands WHERE shipment_id=parcel.id AND status IN ('accepted','submitting','uncertain')) THEN
    RAISE EXCEPTION 'commerce_fulfillment_cancel_provider_dispatch_active' USING ERRCODE='22023'; END IF;
   IF parcel.status NOT IN ('created','packed','label_pending') THEN RAISE EXCEPTION 'commerce_fulfillment_cancel_after_label_forbidden' USING ERRCODE='22023'; END IF;
   SELECT coalesce(array_agg(DISTINCT a.reservation_id ORDER BY a.reservation_id),ARRAY[]::uuid[]) INTO ids

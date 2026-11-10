@@ -141,6 +141,45 @@ for (const generation of lifecycleProfiles) describe(`operator parcel journeys o
     expect(await consume(input)).toEqual({ ...consumed, replayed: true });
     expect((await stock(f)).find(r => r.id === original)).toEqual(before);
   });
+  it.each(['created', 'packed', 'label_pending'].flatMap(status =>
+    ['external', 'accepted', 'submitting', 'uncertain'].map(evidence => ({ status, evidence }))))('refuses $evidence dispatch ownership on a $status parcel without changing state', async ({ status, evidence }) => {
+    const f = await subject(h.owner, false);
+    await reserve(h.runtime, f);
+    f.shipment = (await h.runtime.query("SELECT public.fulfillment_create_shipment($1,$2,'operator-fixture') AS value", [`create-${randomUUID()}`, f.order])).rows[0].value.shipment.id;
+    await h.owner.query('UPDATE public.fulfillment_shipments SET status=$2 WHERE id=$1', [f.shipment, status]);
+    if (evidence === 'external') {
+      await h.runtime.query("SELECT public.fulfillment_record_evidence($1,$2,'push','dispatch',$3,'{}','2026-11-10T12:00:00Z')", [`dispatch-${randomUUID()}`, f.shipment, `external-${randomUUID()}`]);
+    } else {
+      const provider = `fixture_${randomUUID().replaceAll('-', '')}`;
+      await h.runtime.query(`SELECT public.commerce_fulfillment_enqueue_provider_command($1,$2,'dispatch_create','1',$3,
+        repeat('a',64),repeat('b',64),NULL,repeat('c',64),repeat('d',64),repeat('e',64),2)`, [f.shipment, provider, randomUUID()]);
+      const claim = (await h.runtime.query("SELECT public.commerce_fulfillment_claim_provider_commands($1,'dispatch_create',1,repeat('f',64),900) AS value", [provider])).rows[0].value;
+      const submitting = (await h.runtime.query('SELECT public.commerce_fulfillment_mark_command_submitting($1,$2,$3,$4,NULL) AS value',
+        [claim.commandId, claim.claimToken, claim.claimGeneration, claim.version])).rows[0].value;
+      if (evidence !== 'submitting') {
+        await h.runtime.query(`SELECT public.commerce_fulfillment_apply_command_write_outcome($1,$2,$3,$4,repeat('a',64),$5,$6,NULL,$7)`,
+          [claim.commandId, claim.claimToken, claim.claimGeneration, submitting.version, evidence,
+            evidence === 'accepted' ? 'provider_accepted' : 'write_uncertain', evidence === 'accepted' ? '1'.repeat(64) : null]);
+      }
+      expect((await h.owner.query('SELECT status FROM public.commerce_fulfillment_provider_commands WHERE shipment_id=$1', [f.shipment])).rows).toEqual([{ status: evidence }]);
+    }
+    expect((await h.owner.query('SELECT id FROM public.fulfillment_dispatch_refs WHERE shipment_id=$1', [f.shipment])).rows).toEqual([]);
+    const facts = [
+      ['commerce_orders', 'id', f.order], ['fulfillment_shipments', 'order_id', f.order],
+      ['fulfillment_inventory_reservations', 'purchase_order_id', f.order],
+      ['fulfillment_parcel_reservation_sets', 'shipment_id', f.shipment], ['fulfillment_parcel_lines', 'shipment_id', f.shipment],
+      ['fulfillment_shipment_operations', 'shipment_id', f.shipment], ['commerce_order_operations', 'order_id', f.order],
+      ['shipment_external_refs', 'shipment_id', f.shipment], ['commerce_fulfillment_provider_commands', 'shipment_id', f.shipment],
+      ['fulfillment_operator_receipts', "command->>'shipmentId'", f.shipment],
+    ];
+    const snapshot = async () => Object.fromEntries(await Promise.all(facts.map(async ([table, column, value]) => [table,
+      (await h.owner.query(`SELECT to_jsonb(t) AS value,xmin::text AS version FROM public.${table} t WHERE ${column}=$1 ORDER BY to_jsonb(t)::text`, [value])).rows])));
+    const before = await snapshot(), key = `cancel-${randomUUID()}`;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await expect(cancel(f, f.shipment!, key)).rejects.toMatchObject({ details: { code: 'provider_dispatch_active', reason: 'provider_dispatch_active', sqlState: '22023' } });
+      expect(await snapshot()).toEqual(before);
+    }
+  });
   it('refuses every live provider dispatch before stock release and refuses exception without latest cancellation proof', async () => {
     const f = await subject(h.owner), reservation = await reserve(h.runtime, f), before = await stock(f);
     // The draft is a real native provider ownership fence too.
