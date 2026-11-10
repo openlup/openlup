@@ -1607,13 +1607,14 @@ relation retains the existing ACL refusals. The [absorber witness](../../tests/p
 proves block, successful absorption and replay on legacy and both qualified
 installations, with payload reads and writes denied on the restricted runtimes.
 
-A signature may be replaced again in a later slot with a later migration time
-only when its before-hash equals the immediately preceding replacement pin's
-after-hash. An unbound predecessor refuses. The actual latest definition in the
-ordered prefix must also match that before-hash; a first replacement still binds
-the pre-class definition. Replacement headers and search_path stay identical to
-that preimage apart from CREATE OR REPLACE, and the PostgreSQL catalog preserves
-owner and ACL. Issued contents, positions and the sealed-prefix rule stay fixed.
+An explicitly listed replacement may chain to the exact creation pin of an
+earlier reviewed native-store slot, or to the immediately preceding replacement
+pin. Its before-hash must equal that predecessor's after-hash. An unbound
+predecessor refuses. The actual latest definition in the complete ordered prefix
+must also match that before-hash; a first replacement without an earlier class
+creation or replacement still binds the pre-class definition. Replacement headers
+and search_path stay identical to that preimage apart from CREATE OR REPLACE, and
+the PostgreSQL catalog preserves owner and ACL. Issued contents, positions and the sealed-prefix rule stay fixed.
 
 The class-local identity reader normalizes scalar aliases, schema-qualified composite/table arguments and
 arrays against exact listed signatures; earlier identity readers stay unchanged.

@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
-import { readReviewedForwardRegistry, nativeStoreAddedForeignKeys, nativeStoreCreatedTable, nativeStoreTriggerDefinition, sqlSha256, sqlStatements, type NativeStoreSlot } from "../../scripts/reviewed-platform-forward.js";
+import { readReviewedForwardRegistry, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, nativeStoreCreatedTable, nativeStoreTriggerDefinition, sqlSha256, sqlStatements, type NativeStoreSlot } from "../../scripts/reviewed-platform-forward.js";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 // The static native-store class is a first gate for ordinary mistakes. This test is the
@@ -495,6 +495,15 @@ const registry = readReviewedForwardRegistry(readFileSync("config/reviewed-platf
 const manifest: PlatformMigrationManifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
 const bound = (registry.nativeStoreForwards ?? []).map(pin => ({ pin, slot: registry.nativeStoreForwardClass!.slots.find(slot => slot.path === pin.path)! }))
   .sort((x, y) => x.pin.path.localeCompare(y.pin.path));
+const reminderSignature = "public.dunning_lifecycle_pause_reminder_dispatch(integer,integer)";
+const reminderCreation = bound.find(entry => entry.slot.createdFunctions.some(fn => fn.signature === reminderSignature))!;
+const reminderCreationPin = reminderCreation.pin.functions.find(fn => fn.signature === reminderSignature)!;
+const reminderOriginal = sqlStatements(readFileSync(reminderCreation.pin.path, "utf8")).find(statement =>
+  nativeStoreFunctionDefinitions(Buffer.from(statement), [reminderSignature], true).has(reminderSignature))!;
+const reminderReplacement = reminderOriginal.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION")
+  .replace("'ok',true,", "'ok',true,'capabilityWitness',true,");
+const reminderReplacementSlot: CatalogSlot = { createdFunctions: [],
+  replacedFunctions: [{ signature: reminderSignature, beforeSha256: reminderCreationPin.afterSha256, searchPath: "pg_catalog" }], grantOnlyFunctions: [] };
 const boundPaths = new Set(bound.map(entry => entry.pin.path));
 const sha = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
 // Manifest units that are not bound forwards (a landed bound forward is also in the manifest).
@@ -570,6 +579,30 @@ describe.each([{ serviceRole: true }, { serviceRole: false }])("native store for
   });
   it.each(["retain", "block"])("uses raw relname for a quoted client table's %s classification", async disposition => {
     await checkForward(pool, SYNTHETIC_SLOT, forward(CREATED_OK, classifiedQuotedClientTable(disposition)));
+  });
+  it("admits the earlier class-created reminder with its exact installed preimage and retained catalog attributes", async () => {
+    expect(replay.outcomes.get(reminderCreation.pin.path)).toBeNull();
+    expect(reminderCreationPin.beforeSha256).toBeNull();
+    const chainDb = new Pool({ connectionString: container!.connectionStringFor("native_chain") });
+    try {
+      const installed = (await chainDb.query("SELECT prosrc FROM pg_proc WHERE oid=$1::regprocedure", [reminderSignature])).rows[0].prosrc as string;
+      const start = reminderOriginal.indexOf("AS $$") + 5, end = reminderOriginal.lastIndexOf("$$");
+      expect(sqlSha256(reminderOriginal.slice(0, start) + installed + reminderOriginal.slice(end))).toBe(reminderCreationPin.afterSha256);
+      expect(reminderReplacement).toContain("'capabilityWitness',true");
+      await checkForward(chainDb, reminderReplacementSlot, reminderReplacement);
+    } finally { await chainDb.end(); }
+  });
+  it.each(["unlisted", "header", "signature", "owner", "ACL"])("refuses a class-created reminder replacement with changed %s", async change => {
+    const chainDb = new Pool({ connectionString: container!.connectionStringFor("native_chain") });
+    const slot = structuredClone(reminderReplacementSlot);
+    let statement = reminderReplacement;
+    if (change === "unlisted") slot.replacedFunctions = [];
+    if (change === "header") statement = statement.replace("LANGUAGE plpgsql", "LANGUAGE plpgsql SECURITY DEFINER");
+    if (change === "signature") statement = statement.replace("p_pause_window_seconds integer", "p_pause_window_seconds bigint");
+    if (change === "owner") statement += ` ALTER FUNCTION ${reminderSignature} OWNER TO authenticated;`;
+    if (change === "ACL") statement += ` GRANT EXECUTE ON FUNCTION ${reminderSignature} TO authenticated;`;
+    try { await expect(checkForward(chainDb, slot, statement)).rejects.toThrow(/catalog:/u); }
+    finally { await chainDb.end(); }
   });
   it("installs two replacement slots with pinned bodies and unchanged function attributes and ACL", async () => {
     const db = await pool.connect(), signature = "public.cat_replaced(text,boolean)";
