@@ -152,6 +152,10 @@ for (const profile of ['legacy','bootstrap','separate','admin-managed','admin-op
   });
   it('classifies export and erases saved rows without relying on client clearing or event erasure', async () => {
     const f = await customer(), operator = await admin(); await f.port.upsertAddress(f.principal, { ...input(), kind: 'both', companyName: 'Private Company', taxId: '1234563218', deliveryNotes: 'Private text' });
+    const other = await customer(), otherAddress = addressId(await other.port.upsertAddress(other.principal, { ...input(), kind: 'both', line1: 'Other Street 2', companyName: 'Other Company', taxId: '1234563218', deliveryNotes: 'Other private text' }));
+    await db.owner.query("INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at,status,shipping_saved_address_id,billing_saved_address_id) VALUES($1,$2,28,$3,'active',$4,$4)", [randomUUID(),other.client,at,otherAddress]);
+    const otherSubscriptions = () => db.owner.query('SELECT to_jsonb(s) AS row,xmin::text FROM public.subscriptions s WHERE client_id=$1 ORDER BY id', [other.client]).then(result => result.rows);
+    const otherAddressesBefore = await rows(other.client), otherEventsBefore = await events(other.client), otherSubscriptionsBefore = await otherSubscriptions();
     const store = createPostgresPrivacyStore(), identity = createIdentityPersonalDataContributor(store, { retainedContactFields: Object.fromEntries(['lifecycle_stage','acquisition_source'].map(field => [field,{ owner: 'clients', resource: `clients.${field}`, disposition: 'retain' as const, reasonCode: 'CONTACT_LIFECYCLE_RETENTION', remote: false }])) }, randomUUID);
     const read = async (context: PgQueryExecutor, subject: { contactId: string | null }) => ({ available: true, data: (await context.query('SELECT to_jsonb(e) AS value FROM public.customer_account_events e WHERE client_id=$1 ORDER BY id', [subject.contactId])).rows.map(row => row.value) as PrivacyJson });
     let paused = false, erasurePid = 0;
@@ -192,5 +196,8 @@ for (const profile of ['legacy','bootstrap','separate','admin-managed','admin-op
     expect(receipt.obligations).toContainEqual({ owner: 'customer-saved-addresses', resource: 'customer.saved-addresses', disposition: 'erase', reasonCode: 'PRIVATE_SAVED_CONTACT', remote: false });
     expect(await rows(f.client)).toEqual([]); expect((await events(f.client))[0]?.row.payload.deliveryNotes).toBe('Private text');
     expect((await db.owner.query('SELECT principal_id FROM public.clients WHERE id=$1', [f.client])).rows[0].principal_id).toBeNull();
+    expect(await rows(other.client)).toEqual(otherAddressesBefore);
+    expect(await events(other.client)).toEqual(otherEventsBefore);
+    expect(await otherSubscriptions()).toEqual(otherSubscriptionsBefore);
   });
 });
