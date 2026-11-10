@@ -2328,7 +2328,8 @@ const addresses = createPostgresCustomerSavedAddressPort(database, trustedScope,
 
 The local policy supplies an ISO country/default and aliases, calling prefix,
 tax normalization/validation and messages. The request mechanism retains fixed
-length/key bounds, trim/collapse rules, local nine-digit phone normalization,
+limits on field lengths and idempotency identifiers, trimming and whitespace
+collapse, local nine-digit phone normalization,
 local five-digit postal formatting, foreign-format behavior and shipping-only
 company/tax omission. Neutral demo values can use `ZZ` and calling prefix `99`.
 Bind `requests` and the host response validator into the existing customer address
