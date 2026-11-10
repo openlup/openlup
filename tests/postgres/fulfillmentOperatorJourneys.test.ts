@@ -22,7 +22,7 @@ function responseFixture() {
 const contact = () => ({ schemaVersion: 1, source: 'contact', revision: 1, recipientName: 'Frozen recipient',
   contactEmail: 'frozen@example.test', contactPhone: '+000001', line1: 'Frozen street', line2: null, city: 'Example', postalCode: '00000', country: 'ZZ',
   deliveryInstructions: null, courierInstructions: null, selectedDelivery: { providerKind: 'warehouse', carrierKind: 'carrier', service: 'service', deliveryKind: 'courier' } });
-async function subject(db: Pool, legacy = true) {
+async function subject(db: Pool, legacy = true, frozenContact: unknown = contact()) {
   const client = randomUUID(), order = randomUUID(), actor = randomUUID(), product = randomUUID(), skuId = randomUUID(), item = randomUUID(), source = randomUUID(), sku = randomUUID();
   await db.query('INSERT INTO public.clients(id,email) VALUES($1,$2)', [client, `${client}@example.invalid`]);
   await db.query("INSERT INTO public.commerce_operators(id,label) VALUES($1,'Fixture operator')", [actor]);
@@ -45,7 +45,7 @@ async function subject(db: Pool, legacy = true) {
     shipment = randomUUID();
     await db.query("INSERT INTO public.fulfillment_shipments(id,order_id,port_key,provider_type,create_idempotency_key) VALUES($1,$2,'operator-fixture','3pl',$3)", [shipment, order, shipment]);
     await db.query('SELECT public.commerce_read_destination(\'shipment\',$1)', [shipment]);
-    await db.query('SELECT public.fulfillment_capture_parcel_contact($1,$2)', [shipment, contact()]);
+    await db.query('SELECT public.fulfillment_capture_parcel_contact($1,$2)', [shipment, frozenContact]);
   }
   return { client, order, actor, skuId, sku, item, shipment, source };
 }
@@ -219,7 +219,11 @@ for (const generation of lifecycleProfiles) describe(`operator parcel journeys o
     }
   });
   it('prepares replacement dispatch from frozen contact and line facts and erasure refuses without a new generation', async () => {
-    const f = await subject(h.owner), result = await replace(f);
+    const pickupPoint = { id: 'POINT', pointId: 'point-wire', provider: 'pickup-provider', name: 'Frozen point',
+      address: { line1: 'Point street', postalCode: '00000', city: 'Point city', country: 'ZZ' } };
+    const frozenContact = { ...contact(), selectedDelivery: { ...contact().selectedDelivery, providerRef: 'configuration-reference',
+      carrierCode: 'carrier-wire', serviceCode: 'service-wire', deliveryKind: 'parcel-locker', kind: 'parcel-locker', pickupPoint } };
+    const f = await subject(h.owner, true, frozenContact), result = await replace(f);
     if (!('replacement' in result)) throw new Error('Expected replacement');
     const parcel = result.replacement.fulfillmentOrderId;
     const candidate: FulfillmentDispatchRequest = { requestKey: `dispatch-${parcel}`, fulfillmentRef: parcel, orderRef: f.order, orderNumber: null, parcelRef: null,
@@ -244,7 +248,10 @@ for (const generation of lifecycleProfiles) describe(`operator parcel journeys o
     expect(await binding.prepare(parcel)).toEqual({ disposition: 'ready', contactRevision: 1 });
     await binding.services.runDispatch();
     expect(seen).toHaveLength(1); expect(seen[0]).toMatchObject({ recipient: { name: 'Frozen recipient', email: 'frozen@example.test', line1: 'Frozen street' },
-      selection: { carrierRef: 'carrier', serviceRef: 'service' }, lines: [{ skuRef: f.sku, quantity: 2 }] });
+      selection: { carrierRef: 'carrier', serviceRef: 'service', deliveryKind: 'parcel-locker' }, lines: [{ skuRef: f.sku, quantity: 2 }] });
+    expect(seen[0].selection.pickupPoint).toEqual({ id: pickupPoint.id, provider: pickupPoint.provider, name: pickupPoint.name, address: pickupPoint.address });
+    expect((await h.owner.query('SELECT contact FROM public.fulfillment_parcel_contacts WHERE shipment_id=ANY($1::uuid[]) ORDER BY shipment_id', [[f.shipment, parcel]])).rows.map(row => row.contact))
+      .toEqual([frozenContact, frozenContact]);
     const visible = (await h.owner.query("SELECT public.fulfillment_shipment_response(s,'read',false) AS value FROM public.fulfillment_shipments s WHERE id=$1", [parcel])).rows;
     expect(JSON.stringify(visible)).not.toContain('frozen@example.test');
     await h.owner.query("UPDATE public.fulfillment_shipments SET status='packed' WHERE id=$1", [parcel]);
@@ -368,8 +375,16 @@ it('roundtrips exact parcel associations, operator receipts and status evidence 
     const tables = ['fulfillment_parcel_reservation_sets','fulfillment_parcel_lines','fulfillment_parcel_line_reservations','fulfillment_operator_receipts','fulfillment_operator_status_evidence'];
     for (const table of tables) expect(packet.owned.find(row => row.table === table)?.rows.length).toBeGreaterThan(0);
     expect(await restoreConnectedNativeStore({ owner: target.owner, installation: journeySelection, packet, freshTarget })).toMatchObject({ replayed: false });
-    const restored = await captureStoreJourney(target.owner, 'operator-target');
-    for (const table of tables) expect(restored.owned.find(row => row.table === table)?.rows).toEqual(packet.owned.find(row => row.table === table)?.rows);
+    const client = await target.owner.connect();
+    try {
+      await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+      await client.query("SET LOCAL TimeZone='UTC'");
+      for (const table of tables) {
+        const restored = await client.query<{ value: string }>(`SELECT pg_catalog.to_jsonb(t)::pg_catalog.text AS value FROM public."${table}" t ORDER BY pg_catalog.to_jsonb(t)::pg_catalog.text`);
+        expect(restored.rows.map(row => row.value)).toEqual(packet.owned.find(row => row.table === table)?.rows);
+      }
+      await client.query('COMMIT');
+    } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
     expect(await restoreConnectedNativeStore({ owner: target.owner, installation: journeySelection, packet, freshTarget })).toMatchObject({ replayed: true });
   } finally { await resources.close(); }
-}, 30_000);
+}, 45_000);
