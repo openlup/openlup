@@ -50,9 +50,9 @@ async function subject(db: Pool, legacy = true) {
   return { client, order, actor, skuId, sku, item, shipment, source };
 }
 type Subject = Awaited<ReturnType<typeof subject>>;
-async function reserve(db: Pool, f: Subject) {
+async function reserve(db: Pool, f: Subject, orderItemId: string = f.item) {
   const { rows } = await db.query('SELECT public.fulfillment_reserve_purchase_order_items($1,$2,$3,$4,\'succeeded\',\'2099-01-01T00:00:00Z\',\'{}\',\'2026-11-01T00:00:00Z\') AS value',
-    [`reserve-${randomUUID()}`, f.order, f.source, JSON.stringify([{ orderItemId: f.item, skuId: f.skuId, quantity: 2 }])]);
+    [`reserve-${randomUUID()}`, f.order, f.source, JSON.stringify([{ orderItemId, skuId: f.skuId, quantity: 2 }])]);
   return rows[0].value.reservations[0].reservationId as string;
 }
 for (const generation of lifecycleProfiles) describe(`operator parcel journeys on ${generation}`, () => {
@@ -85,7 +85,7 @@ for (const generation of lifecycleProfiles) describe(`operator parcel journeys o
     await expect(h.runtime.query('SELECT public.fulfillment_capture_new_parcel_reservations($1,$2)', [f.shipment, f.shipment])).rejects.toThrow('capture_not_new');
   });
   it('atomically records new original lines and releases precisely their IDs, leaving later order reservations untouched', async () => {
-    const f = await subject(h.owner, false), captured = await reserve(h.runtime, f), key = `create-${randomUUID()}`;
+    const f = await subject(h.owner, false), captured = await reserve(h.runtime, f, `{${f.item.toUpperCase()}}`), key = `create-${randomUUID()}`;
     const create = async () => (await h.runtime.query("SELECT public.fulfillment_create_shipment($1,$2,'operator-fixture') AS value", [key, f.order])).rows[0].value;
     const opened = await create(); f.shipment = opened.shipment.id;
     expect(f.shipment).toBeTypeOf('string');

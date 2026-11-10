@@ -68,8 +68,8 @@ BEGIN
   SELECT DISTINCT line_id,r.id,item.quantity FROM public.fulfillment_inventory_reservations r
    JOIN public.fulfillment_purchase_reservation_receipts receipt ON receipt.command->>'orderId'=parcel.order_id::text
    CROSS JOIN LATERAL jsonb_array_elements(coalesce(receipt.result->'reservations','[]')) entry
-   WHERE receipt.command->>'action'='reserve' AND entry->>'orderItemId'=item.id::text
-    AND entry->>'reservationId'=r.id::text AND r.purchase_order_id=parcel.order_id
+   WHERE receipt.command->>'action'='reserve' AND (entry->>'orderItemId')::uuid=item.id
+    AND (entry->>'reservationId')::uuid=r.id AND r.purchase_order_id=parcel.order_id
     AND r.status IN ('held','committed')
   ON CONFLICT DO NOTHING;
   INSERT INTO public.fulfillment_parcel_line_reservations(line_id,reservation_id,quantity)

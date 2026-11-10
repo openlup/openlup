@@ -4290,7 +4290,7 @@
     },
     {
       "path": "db/platform/migrations/20261110150000_fulfillment_operator_journeys.sql",
-      "sha256": "4ce34b89e7afa857f0083517c08d421a8afc5932763a1b0855db583ccbeb4320",
+      "sha256": "561c7627e73ca6c029db62d995cd1a814a29abc3175796534108f19f3ea2cc64",
       "functions": [
         {
           "signature": "public.fulfillment_open_shipment(text,uuid,text,jsonb,timestamptz)",
@@ -4305,7 +4305,7 @@
         {
           "signature": "public.fulfillment_capture_new_parcel_reservations(uuid,text)",
           "beforeSha256": null,
-          "afterSha256": "58c7fee6b462862d2fadf55813c1477731474aa378215f676dcfa11db477f292"
+          "afterSha256": "f4899a5f6e86e8d6f48282e9f946406382e0e4e971661ad2f42c7ae6fb1a0dc5"
         },
         {
           "signature": "public.fulfillment_read_replacement_preparation(uuid)",
