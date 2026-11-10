@@ -1,3 +1,4 @@
+import installationInventory from "./current-installation-inventory.json" with { type: "json" };
 import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
@@ -66,28 +67,8 @@ it.each(profiles)("atomic actor account choices and refusals on %s", async profi
     await runner.apply();
     expect((await runner.apply()).applied).toEqual([]);
     // Package editing follows timed auto-resume delivered history in every plan; qualified plans also retain their completion tail.
-    const tail = [{ catalog_path: "db/platform/migrations/20261110160000_oms_human_operator_admission.sql" },
-      { catalog_path: "db/platform/migrations/20261110155000_fulfillment_parcel_status_fence.sql" },
-      { catalog_path: "db/platform/migrations/20261110150000_fulfillment_operator_journeys.sql" },
-      { catalog_path: "db/platform/migrations/20261110140000_fulfillment_parcel_contacts.sql" },
-      { catalog_path: "db/platform/migrations/20261110120000_customer_account_events.sql" },
-      { catalog_path: "db/platform/migrations/20261110115000_customer_checkout_links.sql" },
-      { catalog_path: "db/platform/migrations/20261110110000_operator_checkout_links.sql" },
-      { catalog_path: "db/platform/migrations/20261110105000_subscription_pause_duration.sql" },
-      { catalog_path: "db/platform/migrations/20261110100000_checkout_recovery_waves.sql" },
-      { catalog_path: "db/platform/migrations/20261109150000_subscription_auto_resume_paid_history.sql" },
-      { catalog_path: "db/platform/migrations/20261109140000_subscription_sized_editor.sql" },
-      { catalog_path: "db/platform/migrations/20261109130000_subscription_exact_levers.sql" },
-      { catalog_path: "db/platform/migrations/20261109120000_subscription_package_editor.sql" },
-      { catalog_path: "db/platform/migrations/20261109113000_subscription_auto_resume_delivered_history.sql" },
-      { catalog_path: "db/platform/migrations/20261109110000_checkout_recovery_link_lifecycle.sql" },
-      { catalog_path: "db/platform/migrations/20261109100000_subscription_retry_resume.sql" },
-      { catalog_path: "db/platform/migrations/20261106140000_subscriber_winback_policy.sql" },
-      { catalog_path: "db/platform/migrations/20261106120000_subscription_notice_producers.sql" },
-      { catalog_path: "db/platform/migrations/20261106100000_subscription_lifecycle_closure.sql" },
-      { catalog_path: "db/platform/migrations/20261106060000_subscription_retry_recovery_truth.sql" },
-      { catalog_path: "db/platform/migrations/20261106050000_customer_command_key_isolation.sql" },
-      ...(profile === "legacy" ? [] : [{ catalog_path: "db/platform/migrations/q2_20261103200000_runtime_lock_and_conflict_completion.sql" }])];
+    const measuredTail = installationInventory.current.profiles[profile].tail;
+    const tail = measuredTail.slice(0, measuredTail.findIndex(unit => unit.file === file)).map(unit => ({ catalog_path: unit.file }));
     const ledger = (await owner.query("SELECT catalog_path FROM public.platform_schema_migrations ORDER BY position DESC LIMIT $1", [tail.length + 1])).rows;
     expect(ledger).toEqual([...tail, { catalog_path: file }]);
     const served = (await owner.query("SELECT prosrc FROM pg_proc WHERE oid='public.customer_communication_preferences_set_as_actor(boolean,timestamptz)'::regprocedure")).rows[0].prosrc;

@@ -110,7 +110,7 @@ export function coverageState(session) {
     const decision = verdict(prior, prior.candidate, event.at);
     const priorFull = !decision.ok && edge.kind === 'repair' ? fullReviewReports(prior) : undefined;
     demand(decision.ok || priorFull, 'prior coverage is incomplete or unresolved');
-    const portable = edge.kind === 'integration' && ['portable-git', 'portable-registry-union', 'portable-resolution'].includes(edge.proof?.kind);
+    const portable = edge.kind === 'integration' && ['portable-git', 'portable-registry-union', 'portable-derived', 'portable-resolution'].includes(edge.proof?.kind);
     inherited = priorFull ? {
       earliest: Math.min(...priorFull.map(report => report.at)), expires: Math.min(...priorFull.map(report => report.at + DAY)),
       base: prior.candidate.base, paths: prior.candidate.changedPaths,
@@ -120,7 +120,7 @@ export function coverageState(session) {
     } : coverageState(prior);
     if (!portable) demand(prior.candidate.rules?.version === 3, 'coverage policy changed');
     if (edge.kind === 'integration') {
-      demand(candidate.integration && (portable || ['git', 'registry-union', 'resolution'].includes(edge.proof?.kind)) && edge.proof.tree === candidate.tree, 'integration proof missing'); floor = 0;
+      demand(candidate.integration && (portable || ['git', 'registry-union', 'derived', 'resolution'].includes(edge.proof?.kind)) && edge.proof.tree === candidate.tree, 'integration proof missing'); floor = 0;
     } else demand(edge.kind === 'repair' && candidate.base === prior.candidate.base && candidate.rules.base === prior.candidate.rules.base && edge.proof?.paths?.length > 0, 'repair delta is missing');
     const delta = edge.kind === 'repair' ? edge.proof.paths : edge.proof.resolution;
     if (delta) {

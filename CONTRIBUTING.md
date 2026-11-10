@@ -589,7 +589,7 @@ The complete projected root command inventory is `build`,
 `build:public-reference`, `build:public-reference:client`,
 `build:public-reference:prerender`, `build:public-reference:ssr`,
 `check:dco-signoff`, `guard:client-secret-boundary`,
-`guard:public-reference-site-routes`, `lint`, `prelint`,
+`guard:public-reference-site-routes`, `inventory:refresh`, `landing:merge`, `lint`, `prelint`,
 `oss:published-tree`, `packages:check`, `release:bump`, `pretest`, `test`, and `test:scoped`.
 This reclassifies the complete current root script inventory; all commands are
 public, with `test:scoped` as the local wrapper around the unchanged `test` command.
@@ -1341,7 +1341,7 @@ that required CI and the change's own review would miss.
    blocking finding explicitly and return to PASS when review succeeds.
 8. **When main moves.** With no conflict, do nothing: the review carries over and
    does not expire. On a conflict, merge `origin/main`, resolve it and review only
-   the resolution. Post a receipt for the resulting head. Never force-push or
+   the resolution; verified derived carriers retain coverage as described below. Post a receipt for the resulting head. Never force-push or
    rebase a reviewed candidate.
 
 For a repository whose `origin` tracks OpenLup, ordinary worktree setup is:
@@ -1354,6 +1354,48 @@ cd ../openlup-my-change
 
 In a fork, use the remote tracking `https://github.com/openlup/openlup.git` for
 fresh main. The review commands use `origin/main` as the local main reference.
+
+### Derived landing carriers
+
+From a clean committed task checkout, refresh the remote reference, then run:
+
+```sh
+git fetch origin main
+npm run landing:merge
+```
+
+The helper merges the exact fetched `origin/main` with DCO sign-off; it never
+rebases or pushes. It stops on an authored conflict, leaving the merge for a
+human or worker. Append-only migration entries are unioned in slot order;
+existing entries cannot be edited and new duplicate slots refuse. Issued
+prefixes retain their original order. The publication catalogue's authored path
+rows retain the existing closed registry union.
+
+Integration proof classifies an exact merge of the reviewed head and a commit
+on `origin/main` as `derived` only for a closed carrier set: migration registry
+unions, the package SQL manifest and selection mirror, publication catalogue,
+generated source map and package agent contexts, and the current installation
+data file. Trusted owner generators run on a temporary prediction, without
+executing candidate tooling or touching the checkout. Output must equal committed
+bytes. Every SQL byte and mode must equal the mechanical merge; other changes
+remain a `resolution` delta with its existing review floor. Size caps and release
+fragments stay reviewed. Generator errors fail closed.
+
+`npm run inventory:refresh` installs all five profiles in disposable local
+PostgreSQL through the production migration runner and catalog projectors. It
+measures complete hashes, counts, ledger tails and the connected handover count,
+and rewrites only `current` in
+[the inventory data](tests/postgres/current-installation-inventory.json).
+Historical pins remain frozen in the proofs or the `historical` section. Proof
+requires the historical section and every byte outside `current` to equal both
+parents and the fork point. CI's complete installation assertions independently
+check the measured data; review proof does not substitute a guessed measurement.
+The canonical manifest's current hashes must match that same data.
+
+A landing containing only these verified carriers needs no resolution review;
+a mixed landing reviews only its remaining delta. Existing `git` and
+`registry-union` evidence keeps its identity and protected-path vetoes are unchanged.
+Stack receipt rules are unchanged.
 
 ### Native review and accountability
 
@@ -1426,8 +1468,8 @@ Existing receipt formats retain their identities; recorded expiry is not enforce
 
 The queue builds and tests the integration tree. A source review carries over
 when its base is on main and the group tree is the reviewed tree or the clean
-`git merge-tree` result on the queue base. A clean registry-carrier union also
-preserves review; only a conflict resolution needs review. The required checks
+`git merge-tree` result on the queue base. A clean registry-carrier union or verified derived landing also
+preserves review; only the remaining resolution needs review. The required checks
 on that tree cover interaction with main.
 
 Before each external write, recheck actual authority, the live head and the

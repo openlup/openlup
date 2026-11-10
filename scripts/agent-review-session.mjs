@@ -9,6 +9,10 @@ import { createHash, randomUUID } from 'node:crypto';
 import { env as processEnvironment } from 'node:process';
 import { ECONOMY_RECEIPT_MARKER, digest, protectedCoveragePath, carryOver, fullReviewReports, demand, integrationReviewContext, prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER, verdict } from './agent-review-decide.mjs';
 import { REGISTRY_PATHS, registryUnion } from './agent-review-registry.mjs';
+import { INVENTORY_PATH, MIGRATION_REGISTRIES, inventoryOnlyCurrent, migrationRegistryUnion } from './agent-review-derived.mjs';
+import { generatedCarrier, runLandingGenerators, withPredictedTree } from './agent-review-generators.mjs';
+import { readFileSync } from 'node:fs';
+import { join as joinPath } from 'node:path';
 
 const execute = promisify(execFile);
 const SHA = /^[a-f0-9]{40}$/u;
@@ -66,6 +70,7 @@ async function integrationParents(cwd, head) {
 }
 // This literal anchors the one-time transition in trusted main's first-parent history.
 const PORTABLE_REVIEW = 'openlup-portable-review-20261103';
+const DERIVED_REVIEW = 'openlup-derived-review-20261110';
 const SESSION_PATH = 'scripts/agent-review-session.mjs';
 
 // Review evidence binds to the candidate's own change: a clean merge onto a later base keeps it.
@@ -91,7 +96,7 @@ export async function captureReviewRules(cwd, candidate, runGit = git) {
   };
   return { version: 3, base: await snapshot(candidate.base), head: await snapshot(candidate.head) };
 }
-async function objectInput(cwd, args, input) {
+export async function objectInput(cwd, args, input) {
   return new Promise((resolve, reject) => {
     const child = spawn('/usr/bin/git', ['--no-replace-objects', '-C', cwd, '-c', 'core.fsmonitor=false', ...args],
       { env: { ...processEnvironment, PATH: '/usr/bin:/bin' }, stdio: ['pipe', 'pipe', 'pipe'] });
@@ -102,7 +107,7 @@ async function objectInput(cwd, args, input) {
     child.stdin.end(input);
   });
 }
-async function replaceTreeBlobs(cwd, tree, replacements) {
+export async function replaceTreeBlobs(cwd, tree, replacements) {
   const rows = (await git(cwd, 'ls-tree', '-z', tree)).split('\0').filter(Boolean);
   const output = [];
   for (const row of rows) {
@@ -116,7 +121,7 @@ async function replaceTreeBlobs(cwd, tree, replacements) {
   demand([...replacements.keys()].every(path => rows.some(row => path === row.slice(row.indexOf('\t') + 1) || path.startsWith(row.slice(row.indexOf('\t') + 1) + '/'))), 'registry absent from merge tree');
   return objectInput(cwd, ['mktree', '-z'], output.join(''));
 }
-export async function proveReviewIntegration(cwd, previous, current, portable = false) {
+export async function proveReviewIntegration(cwd, previous, current, portable = false, { legacy = false } = {}) {
   const parents = await integrationParents(cwd, current.head);
   demand(parents.length === 2 && parents[0] === previous.head && parents[1] === current.base, 'integration parents differ');
   demand(await ancestor(git, cwd, previous.base, current.base), 'integration base ancestry differs');
@@ -147,16 +152,63 @@ export async function proveReviewIntegration(cwd, previous, current, portable = 
     if ((await git(cwd, 'ls-tree', current.tree, '--', path)).trim() !== `100644 blob ${blob}\t${path}`) replacements.delete(path);
   }
   if (replacements.size) prediction = await replaceTreeBlobs(cwd, prediction, replacements);
-  // A clean or registry-union merge needs no review. Every other difference from
-  // that mechanical result, including edits outside the conflicts, is the
-  // resolution and is reviewed as its delta. A conflict left unresolved refuses.
+  const oldPrediction = prediction;
+  const exactParents = (await git(cwd, 'show', '-s', '--format=%P', current.head)).trim().split(' ');
+  const onMain = await ancestor(git, cwd, current.base, 'origin/main');
+  let derived = false;
+  // Preserve historical receipt identities; derived proof is selected only by
+  // trusted main after this machinery lands. Errors retain the old resolution.
+  if (!legacy && exactParents.length === 2 && exactParents[0] === previous.head && exactParents[1] === current.base && onMain) {
+    try {
+      const read = async (revision, path) => {
+        demand((await git(cwd, 'ls-tree', revision, '--', path)).trim().startsWith('100644 blob '), 'derived carrier mode differs');
+        return git(cwd, 'show', `${revision}:${path}`);
+      };
+      const inventories = await Promise.all([previous.base, previous.head, current.base, current.tree].map(revision => read(revision, INVENTORY_PATH)));
+      const currentOnly = inventoryOnlyCurrent(...inventories);
+      const inventorySame = inventories.every(source => source === inventories[0]);
+      demand(currentOnly || inventorySame, 'historical inventory or envelope differs');
+      const derivedBlobs = new Map();
+      if (currentOnly) derivedBlobs.set(INVENTORY_PATH, await objectInput(cwd, ['hash-object', '-w', '--stdin'], inventories[3]));
+      for (const path of MIGRATION_REGISTRIES) {
+        const inputs = await Promise.all([previous.base, previous.head, current.base].map(revision => read(revision, path)));
+        const union = migrationRegistryUnion(path, ...inputs, inventories[3]);
+        demand(union === await read(current.tree, path), 'registry union differs');
+        derivedBlobs.set(path, await objectInput(cwd, ['hash-object', '-w', '--stdin'], union));
+      }
+      // Authored catalogue rows still come only from the existing closed union.
+      // Its generated command inventory may then be reproduced by the owner.
+      const catalogue = REGISTRY_PATHS[0];
+      if (conflicts.includes(catalogue) && !replacements.has(catalogue)) {
+        const inputs = await Promise.all([previous.base, previous.head, current.base].map(revision => read(revision, catalogue)));
+        derivedBlobs.set(catalogue, await objectInput(cwd, ['hash-object', '-w', '--stdin'], registryUnion(catalogue, ...inputs)));
+      }
+      let predicted = await replaceTreeBlobs(cwd, prediction, derivedBlobs);
+      const delta = await captureCommittedReviewCandidate(cwd, predicted, current.tree);
+      // SQL and modes always retain their mechanical result, including mirrors.
+      const carrierPaths = [...new Set([...delta.changedPaths.filter(path => generatedCarrier(path) && !path.endsWith('.sql')), ...(derivedBlobs.has(REGISTRY_PATHS[0]) ? [REGISTRY_PATHS[0]] : [])])];
+      if (carrierPaths.length) {
+        const outputs = withPredictedTree(cwd, predicted, (root, paths) => {
+          runLandingGenerators(root, paths);
+          return carrierPaths.map(path => [path, readFileSync(joinPath(root, path), 'utf8')]);
+        });
+        for (const [path, output] of outputs) {
+          demand(output === await read(current.tree, path), 'generated bytes differ');
+          derivedBlobs.set(path, await objectInput(cwd, ['hash-object', '-w', '--stdin'], output));
+        }
+        predicted = await replaceTreeBlobs(cwd, prediction, derivedBlobs);
+      }
+      derived = predicted !== prediction; prediction = predicted;
+    } catch { prediction = oldPrediction; }
+  }
   const delta = await captureCommittedReviewCandidate(cwd, prediction, current.tree);
-  demand(conflicts.every(path => replacements.has(path) || delta.changedPaths.includes(path)), 'integration commits a conflict without resolving it');
+  demand(conflicts.every(path => replacements.has(path) || delta.changedPaths.includes(path) || (derived && (MIGRATION_REGISTRIES.includes(path) || path === INVENTORY_PATH || generatedCarrier(path)))), 'integration commits a conflict without resolving it');
   const resolution = delta.changedPaths; const modeChanged = delta.modeChanged;
-  const kind = resolution.length ? 'resolution' : conflicts.length ? 'registry-union' : 'git';
-  return { kind: portable ? 'portable-' + kind : kind, tree: current.tree, own, moved, ...(resolution.length ? { resolution, prediction, modeChanged } : {}) };
+  const kind = resolution.length ? 'resolution' : derived ? 'derived' : conflicts.length ? 'registry-union' : 'git';
+  return { kind: portable ? 'portable-' + kind : kind, tree: current.tree, own, moved, ...(derived ? { derived: true } : {}), ...(resolution.length ? { resolution, prediction, modeChanged } : {}) };
 }
-export async function captureCoverageEdge(cwd, session, observed, now, historicalKind, { abbreviatedIndex = false } = {}) {
+
+export async function captureCoverageEdge(cwd, session, observed, now, historicalKind, { abbreviatedIndex = false, allowDerived = historicalKind === undefined } = {}) {
   if (!session || !observed.rules ||
     digest(observed.intent) !== digest(session.history.findLast(event => event.type === 'prepare').intent) ||
     observed.authorSessionId !== session.history.findLast(event => event.type === 'prepare').authorSessionId) return undefined;
@@ -175,7 +227,9 @@ export async function captureCoverageEdge(cwd, session, observed, now, historica
       // selector after the rollout, even when historical fingerprints match.
       // A session from before the version-3 rules can inherit only through the portable proof.
       if ((historicalKind && historicalKind.startsWith('portable-') !== portable) || (!portable && session.candidate.rules?.version !== 3)) return undefined;
-      proof = await proveReviewIntegration(cwd, session.candidate, observed, portable);
+      const derivedEnabled = source.includes(`const DERIVED_REVIEW = '${DERIVED_REVIEW}';`);
+      const historicalLegacy = !allowDerived && historicalKind && !['derived', 'portable-derived'].includes(historicalKind);
+      proof = await proveReviewIntegration(cwd, session.candidate, observed, portable, { legacy: !derivedEnabled || historicalLegacy });
       if (proof.prediction) { from = proof.prediction; to = observed.tree; }
     } catch { return undefined; }
   } else {
@@ -208,9 +262,9 @@ export async function validateEconomySession(cwd, session, runGit = git) {
         const before = { ...session, version, candidate: prior.candidate, history: prefix, preparedAt: prior.at };
         const observed = { ...actual, rules, intent: event.intent, authorSessionId: event.authorSessionId };
         const recorded = digest(event.candidate.coverage); const kind = event.candidate.coverage.proof?.kind;
-        const edge = await captureCoverageEdge(cwd, before, observed, event.at, kind);
+        const edge = await captureCoverageEdge(cwd, before, observed, event.at, kind, { allowDerived: event.candidate.coverage.proof?.derived === true });
         // An edge recorded before full-index digests replays through the abbreviated diff it was recorded with.
-        const legacy = edge && digest(edge) !== recorded ? await captureCoverageEdge(cwd, before, observed, event.at, kind, { abbreviatedIndex: true }) : undefined;
+        const legacy = edge && digest(edge) !== recorded ? await captureCoverageEdge(cwd, before, observed, event.at, kind, { abbreviatedIndex: true, allowDerived: event.candidate.coverage.proof?.derived === true }) : undefined;
         demand(edge && (digest(edge) === recorded || (legacy && digest(legacy) === recorded)), 'recorded coverage proof differs');
       }
     }

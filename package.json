@@ -50,7 +50,9 @@
     "release:bump": "node --experimental-strip-types scripts/packages/release-bump.ts",
     "pretest": "npm --workspace @openlup/core run build && npm --workspace @openlup/outbox run build && npm --workspace @openlup/platform run build",
     "test": "node scripts/run-vitest.mjs run",
-    "test:scoped": "scope_file=$(mktemp) && trap 'rm -f \"$scope_file\"' EXIT && export OPENLUP_VITEST_EXCLUDE_FILE=\"$scope_file\" && node scripts/ci-test-scope.mjs && npm test"
+    "test:scoped": "scope_file=$(mktemp) && trap 'rm -f \"$scope_file\"' EXIT && export OPENLUP_VITEST_EXCLUDE_FILE=\"$scope_file\" && node scripts/ci-test-scope.mjs && npm test",
+    "inventory:refresh": "node --import tsx scripts/installation-inventory-refresh.ts",
+    "landing:merge": "node scripts/agent-review-landing.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.5.7",

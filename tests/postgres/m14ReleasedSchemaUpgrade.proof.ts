@@ -1,3 +1,4 @@
+import installationInventory from "./current-installation-inventory.json" with { type: "json" };
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -57,7 +58,7 @@ export async function runReleasedSchemaUpgradeProof(input: { database?: PoolConf
     "qualified-admin", { roleMode: input.installation.roleMode }) : manifest;
   const selectedUnits = [selected.baseline, ...selected.forward];
   const units = selectedUnits;
-  assert.equal(units.length, input.installation ? 123 : 119);
+  assert.equal(units.length, installationInventory.current.profiles[input.installation ? "admin-managed" : "legacy"].count);
   const releasedUnits = units.findIndex(unit => unit.file === backfillPath);
   // The frozen released-prefix SHA below stays fixed; every later suffix comes from the selected plan.
   assert.ok(releasedUnits > 0);
