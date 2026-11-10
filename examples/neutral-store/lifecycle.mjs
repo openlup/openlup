@@ -4,6 +4,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { applicationHealthcheck } from './host/healthcheck.ts';
+import { browserJourneyGroups } from './browser-groups.mjs';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const [command, ...args] = process.argv.slice(2);
@@ -169,13 +170,7 @@ if (command === 'candidate') {
 /** Disposable installed-PostgreSQL recipe; never a production or customer database. */
 async function databaseBrowserRecipe(argv) {
   if (argv.length === 0) {
-    // Independent installations keep each public journey group within unchanged host attempt quotas.
-    // Each selected test still runs once with one worker; no quota or refusal is bypassed.
-    for (const selection of [
-      ['browser/acquisition.spec.ts', '--grep', 'database subscription care', '--grep-invert', 'portal '],
-      ['browser/acquisition.spec.ts', '--grep', 'portal '],
-      ['--grep-invert', 'database subscription care'],
-    ]) await databaseBrowserRecipe(selection);
+    for (const selection of browserJourneyGroups) await databaseBrowserRecipe(selection);
     return;
   }
   const { spawn } = await import('node:child_process');
