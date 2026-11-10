@@ -1,14 +1,14 @@
-import { CheckoutRecoveryPayError, type CheckoutRecoveryPayService } from './checkoutRecoveryPay.js';
+import { CheckoutRecoveryPayError } from './checkoutRecoveryPay.js';
 import type { NativeCheckoutRecoveryOrder } from './checkoutRecoveryInspection.js';
 
 export interface CheckoutRecoveryMethodHold { kind: string; method: string; createdAt: string }
 /** Host policy supplies method classification, offered methods, hold storage and first-purchase evidence. */
-export function withCheckoutRecoveryPaymentHold<Method>(service: CheckoutRecoveryPayService<Method>, deps: {
+export function withCheckoutRecoveryPaymentHold<Input extends { order: NativeCheckoutRecoveryOrder; method: unknown }, Result>(service: { pay(input: Input): Promise<Result> }, deps: {
   readHolds(): Promise<readonly CheckoutRecoveryMethodHold[]>;
-  classify(input: { order: NativeCheckoutRecoveryOrder; method: Method }): { kind: string; method: string } | null;
+  classify(input: Pick<Input, 'order' | 'method'>): { kind: string; method: string } | null;
   offeredMethods(kind: string): ReadonlySet<string>;
   isFirstPurchase?(order: NativeCheckoutRecoveryOrder): Promise<boolean | null>;
-}): CheckoutRecoveryPayService<Method> {
+}): { pay(input: Input): Promise<Result> } {
   return { async pay(input) {
     const { order } = input;
     if (order.subscriptionCycleId !== null || order.recreatedFromOrderId || (order.recoveryRootOrderId && order.recoveryRootOrderId !== order.orderId)) return service.pay(input);

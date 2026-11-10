@@ -7691,7 +7691,6 @@ export declare function createCheckoutRecoveryTokenPay<Method>(deps: {
 ## dist/commerce/server/checkoutRecoveryPaymentHold.d.ts
 
 ```ts
-import { type CheckoutRecoveryPayService } from './checkoutRecoveryPay.js';
 import type { NativeCheckoutRecoveryOrder } from './checkoutRecoveryInspection.js';
 export interface CheckoutRecoveryMethodHold {
     kind: string;
@@ -7699,18 +7698,22 @@ export interface CheckoutRecoveryMethodHold {
     createdAt: string;
 }
 /** Host policy supplies method classification, offered methods, hold storage and first-purchase evidence. */
-export declare function withCheckoutRecoveryPaymentHold<Method>(service: CheckoutRecoveryPayService<Method>, deps: {
+export declare function withCheckoutRecoveryPaymentHold<Input extends {
+    order: NativeCheckoutRecoveryOrder;
+    method: unknown;
+}, Result>(service: {
+    pay(input: Input): Promise<Result>;
+}, deps: {
     readHolds(): Promise<readonly CheckoutRecoveryMethodHold[]>;
-    classify(input: {
-        order: NativeCheckoutRecoveryOrder;
-        method: Method;
-    }): {
+    classify(input: Pick<Input, 'order' | 'method'>): {
         kind: string;
         method: string;
     } | null;
     offeredMethods(kind: string): ReadonlySet<string>;
     isFirstPurchase?(order: NativeCheckoutRecoveryOrder): Promise<boolean | null>;
-}): CheckoutRecoveryPayService<Method>;
+}): {
+    pay(input: Input): Promise<Result>;
+};
 ```
 ## dist/commerce/server/checkoutRecoveryToken.d.ts
 

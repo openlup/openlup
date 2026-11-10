@@ -57,3 +57,10 @@ it('allows unknown/read failures and previously live subscriptions, but holds a 
  expect(await held({subscriptionId:'live',mode:'subscription_cycle'},{first:false}).run()).toEqual(result);
  await expect(held(initial,{first:true}).run()).rejects.toMatchObject({code:'payment_method_withheld'});
 });
+
+it('reuses the hold wrapper for cookie-only inputs without token authority',async()=>{
+ const pay=vi.fn(async(input:{order:NativeCheckoutRecoveryOrder;method:string;continuation:string})=>({continuation:input.continuation}));
+ const guarded=withCheckoutRecoveryPaymentHold({pay},{readHolds:async()=>[],classify:()=>null,offeredMethods:()=>new Set<string>()});
+ const inline={order,method:'primary',continuation:'verified-cookie'};
+ expect(await guarded.pay(inline)).toEqual({continuation:'verified-cookie'});expect(pay).toHaveBeenCalledExactlyOnceWith(inline);
+});
