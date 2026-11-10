@@ -958,17 +958,17 @@
   },
   "pack": {
     "code": {
-      "maxPackedBytes": 2409255,
+      "maxPackedBytes": 2462162,
       "maxFiles": 4117
     },
     "docs": {
       "maxPackedBytes": 86252,
       "maxFiles": 10
     },
-    "maxPackedBytes": 2962854,
+    "maxPackedBytes": 3033152,
     "maxUnpackedBytes": 14408428,
-    "maxFiles": 4252,
-    "capReason": "Measured saved-address package contents use 2% headroom where they cross the main budget; other caps and the released baseline are retained.",
+    "maxFiles": 4344,
+    "capReason": "Billing profile storage, frozen invoice buyer inputs and additive contracts use 2% headroom for crossed packed/code/file caps; other caps and the released baseline are retained.",
     "baseline": {
       "version": "0.37.0",
       "packedBytes": 2791358

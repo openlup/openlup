@@ -3660,3 +3660,48 @@ time after blocking writes and roll back elapsed issuance. The additive buyer
 delivery gate leaves automatic and operator authorizers unchanged. See the
 [entry-point recipe](PLATFORM_PACKAGE_REFERENCE.md#customer-checkout-recovery-entry-points)
 for the host authority boundary and configured deadlines.
+
+## Customer billing profile and invoice buyer data
+
+`20261110260000_customer_billing_profiles.sql` adds private
+`customer_orderer_profiles`: client cascade, contact/company/tax fields,
+verification provenance, source, timestamps, length/enum checks, client/update
+index and one-default-per-client partial uniqueness. It is `block` classified
+with the exact service-role client-ID census exception. Customer CRUD/default
+routines recheck the native principal/client pair. No raw profile grant exists.
+Defaults, writes and account-event appends retain separate-commit failures and
+stored-but-not-deduplicated request identifiers.
+
+The simplicity pre-check rejects reusing the existing full-facts installer as
+the request freeze point: request and installation are separate native calls.
+An explicitly selected billing invoice-store factory therefore uses the owned
+`customer_billing_capture_invoice` transaction, which delegates existing invoice
+request ownership and freezes one `invoicing_buyer_snapshots` row per duty.
+Selection is order facts, then default/latest profile and billing/both address,
+then marked shipping fallback. Paid capture uses the order destination; handoff
+capture uses the owned parcel destination. Later full fiscal composition reads
+the component; the selected installer checks its retained fields before calling
+the existing immutable full-facts owner. Generic unselected invoice capture is
+unchanged. Historical installed facts receive no component backfill. The public
+buyer contract adds optional fields only, and provider projection carries line2
+and provenance without flattening or fabrication. No existing SQL function,
+trigger, grant or fiscal policy is replaced.
+
+Contact/tax/company/verification/source values, linked events and frozen buyers
+are personal data. The explicit `customer-billing` contributor exports both
+new tables, erases subject profiles through an owned routine after preparing
+relation locks, and retains frozen buyers under the existing rule:
+[Invoices are retained outside identity](IDENTITY.md#identity-personal-data),
+with document export, retention and processor handling supplied by invoicing.
+There is no default statutory duration or new erasure claim for financial facts.
+Identity field clearing and client cascade are insufficient coverage; account
+event retention remains separately owned. Other subjects remain unchanged.
+
+Finite native capture classifies both new tables as owned rows, outside the
+smaller compatible-row utility. Qualified restore inserts profiles after clients
+and components after invoice duties, with exact row/replay witnesses. Legacy
+is capture-only. Unsupported nonempty managed-source profile relations refuse
+rather than disappear. No restore applies profile defaults, rewrites invoices,
+performs fiscal/provider work or activates a target. See the
+[package recipe](../../packages/platform/README.md#customer-billing-profiles-and-frozen-invoice-buyers)
+for explicit ports, handler binding and the required privacy contributor.

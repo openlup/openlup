@@ -71,3 +71,4 @@ export * from "./contracts/oidc.js";
 export { createFulfillmentParcelContactPrivacyContributor } from './parcelContactPrivacy.js';
 
 export { createCustomerSavedAddressPrivacyContributor } from "./savedAddressPrivacy.js";
+export { createCustomerBillingPrivacyContributor } from './billingProfilePrivacy.js';

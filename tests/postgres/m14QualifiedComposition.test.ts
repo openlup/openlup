@@ -11,10 +11,10 @@ import {
 
 const exec = promisify(execFile);
 // Frozen 92-unit issued-prefix measurements remain independent expectations.
-// The current complete 123-unit installation also includes lifecycle closure and notice production after the shared suffix and completion tail.
+// The current complete 124-unit installation also includes lifecycle closure and notice production after the shared suffix and completion tail.
 const shapes = [
-  { name: "bootstrap-restore", currentSha256: "37dfc937fa3e2804e001c7ad8f29262e18831869bd212c97f45a08cd7934c7ef", separate: false, sha256: "c4f6bb9daa5882877149a78e13d07594b7e8653c3a3ba39f508477b072548f9b" },
-  { name: "separate-restore", currentSha256: "80344520627537d88c3ed49f2fa42fe8122ab9c7af2faeece9f31736470b5181", separate: true, sha256: "624cc57789e3aaf36d0b61bdad420fc4eb0b63c2a7eb09358e5c18240ec13f82" },
+  { name: "bootstrap-restore", currentSha256: "0ca2f8f832b59457ad2a55e4a2e97c983510ed5747b04e57dcf4427623dc7154", separate: false, sha256: "c4f6bb9daa5882877149a78e13d07594b7e8653c3a3ba39f508477b072548f9b" },
+  { name: "separate-restore", currentSha256: "eb57ef9fbb1d54e32ba772b3b014d4e4016d66f533be0a68ff8e709a6e1f6feb", separate: true, sha256: "624cc57789e3aaf36d0b61bdad420fc4eb0b63c2a7eb09358e5c18240ec13f82" },
 ] as const;
 const profiles = [
   { name: "reference", roleMode: "installer-managed", prefix: "q2_reference" },
@@ -55,7 +55,7 @@ for (const profile of profiles) for (const shape of shapes) {
         migrationIsBootstrap: !shape.separate, hasRestore: true,
       });
       const count = 1 + current.forward.length;
-      expect(count).toBe(123);
+      expect(count).toBe(124);
       expect(current.objectInventorySha256).toBe(shape.currentSha256);
       expect(result).toMatchObject({
         inventorySha256: shape.currentSha256, issuedInventorySha256: shape.sha256, issuedLedgerRows: 92,

@@ -2371,3 +2371,70 @@ restores addresses after clients and before subscription pointers, and replays
 without rewriting them. The smaller compatible-row copier remains a separate
 closed profile. Delivery/payment preferences, checkout hints, billing profiles,
 subscription saved-ID commands and browser journeys are later capabilities.
+
+### Customer billing profiles and frozen invoice buyers
+
+Install the complete native catalogue through
+`20261110260000_customer_billing_profiles.sql`. Select
+`createPostgresCustomerBillingProfilePort`, `createCustomerBillingProfileSchemas`
+and `createCustomerBillingProfilesHandler` from `@openlup/platform/account-support`;
+browser request/response/port types live in `account-support/contracts`.
+Bind a host-authenticated principal/client pair, a structural query executor,
+clock and tax normalization/validation policy. The fixed field limits and
+10-digit weighted checksum cannot be widened by that policy. The handler
+supports GET/POST/PATCH/DELETE, uses the authenticated identity, validates strict
+requests/responses and takes host messages and a structural responder. It mounts
+no routes and requires no PostgreSQL driver types in consumer signatures.
+
+Default clear, profile write and account-event append are separate calls and
+commits. A failed write can leave previous defaults cleared; a failed append can
+leave the profile write committed. Repeated request identifiers are stored in
+events and execute again. An owned-ID update refuses a missing/foreign row;
+a delete of a missing/foreign ID acknowledges zero rows and records its event.
+Verification level/source/evidence supplied by the customer is retained as data;
+no registry verification workflow is performed.
+
+For invoices that select these profiles, explicitly bind
+`createPostgresBillingInvoiceStore` from `@openlup/platform/invoicing` instead of
+the generic invoice store. The simplicity pre-check found that full fiscal-fact
+installation is a separate call after invoice request. The selected request
+wrapper therefore freezes ONE buyer component atomically with the existing
+invoice-request transaction. `readCapturedBuyer(orderId)` supplies that immutable
+component for subsequent host fiscal composition; the selected installer refuses
+facts that contradict it. It preserves order buyer facts first, then the default
+or latest owned profile/billing-or-both address, then the marked shipping fallback.
+Handoff requests read the owned parcel destination; paid requests read the order.
+There is no second full invoice ledger, provider executor or scheduler.
+
+`InvoiceBuyer` adds only optional `line2`, raw identifier and provenance fields,
+so historical facts and existing typed consumers remain valid. Provider
+projection preserves the second address line, source flags and profile/address
+references when present; it adds no fields to historical input that lacks them.
+The host still owns identifier normalization, fiscal kind, clearance, money,
+lines and seller policy. A full-fact revision is immutable. Profile edits after
+buyer capture cannot change an existing request, issued artifact or replay;
+a later invoice request sees the new profile. Existing historical installed
+facts without a buyer component remain unchanged. This is no fiscal provider
+qualification, invoice rewrite or automatic checkout application: checkout hints
+remain explicitly unapplied. Starter billing pages belong to a later binding.
+
+Profiles (contact, tax/company identity, verification provenance and source),
+events and frozen buyers are personal data. Register
+`createCustomerBillingPrivacyContributor` from `@openlup/platform/identity` and
+require contributor ID `customer-billing`. It exports exact profile/component
+rows, erases only the subject's editable profiles, and reports frozen buyers as
+retained under the invoicing owner's document-retention rule. Invoices remain
+outside identity erasure; their owner supplies retention/processor handling,
+without a default duration. Compose the identity/subscription vetoes and the
+separate account-event retention contributor. Client-field clearing or cascade
+does not cover these new rows.
+
+Both new tables have closed owner access through routines; only service_role
+receives routine EXECUTE. Profile rows are `block` classified for lead absorption,
+with only client-ID census SELECT/policy. Browser roles have no table or routine
+access. Finite native capture/qualified restore carries exact profiles and buyer
+components, restores the latter after invoice duties, and replays without
+rewriting them. Legacy installations are capture sources. The smaller compatible
+row utility is unchanged; managed-source nonempty profiles without a typed path
+refuse explicitly. No credentials or target activation are transferred. See the
+[data owner](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#customer-billing-profile-and-invoice-buyer-data).

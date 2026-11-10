@@ -234,7 +234,7 @@ const order = [
   "platform_human_principals", "platform_control_operators", "commerce_operators", "clients",
   "platform_human_memberships", "platform_human_membership_audit_events", "platform_communication_operators",
   "identity_operator_invitations", "identity_operator_invitation_events", "identity_privacy_erasures",
-  "customer_subject_lifecycle_events", "customer_communication_preferences", "customer_communication_preference_events", "customer_account_events", "customer_saved_addresses",
+  "customer_subject_lifecycle_events", "customer_communication_preferences", "customer_communication_preference_events", "customer_account_events", "customer_saved_addresses", "customer_orderer_profiles",
   "platform_operational_controls", "platform_control_operations", "platform_alerts", "platform_alert_notifications", "platform_job_runs",
   "catalog_products", "catalog_product_document_revisions", "catalog_skus", "catalog_sku_identifiers",
   "price_lists", "subscription_price_policy_revisions", "price_entries", "commerce_promotion_definitions",
@@ -266,7 +266,7 @@ const order = [
   "subscription_retry_recovery_authorizations", "subscription_stock_wait_cases",
   "subscriber_profiles", "subscriber_review_access_grants", "subscriber_retention_intents", "commerce_order_reviews", "commerce_order_review_media",
   "commerce_order_review_command_receipts", "commerce_order_review_audit", "invoicing_cutover", "invoicing_duties", "invoicing_seller_revisions",
-  "invoicing_fact_revisions", "invoicing_effect_receipts", "invoicing_capture_faults", "invoicing_document_observations", "invoicing_delivery_receipts",
+  "invoicing_buyer_snapshots", "invoicing_fact_revisions", "invoicing_effect_receipts", "invoicing_capture_faults", "invoicing_document_observations", "invoicing_delivery_receipts",
 ] as const satisfies readonly TableName[];
 
 /**

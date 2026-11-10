@@ -1179,6 +1179,16 @@ view. Complete consent grants/choices await their separate change; a saved flag
 is not effective consent. See the [bounded task record](plans/oss-m19-g11.md)
 for proof and the remaining delivery boundary.
 
+For billing profiles, the existing `account-support` entry adds the owned
+PostgreSQL port, strict schema factory and GET/POST/PATCH/DELETE handler factory.
+Browser-shareable request/response/port types remain in `account-support/contracts`.
+The host binds authentication, a principal/client pair, clock, tax policy and
+messages; there is no automatic route or checkout application. Default clearing,
+writing and event append keep their separate failure boundaries, and repeated
+request identifiers execute again. The
+[billing recipe](../../packages/platform/README.md#customer-billing-profiles-and-frozen-invoice-buyers)
+also names the selected invoice freeze point and privacy contributor.
+
 Import types from `@openlup/platform/account-support/contracts`. The five envelopes
 are `AccountReadPort`, `Customer360ReadPort`, `SelfServiceCommandFacade`,
 `OperatorRecoveryCommandEnvelope` and `InvoiceAccessPort`.
