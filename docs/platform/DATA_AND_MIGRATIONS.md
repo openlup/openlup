@@ -1642,9 +1642,15 @@ Any slot may also list exact complete ALTER TABLE texts in
 plain ALTER TABLE; IF EXISTS is refused. The closed actions are ADD COLUMN, named ADD CONSTRAINT
 under the existing expression checks, ALTER COLUMN DROP NOT NULL, and VALIDATE
 CONSTRAINT. The restricted FOREIGN KEY ... ON DELETE RESTRICT NOT VALID form
-preserves the issued purchase-reservation companions. Other drops, column type
-changes, renames and ownership changes refuse even when listed. Every listed
-statement must appear once in order, with internal bytes unchanged; an unlisted
+preserves the issued purchase-reservation companions. A listed named single-column
+FOREIGN KEY may also use ON DELETE SET NULL or CASCADE, with optional NOT VALID,
+only after the same ordered list adds that column (including an ADD COLUMN and
+named constraint companion in one ALTER). The catalogue proves the column did
+not exist before the slot, the exact referenced table/key, delete action and
+validation state, with prior columns, constraints and ACLs unchanged.
+SET NULL/CASCADE on pre-existing columns and dropped or rewritten foreign keys
+remain refused. Other drops, column type changes, renames and ownership changes
+refuse even when listed. Every listed statement must appear once in order, with internal bytes unchanged; an unlisted
 existing-table ALTER cannot fall through to generic ADD admission when the list
 is active. The issued three purchase-reservation texts remain unchanged data.
 
@@ -1698,8 +1704,10 @@ existing guarded role revokes are allowed. Every GRANT on a created view refuses
 Views gain no RLS or table-grant capability. The real catalog checks the declared
 new view inventory, ownership and owner-only privileges.
 
-`createdTriggers` entries name a fresh trigger, an existing prefix table and the
-exact CREATE TRIGGER statement hash. Only BEFORE/AFTER INSERT, DELETE or UPDATE
+`createdTriggers` entries name a fresh trigger, a qualified target table and the
+exact CREATE TRIGGER statement hash. The target must exist in the prefix or be
+created by an earlier plain CREATE TABLE in this same slot, owned by the migrator.
+Only BEFORE/AFTER INSERT, DELETE or UPDATE
 (with an optional OF column list), combined with OR, FOR EACH ROW and a
 zero-argument public function are admitted. That function must be created in the
 same slot, explicitly return trigger with SECURITY INVOKER and a pinned search
@@ -1707,7 +1715,8 @@ path, revoke PUBLIC and receive no EXECUTE grant. Conditional revokes remain
 allowed. WHEN, transition relations, constraint/statement/instead-of triggers,
 trigger mutation and unlisted or drifted statements refuse. Creation stays plain:
 OR REPLACE and conditional existence forms refuse. PostgreSQL rejects duplicate
-triggers and missing targets; the catalog witness checks prefix-table membership,
+triggers and missing targets; the catalog witness proves prefix membership or
+earlier same-slot table creation and ownership,
 name freshness, enabled binding, events and owner-only function ACL.
 
 The destination slot registers four created function signatures and pinned
@@ -1719,8 +1728,12 @@ duties. Synthetic shape acceptance establishes no implemented destination API.
 
 Each created function must revoke all PUBLIC privileges before its grants and
 conditional blocks. SECURITY DEFINER requires the slot's exact pinned
-`search_path`, such as `pg_catalog, pg_temp`. Grant-only signatures must exist in
-the pre-class native prefix and be disjoint from the replaced/created lists.
+`search_path`, such as `pg_catalog, pg_temp`. A replacement may preserve a legacy
+compact `SET search_path=pg_catalog` header: extraction normalizes the assignment
+for its schema-list pin only; the header itself must remain byte-for-byte equal.
+New functions retain their existing spaced spelling, and no other SET grammar,
+schema-token or catalogue proconfig check changes. Grant-only signatures must
+exist in the pre-class native prefix and be disjoint from the replaced/created lists.
 They cannot be redefined or named by a direct privilege statement. Only their
 pinned conditional role/verb capabilities are admitted, without demanding a new
 PUBLIC revoke. A block naming created functions still requires their revokes;
