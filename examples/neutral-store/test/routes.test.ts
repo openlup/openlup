@@ -34,7 +34,7 @@ test('malformed path encoding is an unknown page, never an exception', () => {
 
 test('both locales supply every copy key and every named-limit action', () => {
   assert.deepEqual(Object.keys(copy.en).sort(), Object.keys(copy.pl).sort());
-  assert.equal(nativeLimits.length, 20);
+  assert.equal(nativeLimits.length, 22);
   for (const limit of nativeLimits) {
     assert.ok(limit.code.trim());
     for (const action of limit.actions) {
@@ -79,6 +79,13 @@ test('the message intake destination opens the operator partner panel; support i
   assert.deepEqual(messageDestinations.find(item => item.id === 'T07-13'),
     { id: 'T07-13', route: 'support' });
   for (const path of ['/inquiry', '/zapytanie']) assert.equal(resolveRoute(path).key, 'notFound');
-  assert.equal(operations.length, 51);
+  assert.equal(operations.length, 53);
   assert.equal(isOperation(['inquiry', 'submit'].join('.')), false);
+});
+
+test('editor routes and named limits distinguish API levers, absent demand policy, acquisition and publication fencing',() => {
+  assert.equal(isOperation('subscription.preview'),true); assert.equal(isOperation('subscription.catalog'),true);
+  assert.equal(nativeLimits.find(limit => limit.id === 'N8')!.code,'starter_subscription_resize_unconfigured');
+  assert.equal(nativeLimits.find(limit => limit.id === 'N11')!.code,'starter_sized_acquisition_unavailable');
+  assert.equal(nativeLimits.find(limit => limit.id === 'N12')!.code,'starter_sized_publication_fence_unavailable');
 });

@@ -26,6 +26,7 @@ import { createCheckoutRecoveryDelivery } from './checkout-recovery.ts';
 import { composePurchaseCapabilities } from './purchase-composition.ts';
 import { composeE4Capabilities } from './e4-composition.ts';
 import { composeExistingCapabilities } from './e-composition.ts';
+import { composeSubscriptionEditors, readEditorSubscriptions } from './subscription-editors.ts';
 
 const nobody = (): VerifiedActor => ({ customerRef: null, operatorRef: null });
 const refused = (code: string) => ({ ok: false as const, code });
@@ -80,7 +81,7 @@ export async function composeNativeBindings(connectionString: string, origin: Or
       const authorization = await operatorAuth.authorize(context.actor.sessionToken ?? '', { allowedRoles: ['admin'] });
       return authorization.ok && authorization.principalId.toLowerCase() === context.actor.operatorRef?.toLowerCase();
     }), ...composePurchaseCapabilities(pool, contacts, undefined, recovery, { ...(quoteAcceptanceKeyring ? { keyring: quoteAcceptanceKeyring } : {}) }),
-    ...composeAuthenticatedRecovery(pool), ...composeOperatorRecovery(pool) };
+    ...composeAuthenticatedRecovery(pool), ...composeOperatorRecovery(pool), ...composeSubscriptionEditors(pool) };
   const asCustomer = <T>(principalId: string, work: (db: PgGatewayClient) => Promise<T>) =>
     gateway.asActor({ role: 'authenticated', sub: principalId }, db => work(db as PgGatewayClient));
   const email = (value: unknown, limit: number): value is string => typeof value === 'string' && value.trim().length <= limit
@@ -94,7 +95,7 @@ export async function composeNativeBindings(connectionString: string, origin: Or
     context.setCookie(sessions.cookie(session.accessToken));
     return success({ expiresAt: session.expiresAt });
   };
-  actions['subscription.command'] = composeSubscriptionCare(pool);
+  actions['subscription.command'] = composeSubscriptionCommands(pool);
   actions['auth.request'] = async (payload, context) => {
     if (!email(payload.email, context.config.purchase.inputLimits.email)) return refused('starter_input_invalid');
     const started = Date.now();
@@ -127,6 +128,7 @@ export async function composeNativeBindings(connectionString: string, origin: Or
     return success({
       ...account,
       renewal: context.actor.customerRef ? await readAccountRenewal(pool, { principalId: principal, clientId: context.actor.customerRef }) : null,
+      subscriptionEditors: await readEditorSubscriptions(pool, context.actor),
       fullProjection: { ok: false, code: 'starter_account_projection_binding_required' },
     });
   };
@@ -193,6 +195,13 @@ export async function composeNativeBindings(connectionString: string, origin: Or
     },
     async close() { sessions.close(); await Promise.all([capabilities.close(), checkoutRecoveryTokenLane.close(), contacts.close(), operators.close(), pool.end()]); },
   };
+}
+
+/** Keep the editor request envelope and lifecycle commands on their existing owners. */
+export function composeSubscriptionCommands(pool: pg.Pool): ActionBinding {
+  const edit = composeSubscriptionEditors(pool)['subscription.command']!;
+  const care = composeSubscriptionCare(pool);
+  return (input, context) => Object.hasOwn(input, 'request') ? edit(input, context) : care(input, context);
 }
 
 /** The session supplies authority; the package owns lifecycle, timing, receipts and all writes. */

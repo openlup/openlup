@@ -953,17 +953,17 @@
   },
   "pack": {
     "code": {
-      "maxPackedBytes": 2336415,
-      "maxFiles": 4027
+      "maxPackedBytes": 2409255,
+      "maxFiles": 4117
     },
     "docs": {
       "maxPackedBytes": 81230,
       "maxFiles": 10
     },
     "maxPackedBytes": 2898683,
-    "maxUnpackedBytes": 13845770,
-    "maxFiles": 4151,
-    "capReason": "Measured merged-tree package: code 2,320,140 bytes and 3,984 files, tarball 2,841,846 bytes, unpacked 13,574,284 bytes, 4,111 files; caps are measured times 1.02, rounded up. Existing larger code and file caps are retained. The docs class measured 78,483 gzip bytes on the 0.37.0 set tree; its existing larger cap is retained. The docs class measured 79,637 gzip bytes on the 0.38.0 set tree (release notes and package guides); its cap is measured times 1.02, rounded up.",
+    "maxUnpackedBytes": 14123067,
+    "maxFiles": 4252,
+    "capReason": "Final code measured 2,362,014 gzip bytes across 4,036 files; total 4,168 files. Larger parent caps retained. Unpacked contents measured 13,846,144 bytes; unpacked cap adds 2% headroom.",
     "baseline": {
       "version": "0.37.0",
       "packedBytes": 2791358

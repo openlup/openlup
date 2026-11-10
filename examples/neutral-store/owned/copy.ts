@@ -1,6 +1,9 @@
 /** Application copy; both locales have exactly the same keys. */
 export const copy = {
   en: {
+    subscriptionResize: 'Demand-driven plan and portion resizing',
+    sizedAcquisition: 'Size-aware acquisition',
+    publicationFence: 'Publication head and membership fence',
     careSkip: "Skip one delivery",
     carePause: "Pause subscription",
     careResume: "Resume subscription",
@@ -355,6 +358,9 @@ export const copy = {
     amount_overflow: "The amount cannot be represented safely.",
   },
   pl: {
+    subscriptionResize: 'Zmiana okresu i proporcji według zapotrzebowania',
+    sizedAcquisition: 'Zakup początkowy z wyborem rozmiarów',
+    publicationFence: 'Kontrola wersji publikacji i przynależności do oferty',
     careSkip: "Pomiń jedną dostawę",
     carePause: "Wstrzymaj subskrypcję",
     careResume: "Wznów subskrypcję",
