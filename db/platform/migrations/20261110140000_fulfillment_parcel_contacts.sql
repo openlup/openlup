@@ -65,12 +65,12 @@ BEGIN
  END LOOP;
  IF jsonb_typeof(p_contact->'selectedDelivery')='object' THEN
   delivery:='{}';
-  FOREACH k IN ARRAY ARRAY['providerKind','carrierKind','carrierCode','serviceCode','service','deliveryKind','kind'] LOOP
+  FOREACH k IN ARRAY ARRAY['providerKind','providerRef','carrierKind','carrierCode','serviceCode','service','deliveryKind','kind'] LOOP
    IF p_contact->'selectedDelivery' ? k THEN delivery:=delivery||jsonb_build_object(k,p_contact#>ARRAY['selectedDelivery',k]); END IF;
   END LOOP;
   IF jsonb_typeof(p_contact#>'{selectedDelivery,pickupPoint}')='object' THEN
    point:='{}'; address:='{}';
-   FOREACH k IN ARRAY ARRAY['id','pointId','name'] LOOP
+   FOREACH k IN ARRAY ARRAY['id','pointId','provider','name'] LOOP
     IF p_contact#>'{selectedDelivery,pickupPoint}' ? k THEN point:=point||jsonb_build_object(k,p_contact#>ARRAY['selectedDelivery','pickupPoint',k]); END IF;
    END LOOP;
    IF jsonb_typeof(p_contact#>'{selectedDelivery,pickupPoint,address}')='object' THEN
@@ -86,13 +86,10 @@ BEGIN
  SELECT * INTO prior FROM public.fulfillment_parcel_contacts WHERE shipment_id=p_shipment_id FOR UPDATE;
  IF FOUND THEN
   IF prior.erased_at IS NOT NULL THEN RETURN jsonb_build_object('erased',true); END IF;
-  IF prior.contact=value THEN RETURN jsonb_build_object('replayed',true); END IF;
-  IF EXISTS(SELECT 1 FROM public.fulfillment_dispatch_refs WHERE shipment_id=p_shipment_id AND status<>'draft') THEN
-   RAISE EXCEPTION 'fulfillment_parcel_contact_frozen' USING ERRCODE='22023'; END IF;
-  UPDATE public.fulfillment_parcel_contacts SET contact=value,captured_at=now() WHERE shipment_id=p_shipment_id;
+  RETURN jsonb_build_object('replayed',true,'contact',prior.contact);
  ELSE INSERT INTO public.fulfillment_parcel_contacts(shipment_id,client_id,contact) VALUES(p_shipment_id,owner_id,value);
  END IF;
- RETURN jsonb_build_object('replayed',false);
+ RETURN jsonb_build_object('replayed',false,'contact',value);
 END; $$;
 
 CREATE FUNCTION public.fulfillment_resolve_parcel_contact(p_shipment_id uuid)

@@ -463,14 +463,14 @@
     },
     {
       "file": "db/platform/migrations/20261110140000_fulfillment_parcel_contacts.sql",
-      "sha256": "865feadd45cecdb386d8fef2594169cffe8814aad4f324e31e997ae5a4d4fd68"
+      "sha256": "0fc163d621b761fbecf7c4993bf4c9a8173bf24a61a12cde22fb7510de731af0"
     },
     {
       "file": "db/platform/migrations/20261110150000_fulfillment_operator_journeys.sql",
       "sha256": "561c7627e73ca6c029db62d995cd1a814a29abc3175796534108f19f3ea2cc64"
     }
   ],
-  "objectInventorySha256": "457cb319e2d84c5befc2a259a119cf6e946e3458a5d6b2cf0f567275dfc1a6fd",
+  "objectInventorySha256": "95965f604c75492cbcc06a0ec0d01b7214aee8ed9b012b169523684ecb8f19e1",
   "qualified": {
     "baseline": {
       "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -955,7 +955,7 @@
       },
       {
         "file": "db/platform/migrations/20261110140000_fulfillment_parcel_contacts.sql",
-        "sha256": "865feadd45cecdb386d8fef2594169cffe8814aad4f324e31e997ae5a4d4fd68"
+        "sha256": "0fc163d621b761fbecf7c4993bf4c9a8173bf24a61a12cde22fb7510de731af0"
       },
       {
         "file": "db/platform/migrations/20261110150000_fulfillment_operator_journeys.sql",
@@ -964,10 +964,10 @@
     ],
     "objectInventorySha256": {
       "bootstrapMigrator": {
-        "withRestore": "67e8540df43a971ce70bc7752b53c08c4419409c0e37f152676980fcdb8b601f"
+        "withRestore": "be22215fd4dac296d768324ee33eb100b1ed031a219d120c9a58e3dd09bee16d"
       },
       "separateMigrator": {
-        "withRestore": "2844ab38973df706e67e648d28a62ac7946ef34d55730077e56f6c3f2fa90fc1"
+        "withRestore": "0b8e30be75b19a6f6d03bcff77147b687ca1900073243e8196ab67055f723d7b"
       }
     }
   },
@@ -1451,7 +1451,7 @@
       },
       {
         "file": "db/platform/migrations/20261110140000_fulfillment_parcel_contacts.sql",
-        "sha256": "865feadd45cecdb386d8fef2594169cffe8814aad4f324e31e997ae5a4d4fd68"
+        "sha256": "0fc163d621b761fbecf7c4993bf4c9a8173bf24a61a12cde22fb7510de731af0"
       },
       {
         "file": "db/platform/migrations/20261110150000_fulfillment_operator_journeys.sql",
@@ -1459,8 +1459,8 @@
       }
     ],
     "objectInventorySha256": {
-      "installerManaged": "83808582e1a6f1450dfb7d728202df55f973396f398e0c2e421e9c3743519263",
-      "operatorProvisioned": "5da21a7bb1d307c40ace74d1148a89e421f06ae5d9995219a6aad39970cc75df"
+      "installerManaged": "45532b7feb51c4cb0a3710569842e48653abb3099d4548752346091701014a1b",
+      "operatorProvisioned": "51ffa0355461ecd981942027ddf5fe3062dbaf09581433672bcaaecf57a64f90"
     }
   }
 }
