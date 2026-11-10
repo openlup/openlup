@@ -1306,6 +1306,18 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261110150000_fulfillment_operator_journeys.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261110155000_fulfillment_parcel_status_fence.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261110160000_oms_human_operator_admission.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/20261110170000_checkout_recovery_inspection.sql",
       "class": "public-output"
     },
@@ -1990,6 +2002,14 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/browser-groups.d.mts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/browser-groups.mjs",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/browser/acquisition.spec.ts",
       "class": "public-output"
     },
@@ -2487,6 +2507,10 @@
     },
     {
       "path": "examples/neutral-store/test/bindings.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/browser-groups.test.ts",
       "class": "public-output"
     },
     {
@@ -4383,6 +4407,18 @@
     },
     {
       "path": "packages/platform/sql/20261110140000_fulfillment_parcel_contacts.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261110150000_fulfillment_operator_journeys.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261110155000_fulfillment_parcel_status_fence.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261110160000_oms_human_operator_admission.sql",
       "class": "public-output"
     },
     {
@@ -6375,6 +6411,10 @@
     },
     {
       "path": "packages/platform/src/fulfillment/native/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/native/operatorMutations.ts",
       "class": "public-output"
     },
     {
@@ -28918,7 +28958,15 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/fulfillmentOperatorJourneys.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/fulfillmentParcelContacts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fulfillmentParcelStatusFence.test.ts",
       "class": "public-output"
     },
     {
@@ -29211,6 +29259,18 @@
     },
     {
       "path": "tests/postgres/omsControlPlaneNative.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/omsHumanAdmission.fixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/omsHumanAdmission.host.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/omsHumanAdmission.test.ts",
       "class": "public-output"
     },
     {

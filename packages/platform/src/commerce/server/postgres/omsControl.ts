@@ -5,6 +5,7 @@ import type {
 import {
   CommerceOmsConflictError,
   CommerceOmsPersistenceError,
+  readOmsReplacementRefusal,
   type CommerceOmsHoldPort,
   type CommerceOmsReadPort,
 } from "../../oms/omsPorts.js";
@@ -20,6 +21,7 @@ type PublicHoldResponse = {
 
 export function createPostgresCommerceOmsPort(
   executor: PgQueryExecutor,
+  replacement?: Pick<CommerceOmsHoldPort, 'requestReplacementShipment'>,
 ): CommerceOmsReadPort & CommerceOmsHoldPort {
   return {
     listOrders: unsupported,
@@ -46,11 +48,18 @@ export function createPostgresCommerceOmsPort(
     },
     addNote: unsupported,
     updateShippingAddress: unsupported,
-    // The replacement command is a managed-only routine: the platform migration
-    // tree carries no `oms_request_replacement_shipment`. The port stays total and
-    // refuses by name here rather than letting this lane silently succeed at
-    // something it never performed.
-    requestReplacementShipment: unsupported,
+    async requestReplacementShipment(request) {
+      if (!replacement) return unsupported();
+      try { return await replacement.requestReplacementShipment(request); }
+      catch (error) {
+        const value = object(error), code = value.code;
+        if (typeof code === 'string' && ['22023','23505','23514','40001','55P03'].includes(code)) {
+          const reason = typeof value.message === 'string' ? readOmsReplacementRefusal(value.message) : null;
+          throw new CommerceOmsConflictError('Commerce OMS replacement refused', { code, reason: reason ?? 'unspecified_refusal' });
+        }
+        throw new CommerceOmsPersistenceError('Commerce OMS replacement failed', { code });
+      }
+    },
     async markRefunded(request): Promise<AdminCommerceOrderMarkRefundedResponse> {
       return transitionResponse(await call(executor, "oms_mark_refunded", {
         p_idempotency_key: request.idempotencyKey,

@@ -5,8 +5,8 @@ import { dockerAvailable, postgresSetupTimeoutMs } from "../helpers/postgresCont
 import { runQualifiedAdminCompositionProof } from "./m14QualifiedAdminComposition.proof.js";
 
 const modes = [
-  { roleMode: "installer-managed", currentInventory: "89d8b0a3be7ac6e1546f886f994f2fe7821c95596136c3ab49bbeee313fe9b6a", inventory: "c94d71fd28d5571cda30307bce4c4b48ebe0a3685c76819d8fa3b3efa8fa9ae7" },
-  { roleMode: "operator-provisioned", currentInventory: "5f92de6bbe7aee109d3b8b41144c3add09276a98f3e830b779ab976675589fea", inventory: "807ea0c9b303c04c4ad3e9892ab16ee7e89acaea8b7641d1cedd4c79949fab7d" },
+  { roleMode: "installer-managed", currentInventory: "7b09a96c289fcf3a1700a74ea9c227185d8afad4b6283de6da7e9a97d865695a", inventory: "c94d71fd28d5571cda30307bce4c4b48ebe0a3685c76819d8fa3b3efa8fa9ae7" },
+  { roleMode: "operator-provisioned", currentInventory: "195f76c4b2c92eb58bb2f2a12da2dde13bba7c1065a2795e4dfa0e7a22d099a0", inventory: "807ea0c9b303c04c4ad3e9892ab16ee7e89acaea8b7641d1cedd4c79949fab7d" },
 ] as const;
 
 beforeAll(async () => {
@@ -17,7 +17,7 @@ for (const mode of modes) {
   it(`qualifies the restricted issued prefix and current production suffix in ${mode.roleMode} mode`, async () => {
     const current = selectPlatformMigrationManifest(JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")), "qualified-admin", { roleMode: mode.roleMode });
     const count = 1 + current.forward.length;
-    expect(count).toBe(122);
+    expect(count).toBe(125);
     expect(current.objectInventorySha256).toBe(mode.currentInventory);
     const result = await runQualifiedAdminCompositionProof(mode);
     expect(result).toMatchObject({

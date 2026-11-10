@@ -4,6 +4,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { applicationHealthcheck } from './host/healthcheck.ts';
+import { browserJourneyGroups } from './browser-groups.mjs';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const [command, ...args] = process.argv.slice(2);
@@ -157,6 +158,10 @@ if (command === 'candidate') {
 
 /** Disposable installed-PostgreSQL recipe; never a production or customer database. */
 async function databaseBrowserRecipe(argv) {
+  if (argv.length === 0) {
+    for (const selection of browserJourneyGroups) await databaseBrowserRecipe(selection);
+    return;
+  }
   const { spawn } = await import('node:child_process');
   const { once } = await import('node:events');
   const { randomBytes, randomUUID } = await import('node:crypto');

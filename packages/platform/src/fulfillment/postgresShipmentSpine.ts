@@ -326,7 +326,7 @@ function localPersistence(executor: PgQueryExecutor, approveTrackingUrl?: (url: 
       return nativeCall<{ replayed: boolean }>(executor,'fulfillment_record_observation',[safe.eventKey,safe.correlation.fulfillmentRef,JSON.stringify(safe),safe.firstReceivedAt]);
     },
     async recordStatusEvidence(ref: { fulfillmentRef: string }, observation: import('./contracts/index.js').FulfillmentObservation) {
-      return nativeCall<{ replayed: boolean }>(executor,'fulfillment_record_status_evidence',[observation.eventKey,ref.fulfillmentRef]);
+      return nativeCall<{ replayed: boolean }>(executor,'fulfillment_record_operator_status_evidence',[observation.eventKey,ref.fulfillmentRef]);
     },
     async markProcessed(eventKey: string, outcome: { status: 'processed' | 'ignored'; refusal?: import('./contracts/index.js').FulfillmentRefusal; supersededCause?: string }) {
       await nativeCall(executor,'fulfillment_mark_observation_processed',[eventKey,JSON.stringify({ status: outcome.status,
