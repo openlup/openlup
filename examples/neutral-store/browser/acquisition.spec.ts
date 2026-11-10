@@ -656,6 +656,66 @@ for (const locale of ['en', 'pl'] as const) {
     ].sort((a, b) => a.id.localeCompare(b.id)));
   });
 
+  test(`${locale}: portal delayed checkout response cannot replace the displayed issued purchase`, async ({ page }) => {
+    const issued = await pendingCheckout(page, locale); await portalOperator(page, locale);
+    await page.goto(routes.builder[locale]);
+    await page.getByLabel(copy[locale].purchaseMode, { exact: true }).selectOption('one_time');
+    await page.getByRole('spinbutton').first().fill(String(configurations[material.id]!.offer.minUnits));
+    await page.getByRole('button', { name: copy[locale].addBox, exact: true }).click();
+    await page.getByRole('button', { name: copy[locale].checkout, exact: true }).click();
+    const buyerEmail = `delayed-${randomUUID()}@example.test`;
+    await page.getByLabel(copy[locale].email, { exact: true }).fill(buyerEmail);
+    const quoted = page.waitForResponse(row => row.url().endsWith('/api/actions/offer.validate')
+      && row.request().postDataJSON().email === buyerEmail);
+    await page.getByLabel(copy[locale].email, { exact: true }).blur();
+    await (await quoted).finished();
+    await page.evaluate(() => new Promise<void>(done => requestAnimationFrame(() => done())));
+    await page.getByLabel(copy[locale].termsAccept).check();
+    let release!: () => void;
+    const gate = new Promise<void>(done => { release = done; });
+    let createdStatus = 'not_submitted';
+    let received!: (order: string) => void;
+    const pending = new Promise<string>(done => { received = done; });
+    let finished!: () => void;
+    const delivered = new Promise<void>(done => { finished = done; });
+    await page.route('**/api/actions/checkout.create', async route => {
+      const response = await route.fetch(), body = await response.json();
+      createdStatus = body.ok ? 'created' : body.code;
+      expect(body.ok, body.code).toBe(true); received(body.value.orderRef);
+      await gate; await route.fulfill({ response }); finished();
+    });
+    await test.step('submit the pending checkout', async () => {
+      await page.getByRole('button', { name: copy[locale].placeOrder, exact: true }).click();
+      await expect.poll(() => createdStatus).toBe('created');
+    });
+    const other = await pending;
+    await page.locator('footer').getByRole('link', { name: copy[locale].admin, exact: true }).click();
+    const panel = await operatorDetail(page, issued.orderRef, locale);
+    const form = panel.locator('form').filter({ has: page.locator('[name=delivery]') }); await accessible(form);
+    await form.getByRole('button', { name: copy[locale].paymentLink, exact: true }).click();
+    await panel.getByRole('link', { name: copy[locale].completion, exact: true }).click();
+    await expect(page.locator('main')).toContainText(issued.orderRef);
+    const lateResponse = page.waitForResponse(row => row.url().endsWith('/api/actions/checkout.create'));
+    await test.step('deliver the late checkout response', async () => {
+      release(); await delivered; await (await lateResponse).finished();
+    });
+    await page.evaluate(() => new Promise<void>(done => requestAnimationFrame(() => done())));
+    // The completed response must not replace the active page's reload convenience.
+    await expect.poll(() => page.evaluate(configuration => {
+      const value = JSON.parse(sessionStorage.getItem(`neutral-store:purchase:v2:${configuration}`) ?? 'null');
+      return value?.orderRef;
+    }, material.id)).toBe(issued.orderRef);
+    const paymentRequest = page.waitForRequest(row => row.url().endsWith('/api/actions/payment.simulate'));
+    const payment = page.getByRole('button', { name: copy[locale].simulatePaid, exact: true });
+    await expect(payment).toHaveAccessibleName(copy[locale].simulatePaid); await payment.click();
+    expect((await paymentRequest).postDataJSON().orderRef).toBe(issued.orderRef);
+    await expect(page.locator('main')).toContainText(copy[locale].recoveryPaid);
+    expect((await runtime.query('SELECT status FROM public.commerce_orders WHERE id=$1', [issued.orderRef])).rows[0].status).toBe('paid');
+    expect((await runtime.query('SELECT status FROM public.commerce_orders WHERE id=$1', [other])).rows[0].status).toBe('pending_payment');
+    await page.reload(); await expect(page.locator('main')).toContainText(issued.orderRef);
+    await expect(page.locator('main')).toContainText(copy[locale].recoveryPaid);
+  });
+
   test(`${locale}: portal distributor cannot read OMS or mutate and replay catalog drafts and payment links`, async ({ page }) => {
     const f = await pendingCheckout(page, locale); await portalOperator(page, locale);
     expect((await call(page, 'operator.orders', {})).ok).toBe(true);

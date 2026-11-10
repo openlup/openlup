@@ -57,8 +57,9 @@ export function completionPage(context: PageContext): HTMLElement {
   const state = el('section', { class: 'panel', 'aria-live': 'polite' }, el('p', {}, context.t('loading')));
   const page = el('div', {}, el('h1', {}, context.t('completion')), state,
     link(context.t('account'), routes.account[context.locale]));
+  const credential = Object.freeze({ ...currentPurchase(context.config.id) });
   const inspect = async () => {
-    const result = await act('checkout.read', { ...currentPurchase(context.config.id) }, crypto.randomUUID());
+    const result = await act('checkout.read', credential, crypto.randomUUID());
     if (!page.isConnected) return;
     if (!result.ok || !isRecord(result.value)) {
       const code = result.ok ? 'starter_recovery_unavailable' : result.code;
@@ -74,13 +75,14 @@ export function completionPage(context: PageContext): HTMLElement {
       state.replaceChildren(el('p', {}, context.t(result.value.status === 'cancelled' ? 'recoveryCancelled' : result.value.status === 'expired' ? 'recoveryExpired' : 'recoveryUnavailable')), renderValue({ orderRef: result.value.orderRef, status: result.value.status }));
       return;
     }
-    rememberPurchase(context.config.id, { ...currentPurchase(context.config.id), orderRef: result.value.orderRef });
+    const inspected = Object.freeze({ ...credential, orderRef: result.value.orderRef });
+    rememberPurchase(context.config.id, inspected);
     state.replaceChildren(el('p', {}, context.t('sandboxOnly')), renderValue(result.value),
       el('h2', {}, context.t('payment')),
       ...(['captured', 'refused', 'expired', 'indeterminate'] as const).map(outcome => actionForm(context, {
         operation: 'payment.simulate',
         submit: outcome === 'captured' ? 'simulatePaid' : outcome === 'refused' ? 'simulateDeclined' : outcome === 'expired' ? 'simulateExpired' : 'simulateIndeterminate',
-        input: () => ({ ...currentPurchase(context.config.id), outcome }),
+        input: () => ({ ...inspected, outcome }),
         onSuccess: () => { void inspect(); },
       })));
   };
