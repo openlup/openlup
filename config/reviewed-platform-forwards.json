@@ -3762,6 +3762,28 @@
         ],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "checkout-recovery-inspection",
+        "path": "db/platform/migrations/20261110170000_checkout_recovery_inspection.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.commerce_checkout_recovery_order_snapshot(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_checkout_recovery_latest_order_snapshot(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "existingTableStatements": [
+          "ALTER TABLE public.commerce_orders\n  ADD COLUMN recovery_root_order_id uuid,\n  ADD COLUMN recreated_from_order_id uuid;",
+          "ALTER TABLE public.commerce_orders\n  ADD CONSTRAINT commerce_orders_recovery_root_order_id_fkey\n  FOREIGN KEY (recovery_root_order_id) REFERENCES public.commerce_orders(id)\n  ON DELETE RESTRICT NOT VALID;",
+          "ALTER TABLE public.commerce_orders\n  ADD CONSTRAINT commerce_orders_recreated_from_order_id_fkey\n  FOREIGN KEY (recreated_from_order_id) REFERENCES public.commerce_orders(id)\n  ON DELETE RESTRICT NOT VALID;"
+        ]
       }
     ]
   },
@@ -4481,6 +4503,22 @@
           "signature": "public.commerce_buyer_checkout_link_delivery_authorize(uuid,text)",
           "beforeSha256": null,
           "afterSha256": "c99a38492ef7f1eabf91b3e1dc16bc16e5dffa626b605a145dea4b779ea58817"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261110170000_checkout_recovery_inspection.sql",
+      "sha256": "b230c4e9d84994c98c43551e087e478a9d6ac8e0fc449aa7a6a476eff72498dc",
+      "functions": [
+        {
+          "signature": "public.commerce_checkout_recovery_order_snapshot(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "442896545c19a00c6ba1c3162e940205357bc0e8fe51ec8f33d38a168686a965"
+        },
+        {
+          "signature": "public.commerce_checkout_recovery_latest_order_snapshot(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "5a901a19e954ce11c4d34fe8c7a551277c3b2b846f272883a7a4665c28d839f6"
         }
       ]
     }

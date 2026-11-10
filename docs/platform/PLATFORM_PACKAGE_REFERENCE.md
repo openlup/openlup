@@ -1694,3 +1694,39 @@ transport, HTTP registration, account navigation and the embedded-browser contro
 remain host bindings. The [PostgreSQL witnesses](../../tests/postgres/customerCheckoutLinks.test.ts)
 cover legacy and both qualified runtime generations; they establish no hosted,
 browser or real-provider qualification.
+
+## Checkout recovery inspection
+
+For a trusted host composing a completion page, `./commerce/server` exports
+`createPostgresCheckoutRecoveryOrderPort`, `createCheckoutRecoveryInspection`
+and `createCheckoutRecoveryValidationPolicy`. Supply a service executor to the
+reader, the existing token port, the account-context read, and the selected
+commercial validator. Public executor types require no PostgreSQL driver types.
+The SQL readers return the bound original or the root's latest-created descendant;
+the composition binds either result to the token's client. It refuses renewal
+orders with a non-null subscription cycle. A compensated initial declaration is
+first-purchase context, without reopening the predecessor or a live subscription.
+
+Clients opt in with `recreate_expired_order`. An expired token may expose eligible
+expired context and a validated `recreate_expired` presentation, but cannot resume
+a pending replacement. Only the existing continuation states may present
+`retry_existing`. Revoked/used authority refuses before descendant reads.
+Paid orders show paid confirmation without payment controls; manual cancellations
+and commercial drift show terminal fallback. Old clients keep the fallback path.
+`resolve_active_payment` separately opts into the injected payment resolver; absent
+resolution support returns `awaiting_provider`.
+
+The adopter binds `createCheckoutRecoveryValidationPolicy({ supports, validation })`
+to its own content constraints. Unsupported frozen snapshots return `false` before
+commercial validation runs. The same policy must fence a later recreation
+composition before its side effects. This inspection contribution creates no
+replacement, token, reservation or payment attempt. Its result is presentation,
+never payment authority: every later mutation must independently admit its bearer,
+order and current payment evidence. Real-provider preparation and recovery evidence
+retain their existing refusals; the payment persistence capability owns their closure.
+
+The additive migration introduces nullable recovery-root and immediate-predecessor
+order links, restrictive unvalidated self-FKs and a unique non-null predecessor
+index. Historical links stay null. No backfill, writer or new traversal/tie-break
+policy is included. See the [PostgreSQL witness](../../tests/postgres/checkoutRecoveryInspection.test.ts)
+and [composition characterizations](../../packages/platform/test/commerce/checkoutRecoveryInspection.test.ts).

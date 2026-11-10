@@ -2241,3 +2241,9 @@ navigation tokens and cookie-authorized buyer mail with atomic bucket deduplicat
 Both preserve earlier links and refuse renewal-cycle orders. See the
 [customer recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#customer-checkout-recovery-entry-points)
 for session binding, PostgreSQL ports, lifetimes and host delivery/UI obligations.
+
+Checkout recovery inspection in `./commerce/server` adds service-only original
+and latest-descendant readers, capability-gated expired presentation and an
+adopter-owned content validation fence. Inspection cannot authorize payment or
+create a replacement. Renewal cycles refuse; initial declarations retain their
+separate native identity. See the [inspection recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#checkout-recovery-inspection).

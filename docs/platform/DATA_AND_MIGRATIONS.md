@@ -3590,3 +3590,15 @@ time after blocking writes and roll back elapsed issuance. The additive buyer
 delivery gate leaves automatic and operator authorizers unchanged. See the
 [entry-point recipe](PLATFORM_PACKAGE_REFERENCE.md#customer-checkout-recovery-entry-points)
 for the host authority boundary and configured deadlines.
+
+### Checkout recovery lineage
+
+`20261110170000_checkout_recovery_inspection.sql` adds nullable
+`commerce_orders.recovery_root_order_id` and `recreated_from_order_id`, each with
+an `ON DELETE RESTRICT NOT VALID` self-FK. Existing rows remain null; new writes
+must satisfy both constraints. The partial root/created index serves the latest
+reader, and the partial unique predecessor index permits one immediate replacement.
+The two stable definer snapshots grant execution only to `service_role`, with no
+new raw-table grants. Their [package composition](PLATFORM_PACKAGE_REFERENCE.md#checkout-recovery-inspection)
+binds client ownership and separates expired inspection from payment authority.
+This forward contains no recreation writer or historical backfill.
