@@ -1601,6 +1601,26 @@ export declare function runExecutionConformance<TInput extends PaymentExecutionB
 }): Promise<ExecutionEvidence>;
 export declare function runDurableEventConformance(subject: DurableEventCapability, expected: DurableEventCardinalityExpectations): Promise<DurableEventEvidence>;
 ```
+## dist/payments/expiredCheckoutSafety.d.ts
+
+```ts
+/** The neutral safety contract reads an actual durable provider object; local absence never proves safety. */
+export interface ExpiredPaymentSafetyOrder {
+    orderId: string;
+    totalMinor: number;
+    currency: string;
+}
+interface SafetyExecutor {
+    query(sql: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+/** Selected simulator profile only. Real-provider channels retain the native named refusal. */
+export declare function createPostgresSandboxExpiredCheckoutSafety(db: SafetyExecutor): {
+    verifyPriorPayment(order: ExpiredPaymentSafetyOrder): Promise<'safe' | 'paid' | 'unavailable'>;
+};
+export {};
+```
 ## dist/payments/index.d.ts
 
 ```ts
@@ -1621,6 +1641,8 @@ export { createCheckoutRecoveryPaymentResolver } from "./checkoutRecoveryPayment
 export { createCommercePaymentVerifyHandler } from "./paymentVerifyNowHandler.js";
 export { createPaymentServices } from "./bindings.js";
 export { createPostgresSandboxPaymentSimulator } from "./postgresSandboxPaymentSimulator.js";
+export { createPostgresSandboxExpiredCheckoutSafety } from './expiredCheckoutSafety.js';
+export type { ExpiredPaymentSafetyOrder } from './expiredCheckoutSafety.js';
 ```
 ## dist/payments/paymentMethodLifecycle.d.ts
 

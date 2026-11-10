@@ -9621,6 +9621,92 @@ export interface CommerceEmailRuntime<Locale extends string = string> extends Or
     }, hasExplicitReferences: boolean): string | null;
 }
 ```
+## dist/commerce/server/expiredCheckoutRecovery.d.ts
+
+```ts
+import { type CreateQuoteResponse } from '../../pricing/index.js';
+import { type NativeCheckoutRecoveryOrder } from './checkoutRecoveryInspection.js';
+export type ExpiredCheckoutRecoveryOrder = NativeCheckoutRecoveryOrder & {
+    quoteSnapshot: CreateQuoteResponse | null;
+};
+export interface ExpiredCheckoutPaymentSafetyPort {
+    verifyPriorPayment(order: {
+        orderId: string;
+        totalMinor: number;
+        currency: string;
+    }): Promise<'safe' | 'paid' | 'unavailable'>;
+}
+export interface ExpiredCheckoutRecoveryWritePort {
+    prepareReplacement(input: {
+        idempotencyKey: string;
+        sourceOrderId: string;
+        replacementOrderId: string;
+    }): Promise<{
+        replacementOrderId: string;
+        replayed: boolean;
+    }>;
+}
+export declare class ExpiredCheckoutRecoveryError extends Error {
+    readonly reason: 'paid' | 'order_changed' | 'unavailable' | 'execution_failed';
+    readonly code?: "native_prepared_attempt_store_unsupported" | undefined;
+    constructor(reason: 'paid' | 'order_changed' | 'unavailable' | 'execution_failed', code?: "native_prepared_attempt_store_unsupported" | undefined, options?: ErrorOptions);
+}
+/** Internal normalization preserves JSON values across JSONB key ordering. */
+export declare function parseRecoveryRecreationQuote(value: unknown): CreateQuoteResponse | null;
+/** A trusted host binds owned order context and the adopter's opaque quote-request extensions. */
+export declare function createExpiredCheckoutRecoveryService<Request, Draft extends {
+    orderId: string;
+}, Result>(deps: {
+    supports(order: NativeCheckoutRecoveryOrder): boolean;
+    quoteRequest(order: ExpiredCheckoutRecoveryOrder): Request;
+    quotePort: {
+        createQuote(request: Request, options: {
+            clientId: string;
+            pricingPolicy?: unknown;
+            offerVersion?: unknown;
+        }): Promise<CreateQuoteResponse>;
+    };
+    orderDraftPort: {
+        createOrderDraft(request: {
+            idempotencyKey: string;
+            quoteSnapshot: CreateQuoteResponse;
+        }, options: {
+            clientId: string;
+        }): Promise<{
+            orderDraft: Draft;
+        }>;
+    };
+    recoveryPort: ExpiredCheckoutRecoveryWritePort;
+    paymentSafetyPort: ExpiredCheckoutPaymentSafetyPort;
+    runtimePort: {
+        startRuntime(input: {
+            idempotencyKey: string;
+            orderDraft: Draft;
+            quoteSnapshot: CreateQuoteResponse;
+            source: ExpiredCheckoutRecoveryOrder;
+            clientId: string;
+        }): Promise<Result>;
+    };
+    compensationPort: {
+        cancelAbandonedOrder(input: {
+            idempotencyKey: string;
+            orderId: string;
+            reason: string;
+        }): Promise<unknown>;
+        cancelUnstartedPromotionOrder(input: {
+            idempotencyKey: string;
+            orderId: string;
+            reason: string;
+        }): Promise<unknown>;
+    };
+}): {
+    validate: (order: NativeCheckoutRecoveryOrder) => Promise<boolean>;
+    recreate(input: {
+        order: NativeCheckoutRecoveryOrder;
+        clientId: string;
+    }): Promise<Result>;
+};
+```
 ## dist/commerce/server/handlerSupport.d.ts
 
 ```ts
@@ -9886,6 +9972,109 @@ export { createCheckoutRecoveryInspection, createCheckoutRecoveryValidationPolic
 export type { NativeCheckoutRecoveryOrder, CheckoutRecoveryValidationPort, CheckoutRecoveryInspectionResult, CheckoutRecoveryInspectionPaymentResolution } from './checkoutRecoveryInspection.js';
 export { createPostgresCheckoutRecoveryOrderPort } from './postgresCheckoutRecoveryOrderPort.js';
 export type { CheckoutRecoveryReadExecutor } from './postgresCheckoutRecoveryOrderPort.js';
+export { createExpiredCheckoutRecoveryService, ExpiredCheckoutRecoveryError } from './expiredCheckoutRecovery.js';
+export type { ExpiredCheckoutRecoveryOrder, ExpiredCheckoutRecoveryWritePort, ExpiredCheckoutPaymentSafetyPort } from './expiredCheckoutRecovery.js';
+export { createPostgresExpiredCheckoutRecoveryPort } from './postgresExpiredCheckoutRecovery.js';
+export type { CheckoutRecoveryWriteExecutor } from './postgresExpiredCheckoutRecovery.js';
+export { createPostgresExpiredCheckoutDraftPort, createPostgresExpiredCheckoutRuntime, createPostgresExpiredCheckoutCompensation, checkoutRecoveryExecutionFingerprint } from './nativeExpiredCheckoutRecovery.js';
+export type { ExpiredRecoveryRuntimeInput, ExpiredRecoveryTransactionLane } from './nativeExpiredCheckoutRecovery.js';
+```
+## dist/commerce/server/nativeExpiredCheckoutRecovery.d.ts
+
+```ts
+import type { CreateQuoteResponse } from '../../pricing/index.js';
+import { type ExpiredCheckoutRecoveryOrder } from './expiredCheckoutRecovery.js';
+import type { CheckoutRecoveryWriteExecutor } from './postgresExpiredCheckoutRecovery.js';
+/** Preserve native draft receipts when re-quotes differ only in transient identity.
+ * Every replay still goes through the existing writer with its original accepted snapshot. */
+export declare function createPostgresExpiredCheckoutDraftPort<Draft extends {
+    orderId: string;
+}>(db: CheckoutRecoveryWriteExecutor, persistence: {
+    createOrderDraft(request: {
+        idempotencyKey: string;
+        quoteSnapshot: CreateQuoteResponse;
+    }, options: {
+        clientId: string;
+    }): Promise<{
+        orderDraft: Draft;
+    }>;
+}): {
+    createOrderDraft(request: {
+        idempotencyKey: string;
+        quoteSnapshot: CreateQuoteResponse;
+    }, identity: {
+        clientId: string;
+    }): Promise<{
+        orderDraft: Draft;
+    }>;
+};
+export interface ExpiredRecoveryRuntimeInput<Draft> {
+    idempotencyKey: string;
+    orderDraft: Draft;
+    quoteSnapshot: CreateQuoteResponse;
+    source: ExpiredCheckoutRecoveryOrder;
+    clientId: string;
+}
+/** The host supplies a dedicated READ COMMITTED transaction. The replacement
+ * order lock serializes runtime replay before native fail-fast inventory locks.
+ * Bind both callbacks to the provided executor; no remote dispatch belongs here. */
+export declare function createPostgresExpiredCheckoutRuntime<Result>(lane: ExpiredRecoveryTransactionLane, ports: {
+    stockSourceKey: string;
+    reservationLifetimeMs: number;
+    channelKey: string;
+    now?: () => Date;
+    reserveOrderItems(input: {
+        idempotencyKey: string;
+        orderId: string;
+        stockSourceKey: string;
+        items: {
+            orderItemId: string;
+            skuId: string;
+            quantity: number;
+        }[];
+        paymentStatus: 'created';
+        expiresAt: string;
+        now: string;
+    }, db: CheckoutRecoveryWriteExecutor): Promise<unknown>;
+    startPayment(input: {
+        idempotencyKey: string;
+        settlementIntentId: string;
+        orderId: string;
+        clientId: string;
+    }, db: CheckoutRecoveryWriteExecutor): Promise<Result>;
+}): {
+    startRuntime(input: ExpiredRecoveryRuntimeInput<{
+        orderId: string;
+    }>): Promise<Result>;
+};
+export interface ExpiredRecoveryTransactionLane {
+    run<T>(work: (gateway: unknown) => Promise<T>): Promise<T>;
+}
+/** Both cleanup stages retain the native payment-evidence guard. The unstarted
+ * check and cancellation share the same order lock and transaction. */
+export declare function createPostgresExpiredCheckoutCompensation(lane: ExpiredRecoveryTransactionLane, now?: () => Date): {
+    cancelAbandonedOrder: (i: {
+        idempotencyKey: string;
+        orderId: string;
+        reason: string;
+    }) => Promise<{
+        cancelled: boolean;
+    }>;
+    cancelUnstartedPromotionOrder: (i: {
+        idempotencyKey: string;
+        orderId: string;
+        reason: string;
+    }) => Promise<{
+        cancelled: boolean;
+    }>;
+};
+/** Stable execution identity excludes fresh quote IDs and request timestamps. */
+export declare function checkoutRecoveryExecutionFingerprint(input: {
+    idempotencyKey: string;
+    settlementIntentId: string;
+    orderId: string;
+    clientId: string;
+}): string;
 ```
 ## dist/commerce/server/offerAvailability.d.ts
 
@@ -10598,6 +10787,21 @@ export interface PostgresCheckoutRecoveryTokenPort extends CheckoutRecoveryToken
 export declare function createPostgresCheckoutRecoveryTokenPort(executor: {
     run<T>(work: (gateway: unknown) => Promise<T>): Promise<T>;
 }): PostgresCheckoutRecoveryTokenPort;
+```
+## dist/commerce/server/postgresExpiredCheckoutRecovery.d.ts
+
+```ts
+import type { ExpiredCheckoutRecoveryWritePort } from './expiredCheckoutRecovery.js';
+export interface CheckoutRecoveryWriteExecutor {
+    query(sql: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+/** Service executor only. No raw mutation or authority-bearing result is exposed. */
+export declare function createPostgresExpiredCheckoutRecoveryPort(db: CheckoutRecoveryWriteExecutor, policy: {
+    recoveryWindowMs: number;
+    now?: () => Date;
+}): ExpiredCheckoutRecoveryWritePort;
 ```
 ## dist/commerce/server/referenceCheckoutHandler.d.ts
 

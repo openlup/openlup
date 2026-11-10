@@ -193,3 +193,9 @@ export { createCheckoutRecoveryInspection, createCheckoutRecoveryValidationPolic
 export type { NativeCheckoutRecoveryOrder, CheckoutRecoveryValidationPort, CheckoutRecoveryInspectionResult, CheckoutRecoveryInspectionPaymentResolution } from './checkoutRecoveryInspection.js';
 export { createPostgresCheckoutRecoveryOrderPort } from './postgresCheckoutRecoveryOrderPort.js';
 export type { CheckoutRecoveryReadExecutor } from './postgresCheckoutRecoveryOrderPort.js';
+export { createExpiredCheckoutRecoveryService, ExpiredCheckoutRecoveryError } from './expiredCheckoutRecovery.js';
+export type { ExpiredCheckoutRecoveryOrder, ExpiredCheckoutRecoveryWritePort, ExpiredCheckoutPaymentSafetyPort } from './expiredCheckoutRecovery.js';
+export { createPostgresExpiredCheckoutRecoveryPort } from './postgresExpiredCheckoutRecovery.js';
+export type { CheckoutRecoveryWriteExecutor } from './postgresExpiredCheckoutRecovery.js';
+export { createPostgresExpiredCheckoutDraftPort, createPostgresExpiredCheckoutRuntime, createPostgresExpiredCheckoutCompensation, checkoutRecoveryExecutionFingerprint } from './nativeExpiredCheckoutRecovery.js';
+export type { ExpiredRecoveryRuntimeInput, ExpiredRecoveryTransactionLane } from './nativeExpiredCheckoutRecovery.js';

@@ -3814,6 +3814,19 @@
           "ALTER TABLE public.commerce_orders\n  ADD CONSTRAINT commerce_orders_recovery_root_order_id_fkey\n  FOREIGN KEY (recovery_root_order_id) REFERENCES public.commerce_orders(id)\n  ON DELETE RESTRICT NOT VALID;",
           "ALTER TABLE public.commerce_orders\n  ADD CONSTRAINT commerce_orders_recreated_from_order_id_fkey\n  FOREIGN KEY (recreated_from_order_id) REFERENCES public.commerce_orders(id)\n  ON DELETE RESTRICT NOT VALID;"
         ]
+      },
+      {
+        "row": "checkout-recovery-recreation",
+        "path": "db/platform/migrations/20261110180000_checkout_recovery_recreation.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.commerce_prepare_expired_checkout_recovery(text,uuid,uuid,bigint,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -4575,6 +4588,17 @@
           "signature": "public.commerce_checkout_recovery_latest_order_snapshot(uuid)",
           "beforeSha256": null,
           "afterSha256": "5a901a19e954ce11c4d34fe8c7a551277c3b2b846f272883a7a4665c28d839f6"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261110180000_checkout_recovery_recreation.sql",
+      "sha256": "c32f2d8ba18db7c8021dc92c42af8385077626ef8272c8e8af553291956386f9",
+      "functions": [
+        {
+          "signature": "public.commerce_prepare_expired_checkout_recovery(text,uuid,uuid,bigint,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "4b07cf9e1b0aed186a32336cfdeb38483915ff66843d46bfd9ef2644e6ac8d22"
         }
       ]
     }
