@@ -33,7 +33,10 @@ export async function editorComponent(page: Page,options: { sized?: boolean; opt
   await page.route('**/api/actions/*',async route => {
     const request = route.request(),operation = new URL(request.url()).pathname.split('/').at(-1)!;
     state.requests.push({ operation,payload: request.postDataJSON(),key: request.headers()['idempotency-key']! });
-    if (operation === 'account.read') return reply(route,state.readbackFails ? { ok: false,code: 'starter_dependency_unavailable' } : { ok: true,value: { subscriptionEditors: [state.sub] } },state.readbackFails ? 503 : 200);
+    if (operation === 'account.read') return reply(route,state.readbackFails ? { ok: false,code: 'starter_dependency_unavailable' } : { ok: true,value: {
+      subscriptionEditors: [state.sub],renewal: { subscriptions: [{ subscriptionId: sub.subscriptionId,status: sub.status,
+        nextCycleAt: sub.nextCycleAt,editCutoffAt: sub.editCutoffAt,blocker: null,action: null,payment: { healthState: 'healthy' },pause: null,winback: null }] },
+    } },state.readbackFails ? 503 : 200);
     if (operation === 'subscription.catalog') {
       const context = { subscriptionId: sub.subscriptionId,clientId: fixtureId(91),binding: sub.offerVersion,templateVersion: sub.templateVersion,
         cadenceDays: sub.cadenceDays,compositionConstraint: sub.compositionConstraint ?? { kind: 'unit_count',value: 14,dailyNeed: 40 },nextCycleAt: sub.nextCycleAt,
