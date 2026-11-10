@@ -3539,3 +3539,17 @@ can insert and read this RLS-protected record, with no update or delete access.
 Browser roles have no access. Connected capture and restore retain these opaque
 source identities and their refusal times so a store move cannot send them again.
 This table contains no recipient address, message content or free-form reason.
+
+
+The [customer checkout-link forward](../../db/platform/migrations/20261110115000_customer_checkout_links.sql)
+replaces only the actor find/issue bodies, retaining their attributes, defaults
+and authenticated execution boundary. It adds an actor-owned fallback reader
+and two service-only buyer routines, with no table, index, constraint or raw
+DML grants. Provisional activation identity supplies initial checkout context;
+a non-null native cycle refuses checkout recovery. Actor issuance preserves
+prior links. Buyer issuance uses existing outbox uniqueness to commit its bucket
+event and hashed token together, only for the winning event. Both check actual
+time after blocking writes and roll back elapsed issuance. The additive buyer
+delivery gate leaves automatic and operator authorizers unchanged. See the
+[entry-point recipe](PLATFORM_PACKAGE_REFERENCE.md#customer-checkout-recovery-entry-points)
+for the host authority boundary and configured deadlines.

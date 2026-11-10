@@ -65,8 +65,9 @@ it.each(profiles)("atomic actor account choices and refusals on %s", async profi
       } });
     await runner.apply();
     expect((await runner.apply()).applied).toEqual([]);
-    // Operator links follow recovery waves in every complete plan.
-    const tail = [{ catalog_path: "db/platform/migrations/20261110110000_operator_checkout_links.sql" },
+    // Customer links follow operator links and recovery waves in every complete plan.
+    const tail = [{ catalog_path: "db/platform/migrations/20261110115000_customer_checkout_links.sql" },
+      { catalog_path: "db/platform/migrations/20261110110000_operator_checkout_links.sql" },
       { catalog_path: "db/platform/migrations/20261110100000_checkout_recovery_waves.sql" },
       { catalog_path: "db/platform/migrations/20261109130000_subscription_exact_levers.sql" },
       { catalog_path: "db/platform/migrations/20261109120000_subscription_package_editor.sql" },

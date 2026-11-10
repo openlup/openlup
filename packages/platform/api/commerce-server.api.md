@@ -426,6 +426,35 @@ export interface CheckoutCommandPersistenceResult {
 }
 export type CheckoutCommandV1 = z.output<ReturnType<typeof createCheckoutCommandSchemas>["checkoutCommandV1Schema"]>;
 ```
+## dist/commerce/checkoutRecoveryStartSchemas.d.ts
+
+```ts
+import { z } from 'zod';
+export declare const CHECKOUT_RECOVERY_START_CONTRACT_VERSION: "commerce.checkout-recovery.v1";
+export declare const checkoutRecoveryStartRequestSchema: z.ZodUnion<readonly [z.ZodObject<{
+    subscriptionId: z.ZodGUID;
+}, z.core.$strict>, z.ZodObject<{
+    orderId: z.ZodGUID;
+}, z.core.$strict>]>;
+export declare const checkoutRecoveryStartResponseSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
+    contractVersion: z.ZodLiteral<"commerce.checkout-recovery.v1">;
+    recoverable: z.ZodLiteral<true>;
+    token: z.ZodString;
+    mode: z.ZodEnum<{
+        one_time_order: "one_time_order";
+        subscription_cycle: "subscription_cycle";
+    }>;
+}, z.core.$strict>, z.ZodObject<{
+    contractVersion: z.ZodLiteral<"commerce.checkout-recovery.v1">;
+    recoverable: z.ZodLiteral<false>;
+    fallback: z.ZodEnum<{
+        fresh_checkout: "fresh_checkout";
+        customer_account: "customer_account";
+    }>;
+}, z.core.$strict>], "recoverable">;
+export type CheckoutRecoveryStartRequest = z.infer<typeof checkoutRecoveryStartRequestSchema>;
+export type CheckoutRecoveryStartResponse = z.infer<typeof checkoutRecoveryStartResponseSchema>;
+```
 ## dist/commerce/commerceReturnsPort.d.ts
 
 ```ts
@@ -9376,6 +9405,96 @@ export declare function createConfiguratorIntentPersistenceHandler<Request, Resp
     responseSchema: z.ZodType<Response>;
 }): (req: HttpRequest, res: HttpResponse) => Promise<void>;
 ```
+## dist/commerce/server/customerCheckoutLinks.d.ts
+
+```ts
+import { type CheckoutRecoveryStartRequest } from '../checkoutRecoveryStartSchemas.js';
+import type { CheckoutPaymentContinuationCodec } from './checkoutPaymentContinuationCredential.js';
+import type { OmsHandlerRequest, OmsHandlerResponder } from './handlerSupport.js';
+export interface CustomerCheckoutRecoveryContext {
+    orderId: string | null;
+    mode: 'subscription_cycle' | 'one_time_order' | null;
+    subscriptionId: string | null;
+    clientHasLiveOrPendingSubscription: boolean;
+}
+export interface CustomerCheckoutRecoveryPendingOrder extends CustomerCheckoutRecoveryContext {
+    orderId: string;
+    mode: 'subscription_cycle' | 'one_time_order';
+    createdAt: string;
+}
+export interface CustomerCheckoutRecoveryStartPort {
+    find(request: CheckoutRecoveryStartRequest): Promise<CustomerCheckoutRecoveryPendingOrder | null>;
+    context(orderId: string): Promise<CustomerCheckoutRecoveryContext>;
+    issue(input: {
+        orderId: string;
+        rawToken: string;
+        expiresAt: string;
+    }): Promise<string>;
+}
+export interface CheckoutLinkQueryExecutor {
+    query(sql: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+/** Expected terminal mint race, including an elapsed deadline. Storage failures stay distinct. */
+export declare class CheckoutLinkNotRecoverableError extends Error {
+    readonly reason: "order_not_recoverable";
+    constructor();
+}
+export interface BuyerCheckoutLinkPolicy {
+    lifetimeMs: number;
+    sendBucketMs: number;
+}
+export interface BuyerCheckoutLinkPort {
+    issue(input: {
+        orderId: string;
+        clientId: string;
+        rawToken: string;
+        requestedAt: string;
+    }): Promise<{
+        sent: true;
+        queued: boolean;
+    }>;
+}
+/** Supply an executor bound to the authenticated customer's session, never a service lane. */
+export declare function createPostgresCustomerCheckoutRecoveryStartPort(executor: CheckoutLinkQueryExecutor): CustomerCheckoutRecoveryStartPort;
+/** Trusted service lane; the handler supplies only verified continuation-cookie claims. */
+export declare function createPostgresBuyerCheckoutLinkPort(executor: CheckoutLinkQueryExecutor, policy: BuyerCheckoutLinkPolicy): BuyerCheckoutLinkPort & {
+    authorize(eventId: string, claimToken: string): Promise<{
+        authorized: boolean;
+        reason?: string;
+    }>;
+};
+/** No persistence is constructed before the feature and customer-session guards. No mail port is used. */
+export declare function createCheckoutRecoveryStartHandler<Response>(deps: {
+    recoveryEnabled(): boolean;
+    authenticateUser(): Promise<{
+        ok: true;
+        userId: string;
+    } | {
+        ok: false;
+    }>;
+    createPort(session: {
+        userId: string;
+    }): CustomerCheckoutRecoveryStartPort | Promise<CustomerCheckoutRecoveryStartPort>;
+    respond: OmsHandlerResponder<Response>;
+    lifetimeMs: number;
+    generateToken?: () => string;
+    now?: () => Date;
+}): (req: OmsHandlerRequest, res: Response) => Promise<void>;
+/** The cookie is the entire order/client authority; body identifiers and recipients are ignored. */
+export declare function createCheckoutPaymentLinkHandler<Response>(deps: {
+    codec: Pick<CheckoutPaymentContinuationCodec, 'verifyCookieHeader'> | null;
+    createPort(): BuyerCheckoutLinkPort | Promise<BuyerCheckoutLinkPort>;
+    respond: OmsHandlerResponder<Response>;
+    generateToken?: () => string;
+    now?: () => Date;
+}): (req: OmsHandlerRequest & {
+    headers?: {
+        cookie?: unknown;
+    };
+}, res: Response) => Promise<void>;
+```
 ## dist/commerce/server/emailRuntime.d.ts
 
 ```ts
@@ -9686,6 +9805,8 @@ export type { CheckoutRecoveryWavePolicy, CheckoutRecoveryWaveExecutor } from '.
 /** Operator order-link command and independently committed PostgreSQL effects. */
 export { createAdminCheckoutPaymentLinkHandler, createPostgresOperatorCheckoutLinkStore } from './operatorCheckoutPaymentLink.js';
 export type { OperatorCheckoutLinkReceipt, OperatorCheckoutLinkPolicy, OperatorCheckoutLinkStore, OperatorCheckoutLinkOrder, OperatorCheckoutLinkExecutor } from './operatorCheckoutPaymentLink.js';
+export { createCheckoutRecoveryStartHandler, createCheckoutPaymentLinkHandler, createPostgresCustomerCheckoutRecoveryStartPort, createPostgresBuyerCheckoutLinkPort, CheckoutLinkNotRecoverableError } from './customerCheckoutLinks.js';
+export type { CustomerCheckoutRecoveryContext, CustomerCheckoutRecoveryPendingOrder, CustomerCheckoutRecoveryStartPort, CheckoutLinkQueryExecutor, BuyerCheckoutLinkPolicy, BuyerCheckoutLinkPort } from './customerCheckoutLinks.js';
 ```
 ## dist/commerce/server/offerAvailability.d.ts
 

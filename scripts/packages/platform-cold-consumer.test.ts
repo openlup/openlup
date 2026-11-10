@@ -724,6 +724,11 @@ process.stdout.write(JSON.stringify(Object.fromEntries(Object.entries(entry).map
     createPostgresCheckoutRecoveryWaves: "function",
     createAdminCheckoutPaymentLinkHandler: "function",
     createPostgresOperatorCheckoutLinkStore: "function",
+    createCheckoutRecoveryStartHandler: "function",
+    createCheckoutPaymentLinkHandler: "function",
+    createPostgresCustomerCheckoutRecoveryStartPort: "function",
+    createPostgresBuyerCheckoutLinkPort: "function",
+    CheckoutLinkNotRecoverableError: "function",
     createPostgresOrderReviewAdminReadPort: "function",
     createPostgresOrderReviewLifecyclePort: "function",
     createPostgresOrderReviewMediaPort: "function",
@@ -1248,4 +1253,27 @@ process.stdout.write(JSON.stringify({response,calls}));
   ]);
   expect(result.calls[0].values[0]).toBe('22222222-2222-4222-8222-222222222222');
   expect(result.calls[4].values.slice(3,6)).toEqual(['succeeded','email_queued',true]);
+});
+
+it('executes installed customer start and cookie buyer links without database peer types', () => {
+  const consumer = pristinePackedA1Fixture();
+  assertConsumerIsolation(consumer, root);
+  const result = JSON.parse(consumerNode(consumer, `
+const {createCheckoutRecoveryStartHandler,createCheckoutPaymentLinkHandler,createPostgresCustomerCheckoutRecoveryStartPort,createPostgresBuyerCheckoutLinkPort,createCheckoutPaymentContinuationCodec}=await import('@openlup/platform/commerce/server');
+const id='11111111-1111-4111-8111-111111111111',client='22222222-2222-4222-8222-222222222222';
+const calls=[],responses=[];
+const executor={query:async(sql,values)=>{calls.push({sql,values});return{rows:[{result:sql.includes('find_as_actor')?{orderId:id,createdAt:'2040-01-02T12:00:00Z',mode:'one_time_order',subscriptionId:null,clientHasLiveOrPendingSubscription:false}:sql.includes('token_issue_as_actor')?'token-id':{sent:true,queued:true}}]};}};
+const respond={sendMethodNotAllowed:()=>{throw Error('method');},sendBffError:(_,code)=>{throw Error(code);},sendBffSuccess:(_,data)=>responses.push(data)};
+await createCheckoutRecoveryStartHandler({recoveryEnabled:()=>true,authenticateUser:async()=>({ok:true,userId:'session'}),createPort:()=>createPostgresCustomerCheckoutRecoveryStartPort(executor),respond,lifetimeMs:86400000,now:()=>new Date('2040-01-02T12:00:00Z'),generateToken:()=> 'rcv_installed_start'})({method:'POST',body:{orderId:id}},null);
+const codec=createCheckoutPaymentContinuationCodec('x'.repeat(40),{cookieName:'continuation',executionRails:['captured','redirect']});
+const cookie=codec.issue({journeyId:'checkout:'+id,orderId:id,clientId:client,paymentAttemptId:id,paymentIntentId:id,executionRail:'captured'}).setCookie.split(';')[0];
+await createCheckoutPaymentLinkHandler({codec,createPort:()=>createPostgresBuyerCheckoutLinkPort(executor,{lifetimeMs:86400000,sendBucketMs:600000}),respond,generateToken:()=> 'rcv_installed_buyer'})({method:'POST',headers:{cookie},body:{orderId:client}},null);
+process.stdout.write(JSON.stringify({responses,calls}));
+`));
+  expect(result.responses).toEqual([{contractVersion:'commerce.checkout-recovery.v1',recoverable:true,token:'rcv_installed_start',mode:'one_time_order'},{sent:true}]);
+  expect(result.calls.map((call: {sql:string})=>call.sql.match(/public\.(\w+)\(/u)?.[1])).toEqual([
+    'customer_checkout_recovery_find_as_actor','customer_checkout_recovery_token_issue_as_actor','commerce_buyer_checkout_link_issue',
+  ]);
+  expect(result.calls[1].values[1]).not.toBe('rcv_installed_start');
+  expect(result.calls[2].values.slice(0,3)).toEqual(['11111111-1111-4111-8111-111111111111','22222222-2222-4222-8222-222222222222','rcv_installed_buyer']);
 });

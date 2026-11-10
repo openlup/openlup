@@ -3655,6 +3655,38 @@
         ],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "customer-checkout-links",
+        "path": "db/platform/migrations/20261110115000_customer_checkout_links.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.customer_checkout_recovery_token_issue_as_actor(uuid,text,timestamptz,timestamptz)",
+            "beforeSha256": "5c5d9bb404d1096f332a342d7ce2f3bb750d065b79533cb0415b6ecb43ae141f",
+            "searchPath": "public, auth, pg_catalog"
+          },
+          {
+            "signature": "public.customer_checkout_recovery_find_as_actor(uuid,uuid)",
+            "beforeSha256": "3693315e02f8c3cfa3060c5a4854af3bed5bcd35ef35e4a79e48e65d76da8421",
+            "searchPath": "public, auth, pg_catalog"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.customer_checkout_recovery_context_as_actor(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_buyer_checkout_link_issue(uuid,uuid,text,bigint,bigint,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_buyer_checkout_link_delivery_authorize(uuid,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -4285,6 +4317,37 @@
           "signature": "public.commerce_operator_link_delivery_authorize(uuid,text)",
           "beforeSha256": null,
           "afterSha256": "b7ee9f7c70d987fbb16b3a3c634c4d2007bc185746a39bc86b5b6d41e7f98dbc"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261110115000_customer_checkout_links.sql",
+      "sha256": "00f62af7a95ab3989418e9cbe110bda7f52ead7a93db2f995c95f4aa4c0a0bdf",
+      "functions": [
+        {
+          "signature": "public.customer_checkout_recovery_token_issue_as_actor(uuid,text,timestamptz,timestamptz)",
+          "beforeSha256": "5c5d9bb404d1096f332a342d7ce2f3bb750d065b79533cb0415b6ecb43ae141f",
+          "afterSha256": "c2d26e6b3e814a5d6fcbf7cb2afa0d98c83f880aea94bf2ad8f36dbaaaf1eaf2"
+        },
+        {
+          "signature": "public.customer_checkout_recovery_find_as_actor(uuid,uuid)",
+          "beforeSha256": "3693315e02f8c3cfa3060c5a4854af3bed5bcd35ef35e4a79e48e65d76da8421",
+          "afterSha256": "812ba8db6133af86fb5d3fc6a47efac076973e9d62d23d8a0c6092144f3d8548"
+        },
+        {
+          "signature": "public.customer_checkout_recovery_context_as_actor(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "4704a3b83d1bf18a11f606af2ca880a8e7b6206fc8ca355ac90b0148c234f6c7"
+        },
+        {
+          "signature": "public.commerce_buyer_checkout_link_issue(uuid,uuid,text,bigint,bigint,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "1a58cfb3d8594b86fa46e14aee059330016a0059370cc547d750594a508c40ae"
+        },
+        {
+          "signature": "public.commerce_buyer_checkout_link_delivery_authorize(uuid,text)",
+          "beforeSha256": null,
+          "afterSha256": "c99a38492ef7f1eabf91b3e1dc16bc16e5dffa626b605a145dea4b779ea58817"
         }
       ]
     }

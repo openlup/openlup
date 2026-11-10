@@ -1282,6 +1282,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261110115000_customer_checkout_links.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4238,6 +4242,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261110115000_customer_checkout_links.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -4898,6 +4906,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/checkoutRecoveryStartSchemas.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/checkoutResumeSchemas.ts",
       "class": "public-output"
     },
@@ -5359,6 +5371,10 @@
     },
     {
       "path": "packages/platform/src/commerce/server/configuratorIntentPersistenceHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/customerCheckoutLinks.ts",
       "class": "public-output"
     },
     {
@@ -8787,6 +8803,10 @@
     },
     {
       "path": "packages/platform/test/commerce/configuratorIntentPersistenceHandler.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/customerCheckoutLinks.test.ts",
       "class": "public-output"
     },
     {
@@ -28547,6 +28567,10 @@
     },
     {
       "path": "tests/postgres/customerAccountConsents.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/customerCheckoutLinks.test.ts",
       "class": "public-output"
     },
     {
