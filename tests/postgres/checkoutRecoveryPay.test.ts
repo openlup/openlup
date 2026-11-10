@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createCheckoutRecoveryPayService, createCheckoutRecoveryTokenPay, createPostgresCheckoutRecoveryOrderPort, createPostgresCheckoutRecoveryTokenPort, hashCheckoutRecoveryToken, withCheckoutRecoveryPaymentHold } from '@openlup/platform/commerce/server';
 import { createPostgresNativeCheckoutPersistence } from '@openlup/platform/commerce/server/native-checkout';
@@ -52,6 +53,21 @@ describe.each(lifecycleProfiles)('token pay on %s', profile => {
   const both=await Promise.all([pay(f,key),pay(f,key)]);
   expect(both[0].paymentAttemptId).toBe(both[1].paymentAttemptId);expect(both.filter(r=>!r.replayed)).toHaveLength(1);
   expect(await pay(f,key)).toMatchObject({paymentAttemptId:both[0].paymentAttemptId,replayed:true});
+  const restarted=spawnSync(process.execPath,['--input-type=module','-e',`
+import {readFileSync} from 'node:fs';
+import {Pool} from 'pg';
+import {createPostgresCheckoutRecoveryOrderPort,createCheckoutRecoveryPayService} from '@openlup/platform/commerce/server';
+import {createPostgresSandboxCheckoutRecoveryAttemptPort} from '@openlup/platform/payments';
+const input=JSON.parse(readFileSync(0,'utf8')),db=new Pool(input.database);
+try{
+ const order=await createPostgresCheckoutRecoveryOrderPort(db).getRecoveryOrder({orderId:input.orderId});
+ const service=createCheckoutRecoveryPayService(createPostgresSandboxCheckoutRecoveryAttemptPort(db,input.options));
+ const result=await service.pay({order,clientId:input.clientId,recoveryTokenId:input.tokenId,idempotencyKey:input.key,method:undefined});
+ process.stdout.write(JSON.stringify(result));
+}finally{await db.end();}
+`],{input:JSON.stringify({...f,key,options,database:{connectionString:env.runtime.options.connectionString,options:env.runtime.options.options}}),encoding:'utf8',timeout:15000});
+  expect(restarted.status).toBe(0);
+  expect(JSON.parse(restarted.stdout)).toMatchObject({paymentAttemptId:both[0].paymentAttemptId,replayed:true});
   expect(await count(f)).toEqual({...before,attempts:before.attempts+1});
   const a=both[0].paymentAttemptId;
   const observation=await simulator().recordObservation({attemptId:a,idempotencyKey:`capture:${a}`,outcome:'captured',occurredAt:at()});
