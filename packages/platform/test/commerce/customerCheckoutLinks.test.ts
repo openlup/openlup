@@ -65,3 +65,13 @@ it('maps only SQL terminal refusals and discards driver diagnostics with raw bin
 it.each([0,-1,NaN,DAY+1,1.5])('refuses unsupported configured lifetime %s',lifetimeMs=>{
  expect(()=>createPostgresBuyerCheckoutLinkPort({query:async()=>({rows:[]})},{lifetimeMs,sendBucketMs:600000})).toThrow('checkout_link_policy_invalid');
 });
+
+
+it.each(['one_time_order','subscription_cycle'] as const)('returns the existing %s fallback before requesting an already-dead token',async mode=>{
+ const x=setup({order:{...pending,mode,createdAt:new Date(Date.parse(NOW)-DAY-1).toISOString()}});
+ await x.handler({method:'POST',body:{orderId:id}},null);
+ expect(x.result.data).toEqual({contractVersion:'commerce.checkout-recovery.v1',recoverable:false,fallback:mode==='subscription_cycle'?'customer_account':'fresh_checkout'});
+ expect(x.issue).not.toHaveBeenCalled();
+ const future=setup({order:{...pending,mode,createdAt:new Date(Date.parse(NOW)-DAY+1).toISOString()}});
+ await future.handler({method:'POST',body:{orderId:id}},null);expect(future.result.data).toMatchObject({recoverable:true,token:'rcv_navigation'});expect(future.issue).toHaveBeenCalledOnce();
+});

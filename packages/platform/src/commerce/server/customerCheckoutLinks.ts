@@ -101,7 +101,9 @@ export function createCheckoutRecoveryStartHandler<Response>(deps: {
       respond.sendBffSuccess(res,response);
     };
     if (!order) return fallback('orderId' in parsed.data ? await port.context(parsed.data.orderId) : undefined);
-    const expiresAt=new Date(Date.parse(order.createdAt)+deps.lifetimeMs).toISOString();
+    const deadline=Date.parse(order.createdAt)+deps.lifetimeMs;
+    if (!Number.isFinite(deadline) || deadline<=(deps.now??(()=>new Date()))().getTime()) return fallback(order);
+    const expiresAt=new Date(deadline).toISOString();
     const rawToken=(deps.generateToken??generateCheckoutRecoveryToken)();
     try { await port.issue({ orderId: order.orderId,rawToken,expiresAt }); }
     catch (error) { if (error instanceof CheckoutLinkNotRecoverableError) return fallback(order); throw error; }
