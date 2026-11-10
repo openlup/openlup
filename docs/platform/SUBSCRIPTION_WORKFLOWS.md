@@ -85,7 +85,9 @@ Auto-resume uses the later of that shifted date and its execution time, closes
 the window and writes one `subscription.system.auto_resume` event under
 `subscription_auto_resume:<window>`, including the resulting date and eligibility
 policy. The pause reminder computes `nextDeliveryAt` and `resumeAt` from the same
-duration shift and processing-time clamp. Manual customer resume keeps its
+duration shift, clamped to the window end: the date a punctual auto-resume will execute.
+Retained ledger reminders read the same SQL facts as newly produced reminders.
+Manual customer resume keeps its
 existing cadence policy.
 The lifecycle dispatcher sends that event with the existing resumed confirmation.
 Scheduling, enablement and job-ledger composition belong to the host.

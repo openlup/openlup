@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { activateNativePurchaseWithRenewal, createNativeRenewalCodec, createPostgresRenewalSettlementPort, createPostgresRenewalStore, createPostgresRetryLifecycleBinding,
-  createPostgresSandboxRenewalRail, createPostgresSubscriptionAutoResume, createSandboxRenewalPolicy, runOneAutomaticSubscriptionRenewal,
+  createPostgresSandboxRenewalRail, createPostgresSubscriptionAutoResume, createPostgresLifecycleMessages, createSandboxRenewalPolicy, runOneAutomaticSubscriptionRenewal,
   type SubscriptionQueryExecutor } from "@openlup/platform/subscriptions";
 import { createPostgresSandboxPaymentSimulator } from "@openlup/platform/payments";
 import { createPostgresDestinationPort } from "@openlup/platform/commerce/server/destinations";
@@ -38,10 +38,10 @@ describe.each(lifecycleProfiles)("pause duration on %s", profile => {
     expect(Date.parse(expected)).toBeGreaterThanOrEqual(Date.parse(f.next));
     expect(await run(now)).toMatchObject({ resumed: 0, failed: 0 });
   }
-  it("adds seven days to a fourteen-day cycle and promises that same date in the reminder", async () => {
+  it.each([-1, -30, 14])("matches the mid-pause reminder and punctual resume for stored day %i", async storedDay => {
     // The producer owns a wall clock: capture it once, then bind explicit UTC instants.
     const clock = (await env.owner.query("SELECT now() AS instant")).rows[0].instant.toISOString() as string;
-    const start = days(clock, -4), f = await paused(start), expected = days(start, 21);
+    const start = days(clock, -4), f = await paused(start, days(start, storedDay)), expected = days(start, Math.max(storedDay + 7, 7));
     await call(env.runtime, "dunning_lifecycle_pause_reminder_dispatch", [100, 4 * 86400]);
     const payloads = (await env.owner.query("SELECT payload FROM public.outbox_events WHERE aggregate_id=$1 AND event_type='subscription.pause_reminder_due'", [f.subscription])).rows;
     expect(payloads).toHaveLength(1);
@@ -50,6 +50,31 @@ describe.each(lifecycleProfiles)("pause duration on %s", profile => {
     await call(env.runtime, "dunning_lifecycle_pause_reminder_dispatch", [100, 4 * 86400]);
     expect((await env.owner.query("SELECT id FROM public.outbox_events WHERE aggregate_id=$1 AND event_type='subscription.pause_reminder_due'", [f.subscription])).rows).toHaveLength(1);
     await resumed(f, f.end, expected);
+  });
+  it("delivers a retained ledger pause reminder with the same date as punctual auto-resume", async () => {
+    const clock = (await env.owner.query("SELECT now() AS instant")).rows[0].instant.toISOString() as string;
+    const start = days(clock, -4), f = await paused(start, days(start, 28)), end = days(start, 14), expected = days(start, 42);
+    await env.owner.query("UPDATE public.subscriptions SET cadence_days=28 WHERE id=$1", [f.subscription]);
+    await env.owner.query("UPDATE public.subscription_pause_windows SET ends_at=$2 WHERE id=$1", [f.window, end]);
+    const ledger = randomUUID();
+    await env.owner.query(`INSERT INTO public.subscription_reminder_ledger(id,subscription_id,reminder_kind,reminder_day)
+      VALUES($1,$2,'pause_ending',($3::timestamptz AT TIME ZONE 'UTC')::date)`, [ledger, f.subscription, end]);
+    const bound: Record<string, unknown>[] = [];
+    const result = await createPostgresLifecycleMessages({
+      notices: { pauseWindowSeconds: 15 * 86400 },
+      async withSession(work) { const db = await env.runtime.connect(); try { return await work(db); } finally { db.release(); } },
+      async bind(notice) {
+        if (notice.id === ledger) bound.push(notice.payload);
+        return { recipientReference: `client:${notice.clientId}`, templateReference: notice.templateSlug };
+      },
+      delivery: { async readReceipt() { return null; }, async send(command) { return { state: "accepted", deliveryReference: command.idempotencyKey }; } },
+    }).run(100);
+    expect(result).toMatchObject({ failed: 0, stale: 0 });
+    expect(bound).toHaveLength(1);
+    expect(new Date(String(bound[0].nextDeliveryAt)).toISOString()).toBe(expected);
+    expect(new Date(String(bound[0].resumeAt)).toISOString()).toBe(expected);
+    expect((await env.owner.query("SELECT id FROM public.outbox_events WHERE aggregate_id=$1 AND event_type='subscription.pause_reminder_due'", [f.subscription])).rows).toHaveLength(0);
+    await resumed(f, end, expected);
   });
   it("resumes a pause starting on the renewal date with the cycle at the pause end", async () => {
     const f = await paused(AT, AT);

@@ -69,14 +69,28 @@ BEGIN
 END;
 $$;
 
+CREATE FUNCTION public.subscription_pause_reminder_facts(p_window_id uuid)
+RETURNS jsonb LANGUAGE sql STABLE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
+ SELECT jsonb_build_object('pauseWindowId',w.id,'pausePreset',w.pause_preset,'pauseEndsAt',w.ends_at,
+   'nextDeliveryAt',d.delivery_at,'resumeAt',d.delivery_at)
+ FROM public.subscription_pause_windows w JOIN public.subscriptions s ON s.id=w.subscription_id
+ CROSS JOIN LATERAL(SELECT GREATEST(s.next_cycle_at+(w.ends_at-w.starts_at),w.ends_at) AS delivery_at) d
+ WHERE w.id=p_window_id;
+$$;
+REVOKE ALL ON FUNCTION public.subscription_pause_reminder_facts(uuid) FROM PUBLIC;
+DO $$ BEGIN
+ IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
+  EXECUTE 'GRANT EXECUTE ON FUNCTION public.subscription_pause_reminder_facts(uuid) TO service_role';
+ END IF;
+END; $$;
+
 CREATE OR REPLACE FUNCTION public.dunning_lifecycle_pause_reminder_dispatch(p_limit integer,p_pause_window_seconds integer)
 RETURNS jsonb LANGUAGE plpgsql SET search_path = pg_catalog AS $$
 DECLARE v_scanned integer; v_queued integer;
 BEGIN
   IF p_pause_window_seconds IS NULL OR p_pause_window_seconds<=0 THEN RAISE EXCEPTION 'subscription_notice_options_invalid'; END IF;
   WITH due AS (
-    SELECT w.id,w.subscription_id,w.pause_preset,w.ends_at,
-      GREATEST(s.next_cycle_at+(w.ends_at-w.starts_at),now()) AS next_delivery_at
+    SELECT w.id,w.subscription_id,w.ends_at,public.subscription_pause_reminder_facts(w.id) AS facts
     FROM public.subscription_pause_windows w JOIN public.subscriptions s ON s.id=w.subscription_id
     WHERE w.resumed_at IS NULL AND s.status='paused' AND w.ends_at>now()
       AND w.ends_at<=now()+make_interval(secs=>p_pause_window_seconds)
@@ -84,7 +98,7 @@ BEGIN
   ), written AS (
     INSERT INTO public.outbox_events(aggregate_type,aggregate_id,event_type,idempotency_key,payload)
     SELECT 'subscription_notice',subscription_id,'subscription.pause_reminder_due','subscription_pause_reminder:'||id::text,
-      jsonb_build_object('pauseWindowId',id,'pausePreset',pause_preset,'pauseEndsAt',ends_at,'nextDeliveryAt',next_delivery_at,'resumeAt',next_delivery_at)
+      facts
     FROM due WHERE NOT EXISTS(SELECT 1 FROM public.subscription_events legacy
       WHERE legacy.subscription_id=due.subscription_id AND legacy.event_type='subscription.pause_reminder_due'
         AND legacy.idempotency_key='pause-reminder:'||due.id::text)

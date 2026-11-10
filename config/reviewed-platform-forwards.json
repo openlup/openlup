@@ -3693,7 +3693,12 @@
             "searchPath": "pg_catalog"
           }
         ],
-        "createdFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.subscription_pause_reminder_facts(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
         "grantOnlyFunctions": [],
         "dataStatements": []
       }
@@ -4337,7 +4342,7 @@
     },
     {
       "path": "db/platform/migrations/20261110105000_subscription_pause_duration.sql",
-      "sha256": "c3c351f5d73b409398ef75935c0267309ac73d2c6038a33c867a64c9fe5d76d8",
+      "sha256": "8ac7881ab139c58755a6b2f51d058612b3da4676eaffd3b8de87580fc2e81a0b",
       "functions": [
         {
           "signature": "public.subscription_auto_resume_due(integer,timestamptz)",
@@ -4347,7 +4352,12 @@
         {
           "signature": "public.dunning_lifecycle_pause_reminder_dispatch(integer,integer)",
           "beforeSha256": "753e7eeb41bba5e927fc1caa2b6c0f79b8a080462013e37a3ef8cf3d855ff3d5",
-          "afterSha256": "6b00bbfd4107632a9bc634380c8e8ddd5b840c44f417ee8326a88f5933107d5e"
+          "afterSha256": "26d0fce4f17580754f6a69cd583104673e05a0c5754fe781947305c3bacee2cb"
+        },
+        {
+          "signature": "public.subscription_pause_reminder_facts(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "3edb0dd73e4a350cbfe7f9b740872bd0d022e662c77616be3b0e0488825f099a"
         }
       ]
     }
