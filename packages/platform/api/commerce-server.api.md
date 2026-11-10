@@ -10015,14 +10015,20 @@ export interface ExpiredRecoveryRuntimeInput<Draft> {
     source: ExpiredCheckoutRecoveryOrder;
     clientId: string;
 }
-/** The host supplies a dedicated READ COMMITTED transaction. The replacement
- * order lock serializes runtime replay before native fail-fast inventory locks.
- * Bind both callbacks to the provided executor; no remote dispatch belongs here. */
+/** The host supplies a dedicated READ COMMITTED transaction. The
+ * source order lock serializes fresh admission with source observations; the
+ * replacement lock serializes runtime replay before native inventory locks.
+ * Bind all callbacks to the provided executor; no remote dispatch belongs here. */
 export declare function createPostgresExpiredCheckoutRuntime<Result>(lane: ExpiredRecoveryTransactionLane, ports: {
     stockSourceKey: string;
     reservationLifetimeMs: number;
     channelKey: string;
     now?: () => Date;
+    verifyPriorPayment(input: {
+        orderId: string;
+        totalMinor: number;
+        currency: string;
+    }, db: CheckoutRecoveryWriteExecutor): Promise<'safe' | 'paid' | 'unavailable'>;
     reserveOrderItems(input: {
         idempotencyKey: string;
         orderId: string;

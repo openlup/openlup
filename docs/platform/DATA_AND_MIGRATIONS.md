@@ -3647,7 +3647,9 @@ It replaces no function and adds no table, lifecycle CHECK, trigger or backfill.
 It uses the existing recovery lineage, draft receipt, destination, provisional
 activation and sandbox payment owners. Its fixed path is `pg_catalog, pg_temp`;
 PUBLIC, anon and authenticated have no EXECUTE grant. Exact linked replay precedes
-fresh checks, and the source payment/window checks follow blocking aggregate
-locks. A fresh initial declaration belongs to the replacement; the predecessor
+fresh checks; a replacement with either lineage field already populated refuses
+fresh preparation. The source payment/window checks follow blocking aggregate
+locks. Runtime first payment admission also rechecks source evidence under the
+source order lock before any replacement stock or payment write. A fresh initial declaration belongs to the replacement; the predecessor
 is never reopened. See the [recreation composition](PLATFORM_PACKAGE_REFERENCE.md#expired-checkout-recreation)
 for commercial validation, transaction binding, compensation and profile limits.

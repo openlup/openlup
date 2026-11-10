@@ -1769,9 +1769,14 @@ draft owner using its original accepted snapshot when only transient quote
 identity changed.
 
 For the native sandbox runtime, bind `createPostgresExpiredCheckoutRuntime` to a
-dedicated READ COMMITTED transaction lane. Both reservation and payment callbacks
-must use the supplied executor. The replacement order lock precedes reservation,
-intent and attempt writes, so concurrent starts serialize. Bind reservation to
+dedicated READ COMMITTED transaction lane. Bind `verifyPriorPayment` to
+`createPostgresSandboxExpiredCheckoutSafety` using the supplied executor, as with
+the reservation and payment callbacks. The runtime locks the source order before
+the replacement and source intent. Before the first replacement admission it
+rechecks source payment evidence under these locks, which serialize with source
+observations. Source success returns `paid` before stock or payment writes and
+the service compensates the replacement. An already opened replacement intent
+does not bypass the check; native payment owners retain their guarded replay. Bind reservation to
 `createPostgresPurchaseReservationPort` and payment to the native simulator;
 `checkoutRecoveryExecutionFingerprint` supplies its stable execution identity.
 No remote provider dispatch belongs inside this transaction. Configure the stock
@@ -1781,7 +1786,8 @@ profiles must supply its own admitted runtime port.
 The preparation writer locks the source and replacement, checks current payment
 evidence and the current recovery deadline after blocking locks, and admits one
 immediate replacement. Exact linked replay precedes fresh admission checks,
-including after compensation. An initial subscription gets a new provisional
+including after compensation. A linked replacement can never be reparented to
+another source. An initial subscription gets a new provisional
 declaration; the terminal predecessor stays compensated. Recreation creates no
 cycle, never mutates an active/paused subscription, and refuses every non-null
 source subscription cycle. Existing captured-payment activation creates a live

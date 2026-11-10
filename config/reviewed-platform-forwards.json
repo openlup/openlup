@@ -4658,12 +4658,12 @@
     },
     {
       "path": "db/platform/migrations/20261110180000_checkout_recovery_recreation.sql",
-      "sha256": "c32f2d8ba18db7c8021dc92c42af8385077626ef8272c8e8af553291956386f9",
+      "sha256": "4cd2c288635a96bd7baab00fa5414bcb0d0de5352a7089f1c4a9f55631e3912f",
       "functions": [
         {
           "signature": "public.commerce_prepare_expired_checkout_recovery(text,uuid,uuid,bigint,timestamptz)",
           "beforeSha256": null,
-          "afterSha256": "4b07cf9e1b0aed186a32336cfdeb38483915ff66843d46bfd9ef2644e6ac8d22"
+          "afterSha256": "776cb4cde206c1e9a0286eadf8477fb062debe7a631f5db42f73be60f906f7f9"
         }
       ]
     }

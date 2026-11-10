@@ -21,11 +21,13 @@ export function createPostgresExpiredCheckoutDraftPort<Draft extends { orderId:s
  }};
 }
 export interface ExpiredRecoveryRuntimeInput<Draft> {idempotencyKey:string;orderDraft:Draft;quoteSnapshot:CreateQuoteResponse;source:ExpiredCheckoutRecoveryOrder;clientId:string}
-/** The host supplies a dedicated READ COMMITTED transaction. The replacement
- * order lock serializes runtime replay before native fail-fast inventory locks.
- * Bind both callbacks to the provided executor; no remote dispatch belongs here. */
+/** The host supplies a dedicated READ COMMITTED transaction. The
+ * source order lock serializes fresh admission with source observations; the
+ * replacement lock serializes runtime replay before native inventory locks.
+ * Bind all callbacks to the provided executor; no remote dispatch belongs here. */
 export function createPostgresExpiredCheckoutRuntime<Result>(lane:ExpiredRecoveryTransactionLane,ports:{
  stockSourceKey:string;reservationLifetimeMs:number;channelKey:string;now?:()=>Date;
+ verifyPriorPayment(input:{orderId:string;totalMinor:number;currency:string},db:CheckoutRecoveryWriteExecutor):Promise<'safe'|'paid'|'unavailable'>;
  reserveOrderItems(input:{idempotencyKey:string;orderId:string;stockSourceKey:string;items:{orderItemId:string;skuId:string;quantity:number}[];paymentStatus:'created';expiresAt:string;now:string},db:CheckoutRecoveryWriteExecutor):Promise<unknown>;
  startPayment(input:{idempotencyKey:string;settlementIntentId:string;orderId:string;clientId:string},db:CheckoutRecoveryWriteExecutor):Promise<Result>;
 }){
@@ -34,8 +36,17 @@ export function createPostgresExpiredCheckoutRuntime<Result>(lane:ExpiredRecover
  return{async startRuntime(input:ExpiredRecoveryRuntimeInput<{orderId:string}>):Promise<Result>{return lane.run(async gateway=>{
   const db=gateway as CheckoutRecoveryWriteExecutor;
   const orderId=input.orderDraft.orderId.replace(/^order_/,''),key=input.idempotencyKey,now=(ports.now?.()??new Date()).toISOString();
-  const current=(await db.query('SELECT client_id,status,subscription_cycle_id,created_at,total_amount_minor,currency_code FROM public.commerce_orders WHERE id=$1::uuid FOR UPDATE',[orderId])).rows[0];
-  if(!current||String(current.client_id)!==input.clientId)throw new ExpiredCheckoutRecoveryError('unavailable');
+  // Observation recording takes this same source order lock before its intent
+  // and attempt locks. READ COMMITTED reads below see any observation it committed.
+  const source=(await db.query('SELECT client_id,subscription_cycle_id,total_amount_minor,currency_code FROM public.commerce_orders WHERE id=$1::uuid FOR UPDATE',[input.source.orderId])).rows[0];
+  const current=(await db.query('SELECT client_id,status,subscription_cycle_id,created_at,total_amount_minor,currency_code,recreated_from_order_id FROM public.commerce_orders WHERE id=$1::uuid FOR UPDATE',[orderId])).rows[0];
+  if(!source||!current||String(source.client_id)!==input.clientId||String(current.client_id)!==input.clientId
+   ||source.subscription_cycle_id!==null||current.recreated_from_order_id!==input.source.orderId.toLowerCase())throw new ExpiredCheckoutRecoveryError('unavailable');
+  // An open replacement intent is not evidence of a prior payment admission.
+  // Check even when it exists; native owners retain their guarded replay below.
+  await db.query('SELECT id FROM public.commerce_settlement_intents WHERE order_id=$1::uuid ORDER BY id FOR UPDATE',[input.source.orderId]);
+  const safety=await ports.verifyPriorPayment({orderId:input.source.orderId,totalMinor:Number(source.total_amount_minor),currency:String(source.currency_code)},db);
+  if(safety!=='safe')throw new ExpiredCheckoutRecoveryError(safety);
   if(current.status!=='paid'){
    if(current.status!=='pending_payment'||current.subscription_cycle_id!==null)throw new ExpiredCheckoutRecoveryError('unavailable');
    const document=await rpc(db,'commerce_read_destination',['text','uuid'],['order',input.source.orderId]);

@@ -17,6 +17,9 @@ BEGIN
  -- Linked replay precedes fresh admission, even after compensation or payment.
  IF replacement.recreated_from_order_id=source.id THEN
   RETURN jsonb_build_object('contractVersion','commerce.v0','replacementOrderId',replacement.id,'replayed',true); END IF;
+ -- A linked replacement is permanent, even while its draft remains unstarted.
+ IF replacement.recovery_root_order_id IS NOT NULL OR replacement.recreated_from_order_id IS NOT NULL THEN
+  RAISE EXCEPTION 'commerce_expired_recovery_replacement_invalid' USING ERRCODE='22023'; END IF;
  IF EXISTS(SELECT 1 FROM public.commerce_orders WHERE recreated_from_order_id=source.id AND id<>replacement.id) THEN
   RAISE EXCEPTION 'commerce_expired_recovery_source_already_recreated' USING ERRCODE='23505'; END IF;
  IF source.subscription_cycle_id IS NOT NULL OR replacement.subscription_cycle_id IS NOT NULL THEN

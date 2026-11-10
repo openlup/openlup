@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createExpiredCheckoutRecoveryService, createPostgresCheckoutRecoveryOrderPort, createPostgresExpiredCheckoutRecoveryPort,
  createPostgresExpiredCheckoutDraftPort, createPostgresExpiredCheckoutRuntime, createPostgresExpiredCheckoutCompensation, checkoutRecoveryExecutionFingerprint,
- type NativeCheckoutRecoveryOrder } from '@openlup/platform/commerce/server';
+ type NativeCheckoutRecoveryOrder, type CheckoutRecoveryWriteExecutor } from '@openlup/platform/commerce/server';
 import { createPostgresNativeCheckoutPersistence } from '@openlup/platform/commerce/server/native-checkout';
 import { createPostgresSandboxExpiredCheckoutSafety, createPostgresSandboxPaymentSimulator } from '@openlup/platform/payments';
 import { createPostgresPurchaseReservationPort } from '@openlup/platform/inventory';
@@ -26,8 +26,9 @@ describe.each(lifecycleProfiles)('expired checkout recreation on %s',profile=>{
  const read=async(id:string)=>(await createPostgresCheckoutRecoveryOrderPort(env.runtime).getRecoveryOrder({orderId:id}))!;
  const simulator=()=>createPostgresSandboxPaymentSimulator(env.runtime,{dunningTemplateSlug:"dunning",recoveryUrlPath:"/recover",recoveryTemplateSlug:"recover"});
  const lane={run:async<T>(work:(db:unknown)=>Promise<T>)=>{const db=await env.runtime.connect();try{await db.query('BEGIN');const result=await work(db);await db.query('COMMIT');return result;}catch(e){await db.query('ROLLBACK');throw e;}finally{db.release();}}};
- async function subject(mode:'subscription'|'one_time'='subscription',stock=10){
-  const sku=`RECOVERY-${randomUUID()}`,skuId=randomUUID(),client=randomUUID(),stockSource=randomUUID();
+ async function subject(mode:'subscription'|'one_time'='subscription',stock=10,shared?:{sku:string;skuId:string;client:string;stockSource:string}){
+  const {sku,skuId,client,stockSource}=shared??{sku:`RECOVERY-${randomUUID()}`,skuId:randomUUID(),client:randomUUID(),stockSource:randomUUID()};
+  if(!shared){
   await env.owner.query('INSERT INTO public.clients(id,email)VALUES($1,$2)',[client,`${client}@example.invalid`]);
   await env.owner.query("INSERT INTO public.catalog_products(id,slug,name)VALUES($1,$2,'Synthetic')",[skuId,sku.toLowerCase()]);
   await env.owner.query("INSERT INTO public.catalog_skus(id,product_id,sku,title,sellable_in_subscription)VALUES($1,$1,$2,'Synthetic',true)",[skuId,sku]);
@@ -35,6 +36,7 @@ describe.each(lifecycleProfiles)('expired checkout recreation on %s',profile=>{
   await env.owner.query('INSERT INTO public.price_entries(price_list_id,variant_id,unit_price_minor)VALUES($1,$2,100)',[list,skuId]);
   await env.owner.query(`INSERT INTO public.fulfillment_stock_current(source_key,sku,total_quantity,for_sale_quantity,reserved_unavailable_quantity,inventory_class,last_synced_at,stale_after,sync_run_id,idempotency_key,operation_fingerprint)
    VALUES($1,$2,$3,$3,0,'sellable',clock_timestamp(),clock_timestamp()+interval '30 days','recovery',$1,$4)`,[stockSource,sku,stock,'a'.repeat(64)]);
+  }
   const frozen=quote(sku,mode),draft=await persistence().createOrderDraft({idempotencyKey:`source:${randomUUID()}`,quoteSnapshot:frozen},{clientId:client});
   const id=draft.orderDraft.orderId.replace(/^order_/,'');
   await call(env.runtime,'commerce_register_order_destination',[`destination:${id}`,id,{recipientName:'Example Buyer',line1:'Example 1',city:'Example',postalCode:'00000',country:'ZZ'},at()]);
@@ -51,15 +53,16 @@ describe.each(lifecycleProfiles)('expired checkout recreation on %s',profile=>{
   return{id,client,sku,skuId,stockSource,frozen,intentId,attemptId:attempt.id,order:await read(id)};
  }
  type Subject=Awaited<ReturnType<typeof subject>>;
- function service(f:Subject,options:{unit?:number;supports?:boolean;fail?:boolean}={}){
+ function service(f:Subject,options:{unit?:number;supports?:boolean;fail?:boolean;afterPrepare?:()=>Promise<void>;beforeReserve?:(db:CheckoutRecoveryWriteExecutor)=>Promise<void>}={}){
   const quotePort={createQuote:vi.fn(async()=>{const fresh=quote(f.sku,f.frozen.quote.context.mode,options.unit??100);Object.assign(fresh.quote.context,{requestTrace:randomUUID()});return fresh;})};
   const runtime=createPostgresExpiredCheckoutRuntime(lane,{stockSourceKey:f.stockSource,reservationLifetimeMs:1800000,channelKey:'sandbox',
-   reserveOrderItems:(input,db)=>createPostgresPurchaseReservationPort(db).reserveOrderItems(input),startPayment:async (input,db)=>{
+   verifyPriorPayment:(input,db)=>createPostgresSandboxExpiredCheckoutSafety(db).verifyPriorPayment(input),
+   reserveOrderItems:async(input,db)=>{await options.beforeReserve?.(db);return createPostgresPurchaseReservationPort(db).reserveOrderItems(input);},startPayment:async (input,db)=>{
     if(options.fail)throw new Error('downstream_failure');
     return createPostgresSandboxPaymentSimulator(db,{dunningTemplateSlug:"dunning",recoveryUrlPath:"/recover",recoveryTemplateSlug:"recover"}).beginAttempt({idempotencyKey:input.idempotencyKey,settlementIntentId:input.settlementIntentId,requestFingerprint:checkoutRecoveryExecutionFingerprint(input),at:at()});
    }});
   const deps={supports:()=>options.supports!==false,quoteRequest:()=>({}),quotePort,
-   orderDraftPort:createPostgresExpiredCheckoutDraftPort(env.runtime,persistence()),recoveryPort:prepare(),
+   orderDraftPort:createPostgresExpiredCheckoutDraftPort(env.runtime,persistence()),recoveryPort:{async prepareReplacement(input:Parameters<ReturnType<typeof prepare>['prepareReplacement']>[0]){const result=await prepare().prepareReplacement(input);await options.afterPrepare?.();return result;}},
    paymentSafetyPort:createPostgresSandboxExpiredCheckoutSafety(env.runtime),runtimePort:runtime,compensationPort:createPostgresExpiredCheckoutCompensation(lane)};
   return{...createExpiredCheckoutRecoveryService(deps),quotePort};
  }
@@ -90,6 +93,17 @@ describe.each(lifecycleProfiles)('expired checkout recreation on %s',profile=>{
   await expect(prepare().prepareReplacement({idempotencyKey:`sibling:${f.id}`,sourceOrderId:f.id,replacementOrderId:sibling})).rejects.toMatchObject({reason:'unavailable'});
   expect(await children(f.id)).toEqual([{id,status:'cancelled',subscription_cycle_id:null}]);
  });
+ it('never reparents an unstarted linked replacement to another identical source',async()=>{
+  const a=await subject('one_time'),b=await subject('one_time',10,a),id=await replacement(a),key=`checkout-recovery-recreate:${a.id}`;
+  await prepare().prepareReplacement({idempotencyKey:key,sourceOrderId:a.id,replacementOrderId:id});
+  const rows=()=>env.owner.query('SELECT to_jsonb(o) AS row,xmin::text AS version FROM public.commerce_orders o WHERE id=ANY($1::uuid[]) ORDER BY id',[[a.id,b.id,id]]);
+  const before=(await rows()).rows;
+  await expect(prepare().prepareReplacement({idempotencyKey:key,sourceOrderId:b.id,replacementOrderId:id})).rejects.toMatchObject({reason:'unavailable'});
+  expect((await rows()).rows).toEqual(before);expect(await children(a.id)).toEqual([{id,status:'pending_payment',subscription_cycle_id:null}]);
+  expect(await children(b.id)).toEqual([]);
+  expect((await env.owner.query('SELECT recovery_root_order_id,recreated_from_order_id FROM public.commerce_orders WHERE id=$1',[id])).rows)
+   .toEqual([{recovery_root_order_id:a.id,recreated_from_order_id:a.id}]);
+ });
  it('refuses commercial drift before draft writes and rejects mismatched persisted replacement atomically',async()=>{
   const f=await subject(),before=await sourceRows(f),s=service(f,{unit:101});
   await expect(recreate(f,s)).rejects.toMatchObject({reason:'order_changed'});expect(await children(f.id)).toEqual([]);
@@ -107,6 +121,57 @@ describe.each(lifecycleProfiles)('expired checkout recreation on %s',profile=>{
   const before=await sourceRows(f),s=service(f);await expect(recreate(f,s)).rejects.toMatchObject({reason:'paid'});
   expect(s.quotePort.createQuote).not.toHaveBeenCalled();expect(await children(f.id)).toEqual([]);expect(await sourceRows(f)).toEqual(before);
   expect((await read(f.id)).status).toBe('paid');
+ });
+ it.each([false,true])('rechecks source success after committed preparation, with open replacement intent: %s',async openIntent=>{
+  const f=await subject('one_time');let paidRows:Awaited<ReturnType<typeof sourceRows>>|undefined;
+  const s=service(f,{afterPrepare:async()=>{
+   const [child]=await children(f.id);expect(child).toBeDefined();
+   if(openIntent)await call(env.runtime,'commerce_open_settlement_intent',[`checkout-recovery-recreate:${f.id}:payment-intent`,child.id,'sandbox',100,'XXX',{},at()]);
+   // Model the payable source state in which native late settlement can converge.
+   await env.owner.query("UPDATE public.commerce_orders SET status='pending_payment' WHERE id=$1",[f.id]);
+   const observation=await simulator().recordObservation({attemptId:f.attemptId,idempotencyKey:`between:${f.id}`,outcome:'captured',occurredAt:at()});
+   await simulator().ingress.receive({rawBody:new TextEncoder().encode(JSON.stringify({settlementIntentId:f.intentId,attemptId:f.attemptId,observationId:observation.id})),headers:{},receivedAt:at()});
+   paidRows=await sourceRows(f);
+  }});
+  await expect(recreate(f,s)).rejects.toMatchObject({reason:'paid'});
+  const [child]=await children(f.id);expect(child.status).toBe('cancelled');expect((await read(f.id)).status).toBe('paid');
+  expect(await sourceRows(f)).toEqual(paidRows);
+  expect((await env.owner.query('SELECT status FROM public.commerce_settlement_intents WHERE order_id=$1',[child.id])).rows).toEqual(openIntent?[{status:'failed'}]:[]);
+  expect((await env.owner.query('SELECT a.id FROM public.payment_simulator_attempts a JOIN public.commerce_settlement_intents i ON i.id=a.settlement_intent_id WHERE i.order_id=$1',[child.id])).rows).toEqual([]);
+  expect((await env.owner.query('SELECT id FROM public.fulfillment_inventory_reservations WHERE purchase_order_id=$1',[child.id])).rows).toEqual([]);
+  expect((await env.owner.query('SELECT recreated_from_order_id FROM public.commerce_orders WHERE id=$1',[child.id])).rows).toEqual([{recreated_from_order_id:f.id}]);
+ });
+ it('compensates a prepared declaration on captured source evidence without changing its terminal predecessor',async()=>{
+  const f=await subject(),s=service(f,{afterPrepare:async()=>{
+   await simulator().recordObservation({attemptId:f.attemptId,idempotencyKey:`between-terminal:${f.id}`,outcome:'captured',occurredAt:at()});
+  }}),before=await sourceRows(f);
+  await expect(recreate(f,s)).rejects.toMatchObject({reason:'paid'});
+  const [child]=await children(f.id);expect(child.status).toBe('cancelled');expect(await sourceRows(f)).toEqual(before);
+  expect((await env.owner.query('SELECT state FROM public.subscription_activations WHERE order_id=$1',[child.id])).rows).toEqual([{state:'compensated'}]);
+  expect((await env.owner.query('SELECT id FROM public.commerce_settlement_intents WHERE order_id=$1',[child.id])).rows).toEqual([]);
+  expect((await env.owner.query('SELECT id FROM public.fulfillment_inventory_reservations WHERE purchase_order_id=$1',[child.id])).rows).toEqual([]);
+ });
+ it('serializes source observations behind first replacement payment admission',async()=>{
+  const f=await subject('one_time'),observer=await env.runtime.connect();
+  let release!:()=>void,entered!:()=>void,runtimePid=0;
+  const gate=new Promise<void>(resolve=>{release=resolve;}),reached=new Promise<void>(resolve=>{entered=resolve;});
+  const s=service(f,{beforeReserve:async db=>{runtimePid=Number((await db.query('SELECT pg_backend_pid() AS id')).rows[0].id);entered();await gate;}});
+  const starting=recreate(f,s);let observation:Promise<unknown>|undefined;
+  try{
+   await Promise.race([reached,starting]);const observerPid=(await observer.query('SELECT pg_backend_pid() AS id')).rows[0].id;
+   observation=createPostgresSandboxPaymentSimulator(observer,{dunningTemplateSlug:'dunning',recoveryUrlPath:'/recover',recoveryTemplateSlug:'recover'})
+    .recordObservation({attemptId:f.attemptId,idempotencyKey:`after-runtime:${f.id}`,outcome:'captured',occurredAt:at()});
+   let waiting=false;
+   for(let n=0;n<100&&!waiting;n++){
+    waiting=(await env.owner.query('SELECT $2::integer=ANY(pg_blocking_pids($1)) AS waiting',[observerPid,runtimePid])).rows[0].waiting;
+    if(!waiting)await new Promise(resolve=>setTimeout(resolve,10));
+   }
+   expect(waiting).toBe(true);release();const started=await starting;await observation;
+   const [child]=await children(f.id);
+   expect((await simulator().readAttempt({settlementIntentId:f.intentId}))?.state).toBe('captured');
+   expect((await env.owner.query(`SELECT a.id FROM public.payment_simulator_attempts a JOIN public.commerce_settlement_intents i ON i.id=a.settlement_intent_id WHERE i.order_id=$1`,[child.id])).rows).toEqual([{id:started.id}]);
+   expect((await env.owner.query('SELECT status FROM public.fulfillment_inventory_reservations WHERE purchase_order_id=$1',[child.id])).rows).toEqual([{status:'held'}]);
+  }finally{release();await starting.catch(()=>undefined);await observation?.catch(()=>undefined);observer.release();}
  });
  it('refuses unknown, missing and mismatched provider evidence, retaining named real-provider refusal',async()=>{
   const f=await subject(),safety=createPostgresSandboxExpiredCheckoutSafety(env.runtime);

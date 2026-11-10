@@ -1606,6 +1606,7 @@ it("round-trips an actually recreated checkout and its root with complete row eq
     catch (error) { await connection.query("ROLLBACK"); throw error; } finally { connection.release(); }
   } };
   const runtime = createPostgresExpiredCheckoutRuntime(lane, { stockSourceKey: sourceKey, channelKey: "sandbox", reservationLifetimeMs: 1800000,
+    verifyPriorPayment: (input, db) => createPostgresSandboxExpiredCheckoutSafety(db).verifyPriorPayment(input),
     reserveOrderItems: (input, executor) => createPostgresPurchaseReservationPort(executor).reserveOrderItems(input),
     startPayment: (input, executor) => createPostgresSandboxPaymentSimulator(executor, paymentOptions).beginAttempt({
       idempotencyKey: input.idempotencyKey, settlementIntentId: input.settlementIntentId,
