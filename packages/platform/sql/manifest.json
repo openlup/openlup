@@ -466,9 +466,13 @@
       {
         "file": "db/platform/migrations/20261110140000_fulfillment_parcel_contacts.sql",
         "sha256": "0fc163d621b761fbecf7c4993bf4c9a8173bf24a61a12cde22fb7510de731af0"
+      },
+      {
+        "file": "db/platform/migrations/20261110155000_fulfillment_parcel_status_fence.sql",
+        "sha256": "0d9536111788286afc580b7d626679bc5b5a69b8c75d97b1dc848f626f278674"
       }
     ],
-    "objectInventorySha256": "d4d39bf009744104d9d3d00a72a2cc740d38a3624a08b1fcede9b8899e7f8acc",
+    "objectInventorySha256": "e55d32013a1dd87eaeeb6cc6bb6c9e07331f883aff997d66b2ced999633c9ec0",
     "qualified": {
       "baseline": {
         "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -954,14 +958,18 @@
         {
           "file": "db/platform/migrations/20261110140000_fulfillment_parcel_contacts.sql",
           "sha256": "0fc163d621b761fbecf7c4993bf4c9a8173bf24a61a12cde22fb7510de731af0"
+        },
+        {
+          "file": "db/platform/migrations/20261110155000_fulfillment_parcel_status_fence.sql",
+          "sha256": "0d9536111788286afc580b7d626679bc5b5a69b8c75d97b1dc848f626f278674"
         }
       ],
       "objectInventorySha256": {
         "bootstrapMigrator": {
-          "withRestore": "cf40007115da7e18ee72ca1baaca2e6859db33dc20e7ddc37409a72b5b6cc2c8"
+          "withRestore": "9b5810d4450985171ae3a34771f92dc8193fcb0910a9fc493004304532078bba"
         },
         "separateMigrator": {
-          "withRestore": "380a9bd5f486e8a77cc851c068ce2690fae31b77ca78becc295afbf156474a7f"
+          "withRestore": "68343e0fc9581ae0be6aea2aad9b56141581571f831d98fa5f6903e68173f583"
         }
       }
     },
@@ -1446,11 +1454,15 @@
         {
           "file": "db/platform/migrations/20261110140000_fulfillment_parcel_contacts.sql",
           "sha256": "0fc163d621b761fbecf7c4993bf4c9a8173bf24a61a12cde22fb7510de731af0"
+        },
+        {
+          "file": "db/platform/migrations/20261110155000_fulfillment_parcel_status_fence.sql",
+          "sha256": "0d9536111788286afc580b7d626679bc5b5a69b8c75d97b1dc848f626f278674"
         }
       ],
       "objectInventorySha256": {
-        "installerManaged": "e98794827e2ad6fb42b3df3497fa28d5c5b4b8e0177032713e1009ecddd5853e",
-        "operatorProvisioned": "2cc0c3a6b11d9d1bb0b75ca89c4e6b7e04683b0c70a65f07395ac44835d8ba56"
+        "installerManaged": "09a2c3d2e36e9e7975ed14e9eba35fd95823b5c39bb4b1ab5a096eaf2494ccc9",
+        "operatorProvisioned": "63d0fa5195172f02d43260155bf87f9162acfd27cb4fe515eed05022ae3cc843"
       }
     }
   },
@@ -2034,6 +2046,11 @@
       "file": "20261110140000_fulfillment_parcel_contacts.sql",
       "source": "db/platform/migrations/20261110140000_fulfillment_parcel_contacts.sql",
       "sha256": "0fc163d621b761fbecf7c4993bf4c9a8173bf24a61a12cde22fb7510de731af0"
+    },
+    {
+      "file": "20261110155000_fulfillment_parcel_status_fence.sql",
+      "source": "db/platform/migrations/20261110155000_fulfillment_parcel_status_fence.sql",
+      "sha256": "0d9536111788286afc580b7d626679bc5b5a69b8c75d97b1dc848f626f278674"
     },
     {
       "file": "q2_00000000000000_platform_baseline.sql",

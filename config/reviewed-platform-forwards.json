@@ -3826,6 +3826,30 @@
         "absorptionCensusTables": [
           "public.fulfillment_parcel_contacts"
         ]
+      },
+      {
+        "row": "fulfillment-parcel-status-fence",
+        "path": "db/platform/migrations/20261110155000_fulfillment_parcel_status_fence.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.commerce_fulfillment_enqueue_provider_command(uuid,text,text,text,text,text,text,text,text,text,text,integer)",
+            "beforeSha256": "ea627f5b6b69e08fc9016d6443ee5f17dc063d1aaa0c076e9a040b91b07dd055",
+            "searchPath": "pg_catalog"
+          },
+          {
+            "signature": "public.commerce_fulfillment_claim_provider_commands(text,text,integer,text,integer)",
+            "beforeSha256": "326de9b9118638c62892d867e5f4b91d4408d139aca0c37ff27c38b521bd79d6",
+            "searchPath": "pg_catalog"
+          },
+          {
+            "signature": "public.commerce_fulfillment_mark_command_submitting(uuid,uuid,bigint,bigint,uuid)",
+            "beforeSha256": "346240ccddf80988fc9ec45344a9b939be9ddb4c86dfbfc2986d4e9d65d5878f",
+            "searchPath": "pg_catalog"
+          }
+        ],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -4602,6 +4626,27 @@
           "signature": "public.fulfillment_erase_parcel_contacts(uuid)",
           "beforeSha256": null,
           "afterSha256": "f9ef86a6b44053a68fed05a52a05d0ef2f9318ebfb4ab289683d944d98600245"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261110155000_fulfillment_parcel_status_fence.sql",
+      "sha256": "0d9536111788286afc580b7d626679bc5b5a69b8c75d97b1dc848f626f278674",
+      "functions": [
+        {
+          "signature": "public.commerce_fulfillment_enqueue_provider_command(uuid,text,text,text,text,text,text,text,text,text,text,integer)",
+          "beforeSha256": "ea627f5b6b69e08fc9016d6443ee5f17dc063d1aaa0c076e9a040b91b07dd055",
+          "afterSha256": "71d38d279a260bd73c64d141874aa0829f4c83d1d07531a129234e5b33975a31"
+        },
+        {
+          "signature": "public.commerce_fulfillment_claim_provider_commands(text,text,integer,text,integer)",
+          "beforeSha256": "326de9b9118638c62892d867e5f4b91d4408d139aca0c37ff27c38b521bd79d6",
+          "afterSha256": "c1ee89d8783b9b72d23e33309f3c796af6861a729f37f32878b55d3344348e36"
+        },
+        {
+          "signature": "public.commerce_fulfillment_mark_command_submitting(uuid,uuid,bigint,bigint,uuid)",
+          "beforeSha256": "346240ccddf80988fc9ec45344a9b939be9ddb4c86dfbfc2986d4e9d65d5878f",
+          "afterSha256": "c420c184adbad3567e10ba6d9e13f47043718c03d9b202c91868ff10e7bdab85"
         }
       ]
     }

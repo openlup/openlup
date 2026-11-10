@@ -1744,6 +1744,22 @@ Automatic arrival alignment uses the latest arrival plus cadence with an outer
 Subscription locks precede case locks; rollback preserves both protection and
 the previous schedule.
 
+`20261110155000_fulfillment_parcel_status_fence.sql` checks parcel cancellation
+in provider-command enqueue, claim and submission. Enqueue and submission raise
+the existing `fulfillment_provider_command_fence_conflict` (`40001`); batch claim
+skips cancelled parcels. Refusals leave command rows, counters and transition
+history unchanged. An entry queued before cancellation remains recorded but
+cannot be claimed or submitted afterwards. Live-parcel idempotency and stale
+claim/version refusals retain their existing behavior.
+
+The lock order is the existing dispatch advisory lock, parcel row, then command
+row. The parcel row lock is shared with native cancellation; submission reads
+the command's immutable parcel identity before taking those locks. These locks
+cover the database transition, not a transaction spanning the provider call.
+Cancellation must still honor the in-flight provider-effect guards. Outcome,
+confirmation and reconciliation record effects already observed; they do not
+start a provider request and are unchanged.
+
 The native forwards
 [`20261022080000_fulfillment_command_ledger.sql`](../../db/platform/migrations/20261022080000_fulfillment_command_ledger.sql)
 and [`20261022090000_fulfillment_delivery_alignment.sql`](../../db/platform/migrations/20261022090000_fulfillment_delivery_alignment.sql)
