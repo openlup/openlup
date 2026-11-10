@@ -1487,3 +1487,145 @@ it("refuses a real sized opt-in before target writes while the classic source st
   expect((await restore(classic)).replayed).toBe(false);
   expect(await census(target.owner)).toEqual(classicRows);
 }, 30_000);
+
+
+const lineageIds = {
+  root: "ffffffff-ffff-4fff-bfff-ffffffffffff",
+  r1: "88888888-8888-4888-8888-888888888888",
+  r2: "11111111-1111-4111-8111-111111111111",
+  rootOnly: "00000000-0000-4000-8000-000000000001",
+};
+async function lineageStore() {
+  const native = await installation(`lineage-source-${targetNumber}`), client = randomUUID();
+  await native.owner.query("INSERT INTO public.clients(id,email) VALUES($1,'lineage@example.invalid')", [client]);
+  const db = await native.owner.connect();
+  try {
+    await db.query("BEGIN");
+    for (const [id, root, predecessor] of [
+      [lineageIds.root, null, null], [lineageIds.r1, lineageIds.root, lineageIds.root],
+      [lineageIds.r2, lineageIds.root, lineageIds.r1], [lineageIds.rootOnly, lineageIds.root, null],
+    ]) {
+      await db.query(`INSERT INTO public.commerce_orders(id,client_id,total_amount_minor,currency_code,
+        recovery_root_order_id,recreated_from_order_id,created_at,updated_at,metadata)
+        VALUES($1,$2,100,'XXX',$3,$4,'2026-09-01T00:00:00.123456Z','2026-09-02T00:00:00.654321Z',
+          '{"sequence":9007199254740993,"label":"Synthetic lineage"}')`, [id, client, root, predecessor]);
+      await db.query(`INSERT INTO public.commerce_order_items(order_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor)
+        VALUES($1,1,1,100,100)`, [id]);
+    }
+    await db.query("COMMIT");
+  } catch (error) { await db.query("ROLLBACK"); throw error; } finally { db.release(); }
+  return native;
+}
+function sealLineageCapture(copy: ConnectedNativeStoreCapture) {
+  const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
+  const { sha256: _inner, ...inner } = copy.compatible; copy.compatible.sha256 = hash(inner);
+  const { sha256: _outer, ...outer } = copy; copy.sha256 = hash(outer);
+  return copy;
+}
+it("restores both order-lineage parents before children without changing captured row text", async () => {
+  const native = await lineageStore(), carried = await capture(native.owner, "lineage-source");
+  const orders = carried.compatible.tables.find(table => table.table === "commerce_orders")!;
+  expect(orders.rows.map(row => JSON.parse(row).id)).toEqual([lineageIds.rootOnly, lineageIds.r2, lineageIds.r1, lineageIds.root]);
+  const before = await census(native.owner), originalPacket = JSON.stringify(carried);
+  expect((await restore(carried)).replayed).toBe(false);
+  expect(await census(target.owner)).toEqual(before);
+  expect((await census(target.owner)).commerce_orders).toEqual(orders.rows);
+  expect(JSON.stringify(carried)).toBe(originalPacket);
+  expect((await restore(carried)).replayed).toBe(true);
+  expect(await census(target.owner)).toEqual(before);
+}, 30_000);
+it.each(["recovery_root_order_id", "recreated_from_order_id"] as const)("refuses a captured order cycle through %s with no target writes", async field => {
+  const native = await lineageStore();
+  // Both referenced rows exist; PostgreSQL permits this cycle. The importer
+  // must refuse it explicitly rather than depending on row insertion order.
+  await native.owner.query(`UPDATE public.commerce_orders SET ${field}=$2 WHERE id=$1`, [lineageIds.root, lineageIds.r2]);
+  const carried = await capture(native.owner, `lineage-cycle-${field}`), before = await census(target.owner);
+  await expect(restore(carried)).rejects.toMatchObject({ code: "target_conflict", table: "commerce_orders" });
+  expect(await census(target.owner)).toEqual(before);
+}, 30_000);
+it.each(["recovery_root_order_id", "recreated_from_order_id"] as const)("refuses a parent absent from the captured set for %s with no target writes", async field => {
+  const native = await lineageStore(), carried = await capture(native.owner, `lineage-missing-${field}`);
+  // Remove a real parent from the captured set. Keep the remaining PostgreSQL
+  // row strings and their precision, including the now-dangling reference.
+  const retained = new Set(field === "recovery_root_order_id" ? [lineageIds.rootOnly]
+    : [lineageIds.root, lineageIds.r2, lineageIds.rootOnly]);
+  const orders = carried.compatible.tables.find(table => table.table === "commerce_orders")!;
+  orders.rows = orders.rows.filter(row => retained.has(JSON.parse(row).id));
+  const items = carried.compatible.tables.find(table => table.table === "commerce_order_items")!;
+  items.rows = items.rows.filter(row => retained.has(JSON.parse(row).order_id));
+  const before = await census(target.owner);
+  await expect(restore(sealLineageCapture(carried))).rejects.toMatchObject({ code: "target_conflict", table: "commerce_orders" });
+  expect(await census(target.owner)).toEqual(before);
+}, 30_000);
+
+it("round-trips an actually recreated checkout and its root with complete row equality", async () => {
+  const native = await installation("recreated-checkout-source");
+  const { createPostgresNativeCheckoutPersistence } = await import("@openlup/platform/commerce/server/native-checkout");
+  const { createExpiredCheckoutRecoveryService, createPostgresCheckoutRecoveryOrderPort, createPostgresExpiredCheckoutRecoveryPort,
+    createPostgresExpiredCheckoutDraftPort, createPostgresExpiredCheckoutRuntime, createPostgresExpiredCheckoutCompensation,
+    checkoutRecoveryExecutionFingerprint } = await import("@openlup/platform/commerce/server");
+  const { createPostgresSandboxExpiredCheckoutSafety } = await import("@openlup/platform/payments");
+  // The maximal version-4 root ID sorts after the real writer's generated child.
+  const root = "ffffffff-ffff-4fff-bfff-ffffffffffff", client = randomUUID(), skuId = randomUUID(), sourceKey = randomUUID();
+  const sku = "RECREATED-TRANSFER", now = () => new Date().toISOString(), amount = (amountMinor: number) => ({ amountMinor, currency: "XXX" });
+  const frozen = { contractVersion: "commerce.v0" as const, quote: { currency: "XXX", taxIncluded: true as const,
+    lines: [{ sku, productSlug: "recreated-transfer", quantity: 1, unitPriceGross: amount(100), lineSubtotalGross: amount(100),
+      tax: { included: true as const, country: "ZZ", category: "standard", vatRateBps: 0, legalBasis: "Synthetic",
+        netAmount: amount(100), vatAmount: amount(0), grossAmount: amount(100) } }], discounts: [],
+    context: { mode: "one_time" as const, cadenceDays: null, promoCodes: [] }, subtotalGross: amount(100), discountTotalGross: amount(0),
+    shippingGross: amount(0), shippingDiscountGross: amount(0), totalGross: amount(100), netTotal: amount(100), taxTotal: amount(0) } };
+  await native.owner.query("INSERT INTO public.clients(id,email) VALUES($1,'recreated@example.invalid')", [client]);
+  await native.owner.query("INSERT INTO public.catalog_products(id,slug,name) VALUES($1,'recreated-transfer','Synthetic')", [skuId]);
+  await native.owner.query("INSERT INTO public.catalog_skus(id,product_id,sku,title) VALUES($1,$1,$2,'Synthetic')", [skuId, sku]);
+  const list = (await native.owner.query("INSERT INTO public.price_lists(name,region_code,currency) VALUES('Synthetic','ZZ','XXX') RETURNING id")).rows[0].id;
+  await native.owner.query("INSERT INTO public.price_entries(price_list_id,variant_id,unit_price_minor) VALUES($1,$2,100)", [list, skuId]);
+  await native.owner.query(`INSERT INTO public.fulfillment_stock_current(source_key,sku,total_quantity,for_sale_quantity,reserved_unavailable_quantity,
+    inventory_class,last_synced_at,stale_after,sync_run_id,idempotency_key,operation_fingerprint)
+    VALUES($1,$2,10,10,0,'sellable',clock_timestamp(),clock_timestamp()+interval '30 days','recreated',$1,$3)`, [sourceKey, sku, "a".repeat(64)]);
+  const db = await native.owner.connect();
+  try {
+    await db.query("BEGIN");
+    await db.query(`INSERT INTO public.commerce_orders(id,client_id,total_amount_minor,currency_code,created_at,metadata)
+      VALUES($1,$2,100,'XXX',clock_timestamp()-interval '2 hours',$3)`, [root, client,
+      { quoteSnapshot: frozen, orderDraftSnapshot: { context: frozen.quote.context } }]);
+    await db.query("INSERT INTO public.commerce_order_items(order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor) VALUES($1,$2,1,1,100,100)", [root, skuId]);
+    await db.query("COMMIT");
+  } catch (error) { await db.query("ROLLBACK"); throw error; } finally { db.release(); }
+  await native.runtime.query("SELECT public.commerce_register_order_destination($1,$2,$3,$4)",
+    [`destination:${root}`, root, { recipientName: "Example Buyer", line1: "Example 1", city: "Example", postalCode: "00000", country: "ZZ" }, now()]);
+  const intent = (await native.runtime.query("SELECT public.commerce_open_settlement_intent($1,$2,'sandbox',100,'XXX','{}',$3) AS value",
+    [`intent:${root}`, root, now()])).rows[0].value;
+  const prior = await paymentPort(native.runtime).beginAttempt({ idempotencyKey: `attempt:${root}`, settlementIntentId: intent.settlement.id,
+    requestFingerprint: "a".repeat(64), at: now() });
+  await paymentPort(native.runtime).recordObservation({ attemptId: prior.id, idempotencyKey: `refused:${root}`, outcome: "refused", occurredAt: now() });
+  await native.owner.query(`UPDATE public.commerce_orders SET status='expired',metadata=metadata||
+    '{"paymentStatus":"expired","source":"checkout_reservation_expiry"}'::jsonb WHERE id=$1`, [root]);
+  const lane = { async run<T>(work: (gateway: unknown) => Promise<T>): Promise<T> {
+    const connection = await native.runtime.connect();
+    try { await connection.query("BEGIN"); const value = await work(connection); await connection.query("COMMIT"); return value; }
+    catch (error) { await connection.query("ROLLBACK"); throw error; } finally { connection.release(); }
+  } };
+  const runtime = createPostgresExpiredCheckoutRuntime(lane, { stockSourceKey: sourceKey, channelKey: "sandbox", reservationLifetimeMs: 1800000,
+    reserveOrderItems: (input, executor) => createPostgresPurchaseReservationPort(executor).reserveOrderItems(input),
+    startPayment: (input, executor) => createPostgresSandboxPaymentSimulator(executor, paymentOptions).beginAttempt({
+      idempotencyKey: input.idempotencyKey, settlementIntentId: input.settlementIntentId,
+      requestFingerprint: checkoutRecoveryExecutionFingerprint(input), at: now() }) });
+  const service = createExpiredCheckoutRecoveryService({ supports: () => true, quoteRequest: () => ({}), quotePort: { createQuote: async () => frozen },
+    orderDraftPort: createPostgresExpiredCheckoutDraftPort(native.runtime, createPostgresNativeCheckoutPersistence(native.runtime)),
+    recoveryPort: createPostgresExpiredCheckoutRecoveryPort(native.runtime, { recoveryWindowMs: 7 * 86400000 }),
+    paymentSafetyPort: createPostgresSandboxExpiredCheckoutSafety(native.runtime), runtimePort: runtime,
+    compensationPort: createPostgresExpiredCheckoutCompensation(lane) });
+  const order = await createPostgresCheckoutRecoveryOrderPort(native.runtime).getRecoveryOrder({ orderId: root });
+  expect(order).not.toBeNull();
+  const started = await service.recreate({ order: order!, clientId: client });
+  expect((await native.owner.query("SELECT recovery_root_order_id,recreated_from_order_id FROM public.commerce_orders WHERE id=$1", [started.orderId])).rows)
+    .toEqual([{ recovery_root_order_id: root, recreated_from_order_id: root }]);
+  const carried = await capture(native.owner, "actually-recreated-checkout"), before = await census(native.owner);
+  const rows = carried.compatible.tables.find(table => table.table === "commerce_orders")!.rows;
+  expect(rows.map(row => JSON.parse(row).id)).toEqual([started.orderId, root]);
+  expect((await restore(carried)).replayed).toBe(false);
+  expect(await census(target.owner)).toEqual(before);
+  expect((await census(target.owner)).commerce_orders).toEqual(rows);
+  expect((await restore(carried)).replayed).toBe(true);
+  expect(await census(target.owner)).toEqual(before);
+}, 30_000);

@@ -129,6 +129,14 @@ compares both preview states and repeats restore without changing their identity
 These linked pricing records share the profile's existing erasure-coverage limit.
 
 
+The finite profile also carries `fulfillment_parcel_contacts`: private parcel
+recipient/email/phone, address/instructions and delivery selection/pickup point,
+plus payload-free erasure markers. Restore places these rows after their client
+and parcel parents. The [fulfillment privacy contributor](../runtime/auth/privacyBinding.ts)
+owns their subject export and payload erasure in the identity transaction. The
+private contact witness verifies full row preservation and restore replay;
+ordinary commerce reads and dispatch evidence do not expose these payloads.
+
 Native destination transfer includes commerce_destinations (full immutable postal addresses and contact phone numbers), commerce_destination_bindings (scoped owner/destination references),
 subscription_command_receipts and the support command/audit ledgers. Restore
 parents precede documents/bindings and ledger actors. Owner snapshot authority,
@@ -136,7 +144,8 @@ writer exclusion, unknown-table refusal, PostgreSQL row encoding and cumulative
 row/byte limits remain required. Both address relations have table-specific
 limit and filtered-login witnesses. Reference strings may identify people; use
 opaque values. This retained transfer is not address privacy export or erasure;
-no such path exists yet. The most sensitive stream relation is the address table.
+no such path exists yet for those address relations. Sensitive streams include
+both the address and private parcel contact tables.
 
 The experimental [source capture](postgres/connectedStoreCapture.ts) and
 [target restore](postgres/connectedStoreRestore.ts) compose one finite native
@@ -145,7 +154,9 @@ restore binding. The earlier finite native witness passed with two owned
 `qualified-v2` installations and actual restricted runtime media access;
 the earlier 90-unit attempt stopped during source runtime media confirmation.
 The fixed selected graph preserves PostgreSQL JSON text, including bigint and
-timestamp precision. Capture observes one actual read-only repeatable-read
+timestamp precision. Order restore places both recovery roots and immediate
+predecessors before their children without rewriting row text. Cycles and lineage
+parents absent from the captured set refuse with `target_conflict`. Capture observes one actual read-only repeatable-read
 transaction and checks all non-system user schemas. Capture sets local
 `row_security=off` in that snapshot so a login whose reads would be filtered
 refuses rather than exporting apparently empty tables. The caller supplies a
