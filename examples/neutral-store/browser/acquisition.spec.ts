@@ -629,6 +629,22 @@ for (const locale of ['en', 'pl'] as const) {
     await portalOperator(page, locale); expect((await call(page, 'operator.paymentLink', { orderRef: f.orderRef, delivery: 'copy' })).ok).toBe(false);
   });
 
+
+  test(`${locale}: portal operator expired links revalidate frozen commercial facts`, async ({ page }) => {
+    const f = await pendingCheckout(page, locale);
+    await owner.query("UPDATE public.commerce_orders SET created_at=now()-interval '2 hours' WHERE id=$1", [f.orderRef]);
+    await owner.query("UPDATE public.fulfillment_inventory_reservations SET created_at=now()-interval '2 hours',expires_at=now()-interval '1 hour' WHERE purchase_order_id=$1", [f.orderRef]);
+    await checkoutMail(locale); await portalOperator(page, locale);
+    const result = await call(page, 'operator.paymentLink', { orderRef: f.orderRef, delivery: 'copy' });
+    expect(result.ok, result.code).toBe(true);
+    const url = new URL(routes.completion[locale], material.baseURL); url.searchParams.set('token', result.value.token);
+    await page.goto(url.href); await expect(page.locator('main')).toContainText(copy[locale].recoveryExpired);
+    await expect(page.locator('main')).toContainText(f.orderRef);
+    // Corrupt only this synthetic frozen money snapshot: the current quote must no longer match it.
+    await owner.query("UPDATE public.commerce_orders SET metadata=jsonb_set(metadata,'{quoteSnapshot,quote,totalGross,amountMinor}',to_jsonb(total_amount_minor+1)) WHERE id=$1", [f.orderRef]);
+    expect((await call(page, 'operator.paymentLink', { orderRef: f.orderRef, delivery: 'copy' })).code).toBe('starter_checkout_order_changed');
+  });
+
   test(`${locale}: portal operator replacement requires confirmation and retains in-flight alignment`, async ({ page }) => {
     const f = await purchase(page), original = await parcel(f.orderRef), before = await state(f);
     const actor = await portalOperator(page, locale);

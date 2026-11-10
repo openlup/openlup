@@ -1,3 +1,8 @@
+import { createNativeQuoteService } from './quote-composition.ts';
+import { installedAcquisitionPredecessors } from './acquisition-predecessors.ts';
+import { quotesMatchForRecovery } from '@openlup/platform/commerce/server';
+import type { PromotionAcceptanceKeyring } from '@openlup/platform/promotions';
+import type { CreateQuoteResponse } from '@openlup/platform/pricing';
 import { createCustomerAccountMutationSchemas, createPostgresCustomerAccountMutationPort } from '@openlup/platform/account-support';
 import { createAdminCheckoutPaymentLinkHandler, createPostgresOperatorCheckoutLinkStore, type OperatorCheckoutLinkOrder } from '@openlup/platform/commerce/server';
 import { createPostgresFulfillmentOperatorPort } from '@openlup/platform/fulfillment/native';
@@ -99,7 +104,7 @@ ApplicationBindings['actions'] {
 }
 
 /** Narrow account and operator bindings; installed ports own writes and receipts. */
-export function composePortalCapabilities(pool: Pool, authorizeOperator: (context: ActionContext) => Promise<boolean>): ApplicationBindings['actions'] {
+export function composePortalCapabilities(pool: Pool, authorizeOperator: (context: ActionContext) => Promise<boolean>, keyring?: PromotionAcceptanceKeyring): ApplicationBindings['actions'] {
   const accountSchemas = createCustomerAccountMutationSchemas(customerAccountPolicy);
   const account = (correction: boolean): ActionBinding => async (payload, context) => {
     const { principalRef, customerRef } = context.actor;
@@ -151,6 +156,19 @@ export function composePortalCapabilities(pool: Pool, authorizeOperator: (contex
         authorizeAdmin: async () => ({ ok: true, userId: context.actor.operatorRef!, isMachineActor: false }),
         respond: portalResponder, orderPort: { getRecoveryOrder: ({ orderId }) => readRecoveryOrder(pool, orderId) },
         tokenStore: createPostgresOperatorCheckoutLinkStore(pool), policy: checkoutLinkPolicy,
+        async validateRecreate(order) {
+          try {
+            const frozen = order.quoteSnapshot as CreateQuoteResponse;
+            const mode = order.mode === 'subscription_cycle' ? 'subscription' : 'one_time';
+            const fresh = await createNativeQuoteService(pool, installedAcquisitionPredecessors(), keyring).quote({
+              email: order.customerEmail, configuration: context.config.id, country: context.config.market.country,
+              ...(mode === 'subscription' ? { acquisitionCapability: 'subscription-acquisition.v1' } : {}),
+              cart: { schemaVersion: 1, configuration: context.config.id, mode, cadenceDays: order.cadenceDays,
+                lines: frozen.quote.lines.map(line => ({ sku: line.sku, quantity: line.quantity })) },
+            }, context);
+            return quotesMatchForRecovery(frozen, fresh.snapshot);
+          } catch { return false; }
+        },
       });
       await handler({ method: 'POST', body: { orderId: payload.orderRef, delivery: payload.delivery } }, response);
       return response.result;
@@ -170,8 +188,9 @@ export const portalResponder = {
 
 async function readRecoveryOrder(pool: Pool, id: string): Promise<OperatorCheckoutLinkOrder | null> {
   const row = (await pool.query(`SELECT o.*,c.email,c.first_name,a.id AS activation_id,a.cadence_days,
-    i.id AS intent_id,i.status AS intent_status FROM public.commerce_orders o JOIN public.clients c ON c.id=o.client_id
+    i.id AS intent_id,i.status AS intent_status,d.destination_id FROM public.commerce_orders o JOIN public.clients c ON c.id=o.client_id
     LEFT JOIN public.subscription_activations a ON a.order_id=o.id
+    LEFT JOIN public.commerce_destination_bindings d ON d.order_id=o.id
     LEFT JOIN LATERAL (SELECT id,status FROM public.commerce_settlement_intents WHERE order_id=o.id ORDER BY created_at DESC,id DESC LIMIT 1) i ON true
     WHERE o.id=$1::uuid`, [id])).rows[0];
   if (!row) return null;
@@ -180,6 +199,6 @@ async function readRecoveryOrder(pool: Pool, id: string): Promise<OperatorChecko
     currency: row.currency_code, cadenceDays: row.cadence_days ?? null, createdAt: new Date(row.created_at).toISOString(),
     customerEmail: row.email, customerName: row.first_name, paymentIntentId: row.intent_id ?? null,
     paymentIntentStatus: row.intent_status ?? null, subscriptionId: row.activation_id ?? null,
-    subscriptionCycleId: row.subscription_cycle_id, shippingAddressId: row.shipping_address_id ?? null,
+    subscriptionCycleId: row.subscription_cycle_id, shippingAddressId: row.destination_id ?? null,
     quoteSnapshot: row.metadata?.quoteSnapshot, technicallyExpired: row.status === 'expired' || row.metadata?.subscriptionActivation === 'abandoned' };
 }

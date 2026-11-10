@@ -87,7 +87,7 @@ export async function composeNativeBindings(connectionString: string, origin: Or
   Object.assign(actions, composePortalCapabilities(pool, async context => {
     const auth = await operatorAuth.authorize(context.actor.sessionToken ?? '', { allowedRoles: ['admin'] });
     return auth.ok && auth.principalId.toLowerCase() === context.actor.operatorRef?.toLowerCase();
-  }));
+  }, quoteAcceptanceKeyring));
   const asCustomer = <T>(principalId: string, work: (db: PgGatewayClient) => Promise<T>) =>
     gateway.asActor({ role: 'authenticated', sub: principalId }, db => work(db as PgGatewayClient));
   actions['checkout.recoveryStart'] = async (payload, context) => {

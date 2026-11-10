@@ -768,7 +768,8 @@ Repeated invoice request keys intentionally create separate events.
 Owned pending orders offer signed-in recovery. The native actor entry selects
 the exact order or initial declaration and supplies the account/fresh-checkout
 fallback. It sends no mail and preserves earlier checkout links. Operator
-order detail offers copy or queued email, expiry and refusal results. Its native
+order detail offers copy or queued email, expiry and refusal results. Eligible
+expired one-time orders must match a fresh native quote before a link is issued. Its native
 issuer deliberately revokes earlier checkout links. The communications operator
 roster documented above is also required for this command. Queued email is not
 a delivery claim.
