@@ -2314,3 +2314,15 @@ and latest-descendant readers, capability-gated expired presentation and an
 adopter-owned content validation fence. Inspection cannot authorize payment or
 create a replacement. Renewal cycles refuse; initial declarations retain their
 separate native identity. See the [inspection recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#checkout-recovery-inspection).
+
+Expired checkout recreation in `./commerce/server` adds a safety-first service,
+service-only lineage preparation, native draft replay and transaction-bound
+sandbox purchase/compensation adapters. The same adopter content fence gates
+validation and recreation. The runtime rechecks source payment evidence under the source aggregate lock
+before first stock or payment admission. A linked replacement cannot change its
+predecessor. A replacement initial subscription receives a new
+provisional declaration; its terminal predecessor and live subscriptions stay
+unchanged. Renewal cycles refuse. The native prior-payment safety adapter in
+`./payments` uses actual simulator attempts; real-provider paths retain their
+named unsupported refusal. See the [recreation recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#expired-checkout-recreation)
+for required host authority, executor binding and the real-money closure limit.

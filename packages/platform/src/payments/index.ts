@@ -21,3 +21,5 @@ export { createCommercePaymentVerifyHandler } from "./paymentVerifyNowHandler.js
 export { createPaymentServices } from "./bindings.js";
 
 export { createPostgresSandboxPaymentSimulator } from "./postgresSandboxPaymentSimulator.js";
+export { createPostgresSandboxExpiredCheckoutSafety } from './expiredCheckoutSafety.js';
+export type { ExpiredPaymentSafetyOrder } from './expiredCheckoutSafety.js';
