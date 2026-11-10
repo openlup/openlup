@@ -9,6 +9,7 @@ import { routes } from '../../shared/routes.ts';
 import { downloadInvoice } from '../invoice-download.ts';
 import { el, link, append, button, renderValue } from '../dom.ts';
 import { actionForm, nativeActions, readPanel, refusal, type FieldSpec } from '../forms.ts';
+import { subscriptionEditorEntries } from '../editors/entries.ts';
 
 export function accountPage(context: PageContext): HTMLElement {
   return el('div', {}, el('h1', {}, context.t('account')),
@@ -18,6 +19,7 @@ export function accountPage(context: PageContext): HTMLElement {
     readPanel(context, 'account', 'account.read'),
     readPanel(context, 'orders', 'account.orders'),
     subscriptionPortal(context),
+    subscriptionEditorEntries(context),
     addressForm(context, 'subscription.address'),
     communicationChoices(context),
     nativeActions(context, ['N5', 'N6', 'N7', 'N8', 'N9']),

@@ -54,8 +54,8 @@ beforeAll(async()=>{
  await upgrade.query("INSERT INTO public.outbox_events(aggregate_type,aggregate_id,event_type,idempotency_key,payload) VALUES ('synthetic',$1,'synthetic.commerce','preserve','{}')",[C]);
  await upgrade.query("INSERT INTO public.communication_recipient_consents(recipient_fingerprint,purpose,state) VALUES ($1,'marketing_newsletter','denied')",[hash(email)]);
  before=await snapshot(upgrade);
- // The later package-editor forward adds only a nullable subscription field.
- before.subscriptions=before.subscriptions.map(({row})=>({row:{...row,composition_constraint:null}}));
+ // Later editor forwards add the nullable constraint and the classic offer default.
+ before.subscriptions=before.subscriptions.map(({row})=>({row:{...row,composition_constraint:null,configured_offer_version:"classic"}}));
  await runner(fresh).apply();
  await fresh.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES ($1,'admin@example.invalid')",[A]);
  await fresh.query("INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at) VALUES ($1,'admin','active','legacy',now())",[A]);

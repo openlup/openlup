@@ -3548,6 +3548,57 @@
         "dataStatements": []
       },
       {
+        "row": "sized-editor",
+        "path": "db/platform/migrations/20261109140000_subscription_sized_editor.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.subscription_sized_edit_context(uuid,uuid,boolean)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscriptions_configured_offer_guard()",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscriptions_bind_sized_opt_in_from_edit()",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_sized_edit_apply(uuid,uuid,text,uuid,jsonb,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "createdTriggers": [
+          {
+            "name": "subscriptions_configured_offer_guard",
+            "table": "public.subscriptions",
+            "sha256": "69a6dda27a9cc7d2a530a0c1ea9bb8d6b138c29f179180cc6ad69b4eb20565ec"
+          },
+          {
+            "name": "subscription_events_bind_sized_opt_in",
+            "table": "public.subscription_events",
+            "sha256": "9b61a17c80950d490017c12d0eda335216267eea65022e99d8b19f7d61fbdfed"
+          }
+        ]
+      },
+      {
+        "row": "timed-auto-resume-paid-history",
+        "path": "db/platform/migrations/20261109150000_subscription_auto_resume_paid_history.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.subscription_auto_resume_due(integer,timestamptz)",
+            "beforeSha256": "f247d1bc5d64df49b0d989ef00b03372d0036f7dcfe25fe5e64a4dc1e46926ee",
+            "searchPath": "public, pg_catalog"
+          }
+        ],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
         "row": "checkout-recovery-waves",
         "path": "db/platform/migrations/20261110100000_checkout_recovery_waves.sql",
         "replacedFunctions": [
@@ -3626,6 +3677,30 @@
             ]
           }
         ]
+      },
+      {
+        "row": "subscription-pause-duration",
+        "path": "db/platform/migrations/20261110105000_subscription_pause_duration.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.subscription_auto_resume_due(integer,timestamptz)",
+            "beforeSha256": "69288d1ec2691429e0d3993f75cda86142c56247e4e90ce3cdcd4b2ba9635269",
+            "searchPath": "public, pg_catalog"
+          },
+          {
+            "signature": "public.dunning_lifecycle_pause_reminder_dispatch(integer,integer)",
+            "beforeSha256": "753e7eeb41bba5e927fc1caa2b6c0f79b8a080462013e37a3ef8cf3d855ff3d5",
+            "searchPath": "pg_catalog"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.subscription_pause_reminder_facts(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       },
       {
         "row": "operator-checkout-links",
@@ -4219,6 +4294,43 @@
       ]
     },
     {
+      "path": "db/platform/migrations/20261109140000_subscription_sized_editor.sql",
+      "sha256": "13129ea49660b1b8ffb95fdaf99be2676e2f43f36086d99895c4a797bb842b1d",
+      "functions": [
+        {
+          "signature": "public.subscription_sized_edit_context(uuid,uuid,boolean)",
+          "beforeSha256": null,
+          "afterSha256": "a277688c5d9af19823b9d11e19d88158d46bd65a57c249c165543ac3aaf7ce2d"
+        },
+        {
+          "signature": "public.subscriptions_configured_offer_guard()",
+          "beforeSha256": null,
+          "afterSha256": "06cddc28517a7c62e35a1daca5ea284464cca86d75dd67dadcf1f6d12a2f06a6"
+        },
+        {
+          "signature": "public.subscriptions_bind_sized_opt_in_from_edit()",
+          "beforeSha256": null,
+          "afterSha256": "22f9850fa3019b86ca8e0d2a7b50445da17a1a87541aa559429ccfc93b21e79c"
+        },
+        {
+          "signature": "public.subscription_sized_edit_apply(uuid,uuid,text,uuid,jsonb,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "215849e52f090c6cca9bb8c8213338a655d8b5ffb939f59b94327cecb817b075"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261109150000_subscription_auto_resume_paid_history.sql",
+      "sha256": "518e2a148b6ec79ece01ce7fe346674f1bff60e8ab98db226f5531ef4b6b0c87",
+      "functions": [
+        {
+          "signature": "public.subscription_auto_resume_due(integer,timestamptz)",
+          "beforeSha256": "f247d1bc5d64df49b0d989ef00b03372d0036f7dcfe25fe5e64a4dc1e46926ee",
+          "afterSha256": "69288d1ec2691429e0d3993f75cda86142c56247e4e90ce3cdcd4b2ba9635269"
+        }
+      ]
+    },
+    {
       "path": "db/platform/migrations/20261110100000_checkout_recovery_waves.sql",
       "sha256": "8aea584e8cad970301bf8a1170a70432ae1d5701a08bd4cde1a1ef469536e4f6",
       "functions": [
@@ -4286,6 +4398,27 @@
           "signature": "public.commerce_checkout_recovery_wave_delivery_authorize(uuid,text)",
           "beforeSha256": null,
           "afterSha256": "2986769812018314738ce36190761aae7dc55cab5637e10ef95da6d1acbe4330"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261110105000_subscription_pause_duration.sql",
+      "sha256": "8ac7881ab139c58755a6b2f51d058612b3da4676eaffd3b8de87580fc2e81a0b",
+      "functions": [
+        {
+          "signature": "public.subscription_auto_resume_due(integer,timestamptz)",
+          "beforeSha256": "69288d1ec2691429e0d3993f75cda86142c56247e4e90ce3cdcd4b2ba9635269",
+          "afterSha256": "2001699383117534d6b7d6f2f7aada4f55fc84650b5e9f4d17bc3b2e9ce81b6d"
+        },
+        {
+          "signature": "public.dunning_lifecycle_pause_reminder_dispatch(integer,integer)",
+          "beforeSha256": "753e7eeb41bba5e927fc1caa2b6c0f79b8a080462013e37a3ef8cf3d855ff3d5",
+          "afterSha256": "26d0fce4f17580754f6a69cd583104673e05a0c5754fe781947305c3bacee2cb"
+        },
+        {
+          "signature": "public.subscription_pause_reminder_facts(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "3edb0dd73e4a350cbfe7f9b740872bd0d022e662c77616be3b0e0488825f099a"
         }
       ]
     },
