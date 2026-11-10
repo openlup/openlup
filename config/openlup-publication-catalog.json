@@ -1286,6 +1286,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261110105000_subscription_pause_duration.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4335,6 +4339,10 @@
     },
     {
       "path": "packages/platform/sql/20261110100000_checkout_recovery_waves.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261110105000_subscription_pause_duration.sql",
       "class": "public-output"
     },
     {
@@ -29259,6 +29267,10 @@
     },
     {
       "path": "tests/postgres/subscriptionPackageEditor.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionPauseDuration.test.ts",
       "class": "public-output"
     },
     {

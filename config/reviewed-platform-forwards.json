@@ -3677,6 +3677,30 @@
             ]
           }
         ]
+      },
+      {
+        "row": "subscription-pause-duration",
+        "path": "db/platform/migrations/20261110105000_subscription_pause_duration.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.subscription_auto_resume_due(integer,timestamptz)",
+            "beforeSha256": "69288d1ec2691429e0d3993f75cda86142c56247e4e90ce3cdcd4b2ba9635269",
+            "searchPath": "public, pg_catalog"
+          },
+          {
+            "signature": "public.dunning_lifecycle_pause_reminder_dispatch(integer,integer)",
+            "beforeSha256": "753e7eeb41bba5e927fc1caa2b6c0f79b8a080462013e37a3ef8cf3d855ff3d5",
+            "searchPath": "pg_catalog"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.subscription_pause_reminder_facts(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -4313,6 +4337,27 @@
           "signature": "public.commerce_checkout_recovery_wave_delivery_authorize(uuid,text)",
           "beforeSha256": null,
           "afterSha256": "2986769812018314738ce36190761aae7dc55cab5637e10ef95da6d1acbe4330"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261110105000_subscription_pause_duration.sql",
+      "sha256": "8ac7881ab139c58755a6b2f51d058612b3da4676eaffd3b8de87580fc2e81a0b",
+      "functions": [
+        {
+          "signature": "public.subscription_auto_resume_due(integer,timestamptz)",
+          "beforeSha256": "69288d1ec2691429e0d3993f75cda86142c56247e4e90ce3cdcd4b2ba9635269",
+          "afterSha256": "2001699383117534d6b7d6f2f7aada4f55fc84650b5e9f4d17bc3b2e9ce81b6d"
+        },
+        {
+          "signature": "public.dunning_lifecycle_pause_reminder_dispatch(integer,integer)",
+          "beforeSha256": "753e7eeb41bba5e927fc1caa2b6c0f79b8a080462013e37a3ef8cf3d855ff3d5",
+          "afterSha256": "26d0fce4f17580754f6a69cd583104673e05a0c5754fe781947305c3bacee2cb"
+        },
+        {
+          "signature": "public.subscription_pause_reminder_facts(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "3edb0dd73e4a350cbfe7f9b740872bd0d022e662c77616be3b0e0488825f099a"
         }
       ]
     }

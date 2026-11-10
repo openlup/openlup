@@ -3529,11 +3529,24 @@ Terminal operations (`succeeded`, `refused`) and activations (`active`,
 `compensated`) do not keep that order in flight. Native shipment delivery leaves
 an order `paid`; paid orders of past cycles and completed activations therefore
 do not keep a timed pause open. Cancelled pause-closure orders do not block.
-All other eligibility guards, the event, roll-forward, header and ACLs remain
-unchanged. The
+That follow-up retains every other guard, the event, date calculation, header
+and ACL. The later `20261110105000_subscription_pause_duration.sql` replaces
+auto-resume and the two-argument pause-reminder producer, chaining to their
+exact replacement and creation pins. A timed pause shifts the stored next cycle
+by the actual `ends_at - starts_at` duration and never brings it earlier.
+Auto-resume takes `GREATEST(stored_next_cycle_at + duration, p_now)`; the reminder
+uses the same shift clamped to the window end for `nextDeliveryAt` and `resumeAt`,
+the date a punctual auto-resume executes. A STABLE invoker facts helper is shared
+by the producer and retained-ledger delivery; PUBLIC execution is revoked and
+only the service runtime receives execution. It reads existing window and cycle
+facts without additional table privileges.
+It removes the timed whole-cadence roll-forward while retaining all skip guards,
+headers, owners and ACLs. Manual customer resume is unchanged. The
+[duration witness](../../tests/postgres/subscriptionPauseDuration.test.ts) covers
+reminder agreement and one ordinary renewal under replay. The
 [delivered-history witness](../../tests/postgres/subscriptionAutoResumeDeliveredHistory.test.ts)
 covers legacy and both qualified runtimes. Ineligible windows remain open without
-writes or batch failure. Eligible windows roll forward monotonically, retain
+writes or batch failure. Eligible windows shift the cycle monotonically, retain
 one system event and close atomically. The result preserves native `skippedRows`.
 The [workflow owner](SUBSCRIPTION_WORKFLOWS.md#lifecycle-and-retry) describes host
 composition and the resumed-confirmation alias. The
