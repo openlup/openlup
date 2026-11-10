@@ -958,14 +958,14 @@
   },
   "pack": {
     "code": {
-      "maxPackedBytes": 2461707,
+      "maxPackedBytes": 2462168,
       "maxFiles": 4207
     },
     "docs": {
-      "maxPackedBytes": 88659,
+      "maxPackedBytes": 88661,
       "maxFiles": 10
     },
-    "maxPackedBytes": 3038725,
+    "maxPackedBytes": 3039061,
     "maxUnpackedBytes": 14408428,
     "maxFiles": 4352,
     "capReason": "Measured saved selection, scoped preferences and renewal support use 2% headroom in crossed package budgets; the released baseline and uncrossed caps are retained.",

@@ -1,3 +1,5 @@
+import type { CommerceCustomerDefaultsReadPort, CommerceCustomerDefaultsSnapshot } from '@openlup/platform/commerce/contracts';
+import type { CustomerPreferenceScope } from '@openlup/platform/shipping/contracts';
 import { expect,it,vi } from 'vitest';
 import { createCustomerPreferenceSchemas,createCustomerPaymentPreferencesHandler,createCustomerDeliveryPreferencesHandler,createPostgresCustomerPreferencePort } from '@openlup/platform/shipping';
 import { bffResponder } from '../../../server/_lib/bff/response.js';
@@ -15,6 +17,8 @@ it('pins closed families, strict envelopes and exact pickup/carrier bounds',() =
 function response() { const res = { status: vi.fn(),json: vi.fn(),setHeader: vi.fn() };res.status.mockReturnValue(res);res.json.mockReturnValue(res);return res; }
 for (const kind of ['payment','delivery'] as const) it(`binds ${kind} GET/PATCH, authentication, refusal and response validation`,async () => {
  const port = createPostgresCustomerPreferencePort({ query: async () => ({ rows: [] }) },{ principalId: id,clientId: id },policy,{ now: () => preferenceAt,readOrdererHints: async () => [] });
+ const defaults: CommerceCustomerDefaultsReadPort<CommerceCustomerDefaultsSnapshot<CustomerPreferenceScope,string>> = port;
+ expect(defaults.getCustomerDefaultsSnapshot).toBe(port.getCustomerDefaultsSnapshot);
  const payment = { scope: 'any' as const,methodKind: 'card',lastSelectedAt: preferenceAt },delivery = { ...courierPreference,lastSelectedAt: preferenceAt };
  vi.spyOn(port,'listPaymentPreferences').mockResolvedValue([payment]);vi.spyOn(port,'listDeliveryPreferences').mockResolvedValue([delivery]);
  vi.spyOn(port,'upsertPaymentPreference').mockResolvedValue(payment);vi.spyOn(port,'upsertDeliveryPreference').mockResolvedValue(delivery);

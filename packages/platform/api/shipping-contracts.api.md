@@ -275,7 +275,7 @@ export type { DeliveryKind, DeliveryProviderKind, DeliveryCarrierKind, DeliveryS
 export type { CanonicalAddressInput, AddressCanonSource, AddressCanonLocalityCandidate, AddressCanonStreet, AddressCanonPostalCodeLookupRequest, AddressCanonLocalitiesLookupRequest, AddressCanonStreetsLookupRequest, AddressCanonPostalCodeLookupResponse, AddressCanonLocalitiesLookupResponse, AddressCanonStreetsLookupResponse, CustomerAddressKind, CustomerAddress, CustomerOrdererProfile, CustomerAddressesRequest, CustomerAddressesResponse, CustomerAddressUpsertRequest, CustomerAddressDeleteRequest } from "./address.js";
 export type { AdminShippingRateResponse, AdminSetShippingRateRequest, AdminSetShippingRateResponse } from "./shippingRate.js";
 export type { ShippingTerms, ShippingPolicyEntry, ShippingPolicy, ShippingSettings } from "./threshold.js";
-export type { CustomerPreferenceScope, CustomerPaymentPreferenceInput, CustomerPaymentPreference, CustomerPreferencePickupPoint, CustomerDeliveryPreferenceInput, CustomerDeliveryPreference } from './preferences.js';
+export type { CustomerPreferenceDefaultsSnapshot, CustomerPreferenceScope, CustomerPaymentPreferenceInput, CustomerPaymentPreference, CustomerPreferencePickupPoint, CustomerDeliveryPreferenceInput, CustomerDeliveryPreference } from './preferences.js';
 ```
 ## dist/shipping/contracts/preferences.d.ts
 
@@ -310,6 +310,31 @@ export interface CustomerDeliveryPreferenceInput {
 export interface CustomerDeliveryPreference extends Omit<CustomerDeliveryPreferenceInput, 'pickupPoint'> {
     pickupPoint: CustomerPreferencePickupPoint | null;
     lastSelectedAt: string;
+}
+/** Redacted hints only. A missing address or profile is represented by null. */
+export interface CustomerPreferenceDefaultsSnapshot {
+    version: 'commerce.customer_defaults_snapshot.v1';
+    clientId: string;
+    payment: {
+        available: boolean;
+        scope: CustomerPreferenceScope | null;
+        methodKind: string | null;
+        source: 'customer_payment_preferences';
+        applied: false;
+    };
+    addresses: {
+        hasDefaultShippingAddress: boolean;
+        defaultShippingAddressId: string | null;
+        hasDefaultBillingAddress: boolean;
+        defaultBillingAddressId: string | null;
+        hasDefaultOrdererProfile: boolean;
+        defaultOrdererProfileId: string | null;
+        hasDeliveryNotes: boolean;
+        hasCourierInstructions: boolean;
+        source: 'customer_address_profiles';
+        applied: false;
+    };
+    redactedFields: ('contact' | 'orderer_profile' | 'shipping_address' | 'billing_address' | 'delivery_notes' | 'courier_instructions' | 'payment_provider' | 'payment_secret')[];
 }
 ```
 ## dist/shipping/contracts/shippingRate.d.ts

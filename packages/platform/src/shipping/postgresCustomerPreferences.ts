@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { SavedAddressQueryExecutor, CustomerSavedAddressScope } from './postgresAddressBook.js';
 import { createCustomerPreferenceSchemas, type CustomerPreferencePolicy } from './customerPreferenceSchemas.js';
-import type { CustomerPaymentPreferenceInput, CustomerDeliveryPreferenceInput, CustomerPaymentPreference, CustomerDeliveryPreference } from './contracts/preferences.js';
+import type { CustomerPaymentPreferenceInput, CustomerDeliveryPreferenceInput, CustomerPaymentPreference, CustomerDeliveryPreference, CustomerPreferenceScope, CustomerPreferenceDefaultsSnapshot } from './contracts/preferences.js';
 type Row = Record<string, unknown>;
 /** Closed canonical families are mapped bijectively to adopter-owned public values. */
 export function createPostgresCustomerPreferencePort(db: SavedAddressQueryExecutor, scope: CustomerSavedAddressScope, policy: CustomerPreferencePolicy, options: {
@@ -36,10 +36,10 @@ export function createPostgresCustomerDefaultsPort(db: SavedAddressQueryExecutor
   const options = { readOrdererHints };
   const rpc = async (name: string, args: unknown[]) => (await db.query(`SELECT public.${name}(${args.map((_,i) => `$${i+1}`).join(',')}) AS value`,args)).rows[0]?.value;
   return {
-    async getCustomerDefaultsSnapshot(input: { clientId: string; checkoutKind: string }) {
+    async getCustomerDefaultsSnapshot(input: { clientId: string; checkoutKind: string }): Promise<CustomerPreferenceDefaultsSnapshot> {
       if (input.clientId.toLowerCase() !== scope.clientId.toLowerCase()) throw new Error('customer_preference_scope_mismatch');
       const [hints,orderers] = await Promise.all([rpc('customer_default_address_hints',[scope.clientId]),options.readOrdererHints(scope.clientId)]);
-      const h = hints as { shipping: string | null; billing: string | null; payment: { scope: string; methodKind: keyof typeof policy.methods }[] };
+      const h = hints as { shipping: string | null; billing: string | null; payment: { scope: CustomerPreferenceScope; methodKind: keyof typeof policy.methods }[] };
       const p = h.payment.find(r => r.scope === (input.checkoutKind === 'subscription_initial' ? 'subscription' : 'one_time')) ?? h.payment.find(r => r.scope === 'any');
       const orderer = orderers.find(r => r.isDefault) ?? orderers[0];
       if (orderer) z.guid().parse(orderer.id);
