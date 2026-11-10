@@ -1469,8 +1469,7 @@ Ordinary cancellation releases only recorded parcel IDs; its result includes
 `releasedReservationCount` and `reservationDisposition`. Under the parcel lock it
 refuses a live direct-dispatch reference, permanent external dispatch evidence,
 or an accepted, submitting or uncertain provider command, before releasing stock.
-This check does not prevent the command ledger from admitting a later command
-after cancellation commits. A provider-confirmed
+The parcel-status forward also fences later command admission and submission. A provider-confirmed
 paid cancellation requires the latest provider observation to say cancelled, an
 exception parcel, recorded mode exactly `one_time`, succeeded payment and no
 active holds. Other recorded modes retain the ineligible refusal. It cancels the
@@ -1782,21 +1781,40 @@ Automatic arrival alignment uses the latest arrival plus cadence with an outer
 Subscription locks precede case locks; rollback preserves both protection and
 the previous schedule.
 
-`20261110155000_fulfillment_parcel_status_fence.sql` checks parcel cancellation
-in provider-command enqueue, claim and submission. Enqueue and submission raise
-the existing `fulfillment_provider_command_fence_conflict` (`40001`); batch claim
-skips cancelled parcels. Refusals leave command rows, counters and transition
-history unchanged. An entry queued before cancellation remains recorded but
-cannot be claimed or submitted afterwards. Live-parcel idempotency and stale
-claim/version refusals retain their existing behavior.
+`20261110155000_fulfillment_parcel_status_fence.sql` gives both native and
+operator cancellation an exclusive transactional advisory lock. Provider-command
+enqueue, claim and submission take that parcel's lock in shared mode, then check
+its status. Enqueue and submission raise the existing
+`fulfillment_provider_command_fence_conflict` (`40001`); claim excludes cancelled
+parcels before its batch limit and rechecks after acquiring the shared lock.
+Cancelled queued records keep their status, availability and transition history.
+Live-parcel ordering, replay and claim/version refusals are unchanged.
 
-The lock order is the existing dispatch advisory lock, parcel row, then command
-row. The parcel row lock is shared with native cancellation; submission reads
-the command's immutable parcel identity before taking those locks. These locks
-cover the database transition, not a transaction spanning the provider call.
-Cancellation must still honor the in-flight provider-effect guards. Outcome,
-confirmation and reconciliation record effects already observed; they do not
-start a provider request and are unchanged.
+The two-int advisory class is `1179665228` (`0x4650434c`, `FPCL`), reserved for
+fulfillment parcel cancellation. The second integer is
+`pg_catalog.hashtext(parcel_id::text)`, the signed 32-bit hash of the UUID's
+canonical text.
+A repository-wide audit found existing two-int classes `4100` and `846832106`;
+this class differs from both. PostgreSQL's one-bigint advisory key space is
+separate. Hash collisions within the parcel class only serialize unrelated
+parcels; each status check still reads the actual parcel UUID. Both shared and
+exclusive locks are transactional and release at transaction end.
+
+Where applicable the order is request-key lock, existing dispatch advisory lock,
+parcel row where already required, parcel-cancellation advisory lock, then command
+row. Enqueue retains its original dispatch and parcel locks before the cancellation
+lock; claim retains its dispatch try-lock and
+command `FOR UPDATE SKIP LOCKED`. Claim and submission add no parcel row lock.
+Submission takes the cancellation lock and its existing command fence without
+waiting on address SQL's dispatch or parcel locks. Native cancellation takes
+its original parcel row lock, then the cancellation lock; operator cancellation
+takes it after its existing dispatch and parcel locks, before command locks. No
+function requests a parcel row lock after taking the new cancellation gate.
+
+These locks cover ledger transitions, not a transaction spanning the provider
+call. Cancellation still owns its existing in-flight provider-effect guards.
+Outcome, confirmation and reconciliation record effects already observed; they
+do not start a provider request and are unchanged.
 
 The native forwards
 [`20261022080000_fulfillment_command_ledger.sql`](../../db/platform/migrations/20261022080000_fulfillment_command_ledger.sql)

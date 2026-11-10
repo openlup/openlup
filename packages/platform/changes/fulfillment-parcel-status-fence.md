@@ -1,5 +1,5 @@
-- Fence provider-command enqueue, batch claim and submission against committed parcel cancellation under the parcel row lock. Refusals preserve ledger state and existing live-parcel replay rules; installed function authority is unchanged.
+- Fence provider-command initiation against both native and operator parcel cancellation with a shared/exclusive transactional advisory gate. Exclude cancelled parcels before the claim limit and recheck after locking, preserving queued records and live-parcel ordering, replay and submission during address changes.
 
 Migration:
 
-Install the complete selected native prefix through `20261110155000_fulfillment_parcel_status_fence.sql`. Cancelled parcels refuse new enqueue and submission with the existing command-fence conflict; claim skips them. Outcome recording and provider behavior are unchanged. Cancellation continues to require its existing in-flight-effect guards.
+Install the complete selected native prefix through `20261110155000_fulfillment_parcel_status_fence.sql`, including its operator-transaction predecessor. Both cancellations take the dedicated parcel gate exclusively; enqueue, claim and submission share it. Enqueue retains its original parcel lock; claim and submission add none. Cancelled parcels refuse enqueue/submission with the existing command-fence conflict, and claim skips them. Function headers, owner and ACL remain unchanged. The locks cover ledger transitions, not the provider call; cancellation keeps its existing in-flight-effect guards. Outcome recording and provider behavior are unchanged.

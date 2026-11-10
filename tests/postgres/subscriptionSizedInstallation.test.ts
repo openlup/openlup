@@ -9,11 +9,11 @@ import { readSelectedCatalogProjection, selectedCatalogProjectionPayload } from 
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 const inventories = {
-  "legacy": "6d1c67b73b8d248d65627acd3b3d2efd3ef028d26c44da1a4443d0db07c0e62d",
-  "bootstrap": "f46663225706eda49253edddfe7d8c62dad56d4ef6f9723f24b6117e6fababbb",
-  "separate": "ed49184ad5dd68e7060d96f71b06957eedc8d7777b1f0b5c498b3d52208b8601",
-  "admin-managed": "06d813b59ee78e6fc696404a631ec0ccb07144c6cd33a2cc781e5b76314c60be",
-  "admin-operator": "69de09e18b0cd19f13ca9f043514414776221ec6acea9cf2c55a44ff95b39f50",
+  "legacy": "c5523869a8e643dba5b44654a3a8ef8d4684b8515f4abbd92dcbf1e063fa54e5",
+  "bootstrap": "b539b0ea97df6a12d06975478fc1707d58e6c5e80f572d34d97d43f5d97b7e88",
+  "separate": "affa43ea508bfff83b540e3b7c6c74da007835353d5b03a3e8fcfe41add988b0",
+  "admin-managed": "77ee8246fa9a9c5138b4ed39785db0e400f4e7b4b5fde426e221a78c6d7e7e8f",
+  "admin-operator": "da0970865eece562f938f1297f38b7fd3ad12387e14a8b21885cdda0c60c4f8d",
 } as const;
 it.each(["legacy", "bootstrap", "separate", "admin-managed", "admin-operator"] as const)("installs the sized editor on %s with the selected ownership and binding ACLs", async profile => {
   const container = await runPostgresContainer({ name: `sized-install-${profile}-${process.pid}`, password: "synthetic-conformance" });
