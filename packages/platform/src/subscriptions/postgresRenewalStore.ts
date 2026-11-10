@@ -32,6 +32,7 @@ const SNAPSHOT_SQL = `SELECT s.id AS subscription_id,s.client_id,s.cadence_days,
    'subscription.customer_self_service.swap_base_line','subscription.customer_self_service.add_addon',
    'subscription.customer_self_service.remove_addon','subscription.customer_self_service.update_addon_quantity',
    'subscription.customer_self_service.update_plan_length','subscription.customer_self_service.update_base_mix',
+   'subscription.customer_self_service.resize_bundle','subscription.customer_self_service.update_bundle',
    'subscription.customer_self_service.update_portion')
   AND jsonb_typeof(e.payload->'linePricing')='array'
   ORDER BY e.occurred_at DESC,e.id DESC LIMIT 1) AS graduation_pricing,

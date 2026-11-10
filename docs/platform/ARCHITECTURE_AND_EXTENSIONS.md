@@ -1826,6 +1826,72 @@ reference composition and activation remain host choices.
 
 ## Subscription contracts
 
+The opt-in sized editor is `createPostgresSizedEditor`, composed through
+`createOfferDispatchedSubscriptionEditor` alongside the existing classic binding.
+Its agreed-plan policy preserves complete quote lines for unchanged exact
+SKU/count/add-on matches and quotes only changed lines. A changed quantity
+acquires a price for the entire resulting line; a cadence-only edit preserves
+counts and agreements. Renewal reads sized events alongside the other pricing
+events, so future orders retain the accepted amounts and quote evidence.
+
+The host owns authenticated identity, stored need derivation on opt-in,
+exclusion precedence and equality, verified catalogue documents, stock reads and
+portion proposal arithmetic. Ordinary edits use frozen `dailyNeed`, never fresh
+profile recommendations. `readFacts` runs at candidate discovery, preview and
+new apply. For the five sized bundle/mix/plan/portion commands,
+`assertCurrentFacts` must lock and reread the host's owned subject/exclusion
+rows and optional opt-in need, and reread all selected SKU catalogue facts, on
+the supplied transaction connection before SQL apply. It compares those reads
+with the apply quote's evidence; subject locks hold until commit. Catalogue rows
+are reread, not locked, because a restricted runtime may only read them;
+serializing an apply against a concurrent catalogue publication is the named
+publication-fence limit. Catalogue evidence includes variant,
+SKU and group identity, add-on/sellable flags, document revision and digest,
+verification, physical size, demand per unit, exclusion keys and `sellableNow`.
+Selected facts are ordered by canonical variant UUID and exclusion keys are
+sorted. The preview ledger nests them in `subjectFacts.catalogFacts`, so the
+existing SQL subject-evidence equality check refuses preview/apply drift even
+when money and frozen lines are unchanged. Stock is reread and compared by this
+host check; this is evidence equality, not a stock reservation. Individual add-on
+edits retain the existing exact writer's transaction boundary. Missing facts refuse. The platform owns no subject table.
+Candidate compatibility is advisory; server policy allows retained/reduced
+conflicting lines while refusing new/increased conflicts. Explicit plan-length
+edits reject retained conflicts too. Withdrawn lines require exact retained
+quantity, or removal/replacement. New/increased quantities must fit absolute
+sellable stock; zero or unknown stock does not remove an existing agreement.
+
+Typed `SizedEditPolicy` configures cadence choices, quantities, selected groups,
+portion modes/factors and introductory cutoffs. The sized minimum is composition
+policy; the classic editor retains its separate SQL minimum below.
+For an introductory marker, SQL requires `subscription_sized_intro_phase`
+with JSON integer fields `fixedThroughCycle` and `graduationCycle`, matching the
+host policy. Missing or malformed configuration refuses. These settings carry
+adopter values; the package installs none.
+
+The sized SQL forward adds `configured_offer_version` and service-only
+context/apply functions. Classic stays classic on entry, preview or abandonment.
+Even unchanged contents require priced review and explicit `resize_bundle`
+opt-in consent. Acceptance commits the future template, full merged pricing,
+one event, one receipt and the sized binding atomically. Direct sized insertion,
+direct binding updates and reverse changes refuse through the binding trigger.
+The accepted event and preview are joined through the native accepted event ID
+and command key identity. A completed key replays before mutable host/price reads;
+a no-op creates no package-change event or notice. Active status, due anchor,
+existing cycles, orders and delivery alignment are preserved.
+
+Fixed and graduation-pending introductory subscriptions cannot opt in. Frozen
+graduation dispatch/normalization is available for host fixtures, but native
+sized introductory acquisition is not supplied: native sized subscriptions arise
+only through accepted opt-in. New/increased and opted-in core SKUs are checked
+for current active/subscription-sellable state inside SQL apply. Catalogue
+publication-head/membership fencing remains a later catalogue boundary.
+
+`createSizedParcelProjection` supports the existing paid-email parcel-note hook.
+The host supplies frozen order/cycle correlation and exact retained physical
+identity; localization stays with that host. Unprovable facts omit the note.
+The projection describes item quantities and frozen cadence, never packing counts.
+These APIs supply no account UI, acquisition route, deployment or release claim.
+
 Native notice production uses the existing lifecycle binding and its trusted
 `bind` callback. Queued renewal payloads retain `renewalAt`; the binder derives
 charge, delivery-window and edit-deadline labels from that instant and its owned
