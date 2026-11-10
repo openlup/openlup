@@ -2398,9 +2398,13 @@ locked cycles and already claimed next-cycle operations refuse a fresh selection
 Billing pointers, cadence and template versions are unchanged.
 
 `DestinationAddress` and `NewDestinationAddress` retain their required
-`recipientName` for newly typed input. Reads now return `DestinationReadDocument`,
+`recipientName` for newly typed input. The existing `read()` method retains
+`Promise<DestinationDocument>`; use the additive `readWithSaved()` for saved
+selections and their order/parcel snapshots. It returns `DestinationReadDocument`,
 a union with `SavedDestinationDocument`: only the saved representation permits
-a null recipient, and its address carries the explicit `savedAddressId`.
+a null recipient, and its address carries the explicit `savedAddressId`. The
+compatibility reader refuses a null saved recipient instead of returning it as
+a required string.
 Canonical bytes never identify a saved row. Each new subscription destination
 read snapshots the current saved row into a fresh immutable destination without
 replacing prior destinations or the last typed binding. Retain the existing
@@ -2409,7 +2413,9 @@ or parcels keep their frozen destination; later unclaimed cycles consume edits.
 A successful new typed-address command clears the saved pointer atomically;
 replayed or refused typed commands do not clear it.
 
-A null saved recipient stays null in the destination snapshot. The existing
+A null saved recipient stays null in the destination and first parcel-contact
+snapshots, even when a customer name or saved-address label is present. Typed and
+legacy recipient fallback remains unchanged. The existing
 contact/preparation owner decides carrier eligibility; a frozen null is never
 replaced by a fabricated fallback. In-use deletion uses the real saved pointer.
 Saved contact, tax and free-text copied into a destination remain personal data.

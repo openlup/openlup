@@ -37,7 +37,15 @@ export function createPostgresDestinationPort(db: DestinationQueryExecutor) {
     registerOrder(input: { idempotencyKey: string; orderId: string; address: DestinationAddress; now: string }) {
       return invoke<DestinationDocument>("commerce_register_order_destination", [input.idempotencyKey, input.orderId, JSON.stringify(input.address), input.now]);
     },
-    read(scope: "order" | "subscription" | "shipment", id: string) { return invoke<DestinationReadDocument>("commerce_read_destination", [scope, id]); },
+    async read(scope: "order" | "subscription" | "shipment", id: string): Promise<DestinationDocument> {
+      const document = await invoke<DestinationDocument>("commerce_read_destination", [scope, id]);
+      if (document.address?.recipientName === null) throw new Error("commerce_destination_response_invalid");
+      return document;
+    },
+    /** Saved snapshots may retain a null recipient; use this reader when selecting saved addresses. */
+    readWithSaved(scope: "order" | "subscription" | "shipment", id: string): Promise<DestinationReadDocument> {
+      return invoke<DestinationReadDocument>("commerce_read_destination", [scope, id]);
+    },
     /** Replays an existing subscription-event key before parsing/validating the saved ID. */
     selectSavedShippingAddress(input: { actorId: string; clientId: string; idempotencyKey: string; subscriptionId: string;
       savedAddressId: string; reason?: string; now: string }) {

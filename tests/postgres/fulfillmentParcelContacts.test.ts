@@ -156,6 +156,17 @@ for (const generation of lifecycleProfiles) describe(`private parcel contact on 
     await expect(f.resolve()).rejects.toMatchObject({ code: '22023', message: 'commerce_oms_replacement_delivery_contact_invalid' });
     await contributor.eraseOrRetain(h.runtime, privacySubject, assessment, { principalId: randomUUID() }); expect(await f.rows()).toEqual(erased);
   });
+  it('keeps typed recipients and the existing customer-name then label fallback for legacy destinations', async () => {
+    const typed = await subject();
+    await h.owner.query("UPDATE public.clients SET first_name='Current',last_name='Customer' WHERE id=$1", [typed.client]);
+    expect(await typed.resolve()).toMatchObject({ recipientName: 'Retained recipient' });
+    for (const named of [true,false]) {
+      const legacy = await subject();
+      await h.owner.query("UPDATE public.commerce_destinations SET address=(address-'recipientName')||jsonb_build_object('label','Legacy label') WHERE purchase_order_id=$1", [legacy.order]);
+      await h.owner.query('UPDATE public.clients SET first_name=$2,last_name=$3 WHERE id=$1', [legacy.client,named ? 'Current' : null,named ? 'Customer' : null]);
+      expect(await legacy.resolve()).toMatchObject({ recipientName: named ? 'Current Customer' : 'Legacy label' });
+    }
+  });
   it('uses the bounded legacy inference once, rejects canonical override markers and atomically freezes only a complete destination', async () => {
     const f = await subject();
     await h.owner.query("UPDATE public.commerce_orders SET metadata=jsonb_build_object('runtimeFinalize',jsonb_build_object('selectedDelivery',jsonb_build_object('providerKind','warehouse-a'))) WHERE id=$1", [f.order]);

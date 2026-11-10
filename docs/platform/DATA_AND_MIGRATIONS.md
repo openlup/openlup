@@ -3667,7 +3667,8 @@ for the host authority boundary and configured deadlines.
 
 `20261110240000_subscription_saved_address_selection.sql` creates the owned
 `subscription_select_saved_shipping_address` wrapper and replaces the existing
-subscription destination reader and typed-address command without changing their
+subscription destination reader, typed-address command and parcel-contact resolver
+without changing their
 headers, owners or ACLs. The wrapper retains principal/client ownership,
 subscription-event replay precedence, shipping/both-kind validation and the
 existing lifecycle/locked-cycle refusals. It persists the existing saved pointer;
@@ -3678,7 +3679,11 @@ Only `service_role` receives EXECUTE on the new closed definer routines.
 New subscription reads create an immutable snapshot of the selected saved row,
 including its explicit ID and nullable recipient. Prior destination rows and
 retained claims are unchanged; a future unclaimed renewal sees saved-row edits.
-Typed address input still requires a recipient. Existing parcel contact ownership
+The public `read()` contract remains `Promise<DestinationDocument>`; the additive
+`readWithSaved()` carries nullable saved snapshots. Typed address input still
+requires a recipient. First parcel-contact capture preserves a null saved recipient
+even with a nonempty label or current customer name; typed/legacy fallback remains
+unchanged. Existing parcel contact ownership
 and carrier-completeness checks remain decisive; frozen nulls are preserved.
 Saved snapshots use the existing destination personal-data and finite-transfer
 boundary. No new destination export/erasure path or blanket erasure coverage is

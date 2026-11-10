@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { createPostgresDestinationPort } from "../../src/commerce/server/destinations/index.js";
+import { createPostgresDestinationPort, type DestinationDocument, type DestinationReadDocument } from "../../src/commerce/server/destinations/index.js";
 
 it("preserves the destination routine contract and refuses invalid responses", async () => {
   const calls: { sql: string; values: unknown[] | undefined }[] = [];
@@ -24,6 +24,23 @@ it("preserves the destination routine contract and refuses invalid responses", a
   for (rows of [[], [{ result: null }], [{ result: "invalid" }], [{ result: {} }, { result: {} }]]) {
     await expect(port.registerOrder({ idempotencyKey: "register", orderId: "order", address, now })).rejects.toThrow("commerce_destination_response_invalid");
     await expect(port.read("order", "order")).rejects.toThrow("commerce_destination_response_invalid");
+    await expect(port.readWithSaved("order", "order")).rejects.toThrow("commerce_destination_response_invalid");
     await expect(port.changeShippingAddress(change)).rejects.toThrow("commerce_destination_response_invalid");
   }
+});
+
+
+it("keeps the existing typed reader and adds an explicitly saved-aware reader", async () => {
+  const typed: DestinationDocument = { destinationId: "typed",revision: 1,clientId: "client",address: {
+    recipientName: "Typed Recipient",line1: "Street 1",line2: null,city: "Example",postalCode: "12345",country: "ZZ",
+    contactPhone: null,label: null,companyName: null,taxId: null,deliveryNotes: null,courierInstructions: null,
+  } };
+  let value: DestinationReadDocument = typed;
+  const port = createPostgresDestinationPort({ query: async () => ({ rows: [{ result: value }] }) });
+  // This assignment is the existing consumer contract, checked by the public typecheck.
+  const d: DestinationDocument = await port.read("order", "order");
+  expect(d).toEqual(typed);
+  value = { ...typed,address: { ...typed.address,savedAddressId: "saved",recipientName: null } };
+  expect(await port.readWithSaved("order", "order")).toEqual(value);
+  await expect(port.read("order", "order")).rejects.toThrow("commerce_destination_response_invalid");
 });

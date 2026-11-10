@@ -506,3 +506,42 @@ DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN EXECUTE
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.subscription_select_saved_shipping_address(uuid,uuid,text,uuid,jsonb,timestamptz), public.customer_preferences_read(uuid,uuid), public.customer_preference_save(uuid,uuid,text,jsonb,timestamptz), public.customer_renewal_delivery_selection(uuid,jsonb), public.customer_preferences_prepare_erasure(), public.customer_preferences_export(uuid), public.customer_preferences_erase(uuid), public.customer_default_address_hints(uuid) FROM authenticated'; END IF; END; $$;
 
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.subscription_select_saved_shipping_address(uuid,uuid,text,uuid,jsonb,timestamptz), public.customer_preferences_read(uuid,uuid), public.customer_preference_save(uuid,uuid,text,jsonb,timestamptz), public.customer_renewal_delivery_selection(uuid,jsonb), public.customer_preferences_prepare_erasure(), public.customer_preferences_export(uuid), public.customer_preferences_erase(uuid), public.customer_default_address_hints(uuid) TO service_role'; END IF; END; $$;
+
+CREATE OR REPLACE FUNCTION public.fulfillment_resolve_parcel_contact(p_shipment_id uuid)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE prior public.fulfillment_parcel_contacts; parcel public.fulfillment_shipments; purchase public.commerce_orders;
+ customer public.clients; destination jsonb; address jsonb; result jsonb; present boolean;
+BEGIN
+ PERFORM pg_advisory_xact_lock(hashtextextended('native-dispatch|'||p_shipment_id::text,0));
+ SELECT * INTO parcel FROM public.fulfillment_shipments WHERE id=p_shipment_id FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'fulfillment_parcel_contact_missing' USING ERRCODE='22023'; END IF;
+ SELECT * INTO purchase FROM public.commerce_orders WHERE id=parcel.order_id;
+ PERFORM id FROM public.clients WHERE id=purchase.client_id FOR KEY SHARE;
+ SELECT * INTO prior FROM public.fulfillment_parcel_contacts WHERE shipment_id=parcel.id FOR UPDATE;
+ present:=FOUND;
+ IF EXISTS(SELECT 1 FROM public.identity_privacy_erasures WHERE client_id=purchase.client_id) THEN
+  RAISE EXCEPTION 'commerce_oms_replacement_delivery_contact_invalid' USING ERRCODE='22023'; END IF;
+ IF present THEN
+  result:=public.fulfillment_delivery_contact_resolve(jsonb_build_object('frozenContactPresent',true,'frozenContact',prior.contact));
+  IF NOT coalesce((result->>'carrierComplete')::boolean,false) THEN
+   RAISE EXCEPTION 'commerce_oms_replacement_delivery_contact_invalid' USING ERRCODE='22023'; END IF;
+  RETURN prior.contact;
+ END IF;
+ IF purchase.metadata ? 'deliveryContactOverride' OR coalesce(purchase.metadata->'runtimeFinalize','{}') ? 'deliveryContact' THEN
+  RAISE EXCEPTION 'commerce_oms_replacement_delivery_contact_invalid' USING ERRCODE='22023'; END IF;
+ destination:=public.commerce_read_destination('shipment',parcel.id); address:=destination->'address';
+ SELECT * INTO customer FROM public.clients WHERE id=purchase.client_id;
+ result:=public.fulfillment_delivery_contact_resolve(jsonb_build_object(
+  'selectedDeliveryCandidates',jsonb_build_array(parcel.metadata->'selectedDelivery',purchase.metadata->'selectedDelivery',purchase.metadata#>'{runtimeFinalize,selectedDelivery}',address->'selectedDelivery'),
+  'channelOrderSnapshot',purchase.metadata->'channelOrderSnapshot',
+  'recipientCandidates',CASE WHEN address ? 'savedAddressId' AND address->>'recipientName' IS NULL
+   THEN jsonb_build_array(address->>'recipientName')
+   ELSE jsonb_build_array(address->>'recipientName',concat_ws(' ',customer.first_name,customer.last_name),address->>'label') END,
+  'phoneCandidates',jsonb_build_array(address->>'contactPhone',customer.phone),'legacyClientEmail',customer.email,
+  'line1',address->>'line1','line2',address->>'line2','city',address->>'city','postalCode',address->>'postalCode','country',address->>'country',
+  'deliveryInstructions',address->>'deliveryNotes','courierInstructions',address->>'courierInstructions'));
+ IF NOT coalesce((result->>'destinationComplete')::boolean,false) THEN
+  RAISE EXCEPTION 'commerce_oms_replacement_delivery_contact_invalid' USING ERRCODE='22023'; END IF;
+ PERFORM public.fulfillment_capture_parcel_contact(parcel.id,result->'contact');
+ RETURN (SELECT contact FROM public.fulfillment_parcel_contacts WHERE shipment_id=parcel.id);
+END; $$;

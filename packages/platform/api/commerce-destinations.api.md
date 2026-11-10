@@ -87,7 +87,9 @@ export declare function createPostgresDestinationPort(db: DestinationQueryExecut
         address: DestinationAddress;
         now: string;
     }): Promise<DestinationDocument>;
-    read(scope: "order" | "subscription" | "shipment", id: string): Promise<DestinationReadDocument>;
+    read(scope: "order" | "subscription" | "shipment", id: string): Promise<DestinationDocument>;
+    /** Saved snapshots may retain a null recipient; use this reader when selecting saved addresses. */
+    readWithSaved(scope: "order" | "subscription" | "shipment", id: string): Promise<DestinationReadDocument>;
     /** Replays an existing subscription-event key before parsing/validating the saved ID. */
     selectSavedShippingAddress(input: {
         actorId: string;

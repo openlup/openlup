@@ -35,7 +35,7 @@ for (const profile of ['legacy','bootstrap','separate','admin-managed','admin-op
     const before = await row(f);
     expect(await select(f)).toMatchObject({ status: 'applied', shippingAddressId: f.id });
     expect(await row(f)).toEqual({ ...before, shipping_saved_address_id: f.id, updated_at: at.replace('.000Z','+00:00') });
-    const document = await port().read('subscription',f.subscription);
+    const document = await port().readWithSaved('subscription',f.subscription);
     expect(document.address).toMatchObject({ savedAddressId: f.id, recipientName: null, line1: 'Saved Street 1' });
     expect((await history(f))[0].value).toMatchObject({ event_type: 'subscription.customer_self_service.change_shipping_address', payload: { payload: { shippingAddressId: f.id } } });
     expect((await db.owner.query("SELECT payload FROM public.customer_account_events WHERE client_id=$1 AND event_type='subscription.address_changed'", [f.client])).rows).toEqual([{ payload: { action: 'change_shipping_address', sourceEventId: (await history(f))[0].value.id } }]);
@@ -69,7 +69,7 @@ for (const profile of ['legacy','bootstrap','separate','admin-managed','admin-op
   it('keeps the mandatory recipient for typed addresses; only a successful new typed command supersedes selection', async () => {
     const f = await subject(), typedKey = randomUUID();
     const change = (key: string) => port().changeShippingAddress({ actorId: f.principal,clientId: f.client,subscriptionId: f.subscription,idempotencyKey: key,newAddress: typed,expectedVersion: 1,now: at });
-    await change(typedKey); const original = await port().read('subscription',f.subscription);
+    await change(typedKey); const original = await port().readWithSaved('subscription',f.subscription);
     await select(f); const retained = await destinations(f);
     expect(await change(typedKey)).toMatchObject({ replayed: true });
     expect((await row(f)).shipping_saved_address_id).toBe(f.id);
@@ -78,7 +78,7 @@ for (const profile of ['legacy','bootstrap','separate','admin-managed','admin-op
     expect((await row(f)).shipping_saved_address_id).toBe(f.id);
     await f.book.upsertAddress(f.principal,{ ...f.input,...typed,idempotencyKey: randomUUID(),addressId: f.id });
     await change(randomUUID()); expect((await row(f)).shipping_saved_address_id).toBeNull();
-    const changed = await port().read('subscription',f.subscription);
+    const changed = await port().readWithSaved('subscription',f.subscription);
     expect(changed.address).toMatchObject(typed); expect(changed.address).not.toHaveProperty('savedAddressId');
     expect((await destinations(f)).filter(d => retained.some(old => old.value.id === d.value.id))).toEqual(retained);
     expect((await destinations(f)).find(d => d.value.id === original.destinationId)?.value.address).toEqual(original.address);
@@ -121,7 +121,7 @@ for (const profile of ['legacy','bootstrap','separate','admin-managed','admin-op
     await expect(select(f)).rejects.toMatchObject({ message: 'customer_self_service_payment_blocked' });
     await rpc('fulfillment_reserve_subscription_renewal',[claim.operationId,claim.claimToken,900,at]);
     const prepared = await rpc('commerce_prepare_subscription_renewal',[claim.operationId,claim.claimToken,at]);
-    expect(await port().read('order',prepared.orderId)).toMatchObject({ destinationId: id,address: immutable.value.address });
+    expect(await port().readWithSaved('order',prepared.orderId)).toMatchObject({ destinationId: id,address: immutable.value.address });
     await rpc('commerce_acknowledge_subscription_renewal_attempt',[claim.operationId,claim.operationFingerprint,'synthetic-ack',at]);
     await rpc('commerce_record_subscription_renewal_outcome',[claim.operationId,randomUUID(),claim.operationFingerprint,'succeeded','synthetic-ack',null,at]);
     expect((await db.owner.query('SELECT metadata FROM public.commerce_orders WHERE id=$1',[prepared.orderId])).rows[0].metadata).not.toHaveProperty('selectedDelivery');
@@ -134,10 +134,13 @@ for (const profile of ['legacy','bootstrap','separate','admin-managed','admin-op
     expect((await db.owner.query('SELECT metadata FROM public.commerce_orders WHERE id=$1',[futureOrder.orderId])).rows[0].metadata).toMatchObject({ selectedDelivery: { providerKind: 'warehouse-a',serviceCode: 'standard' } });
     expect((await destinations(f)).find(d => d.value.id === future.cycleSnapshot.orderSnapshot.shippingAddressRef)?.value.address).toMatchObject({ savedAddressId: f.id,line1: 'Future Street 2' });
     expect((await destinations(f)).find(d => d.value.id === id)).toEqual(immutable);
-    expect(await port().read('order',prepared.orderId)).toMatchObject({ destinationId: id,address: immutable.value.address });
+    expect(await port().readWithSaved('order',prepared.orderId)).toMatchObject({ destinationId: id,address: immutable.value.address });
   });
-  it('keeps frozen null recipient data and lets the existing contact owner refuse carrier-incomplete dispatch without fallback', async () => {
-    const f = await subject(), doc = await select(f).then(() => port().read('subscription',f.subscription)), order = randomUUID(), shipment = randomUUID();
+  it.each(['named','unnamed'] as const)('keeps frozen null recipient data and lets the existing contact owner refuse carrier-incomplete dispatch without fallback (%s customer)', async naming => {
+    const f = await subject();
+    await f.book.upsertAddress(f.principal,{ ...f.input,addressId: f.id,idempotencyKey: randomUUID(),label: 'Home' });
+    await db.owner.query("UPDATE public.clients SET first_name=$2,last_name=$3 WHERE id=$1", [f.client,naming === 'named' ? 'Current' : null,naming === 'named' ? 'Customer' : null]);
+    const doc = await select(f).then(() => port().readWithSaved('subscription',f.subscription)), order = randomUUID(), shipment = randomUUID();
     const purchase = await db.owner.connect();
     try { await purchase.query('BEGIN');
       await purchase.query("INSERT INTO public.commerce_orders(id,client_id,status,currency_code,total_amount_minor,created_at,updated_at) VALUES($1,$2,'paid','XXX',100,$3,$3)", [order,f.client,at]);
@@ -147,14 +150,17 @@ for (const profile of ['legacy','bootstrap','separate','admin-managed','admin-op
     await db.owner.query('INSERT INTO public.commerce_destination_bindings(order_id,destination_id) VALUES($1,$2)', [order,doc.destinationId]);
     await db.owner.query("INSERT INTO public.fulfillment_ports(port_key,provider_type,routable) VALUES('fixture-port','3pl',true) ON CONFLICT DO NOTHING");
     await db.owner.query("INSERT INTO public.fulfillment_shipments(id,order_id,port_key,provider_type,create_idempotency_key) VALUES($1,$2,'fixture-port','3pl',$3)", [shipment,order,randomUUID()]);
+    expect(doc.address).toMatchObject({ recipientName: null,label: 'Home' });
     // The existing authoritative contact resolver is owner-only; keep its composition unchanged.
     const resolveContact = async () => (await db.migrator.query('SELECT public.fulfillment_resolve_parcel_contact($1) AS result', [shipment])).rows[0].result;
     const contact = await resolveContact(); expect(contact.recipientName).toBeNull(); expect(contact.contactPhone).toBe('+99123456789');
+    const quality = (await db.migrator.query('SELECT public.fulfillment_delivery_contact_resolve($1) AS result', [{ frozenContactPresent: true,frozenContact: contact }])).rows[0].result;
+    expect(quality).toMatchObject({ destinationComplete: true,carrierComplete: false });
     const before = (await db.owner.query('SELECT to_jsonb(c) AS value,xmin::text FROM public.fulfillment_parcel_contacts c WHERE shipment_id=$1', [shipment])).rows;
     await db.owner.query("UPDATE public.clients SET first_name='Must not replace frozen null',phone='+99999999999' WHERE id=$1", [f.client]);
     await expect(resolveContact()).rejects.toMatchObject({ message: 'commerce_oms_replacement_delivery_contact_invalid' });
     expect((await db.owner.query('SELECT to_jsonb(c) AS value,xmin::text FROM public.fulfillment_parcel_contacts c WHERE shipment_id=$1', [shipment])).rows).toEqual(before);
-    expect((await port().read('shipment',shipment)).address.recipientName).toBeNull();
+    expect((await port().readWithSaved('shipment',shipment)).address.recipientName).toBeNull();
     const connection = await db.owner.connect();
     try { for (const role of ['anon','authenticated']) { await connection.query(`SET ROLE ${role}`);
       await expect(connection.query('SELECT public.subscription_select_saved_shipping_address($1,$2,$3,$4,$5,$6)', [f.principal,f.client,randomUUID(),f.subscription,{ shippingAddressId: f.id },at])).rejects.toMatchObject({ code: '42501' });
