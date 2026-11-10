@@ -2235,8 +2235,9 @@ The destination forward adds immutable address documents and scoped order,
 subscription and shipment bindings. Both relations revoke PUBLIC, browser and
 runtime table privileges and enable RLS; trusted runtime uses four bounded
 definer routines with pinned search paths. Parent/client consistency is checked,
-but host authorization of each parent read remains necessary. There is no saved
-address book or arbitrary destination-ID reader. Subscription defaults read
+but host authorization of each parent read remains necessary. The separate saved
+address book owns mutable customer rows; there is no arbitrary destination-ID
+reader. Subscription defaults read
 through an active purchase; renewal orders resolve their own frozen operation
 reference, never the subscription's later future address. Shipment preparation
 pins its first document under the native dispatch lock. Hosts compose this reader
@@ -3660,3 +3661,24 @@ time after blocking writes and roll back elapsed issuance. The additive buyer
 delivery gate leaves automatic and operator authorizers unchanged. See the
 [entry-point recipe](PLATFORM_PACKAGE_REFERENCE.md#customer-checkout-recovery-entry-points)
 for the host authority boundary and configured deadlines.
+
+
+## Saved subscription destination selection
+
+`20261110240000_subscription_saved_address_selection.sql` creates the owned
+`subscription_select_saved_shipping_address` wrapper and replaces the existing
+subscription destination reader and typed-address command without changing their
+headers, owners or ACLs. The wrapper retains principal/client ownership,
+subscription-event replay precedence, shipping/both-kind validation and the
+existing lifecycle/locked-cycle refusals. It persists the existing saved pointer;
+a successful typed command clears it. No table, column or raw DML grant is added.
+Only `service_role` receives EXECUTE on the new closed definer routine.
+
+New subscription reads create an immutable snapshot of the selected saved row,
+including its explicit ID and nullable recipient. Prior destination rows and
+retained claims are unchanged; a future unclaimed renewal sees saved-row edits.
+Typed address input still requires a recipient. Existing parcel contact ownership
+and carrier-completeness checks remain decisive; frozen nulls are preserved.
+Saved snapshots use the existing destination personal-data and finite-transfer
+boundary. No new destination export/erasure path or blanket erasure coverage is
+claimed. See [the package composition](../../packages/platform/README.md#saved-subscription-shipping-selection).

@@ -3944,6 +3944,30 @@
         "absorptionCensusTables": [
           "public.customer_saved_addresses"
         ]
+      },
+      {
+        "row": "subscription-saved-address-selection",
+        "path": "db/platform/migrations/20261110240000_subscription_saved_address_selection.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.commerce_read_destination(text,uuid)",
+            "beforeSha256": "98281cc8a26421dc08506cec7d6332c75d35f74f9ebe57e8a1d627a0cb5f2c4f",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_change_shipping_destination(uuid,uuid,text,uuid,jsonb,integer,timestamptz)",
+            "beforeSha256": "f7ac65daae911830b0fd1e2f8dd36c38ad0ee4b2bae25ed0407b60d5c17e7362",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.subscription_select_saved_shipping_address(uuid,uuid,text,uuid,jsonb,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -4822,6 +4846,27 @@
           "signature": "public.customer_saved_addresses_prepare_erasure()",
           "beforeSha256": null,
           "afterSha256": "2617e5a5babb2ec7c66fbb1461543ad0fad4fee5af2a363a92ee99565b1b46cc"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261110240000_subscription_saved_address_selection.sql",
+      "sha256": "9149f3ba060927e6b107366077e0221a2d490d883e39c74a6c037b78c62755ad",
+      "functions": [
+        {
+          "signature": "public.commerce_read_destination(text,uuid)",
+          "beforeSha256": "98281cc8a26421dc08506cec7d6332c75d35f74f9ebe57e8a1d627a0cb5f2c4f",
+          "afterSha256": "e5ec5dbb7c4bcc3c35dc4181df4ad86227747134a432e8d3a474369275a29420"
+        },
+        {
+          "signature": "public.subscription_change_shipping_destination(uuid,uuid,text,uuid,jsonb,integer,timestamptz)",
+          "beforeSha256": "f7ac65daae911830b0fd1e2f8dd36c38ad0ee4b2bae25ed0407b60d5c17e7362",
+          "afterSha256": "a177c3a1503b44d07c8428a56437bc7ea3e5ab3c7fa834d64183967477af3e43"
+        },
+        {
+          "signature": "public.subscription_select_saved_shipping_address(uuid,uuid,text,uuid,jsonb,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "5aca8850f0d9f1d58a7412380cb84addec8dba60372a16c0558d89a5f04353db"
         }
       ]
     }

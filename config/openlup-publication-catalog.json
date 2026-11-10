@@ -1314,6 +1314,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261110240000_subscription_saved_address_selection.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4391,6 +4395,10 @@
     },
     {
       "path": "packages/platform/sql/20261110190000_customer_saved_addresses.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261110240000_subscription_saved_address_selection.sql",
       "class": "public-output"
     },
     {
@@ -29479,6 +29487,10 @@
     },
     {
       "path": "tests/postgres/subscriptionRetryResumeCatalog.proof.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionSavedAddressSelection.test.ts",
       "class": "public-output"
     },
     {

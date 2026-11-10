@@ -1327,7 +1327,11 @@ host authorization and the complete native catalogue installed; construction
 mounts no route. The command checks its idempotency key and expected version,
 updates the future destination and records its audit and confirmation effects
 atomically. That destination command provides no saved address book; the separate
-[`shipping` port](../../packages/platform/README.md#saved-customer-address-book) supplies owned address-book storage.
+[`shipping` port](../../packages/platform/README.md#saved-customer-address-book) supplies owned address-book storage. Its saved IDs can be selected for future
+subscription delivery through `createPostgresDestinationPort(...).selectSavedShippingAddress`.
+That owned selection retains subscription-event replay precedence; new typed
+commands retain their existing fingerprint rule and clear a saved selection on
+success. See [saved subscription selection](../../packages/platform/README.md#saved-subscription-shipping-selection).
 
 If dispatch owns the current parcel, the result is `applied_from_next_parcel`,
 with `appliesFrom: "next_parcel"`, `futureDestinationId` and `replayed`. Tell the

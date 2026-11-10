@@ -2351,8 +2351,8 @@ while foreign updates and mismatched customer scopes refuse.
 
 Delete refuses an address referenced by an active or paused subscription's saved
 shipping or billing pointer. Nullable pointer columns are storage for that guard;
-saved-address subscription selection is not supplied by this port. Existing
-destinations and claimed renewal snapshots are unchanged.
+select a saved address for future subscription delivery through the destination
+port described below. Existing claimed renewal snapshots remain unchanged.
 
 Saved rows, canonical keys, contact/tax/free-text/metadata and linked event
 payloads are personal data. Compose
@@ -2370,4 +2370,52 @@ The finite connected-store profile carries exact saved rows and event history,
 restores addresses after clients and before subscription pointers, and replays
 without rewriting them. The smaller compatible-row copier remains a separate
 closed profile. Delivery/payment preferences, checkout hints, billing profiles,
-subscription saved-ID commands and browser journeys are later capabilities.
+and browser journeys are later capabilities.
+
+
+### Saved subscription shipping selection
+
+After installing the complete native catalogue through
+`20261110240000_subscription_saved_address_selection.sql`, select an owned
+shipping or both-kind address through the existing server entry:
+
+```ts
+import { createPostgresDestinationPort } from '@openlup/platform/commerce/server/destinations';
+const destinations = createPostgresDestinationPort(database);
+await destinations.selectSavedShippingAddress({ actorId, clientId, subscriptionId,
+  idempotencyKey, savedAddressId, now: new Date().toISOString() });
+```
+
+Hosts authenticate the actor and bind the client from trusted session ownership.
+The owned command persists the saved ID and emits the subscription audit,
+account event and confirmation intent in the same database transaction. It
+checks the owned subscription before looking up the saved ID. An existing
+subscription-event key replays the current subscription state before parsing or
+checking the address, even if the supplied address changed or was deleted.
+This command retains that replay rule; typed destination commands keep their
+existing fingerprint-conflict rule. Active and paused subscriptions are allowed;
+locked cycles and already claimed next-cycle operations refuse a fresh selection.
+Billing pointers, cadence and template versions are unchanged.
+
+`DestinationAddress` and `NewDestinationAddress` retain their required
+`recipientName` for newly typed input. Reads now return `DestinationReadDocument`,
+a union with `SavedDestinationDocument`: only the saved representation permits
+a null recipient, and its address carries the explicit `savedAddressId`.
+Canonical bytes never identify a saved row. Each new subscription destination
+read snapshots the current saved row into a fresh immutable destination without
+replacing prior destinations or the last typed binding. Retain the existing
+subscription-read/renewal-claim transaction. Retained claims and existing orders
+or parcels keep their frozen destination; later unclaimed cycles consume edits.
+A successful new typed-address command clears the saved pointer atomically;
+replayed or refused typed commands do not clear it.
+
+A null saved recipient stays null in the destination snapshot. The existing
+contact/preparation owner decides carrier eligibility; a frozen null is never
+replaced by a fabricated fallback. In-use deletion uses the real saved pointer.
+Saved contact, tax and free-text copied into a destination remain personal data.
+Finite connected transfer carries the saved rows, pointers, immutable destination
+rows and retained events under their existing classifications. Address-book
+erasure does not erase immutable destination copies; this port adds no
+export/erasure operation for destination rows. Starter selection pages and routes
+remain separately bound work. The new SQL routine grants EXECUTE only to
+`service_role`; PUBLIC and browser roles remain closed.

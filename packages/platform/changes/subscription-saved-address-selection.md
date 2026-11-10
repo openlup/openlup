@@ -1,0 +1,3 @@
+- Select an owned saved shipping or both-kind address for future subscription deliveries through the existing destination server port. Preserve nullable saved recipients, replay precedence, lifecycle refusals and immutable claimed destinations. Newly typed addresses still require a recipient; a successful typed change clears the saved selection.
+
+Migration: install the complete native catalogue through `20261110240000_subscription_saved_address_selection.sql`. Only the new owned routine receives service-role EXECUTE. Existing contact preparation decides dispatch eligibility. Saved snapshot data retains existing privacy and finite-transfer boundaries; destination-row export/erasure and starter route binding are not added.

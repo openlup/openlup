@@ -965,7 +965,7 @@
       "maxPackedBytes": 86252,
       "maxFiles": 10
     },
-    "maxPackedBytes": 2962854,
+    "maxPackedBytes": 3025439,
     "maxUnpackedBytes": 14408428,
     "maxFiles": 4252,
     "capReason": "Measured saved-address package contents use 2% headroom where they cross the main budget; other caps and the released baseline are retained.",
