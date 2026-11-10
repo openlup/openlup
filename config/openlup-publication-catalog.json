@@ -1986,6 +1986,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/browser-groups.mjs",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/browser/acquisition.spec.ts",
       "class": "public-output"
     },
@@ -2483,6 +2487,10 @@
     },
     {
       "path": "examples/neutral-store/test/bindings.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/browser-groups.test.ts",
       "class": "public-output"
     },
     {
