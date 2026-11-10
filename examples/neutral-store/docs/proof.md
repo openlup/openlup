@@ -615,7 +615,12 @@ The required `install-proof` job now runs `journey.spec.ts` and
 `acquisition.spec.ts` in both configurations through
 [`starter-browser-ci.mjs`](../../../scripts/starter-browser-ci.mjs), after the
 package gates. It extracts the starter, installs the verified candidate tarballs,
-starts an isolated disposable PostgreSQL 16 per configuration through the shared
+runs the selections in `browser-groups.mjs`, giving each group a fresh pair of
+configuration installations. The local `./lifecycle browser` recipe reads the same
+module. Later, more specific patterns take precedence; the remainder covers all
+other journeys, so a new group needs one additional pattern. This keeps the
+unchanged checkout quota active while each selected case runs once. The runner
+starts an isolated disposable PostgreSQL 16 per configuration and group through the shared
 test helper and pinned `test-postgres` image. Each receives the complete selected
 history, repeated installation and its own repeated seed; two loopback hosts use
 the restricted runtime login. Separate installations preserve a unique active
