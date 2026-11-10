@@ -530,8 +530,38 @@ const DROP_TWO_INDEXES_SLOT: CatalogSlot = { ...DROP_INDEX_SLOT, droppedIndexes:
 // The chain creates anon and authenticated itself; service_role comes from the host bootstrap, so it is
 // the one role these two modes toggle for the whole run. With no bound forward this is a plain replay of
 // the chain, so the replay is proved before the first feature change relies on it.
+async function reminderCreationProbes(pool: Pool) {
+  const outcomes = new Map<string, Error | null>(), db = await pool.connect();
+  const record = async (name: string, work: () => Promise<unknown>) => outcomes.set(name, await work().then(() => null, (error: Error) => error));
+  try {
+    const before = await pinned(db, () => snapshot(db));
+    const migrationRole = String((await db.query("SELECT current_user::text AS role")).rows[0].role);
+    await record("positive", async () => {
+      expect(reminderCreationPin.beforeSha256).toBeNull();
+      const installed = (await db.query("SELECT prosrc FROM pg_proc WHERE oid=$1::regprocedure", [reminderSignature])).rows[0].prosrc as string;
+      const start = reminderOriginal.indexOf("AS $$") + 5, end = reminderOriginal.lastIndexOf("$$");
+      expect(sqlSha256(reminderOriginal.slice(0, start) + installed + reminderOriginal.slice(end))).toBe(reminderCreationPin.afterSha256);
+      expect(reminderReplacement).toContain("'capabilityWitness',true");
+      await checkForward(pool, reminderReplacementSlot, reminderReplacement);
+    });
+    for (const change of ["unlisted", "header", "signature", "owner", "ACL"]) {
+      const slot = structuredClone(reminderReplacementSlot);
+      let statement = reminderReplacement;
+      if (change === "unlisted") slot.replacedFunctions = [];
+      if (change === "header") statement = statement.replace("LANGUAGE plpgsql", "LANGUAGE plpgsql SECURITY DEFINER");
+      if (change === "signature") statement = statement.replace("p_pause_window_seconds integer", "p_pause_window_seconds bigint");
+      if (change === "owner") statement += ` ALTER FUNCTION ${reminderSignature} OWNER TO authenticated;`;
+      if (change === "ACL") statement += ` GRANT EXECUTE ON FUNCTION ${reminderSignature} TO authenticated;`;
+      await record(change, () => checkForward(pool, slot, statement));
+    }
+    await record("rollback", () => pinned(db, async () => assertSlotCatalog(db,
+      { createdFunctions: [], replacedFunctions: [], grantOnlyFunctions: [] }, before, await snapshot(db), migrationRole)));
+  } finally { db.release(); }
+  return outcomes;
+}
 async function replayChain(connectionString: string) {
   const outcomes = new Map<string, Error | null>();
+  let creationOutcomes = new Map<string, Error | null>();
   let applied = 0;
   const chainDb = new Pool({ connectionString });
   const steps = [...chain.map(unit => ({ path: unit.path, unit })), ...bound.map(entry => ({ path: entry.pin.path, entry }))].sort((x, y) => x.path.localeCompare(y.path));
@@ -542,15 +572,17 @@ async function replayChain(connectionString: string) {
       const bytes = readFileSync(pin.path);
       if (sha(bytes) !== pin.sha256) throw new Error(`bound forward differs from its pin: ${pin.path}`);
       outcomes.set(pin.path, await checkForward(chainDb, slot, bytes.toString("utf8"), true).then(() => null, (error: Error) => error));
+      // Probe the first replacement at creation, roll every probe back, then continue the unchanged full prefix.
+      if (pin.path === reminderCreation.pin.path) creationOutcomes = await reminderCreationProbes(chainDb);
     }
   } finally { await chainDb.end(); }
-  return { outcomes, applied };
+  return { outcomes, creationOutcomes, applied };
 }
 
 describe.each([{ serviceRole: true }, { serviceRole: false }])("native store forward catalog, service_role present: $serviceRole", ({ serviceRole }) => {
   let container: PostgresContainer | undefined;
   let pool: Pool;
-  let replay = { outcomes: new Map<string, Error | null>(), applied: 0 };
+  let replay = { outcomes: new Map<string, Error | null>(), creationOutcomes: new Map<string, Error | null>(), applied: 0 };
   beforeAll(async () => {
     if (!await dockerAvailable()) throw new Error("The native store catalog proof requires real PostgreSQL");
     container = await runPostgresContainer({ name: `native-catalog-${serviceRole ? "role" : "bare"}-${process.pid}`, password: "synthetic-conformance" });
@@ -580,29 +612,14 @@ describe.each([{ serviceRole: true }, { serviceRole: false }])("native store for
   it.each(["retain", "block"])("uses raw relname for a quoted client table's %s classification", async disposition => {
     await checkForward(pool, SYNTHETIC_SLOT, forward(CREATED_OK, classifiedQuotedClientTable(disposition)));
   });
-  it("admits the earlier class-created reminder with its exact installed preimage and retained catalog attributes", async () => {
+  it("admits the earlier class-created reminder at creation and rolls the probes back before continuing", () => {
     expect(replay.outcomes.get(reminderCreation.pin.path)).toBeNull();
-    expect(reminderCreationPin.beforeSha256).toBeNull();
-    const chainDb = new Pool({ connectionString: container!.connectionStringFor("native_chain") });
-    try {
-      const installed = (await chainDb.query("SELECT prosrc FROM pg_proc WHERE oid=$1::regprocedure", [reminderSignature])).rows[0].prosrc as string;
-      const start = reminderOriginal.indexOf("AS $$") + 5, end = reminderOriginal.lastIndexOf("$$");
-      expect(sqlSha256(reminderOriginal.slice(0, start) + installed + reminderOriginal.slice(end))).toBe(reminderCreationPin.afterSha256);
-      expect(reminderReplacement).toContain("'capabilityWitness',true");
-      await checkForward(chainDb, reminderReplacementSlot, reminderReplacement);
-    } finally { await chainDb.end(); }
+    expect(replay.creationOutcomes.get("positive")).toBeNull();
+    expect(replay.creationOutcomes.get("rollback")).toBeNull();
   });
-  it.each(["unlisted", "header", "signature", "owner", "ACL"])("refuses a class-created reminder replacement with changed %s", async change => {
-    const chainDb = new Pool({ connectionString: container!.connectionStringFor("native_chain") });
-    const slot = structuredClone(reminderReplacementSlot);
-    let statement = reminderReplacement;
-    if (change === "unlisted") slot.replacedFunctions = [];
-    if (change === "header") statement = statement.replace("LANGUAGE plpgsql", "LANGUAGE plpgsql SECURITY DEFINER");
-    if (change === "signature") statement = statement.replace("p_pause_window_seconds integer", "p_pause_window_seconds bigint");
-    if (change === "owner") statement += ` ALTER FUNCTION ${reminderSignature} OWNER TO authenticated;`;
-    if (change === "ACL") statement += ` GRANT EXECUTE ON FUNCTION ${reminderSignature} TO authenticated;`;
-    try { await expect(checkForward(chainDb, slot, statement)).rejects.toThrow(/catalog:/u); }
-    finally { await chainDb.end(); }
+  it.each(["unlisted", "header", "signature", "owner", "ACL"])("refuses a class-created reminder replacement with changed %s at creation", change => {
+    expect(replay.creationOutcomes.get(change)).toBeInstanceOf(Error);
+    expect(replay.creationOutcomes.get(change)?.message).toMatch(/catalog:/u);
   });
   it("installs two replacement slots with pinned bodies and unchanged function attributes and ACL", async () => {
     const db = await pool.connect(), signature = "public.cat_replaced(text,boolean)";

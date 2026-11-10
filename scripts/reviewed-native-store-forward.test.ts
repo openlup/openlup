@@ -1518,14 +1518,17 @@ describe("replacement of an earlier native-store creation", () => {
     const original = sqlStatements(readFileSync(creation.path, "utf8")).find(statement =>
       nativeStoreFunctionDefinitions(Buffer.from(statement), [signature], true).has(signature))!;
     const text = original.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION").replace("'ok',true,", "'ok',true,'capabilityWitness',true,");
-    const slot: NativeStoreSlot = { row: "created-function-replacement", path: "db/platform/migrations/20990101000000_fixture_created_replacement.sql",
+    // The first-replacement proof uses the exact historical prefix, independently of later issued replacements.
+    const slot: NativeStoreSlot = { row: "created-function-replacement", path: "db/platform/migrations/20261106120002_fixture_created_replacement.sql",
       replacedFunctions: [{ signature, beforeSha256: predecessor.afterSha256, searchPath: "pg_catalog" }],
       createdFunctions: [], grantOnlyFunctions: [], dataStatements: [] };
+    value.nativeStoreForwardClass!.slots = value.nativeStoreForwardClass!.slots.filter(entry => entry.path < slot.path);
+    value.nativeStoreForwards = value.nativeStoreForwards!.filter(entry => entry.path < slot.path);
     value.nativeStoreForwardClass!.slots.push(slot);
     const pin = { path: slot.path, sha256: sqlSha256(text), functions: [{ signature, beforeSha256: predecessor.afterSha256, afterSha256: sqlSha256(text) }] };
     value.nativeStoreForwards!.push(pin);
     const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")) as { baseline: { file: string }; forward: { file: string }[] };
-    const prefix = [manifest.baseline, ...manifest.forward].map(unit => ({ path: unit.file, bytes: readFileSync(unit.file) }));
+    const prefix = [manifest.baseline, ...manifest.forward].filter(unit => unit.file < slot.path).map(unit => ({ path: unit.file, bytes: readFileSync(unit.file) }));
     return { value, slot, pin, prefix, text, signature, creation, creationPin, predecessor, original };
   }
   it("admits the listed reminder replacement chained to its exact creation pin", () => {
@@ -1543,7 +1546,7 @@ describe("replacement of an earlier native-store creation", () => {
     if (attack === "wrong before hash") s.slot.replacedFunctions[0]!.beforeSha256 = s.pin.functions[0]!.beforeSha256 = "0".repeat(64);
     if (attack === "drifted creation pin") s.predecessor.afterSha256 = s.slot.replacedFunctions[0]!.beforeSha256 = s.pin.functions[0]!.beforeSha256 = "0".repeat(64);
     if (attack === "missing creation pin") s.value.nativeStoreForwards = s.value.nativeStoreForwards!.filter(pin => pin !== s.creationPin);
-    if (attack === "prefix drift") s.prefix.push({ path: "db/platform/migrations/20980101000000_fixture_prior_definition.sql", bytes: Buffer.from(text.replace("capabilityWitness", "prefixDrift")) });
+    if (attack === "prefix drift") s.prefix.push({ path: "db/platform/migrations/20261106120001_fixture_prior_definition.sql", bytes: Buffer.from(text.replace("capabilityWitness", "prefixDrift")) });
     if (attack === "changed header") text = text.replace("LANGUAGE plpgsql", "LANGUAGE plpgsql SECURITY DEFINER");
     if (attack === "changed signature") text = text.replace("p_pause_window_seconds integer", "p_pause_window_seconds bigint");
     s.pin.sha256 = sqlSha256(text);
