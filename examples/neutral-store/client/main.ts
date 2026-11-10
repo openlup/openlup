@@ -12,6 +12,8 @@ import type { PageContext } from './context.ts';
 import { homePage, catalogPage, productPage, builderPage, cartPage } from './pages/storefront.ts';
 import { checkoutPage, completionPage, repairPage } from './pages/checkout.ts';
 import { accountPage, invoicesPage, authPage, callbackPage } from './pages/account.ts';
+import { classicEditorPage } from './pages/classic-editor.ts';
+import { sizedEditorPage } from './pages/sized-editor.ts';
 import { operatorPage } from './pages/operator.ts';
 import { acquisitionPage, partnersPage, researchPage } from './pages/participation.ts';
 import { returnsPage, termsPage, reviewPage, unsubscribePage, supportPage,
@@ -31,6 +33,8 @@ const pages: Record<RouteKey | 'product' | 'notFound', (context: PageContext) =>
   cart: cartPage,
   checkout: checkoutPage,
   account: accountPage,
+  classicEdit: classicEditorPage,
+  sizedEdit: sizedEditorPage,
   repair: repairPage,
   completion: completionPage,
   returns: returnsPage,

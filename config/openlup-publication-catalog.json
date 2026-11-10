@@ -1274,7 +1274,19 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261109140000_subscription_sized_editor.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261109150000_subscription_auto_resume_paid_history.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/20261110100000_checkout_recovery_waves.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261110105000_subscription_pause_duration.sql",
       "class": "public-output"
     },
     {
@@ -1970,6 +1982,14 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/browser/editor-component-fixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/browser/editor-components.spec.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/browser/journey.spec.ts",
       "class": "public-output"
     },
@@ -1994,6 +2014,18 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/browser/subscription-api.spec.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/browser/subscription-journeys.spec.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/browser/subscription-native-fixture.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/client/api.ts",
       "class": "public-output"
     },
@@ -2007,6 +2039,22 @@
     },
     {
       "path": "examples/neutral-store/client/dom.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/client/editors/classic-model.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/client/editors/entries.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/client/editors/sized-model.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/client/editors/view.ts",
       "class": "public-output"
     },
     {
@@ -2038,6 +2086,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/client/pages/classic-editor.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/client/pages/destinations.ts",
       "class": "public-output"
     },
@@ -2047,6 +2099,10 @@
     },
     {
       "path": "examples/neutral-store/client/pages/participation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/client/pages/sized-editor.ts",
       "class": "public-output"
     },
     {
@@ -2142,6 +2198,18 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/host/editor-catalogue.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/host/editor-mail.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/host/editor-ports.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/host/healthcheck.ts",
       "class": "public-output"
     },
@@ -2218,6 +2286,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/host/subscription-editors.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/index.html",
       "class": "public-output"
     },
@@ -2258,6 +2330,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/owned/editor-copy.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/owned/fragments.ts",
       "class": "public-output"
     },
@@ -2282,6 +2358,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/owned/subscription-editing.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/ownership.json",
       "class": "public-output"
     },
@@ -2295,6 +2375,10 @@
     },
     {
       "path": "examples/neutral-store/playwright.database.config.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/playwright.editors.config.ts",
       "class": "public-output"
     },
     {
@@ -2366,6 +2450,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/shared/subscription-edit.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/starter-release.json",
       "class": "public-output"
     },
@@ -2399,6 +2487,14 @@
     },
     {
       "path": "examples/neutral-store/test/e4-oms.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/editor-contracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/editor-mail.test.ts",
       "class": "public-output"
     },
     {
@@ -2455,6 +2551,14 @@
     },
     {
       "path": "examples/neutral-store/test/sessions.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/subscription-models.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/subscription-routes.test.ts",
       "class": "public-output"
     },
     {
@@ -4230,7 +4334,19 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261109140000_subscription_sized_editor.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261109150000_subscription_auto_resume_paid_history.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20261110100000_checkout_recovery_waves.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261110105000_subscription_pause_duration.sql",
       "class": "public-output"
     },
     {
@@ -8130,6 +8246,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/subscriptions/agreedPlanQuote.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/subscriptions/automaticRenewal.ts",
       "class": "public-output"
     },
@@ -8171,6 +8291,10 @@
     },
     {
       "path": "packages/platform/src/subscriptions/contracts/renewal.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/contracts/sizedEdit.ts",
       "class": "public-output"
     },
     {
@@ -8307,6 +8431,34 @@
     },
     {
       "path": "packages/platform/src/subscriptions/services.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/sizedComposition.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/sizedEditContext.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/sizedEditPorts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/sizedEditQuote.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/sizedEditor.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/sizedParcelLever.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/sizedParcelProjection.ts",
       "class": "public-output"
     },
     {
@@ -10475,6 +10627,18 @@
     },
     {
       "path": "packages/platform/test/subscriptions/retryTiming.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/subscriptions/sizedEditor.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/subscriptions/sizedFixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/subscriptions/sizedParcelProjection.test.ts",
       "class": "public-output"
     },
     {
@@ -29126,6 +29290,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/subscriptionPauseDuration.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/subscriptionPublicRenewal.test.ts",
       "class": "public-output"
     },
@@ -29179,6 +29347,14 @@
     },
     {
       "path": "tests/postgres/subscriptionRetryResumeCatalog.proof.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionSizedEditor.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionSizedInstallation.test.ts",
       "class": "public-output"
     },
     {

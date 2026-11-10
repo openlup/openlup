@@ -84,7 +84,7 @@ it("excludes inactive and unsellable SKUs, validates inactive products before ex
     expect(items.find(item => item.skuId === seed.skus[3]!.id)).toMatchObject({ productSlug: seed.products[4]!.slug, isPrimarySku: false, isAddon: true });
     await update("UPDATE public.catalog_products SET current_document_revision_id=NULL WHERE id=$1", [seed.products[2]!.id],
       () => refusal(make(), "catalog_revision_invalid"),
-      "UPDATE public.catalog_products SET current_document_revision_id=(SELECT id FROM public.catalog_product_document_revisions WHERE product_id=$1 AND revision_no=1) WHERE id=$1");
+      "UPDATE public.catalog_products SET current_document_revision_id=(SELECT id FROM public.catalog_product_document_revisions WHERE product_id=$1 AND revision_no=2) WHERE id=$1");
   } finally {
     await db.query("UPDATE public.catalog_skus SET status='active' WHERE id=$1", [seed.skus[0]!.id]);
     await db.query("UPDATE public.catalog_skus SET sellable_standalone=$2,sellable_in_subscription=$3 WHERE id=$1", [seed.skus[1]!.id, seed.skus[1]!.sellable_standalone, seed.skus[1]!.sellable_in_subscription]);
@@ -140,10 +140,10 @@ it("refuses duplicate joined product rows", async () => {
 it("detects a real pointer change between envelope/identifier read and guarded payload SELECT", async () => {
   const product = seed.products[0]!;
   const original = (await fixture.owner.query("SELECT current_document_revision_id FROM public.catalog_products WHERE id=$1", [product.id])).rows[0]!.current_document_revision_id;
-  const document = documentFor(0, 2);
+  const document = documentFor(0, 3);
   const next = (await fixture.owner.query(`INSERT INTO public.catalog_product_document_revisions
     (product_id,revision_no,schema_id,document_ref,document_payload,provenance,source_ref,digest)
-    VALUES($1,2,$2,$3,$4,'{}','fixture:replacement',$5) RETURNING id`, [product.id, document.schemaVersion, document.id, document, digest(document)])).rows[0]!.id;
+    VALUES($1,3,$2,$3,$4,'{}','fixture:replacement',$5) RETURNING id`, [product.id, document.schemaVersion, document.id, document, digest(document)])).rows[0]!.id;
   let moved = false;
   const db = { async query(sql: string, values?: unknown[]) {
     if (isPayload(sql) && !moved && (values?.[0] as string[]).includes(product.id)) {
@@ -236,9 +236,9 @@ it("requires host schema admission even when the full revision tuple agrees", as
   await refusal(make(db), "catalog_document_schema_invalid");
 });
 it("refuses incomplete primary facts and nonpositive grams stored by the installation owner", async () => {
-  await update("UPDATE public.catalog_sku_identifiers SET is_primary=false WHERE catalog_sku_id=$1", [seed.skus[0]!.id],
+  await update("UPDATE public.catalog_sku_identifiers SET is_primary=false WHERE catalog_sku_id=$1 AND issuer='fixture'", [seed.skus[0]!.id],
     () => refusal(make(), "catalog_primary_trade_item_invalid"),
-    "UPDATE public.catalog_sku_identifiers SET is_primary=true WHERE catalog_sku_id=$1");
+    "UPDATE public.catalog_sku_identifiers SET is_primary=true WHERE catalog_sku_id=$1 AND issuer='fixture'");
   await update("UPDATE public.catalog_skus SET net_weight_g=0 WHERE id=$1", [seed.skus[0]!.id],
     () => refusal(make(), "catalog_authority_unavailable"),
     "UPDATE public.catalog_skus SET net_weight_g=1 WHERE id=$1");

@@ -7,6 +7,8 @@ export const routes = {
   cart: { en: '/cart', pl: '/koszyk' },
   checkout: { en: '/checkout', pl: '/zamowienie' },
   account: { en: '/account', pl: '/konto' },
+  classicEdit: { en: '/account/edit-package', pl: '/konto/edytuj-pakiet' },
+  sizedEdit: { en: '/account/edit-sizes', pl: '/konto/edytuj-rozmiary' },
   repair: { en: '/account/payment/recover', pl: '/konto/platnosc/napraw' },
   completion: { en: '/account/complete-payment', pl: '/konto/dokoncz-platnosc' },
   returns: { en: '/returns', pl: '/zwroty' },

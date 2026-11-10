@@ -54,10 +54,12 @@ it.each(["legacy", "bootstrap", "separate", "admin-managed", "admin-operator"] a
       } });
     await runner.apply();
     expect((await runner.apply()).applied).toEqual([]);
-    const expected = profile === "legacy" ? 110 : admin ? 114 : 115;
+    const expected = profile === "legacy" ? 113 : admin ? 117 : 118;
     expect((await owner.query("SELECT count(*)::int AS n FROM public.platform_schema_migrations")).rows[0].n).toBe(expected);
-    expect((await owner.query("SELECT catalog_path FROM public.platform_schema_migrations ORDER BY position DESC LIMIT 1")).rows)
-      .toEqual([{ catalog_path: "db/platform/migrations/20261110110000_operator_checkout_links.sql" }]);
+    expect((await owner.query("SELECT catalog_path,position FROM public.platform_schema_migrations ORDER BY position DESC LIMIT 3")).rows)
+      .toEqual([{ catalog_path: "db/platform/migrations/20261110110000_operator_checkout_links.sql", position: expected - 1 },
+        { catalog_path: "db/platform/migrations/20261110105000_subscription_pause_duration.sql", position: expected - 2 },
+        { catalog_path: "db/platform/migrations/20261110100000_checkout_recovery_waves.sql", position: expected - 3 }]);
     const signature = "public.subscription_line_edit_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz)";
     expect((await owner.query("SELECT prosecdef,proconfig FROM pg_proc WHERE oid=$1::regprocedure", [signature])).rows)
       .toEqual([{ prosecdef: true, proconfig: ["search_path=pg_catalog, pg_temp"] }]);

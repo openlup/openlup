@@ -12,6 +12,8 @@ verified by the host binding; no route infers authority from a typed reference.
 | --- | --- | --- |
 | Builder | `/build-your-box` | `/skomponuj-pakiet` |
 | Customer dashboard | `/account` | `/konto` |
+| Classic package editor | `/account/edit-package?subscription=<uuid>` | `/konto/edytuj-pakiet?subscription=<uuid>` |
+| Size-aware editor/invitation | `/account/edit-sizes?subscription=<uuid>` | `/konto/edytuj-rozmiary?subscription=<uuid>` |
 | Payment repair | `/account/payment/recover` | `/konto/platnosc/napraw` |
 | Checkout completion | `/account/complete-payment` | `/konto/dokoncz-platnosc` |
 | Returns | `/returns` | `/zwroty` |
@@ -27,6 +29,9 @@ verified by the host binding; no route infers authority from a typed reference.
 | Review | `/review` | `/opinia` |
 
 The terms and returns pages explicitly describe a fictional demonstration.
+Editor references select a session-owned subscription; a URL grants no authority.
+Only the classic invitation adds `optIn=1`. Entry and abandonment do not change
+the offer, and confirmation requires priced review and explicit consent.
 The inquiry message opens the operator partner panel, which requires a native
 operator session to read intake. Support is static contact text and an account
 link; it contains no form. Public partner intake lives at `/partners` and
