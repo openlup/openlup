@@ -11798,6 +11798,18 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/starter-browser-ci.d.mts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/starter-browser-ci.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/starter-browser-ci.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/strip-types-entrypoint-specifiers.test.ts",
       "class": "public-output"
     },

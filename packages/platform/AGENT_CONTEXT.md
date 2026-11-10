@@ -7,13 +7,13 @@ Shipped package-local sources are relative to this package. Other sources link t
 Repository paths, imports and relative links inside verbatim excerpts describe that source checkout, not files to find or create in your application.
 Consult installed declarations and README for the installed version.
 
-<!-- openlup-context-inventory [{"id":"delivery-alignment","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.37.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Subscription delivery alignment","startLine":548,"endLine":577,"sha256":"db7d8be01a72b2ce76d6b4423c30115ac29cd16ffd48bbaf16fbfdd5540f1c5f"},{"id":"migration-data-ownership","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.37.0/docs/platform/DATA_AND_MIGRATIONS.md","heading":"Data ownership","startLine":6,"endLine":52,"sha256":"09f9ca46aa24eae3321a5f386f59d6a7f842d0aee5199e056b1e5688e4b521cb"},{"id":"migration-forward-path","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.37.0/docs/platform/DATA_AND_MIGRATIONS.md","heading":"Additive forward release path","startLine":405,"endLine":427,"sha256":"3503b3ac6f6da04912e9ecd9a5161d9641e68a21b82beafc31beb8c9dc026b64"},{"id":"checkout-payment-outbox-idempotency","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.37.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Idempotency","startLine":250,"endLine":272,"sha256":"2d719cee94edefe6eccf76aa9c34bbf8a40cdb7e478e313b4a939e769c2e4d71"},{"id":"host-provider-adapter-capability-refusal","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.37.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Provider adapters","startLine":307,"endLine":319,"sha256":"5e72a74503e7b2a85706abdf06484ffd03f95130e617995b8f649f6bc36cea23"}] -->
+<!-- openlup-context-inventory [{"id":"delivery-alignment","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.38.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Subscription delivery alignment","startLine":548,"endLine":577,"sha256":"db7d8be01a72b2ce76d6b4423c30115ac29cd16ffd48bbaf16fbfdd5540f1c5f"},{"id":"migration-data-ownership","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.38.0/docs/platform/DATA_AND_MIGRATIONS.md","heading":"Data ownership","startLine":6,"endLine":52,"sha256":"09f9ca46aa24eae3321a5f386f59d6a7f842d0aee5199e056b1e5688e4b521cb"},{"id":"migration-forward-path","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.38.0/docs/platform/DATA_AND_MIGRATIONS.md","heading":"Additive forward release path","startLine":405,"endLine":427,"sha256":"3503b3ac6f6da04912e9ecd9a5161d9641e68a21b82beafc31beb8c9dc026b64"},{"id":"checkout-payment-outbox-idempotency","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.38.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Idempotency","startLine":250,"endLine":272,"sha256":"2d719cee94edefe6eccf76aa9c34bbf8a40cdb7e478e313b4a939e769c2e4d71"},{"id":"host-provider-adapter-capability-refusal","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.38.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Provider adapters","startLine":307,"endLine":319,"sha256":"5e72a74503e7b2a85706abdf06484ffd03f95130e617995b8f649f6bc36cea23"}] -->
 
 ## delivery-alignment: Preserve subscription cycle alignment after late delivery
 
-Source: [OpenLup source repository at openlup-platform-v0.37.0](https://github.com/openlup/openlup/blob/openlup-platform-v0.37.0/docs/platform/CANONICAL_CONTRACTS.md#L548-L577).
+Source: [OpenLup source repository at openlup-platform-v0.38.0](https://github.com/openlup/openlup/blob/openlup-platform-v0.38.0/docs/platform/CANONICAL_CONTRACTS.md#L548-L577).
 
-<!-- openlup-context {"id":"delivery-alignment","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.37.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Subscription delivery alignment","startLine":548,"endLine":577,"sha256":"db7d8be01a72b2ce76d6b4423c30115ac29cd16ffd48bbaf16fbfdd5540f1c5f"} -->
+<!-- openlup-context {"id":"delivery-alignment","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.38.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Subscription delivery alignment","startLine":548,"endLine":577,"sha256":"db7d8be01a72b2ce76d6b4423c30115ac29cd16ffd48bbaf16fbfdd5540f1c5f"} -->
 ## Subscription delivery alignment
 
 An active subscription must not admit its next renewal while the customer is
@@ -48,9 +48,9 @@ deployment, provider adapter, or public release has activated the rail.
 
 ## migration-data-ownership: Keep adopter data in its owned schema
 
-Source: [OpenLup source repository at openlup-platform-v0.37.0](https://github.com/openlup/openlup/blob/openlup-platform-v0.37.0/docs/platform/DATA_AND_MIGRATIONS.md#L6-L52).
+Source: [OpenLup source repository at openlup-platform-v0.38.0](https://github.com/openlup/openlup/blob/openlup-platform-v0.38.0/docs/platform/DATA_AND_MIGRATIONS.md#L6-L52).
 
-<!-- openlup-context {"id":"migration-data-ownership","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.37.0/docs/platform/DATA_AND_MIGRATIONS.md","heading":"Data ownership","startLine":6,"endLine":52,"sha256":"09f9ca46aa24eae3321a5f386f59d6a7f842d0aee5199e056b1e5688e4b521cb"} -->
+<!-- openlup-context {"id":"migration-data-ownership","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.38.0/docs/platform/DATA_AND_MIGRATIONS.md","heading":"Data ownership","startLine":6,"endLine":52,"sha256":"09f9ca46aa24eae3321a5f386f59d6a7f842d0aee5199e056b1e5688e4b521cb"} -->
 ## Data ownership
 
 Native terminal replay replaces only `subscription_claim_due_renewal` while
@@ -102,9 +102,9 @@ before enabling database adapters. It is not evidence of schema compatibility.
 
 ## migration-forward-path: Follow the ordered additive migration path
 
-Source: [OpenLup source repository at openlup-platform-v0.37.0](https://github.com/openlup/openlup/blob/openlup-platform-v0.37.0/docs/platform/DATA_AND_MIGRATIONS.md#L405-L427).
+Source: [OpenLup source repository at openlup-platform-v0.38.0](https://github.com/openlup/openlup/blob/openlup-platform-v0.38.0/docs/platform/DATA_AND_MIGRATIONS.md#L405-L427).
 
-<!-- openlup-context {"id":"migration-forward-path","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.37.0/docs/platform/DATA_AND_MIGRATIONS.md","heading":"Additive forward release path","startLine":405,"endLine":427,"sha256":"3503b3ac6f6da04912e9ecd9a5161d9641e68a21b82beafc31beb8c9dc026b64"} -->
+<!-- openlup-context {"id":"migration-forward-path","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.38.0/docs/platform/DATA_AND_MIGRATIONS.md","heading":"Additive forward release path","startLine":405,"endLine":427,"sha256":"3503b3ac6f6da04912e9ecd9a5161d9641e68a21b82beafc31beb8c9dc026b64"} -->
 ## Additive forward release path
 
 A development preview may append expand-only platform forwards to either chain:
@@ -132,9 +132,9 @@ Both gates refuse control characters other than tab and line feed in migration S
 
 ## checkout-payment-outbox-idempotency: Preserve repeatable checkout effects
 
-Source: [OpenLup source repository at openlup-platform-v0.37.0](https://github.com/openlup/openlup/blob/openlup-platform-v0.37.0/docs/platform/CANONICAL_CONTRACTS.md#L250-L272).
+Source: [OpenLup source repository at openlup-platform-v0.38.0](https://github.com/openlup/openlup/blob/openlup-platform-v0.38.0/docs/platform/CANONICAL_CONTRACTS.md#L250-L272).
 
-<!-- openlup-context {"id":"checkout-payment-outbox-idempotency","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.37.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Idempotency","startLine":250,"endLine":272,"sha256":"2d719cee94edefe6eccf76aa9c34bbf8a40cdb7e478e313b4a939e769c2e4d71"} -->
+<!-- openlup-context {"id":"checkout-payment-outbox-idempotency","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.38.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Idempotency","startLine":250,"endLine":272,"sha256":"2d719cee94edefe6eccf76aa9c34bbf8a40cdb7e478e313b4a939e769c2e4d71"} -->
 ## Idempotency
 The native bundle contention witness characterizes the existing global event
 key, without adding payload/entity binding. Two absent-key transactions on
@@ -162,9 +162,9 @@ to one canonical effect.
 
 ## host-provider-adapter-capability-refusal: Compose declared provider capabilities through ports
 
-Source: [OpenLup source repository at openlup-platform-v0.37.0](https://github.com/openlup/openlup/blob/openlup-platform-v0.37.0/docs/platform/CANONICAL_CONTRACTS.md#L307-L319).
+Source: [OpenLup source repository at openlup-platform-v0.38.0](https://github.com/openlup/openlup/blob/openlup-platform-v0.38.0/docs/platform/CANONICAL_CONTRACTS.md#L307-L319).
 
-<!-- openlup-context {"id":"host-provider-adapter-capability-refusal","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.37.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Provider adapters","startLine":307,"endLine":319,"sha256":"5e72a74503e7b2a85706abdf06484ffd03f95130e617995b8f649f6bc36cea23"} -->
+<!-- openlup-context {"id":"host-provider-adapter-capability-refusal","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.38.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Provider adapters","startLine":307,"endLine":319,"sha256":"5e72a74503e7b2a85706abdf06484ffd03f95130e617995b8f649f6bc36cea23"} -->
 ## Provider adapters
 
 Domain code depends on a port, not on a provider SDK. An adapter translates the
