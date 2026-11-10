@@ -96,3 +96,9 @@ it("keeps locale label helpers and tables out of the commerce runtime export lis
   expect(names).not.toContain("timelineLabelForStep");
   expect(names).not.toContain("FULFILLMENT_STATUS_MAP");
 });
+
+it('exports browser-safe recovery start schemas through the commerce entry', () => {
+  expect(commerce.CHECKOUT_RECOVERY_START_CONTRACT_VERSION).toBe('commerce.checkout-recovery.v1');
+  expect(commerce.checkoutRecoveryStartRequestSchema.safeParse({orderId:'11111111-1111-4111-8111-111111111111'}).success).toBe(true);
+  expect(commerce.checkoutRecoveryStartResponseSchema.safeParse({contractVersion:'commerce.checkout-recovery.v1',recoverable:false,fallback:'customer_account'}).success).toBe(true);
+});

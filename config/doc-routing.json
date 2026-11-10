@@ -981,7 +981,9 @@
       "id": "platform-account-support",
       "when": "Platform account and support services",
       "paths": [
-        "packages/platform/src/account-support/**"
+        "packages/platform/src/account-support/**",
+        "packages/platform/test/account-support/**",
+        "tests/postgres/customerAccountMutations*.ts"
       ],
       "doc": "packages/platform/README.md",
       "anchor": "#account-and-support-contracts"

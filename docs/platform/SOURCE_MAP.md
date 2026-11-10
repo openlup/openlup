@@ -110,7 +110,7 @@ use one canonical domain owner unless a narrower workflow route applies.
 | core-outbox | Core outbox message and delivery contracts | [packages/core/README.md](../../packages/core/README.md#outbox-contracts) | `packages/core/src/outbox/**` |
 | core-platform-runtime | Core shared runtime contracts | [packages/core/README.md](../../packages/core/README.md#platform-runtime-contracts) | `packages/core/src/platform-runtime/**` |
 | core-standard-schema | Core standard-schema compatibility contracts | [packages/core/README.md](../../packages/core/README.md#standard-schema-contracts) | `packages/core/src/standard-schema/**` |
-| platform-account-support | Platform account and support services | [packages/platform/README.md](../../packages/platform/README.md#account-and-support-contracts) | `packages/platform/src/account-support/**` |
+| platform-account-support | Platform account and support services | [packages/platform/README.md](../../packages/platform/README.md#account-and-support-contracts) | `packages/platform/src/account-support/**`; `packages/platform/test/account-support/**`; `tests/postgres/customerAccountMutations*.ts` |
 | platform-bff | Platform backend HTTP dispatch and response composition | [docs/platform/RUNTIME_AND_SELF_HOSTING.md](RUNTIME_AND_SELF_HOSTING.md#runtime-model) | `packages/platform/src/bff/**` |
 | platform-blob | Platform object storage adapters and blob port binding | [packages/platform/README.md](../../packages/platform/README.md#blob-storage) | `packages/platform/src/blob/**` |
 | platform-catalog | Platform catalogue services and publication ports | [packages/platform/README.md](../../packages/platform/README.md#catalog) | `packages/platform/src/catalog/**` |

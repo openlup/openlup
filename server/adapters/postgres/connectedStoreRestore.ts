@@ -234,7 +234,7 @@ const order = [
   "platform_human_principals", "platform_control_operators", "commerce_operators", "clients",
   "platform_human_memberships", "platform_human_membership_audit_events", "platform_communication_operators",
   "identity_operator_invitations", "identity_operator_invitation_events", "identity_privacy_erasures",
-  "customer_subject_lifecycle_events", "customer_communication_preferences", "customer_communication_preference_events",
+  "customer_subject_lifecycle_events", "customer_communication_preferences", "customer_communication_preference_events", "customer_account_events",
   "platform_operational_controls", "platform_control_operations", "platform_alerts", "platform_alert_notifications", "platform_job_runs",
   "catalog_products", "catalog_product_document_revisions", "catalog_skus", "catalog_sku_identifiers",
   "price_lists", "subscription_price_policy_revisions", "price_entries", "commerce_promotion_definitions",

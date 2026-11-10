@@ -46,3 +46,5 @@ export * from "./postgresNotificationRecipients.js";
 export * from "./postgresConsentEvaluator.js";
 export type * from "./contracts/marketingSync.js";
 export * from "./testing/adapterConformance.js";
+
+export { withCheckoutRecoverySendEvidence } from './checkoutRecoverySendEvidence.js';

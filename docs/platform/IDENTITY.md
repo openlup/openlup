@@ -788,6 +788,15 @@ respect the same ten-minute constraint as issued challenges.
 
 ## Identity personal data
 
+Hosts selecting customer account mutations must register the
+[account-event contributor](../../packages/platform/README.md#customer-account-events-and-mutations)
+and require contributor ID `account-support`. Its explicit reader exports owned
+ledger payloads; unavailable access is reported. An absent retention declaration
+is unresolved and refuses erasure. Explicit retention is recorded in the receipt
+and preserves the payloads. Clearing client profile fields or the client FK's
+cascade does not erase this ledger: identity keeps the client row. This factory
+adds no default reference registration, deletion policy or retention period.
+
 `@openlup/platform/identity/contracts` exports strict contact/principal subject
 references, versioned contributor documents, erasure receipts and named privacy
 refusals. Each contributor declares `ownedResources` alongside its ID and version. `createPersonalDataContributorRegistry` registers explicit owners and

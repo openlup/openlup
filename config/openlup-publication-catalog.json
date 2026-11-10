@@ -1282,6 +1282,26 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261110100000_checkout_recovery_waves.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261110105000_subscription_pause_duration.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261110110000_operator_checkout_links.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261110115000_customer_checkout_links.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261110120000_customer_account_events.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/20261110140000_fulfillment_parcel_contacts.sql",
       "class": "public-output"
     },
@@ -4334,6 +4354,26 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261110100000_checkout_recovery_waves.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261110105000_subscription_pause_duration.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261110110000_operator_checkout_links.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261110115000_customer_checkout_links.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261110120000_customer_account_events.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20261110140000_fulfillment_parcel_contacts.sql",
       "class": "public-output"
     },
@@ -4430,6 +4470,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/account-support/contracts/mutations.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/account-support/contracts/operator.ts",
       "class": "public-output"
     },
@@ -4439,6 +4483,22 @@
     },
     {
       "path": "packages/platform/src/account-support/customer360.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/account-support/customerAccount/accountEventPrivacy.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/account-support/customerAccount/accountMutationHandlers.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/account-support/customerAccount/accountMutationSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/account-support/customerAccount/postgresAccountMutations.ts",
       "class": "public-output"
     },
     {
@@ -4998,6 +5058,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/checkoutRecoveryStartSchemas.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/checkoutResumeSchemas.ts",
       "class": "public-output"
     },
@@ -5322,6 +5386,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/server/checkoutRecoveryWaves.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/server/checkoutRefusalContinuation.ts",
       "class": "public-output"
     },
@@ -5458,6 +5526,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/server/customerCheckoutLinks.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/server/destinations/index.ts",
       "class": "public-output"
     },
@@ -5479,6 +5551,10 @@
     },
     {
       "path": "packages/platform/src/commerce/server/offerAvailability.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/operatorCheckoutPaymentLink.ts",
       "class": "public-output"
     },
     {
@@ -5635,6 +5711,10 @@
     },
     {
       "path": "packages/platform/src/communications/capturedTransactionalDelivery.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/checkoutRecoverySendEvidence.ts",
       "class": "public-output"
     },
     {
@@ -6047,6 +6127,10 @@
     },
     {
       "path": "packages/platform/src/composition/catalogContribution.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/composition/checkoutRecoveryWaves.ts",
       "class": "public-output"
     },
     {
@@ -8442,6 +8526,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/account-support/accountMutations.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/account-support/accountReadFacade.test.ts",
       "class": "public-output"
     },
@@ -8714,6 +8802,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/commerce/checkoutRecoveryWaves.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/commerce/checkoutRefusalContinuation.test.ts",
       "class": "public-output"
     },
@@ -8914,6 +9006,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/commerce/customerCheckoutLinks.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/commerce/destinationPort.test.ts",
       "class": "public-output"
     },
@@ -9079,6 +9175,10 @@
     },
     {
       "path": "packages/platform/test/commerce/omsSchemaTypes.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/operatorCheckoutPaymentLink.test.ts",
       "class": "public-output"
     },
     {
@@ -28618,6 +28718,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/checkoutRecoveryWaves.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/commerceComposition.test.ts",
       "class": "public-output"
     },
@@ -28675,6 +28779,18 @@
     },
     {
       "path": "tests/postgres/customerAccountConsents.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/customerAccountMutations.fixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/customerAccountMutations.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/customerCheckoutLinks.test.ts",
       "class": "public-output"
     },
     {
@@ -29042,6 +29158,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/operatorCheckoutPaymentLink.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/operatorIdentityUpgrade.test.ts",
       "class": "public-output"
     },
@@ -29251,6 +29371,10 @@
     },
     {
       "path": "tests/postgres/subscriptionPackageEditor.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionPauseDuration.test.ts",
       "class": "public-output"
     },
     {
