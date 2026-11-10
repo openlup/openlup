@@ -1282,6 +1282,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261110140000_fulfillment_parcel_contacts.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4330,6 +4334,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261110140000_fulfillment_parcel_contacts.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -6250,6 +6258,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/fulfillment/native/parcelContact.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/fulfillment/nativeUnsupported.ts",
       "class": "public-output"
     },
@@ -6719,6 +6731,10 @@
     },
     {
       "path": "packages/platform/src/identity/operatorTokenAdminAuth.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/parcelContactPrivacy.ts",
       "class": "public-output"
     },
     {
@@ -28723,6 +28739,10 @@
     },
     {
       "path": "tests/postgres/fulfillmentNativeConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fulfillmentParcelContacts.test.ts",
       "class": "public-output"
     },
     {

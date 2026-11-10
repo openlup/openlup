@@ -1552,6 +1552,19 @@ same error class so `instanceof` preserves the no-charge trust boundary.
 The M07 factories' neutral envelopes and capability limits remain unchanged;
 reference-support availability establishes no provider activation or stable API.
 
+## Native parcel contact privacy
+
+Native preparation retains recipient and delivery-selection fields in the private
+parcel contact store, separate from dispatch evidence and public commerce reads.
+Install the complete native catalogue before composing the preparation binding.
+When composing privacy operations, register
+`createFulfillmentParcelContactPrivacyContributor` from `./identity`
+and require contributor ID `fulfillment-parcel-contacts` in the existing registry.
+Keep the identity contributor and subscription veto. Erasure removes the contact
+payload and leaves a marker that prevents legacy inference from recreating it;
+finite native-store transfer carries both live contacts and erasure markers.
+See the [privacy owner](https://github.com/openlup/openlup/blob/main/docs/platform/IDENTITY.md#identity-personal-data).
+
 ## Fulfillment stock evidence replay
 
 The fulfillment migration projection additionally includes the native

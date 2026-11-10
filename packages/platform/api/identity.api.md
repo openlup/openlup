@@ -1627,6 +1627,7 @@ export * from "./oidcPrincipal.js";
 export * from "./postgresAccountLinkStore.js";
 export * from "./postgresContactClientRegistrar.js";
 export * from "./contracts/oidc.js";
+export { createFulfillmentParcelContactPrivacyContributor } from './parcelContactPrivacy.js';
 ```
 ## dist/identity/inviteAdminUserUseCase.d.ts
 
@@ -2370,6 +2371,14 @@ export type PlatformOperatorAuthConfigResolution = {
 };
 export declare function resolvePlatformOperatorAuthConfig(env: Record<string, string | undefined>): PlatformOperatorAuthConfigResolution;
 export declare function createOperatorTokenAdminAuth(config: PlatformOperatorAuthConfig, isOperatorAllowed: PlatformOperatorAllowlistCheck): AdminAuthPort;
+```
+## dist/identity/parcelContactPrivacy.d.ts
+
+```ts
+import type { PersonalDataContributor } from './privacyPorts.js';
+import type { PgQueryExecutor } from '../data/index.js';
+/** Compose with the existing identity transaction and subscriptions veto. */
+export declare function createFulfillmentParcelContactPrivacyContributor(): PersonalDataContributor<PgQueryExecutor>;
 ```
 ## dist/identity/personalDataRegistry.d.ts
 

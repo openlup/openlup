@@ -2,6 +2,7 @@ import { createFulfillmentServices, createPostgresFulfillmentDispatchStore } fro
 import type { FulfillmentDispatchRequest, FulfillmentServicesOptions } from '../contracts/index.js';
 import type { RequiredSchema } from '@openlup/core/readiness';
 import type { PostgresRoleFreeTransactionLane as PostgresFulfillmentTransactionLane } from '../../data/index.js';
+import { parcelContact } from './parcelContact.js';
 
 type Executor = { query(sql: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }> };
 type Attribution = { fulfillmentRef: string; actorUserId: string; idempotencyKey: string };
@@ -40,11 +41,12 @@ export function createNativeFulfillmentBinding(input: {
       || !Number.isSafeInteger(revision.revision) || revision.revision < 0
       || !Number.isSafeInteger(revision.schemaVersion) || revision.schemaVersion < 1 || !revision.source.trim()
       || typeof withheld !== 'boolean') throw new Error('fulfillment_preparation_identity_invalid');
-    // Explicit projection: recipient, raw command, credentials and extra host fields cannot persist here.
+    // Recipient data has its own private, erasable owner; dispatch evidence stays minimal.
     await db.query(`INSERT INTO public.fulfillment_dispatch_contexts(shipment_id,contact_revision,provider_ref,withheld)
       VALUES($1,$2,$3,$4) ON CONFLICT(shipment_id) DO UPDATE
       SET contact_revision=EXCLUDED.contact_revision,provider_ref=EXCLUDED.provider_ref,withheld=EXCLUDED.withheld`,
     [ref, JSON.stringify({ schemaVersion: revision.schemaVersion, source: revision.source, revision: revision.revision }), provider, withheld]);
+    await db.query('SELECT public.fulfillment_capture_parcel_contact($1::uuid,$2::jsonb)', [ref, JSON.stringify(parcelContact(candidate))]);
     return { candidate, disposition: withheld ? 'withheld' as const : 'ready' as const, contactRevision: revision.revision };
   }
   const readPrepared = (ref: string) => run(async db => {
