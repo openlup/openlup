@@ -434,6 +434,25 @@ authenticates before the flag check; disabling the job constructs no persistence
 No host is started. Starter schedules/pages and expired-order recreation remain
 separate work. See the [wave recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#checkout-recovery-waves-and-expiry).
 
+`./commerce/server` exports `createAdminCheckoutPaymentLinkHandler` and
+`createPostgresOperatorCheckoutLinkStore`. The host supplies the verified active
+human administrator session, order snapshot/commercial validation, responder and
+positive `operatorLifetimeMs` / `recoveryWindowMs` configuration. The session
+supplies identity; request identity fields refuse. Native SQL checks the existing
+active operator authority and refuses machine principals and renewal-cycle orders.
+
+The operator command commits admission, revokes every prior same-order checkout
+link, inserts its token, optionally queues the existing transactional recovery
+email, then records its outcome. Separate writes retain the acknowledged failure
+stage. Customer/service issuance remains nonrevoking, so a later such link
+coexists with the operator link. Concurrent operator revocations can both finish
+before either insert; both resulting links then remain live. Payment-case
+recovery is separate. Copy returns the token without email; email returns an
+explicit queued result only after durable per-token handoff. Expiry is the earlier
+configured deadline; an elapsed deadline returns `order_not_recoverable` without
+issuing a token. The operator UI and expired-checkout recreation require separate
+host composition. See the [operator recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#operator-order-payment-links).
+
 `./commerce/server/postgres` also exports
 `createPostgresCommercePriceAuthorityReadPort(executor)`. Allocate it once per
 request and pass it to `createConcurrentCommercePriceAuthorityPort` from

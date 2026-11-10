@@ -722,6 +722,8 @@ process.stdout.write(JSON.stringify(Object.fromEntries(Object.entries(entry).map
     createOutboxShipmentExceptionEmailHandler: "function",
     createPostgresCheckoutRecoveryTokenPort: "function",
     createPostgresCheckoutRecoveryWaves: "function",
+    createAdminCheckoutPaymentLinkHandler: "function",
+    createPostgresOperatorCheckoutLinkStore: "function",
     createPostgresOrderReviewAdminReadPort: "function",
     createPostgresOrderReviewLifecyclePort: "function",
     createPostgresOrderReviewMediaPort: "function",
@@ -1217,4 +1219,33 @@ it.each(["eager adapter", "missing URL guard", "shadow factory"] as const)("reje
     writeFileSync(path, mutant);
     expect(() => provePartnerAcquisitionBindingConsumer(consumer)).toThrow();
   } finally { writeFileSync(path, original); }
+});
+
+it('executes the installed operator link command and store without database peer types', () => {
+  const consumer = pristinePackedA1Fixture();
+  assertConsumerIsolation(consumer, root);
+  const result = JSON.parse(consumerNode(consumer, `
+const { createAdminCheckoutPaymentLinkHandler, createPostgresOperatorCheckoutLinkStore } = await import('@openlup/platform/commerce/server');
+const calls = [];
+const tokenStore = createPostgresOperatorCheckoutLinkStore({ query: async (sql, values) => {
+  calls.push({sql, values}); return {rows:[{result: sql.includes('commerce_operator_link_insert(') ? '44444444-4444-4444-8444-444444444444' : null}]};
+}});
+let response;
+const orderId='11111111-1111-4111-8111-111111111111';
+const handler=createAdminCheckoutPaymentLinkHandler({
+ authorizeAdmin:async()=>({ok:true,userId:'22222222-2222-4222-8222-222222222222',isMachineActor:false}),
+ respond:{sendMethodNotAllowed:()=>{throw Error('method');},sendBffError:(_,code)=>{response={code};},sendBffSuccess:(_,data)=>{response=data;}},
+ orderPort:{getRecoveryOrder:async()=>({orderId,orderRef:'example-order',orderNumber:'1',clientId:'33333333-3333-4333-8333-333333333333',status:'pending_payment',mode:'one_time_order',
+ totalMinor:100,currency:'XXX',cadenceDays:null,createdAt:'2040-01-02T12:00:00Z',customerEmail:null,customerName:null,paymentIntentId:null,paymentIntentStatus:null,subscriptionId:null,subscriptionCycleId:null})},
+ tokenStore,policy:{operatorLifetimeMs:3600000,recoveryWindowMs:86400000},now:()=>new Date('2040-01-02T12:00:00Z'),generateToken:()=> 'rcv_installed_example'
+});
+await handler({method:'POST',body:{orderId,delivery:'email'}},null);
+process.stdout.write(JSON.stringify({response,calls}));
+`));
+  expect(result.response).toEqual({token:'rcv_installed_example',expiresAt:'2040-01-02T13:00:00.000Z',orderRef:'example-order',emailQueued:true});
+  expect(result.calls.map((call: {sql:string}) => call.sql.match(/public\.(\w+)\(/u)?.[1])).toEqual([
+    'commerce_operator_link_receipt','commerce_operator_link_revoke','commerce_operator_link_insert','commerce_operator_link_enqueue','commerce_operator_link_receipt',
+  ]);
+  expect(result.calls[0].values[0]).toBe('22222222-2222-4222-8222-222222222222');
+  expect(result.calls[4].values.slice(3,6)).toEqual(['succeeded','email_queued',true]);
 });

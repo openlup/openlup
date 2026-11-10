@@ -1290,6 +1290,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261110110000_operator_checkout_links.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4346,6 +4350,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261110110000_operator_checkout_links.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -5491,6 +5499,10 @@
     },
     {
       "path": "packages/platform/src/commerce/server/offerAvailability.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/operatorCheckoutPaymentLink.ts",
       "class": "public-output"
     },
     {
@@ -9095,6 +9107,10 @@
     },
     {
       "path": "packages/platform/test/commerce/omsSchemaTypes.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/operatorCheckoutPaymentLink.test.ts",
       "class": "public-output"
     },
     {
@@ -29055,6 +29071,10 @@
     },
     {
       "path": "tests/postgres/omsQueueLadder.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/operatorCheckoutPaymentLink.test.ts",
       "class": "public-output"
     },
     {
