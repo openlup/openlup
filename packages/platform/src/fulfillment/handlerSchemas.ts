@@ -210,6 +210,8 @@ export const adminCommerceFulfillmentMutationResponseSchema = z.object({
   orderId: uuidSchema,
   status: commerceFulfillmentStatusSchema,
   replayed: z.boolean(),
+  releasedReservationCount: z.number().int().nonnegative().optional(),
+  reservationDisposition: z.enum(['recorded', 'reservations_not_recorded']).optional(),
 }).strict();
 
 export type AdminCommerceFulfillmentOrdersListRequest = z.infer<typeof adminCommerceFulfillmentOrdersListRequestSchema>;

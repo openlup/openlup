@@ -1446,11 +1446,49 @@ order-mode values instead of the reader choosing application policy.
 
 | Capability | Native installation boundary | Required host binding |
 | --- | --- | --- |
-| Replacement creation | Unsupported; no shipment, reservation, hold, receipt or outbox write | Atomic replacement port |
-| Operator lifecycle mutations | Unsupported; the native shipment spine port does not carry the operator transaction | Actor-bound mutation callbacks and replay receipts |
+| Replacement creation | Explicit `createPostgresFulfillmentOperatorPort` creates a parcel and fresh counted reservation generation, copying the predecessor’s private contact and destination | Authenticated operator and explicit provider-to-stock-source binding |
+| Complete parcel cancellation | The explicit operator port releases exactly the parcel’s recorded reservations; latest provider-confirmed cancellation has its own paid-order transaction | Authenticated operator; provider observations recorded through the native shipment spine |
+| Legacy parcel reservations | A parcel created before association capture cancels with `reservations_not_recorded` and released count 0; reservations are not released automatically | The operator corrects stock by hand |
+| Legacy paid-order mode | Provider-confirmed paid cancellation refuses with `commerce_fulfillment_provider_cancel_order_mode_unproven` when no mode was recorded | The operator handles cancellation by hand or outside this path; cycle, renewal, activation and email defaults do not supply mode |
+| Other operator lifecycle mutations | The native shipment spine port does not carry their operator transaction | Actor-bound mutation callbacks and replay receipts |
 | Commerce orders list/detail and shipments overview | No equivalent native commerce read | Host read callbacks for orders list, detail and shipments overview; payment status passes through the existing payments projection using core payment-intent statuses |
 | Dispatch preparation writer | Explicit host preparation binding synchronizes revision, provider and withholding under the shipment lock, including authoritative edits | Required host reader/edit closures and transaction lane; disabled, capability-selection/readiness and unsupported-dispatch refusals precede the shared typed refusal for an absent binding, all before any worker |
 | Enforcing delivery alignment | The [host admission decorator](../../server/runtime/subscription/deliveryAlignmentRenewalStore.ts) preserves static terms and captured cases, skips off/no-case admission and obtains one-use schedule receipts before new cycles. Native denials return non-terminal `deferred` results, leaving claims retryable at the same schedule after lease expiry; static refusals remain terminal | A host that composes the native automatic-renewal runner must wrap its store port with the decorator; until it does, native delivery-alignment mode stays off or shadow. No runner composer, factory or production entrypoint is supplied |
+
+Install the complete native catalogue before selecting the operator port. Its
+replacement command retains actor-bound replay matching, the one-undispatched-
+replacement queue rule, paid-payment proof and hold admission. It creates fresh
+nonexpiring committed reservations counted by the existing ATP rail. Original
+consumed stock is unchanged. New original parcels capture their exact item and
+reservation associations atomically in the shared opener. Replacement dispatch
+preparation uses the copied contact, selection and parcel lines, including after
+customer defaults change. Privacy erasure removes each generation's contact
+through the existing contributor and makes a later replacement refuse.
+
+Ordinary cancellation releases only recorded parcel IDs; its result includes
+`releasedReservationCount` and `reservationDisposition`. Under the parcel lock it
+refuses a live direct-dispatch reference, permanent external dispatch evidence,
+or an accepted, submitting or uncertain provider command, before releasing stock.
+This check does not prevent the command ledger from admitting a later command
+after cancellation commits. A provider-confirmed
+paid cancellation requires the latest provider observation to say cancelled, an
+exception parcel, recorded mode exactly `one_time`, succeeded payment and no
+active holds. Other recorded modes retain the ineligible refusal. It cancels the
+parent and parcel and releases the parent's remaining reservations. The
+`suppressOrderCanceledEmail` marker suppresses the cancelled event, so this path
+requests no accounting reversal and performs no refund. An ordinary paid-order
+cancellation still emits its existing event; unpaid cancellation emits none.
+Refund settlement remains a separate unavailable provider-ingestion boundary.
+Neither replacement creation nor cancellation confirms arrival or moves the next
+subscription cycle.
+
+`createPostgresParcelReservationConsumption` supplies the host stock-effect
+callback for exact parcel consumption. It consumes only associated held/committed
+rows and retains an idempotent receipt. The finite native-store transfer owns the
+association sets, parcel lines, reservation links, operator receipts and provider
+status evidence. Contacts remain under their existing private privacy owner.
+The OMS control-plane list and detail select only the latest sequence/id parcel;
+order filtering, pagination totals and counts retain their existing scope.
 
 `createNativeUnsupportedFulfillmentPorts` returns the single typed
 `FULFILLMENT_NATIVE_UNSUPPORTED` refusal for replacement, operator mutations and

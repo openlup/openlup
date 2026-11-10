@@ -8,7 +8,7 @@ type AdminCommerceFulfillmentRecordLabelRequest = ParcelMutationInput & { provid
 type AdminCommerceFulfillmentHandOffRequest = ParcelMutationInput;
 type AdminCommerceFulfillmentTrackingEventRequest = ParcelMutationInput & { status: 'in_transit' | 'delivered' | 'exception'; providerTrackingId?: string; rawEvent?: Record<string, unknown> };
 type AdminCommerceFulfillmentCancelRequest = ParcelMutationInput & { reason: string };
-export interface FulfillmentOperatorMutationResult { contractVersion: 'commerce.fulfillment.v0'; fulfillmentOrderId: string; orderId: string; status: 'created' | 'packed' | 'label_pending' | 'label_created' | 'handed_over' | 'in_transit' | 'delivered' | 'exception' | 'cancelled'; replayed: boolean }
+export interface FulfillmentOperatorMutationResult { contractVersion: 'commerce.fulfillment.v0'; fulfillmentOrderId: string; orderId: string; status: 'created' | 'packed' | 'label_pending' | 'label_created' | 'handed_over' | 'in_transit' | 'delivered' | 'exception' | 'cancelled'; replayed: boolean; releasedReservationCount?: number; reservationDisposition?: 'recorded' | 'reservations_not_recorded' }
 export interface FulfillmentOperatorMutationPort {
   createCommerceFulfillmentOrder(
     request: AdminCommerceFulfillmentCreateRequest & { actorUserId: string },

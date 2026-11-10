@@ -105,7 +105,10 @@ const ORDER_SELECT = `SELECT
   COALESCE(active_holds.active_count, 0)::integer AS active_hold_count,
   COALESCE(active_holds.reasons, ARRAY[]::text[]) AS active_hold_reasons
 FROM public.commerce_orders orders
-LEFT JOIN public.fulfillment_shipments shipment ON shipment.order_id = orders.id
+LEFT JOIN LATERAL (
+  SELECT status FROM public.fulfillment_shipments
+  WHERE order_id = orders.id ORDER BY sequence_no DESC, id DESC LIMIT 1
+) shipment ON true
 LEFT JOIN LATERAL (
   SELECT count(*)::integer AS active_count,
          array_agg(hold.reason ORDER BY hold.created_at DESC) AS reasons
