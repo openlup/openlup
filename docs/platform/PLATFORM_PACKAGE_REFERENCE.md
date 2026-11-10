@@ -1485,8 +1485,9 @@ payment. Identical hash/order replay returns its original token ID without
 reactivating links; reuse for another order refuses. Pending orders with a
 `subscription_cycle_id` are renewal orders and refuse checkout issuance. Initial
 subscription purchases remain eligible before paid activation attaches a cycle.
-Payment-case issuance and the separate actor issuer still rotate earlier links;
-case issuance serializes on the pending order before revocation and insertion.
+The actor issuer also preserves earlier checkout links. Payment-case issuance
+retains its separate rotation and serializes on the pending order before
+revocation and insertion.
 
 Inspection uses the installed native routine's priority: revoked, expired,
 consumed, active. `consumed` becomes `order_not_recoverable`; unknown states
@@ -1638,3 +1639,58 @@ The [PostgreSQL witnesses](../../tests/postgres/operatorCheckoutPaymentLink.test
 exercise legacy and both qualified runtimes; the [command characterization](../../packages/platform/test/commerce/operatorCheckoutPaymentLink.test.ts)
 retains bounded failures and effect ordering. These sources do not establish
 hosted, browser or provider qualification.
+
+
+## Customer checkout recovery entry points
+
+The development-preview commerce server exports
+[`createCheckoutRecoveryStartHandler`, `createCheckoutPaymentLinkHandler` and their PostgreSQL ports](../../packages/platform/src/commerce/server/customerCheckoutLinks.ts).
+Apply the complete native chain through
+[`20261110115000_customer_checkout_links.sql`](../../db/platform/migrations/20261110115000_customer_checkout_links.sql).
+The public query interface contains no database-driver types. Bind an actor
+executor for signed-in recovery and a restricted service executor for buyer mail.
+
+The start handler checks the recovery flag before authenticating or constructing
+persistence. `authenticateUser` supplies the customer session; `createPort`
+constructs the actor-bound port only after admission. PostgreSQL derives ownership
+from `auth.uid()` rather than a request principal. The strict request accepts
+exactly `{ orderId }` or `{ subscriptionId }`. In native initial checkout context,
+`subscriptionId` is the provisional `activationId` returned by declaration;
+there is no active subscription or renewal cycle yet. The exact owned pending
+order is selected, or the newest eligible order for the supplied declaration
+context. Native non-null `subscription_cycle_id` orders refuse checkout issuance.
+An initial declaration or persisted subscription checkout context selects
+subscription presentation without admitting renewal recovery.
+
+Supply `lifetimeMs` explicitly (a neutral example is `86400000`, the maximum).
+Expiry is order creation plus that lifetime. An elapsed deadline returns the
+existing `recoverable: false` account/fresh-checkout fallback without a token.
+PostgreSQL checks its actual clock after blocking writes and rolls them back if
+the deadline elapsed. Missing/terminal orders use owned context and live or
+provisional subscription facts to choose that same fallback. Successful starts
+return a fresh raw token for immediate navigation and send no mail. Earlier
+checkout tokens remain live until payment, expiry or an operator revocation.
+
+The buyer handler takes a selected continuation codec. Only
+`verifyCookieHeader` claims authorize the exact order and client; request-body
+order IDs and recipient addresses supply no authority. Missing, invalid or
+expired cookies construct no persistence. The service-only issuer locks the
+order and admits pending, non-renewal checkout only. Configure `lifetimeMs` and
+`sendBucketMs` on `createPostgresBuyerCheckoutLinkPort` (neutral examples:
+`86400000` and `600000`). Within a bucket, existing outbox uniqueness admits one
+`checkout_recovery:buyer:<order>:<bucket>` event and its token atomically. A losing
+request inserts neither and acknowledges the existing send. A later bucket can
+queue another link while the first stays live. The wire response `{ sent: true }`
+acknowledges queuing/deduplication, not transport delivery; the port additionally
+reports `queued` for the actual winning insertion.
+
+Route buyer events (`buyerRequested: true`, source `buyer_payment_link`) through
+the port's scoped `authorize(eventId, claimToken)` and the existing checkout
+recovery email handler. The gate binds the active claim, order, client and exact
+live bearer. Buyer-requested mail bypasses the fresh-payment-session courtesy
+deferral; missing/paid orders still refuse. Automatic waves retain their own
+authorizer and activity rule. Recipient resolution, localization, transactional
+transport, HTTP registration, account navigation and the embedded-browser control
+remain host bindings. The [PostgreSQL witnesses](../../tests/postgres/customerCheckoutLinks.test.ts)
+cover legacy and both qualified runtime generations; they establish no hosted,
+browser or real-provider qualification.

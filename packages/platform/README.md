@@ -2234,3 +2234,10 @@ read in that transaction and preserves the connection's isolation setting. The
 [migration owner](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
 and [runner witness](https://github.com/openlup/openlup/blob/main/packages/platform/test/migrations/postgresRunner.test.ts) define that boundary;
 this callback does not provision or qualify a hosted installation.
+
+
+Customer checkout recovery entry points in `./commerce/server` provide signed-in
+navigation tokens and cookie-authorized buyer mail with atomic bucket deduplication.
+Both preserve earlier links and refuse renewal-cycle orders. See the
+[customer recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#customer-checkout-recovery-entry-points)
+for session binding, PostgreSQL ports, lifetimes and host delivery/UI obligations.

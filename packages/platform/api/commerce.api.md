@@ -124,6 +124,35 @@ export declare function buildOrderDeliveryContact(input: OrderDeliveryContactInp
 export declare function uuidFromOrderRef(orderRef: string): string;
 export declare function messageOf(error: unknown, stage: string): string;
 ```
+## dist/commerce/checkoutRecoveryStartSchemas.d.ts
+
+```ts
+import { z } from 'zod';
+export declare const CHECKOUT_RECOVERY_START_CONTRACT_VERSION: "commerce.checkout-recovery.v1";
+export declare const checkoutRecoveryStartRequestSchema: z.ZodUnion<readonly [z.ZodObject<{
+    subscriptionId: z.ZodGUID;
+}, z.core.$strict>, z.ZodObject<{
+    orderId: z.ZodGUID;
+}, z.core.$strict>]>;
+export declare const checkoutRecoveryStartResponseSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
+    contractVersion: z.ZodLiteral<"commerce.checkout-recovery.v1">;
+    recoverable: z.ZodLiteral<true>;
+    token: z.ZodString;
+    mode: z.ZodEnum<{
+        one_time_order: "one_time_order";
+        subscription_cycle: "subscription_cycle";
+    }>;
+}, z.core.$strict>, z.ZodObject<{
+    contractVersion: z.ZodLiteral<"commerce.checkout-recovery.v1">;
+    recoverable: z.ZodLiteral<false>;
+    fallback: z.ZodEnum<{
+        fresh_checkout: "fresh_checkout";
+        customer_account: "customer_account";
+    }>;
+}, z.core.$strict>], "recoverable">;
+export type CheckoutRecoveryStartRequest = z.infer<typeof checkoutRecoveryStartRequestSchema>;
+export type CheckoutRecoveryStartResponse = z.infer<typeof checkoutRecoveryStartResponseSchema>;
+```
 ## dist/commerce/checkoutResumeSchemas.d.ts
 
 ```ts
@@ -2700,6 +2729,8 @@ export type { CommerceOfferEvidence } from "./offerEvidenceSchemas.js";
 export { DEFAULT_LOW_STOCK_THRESHOLD, deriveOfferAvailability, defaultOfferAvailability, availabilityBySku, statusForSellableNow, reasonCodeFor } from "./offerAvailability.js";
 /** @consumer src/domains/commerce/offerAvailability.ts */
 export type { DeriveOfferAvailabilityInput } from "./offerAvailability.js";
+export { CHECKOUT_RECOVERY_START_CONTRACT_VERSION, checkoutRecoveryStartRequestSchema, checkoutRecoveryStartResponseSchema } from './checkoutRecoveryStartSchemas.js';
+export type { CheckoutRecoveryStartRequest, CheckoutRecoveryStartResponse } from './checkoutRecoveryStartSchemas.js';
 ```
 ## dist/commerce/model/customerFulfillmentRecovery.d.ts
 
@@ -8283,4 +8314,6 @@ export declare function createCommerceSchemas<Line extends z.ZodType, Currency e
         }, z.core.$strip>;
     }, z.core.$strip>;
 };
+export { CHECKOUT_RECOVERY_START_CONTRACT_VERSION, checkoutRecoveryStartRequestSchema, checkoutRecoveryStartResponseSchema } from './checkoutRecoveryStartSchemas.js';
+export type { CheckoutRecoveryStartRequest, CheckoutRecoveryStartResponse } from './checkoutRecoveryStartSchemas.js';
 ```

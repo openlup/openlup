@@ -186,3 +186,6 @@ export type { CheckoutRecoveryWavePolicy, CheckoutRecoveryWaveExecutor } from '.
 /** Operator order-link command and independently committed PostgreSQL effects. */
 export { createAdminCheckoutPaymentLinkHandler, createPostgresOperatorCheckoutLinkStore } from './operatorCheckoutPaymentLink.js';
 export type { OperatorCheckoutLinkReceipt, OperatorCheckoutLinkPolicy, OperatorCheckoutLinkStore, OperatorCheckoutLinkOrder, OperatorCheckoutLinkExecutor } from './operatorCheckoutPaymentLink.js';
+
+export { createCheckoutRecoveryStartHandler,createCheckoutPaymentLinkHandler,createPostgresCustomerCheckoutRecoveryStartPort,createPostgresBuyerCheckoutLinkPort,CheckoutLinkNotRecoverableError } from './customerCheckoutLinks.js';
+export type { CustomerCheckoutRecoveryContext,CustomerCheckoutRecoveryPendingOrder,CustomerCheckoutRecoveryStartPort,CheckoutLinkQueryExecutor,BuyerCheckoutLinkPolicy,BuyerCheckoutLinkPort } from './customerCheckoutLinks.js';
