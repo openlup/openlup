@@ -9574,6 +9574,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/fulfillment/nativeShipmentCommands.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/fulfillment/observationEffects.test.ts",
       "class": "public-output"
     },

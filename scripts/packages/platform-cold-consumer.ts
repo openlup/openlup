@@ -437,9 +437,8 @@ import assert from "node:assert/strict";
 import { customerStepFromSignals, readFulfillmentCapabilities, createFulfillmentServices, FULFILLMENT_NATIVE_UNSUPPORTED } from "@openlup/platform/fulfillment";
 import { createBundleComposer, createFulfillmentContribution } from "@openlup/platform/composition";
 import * as contracts from "@openlup/platform/fulfillment/contracts";
-import { createPostgresFulfillmentShipmentCommandPort } from "@openlup/platform/fulfillment/native";
 assert.deepEqual(Object.keys(contracts), []);
-for (const entry of ["fulfillment", "fulfillment/contracts", "fulfillment/native", "composition"]) assert(import.meta.resolve("@openlup/platform/" + entry).startsWith(new URL("./node_modules/", import.meta.url).href));
+for (const entry of ["fulfillment", "fulfillment/contracts", "composition"]) assert(import.meta.resolve("@openlup/platform/" + entry).startsWith(new URL("./node_modules/", import.meta.url).href));
 let writes = 0, reads = 0;
 const support = {supported:true}, no = {supported:false,reason:"not_exposed"};
 const capability = {providerRef:"warehouse-a",role:"warehouse",defaultOff:true,selected:true,readiness:{ready:true},
@@ -457,22 +456,6 @@ assert.equal(createBundleComposer({blob:()=>null,fulfillment:()=>ready})({}).por
 const contribution=createFulfillmentContribution({version:"0.21.0",requiredSchema:{version:"fixture",migration:"fixture",objects:[]},fulfillment:{dispatch:ready.runDispatch},handlers:[],schedules:[],routes:[]});
 assert.equal(contribution.ports["@openlup/platform/fulfillment:dispatch"],ready.runDispatch);
 assert.equal((await ready.runDispatch()).checked,0);assert.equal(writes,1);assert.equal(reads,1);
-
-let shipmentQueries=0;
-const orderRef="11111111-1111-4111-8111-111111111111";
-const commands=createPostgresFulfillmentShipmentCommandPort({async query(){
- shipmentQueries++;
- throw Object.assign(Error("commerce_fulfillment_tracking_reference_unattributed"),{code:"23505",detail:JSON.stringify({conflictingOrderId:orderRef,customerEmail:"withheld@example.invalid"})});
-}});
-assert.equal(shipmentQueries,0);
-await assert.rejects(()=>commands.recordCommerceFulfillmentLabel({idempotencyKey:"label",fulfillmentOrderId:orderRef,actorUserId:orderRef,providerKind:"carrier",providerTrackingId:"tracking"}),error=>{
- assert.equal(error.name,"CommerceFulfillmentConflictError");
- assert.equal(error.details.code,"tracking_reference_unattributed");
- assert.equal(error.details.conflictingOrderId,orderRef);
- assert.equal(JSON.stringify(error.details).includes("withheld@example.invalid"),false);
- return true;
-});
-assert.equal(shipmentQueries,1);
 
 assert.equal(customerStepFromSignals(["label_created", "picking"]), "packing");
 assert.deepEqual(readFulfillmentCapabilities([], null), {kind:"refused",refusal:{reason:"selection_required",phase:"selection",retryable:false}});
