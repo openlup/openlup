@@ -198,7 +198,10 @@ async function paymentTransferFixture() {
   const unknown = await paymentObservation(source.runtime, active, "indeterminate");
   expect((await paymentReceive(source.runtime, active, unknown.id)).status).toBe(200);
   const captured = await paymentObservation(source.runtime, pending.attempt, "captured");
-  await source.runtime.query("SELECT public.oms_cancel_unpaid_order($1,$2,'buyer cancelled')", [`cancel:${review.orderId}`, review.orderId]);
+  await expect(source.runtime.query("SELECT public.oms_cancel_unpaid_order($1,$2,'buyer cancelled')", [`cancel:${review.orderId}`, review.orderId]))
+    .rejects.toMatchObject({ code: "23505", message: "oms_cancel_unpaid_order_payment_in_flight" });
+  // Retained historical cancellation remains transferable even with late payment evidence.
+  await source.owner.query("UPDATE public.commerce_orders SET status='cancelled' WHERE id=$1", [review.orderId]);
   const cancelled = await paymentObservation(source.runtime, review.attempt, "captured");
   expect((await paymentReceive(source.runtime, review.attempt, cancelled.id)).status).toBe(200);
   const reviewEvent = (await source.owner.query("SELECT id FROM public.payment_truth_events WHERE source_event_id=$1", [`sandbox:${cancelled.id}`])).rows[0].id as string;

@@ -472,7 +472,7 @@ runtime executor; the reader changes no role, grants, configuration or data.
 `createPostgresCommerceOmsPort`, `createPostgresCommerceOmsControlPlane`,
 `createPostgresProviderExceptionHealPort` and `createPostgresCommerceReturnsPort`.
 Supply an executor using the installation's restricted runtime login. These are
-unchanged store bindings: holds, exact release, unpaid cancellation, completed
+store bindings: holds, exact release, unpaid cancellation, completed
 external-refund marking and return request/approve/reject. Control-plane reads
 remain the reduced `control_plane_v1` projection. Rich OMS reads, notes, address
 correction retain their existing refusal. Replacement requests use the optional
@@ -480,6 +480,14 @@ explicit replacement binding, which can be supplied by
 `createPostgresFulfillmentOperatorPort` from `./fulfillment/native`. Returns record
 intent; they do not receive, restock or execute a refund. The host authenticates
 and authorizes each operation. See the [composition recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#native-oms-and-support-stores).
+With the complete catalogue through `20261110200000_operator_order_commands.sql`,
+unpaid cancellation locks the current payment aggregate and refuses in-flight,
+captured or indeterminate payment before writing one operator audit and releasing
+the order's held purchase reservations. Late captures remain review-required.
+Manual external-refund marking accepts paid orders only and records status without
+a payment-provider call, refund notification or accounting reversal event.
+Genuine refund sources retain their event duties. Neither operation changes an
+active subscription's lifecycle or schedule.
 Native destinations use `./commerce/server/destinations` and the complete SQL
 catalogue. Hosts authorize parent reads and bind checkout/dispatch explicitly.
 The confirmation outbox is durable; native mail dispatch is unbound.

@@ -394,7 +394,10 @@ it("retains cancelled capture as a terminal review fact visible to OMS/readback 
   const f = await fixture(), input = begin(f.intent), a = await simulator().beginAttempt(input);
   const unknown = await observe(a, "indeterminate"); expect((await receive(a, unknown.id)).status).toBe(200);
   const pending = await eventFor(unknown.id);
-  await runtime.query("SELECT public.oms_cancel_unpaid_order($1,$2,'buyer cancelled')", [`cancel:${f.order}`, f.order]);
+  await expect(runtime.query("SELECT public.oms_cancel_unpaid_order($1,$2,'buyer cancelled')", [`cancel:${f.order}`, f.order]))
+    .rejects.toMatchObject({ code: "23505", message: "oms_cancel_unpaid_order_payment_already_moved" });
+  // Historical cancellation can predate the operator guard; late evidence still needs review.
+  await admin.query("UPDATE public.commerce_orders SET status='cancelled' WHERE id=$1", [f.order]);
   const e = await observe(a, "captured"); expect((await receive(a, e.id)).status).toBe(200);
   const event = await eventFor(e.id);
   expect(event.state).toBe("open"); expect(event.outcome).toBe("captured"); expect(event.review_required_at).toBeInstanceOf(Date); expect(event.settlement_transition_id).toBeNull();
@@ -426,7 +429,9 @@ it("finds cancelled captures with the documented operator query and excludes ord
   const open = await eventFor(unknown.id);
   expect(open).toMatchObject({ state: "open", review_required_at: null });
   const cancelled = await fixture(), attempt = await simulator().beginAttempt(begin(cancelled.intent));
-  await runtime.query("SELECT public.oms_cancel_unpaid_order($1,$2,'buyer cancelled')", [`cancel:${cancelled.order}`, cancelled.order]);
+  await expect(runtime.query("SELECT public.oms_cancel_unpaid_order($1,$2,'buyer cancelled')", [`cancel:${cancelled.order}`, cancelled.order]))
+    .rejects.toMatchObject({ code: "23505", message: "oms_cancel_unpaid_order_payment_in_flight" });
+  await admin.query("UPDATE public.commerce_orders SET status='cancelled' WHERE id=$1", [cancelled.order]);
   const captured = await observe(attempt, "captured"); expect((await receive(attempt, captured.id)).status).toBe(200);
   const review = await eventFor(captured.id);
   const section = readFileSync("docs/platform/DATA_AND_MIGRATIONS.md", "utf8").split("List payments awaiting operator review:")[1];
