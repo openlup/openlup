@@ -9,11 +9,11 @@ describe('saved address request policy', () => {
     expect(schemas.customerAddressUpsertRequestSchema.safeParse({ ...input, country: 'example', recipientName: '  Example   Recipient ', contactPhone: '500 100 100', companyName: 'Ignored', taxId: 'invalid' }))
       .toMatchObject({ success: true, data: { line1: 'Example 1', city: 'Example', country: 'ZZ', postalCode: '12-345', contactPhone: '+99500100100', recipientName: 'Example Recipient', companyName: null, taxId: null } });
   });
-  it('pins the original local binding through its configurable values', () => {
-    const selected = createCustomerSavedAddressRequestSchemas({ ...policy, country: 'PL', countryAliases: ['polska','poland'], phonePrefix: '48' });
-    expect(selected.customerAddressUpsertRequestSchema.safeParse({ ...input, country: 'Polska', contactPhone: '(48) 500-100-100', kind: 'both', taxId: '123-456-32-18' }))
-      .toMatchObject({ success: true, data: { country: 'PL', contactPhone: '+48500100100', postalCode: '12-345', taxId: '1234563218' } });
-    expect(selected.customerAddressUpsertRequestSchema.safeParse({ ...input, country: 'PL', contactPhone: '12345678' }).success).toBe(false);
+  it('uses an alternate local binding without changing normalization rules', () => {
+    const selected = createCustomerSavedAddressRequestSchemas({ ...policy, country: 'XY', countryAliases: ['sampleland','sample'], phonePrefix: '97' });
+    expect(selected.customerAddressUpsertRequestSchema.safeParse({ ...input, country: 'Sampleland', contactPhone: '(97) 500-100-100', kind: 'both', taxId: '123-456-32-18' }))
+      .toMatchObject({ success: true, data: { country: 'XY', contactPhone: '+97500100100', postalCode: '12-345', taxId: '1234563218' } });
+    expect(selected.customerAddressUpsertRequestSchema.safeParse({ ...input, country: 'XY', contactPhone: '12345678' }).success).toBe(false);
   });
   it.each([{ recipientName: 'A' }, { recipientName: 'www.example.test' }, { country: 'Unknown country' }, { contactPhone: '123' }, { postalCode: 'invalid' },
     { kind: 'billing', taxId: 'bad-1' }, { line1: '' }, { line1: 'x'.repeat(241) }, { city: 'x'.repeat(161) }, { label: 'x'.repeat(121) },

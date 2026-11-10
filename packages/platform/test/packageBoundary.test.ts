@@ -291,7 +291,7 @@ describe("package source boundary", () => {
       exports: Record<string, unknown>;
     };
     expect(manifest.exports["./package.json"]).toBe("./package.json");
-    assertModuleExports(modules, graph, manifest.exports, (path) => existsSync(join(SOURCE_ROOT, path)), ["account-support/read-contracts", "account-support/postgres", "commerce/server/postgres", "channels/server", "risk/server", "company-identity/server", "operations/server", "marketing/server", "marketing/server/postgres", "commerce/server", "commerce/server/destinations", "commerce/server/native-checkout", "invoicing/postgres", "pricing/browser", "communications/resend", "communications/klaviyo", "payments/stripe", "payments/tpay", "fulfillment/omnipack", "fulfillment/native"]);
+    assertModuleExports(modules, graph, manifest.exports, (path) => existsSync(join(SOURCE_ROOT, path)), ["account-support/read-contracts", "account-support/postgres", "commerce/server/postgres", "channels/server", "risk/server", "company-identity/server", "operations/server", "marketing/server", "marketing/server/postgres", "commerce/server", "commerce/server/destinations", "commerce/server/native-checkout", "invoicing/postgres", "pricing/browser", "communications/resend", "communications/klaviyo", "payments/stripe", "payments/tpay", "fulfillment/omnipack", "fulfillment/native", "shipping/postgres"]);
   });
 
   it("bundles the marketing server entry without PostgreSQL adapters or the optional pg peer", async () => {
