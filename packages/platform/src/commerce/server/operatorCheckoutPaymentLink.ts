@@ -31,6 +31,8 @@ export interface OperatorCheckoutLinkExecutor {
   query(sql: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
 }
 
+class CheckoutLinkDeadlineElapsedError extends Error {}
+
 /** Each call commits independently, retaining admission and the last completed effect on failure. */
 export function createPostgresOperatorCheckoutLinkStore(executor: OperatorCheckoutLinkExecutor): OperatorCheckoutLinkStore & {
   authorize(eventId: string, claimToken: string): Promise<{ authorized: boolean; reason?: string }>;
@@ -45,9 +47,18 @@ export function createPostgresOperatorCheckoutLinkStore(executor: OperatorChecko
       [r.operatorId,r.requestId,r.orderId,r.outcome,r.completedStage,r.emailRequested,r.tokenId ?? null]); },
     async revokeActive(r) { await call('SELECT public.commerce_operator_link_revoke($1::uuid,$2::uuid) AS result', [r.operatorId,r.requestId]); },
     async insert({ receipt: r, clientId, tokenHash, expiresAt, issuedAt }) {
-      const id = await call<unknown>(
-        'SELECT public.commerce_operator_link_insert($1::uuid,$2::uuid,$3::uuid,$4::text,$5::timestamptz,$6::timestamptz) AS result',
-        [r.operatorId,r.requestId,clientId,tokenHash,expiresAt,issuedAt]);
+      let id: unknown;
+      try {
+        id = await call<unknown>(
+          'SELECT public.commerce_operator_link_insert($1::uuid,$2::uuid,$3::uuid,$4::text,$5::timestamptz,$6::timestamptz) AS result',
+          [r.operatorId,r.requestId,clientId,tokenHash,expiresAt,issuedAt]);
+      } catch (error) {
+        if (typeof error === 'object' && error !== null && 'code' in error && error.code === '22023'
+          && 'message' in error && error.message === 'checkout_payment_link_deadline_elapsed') {
+          throw new CheckoutLinkDeadlineElapsedError('checkout_payment_link_deadline_elapsed');
+        }
+        throw error;
+      }
       if (typeof id !== 'string' || id === '') throw new Error('checkout_payment_link_insert_failed');
       return id;
     },
@@ -123,10 +134,11 @@ export function createAdminCheckoutPaymentLinkHandler<Response>({
       }
       await tokenStore.recordReceipt({ ...receipt,outcome: 'succeeded' });
       respond.sendBffSuccess(res,response.data);
-    } catch {
+    } catch (error) {
       if (admitted && receipt) {
         try { await tokenStore.recordReceipt({ ...receipt,outcome: 'failed' }); } catch { /* Durable admission retains an unknown outcome. */ }
       }
+      if (error instanceof CheckoutLinkDeadlineElapsedError) return refuse('order_not_recoverable');
       respond.sendBffError(res,'UPSTREAM_UNAVAILABLE','Admin commerce payment link failed');
     }
   };

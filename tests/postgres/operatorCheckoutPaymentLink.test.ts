@@ -27,17 +27,17 @@ describe.each(lifecycleProfiles)('operator checkout links on %s',profile=>{
   }catch(e){await db.query('ROLLBACK');throw e;}finally{db.release();}
   return {id,client};
  }
- async function read(id:string):Promise<OperatorCheckoutLinkOrder|null>{
-  const row=(await env.owner.query('SELECT o.*, a.cadence_days AS activation_cadence FROM public.commerce_orders o LEFT JOIN public.subscription_activations a ON a.order_id=o.id WHERE o.id=$1',[id])).rows[0];if(!row)return null;
+ async function read(id:string,executor:Pick<LifecycleInstallation['owner'],'query'>=env.owner):Promise<OperatorCheckoutLinkOrder|null>{
+  const row=(await executor.query('SELECT o.*, a.cadence_days AS activation_cadence FROM public.commerce_orders o LEFT JOIN public.subscription_activations a ON a.order_id=o.id WHERE o.id=$1',[id])).rows[0];if(!row)return null;
   return {orderId:row.id,orderRef:`order_${row.id}`,orderNumber:row.id,clientId:row.client_id,status:row.status,mode:row.activation_cadence==null?'one_time_order':'subscription_cycle',totalMinor:100,currency:'XXX',cadenceDays:row.activation_cadence??null,
    createdAt:row.created_at.toISOString(),customerEmail:null,customerName:null,paymentIntentId:null,paymentIntentStatus:null,subscriptionId:null,subscriptionCycleId:row.subscription_cycle_id,
    technicallyExpired:row.metadata?.source==='checkout_reservation_expiry',quoteSnapshot:row.metadata?.quoteSnapshot,shippingAddressId:row.metadata?.shippingAddressId};
  }
- async function issue(id:string,options:{email?:boolean;operator?:string;store?:OperatorCheckoutLinkStore;valid?:boolean;auth?:boolean;machine?:boolean}={}){
+ async function issue(id:string,options:{email?:boolean;operator?:string;store?:OperatorCheckoutLinkStore;valid?:boolean;auth?:boolean;machine?:boolean;now?:Date;readExecutor?:Pick<LifecycleInstallation['owner'],'query'>}={}){
   const result:{code?:string;details?:unknown;data?:{token:string;expiresAt:string;emailQueued:boolean}}={};
   const handler=createAdminCheckoutPaymentLinkHandler({authorizeAdmin:async()=>options.auth===false?{ok:false as const,code:'FORBIDDEN' as const,message:'Denied'}:{ok:true as const,userId:options.operator??operator,isMachineActor:options.machine??false},
    respond:{sendMethodNotAllowed:()=>{throw Error('unexpected method');},sendBffError:(_,code,__,o)=>{result.code=code;result.details=o?.details;},sendBffSuccess:(_,data)=>{result.data=data as typeof result.data;}},
-   orderPort:{getRecoveryOrder:({orderId})=>read(orderId)},tokenStore:options.store??store(),policy,now:()=>new Date(NOW),validateRecreate:async()=>options.valid!==false});
+   orderPort:{getRecoveryOrder:({orderId})=>read(orderId,options.readExecutor)},tokenStore:options.store??store(),policy,now:()=>options.now??new Date(NOW),validateRecreate:async()=>options.valid!==false});
   await handler({method:'POST',body:{orderId:id,...(options.email?{delivery:'email'}:{})}},null);return result;
  }
  const service=()=>createPostgresCheckoutRecoveryTokenPort({run:async work=>{const db=await env.runtime.connect();try{await db.query('BEGIN');const r=await work(db);await db.query('COMMIT');return r;}catch(e){await db.query('ROLLBACK');throw e;}finally{db.release();}}});
@@ -78,6 +78,41 @@ describe.each(lifecycleProfiles)('operator checkout links on %s',profile=>{
  });
  it.each([30,30+1/DAY])('issues nothing for an elapsed deadline (%s days)',async age=>{
   const f=await order(age);expect((await issue(f.id)).details).toEqual({reason:'order_not_recoverable'});expect(await receipts(f.id)).toEqual([]);expect(await tokens(f.id)).toEqual([]);
+ });
+ it('refuses and rolls back a token insert blocked across its deadline after revocation',async()=>{
+  const f=await order(),a=await env.owner.connect(),b=await env.runtime.connect();
+  let pending:ReturnType<typeof issue>|undefined;
+  try{
+   const locked=(await a.query(`UPDATE public.commerce_orders
+    SET created_at=clock_timestamp()+interval '3 seconds'-interval '30 days' WHERE id=$1
+    RETURNING created_at+interval '30 days' AS deadline,clock_timestamp() AS invoked_at`,[f.id])).rows[0];
+   const blockerPid=(await a.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+   const issuerPid=(await b.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+   const actual=createPostgresOperatorCheckoutLinkStore(b);
+   const blockedStore:OperatorCheckoutLinkStore={...actual,revokeActive:async r=>{
+    await actual.revokeActive(r);
+    await a.query('BEGIN');
+    await a.query('LOCK TABLE public.commerce_checkout_recovery_tokens IN SHARE MODE');
+   }};
+   pending=issue(f.id,{email:true,store:blockedStore,now:locked.invoked_at,readExecutor:b});
+   pending.catch(()=>{});
+   let blocked=false;
+   for(let tries=0;tries<100&&!blocked;tries++){
+    blocked=(await a.query('SELECT $1::integer=ANY(pg_blocking_pids($2::integer)) AS blocked',[blockerPid,issuerPid])).rows[0].blocked;
+    if(!blocked)await new Promise(resolve=>setTimeout(resolve,10));
+   }
+   expect(blocked).toBe(true);
+   expect((await a.query('SELECT clock_timestamp()<$1 AS before_deadline',[locked.deadline])).rows[0].before_deadline).toBe(true);
+   await a.query('SELECT pg_sleep(GREATEST(0,EXTRACT(EPOCH FROM ($1::timestamptz-clock_timestamp())))+0.025)',[locked.deadline.toISOString()]);
+   expect((await a.query('SELECT clock_timestamp()>$1 AS elapsed',[locked.deadline])).rows[0].elapsed).toBe(true);
+   await a.query('COMMIT');
+   const result=await pending;
+   expect(result).toEqual({code:'CONFLICT',details:{reason:'order_not_recoverable'}});
+   expect((await a.query('SELECT id FROM public.commerce_checkout_recovery_tokens WHERE order_id=$1',[f.id])).rows).toEqual([]);
+   expect((await a.query('SELECT outcome,completed_stage,token_id FROM public.commerce_operator_link_receipts WHERE order_id=$1 ORDER BY occurred_at',[f.id])).rows)
+    .toEqual([{outcome:'admitted',completed_stage:'none',token_id:null},{outcome:'failed',completed_stage:'revoked',token_id:null}]);
+   expect((await a.query("SELECT id FROM public.outbox_events WHERE aggregate_id=$1 AND event_type='commerce.checkout_recovery'",[f.id])).rows).toEqual([]);
+  }finally{await a.query('ROLLBACK');await pending?.catch(()=>{});a.release();b.release();}
  });
  it('revokes earlier wave and customer/service links; later service issuance preserves the operator link and the payment case',async()=>{
   const f=await order(2/24),oldRaw=randomUUID();await serviceIssue(f.id,oldRaw);

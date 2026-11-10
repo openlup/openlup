@@ -78,11 +78,17 @@ BEGIN
  IF NOT FOUND THEN RAISE EXCEPTION 'checkout_payment_link_admission_required' USING ERRCODE='42501'; END IF;
  issued_at:=GREATEST(p_now,clock_timestamp());
  IF p_now IS NULL OR NOT isfinite(p_now) OR p_expires_at IS NULL OR NOT isfinite(p_expires_at)
-  OR p_expires_at<=issued_at OR COALESCE(p_hash,'')!~'^[0-9a-f]{64}$'
+  OR COALESCE(p_hash,'')!~'^[0-9a-f]{64}$'
   OR NOT EXISTS(SELECT 1 FROM public.commerce_orders WHERE id=v_order_id AND client_id=p_client_id AND subscription_cycle_id IS NULL) THEN
   RAISE EXCEPTION 'checkout_recovery_order_not_recoverable' USING ERRCODE='22023'; END IF;
+ IF p_expires_at<=issued_at THEN
+  RAISE EXCEPTION 'checkout_payment_link_deadline_elapsed' USING ERRCODE='22023'; END IF;
  INSERT INTO public.commerce_checkout_recovery_tokens(order_id,client_id,token_hash,expires_at,created_at)
   VALUES(v_order_id,p_client_id,p_hash,p_expires_at,issued_at) RETURNING id INTO result;
+ -- INSERT can wait for relation, index or foreign-key locks. Refuse against the
+ -- current clock after those waits; the exception rolls back this entire insert.
+ IF p_expires_at<=clock_timestamp() THEN
+  RAISE EXCEPTION 'checkout_payment_link_deadline_elapsed' USING ERRCODE='22023'; END IF;
  RETURN result;
 END; $$;
 REVOKE ALL ON FUNCTION public.commerce_operator_link_insert(uuid,uuid,uuid,text,timestamptz,timestamptz) FROM PUBLIC;
