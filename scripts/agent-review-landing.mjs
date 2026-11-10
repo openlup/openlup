@@ -10,6 +10,12 @@ import { generatedCarrier, runLandingGenerators } from './agent-review-generator
 
 export async function landingMerge(cwd = process.cwd()) {
   if ((await git(cwd, 'status', '--porcelain=v1', '--untracked-files=all')).trim()) throw new Error('landing: clean committed checkout required');
+  for (const key of ['user.name', 'user.email']) {
+    let configured;
+    try { configured = (await git(cwd, 'config', '--get', key)).trim(); }
+    catch (error) { if (error.code !== 1) throw error; }
+    if (!configured) throw new Error(`landing: configure Git ${key} before making a personal DCO sign-off`);
+  }
   const head = (await git(cwd, 'rev-parse', 'HEAD')).trim();
   const main = (await git(cwd, 'rev-parse', 'origin/main')).trim();
   const base = (await git(cwd, 'merge-base', head, main)).trim();
@@ -52,7 +58,7 @@ export async function landingMerge(cwd = process.cwd()) {
   const staged = [...new Set([...MIGRATION_REGISTRIES, INVENTORY_PATH, ...paths.filter(generatedCarrier)])];
   await git(cwd, 'add', '--', ...staged);
   if ((await git(cwd, 'diff', '--name-only', '--diff-filter=U')).trim()) throw new Error('landing: unresolved conflicts remain');
-  await git(cwd, '-c', 'user.name=Bart Roszkowski', '-c', 'user.email=dev@openlup.com', 'commit', '-s', '-m', 'Merge origin/main and refresh derived carriers');
+  await git(cwd, 'commit', '-s', '-m', 'Merge origin/main and refresh derived carriers');
   return { head: (await git(cwd, 'rev-parse', 'HEAD')).trim(), main };
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) landingMerge().then(result => console.log(JSON.stringify(result))).catch(error => { console.error(error.message); process.exitCode = 1; });

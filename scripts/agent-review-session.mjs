@@ -156,6 +156,7 @@ export async function proveReviewIntegration(cwd, previous, current, portable = 
   const exactParents = (await git(cwd, 'show', '-s', '--format=%P', current.head)).trim().split(' ');
   const onMain = await ancestor(git, cwd, current.base, 'origin/main');
   let derived = false;
+  const provenDerived = new Set();
   // Preserve historical receipt identities; derived proof is selected only by
   // trusted main after this machinery lands. Errors retain the old resolution.
   if (!legacy && exactParents.length === 2 && exactParents[0] === previous.head && exactParents[1] === current.base && onMain) {
@@ -186,7 +187,10 @@ export async function proveReviewIntegration(cwd, previous, current, portable = 
       let predicted = await replaceTreeBlobs(cwd, prediction, derivedBlobs);
       const delta = await captureCommittedReviewCandidate(cwd, predicted, current.tree);
       // SQL and modes always retain their mechanical result, including mirrors.
-      const carrierPaths = [...new Set([...delta.changedPaths.filter(path => generatedCarrier(path) && !path.endsWith('.sql')), ...(derivedBlobs.has(REGISTRY_PATHS[0]) ? [REGISTRY_PATHS[0]] : [])])];
+      // A committed conflict-marker blob has no delta from merge-tree. It still
+      // needs its own generator proof; another derived carrier proves nothing
+      // about that blob. SQL conflicts, including mirrors, never take this lane.
+      const carrierPaths = [...new Set([...delta.changedPaths, ...conflicts].filter(path => generatedCarrier(path) && !path.endsWith('.sql')).concat(derivedBlobs.has(REGISTRY_PATHS[0]) ? [REGISTRY_PATHS[0]] : []))];
       if (carrierPaths.length) {
         const outputs = withPredictedTree(cwd, predicted, (root, paths) => {
           runLandingGenerators(root, paths);
@@ -199,10 +203,13 @@ export async function proveReviewIntegration(cwd, previous, current, portable = 
         predicted = await replaceTreeBlobs(cwd, prediction, derivedBlobs);
       }
       derived = predicted !== prediction; prediction = predicted;
+      // Publish exemptions only after the complete derivation succeeds. Each
+      // replacement above was checked against the committed regular-file blob.
+      for (const path of derivedBlobs.keys()) if (!path.endsWith('.sql')) provenDerived.add(path);
     } catch { prediction = oldPrediction; }
   }
   const delta = await captureCommittedReviewCandidate(cwd, prediction, current.tree);
-  demand(conflicts.every(path => replacements.has(path) || delta.changedPaths.includes(path) || (derived && (MIGRATION_REGISTRIES.includes(path) || path === INVENTORY_PATH || generatedCarrier(path)))), 'integration commits a conflict without resolving it');
+  demand(conflicts.every(path => replacements.has(path) || delta.changedPaths.includes(path) || provenDerived.has(path)), 'integration commits a conflict without resolving it');
   const resolution = delta.changedPaths; const modeChanged = delta.modeChanged;
   const kind = resolution.length ? 'resolution' : derived ? 'derived' : conflicts.length ? 'registry-union' : 'git';
   return { kind: portable ? 'portable-' + kind : kind, tree: current.tree, own, moved, ...(derived ? { derived: true } : {}), ...(resolution.length ? { resolution, prediction, modeChanged } : {}) };

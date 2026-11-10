@@ -1365,7 +1365,10 @@ npm run landing:merge
 ```
 
 The helper merges the exact fetched `origin/main` with DCO sign-off; it never
-rebases or pushes. It stops on an authored conflict, leaving the merge for a
+rebases or pushes. Configure your Git `user.name` and `user.email` before running
+it: the merge uses that identity and `-s` for your personal
+[DCO certification](#developer-certificate-of-origin).
+It stops on an authored conflict, leaving the merge for a
 human or worker. Append-only migration entries are unioned in slot order;
 existing entries cannot be edited and new duplicate slots refuse. Issued
 prefixes retain their original order. The publication catalogue's authored path

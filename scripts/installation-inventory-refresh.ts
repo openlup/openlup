@@ -15,7 +15,7 @@ const hash = (value: string) => createHash("sha256").update(value).digest("hex")
 const profiles = ["legacy", "bootstrap", "separate", "admin-managed", "admin-operator"] as const;
 async function measure(profile: typeof profiles[number]) {
   let measured: string | undefined;
-  const container = await runPostgresContainer({ name: `inventory-refresh-${profile}-${process.pid}`, password: "synthetic-conformance" });
+  const container = await runPostgresContainer({ name: `inventory-refresh-${profile}-${process.pid}`, password: randomUUID() });
   const pools: Pool[] = [];
   const pool = (url: string, options?: string) => { const value = new Pool({ connectionString: url, options }); pools.push(value); return value; };
   try {

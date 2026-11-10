@@ -7,7 +7,7 @@ import { INVENTORY_PATH, MIGRATION_REGISTRIES, migrationRegistryUnion } from './
 import { runLandingGenerators } from './agent-review-generators.mjs';
 import { landingMerge } from './agent-review-landing.mjs';
 import { prepareCandidate, recordReport, integrationReviewContext, verdict } from './agent-review-decide.mjs';
-import { captureCommittedReviewCandidate, captureReviewRules, captureCoverageEdge, validateEconomySession, proveReviewIntegration } from './agent-review-session.mjs';
+import { captureCommittedReviewCandidate, captureReviewRules, captureCoverageEdge, validateEconomySession, proveReviewIntegration, git as sourceGit } from './agent-review-session.mjs';
 
 const source = process.cwd();
 let root: string, base: string, reviewed: string, main: string, merged: string;
@@ -35,6 +35,7 @@ beforeAll(async () => {
   const overlays = execFileSync('/usr/bin/git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { cwd: source, encoding: 'utf8' }).split('\0').filter(Boolean);
   for (const path of overlays) { mkdirSync(dirname(join(root, path)), { recursive: true }); cpSync(join(source, path), join(root, path)); }
   symlinkSync(join(source, 'node_modules'), join(root, 'node_modules'));
+  git('config', 'user.name', 'Fixture'); git('config', 'user.email', 'fixture@example.invalid');
   base = commit();
   append('20990101010000'); reviewed = commit();
   git('checkout', '-q', '--detach', base); append('20990101020000'); main = commit();
@@ -47,7 +48,17 @@ async function proof(head = merged) {
 }
 it('lands two independently appended real forwards through the CLI as derived', async () => {
   expect(await proof()).toMatchObject({ kind: 'derived', derived: true });
-  expect(git('show', '-s', '--format=%B', merged)).toContain('Signed-off-by: Bart Roszkowski <dev@openlup.com>');
+  expect(git('show', '-s', '--format=%B', merged)).toContain('Signed-off-by: Fixture <fixture@example.invalid>');
+  expect(git('show', '-s', '--format=%an <%ae>%n%cn <%ce>', merged)).toBe('Fixture <fixture@example.invalid>\nFixture <fixture@example.invalid>');
+});
+it.each(['user.name', 'user.email'])('refuses landing before merging without configured %s', async key => {
+  git('reset', '--hard', merged); git('checkout', '-q', '--detach', merged);
+  git('config', key, '');
+  try {
+    await expect(landingMerge(root)).rejects.toThrow(`landing: configure Git ${key} before making a personal DCO sign-off`);
+    expect(git('rev-parse', 'HEAD')).toBe(merged);
+    await expect(sourceGit(root, 'rev-parse', '--verify', 'MERGE_HEAD')).rejects.toThrow();
+  } finally { git('config', key, key === 'user.name' ? 'Fixture' : 'fixture@example.invalid'); }
 });
 it('carries reviewed coverage through the derived edge and replays its recorded identity', async () => {
   const previous = await captureCommittedReviewCandidate(root, base, reviewed);
@@ -90,3 +101,55 @@ it.each(['edited existing entry', 'duplicate slot'])('refuses %s at the registry
   else side.nativeStoreForwards.push({ ...side.nativeStoreForwards.at(-1), path: side.nativeStoreForwards.at(-1).path.replace(/_[^/]+\.sql$/, '_duplicate.sql') });
   expect(() => migrationRegistryUnion(MIGRATION_REGISTRIES[1], original, json(side), original)).toThrow();
 });
+
+it.each([
+  { path: 'packages/platform/AGENT_CONTEXT.md', unresolved: true, expected: 'refusal' },
+  { path: 'packages/platform/sql/manifest.json', unresolved: true, expected: 'refusal' },
+  { path: 'packages/platform/sql/00000000000000_platform_baseline.sql', unresolved: true, expected: 'refusal' },
+  { path: 'packages/platform/AGENT_CONTEXT.md', unresolved: false, expected: 'derived' },
+  { path: 'packages/platform/sql/00000000000000_platform_baseline.sql', unresolved: false, expected: 'resolution' },
+])('requires $expected for $path with unresolved=$unresolved despite other derived carriers', async ({ path, unresolved, expected }) => {
+  try {
+    const original = await sourceGit(root, 'show', `${base}:${path}`);
+    git('reset', '--hard', reviewed); git('checkout', '-q', '--detach', reviewed);
+    write(path, 'Reviewed carrier variant\n' + original); const left = commit();
+    git('reset', '--hard', main); git('checkout', '-q', '--detach', main);
+    write(path, 'Main carrier variant\n' + original); const right = commit();
+    git('update-ref', 'refs/remotes/origin/main', right);
+    let prediction: string | undefined;
+    try { await sourceGit(root, 'merge-tree', '--write-tree', '--name-only', '--no-messages', '-z', left, right); }
+    catch (error) {
+      expect(error.code).toBe(1);
+      const [tree, ...conflicts] = error.stdout.split('\0'); prediction = tree;
+      expect(conflicts).toContain(path);
+    }
+    expect(prediction).toMatch(/^[a-f0-9]{40}$/);
+    const markers = await sourceGit(root, 'show', `${prediction}:${path}`);
+    expect(markers).toContain('<<<<<<<');
+    // Keep the correct measured inventory and exact registry unions from the
+    // successful landing, changing only the selected carrier to Git's raw blob.
+    git('reset', '--hard', merged); git('checkout', '-q', '--detach', merged);
+    const inventory = read(INVENTORY_PATH);
+    expect(inventory).not.toBe(await sourceGit(root, 'show', `${left}:${INVENTORY_PATH}`));
+    for (const registry of MIGRATION_REGISTRIES) {
+      const inputs = await Promise.all([base, left, right].map(revision => sourceGit(root, 'show', `${revision}:${registry}`)));
+      expect(read(registry)).toBe(migrationRegistryUnion(registry, ...inputs, inventory));
+    }
+    if (unresolved) write(path, markers);
+    git('add', '-A'); const tree = git('write-tree');
+    const changed = (await captureCommittedReviewCandidate(root, prediction, tree)).changedPaths;
+    if (unresolved) expect(changed).not.toContain(path);
+    else expect(changed).toContain(path);
+    const head = git('commit-tree', tree, '-p', left, '-p', right, '-m', 'Synthetic conflicting carrier');
+    const result = proveReviewIntegration(root, await captureCommittedReviewCandidate(root, base, left), await captureCommittedReviewCandidate(root, right, head));
+    if (expected === 'refusal') await expect(result).rejects.toThrow('integration commits a conflict without resolving it');
+    else {
+      const decision = await result;
+      expect(decision.kind).toBe(expected);
+      if (expected === 'resolution') expect(decision.resolution).toContain(path);
+    }
+  } finally {
+    git('reset', '--hard', merged); git('checkout', '-q', '--detach', merged);
+    git('update-ref', 'refs/remotes/origin/main', main);
+  }
+}, 30000);
