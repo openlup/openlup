@@ -477,8 +477,8 @@ external-refund marking and return request/approve/reject. Control-plane reads
 remain the reduced `control_plane_v1` projection. Rich OMS reads, notes, address
 correction retain their existing refusal. Replacement requests use the optional
 explicit replacement binding, which can be supplied by
-`createPostgresFulfillmentOperatorPort` from `./fulfillment/native`. Returns record
-intent; they do not receive, restock or execute a refund. The host authenticates
+`createPostgresFulfillmentOperatorPort` from `./fulfillment/native`. Returns allow one line per order item per request, with quantity capped at the
+ordered quantity. Returns record intent; they do not receive, restock or execute a refund. The host authenticates
 and authorizes each operation. See the [composition recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#native-oms-and-support-stores).
 With the complete catalogue through `20261110200000_operator_order_commands.sql`,
 unpaid cancellation locks the current payment aggregate and refuses in-flight,
