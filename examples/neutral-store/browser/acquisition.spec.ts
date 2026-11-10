@@ -292,8 +292,8 @@ test('clock-driven finite auto-resume captures the resumed confirmation once', a
   const previousNext = Date.parse(f.nextCycleAt);
   const clock = Math.max(window.ends_at.getTime(), previousNext + cadenceMs) + 1000;
   const at = new Date(clock).toISOString();
-  const expectedNext = new Date(previousNext + (Math.floor((clock - previousNext) / cadenceMs) + 1) * cadenceMs);
-  expect(expectedNext.getTime()).toBeGreaterThan(clock);
+  const expectedNext = new Date(Math.max(previousNext + (window.ends_at.getTime() - window.starts_at.getTime()), clock));
+  expect(expectedNext.getTime()).toBeGreaterThanOrEqual(clock);
   await runCare('en', at);
   expect(await state(f)).toEqual({ status: 'active', next_cycle_at: expectedNext });
   expect((await runtime.query('SELECT resumed_at FROM public.subscription_pause_windows WHERE subscription_id=$1', [f.subscriptionId])).rows[0].resumed_at).toEqual(new Date(at));

@@ -9,6 +9,7 @@ import type { OrderPaidLinesPort,
 import type { CommerceEmailRuntime } from '@openlup/platform/commerce/server';
 import type { StoreConfig, Locale } from '../shared/config.ts';
 import { assertRenewalConfig } from '../shared/renewal-config.ts';
+import { composeSizedPaidEmailNote } from './editor-mail.ts';
 import { createPaidMailArtifacts, paidMailKey } from './paid-mail-artifact.ts';
 import { createPrivateCapture, type PrivateCapture } from './private-capture.ts';
 
@@ -77,6 +78,7 @@ export function createPaidMailHost(input: { executor: SqlExecutor; config: Store
         if (send.totals?.subtotalLabel != null) body.push(`${copy.subtotal}: ${send.totals.subtotalLabel}`);
         if (send.totals?.discountLabel != null) body.push(`${copy.discount}: ${send.totals.discountLabel}`);
         if (send.totals) body.push(`${copy.total}: ${send.totals.totalLabel}`);
+        if (send.parcelNote) body.push(send.parcelNote);
         send.signal.throwIfAborted();
         await artifacts.writeOnce(key, { schemaVersion: 1, kind: 'order_paid', messageKey: key,
           outboxEventId: send.outboxEventId, orderId: send.orderId, recipient: send.to,
@@ -102,7 +104,8 @@ export function createPaidMailHost(input: { executor: SqlExecutor; config: Store
     mapSendOutcome: outcome => outcome.ok ? { kind: 'processed' } : { kind: 'retry', reason: 'starter_paid_mail_unavailable' },
   } satisfies Pick<CommerceEmailRuntime<Locale>, 'resolveLocale' | 'genericItemLabel' | 'formatMoney' | 'presentPaidOrder' | 'parseOutboxPayload' | 'mapSendOutcome'>;
   const registry = createOutboxDispatchRegistry({ uniqueRegistry, fulfillmentEnabled: false,
-    extraHandlers: [createOutboxOrderPaidEmailHandler({ runtime, emailPort, recipientPort, linesPort })] });
+    extraHandlers: [createOutboxOrderPaidEmailHandler({ runtime, emailPort, recipientPort, linesPort,
+      describeParcel: composeSizedPaidEmailNote(executor, config) })] });
   return { emailPort, registry, async run() {
     return runOutboxDispatchWorker({ store: createPostgresOutboxStore(executor), registry,
       knownEventTypes: PLATFORM_EVENT_VOCABULARY.map(entry => entry.eventType),

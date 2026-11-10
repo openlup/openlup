@@ -132,10 +132,24 @@ export const nativeLimits: readonly NativeLimit[] = [
     },
   },
   {
-    id: 'N8', actions: ['swapRecipe', 'recipeMix', 'portion'], code: 'subscription_command_unsupported_action',
+    id: 'N8', actions: ['subscriptionResize'], code: 'starter_subscription_resize_unconfigured',
     explanation: {
-      en: 'These exact generic verbs are unsupported. Full-bundle updates use their existing distinct command.',
-      pl: 'Te konkretne polecenia ogólne są nieobsługiwane. Zmiana całego pakietu używa istniejącego osobnego polecenia.',
+      en: 'Seven exact edit verbs are available through the customer-session API only. Demand-driven plan-length and portion resizing remain unconfigured and refuse. Classic plan choices and sized cadence choices preserve explicit counts.',
+      pl: 'Siedem dokładnych poleceń edycji jest dostępnych wyłącznie przez API sesji klienta. Zmiana wielkości według zapotrzebowania przy zmianie okresu lub proporcji pozostaje nieskonfigurowana i jest odrzucana. Klasyczne wybory okresu i częstotliwość w edytorze rozmiarów zachowują jawne ilości.',
+    },
+  },
+  {
+    id: 'N11', actions: ['sizedAcquisition'], code: 'starter_sized_acquisition_unavailable',
+    explanation: {
+      en: 'A new purchase starts classic. Size-aware servicing begins only after a reviewed, explicitly accepted classic opt-in.',
+      pl: 'Nowy zakup rozpoczyna się w ofercie klasycznej. Obsługa z rozmiarami zaczyna się dopiero po przeglądzie i wyraźnej zgodzie na zmianę.',
+    },
+  },
+  {
+    id: 'N12', actions: ['publicationFence'], code: 'starter_sized_publication_fence_unavailable',
+    explanation: {
+      en: 'New or increased sized lines check current active and subscription-sellable state in the apply transaction. Publication-head and offer-membership fencing is not supplied.',
+      pl: 'Nowe lub zwiększone pozycje sprawdzają bieżącą aktywność i możliwość sprzedaży w subskrypcji w transakcji zapisu. Kontrola wersji publikacji i przynależności do oferty nie jest dostarczana.',
     },
   },
   {

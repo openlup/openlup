@@ -2013,15 +2013,47 @@ function nativeConstraintAction(statement: string): { table: string; name: strin
   if (!parsed.complete || !nativeWord(tokens, 1, "CONSTRAINT") || name === null || !["ADD", "DROP"].some(verb => nativeWord(tokens, 0, verb))) return null;
   return { table: alter.table, name, verb: tokens[0]!.value.toUpperCase(), tail: tokens.slice(3) };
 }
+// Reuse the existing single-column named FK token shape; no general ALTER grammar.
+function nativeStoreForeignKey(table: string, action: string) {
+  const { tokens, complete } = platformSqlTokens(action, false, true);
+  const name = nativeIdentifier(tokens[2]), column = nativeIdentifier(tokens[6]);
+  if (!complete || !nativeWord(tokens, 0, "ADD") || !nativeWord(tokens, 1, "CONSTRAINT") || !name || !nativeWord(tokens, 3, "FOREIGN") || !nativeWord(tokens, 4, "KEY") || !nativeSymbol(tokens, 5, "(") || !column || !nativeSymbol(tokens, 7, ")") || !nativeWord(tokens, 8, "REFERENCES")) return null;
+  const reference = nativeQualified(tokens, 9), key = reference ? nativeIdentifier(tokens[reference.next + 1]) : null;
+  if (!reference || !key || !nativeSymbol(tokens, reference.next, "(") || !nativeSymbol(tokens, reference.next + 2, ")") || !nativeWord(tokens, reference.next + 3, "ON") || !nativeWord(tokens, reference.next + 4, "DELETE")) return null;
+  const start = reference.next + 3, deletion = nativeWord(tokens, start + 2, "RESTRICT") ? "r" : nativeWord(tokens, start + 2, "CASCADE") ? "c" : nativeWord(tokens, start + 2, "SET") && nativeWord(tokens, start + 3, "NULL") ? "n" : null;
+  if (!deletion || (deletion !== "r" && (!nativeStoreTable(table) || !nativeStoreTable(reference.name) || ![name, column, key].every(nativeStoreName)))) return null;
+  const end = start + (deletion === "n" ? 4 : 3);
+  const notValid = nativeWord(tokens, end, "NOT") && nativeWord(tokens, end + 1, "VALID") && tokens.length === end + 2;
+  if ((!notValid && tokens.length !== end) || (deletion === "r" && !notValid)) return null;
+  return { table, name, column, reference: reference.name, key, deletion, validated: !notValid, start: tokens[start]!.start, end: tokens[end - 1]!.end };
+}
+/** Slot-local declarations only. Installed column freshness remains a catalogue obligation. */
+export function nativeStoreAddedForeignKeys(statements: readonly string[]) {
+  const columns = new Set<string>(), keys: NonNullable<ReturnType<typeof nativeStoreForeignKey>>[] = [];
+  for (const statement of statements) {
+    const alter = nativeStoreAlter(statement);
+    if (!alter) continue;
+    for (const action of alter.actions) {
+      const { tokens } = platformSqlTokens(action, false, true);
+      if (nativeWord(tokens, 0, "ADD") && nativeWord(tokens, 1, "COLUMN") && nativeIdentifier(tokens[2])) columns.add(`${alter.table}.${nativeIdentifier(tokens[2])}`);
+      const key = nativeStoreForeignKey(alter.table, action);
+      if (!key || key.deletion === "r") continue;
+      if (!columns.has(`${key.table}.${key.column}`)) throw new Error("reviewed native store FK delete action requires an earlier same-slot ADD COLUMN");
+      keys.push(key);
+    }
+  }
+  return keys;
+}
+/** Resolve a plain CREATE TABLE with the same token reader used by admission. */
+export function nativeStoreCreatedTable(statement: string): string | null {
+  const { tokens, complete } = platformSqlTokens(statement, false, true), head = nativeTableHead(tokens);
+  return complete && head?.verb === "CREATE" && head.kind === "TABLE" && nativeSymbol(tokens, head.next, "(") ? head.table : null;
+}
 function nativeStoreAddAction(table: string, action: string): boolean {
   const { tokens, complete } = platformSqlTokens(action, false, true);
   if (!complete || !nativeWord(tokens, 0, "ADD") || !["COLUMN", "CONSTRAINT"].some(word => nativeWord(tokens, 1, word)) || nativeIdentifier(tokens[2]) === null) return false;
-  let checked = action;
-  // Only the already admitted single-column FK clause may mask ON DELETE RESTRICT.
-  if (nativeWord(tokens, 1, "CONSTRAINT") && nativeWord(tokens, 3, "FOREIGN") && nativeWord(tokens, 4, "KEY") && nativeSymbol(tokens, 5, "(") && nativeIdentifier(tokens[6]) !== null && nativeSymbol(tokens, 7, ")") && nativeWord(tokens, 8, "REFERENCES")) {
-    const reference = nativeQualified(tokens, 9);
-    if (reference && nativeSymbol(tokens, reference.next, "(") && nativeIdentifier(tokens[reference.next + 1]) !== null && nativeSymbol(tokens, reference.next + 2, ")") && nativeWord(tokens, reference.next + 3, "ON") && nativeWord(tokens, reference.next + 4, "DELETE") && nativeWord(tokens, reference.next + 5, "RESTRICT") && nativeWord(tokens, reference.next + 6, "NOT") && nativeWord(tokens, reference.next + 7, "VALID") && tokens.length === reference.next + 8) checked = action.slice(0, tokens[reference.next + 3]!.start) + action.slice(tokens[reference.next + 5]!.end);
-  }
+  const key = nativeStoreForeignKey(table, action);
+  const checked = key ? action.slice(0, key.start) + action.slice(key.end) : action;
   return isExpandOnlyPlatformForward(`ALTER TABLE ${table} ${checked};`);
 }
 function nativeStoreExistingStatement(statement: string): { table: string; actions: string[] } {
@@ -2082,6 +2114,7 @@ function validateNativeStoreClass(registry: ReviewedForwardRegistry, paths: Set<
         if (typeof statement !== "string" || sqlStatements(statement, false, false, true).length !== 1) throw new Error("reviewed native store existing-table statement is not expand-only");
         nativeStoreExistingStatement(statement);
       }
+      nativeStoreAddedForeignKeys(slot.existingTableStatements);
     }
     if (slot.checkSupersets !== undefined && (!Array.isArray(slot.checkSupersets) || slot.checkSupersets.some(check => !keysAre(check, "column,constraint,table,values") || !nativeStoreTable(check.table) || !nativeStoreName(check.constraint) || !nativeStoreName(check.column) || !nativeStoreList(check.values)))) throw new Error("reviewed native store invalid CHECK superset entry");
     if (slot.uniqueSupersets !== undefined && (!Array.isArray(slot.uniqueSupersets) || slot.uniqueSupersets.some(unique => !keysAre(unique, "columns,constraint,nullsNotDistinct,table") || !nativeStoreTable(unique.table) || !nativeStoreName(unique.constraint) || !nativeStoreList(unique.columns) || typeof unique.nullsNotDistinct !== "boolean"))) throw new Error("reviewed native store invalid UNIQUE superset entry");
@@ -2105,14 +2138,14 @@ function validateNativeStoreClass(registry: ReviewedForwardRegistry, paths: Set<
       if (!keysAre(fn, "afterSha256,beforeSha256,signature") || fn.signature !== fixed.signature || fn.beforeSha256 !== fixed.beforeSha256 || !hash(fn.afterSha256)) throw new Error("reviewed native store feature signature or before-hash drifted");
     }
   }
-  const replacements = new Map<string, string | undefined>();
-  for (const slot of control.slots) for (const fn of slot.replacedFunctions) {
-    if (replacements.has(fn.signature)) {
-      const predecessor = replacements.get(fn.signature);
+  const predecessors = new Map<string, string | undefined>();
+  for (const slot of control.slots) for (const fn of nativeStoreFunctions(slot)) {
+    if (fn.beforeSha256 !== null && predecessors.has(fn.signature)) {
+      const predecessor = predecessors.get(fn.signature);
       if (!predecessor) throw new Error("reviewed native store chained replacement requires a bound predecessor");
       if (fn.beforeSha256 !== predecessor) throw new Error("reviewed native store chained replacement before-hash differs from preceding after-hash");
     }
-    replacements.set(fn.signature, forwards.find(pin => pin.path === slot.path)?.functions.find(pin => pin.signature === fn.signature)?.afterSha256);
+    predecessors.set(fn.signature, forwards.find(pin => pin.path === slot.path)?.functions.find(pin => pin.signature === fn.signature)?.afterSha256);
   }
 }
 
@@ -2308,7 +2341,7 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
     if (slot.purposeCheck && /^(?:ALTER|DROP)\b/iu.test(statement) && /\bTABLE\b/iu.test(statement) && statement.toLowerCase().includes("communication_native_sync_state")) throw new Error("reviewed native store purpose CHECK intervening DDL refused");
   }
   if (indexCreates.size !== droppedIndexes.length) throw new Error("reviewed native store dropped index plain CREATE missing from prefix");
-  const chained = new Set(control!.slots.slice(0, control!.slots.indexOf(slot)).flatMap(slot => slot.replacedFunctions.map(fn => fn.signature)));
+  const chained = new Set(control!.slots.slice(0, control!.slots.indexOf(slot)).flatMap(slot => nativeStoreFunctions(slot).map(fn => fn.signature)));
   for (const fn of functions) if ((!chained.has(fn.signature) && (baseDefinitions.get(fn.signature) ?? null) !== fn.beforeSha256) || (prior.get(fn.signature) ?? null) !== fn.beforeSha256) throw new Error("reviewed native store actual base function before-hash drifted");
   for (const fn of slot.grantOnlyFunctions) if (!baseDefinitions.has(fn.signature)) throw new Error("reviewed native store grant-only function absent from base chain");
   const statements = sqlStatements(bytes.toString("utf8"), false, false, true), definitions = nativeStoreFunctionDefinitions(bytes, functions.map(fn => fn.signature));
@@ -2391,7 +2424,8 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
       if (!fixed || replacement !== (fixed.beforeSha256 !== null)) throw new Error("reviewed native store function creation/replacement class drifted");
       const header = nativeStoreTrim(headerAttributes(statement).replace(/[ \t\n]+/gu, " "));
       if (fixed.beforeSha256 !== null && nativeStoreTrim(headerAttributes(statement)) !== nativeStoreTrim(headerAttributes(priorStatements.get(signature)!))) throw new Error("reviewed native store replacement header drifted");
-      const rawSearchPath = / SET search_path = ([a-z_][a-z0-9_]*(?:, [a-z_][a-z0-9_]*)*)$/iu.exec(header)?.[1] ?? null;
+      const pathHeader = fixed.beforeSha256 !== null ? header.replace(/ SET search_path=/iu, " SET search_path = ") : header;
+      const rawSearchPath = / SET search_path = ([a-z_][a-z0-9_]*(?:, [a-z_][a-z0-9_]*)*)$/iu.exec(pathHeader)?.[1] ?? null;
       if (rawSearchPath && !nativeStoreAscii(rawSearchPath)) throw new Error("reviewed native store non-ASCII search_path refused");
       const searchPath = rawSearchPath?.toLowerCase() ?? null;
       if (triggerFunctions.has(signature) && (!/^CREATE FUNCTION public\.[a-z_][a-z0-9_]* *\( *\) RETURNS trigger /iu.test(header) || !/\bSECURITY INVOKER\b/iu.test(header) || /\bSECURITY DEFINER\b/iu.test(header) || !fixed.searchPath)) throw new Error("reviewed native store trigger function requires RETURNS trigger, SECURITY INVOKER and pinned search_path");

@@ -53,7 +53,7 @@ test('actor admission precedes the named refusal and ignores body identities and
 
 test('the removed reader retains the HTTP 404 protocol', async () => {
   assert.equal(isOperation('operator.returns'), false);
-  assert.equal(operations.length, 51);
+  assert.equal(operations.length, 53);
   const bindings = pendingBindings();
   bindings.authenticate = async () => { throw new Error('removed_reader_authenticated'); };
   const server = createApplication(bindings).listen(0, '127.0.0.1');

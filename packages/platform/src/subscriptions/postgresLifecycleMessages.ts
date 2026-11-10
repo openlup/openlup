@@ -163,12 +163,8 @@ export function createPostgresLifecycleMessages(options: NativeLifecycleMessages
             const kind = aliases[String(row.kind)] ?? String(row.kind);
             const payload = (row.payload ?? {}) as Record<string, unknown>;
             if (kind === "subscription.pause_reminder_due") {
-              const window = (await db.query(`SELECT w.id,jsonb_build_object('pauseWindowId',w.id,'pausePreset',w.pause_preset,
-                  'pauseEndsAt',w.ends_at,'nextDeliveryAt',d.delivery_at,'resumeAt',d.delivery_at) AS facts
-                FROM public.subscription_pause_windows w JOIN public.subscriptions s ON s.id=w.subscription_id
-                CROSS JOIN LATERAL(SELECT CASE WHEN s.next_cycle_at<=w.ends_at
-                  THEN s.next_cycle_at+(floor(extract(epoch FROM(w.ends_at-s.next_cycle_at))/(s.cadence_days*86400.0))::bigint+1)*s.cadence_days*interval '1 day'
-                  ELSE s.next_cycle_at END AS delivery_at) d
+              const window = (await db.query(`SELECT w.id,public.subscription_pause_reminder_facts(w.id) AS facts
+                FROM public.subscription_pause_windows w
                 WHERE w.subscription_id=$1::uuid AND w.resumed_at IS NULL
                   AND (($2::uuid IS NOT NULL AND w.id=$2::uuid)
                     OR ($2::uuid IS NULL AND (w.ends_at AT TIME ZONE 'UTC')::date=$3::date))

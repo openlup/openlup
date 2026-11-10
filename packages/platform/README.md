@@ -413,6 +413,46 @@ for paid confirmation, and grants payment continuation only through validation
 of an active pending order. It sends no mail and performs no settlement. See the
 [recovery recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#postgresql-checkout-recovery-tokens).
 
+`./commerce/server` exports `createPostgresCheckoutRecoveryWaves`.
+`./composition` supplies `createCheckoutRecoveryWaveJob` and
+`createCheckoutRecoveryWaveHttpEntry`; `./communications` supplies
+`withCheckoutRecoverySendEvidence`. Apply the complete migration chain before
+selecting them. Reminder waves atomically mint distinct links without revoking
+older checkout links. Pending initial purchases remain eligible; renewal-cycle
+orders refuse. Successful or recent active payment evidence suppresses nudges.
+The final wave requires a confirmed first-wave receipt bound to its event,
+template and selected delivery profile, independently of outbox completion.
+Skipped, disabled, ambiguous and failed sends do not create that evidence.
+The existing recovery email handler remains the consumer.
+
+The same service composition supplies reservation-backed one-time expiry,
+initial-activation abandonment and expired-notice reconciliation. One-time expiry
+uses retained purchase-reservation deadlines, never order age. Initial sweeps
+retain any provider-contact evidence and never cancel live subscriptions. Timing,
+batch, lease, profile identity and copy are host configuration. The HTTP adapter
+authenticates before the flag check; disabling the job constructs no persistence.
+No host is started. Starter schedules/pages and expired-order recreation remain
+separate work. See the [wave recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#checkout-recovery-waves-and-expiry).
+
+`./commerce/server` exports `createAdminCheckoutPaymentLinkHandler` and
+`createPostgresOperatorCheckoutLinkStore`. The host supplies the verified active
+human administrator session, order snapshot/commercial validation, responder and
+positive `operatorLifetimeMs` / `recoveryWindowMs` configuration. The session
+supplies identity; request identity fields refuse. Native SQL checks the existing
+active operator authority and refuses machine principals and renewal-cycle orders.
+
+The operator command commits admission, revokes every prior same-order checkout
+link, inserts its token, optionally queues the existing transactional recovery
+email, then records its outcome. Separate writes retain the acknowledged failure
+stage. Customer/service issuance remains nonrevoking, so a later such link
+coexists with the operator link. Concurrent operator revocations can both finish
+before either insert; both resulting links then remain live. Payment-case
+recovery is separate. Copy returns the token without email; email returns an
+explicit queued result only after durable per-token handoff. Expiry is the earlier
+configured deadline; an elapsed deadline returns `order_not_recoverable` without
+issuing a token. The operator UI and expired-checkout recreation require separate
+host composition. See the [operator recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#operator-order-payment-links).
+
 `./commerce/server/postgres` also exports
 `createPostgresCommercePriceAuthorityReadPort(executor)`. Allocate it once per
 request and pass it to `createConcurrentCommercePriceAuthorityPort` from
@@ -1565,6 +1605,28 @@ for upgrade and operational-dependency proof.
 
 ## Subscription contracts and renewal port
 
+`createPostgresSizedEditor` adds agreed-plan editing and explicit classic-to-sized
+opt-in on the selected sized SQL forward. Compose it with the classic binding
+through `createOfferDispatchedSubscriptionEditor`. Unchanged exact SKU/count/
+add-on lines retain their complete agreements; only changed lines are quoted.
+The host supplies owned need/exclusion facts, verified catalogue/stock facts,
+portion proposals and a single-connection transaction callback. Its
+`assertCurrentFacts` locks and rereads owned subject/exclusion facts and optional
+opt-in need, and rereads every selected SKU's catalogue facts, on that connection before
+the five sized composition actions apply. Catalogue evidence includes variant,
+SKU/group identity, add-on/sellable flags, document revision/digest, verification,
+physical size, demand per unit, exclusion keys and `sellableNow`. Facts are ordered
+by canonical variant UUID with sorted exclusion keys. The ledger records them in
+`subjectFacts.catalogFacts`; existing SQL equality compares preview and apply
+evidence. The host compares these current reads with apply evidence and holds its
+subject locks through commit; catalogue rows and stock are reread, not locked or
+reserved, and concurrent catalogue publication is the publication-fence limit.
+Individual add-on edits keep the existing exact writer boundary. Preview never binds; accepted opt-in binds atomically, including when
+contents are unchanged. Direct/reverse binding writes refuse. Current SKU
+admission is transactional; publication-head fencing and sized acquisition are
+not supplied. The [subscription owner](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
+defines configuration, introductory reachability and host obligations.
+
 The subscriptions entry also exports `createNativeSubscriptionBinding`,
 `createNativeRetryDriver`, `withNativeDeliveryAlignmentRenewalAdmission`,
 `createPostgresRenewalSettlementPort` and `nativeSubscriptionSchema`. These are
@@ -1622,8 +1684,8 @@ published complete migration chain. See the
 for the fingerprint dialect, transaction boundaries and recovery limits.
 
 The experimental `./subscriptions` entry exposes hosted renewal mechanisms and
-an explicit native capability descriptor; `./subscriptions/contracts` is
-browser-safe and type-only. The [subscription architecture and recipe](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
+an explicit native capability descriptor and the sized parcel lever value;
+`./subscriptions/contracts` is browser-safe and type-only. The [subscription architecture and recipe](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
 owns the concrete ports, continuity rules, capability refusals and witnesses.
 These entries do not install a store or activate a runner.
 
@@ -2213,3 +2275,10 @@ read in that transaction and preserves the connection's isolation setting. The
 [migration owner](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
 and [runner witness](https://github.com/openlup/openlup/blob/main/packages/platform/test/migrations/postgresRunner.test.ts) define that boundary;
 this callback does not provision or qualify a hosted installation.
+
+
+Customer checkout recovery entry points in `./commerce/server` provide signed-in
+navigation tokens and cookie-authorized buyer mail with atomic bucket deduplication.
+Both preserve earlier links and refuse renewal-cycle orders. See the
+[customer recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#customer-checkout-recovery-entry-points)
+for session binding, PostgreSQL ports, lifetimes and host delivery/UI obligations.

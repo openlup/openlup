@@ -69,15 +69,26 @@ notice writes. Terminalized cycles remain fenced after resume or reactivation.
 exposes `run(limit, now)` for a host-owned scheduled job. It selects due finite
 pause windows with row-skip-locked admission. Missing healthy stored-method
 state, next date or lines, open recovery, any uncollected cycle, a paid cycle
-on the next date, an in-flight order (`paid` or `fulfillment_pending`), or an
-order in the existing `paid` / `fulfillment_pending` / `fulfilled` allowlist
-whose cycle is on the next date causes a graceful skip. Cancelled orders left
-by pause closure do not block. A delivered
-(`fulfilled`) historical order does not block, including the first paid order.
+on the next date, or an order in the existing `paid` / `fulfillment_pending` /
+`fulfilled` allowlist whose cycle is scheduled at `next_cycle_at` causes a
+graceful skip. An associated order without a cycle blocks only while its renewal
+operation is `claimed`, `reserved` or `attempt_prepared`, or its activation is
+`provisional`. Completed (`succeeded` / `refused`) operations and completed
+(`active` / `compensated`) activations do not keep an unlinked order in flight.
+Cancelled orders left by pause closure do not block. Native delivery records
+shipment state without advancing the order past `paid`, so paid orders of past
+cycles and completed activations do not prevent timed resume.
 The window stays open for the next tick; skips leave `ok` true. Indefinite
-windows remain paused. Eligible resumes roll forward by whole stored cadences,
-retain a later date, close the window and write one `subscription.system.auto_resume`
-event under `subscription_auto_resume:<window>`, including the eligibility policy.
+windows remain paused. A timed pause shifts the stored next-cycle date by the
+actual window length (`ends_at - starts_at`) and never brings it earlier.
+Auto-resume uses the later of that shifted date and its execution time, closes
+the window and writes one `subscription.system.auto_resume` event under
+`subscription_auto_resume:<window>`, including the resulting date and eligibility
+policy. The pause reminder computes `nextDeliveryAt` and `resumeAt` from the same
+duration shift, clamped to the window end: the date a punctual auto-resume will execute.
+Retained ledger reminders read the same SQL facts as newly produced reminders.
+Manual customer resume keeps its
+existing cadence policy.
 The lifecycle dispatcher sends that event with the existing resumed confirmation.
 Scheduling, enablement and job-ledger composition belong to the host.
 Resume creates no delivery arrival or replacement confirmation; paid cycles and

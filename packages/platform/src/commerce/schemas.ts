@@ -102,3 +102,5 @@ export function createCommerceSchemas<Line extends z.ZodType, Currency extends z
 
   return { createCartRequestSchema, cartDraftSchema, createCartResponseSchema, createCheckoutRequestSchema, createCheckoutResponseSchema, orderDraftSummarySchema, createOrderDraftRequestSchema, createOrderDraftResponseSchema, orderSummarySchema, orderReadResponseSchema, paymentSummarySchema, paymentStatusReadResponseSchema };
 }
+export { CHECKOUT_RECOVERY_START_CONTRACT_VERSION,checkoutRecoveryStartRequestSchema,checkoutRecoveryStartResponseSchema } from './checkoutRecoveryStartSchemas.js';
+export type { CheckoutRecoveryStartRequest,CheckoutRecoveryStartResponse } from './checkoutRecoveryStartSchemas.js';

@@ -236,7 +236,7 @@ it("uses effective installer-managed grants and refuses both browser roles at th
   }
 });
 
-it("characterizes unchanged actor rotation and case-bound dunning refusals", async () => {
+it("keeps actor links live and preserves case-bound dunning refusals", async () => {
   const principal = randomUUID(); const o = await order({ principal });
   await actor(principal, async db => {
     expect((await db.query("SELECT public.customer_checkout_recovery_find_as_actor($1) AS found", [o.orderId])).rows[0].found.orderId).toBe(o.orderId);
@@ -245,7 +245,7 @@ it("characterizes unchanged actor rotation and case-bound dunning refusals", asy
       [o.orderId, hashCheckoutRecoveryToken(value)]);
     expect((await db.query("SELECT public.customer_checkout_recovery_find_as_actor($1) AS found", [o.orderId])).rows[0].found.orderId).toBe(o.orderId);
   });
-  // Actor work above rolled back; test its committed rotation in one owned transaction.
+  // Actor work above rolled back; test committed coexistence in one owned transaction.
   const db = await runtime.connect();
   try {
     await db.query("BEGIN"); await db.query("SET LOCAL ROLE authenticated");
@@ -254,7 +254,7 @@ it("characterizes unchanged actor rotation and case-bound dunning refusals", asy
       "SELECT public.customer_checkout_recovery_token_issue_as_actor($1,$2,now()+interval '1 hour')", [o.orderId, hashCheckoutRecoveryToken(value)]);
     await db.query("COMMIT");
   } finally { await db.query("ROLLBACK"); db.release(); }
-  expect(await port.inspect("actor-first")).toMatchObject({ tokenState: "revoked" });
+  expect(await port.inspect("actor-first")).toMatchObject({ tokenState: "active" });
   expect(await port.inspect("actor-second")).toMatchObject({ tokenState: "active" });
   await expect(runtime.query("SELECT public.dunning_lifecycle_issue_recovery_token($1,$2,now()+interval '1 hour')",
     [randomUUID(), hashCheckoutRecoveryToken("dunning-missing")])).rejects.toThrow("subscription_dunning_case_not_found");

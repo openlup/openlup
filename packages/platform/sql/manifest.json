@@ -436,11 +436,35 @@
         "sha256": "9b3bad20bbf946dd0dc5d02617fe18cfe9b32ea16a4798736b9a5a4dbbf1b199"
       },
       {
+        "file": "db/platform/migrations/20261109140000_subscription_sized_editor.sql",
+        "sha256": "13129ea49660b1b8ffb95fdaf99be2676e2f43f36086d99895c4a797bb842b1d"
+      },
+      {
+        "file": "db/platform/migrations/20261109150000_subscription_auto_resume_paid_history.sql",
+        "sha256": "518e2a148b6ec79ece01ce7fe346674f1bff60e8ab98db226f5531ef4b6b0c87"
+      },
+      {
+        "file": "db/platform/migrations/20261110100000_checkout_recovery_waves.sql",
+        "sha256": "8aea584e8cad970301bf8a1170a70432ae1d5701a08bd4cde1a1ef469536e4f6"
+      },
+      {
+        "file": "db/platform/migrations/20261110105000_subscription_pause_duration.sql",
+        "sha256": "8ac7881ab139c58755a6b2f51d058612b3da4676eaffd3b8de87580fc2e81a0b"
+      },
+      {
+        "file": "db/platform/migrations/20261110110000_operator_checkout_links.sql",
+        "sha256": "1650c660d02e70e1376a180eddd683ee4e2a0f6a042834e503b0294c5ef97386"
+      },
+      {
+        "file": "db/platform/migrations/20261110115000_customer_checkout_links.sql",
+        "sha256": "00f62af7a95ab3989418e9cbe110bda7f52ead7a93db2f995c95f4aa4c0a0bdf"
+      },
+      {
         "file": "db/platform/migrations/20261110120000_customer_account_events.sql",
         "sha256": "a22217cedd0cb26352736a046ca2ccc48334a27dd14d494cacff8617323cf9c7"
       }
     ],
-    "objectInventorySha256": "3d479cc1de251d9f4efdb9c47e00e516b7a50210aca99c93153564cd8263f93f",
+    "objectInventorySha256": "8182c21b902180f9bfea667ef1643165b70d93e604c943efa1b67052e04ee4ba",
     "qualified": {
       "baseline": {
         "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -896,16 +920,40 @@
           "sha256": "9b3bad20bbf946dd0dc5d02617fe18cfe9b32ea16a4798736b9a5a4dbbf1b199"
         },
         {
+          "file": "db/platform/migrations/20261109140000_subscription_sized_editor.sql",
+          "sha256": "13129ea49660b1b8ffb95fdaf99be2676e2f43f36086d99895c4a797bb842b1d"
+        },
+        {
+          "file": "db/platform/migrations/20261109150000_subscription_auto_resume_paid_history.sql",
+          "sha256": "518e2a148b6ec79ece01ce7fe346674f1bff60e8ab98db226f5531ef4b6b0c87"
+        },
+        {
+          "file": "db/platform/migrations/20261110100000_checkout_recovery_waves.sql",
+          "sha256": "8aea584e8cad970301bf8a1170a70432ae1d5701a08bd4cde1a1ef469536e4f6"
+        },
+        {
+          "file": "db/platform/migrations/20261110105000_subscription_pause_duration.sql",
+          "sha256": "8ac7881ab139c58755a6b2f51d058612b3da4676eaffd3b8de87580fc2e81a0b"
+        },
+        {
+          "file": "db/platform/migrations/20261110110000_operator_checkout_links.sql",
+          "sha256": "1650c660d02e70e1376a180eddd683ee4e2a0f6a042834e503b0294c5ef97386"
+        },
+        {
+          "file": "db/platform/migrations/20261110115000_customer_checkout_links.sql",
+          "sha256": "00f62af7a95ab3989418e9cbe110bda7f52ead7a93db2f995c95f4aa4c0a0bdf"
+        },
+        {
           "file": "db/platform/migrations/20261110120000_customer_account_events.sql",
           "sha256": "a22217cedd0cb26352736a046ca2ccc48334a27dd14d494cacff8617323cf9c7"
         }
       ],
       "objectInventorySha256": {
         "bootstrapMigrator": {
-          "withRestore": "35cc705338e625acd23859ca1f76a8fe4f93a5618b44431b70521c24e2a416bd"
+          "withRestore": "6bc4523263f76fcc3c6ce292d17543a9ae5b61174206f0c0b2bfc68058490a47"
         },
         "separateMigrator": {
-          "withRestore": "9d3ec9397a48d3654efad8c07aef5fd0e075e96a7f5f0042f63ebbd82236e255"
+          "withRestore": "a7557b664a1bfcc3f12815fc7a02389d377358fc2072fd1099145528183a1274"
         }
       }
     },
@@ -1360,13 +1408,37 @@
           "sha256": "9b3bad20bbf946dd0dc5d02617fe18cfe9b32ea16a4798736b9a5a4dbbf1b199"
         },
         {
+          "file": "db/platform/migrations/20261109140000_subscription_sized_editor.sql",
+          "sha256": "13129ea49660b1b8ffb95fdaf99be2676e2f43f36086d99895c4a797bb842b1d"
+        },
+        {
+          "file": "db/platform/migrations/20261109150000_subscription_auto_resume_paid_history.sql",
+          "sha256": "518e2a148b6ec79ece01ce7fe346674f1bff60e8ab98db226f5531ef4b6b0c87"
+        },
+        {
+          "file": "db/platform/migrations/20261110100000_checkout_recovery_waves.sql",
+          "sha256": "8aea584e8cad970301bf8a1170a70432ae1d5701a08bd4cde1a1ef469536e4f6"
+        },
+        {
+          "file": "db/platform/migrations/20261110105000_subscription_pause_duration.sql",
+          "sha256": "8ac7881ab139c58755a6b2f51d058612b3da4676eaffd3b8de87580fc2e81a0b"
+        },
+        {
+          "file": "db/platform/migrations/20261110110000_operator_checkout_links.sql",
+          "sha256": "1650c660d02e70e1376a180eddd683ee4e2a0f6a042834e503b0294c5ef97386"
+        },
+        {
+          "file": "db/platform/migrations/20261110115000_customer_checkout_links.sql",
+          "sha256": "00f62af7a95ab3989418e9cbe110bda7f52ead7a93db2f995c95f4aa4c0a0bdf"
+        },
+        {
           "file": "db/platform/migrations/20261110120000_customer_account_events.sql",
           "sha256": "a22217cedd0cb26352736a046ca2ccc48334a27dd14d494cacff8617323cf9c7"
         }
       ],
       "objectInventorySha256": {
-        "installerManaged": "8e094cfeb86888ae260750cd0cffc41218421ccccc4e36df1057c73bc80bb852",
-        "operatorProvisioned": "2d85cf87b9c0defe169a37ab3178d53763eebd76fd62e17ec2a5e25632200e9c"
+        "installerManaged": "72d0cbeadcb2e0b1c6dd93b007fd42e1a1ea29244aac6cdbb03c50f79c540b43",
+        "operatorProvisioned": "8fc4227b12da331438656532efb57728d97b12c6359eeee0469ce98f570365be"
       }
     }
   },
@@ -1910,6 +1982,36 @@
       "file": "20261109130000_subscription_exact_levers.sql",
       "source": "db/platform/migrations/20261109130000_subscription_exact_levers.sql",
       "sha256": "9b3bad20bbf946dd0dc5d02617fe18cfe9b32ea16a4798736b9a5a4dbbf1b199"
+    },
+    {
+      "file": "20261109140000_subscription_sized_editor.sql",
+      "source": "db/platform/migrations/20261109140000_subscription_sized_editor.sql",
+      "sha256": "13129ea49660b1b8ffb95fdaf99be2676e2f43f36086d99895c4a797bb842b1d"
+    },
+    {
+      "file": "20261109150000_subscription_auto_resume_paid_history.sql",
+      "source": "db/platform/migrations/20261109150000_subscription_auto_resume_paid_history.sql",
+      "sha256": "518e2a148b6ec79ece01ce7fe346674f1bff60e8ab98db226f5531ef4b6b0c87"
+    },
+    {
+      "file": "20261110100000_checkout_recovery_waves.sql",
+      "source": "db/platform/migrations/20261110100000_checkout_recovery_waves.sql",
+      "sha256": "8aea584e8cad970301bf8a1170a70432ae1d5701a08bd4cde1a1ef469536e4f6"
+    },
+    {
+      "file": "20261110105000_subscription_pause_duration.sql",
+      "source": "db/platform/migrations/20261110105000_subscription_pause_duration.sql",
+      "sha256": "8ac7881ab139c58755a6b2f51d058612b3da4676eaffd3b8de87580fc2e81a0b"
+    },
+    {
+      "file": "20261110110000_operator_checkout_links.sql",
+      "source": "db/platform/migrations/20261110110000_operator_checkout_links.sql",
+      "sha256": "1650c660d02e70e1376a180eddd683ee4e2a0f6a042834e503b0294c5ef97386"
+    },
+    {
+      "file": "20261110115000_customer_checkout_links.sql",
+      "source": "db/platform/migrations/20261110115000_customer_checkout_links.sql",
+      "sha256": "00f62af7a95ab3989418e9cbe110bda7f52ead7a93db2f995c95f4aa4c0a0bdf"
     },
     {
       "file": "20261110120000_customer_account_events.sql",

@@ -180,3 +180,12 @@ export type { ConfiguratorIntentRpcQueryClient, ConfiguratorIntentPersistenceIde
 export { createOfferAvailabilityPort } from "./offerAvailability.js";
 /** @consumer Reference physical-stock availability binding. */
 export type { OfferAvailabilityQueryClient } from "./offerAvailability.js";
+export { createPostgresCheckoutRecoveryWaves } from './checkoutRecoveryWaves.js';
+export type { CheckoutRecoveryWavePolicy, CheckoutRecoveryWaveExecutor } from './checkoutRecoveryWaves.js';
+
+/** Operator order-link command and independently committed PostgreSQL effects. */
+export { createAdminCheckoutPaymentLinkHandler, createPostgresOperatorCheckoutLinkStore } from './operatorCheckoutPaymentLink.js';
+export type { OperatorCheckoutLinkReceipt, OperatorCheckoutLinkPolicy, OperatorCheckoutLinkStore, OperatorCheckoutLinkOrder, OperatorCheckoutLinkExecutor } from './operatorCheckoutPaymentLink.js';
+
+export { createCheckoutRecoveryStartHandler,createCheckoutPaymentLinkHandler,createPostgresCustomerCheckoutRecoveryStartPort,createPostgresBuyerCheckoutLinkPort,CheckoutLinkNotRecoverableError } from './customerCheckoutLinks.js';
+export type { CustomerCheckoutRecoveryContext,CustomerCheckoutRecoveryPendingOrder,CustomerCheckoutRecoveryStartPort,CheckoutLinkQueryExecutor,BuyerCheckoutLinkPolicy,BuyerCheckoutLinkPort } from './customerCheckoutLinks.js';

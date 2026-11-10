@@ -4,7 +4,7 @@ import type { StoreConfig } from './config.ts';
 export const operations = [
   'checkout.create', 'checkout.read', 'payment.simulate', 'payment.recover',
   'account.read', 'account.orders', 'account.invoice', 'account.consent',
-  'subscription.command', 'subscription.address', 'return.request',
+  'subscription.command', 'subscription.preview', 'subscription.catalog', 'subscription.address', 'return.request',
   'auth.request', 'auth.verify', 'auth.callback', 'auth.signOut', 'auth.operator',
   'operator.orders', 'operator.order', 'operator.hold', 'operator.release',
   'operator.cancelUnpaid', 'operator.externalRefund', 'operator.customerSearch',
@@ -23,7 +23,7 @@ export type ActionInput = Record<string, unknown>;
 
 export type ActionResult =
   | { ok: true; value: unknown; replayed?: boolean }
-  | { ok: false; code: string; field?: string };
+  | { ok: false; code: string; field?: string; status?: 400 | 403 | 409 | 503 };
 
 export interface AppConfigurationResponse {
   config: StoreConfig;

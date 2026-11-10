@@ -335,6 +335,10 @@ export async function restoreConnectedNativeStore(input: {
     }
     await assertInsertTriggers(client);
     await assertOutsideEmpty(client, relations);
+    // Sized bindings cannot be replayed as final rows through the insert guard.
+    // Refuse before restoring settings or inserting any retained source data.
+    if (source.get("subscriptions")!.rows.some(row =>
+      (JSON.parse(row) as Record<string, unknown>).configured_offer_version !== "classic")) fail("unsupported_table", "subscriptions");
     if (await equalCensus(client, source)) {
       if (JSON.stringify((await client.query("SELECT tableoid::pg_catalog.text,ctid::pg_catalog.text,xmin::pg_catalog.text FROM acquisition_private.installation_key")).rows) !== JSON.stringify(keyIdentity.rows)) fail("target_conflict", "acquisition_private.installation_key");
       if (installation.generation === "qualified-admin") await closeRestrictedOwnerWindow(client, installation);
@@ -358,7 +362,9 @@ export async function restoreConnectedNativeStore(input: {
       for (const table of order) {
         const rows = source.get(table)!;
         const b = packet.compatible.tables.find(value => value.table === table);
-        if (b && !["clients", "subscription_cycles", "commerce_orders", "commerce_order_items", "outbox_events"].includes(table)) {
+        // Classic subscriptions and their events use the locked owner path;
+        // the generic row importer deliberately refuses their binding triggers.
+        if (b && !["clients", "subscriptions", "subscription_events", "subscription_cycles", "commerce_orders", "commerce_order_items", "outbox_events"].includes(table)) {
           const { sha256: _old, ...payload } = { ...packet.compatible, tables: [{ ...b, rows: parentOrder(table, b.rows) }] };
           const bounded: CompatiblePostgresPacket = { ...payload, sha256: digest(JSON.stringify(payload)) };
           await restoreCompatiblePostgresRows({ catalogueId: manifest.objectInventorySha256, packet: bounded,
@@ -585,6 +591,10 @@ async function assertInsertTriggers(client: PoolClient): Promise<void> {
     commerce_order_holds: ["trg_fulfillment_emit_shipment_exception", "trg_subscription_delivery_alignment_exception_case"],
     fulfillment_shipments: ["trg_subscription_delivery_alignment_on_delivery"],
     outbox_events: ["channel_purchase_outbox_guard"],
+    // The guard admits only classic inserts. The binder acts only on opt-in
+    // events, whose subscriptions are sized.v1 and refused before any writes.
+    subscriptions: ["subscriptions_configured_offer_guard"],
+    subscription_events: ["subscription_events_bind_sized_opt_in"],
   };
   const actual = (await client.query<{ table: string; name: string }>(`SELECT c.relname AS table,t.tgname AS name FROM pg_catalog.pg_trigger t
     JOIN pg_catalog.pg_class c ON c.oid=t.tgrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace

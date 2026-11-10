@@ -1464,3 +1464,97 @@ describe("owned absorption census capability", () => {
     expect(() => censusForward(censusShape, slot => { slot.absorptionCensusTables = tables as string[]; })).toThrow(/qualified tables/u);
   });
 });
+
+describe("slot-local legacy headers and fresh-column FK actions", () => {
+  const compact = "CREATE FUNCTION public.fixture_compact(p_id uuid) RETURNS text LANGUAGE sql SECURITY INVOKER SET search_path=pg_catalog AS $$ SELECT 'before'; $$;";
+  const replacement = compact.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION").replace("'before'", "'after'");
+  const compactForward = (statement: string, path = "pg_catalog") => parameterForward(statement, slot => {
+    slot.replacedFunctions.push({signature:"public.fixture_compact(uuid)", searchPath:path, beforeSha256:nativeStoreFunctionDefinitions(Buffer.from(compact), ["public.fixture_compact(uuid)"]).get("public.fixture_compact(uuid)")!});
+  }, compact);
+  it("admits a replacement preserving its compact legacy search_path header", () => {
+    expect(() => compactForward(replacement)).not.toThrow();
+  });
+  it.each(["search_path = pg_catalog", "search_path= pg_catalog", "search_path =pg_catalog", "search_path=public"])("refuses compact legacy header drift: %s", spelling => {
+    expect(() => compactForward(replacement.replace("search_path=pg_catalog",spelling))).toThrow("replacement header drifted");
+  });
+  it("still refuses compact spelling on a newly created function and a mismatched legacy pin", () => {
+    expect(() => check(sql().replace("search_path = pg_catalog, pg_temp", "search_path=pg_catalog, pg_temp"))).toThrow();
+    expect(() => compactForward(replacement,"public")).toThrow("unpinned SECURITY DEFINER or search_path");
+  });
+  const column = "ALTER TABLE public.fixture_parameters ADD COLUMN parent_id uuid;";
+  const fk = (action: string, suffix: string) => `ALTER TABLE public.fixture_parameters ADD CONSTRAINT fixture_parent_fk FOREIGN KEY (parent_id) REFERENCES public.fixture_row(id) ON DELETE ${action}${suffix};`;
+  const listed = (statements: string[]) => parameterForward(statements.join("\n"), slot => {slot.existingTableStatements = statements;});
+  it.each(["CASCADE", "SET NULL"])("admits a declared fresh-column FK with %s and either validation state", action => {
+    for (const suffix of ["", " NOT VALID"]) expect(() => listed([column,fk(action,suffix)])).not.toThrow();
+  });
+  it("admits the same exact ADD COLUMN and named FK actions in one ALTER", () => {
+    expect(() => listed([column.slice(0,-1)+", "+fk("SET NULL"," NOT VALID").split(" ADD CONSTRAINT ")[1]!.replace(/^/,"ADD CONSTRAINT ")])).not.toThrow();
+  });
+  it("refuses an FK action without an earlier declared ADD COLUMN", () => {
+    for (const statements of [[fk("CASCADE","")],[fk("SET NULL",""),column]]) expect(() => listed(statements)).toThrow("requires an earlier same-slot ADD COLUMN");
+  });
+  it.each(["SET DEFAULT", "CASCADE DEFERRABLE", "SET NULL ON UPDATE CASCADE"])("refuses a broader fresh-column FK action: %s", action => {
+    expect(() => listed([column,fk(action,"")])).toThrow("existing-table statement is not expand-only");
+  });
+  it("refuses dropping or rewriting an existing FK through the companion list", () => {
+    expect(() => listed(["ALTER TABLE public.fixture_parameters DROP CONSTRAINT fixture_parent_fk;",column,fk("CASCADE","")])).toThrow("existing-table statement is not expand-only");
+    expect(() => parameterForward(`${column}\n${fk("CASCADE","")}`,()=>{})).toThrow("outside its closed shapes");
+  });
+  it("admits a listed trigger on its earlier same-slot created table", () => {
+    const statement=triggerBefore.replace("public.fixture_parameters","public.fixture_fresh");
+    expect(() => parameterForward(`CREATE TABLE public.fixture_fresh(id uuid,extra uuid);\n${triggerFunction}\n${triggerRevoke}\n${statement}`,slot=>{
+      slot.createdFunctions.push({signature:"public.fixture_trigger_guard()",searchPath:"pg_catalog, pg_temp"});
+      slot.createdTriggers=[{name:"fixture_trigger_guard",table:"public.fixture_fresh",sha256:sqlSha256(statement)}];
+    })).not.toThrow();
+  });
+});
+
+describe("replacement of an earlier native-store creation", () => {
+  function subject() {
+    const value = structuredClone(production), signature = "public.dunning_lifecycle_pause_reminder_dispatch(integer,integer)";
+    const creation = value.nativeStoreForwardClass!.slots.find(slot => slot.createdFunctions.some(fn => fn.signature === signature))!;
+    const creationPin = value.nativeStoreForwards!.find(pin => pin.path === creation.path)!;
+    const predecessor = creationPin.functions.find(fn => fn.signature === signature)!;
+    const original = sqlStatements(readFileSync(creation.path, "utf8")).find(statement =>
+      nativeStoreFunctionDefinitions(Buffer.from(statement), [signature], true).has(signature))!;
+    const text = original.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION").replace("'ok',true,", "'ok',true,'capabilityWitness',true,");
+    // The first-replacement proof uses the exact historical prefix, independently of later issued replacements.
+    const slot: NativeStoreSlot = { row: "created-function-replacement", path: "db/platform/migrations/20261106120002_fixture_created_replacement.sql",
+      replacedFunctions: [{ signature, beforeSha256: predecessor.afterSha256, searchPath: "pg_catalog" }],
+      createdFunctions: [], grantOnlyFunctions: [], dataStatements: [] };
+    value.nativeStoreForwardClass!.slots = value.nativeStoreForwardClass!.slots.filter(entry => entry.path < slot.path);
+    value.nativeStoreForwards = value.nativeStoreForwards!.filter(entry => entry.path < slot.path);
+    value.nativeStoreForwardClass!.slots.push(slot);
+    const pin = { path: slot.path, sha256: sqlSha256(text), functions: [{ signature, beforeSha256: predecessor.afterSha256, afterSha256: sqlSha256(text) }] };
+    value.nativeStoreForwards!.push(pin);
+    const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")) as { baseline: { file: string }; forward: { file: string }[] };
+    const prefix = [manifest.baseline, ...manifest.forward].filter(unit => unit.file < slot.path).map(unit => ({ path: unit.file, bytes: readFileSync(unit.file) }));
+    return { value, slot, pin, prefix, text, signature, creation, creationPin, predecessor, original };
+  }
+  it("admits the listed reminder replacement chained to its exact creation pin", () => {
+    const s = subject();
+    expect(s.predecessor.beforeSha256).toBeNull();
+    expect(sqlSha256(s.original)).toBe(s.predecessor.afterSha256);
+    expect(s.text).not.toBe(s.original.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION"));
+    expect(() => readReviewedForwardRegistry(encode(s.value))).not.toThrow();
+    expect(() => assertNativeStoreForward(s.value, s.slot.path, Buffer.from(s.text), s.prefix)).not.toThrow();
+  });
+  it.each(["unlisted", "wrong before hash", "drifted creation pin", "missing creation pin", "prefix drift", "changed header", "changed signature"])("refuses %s", attack => {
+    const s = subject();
+    let text = s.text;
+    if (attack === "unlisted") { s.slot.replacedFunctions = []; s.pin.functions = []; }
+    if (attack === "wrong before hash") s.slot.replacedFunctions[0]!.beforeSha256 = s.pin.functions[0]!.beforeSha256 = "0".repeat(64);
+    if (attack === "drifted creation pin") s.predecessor.afterSha256 = s.slot.replacedFunctions[0]!.beforeSha256 = s.pin.functions[0]!.beforeSha256 = "0".repeat(64);
+    if (attack === "missing creation pin") s.value.nativeStoreForwards = s.value.nativeStoreForwards!.filter(pin => pin !== s.creationPin);
+    if (attack === "prefix drift") s.prefix.push({ path: "db/platform/migrations/20261106120001_fixture_prior_definition.sql", bytes: Buffer.from(text.replace("capabilityWitness", "prefixDrift")) });
+    if (attack === "changed header") text = text.replace("LANGUAGE plpgsql", "LANGUAGE plpgsql SECURITY DEFINER");
+    if (attack === "changed signature") text = text.replace("p_pause_window_seconds integer", "p_pause_window_seconds bigint");
+    s.pin.sha256 = sqlSha256(text);
+    if (s.pin.functions[0]) s.pin.functions[0].afterSha256 = sqlSha256(text);
+    const message = attack === "unlisted" || attack === "changed signature" ? /unlisted signature/u
+      : attack === "wrong before hash" ? /before-hash differs from preceding after-hash/u
+      : attack === "missing creation pin" ? /bound predecessor/u
+      : attack === "changed header" ? /replacement header drifted/u : /actual base function before-hash drifted/u;
+    expect(() => assertNativeStoreForward(s.value, s.slot.path, Buffer.from(text), s.prefix)).toThrow(message);
+  });
+});
