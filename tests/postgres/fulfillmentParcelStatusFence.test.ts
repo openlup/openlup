@@ -89,20 +89,25 @@ for(const profile of lifecycleProfiles)describe(`parcel status fence on ${profil
   },15000);
   it('preserves live enqueue replay, identity conflicts, exclusive claims and submission fencing',async()=>{
     const f=await fixture(db.owner),provider=`live_${randomUUID().replaceAll('-','')}`,input=args(f.shipment,provider);
-    const first=(await db.runtime.query(enqueueSql,input)).rows[0].value;
-    expect((await db.runtime.query(enqueueSql,input)).rows[0].value).toEqual(first);
-    const altered=[...input];altered[4]='f'.repeat(64);
-    await expect(db.runtime.query(enqueueSql,altered)).rejects.toMatchObject({code:'23505'});
-    const claimed=(await db.runtime.query(claimSql,[provider,'f'.repeat(64)])).rows[0].value;
-    expect((await db.runtime.query(claimSql,[provider,'f'.repeat(64)])).rows).toEqual([]);
-    const wrong=fenceArgs(claimed);wrong[2]=Number(claimed.claimGeneration)+1;
-    await expect(db.runtime.query(submitSql,wrong)).rejects.toMatchObject({code:'40001'});
-    const submitted=(await db.runtime.query(submitSql,fenceArgs(claimed))).rows[0].value;
-    expect(submitted).toMatchObject({commandId:first.commandId,status:'submitting',version:3});
-    const before=await census(f.shipment);
-    await expect(db.runtime.query(submitSql,fenceArgs(claimed))).rejects.toMatchObject({code:'40001'});
-    expect((await db.runtime.query(enqueueSql,input)).rows[0].value).toEqual(submitted);
-    expect(await census(f.shipment)).toEqual(before);
+    // ErrorResponse can precede abort and dispatch-lock release. One session
+    // queues the next claim behind ReadyForQuery instead of another backend.
+    const work=await db.runtime.connect();
+    try{
+      const first=(await work.query(enqueueSql,input)).rows[0].value;
+      expect((await work.query(enqueueSql,input)).rows[0].value).toEqual(first);
+      const altered=[...input];altered[4]='f'.repeat(64);
+      await expect(work.query(enqueueSql,altered)).rejects.toMatchObject({code:'23505'});
+      const claimed=(await work.query(claimSql,[provider,'f'.repeat(64)])).rows[0].value;
+      expect((await work.query(claimSql,[provider,'f'.repeat(64)])).rows).toEqual([]);
+      const wrong=fenceArgs(claimed);wrong[2]=Number(claimed.claimGeneration)+1;
+      await expect(work.query(submitSql,wrong)).rejects.toMatchObject({code:'40001'});
+      const submitted=(await work.query(submitSql,fenceArgs(claimed))).rows[0].value;
+      expect(submitted).toMatchObject({commandId:first.commandId,status:'submitting',version:3});
+      const before=await census(f.shipment);
+      await expect(work.query(submitSql,fenceArgs(claimed))).rejects.toMatchObject({code:'40001'});
+      expect((await work.query(enqueueSql,input)).rows[0].value).toEqual(submitted);
+      expect(await census(f.shipment)).toEqual(before);
+    }finally{try{await work.query('ROLLBACK');}finally{work.release();}}
   });
 
   it.each(['enqueue','claim','submit'])('fences operator cancellation against %s without changing the ledger on refusal',async axis=>{
