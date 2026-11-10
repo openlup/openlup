@@ -1851,7 +1851,10 @@ retains the host's existing display fallback; it cannot turn observed success
 into refusal advice.
 
 Raw `activationState`, `subscriptionStatus`, `paidAt` and `hasExactGap` come from
-the same statement. A provisional declaration is not relabelled as a subscription
+the same statement. The native activation owner stores exactly `provisional`,
+`active` and `compensated`; the reader accepts those states. Handler-level
+PostgreSQL witnesses cover opt-in, legacy responses, read failure, revocation and
+an activated checkout without falling back from the atomic read. A provisional declaration is not relabelled as a subscription
 or mandate state. Its raw paid gap remains available without fabricating a
 mandate-wait display. Guidance is inspection only and authorizes no new payment.
 The host owns rendering and route mounting. See the

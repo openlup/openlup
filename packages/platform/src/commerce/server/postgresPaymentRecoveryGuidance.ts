@@ -7,7 +7,7 @@ const state=z.enum(['dispatched','indeterminate','refused','expired','captured']
 const shape=z.object({snapshot:z.object({orderId:id,clientId:id,orderStatus:z.string(),paymentIntentId:id,
  intentStatus:z.enum(['created','failed','settled']),paymentAttemptId:id.nullable(),attemptStatus:state.nullable(),
  provider:z.literal('sandbox'),providerPaymentId:z.null(),updatedAt:at,failureReason:text,orderMode:z.enum(['one_time','subscription_cycle']),
- activationState:z.enum(['provisional','activated','compensated']).nullable(),subscriptionId:id.nullable(),subscriptionStatus:text,
+ activationState:z.enum(['provisional','active','compensated']).nullable(),subscriptionId:id.nullable(),subscriptionStatus:text,
  paidAt:at.nullable(),hasExactGap:z.boolean()}).strict(),eligible:z.boolean(),tokenAuthorized:z.boolean(),observedSuccess:z.boolean(),historyComplete:z.boolean(),
  attempts:z.array(z.object({id,status:state,provider:z.literal('sandbox'),providerPaymentId:z.null(),providerFlow:z.null(),createdAt:at,
   evidence:z.array(z.unknown()).max(32)}).strict()).max(100)}).strict();

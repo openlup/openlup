@@ -1,9 +1,15 @@
 import { randomUUID } from 'node:crypto';
-import { afterAll,beforeAll,describe,expect,it } from 'vitest';
-import { createPostgresPaymentRecoveryGuidancePort,readAuthorizedPaymentRecovery,createPostgresCheckoutRecoveryTokenPort,hashCheckoutRecoveryToken } from '@openlup/platform/commerce/server';
+import { afterAll,beforeAll,describe,expect,it,vi } from 'vitest';
+import { createPostgresPaymentRecoveryGuidancePort,readAuthorizedPaymentRecovery,createPostgresCheckoutRecoveryTokenPort,hashCheckoutRecoveryToken,createCheckoutPaymentContinuationCodec } from '@openlup/platform/commerce/server';
 import { createPostgresNativeCheckoutPersistence } from '@openlup/platform/commerce/server/native-checkout';
 import { createPostgresSandboxPaymentSimulator,normalizeSandboxPaymentRecoveryEvidence } from '@openlup/platform/payments';
 import { lifecycleInstallation,lifecycleProfiles,call,lifecycleSubject,type LifecycleInstallation } from './subscriptionLifecycleClosureFixture.js';
+import { createCommercePaymentStatusHandler } from '../../server/domains/commerce/commercePaymentStatusHandler.js';
+import type { CheckoutPaymentContinuationClaims as HostClaims } from '../../server/domains/commerce/checkoutPaymentContinuationCredential.js';
+import type { VercelRequest,VercelResponse } from '../../server/_lib/types/vercel.js';
+import { paymentStatusResponseSchema } from '../../src/domains/commerce/checkoutContracts.js';
+import { PAYMENT_RECOVERY_GUIDANCE_HEADER } from '../../src/domains/commerce/paymentRecoveryGuidanceContracts.js';
+import { bffSuccessSchema } from '../../src/lib/bff/contracts.js';
 import { postgresSetupTimeoutMs,postgresTeardownTimeoutMs } from '../helpers/postgresContainer.js';
 
 describe.each(lifecycleProfiles)('atomic checkout guidance on %s',profile=>{
@@ -40,6 +46,78 @@ describe.each(lifecycleProfiles)('atomic checkout guidance on %s',profile=>{
  const snapshot=(f:Fixture)=>port().getGuidanceSnapshot({...f,recoveryTokenId:f.tokenId});
  const rawSnapshot=async(f:Fixture)=>(await env.runtime.query('SELECT public.commerce_checkout_payment_guidance_snapshot($1,$2,$3) AS result',[f.orderId,f.paymentIntentId,f.tokenId])).rows[0].result;
  const authorized=(f:Fixture,deps={port:port(),tokenPort:tokens()})=>readAuthorizedPaymentRecovery({request:f,claims:null,authorization:`Bearer ${f.raw}`,deps});
+ // Both logical read ports use actual PostgreSQL data; no fabricated status
+ // snapshot can hide a native-to-HTTP projection mismatch.
+ async function httpStatus(f:Fixture,options:{header?:string;unavailable?:boolean;revokeDuringValidation?:boolean;cookie?:boolean;forbidFallback?:boolean}={}){
+  const journeyId=`checkout:${randomUUID()}`;
+  const codec=createCheckoutPaymentContinuationCodec(randomUUID()+randomUUID(),{cookieName:'__Host-guidance-test',executionRails:['sandbox','other']})!;
+  const getPaymentStatus=vi.fn(async(input:{orderId:string;paymentIntentId:string})=>{
+   if(options.forbidFallback)throw new Error('unexpected_legacy_fallback');
+   return port().getGuidanceSnapshot(input);
+  });
+  const getGuidanceSnapshot=vi.fn(async(input:{orderId:string;paymentIntentId:string;recoveryTokenId?:string})=>{
+   if(options.unavailable)throw new Error('payment_recovery_snapshot_unavailable');
+   return port().getGuidanceSnapshot(input);
+  });
+  const validate=vi.fn(async(raw:string)=>{const result=await tokens().validate(raw);
+   if(options.revokeDuringValidation)await env.owner.query('UPDATE public.commerce_checkout_recovery_tokens SET revoked_at=clock_timestamp() WHERE id=$1',[f.tokenId]);
+   return result;
+  });
+  const handler=createCommercePaymentStatusHandler({mutationsEnabled:()=>true,resolveFailureDisplay:()=>null,
+   statusPort:{getPaymentStatus},recoveryGuidance:{port:{getGuidanceSnapshot},tokenPort:{validate},resolveFailureDisplay:()=>null},
+   // The host callback type names its configured live rails. Bind the portable
+   // codec's real verified sandbox claims here without changing host rail config.
+   readContinuationClaims:header=>codec.verifyCookieHeader(header) as unknown as HostClaims|null});
+  const headers:Record<string,string>={authorization:`Bearer ${f.raw}`};
+  if(options.header!==undefined)headers[PAYMENT_RECOVERY_GUIDANCE_HEADER.toLowerCase()]=options.header;
+  if(options.cookie){delete headers.authorization;headers.cookie=codec.issue({journeyId,orderId:f.orderId,clientId:f.clientId,paymentIntentId:f.paymentIntentId,paymentAttemptId:f.attemptId,executionRail:'sandbox'}).setCookie.split(';')[0];}
+  const response={getHeader:vi.fn(),setHeader:vi.fn(),status:vi.fn(),json:vi.fn<(body:{ok:boolean;data:Record<string,unknown>;meta:unknown})=>unknown>()};response.status.mockReturnValue(response);response.json.mockReturnValue(response);
+  await handler({method:'GET',query:{orderId:f.orderId,clientId:f.clientId,paymentIntentId:f.paymentIntentId,journeyId},headers} as unknown as VercelRequest,response as unknown as VercelResponse);
+  expect(response.status).toHaveBeenCalledWith(200);expect(response.setHeader).toHaveBeenCalledWith('Cache-Control','no-store');
+  return{envelope:response.json.mock.calls[0][0],getPaymentStatus,getGuidanceSnapshot,validate};
+ }
+ const legacyStatusSchema=paymentStatusResponseSchema.pick({contractVersion:true,orderId:true,paymentIntentId:true,status:true,orderStatus:true,payment:true,failureReason:true,subscriptionActivation:true,nextAction:true}).strict();
+ const legacyBody=(f:Fixture,updatedAt:string,subscriptionId:string|null=null)=>({contractVersion:'commerce.checkout.v2',orderId:f.orderId,paymentIntentId:f.paymentIntentId,
+  orderStatus:subscriptionId?'paid':'pending_payment',status:subscriptionId?'paid':'failed',
+  payment:{intentStatus:subscriptionId?'succeeded':'created',attemptStatus:subscriptionId?'succeeded':'failed',paymentAttemptId:f.attemptId,provider:'sandbox',providerPaymentId:null,updatedAt},
+  failureReason:null,subscriptionActivation:{status:subscriptionId?'active':'not_applicable',subscriptionId},nextAction:null});
+ const envelope=(data:unknown)=>({ok:true,data,meta:{contractVersion:'commerce.checkout.v2'}});
+ it('keeps the exact legacy HTTP response and does not consult guidance without capability opt-in',async()=>{
+  const f=await fixture(),raw=await rawSnapshot(f),body=legacyBody(f,raw.snapshot.updatedAt);
+  for(const header of [undefined,'0']){const r=await httpStatus(f,{header});expect(r.envelope).toEqual(envelope(body));
+   expect(bffSuccessSchema(legacyStatusSchema).parse(r.envelope).data).toEqual(body);
+   expect(r.envelope.data).not.toHaveProperty('recoveryGuidance');expect(r.getPaymentStatus).toHaveBeenCalledOnce();expect(r.getGuidanceSnapshot).not.toHaveBeenCalled();expect(r.validate).not.toHaveBeenCalled();}
+ });
+ it('projects the real atomic native snapshot into the opted-in HTTP response without legacy fallback',async()=>{
+  const f=await fixture(),raw=await rawSnapshot(f),r=await httpStatus(f,{header:'1',forbidFallback:true});
+  expect(r.envelope).toEqual(envelope({...legacyBody(f,raw.snapshot.updatedAt),recoveryGuidance:{version:1,paymentAttemptId:f.attemptId,purchaseContext:'one_time',
+   cause:'generic_decline',methodKind:null,methodKey:null,operation:null,restriction:null,actions:['change_instrument','change_method'],consecutiveRefusals:null,emphasis:'normal'}}));
+  expect(r.getGuidanceSnapshot).toHaveBeenCalledWith({orderId:f.orderId,paymentIntentId:f.paymentIntentId,recoveryTokenId:f.tokenId});expect(r.getPaymentStatus).not.toHaveBeenCalled();
+ });
+ it('preserves the real native legacy HTTP fallback when optional guidance infrastructure fails',async()=>{
+  const f=await fixture(),raw=await rawSnapshot(f),r=await httpStatus(f,{header:'1',unavailable:true});
+  expect(r.envelope).toEqual(envelope({...legacyBody(f,raw.snapshot.updatedAt),recoveryGuidance:null}));
+  expect(r.getGuidanceSnapshot).toHaveBeenCalledOnce();expect(r.getPaymentStatus).toHaveBeenCalledOnce();
+ });
+ it('withholds HTTP guidance when a token is revoked between validation and the native snapshot, and on subsequent polling',async()=>{
+  const f=await fixture(),raw=await rawSnapshot(f),expected=envelope({...legacyBody(f,raw.snapshot.updatedAt),recoveryGuidance:null});
+  const race=await httpStatus(f,{header:'1',revokeDuringValidation:true,forbidFallback:true});expect(race.envelope).toEqual(expected);
+  expect(race.getGuidanceSnapshot).toHaveBeenCalledOnce();expect(race.getPaymentStatus).not.toHaveBeenCalled();
+  const revoked=await httpStatus(f,{header:'1'});expect(revoked.envelope).toEqual(expected);expect(revoked.getGuidanceSnapshot).not.toHaveBeenCalled();expect(revoked.getPaymentStatus).toHaveBeenCalledOnce();
+ });
+ it('serves an owner-activated checkout through the atomic HTTP path with no schema rejection or fallback',async()=>{
+  const f=await fixture(true),observation=await simulator().recordObservation({attemptId:f.attemptId,idempotencyKey:`activate-capture:${f.orderId}`,outcome:'captured',occurredAt:at()});
+  await simulator().ingress.receive({rawBody:new TextEncoder().encode(JSON.stringify({settlementIntentId:f.paymentIntentId,attemptId:f.attemptId,observationId:observation.id})),headers:{},receivedAt:at()});
+  const fingerprint=(await env.owner.query("SELECT encode(sha256(convert_to(COALESCE(external_ref,id::text),'UTF8')),'hex') AS value FROM public.commerce_settlement_intents WHERE id=$1",[f.paymentIntentId])).rows[0].value;
+  // Fixture setup uses the native activation owner, including its verified
+  // settlement identity; the HTTP read keeps actual runtime privileges.
+  const activated=await call(env.owner,'subscription_activate_from_captured_payment',[`activate-guidance:${f.orderId}`,f.orderId,fingerprint]);
+  expect(activated.state).toBe('active');
+  const raw=await rawSnapshot(f);expect(raw.snapshot.activationState).toBe('active');expect(await snapshot(f)).toMatchObject({activationState:'active',subscriptionActivationStatus:'active',subscriptionId:activated.subscriptionId});
+  const r=await httpStatus(f,{header:'1',cookie:true,forbidFallback:true});
+  expect(r.envelope).toEqual(envelope({...legacyBody(f,raw.snapshot.updatedAt,String(activated.subscriptionId)),recoveryGuidance:null}));
+  expect(r.getGuidanceSnapshot).toHaveBeenCalledOnce();expect(r.getPaymentStatus).not.toHaveBeenCalled();expect(r.validate).not.toHaveBeenCalled();
+ });
  async function history(f:Fixture,count:number,captured=false){
   const ids=Array.from({length:count},()=>randomUUID()),obs=ids.map(()=>randomUUID());
   await env.owner.query(`INSERT INTO public.payment_simulator_attempts(id,settlement_intent_id,request_key,request_fingerprint,is_active,state,dispatched_at,updated_at,
