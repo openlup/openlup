@@ -1119,7 +1119,7 @@ type OmsControlPlaneHold = {
 };
 type OmsControlPlaneOperation = {
     id: string;
-    action: "hold_created" | "hold_released" | "order_cancelled" | "order_refunded";
+    action: "hold_created" | "hold_released" | "order_cancelled" | "order_refunded" | "replacement_shipment_requested";
     holdId: null | string;
     actorId: null | string;
     occurredAt: string;
@@ -6206,6 +6206,7 @@ export declare const omsControlPlaneOperationSchema: z.ZodObject<{
     action: z.ZodEnum<{
         hold_created: "hold_created";
         hold_released: "hold_released";
+        replacement_shipment_requested: "replacement_shipment_requested";
         order_cancelled: "order_cancelled";
         order_refunded: "order_refunded";
     }>;
@@ -6424,6 +6425,7 @@ export declare const omsControlPlaneDetailResponseSchema: z.ZodObject<{
         action: z.ZodEnum<{
             hold_created: "hold_created";
             hold_released: "hold_released";
+            replacement_shipment_requested: "replacement_shipment_requested";
             order_cancelled: "order_cancelled";
             order_refunded: "order_refunded";
         }>;

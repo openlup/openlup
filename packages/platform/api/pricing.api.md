@@ -4159,7 +4159,7 @@ export type { CustomerSavedAddressValidationPolicy, CustomerSavedAddressRequestS
 export declare const CUSTOMER_SAVED_ADDRESS_MIGRATIONS: readonly [{
     readonly id: "20261110190000_customer_saved_addresses";
     readonly catalogPath: "db/platform/migrations/20261110190000_customer_saved_addresses.sql";
-    readonly position: 116;
+    readonly position: 117;
     readonly sha256: "0cf335d6a2497015d9218a6ab64fe888a3143290d7f6605a115c848eee4c042a";
     readonly url: URL;
 }];

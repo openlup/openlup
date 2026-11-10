@@ -962,13 +962,13 @@
       "maxFiles": 4117
     },
     "docs": {
-      "maxPackedBytes": 86190,
+      "maxPackedBytes": 86252,
       "maxFiles": 10
     },
     "maxPackedBytes": 2962854,
-    "maxUnpackedBytes": 14416232,
+    "maxUnpackedBytes": 14408428,
     "maxFiles": 4252,
-    "capReason": "Code, packed and file caps retain the existing parent budgets. Saved-address documentation and unpacked contents add 2% headroom over the current measured artifact; the released baseline is unchanged.",
+    "capReason": "Measured saved-address package contents use 2% headroom where they cross the main budget; other caps and the released baseline are retained.",
     "baseline": {
       "version": "0.37.0",
       "packedBytes": 2791358

@@ -952,7 +952,7 @@ type OmsControlPlaneHold = {
 };
 type OmsControlPlaneOperation = {
     id: string;
-    action: "hold_created" | "hold_released" | "order_cancelled" | "order_refunded";
+    action: "hold_created" | "hold_released" | "order_cancelled" | "order_refunded" | "replacement_shipment_requested";
     holdId: null | string;
     actorId: null | string;
     occurredAt: string;
@@ -5704,6 +5704,7 @@ export declare const omsControlPlaneOperationSchema: z.ZodObject<{
     action: z.ZodEnum<{
         hold_created: "hold_created";
         hold_released: "hold_released";
+        replacement_shipment_requested: "replacement_shipment_requested";
         order_cancelled: "order_cancelled";
         order_refunded: "order_refunded";
     }>;
@@ -5922,6 +5923,7 @@ export declare const omsControlPlaneDetailResponseSchema: z.ZodObject<{
         action: z.ZodEnum<{
             hold_created: "hold_created";
             hold_released: "hold_released";
+            replacement_shipment_requested: "replacement_shipment_requested";
             order_cancelled: "order_cancelled";
             order_refunded: "order_refunded";
         }>;
@@ -11396,6 +11398,8 @@ export interface FulfillmentOperatorMutationResult {
     orderId: string;
     status: 'created' | 'packed' | 'label_pending' | 'label_created' | 'handed_over' | 'in_transit' | 'delivered' | 'exception' | 'cancelled';
     replayed: boolean;
+    releasedReservationCount?: number;
+    reservationDisposition?: 'recorded' | 'reservations_not_recorded';
 }
 export interface FulfillmentOperatorMutationPort {
     createCommerceFulfillmentOrder(request: AdminCommerceFulfillmentCreateRequest & {
@@ -12920,6 +12924,11 @@ export declare const adminCommerceFulfillmentMutationResponseSchema: z.ZodObject
         in_transit: "in_transit";
     }>;
     replayed: z.ZodBoolean;
+    releasedReservationCount: z.ZodOptional<z.ZodNumber>;
+    reservationDisposition: z.ZodOptional<z.ZodEnum<{
+        recorded: "recorded";
+        reservations_not_recorded: "reservations_not_recorded";
+    }>>;
 }, z.core.$strict>;
 export type AdminCommerceFulfillmentOrdersListRequest = z.infer<typeof adminCommerceFulfillmentOrdersListRequestSchema>;
 export type AdminCommerceFulfillmentOrderDetailRequest = z.infer<typeof adminCommerceFulfillmentOrderDetailRequestSchema>;
@@ -18161,7 +18170,7 @@ export type { CustomerSavedAddressValidationPolicy, CustomerSavedAddressRequestS
 export declare const CUSTOMER_SAVED_ADDRESS_MIGRATIONS: readonly [{
     readonly id: "20261110190000_customer_saved_addresses";
     readonly catalogPath: "db/platform/migrations/20261110190000_customer_saved_addresses.sql";
-    readonly position: 116;
+    readonly position: 117;
     readonly sha256: "0cf335d6a2497015d9218a6ab64fe888a3143290d7f6605a115c848eee4c042a";
     readonly url: URL;
 }];

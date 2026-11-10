@@ -466,11 +466,15 @@
       "sha256": "0fc163d621b761fbecf7c4993bf4c9a8173bf24a61a12cde22fb7510de731af0"
     },
     {
+      "file": "db/platform/migrations/20261110150000_fulfillment_operator_journeys.sql",
+      "sha256": "fe718ce12eea30f98e7e07d94cb9bd0b3d846248ec85cbdc39f98aa86e8a56cc"
+    },
+    {
       "file": "db/platform/migrations/20261110190000_customer_saved_addresses.sql",
       "sha256": "0cf335d6a2497015d9218a6ab64fe888a3143290d7f6605a115c848eee4c042a"
     }
   ],
-  "objectInventorySha256": "ef48795ec7ae8459b4139306e34eb57d0c8bc22c76e453824da3ab5e652eadff",
+  "objectInventorySha256": "7da2eaee3ca87f18370dc34cb0006279feb66732390705514501b3223040a89e",
   "qualified": {
     "baseline": {
       "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -958,16 +962,20 @@
         "sha256": "0fc163d621b761fbecf7c4993bf4c9a8173bf24a61a12cde22fb7510de731af0"
       },
       {
+        "file": "db/platform/migrations/20261110150000_fulfillment_operator_journeys.sql",
+        "sha256": "fe718ce12eea30f98e7e07d94cb9bd0b3d846248ec85cbdc39f98aa86e8a56cc"
+      },
+      {
         "file": "db/platform/migrations/20261110190000_customer_saved_addresses.sql",
         "sha256": "0cf335d6a2497015d9218a6ab64fe888a3143290d7f6605a115c848eee4c042a"
       }
     ],
     "objectInventorySha256": {
       "bootstrapMigrator": {
-        "withRestore": "fa75155958a2d824bb5b5b40368e9233d73217da6b7c4f7455daf424bc0d9255"
+        "withRestore": "37dfc937fa3e2804e001c7ad8f29262e18831869bd212c97f45a08cd7934c7ef"
       },
       "separateMigrator": {
-        "withRestore": "44964dbcbfcea55adc459f7c7d35fa5a23b7749ae2c5151ac4907b0037774d7f"
+        "withRestore": "80344520627537d88c3ed49f2fa42fe8122ab9c7af2faeece9f31736470b5181"
       }
     }
   },
@@ -1454,13 +1462,17 @@
         "sha256": "0fc163d621b761fbecf7c4993bf4c9a8173bf24a61a12cde22fb7510de731af0"
       },
       {
+        "file": "db/platform/migrations/20261110150000_fulfillment_operator_journeys.sql",
+        "sha256": "fe718ce12eea30f98e7e07d94cb9bd0b3d846248ec85cbdc39f98aa86e8a56cc"
+      },
+      {
         "file": "db/platform/migrations/20261110190000_customer_saved_addresses.sql",
         "sha256": "0cf335d6a2497015d9218a6ab64fe888a3143290d7f6605a115c848eee4c042a"
       }
     ],
     "objectInventorySha256": {
-      "installerManaged": "72f804222155c028a8a4c130d2fe624ee9d0a33dbf57b1dd0423de3b0b92db2d",
-      "operatorProvisioned": "5c374e07bfd0d61db70660fbb34f5520f7c067fb4ce2c33e788e47b3fc2dca1e"
+      "installerManaged": "4e1be384941e8a3236cc7da29177b2ed3519a0553649f57790360d820c6484e1",
+      "operatorProvisioned": "c91921c1b59a1740eec62298a2b4ca416452f2e3244d260a5cbd54059c961575"
     }
   }
 }
