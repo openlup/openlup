@@ -957,13 +957,13 @@
       "maxFiles": 4117
     },
     "docs": {
-      "maxPackedBytes": 82938,
+      "maxPackedBytes": 84877,
       "maxFiles": 10
     },
     "maxPackedBytes": 2962854,
     "maxUnpackedBytes": 14123067,
     "maxFiles": 4252,
-    "capReason": "Final code measured 2,362,014 gzip bytes across 4,036 files; total 4,168 files. Larger parent caps retained. Unpacked contents measured 13,846,144 bytes; unpacked cap adds 2% headroom. Merged recovery tarball measured 2,904,758 B; packed cap adds 2% headroom.",
+    "capReason": "Final code measured 2,362,014 gzip bytes across 4,036 files; total 4,168 files. Larger parent caps retained. Unpacked contents measured 13,846,144 bytes; unpacked cap adds 2% headroom. Merged recovery tarball measured 2,904,758 B; packed cap adds 2% headroom. Documentation cap adds 2% headroom for the merged guides.",
     "baseline": {
       "version": "0.37.0",
       "packedBytes": 2791358

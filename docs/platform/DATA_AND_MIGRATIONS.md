@@ -144,6 +144,42 @@ For a new block-classified table, the [absorption census slot shape](#closed-nat
 provides the existing absorber with client-column access while keeping personal
 payloads unreadable. Its classification and access belong to that table's forward.
 
+## Customer account event data
+
+The forward `20261110120000_customer_account_events.sql` creates
+`customer_account_events`: UUID identity, client FK with DELETE CASCADE, event and
+entity type/ID, JSON payload, occurred/created timestamps and the client/occurred
+index. RLS is enabled. The service runtime receives only the client-column census
+grant/policy plus EXECUTE on owned append, latest-20 metadata history, profile
+update and correction-request routines. The table is explicitly block-classified
+for lead absorption; a history-free lead can still absorb and replay.
+
+Profile writes precede a separate event append; failures can leave an updated
+profile without a replay event. A recorded key returns current profile state
+without another write/event. Correction keys are stored without deduplication,
+and ownership is through the invoice document's order. Invoice bytes and fiscal
+state are unchanged. The [package recipe](../../packages/platform/README.md#customer-account-events-and-mutations)
+owns validation policy and handler composition.
+
+Payloads and client/document/key links are personal data, including free-text
+reason/note/requested fields and submitted names/phone. The explicit identity
+contributor requires a privileged subject reader and retain/unresolved owner
+policy. Export reports unavailable coverage; unresolved disposition refuses
+erasure. Retention preserves payloads and is recorded in the receipt. Existing
+identity client-field clearing does not cover this table, and no automatic
+retention period or deletion is supplied.
+
+Finite connected-store transfer classifies this as an owned table and carries its
+exact PostgreSQL row text, like `customer_communication_preference_events`:
+both are customer-owned personal-data histories with JSON payloads. Restore inserts
+account events after their client parents; populated-ledger witnesses check exact
+rows on a pristine qualified target and a replay that leaves rows unchanged. This extends
+the finite capture/restore inventory only; the smaller compatible-row utility's
+allowlist remains unchanged. No schema/control/credential transfer or target
+activation is authorized by these rows. Saved addresses and billing tables remain
+separate changes. The account migration descriptor is sparse; install the entire
+selected native catalogue rather than just its two exported units.
+
 ## Partner acquisition data
 
 Partners owns the `partner_inquiry` slice of `acquisition_private.cases`, its
@@ -1687,11 +1723,23 @@ columns, constraints, other indexes and ACL remain unchanged. Issued-slot and
 sealed-prefix guards protect this inventory like the other slot fields.
 
 The checkout recovery lifecycle forward replaces the unique live-order index
-with a non-unique `(order_id, created_at DESC)` index. Trusted-host checkout links
-coexist until expiry or payment, while payment-case issuance locks its pending
+with a non-unique `(order_id, created_at DESC)` index. Customer/service checkout links
+coexist until expiry, payment or explicit operator revocation, while payment-case issuance locks its pending
 order before rotating links. Actor issuance retains rotation. Checkout issuance
 refuses pending renewal-cycle orders; cancellation, recovery and retry
 authorization keep their existing order-scoped or token-scoped revocation.
+
+The operator-order-link forward adds the owner-only
+`commerce_operator_link_receipts` table and five service-only definer routines.
+Receipts retain logical operator, request, order and token identities, with no
+client reference or client absorption coupling. No raw receipt-table grant is
+added. Admission commits before revoke/insert; outcome commits after acknowledged
+effects. Failure can therefore leave an admitted attempt, revoked old tokens or
+a minted token without queued mail. The operator issuer revokes prior same-order
+checkout links; customer/service issuers are unchanged. The scoped delivery
+authorizer binds the active claim, exact token digest/row, order/client and
+expiry, and refuses renewal cycles. Flow-specific authorization does not change
+the existing reminder authorizer. See the [operator recipe](PLATFORM_PACKAGE_REFERENCE.md#operator-order-payment-links).
 
 The checkout-wave forward adds `expired` to the native order CHECK, retaining
 its `NOT VALID` state so historical rows are not revalidated. It uses retained
@@ -3547,11 +3595,24 @@ Terminal operations (`succeeded`, `refused`) and activations (`active`,
 `compensated`) do not keep that order in flight. Native shipment delivery leaves
 an order `paid`; paid orders of past cycles and completed activations therefore
 do not keep a timed pause open. Cancelled pause-closure orders do not block.
-All other eligibility guards, the event, roll-forward, header and ACLs remain
-unchanged. The
+That follow-up retains every other guard, the event, date calculation, header
+and ACL. The later `20261110105000_subscription_pause_duration.sql` replaces
+auto-resume and the two-argument pause-reminder producer, chaining to their
+exact replacement and creation pins. A timed pause shifts the stored next cycle
+by the actual `ends_at - starts_at` duration and never brings it earlier.
+Auto-resume takes `GREATEST(stored_next_cycle_at + duration, p_now)`; the reminder
+uses the same shift clamped to the window end for `nextDeliveryAt` and `resumeAt`,
+the date a punctual auto-resume executes. A STABLE invoker facts helper is shared
+by the producer and retained-ledger delivery; PUBLIC execution is revoked and
+only the service runtime receives execution. It reads existing window and cycle
+facts without additional table privileges.
+It removes the timed whole-cadence roll-forward while retaining all skip guards,
+headers, owners and ACLs. Manual customer resume is unchanged. The
+[duration witness](../../tests/postgres/subscriptionPauseDuration.test.ts) covers
+reminder agreement and one ordinary renewal under replay. The
 [delivered-history witness](../../tests/postgres/subscriptionAutoResumeDeliveredHistory.test.ts)
 covers legacy and both qualified runtimes. Ineligible windows remain open without
-writes or batch failure. Eligible windows roll forward monotonically, retain
+writes or batch failure. Eligible windows shift the cycle monotonically, retain
 one system event and close atomically. The result preserves native `skippedRows`.
 The [workflow owner](SUBSCRIPTION_WORKFLOWS.md#lifecycle-and-retry) describes host
 composition and the resumed-confirmation alias. The
@@ -3569,3 +3630,17 @@ can insert and read this RLS-protected record, with no update or delete access.
 Browser roles have no access. Connected capture and restore retain these opaque
 source identities and their refusal times so a store move cannot send them again.
 This table contains no recipient address, message content or free-form reason.
+
+
+The [customer checkout-link forward](../../db/platform/migrations/20261110115000_customer_checkout_links.sql)
+replaces only the actor find/issue bodies, retaining their attributes, defaults
+and authenticated execution boundary. It adds an actor-owned fallback reader
+and two service-only buyer routines, with no table, index, constraint or raw
+DML grants. Provisional activation identity supplies initial checkout context;
+a non-null native cycle refuses checkout recovery. Actor issuance preserves
+prior links. Buyer issuance uses existing outbox uniqueness to commit its bucket
+event and hashed token together, only for the winning event. Both check actual
+time after blocking writes and roll back elapsed issuance. The additive buyer
+delivery gate leaves automatic and operator authorizers unchanged. See the
+[entry-point recipe](PLATFORM_PACKAGE_REFERENCE.md#customer-checkout-recovery-entry-points)
+for the host authority boundary and configured deadlines.

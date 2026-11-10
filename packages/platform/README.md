@@ -434,6 +434,25 @@ authenticates before the flag check; disabling the job constructs no persistence
 No host is started. Starter schedules/pages and expired-order recreation remain
 separate work. See the [wave recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#checkout-recovery-waves-and-expiry).
 
+`./commerce/server` exports `createAdminCheckoutPaymentLinkHandler` and
+`createPostgresOperatorCheckoutLinkStore`. The host supplies the verified active
+human administrator session, order snapshot/commercial validation, responder and
+positive `operatorLifetimeMs` / `recoveryWindowMs` configuration. The session
+supplies identity; request identity fields refuse. Native SQL checks the existing
+active operator authority and refuses machine principals and renewal-cycle orders.
+
+The operator command commits admission, revokes every prior same-order checkout
+link, inserts its token, optionally queues the existing transactional recovery
+email, then records its outcome. Separate writes retain the acknowledged failure
+stage. Customer/service issuance remains nonrevoking, so a later such link
+coexists with the operator link. Concurrent operator revocations can both finish
+before either insert; both resulting links then remain live. Payment-case
+recovery is separate. Copy returns the token without email; email returns an
+explicit queued result only after durable per-token handoff. Expiry is the earlier
+configured deadline; an elapsed deadline returns `order_not_recoverable` without
+issuing a token. The operator UI and expired-checkout recreation require separate
+host composition. See the [operator recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#operator-order-payment-links).
+
 `./commerce/server/postgres` also exports
 `createPostgresCommercePriceAuthorityReadPort(executor)`. Allocate it once per
 request and pass it to `createConcurrentCommercePriceAuthorityPort` from
@@ -1583,6 +1602,19 @@ same error class so `instanceof` preserves the no-charge trust boundary.
 The M07 factories' neutral envelopes and capability limits remain unchanged;
 reference-support availability establishes no provider activation or stable API.
 
+## Native parcel contact privacy
+
+Native preparation retains recipient and delivery-selection fields in the private
+parcel contact store, separate from dispatch evidence and public commerce reads.
+Install the complete native catalogue before composing the preparation binding.
+When composing privacy operations, register
+`createFulfillmentParcelContactPrivacyContributor` from `./identity`
+and require contributor ID `fulfillment-parcel-contacts` in the existing registry.
+Keep the identity contributor and subscription veto. Erasure removes the contact
+payload and leaves a marker that prevents legacy inference from recreating it;
+finite native-store transfer carries both live contacts and erasure markers.
+See the [privacy owner](https://github.com/openlup/openlup/blob/main/docs/platform/IDENTITY.md#identity-personal-data).
+
 ## Fulfillment stock evidence replay
 
 The fulfillment migration projection additionally includes the native
@@ -1915,7 +1947,7 @@ apply never previews. `createPaymentMethodComposition` adapts generic M07
 setupMethod to paymentMethod.execute without owner imports. Native repair is a
 [registered follow-up](https://github.com/openlup/openlup/blob/main/docs/platform/plans/oss-m12-account-support.md#follow-up-register).
 The default-off reference binding mounts nothing; browser key retention and
-native profile/start remain unselected.
+native start remains unselected; profile editing has the explicit native port below.
 
 
 R4 adds `createOperatorRecovery`, `createManagedOperatorAuthority`,
@@ -1953,6 +1985,47 @@ their owner meaning. Contribution descriptors install no routes, handlers,
 schedules or workers. See the
 [reference recipe](https://github.com/openlup/openlup/blob/main/docs/platform/RUNTIME_AND_SELF_HOSTING.md#opt-in-disposable-subscription-reference)
 for the host's schema and transport obligations.
+
+### Customer account events and mutations
+
+`createPostgresCustomerAccountMutationPort` binds a trusted principal/client scope,
+`createCustomerAccountMutationSchemas` with adopter validation values, and a clock.
+Select it as the self-service facade's `profile` port. The same port supplies
+`requestInvoiceCorrection` and metadata-only `readEvents` (latest 20). Bind
+`createCustomerAccountMutationHandlers` to host authentication, copy and BFF
+responses. Imports mount no route; the starter editors are separate work.
+
+Profile names collapse whitespace; empty/null clear and omitted fields preserve.
+The schema factory refuses policies that widen its limits: keys 8–180, nonempty
+names 2–80, correction reasons 8–500, at most 20 requested fields of 1–80, and
+optional nonempty notes up to 500 characters. Adopters may narrow those limits.
+The phone policy binds the calling prefix and requires nine local digits,
+preserving local/prefixed input extraction. Email is rejected. Replay uses the
+recorded profile-event key and returns current state. Profile update and event append are
+separate query commits: append failure leaves the profile write committed, and a
+retry without a recorded event may mutate again. Do not wrap both in a host
+transaction or claim concurrent exactly-once mutation.
+
+Correction requests check document ownership through its order, then append an
+acknowledged event. The key is stored without deduplication; repeated submissions
+produce distinct event IDs. No current/issued status gate, fiscal correction,
+operator consumer, notification or refund is supplied.
+
+Install the complete selected prefix through `20261110120000_customer_account_events.sql`.
+The new ledger has client cascade, occurred-time index, enabled RLS and closed
+owned routines. Runtime EXECUTE grants go only to service_role; its table access is
+client-column SELECT for absorption census, with the exact SELECT policy.
+
+Payloads contain personal data. Register `createAccountEventPrivacyContributor`
+in the existing identity registry and require `account-support`: supply a trusted
+payload reader and explicit retain/unresolved policy. Missing coverage is exported
+as unavailable. Missing reader or unresolved policy refuses erasure. With a
+reader configured, an explicit retain assessment leaves payloads in place and
+appears in the erasure receipt without checking that reader's export availability;
+identity field clearing and cascade do not erase them. No default registration,
+deletion or retention period is installed. The finite connected-store profile carries exact
+rows, following the customer communication-preference event ledger. See the
+[data owner](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#customer-account-event-data).
 
 ### Native account persistence reads
 
@@ -2225,3 +2298,10 @@ read in that transaction and preserves the connection's isolation setting. The
 [migration owner](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
 and [runner witness](https://github.com/openlup/openlup/blob/main/packages/platform/test/migrations/postgresRunner.test.ts) define that boundary;
 this callback does not provision or qualify a hosted installation.
+
+
+Customer checkout recovery entry points in `./commerce/server` provide signed-in
+navigation tokens and cookie-authorized buyer mail with atomic bucket deduplication.
+Both preserve earlier links and refuse renewal-cycle orders. See the
+[customer recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#customer-checkout-recovery-entry-points)
+for session binding, PostgreSQL ports, lifetimes and host delivery/UI obligations.

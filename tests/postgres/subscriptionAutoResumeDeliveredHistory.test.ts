@@ -90,11 +90,11 @@ describe.each(lifecycleProfiles)("delivered history on %s", profile => {
       .toEqual({ status: "paid", scheduled_at: new Date("2026-07-04T12:00:00Z") });
     const history = (await env.owner.query("SELECT * FROM public.fulfillment_shipments WHERE order_id=$1", [f.order])).rows;
     expect(await run(f.end)).toEqual({ ok: true, scanned: 1, resumed: 1, skippedRows: 0, failed: 0 });
-    const next = f.next.getTime() + (Math.floor((Date.parse(f.end) - f.next.getTime()) / (f.cadence * 86400000)) + 1) * f.cadence * 86400000;
+    const next = Math.max(f.next.getTime() + Date.parse(f.end) - Date.parse(AT), Date.parse(f.end));
     const subscription = (await env.owner.query("SELECT status,next_cycle_at FROM public.subscriptions WHERE id=$1", [f.subscription])).rows[0];
     expect(subscription).toEqual({ status: "active", next_cycle_at: new Date(next) });
     expect(next).toBeGreaterThanOrEqual(f.next.getTime());
-    expect(next).toBeGreaterThan(Date.parse(f.end));
+    expect(next).toBeGreaterThanOrEqual(Date.parse(f.end));
     const events = (await env.owner.query("SELECT id,event_type,idempotency_key,payload FROM public.subscription_events WHERE subscription_id=$1 AND event_type='subscription.system.auto_resume'", [f.subscription])).rows;
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ event_type: "subscription.system.auto_resume", idempotency_key: `subscription_auto_resume:${f.window}`,
@@ -162,7 +162,7 @@ describe.each(lifecycleProfiles)("delivered history on %s", profile => {
     const window = (await env.owner.query("SELECT ends_at FROM public.subscription_pause_windows WHERE subscription_id=$1 AND resumed_at IS NULL", [f.subscription])).rows[0];
     expect(await run((window.ends_at as Date).toISOString())).toEqual({ ok: true, scanned: 1, resumed: 1, skippedRows: 0, failed: 0 });
     expect((await env.owner.query("SELECT status,next_cycle_at FROM public.subscriptions WHERE id=$1", [f.subscription])).rows[0])
-      .toEqual({ status: "active", next_cycle_at: new Date("2026-09-29T12:00:00Z") });
+      .toEqual({ status: "active", next_cycle_at: new Date(window.ends_at) });
     expect(await closed()).toEqual({ orders: "cancelled", cycle: "skipped", on_next_date: false, dunning: "paused" });
     expect((await env.owner.query("SELECT id FROM public.subscription_events WHERE subscription_id=$1 AND event_type='subscription.system.auto_resume'", [f.subscription])).rows).toHaveLength(1);
   });

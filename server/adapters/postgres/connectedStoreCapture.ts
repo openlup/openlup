@@ -27,7 +27,7 @@ const owned = [
 
   // Private companion rows of the compatible payment_truth_events above.
   "payment_simulator_attempts", "payment_simulator_observations",
-  "commerce_destinations", "commerce_destination_bindings", "subscription_command_receipts", "subscription_quote_previews",
+  "commerce_destinations", "commerce_destination_bindings", "fulfillment_parcel_contacts", "subscription_command_receipts", "subscription_quote_previews",
   "customer_support_subscription_commands", "customer_support_subscription_audit_events",
   "platform_human_principals", "platform_human_memberships", "platform_human_membership_audit_events",
   "catalog_products", "catalog_product_document_revisions", "catalog_skus", "catalog_sku_identifiers",
@@ -36,6 +36,7 @@ const owned = [
   "customer_account_consent_events", "customer_account_consent_sync_targets",
   "identity_operator_invitations", "identity_operator_invitation_events", "identity_privacy_erasures",
   "customer_subject_lifecycle_events", "customer_communication_preferences", "customer_communication_preference_events",
+  "customer_account_events",
   "commerce_operators", "commerce_order_holds", "commerce_order_operations",
   "commerce_checkout_compensations",
   "fulfillment_stock_current", "fulfillment_inventory_reservations", "fulfillment_inventory_reservation_lines", "fulfillment_purchase_reservation_receipts",

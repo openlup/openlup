@@ -788,6 +788,15 @@ respect the same ten-minute constraint as issued challenges.
 
 ## Identity personal data
 
+Hosts selecting customer account mutations must register the
+[account-event contributor](../../packages/platform/README.md#customer-account-events-and-mutations)
+and require contributor ID `account-support`. Its explicit reader exports owned
+ledger payloads; unavailable access is reported. An absent retention declaration
+is unresolved and refuses erasure. Explicit retention is recorded in the receipt
+and preserves the payloads. Clearing client profile fields or the client FK's
+cascade does not erase this ledger: identity keeps the client row. This factory
+adds no default reference registration, deletion policy or retention period.
+
 `@openlup/platform/identity/contracts` exports strict contact/principal subject
 references, versioned contributor documents, erasure receipts and named privacy
 refusals. Each contributor declares `ownedResources` alongside its ID and version. `createPersonalDataContributorRegistry` registers explicit owners and
@@ -830,6 +839,21 @@ external references and future undeclared fields therefore refuse. Export omits
 opaque payloads and reports those fields as unavailable; it excludes challenge
 hashes, provider metadata, credentials and provider tokens. Each contributor
 reports its own coverage rather than claiming a complete platform export.
+
+Native parcel preparation captures minimal recipient and delivery-selection data
+in the private `fulfillment_parcel_contacts` relation. The Node reference
+registers `createFulfillmentParcelContactPrivacyContributor` from
+`@openlup/platform/identity` in this same transaction and requires
+contributor ID `fulfillment-parcel-contacts`. Other hosts must register it when
+using native parcel preparation. It exports only that subject's parcel contacts
+and erases the payload, retaining a payload-free erasure marker. Export includes
+that marker and its explicit pseudonymous retention disposition. Preparation and
+legacy inference cannot recreate an erased contact. Replacement resolution then
+refuses the erased contact as an invalid frozen contact. Existing subscription
+vetoes and other contributors remain binding; this is not a complete platform
+erasure claim. The finite native-store transfer carries both live snapshots and
+erasure markers with their parcels. Public commerce reads and dispatch evidence
+never expose these private snapshots.
 
 Hosts may register `createRiskPrivacyContributor` from `risk/server` in this
 existing registry and require contributor ID `risk`. The bounded contributor

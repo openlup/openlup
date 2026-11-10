@@ -555,7 +555,7 @@ export interface FulfillmentRefusal {
     phase: "selection" | "prepare" | "claim" | "begin" | "dispatch" | "acknowledge" | "verify" | "normalize" | "apply" | "readback" | "sync";
     retryable: boolean;
 }
-/** Frozen domain input. Contact PII stays transient; only allowlisted mapped items enter evidence. Credentials stay in adapter closures. */
+/** Frozen domain input. Native preparation keeps a private erasable parcel contact; only allowlisted mapped items enter dispatch evidence. Credentials stay in adapter closures. */
 export interface FulfillmentDispatchRequest {
     requestKey: string;
     fulfillmentRef: string;

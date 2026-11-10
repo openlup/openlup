@@ -27,16 +27,16 @@ describe.each(lifecycleProfiles)("retry and timed resume on %s", profile => {
   const cycle = async (id: string, status: string, date = AT) => (await env.owner.query(
     "INSERT INTO public.subscription_cycles(subscription_id,scheduled_at,status) VALUES($1,$2,$3) RETURNING id", [id, date, status])).rows[0].id;
 
-  it("resumes by whole cadences once, closes its window and retains the exact system event policy", async () => {
+  it("resumes at the clamped shifted date once, closes its window and retains the exact system event policy", async () => {
     const f = await paused();
     expect(await run()).toEqual({ ok: true, scanned: 1, resumed: 1, skippedRows: 0, failed: 0 });
-    expect(await state(f.subscription)).toEqual({ status: "active", next_cycle_at: new Date(later(24 * 84)) });
+    expect(await state(f.subscription)).toEqual({ status: "active", next_cycle_at: new Date(NOW) });
     const event = (await env.owner.query("SELECT * FROM public.subscription_events WHERE subscription_id=$1", [f.subscription])).rows;
     expect(event).toHaveLength(1);
     expect(event[0]).toMatchObject({ event_type: "subscription.system.auto_resume", idempotency_key: `subscription_auto_resume:${f.window}`,
       payload: { action: "auto_resume", pauseWindowId: f.window, pausePreset: "2_weeks", policy: {
         requiresPaymentMethod: true, blocksOpenDunning: true, blocksLockedUpcomingCycle: true } } });
-    expect(new Date(event[0].payload.nextCycleAt).toISOString()).toBe(later(24 * 84));
+    expect(new Date(event[0].payload.nextCycleAt).toISOString()).toBe(NOW);
     expect((await env.owner.query("SELECT resumed_at,event_id FROM public.subscription_pause_windows WHERE id=$1", [f.window])).rows[0])
       .toEqual({ resumed_at: new Date(NOW), event_id: event[0].id });
     const before = await lifecycleRows(env.owner);
@@ -80,13 +80,13 @@ describe.each(lifecycleProfiles)("retry and timed resume on %s", profile => {
     expect(await lifecycleRows(env.owner)).toEqual(before);
     expect((await env.owner.query("SELECT status FROM public.subscription_cycles WHERE id=$1", [c])).rows[0].status).toBe("skipped");
   });
-  it("admits terminal and collected historical cycles, preserves a future date, excludes indefinite and future windows", async () => {
+  it("admits terminal and collected historical cycles, shifts a future date, excludes indefinite and future windows", async () => {
     const f = await paused(later(24 * 90));
     for (const [n, status] of ["paid", "cancelled", "skipped"].entries()) await cycle(f.subscription, status, later(-24 * (n + 1)));
     const indefinite = await paused(AT, "indefinite"), future = await paused();
     await env.owner.query("UPDATE public.subscription_pause_windows SET ends_at=$2 WHERE id=$1", [future.window, later(24 * 70)]);
     expect(await run()).toMatchObject({ scanned: 1, resumed: 1, skippedRows: 0, failed: 0 });
-    expect(await state(f.subscription)).toEqual({ status: "active", next_cycle_at: new Date(later(24 * 90)) });
+    expect(await state(f.subscription)).toEqual({ status: "active", next_cycle_at: new Date(later(24 * 104)) });
     expect((await state(indefinite.subscription)).status).toBe("paused");
     expect((await state(future.subscription)).status).toBe("paused");
   });
