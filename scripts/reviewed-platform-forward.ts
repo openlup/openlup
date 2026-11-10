@@ -2138,14 +2138,14 @@ function validateNativeStoreClass(registry: ReviewedForwardRegistry, paths: Set<
       if (!keysAre(fn, "afterSha256,beforeSha256,signature") || fn.signature !== fixed.signature || fn.beforeSha256 !== fixed.beforeSha256 || !hash(fn.afterSha256)) throw new Error("reviewed native store feature signature or before-hash drifted");
     }
   }
-  const replacements = new Map<string, string | undefined>();
-  for (const slot of control.slots) for (const fn of slot.replacedFunctions) {
-    if (replacements.has(fn.signature)) {
-      const predecessor = replacements.get(fn.signature);
+  const predecessors = new Map<string, string | undefined>();
+  for (const slot of control.slots) for (const fn of nativeStoreFunctions(slot)) {
+    if (fn.beforeSha256 !== null && predecessors.has(fn.signature)) {
+      const predecessor = predecessors.get(fn.signature);
       if (!predecessor) throw new Error("reviewed native store chained replacement requires a bound predecessor");
       if (fn.beforeSha256 !== predecessor) throw new Error("reviewed native store chained replacement before-hash differs from preceding after-hash");
     }
-    replacements.set(fn.signature, forwards.find(pin => pin.path === slot.path)?.functions.find(pin => pin.signature === fn.signature)?.afterSha256);
+    predecessors.set(fn.signature, forwards.find(pin => pin.path === slot.path)?.functions.find(pin => pin.signature === fn.signature)?.afterSha256);
   }
 }
 
@@ -2341,7 +2341,7 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
     if (slot.purposeCheck && /^(?:ALTER|DROP)\b/iu.test(statement) && /\bTABLE\b/iu.test(statement) && statement.toLowerCase().includes("communication_native_sync_state")) throw new Error("reviewed native store purpose CHECK intervening DDL refused");
   }
   if (indexCreates.size !== droppedIndexes.length) throw new Error("reviewed native store dropped index plain CREATE missing from prefix");
-  const chained = new Set(control!.slots.slice(0, control!.slots.indexOf(slot)).flatMap(slot => slot.replacedFunctions.map(fn => fn.signature)));
+  const chained = new Set(control!.slots.slice(0, control!.slots.indexOf(slot)).flatMap(slot => nativeStoreFunctions(slot).map(fn => fn.signature)));
   for (const fn of functions) if ((!chained.has(fn.signature) && (baseDefinitions.get(fn.signature) ?? null) !== fn.beforeSha256) || (prior.get(fn.signature) ?? null) !== fn.beforeSha256) throw new Error("reviewed native store actual base function before-hash drifted");
   for (const fn of slot.grantOnlyFunctions) if (!baseDefinitions.has(fn.signature)) throw new Error("reviewed native store grant-only function absent from base chain");
   const statements = sqlStatements(bytes.toString("utf8"), false, false, true), definitions = nativeStoreFunctionDefinitions(bytes, functions.map(fn => fn.signature));

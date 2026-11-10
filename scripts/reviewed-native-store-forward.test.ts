@@ -1508,3 +1508,53 @@ describe("slot-local legacy headers and fresh-column FK actions", () => {
     })).not.toThrow();
   });
 });
+
+describe("replacement of an earlier native-store creation", () => {
+  function subject() {
+    const value = structuredClone(production), signature = "public.dunning_lifecycle_pause_reminder_dispatch(integer,integer)";
+    const creation = value.nativeStoreForwardClass!.slots.find(slot => slot.createdFunctions.some(fn => fn.signature === signature))!;
+    const creationPin = value.nativeStoreForwards!.find(pin => pin.path === creation.path)!;
+    const predecessor = creationPin.functions.find(fn => fn.signature === signature)!;
+    const original = sqlStatements(readFileSync(creation.path, "utf8")).find(statement =>
+      nativeStoreFunctionDefinitions(Buffer.from(statement), [signature], true).has(signature))!;
+    const text = original.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION").replace("'ok',true,", "'ok',true,'capabilityWitness',true,");
+    // The first-replacement proof uses the exact historical prefix, independently of later issued replacements.
+    const slot: NativeStoreSlot = { row: "created-function-replacement", path: "db/platform/migrations/20261106120002_fixture_created_replacement.sql",
+      replacedFunctions: [{ signature, beforeSha256: predecessor.afterSha256, searchPath: "pg_catalog" }],
+      createdFunctions: [], grantOnlyFunctions: [], dataStatements: [] };
+    value.nativeStoreForwardClass!.slots = value.nativeStoreForwardClass!.slots.filter(entry => entry.path < slot.path);
+    value.nativeStoreForwards = value.nativeStoreForwards!.filter(entry => entry.path < slot.path);
+    value.nativeStoreForwardClass!.slots.push(slot);
+    const pin = { path: slot.path, sha256: sqlSha256(text), functions: [{ signature, beforeSha256: predecessor.afterSha256, afterSha256: sqlSha256(text) }] };
+    value.nativeStoreForwards!.push(pin);
+    const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")) as { baseline: { file: string }; forward: { file: string }[] };
+    const prefix = [manifest.baseline, ...manifest.forward].filter(unit => unit.file < slot.path).map(unit => ({ path: unit.file, bytes: readFileSync(unit.file) }));
+    return { value, slot, pin, prefix, text, signature, creation, creationPin, predecessor, original };
+  }
+  it("admits the listed reminder replacement chained to its exact creation pin", () => {
+    const s = subject();
+    expect(s.predecessor.beforeSha256).toBeNull();
+    expect(sqlSha256(s.original)).toBe(s.predecessor.afterSha256);
+    expect(s.text).not.toBe(s.original.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION"));
+    expect(() => readReviewedForwardRegistry(encode(s.value))).not.toThrow();
+    expect(() => assertNativeStoreForward(s.value, s.slot.path, Buffer.from(s.text), s.prefix)).not.toThrow();
+  });
+  it.each(["unlisted", "wrong before hash", "drifted creation pin", "missing creation pin", "prefix drift", "changed header", "changed signature"])("refuses %s", attack => {
+    const s = subject();
+    let text = s.text;
+    if (attack === "unlisted") { s.slot.replacedFunctions = []; s.pin.functions = []; }
+    if (attack === "wrong before hash") s.slot.replacedFunctions[0]!.beforeSha256 = s.pin.functions[0]!.beforeSha256 = "0".repeat(64);
+    if (attack === "drifted creation pin") s.predecessor.afterSha256 = s.slot.replacedFunctions[0]!.beforeSha256 = s.pin.functions[0]!.beforeSha256 = "0".repeat(64);
+    if (attack === "missing creation pin") s.value.nativeStoreForwards = s.value.nativeStoreForwards!.filter(pin => pin !== s.creationPin);
+    if (attack === "prefix drift") s.prefix.push({ path: "db/platform/migrations/20261106120001_fixture_prior_definition.sql", bytes: Buffer.from(text.replace("capabilityWitness", "prefixDrift")) });
+    if (attack === "changed header") text = text.replace("LANGUAGE plpgsql", "LANGUAGE plpgsql SECURITY DEFINER");
+    if (attack === "changed signature") text = text.replace("p_pause_window_seconds integer", "p_pause_window_seconds bigint");
+    s.pin.sha256 = sqlSha256(text);
+    if (s.pin.functions[0]) s.pin.functions[0].afterSha256 = sqlSha256(text);
+    const message = attack === "unlisted" || attack === "changed signature" ? /unlisted signature/u
+      : attack === "wrong before hash" ? /before-hash differs from preceding after-hash/u
+      : attack === "missing creation pin" ? /bound predecessor/u
+      : attack === "changed header" ? /replacement header drifted/u : /actual base function before-hash drifted/u;
+    expect(() => assertNativeStoreForward(s.value, s.slot.path, Buffer.from(text), s.prefix)).toThrow(message);
+  });
+});
