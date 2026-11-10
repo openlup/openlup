@@ -462,9 +462,13 @@
       {
         "file": "db/platform/migrations/20261110120000_customer_account_events.sql",
         "sha256": "a22217cedd0cb26352736a046ca2ccc48334a27dd14d494cacff8617323cf9c7"
+      },
+      {
+        "file": "db/platform/migrations/20261110140000_fulfillment_parcel_contacts.sql",
+        "sha256": "0fc163d621b761fbecf7c4993bf4c9a8173bf24a61a12cde22fb7510de731af0"
       }
     ],
-    "objectInventorySha256": "8182c21b902180f9bfea667ef1643165b70d93e604c943efa1b67052e04ee4ba",
+    "objectInventorySha256": "d4d39bf009744104d9d3d00a72a2cc740d38a3624a08b1fcede9b8899e7f8acc",
     "qualified": {
       "baseline": {
         "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -946,14 +950,18 @@
         {
           "file": "db/platform/migrations/20261110120000_customer_account_events.sql",
           "sha256": "a22217cedd0cb26352736a046ca2ccc48334a27dd14d494cacff8617323cf9c7"
+        },
+        {
+          "file": "db/platform/migrations/20261110140000_fulfillment_parcel_contacts.sql",
+          "sha256": "0fc163d621b761fbecf7c4993bf4c9a8173bf24a61a12cde22fb7510de731af0"
         }
       ],
       "objectInventorySha256": {
         "bootstrapMigrator": {
-          "withRestore": "6bc4523263f76fcc3c6ce292d17543a9ae5b61174206f0c0b2bfc68058490a47"
+          "withRestore": "cf40007115da7e18ee72ca1baaca2e6859db33dc20e7ddc37409a72b5b6cc2c8"
         },
         "separateMigrator": {
-          "withRestore": "a7557b664a1bfcc3f12815fc7a02389d377358fc2072fd1099145528183a1274"
+          "withRestore": "380a9bd5f486e8a77cc851c068ce2690fae31b77ca78becc295afbf156474a7f"
         }
       }
     },
@@ -1434,11 +1442,15 @@
         {
           "file": "db/platform/migrations/20261110120000_customer_account_events.sql",
           "sha256": "a22217cedd0cb26352736a046ca2ccc48334a27dd14d494cacff8617323cf9c7"
+        },
+        {
+          "file": "db/platform/migrations/20261110140000_fulfillment_parcel_contacts.sql",
+          "sha256": "0fc163d621b761fbecf7c4993bf4c9a8173bf24a61a12cde22fb7510de731af0"
         }
       ],
       "objectInventorySha256": {
-        "installerManaged": "72d0cbeadcb2e0b1c6dd93b007fd42e1a1ea29244aac6cdbb03c50f79c540b43",
-        "operatorProvisioned": "8fc4227b12da331438656532efb57728d97b12c6359eeee0469ce98f570365be"
+        "installerManaged": "e98794827e2ad6fb42b3df3497fa28d5c5b4b8e0177032713e1009ecddd5853e",
+        "operatorProvisioned": "2cc0c3a6b11d9d1bb0b75ca89c4e6b7e04683b0c70a65f07395ac44835d8ba56"
       }
     }
   },
@@ -2017,6 +2029,11 @@
       "file": "20261110120000_customer_account_events.sql",
       "source": "db/platform/migrations/20261110120000_customer_account_events.sql",
       "sha256": "a22217cedd0cb26352736a046ca2ccc48334a27dd14d494cacff8617323cf9c7"
+    },
+    {
+      "file": "20261110140000_fulfillment_parcel_contacts.sql",
+      "source": "db/platform/migrations/20261110140000_fulfillment_parcel_contacts.sql",
+      "sha256": "0fc163d621b761fbecf7c4993bf4c9a8173bf24a61a12cde22fb7510de731af0"
     },
     {
       "file": "q2_00000000000000_platform_baseline.sql",

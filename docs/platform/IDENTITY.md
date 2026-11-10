@@ -840,6 +840,21 @@ opaque payloads and reports those fields as unavailable; it excludes challenge
 hashes, provider metadata, credentials and provider tokens. Each contributor
 reports its own coverage rather than claiming a complete platform export.
 
+Native parcel preparation captures minimal recipient and delivery-selection data
+in the private `fulfillment_parcel_contacts` relation. The Node reference
+registers `createFulfillmentParcelContactPrivacyContributor` from
+`@openlup/platform/identity` in this same transaction and requires
+contributor ID `fulfillment-parcel-contacts`. Other hosts must register it when
+using native parcel preparation. It exports only that subject's parcel contacts
+and erases the payload, retaining a payload-free erasure marker. Export includes
+that marker and its explicit pseudonymous retention disposition. Preparation and
+legacy inference cannot recreate an erased contact. Replacement resolution then
+refuses the erased contact as an invalid frozen contact. Existing subscription
+vetoes and other contributors remain binding; this is not a complete platform
+erasure claim. The finite native-store transfer carries both live snapshots and
+erasure markers with their parcels. Public commerce reads and dispatch evidence
+never expose these private snapshots.
+
 Hosts may register `createRiskPrivacyContributor` from `risk/server` in this
 existing registry and require contributor ID `risk`. The bounded contributor
 declares assessment/evidence/hash, blocklist, review/hold-link, case-event and
