@@ -68,3 +68,4 @@ export * from "./oidcPrincipal.js";
 export * from "./postgresAccountLinkStore.js";
 export * from "./postgresContactClientRegistrar.js";
 export * from "./contracts/oidc.js";
+export { createFulfillmentParcelContactPrivacyContributor } from './parcelContactPrivacy.js';

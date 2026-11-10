@@ -3794,6 +3794,40 @@
         ]
       },
       {
+        "row": "parcel-contact-snapshots",
+        "path": "db/platform/migrations/20261110140000_fulfillment_parcel_contacts.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.fulfillment_delivery_contact_resolve(jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_capture_parcel_contact(uuid,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_resolve_parcel_contact(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_export_parcel_contacts(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_erase_parcel_contacts(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [
+          "INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('fulfillment_parcel_contacts', 'block', 'Private parcel contact history remains attached to its delivery owner.');"
+        ],
+        "absorptionCensusTables": [
+          "public.fulfillment_parcel_contacts"
+        ]
+      },
+      {
         "row": "checkout-recovery-inspection",
         "path": "db/platform/migrations/20261110170000_checkout_recovery_inspection.sql",
         "replacedFunctions": [],
@@ -4559,6 +4593,37 @@
           "signature": "public.customer_invoice_correction_request(uuid,uuid,uuid,jsonb,timestamptz)",
           "beforeSha256": null,
           "afterSha256": "9f04e7ea3e7b166aa3e6d734509d7cb5f4e3f7c65dea84578a8a738d23e5d2a5"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261110140000_fulfillment_parcel_contacts.sql",
+      "sha256": "0fc163d621b761fbecf7c4993bf4c9a8173bf24a61a12cde22fb7510de731af0",
+      "functions": [
+        {
+          "signature": "public.fulfillment_delivery_contact_resolve(jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "5d411f6327ee453dc67c7aef6b80bd7e2fb01056c9c7b74637ac8c26600432b7"
+        },
+        {
+          "signature": "public.fulfillment_capture_parcel_contact(uuid,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "bb7b73d93d61d1e70c05ea5c9a6c24d561bb54d75bbbf70a7c2d522c2c3e82cf"
+        },
+        {
+          "signature": "public.fulfillment_resolve_parcel_contact(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "52bbdf0cb4da004e053e929a109916e63199da32f399fa46eb6d98a67ce30a2e"
+        },
+        {
+          "signature": "public.fulfillment_export_parcel_contacts(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "7608a8783b32945937c3119d49ab8be0db08b8207f688950fe37ce667865ad44"
+        },
+        {
+          "signature": "public.fulfillment_erase_parcel_contacts(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "f9ef86a6b44053a68fed05a52a05d0ef2f9318ebfb4ab289683d944d98600245"
         }
       ]
     },

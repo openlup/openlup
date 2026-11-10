@@ -146,13 +146,14 @@ it('direct privacy routes precede managed entries and enforce human admin in the
   f.adopterPolicy = true;
   vi.stubEnv('OPERATOR_IDENTITY_AUDIENCE', 'operator'); vi.stubEnv('PLATFORM_BUNDLE', 'node-postgres'); vi.stubEnv('DATABASE_URL', 'postgresql://unused.invalid/test');
   const C = '22222222-2222-4222-8222-222222222222';
-  privacy.query.mockImplementation(async (sql: string) => ({ rows: sql.startsWith('SELECT c.*') || sql.startsWith('SELECT * FROM public.clients') ? [{ id: C, email: 'privacy@example.com', principal_id: null, metadata: {} }] : sql.includes('AS unsafe') ? [{ unsafe: false }] : sql.startsWith('SELECT m.role') ? [{ role: 'admin', membership_state: 'active' }] : [] }));
+  privacy.query.mockImplementation(mountedPrivacyQuery);
   for (const operation of ['export', 'erase']) {
     authorize.mockResolvedValue({ ok: true, principalId: '11111111-1111-4111-8111-111111111111', role: 'admin', isMachineActor: false });
     const route = '/api/bff/admin/identity/privacy/' + operation, res = response();
     await dispatch([{ route, pattern: new RegExp('^' + route + '$'), params: [], handler: async () => { throw new Error('must use direct handler'); } }], { url: route, method: 'POST', headers: { authorization: 'Bearer human' }, body: { subject: { kind: 'contact', contactId: C }, ...(operation === 'erase' ? { idempotencyKey: C } : {}) } } as HttpRequest, res as unknown as HttpResponse);
     expect(res.status).toHaveBeenCalledWith(200); expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-store');
     expect(authorize).toHaveBeenCalledWith('human', { allowedRoles: ['admin'] });
+    if (operation === 'erase') expect(privacy.query).toHaveBeenCalledWith('SELECT public.fulfillment_erase_parcel_contacts($1::uuid)', [C]);
   }
   expect(privacy.close).toHaveBeenCalledTimes(2);
   authorize.mockResolvedValue({ ok: true, principalId: C, role: 'admin', isMachineActor: true });
@@ -162,6 +163,13 @@ it('direct privacy routes precede managed entries and enforce human admin in the
 });
 
 const privacyContact = '22222222-2222-4222-8222-222222222222';
+async function mountedPrivacyQuery(sql: string) {
+  if (sql.startsWith('SELECT public.fulfillment_export_parcel_contacts')) return { rows: [{ data: [] }] };
+  if (sql.startsWith('SELECT public.fulfillment_erase_parcel_contacts')) return { rows: [{ fulfillment_erase_parcel_contacts: { erased: 0 } }] };
+  return { rows: sql.startsWith('SELECT c.*') || sql.startsWith('SELECT * FROM public.clients')
+    ? [{ id: privacyContact, email: 'privacy@example.com', principal_id: null, metadata: {} }]
+    : sql.includes('AS unsafe') ? [{ unsafe: false }] : sql.startsWith('SELECT m.role') ? [{ role: 'admin', membership_state: 'active' }] : [] };
+}
 function mountedPrivacyRequest(operation: 'export' | 'erase') {
   const route = '/api/bff/admin/identity/privacy/' + operation;
   return {
@@ -272,14 +280,13 @@ it.each(['export', 'erase'] as const)('adopter policy admits mounted direct %s b
   vi.stubEnv('PLATFORM_BUNDLE', 'node-postgres'); vi.stubEnv('OPERATOR_IDENTITY_AUDIENCE', 'operator');
   vi.stubEnv('DATABASE_URL', 'postgresql://unused.invalid/test');
   authorize.mockResolvedValue({ ok: true, principalId: privacyContact, role: 'admin', isMachineActor: false });
-  privacy.query.mockImplementation(async (sql: string) => ({ rows: sql.startsWith('SELECT c.*') || sql.startsWith('SELECT * FROM public.clients')
-    ? [{ id: privacyContact, email: 'privacy@example.com', principal_id: null, metadata: {} }]
-    : sql.includes('AS unsafe') ? [{ unsafe: false }] : sql.startsWith('SELECT m.role') ? [{ role: 'admin', membership_state: 'active' }] : [] }));
+  privacy.query.mockImplementation(mountedPrivacyQuery);
   const { routes, req } = mountedPrivacyRequest(operation), res = response();
   await dispatch(routes, req, res as unknown as HttpResponse);
   expect(res.status).toHaveBeenCalledWith(200);
   expect(res.json).toHaveBeenCalledWith({ ok: true, data: expect.objectContaining(operation === 'export'
-    ? { missingContributors: [], documents: expect.arrayContaining([expect.objectContaining({ contributorId: 'subscriptions' })]) }
+    ? { missingContributors: [], documents: expect.arrayContaining([expect.objectContaining({ contributorId: 'subscriptions' }),
+      expect.objectContaining({ contributorId: 'fulfillment-parcel-contacts', data: [], coverage: expect.objectContaining({ complete: true }) })]) }
     : { outcome: 'ERASED' }) });
   expect(privacy.close).toHaveBeenCalledOnce(); expect(managed.from).not.toHaveBeenCalled();
   expect(f.policy).toHaveBeenCalledExactlyOnceWith({ route: req.url, domain: 'auth', surface: 'admin', risk: 'mutation' });

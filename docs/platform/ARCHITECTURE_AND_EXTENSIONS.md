@@ -1404,6 +1404,24 @@ labels, step resolution and payment recovery controls.
 
 ### Native commerce read projection
 
+Native parcel preparation also captures a private contact and delivery selection
+in `fulfillment_parcel_contacts`, separate from dispatch evidence. Its allowlist
+contains the contact version/source/revision, recipient name/email/phone,
+destination address and instructions, provider/carrier/service selection and
+pickup-point identity/provider/name/address, including the selection's provider
+reference. It stores no credentials, raw commands or extra host fields.
+Ordinary preparation reuses the first captured or legacy-inferred contact and
+selection even while the dispatch reference is draft and profile defaults change.
+Equal capture repeats report replay without changing the capture time. Existing
+explicit host edits retain their dispatch-context revision and withholding
+contract; they do not correct the private snapshot. Contact correction is a
+separate operation outside this capability. Legacy resolution
+rejects canonical override markers, validates the destination and freezes its
+bounded inference atomically. Erased and present-invalid contacts never fall
+back to the customer profile. The [privacy contributor](IDENTITY.md#identity-personal-data)
+and finite retained-store transfer own export, erasure and transport. These
+private fields add nothing to the commerce projection below.
+
 The existing `@openlup/platform/fulfillment/native` entry exposes
 `createPostgresFulfillmentCommerceReadPort`. It reads the native shipment spine,
 order items, settlement intent, holds, cycle and inventory reservation facts.
