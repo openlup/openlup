@@ -964,10 +964,10 @@
       "maxPackedBytes": 85055,
       "maxFiles": 10
     },
-    "maxPackedBytes": 2962854,
+    "maxPackedBytes": 3023634,
     "maxUnpackedBytes": 14408428,
     "maxFiles": 4252,
-    "capReason": "Final code measured 2,362,014 gzip bytes across 4,036 files; total 4,168 files. Larger parent caps retained. Unpacked contents measured 13,846,144 bytes; unpacked cap adds 2% headroom. Merged recovery tarball measured 2,904,758 B; packed cap adds 2% headroom. Documentation cap adds 2% headroom for the merged guides. Operator integration unpacked contents measured 14125909 bytes; the unpacked limit adds 2% headroom.",
+    "capReason": "Final code measured 2,362,014 gzip bytes across 4,036 files; total 4,168 files. Larger parent caps retained. Unpacked contents measured 13,846,144 bytes; unpacked cap adds 2% headroom. Merged recovery tarball measured 2,904,758 B; packed cap adds 2% headroom. Documentation cap adds 2% headroom for the merged guides. Operator integration unpacked contents measured 14125909 bytes; the unpacked limit adds 2% headroom. Native operator shipment commands measured 2,964,347 packed bytes; the packed cap adds 2% headroom.",
     "baseline": {
       "version": "0.37.0",
       "packedBytes": 2791358
