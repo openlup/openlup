@@ -1,3 +1,4 @@
+import installationInventory from "./current-installation-inventory.json" with { type: "json" };
 import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { Pool } from "pg";
@@ -6,15 +7,10 @@ import { createPostgresMigrationRunner } from "../../server/adapters/postgres/mi
 import { qualifiedPostgresCatalogPayload, qualifiedAdminPostgresCatalogPayload, qualifiedPostgresStartupOptions, qualifiedAdminPostgresStartupOptions,
   type QualifiedPostgresInstallation, type QualifiedAdminPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { readSelectedCatalogProjection, selectedCatalogProjectionPayload } from "../../server/adapters/postgres/selectedCatalogProjection.js";
+import { connectedNativeStoreTables } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
-const inventories = {
-  "legacy": "d5b10deea58aeb0c8b8aebfec3d33966898848d6a9de0b0beb26d14955b8e221",
-  "bootstrap": "77ffb387c116cc42bb9ac270099c380d377b0ee54ec52b61da9126a936fbe985",
-  "separate": "67322fecde365e354d9de27ddbfdab21d6a1529eeca1b878d11a1e9781ba078b",
-  "admin-managed": "7b09a96c289fcf3a1700a74ea9c227185d8afad4b6283de6da7e9a97d865695a",
-  "admin-operator": "195f76c4b2c92eb58bb2f2a12da2dde13bba7c1065a2795e4dfa0e7a22d099a0",
-} as const;
+
 it.each(["legacy", "bootstrap", "separate", "admin-managed", "admin-operator"] as const)("installs the sized editor on %s with the selected ownership and binding ACLs", async profile => {
   const container = await runPostgresContainer({ name: `sized-install-${profile}-${process.pid}`, password: "synthetic-conformance" });
   const pools: Pool[] = [];
@@ -47,12 +43,20 @@ it.each(["legacy", "bootstrap", "separate", "admin-managed", "admin-operator"] a
         const payload = installation.generation === "qualified-v2" ? await qualifiedPostgresCatalogPayload(client, installation, "openlup:public-platform-migrations:v1")
           : installation.generation === "qualified-admin" ? await qualifiedAdminPostgresCatalogPayload(client, installation, "openlup:public-platform-migrations:v1")
             : selectedCatalogProjectionPayload(await readSelectedCatalogProjection(client));
-        expect(hash(payload)).toBe(inventories[profile]);
+        expect(hash(payload)).toBe(installationInventory.current.profiles[profile].objectInventorySha256);
         mkdirSync(".context/scratch/sized-edit", { recursive: true });
         writeFileSync(`.context/scratch/sized-edit/inventory-${profile}.json`, JSON.stringify({ profile, sha256: hash(payload) })); return payload;
       } });
     await runner.apply(); expect((await runner.apply()).applied).toEqual([]);
-    expect((await owner.query("SELECT count(*)::int n FROM public.platform_schema_migrations")).rows[0].n).toBe(profile === "legacy" ? 121 : admin ? 125 : 126);
+    expect((await owner.query("SELECT count(*)::int n FROM public.platform_schema_migrations")).rows[0].n).toBe(installationInventory.current.profiles[profile].count);
+    const completeLedger = (await owner.query("SELECT catalog_path,sha256 FROM public.platform_schema_migrations ORDER BY position DESC")).rows;
+    const measured = installationInventory.current.profiles[profile];
+    expect(completeLedger).toEqual(measured.tail.map(unit => ({ catalog_path: unit.file, sha256: unit.sha256 })));
+    expect(completeLedger.findIndex(unit => unit.catalog_path === "db/platform/migrations/20261109150000_subscription_auto_resume_paid_history.sql")).toBe(measured.exactTailCount);
+    if (profile === "separate") {
+      expect(connectedNativeStoreTables.length).toBe(installationInventory.current.connectedTableCount);
+      expect((await owner.query("SELECT count(*)::int AS n FROM pg_catalog.pg_tables WHERE schemaname='public' AND tablename=ANY($1::text[])", [[...connectedNativeStoreTables]])).rows[0].n).toBe(installationInventory.current.connectedTableCount);
+    }
     for (const [signature, definer, service] of [
       ["public.subscription_sized_edit_context(uuid,uuid,boolean)", true, true],
       ["public.subscription_sized_edit_apply(uuid,uuid,text,uuid,jsonb,timestamptz)", true, true],
