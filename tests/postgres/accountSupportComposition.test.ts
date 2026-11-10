@@ -145,7 +145,9 @@ it("P2 selected commerce recovery reaches native persistence once through R5 and
     FROM public.outbox_events WHERE event_type='commerce.checkout_recovery' ORDER BY id`)).rows;
   const first = await reminders();
   expect(first).toEqual([{ id: expect.any(String), aggregate_id: order, idempotency_key: `checkout_recovery:1h:${order}`,
-    payload: { orderId: order, mode: "one_time", reminderHours: 1, expiresAt: expect.any(String) }, row_version: expect.any(String) }]);
+    payload: { orderId: order, mode: "one_time", reminderHours: 1, expiresAt: expect.any(String), recoveryToken: expect.stringMatching(/^rcv_[0-9a-f]{64}$/) }, row_version: expect.any(String) }]);
+  expect((await h.pool.query("SELECT token_hash FROM public.commerce_checkout_recovery_tokens WHERE order_id=$1", [order])).rows)
+    .toEqual([{ token_hash: createHash("sha256").update(first[0].payload.recoveryToken).digest("hex") }]);
   expect(await enqueue(10)).toEqual({ enqueued1h: 0, enqueued20h: 0 });
   expect(await reminders()).toEqual(first); expect(await snapshot()).toEqual(before);
   expect(executor.query).toHaveBeenCalledTimes(2);

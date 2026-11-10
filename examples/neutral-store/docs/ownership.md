@@ -7,7 +7,8 @@ arrays contain exact application-relative paths; `sourceMappings` only maps the
 archive's non-loading instruction template to the new repository's `AGENTS.md`.
 `generated` names local output (a trailing slash denotes a directory), and
 `demoData` identifies fictional seed/media files already classified as owned.
-`sourceOnly` lists archive tooling and its test, never copied into an application.
+`sourceOnly` lists archive tooling and source-release witnesses, never copied
+into an application.
 No glob, parent checkout discovery or implicit workspace inheritance is needed.
 `demoDataNote`, `pageCopyRequiredFor` and `pageCopyRule` preserve the customer
 environment boundary and explain which changes require taking ownership of a page.
@@ -16,7 +17,7 @@ environment boundary and explain which changes require taking ownership of a pag
 | --- | --- |
 | Owned | Identity, configuration, general copy, media, named UI fragments and the application's agent guide |
 | Managed | Starter host, pages, shared validation and DTOs, test recipes, lifecycle wrapper and documentation |
-| Source only | Extraction script, extraction regression test and instruction template; the source release retains their coverage |
+| Source only | Extraction script/test, instruction template and selected package/compiler-backed editor witnesses; the source release retains their coverage |
 | Generated | Local source provenance, artifact identities, lockfile during candidate preparation and build/browser output |
 
 Managed means eligible for a reviewed starter update, not automatic overwrite.
@@ -59,9 +60,10 @@ container receives the privileged Unix socket; the host receives the runtime
 TCP URL only. The missing installed API refuses
 `starter_installation_binding_required`, and an existing unmarked database is
 never adopted or marked. A customer environment must use its
-own data onboarding, never this seed or demonstration marker. Clients, stock and
-settings use native writers; renewal terms and method states are purchase truth,
-not demo seed inputs.
+own data onboarding, never this seed or demonstration marker. The installer uses
+the native stock writer and installs editor settings, synthetic subject facts,
+opaque variant documents and identifiers. Clients, editable templates, renewal
+terms and method states are purchase truth, not demo seed inputs.
 
 The optional public origin and insecure-HTTP opt-in are owned configuration and
 upgrade inputs. Origin policy, session handling and native composition stay
@@ -116,6 +118,21 @@ hosts with installed runtime connections. Browser tracing is disabled because
 request bodies carry private capabilities. The required purchase spec remains
 byte-identical. Focused regressions live in `test/checkout-recovery.test.ts`.
 
+Editor values and localization are owned in `owned/subscription-editing.ts` and
+`owned/editor-copy.ts`. Editor pages/models and the host's session admission,
+catalogue verification, package ports and frozen-order parcel-note callback are
+managed. `playwright.editors.config.ts` selects synthetic component witnesses;
+the database configuration selects the separate real-purchase editor/API journeys.
+Each database host entry also names its proof-owned `composeProject` for these
+journeys. No database connection or private mailbox token belongs in that JSON.
+
+Four editor witness files in `test/` are source-only: the compiler contract,
+package-backed models, host routes and parcel-note callback witnesses. They use
+the source release's built package contracts/compiler. The raw extracted app's
+dependency-free test phase excludes them; the materialized app retains the
+browser recipes and its ordinary tests. This classification does not replace
+the source-release witnesses or claim a native database result.
+
 
 The one temporary mode-price function is managed in `shared/offer-estimate.ts`.
 Its rate/quantum and demonstration purchase values are owned typed configuration;
@@ -155,7 +172,8 @@ cannot exceed the native destination bounds. Browser fields use those same limit
 
 [The paid-mail host](../host/paid-mail.ts) is managed application composition of
 the installed commerce handler and public outbox claim/process rail. Its registry
-selects only the paid-email event. [The versioned artifact](../host/paid-mail-artifact.ts)
+selects only the paid-email event and composes the store-owned sized parcel note
+for private renewal receipts. [The versioned artifact](../host/paid-mail-artifact.ts)
 uses the existing atomic private capture protocol; recipients and rendered bodies
 remain private generated data. [Owned locale copy](../owned/renewal-copy.ts)
 supplies the paid subject and line labels through shared configuration validation.

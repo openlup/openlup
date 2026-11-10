@@ -17,18 +17,22 @@ import { closePostgres, dockerAvailable, runPostgresContainer, waitForPostgresTc
 
 export const config = structuredClone(configurations.coffee!);
 config.id = "quote-catalog-proof";
-// The installation seed owns revision 3; this reader fixture exercises revisions 1 and 2.
-config.quote.document.revisionNo = 3;
+// The shared installation seed owns revision 1; the reader adds revisions 2 and 3.
+config.quote.document.revisionNo = 1;
 config.offer.products = Array.from({ length: 501 }, (_, index) => ({
   ...config.offer.products[0]!, sku: `QUOTE-${String(index).padStart(4, "0")}`,
   slug: `row-${index}`, title: `Fixture ${index}`, name: { en: `Fixture ${index}`, pl: `Fixture ${index}` },
-  physical: { ...config.offer.products[0]!.physical, netWeightG: index + 1, issuer: "fixture", unitGtin: gtin(index) },
+  physical: { ...config.offer.products[0]!.physical, netWeightG: index + 1, issuer: "fixture-seed", unitGtin: gtin(index) },
   permittedPurchaseModes: index % 3 === 0 ? ["one_time"] : index % 3 === 1 ? ["subscription"] : ["one_time", "subscription"],
 }));
 config.purchase.stock.quantities = Object.fromEntries(config.offer.products.map(product => [product.sku, 1]));
+// Keep this read-only fixture's one primary SKU per product and 501-row boundary.
+config.subscriptionEditing.catalogue = config.offer.products.map(product => ({
+  ...config.subscriptionEditing.catalogue[0]!, ...product, groupKey: product.sku, stockQuantity: 1,
+}));
 export const seed = buildDemoSeed(config);
 export const digest = (value: unknown) => createHash("sha256").update(canonicalCatalogDraftJson(value)).digest("hex");
-export function documentFor(index: number, revisionNo = 1) {
+export function documentFor(index: number, revisionNo = 2) {
   return { schemaVersion: "fixture.document.v1", id: `fixture:row-${index}:${revisionNo}`,
     productSlug: seed.products[index]!.slug, revisionNo };
 }
@@ -121,16 +125,22 @@ export async function createQuoteCatalogFixture() {
     if (status.pending.length) throw new Error("Quote catalog installation incomplete");
     await owner.query(`COMMENT ON DATABASE quote_catalog IS '${demonstrationMarker}'`);
     const installation = await owner.connect();
-    try { await applyDemoSeed(config, { connection: installation, installRole: "postgres", runtimeRole: "quote_catalog_runtime", close: async () => {} }); }
+    try { await applyDemoSeed(config, { connection: installation, installRole: "postgres", runtimeRole: "quote_catalog_runtime",
+      // Catalogue reads do not consume inventory; this fixture selects no stock rail.
+      stock: { recordProviderStockCurrent: async () => ({ replayed: false, readBack: true }) }, close: async () => {} }); }
     finally { installation.release(); }
-    // Physical and identifier facts come from configuration; add the reader-specific document revision.
+    // Revision 1 belongs to the editor seed; this read witness adds its own revision 2.
     for (const [index, product] of seed.products.entries()) {
       const document = documentFor(index);
       const revision = (await owner.query(`INSERT INTO public.catalog_product_document_revisions
         (product_id,revision_no,schema_id,document_ref,document_payload,provenance,source_ref,digest)
-        VALUES($1,1,$2,$3,$4,'{}',$5,$6) RETURNING id`,
+        VALUES($1,2,$2,$3,$4,'{}',$5,$6) RETURNING id`,
       [product.id, document.schemaVersion, document.id, document, `fixture:source-${index}`, digest(document)])).rows[0]!.id;
       await owner.query("UPDATE public.catalog_products SET primary_sku_id=$2,current_document_revision_id=$3 WHERE id=$1", [product.id, seed.skus[index]!.id, revision]);
+      await owner.query("UPDATE public.catalog_skus SET net_weight_g=$2 WHERE id=$1", [seed.skus[index]!.id, index + 1]);
+      await owner.query("UPDATE public.catalog_sku_identifiers SET is_primary=false WHERE catalog_sku_id=$1", [seed.skus[index]!.id]);
+      await owner.query(`INSERT INTO public.catalog_sku_identifiers(catalog_sku_id,issuer,identifier_kind,normalized_value,pack_kind,quantity,is_primary)
+        VALUES($1,'fixture','gtin',$2,'unit',1,true)`, [seed.skus[index]!.id, gtin(index)]);
     }
     const runtimeUrl = new URL(container.connectionString);
     runtimeUrl.username = "quote_catalog_runtime"; runtimeUrl.password = "synthetic-quote";

@@ -86,7 +86,7 @@ it("selects native checkout recovery, persists one reminder, replays it and pres
   const reminders = async () => (await h.pool.query("SELECT id,aggregate_id,idempotency_key,payload FROM public.outbox_events WHERE event_type='commerce.checkout_recovery' ORDER BY id")).rows;
   const first = await reminders();
   expect(first).toEqual([{ id: expect.any(String), aggregate_id: order, idempotency_key: `checkout_recovery:1h:${order}`,
-    payload: { orderId: order, mode: "one_time", reminderHours: 1, expiresAt: expect.any(String) } }]);
+    payload: { orderId: order, mode: "one_time", reminderHours: 1, recoveryToken: expect.any(String), expiresAt: expect.any(String) } }]);
   expect(await binding.services.recoveryReminders(10)).toEqual({ enqueued1h: 0, enqueued20h: 0 });
   expect(await reminders()).toEqual(first);
   await h.pool.query("UPDATE public.outbox_events SET status='processing',metadata=metadata||$2::jsonb WHERE id=$1", [first[0].id, { claimToken: "owned-claim" }]);

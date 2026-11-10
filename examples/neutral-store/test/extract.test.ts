@@ -37,6 +37,10 @@ test('extract creates an independent repository and refuses to overwrite an exis
     assert.ok(ownership.pageCopyRequiredFor.length > 0);
     assert.ok(ownership.pageCopyRule.includes('managed to owned'));
     for (const file of ownership.sourceOnly) await assert.rejects(access(resolve(target, file)));
+    // Runtime editor witnesses need selected package artifacts; the raw archive test phase remains dependency-free.
+    assert.ok(ownership.sourceOnly.includes('test/editor-contracts.test.ts'));
+    assert.ok(ownership.sourceOnly.includes('test/editor-mail.test.ts'));
+    assert.ok((await readFile(resolve(target,'host/editor-mail.ts'),'utf8')).includes('export function composeSizedPaidEmailNote'));
     // The materialized application's default test discovery must not need archive tooling.
     const tests = execFileSync(process.execPath, ['--experimental-strip-types', '--test'], {
       cwd: target, encoding: 'utf8', stdio: 'pipe', env: {},

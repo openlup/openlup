@@ -111,6 +111,7 @@ const serverExports = [
   "createOutboxShipmentExceptionEmailHandler",
   "createPaidOrderOrchestration",
   "createPostgresCheckoutRecoveryTokenPort",
+  "createPostgresCheckoutRecoveryWaves",
   "createPostgresOrderReviewAdminReadPort",
   "createPostgresOrderReviewLifecyclePort",
   "createPostgresOrderReviewMediaPort",

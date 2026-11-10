@@ -18,6 +18,8 @@
     "public/media/light.svg",
     "public/media/medium.svg",
     "public/media/noon.svg",
+    "owned/editor-copy.ts",
+    "owned/subscription-editing.ts",
     "owned/acquisition-policy.ts",
     "owned/quote.config.ts",
     "owned/quote-copy.ts"
@@ -133,6 +135,23 @@
     "client/live-quote.ts",
     "host/paid-mail-artifact.ts",
     "host/paid-mail.ts",
+    "browser/editor-component-fixtures.ts",
+    "browser/editor-components.spec.ts",
+    "browser/subscription-api.spec.ts",
+    "browser/subscription-journeys.spec.ts",
+    "browser/subscription-native-fixture.ts",
+    "client/editors/classic-model.ts",
+    "client/editors/entries.ts",
+    "client/editors/sized-model.ts",
+    "client/editors/view.ts",
+    "client/pages/classic-editor.ts",
+    "client/pages/sized-editor.ts",
+    "host/editor-catalogue.ts",
+    "host/editor-mail.ts",
+    "host/editor-ports.ts",
+    "host/subscription-editors.ts",
+    "playwright.editors.config.ts",
+    "shared/subscription-edit.ts",
     "dev.mjs",
     "browser/dev-loop.proof.ts"
   ],
@@ -164,9 +183,10 @@
     "public/media/dusk.svg",
     "public/media/light.svg",
     "public/media/medium.svg",
-    "public/media/noon.svg"
+    "public/media/noon.svg",
+    "owned/subscription-editing.ts"
   ],
-  "demoDataNote": "Fictional catalogues, prices, contacts and media are local demonstration data. Never reuse the demo database, identities or grants in a customer environment. A customer environment requires its own data, authority, policies, restricted connections and qualified provider bindings. The owned demo seed populates catalog_products, catalog_skus, price_lists, price_entries and the fictional acquisition address-reference registry at install with the install connection in a database explicitly marked as a demonstration. Never seed clients, stock, settings, renewal terms or method states; use their native writers.",
+  "demoDataNote": "Fictional catalogues, prices, contacts and media are local demonstration data. Never reuse the demo database, identities or grants in a customer environment. A customer environment requires its own data, authority, policies, restricted connections and qualified provider bindings. The owned install seed populates catalogue rows, verified synthetic documents, identifiers, price entries, editor settings and the fictional acquisition registry in the marked demonstration database. The public native stock writer records fictional stock observations. Never seed clients, editable subscription lines, renewal terms or method states; purchase must create them through native writers.",
   "pageCopyRequiredFor": [
     "Complete page layout or navigation changes outside the three named fragments.",
     "New checkout, account or operator workflows or application-specific routes."
@@ -175,6 +195,10 @@
   "sourceOnly": [
     "AGENTS.template.md",
     "extract.mjs",
-    "test/extract.test.ts"
+    "test/extract.test.ts",
+    "test/editor-contracts.test.ts",
+    "test/editor-mail.test.ts",
+    "test/subscription-models.test.ts",
+    "test/subscription-routes.test.ts"
   ]
 }
