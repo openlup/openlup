@@ -7574,6 +7574,48 @@ export declare const CHECKOUT_RECOVERY_TOKEN_PREFIX = "rcv_";
 /** A 256-bit URL-safe random token for the deep-link, with the QP-safe prefix. */
 export declare function generateCheckoutRecoveryToken(): string;
 ```
+## dist/commerce/server/checkoutRecoveryWaves.d.ts
+
+```ts
+export interface CheckoutRecoveryWavePolicy {
+    firstOffsetSeconds?: number;
+    finalOffsetSeconds?: number;
+    checkoutSeconds?: number;
+    recoverySeconds?: number;
+    activitySeconds?: number;
+    /** Distinct host-owned identity for each selected transport profile. */
+    profile: string;
+}
+export interface CheckoutRecoveryWaveExecutor {
+    query(sql: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+/** The supplied restricted executor owns each SQL transaction; no scheduler starts here. */
+export declare function createPostgresCheckoutRecoveryWaves(executor: CheckoutRecoveryWaveExecutor, policy: CheckoutRecoveryWavePolicy): {
+    enqueue: (limit: number, now: string) => Promise<{
+        enqueued_1h: number;
+        enqueued_20h: number;
+    }>;
+    expire: (limit: number, now: string) => Promise<{
+        checked: number;
+        expired: number;
+        released: number;
+    }>;
+    sweepInitial: (limit: number, olderThan: string, now: string) => Promise<{
+        swept: number;
+    }>;
+    reconcile: (limit: number, now: string) => Promise<{
+        checked: number;
+        inserted: number;
+    }>;
+    authorize: (eventId: string, claimToken: string) => Promise<{
+        authorized: boolean;
+        reason?: string;
+    }>;
+    recordConfirmedSend(eventId: string, deliveryReference: string): Promise<void>;
+};
+```
 ## dist/commerce/server/checkoutRefusalContinuation.d.ts
 
 ```ts
@@ -9638,6 +9680,8 @@ export type { ConfiguratorIntentRpcQueryClient, ConfiguratorIntentPersistenceIde
 export { createOfferAvailabilityPort } from "./offerAvailability.js";
 /** @consumer Reference physical-stock availability binding. */
 export type { OfferAvailabilityQueryClient } from "./offerAvailability.js";
+export { createPostgresCheckoutRecoveryWaves } from './checkoutRecoveryWaves.js';
+export type { CheckoutRecoveryWavePolicy, CheckoutRecoveryWaveExecutor } from './checkoutRecoveryWaves.js';
 ```
 ## dist/commerce/server/offerAvailability.d.ts
 

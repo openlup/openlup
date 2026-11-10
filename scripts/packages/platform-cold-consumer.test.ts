@@ -721,6 +721,7 @@ process.stdout.write(JSON.stringify(Object.fromEntries(Object.entries(entry).map
     createOutboxShipmentDispatchedEmailHandler: "function",
     createOutboxShipmentExceptionEmailHandler: "function",
     createPostgresCheckoutRecoveryTokenPort: "function",
+    createPostgresCheckoutRecoveryWaves: "function",
     createPostgresOrderReviewAdminReadPort: "function",
     createPostgresOrderReviewLifecyclePort: "function",
     createPostgresOrderReviewMediaPort: "function",

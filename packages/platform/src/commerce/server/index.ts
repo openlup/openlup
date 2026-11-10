@@ -180,3 +180,5 @@ export type { ConfiguratorIntentRpcQueryClient, ConfiguratorIntentPersistenceIde
 export { createOfferAvailabilityPort } from "./offerAvailability.js";
 /** @consumer Reference physical-stock availability binding. */
 export type { OfferAvailabilityQueryClient } from "./offerAvailability.js";
+export { createPostgresCheckoutRecoveryWaves } from './checkoutRecoveryWaves.js';
+export type { CheckoutRecoveryWavePolicy, CheckoutRecoveryWaveExecutor } from './checkoutRecoveryWaves.js';

@@ -204,6 +204,55 @@ export declare function createCatalogContribution(input: CatalogContributionInpu
     };
 };
 ```
+## dist/composition/checkoutRecoveryWaves.d.ts
+
+```ts
+import type { HttpRequest } from '../http/index.js';
+import type { JobLeasePort, PlatformJobInvocation } from '@openlup/core/platform-runtime';
+/** Authenticated host invocation; disabled exits before constructing persistence or claiming a lease. */
+export declare function createCheckoutRecoveryWaveJob(options: {
+    enabled(): boolean;
+    jobName: string;
+    leaseSeconds: number;
+    batchSize: number;
+    bind(): Promise<{
+        ledger: JobLeasePort;
+        enqueue(limit: number, now: string): Promise<{
+            enqueued_1h: number;
+            enqueued_20h: number;
+        }>;
+    }>;
+}): (invocation: PlatformJobInvocation, now: string) => Promise<{
+    ok: boolean;
+    skipped: boolean;
+    reason: string;
+} | {
+    enqueued_1h: number;
+    enqueued_20h: number;
+    ok: boolean;
+    skipped?: undefined;
+    reason?: undefined;
+}>;
+/** Method/bearer guard precedes the job's flag and every persistence operation. */
+export declare function createCheckoutRecoveryWaveHttpEntry(job: ReturnType<typeof createCheckoutRecoveryWaveJob>, host: {
+    secret(): string | undefined;
+    invocationSource: string;
+    now(): string;
+}): (request: HttpRequest) => Promise<import("../scheduler/cronGuard.js").CronAuthDenied | {
+    status: number;
+    body: {
+        ok: boolean;
+        skipped: boolean;
+        reason: string;
+    } | {
+        enqueued_1h: number;
+        enqueued_20h: number;
+        ok: boolean;
+        skipped?: undefined;
+        reason?: undefined;
+    };
+}>;
+```
 ## dist/composition/commerceContribution.d.ts
 
 ```ts
@@ -345,6 +394,7 @@ export { createCommerceContribution } from "./commerceContribution.js";
 export { createAccountSupportContribution } from "./accountSupportContribution.js";
 export { createMarketingContribution } from "./marketingContribution.js";
 export { createRiskContribution } from "./riskContribution.js";
+export { createCheckoutRecoveryWaveJob, createCheckoutRecoveryWaveHttpEntry } from './checkoutRecoveryWaves.js';
 ```
 ## dist/composition/inventoryContribution.d.ts
 
