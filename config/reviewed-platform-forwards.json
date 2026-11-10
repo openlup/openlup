@@ -4201,7 +4201,7 @@
     },
     {
       "path": "db/platform/migrations/20261110140000_fulfillment_parcel_contacts.sql",
-      "sha256": "7618a05cc27931dae746f9dd4ceac56d1a9a364f4b9bc54b21138bc53b9ca1e1",
+      "sha256": "865feadd45cecdb386d8fef2594169cffe8814aad4f324e31e997ae5a4d4fd68",
       "functions": [
         {
           "signature": "public.fulfillment_delivery_contact_resolve(jsonb)",
@@ -4221,7 +4221,7 @@
         {
           "signature": "public.fulfillment_export_parcel_contacts(uuid)",
           "beforeSha256": null,
-          "afterSha256": "2338dc97f583343da53987152af9f08de8484a16d44f131ec95ea4a0376e41a2"
+          "afterSha256": "7608a8783b32945937c3119d49ab8be0db08b8207f688950fe37ce667865ad44"
         },
         {
           "signature": "public.fulfillment_erase_parcel_contacts(uuid)",

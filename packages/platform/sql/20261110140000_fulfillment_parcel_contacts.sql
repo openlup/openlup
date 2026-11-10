@@ -135,8 +135,8 @@ END; $$;
 CREATE FUNCTION public.fulfillment_export_parcel_contacts(p_client_id uuid)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
- RETURN coalesce((SELECT jsonb_agg(jsonb_build_object('shipmentId',shipment_id,'contact',contact,'capturedAt',captured_at) ORDER BY shipment_id)
-  FROM public.fulfillment_parcel_contacts WHERE client_id=p_client_id AND erased_at IS NULL),'[]'::jsonb);
+ RETURN coalesce((SELECT jsonb_agg(jsonb_build_object('shipmentId',shipment_id,'contact',contact,'capturedAt',captured_at,'erasedAt',erased_at) ORDER BY shipment_id)
+  FROM public.fulfillment_parcel_contacts WHERE client_id=p_client_id),'[]'::jsonb);
 END; $$;
 
 CREATE FUNCTION public.fulfillment_erase_parcel_contacts(p_client_id uuid)

@@ -99,7 +99,11 @@ for (const generation of lifecycleProfiles) describe(`private parcel contact on 
     const assessment = await contributor.assessErasure(h.runtime, privacySubject);
     await contributor.eraseOrRetain(h.runtime, privacySubject, assessment, { principalId: randomUUID() });
     const erased = await f.rows(); expect(erased[0].contact).toEqual({}); expect(erased[0].erased_at).not.toBeNull();
-    expect((await contributor.export(h.runtime, privacySubject)).data).toEqual([]);
+    const exported = await contributor.export(h.runtime, privacySubject);
+    expect(exported.data).toMatchObject([{ shipmentId: f.shipment, contact: {} }]);
+    expect(JSON.stringify(exported.data)).not.toContain('parcel@example.test');
+    expect(exported.obligations).toContainEqual({ owner: 'fulfillment-parcel-contacts', resource: 'fulfillment.parcel-contact-erasure-markers',
+      disposition: 'retain', reasonCode: 'PSEUDONYMOUS_ERASURE_FENCE', remote: false });
     await f.binding.prepare(f.shipment); expect(await f.rows()).toEqual(erased);
     await expect(f.resolve()).rejects.toMatchObject({ code: '22023', message: 'commerce_oms_replacement_delivery_contact_invalid' });
     await contributor.eraseOrRetain(h.runtime, privacySubject, assessment, { principalId: randomUUID() }); expect(await f.rows()).toEqual(erased);
