@@ -530,13 +530,14 @@ const DROP_TWO_INDEXES_SLOT: CatalogSlot = { ...DROP_INDEX_SLOT, droppedIndexes:
 // The chain creates anon and authenticated itself; service_role comes from the host bootstrap, so it is
 // the one role these two modes toggle for the whole run. With no bound forward this is a plain replay of
 // the chain, so the replay is proved before the first feature change relies on it.
-async function replayChain(connectionString: string) {
+async function replayChain(connectionString: string, through?: string) {
   const outcomes = new Map<string, Error | null>();
   let applied = 0;
   const chainDb = new Pool({ connectionString });
   const steps = [...chain.map(unit => ({ path: unit.path, unit })), ...bound.map(entry => ({ path: entry.pin.path, entry }))].sort((x, y) => x.path.localeCompare(y.path));
   try {
     for (const step of steps) {
+      if (through && step.path > through) break;
       if ("unit" in step) { await chainDb.query(step.unit.sql); applied += 1; continue; }
       const { pin, slot } = step.entry;
       const bytes = readFileSync(pin.path);
@@ -551,6 +552,7 @@ describe.each([{ serviceRole: true }, { serviceRole: false }])("native store for
   let container: PostgresContainer | undefined;
   let pool: Pool;
   let replay = { outcomes: new Map<string, Error | null>(), applied: 0 };
+  let creationReplay = { outcomes: new Map<string, Error | null>(), applied: 0 };
   beforeAll(async () => {
     if (!await dockerAvailable()) throw new Error("The native store catalog proof requires real PostgreSQL");
     container = await runPostgresContainer({ name: `native-catalog-${serviceRole ? "role" : "bare"}-${process.pid}`, password: "synthetic-conformance" });
@@ -561,6 +563,8 @@ describe.each([{ serviceRole: true }, { serviceRole: false }])("native store for
       await admin.query("CREATE DATABASE native_chain");
       await admin.query("CREATE DATABASE synthetic");
       replay = await replayChain(container.connectionStringFor("native_chain"));
+      await admin.query("CREATE DATABASE native_creation_chain");
+      creationReplay = await replayChain(container.connectionStringFor("native_creation_chain"), reminderCreation.pin.path);
       // The closed roles exist after the chain; the synthetic database needs them either way.
       for (const role of ["anon", "authenticated"]) await admin.query(`DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='${role}') THEN CREATE ROLE ${role} NOLOGIN; END IF; END; $$`);
     } finally { await admin.end(); }
@@ -581,9 +585,9 @@ describe.each([{ serviceRole: true }, { serviceRole: false }])("native store for
     await checkForward(pool, SYNTHETIC_SLOT, forward(CREATED_OK, classifiedQuotedClientTable(disposition)));
   });
   it("admits the earlier class-created reminder with its exact installed preimage and retained catalog attributes", async () => {
-    expect(replay.outcomes.get(reminderCreation.pin.path)).toBeNull();
+    expect(creationReplay.outcomes.get(reminderCreation.pin.path)).toBeNull();
     expect(reminderCreationPin.beforeSha256).toBeNull();
-    const chainDb = new Pool({ connectionString: container!.connectionStringFor("native_chain") });
+    const chainDb = new Pool({ connectionString: container!.connectionStringFor("native_creation_chain") });
     try {
       const installed = (await chainDb.query("SELECT prosrc FROM pg_proc WHERE oid=$1::regprocedure", [reminderSignature])).rows[0].prosrc as string;
       const start = reminderOriginal.indexOf("AS $$") + 5, end = reminderOriginal.lastIndexOf("$$");
@@ -593,7 +597,7 @@ describe.each([{ serviceRole: true }, { serviceRole: false }])("native store for
     } finally { await chainDb.end(); }
   });
   it.each(["unlisted", "header", "signature", "owner", "ACL"])("refuses a class-created reminder replacement with changed %s", async change => {
-    const chainDb = new Pool({ connectionString: container!.connectionStringFor("native_chain") });
+    const chainDb = new Pool({ connectionString: container!.connectionStringFor("native_creation_chain") });
     const slot = structuredClone(reminderReplacementSlot);
     let statement = reminderReplacement;
     if (change === "unlisted") slot.replacedFunctions = [];
