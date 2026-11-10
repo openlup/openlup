@@ -1,3 +1,4 @@
+import { createPostgresDestinationPort } from '@openlup/platform/commerce/server/destinations';
 import { createNativeQuoteService } from './quote-composition.ts';
 import { installedAcquisitionPredecessors } from './acquisition-predecessors.ts';
 import { quotesMatchForRecovery } from '@openlup/platform/commerce/server';
@@ -166,7 +167,7 @@ export function composePortalCapabilities(pool: Pool, authorizeOperator: (contex
               cart: { schemaVersion: 1, configuration: context.config.id, mode, cadenceDays: order.cadenceDays,
                 lines: frozen.quote.lines.map(line => ({ sku: line.sku, quantity: line.quantity })) },
             }, context);
-            return quotesMatchForRecovery(frozen, fresh.snapshot);
+            return quotesMatchForRecovery(orderedRecoveryQuote(frozen), orderedRecoveryQuote(fresh.snapshot));
           } catch { return false; }
         },
       });
@@ -188,17 +189,28 @@ export const portalResponder = {
 
 async function readRecoveryOrder(pool: Pool, id: string): Promise<OperatorCheckoutLinkOrder | null> {
   const row = (await pool.query(`SELECT o.*,c.email,c.first_name,a.id AS activation_id,a.cadence_days,
-    i.id AS intent_id,i.status AS intent_status,d.destination_id FROM public.commerce_orders o JOIN public.clients c ON c.id=o.client_id
+    i.id AS intent_id,i.status AS intent_status FROM public.commerce_orders o JOIN public.clients c ON c.id=o.client_id
     LEFT JOIN public.subscription_activations a ON a.order_id=o.id
-    LEFT JOIN public.commerce_destination_bindings d ON d.order_id=o.id
     LEFT JOIN LATERAL (SELECT id,status FROM public.commerce_settlement_intents WHERE order_id=o.id ORDER BY created_at DESC,id DESC LIMIT 1) i ON true
     WHERE o.id=$1::uuid`, [id])).rows[0];
   if (!row) return null;
+  let destinationId: string | null = null;
+  try { destinationId = (await createPostgresDestinationPort(pool).read('order', row.id)).destinationId; }
+  catch (error) { if (!(error instanceof Error) || error.message !== 'commerce_destination_unavailable') throw error; }
   return { orderId: row.id, orderRef: row.id, orderNumber: row.source_order_ref ?? row.id, clientId: row.client_id,
     status: row.status, mode: row.activation_id ? 'subscription_cycle' : 'one_time_order', totalMinor: Number(row.total_amount_minor),
     currency: row.currency_code, cadenceDays: row.cadence_days ?? null, createdAt: new Date(row.created_at).toISOString(),
     customerEmail: row.email, customerName: row.first_name, paymentIntentId: row.intent_id ?? null,
     paymentIntentStatus: row.intent_status ?? null, subscriptionId: row.activation_id ?? null,
-    subscriptionCycleId: row.subscription_cycle_id, shippingAddressId: row.destination_id ?? null,
+    subscriptionCycleId: row.subscription_cycle_id, shippingAddressId: destinationId,
     quoteSnapshot: row.metadata?.quoteSnapshot, technicallyExpired: row.status === 'expired' || row.metadata?.subscriptionActivation === 'abandoned' };
+}
+
+
+/** JSON object key order is not commercial data. Preserve all values and array ordering. */
+function orderedRecoveryQuote(snapshot: CreateQuoteResponse): CreateQuoteResponse {
+  const order = (value: unknown): unknown => Array.isArray(value) ? value.map(order)
+    : value !== null && typeof value === 'object' ? Object.fromEntries(Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right)).map(([key, item]) => [key, order(item)])) : value;
+  return order(JSON.parse(JSON.stringify(snapshot))) as CreateQuoteResponse;
 }
