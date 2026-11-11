@@ -962,13 +962,13 @@
       "maxFiles": 4211
     },
     "docs": {
-      "maxPackedBytes": 86252,
+      "maxPackedBytes": 91132,
       "maxFiles": 10
     },
     "maxPackedBytes": 3023741,
     "maxUnpackedBytes": 14432601,
     "maxFiles": 4339,
-    "capReason": "Retain the higher approved parent byte budgets; 4,128 measured code files receive 2% headroom (4,211).",
+    "capReason": "Retain the higher approved parent byte budgets; 4,128 measured code files receive 2% headroom (4,211). The docs class measured 89,345 gzip bytes on the 0.39.0 set tree (release notes and package guides); its cap is measured times 1.02, rounded up.",
     "baseline": {
       "version": "0.38.0",
       "packedBytes": 2862024
