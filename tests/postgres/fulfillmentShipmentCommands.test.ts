@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createPostgresFulfillmentShipmentCommandPort, createPostgresFulfillmentCommerceReadPort } from '@openlup/platform/fulfillment/native';
-import { createPostgresPaidFulfillmentHandoffStore } from '@openlup/platform/fulfillment';
+import { createPostgresPaidFulfillmentHandoffStore, createPostgresFulfillmentShipmentSpinePort } from '@openlup/platform/fulfillment';
 import { withAccountingInvoiceShadowTrigger } from '@openlup/platform/invoicing';
 import { createPostgresDestinationPort } from '@openlup/platform/commerce/server/destinations';
 import { evaluateCommerceFulfillmentEligibility } from '@openlup/platform/commerce';
@@ -90,16 +90,21 @@ for (const profile of lifecycleProfiles) describe(`operator shipment commands on
   });
   it('refuses unattributed cross-order history unchanged and exposes only its order reference', async () => {
     const one = await subject(), two = await subject(), tracking = randomUUID();
-    await h.runtime.query("SELECT public.fulfillment_record_evidence($1,$2,'push','tracking',$3,'{}',$4)", [randomUUID(), one.shipment, tracking, at]);
+    // Historical, pre-namespace evidence is seeded through the owner, never the current writer.
+    await h.owner.query("INSERT INTO public.shipment_external_refs(shipment_id,ref_role,external_id,recorded_at) VALUES($1,'tracking',$2,$3)", [one.shipment, tracking, at]);
     const before = await census(), key = randomUUID();
     for (let i = 0; i < 2; i++) {
       await expect(label(two, key, tracking)).rejects.toMatchObject({ details: { code: 'tracking_reference_unattributed', conflictingOrderId: one.order } });
       expect(await census()).toEqual(before);
     }
+    await expect(h.runtime.query("SELECT public.fulfillment_record_evidence($1,$2,'push','tracking',$3,$4,$5)", [randomUUID(), two.shipment, tracking, { providerKind: 'carrier-a' }, at]))
+      .rejects.toMatchObject({ code: '23505', message: 'commerce_fulfillment_tracking_reference_unattributed', detail: expect.stringContaining(one.order) });
+    expect(await census()).toEqual(before);
   });
   it('attributes same-order history, reassigns its parcel and keeps the displaced reference in its receipt', async () => {
     const f = await subject(), sibling = await replacement(h.owner, f), tracking = randomUUID(), key = randomUUID();
-    await h.runtime.query("SELECT public.fulfillment_record_evidence($1,$2,'push','tracking',$3,'{}',$4)", [randomUUID(), f.shipment, tracking, at]);
+    // Preserve historical NULL attribution without using a fresh production write.
+    await h.owner.query("INSERT INTO public.shipment_external_refs(shipment_id,ref_role,external_id,recorded_at) VALUES($1,'tracking',$2,$3)", [f.shipment, tracking, at]);
     const old = (await h.owner.query('SELECT * FROM public.shipment_external_refs WHERE external_id=$1', [tracking])).rows;
     await label({ ...f, shipment: sibling }, key, tracking);
     expect((await h.owner.query('SELECT shipment_id,provider_kind FROM public.shipment_external_refs WHERE external_id=$1', [tracking])).rows).toEqual([{ shipment_id: sibling, provider_kind: 'carrier-a' }]);
@@ -119,6 +124,82 @@ for (const profile of lifecycleProfiles) describe(`operator shipment commands on
     const results = await Promise.allSettled([label(two, randomUUID(), concurrent), label(three, randomUUID(), concurrent)]);
     expect(results.filter(r => r.status === 'fulfilled')).toHaveLength(1);
     expect(results.filter(r => r.status === 'rejected')).toHaveLength(1);
+  });
+  it.each(['REPEATABLE READ', 'SERIALIZABLE'] as const)('refuses %s before operator or shared tracking writes', async isolation => {
+    const f = await subject(), before = await census();
+    const commands: [string, unknown[]][] = [
+      ['SELECT public.fulfillment_operator_record_label($1,$2,$3,$4)', [randomUUID(), f.shipment, { providerKind: 'carrier-a', providerTrackingId: randomUUID() }, f.actor]],
+      ['SELECT public.fulfillment_operator_hand_off($1,$2,$3,$4)', [randomUUID(), f.shipment, f.actor, {}]],
+      ['SELECT public.fulfillment_operator_record_tracking($1,$2,$3,$4)', [randomUUID(), f.shipment, { status: 'exception' }, f.actor]],
+      ["SELECT public.fulfillment_record_evidence($1,$2,'push','tracking',$3,$4,$5)", [randomUUID(), f.shipment, randomUUID(), { providerKind: 'carrier-a' }, at]],
+    ];
+    const db = await h.runtime.connect();
+    try {
+      for (const [sql, values] of commands) {
+        await db.query('BEGIN ISOLATION LEVEL ' + isolation);
+        await db.query('SELECT count(*) FROM public.shipment_external_refs');
+        await expect(db.query(sql, values)).rejects.toMatchObject({ code: '22023', message: 'inventory_admission_isolation_unsupported' });
+        await db.query('ROLLBACK');
+        expect(await census()).toEqual(before);
+      }
+    } finally { await db.query('ROLLBACK'); db.release(); }
+  });
+  it('fences the shared writer and permits same-order spine replay with an explicit namespace', async () => {
+    const one = await subject(), two = await subject(), tracking = randomUUID();
+    await label(one, randomUUID(), tracking); await handoff(one);
+    const spine = createPostgresFulfillmentShipmentSpinePort(h.runtime, { portKey: 'fixture-port', evidenceChannel: 'push' });
+    const before = await census();
+    await expect(h.runtime.query("SELECT public.fulfillment_record_evidence($1,$2,'push','tracking',$3,'{}',$4)", [randomUUID(), two.shipment, tracking, at]))
+      .rejects.toMatchObject({ code: '22023', message: 'fulfillment_record_evidence_provider_kind_required' });
+    expect(await census()).toEqual(before);
+    await expect(spine.recordTracking({ idempotencyKey: randomUUID(), shipmentId: two.shipment, status: 'in_transit', externalRef: tracking, metadata: { providerKind: 'carrier-a' } }))
+      .rejects.toThrow('Fulfillment shipment spine conflict');
+    expect(await census()).toEqual(before);
+    const request = { idempotencyKey: randomUUID(), shipmentId: one.shipment, status: 'in_transit' as const, externalRef: tracking, metadata: { providerKind: 'carrier-a' } };
+    expect(await spine.recordTracking(request)).toMatchObject({ shipmentId: one.shipment, status: 'in_transit', replayed: false });
+    const recorded = await census();
+    expect(await spine.recordTracking(request)).toMatchObject({ shipmentId: one.shipment, status: 'in_transit', replayed: true });
+    expect(await census()).toEqual(recorded);
+    expect((await h.owner.query("SELECT provider_kind FROM public.shipment_external_refs WHERE ref_role='tracking' AND external_id=$1", [tracking])).rows).toEqual([{ provider_kind: 'carrier-a' }]);
+    // Another provider's same number remains admissible, without inventing a status transition.
+    await h.runtime.query("SELECT public.fulfillment_record_evidence($1,$2,'push','tracking',$3,$4,$5)", [randomUUID(), two.shipment, tracking, { providerKind: 'carrier-b' }, at]);
+    expect((await h.owner.query('SELECT provider_kind FROM public.shipment_external_refs WHERE shipment_id=$1', [two.shipment])).rows).toEqual([{ provider_kind: 'carrier-b' }]);
+  });
+  it('serializes READ COMMITTED label and evidence writers with snapshots preceding the label', async () => {
+    const one = await subject(), two = await subject(), tracking = randomUUID();
+    const winner = await h.runtime.connect(), loser = await h.runtime.connect();
+    let pending: Promise<{ error?: unknown; value?: unknown }> | undefined;
+    try {
+      for (const db of [winner, loser]) { await db.query('BEGIN ISOLATION LEVEL READ COMMITTED'); await db.query('SELECT count(*) FROM public.shipment_external_refs'); }
+      await createPostgresFulfillmentShipmentCommandPort(winner).recordCommerceFulfillmentLabel({ idempotencyKey: randomUUID(), fulfillmentOrderId: one.shipment, actorUserId: one.actor, providerKind: 'carrier-a', providerTrackingId: tracking });
+      const blocker = (await winner.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+      const waiter = (await loser.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+      pending = loser.query("SELECT public.fulfillment_record_evidence($1,$2,'push','tracking',$3,$4,$5)", [randomUUID(), two.shipment, tracking, { providerKind: 'carrier-a' }, at])
+        .then(value => ({ value }), error => ({ error }));
+      let blocked = false; const deadline = Date.now() + 5000;
+      while (Date.now() < deadline) {
+        if ((await h.owner.query('SELECT $1::int=ANY(pg_blocking_pids($2)) AS blocked', [blocker, waiter])).rows[0].blocked) { blocked = true; break; }
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+      expect(blocked).toBe(true); await winner.query('COMMIT');
+      const committed = await census();
+      expect(await pending).toMatchObject({ error: { code: '23505', message: 'commerce_fulfillment_tracking_ref_conflict' } });
+      await loser.query('ROLLBACK'); expect(await census()).toEqual(committed);
+      expect((await h.owner.query('SELECT shipment_id,provider_kind FROM public.shipment_external_refs WHERE external_id=$1', [tracking])).rows).toEqual([{ shipment_id: one.shipment, provider_kind: 'carrier-a' }]);
+    } finally { await winner.query('ROLLBACK'); await loser.query('ROLLBACK'); if (pending) await pending; winner.release(); loser.release(); }
+  });
+  it.each(['dispatch', 'label'])('preserves non-tracking %s evidence at stronger isolation', async role => {
+    const f = await subject(), db = await h.runtime.connect(), external = randomUUID(), key = randomUUID();
+    try {
+      await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ');
+      const input = [key, f.shipment, role, external, { note: 'retained' }, at];
+      const sql = "SELECT public.fulfillment_record_evidence($1,$2,'push',$3,$4,$5,$6) AS result";
+      expect((await db.query(sql, input)).rows[0].result.replayed).toBe(false);
+      expect((await db.query(sql, input)).rows[0].result.replayed).toBe(true);
+      await db.query('COMMIT');
+      expect((await h.owner.query('SELECT ref_role,provider_kind FROM public.shipment_external_refs WHERE shipment_id=$1', [f.shipment])).rows).toEqual([{ ref_role: role, provider_kind: null }]);
+      expect((await h.owner.query('SELECT payload FROM public.fulfillment_shipment_operations WHERE idempotency_key=$1', [key])).rows[0].payload).toEqual({ channel: 'push', refRole: role, externalId: external });
+    } finally { await db.query('ROLLBACK'); db.release(); }
   });
   it('hands off missing historical reservations with the named zero-consumption result and inert replay', async () => {
     const f = await stockSubject(false, true); await label(f); const key = randomUUID();
@@ -175,6 +256,9 @@ for (const profile of lifecycleProfiles) describe(`operator shipment commands on
     await label(f); const first = await handoff(f, firstKey);
     expect(first.consumedReservationCount).toBe(1);
     await track(f, randomUUID(), 'exception'); await label(f);
+    const relabelled = await census();
+    expect(await handoff(f, firstKey)).toEqual({ ...first, status: 'label_created', replayed: true });
+    expect(await census()).toEqual(relabelled);
     const next = await handoff(f, nextKey); expect(next.consumedReservationCount).toBe(0);
     expect(await handoff(f, firstKey)).toEqual({ ...first, replayed: true });
     expect(await handoff(f, nextKey)).toEqual({ ...next, replayed: true });

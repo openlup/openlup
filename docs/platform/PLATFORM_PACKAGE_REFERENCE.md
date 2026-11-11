@@ -1747,7 +1747,13 @@ The experimental `createPostgresFulfillmentShipmentCommandPort` from
 the complete selected catalogue through `20261110230000_operator_shipment_commands.sql`.
 Bind its three methods to the existing authenticated admin label, handoff and
 tracking handlers. The handlers derive `actorUserId` on the server. Construction
-mounts no route or operator UI and makes no carrier call.
+mounts no route or operator UI and makes no carrier call. These commands require
+READ COMMITTED transactions; stronger isolation levels refuse before writing.
+The shared `fulfillment_record_evidence` writer requires an explicit
+`metadata.providerKind` for tracking references and applies the same correlation
+lock and cross-order refusals. Missing provider identity refuses with
+`fulfillment_record_evidence_provider_kind_required`; non-tracking evidence keeps
+its existing behavior.
 
 Label recording commits a succeeded evidence snapshot, provider/tracking
 correlation, actor and operation together. Same-key replay returns the original
@@ -1757,7 +1763,8 @@ in a private receipt. Public operation payloads contain safe command facts.
 
 Handoff accepts packed or labelled parcels, consumes only the frozen purchase
 or renewal reservation IDs and commits the stock effect with its audit. Terminal
-handoff is inert replay. The result includes `reservationDisposition` and
+handoff is inert replay. An exact recorded command also replays after an
+exception and relabel, without changing status, timestamps or audit. The result includes `reservationDisposition` and
 `consumedReservationCount`. See the [historical stock and tracking limits](ARCHITECTURE_AND_EXTENSIONS.md#native-parity-boundaries)
 for manual resolution when facts were never recorded.
 

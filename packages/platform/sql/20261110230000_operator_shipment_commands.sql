@@ -36,10 +36,112 @@ BEGIN
  RETURN jsonb_build_object('replayed',v_replayed);
 END;
 $$;
+CREATE OR REPLACE FUNCTION public.fulfillment_record_evidence(
+  p_idempotency_key text,
+  p_shipment_id uuid,
+  p_channel text,
+  p_ref_role text,
+  p_external_id text,
+  p_metadata jsonb DEFAULT '{}'::jsonb,
+  p_requested_at timestamptz DEFAULT now()
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SET search_path = public, pg_catalog
+AS $$
+DECLARE
+  v_existing public.fulfillment_shipment_operations%ROWTYPE;
+  v_shipment public.fulfillment_shipments%ROWTYPE;
+  v_archetype public.fulfillment_provider_archetypes%ROWTYPE;
+  v_provider text;
+  v_conflicting_order uuid;
+BEGIN
+  IF p_ref_role='tracking' THEN
+    IF pg_catalog.current_setting('transaction_isolation')<>'read committed' THEN
+      RAISE EXCEPTION 'inventory_admission_isolation_unsupported' USING ERRCODE='22023';
+    END IF;
+    IF jsonb_typeof(p_metadata->'providerKind') IS DISTINCT FROM 'string' OR nullif(btrim(p_metadata->>'providerKind'),'') IS NULL THEN
+      RAISE EXCEPTION 'fulfillment_record_evidence_provider_kind_required' USING ERRCODE='22023';
+    END IF;
+    v_provider:=p_metadata->>'providerKind';
+    -- Same number lock and lock order as the operator label command.
+    PERFORM pg_advisory_xact_lock(hashtextextended('operator-tracking-reference|'||p_external_id,0));
+    PERFORM pg_advisory_xact_lock(hashtextextended('native-dispatch|'||p_shipment_id::text,0));
+  END IF;
+  IF p_idempotency_key IS NULL OR char_length(btrim(p_idempotency_key)) < 8
+    OR p_shipment_id IS NULL OR p_channel IS NULL OR p_channel NOT IN ('poll', 'push')
+    OR p_ref_role IS NULL OR p_ref_role NOT IN ('dispatch', 'tracking', 'label')
+    OR p_external_id IS NULL OR btrim(p_external_id) = ''
+  THEN
+    RAISE EXCEPTION 'fulfillment_record_evidence_invalid_input' USING ERRCODE = '22023';
+  END IF;
+
+  SELECT * INTO v_existing
+    FROM public.fulfillment_shipment_operations WHERE idempotency_key = p_idempotency_key;
+  IF FOUND THEN
+    IF v_existing.operation_type <> 'evidence_recorded'
+      OR v_existing.shipment_id IS DISTINCT FROM p_shipment_id
+      OR v_existing.payload->>'externalId' IS DISTINCT FROM p_external_id
+      OR (p_ref_role='tracking' AND v_existing.payload ? 'providerKind' AND v_existing.payload->>'providerKind' IS DISTINCT FROM v_provider)
+    THEN
+      RAISE EXCEPTION 'fulfillment_record_evidence_idempotency_conflict' USING ERRCODE = '23505';
+    END IF;
+    SELECT * INTO v_shipment FROM public.fulfillment_shipments WHERE id = p_shipment_id;
+    RETURN public.fulfillment_shipment_response(v_shipment, 'evidence_recorded', true);
+  END IF;
+
+  SELECT * INTO v_shipment FROM public.fulfillment_shipments WHERE id = p_shipment_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'fulfillment_record_evidence_shipment_not_found' USING ERRCODE = '22023';
+  END IF;
+  IF v_shipment.status IN ('cancelled', 'delivered') THEN
+    RAISE EXCEPTION 'fulfillment_record_evidence_shipment_closed' USING ERRCODE = '22023';
+  END IF;
+
+  SELECT * INTO v_archetype FROM public.fulfillment_provider_archetypes
+   WHERE provider_type = v_shipment.provider_type;
+  IF (p_channel = 'poll' AND NOT v_archetype.accepts_poll_evidence)
+    OR (p_channel = 'push' AND NOT v_archetype.accepts_push_evidence)
+  THEN
+    RAISE EXCEPTION 'fulfillment_record_evidence_channel_unsupported' USING ERRCODE = '22023';
+  END IF;
+
+  IF p_ref_role='tracking' THEN
+    SELECT s.order_id INTO v_conflicting_order FROM public.shipment_external_refs r JOIN public.fulfillment_shipments s ON s.id=r.shipment_id
+    WHERE r.ref_role='tracking' AND r.external_id=p_external_id AND r.provider_kind IS NULL AND s.order_id<>v_shipment.order_id
+    ORDER BY s.order_id,r.id LIMIT 1;
+    IF FOUND THEN RAISE EXCEPTION 'commerce_fulfillment_tracking_reference_unattributed' USING ERRCODE='23505',
+      DETAIL=jsonb_build_object('conflictingOrderId',v_conflicting_order)::text; END IF;
+    IF EXISTS(SELECT 1 FROM public.shipment_external_refs r JOIN public.fulfillment_shipments s ON s.id=r.shipment_id
+      WHERE r.ref_role='tracking' AND r.external_id=p_external_id AND r.provider_kind=v_provider AND s.order_id<>v_shipment.order_id) THEN
+      RAISE EXCEPTION 'commerce_fulfillment_tracking_ref_conflict' USING ERRCODE='23505'; END IF;
+  END IF;
+  INSERT INTO public.shipment_external_refs (shipment_id, ref_role, external_id, recorded_at, provider_kind)
+  VALUES (p_shipment_id, p_ref_role, p_external_id, p_requested_at, v_provider)
+  ON CONFLICT ON CONSTRAINT shipment_external_refs_shipment_role_id_key DO NOTHING;
+
+  UPDATE public.fulfillment_shipments
+     SET updated_at = p_requested_at,
+         metadata = metadata || COALESCE(p_metadata, '{}'::jsonb)
+   WHERE id = p_shipment_id
+  RETURNING * INTO v_shipment;
+
+  INSERT INTO public.fulfillment_shipment_operations
+    (shipment_id, order_id, operation_type, idempotency_key, payload, occurred_at)
+  VALUES (p_shipment_id, v_shipment.order_id, 'evidence_recorded', p_idempotency_key,
+          jsonb_build_object('channel', p_channel, 'refRole', p_ref_role,
+                             'externalId', p_external_id) || CASE WHEN p_ref_role='tracking' THEN jsonb_build_object('providerKind',v_provider) ELSE '{}'::jsonb END, p_requested_at);
+
+  RETURN public.fulfillment_shipment_response(v_shipment, 'evidence_recorded', false);
+END;
+$$;
 CREATE FUNCTION public.fulfillment_operator_record_label(p_key text,p_shipment uuid,p_command jsonb,p_actor uuid) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE parcel public.fulfillment_shipments; prior public.fulfillment_operator_receipts; answer jsonb; conflicting_order uuid;
  provider text:=p_command->>'providerKind'; tracking text:=p_command->>'providerTrackingId'; previous_refs jsonb;
 BEGIN
+ IF pg_catalog.current_setting('transaction_isolation')<>'read committed' THEN
+  RAISE EXCEPTION 'inventory_admission_isolation_unsupported' USING ERRCODE='22023';
+ END IF;
  PERFORM pg_advisory_xact_lock(hashtextextended('operator-label-key|'||coalesce(p_key,''),0));
  SELECT * INTO prior FROM public.fulfillment_operator_receipts WHERE kind='label' AND idempotency_key=p_key;
  IF FOUND THEN
@@ -85,19 +187,21 @@ $$;
 CREATE FUNCTION public.fulfillment_operator_hand_off(p_key text,p_shipment uuid,p_actor uuid,p_metadata jsonb) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE parcel public.fulfillment_shipments; prior public.fulfillment_operator_receipts; answer jsonb; consumed jsonb:='[]'; disposition text;
 BEGIN
+ IF pg_catalog.current_setting('transaction_isolation')<>'read committed' THEN
+  RAISE EXCEPTION 'inventory_admission_isolation_unsupported' USING ERRCODE='22023';
+ END IF;
  PERFORM pg_advisory_xact_lock(hashtextextended('operator-handoff-key|'||coalesce(p_key,''),0));
  -- Match the exact consumer's key -> parcel lock order before taking the parcel.
  PERFORM pg_advisory_xact_lock(hashtextextended('parcel-consume-key|'||jsonb_build_array('operator-handoff',p_key,p_shipment)::text,0));
  PERFORM pg_advisory_xact_lock(hashtextextended('native-dispatch|'||p_shipment::text,0));
  SELECT * INTO parcel FROM public.fulfillment_shipments WHERE id=p_shipment FOR UPDATE;
  IF NOT FOUND THEN RAISE EXCEPTION 'commerce_fulfillment_not_found' USING ERRCODE='22023'; END IF;
+ SELECT * INTO prior FROM public.fulfillment_operator_receipts WHERE kind='handoff' AND idempotency_key=jsonb_build_array(p_key,parcel.id)::text;
+ IF FOUND THEN RETURN prior.result||jsonb_build_object('status',parcel.status,'replayed',true); END IF;
  disposition:=CASE WHEN EXISTS(SELECT 1 FROM public.fulfillment_parcel_reservation_sets WHERE shipment_id=parcel.id) THEN 'recorded' ELSE 'reservations_not_recorded' END;
  IF parcel.status IN ('handed_over','in_transit','delivered') THEN
-  SELECT * INTO prior FROM public.fulfillment_operator_receipts WHERE kind='handoff' AND idempotency_key=jsonb_build_array(p_key,parcel.id)::text;
-  IF NOT FOUND THEN
-   SELECT * INTO prior FROM public.fulfillment_operator_receipts WHERE kind='handoff' AND (command->>'shipmentId')::uuid=parcel.id
+  SELECT * INTO prior FROM public.fulfillment_operator_receipts WHERE kind='handoff' AND (command->>'shipmentId')::uuid=parcel.id
    ORDER BY created_at DESC,idempotency_key DESC LIMIT 1;
-  END IF;
   RETURN coalesce(prior.result,jsonb_build_object('contractVersion','commerce.fulfillment.v0','fulfillmentOrderId',parcel.id,'orderId',parcel.order_id,
     'reservationDisposition',disposition,'consumedReservationCount',0))||jsonb_build_object('status',parcel.status,'replayed',true);
  END IF;
@@ -123,6 +227,9 @@ DECLARE parcel public.fulfillment_shipments; op public.fulfillment_shipment_oper
  target_status text:=p_command->>'status'; tracking text:=p_command->>'providerTrackingId';
  raw_time text:=nullif(btrim(p_command#>>'{rawEvent,occurredAt}'),''); delivery_time timestamptz;
 BEGIN
+ IF pg_catalog.current_setting('transaction_isolation')<>'read committed' THEN
+  RAISE EXCEPTION 'inventory_admission_isolation_unsupported' USING ERRCODE='22023';
+ END IF;
  IF target_status='delivered' AND raw_time ~ '^\d{4}-\d{2}-\d{2}[Tt ]\d{2}:\d{2}:\d{2}(\.\d+)?([Zz]|[+-]\d{2}:\d{2})$' THEN
   BEGIN delivery_time:=raw_time::timestamptz; EXCEPTION WHEN OTHERS THEN delivery_time:=NULL; END;
  END IF;
