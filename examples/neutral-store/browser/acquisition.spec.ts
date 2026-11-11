@@ -901,7 +901,7 @@ for (const locale of ['en','pl'] as const) {
     const connection = new URL(material.runtimeUrl), password = decodeURIComponent(connection.password); connection.password = '';
     const start = async () => {
       const child = spawn(process.execPath, ['--experimental-strip-types', resolve('host/server.ts'), '--configuration', material.id,
-        '--port', String(port), '--database-url', connection.href], { cwd: material.state, env: { ...process.env, PGPASSWORD: password }, stdio: ['ignore','pipe','pipe'] });
+        '--port', String(port), '--database-url', connection.href], { cwd: material.state, env: { PGPASSWORD: password }, stdio: ['ignore','pipe','pipe'] });
       let diagnostic = '';
       child.stdout?.on('data', value => { diagnostic += String(value); }); child.stderr?.on('data', value => { diagnostic += String(value); });
       try { await expect.poll(async () => fetch(address + '/api/config').then(r => r.ok).catch(() => false)).toBe(true); }
