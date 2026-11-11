@@ -1,3 +1,4 @@
+import { CustomerSavedAddressRefused } from "@openlup/platform/shipping";
 import { expect, it, vi } from "vitest";
 import { checkReadiness, type ReadinessInput } from "@openlup/core/readiness";
 import { createShippingBindings } from "@openlup/platform/shipping";
@@ -106,4 +107,19 @@ it("refuses missing stores and native address writes in both binding and Core re
   }
   expect(createShippingBindings({ ...base, nativeRateReadiness: { state: "ready" } as never, rate: { schemas: {} as never, authorizeAdmin: vi.fn(), resolveAdmin: vi.fn() } }).readiness.reason).toBe("shipping_native_flat_rate_save_unsupported");
 
+});
+
+it('activates explicitly selected complete native address ports and keeps missing-session calls outside storage', async () => {
+  const upsert = vi.fn(async () => emptyBook), remove = vi.fn(async () => emptyBook), read = vi.fn(async () => emptyBook);
+  let authorized = true;
+  const binding = createM06ShippingReferenceBinding({ store: { dataKind: 'postgres', nativeStore: { addressBookPort: { getAddressBook: read }, addressMutationPort: { upsertAddress: upsert, deleteAddress: remove } } },
+    addresses: { authenticateUser: async () => authorized ? { ok: true, userId: 'session-owner' } : { ok: false, code: 'UNAUTHORIZED', message: 'denied' }, requireWrites: true }, version: '0.17.0', requiredSchema: schema });
+  expect(binding.readiness.ready).toBe(true); expect(binding.unsupported.addressWrites).toBeNull();
+  const saved = response(); await binding.handlers.addresses!({ method: 'POST', body: { idempotencyKey: 'native-address-save', kind: 'shipping', line1: 'Example 1', city: 'Example City', postalCode: '12345', country: pickupPointAddressSchema.shape.country.value } } as never, saved as never);
+  expect(saved.status).toHaveBeenCalledWith(200); expect(upsert).toHaveBeenCalledWith('session-owner', expect.objectContaining({ postalCode: '12-345' }));
+  remove.mockRejectedValueOnce(new CustomerSavedAddressRefused('address_in_use', 'Address is in use'));
+  const conflict = response(); await binding.handlers.addresses!({ method: 'DELETE', body: { idempotencyKey: 'native-address-delete', addressId: 'a1000000-0000-4000-8000-000000000001' } } as never, conflict as never);
+  expect(conflict.status).toHaveBeenCalledWith(409);
+  authorized = false; const denied = response(); await binding.handlers.addresses!({ method: 'DELETE', body: {} } as never, denied as never);
+  expect(denied.status).toHaveBeenCalledWith(401); expect(remove).toHaveBeenCalledOnce();
 });

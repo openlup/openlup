@@ -295,7 +295,7 @@ it("projects typed managed obligations and leaves source history in the operator
   const mapped = await mapManagedRetainedBusiness({ capture: source,
     issuer: "https://issuer.example.invalid/managed", freshTarget: fresh, targetOwner: targetOwner! });
   expect(mapped.packet.compatible.tables.find(value => value.table === "subscriptions")?.rows.map(row => JSON.parse(row)))
-    .toEqual([expect.objectContaining({ id: subscriptionId, composition_constraint: null, configured_offer_version: "classic" })]);
+    .toEqual([expect.objectContaining({ id: subscriptionId, composition_constraint: null, configured_offer_version: "classic", shipping_saved_address_id: null, billing_saved_address_id: null })]);
   // Restore compares at UTC, so a target session in another zone must produce no local offset here.
   const zonedOwner = await targetOwner!.connect();
   try {
