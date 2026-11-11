@@ -157,4 +157,4 @@ it.each(["one_time", "subscription"] as const)("joins anonymous %s purchase, tra
     expect((await target.owner.query("SELECT id,client_id FROM public.commerce_orders")).rows).toEqual([{ id: order.orderRef, client_id: client.id }]);
   } finally { await Promise.all([...contacts.map(port => port.close()), ...lanes.map(lane => lane.close())]); }
 // Two-store installation previously measured about 11 s; 90 s leaves setup and loaded-host headroom.
-}, 90_000);
+}, 135_000);

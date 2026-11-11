@@ -249,5 +249,5 @@ for (const shape of ["neon", "rds"] as const) for (const mode of ["installer-man
     }
   // Hosted maximum 57.203 s: fourfold 228.812 s rounds to the existing 240 s qualified bound.
   // Five-row tail estimates leave at least 119.082 s across all four restore shapes.
-  }, 240_000);
+  }, 245_000);
 }

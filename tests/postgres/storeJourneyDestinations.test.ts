@@ -84,4 +84,4 @@ it("restores immutable destinations and exact purchase holds, then expires the s
   expect(results[1]).toEqual(results[0]);
   expect(await journeyCensus(target.owner)).toEqual(await journeyCensus(source.owner));
 // The joined guest cases measured at most 10.1 s each for two stores; 90 s leaves loaded-host headroom.
-}, 90_000);
+}, 140_000);

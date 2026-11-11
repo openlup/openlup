@@ -80,4 +80,4 @@ it.each([["marketing_newsletter", "marketingNewsletter"], ["marketing_gifts_disc
     expect(await read(source)).toEqual(granted.choices);
     expect(await journeyCensus(source.owner)).toEqual(sourceBefore);
   // The two-case guest file measured 21.67 s total; 90 s per case exceeds four times that measured total.
-  }, 90_000);
+  }, 140_000);

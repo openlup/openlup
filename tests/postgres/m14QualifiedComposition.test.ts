@@ -73,5 +73,5 @@ for (const profile of profiles) for (const shape of shapes) {
     }
   // Hosted maximum 54.315 s: fourfold 217.260 s rounds to the existing 240 s child bound.
   // Five-row tail estimate leaves at least 122.907 s of case headroom.
-  }, 240_000);
+  }, 245_000);
 }

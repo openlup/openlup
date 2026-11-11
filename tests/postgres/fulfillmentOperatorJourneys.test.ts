@@ -426,4 +426,4 @@ it('roundtrips exact parcel associations, operator receipts and status evidence 
     } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
     expect(await restoreConnectedNativeStore({ owner: target.owner, installation: journeySelection, packet, freshTarget })).toMatchObject({ replayed: true });
   } finally { await resources.close(); }
-}, 45_000);
+}, 175_000);

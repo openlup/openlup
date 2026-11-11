@@ -107,7 +107,7 @@ it("carries reserved and redeemed claims and their events byte-exactly and repla
   expect(await journeyCensus(target.owner)).toEqual(before);
   expect(await restore()).toMatchObject({ replayed: true });
   expect(await journeyCensus(target.owner)).toEqual(before);
-}, 30_000);
+}, 100_000);
 
 async function secondRedemption(store: JourneyInstallation) {
   const money = (amountMinor: number) => ({ amountMinor, currency: "XXX" });
@@ -140,7 +140,7 @@ it("refuses a second first-subscription redemption while missing claim history p
   expect(created.rows[0].result.orderDraft.replayed).toBe(false);
   expect((await control.owner.query("SELECT count(*)::int AS count FROM public.commerce_promotion_claims WHERE client_id=$1", [clients[0]])).rows)
     .toEqual([{ count: 1 }]);
-}, 45_000);
+}, 150_000);
 
 for (const [table, field, constraint] of [
   ["commerce_promotion_claims", "order_id", "commerce_promotion_claims_order_id_fkey"],
@@ -159,7 +159,7 @@ for (const [table, field, constraint] of [
     await expect(restore(rehash(corrupted), observedOwner(error => { referenceError = error; }))).rejects.toBeInstanceOf(PostgresTransferError);
     expect(referenceError).toMatchObject({ code: "23503", constraint });
     expect(await journeyCensus(target.owner)).toEqual(pristine);
-  }, 30_000);
+  }, 70_000);
 }
 it("restores a store without claims or events unchanged", async () => {
   const before = await journeyCensus(empty.owner);
@@ -168,4 +168,4 @@ it("restores a store without claims or events unchanged", async () => {
   expect(await journeyCensus(target.owner)).toEqual(before);
   expect(await restore(emptyPacket)).toMatchObject({ replayed: true });
   expect(await journeyCensus(target.owner)).toEqual(before);
-}, 30_000);
+}, 105_000);

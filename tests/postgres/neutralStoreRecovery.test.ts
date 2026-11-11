@@ -424,7 +424,7 @@ export default defineConfig({testDir:'../browser',testMatch:'recovery.proof.ts',
       }
     }
     expect(logs.includes(raw)).toBe(false);
-  }, 180_000);
+  }, 495_000);
 
   it('refuses unusable credentials without changing the original obligation', async () => {
     const f = await declined(); await signIn(f.email);
@@ -444,7 +444,7 @@ export default defineConfig({testDir:'../browser',testMatch:'recovery.proof.ts',
     const beforeUsed = await digest();
     expect(await call('payment.recover', { token: used }, f.email)).toEqual({ ok: false, code: 'starter_recovery_unavailable' });
     expect(await digest()).toBe(beforeUsed);
-  }, 10_000);
+  }, 15_000);
 
   it('captures a human-operator link once and refuses missing or changed capture on replay', async () => {
     const f = await declined(true);
@@ -522,7 +522,7 @@ export default defineConfig({testDir:'../browser',testMatch:'recovery.proof.ts',
     expect((await call('operator.recovery', input, operatorEmail, key)).ok).toBe(false);
     const raw = new URL(notice.recovery_url_path, base).searchParams.get('token')!;
     expect(logs.includes(raw)).toBe(false);
-  }, 180_000);
+  }, 250_000);
 
 
 

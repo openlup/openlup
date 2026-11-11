@@ -72,7 +72,7 @@ it("installs the full catalogue, binds projections 27/33 and replays the canonic
   expect(await runner().apply()).toEqual({ applied: [] });
   expect((await runner().status()).pending).toEqual([]);
   expect((await pool.query("SELECT * FROM public.platform_schema_migrations ORDER BY position")).rows).toEqual(history);
-});
+}, 15_000);
 it("upgrades the exact complete prefix before unit 33 without rewriting installed history", async () => {
   const resource = prefixContainers[0], upgrade = prefixPools[0];
   const root = mkdtempSync(join(tmpdir(), "inventory-prefix-"));

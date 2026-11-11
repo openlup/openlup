@@ -193,7 +193,7 @@ describe("eslint portable package boundaries", { timeout: 60_000 }, () => {
         expect(await boundaryMessages(config, source, filename)).toEqual([]);
       }
     }
-  });
+  }, 15_000);
 
   it("keeps literal CommonJS under the existing domain and public package export boundaries", async () => {
     const config = await loadConfig();

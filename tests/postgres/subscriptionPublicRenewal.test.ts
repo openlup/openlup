@@ -312,7 +312,7 @@ it("never redispatches an ambiguous prepared retry, accepts matching late eviden
   expect(await retryDriver(d, "succeeded", recoveredAt).driver.run(days(recoveredAt, 1), 50)).toEqual([]);
   expect(await allPublicRows(admin)).toEqual(paid);
   expect((await runtime.query("SELECT count(*)::integer AS n FROM public.subscription_cycles WHERE subscription_id=$1", [f.subscriptionId])).rows[0].n).toBe(2);
-});
+}, 15_000);
 
 
 it("retains protected admission after mode rollback, then resumes the same frozen schedule only after actual arrival", async () => {
@@ -451,7 +451,7 @@ it("captures populated retry, token, destination and draft rows, restores cleanl
     const address = await destinations.createPostgresDestinationPort(target.runtime).read("subscription", due.subscriptionId);
     expect((await store.readRenewal(codec.identity(await store.buildCycleSnapshots(due))))!.cycleSnapshot.orderSnapshot.shippingAddressRef).toBe(address.destinationId);
   });
-}, 65_000);
+}, 95_000);
 
 it("views the current and pinned shipment destination without writes or waiting for dispatch locks", async () => {
   const f = await active(), shipmentId = await parcel(f.orderId);

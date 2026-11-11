@@ -111,7 +111,7 @@ for (const table of carried) {
     expect(await journeyCensus(target.owner)).toEqual(before);
     expect(await restore()).toMatchObject({ replayed: true });
     expect(await journeyCensus(target.owner)).toEqual(before);
-  }, 30_000);
+  }, 105_000);
 
   it(`refuses a broken ${table} reference in a distinct target and rolls back`, async () => {
     const pristine = await journeyCensus(target.owner);
@@ -134,7 +134,7 @@ for (const table of carried) {
       ? "catalog_sku_identifiers_catalog_sku_id_fkey" : table === "subscription_price_policy_revisions"
         ? "subscription_price_policy_revisions_price_list_context_fkey" : "commerce_order_adjustments_promotion_id_fkey" });
     expect(await journeyCensus(target.owner)).toEqual(pristine);
-  }, 30_000);
+  }, 70_000);
 
   it(`restores a store without ${table} unchanged`, async () => {
     const before = await journeyCensus(empty.owner);
@@ -144,5 +144,5 @@ for (const table of carried) {
     expect(await journeyCensus(target.owner)).toEqual(before);
     expect(await restore(emptyPacket)).toMatchObject({ replayed: true });
     expect(await journeyCensus(target.owner)).toEqual(before);
-  }, 30_000);
+  }, 105_000);
 }

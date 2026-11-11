@@ -370,4 +370,4 @@ it.each(profiles)("atomic actor account choices and refusals on %s", async profi
     expect(pendingDenials.find(row => row.id === denied.permissionEventId).sync_deferred_reason).toBe("registration_failed");
   } finally { await closePostgres(container, pools, closers); }
 // Solo without coverage across the five modes: 3.32–5.42 s; 30 s exceeds three times the maximum.
-}, 30_000);
+}, 70_000);

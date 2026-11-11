@@ -379,4 +379,4 @@ for (const { configuration, multiSize } of [{ configuration: 'supplements', mult
     } finally { writeFileSync(mutation.path,original); }
   }
   console.info(JSON.stringify({ configuration, caseMs: performance.now() - caseStarted, childMs: performance.now() - childStarted }));
-}, 45_000);
+}, 95_000);

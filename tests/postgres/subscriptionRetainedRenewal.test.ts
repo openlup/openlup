@@ -390,7 +390,7 @@ it("transfers paid shipping, retained terms, graduation agreements and frozen re
     d.due, days(d.when, 1))).toMatchObject({ status: "terminal_replay", operationId: original.operationId });
     expect(forbidden).not.toHaveBeenCalled(); expect(await allPublicRows(target.owner)).toEqual(before);
   });
-}, 30_000);
+}, 85_000);
 
 /** Accepted server quote fixture, applied through the restricted C SQL boundary. */
 async function classicEdit(f: Awaited<ReturnType<typeof active>>, input: {

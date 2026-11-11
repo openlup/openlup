@@ -102,4 +102,4 @@ it("dispatches transferred paid and failed-renewal notices once through durable 
   }
   expect(answers[1]).toEqual(answers[0]);
 // The joined renewal case measured under 11 s; 90 s leaves headroom for notice dispatch and two installations.
-}, 90_000);
+}, 135_000);

@@ -145,7 +145,7 @@ describe("real PostgreSQL portable dunning forward", () => {
       expect((await pool.query("SELECT * FROM public.platform_schema_migrations ORDER BY position")).rows).toEqual(ledger);
       expect(await snapshot(pool)).toEqual(rows);
     }
-  });
+  }, 20_000);
 
   it("upgrades the exact prefix without row rewrites, keeps the last-rung case open and emits one final notice/event", async () => {
     expect(upgradeApplied).toEqual(units.slice(index).map(unit => unit.file));

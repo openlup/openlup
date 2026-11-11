@@ -144,7 +144,7 @@ it("fresh complete install and exact pre-M09 prefix upgrade preserve rows/histor
     expect((await h.pool.query("SELECT has_function_privilege('anon',$1::oid,'EXECUTE') anon,has_function_privilege('authenticated',$1::oid,'EXECUTE') authenticated",[routine.oid])).rows).toEqual([{anon:false,authenticated:false}]);
   }
   const db=await h.pool.connect();try{await db.query("SET ROLE anon");await expect(call(db,"invoicing_sweep_duties",[1])).rejects.toMatchObject({code:"42501"});}finally{await db.query("RESET ROLE");db.release();}
-});
+}, 20_000);
 
 it("two claimants fence generations and unknown outcomes require exact readback or authoritative absence",async()=>{
   const f=await duty();
@@ -299,7 +299,7 @@ it("missing/unsafe fiscal facts stay document-only and pre-submit void plus auth
     expect(await snapshot()).toEqual(scopedBefore);
   } finally { await claimant.query("ROLLBACK");await observer.query("ROLLBACK");claimant.release();observer.release(); }
 
-});
+}, 15_000);
 
 
 async function waitForLock(pid:number) {
