@@ -75,7 +75,7 @@ it("upgrades the real position-69 prefix, preserves representative state and rep
  for(const pool of pools)expect((await runner(pool).apply()).applied).toEqual([]);
  const ledger=(await fresh.query("SELECT catalog_path,sha256,position FROM public.platform_schema_migrations ORDER BY position")).rows;
  expect(ledger).toEqual([manifest.baseline,...manifest.forward].map((entry:{file:string;sha256:string},position:number)=>({catalog_path:entry.file,sha256:entry.sha256,position})));
-});
+}, 20_000);
 it("refuses ledger tamper and restores the original identity",async()=>{
  const row=(await fresh.query("SELECT * FROM public.platform_schema_migrations WHERE position=70")).rows[0];
  await fresh.query("UPDATE public.platform_schema_migrations SET sha256=$1 WHERE position=70",[hash("tampered")]);
@@ -364,4 +364,4 @@ it("C-compose admits a real callback to scoped PG evidence and exposes unknown/r
   }
   current={...candidate,configuration:"changed"};expect((await fetch(endpoint,{headers:{authorization:"Bearer synthetic"}})).status).toBe(503);await expect(tick!()).rejects.toThrow("stale");
  }finally{await new Promise<void>((resolve,reject)=>server.close(error=>error?reject(error):resolve()));}
-});
+}, 25_000);

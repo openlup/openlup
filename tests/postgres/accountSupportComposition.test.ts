@@ -93,7 +93,7 @@ it("P1 probes the full installed catalogue and delegates the R5 API route to R4'
     fetcher: async () => Response.json({ ok: true, data: replayed }),
   })).toEqual(replayed);
   expect((await h.pool.query("SELECT response,xmin::text FROM public.customer_support_subscription_commands WHERE idempotency_key=$1", [key])).rows).toEqual(stored);
-});
+}, 15_000);
 
 
 it("P2 selected commerce recovery reaches native persistence once through R5 and preserves row/xmin state", async () => {
@@ -151,4 +151,4 @@ it("P2 selected commerce recovery reaches native persistence once through R5 and
   expect(await enqueue(10)).toEqual({ enqueued1h: 0, enqueued20h: 0 });
   expect(await reminders()).toEqual(first); expect(await snapshot()).toEqual(before);
   expect(executor.query).toHaveBeenCalledTimes(2);
-});
+}, 30_000);

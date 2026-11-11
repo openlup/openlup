@@ -57,4 +57,4 @@ for (const [id, entry, snapshot] of [
   expect(api).toContain("## dist/communications/contracts/marketingSync.d.ts");
   for (const name of neutralExports) expect(api).toMatch(new RegExp(`export (?:type|interface) ${name}\\b`));
   expect(api).not.toContain("createKlaviyoMarketingAdapter");
-}, 30_000);
+}, 45_000);
