@@ -58,12 +58,6 @@ function orderActions(context: PageContext): HTMLElement {
       actionForm(context, { operation: 'operator.release', title: 'releaseHold', submit: 'releaseHold',
         fields: [{ name: 'holdRef', label: 'holdRef' },
           { name: 'note', label: 'note', type: 'textarea', required: false, maxLength: 1000 }] }),
-      make('operator.cancelUnpaid', 'cancelUnpaid', [{ name: 'reason', label: 'reason' }]),
-      make('operator.externalRefund', 'externalRefund', [
-        { name: 'externalRefundRef', label: 'externalRefundRef' },
-        { name: 'amountMinor', label: 'amountMinor', type: 'number', min: 1 },
-        { name: 'confirmed', label: 'externalRefund', type: 'checkbox' },
-      ]),
       make('operator.invoice', 'invoiceRequest', [])));
 }
 
@@ -267,6 +261,16 @@ function operatorOrderPortal(context: PageContext): HTMLElement {
           const input = el('input', { value: url, readonly: true, 'aria-label': context.t('paymentLink') });
           linkOutput.replaceChildren(input, link(context.t('completion'), path), el('p', {}, context.t('linkQueued')));
         } }), linkOutput);
+    }
+    for (const [operation, title, status, confirmation, effect] of [
+      ['operator.cancelUnpaid', 'cancelUnpaid', 'pending_payment', 'cancelOrderConfirm', 'cancelOrderEffect'],
+      ['operator.externalRefund', 'externalRefund', 'paid', 'manualRefundConfirm', 'manualRefundEffect'],
+    ] as const) {
+      if (order.status !== status) continue;
+      append(controls, el('p', {}, context.t(effect)), actionForm(context, { operation, title, submit: title,
+        fields: [{ name: 'reason', label: 'reason', maxLength: 2000 },
+          { name: 'confirmed', label: confirmation, type: 'checkbox' }],
+        input: () => ({ orderRef: orderId }), onSuccess: mutationCompleted }));
     }
     const shipment = await act('operator.shipment', { orderRef: orderId }, crypto.randomUUID());
     if (current !== generation) return;

@@ -12,8 +12,6 @@ const dispositions: Array<[Operation, string]> = [
   ['return.request', 'starter_return_request_unavailable'],
   ['operator.returnApprove', 'starter_return_decision_unavailable'],
   ['operator.returnReject', 'starter_return_decision_unavailable'],
-  ['operator.cancelUnpaid', 'starter_order_cancellation_unavailable'],
-  ['operator.externalRefund', 'starter_external_refund_mark_unavailable'],
   ['operator.label', 'starter_shipment_mutation_unavailable'],
   ['operator.handoff', 'starter_shipment_mutation_unavailable'],
   ['operator.delivery', 'starter_shipment_mutation_unavailable'],

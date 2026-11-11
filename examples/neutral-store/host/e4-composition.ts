@@ -1,5 +1,5 @@
 import { createPostgresCommerceOmsPort, createPostgresCommerceOmsControlPlane } from '@openlup/platform/commerce/server/postgres';
-import { CommerceOmsConflictError } from '@openlup/platform/commerce';
+import { adminCommerceOrderCancelRequestSchema, adminCommerceOrderMarkRefundedRequestSchema, CommerceOmsConflictError } from '@openlup/platform/commerce';
 import { isUuid } from './recurring-fence.ts';
 import { createPostgresDestinationPort } from '@openlup/platform/commerce/server/destinations';
 import { createNativeQuoteService } from './quote-composition.ts';
@@ -68,6 +68,7 @@ ApplicationBindings['actions'] {
   };
   return {
     ...composeOrderHolds(pool, authorizeOperator),
+    ...composeOrderTransitions(pool, authorizeOperator),
     'operator.shipments': shipmentRead(false),
     'operator.shipment': shipmentRead(true),
     'account.invoice': async (payload, context) => {
@@ -241,4 +242,28 @@ export function composeOrderHolds(pool: Pool, authorize: (context: ActionContext
     }
   };
   return { 'operator.hold': action(false), 'operator.release': action(true) };
+}
+
+/** Host confirmation and human identity precede the package-owned order transitions. */
+export function composeOrderTransitions(pool: Pool, authorize: (context: ActionContext) => Promise<boolean>): ApplicationBindings['actions'] {
+  const action = (refund: boolean): ActionBinding => async (payload, context) => {
+    if (!context.actor.operatorRef || !await authorize(context)) return refused('operator_required');
+    if (Object.keys(payload).some(key => !['locale', 'orderRef', 'reason', 'confirmed'].includes(key)) || payload.confirmed !== true)
+      return refused('starter_input_invalid');
+    const schema = refund ? adminCommerceOrderMarkRefundedRequestSchema : adminCommerceOrderCancelRequestSchema;
+    const input = schema.safeParse({ idempotencyKey: context.commandKey, orderId: payload.orderRef, reason: payload.reason });
+    if (!input.success) return refused('starter_input_invalid');
+    const actor = await createPostgresCommerceOmsControlPlane(pool).resolveOperator(context.actor.operatorRef);
+    if (!actor) return refused('operator_required');
+    try {
+      const port = createPostgresCommerceOmsPort(pool);
+      const request = { ...input.data, orderId: input.data.orderId.toLowerCase(), actorUserId: actor };
+      const value = refund ? await port.markRefunded(request) : await port.cancelOrder(request);
+      return { ok: true, value, replayed: value.replayed };
+    } catch (error) {
+      if (error instanceof CommerceOmsConflictError) return refused('starter_order_transition_conflict');
+      return refused('starter_order_transition_unavailable');
+    }
+  };
+  return { 'operator.cancelUnpaid': action(false), 'operator.externalRefund': action(true) };
 }

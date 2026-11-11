@@ -512,6 +512,10 @@ for (const locale of ['en', 'pl'] as const) {
       await expect(page.getByRole('button', { name: copy[locale].simulatePaid, exact: true })).toBeVisible();
       expect(new URL(page.url()).searchParams.has('token')).toBe(false); await accessible(page.locator('main'));
     }
+    const priorDecline = await page.getByRole('button', { name: copy[locale].simulateDeclined, exact: true }).elementHandle();
+    await page.getByRole('button', { name: copy[locale].simulateDeclined, exact: true }).click();
+    await expect.poll(() => priorDecline!.evaluate(element => element.isConnected)).toBe(false);
+    await expect(page.getByRole('button', { name: copy[locale].simulatePaid, exact: true })).toBeVisible();
     await page.getByRole('button', { name: copy[locale].simulatePaid, exact: true }).click();
     await expect(page.locator('main')).toContainText(copy[locale].recoveryPaid);
     await context.clearCookies();
@@ -777,7 +781,7 @@ for (const locale of ['en', 'pl'] as const) {
     const hold = await createPostgresCommerceOmsPort(runtime).createHold({ idempotencyKey: randomUUID(), orderId: f.orderRef,
       actorUserId: actor, reason: 'fulfillment_exception' });
     const panel = await operatorDetail(page, f.orderRef, locale);
-    const form = panel.locator('form').filter({ has: page.locator('[name=confirmed]') }).first();
+    const form = panel.locator('form').filter({ has: page.getByRole('button', { name: copy[locale].requestReplacement, exact: true }) });
     await expect(form).toBeVisible(); await accessible(form); await expect(panel).toContainText('1 Example Lane');
     await form.locator('[name=reason]').selectOption('lost');
     expect((await call(page, 'operator.replacement', { orderRef: f.orderRef, reason: 'lost' })).code).toBe('starter_input_invalid');
@@ -975,6 +979,7 @@ for (const locale of ['en','pl'] as const) {
     await page.reload(); await expect(page.locator('main')).toContainText(copy[locale].recoveryPaid);
     const settled = await call(page, 'checkout.recovery', { token: f.token, action: 'inspect' });
     expect(settled.value.terminalStatus).toBe('paid'); expect(settled.value.recreatedExecution).toBeUndefined();
+    expect((await call(page, 'checkout.recovery', { token: f.token, action: 'simulate', orderRef: rows[0].id, attemptRef: replay.value.attemptRef, outcome: 'refused' })).code).toBe('starter_recovery_unavailable');
     expect((await owner.query('SELECT id FROM public.payment_simulator_attempts WHERE settlement_intent_id=(SELECT id FROM public.commerce_settlement_intents WHERE order_id=$1)', [rows[0].id])).rows.map(row => row.id)).toEqual([replay.value.attemptRef]);
     await expect(page.getByRole('button', { name: copy[locale].simulatePaid, exact: true })).toHaveCount(0);
   });
@@ -1011,6 +1016,16 @@ for (const locale of ['en','pl'] as const) {
       await expect(page.getByRole('button', { name: copy[locale].recoveryPay, exact: true })).toHaveCount(0);
       await accessible(page.locator('main')); await page.unroute('**/api/actions/checkout.recovery');
     }
+  });
+  test(`${locale}: recovery extension simulator refuses terminal observations and technically expired replacements`, async ({ page }) => {
+    const f = await expiredCheckout(page, locale);
+    const started = await call(page, 'checkout.recovery', { token: f.token, action: 'pay' }); expect(started.ok).toBe(true);
+    const input = { token: f.token, action: 'simulate', orderRef: started.value.latestOrderRef, attemptRef: started.value.attemptRef };
+    expect((await call(page, 'checkout.recovery', { ...input, outcome: 'refused' })).ok).toBe(true);
+    expect((await call(page, 'checkout.recovery', { ...input, outcome: 'expired' })).code).toBe('starter_recovery_unavailable');
+    await owner.query("UPDATE public.commerce_orders SET metadata=metadata||'{\"paymentStatus\":\"expired\"}'::jsonb WHERE id=$1", [input.orderRef]);
+    expect((await call(page, 'checkout.recovery', { ...input, outcome: 'captured' })).code).toBe('starter_recovery_unavailable');
+    expect((await owner.query('SELECT count(*)::int AS n FROM public.payment_simulator_observations WHERE attempt_id=$1', [input.attemptRef])).rows[0].n).toBe(1);
   });
   test(`${locale}: recovery extension source outside the 30-day window refuses recreation`, async ({ page }) => {
     const f = await expiredCheckout(page, locale);
@@ -1056,6 +1071,81 @@ for (const locale of ['en','pl'] as const) {
     expect((await owner.query('SELECT a.id FROM public.payment_simulator_attempts a JOIN public.commerce_settlement_intents i ON i.id=a.settlement_intent_id JOIN public.commerce_orders o ON o.id=i.order_id WHERE o.recreated_from_order_id=$1', [f.orderRef])).rows).toHaveLength(0);
     if (refusal !== 'stock') { const attempted = await call(page, 'checkout.recovery', { token: f.token, action: 'pay' }); expect(attempted.ok).toBe(false); }
     await accessible(page.locator('main'));
+  });
+}
+
+for (const locale of ['en','pl'] as const) {
+  test(`${locale}: operator operations cancel unpaid order with confirmation, exact replay and human authority`, async ({ page }) => {
+    const f = await pendingCheckout(page, locale), actor = await portalOperator(page, locale);
+    const input = { orderRef: f.orderRef.toUpperCase(), reason: 'Reviewed unpaid cancellation', confirmed: true };
+    expect((await call(page, 'operator.cancelUnpaid', { ...input, confirmed: false })).code).toBe('starter_input_invalid');
+    const detail = page.locator('[data-order-controls]');
+    const lookup = page.locator('#orders form').filter({ has: page.locator('[name=orderRef]') }).filter({ has: page.getByRole('button', { name: copy[locale].read, exact: true }) });
+    await lookup.locator('[name=orderRef]').fill(f.orderRef); await lookup.getByRole('button', { name: copy[locale].read, exact: true }).click();
+    const form = detail.locator('form').filter({ has: page.getByRole('button', { name: copy[locale].cancelUnpaid, exact: true }) });
+    await form.locator('[name=reason]').fill(input.reason); await form.locator('[name=confirmed]').check();
+    await accessible(form);
+    const request = page.waitForRequest(request => request.url().endsWith('/api/actions/operator.cancelUnpaid'));
+    await form.getByRole('button', { name: copy[locale].cancelUnpaid, exact: true }).click();
+    const key = (await request).headers()['idempotency-key']!;
+    await expect(page.locator('[data-parcel-result]')).toContainText('cancelled');
+    await expect(detail.getByRole('button', { name: copy[locale].cancelUnpaid, exact: true })).toHaveCount(0);
+    const before = (await runtime.query('SELECT count(*)::int AS n FROM public.commerce_order_operations WHERE order_id=$1', [f.orderRef])).rows[0].n;
+    expect((await call(page, 'operator.cancelUnpaid', input, key)).replayed).toBe(true);
+    expect((await call(page, 'operator.cancelUnpaid', { ...input, reason: 'Changed reason' }, key)).code).toBe('starter_order_transition_conflict');
+    expect((await runtime.query('SELECT count(*)::int AS n FROM public.commerce_order_operations WHERE order_id=$1', [f.orderRef])).rows[0].n).toBe(before);
+    expect((await runtime.query("SELECT count(*)::int AS n FROM public.fulfillment_inventory_reservations WHERE purchase_order_id=$1 AND status='held'", [f.orderRef])).rows[0].n).toBe(0);
+    for (const operation of ['operator.cancelUnpaid','operator.externalRefund']) for (const field of ['actorUserId','principalRef','operatorRef'])
+      expect((await call(page, operation, { ...input, [field]: actor })).code).toBe('starter_input_invalid');
+    const root = (await owner.query("SELECT principal_id FROM public.platform_human_memberships WHERE membership_state='active' AND role='admin' AND principal_id<>$1 LIMIT 1", [actor])).rows[0].principal_id;
+    const invitations = createDirectOperatorInvitationStore({ connectionString: material.ownerUrl });
+    try { await invitations.remove({ actorPrincipalId: root, targetPrincipalId: actor }); } finally { await invitations.close(); }
+    expect((await call(page, 'operator.cancelUnpaid', input, key)).code).toBe('operator_required');
+    const missing = await portalOperator(page, locale); await owner.query('DELETE FROM public.commerce_operators WHERE id=$1', [missing]);
+    for (const operation of ['operator.cancelUnpaid','operator.externalRefund']) expect((await call(page, operation, input)).code).toBe('operator_required');
+    await portalOperator(page, locale, 'distributor');
+    for (const operation of ['operator.cancelUnpaid','operator.externalRefund']) expect((await call(page, operation, input, key)).code).toBe('operator_required');
+  });
+  test(`${locale}: operator operations refuse dispatched, indeterminate and paid cancellation without effects`, async ({ page }) => {
+    const { createPostgresSandboxPaymentSimulator } = await import('@openlup/platform/payments');
+    for (const outcome of ['dispatched','indeterminate','captured'] as const) {
+      const f = await pendingCheckout(page, locale);
+      if (outcome === 'dispatched') {
+        const intent = (await runtime.query('SELECT id FROM public.commerce_settlement_intents WHERE order_id=$1', [f.orderRef])).rows[0].id;
+        await createPostgresSandboxPaymentSimulator(runtime, configurations[material.id]!.purchase.sandbox).beginAttempt({ settlementIntentId: intent, idempotencyKey: randomUUID(), requestFingerprint: createHash('sha256').update(f.orderRef).digest('hex'), at: new Date().toISOString() });
+      } else expect((await call(page, 'payment.simulate', { token: f.token, orderRef: f.orderRef, outcome })).ok).toBe(true);
+      await portalOperator(page, locale);
+      const before = (await owner.query('SELECT jsonb_agg(to_jsonb(r) ORDER BY id) AS rows FROM public.fulfillment_inventory_reservations r WHERE purchase_order_id=$1', [f.orderRef])).rows[0].rows;
+      const operations = (await runtime.query('SELECT count(*)::int AS n FROM public.commerce_order_operations WHERE order_id=$1', [f.orderRef])).rows[0].n;
+      const input = { orderRef: f.orderRef, reason: 'Cannot override payment evidence', confirmed: true };
+      expect((await call(page, 'operator.cancelUnpaid', input)).code).toBe('starter_order_transition_conflict');
+      if (outcome !== 'captured') expect((await call(page, 'operator.externalRefund', input)).code).toBe('starter_order_transition_conflict');
+      expect((await owner.query('SELECT jsonb_agg(to_jsonb(r) ORDER BY id) AS rows FROM public.fulfillment_inventory_reservations r WHERE purchase_order_id=$1', [f.orderRef])).rows[0].rows).toEqual(before);
+      expect((await runtime.query('SELECT count(*)::int AS n FROM public.commerce_order_operations WHERE order_id=$1', [f.orderRef])).rows[0].n).toBe(operations);
+    }
+  });
+  test(`${locale}: operator operations manual refund marking records no money, mail or subscription change`, async ({ page }) => {
+    const f = await purchase(page); await portalOperator(page, locale);
+    const subscription = (await runtime.query('SELECT to_jsonb(s) AS value FROM public.subscriptions s WHERE id=$1', [f.subscriptionId])).rows[0].value;
+    const events = (await runtime.query("SELECT count(*)::int AS n FROM public.outbox_events WHERE aggregate_id=$1 AND event_type='commerce.order.refunded'", [f.orderRef])).rows[0].n;
+    const truth = (await owner.query('SELECT jsonb_agg(to_jsonb(e) ORDER BY e.id) AS value FROM public.payment_truth_events e JOIN public.commerce_settlement_intents i ON i.id=e.settlement_intent_id WHERE i.order_id=$1', [f.orderRef])).rows[0].value;
+    const detail = page.locator('[data-order-controls]');
+    const lookup = page.locator('#orders form').filter({ has: page.locator('[name=orderRef]') }).filter({ has: page.getByRole('button', { name: copy[locale].read, exact: true }) });
+    await lookup.locator('[name=orderRef]').fill(f.orderRef); await lookup.getByRole('button', { name: copy[locale].read, exact: true }).click();
+    const form = detail.locator('form').filter({ has: page.getByRole('button', { name: copy[locale].externalRefund, exact: true }) });
+    await expect(form).toContainText(copy[locale].externalRefund); await form.locator('[name=reason]').fill('External refund completed');
+    await form.locator('[name=confirmed]').check(); await accessible(form);
+    const request = page.waitForRequest(request => request.url().endsWith('/api/actions/operator.externalRefund'));
+    await form.getByRole('button', { name: copy[locale].externalRefund, exact: true }).click();
+    const key = (await request).headers()['idempotency-key']!;
+    await expect(page.locator('[data-parcel-result]')).toContainText('refunded');
+    const input = { orderRef: f.orderRef.toUpperCase(), reason: 'External refund completed', confirmed: true };
+    expect((await call(page, 'operator.externalRefund', input, key)).replayed).toBe(true);
+    expect((await call(page, 'operator.externalRefund', { ...input, reason: 'Different reason' }, key)).code).toBe('starter_order_transition_conflict');
+    expect((await call(page, 'operator.externalRefund', input)).ok).toBe(true);
+    expect((await runtime.query('SELECT to_jsonb(s) AS value FROM public.subscriptions s WHERE id=$1', [f.subscriptionId])).rows[0].value).toEqual(subscription);
+    expect((await runtime.query("SELECT count(*)::int AS n FROM public.outbox_events WHERE aggregate_id=$1 AND event_type='commerce.order.refunded'", [f.orderRef])).rows[0].n).toBe(events);
+    expect((await owner.query('SELECT jsonb_agg(to_jsonb(e) ORDER BY e.id) AS value FROM public.payment_truth_events e JOIN public.commerce_settlement_intents i ON i.id=e.settlement_intent_id WHERE i.order_id=$1', [f.orderRef])).rows[0].value).toEqual(truth);
   });
 }
 

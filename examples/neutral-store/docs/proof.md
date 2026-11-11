@@ -785,8 +785,8 @@ provider access, publication or deployment qualification.
 ## Account, checkout and parcel candidate
 
 Run `./lifecycle browser` from the application directory for the complete database
-configuration. It creates fresh installations for four sequential groups:
-subscription care, portal journeys, recovery extensions and the purchase baseline. Tests use
+configuration. It creates fresh installations for five sequential groups:
+subscription care, portal journeys, recovery extensions, operator operations and the purchase baseline. Tests use
 one worker and tracing, screenshots and video off. Independent processes and
 installations keep each group inside the normal checkout quota; production quota
 values and admission paths are unchanged. Focus the portal with `./lifecycle
@@ -845,3 +845,21 @@ sandbox action even for their signed-in owner after a refused attempt. The
 expiry-notice journeys click Pay without prior provider evidence and prove the
 reference safety refusal with no replacement or payment; display validation
 checks the quote, while Pay checks prior-payment safety.
+
+## Unpaid cancellation and manual refund records
+
+The operator first reads the exact order, enters a reason and confirms the shown
+consequence. Unpaid cancellation uses the native unpaid-order command and releases
+only held purchase reservations. Dispatched, indeterminate and captured payment
+evidence can refuse it. It does not cancel a subscription or a dispatched parcel.
+Manual refund marking records a paid order as refunded after the operator confirms
+that the refund was completed outside this application. This command moves no
+money, sends no refund email, creates no fiscal reversal and changes no subscription.
+Genuine provider-refund duties retain their existing owners.
+
+Each command and replay rechecks the human admin and resolves the existing Commerce
+operator row. Caller identities, missing confirmation, invalid reasons, stale
+order status and conflicting commands refuse. Reasons use the package's trimmed
+1–2,000 character contract. Native durable receipts own replay. The two formerly
+unavailable actions are bound; return, shipment and account limits stay separately
+listed until their own complete bindings exist.

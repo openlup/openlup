@@ -116,3 +116,20 @@ test('hold and release reject every caller-supplied identity before Commerce acc
       assert.deepEqual(await actions[operation]!({ ...target, [field]: ref }, context), { ok: false, code: 'starter_input_invalid' });
   }
 });
+
+
+test('order cancellation and manual refund recheck admission and reject forged identity before Commerce access', async () => {
+  const pool = { query() { throw new Error('unadmitted_order_transition_store_touched'); } } as unknown as Pool;
+  const ref = 'abcdefab-cdef-4abc-8def-abcdefabcdef';
+  const input = { orderRef: ref, reason: 'Reviewed external outcome', confirmed: true };
+  for (const operation of ['operator.cancelUnpaid', 'operator.externalRefund'] as const) {
+    let checks = 0;
+    const denied = composeE4Capabilities(pool, async () => { checks++; return false; })[operation]!;
+    for (const commandKey of [context.commandKey, context.commandKey, 'another-command-123'])
+      assert.deepEqual(await denied(input, { ...context, commandKey }), { ok: false, code: 'operator_required' });
+    assert.equal(checks, 3);
+    const action = composeE4Capabilities(pool, async () => true)[operation]!;
+    for (const forged of [{ confirmed: false }, { actorUserId: ref }, { principalRef: ref }, { metadata: {} }, { idempotencyKey: 'forged' }, { reason: ' ' }, { reason: 'x'.repeat(2001) }])
+      assert.deepEqual(await action({ ...input, ...forged }, context), { ok: false, code: 'starter_input_invalid' });
+  }
+});

@@ -15,4 +15,5 @@ export const browserJourneyGroups = journeySelections([
   'database subscription care',
   'portal ',
   'recovery extension ',
+  'operator operations ',
 ]);

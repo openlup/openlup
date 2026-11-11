@@ -161,7 +161,7 @@ The completion page reads the URL token once and replaces history synchronously
 before configuration fetch or rendering. Request bodies carry the token; memory
 and session storage preserve reload convenience but grant no authority. An unchanged repeated submit for the same order keeps its existing token when the replay response omits it. A different order never inherits that token. A new token replaces the token stored in this tab; this storage update does not revoke other links. Operator issuance revokes them through the native issuer.
 Live pending-order links support sandbox continuation payment of the original
-order. Dedicated token-pay retry and method switching remain unbound; that
+order, including retry after a decline. Dedicated token-pay retry and method switching remain unbound; that
 separate capability is not provided by the sandbox continuation action.
 Expired-policy inspection can offer recreation of a fresh order until 30 days
 after the source order was created, including system-abandoned initial checkouts.
@@ -281,8 +281,26 @@ capture, keyed by the source checkout's root order. It never substitutes the
 current account email or a later profile edit. Missing, corrupt or erased capture
 refuses recreation before a quote, draft or payment starts. This is the starter's
 owned frozen-source binding, separate from bearer authorization. The capture
-remains personal data under the existing private-mailbox export and erasure
-procedure; include it in the owner's private-state inventory and remove it when
-that procedure requires erasure. Erasure does not trigger reconstruction from
-an account, a profile or another notice. Private captures remain outside served
+file is personal data. This starter supplies no private-mailbox export or erasure
+procedure. The application owner handles access, retention and deletion under
+their own privacy policy. Deleting that capture file makes future recreation
+refuse; no account, profile or later notice reconstructs it. Private captures remain outside served
 assets, logs, traces and public reports.
+
+## Unpaid cancellation and manual refund records
+
+The operator first reads the exact order, enters a reason and confirms the shown
+consequence. Unpaid cancellation uses the native unpaid-order command and releases
+only held purchase reservations. Dispatched, indeterminate and captured payment
+evidence can refuse it. It does not cancel a subscription or a dispatched parcel.
+Manual refund marking records a paid order as refunded after the operator confirms
+that the refund was completed outside this application. This command moves no
+money, sends no refund email, creates no fiscal reversal and changes no subscription.
+Genuine provider-refund duties retain their existing owners.
+
+Each command and replay rechecks the human admin and resolves the existing Commerce
+operator row. Caller identities, missing confirmation, invalid reasons, stale
+order status and conflicting commands refuse. Reasons use the package's trimmed
+1–2,000 character contract. Native durable receipts own replay. The two formerly
+unavailable actions are bound; return, shipment and account limits stay separately
+listed until their own complete bindings exist.

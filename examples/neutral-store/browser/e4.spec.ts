@@ -121,12 +121,6 @@ test('localized order controls and owned PDF in both languages', async ({ page, 
     await release.locator('[name=note]').fill('Example release');
     await release.getByRole('button', { name: copy[locale].releaseHold, exact: true }).click();
     await expect(release.locator('.action-result')).toContainText('released');
-    for (const [operation, label, fields] of [
-      ['operator.cancelUnpaid', 'cancelUnpaid', { orderRef: fixture.orderRef, reason: 'reviewed' }],
-      ['operator.externalRefund', 'externalRefund', { orderRef: fixture.orderRef, externalRefundRef: 'synthetic-refund', amountMinor: '1', confirmed: true }],
-    ] as const) {
-      await submitRefused(page.locator('#orders form').filter({ has: page.getByRole('button', { name: copy[locale][label], exact: true }) }), operation, fields);
-    }
     await submitRefused(page.locator('#ingest form'), 'ingest.submit', { order: '{}' });
     const shipments = page.locator('#shipments');
     const label = shipments.locator('form').filter({ has: page.getByRole('button', { name: copy[locale].label, exact: true }) });

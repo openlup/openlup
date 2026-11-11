@@ -22,16 +22,8 @@ export const operationLimitDefinitions = Object.freeze({
     explanation: Object.freeze({ en: "Approving and rejecting a return are unavailable in this release. These actions use the customer's return reference.",
       pl: "Zatwierdzanie i odrzucanie zwrotu są niedostępne w tym wydaniu. Te działania używają numeru zgłoszenia otrzymanego przez klienta." }),
   }),
-  orderCancellation: Object.freeze({
-    id: 'orderCancellation', actions: Object.freeze(["cancelUnpaid"] as const), code: 'starter_order_cancellation_unavailable',
-    explanation: Object.freeze({ en: "Cancelling an unpaid order is unavailable in this release.",
-      pl: "Anulowanie nieopłaconego zamówienia jest niedostępne w tym wydaniu." }),
-  }),
-  externalRefundMark: Object.freeze({
-    id: 'externalRefundMark', actions: Object.freeze(["externalRefund"] as const), code: 'starter_external_refund_mark_unavailable',
-    explanation: Object.freeze({ en: "Recording an external refund is unavailable in this release.",
-      pl: "Zapisanie informacji o zwrocie środków wykonanym poza sklepem jest niedostępne w tym wydaniu." }),
-  }),
+
+
   shipmentMutation: Object.freeze({
     id: 'shipmentMutation', actions: Object.freeze(["label", "handoff", "delivery"] as const), code: 'starter_shipment_mutation_unavailable',
     explanation: Object.freeze({ en: "Recording a label, handing over a parcel and recording delivery are unavailable in this release. Shipment reads remain available.",
@@ -63,8 +55,6 @@ export const operationLimits: Readonly<Partial<Record<Operation, NativeLimit>>> 
   'return.request': operationLimitDefinitions.returnRequest,
   'operator.returnApprove': operationLimitDefinitions.returnDecision,
   'operator.returnReject': operationLimitDefinitions.returnDecision,
-  'operator.cancelUnpaid': operationLimitDefinitions.orderCancellation,
-  'operator.externalRefund': operationLimitDefinitions.externalRefundMark,
   'operator.label': operationLimitDefinitions.shipmentMutation,
   'operator.handoff': operationLimitDefinitions.shipmentMutation,
   'operator.delivery': operationLimitDefinitions.shipmentMutation,

@@ -170,7 +170,8 @@ export function composeExpiredRecovery(pool: Pool, lane: Pick<PostgresRoleFreeTr
       // Only the durable attempt started by expired recreation is eligible here. No attempt creation or retry.
       if (!latest.recreatedFromOrderId || !sameUuid(payload.orderRef, latest.orderId) || !latest.paymentIntentId) return refuse('unavailable');
       const attempt = executionAttempt;
-      if (!matchesRecreatedPaymentReceipt(latest, attempt) || !sameUuid(payload.attemptRef, attempt.id)) return refuse('unavailable');
+      if (!matchesRecreatedPaymentReceipt(latest, attempt) || !sameUuid(payload.attemptRef, attempt.id)
+        || !recreatedExecutionForInspection(latest, attempt, { recoverable: false, fallback: 'fresh_checkout' })) return refuse('unavailable');
       if (!['captured','refused','expired','indeterminate'].includes(String(payload.outcome))) return refuse('unavailable');
       const outcome = payload.outcome as 'captured' | 'refused' | 'expired' | 'indeterminate';
       const observation = await simulator.recordObservation({ attemptId: attempt.id,
@@ -186,6 +187,7 @@ export function composeExpiredRecovery(pool: Pool, lane: Pick<PostgresRoleFreeTr
       }
       return { ok: true, value: { ...lineage, state: outcome } };
     } catch (error) {
+      if (payload.action === 'simulate') return refuse('unavailable');
       if (error instanceof ExpiredCheckoutRecoveryError) return refuse(error.reason);
       throw error;
     }
