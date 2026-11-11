@@ -177,8 +177,12 @@ test('corrupt, malformed and foreign original captures refuse a frozen re-quote'
     assert.equal(await readFrozenCheckoutEmail(orderId, capture(value)), null);
 });
 
-import { admitsRecreatedContinuation } from '../host/checkout-recovery.ts';
+import { matchesRecreatedPaymentReceipt, recreatedExecutionForInspection } from '../host/checkout-recovery.ts';
 import { createCheckoutRecoveryInspection } from '@openlup/platform/commerce/server';
+import type { SandboxPaymentAttempt } from '@openlup/platform/payments/contracts';
+const predecessorId = '22222222-2222-4222-8222-222222222222';
+const executionOrder = { orderId, paymentIntentId: orderId, status: 'pending_payment', technicallyExpired: false, recreatedFromOrderId: predecessorId } as NativeCheckoutRecoveryOrder;
+const executionAttempt = { id: orderId, orderId, settlementIntentId: orderId, requestKey: `checkout-recovery-recreate:${predecessorId}:payment-execution`, state: 'dispatched', orderStatus: 'pending_payment', settlementStatus: 'created', latestObservation: null } as SandboxPaymentAttempt;
 
 test('a captured replacement between reads keeps native paid presentation above its stored attempt', async () => {
   const paid = { orderId, clientId: orderId, status: 'paid', subscriptionCycleId: null } as NativeCheckoutRecoveryOrder;
@@ -191,10 +195,10 @@ test('a captured replacement between reads keeps native paid presentation above 
   const result = await inspection.inspect({ token: 'opaque', capabilities: ['recreate_expired_order'] });
   assert.equal(result.recoverable, false);
   assert.equal('terminalStatus' in result && result.terminalStatus, 'paid');
-  assert.equal(admitsRecreatedContinuation(result, orderId), false);
+  assert.equal(recreatedExecutionForInspection(executionOrder, executionAttempt, result), null);
 });
 
-test('expired-policy inspection cannot restore a pending replacement continuation from its stored attempt', async () => {
+test('expired-policy inspection preserves the separately admitted replacement execution receipt', async () => {
   const pending = { orderId, clientId: orderId, status: 'pending_payment', subscriptionCycleId: null,
     paymentIntentId: orderId, technicallyExpired: false } as NativeCheckoutRecoveryOrder;
   const inspection = createCheckoutRecoveryInspection({
@@ -205,5 +209,16 @@ test('expired-policy inspection cannot restore a pending replacement continuatio
   });
   const result = await inspection.inspect({ token: 'opaque', capabilities: ['recreate_expired_order'] });
   assert.equal(result.recoverable, false);
-  assert.equal(admitsRecreatedContinuation(result, orderId), false);
+  assert.deepEqual(recreatedExecutionForInspection(executionOrder, executionAttempt, result), { latestOrderRef: orderId, attemptRef: orderId, state: 'dispatched' });
+});
+
+
+test('captured observations and mismatched receipts cannot expose replacement simulator controls', () => {
+  const result = { recoverable: false as const, fallback: 'fresh_checkout' as const };
+  assert.equal(recreatedExecutionForInspection(executionOrder, { ...executionAttempt, state: 'captured' }, result), null);
+  assert.equal(recreatedExecutionForInspection(executionOrder, { ...executionAttempt, latestObservation: { outcome: 'captured' } as NonNullable<SandboxPaymentAttempt['latestObservation']> }, result), null);
+  for (const attempt of [null, { ...executionAttempt, orderId: predecessorId }, { ...executionAttempt, settlementIntentId: predecessorId }, { ...executionAttempt, requestKey: 'ordinary-payment' }]) {
+    assert.equal(matchesRecreatedPaymentReceipt(executionOrder, attempt), false);
+    assert.equal(recreatedExecutionForInspection(executionOrder, attempt, result), null);
+  }
 });

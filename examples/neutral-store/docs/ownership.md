@@ -160,8 +160,9 @@ captured checkout-recovery message, never an authentication challenge or event.
 The completion page reads the URL token once and replaces history synchronously
 before configuration fetch or rendering. Request bodies carry the token; memory
 and session storage preserve reload convenience but grant no authority. An unchanged repeated submit for the same order keeps its existing token when the replay response omits it. A different order never inherits that token. A new token replaces the token stored in this tab; this storage update does not revoke other links. Operator issuance revokes them through the native issuer.
-Continuation authority permits payment of the original pending order only while
-its link is live; existing-order token payment remains deferred in this starter.
+Live pending-order links support sandbox continuation payment of the original
+order. Dedicated token-pay retry and method switching remain unbound; that
+separate capability is not provided by the sandbox continuation action.
 Expired-policy inspection can offer recreation of a fresh order until 30 days
 after the source order was created, including system-abandoned initial checkouts.
 Frozen re-quoting, unchanged supported content, stock admission and proven prior
@@ -257,7 +258,8 @@ payment start. Changed commercial facts, unsupported starter content and stock
 refusals cannot start payment. Durable draft, lineage and attempt receipts keep
 replay on one replacement and one attempt. Replacement-attempt simulator controls
 remain bound to the inspected bearer, lineage and durable execution receipt;
-reload reads the same attempt. Existing-order token payment, guidance, inline
+reload reads the same attempt, independently of the recreation source link's
+continuation lifetime. Captured executions show no simulator controls. Dedicated token-pay retry and method switching, payment guidance, inline
 retry and embedded-browser continuation issuance remain unavailable.
 
 Hold and release resolve the human administrator before every command and replay.

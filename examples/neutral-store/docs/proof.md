@@ -818,7 +818,8 @@ payment start. Changed commercial facts, unsupported starter content and stock
 refusals cannot start payment. Durable draft, lineage and attempt receipts keep
 replay on one replacement and one attempt. Replacement-attempt simulator controls
 remain bound to the inspected bearer, lineage and durable execution receipt;
-reload reads the same attempt. Existing-order token payment, guidance, inline
+reload reads the same attempt, independently of the recreation source link's
+continuation lifetime. Captured executions show no simulator controls. Dedicated token-pay retry and method switching, payment guidance, inline
 retry and embedded-browser continuation issuance remain unavailable.
 
 Hold and release resolve the human administrator before every command and replay.
@@ -836,8 +837,10 @@ quota and all runner guards remain unchanged.
 
 The hold witness proves durable replay across a host-process restart with a fresh
 native administrator session. It does not prove session continuity or container
-restart configuration. Recovery inspection gives terminal and unrecoverable
-results priority over stored attempts. Recreated targets refuse the ordinary
+restart configuration. Recovery inspection gives terminal results priority over stored executions. An
+already dispatched replacement uses its lineage-bound receipt independently of
+the source link's continuation; unrecoverable original-order continuation does
+not authorize a new attempt or invalidate that replacement execution. Recreated targets refuse the ordinary
 sandbox action even for their signed-in owner after a refused attempt. The
 expiry-notice journeys click Pay without prior provider evidence and prove the
 reference safety refusal with no replacement or payment; display validation

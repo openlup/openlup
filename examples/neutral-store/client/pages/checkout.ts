@@ -60,6 +60,7 @@ export function completionPage(context: PageContext): HTMLElement {
   const credential = Object.freeze({ ...currentPurchase(context.config.id) });
   const showStarted = (result: unknown) => {
     if (!isRecord(result) || typeof result.latestOrderRef !== 'string' || typeof result.attemptRef !== 'string') return;
+    if (result.state === 'captured') { state.replaceChildren(el('p', {}, context.t('loading'))); void inspect(); return; }
     const started = Object.freeze({ token: credential.token, orderRef: result.latestOrderRef, attemptRef: result.attemptRef });
     state.replaceChildren(renderValue(result), ...(['captured', 'refused', 'expired', 'indeterminate'] as const).map(outcome =>
       actionForm(context, { operation: 'checkout.recovery',
@@ -74,7 +75,7 @@ export function completionPage(context: PageContext): HTMLElement {
       if (value.terminalStatus === 'paid') {
         state.replaceChildren(el('p', {}, context.t('recoveryPaid')), renderValue(value)); return;
       }
-      if (value.recoverable === true && !value.terminalStatus && isRecord(value.recreatedAttempt)) { showStarted(value.recreatedAttempt); return; }
+      if (!value.terminalStatus && isRecord(value.recreatedExecution) && value.recreatedExecution.state !== 'captured') { showStarted(value.recreatedExecution); return; }
       if (value.recoverable === true && value.recoveryKind === 'recreate_expired') {
         const pay = actionForm(context, { operation: 'checkout.recovery', submit: 'recoveryPay',
           input: () => ({ token: credential.token, action: 'pay' }),

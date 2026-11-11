@@ -522,8 +522,9 @@ The committed continuity proof consists of the source continuity test and the
 clean-index root proof, which needs only npm ci and the three-package build,
 without a starter build or browser. A real-browser second-submit check was
 confirmed in a local run that is not part of the committed suite.
-Continuation authority permits payment of the original pending order only while
-its link is live; existing-order token payment remains deferred in this starter.
+Live pending-order links support sandbox continuation payment of the original
+order. Dedicated token-pay retry and method switching remain unbound; that
+separate capability is not provided by the sandbox continuation action.
 Expired-policy inspection can offer recreation of a fresh order until 30 days
 after the source order was created, including system-abandoned initial checkouts.
 Frozen re-quoting, unchanged supported content, stock admission and proven prior
@@ -820,8 +821,9 @@ origin. The invocation composes the native job lease, first/final wave producer,
 canonical expiry and initial-checkout sweeps, reconciliation and the existing
 outbox handlers. Private messages reuse the atomic local capture protocol.
 Only confirmed capture in the selected profile qualifies the final wave.
-Checkout expiry links show the source order's terminal state; existing-order token payment,
-payment guidance and inline retry remain outside this candidate.
+Checkout expiry links inspect the source and recovery lineage. Live pending-order
+links support original-order sandbox continuation payment. Dedicated token-pay
+retry and method switching, payment guidance and inline retry remain unbound.
 The embedded-browser buyer-link control remains unavailable until sandbox
 continuation issuance is bound. No continuation cookie is minted here.
 
@@ -874,7 +876,8 @@ payment start. Changed commercial facts, unsupported starter content and stock
 refusals cannot start payment. Durable draft, lineage and attempt receipts keep
 replay on one replacement and one attempt. Replacement-attempt simulator controls
 remain bound to the inspected bearer, lineage and durable execution receipt;
-reload reads the same attempt. Existing-order token payment, guidance, inline
+reload reads the same attempt, independently of the recreation source link's
+continuation lifetime. Captured executions show no simulator controls. Dedicated token-pay retry and method switching, payment guidance, inline
 retry and embedded-browser continuation issuance remain unavailable.
 
 Hold and release resolve the human administrator before every command and replay.

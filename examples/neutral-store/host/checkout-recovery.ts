@@ -53,6 +53,7 @@ export async function readFrozenCheckoutEmail(orderRef: string, capture = create
 
 import type { PromotionAcceptanceKeyring } from '@openlup/platform/promotions';
 import type { Pool } from 'pg';
+import type { SandboxPaymentAttempt } from '@openlup/platform/payments/contracts';
 import type { PostgresRoleFreeTransactionLane } from '@openlup/platform/data';
 import { createCheckoutRecoveryInspection, createExpiredCheckoutRecoveryService, createPostgresCheckoutRecoveryOrderPort,
   createPostgresExpiredCheckoutRecoveryPort, createPostgresExpiredCheckoutDraftPort, createPostgresExpiredCheckoutRuntime,
@@ -74,9 +75,18 @@ export function supportsRecovery(order: NativeCheckoutRecoveryOrder): boolean {
   return !(context?.offerVersion === 'sized.v1' && context.starterPack != null);
 }
 
-/** A stored attempt cannot widen the native inspection's current authority or terminal result. */
-export function admitsRecreatedContinuation(result: CheckoutRecoveryInspectionResult, orderId: string): boolean {
-  return result.recoverable && result.recoveryKind === 'retry_existing' && sameUuid(result.order.orderId, orderId);
+/** The dispatched replacement execution belongs to its lineage and durable receipt,
+ * independently of the original order's continuation lifetime. */
+export function matchesRecreatedPaymentReceipt(order: NativeCheckoutRecoveryOrder, attempt: SandboxPaymentAttempt | null): attempt is SandboxPaymentAttempt {
+  return !!attempt && !!order.recreatedFromOrderId && sameUuid(attempt.orderId, order.orderId)
+    && sameUuid(attempt.settlementIntentId, order.paymentIntentId)
+    && attempt.requestKey === `checkout-recovery-recreate:${order.recreatedFromOrderId}:payment-execution`;
+}
+export function recreatedExecutionForInspection(order: NativeCheckoutRecoveryOrder, attempt: SandboxPaymentAttempt | null, result: CheckoutRecoveryInspectionResult) {
+  if (('terminalStatus' in result && result.terminalStatus) || order.status !== 'pending_payment' || order.technicallyExpired
+    || !matchesRecreatedPaymentReceipt(order, attempt) || attempt.state === 'captured' || attempt.latestObservation?.outcome === 'captured'
+    || attempt.orderStatus !== 'pending_payment' || attempt.settlementStatus === 'succeeded') return null;
+  return { latestOrderRef: order.orderId, attemptRef: attempt.id, state: attempt.state };
 }
 
 export function composeExpiredRecovery(pool: Pool, lane: Pick<PostgresRoleFreeTransactionLane, 'run'>, tokens: PurchaseRecovery['tokens'], keyring?: PromotionAcceptanceKeyring): ApplicationBindings['actions'] {
@@ -132,37 +142,35 @@ export function composeExpiredRecovery(pool: Pool, lane: Pick<PostgresRoleFreeTr
       && await isInitialCheckoutOrder(pool, original.orderId) && await isInitialCheckoutOrder(pool, latest.orderId))
       return { ok: true, value: { ...lineage, recoverable: false, terminalStatus: 'paid' } };
     if (original.subscriptionCycleId !== null || latest.subscriptionCycleId !== null) return refuse('unavailable');
+    const simulator = createPostgresSandboxPaymentSimulator(pool, context.config.purchase.sandbox);
+    // Read the attempt before inspection: a later paid inspection must win over an earlier dispatched receipt.
+    const executionAttempt = latest.recreatedFromOrderId && latest.paymentIntentId
+      ? await simulator.readAttempt({ settlementIntentId: latest.paymentIntentId }) : null;
     if (payload.action === 'inspect') {
       const result = await inspection.inspect({ token: payload.token, capabilities: ['recreate_expired_order'] });
-      const simulator = createPostgresSandboxPaymentSimulator(pool, context.config.purchase.sandbox);
-      const attempt = admitsRecreatedContinuation(result, latest.orderId) && latest.recreatedFromOrderId && latest.paymentIntentId && latest.status === 'pending_payment'
-        ? await simulator.readAttempt({ settlementIntentId: latest.paymentIntentId }) : null;
-      const started = attempt?.requestKey === `checkout-recovery-recreate:${latest.recreatedFromOrderId}:payment-execution`;
-      return { ok: true, value: { ...result, ...lineage,
-        ...(started && attempt ? { recreatedAttempt: { latestOrderRef: latest.orderId, attemptRef: attempt.id, state: attempt.state } } : {}) } };
+      const recreatedExecution = recreatedExecutionForInspection(latest, executionAttempt, result);
+      return { ok: true, value: { ...result, ...lineage, ...(recreatedExecution ? { recreatedExecution } : {}) } };
     }
     try {
-      if (latest.recreatedFromOrderId && (payload.action === 'simulate' || latest.status === 'pending_payment')
-        && !admitsRecreatedContinuation(await inspection.inspect({ token: payload.token, capabilities: ['recreate_expired_order'] }), latest.orderId))
-        return refuse('unavailable');
       if (payload.action === 'pay') {
-        if (latest.status === 'paid') return refuse('paid');
-        // A pending replacement replays its predecessor's receipt; a later expired generation is recreated from that latest source.
-        const source = latest.status === 'pending_payment' && latest.recreatedFromOrderId
-          ? await reader.getRecoveryOrder({ orderId: latest.recreatedFromOrderId }) : latest;
-        if (!source || !sameUuid(source.clientId, bearer.clientId) || source.subscriptionCycleId !== null
-          || !['expired','cancelled'].includes(source.status) || !source.technicallyExpired) return refuse('unavailable');
-        const attempt = await service.recreate({ order: source, clientId: bearer.clientId });
+        if (latest.status === 'paid' || executionAttempt?.state === 'captured') return refuse('paid');
+        // A dispatched replacement replays its exact receipt, never another attempt or the source's continuation.
+        if (latest.status === 'pending_payment' && latest.recreatedFromOrderId) {
+          const receipt = recreatedExecutionForInspection(latest, executionAttempt, { recoverable: false, fallback: 'fresh_checkout' });
+          return receipt ? { ok: true, replayed: true, value: { ...lineage, ...receipt } } : refuse('unavailable');
+        }
+        const admitted = await inspection.inspect({ token: payload.token, capabilities: ['recreate_expired_order'] });
+        if (!admitted.recoverable || admitted.recoveryKind !== 'recreate_expired' || !sameUuid(admitted.order.orderId, latest.orderId))
+          return refuse('terminalStatus' in admitted && admitted.terminalStatus === 'order_changed' ? 'order_changed' : 'unavailable');
+        const attempt = await service.recreate({ order: latest, clientId: bearer.clientId });
         const replacement = await reader.getLatestRecoveryOrder!({ orderId: original.orderId });
         if (!replacement || replacement.orderId === original.orderId) return refuse('unavailable');
         return { ok: true, value: { ...lineage, latestOrderRef: replacement.orderId, attemptRef: attempt.id, state: attempt.state } };
       }
       // Only the durable attempt started by expired recreation is eligible here. No attempt creation or retry.
       if (!latest.recreatedFromOrderId || !sameUuid(payload.orderRef, latest.orderId) || !latest.paymentIntentId) return refuse('unavailable');
-      const simulator = createPostgresSandboxPaymentSimulator(pool, context.config.purchase.sandbox);
-      const attempt = await simulator.readAttempt({ settlementIntentId: latest.paymentIntentId });
-      if (!attempt || !sameUuid(payload.attemptRef, attempt.id)) return refuse('unavailable');
-      if (attempt.requestKey !== `checkout-recovery-recreate:${latest.recreatedFromOrderId}:payment-execution`) return refuse('unavailable');
+      const attempt = executionAttempt;
+      if (!matchesRecreatedPaymentReceipt(latest, attempt) || !sameUuid(payload.attemptRef, attempt.id)) return refuse('unavailable');
       if (!['captured','refused','expired','indeterminate'].includes(String(payload.outcome))) return refuse('unavailable');
       const outcome = payload.outcome as 'captured' | 'refused' | 'expired' | 'indeterminate';
       const observation = await simulator.recordObservation({ attemptId: attempt.id,
