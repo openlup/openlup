@@ -47,7 +47,7 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
     return (await db.query(`SELECT id,client_id,status,total_amount_minor,currency_code,metadata,created_at
       FROM public.commerce_orders WHERE id=$1`, [id])).rows[0] ?? null;
   };
-  const token = (value: unknown): value is string => typeof value === 'string' && /^rcv_[A-Za-z0-9_-]{43}$/.test(value);
+  const token = (value: unknown): value is string => typeof value === 'string' && /^rcv_(?:[A-Za-z0-9_-]{43}|[a-f0-9]{64})$/.test(value);
   const authorizedOrder = async (payload: Record<string, unknown>, context: ActionContext) => {
     if (context.actor.customerRef) {
       let orderId = payload.orderRef;
@@ -188,8 +188,9 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
     if (context.actor.customerRef && !sameUuid(inspected.clientId, context.actor.customerRef)) return refused('starter_order_not_found');
     if (inspected.tokenState === 'revoked') return refused('starter_recovery_unavailable');
     if (inspected.tokenState === 'expired') return refused('starter_recovery_expired');
-    if (inspected.status === 'cancelled') return refused('starter_recovery_cancelled');
-    if (inspected.tokenState === 'order_not_recoverable' && inspected.status === 'paid') return success({ status: 'paid' });
+    if (inspected.status === 'cancelled') return success({ status: 'cancelled', orderRef: inspected.orderId });
+    if (inspected.tokenState === 'order_not_recoverable' && inspected.status === 'paid') return success({ status: 'paid', orderRef: inspected.orderId });
+    if (inspected.status === 'expired' && inspected.tokenState !== 'revoked') return success({ status: 'expired', orderRef: inspected.orderId });
     if (inspected.tokenState !== 'active' || inspected.status !== 'pending_payment') return refused('starter_recovery_unavailable');
     const order = await authorizedOrder(payload, context);
     return order ? success({ ...present(order), mode: inspected.mode, cadenceDays: inspected.cadenceDays }) : refused('starter_recovery_unavailable');

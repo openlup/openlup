@@ -3828,6 +3828,112 @@
         ]
       },
       {
+        "row": "fulfillment-operator-journeys",
+        "path": "db/platform/migrations/20261110150000_fulfillment_operator_journeys.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.fulfillment_open_shipment(text,uuid,text,jsonb,timestamptz)",
+            "beforeSha256": "5aab23eeb26f90b00bd3d17f622eb8d9e4b807372d2032fe7d4b1a753c26fd11",
+            "searchPath": "public, pg_catalog"
+          },
+          {
+            "signature": "public.commerce_order_emit_cancelled_notification()",
+            "beforeSha256": "417caa3248191630290c3452cde954f5b908de92c1a761c72b419c6c6da2e2f7",
+            "searchPath": "public, pg_catalog"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.fulfillment_capture_new_parcel_reservations(uuid,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_read_replacement_preparation(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_record_operator_status_evidence(text,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_consume_parcel_reservations(text,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_oms_request_replacement_shipment(text,uuid,text,uuid,text,text,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_operator_cancel_order(text,uuid,text,uuid,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "checkSupersets": [
+          {
+            "table": "public.commerce_order_operations",
+            "constraint": "commerce_order_operations_operation_type_check",
+            "column": "operation_type",
+            "values": [
+              "hold_created",
+              "hold_released",
+              "order_cancelled",
+              "order_refunded",
+              "replacement_shipment_requested"
+            ]
+          }
+        ]
+      },
+      {
+        "row": "fulfillment-parcel-status-fence",
+        "path": "db/platform/migrations/20261110155000_fulfillment_parcel_status_fence.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.commerce_fulfillment_enqueue_provider_command(uuid,text,text,text,text,text,text,text,text,text,text,integer)",
+            "beforeSha256": "ea627f5b6b69e08fc9016d6443ee5f17dc063d1aaa0c076e9a040b91b07dd055",
+            "searchPath": "pg_catalog"
+          },
+          {
+            "signature": "public.commerce_fulfillment_claim_provider_commands(text,text,integer,text,integer)",
+            "beforeSha256": "326de9b9118638c62892d867e5f4b91d4408d139aca0c37ff27c38b521bd79d6",
+            "searchPath": "pg_catalog"
+          },
+          {
+            "signature": "public.commerce_fulfillment_mark_command_submitting(uuid,uuid,bigint,bigint,uuid)",
+            "beforeSha256": "346240ccddf80988fc9ec45344a9b939be9ddb4c86dfbfc2986d4e9d65d5878f",
+            "searchPath": "pg_catalog"
+          },
+          {
+            "signature": "public.fulfillment_cancel_shipment(text,uuid,text,jsonb,timestamptz)",
+            "beforeSha256": "36b5fba88788509a5669dce70a48959bf58ffd9bf70852ebcca875d5c6e64e60",
+            "searchPath": "public, pg_catalog"
+          },
+          {
+            "signature": "public.fulfillment_operator_cancel_order(text,uuid,text,uuid,jsonb)",
+            "beforeSha256": "b53b8d12aeda66101cb9bdcccc74e5043e4636e135ff86770a71f8628a51370b",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
+        "row": "oms-human-operator-admission",
+        "path": "db/platform/migrations/20261110160000_oms_human_operator_admission.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.oms_control_resolve_operator(uuid)",
+            "beforeSha256": "1cb5fa4b679dbc931b5338a05ec94a22ffb220b8abcc2e20be3e78f170fbb931",
+            "searchPath": "pg_catalog"
+          }
+        ],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
         "row": "checkout-recovery-inspection",
         "path": "db/platform/migrations/20261110170000_checkout_recovery_inspection.sql",
         "replacedFunctions": [],
@@ -4650,6 +4756,94 @@
           "signature": "public.fulfillment_erase_parcel_contacts(uuid)",
           "beforeSha256": null,
           "afterSha256": "f9ef86a6b44053a68fed05a52a05d0ef2f9318ebfb4ab289683d944d98600245"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261110150000_fulfillment_operator_journeys.sql",
+      "sha256": "fe718ce12eea30f98e7e07d94cb9bd0b3d846248ec85cbdc39f98aa86e8a56cc",
+      "functions": [
+        {
+          "signature": "public.fulfillment_open_shipment(text,uuid,text,jsonb,timestamptz)",
+          "beforeSha256": "5aab23eeb26f90b00bd3d17f622eb8d9e4b807372d2032fe7d4b1a753c26fd11",
+          "afterSha256": "c63a30078ca6ace3f2c8734cc72c8faea92e173a7f6903714a7cad9fde0c78e4"
+        },
+        {
+          "signature": "public.commerce_order_emit_cancelled_notification()",
+          "beforeSha256": "417caa3248191630290c3452cde954f5b908de92c1a761c72b419c6c6da2e2f7",
+          "afterSha256": "b2f3a8c644143990f10308fabf43dc3be5959f8e657690df40a5ff91007c9db6"
+        },
+        {
+          "signature": "public.fulfillment_capture_new_parcel_reservations(uuid,text)",
+          "beforeSha256": null,
+          "afterSha256": "f4899a5f6e86e8d6f48282e9f946406382e0e4e971661ad2f42c7ae6fb1a0dc5"
+        },
+        {
+          "signature": "public.fulfillment_read_replacement_preparation(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "6897bf7df987b6690118a11e1950e8fd83acda652da4bd5bf9d4850e6f48def0"
+        },
+        {
+          "signature": "public.fulfillment_record_operator_status_evidence(text,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "96c189f5f1bc6b6160c53edacd2d8b353f60d136cf19988151b96ff0e5d8347a"
+        },
+        {
+          "signature": "public.fulfillment_consume_parcel_reservations(text,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "3c834bb2a2bf8d97941fbe13783ec99ae01efd6a9e34d1b010b1a827081a1747"
+        },
+        {
+          "signature": "public.commerce_oms_request_replacement_shipment(text,uuid,text,uuid,text,text,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "815f217eed7b6f4badb0a1329d3ec5545c7e2b8ffdd8d6c66f3f526075add4f3"
+        },
+        {
+          "signature": "public.fulfillment_operator_cancel_order(text,uuid,text,uuid,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "b53b8d12aeda66101cb9bdcccc74e5043e4636e135ff86770a71f8628a51370b"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261110155000_fulfillment_parcel_status_fence.sql",
+      "sha256": "437d66d15dd7598c172ebda890e16615e0cc1e5ded56974ed9178d36a8c58844",
+      "functions": [
+        {
+          "signature": "public.commerce_fulfillment_enqueue_provider_command(uuid,text,text,text,text,text,text,text,text,text,text,integer)",
+          "beforeSha256": "ea627f5b6b69e08fc9016d6443ee5f17dc063d1aaa0c076e9a040b91b07dd055",
+          "afterSha256": "e0254efe05aaf7cbfcc6a9e65dc592bd82fe298760e8f08db6bdc2fa25e1e270"
+        },
+        {
+          "signature": "public.commerce_fulfillment_claim_provider_commands(text,text,integer,text,integer)",
+          "beforeSha256": "326de9b9118638c62892d867e5f4b91d4408d139aca0c37ff27c38b521bd79d6",
+          "afterSha256": "57ccd76aa3ce81c7b6c0862287d3cabc7dd9849f30f5d852af8fdfdacefeb83f"
+        },
+        {
+          "signature": "public.commerce_fulfillment_mark_command_submitting(uuid,uuid,bigint,bigint,uuid)",
+          "beforeSha256": "346240ccddf80988fc9ec45344a9b939be9ddb4c86dfbfc2986d4e9d65d5878f",
+          "afterSha256": "cd9a1b3e73ed04619f8d1b0df1606e1f9735b2ba4d093350c21bf19ce4463f22"
+        },
+        {
+          "signature": "public.fulfillment_cancel_shipment(text,uuid,text,jsonb,timestamptz)",
+          "beforeSha256": "36b5fba88788509a5669dce70a48959bf58ffd9bf70852ebcca875d5c6e64e60",
+          "afterSha256": "2a20e03e3affc8a980d1c56f9fce6943f4086405d5c0e12f842e6c603a0bd865"
+        },
+        {
+          "signature": "public.fulfillment_operator_cancel_order(text,uuid,text,uuid,jsonb)",
+          "beforeSha256": "b53b8d12aeda66101cb9bdcccc74e5043e4636e135ff86770a71f8628a51370b",
+          "afterSha256": "16c3d801305130ba35e979861098fcdbc4b1b35aef6d6d6105880268fa47f49e"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261110160000_oms_human_operator_admission.sql",
+      "sha256": "df298f82f8b17219419e659bdb8bd4720d7b1de0c9c97c753c6444bfff624be8",
+      "functions": [
+        {
+          "signature": "public.oms_control_resolve_operator(uuid)",
+          "beforeSha256": "1cb5fa4b679dbc931b5338a05ec94a22ffb220b8abcc2e20be3e78f170fbb931",
+          "afterSha256": "cdbcdf2318564cfdb6ceeaceb8ed9e12e7954ecf2a6b3d84f046ee4c5491a786"
         }
       ]
     },

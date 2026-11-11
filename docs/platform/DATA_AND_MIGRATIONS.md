@@ -441,6 +441,24 @@ equality cannot relink it. Dependent memberships, privacy receipts, history and
 credential/session disposition remain part of the full
 [M14 transfer outcome](plans/oss-m14-operations-portability.md).
 
+## Human OMS admission
+
+`20261110160000_oms_human_operator_admission.sql` replaces only
+`oms_control_resolve_operator(uuid)`. Its SQL STABLE invoker header,
+`search_path = pg_catalog`, owner and ACL remain unchanged. An existing Commerce
+operator resolves through the unchanged active-control route, or through active
+human `admin` membership with no control row of any state. A distributor or
+revoked member does not enter the human route. No INSERT, provisioning, lock,
+DEFINER or grant is added. Hosts authenticate the principal, require human admin
+for hold/release and resolve before every invocation and replay.
+
+The owner provisions each human admin's Commerce row and never deletes it:
+revoke membership to withdraw access. The existing ON DELETE SET NULL on
+`commerce_order_holds.created_by` would otherwise make that operator's
+fulfillment-exception holds look system-created and eligible for automatic
+release. This forward preserves that FK; see the [owner step](../../examples/neutral-store/README.md#commerce-operator-roster-for-hold-and-release-admission).
+The starter's hold/release binding remains a separate change.
+
 ## Additive forward release path
 
 A development preview may append expand-only platform forwards to either chain:
