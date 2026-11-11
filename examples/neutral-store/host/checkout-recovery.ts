@@ -53,7 +53,7 @@ export async function readFrozenCheckoutEmail(orderRef: string, capture = create
 
 import type { PromotionAcceptanceKeyring } from '@openlup/platform/promotions';
 import type { Pool } from 'pg';
-import { createPostgresRoleFreeTransactionLane } from '@openlup/platform/data';
+import type { PostgresRoleFreeTransactionLane } from '@openlup/platform/data';
 import { createCheckoutRecoveryInspection, createExpiredCheckoutRecoveryService, createPostgresCheckoutRecoveryOrderPort,
   createPostgresExpiredCheckoutRecoveryPort, createPostgresExpiredCheckoutDraftPort, createPostgresExpiredCheckoutRuntime,
   createPostgresExpiredCheckoutCompensation, checkoutRecoveryExecutionFingerprint, ExpiredCheckoutRecoveryError,
@@ -79,9 +79,8 @@ export function admitsRecreatedContinuation(result: CheckoutRecoveryInspectionRe
   return result.recoverable && result.recoveryKind === 'retry_existing' && sameUuid(result.order.orderId, orderId);
 }
 
-export function composeExpiredRecovery(pool: Pool, connectionString: string, tokens: PurchaseRecovery['tokens'], keyring?: PromotionAcceptanceKeyring): ApplicationBindings['actions'] {
+export function composeExpiredRecovery(pool: Pool, lane: Pick<PostgresRoleFreeTransactionLane, 'run'>, tokens: PurchaseRecovery['tokens'], keyring?: PromotionAcceptanceKeyring): ApplicationBindings['actions'] {
   const reader = createPostgresCheckoutRecoveryOrderPort(pool);
-  const lane = createPostgresRoleFreeTransactionLane({ connectionString }, { poolFactory: () => pool });
   return { 'checkout.recovery': async (payload, context) => {
     const refuse = (reason: string) => ({ ok: false as const, code: `starter_recovery_${reason}` });
     if (Object.keys(payload).some(key => !['locale','token','action','orderRef','attemptRef','outcome'].includes(key))
