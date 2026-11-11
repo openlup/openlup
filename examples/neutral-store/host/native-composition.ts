@@ -1,4 +1,4 @@
-import { composeExpiredRecovery } from './expired-recovery.ts';
+import { composeExpiredRecovery } from './checkout-recovery.ts';
 import { readPostgresCustomerAccountClient, createPostgresCustomerAccountMutationPort, createCustomerAccountMutationSchemas } from '@openlup/platform/account-support';
 import { customerAccountPolicy } from '../owned/acquisition-policy.ts';
 import type { SubscriptionCommand } from '@openlup/platform/subscriptions/contracts';

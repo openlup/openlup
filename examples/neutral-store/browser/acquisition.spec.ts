@@ -752,7 +752,7 @@ for (const locale of ['en', 'pl'] as const) {
     const result = await call(page, 'operator.paymentLink', { orderRef: f.orderRef, delivery: 'copy' });
     expect(result.ok, result.code).toBe(true);
     const url = new URL(routes.completion[locale], material.baseURL); url.searchParams.set('token', result.value.token);
-    await page.goto(url.href); await expect(page.locator('main')).toContainText(copy[locale].recoveryExpired);
+    await page.goto(url.href); await expect(page.getByRole('button', { name: copy[locale].recoveryPay, exact: true })).toBeVisible();
     await expect(page.locator('main')).toContainText(f.orderRef);
     // Corrupt only this synthetic frozen money snapshot: the current quote must no longer match it.
     await owner.query("UPDATE public.commerce_orders SET metadata=jsonb_set(metadata,'{quoteSnapshot,quote,totalGross,amountMinor}',to_jsonb(total_amount_minor+1)) WHERE id=$1", [f.orderRef]);
@@ -898,9 +898,10 @@ for (const locale of ['en','pl'] as const) {
     const probe = createServer().listen(0, '127.0.0.1'); await once(probe, 'listening');
     const port = (probe.address() as { port: number }).port; await new Promise<void>(done => probe.close(() => done()));
     const priorURL = material.baseURL, address = `http://127.0.0.1:${port}`;
+    const connection = new URL(material.runtimeUrl), password = decodeURIComponent(connection.password); connection.password = '';
     const start = async () => {
       const child = spawn(process.execPath, ['--experimental-strip-types', resolve('host/server.ts'), '--configuration', material.id,
-        '--port', String(port), '--database-url', material.runtimeUrl], { cwd: material.state, stdio: ['ignore','pipe','pipe'] });
+        '--port', String(port), '--database-url', connection.href], { cwd: material.state, env: { ...process.env, PGPASSWORD: password }, stdio: ['ignore','pipe','pipe'] });
       let diagnostic = '';
       child.stdout?.on('data', value => { diagnostic += String(value); }); child.stderr?.on('data', value => { diagnostic += String(value); });
       try { await expect.poll(async () => fetch(address + '/api/config').then(r => r.ok).catch(() => false)).toBe(true); }
