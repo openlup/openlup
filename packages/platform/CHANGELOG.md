@@ -10,6 +10,136 @@ in the source repository.
 
 ## [Unreleased]
 
+## [0.39.0]
+
+- Publishable on the npm `latest` dist-tag as `0.39.0`, from tag
+  `openlup-platform-v0.39.0`.
+
+- Add service-only checkout recovery snapshots, nullable order lineage, capability-gated expired inspection and an adopter-owned content validation fence. Inspection grants no payment authority and creates no replacement; renewal orders refuse.
+
+Migration: Apply the additive native-store forward before composing the new readers. Existing lineage remains null. The self-FKs restrict deletion, and each immediate predecessor can have one replacement.
+
+- @openlup/platform size growth: Inspection, lineage readers and the validation policy fit the inherited package limits; no cap adjustment is required.
+
+- Add safety-first expired initial checkout recreation with frozen commercial validation, one permanent linked replacement, source-payment checks at first runtime admission, native purchase compensation and a shared adopter content fence. A replacement initial subscription gets a new provisional declaration; renewal cycles refuse. Native payment evidence qualification is limited to the sandbox owner; real-provider paths retain their named refusal.
+
+Migration: Apply the additive service-only preparation forward after the recovery-lineage forward. No history is backfilled and no predecessor or live subscription is reopened. Hosts bind authority, quote extensions and a transaction-scoped sandbox runtime.
+
+- @openlup/platform size growth: The packed cap is 3,023,741 B, adding 2% to the hosted 2,964,451 B measure; the approved unpacked, code/documentation and file-count limits are retained.
+
+- Add configured checkout reminder waves with distinct live links, atomic event/token capture, recent-payment suppression and confirmed first-send evidence before the final wave.
+- Add reservation-backed one-time checkout expiry, provisional initial-checkout abandonment and idempotent expired-notice reconciliation. Live subscriptions and renewal-cycle checkout recovery remain excluded.
+- Add lazy scheduled-job and authenticated HTTP composition plus a recovery-specific confirmed-send receipt adapter; other mail paths retain their behavior. Host schedules, pages, browser journeys and expired-order recreation require separate composition.
+
+- Fix a defect: an expired-checkout notice must not carry a link that is already expired; emit the same notice without a token when its recovery deadline has elapsed.
+
+- Package size: code measures 2,338,375 gzip bytes against its prior 2,336,415-byte cap (+1,960 B), retaining the reviewed cap of 2,385,143 B (measured × 1.02, rounded up). Documentation measures 80,526 gzip bytes and fits the retained 0.38.0 cap of 81,230 B. Tarball, unpacked and file caps are unchanged.
+
+Migration: Apply the complete platform chain through `20261110100000_checkout_recovery_waves.sql`. The widened order-status CHECK retains `NOT VALID` and does not revalidate historical rows. New service entry points use closed execution grants; existing entry-point headers and ACLs remain unchanged. Supply a distinct delivery profile and explicit host timing, lease, batch and copy configuration before enabling a job.
+
+- Add owned account history, customer profile edits and acknowledged invoice correction requests. Profile replay uses recorded event keys and returns current state; its write and event append remain separate commits. Correction request keys are stored without deduplication.
+- Add an explicit account-event privacy contributor and exact-row finite transfer classification. Event payloads may contain personal data; identity field clearing does not erase them. Export reports unavailable coverage. Erasure requires a configured reader and an explicit retain assessment; the retention receipt preserves payloads even when that reader reports unavailable export coverage. Missing reader or unresolved disposition refuses erasure.
+
+- Package inventory includes the account-event source, SQL and guidance; the larger merged package caps are retained.
+
+Migration:
+
+Install the complete selected native prefix through `20261110120000_customer_account_events.sql`, bind the authenticated principal/client scope and validation policy, and register the privacy contributor. Saved addresses, billing profiles and starter editors remain separate work.
+
+- Add signed-in checkout recovery start and continuation-cookie buyer payment links. Customer issuance preserves earlier links; buyer mail atomically queues one token and event per configured order bucket. Renewal-cycle orders retain separate recovery.
+- Elapsed deadlines return the existing refusal or account/checkout fallback without a dead link. Apply the complete native migration chain before selecting these ports.
+- Account navigation, HTTP registration, transactional transport and the embedded-browser control remain host bindings.
+- Package inventory grows by nine files for the customer entry points and SQL projection; inherited package caps are retained.
+
+- Add a private customer address book with owned read/save/canonical-reuse/default/delete ports, existing account events and explicit privacy/finite-transfer coverage. Subscription usage pointers support active/paused deletion refusal; saved-address selection and preference consumption remain separate.
+
+Migration:
+
+Install the full selected native catalogue through `20261110190000_customer_saved_addresses.sql`. Select `shipping` and host validation/copy/readers explicitly. Clear, write and event append remain separate commits; replay reads current state. Foreign/missing entity deletion remains a zero-row acknowledgement. The saved-address privacy owner erases saved rows; account-event retention and immutable destination ownership remain separate.
+
+The documentation cap adds 2% headroom for the new guide footprint; packed, unpacked, code and file caps and the released baseline are retained.
+
+- Fence provider-command initiation against both native and operator parcel cancellation with a shared/exclusive transactional advisory gate. Exclude cancelled parcels before the claim limit and recheck after locking, preserving queued records and live-parcel ordering, replay and submission during address changes.
+
+Migration:
+
+Install the complete selected native prefix through `20261110155000_fulfillment_parcel_status_fence.sql`, including its operator-transaction predecessor. Both cancellations take the dedicated parcel gate exclusively; enqueue, claim and submission share it. Enqueue retains its original parcel lock; claim and submission add none. Cancelled parcels refuse enqueue/submission with the existing command-fence conflict, and claim skips them. Function headers, owner and ACL remain unchanged. The locks cover ledger transitions, not the provider call; cancellation keeps its existing in-flight-effect guards. Outcome recording and provider behavior are unchanged.
+
+The two cancellation routines and provider-command enqueue, claim and submission require READ COMMITTED isolation.
+
+- Allow a preprovisioned Commerce operator with active human admin membership and no control row to resolve for OMS commands. Preserve the existing active machine-control route, SQL STABLE invoker header and ACL.
+
+Migration:
+
+Install the complete selected native prefix through `20261110160000_oms_human_operator_admission.sql`. The owner must provision one Commerce row per human admin and never delete it; withdraw authority by revoking membership. The existing creator ON DELETE SET NULL hazard remains. Hosts enforce human-admin admission and resolve before every command and replay. Starter route binding is separate.
+
+- The documentation cap includes 2% headroom over the merged measurement. Other caps and the released baseline are retained.
+
+- Unpaid operator cancellation now serializes with payment attempts and truth,
+  refuses unresolved or moved money, records one audit and releases exactly the
+  order's held purchase reservations. Late captures retain operator review.
+- Manual external-refund marking records paid-to-refunded status without a
+  provider call or refund notification/accounting reversal event. Genuine refund
+  sources retain their duties; active subscriptions remain unchanged.
+
+Migration: Apply the complete native catalogue through
+`20261110200000_operator_order_commands.sql` before using these command semantics.
+Existing function headers and privileges remain unchanged; private attempt reads
+use a bounded owned command rather than additional table grants.
+
+- Package size: documentation measured 83,296 B against an 83,177 B cap
+  (+119 B); the documentation cap is now 84,962 B, including 2% headroom.
+  The whole-tarball packed cap is unchanged.
+
+Manual refund marks retain non-object order metadata under `previousMetadata`
+and always record the manual source explicitly.
+
+- Add the active-human operator order-payment-link handler and closed PostgreSQL store. Operator issuance records admission, revokes previous same-order checkout links, mints and optionally queues recovery mail, then records its outcome. Customer/service issuance and payment-case recovery keep their existing behavior.
+- Configure operator lifetime and recovery window explicitly. Copy returns the token; email reports queued only after per-token durable handoff. Elapsed deadlines and renewal-cycle orders refuse without minting.
+- The shared expiry-policy factory accepts an optional recovery window; existing callers keep its current default. Apply the complete native migration chain before selecting the new store. Operator UI, host registration and expired-order recreation remain separate.
+
+Add explicit native operator replacement and complete parcel cancellation with exact per-parcel reservation generations, frozen preparation contact and destination, durable provider-cancel evidence, cancellation-event suppression and latest-parcel OMS reads. Legacy parcels without recorded reservations cancel with an explicit zero-release disposition; provider-confirmed paid cancellation refuses when recorded order mode is absent. Replacement preparation retains the original selection references and pickup-point provider. Ordinary cancellation refuses existing permanent dispatch evidence and accepted, submitting or uncertain provider commands under the parcel lock; this does not fence a later command enqueue. Neither journey settles a refund or confirms replacement arrival.
+
+Migration: Apply the complete appended native catalogue before selecting these callbacks. To opt in, compose `{ ...createNativeUnsupportedFulfillmentPorts(), ...createPostgresFulfillmentOperatorPort(executor, { providerRef, stockSourceKey }) }` in place of the unsupported replacement/cancellation callbacks; keep host authentication and authorization. Supply `createPostgresParcelReservationConsumption(executor)` to the existing `markProviderStockConsumed` effect composition for exact parcel reservation consumption. Existing transaction lanes remain structurally compatible. Handle the cancellation response's added reservation count/disposition, and keep legacy manual stock correction and unknown-mode cancellation outside this path. Hosts retaining the unsupported factory need no callback change.
+
+- @openlup/platform size growth: Native operator transactions add exact parcel associations, reservation generations, durable receipts and provider observations to the package. The transactions and dispatch guards fit the existing unpacked, packed, code, documentation and file-count limits.
+
+- Native parcel preparation captures a private, minimal recipient and delivery-selection snapshot alongside the immutable destination. Dispatch evidence and public commerce projections do not expose that snapshot.
+- The fulfillment privacy contributor exports those contacts and retained erasure markers through the existing personal-data workflow. It erases the contact payload while retaining a payload-free marker, with an explicit pseudonymous retention disposition, that prevents legacy inference from recreating it. Native retained-store transfer carries the snapshot and erasure marker with its parcel.
+- Legacy contact resolution preserves canonical-override fences, validates the destination and freezes the inferred contact atomically. Replacement creation remains a separate capability.
+- Preserve the selection's provider reference and the pickup point's provider in both native capture and bounded legacy inference. Ordinary preparation reuses the first contact and selection after profile defaults change, including while a dispatch reference remains draft; equal repeats preserve the capture time. Erasure cannot recreate the payload. Existing explicit dispatch-context edits remain available, while private contact correction is outside this capability.
+
+Migration: Apply the complete appended native catalogue before using native parcel preparation. Hosts composing personal-data operations must register `createFulfillmentParcelContactPrivacyContributor` from `@openlup/platform/identity` and require contributor ID `fulfillment-parcel-contacts`; retain the existing identity contributor and subscription erasure veto. The reference Node composition does this explicitly.
+
+- @openlup/platform size growth: Private parcel contact capture, privacy and finite transfer fit the inherited package limits after integration; no cap adjustment is required.
+
+Add an opt-in sized future-plan editor with complete unchanged-line price
+agreements, changed-only quoting, host-owned need/exclusion/catalogue ports,
+transactional fact equality and current SKU admission. Explicit accepted consent
+binds classic subscriptions atomically; preview and abandonment keep classic.
+Direct/reverse binding writes refuse. Renewal uses the stored merged agreements.
+Public declarations are additive and require a minor package-set release.
+This source preview supplies no sized acquisition, account UI or catalogue
+publication-head fence and activates no deployment or release.
+
+Selected catalogue evidence (including document revision/digest, physical size,
+exclusions and stock) is retained in the preview ledger and compared by existing
+SQL equality. The host rereads and compares it in the apply transaction; catalogue
+rows are not locked, so concurrent catalogue publication remains the
+publication-fence limit.
+
+Migration: extend `assertCurrentFacts` to reread and compare its selected catalogue
+facts argument on the supplied transaction connection. Recreate outstanding
+sized previews after upgrading; older previews lack the catalogue evidence.
+
+- Fixed timed auto-resume after a paid first order whose native shipment has been delivered. Historical paid cycles and completed activations no longer keep a finite pause open; next-cycle orders and unfinished renewal or activation work still block safely.
+
+Migration: `20261109150000_subscription_auto_resume_paid_history.sql` replaces only `subscription_auto_resume_due(integer,timestamptz)`, preserving its remaining guards, event, monotonic cadence roll-forward, header, owner and execution privileges.
+
+- A timed pause shifts the next cycle by the pause length and never brings it earlier. Auto-resume and the pause reminder use the stored window duration, with reminders clamped to the pause end and auto-resume clamped to execution time; manual customer resume is unchanged.
+
+Migration: `20261110105000_subscription_pause_duration.sql` replaces only the timed auto-resume function and the pause-reminder producer, preserving their skip guards, headers, owners and execution privileges.
+
 ## [0.38.0]
 
 - Publishable on the npm `latest` dist-tag as `0.38.0`, from tag
@@ -350,35 +480,3 @@ performed. Existing account-choice history and suppression retain their semantic
 - Preserve renewal authorization for existing terms without a method-state row.
   Purchased subscriptions still receive method state atomically with their
   terms, and explicit unhealthy method states refuse before payment execution.
-
-## [0.36.0]
-
-- Publishable on the npm `latest` dist-tag as `0.36.0`, from tag
-  `openlup-platform-v0.36.0`.
-
-Add the existing neutral partner-acquisition schemas, type-only port and unchanged
-three-operation PostgreSQL factory through the existing marketing entries.
-Partners retains domain/data ownership; host routing, authorization and runtime
-selection stay separate. Pipeline `closed_won` does not create a customer or
-marketing consent. Partner privacy export/erasure remains unavailable.
-
-Migration: before, partner submit/list/transition required reference-source
-contracts and store imports; after, consumers can use the existing marketing,
-marketing/contracts and marketing/server/postgres exports against a complete
-compatible source catalogue. No SQL, grants, npm export subpaths or automatic
-route activation change. Sparse npm SQL assets alone are not a complete install.
-
-- The public reference partner schemas, neutral ports and PostgreSQL factory
-  delegate to the existing marketing package exports. Rich managed contracts and
-  host authorization, drain, environment selection and connection ownership are
-  unchanged. Frozen R1 expectations remain unchanged.
-- The shared isolated consumer adds the actual public default-binding journey
-  against its existing native catalogue fixture, covering original persisted
-  replay and cache/close/reopen without an injected factory.
-
-Migration: before, reference neutral schemas, ports and the PostgreSQL store had
-local copies; after, the same reference import paths delegate to the existing
-`@openlup/platform/marketing` schemas, `marketing/contracts` types and
-`marketing/server/postgres` factory with unchanged observable contracts. Install
-no new SQL or grants for this delegation. Existing compatible adopter SQL remains
-owned by that adopter; this source refactor grants no publication or activation.
