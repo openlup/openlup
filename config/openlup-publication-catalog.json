@@ -1326,6 +1326,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261110190000_customer_saved_addresses.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4430,6 +4434,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261110190000_customer_saved_addresses.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -6962,6 +6970,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/identity/savedAddressPrivacy.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/identity/sql.ts",
       "class": "public-output"
     },
@@ -8346,6 +8358,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/shipping/customerSavedAddressSchemas.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/shipping/customerSelfServiceAddressModels.ts",
       "class": "public-output"
     },
@@ -8371,6 +8387,10 @@
     },
     {
       "path": "packages/platform/src/shipping/pickupPointSearchPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/postgresAddressBook.ts",
       "class": "public-output"
     },
     {
@@ -10707,6 +10727,10 @@
     },
     {
       "path": "packages/platform/test/shipping/deliveryConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/shipping/savedAddressSchemas.test.ts",
       "class": "public-output"
     },
     {
@@ -28923,6 +28947,14 @@
     },
     {
       "path": "tests/postgres/customerNewsletterWithdrawal.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/customerSavedAddresses.fixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/customerSavedAddresses.test.ts",
       "class": "public-output"
     },
     {

@@ -3967,6 +3967,66 @@
         ],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "customer-saved-addresses",
+        "path": "db/platform/migrations/20261110190000_customer_saved_addresses.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.customer_saved_addresses_read(uuid,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_saved_address_replayed(uuid,uuid,text,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_saved_address_canonical(uuid,uuid,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_saved_address_clear_defaults(uuid,uuid,text,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_saved_address_write(uuid,uuid,uuid,jsonb,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_saved_address_delete(uuid,uuid,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_saved_addresses_export(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_saved_addresses_erase(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_saved_address_in_use(uuid,uuid,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_saved_addresses_prepare_erasure()",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [
+          "INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('customer_saved_addresses', 'block', 'Saved personal addresses belong to their customer and prevent lead absorption.');"
+        ],
+        "existingTableStatements": [
+          "ALTER TABLE public.subscriptions ADD COLUMN shipping_saved_address_id uuid;",
+          "ALTER TABLE public.subscriptions ADD CONSTRAINT subscriptions_shipping_saved_address_fkey FOREIGN KEY (shipping_saved_address_id) REFERENCES public.customer_saved_addresses(id) ON DELETE SET NULL;",
+          "ALTER TABLE public.subscriptions ADD COLUMN billing_saved_address_id uuid;",
+          "ALTER TABLE public.subscriptions ADD CONSTRAINT subscriptions_billing_saved_address_fkey FOREIGN KEY (billing_saved_address_id) REFERENCES public.customer_saved_addresses(id) ON DELETE SET NULL;"
+        ],
+        "absorptionCensusTables": [
+          "public.customer_saved_addresses"
+        ]
       }
     ]
   },
@@ -4858,6 +4918,62 @@
           "signature": "public.commerce_prepare_expired_checkout_recovery(text,uuid,uuid,bigint,timestamptz)",
           "beforeSha256": null,
           "afterSha256": "776cb4cde206c1e9a0286eadf8477fb062debe7a631f5db42f73be60f906f7f9"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261110190000_customer_saved_addresses.sql",
+      "sha256": "0cf335d6a2497015d9218a6ab64fe888a3143290d7f6605a115c848eee4c042a",
+      "functions": [
+        {
+          "signature": "public.customer_saved_addresses_read(uuid,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "eaec730a36a6c183b95b62a69c4f82090bfa4d3f226171e778545e74a5f0d78a"
+        },
+        {
+          "signature": "public.customer_saved_address_replayed(uuid,uuid,text,text)",
+          "beforeSha256": null,
+          "afterSha256": "60eef475e41a334997a1de67c3d9df424a0c676a260079f238fc534862e1e5f4"
+        },
+        {
+          "signature": "public.customer_saved_address_canonical(uuid,uuid,text)",
+          "beforeSha256": null,
+          "afterSha256": "b753d297d894f319c56b3637e1fcc7aa120bb4585eaaabfed53efab6687efdc9"
+        },
+        {
+          "signature": "public.customer_saved_address_clear_defaults(uuid,uuid,text,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "4211d24aedd9b272291f5639c29d4c4d3a68dc98912a07b54632f1f542702c82"
+        },
+        {
+          "signature": "public.customer_saved_address_write(uuid,uuid,uuid,jsonb,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "e58946a837ed5dfd02712343cfaebfcb2033dfff7949a4bf116bd79737670df8"
+        },
+        {
+          "signature": "public.customer_saved_address_delete(uuid,uuid,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "d07fbddd4c063bd925319597ba5f7b839c0992d1666654ba4543db8e5c1688eb"
+        },
+        {
+          "signature": "public.customer_saved_addresses_export(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "a11a7ef5f0c5db7f925ec03e9764293e8017bf06f706c8767ad108ebda4d8f34"
+        },
+        {
+          "signature": "public.customer_saved_addresses_erase(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "b4dc031a955ad131d8675a999a88b944b10917f6bd9ea8ebd6e1965cf6cb700b"
+        },
+        {
+          "signature": "public.customer_saved_address_in_use(uuid,uuid,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "5263af47ca0e4f95edd2ff9cbc7caca82b5f85e760770dd95dcdec9282d67c86"
+        },
+        {
+          "signature": "public.customer_saved_addresses_prepare_erasure()",
+          "beforeSha256": null,
+          "afterSha256": "2617e5a5babb2ec7c66fbb1461543ad0fad4fee5af2a363a92ee99565b1b46cc"
         }
       ]
     }
