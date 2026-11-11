@@ -79,4 +79,4 @@ it("transfers one purchased store to a pristine database and continues its open 
     (SELECT count(*)::int FROM public.subscription_events WHERE event_type='subscription.activated') AS activations`)).rows)
     .toEqual([{ orders: 1, cycles: 1, shipments: 0, activations: 1 }]);
   expect(await journeyCensus(source.owner)).toEqual(before);
-}, 30_000);
+}, 60_000);

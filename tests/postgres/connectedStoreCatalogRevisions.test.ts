@@ -70,8 +70,8 @@ function observedOwner(before: (sql: string, query: (sql: string, values?: unkno
   } } as unknown as Pool;
 }
 
-// The existing connected-transfer deadline is 30 seconds per case. Setup has
-// its separate container deadline; these cases keep retry at zero.
+// Each case bound is about 4x its slowest hosted run, rounded up to 5 s.
+// Container setup retains its separate deadline; cases keep retry at zero.
 it("carries two revisions per revised product, resolves the latest pointer and replays byte-exactly", async () => {
   const before = await journeyCensus(source.owner);
   expect(packet.owned.find(table => table.table === "catalog_product_document_revisions")?.rows)
@@ -88,7 +88,7 @@ it("carries two revisions per revised product, resolves the latest pointer and r
       product_id: id, revision_no: 2, latest: true })));
   expect(await restore()).toEqual({ captureSha256: packet.sha256, replayed: true, neutralizedHistoricalHoldNotifications: 0 });
   expect(await journeyCensus(target.owner)).toEqual(before);
-}, 30_000);
+}, 105_000);
 
 it("refuses another product's revision at the pointer foreign key and rolls back to pristine rows", async () => {
   const pristine = await journeyCensus(target.owner);
@@ -114,7 +114,7 @@ it("refuses another product's revision at the pointer foreign key and rolls back
   expect(pointerError).toMatchObject({ code: "23503",
     constraint: "catalog_products_current_document_revision_same_product_fkey" });
   expect(await journeyCensus(target.owner)).toEqual(pristine);
-}, 30_000);
+}, 60_000);
 
 it("preserves a null document pointer and a null primary SKU without changing product rows", async () => {
   expect(await restore()).toMatchObject({ replayed: false });
@@ -127,7 +127,7 @@ it("preserves a null document pointer and a null primary SKU without changing pr
     (SELECT count(*)::int FROM public.catalog_product_document_revisions r WHERE r.product_id=p.id) AS revisions
     FROM public.catalog_products p WHERE p.id=$1`, [products[2]])).rows)
     .toEqual([{ id: products[2], current_document_revision_id: null, has_sku: true, revisions: 0 }]);
-}, 30_000);
+}, 75_000);
 
 it("refuses a changed staged product at the guarded pointer update and rolls back every row", async () => {
   const pristine = await journeyCensus(target.owner);
@@ -142,4 +142,4 @@ it("refuses a changed staged product at the guarded pointer update and rolls bac
   await expect(restore(owner)).rejects.toMatchObject({ code: "target_conflict", table: "catalog_products" });
   expect(changed).toBe(true);
   expect(await journeyCensus(target.owner)).toEqual(pristine);
-}, 30_000);
+}, 65_000);

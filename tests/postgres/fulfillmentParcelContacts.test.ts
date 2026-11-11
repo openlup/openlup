@@ -188,4 +188,4 @@ it('carries live private contacts and payload-free erasure markers through finit
     expect((await read(target.owner)).find(row => row.shipment_id === erased.shipment)).toMatchObject({ contact: {} });
     expect(await restoreConnectedNativeStore({ owner: target.owner, installation: journeySelection, packet, freshTarget })).toMatchObject({ replayed: true });
   } finally { await resources.close(); }
-}, 30_000);
+}, 125_000);

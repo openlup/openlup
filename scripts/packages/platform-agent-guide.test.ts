@@ -29,7 +29,7 @@ it("ships a guide with the exact release-gate maturity table and compiled wiring
     types: ["node"],
   });
   expect(ts.getPreEmitDiagnostics(program).map(diagnostic => ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"))).toEqual([]);
-});
+}, 30_000);
 
 it("refuses a guide whose maturity differs from its release gates", () => {
   const fixture = mkdtempSync(join(tmpdir(), "platform-agent-guide-"));

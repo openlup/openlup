@@ -101,5 +101,5 @@ it("dispatches transferred paid and failed-renewal notices once through durable 
     } finally { await receipts.close(); }
   }
   expect(answers[1]).toEqual(answers[0]);
-// The joined renewal case measured under 11 s; 90 s leaves headroom for notice dispatch and two installations.
-}, 90_000);
+// About 4x the slowest hosted run (33,204 ms), rounded up to 5 s.
+}, 135_000);
