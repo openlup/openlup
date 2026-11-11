@@ -371,7 +371,7 @@ it('reads pending, issued, corrected, retry and guest summaries and owned PDF by
 
 // Measured separately from installation and browser challenge-window waits.
 const adminReadRefusalTimeoutMs = 60000;
-it('admits an active distributor session but refuses admin-only shipment and invoice reads before I/O', async () => {
+it('admits an active distributor session but refuses admin-only OMS, shipment and invoice reads before I/O', async () => {
   expect((await runtime.query('SHOW TimeZone')).rows[0].TimeZone).toBe('Etc/UTC');
   const distributorId = randomUUID(), email = 'document-distributor@example.test';
   // Same owner-seeded active legacy membership as the identity upgrade witness;
@@ -389,17 +389,16 @@ it('admits an active distributor session but refuses admin-only shipment and inv
     .toEqual([{ id: shipmentId }]);
   expect((await installer.query('SELECT id FROM public.accounting_documents WHERE order_id=$1', [orderId])).rows)
     .toHaveLength(1);
-  const admitted = await action('operator.orders', {}, cookie);
-  expect(admitted.body.ok).toBe(true);
-  expect(admitted.body.value.orders.length).toBeGreaterThan(0);
   const before = await snapshot();
   const fence = await installer.connect();
   try {
     await fence.query('BEGIN');
-    // These are the first read tables of the real shipment/invoice ports. An
+    // These are the first read tables of the real OMS/shipment/invoice ports. An
     // accidentally admitted read cannot complete while these fences are held.
     await fence.query('LOCK TABLE public.fulfillment_shipments, public.commerce_orders, public.accounting_documents IN ACCESS EXCLUSIVE MODE');
     for (const [operation, payload] of [
+      ['operator.orders', {}],
+      ['operator.order', { orderRef: orderId }],
       ['operator.shipments', {}],
       ['operator.shipment', { shipmentRef: shipmentId }],
       ['operator.invoice', { orderRef: orderId }],
@@ -435,8 +434,8 @@ it('all fourteen operation limits preserve the complete effect snapshot over rep
   expect(removed.body.code).toBe('starter_operation_unknown');
   for (const host of hosts) {
     const status = (await action('application.status', {}, operatorCookie, randomUUID(), host.baseURL)).body.value.bindings;
-    expect(status.length).toBe(53);
-    expect(status.filter((item: { bound: boolean }) => item.bound)).toHaveLength(39);
+    expect(status.length).toBe(59);
+    expect(status.filter((item: { bound: boolean }) => item.bound)).toHaveLength(45);
     for (const operation of Object.keys(operationLimits)) {
       expect(status.find((item: { operation: string }) => item.operation === operation).bound).toBe(false);
     }

@@ -479,7 +479,17 @@ correction retain their existing refusal. Replacement requests use the optional
 explicit replacement binding, which can be supplied by
 `createPostgresFulfillmentOperatorPort` from `./fulfillment/native`. Returns record
 intent; they do not receive, restock or execute a refund. The host authenticates
-and authorizes each operation. See the [composition recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#native-oms-and-support-stores).
+and authorizes each operation. The native operator resolver accepts an existing
+Commerce operator whose UUID is either an active control principal or an active
+human `admin` membership with no control row of any state. A human distributor,
+revoked member or admin without a Commerce row does not resolve. No authority is
+provisioned by the resolver. Human hosts must enforce admin-only admission and
+resolve again before every command and replay; the existing machine path is
+unchanged. The owner provisions a Commerce row for each human admin and never
+deletes it; withdraw human access by revoking membership. Deletion would set
+`commerce_order_holds.created_by` to NULL, making a human fulfillment-exception
+hold eligible for automatic release. This existing FK hazard is not changed.
+See the [composition recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#native-oms-and-support-stores).
 Native destinations use `./commerce/server/destinations` and the complete SQL
 catalogue. Hosts authorize parent reads and bind checkout/dispatch explicitly.
 The confirmation outbox is durable; native mail dispatch is unbound.
@@ -2298,6 +2308,24 @@ navigation tokens and cookie-authorized buyer mail with atomic bucket deduplicat
 Both preserve earlier links and refuse renewal-cycle orders. See the
 [customer recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#customer-checkout-recovery-entry-points)
 for session binding, PostgreSQL ports, lifetimes and host delivery/UI obligations.
+
+Checkout recovery inspection in `./commerce/server` adds service-only original
+and latest-descendant readers, capability-gated expired presentation and an
+adopter-owned content validation fence. Inspection cannot authorize payment or
+create a replacement. Renewal cycles refuse; initial declarations retain their
+separate native identity. See the [inspection recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#checkout-recovery-inspection).
+
+Expired checkout recreation in `./commerce/server` adds a safety-first service,
+service-only lineage preparation, native draft replay and transaction-bound
+sandbox purchase/compensation adapters. The same adopter content fence gates
+validation and recreation. The runtime rechecks source payment evidence under the source aggregate lock
+before first stock or payment admission. A linked replacement cannot change its
+predecessor. A replacement initial subscription receives a new
+provisional declaration; its terminal predecessor and live subscriptions stay
+unchanged. Renewal cycles refuse. The native prior-payment safety adapter in
+`./payments` uses actual simulator attempts; real-provider paths retain their
+named unsupported refusal. See the [recreation recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#expired-checkout-recreation)
+for required host authority, executor binding and the real-money closure limit.
 
 ## Saved customer address book
 

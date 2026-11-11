@@ -1,3 +1,4 @@
+import installationInventory from "./current-installation-inventory.json" with { type: "json" };
 import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { Pool } from "pg";
@@ -54,18 +55,10 @@ it.each(["legacy", "bootstrap", "separate", "admin-managed", "admin-operator"] a
       } });
     await runner.apply();
     expect((await runner.apply()).applied).toEqual([]);
-    const expected = profile === "legacy" ? 119 : admin ? 123 : 124;
+    const expected = installationInventory.current.profiles[profile].count;
     expect((await owner.query("SELECT count(*)::int AS n FROM public.platform_schema_migrations")).rows[0].n).toBe(expected);
-    expect((await owner.query("SELECT catalog_path,position FROM public.platform_schema_migrations ORDER BY position DESC LIMIT 9")).rows)
-      .toEqual([{ catalog_path: "db/platform/migrations/20261110240000_subscription_saved_address_selection.sql", position: expected - 1 },
-        { catalog_path: "db/platform/migrations/20261110190000_customer_saved_addresses.sql", position: expected - 2 },
-        { catalog_path: "db/platform/migrations/20261110150000_fulfillment_operator_journeys.sql", position: expected - 3 },
-        { catalog_path: "db/platform/migrations/20261110140000_fulfillment_parcel_contacts.sql", position: expected - 4 },
-        { catalog_path: "db/platform/migrations/20261110120000_customer_account_events.sql", position: expected - 5 },
-        { catalog_path: "db/platform/migrations/20261110115000_customer_checkout_links.sql", position: expected - 6 },
-        { catalog_path: "db/platform/migrations/20261110110000_operator_checkout_links.sql", position: expected - 7 },
-        { catalog_path: "db/platform/migrations/20261110105000_subscription_pause_duration.sql", position: expected - 8 },
-        { catalog_path: "db/platform/migrations/20261110100000_checkout_recovery_waves.sql", position: expected - 9 }]);
+    expect((await owner.query("SELECT catalog_path,position FROM public.platform_schema_migrations ORDER BY position DESC LIMIT $1", [installationInventory.current.profiles[profile].exactTailCount])).rows)
+      .toEqual(installationInventory.current.profiles[profile].tail.slice(0, installationInventory.current.profiles[profile].exactTailCount).map((unit, index) => ({ catalog_path: unit.file, position: expected - index - 1 })));
     const signature = "public.subscription_line_edit_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz)";
     expect((await owner.query("SELECT prosecdef,proconfig FROM pg_proc WHERE oid=$1::regprocedure", [signature])).rows)
       .toEqual([{ prosecdef: true, proconfig: ["search_path=pg_catalog, pg_temp"] }]);

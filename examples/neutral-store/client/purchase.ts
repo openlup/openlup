@@ -6,12 +6,13 @@ const memory = new Map<string, Purchase>();
 const key = (configuration: string) => `neutral-store:purchase:v2:${configuration}`;
 let entry: string | null = null;
 
-/** Run synchronously before configuration fetch, rendering or query propagation. */
+/** Run synchronously at bootstrap and navigation, before rendering or query propagation. */
 export function captureCompletionEntry(): void {
   if (resolveRoute(location.pathname).key !== 'completion') return;
   const query = new URLSearchParams(location.search);
-  entry = query.get('token');
-  if (entry !== null) {
+  const token = query.get('token');
+  if (token !== null) {
+    entry = token;
     query.delete('token');
     history.replaceState(null, '', location.pathname + (query.size ? `?${query}` : '') + location.hash);
   }

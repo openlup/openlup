@@ -470,6 +470,22 @@
       "sha256": "fe718ce12eea30f98e7e07d94cb9bd0b3d846248ec85cbdc39f98aa86e8a56cc"
     },
     {
+      "file": "db/platform/migrations/20261110155000_fulfillment_parcel_status_fence.sql",
+      "sha256": "437d66d15dd7598c172ebda890e16615e0cc1e5ded56974ed9178d36a8c58844"
+    },
+    {
+      "file": "db/platform/migrations/20261110160000_oms_human_operator_admission.sql",
+      "sha256": "df298f82f8b17219419e659bdb8bd4720d7b1de0c9c97c753c6444bfff624be8"
+    },
+    {
+      "file": "db/platform/migrations/20261110170000_checkout_recovery_inspection.sql",
+      "sha256": "b230c4e9d84994c98c43551e087e478a9d6ac8e0fc449aa7a6a476eff72498dc"
+    },
+    {
+      "file": "db/platform/migrations/20261110180000_checkout_recovery_recreation.sql",
+      "sha256": "4cd2c288635a96bd7baab00fa5414bcb0d0de5352a7089f1c4a9f55631e3912f"
+    },
+    {
       "file": "db/platform/migrations/20261110190000_customer_saved_addresses.sql",
       "sha256": "0cf335d6a2497015d9218a6ab64fe888a3143290d7f6605a115c848eee4c042a"
     },
@@ -478,7 +494,7 @@
       "sha256": "281a43d4139811ec04d920d1c7b336140710af4153c67e6983fd82ad41a55c23"
     }
   ],
-  "objectInventorySha256": "c94327d6db9a41917bbb4640437d90bcaaf261c0d082aa8367edf2d44844bc78",
+  "objectInventorySha256": "829290be979931e8fb7517ecbc79e80aa494bf97d3030aedac1b63e26c0dabd1",
   "qualified": {
     "baseline": {
       "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -970,6 +986,22 @@
         "sha256": "fe718ce12eea30f98e7e07d94cb9bd0b3d846248ec85cbdc39f98aa86e8a56cc"
       },
       {
+        "file": "db/platform/migrations/20261110155000_fulfillment_parcel_status_fence.sql",
+        "sha256": "437d66d15dd7598c172ebda890e16615e0cc1e5ded56974ed9178d36a8c58844"
+      },
+      {
+        "file": "db/platform/migrations/20261110160000_oms_human_operator_admission.sql",
+        "sha256": "df298f82f8b17219419e659bdb8bd4720d7b1de0c9c97c753c6444bfff624be8"
+      },
+      {
+        "file": "db/platform/migrations/20261110170000_checkout_recovery_inspection.sql",
+        "sha256": "b230c4e9d84994c98c43551e087e478a9d6ac8e0fc449aa7a6a476eff72498dc"
+      },
+      {
+        "file": "db/platform/migrations/20261110180000_checkout_recovery_recreation.sql",
+        "sha256": "4cd2c288635a96bd7baab00fa5414bcb0d0de5352a7089f1c4a9f55631e3912f"
+      },
+      {
         "file": "db/platform/migrations/20261110190000_customer_saved_addresses.sql",
         "sha256": "0cf335d6a2497015d9218a6ab64fe888a3143290d7f6605a115c848eee4c042a"
       },
@@ -980,10 +1012,10 @@
     ],
     "objectInventorySha256": {
       "bootstrapMigrator": {
-        "withRestore": "a02b33b76bc1621164362073c34ed99061b9f10918218fa3903d46370e70a54f"
+        "withRestore": "846f202e36aa8b4a90cf1e85fc19739d62f90aa9996d76083b4714b27bde764c"
       },
       "separateMigrator": {
-        "withRestore": "0018fc34c5a38ba49e035582a72930a763f8dd30a38f68674a951d5eb2c11f5e"
+        "withRestore": "904d6bdc4863c82f64aaffc65b484354cad96d4f54527694ad83de8ef456eb97"
       }
     }
   },
@@ -1474,6 +1506,22 @@
         "sha256": "fe718ce12eea30f98e7e07d94cb9bd0b3d846248ec85cbdc39f98aa86e8a56cc"
       },
       {
+        "file": "db/platform/migrations/20261110155000_fulfillment_parcel_status_fence.sql",
+        "sha256": "437d66d15dd7598c172ebda890e16615e0cc1e5ded56974ed9178d36a8c58844"
+      },
+      {
+        "file": "db/platform/migrations/20261110160000_oms_human_operator_admission.sql",
+        "sha256": "df298f82f8b17219419e659bdb8bd4720d7b1de0c9c97c753c6444bfff624be8"
+      },
+      {
+        "file": "db/platform/migrations/20261110170000_checkout_recovery_inspection.sql",
+        "sha256": "b230c4e9d84994c98c43551e087e478a9d6ac8e0fc449aa7a6a476eff72498dc"
+      },
+      {
+        "file": "db/platform/migrations/20261110180000_checkout_recovery_recreation.sql",
+        "sha256": "4cd2c288635a96bd7baab00fa5414bcb0d0de5352a7089f1c4a9f55631e3912f"
+      },
+      {
         "file": "db/platform/migrations/20261110190000_customer_saved_addresses.sql",
         "sha256": "0cf335d6a2497015d9218a6ab64fe888a3143290d7f6605a115c848eee4c042a"
       },
@@ -1483,8 +1531,8 @@
       }
     ],
     "objectInventorySha256": {
-      "installerManaged": "554f8de4212a13606eb17e7f047b44c73f1b7735cb73259f5b863e529217d244",
-      "operatorProvisioned": "94d296f7cbf0fd86ac846538a8922d2f9f6988a39a588a8d8660807b21d27143"
+      "installerManaged": "0f93b70181e561b1e32db06a19765110ef58ed77a7924b14144d68db6ff22caf",
+      "operatorProvisioned": "74df1d4a8a6a66325c6225f753d130d87c63d58c6c76f589c54be4f8053e8d74"
     }
   }
 }

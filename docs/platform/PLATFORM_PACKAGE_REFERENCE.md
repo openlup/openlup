@@ -1707,3 +1707,109 @@ transport, HTTP registration, account navigation and the embedded-browser contro
 remain host bindings. The [PostgreSQL witnesses](../../tests/postgres/customerCheckoutLinks.test.ts)
 cover legacy and both qualified runtime generations; they establish no hosted,
 browser or real-provider qualification.
+
+## Checkout recovery inspection
+
+For a trusted host composing a completion page, `./commerce/server` exports
+`createPostgresCheckoutRecoveryOrderPort`, `createCheckoutRecoveryInspection`
+and `createCheckoutRecoveryValidationPolicy`. Supply a service executor to the
+reader, the existing token port, the account-context read, and the selected
+commercial validator. Public executor types require no PostgreSQL driver types.
+The SQL readers return the bound original or the root's latest-created descendant;
+the composition binds either result to the token's client. It refuses renewal
+orders with a non-null subscription cycle. A compensated initial declaration is
+first-purchase context, without reopening the predecessor or a live subscription.
+
+Clients opt in with `recreate_expired_order`. An expired token may expose eligible
+expired context and a validated `recreate_expired` presentation, but cannot resume
+a pending replacement. Only the existing continuation states may present
+`retry_existing`. Revoked/used authority refuses before descendant reads.
+Paid orders show paid confirmation without payment controls; manual cancellations
+and commercial drift show terminal fallback. Old clients keep the fallback path.
+`resolve_active_payment` separately opts into the injected payment resolver; absent
+resolution support returns `awaiting_provider`.
+
+The adopter binds `createCheckoutRecoveryValidationPolicy({ supports, validation })`
+to its own content constraints. Unsupported frozen snapshots return `false` before
+commercial validation runs. The same policy must fence a later recreation
+composition before its side effects. This inspection contribution creates no
+replacement, token, reservation or payment attempt. Its result is presentation,
+never payment authority: every later mutation must independently admit its bearer,
+order and current payment evidence. Real-provider preparation and recovery evidence
+retain their existing refusals; the payment persistence capability owns their closure.
+
+The additive migration introduces nullable recovery-root and immediate-predecessor
+order links, restrictive unvalidated self-FKs and a unique non-null predecessor
+index. Historical links stay null. No backfill, writer or new traversal/tie-break
+policy is included. See the [PostgreSQL witness](../../tests/postgres/checkoutRecoveryInspection.test.ts)
+and [composition characterizations](../../packages/platform/test/commerce/checkoutRecoveryInspection.test.ts).
+
+## Expired checkout recreation
+
+The server export `createExpiredCheckoutRecoveryService` composes the expired
+inspection validator with recreation. A trusted host must bind the inspected
+order/client and independently authorize the command. Inspection is never
+payment authority. Bind the same adopter `supports` predicate for validation
+and recreation: unsupported frozen content returns `false` from validation and
+`unavailable` before recreation performs provider, quote or draft work.
+
+Recreation requires the frozen quote and destination. The injected
+`ExpiredCheckoutPaymentSafetyPort` must read the actual prior payment object:
+success returns `paid`, confirmed terminal non-settlement with exact amount and
+currency returns `safe`, and missing, unknown, pending or failed reads return
+`unavailable`. Absence of local success does not establish non-settlement.
+`createPostgresSandboxExpiredCheckoutSafety` binds this contract to the native
+simulator's durable attempt and observation; it never invents missing evidence.
+
+The quote port receives the persisted `pricingPolicy` and `offerVersion`. The
+adopter binds its opaque quote-request extensions from trusted persisted data.
+The service compares the existing commercial fingerprint, preserving frozen
+offer evidence while excluding transient quote IDs and timestamps. Drift returns
+`order_changed` before draft creation. It uses the stable
+`checkout-recovery-recreate:<sourceOrderId>` key, creates the native draft, calls
+`createPostgresExpiredCheckoutRecoveryPort` to prepare lineage and then starts
+the fresh purchase runtime. The draft wrapper
+`createPostgresExpiredCheckoutDraftPort` delegates replay through the existing
+draft owner using its original accepted snapshot when only transient quote
+identity changed.
+
+For the native sandbox runtime, bind `createPostgresExpiredCheckoutRuntime` to a
+dedicated READ COMMITTED transaction lane. Bind `verifyPriorPayment` to
+`createPostgresSandboxExpiredCheckoutSafety` using the supplied executor, as with
+the reservation and payment callbacks. The runtime locks the source order before
+the replacement and source intent. Before the first replacement admission it
+rechecks source payment evidence under these locks, which serialize with source
+observations. Source success returns `paid` before stock or payment writes and
+the service compensates the replacement. An already opened replacement intent
+does not bypass the check; native payment owners retain their guarded replay. Bind reservation to
+`createPostgresPurchaseReservationPort` and payment to the native simulator;
+`checkoutRecoveryExecutionFingerprint` supplies its stable execution identity.
+No remote provider dispatch belongs inside this transaction. Configure the stock
+source, channel and reservation lifetime explicitly. A host using other purchase
+profiles must supply its own admitted runtime port.
+
+The preparation writer locks the source and replacement, checks current payment
+evidence and the current recovery deadline after blocking locks, and admits one
+immediate replacement. Exact linked replay precedes fresh admission checks,
+including after compensation. A linked replacement can never be reparented to
+another source. An initial subscription gets a new provisional
+declaration; the terminal predecessor stays compensated. Recreation creates no
+cycle, never mutates an active/paused subscription, and refuses every non-null
+source subscription cycle. Existing captured-payment activation creates a live
+subscription only after a later successful purchase.
+
+On a downstream failure the service attempts abandoned-checkout cancellation,
+then unstarted-promotion cleanup. `createPostgresExpiredCheckoutCompensation`
+uses the existing guarded native cancellation and promotion-release owners; its
+unstarted check shares the order lock and transaction with cancellation. It
+never cancels through dispatched or uncertain payment evidence. A stock refusal
+returns `order_changed`; a compensated replacement retains its lineage and does
+not permit a sibling. The [PostgreSQL witnesses](../../tests/postgres/checkoutRecoveryRecreation.test.ts)
+cover legacy and both qualified runtimes.
+
+| Profile limit | Current refusal | Closure |
+| --- | --- | --- |
+| Native real-provider attempt persistence and recovery evidence | `native_prepared_attempt_store_unsupported`; recreation is qualified only for the sandbox owner | N6 portable real-money payment-owner round, with its own SQL admission and provider evidence |
+
+This mechanism adds no route, UI, token issuer, recreation guidance or real-provider
+qualification. Those remain separate host composition and payment-owner work.
