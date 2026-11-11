@@ -75,7 +75,7 @@ describe('conservative tooling scope', () => {
     const selected = scopeFromEvent(pr);
     expect(selected).toEqual(excludedToolingTests(['src/product.ts']));
     expect(selected.length).toBeGreaterThan(0);
-    for (let shard = 1; shard <= 4; shard++) expect(scopeFromEvent(pr)).toEqual(selected);
+    for (let shard = 1; shard <= 6; shard++) expect(scopeFromEvent(pr)).toEqual(selected);
     expect(scopeFromEvent({ eventName: 'merge_group', event: { merge_group: { base_sha: ahead } }, cwd })).toEqual(selected);
     git('mv', 'source.ts', 'src/moved.ts'); git('commit', '-qm', 'rename root trigger');
     expect(scopeFromEvent(pr)).toEqual([]);

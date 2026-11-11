@@ -625,8 +625,9 @@ results add applied_from_next_parcel; callers must name that partial applicabili
 or refuse it, never infer fully applied current-parcel success. The managed
 subscription result/decoder remain unchanged. Destination/event/outbox records
 commit atomically; parcel and money transitions do not depend on mail delivery.
-No saved address book, privacy erasure/export, or automatic host/mail wiring is
-provided. The source task and data owner describe the explicit limits.
+That destination unit supplies no saved address book, privacy erasure/export or
+automatic host/mail wiring. The separate saved-address unit declares its own
+[storage and privacy coverage](DATA_AND_MIGRATIONS.md#saved-customer-address-rows). The source task and data owner describe the explicit limits.
 
 The M17 channel suffix appends two native units to each existing selected plan:
 legacy now has 91 units, qualified selections 95, and restricted selections 94.

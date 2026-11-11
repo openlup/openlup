@@ -22,7 +22,7 @@ export interface ShippingBindingDependencies {
   nativeRateReadiness?: ReadinessReport;
   /** Same-database Core observation of the applied shipping seed and required objects. */
   nativeRateSchema?: SchemaObservation;
-  nativeStore?: Omit<Store, "addressMutationPort"> | null;
+  nativeStore?: Store | null;
   responder: BffResponder;
   selection?: { port: DeliverySelectionPort; searchPort: PickupPointSearchPort; schemas: DeliverySelectionSchemas };
   addresses?: { schemas: CustomerAddressSchemas; authenticateUser: CustomerAddressesDeps["authenticateUser"]; requireWrites: boolean };
@@ -44,7 +44,10 @@ export interface ShippingBindings {
 /** Explicit selected stores and host validation; importing this module activates nothing. */
 export function createShippingBindings(deps: ShippingBindingDependencies): ShippingBindings {
   const native = deps.dataKind === "postgres";
-  const addressWrites = native ? "shipping_native_address_writes_unsupported" : null;
+  const nativeAddressWrites = typeof deps.nativeStore?.addressBookPort?.getAddressBook === "function"
+    && typeof deps.nativeStore?.addressMutationPort?.upsertAddress === "function"
+    && typeof deps.nativeStore?.addressMutationPort?.deleteAddress === "function";
+  const addressWrites = native && !nativeAddressWrites ? "shipping_native_address_writes_unsupported" : null;
   const nativeRateReady = typeof deps.nativeStore?.shippingRateDataPort?.getShippingFlatMinor === "function"
     && typeof deps.nativeStore?.shippingRateDataPort?.setShippingFlatMinor === "function"
     && typeof deps.nativeStore?.shippingRateDataPort?.recordPromotionAudit === "function"
@@ -62,13 +65,13 @@ export function createShippingBindings(deps: ShippingBindingDependencies): Shipp
     readiness: { ready: false, reason }, unsupported: { addressWrites, flatRateSave },
   });
   if (!native && deps.dataKind !== "supabase") return refused("shipping_store_incompatible");
-  if (native && deps.addresses?.requireWrites) return refused(addressWrites!);
+  if (native && deps.addresses?.requireWrites && addressWrites) return refused(addressWrites);
   if (native && deps.rate && flatRateSave) return refused(flatRateSave);
   const selected: Store | null | undefined = native ? deps.nativeStore : deps.createManagedStore?.();
   if ((deps.addresses || deps.rate) && !selected) return refused("shipping_store_required");
-  // Native address mutations remain unavailable even if an untyped host plants a writer.
+  // Native writes activate only when the host explicitly supplies both mutation methods.
   const store: Store = { addressBookPort: selected?.addressBookPort, shippingRateDataPort: selected?.shippingRateDataPort,
-    addressMutationPort: native ? undefined : selected?.addressMutationPort };
+    addressMutationPort: native && !nativeAddressWrites ? undefined : selected?.addressMutationPort };
   if (deps.addresses && (typeof store.addressBookPort?.getAddressBook !== "function"
     || typeof deps.addresses.authenticateUser !== "function"
     || (deps.addresses.requireWrites && ![store.addressMutationPort?.upsertAddress, store.addressMutationPort?.deleteAddress].every(fn => typeof fn === "function")))) return refused("shipping_address_store_incompatible");

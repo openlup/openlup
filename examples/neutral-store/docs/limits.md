@@ -12,12 +12,10 @@ application composition limits; they are not claims of exported package errors.
 | N1 | Live products, SKUs, price lists, price entries and promotions are seed data: one owned demo-seed step with the install connection, no runtime writer for them and no checkout promotion codes. Bundle drafts, compositions, target prices and activation, and catalogue drafts, are administered by a native human operator through their native writers. An activated bundle is not purchasable in this release. | `starter_promotion_write_unavailable` |
 | N2 | Operator email/phone correction and account linking | `operator_subscription_authority_unavailable` |
 | N3 | Order note and order-address correction | `starter_order_correction_unavailable` |
-| N4 | Replacement request and complete fulfillment cancellation | `host_binding_required` |
 | N5 | Saved addresses, billing profiles, delivery preferences, payment preferences, private-profile views and the profile/address/billing/private-profile views action | `starter_account_preferences_unavailable` |
 | N6 | Real PSP, payment method setup, card replacement and unsupported money recovery | `native_prepared_attempt_store_unsupported` |
-| N7 | Customer profile edit | `starter_profile_edit_unavailable` |
 | N8 | Demand-driven plan-length and portion resizing are unconfigured; the seven exact commands are API-only | `starter_subscription_resize_unconfigured` |
-| N9 | Rich OMS, commercial analytics, payment links and saved draft resume | `starter_rich_oms_unavailable` |
+| N9 | Rich OMS, commercial analytics and saved draft resume | `starter_rich_oms_unavailable` |
 | N10 | Google sign-in | `oauth_not_supported` |
 | N11 | Size-aware acquisition; new purchases start classic and require explicit reviewed opt-in | `starter_sized_acquisition_unavailable` |
 | N12 | Publication-head and offer-membership fencing for sized edits | `starter_sized_publication_fence_unavailable` |
@@ -88,12 +86,9 @@ Purchase creation uses the native contact-client factory. Customer invoice histo
 and owned captured PDF downloads use the native session principal. Documents are
 explicitly non-fiscal sandbox artifacts. Operator invoice summaries authorize
 before querying local history, duty, retry and delivery evidence, including guest
-orders. Placing and releasing an order hold are unavailable in this release.
-Both operations stay unbound and return `starter_order_hold_unavailable` after
-operator admission with zero effects. Their typed forms retain configured hold
-reasons and the exact hold-reference release target. The later order-control
-composition closes this boundary alongside cancellation and external refund
-marking.
+orders. Placing and releasing order holds require an active human admin and a
+provisioned Commerce operator. Every invocation, including replay, repeats those
+checks. Release targets the exact hold reference.
 
 The operation catalogue in `shared/limits.ts` supplies the same code and exact
 localized explanation to action results and the limits page. Named deferred
@@ -111,7 +106,6 @@ retains its separate HTTP 404 protocol.
 | --- | --- |
 | `return.request` | `starter_return_request_unavailable` |
 | `operator.returnApprove`, `operator.returnReject` | `starter_return_decision_unavailable` |
-| `operator.hold`, `operator.release` | `starter_order_hold_unavailable` |
 | `operator.cancelUnpaid` | `starter_order_cancellation_unavailable` |
 | `operator.externalRefund` | `starter_external_refund_mark_unavailable` |
 | `operator.label`, `operator.handoff`, `operator.delivery` | `starter_shipment_mutation_unavailable` |
@@ -173,7 +167,7 @@ receipts and unprovable parcel facts omit the note.
 No generic contact form; the partner inquiry is the durable intake.
 Support is static and shows optional validated `supportEmail` as plain text,
 with an account link. Missing contact configuration is stated explicitly.
-The application declares 53 operations. With a runtime connection, the partner
+The application declares 60 operations (48 bound with a runtime connection). With a runtime connection, the partner
 submit/list/transition and review read/submit/list/moderation actions are mounted.
 Without that connection they remain unbound, like the other native actions.
 
@@ -250,20 +244,31 @@ Zakup nie wymaga konta; przy zakupie zapisujemy kontakt dla podanego e-maila; kl
 These localized boundaries also appear on the shared limits page. The guest
 flow describes the contact-client composition; checkout creation uses the public contact registrar after attempt admission. No demonstration clients are installed as seed.
 An admitted new checkout issues a 256-bit recovery token through the native
-PostgreSQL port. Only its SHA-256 hash is stored. PostgreSQL fixes expiry at
-order creation plus 24 hours; this is a database rule, not a configurable value.
-Checkout links for the same order coexist until expiry or payment; issuing
-another link does not revoke an earlier checkout link. Payment-case links still
-rotate, leaving one live link per case. The separate account actor issuer also
-retains rotation.
+PostgreSQL port. Only its SHA-256 hash is stored. Checkout creation, reminder
+waves and signed-in recovery issue links whose continuation authority ends 24 hours after order
+creation; these issuers preserve earlier links. Links in checkout-expiry notices instead
+expire 30 days after order creation and retain the terminal source order.
+Eligible expiry can start a replacement through the single Pay action; the
+source order itself cannot be paid. An operator-issued checkout link revokes all earlier links
+for that order; its continuation authority ends at the earlier of issuance plus
+24 hours or order creation plus 30 days. Payment prevents further payment through any link;
+other links remain subject to their own expiry and the operator revocation rule.
+Payment-case links rotate separately, leaving one live link per case.
 The token is returned only in the creating response and a separate private
 captured checkout-recovery message, never an authentication challenge or event.
 The completion page reads the URL token once and replaces history synchronously
 before configuration fetch or rendering. Request bodies carry the token; memory
-and session storage preserve reload convenience but grant no authority. An unchanged repeated submit for the same order keeps its existing token when the replay response omits it. A different order never inherits that token. A new token replaces the token stored in this tab; earlier checkout links remain usable until expiry or payment.
-Native inspection allows payment only for an active pending order, recognizes
-an already-paid order without payment controls, and refuses expired, cancelled
-or unavailable links. Indexed hash lookup makes no constant-time claim.
+and session storage preserve reload convenience but grant no authority. An unchanged repeated submit for the same order keeps its existing token when the replay response omits it. A different order never inherits that token. A new token replaces the token stored in this tab; this storage update does not revoke other links. Operator issuance revokes them through the native issuer.
+Live pending-order links support sandbox continuation payment of the original
+order. Dedicated token-pay retry and method switching remain unbound; that
+separate capability is not provided by the sandbox continuation action.
+Expired-policy inspection can offer recreation of a fresh order until 30 days
+after the source order was created, including system-abandoned initial checkouts.
+Frozen re-quoting, unchanged supported content, stock admission and proven prior
+payment non-settlement remain required. Manual cancellation, paid orders and
+revoked or unavailable links cannot start payment. Paid presentation has priority
+over any stored attempt. A recreated order uses only its recovery transition and
+replay receipt; the ordinary sandbox action cannot start another attempt. Indexed hash lookup makes no constant-time claim.
 Owning sessions retain order ownership checks. An email alone mints no link for
 an existing order. Recovery grants no account or subscription-command access.
 
@@ -363,3 +368,67 @@ synthetically delivered first order. A clock past the finite pause and renewal
 date produces an active subscription, a date rolled forward by whole cadences
 and one locally captured resumed confirmation, including replay. The fixture
 supplies external fulfillment facts; operator delivery mutations remain unavailable.
+
+
+## Account and operator bindings
+
+N4 and N7 are closed: both replacement and complete fulfillment cancellation,
+and customer name/phone editing, now use the installed native ports. Replacement
+arrival confirmation remains absent. N5 retains every saved-address, billing,
+preference and private-view limitation. N9 retains rich reports/analytics and
+saved account draft resume; operator checkout links are bound separately.
+
+Current invoice entries accept an append-only correction request, with no fiscal
+correction, refund, notification or operator case consumer. Repeated keys are
+stored without deduplication. Account event history excludes private payloads.
+
+The local checkout-recovery pass captures first/final and expired notices.
+Signed-in starts preserve checkout links and send no email; operator issuance
+revokes earlier checkout links and optionally queues mail. A completed capture
+is evidence for this demonstration transport only. Expired checkouts retain a
+terminal source while eligible recreation can start a fresh order. Live pending-order
+links support original-order sandbox continuation payment; dedicated token-pay retry
+and method switching, payment guidance, inline retry and the embedded-browser
+buyer-link control remain unavailable. No continuation issuer
+is mounted. Every other separately named operation limit remains.
+See the [candidate recipe and owner steps](../README.md#checkout-and-account-candidate-changes).
+
+
+## Expired checkout recovery and order holds
+
+Expired checkout entry inspects the original order and its latest recovery
+lineage. Paid and manually cancelled orders have no Pay control. Eligible
+expired orders retain a single Pay action: native frozen re-quote validation,
+prior sandbox non-settlement evidence and stock admission precede replacement
+payment start. Changed commercial facts, unsupported starter content and stock
+refusals cannot start payment. Durable draft, lineage and attempt receipts keep
+replay on one replacement and one attempt. Replacement-attempt simulator controls
+remain bound to the inspected bearer, lineage and durable execution receipt;
+reload reads the same attempt, independently of the recreation source link's
+continuation lifetime. Captured executions show no simulator controls. Dedicated token-pay retry and method switching, payment guidance, inline
+retry and embedded-browser continuation issuance remain unavailable.
+
+Hold and release resolve the human administrator before every command and replay.
+The database owner provisions one `commerce_operators` row per human admin, with
+`id` equal to the native principal ID. Never delete this row: holds retain its
+attribution. Withdraw access by revoking the membership through the identity
+owner. Distributors and admins without the Commerce row cannot issue or replay
+these commands. A locked upcoming cycle refuses an address change with
+`payment_blocked`; existing order and parcel destinations remain unchanged.
+
+The additional real-PostgreSQL journeys run in the `recovery extension ` group
+from the single shared `browser-groups.mjs` source. Each group uses a fresh
+installation pair, one worker and traces, screenshots and video off. Checkout
+quota and all runner guards remain unchanged.
+
+
+Recovery re-quoting uses the email in the original immutable private checkout
+capture, keyed by the source checkout's root order. It never substitutes the
+current account email or a later profile edit. Missing, corrupt or erased capture
+refuses recreation before a quote, draft or payment starts. This is the starter's
+owned frozen-source binding, separate from bearer authorization. The capture
+remains personal data under the existing private-mailbox export and erasure
+procedure; include it in the owner's private-state inventory and remove it when
+that procedure requires erasure. Erasure does not trigger reconstruction from
+an account, a profile or another notice. Private captures remain outside served
+assets, logs, traces and public reports.

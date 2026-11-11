@@ -661,7 +661,8 @@ export async function mapManagedRetainedBusiness(input: {
     const lists = (raw.get(priceListEligibility) ?? []).filter(value => value.subscription_id === row.id);
     if (lists.length !== 1) fail("target_conflict", "public.price_lists");
     projected.subscriptions!.push(project("subscriptions", row, { price_list_id: lists[0]!.price_list_id,
-      currency_code: row.currency, composition_constraint: null, configured_offer_version: "classic" }));
+      currency_code: row.currency, composition_constraint: null, configured_offer_version: "classic",
+      shipping_saved_address_id: null, billing_saved_address_id: null }));
     const currentLines = subscriptionLines.filter(line => line.subscription_id === row.id);
     const activeMethods = methods.filter(method => method.subscription_id === row.id && method.status === "active" && method.active === true);
     if (!currentLines.length || activeMethods.length !== 1) fail("target_conflict", "public.subscriptions");
@@ -764,7 +765,8 @@ export async function mapManagedRetainedBusiness(input: {
       paid_at: row.status === "paid" ? transitions.find(transition => transition.payment_intent_id === paidIntents[0]!.id)?.occurred_at : null,
       cancelled_at: null, refunded_at: null, metadata: row.metadata,
       currency_code: row.currency, total_amount_minor: row.total_cents, source_kind: row.source_kind,
-      source_channel_id: null, source_order_ref: null, renewal_operation_id: null, renewal_operation_fingerprint: null });
+      source_channel_id: null, source_order_ref: null, renewal_operation_id: null, renewal_operation_fingerprint: null,
+      recovery_root_order_id: null, recreated_from_order_id: null });
   }
   for (const row of items) {
     if (!orderById.has(row.order_id) || typeof row.allocation_ordinal !== "number" || row.sku_id === null

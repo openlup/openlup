@@ -8,7 +8,7 @@ function fixture() {
     path: ".github/workflows/published-tree-ci.yml", repository, head_repository: repository,
     head_branch: "gh-readonly-queue/main/pr-1", status: "completed", conclusion: "success" };
   const jobs = ["dco", "typecheck", "install-proof", "test", "self-check", "gitleaks", "pgtap",
-    "test-full-shard (1/4)", "test-full-shard (2/4)", "test-full-shard (3/4)", "test-full-shard (4/4)"].map((name, id) => ({
+    "test-full-shard (1/6)", "test-full-shard (2/6)", "test-full-shard (3/6)", "test-full-shard (4/6)", "test-full-shard (5/6)", "test-full-shard (6/6)"].map((name, id) => ({
     id: id + 1, name, head_sha: sha, status: "completed", conclusion: "success",
   }));
   const listing = { total_count: 1, workflow_runs: [structuredClone(run)] };

@@ -1628,6 +1628,7 @@ export * from "./postgresAccountLinkStore.js";
 export * from "./postgresContactClientRegistrar.js";
 export * from "./contracts/oidc.js";
 export { createFulfillmentParcelContactPrivacyContributor } from './parcelContactPrivacy.js';
+export { createCustomerSavedAddressPrivacyContributor } from "./savedAddressPrivacy.js";
 ```
 ## dist/identity/inviteAdminUserUseCase.d.ts
 
@@ -2813,6 +2814,14 @@ export declare function runRemoveAdminUserUseCase(request: {
 import { createBffResponder, type BffResponderOptions } from "../bff/index.js";
 export type IdentityResponseOptions = BffResponderOptions;
 export declare const createIdentityResponder: typeof createBffResponder;
+```
+## dist/identity/savedAddressPrivacy.d.ts
+
+```ts
+import type { PersonalDataContributor } from './privacyPorts.js';
+import type { PgQueryExecutor } from '../data/index.js';
+/** Compose with identity authorization, the subscriptions veto and account-event ownership. */
+export declare function createCustomerSavedAddressPrivacyContributor(): PersonalDataContributor<PgQueryExecutor>;
 ```
 ## dist/identity/sql.d.ts
 

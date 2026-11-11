@@ -176,9 +176,43 @@ account events after their client parents; populated-ledger witnesses check exac
 rows on a pristine qualified target and a replay that leaves rows unchanged. This extends
 the finite capture/restore inventory only; the smaller compatible-row utility's
 allowlist remains unchanged. No schema/control/credential transfer or target
-activation is authorized by these rows. Saved addresses and billing tables remain
+activation is authorized by these rows. Saved-address coverage is described below; billing tables remain
 separate changes. The account migration descriptor is sparse; install the entire
 selected native catalogue rather than just its two exported units.
+
+## Saved customer address rows
+
+`20261110190000_customer_saved_addresses.sql` adds private
+`customer_saved_addresses`, exact-kind default uniqueness, a nonunique canonical
+lookup index and nullable saved shipping/billing pointers on subscriptions.
+Pointers use ON DELETE SET NULL; the customer delete routine refuses use by an
+active or paused subscription. Selection commands are separate. Ten owned
+routines cover customer reads/replay/canonical lookup/default clear/write/delete,
+usage checks and subject export/erasure preparation. No existing function is replaced.
+
+Runtime customer access is through principal/client-owned DEFINER routines with
+fixed search paths and EXECUTE only for `service_role`; PUBLIC, anon and
+authenticated have no table or routine access. The table is `block` classified
+for lead absorption, with only the admitted client-ID census column/policy.
+Saved address and event writes retain their separate-commit failure/replay rules;
+see the [package recipe](../../packages/platform/README.md#saved-customer-address-book).
+
+All row content, including canonical keys, company/tax/contact/free text,
+last-use/source metadata and possible pickup history, is personal data. The
+explicit saved-address privacy contributor exports all columns and erases saved
+rows without relying on client clearing or cascade. Its preparation lock precedes
+identity row locks; mutators recheck ownership after acquiring their DML lock, so
+a waiting save cannot recreate saved rows after unlinking. Identity/subscription vetoes
+and the account-event retention contributor remain separate required owners;
+retained event payloads and immutable destination snapshots are not erased by
+this contributor. There is no default retention period.
+
+Finite connected transfer explicitly carries the exact classified rows, following
+the account-event ledger and private parcel-contact ownership pattern. Restore
+inserts addresses after clients and before subscriptions; populated-row/pointer
+and replay witnesses check the result. The smaller compatible-row copier does
+not admit this table. No trigger applies defaults during import, and no target
+activation or credential transfer follows.
 
 ## Partner acquisition data
 
@@ -440,6 +474,24 @@ identity mapping. OIDC derives the principal from exact issuer/subject; email
 equality cannot relink it. Dependent memberships, privacy receipts, history and
 credential/session disposition remain part of the full
 [M14 transfer outcome](plans/oss-m14-operations-portability.md).
+
+## Human OMS admission
+
+`20261110160000_oms_human_operator_admission.sql` replaces only
+`oms_control_resolve_operator(uuid)`. Its SQL STABLE invoker header,
+`search_path = pg_catalog`, owner and ACL remain unchanged. An existing Commerce
+operator resolves through the unchanged active-control route, or through active
+human `admin` membership with no control row of any state. A distributor or
+revoked member does not enter the human route. No INSERT, provisioning, lock,
+DEFINER or grant is added. Hosts authenticate the principal, require human admin
+for hold/release and resolve before every invocation and replay.
+
+The owner provisions each human admin's Commerce row and never deletes it:
+revoke membership to withdraw access. The existing ON DELETE SET NULL on
+`commerce_order_holds.created_by` would otherwise make that operator's
+fulfillment-exception holds look system-created and eligible for automatic
+release. This forward preserves that FK; see the [owner step](../../examples/neutral-store/README.md#commerce-operator-roster-for-hold-and-release-admission).
+The starter binds hold and release with a fresh human-admin and Commerce-operator check on every command and replay.
 
 ## Additive forward release path
 
@@ -3626,3 +3678,30 @@ time after blocking writes and roll back elapsed issuance. The additive buyer
 delivery gate leaves automatic and operator authorizers unchanged. See the
 [entry-point recipe](PLATFORM_PACKAGE_REFERENCE.md#customer-checkout-recovery-entry-points)
 for the host authority boundary and configured deadlines.
+
+### Checkout recovery lineage
+
+`20261110170000_checkout_recovery_inspection.sql` adds nullable
+`commerce_orders.recovery_root_order_id` and `recreated_from_order_id`, each with
+an `ON DELETE RESTRICT NOT VALID` self-FK. Existing rows remain null; new writes
+must satisfy both constraints. The partial root/created index serves the latest
+reader, and the partial unique predecessor index permits one immediate replacement.
+The two stable definer snapshots grant execution only to `service_role`, with no
+new raw-table grants. Their [package composition](PLATFORM_PACKAGE_REFERENCE.md#checkout-recovery-inspection)
+binds client ownership and separates expired inspection from payment authority.
+This forward contains no recreation writer or historical backfill.
+
+### Expired checkout preparation
+
+`20261110180000_checkout_recovery_recreation.sql` adds the service-only definer
+`commerce_prepare_expired_checkout_recovery(text,uuid,uuid,bigint,timestamptz)`.
+It replaces no function and adds no table, lifecycle CHECK, trigger or backfill.
+It uses the existing recovery lineage, draft receipt, destination, provisional
+activation and sandbox payment owners. Its fixed path is `pg_catalog, pg_temp`;
+PUBLIC, anon and authenticated have no EXECUTE grant. Exact linked replay precedes
+fresh checks; a replacement with either lineage field already populated refuses
+fresh preparation. The source payment/window checks follow blocking aggregate
+locks. Runtime first payment admission also rechecks source evidence under the
+source order lock before any replacement stock or payment write. A fresh initial declaration belongs to the replacement; the predecessor
+is never reopened. See the [recreation composition](PLATFORM_PACKAGE_REFERENCE.md#expired-checkout-recreation)
+for commercial validation, transaction binding, compensation and profile limits.

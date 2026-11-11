@@ -234,7 +234,7 @@ const order = [
   "platform_human_principals", "platform_control_operators", "commerce_operators", "clients",
   "platform_human_memberships", "platform_human_membership_audit_events", "platform_communication_operators",
   "identity_operator_invitations", "identity_operator_invitation_events", "identity_privacy_erasures",
-  "customer_subject_lifecycle_events", "customer_communication_preferences", "customer_communication_preference_events", "customer_account_events",
+  "customer_subject_lifecycle_events", "customer_communication_preferences", "customer_communication_preference_events", "customer_account_events", "customer_saved_addresses",
   "platform_operational_controls", "platform_control_operations", "platform_alerts", "platform_alert_notifications", "platform_job_runs",
   "catalog_products", "catalog_product_document_revisions", "catalog_skus", "catalog_sku_identifiers",
   "price_lists", "subscription_price_policy_revisions", "price_entries", "commerce_promotion_definitions",
@@ -562,24 +562,33 @@ async function restoreSettings(client: PoolClient, baseline: Rows, source: Rows)
   for (const row of source.rows) await insert(client, source, row);
 }
 function parentOrder(table: TableName, rows: readonly string[]): string[] {
-  if (table !== "fulfillment_shipments" && table !== "invoicing_duties") return [...rows];
-  const field = table === "fulfillment_shipments" ? "replaces_shipment_id" : "parent_duty_id";
-  const pending = new Map<string, { row: string; parent: string | null }>();
+  const fields = table === "commerce_orders" ? ["recovery_root_order_id", "recreated_from_order_id"]
+    : table === "fulfillment_shipments" ? ["replaces_shipment_id"]
+      : table === "invoicing_duties" ? ["parent_duty_id"] : [];
+  if (!fields.length) return [...rows];
+  const pending = new Map<string, { row: string; parents: string[] }>();
   for (const row of rows) {
     // Inspect IDs only. The original PostgreSQL row text remains unchanged.
     const value = JSON.parse(row) as Record<string, unknown>;
-    if (typeof value.id !== "string" || value[field] !== null && typeof value[field] !== "string" || pending.has(value.id)) fail("target_conflict", table);
-    pending.set(value.id, { row, parent: value[field] as string | null });
+    if (typeof value.id !== "string" || fields.some(field => value[field] !== null && typeof value[field] !== "string")
+      || pending.has(value.id)) fail("target_conflict", table);
+    pending.set(value.id, { row, parents: fields.flatMap(field => value[field] === null ? [] : [value[field] as string]) });
   }
-  const ordered: string[] = [], done = new Set<string>();
+  const ordered: string[] = [], done = new Set<string>(), visiting = new Set<string>();
   for (const id of pending.keys()) {
-    const chain: string[] = [], visiting = new Set<string>();
-    let next: string | null = id;
-    while (next !== null && !done.has(next)) {
-      if (visiting.has(next) || !pending.has(next)) fail("target_conflict", table);
-      visiting.add(next); chain.push(next); next = pending.get(next)!.parent;
+    const stack = [{ id, complete: false }];
+    while (stack.length) {
+      const next = stack.pop()!;
+      if (done.has(next.id)) continue;
+      const held = pending.get(next.id);
+      if (!held || !next.complete && visiting.has(next.id)) fail("target_conflict", table);
+      if (next.complete) {
+        visiting.delete(next.id); done.add(next.id); ordered.push(held.row);
+      } else {
+        visiting.add(next.id); stack.push({ id: next.id, complete: true });
+        for (const parent of [...held.parents].reverse()) stack.push({ id: parent, complete: false });
+      }
     }
-    for (const current of chain.reverse()) { ordered.push(pending.get(current)!.row); done.add(current); }
   }
   return ordered;
 }

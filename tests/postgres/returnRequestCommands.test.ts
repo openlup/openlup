@@ -14,6 +14,7 @@ import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresS
 import { renewal, prepareOriginal } from './subscriptionNativeFixture.js';
 
 const BASE = '3b430212deb3bf8f1b096a179f2b45992dbe29ff';
+const UPGRADE_BASE = 'dd9751be364965c546fcb7228dc35a72c0a40ab7';
 type Executor = Pool | PoolClient;
 type Subject = { principal: string; client: string; order: string; actor: string; items: string[]; lines: { orderItemId: string; quantity: number }[] };
 const call = async (db: Executor, sql: string, args: unknown[] = []) => (await db.query(sql, args)).rows[0].value;
@@ -37,10 +38,17 @@ for (const profile of ['legacy', 'qualified-v2', 'qualified-admin'] as const) de
       : { generation: profile, roleMode: 'installer-managed', bootstrapLogin: 'postgres', migrationLogin: profile === 'qualified-admin' ? 'returns_m' : 'postgres', runtimeLogin: 'returns_r', restoreLogin: 'returns_s' };
     owner = pool(login(installation.generation === 'legacy' ? 'postgres' : installation.migrationLogin),
       installation.generation === 'qualified-v2' ? qualifiedPostgresStartupOptions(installation) : installation.generation === 'qualified-admin' ? qualifiedAdminPostgresStartupOptions(installation) : undefined);
-    const prefix = JSON.parse(execFileSync('git', ['show', `${BASE}:config/platform-migration-manifest.json`], { encoding: 'utf8' }));
+    const historicalPrefix = JSON.parse(execFileSync('git', ['show', `${BASE}:config/platform-migration-manifest.json`], { encoding: 'utf8' }));
+    // Install the ordered pre-return catalogue while preserving every historical unit.
+    const prefix = JSON.parse(execFileSync('git', ['show', `${UPGRADE_BASE}:config/platform-migration-manifest.json`], { encoding: 'utf8' }));
     const root = resolve(`.context/scratch/c35r/prefix-${profile}`);
-    for (const plan of [prefix, prefix.qualified, prefix.qualifiedAdmin]) for (const unit of [plan.baseline, ...plan.forward]) {
-      const target = resolve(root, unit.file); mkdirSync(dirname(target), { recursive: true }); writeFileSync(target, readFileSync(unit.file));
+    for (const [plan, historicalPlan] of [[prefix, historicalPrefix], [prefix.qualified, historicalPrefix.qualified], [prefix.qualifiedAdmin, historicalPrefix.qualifiedAdmin]]) {
+      const digests = new Map<string, string>();
+      for (const unit of [plan.baseline, ...plan.forward]) digests.set(unit.file, unit.sha256);
+      for (const unit of [historicalPlan.baseline, ...historicalPlan.forward]) expect(digests.get(unit.file)).toBe(unit.sha256);
+      for (const unit of [plan.baseline, ...plan.forward]) {
+        const target = resolve(root, unit.file); mkdirSync(dirname(target), { recursive: true }); writeFileSync(target, readFileSync(unit.file));
+      }
     }
     mkdirSync(resolve(root, 'config'), { recursive: true }); writeFileSync(resolve(root, 'config/platform-migration-manifest.json'), JSON.stringify(prefix));
     const runner = (sourceRoot = process.cwd()) => createPostgresMigrationRunner({ connectionString: 'injected' }, { root: sourceRoot, installation, poolFactory: () => owner });

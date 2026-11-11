@@ -615,7 +615,12 @@ The required `install-proof` job now runs `journey.spec.ts` and
 `acquisition.spec.ts` in both configurations through
 [`starter-browser-ci.mjs`](../../../scripts/starter-browser-ci.mjs), after the
 package gates. It extracts the starter, installs the verified candidate tarballs,
-starts an isolated disposable PostgreSQL 16 per configuration through the shared
+runs the selections in `browser-groups.mjs`, giving each group a fresh pair of
+configuration installations. The local `./lifecycle browser` recipe reads the same
+module. Later, more specific patterns take precedence; the remainder covers all
+other journeys, so a new group needs one additional pattern. This keeps the
+unchanged checkout quota active while each selected case runs once. The runner
+starts an isolated disposable PostgreSQL 16 per configuration and group through the shared
 test helper and pinned `test-postgres` image. Each receives the complete selected
 history, repeated installation and its own repeated seed; two loopback hosts use
 the restricted runtime login. Separate installations preserve a unique active
@@ -775,3 +780,68 @@ check that these witnesses detect the corresponding regressions. Browser purchas
 recipes retain their existing carts and expectations; both demonstration offers
 charge 640 minor units below a 1,000-minor threshold. These proofs establish no
 provider access, publication or deployment qualification.
+
+
+## Account, checkout and parcel candidate
+
+Run `./lifecycle browser` from the application directory for the complete database
+configuration. It creates fresh installations for four sequential groups:
+subscription care, portal journeys, recovery extensions and the purchase baseline. Tests use
+one worker and tracing, screenshots and video off. Independent processes and
+installations keep each group inside the normal checkout quota; production quota
+values and admission paths are unchanged. Focus the portal with `./lifecycle
+browser browser/acquisition.spec.ts --grep 'portal '`. Playwright's `--list` inventory
+selects fourteen definitions in both languages and both configurations, for
+fifty-six cases. The external
+parcel fixture freezes synthetic carrier contact and supplies normalized provider
+facts through existing native owners. It mounts no dispatch or delivery action.
+
+The recovery journeys distinguish issuer rules: checkout, reminder-wave and
+signed-in recovery links end continuation at order creation plus 24 hours and preserve
+earlier links; checkout-expiry notices use creation plus 30 days and retain the
+terminal source order. Eligible recovery now offers replacement payment while
+the source itself remains terminal. Operator issuance revokes earlier links for
+the order and ends continuation at the earlier of issuance plus 24 hours or creation
+plus 30 days. Expired-policy inspection can still recreate eligible expired or
+system-abandoned initial checkouts until source creation plus 30 days. Frozen
+quote, content, stock and prior-payment safety refusals remain. A revoked link,
+manual cancellation or payment cannot start another payment.
+
+
+## Expired checkout recovery and order holds
+
+Expired checkout entry inspects the original order and its latest recovery
+lineage. Paid and manually cancelled orders have no Pay control. Eligible
+expired orders retain a single Pay action: native frozen re-quote validation,
+prior sandbox non-settlement evidence and stock admission precede replacement
+payment start. Changed commercial facts, unsupported starter content and stock
+refusals cannot start payment. Durable draft, lineage and attempt receipts keep
+replay on one replacement and one attempt. Replacement-attempt simulator controls
+remain bound to the inspected bearer, lineage and durable execution receipt;
+reload reads the same attempt, independently of the recreation source link's
+continuation lifetime. Captured executions show no simulator controls. Dedicated token-pay retry and method switching, payment guidance, inline
+retry and embedded-browser continuation issuance remain unavailable.
+
+Hold and release resolve the human administrator before every command and replay.
+The database owner provisions one `commerce_operators` row per human admin, with
+`id` equal to the native principal ID. Never delete this row: holds retain its
+attribution. Withdraw access by revoking the membership through the identity
+owner. Distributors and admins without the Commerce row cannot issue or replay
+these commands. A locked upcoming cycle refuses an address change with
+`payment_blocked`; existing order and parcel destinations remain unchanged.
+
+The additional real-PostgreSQL journeys run in the `recovery extension ` group
+from the single shared `browser-groups.mjs` source. Each group uses a fresh
+installation pair, one worker and traces, screenshots and video off. Checkout
+quota and all runner guards remain unchanged.
+
+The hold witness proves durable replay across a host-process restart with a fresh
+native administrator session. It does not prove session continuity or container
+restart configuration. Recovery inspection gives terminal results priority over stored executions. An
+already dispatched replacement uses its lineage-bound receipt independently of
+the source link's continuation; unrecoverable original-order continuation does
+not authorize a new attempt or invalidate that replacement execution. Recreated targets refuse the ordinary
+sandbox action even for their signed-in owner after a refused attempt. The
+expiry-notice journeys click Pay without prior provider evidence and prove the
+reference safety refusal with no replacement or payment; display validation
+checks the quote, while Pay checks prior-payment safety.
