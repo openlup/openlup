@@ -123,7 +123,8 @@
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/commerce/browserBoundary.test.ts",
-        "test/commerce/browserSafety.test.ts"
+        "test/commerce/browserSafety.test.ts",
+        "test/commerce/paymentRecoveryGuidance.test.ts"
       ],
       "entrypoint": "dist/commerce/server/index.d.ts",
       "snapshot": "api/commerce-server.api.md"
@@ -455,7 +456,8 @@
         "test/payments/truth.test.ts",
         "test/payments/reconciliation.test.ts",
         "test/payments/adapterConformance.test.ts",
-        "test/payments/postgresPaymentTruth.test.ts"
+        "test/payments/postgresPaymentTruth.test.ts",
+        "test/commerce/paymentRecoveryGuidance.test.ts"
       ],
       "entrypoint": "dist/payments/index.d.ts",
       "snapshot": "api/payments.api.md"

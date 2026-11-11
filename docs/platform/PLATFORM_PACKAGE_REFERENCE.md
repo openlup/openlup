@@ -1809,3 +1809,55 @@ cover legacy and both qualified runtimes.
 
 This mechanism adds no route, UI, token issuer, recreation guidance or real-provider
 qualification. Those remain separate host composition and payment-owner work.
+
+## Atomic checkout payment guidance
+
+In the development-preview sandbox profile,
+`createPostgresPaymentRecoveryGuidancePort(executor, normalizeSandboxPaymentRecoveryEvidence)`
+reads status, checkout provenance, authority and evidence through one service-only
+`commerce_checkout_payment_guidance_snapshot` call. Use a fresh READ COMMITTED
+statement on a service executor. The query joins existing native owners; it never
+materializes destinations, issues tokens or changes payment state. Non-sandbox
+channels retain `native_prepared_attempt_store_unsupported` and the N6 payment-owner
+limit above.
+
+The snapshot binds the exact order, client, intent and current native attempt.
+A draft receipt and frozen checkout context establish one-time provenance; an
+initial subscription also needs its own declaration. Renewal-cycle orders are
+ineligible. Token authority is rechecked at statement time against the exact
+order/client, expiry, revocation and pending checkout state. A previously
+validated token cannot bypass that check. An exactly linked captured observation,
+including an older attempt outside the returned history, suppresses refusal
+advice before settlement converges. This does not declare the order paid.
+
+The read probes 101 attempts and returns at most 100, newest first. It probes 33
+evidence members per attempt and admits at most 32; overflow or a contradictory
+or oversized envelope drops that attempt's whole proof set and marks history
+incomplete. Native observation records and truth/readback source envelopes have
+an 8,192-byte bound. Only correlated identity/outcome fields are projected; raw
+source envelopes, request keys, token hashes and opaque authorization/method
+references are excluded. The adapter maps native state to the existing Core
+attempt vocabulary and derives public actions through Core. Native observations
+prove generic refusal only: method, operation and advice remain unknown. They do
+not establish complete method-specific guidance or a reusable payment method.
+
+`readAuthorizedPaymentRecovery` accepts only token validation or verified
+continuation claims bound to the exact journey/order/client/intent/current
+attempt/rail. Its token dependency exposes only `validate`. The status host calls
+it only for the existing `X-Payment-Recovery-Guidance: 1` opt-in. Missing authority,
+infrastructure or malformed snapshots retain the legacy reader fallback; an
+atomic snapshot with dead token authority carries no guidance. Without opt-in,
+the legacy response shape is unchanged. The optional `projectGuidance` callback
+retains the host's existing display fallback; it cannot turn observed success
+into refusal advice.
+
+Raw `activationState`, `subscriptionStatus`, `paidAt` and `hasExactGap` come from
+the same statement. The native activation owner stores exactly `provisional`,
+`active` and `compensated`; the reader accepts those states. Handler-level
+PostgreSQL witnesses cover opt-in, legacy responses, read failure, revocation and
+an activated checkout without falling back from the atomic read. A provisional declaration is not relabelled as a subscription
+or mandate state. Its raw paid gap remains available without fabricating a
+mandate-wait display. Guidance is inspection only and authorizes no new payment.
+The host owns rendering and route mounting. See the
+[PostgreSQL witnesses](../../tests/postgres/checkoutPaymentGuidance.test.ts) and
+[package characterizations](../../packages/platform/test/commerce/paymentRecoveryGuidance.test.ts).

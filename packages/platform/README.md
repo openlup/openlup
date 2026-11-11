@@ -2349,6 +2349,18 @@ unchanged. Renewal cycles refuse. The native prior-payment safety adapter in
 named unsupported refusal. See the [recreation recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#expired-checkout-recreation)
 for required host authority, executor binding and the real-money closure limit.
 
+Atomic sandbox checkout guidance uses
+`createPostgresPaymentRecoveryGuidancePort` in `./commerce/server`, with
+`normalizeSandboxPaymentRecoveryEvidence` from `./payments`.
+`readAuthorizedPaymentRecovery` binds validation-only token or verified cookie
+authority and derives Core refusal actions. One service-only SQL statement
+rechecks authority and reads status, raw activation/gap facts and bounded evidence.
+Captured observations suppress refusal advice without claiming settlement.
+Opaque native method references establish no method or operation; those guidance
+fields remain unknown. Non-sandbox channels retain the existing named refusal.
+The host keeps status capability opt-in, its legacy display fallback and response
+shape. See the [atomic guidance recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#atomic-checkout-payment-guidance).
+
 ## Saved customer address book
 
 `@openlup/platform/shipping` exports

@@ -4096,6 +4096,19 @@
             "sha256": "8e8b4da49847e1eceff3888f2ed1f1e6a74ead04117b6b460e58f7b624cf3e1a"
           }
         ]
+      },
+      {
+        "row": "checkout-payment-guidance",
+        "path": "db/platform/migrations/20261110220000_checkout_payment_guidance.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.commerce_checkout_payment_guidance_snapshot(uuid,uuid,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -5100,6 +5113,17 @@
           "signature": "public.commerce_emit_return_outbox()",
           "beforeSha256": null,
           "afterSha256": "25be373832b1a605550e2fd390e6f3246db645a82b16f3d77989b8915d9a4daa"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261110220000_checkout_payment_guidance.sql",
+      "sha256": "7b6d46e974b3b2cbd1153d5cd4cc5858bff5da3156d72722e7318d1acae22bd3",
+      "functions": [
+        {
+          "signature": "public.commerce_checkout_payment_guidance_snapshot(uuid,uuid,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "a18c02a841b3322369ae49745ac354228a97df351b2b7db796721a1370240d1d"
         }
       ]
     }
