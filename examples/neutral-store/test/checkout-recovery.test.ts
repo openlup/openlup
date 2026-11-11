@@ -176,3 +176,34 @@ test('corrupt, malformed and foreign original captures refuse a frozen re-quote'
   for (const value of [{ ...frozen, email: '' }, { ...frozen, kind: 'later-profile' }, { ...frozen, orderRef: 'foreign' }])
     assert.equal(await readFrozenCheckoutEmail(orderId, capture(value)), null);
 });
+
+import { admitsRecreatedContinuation } from '../host/checkout-recovery.ts';
+import { createCheckoutRecoveryInspection } from '@openlup/platform/commerce/server';
+
+test('a captured replacement between reads keeps native paid presentation above its stored attempt', async () => {
+  const paid = { orderId, clientId: orderId, status: 'paid', subscriptionCycleId: null } as NativeCheckoutRecoveryOrder;
+  const inspection = createCheckoutRecoveryInspection({
+    tokenPort: { validate: async () => null, inspect: async () => ({ tokenId: orderId, orderId, clientId: orderId,
+      mode: 'one_time_order', status: 'expired', subscriptionId: null, tokenState: 'order_not_recoverable' }) },
+    orderPort: { getRecoveryOrder: async () => paid, getLatestRecoveryOrder: async () => paid },
+    validation: { validate: async () => true }, clientHasLiveOrPendingSubscription: async () => false,
+  });
+  const result = await inspection.inspect({ token: 'opaque', capabilities: ['recreate_expired_order'] });
+  assert.equal(result.recoverable, false);
+  assert.equal('terminalStatus' in result && result.terminalStatus, 'paid');
+  assert.equal(admitsRecreatedContinuation(result, orderId), false);
+});
+
+test('expired-policy inspection cannot restore a pending replacement continuation from its stored attempt', async () => {
+  const pending = { orderId, clientId: orderId, status: 'pending_payment', subscriptionCycleId: null,
+    paymentIntentId: orderId, technicallyExpired: false } as NativeCheckoutRecoveryOrder;
+  const inspection = createCheckoutRecoveryInspection({
+    tokenPort: { validate: async () => null, inspect: async () => ({ tokenId: orderId, orderId, clientId: orderId,
+      mode: 'one_time_order', status: 'expired', subscriptionId: null, tokenState: 'expired' }) },
+    orderPort: { getRecoveryOrder: async () => pending, getLatestRecoveryOrder: async () => pending },
+    validation: { validate: async () => true }, clientHasLiveOrPendingSubscription: async () => false,
+  });
+  const result = await inspection.inspect({ token: 'opaque', capabilities: ['recreate_expired_order'] });
+  assert.equal(result.recoverable, false);
+  assert.equal(admitsRecreatedContinuation(result, orderId), false);
+});

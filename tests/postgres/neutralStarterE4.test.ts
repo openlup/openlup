@@ -416,7 +416,7 @@ it('admits an active distributor session but refuses admin-only OMS, shipment an
   expect(await snapshot()).toEqual(before);
 }, adminReadRefusalTimeoutMs);
 
-it('all fourteen operation limits preserve the complete effect snapshot over replay and forgery', async () => {
+it('all eleven operation limits preserve the complete effect snapshot over replay and forgery', async () => {
   const orderRef = await purchase(false);
   const paid = await purchase(true);
   const before = await snapshot();

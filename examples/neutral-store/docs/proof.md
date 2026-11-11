@@ -797,12 +797,15 @@ parcel fixture freezes synthetic carrier contact and supplies normalized provide
 facts through existing native owners. It mounts no dispatch or delivery action.
 
 The recovery journeys distinguish issuer rules: checkout, reminder-wave and
-signed-in recovery links expire at order creation plus 24 hours and preserve
+signed-in recovery links end continuation at order creation plus 24 hours and preserve
 earlier links; checkout-expiry notices use creation plus 30 days and retain the
 terminal source order. Eligible recovery now offers replacement payment while
 the source itself remains terminal. Operator issuance revokes earlier links for
-the order and uses the earlier of issuance plus 24 hours or creation plus
-30 days. Payment prevents a further payment through any link.
+the order and ends continuation at the earlier of issuance plus 24 hours or creation
+plus 30 days. Expired-policy inspection can still recreate eligible expired or
+system-abandoned initial checkouts until source creation plus 30 days. Frozen
+quote, content, stock and prior-payment safety refusals remain. A revoked link,
+manual cancellation or payment cannot start another payment.
 
 
 ## Expired checkout recovery and order holds
@@ -830,3 +833,12 @@ The additional real-PostgreSQL journeys run in the `recovery extension ` group
 from the single shared `browser-groups.mjs` source. Each group uses a fresh
 installation pair, one worker and traces, screenshots and video off. Checkout
 quota and all runner guards remain unchanged.
+
+The hold witness proves durable replay across a host-process restart with a fresh
+native administrator session. It does not prove session continuity or container
+restart configuration. Recovery inspection gives terminal and unrecoverable
+results priority over stored attempts. Recreated targets refuse the ordinary
+sandbox action even for their signed-in owner after a refused attempt. The
+expiry-notice journeys click Pay without prior provider evidence and prove the
+reference safety refusal with no replacement or payment; display validation
+checks the quote, while Pay checks prior-payment safety.

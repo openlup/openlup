@@ -457,7 +457,7 @@ revoke membership to withdraw access. The existing ON DELETE SET NULL on
 `commerce_order_holds.created_by` would otherwise make that operator's
 fulfillment-exception holds look system-created and eligible for automatic
 release. This forward preserves that FK; see the [owner step](../../examples/neutral-store/README.md#commerce-operator-roster-for-hold-and-release-admission).
-The starter's hold/release binding remains a separate change.
+The starter binds hold and release with a fresh human-admin and Commerce-operator check on every command and replay.
 
 ## Additive forward release path
 

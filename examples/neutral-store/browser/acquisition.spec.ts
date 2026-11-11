@@ -533,6 +533,12 @@ for (const locale of ['en', 'pl'] as const) {
     await page.goto(String(message.recoveryUrl));
     await expect(page.getByRole('button', { name: copy[locale].recoveryPay, exact: true })).toBeVisible();
     await expect(page.locator('main')).toContainText(f.orderRef);
+    await expect(page.getByRole('button', { name: copy[locale].recoveryPay, exact: true })).toBeVisible();
+    await page.getByRole('button', { name: copy[locale].recoveryPay, exact: true }).click();
+    await expect(page.locator('main')).toContainText(copy[locale].recoveryUnavailable);
+    await expect(page.getByRole('button', { name: copy[locale].recoveryPay, exact: true })).toHaveCount(0);
+    expect((await owner.query('SELECT id FROM public.commerce_orders WHERE recreated_from_order_id=$1', [f.orderRef])).rows).toHaveLength(0);
+    expect((await owner.query('SELECT a.id FROM public.payment_simulator_attempts a JOIN public.commerce_settlement_intents i ON i.id=a.settlement_intent_id WHERE i.order_id=$1', [f.orderRef])).rows).toHaveLength(0);
     await expect(page.getByRole('button', { name: copy[locale].simulatePaid, exact: true })).toHaveCount(0);
   });
 
@@ -545,6 +551,12 @@ for (const locale of ['en', 'pl'] as const) {
     const message = (await messages()).find(row => row.kind === 'checkout_expired' && row.orderId === `order_${f.orderRef}`)!;
     expect(message).toBeTruthy(); await page.goto(String(message.recoveryUrl));
     await expect(page.locator('main')).toContainText(f.orderRef);
+    await expect(page.getByRole('button', { name: copy[locale].recoveryPay, exact: true })).toBeVisible();
+    await page.getByRole('button', { name: copy[locale].recoveryPay, exact: true }).click();
+    await expect(page.locator('main')).toContainText(copy[locale].recoveryUnavailable);
+    await expect(page.getByRole('button', { name: copy[locale].recoveryPay, exact: true })).toHaveCount(0);
+    expect((await owner.query('SELECT id FROM public.commerce_orders WHERE recreated_from_order_id=$1', [f.orderRef])).rows).toHaveLength(0);
+    expect((await owner.query('SELECT a.id FROM public.payment_simulator_attempts a JOIN public.commerce_settlement_intents i ON i.id=a.settlement_intent_id WHERE i.order_id=$1', [f.orderRef])).rows).toHaveLength(0);
     await expect(page.getByRole('button', { name: copy[locale].simulatePaid, exact: true })).toHaveCount(0);
     expect((await runtime.query('SELECT state,subscription_id FROM public.subscription_activations WHERE order_id=$1', [f.orderRef])).rows[0]).toEqual({ state: 'compensated', subscription_id: null });
     expect((await runtime.query("SELECT count(*)::int AS n FROM public.outbox_events WHERE aggregate_id=$1 AND event_type='commerce.order.cancelled'", [f.orderRef])).rows[0].n).toBe(0);
@@ -870,6 +882,10 @@ for (const locale of ['en','pl'] as const) {
   test(`${locale}: recovery extension human holds replay, conflict, target and role admission`, async ({ page }) => {
     const f = await pendingCheckout(page, locale), actor = await portalOperator(page, locale);
     const key = randomUUID(), payload = { orderRef: f.orderRef.toUpperCase(), reason: 'manual_support', note: 'Example hold' };
+    for (const field of ['actorUserId','principalRef','operatorRef','clientId','customerRef']) {
+      expect((await call(page, 'operator.hold', { ...payload, [field]: actor })).code).toBe('starter_input_invalid');
+      expect((await call(page, 'operator.release', { holdRef: randomUUID(), [field]: actor })).code).toBe('starter_input_invalid');
+    }
     const held = await call(page, 'operator.hold', payload, key); expect(held.ok).toBe(true);
     expect((await call(page, 'operator.hold', payload, key)).replayed).toBe(true);
     expect((await call(page, 'operator.hold', { ...payload, reason: 'risk_review' }, key)).code).toBe('starter_order_hold_conflict');
@@ -946,6 +962,36 @@ for (const locale of ['en','pl'] as const) {
     await expect(page.getByRole('button', { name: copy[locale].recoveryPay, exact: true })).toHaveCount(0);
     expect((await runtime.query('SELECT status FROM public.commerce_orders WHERE id=$1', [f.orderRef])).rows[0].status).toBe(mode === 'subscription' ? 'cancelled' : 'expired');
     await page.reload(); await expect(page.locator('main')).toContainText(copy[locale].recoveryPaid);
+  });
+  test(`${locale}: recovery extension recreated order cannot retry through ordinary payment even for its owner`, async ({ page }) => {
+    const f = await expiredCheckout(page, locale);
+    const started = await call(page, 'checkout.recovery', { token: f.token, action: 'pay' }); expect(started.ok).toBe(true);
+    const target = { token: f.token, orderRef: started.value.latestOrderRef, attemptRef: started.value.attemptRef };
+    expect((await call(page, 'checkout.recovery', { ...target, action: 'simulate', outcome: 'refused' })).ok).toBe(true);
+    await signIn(page, f.email, locale);
+    expect((await call(page, 'payment.simulate', { orderRef: target.orderRef, outcome: 'captured' })).code).toBe('starter_recovery_unavailable');
+    expect((await owner.query('SELECT a.id FROM public.payment_simulator_attempts a JOIN public.commerce_settlement_intents i ON i.id=a.settlement_intent_id WHERE i.order_id=$1', [target.orderRef])).rows).toHaveLength(1);
+    expect((await runtime.query('SELECT status FROM public.commerce_orders WHERE id=$1', [target.orderRef])).rows[0].status).toBe('pending_payment');
+    // Expired-policy authority can inspect expiry but cannot continue that pending replacement.
+    await owner.query("UPDATE public.commerce_checkout_recovery_tokens SET created_at=now()-interval '2 minutes',expires_at=now()-interval '1 minute' WHERE order_id=$1", [f.orderRef]);
+    const inspected = await call(page, 'checkout.recovery', { token: f.token, action: 'inspect' });
+    expect(inspected.value.recoverable).toBe(false); expect(inspected.value.recreatedAttempt).toBeUndefined();
+    expect((await call(page, 'checkout.recovery', { ...target, action: 'simulate', outcome: 'captured' })).ok).toBe(false);
+    expect((await call(page, 'checkout.recovery', { token: f.token, action: 'pay' })).ok).toBe(false);
+    expect((await owner.query('SELECT a.id FROM public.payment_simulator_attempts a JOIN public.commerce_settlement_intents i ON i.id=a.settlement_intent_id WHERE i.order_id=$1', [target.orderRef])).rows).toHaveLength(1);
+  });
+  test(`${locale}: recovery extension terminal and refused inspection suppress stale attempt controls`, async ({ page }) => {
+    const token = 'rcv_' + 'a'.repeat(64), attempt = { latestOrderRef: randomUUID(), attemptRef: randomUUID() };
+    for (const terminalStatus of ['paid', undefined]) {
+      await page.route('**/api/actions/checkout.recovery', route => route.fulfill({ json: { ok: true, value: {
+        recoverable: false, terminalStatus, recreatedAttempt: attempt,
+      } } }));
+      await page.goto(routes.completion[locale] + '?' + new URLSearchParams({ token }));
+      await expect(page.locator('main')).toContainText(copy[locale][terminalStatus ? 'recoveryPaid' : 'recoveryUnavailable']);
+      await expect(page.getByRole('button', { name: copy[locale].simulatePaid, exact: true })).toHaveCount(0);
+      await expect(page.getByRole('button', { name: copy[locale].recoveryPay, exact: true })).toHaveCount(0);
+      await accessible(page.locator('main')); await page.unroute('**/api/actions/checkout.recovery');
+    }
   });
   test(`${locale}: recovery extension paid and cancelled orders never offer Pay`, async ({ page }) => {
     for (const paid of [true,false]) {

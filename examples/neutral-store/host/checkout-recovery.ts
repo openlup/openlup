@@ -57,7 +57,7 @@ import { createPostgresRoleFreeTransactionLane } from '@openlup/platform/data';
 import { createCheckoutRecoveryInspection, createExpiredCheckoutRecoveryService, createPostgresCheckoutRecoveryOrderPort,
   createPostgresExpiredCheckoutRecoveryPort, createPostgresExpiredCheckoutDraftPort, createPostgresExpiredCheckoutRuntime,
   createPostgresExpiredCheckoutCompensation, checkoutRecoveryExecutionFingerprint, ExpiredCheckoutRecoveryError,
-  classifyCheckoutRecoveryTokenState, type NativeCheckoutRecoveryOrder } from '@openlup/platform/commerce/server';
+  classifyCheckoutRecoveryTokenState, type NativeCheckoutRecoveryOrder, type CheckoutRecoveryInspectionResult } from '@openlup/platform/commerce/server';
 import { createPostgresSandboxExpiredCheckoutSafety, createPostgresSandboxPaymentSimulator } from '@openlup/platform/payments';
 import { createPostgresPurchaseReservationPort } from '@openlup/platform/inventory';
 import { createNativeQuoteService } from './quote-composition.ts';
@@ -72,6 +72,11 @@ export function supportsRecovery(order: NativeCheckoutRecoveryOrder): boolean {
   const snapshot = order.quoteSnapshot;
   const context = isRecord(snapshot) && isRecord(snapshot.quote) && isRecord(snapshot.quote.context) ? snapshot.quote.context : null;
   return !(context?.offerVersion === 'sized.v1' && context.starterPack != null);
+}
+
+/** A stored attempt cannot widen the native inspection's current authority or terminal result. */
+export function admitsRecreatedContinuation(result: CheckoutRecoveryInspectionResult, orderId: string): boolean {
+  return result.recoverable && result.recoveryKind === 'retry_existing' && sameUuid(result.order.orderId, orderId);
 }
 
 export function composeExpiredRecovery(pool: Pool, connectionString: string, tokens: PurchaseRecovery['tokens'], keyring?: PromotionAcceptanceKeyring): ApplicationBindings['actions'] {
@@ -129,15 +134,18 @@ export function composeExpiredRecovery(pool: Pool, connectionString: string, tok
       return { ok: true, value: { ...lineage, recoverable: false, terminalStatus: 'paid' } };
     if (original.subscriptionCycleId !== null || latest.subscriptionCycleId !== null) return refuse('unavailable');
     if (payload.action === 'inspect') {
+      const result = await inspection.inspect({ token: payload.token, capabilities: ['recreate_expired_order'] });
       const simulator = createPostgresSandboxPaymentSimulator(pool, context.config.purchase.sandbox);
-      const attempt = latest.recreatedFromOrderId && latest.paymentIntentId && latest.status === 'pending_payment'
+      const attempt = admitsRecreatedContinuation(result, latest.orderId) && latest.recreatedFromOrderId && latest.paymentIntentId && latest.status === 'pending_payment'
         ? await simulator.readAttempt({ settlementIntentId: latest.paymentIntentId }) : null;
       const started = attempt?.requestKey === `checkout-recovery-recreate:${latest.recreatedFromOrderId}:payment-execution`;
-      return { ok: true, value: { ...await inspection.inspect({ token: payload.token,
-        capabilities: ['recreate_expired_order'] }), ...lineage,
+      return { ok: true, value: { ...result, ...lineage,
         ...(started && attempt ? { recreatedAttempt: { latestOrderRef: latest.orderId, attemptRef: attempt.id, state: attempt.state } } : {}) } };
     }
     try {
+      if (latest.recreatedFromOrderId && (payload.action === 'simulate' || latest.status === 'pending_payment')
+        && !admitsRecreatedContinuation(await inspection.inspect({ token: payload.token, capabilities: ['recreate_expired_order'] }), latest.orderId))
+        return refuse('unavailable');
       if (payload.action === 'pay') {
         if (latest.status === 'paid') return refuse('paid');
         // A pending replacement replays its predecessor's receipt; a later expired generation is recreated from that latest source.

@@ -71,10 +71,10 @@ export function completionPage(context: PageContext): HTMLElement {
     if (!page.isConnected) return;
     if (recovered?.ok && isRecord(recovered.value)) {
       const value = recovered.value;
-      if (isRecord(value.recreatedAttempt)) { showStarted(value.recreatedAttempt); return; }
       if (value.terminalStatus === 'paid') {
         state.replaceChildren(el('p', {}, context.t('recoveryPaid')), renderValue(value)); return;
       }
+      if (value.recoverable === true && !value.terminalStatus && isRecord(value.recreatedAttempt)) { showStarted(value.recreatedAttempt); return; }
       if (value.recoverable === true && value.recoveryKind === 'recreate_expired') {
         const pay = actionForm(context, { operation: 'checkout.recovery', submit: 'recoveryPay',
           input: () => ({ token: credential.token, action: 'pay' }),

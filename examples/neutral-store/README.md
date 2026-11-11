@@ -504,13 +504,13 @@ The public answer does not depend on whether an account exists.
 
 An admitted new checkout issues a 256-bit recovery token through the native
 PostgreSQL port. Only its SHA-256 hash is stored. Checkout creation, reminder
-waves and signed-in recovery issue links that expire 24 hours after order
-creation and preserve earlier links. Links in checkout-expiry notices instead
+waves and signed-in recovery issue links whose continuation authority ends 24 hours after order
+creation; these issuers preserve earlier links. Links in checkout-expiry notices instead
 expire 30 days after order creation and retain the terminal source order.
 Eligible expiry can start a replacement through the single Pay action; the
 source order itself cannot be paid. An operator-issued checkout link revokes all earlier links
-for that order and expires at the earlier of issuance plus 24 hours or order
-creation plus 30 days. Payment prevents further payment through any link;
+for that order; its continuation authority ends at the earlier of issuance plus
+24 hours or order creation plus 30 days. Payment prevents further payment through any link;
 other links remain subject to their own expiry and the operator revocation rule.
 Payment-case links rotate separately, leaving one live link per case.
 The token is returned only in the creating response and a separate private
@@ -522,9 +522,15 @@ The committed continuity proof consists of the source continuity test and the
 clean-index root proof, which needs only npm ci and the three-package build,
 without a starter build or browser. A real-browser second-submit check was
 confirmed in a local run that is not part of the committed suite.
-Native inspection allows payment only for an active pending order, recognizes
-an already-paid order without payment controls, and refuses expired, cancelled
-or unavailable links. Indexed hash lookup makes no constant-time claim.
+Continuation authority permits payment of the original pending order only while
+its link is live; existing-order token payment remains deferred in this starter.
+Expired-policy inspection can offer recreation of a fresh order until 30 days
+after the source order was created, including system-abandoned initial checkouts.
+Frozen re-quoting, unchanged supported content, stock admission and proven prior
+payment non-settlement remain required. Manual cancellation, paid orders and
+revoked or unavailable links cannot start payment. Paid presentation has priority
+over any stored attempt. A recreated order uses only its recovery transition and
+replay receipt; the ordinary sandbox action cannot start another attempt. Indexed hash lookup makes no constant-time claim.
 Owning sessions retain order ownership checks. An email alone mints no link for
 an existing order. Recovery grants no account or subscription-command access.
 

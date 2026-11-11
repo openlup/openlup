@@ -105,3 +105,14 @@ test('fulfillment cancellation retains the native 240-character reason boundary'
   assert.deepEqual(await action({ shipmentRef: 'abcdefab-cdef-4abc-8def-abcdefabcdef', reason: 'x'.repeat(241), confirmed: true }, context),
     { ok: false, code: 'starter_input_invalid' });
 });
+
+test('hold and release reject every caller-supplied identity before Commerce access', async () => {
+  const pool = { query() { throw new Error('forged_identity_store_touched'); } } as unknown as Pool;
+  const actions = composeE4Capabilities(pool, async () => true);
+  const ref = 'abcdefab-cdef-4abc-8def-abcdefabcdef';
+  for (const operation of ['operator.hold', 'operator.release'] as const) {
+    const target = operation === 'operator.hold' ? { orderRef: ref, reason: 'manual_support' } : { holdRef: ref };
+    for (const field of ['actorUserId', 'principalRef', 'operatorRef', 'clientId', 'customerRef'])
+      assert.deepEqual(await actions[operation]!({ ...target, [field]: ref }, context), { ok: false, code: 'starter_input_invalid' });
+  }
+});
