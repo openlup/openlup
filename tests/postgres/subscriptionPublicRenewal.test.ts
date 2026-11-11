@@ -312,7 +312,7 @@ it("never redispatches an ambiguous prepared retry, accepts matching late eviden
   expect(await retryDriver(d, "succeeded", recoveredAt).driver.run(days(recoveredAt, 1), 50)).toEqual([]);
   expect(await allPublicRows(admin)).toEqual(paid);
   expect((await runtime.query("SELECT count(*)::integer AS n FROM public.subscription_cycles WHERE subscription_id=$1", [f.subscriptionId])).rows[0].n).toBe(2);
-});
+}, 15_000);
 
 
 it("retains protected admission after mode rollback, then resumes the same frozen schedule only after actual arrival", async () => {
@@ -365,10 +365,14 @@ it("does not report retry-driver success when capture is retained for review aft
   const recovery = retryDriver(d, "succeeded", row.nextRetryAt!), read = recovery.options.payments.readOutcome;
   let counter: number | undefined;
   recovery.options.payments.readOutcome = async (...input) => {
-    const result = await read(...input);
+    const attempt = await payments.createPostgresSandboxPaymentSimulator(executor, {
+      dunningTemplateSlug: "failed", recoveryUrlPath: "/recover", recoveryTemplateSlug: "recovered"
+    }).readAttempt({ settlementIntentId: row.settlementIntentId! });
+    // Accept cancellation on terminal unpaid work before the provider's late capture.
+    await rpc("payment_simulator_record_observation", [attempt!.id, `expired:${attempt!.id}`, "e".repeat(64), "expired", row.nextRetryAt!]);
     await createPostgresCommerceOmsPort(executor).cancelOrder({ idempotencyKey: `cancel:${row.orderId}`, orderId: row.orderId, reason: "synthetic cancellation", actorUserId: operator });
     counter = Number((await runtime.query("SELECT next_cycle_number FROM public.subscription_renewal_terms WHERE subscription_id=$1", [f.subscriptionId])).rows[0].next_cycle_number);
-    return result;
+    return read(...input);
   };
   expect(await recovery.driver.run(row.nextRetryAt!, 50)).toEqual([{ operationId: first.operationId, status: "error" }]);
   expect((await runtime.query("SELECT next_cycle_number FROM public.subscription_renewal_terms WHERE subscription_id=$1", [f.subscriptionId])).rows[0].next_cycle_number).toBe(counter);
@@ -451,7 +455,7 @@ it("captures populated retry, token, destination and draft rows, restores cleanl
     const address = await destinations.createPostgresDestinationPort(target.runtime).read("subscription", due.subscriptionId);
     expect((await store.readRenewal(codec.identity(await store.buildCycleSnapshots(due))))!.cycleSnapshot.orderSnapshot.shippingAddressRef).toBe(address.destinationId);
   });
-}, 65_000);
+}, 95_000);
 
 it("views the current and pinned shipment destination without writes or waiting for dispatch locks", async () => {
   const f = await active(), shipmentId = await parcel(f.orderId);

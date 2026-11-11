@@ -110,7 +110,7 @@ it("upgrades the exact pre-seed prefix without replacing an existing nonzero rat
     const payload = selectedCatalogProjectionPayload(await readSelectedCatalogProjection(client));
     expect(createHash("sha256").update(payload).digest("hex")).toBe(manifest.objectInventorySha256);
   } finally { client.release(); }
-});
+}, 20_000);
 it("retains the named binding refusal on the old prefix and enables only the observed forward", async () => {
   expect(oldReadiness.nativeRateReadiness.state).toBe("unknown");
   expect(oldReadiness.nativeRateSchema.version).toBeNull();

@@ -1326,6 +1326,18 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261110190000_customer_saved_addresses.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261110200000_operator_order_commands.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261110210000_return_request_decisions.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/20261110220000_checkout_payment_guidance.sql",
       "class": "public-output"
     },
@@ -4434,6 +4446,18 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261110190000_customer_saved_addresses.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261110200000_operator_order_commands.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261110210000_return_request_decisions.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20261110220000_checkout_payment_guidance.sql",
       "class": "public-output"
     },
@@ -6978,6 +7002,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/identity/savedAddressPrivacy.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/identity/sql.ts",
       "class": "public-output"
     },
@@ -8366,6 +8394,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/shipping/customerSavedAddressSchemas.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/shipping/customerSelfServiceAddressModels.ts",
       "class": "public-output"
     },
@@ -8391,6 +8423,10 @@
     },
     {
       "path": "packages/platform/src/shipping/pickupPointSearchPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/postgresAddressBook.ts",
       "class": "public-output"
     },
     {
@@ -10731,6 +10767,10 @@
     },
     {
       "path": "packages/platform/test/shipping/deliveryConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/shipping/savedAddressSchemas.test.ts",
       "class": "public-output"
     },
     {
@@ -28954,6 +28994,14 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/customerSavedAddresses.fixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/customerSavedAddresses.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/customer_browser_identity.test.ts",
       "class": "public-output"
     },
@@ -29354,6 +29402,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/operatorOrderCommands.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/partnerAcquisition.test.ts",
       "class": "public-output"
     },
@@ -29399,6 +29451,10 @@
     },
     {
       "path": "tests/postgres/retainedClientSubscriptionImport.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/returnRequestCommands.test.ts",
       "class": "public-output"
     },
     {

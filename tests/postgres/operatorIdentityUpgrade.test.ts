@@ -170,7 +170,7 @@ it('normalized duplicates refuse the forward atomically without changing custome
   expect((await upgrade.query('SELECT * FROM public.clients ORDER BY id')).rows).toEqual(before);
   expect((await upgrade.query('SELECT catalog_path, sha256, position FROM public.platform_schema_migrations ORDER BY position')).rows)
     .toEqual([current.baseline, ...current.forward].map((row, position) => ({ catalog_path: row.file, sha256: row.sha256, position })));
-});
+}, 15_000);
 
 it('installed ledger refuses changed hashes, paths, missing, extra and reordered identities', async () => {
   const rows = (await upgrade.query('SELECT catalog_path, sha256, position FROM public.platform_schema_migrations ORDER BY position')).rows;

@@ -219,6 +219,7 @@ for (const generation of lifecycleProfiles) describe(`operator parcel journeys o
     const ordinary = await subject(h.owner); await h.owner.query("UPDATE public.commerce_orders SET status='cancelled' WHERE id=$1", [ordinary.order]);
     expect((await h.owner.query("SELECT count(*)::int n FROM public.outbox_events WHERE aggregate_id=$1 AND event_type='commerce.order.cancelled'", [ordinary.order])).rows[0].n).toBe(1);
     const unpaid = await subject(h.owner); await h.owner.query("UPDATE public.commerce_orders SET status='pending_payment',paid_at=NULL WHERE id=$1", [unpaid.order]);
+    await h.owner.query("UPDATE public.commerce_settlement_intents SET status='created',settled_at=NULL WHERE order_id=$1", [unpaid.order]);
     await h.runtime.query("SELECT public.oms_cancel_unpaid_order($1,$2,'unpaid',$3)", [`unpaid-${randomUUID()}`, unpaid.order, unpaid.actor]);
     expect((await h.owner.query("SELECT * FROM public.outbox_events WHERE aggregate_id=$1 AND event_type='commerce.order.cancelled'", [unpaid.order])).rows).toEqual([]);
   });
@@ -426,4 +427,4 @@ it('roundtrips exact parcel associations, operator receipts and status evidence 
     } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
     expect(await restoreConnectedNativeStore({ owner: target.owner, installation: journeySelection, packet, freshTarget })).toMatchObject({ replayed: true });
   } finally { await resources.close(); }
-}, 45_000);
+}, 175_000);

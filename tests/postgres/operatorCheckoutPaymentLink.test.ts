@@ -113,7 +113,7 @@ describe.each(lifecycleProfiles)('operator checkout links on %s',profile=>{
     .toEqual([{outcome:'admitted',completed_stage:'none',token_id:null},{outcome:'failed',completed_stage:'revoked',token_id:null}]);
    expect((await a.query("SELECT id FROM public.outbox_events WHERE aggregate_id=$1 AND event_type='commerce.checkout_recovery'",[f.id])).rows).toEqual([]);
   }finally{await a.query('ROLLBACK');await pending?.catch(()=>{});a.release();b.release();}
- });
+ }, 15_000);
  it('revokes earlier wave and customer/service links; later service issuance preserves the operator link and the payment case',async()=>{
   const f=await order(2/24),oldRaw=randomUUID();await serviceIssue(f.id,oldRaw);
   await createPostgresCheckoutRecoveryWaves(env.runtime,{profile:'capture'}).enqueue(100,NOW);

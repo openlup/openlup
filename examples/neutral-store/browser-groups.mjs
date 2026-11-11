@@ -14,4 +14,5 @@ export function journeySelections(patterns) {
 export const browserJourneyGroups = journeySelections([
   'database subscription care',
   'portal ',
+  'recovery extension ',
 ]);

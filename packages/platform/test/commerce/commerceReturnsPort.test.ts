@@ -70,3 +70,16 @@ it("binds a host reason set without widening accepted codes or changing field pr
   }]);
   expect(returnRequestCreateSchema.safeParse(input).success).toBe(false);
 });
+
+
+it("refuses a repeated order item by UUID identity and accepts distinct lines", () => {
+  const input = { idempotencyKey: "return-duplicate-1", orderId: ID, reasonCode: "other",
+    lines: [{ orderItemId: "abcdefab-1234-4123-8123-abcdefabcdef", quantity: 1 },
+      { orderItemId: "ABCDEFAB-1234-4123-8123-ABCDEFABCDEF", quantity: 2 }] };
+  const result = returnRequestCreateSchema.safeParse(input);
+  expect(result.success).toBe(false);
+  expect(result.error?.issues).toEqual([expect.objectContaining({
+    message: "commerce_return_request_create_duplicate_line", path: ["lines", 1, "orderItemId"]
+  })]);
+  expect(returnRequestCreateSchema.safeParse({ ...input, lines: [input.lines[0], { orderItemId: ID, quantity: 1 }] }).success).toBe(true);
+});

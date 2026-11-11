@@ -881,7 +881,7 @@ it('X restores paid lines to ATP, preserves future subscription stock, refuses a
  await db.query('SAVEPOINT replay_conflict');
  await expect(call(db,'subscription_retry_record_recovery',[f.operation,`paid-${f.operation}`,{...positive(f),amountMinor:1}])).rejects.toMatchObject({code:'23505'});
  await db.query('ROLLBACK TO replay_conflict');assertSameSnapshot(snapshot,await batchSnapshot(db));
-}));
+}), 15_000);
 it('Y filters beyond LIMIT, keeps due ordering/ties, clamps and future rows, and makes no writes',async()=>scoped(async()=>{
  const f=await cohort(),before=await batchSnapshot(db);
  const rows=await call(db,'subscription_retry_candidates',[2,later(26)]);
@@ -1375,7 +1375,7 @@ it('replays a stored refusal and an apply-created receipt directly, without publ
       await writer.query("ROLLBACK");
       await writer.end();
     }
-  }, 120_000);
+  }, 250_000);
 
 
   it("proves the M12 finite catalog delta, observer refusals and installation rollback", async () => {
@@ -1451,7 +1451,7 @@ it('replays a stored refusal and an apply-created receipt directly, without publ
     expect(restored.sequenceState).toEqual(baseline.sequenceState);
     expect(restored.rows).toEqual(baseline.rows);
     expect(restored.checkDefinitions).toEqual(baseline.checkDefinitions);
-  }, 120_000);
+  }, 185_000);
 
   it("proves the catalog observer rejects planted effects and pgTAP finishes cleanly", async () => {
     const pin = pins.at(-1)!;

@@ -1,3 +1,4 @@
+import { CustomerSavedAddressRefused } from "@openlup/platform/shipping";
 import { createPostgresShippingRateDataPort } from "../../adapters/postgres/commerceSettings.js";
 import { createPostgresShippingRateTransactionLane, type PostgresDataGatewayEnv, type PostgresDataGatewayOptions } from "../../adapters/postgres/dataGateway.js";
 import { SHIPPING_MIGRATIONS, createShippingBindings, type ShippingBindingDependencies, type ShippingBindings } from "@openlup/platform/shipping";
@@ -52,7 +53,7 @@ export function createM06ShippingReferenceBinding(input: {
       pickupPointValidationResponseSchema, pickupPointSearchRequestSchema, pickupPointSearchResponseSchema } } : undefined,
     addresses: input.addresses ? { ...input.addresses, schemas: { customerAddressesRequestSchema, customerAddressesResponseSchema,
       customerAddressDeleteRequestSchema, customerAddressUpsertRequestSchema,
-      isMutationConflict: (error): error is Error => error instanceof CustomerSelfServiceMutationConflictError } } : undefined,
+      isMutationConflict: (error): error is Error => error instanceof CustomerSelfServiceMutationConflictError || (error instanceof CustomerSavedAddressRefused && error.code === "address_in_use") } } : undefined,
     rate: input.rate ? { ...input.rate, resolveAdmin, schemas: { contractVersion: COMMERCE_CONTRACT_VERSION,
       adminSetShippingRateRequestSchema, adminSetShippingRateResponseSchema, adminShippingRateResponseSchema } } : undefined,
   });
