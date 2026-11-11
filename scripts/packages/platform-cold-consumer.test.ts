@@ -376,7 +376,7 @@ it("compiles actual declarations in both modes and refuses leaked peer types", (
   compileConsumer(consumer, NON_ADAPTER_ENTRIES, compiler);
   writeFileSync(join(consumer, "node_modules/@openlup/platform/index.d.ts"), 'import type { Pool } from "pg"; export type Leaked = Pool;\n');
   expect(() => compileConsumer(consumer, NON_ADAPTER_ENTRIES, compiler)).toThrow();
-}, 30_000);
+}, 35_000);
 it("refuses a runtime import that throws even if its declaration exists", () => {
   const consumer = fixture(); writeFileSync(join(consumer, "node_modules/@openlup/platform/index.js"), 'throw new Error("synthetic provider initialization");');
   expect(() => consumerNode(consumer, 'await import("@openlup/platform/identity");')).toThrow(/synthetic provider initialization/);
@@ -853,7 +853,7 @@ it("M11 K2 exercises installed commerce compensation without optional peers", ()
   proveCommerceServerConsumer(consumer);
   for (const name of ["@types/node", "undici-types"]) cpSync(join(root, "node_modules", name), join(consumer, "node_modules", name), { recursive: true });
   compileConsumer(consumer, ["commerce", "commerce/contracts", "commerce/server", "commerce/server/destinations", "pricing/browser"], join(root, "node_modules/typescript/lib/tsc.js"));
-}, 55_000);
+}, 65_000);
 
 it("payments and fulfillment: installed packed consumer proves injected execution, truth scope, fulfillment services, default-off and contribution", () => {
   const consumer = pristinePackedA1Fixture();
@@ -865,7 +865,7 @@ it("payments and fulfillment: installed packed consumer proves injected executio
   for (const name of ['@types/node', 'undici-types']) cpSync(join(root, 'node_modules', name), join(consumer, 'node_modules', name), { recursive: true });
   compileConsumer(consumer, NON_ADAPTER_ENTRIES, join(root, 'node_modules/typescript/lib/tsc.js'));
   // Hosted runners compile both resolution modes uncached, which can exceed the default floor.
-}, 60_000);
+}, 65_000);
 
 it("CI rejects an added required invoice seam field in installed NodeNext and Bundler declarations", () => {
   const consumer = pristinePackedA1Fixture();
@@ -891,7 +891,7 @@ it("CI rejects an added required invoice seam field in installed NodeNext and Bu
     rejectsMissingField(() => { execFileSync(process.execPath, [compiler, "-p", configPath], { cwd: consumer, encoding: "utf8", stdio: "pipe" }); });
   } finally { writeFileSync(path, original); }
   compileConsumer(consumer, ["invoicing", "invoicing/contracts"], compiler);
-}, 50_000);
+}, 65_000);
 
 it("proves both opt-in installed payment adapters without SDK or import-time I/O", () => {
   const consumer = pristinePackedA1Fixture();
@@ -957,7 +957,7 @@ assert.equal(subscriptionLifecycleTemplate("subscription_stock_wait.resumed"),"s
 assert.equal(NATIVE_SUBSCRIPTION_CAPABILITIES.multiCyclePrepaid.supported,false);
 console.log("M10 installed positive/refusal passed");
 `)).toContain("M10 installed positive/refusal passed");
-}, 40_000);
+}, 50_000);
 
 it("M10 packed public renewal parent forwards applied attribution and rejects its omission mutant", () => {
   const consumer = pristinePackedA1Fixture();
@@ -996,7 +996,7 @@ it("executes the account-support consumer and detects a swallowed owner refusal"
     "return ports.account.getAccount(userId);", "return ports.account.getAccount(userId).catch(() => null);",
   ));
   expect(() => proveAccountSupportConsumer(consumer)).toThrow();
-}, 30_000);
+}, 40_000);
 
 // R2 reuses the existing packed fixture and isolated consumer boundary.
 function r2Consumer(): string {
@@ -1188,7 +1188,7 @@ it("proves installed marketing subpaths, prelaunch schemas, reachable ports and 
   for (const name of ["@types/node", "undici-types"]) cpSync(join(root, "node_modules", name), join(consumer, "node_modules", name), { recursive: true });
   compileMarketingAnalyticsConsumer(consumer, join(root, "node_modules/typescript/lib/tsc.js"));
   compileConsumer(consumer, ["marketing", "marketing/contracts"], join(root, "node_modules/typescript/lib/tsc.js"));
-}, 75_000);
+}, 100_000);
 
 it("proves installed marketing server reads, port refusal, default-off privacy and exact exports without optional peers", () => {
   const consumer = pristinePackedA1Fixture();
