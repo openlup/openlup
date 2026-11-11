@@ -209,7 +209,7 @@ jobs:
         run: node --experimental-strip-types scripts/starter-browser-ci.mjs --manifest "$RUNNER_TEMP/package-gates/packages-manifest.json" --expected-commit "$(git rev-parse HEAD)"
 
   test-full-shard:
-    name: test-full-shard (${{ matrix.shard }}/4)
+    name: test-full-shard (${{ matrix.shard }}/6)
     if: ${{ github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -219,9 +219,9 @@ jobs:
       packages: read
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 6
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -269,7 +269,7 @@ jobs:
         env:
           OPENLUP_VITEST_EXCLUDE_FILE: ${{ runner.temp }}/ci-test-exclude.txt
           OPENLUP_PGTAP_DEB_CACHE: ${{ github.workspace }}/.context/scratch/cache/pgtap-debs
-        run: npm test -- --shard=${{ matrix.shard }}/4
+        run: npm test -- --shard=${{ matrix.shard }}/6
 
   test:
     name: test
@@ -278,7 +278,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Require all four full-root shards and pgTAP to succeed
+      - name: Require all six full-root shards and pgTAP to succeed
         env:
           SHARD_RESULT: ${{ needs.test-full-shard.result }}
           PGTAP_RESULT: ${{ needs.pgtap.result }}
