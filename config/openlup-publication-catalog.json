@@ -1334,6 +1334,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261110210000_return_request_decisions.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4443,6 +4447,10 @@
     },
     {
       "path": "packages/platform/sql/20261110200000_operator_order_commands.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261110210000_return_request_decisions.sql",
       "class": "public-output"
     },
     {
@@ -29415,6 +29423,10 @@
     },
     {
       "path": "tests/postgres/retainedClientSubscriptionImport.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/returnRequestCommands.test.ts",
       "class": "public-output"
     },
     {
