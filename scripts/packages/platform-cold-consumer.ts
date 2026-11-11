@@ -1010,6 +1010,13 @@ export function compileConsumer(consumer: string, entries: readonly string[], co
     'declare const compensationPort: CheckoutCompensationPort;',
     'export const compensationResult: Promise<void> = tryCompensate(compensationPort, "intent-key", "order-1");',
   ].join("\n"));
+  if (entries.includes("commerce/server/destinations")) surfaces.push([
+    'import { createPostgresDestinationPort } from "@openlup/platform/commerce/server/destinations";',
+    'import type { DestinationDocument, DestinationQueryExecutor } from "@openlup/platform/commerce/server/destinations";',
+    'declare const destinationDb: DestinationQueryExecutor;',
+    'const destinationPort = createPostgresDestinationPort(destinationDb);',
+    'export const destination: DestinationDocument = await destinationPort.read("order", "order-1");',
+  ].join("\n"));
   if (entries.includes("commerce") && entries.includes("commerce/contracts")) surfaces.push([
     'import { offerAvailabilityRequestItems } from "@openlup/platform/commerce";',
     'import type { CommerceOfferAvailabilityPort } from "@openlup/platform/commerce/contracts";',
