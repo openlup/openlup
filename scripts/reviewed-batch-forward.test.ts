@@ -267,7 +267,7 @@ it("preserves N1 historical 14-pin approval through the re-pin and separately ap
   } finally { rmSync(folder, { recursive: true, force: true }); }
 }, 60_000);
 
-// Measured alone at 74.99 s (2026-10-23); about 3x keeps shared-machine load from timing it out.
+// About 4x the slowest hosted run (92,958 ms), rounded up to 5 s.
 it("retains separate prior approval in CI and release, and refuses incorrect pins", () => {
   const folder = mkdtempSync(join(tmpdir(), "openlup-batch-control-"));
   const git = (...args: string[]) => execFileSync("git", ["-C", folder, ...args], { encoding: "utf8" }).trim();

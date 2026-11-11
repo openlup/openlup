@@ -329,7 +329,7 @@ export default defineConfig({testDir:'../browser',testMatch:'recovery.proof.ts',
     expect(logs.includes(raw)).toBe(false);
   }, 10_000);
 
-  // Measured 121.8 s including two real native 60 s login cadences; 180 s adds headroom.
+  // About 4x the slowest hosted run (122,526 ms), rounded up to 5 s.
   it('requires the owned chain and server method facts, survives restart, and schedules the same unpaid obligation', async () => {
     const f = await declined(), raw = await issue(f), other = await createOrder(`other-${randomUUID()}@example.test`);
     expect(await call('payment.recover', { token: raw, action: 'read' })).toEqual({ ok: false, code: 'customer_session_required' });

@@ -496,7 +496,7 @@ function corruptDeclaredTotal(): ConnectedNativeStoreCapture {
   return copy;
 }
 
-// Solo median 6.32 s, max 6.44 s; source CI 14.9 s and merge group 21.3 s both ran without coverage (10 s flat limit).
+// About 4x the slowest hosted run (24,807 ms), rounded up to 5 s.
 it("restores writer-created sandbox attempts, cyclic observations and terminal review truth, then continues once", async () => {
   const before = await census(source.owner);
   expect(JSON.stringify(packet)).not.toContain("dispatch-only@example.invalid");
@@ -550,7 +550,7 @@ it("restores writer-created sandbox attempts, cyclic observations and terminal r
   }
 }, 100_000);
 
-// Solo median 4.31 s, max 4.34 s; allow headroom for hosted database contention.
+// About 4x the slowest hosted run (16,613 ms), rounded up to 5 s.
 it("rolls back the whole restore when a captured simulator observation is missing", async () => {
   const corrupted = structuredClone(packet), observations = corrupted.owned.find(data => data.table === "payment_simulator_observations")!;
   observations.rows = observations.rows.filter(row => (JSON.parse(row) as { id: string }).id !== payments.captured.id);
@@ -560,7 +560,7 @@ it("rolls back the whole restore when a captured simulator observation is missin
   expect(await census(target.owner)).toEqual(before);
 }, 70_000);
 
-// Solo medians 3.70/3.64 s, maxima 3.78/3.69 s for the two table-limit cases.
+// About 4x the slowest hosted run (14,260 ms), rounded up to 5 s.
 for (const table of ["payment_simulator_attempts", "payment_simulator_observations"] as const) it(`counts linkable ${table} rows and bytes toward the transfer limits`, async () => {
   const all = [...packet.compatible.tables, ...packet.owned], index = all.findIndex(data => data.table === table);
   const through = all.slice(0, index + 1), rows = through.reduce((sum, data) => sum + data.rows.length, 0);
@@ -575,7 +575,7 @@ for (const table of ["payment_simulator_attempts", "payment_simulator_observatio
   expect(await census(target.owner)).toEqual(before);
 }, 60_000);
 
-// Solo without coverage: 6.30 s including restore; retain 30 s headroom.
+// About 4x the slowest hosted run (25,145 ms), rounded up to 5 s.
 it("transfers purchase owners, lines and receipts losslessly and preserves replay and bounded capture", async () => {
   for (const table of ["subscription_activations", "commerce_checkout_compensations", "fulfillment_stock_current", "fulfillment_inventory_reservations", "fulfillment_inventory_reservation_lines", "fulfillment_purchase_reservation_receipts"]) {
     expect(packet.owned.find(value => value.table === table)?.rows.length).toBeGreaterThan(0);
@@ -608,7 +608,7 @@ it("transfers purchase owners, lines and receipts losslessly and preserves repla
   expect((await target.owner.query("SELECT count(*)::int n FROM public.fulfillment_inventory_reservations WHERE purchase_order_id=$1", [purchaseHold.orderId])).rows).toEqual([{ n: 1 }]);
 }, 105_000);
 
-// Solo median 3.55 s, max 3.61 s; allow headroom for hosted database contention.
+// About 4x the slowest hosted run (12,820 ms), rounded up to 5 s.
 it("refuses a native capture login that row security would silently filter", async () => {
   const login = "transfer_filtered_reader";
   await source.owner.query(`CREATE ROLE ${login} LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD 'synthetic-transfer';
@@ -645,7 +645,7 @@ it("refuses a native capture login that row security would silently filter", asy
   }
 }, 55_000);
 
-// Solo median 5.03 s, max 5.21 s; allow headroom for hosted database contention.
+// About 4x the slowest hosted run (18,202 ms), rounded up to 5 s.
 it("preserves native JSON digits above the JavaScript exact integer range", async () => {
   const carried = await capture(source.owner, "native-json-number-source");
   await restore(carried);
@@ -653,7 +653,7 @@ it("preserves native JSON digits above the JavaScript exact integer range", asyn
     .rows).toEqual([{ value: "9007199254740993" }]);
 }, 75_000);
 
-// Solo median 5.17 s, max 5.18 s; allow headroom for hosted database contention.
+// About 4x the slowest hosted run (18,068 ms), rounded up to 5 s.
 it("refuses a changed known trigger body and an unknown INSERT trigger before importing rows", async () => {
   const before = await census(target.owner);
   const original = (await target.owner.query<{ definition: string }>(
@@ -675,7 +675,7 @@ it("refuses a changed known trigger body and an unknown INSERT trigger before im
   expect(await census(target.owner)).toEqual(before);
 }, 75_000);
 
-// Uses the existing 30-second connected-transfer integration deadline.
+// About 4x the slowest hosted run (30,363 ms), rounded up to 5 s.
 it("captures only the address-reference registry census and preserves the target installation registry", async () => {
   const references = [randomUUID(), randomUUID()];
   const localReference = randomUUID();
@@ -737,7 +737,7 @@ it("captures only the address-reference registry census and preserves the target
   }
 }, 125_000);
 
-// Uses the existing 30-second connected-transfer integration deadline.
+// About 4x the slowest hosted run (19,769 ms), rounded up to 5 s.
 it("refuses nonempty acquisition cases despite the address-reference census exception", async () => {
   const id = randomUUID();
   const insertCase = (db: Pool) => db.query(`INSERT INTO acquisition_private.cases
@@ -759,7 +759,7 @@ it("refuses nonempty acquisition cases despite the address-reference census exce
   }
 }, 80_000);
 
-// Uses the existing 30-second connected-transfer integration deadline.
+// About 4x the slowest hosted run (13,055 ms), rounded up to 5 s.
 it.each(["acquisition_private.address_references_extra", "other_private.address_references"])("refuses other private relation %s", async relation => {
   if (relation.startsWith("other_private.")) await source.owner.query("CREATE SCHEMA other_private");
   await source.owner.query(`CREATE TABLE ${relation}(value text); INSERT INTO ${relation} VALUES('synthetic-private-row')`);
@@ -772,7 +772,7 @@ it.each(["acquisition_private.address_references_extra", "other_private.address_
   }
 }, 55_000);
 
-// Solo median 5.18 s, max 5.29 s; allow headroom for hosted database contention.
+// About 4x the slowest hosted run (19,152 ms), rounded up to 5 s.
 it("refuses private business omission and nonpristine targets without deleting existing obligations", async () => {
   const targetBefore = await census(target.owner);
   // An actual canonical private BUSINESS row must not disappear as if private
@@ -806,7 +806,7 @@ it("refuses private business omission and nonpristine targets without deleting e
   expect(await census(target.owner)).toEqual(targetBefore);
 }, 80_000);
 
-// Solo median 3.86 s, max 4.07 s; allow headroom for hosted database contention.
+// About 4x the slowest hosted run (13,499 ms), rounded up to 5 s.
 it("bounds customer-linked purchase facts, method events and method state in transfer", async () => {
   const compatibleRows = packet.compatible.tables.reduce((sum, table) => sum + table.rows.length, 0);
   const compatibleBytes = packet.compatible.tables.reduce((sum, table) => sum + table.rows.reduce((bytes, row) => bytes + Buffer.byteLength(row), 0), 0);
@@ -962,7 +962,7 @@ it("preserves the connected retained graph, pruned history and exact replay unde
   expect(schedule[0].next_cycle_at).toBe("2027-04-07 12:00:00.654321+00");
 }, 115_000);
 
-// Solo without coverage: 7.90 s; 30 s exceeds three times that measurement.
+// About 4x the slowest hosted run (28,914 ms), rounded up to 5 s.
 it("retains actor-written consent history, replay, suppression and trusted target across a store move", async () => {
   expect(pristine.owned.find(table => table.table === "customer_account_consent_sync_targets")!.rows).toEqual([]);
   await target.owner.query("INSERT INTO public.customer_account_consent_sync_targets(binding,provider_kind,enabled) VALUES('different-target','synthetic-provider',false)");
@@ -998,7 +998,7 @@ it("retains actor-written consent history, replay, suppression and trusted targe
     .toEqual(packet.owned.find(table => table.table === "customer_account_consent_sync_targets")!.rows);
 }, 120_000);
 
-// Solo without coverage: 4.18 s; 30 s exceeds three times that measurement.
+// About 4x the slowest hosted run (13,048 ms), rounded up to 5 s.
 it("counts personal consent history and attribution toward whole-capture row and byte limits", async () => {
   const index = packet.owned.findIndex(table => table.table === "customer_account_consent_events");
   const ledger = packet.owned[index]!;
@@ -1023,7 +1023,7 @@ it("counts personal consent history and attribution toward whole-capture row and
   }
 }, 55_000);
 
-// Solo without coverage: 6.52 s; 30 s exceeds three times that measurement.
+// About 4x the slowest hosted run (27,387 ms), rounded up to 5 s.
 it("retains terminal event and reminder refusals after changed policy, restore and replay", async () => {
   await restore();
   const rows = async () => (await target.runtime.query(`SELECT source,source_id,reason,
@@ -1041,7 +1041,7 @@ it("retains terminal event and reminder refusals after changed policy, restore a
   expect(await rows()).toEqual(before);
 }, 110_000);
 
-// Solo without coverage: 3.85 s; 30 s exceeds three times that measurement.
+// About 4x the slowest hosted run (12,970 ms), rounded up to 5 s.
 it("counts terminal refusal source identities and times toward capture row and byte limits", async () => {
   const index = packet.owned.findIndex(table => table.table === "subscription_notice_refusals");
   const retained = packet.owned[index]!;
@@ -1219,7 +1219,7 @@ it("checks the identity mapper's erased-subject and conflict branches with synth
   expect(before.clients).toEqual([]);
 }, 100_000);
 
-// Solo without coverage: 4.97 s including restore; retain 30 s headroom.
+// About 4x the slowest hosted run (20,554 ms), rounded up to 5 s.
 it("retains private destinations, scoped bindings, support replay and exact address data after restore", async () => {
   await restore();
   // The existing census compares every field in UTC without truncating stored microseconds.
@@ -1235,7 +1235,7 @@ it("retains private destinations, scoped bindings, support replay and exact addr
   await expect(target.runtime.query("SELECT public.customer_support_change_shipping_destination($1,$2,$3,$4,$5,'2026-09-02T12:00:00Z')", [destinationCommand.operator, destinationCommand.subscription, destinationCommand.payload, destinationCommand.version + 1, destinationCommand.key])).rejects.toMatchObject({ code: "23505" });
 }, 85_000);
 
-// Solo without coverage: 3.68 s including restore; retain 30 s headroom.
+// About 4x the slowest hosted run (13,155 ms), rounded up to 5 s.
 it("enforces actual cumulative row and byte limits at EACH address relation", async () => {
   for (const table of ["commerce_destinations", "commerce_destination_bindings"]) {
     const index = packet.owned.findIndex(t => t.table === table);
@@ -1313,7 +1313,7 @@ it("drains every target acquisition command before opening a new installation-ke
 }, 55_000);
 
 
-// Solo 15.06 s without coverage; 60 s covers installed tarballs, capture/restore and child restart with headroom.
+// About 4x the slowest hosted run (60,584 ms), rounded up to 5 s.
 it("preserves native checkout receipt identity, privacy and microseconds across transfer and restart", async () => {
   const { installSubscriptionConsumer } = await import("../helpers/installSubscriptionConsumer.js");
   const { execFileSync } = await import("node:child_process");
@@ -1397,7 +1397,7 @@ try {
   } finally { await rm(consumer, { recursive: true, force: true }); }
 }, 245_000);
 
-// Local no-coverage case: 8.141 s; fourfold 32.564 s rounds to a 40 s deadline.
+// About 4x the slowest hosted run (24,658 ms), rounded up to 5 s.
 it("round-trips open and accepted package previews with their event and subscription parents", async () => {
   const captured = packet.owned.find(table => table.table === "subscription_quote_previews");
   expect(captured?.rows).toHaveLength(2);

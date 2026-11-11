@@ -365,7 +365,7 @@ it("keeps the graduated cycle monotonic after late payment and parcel arrival", 
   // No replacement confirmation is used to manufacture an arrival.
 }, 30_000);
 
-// Solo: 6.21 s without coverage; 30 s retains more than three times that bound.
+// About 4x the slowest hosted run (21,103 ms), rounded up to 5 s.
 it("transfers paid shipping, retained terms, graduation agreements and frozen replay", async () => {
   await admin.query("SELECT public.subscription_delivery_alignment_set_mode('off')");
   const f = await active(), d = await nextDelivery(f);

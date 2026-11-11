@@ -91,9 +91,8 @@ function observedOwner(onError: (error: unknown) => void): Pool {
   } } as unknown as Pool;
 }
 
-// The earlier two-installation spike measured 10.32 seconds including setup.
-// Case bodies retain the 30-second transfer budget; the control installation
-// in the redemption case has a 45-second budget (over four times that spike).
+// Each case bound is about 4x its slowest hosted run, rounded up to 5 s.
+// The redemption case also performs a control installation.
 it("carries reserved and redeemed claims and their events byte-exactly and replays", async () => {
   const before = await journeyCensus(source.owner);
   expect(before.commerce_promotion_claims).toHaveLength(2);

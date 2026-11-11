@@ -70,8 +70,8 @@ function observedOwner(before: (sql: string, query: (sql: string, values?: unkno
   } } as unknown as Pool;
 }
 
-// The existing connected-transfer deadline is 30 seconds per case. Setup has
-// its separate container deadline; these cases keep retry at zero.
+// Each case bound is about 4x its slowest hosted run, rounded up to 5 s.
+// Container setup retains its separate deadline; cases keep retry at zero.
 it("carries two revisions per revised product, resolves the latest pointer and replays byte-exactly", async () => {
   const before = await journeyCensus(source.owner);
   expect(packet.owned.find(table => table.table === "catalog_product_document_revisions")?.rows)

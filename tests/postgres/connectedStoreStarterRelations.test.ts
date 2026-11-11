@@ -93,8 +93,8 @@ function observedOwner(observe: (sql: string, query: (sql: string) => Promise<{ 
   } } as unknown as Pool;
 }
 
-// Retain the predecessor's explicit 30-second connected-transfer case budget;
-// container installation has its separate deadline and cases never retry.
+// Each case bound is about 4x its slowest hosted run, rounded up to 5 s.
+// Container installation keeps its separate deadline; cases never retry.
 for (const table of carried) {
   it(`carries ${table} byte-exactly and replays without changing rows`, async () => {
     const before = await journeyCensus(source.owner);

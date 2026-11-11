@@ -79,5 +79,5 @@ it.each([["marketing_newsletter", "marketingNewsletter"], ["marketing_gifts_disc
     expect(await journeyCensus(target.owner)).toEqual(afterWithdrawal);
     expect(await read(source)).toEqual(granted.choices);
     expect(await journeyCensus(source.owner)).toEqual(sourceBefore);
-  // The two-case guest file measured 21.67 s total; 90 s per case exceeds four times that measured total.
+  // About 4x the slowest hosted run (33,839 ms), rounded up to 5 s.
   }, 140_000);

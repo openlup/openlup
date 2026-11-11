@@ -369,5 +369,5 @@ it.each(profiles)("atomic actor account choices and refusals on %s", async profi
     expect(pendingDenials.map(row => row.id).sort()).toEqual(unsynced.sort());
     expect(pendingDenials.find(row => row.id === denied.permissionEventId).sync_deferred_reason).toBe("registration_failed");
   } finally { await closePostgres(container, pools, closers); }
-// Solo without coverage across the five modes: 3.32–5.42 s; 30 s exceeds three times the maximum.
+// About 4x the slowest hosted run (17,425 ms), rounded up to 5 s.
 }, 70_000);

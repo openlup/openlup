@@ -156,5 +156,5 @@ it.each(["one_time", "subscription"] as const)("joins anonymous %s purchase, tra
       actor: { customerRef: client.id, principalRef: signed.user.id, operatorRef: null } })).toMatchObject({ ok: true, value: { orderRef: order.orderRef, status: "paid", total: { amountMinor: 274, currency: "XXX" } } });
     expect((await target.owner.query("SELECT id,client_id FROM public.commerce_orders")).rows).toEqual([{ id: order.orderRef, client_id: client.id }]);
   } finally { await Promise.all([...contacts.map(port => port.close()), ...lanes.map(lane => lane.close())]); }
-// Two-store installation previously measured about 11 s; 90 s leaves setup and loaded-host headroom.
+// About 4x the slowest hosted run (33,517 ms), rounded up to 5 s.
 }, 135_000);
