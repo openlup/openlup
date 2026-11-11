@@ -66,7 +66,7 @@ describe('local obligation contract', () => {
     expect(job('self-check')).toContain('github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before');
     expect(job('self-check')).toContain('run: node scripts/public-ci-neutrality.mjs --base-commit "$NEUTRALITY_BASE_COMMIT"');
     expect(job('install-proof')).toContain('scripts/packages/required-package-gates.ts --out "$RUNNER_TEMP/package-gates" --expected-commit "$(git rev-parse HEAD)"');
-    expect(job('test-full-shard')).toContain('npm test -- --shard=${{ matrix.shard }}/4');
+    expect(job('test-full-shard')).toContain('npm test -- --shard=${{ matrix.shard }}/6');
     expect(job('test')).toContain('test "$SHARD_RESULT" = "success"');
     expect(plan().hostedOnly.map(item => item.context)).toEqual(['test', 'install-proof', 'native-review']);
   });

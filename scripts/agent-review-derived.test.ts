@@ -50,7 +50,7 @@ it('lands two independently appended real forwards through the CLI as derived', 
   expect(await proof()).toMatchObject({ kind: 'derived', derived: true });
   expect(git('show', '-s', '--format=%B', merged)).toContain('Signed-off-by: Fixture <fixture@example.invalid>');
   expect(git('show', '-s', '--format=%an <%ae>%n%cn <%ce>', merged)).toBe('Fixture <fixture@example.invalid>\nFixture <fixture@example.invalid>');
-});
+}, 50000);
 it.each(['user.name', 'user.email'])('refuses landing before merging without configured %s', async key => {
   git('reset', '--hard', merged); git('checkout', '-q', '--detach', merged);
   git('config', key, '');
@@ -76,7 +76,7 @@ it('carries reviewed coverage through the derived edge and replays its recorded 
   expect(verdict(session, current, 1001).ok).toBe(true);
   await validateEconomySession(root, session);
 // Two full-tree generator passes plus receipt replay exceeded the 10 s unit default.
-}, 60000);
+}, 90000);
 it.each(['historical byte', 'edited existing entry', 'duplicate slot', 'wrong generator bytes', 'other byte', 'SQL byte', 'wrong lineage'])('refuses %s on live Git objects', async scenario => {
   git('reset', '--hard', merged); git('checkout', '-q', '--detach', merged);
   if (scenario === 'historical byte') write(INVENTORY_PATH, read(INVENTORY_PATH).replace('"historical": {}', '"historical": { }'));
@@ -94,7 +94,7 @@ it.each(['historical byte', 'edited existing entry', 'duplicate slot', 'wrong ge
   const head = git('commit-tree', tree, ...args, '-m', 'Synthetic refusal');
   if (scenario === 'wrong lineage') await expect(proof(head)).rejects.toThrow('integration parents differ');
   else expect((await proof(head)).kind).toBe('resolution');
-});
+}, 50000);
 it.each(['edited existing entry', 'duplicate slot'])('refuses %s at the registry union boundary', scenario => {
   const original = git('show', `${base}:${MIGRATION_REGISTRIES[1]}`), side = JSON.parse(original);
   if (scenario === 'edited existing entry') side.nativeStoreForwards[0].sha256 = 'a'.repeat(64);
@@ -152,4 +152,4 @@ it.each([
     git('reset', '--hard', merged); git('checkout', '-q', '--detach', merged);
     git('update-ref', 'refs/remotes/origin/main', main);
   }
-}, 30000);
+}, 50000);

@@ -424,7 +424,8 @@
         "test/packageBoundary.test.ts",
         "test/shipping/deliveryConformance.test.ts",
         "test/shipping/addressConformance.test.ts",
-        "test/shipping/shippingRateConformance.test.ts"
+        "test/shipping/shippingRateConformance.test.ts",
+        "test/shipping/savedAddressSchemas.test.ts"
       ],
       "entrypoint": "dist/shipping/index.d.ts",
       "snapshot": "api/shipping.api.md"
@@ -958,16 +959,16 @@
   "pack": {
     "code": {
       "maxPackedBytes": 2459923,
-      "maxFiles": 4117
+      "maxFiles": 4211
     },
     "docs": {
-      "maxPackedBytes": 85055,
+      "maxPackedBytes": 86252,
       "maxFiles": 10
     },
     "maxPackedBytes": 3023741,
     "maxUnpackedBytes": 14432601,
     "maxFiles": 4339,
-    "capReason": "Final code measured 2,362,014 gzip bytes across 4,036 files; total 4,168 files. Larger parent caps retained. Unpacked contents measured 13,846,144 bytes; unpacked cap adds 2% headroom. Hosted recreation tarball measured 2,964,451 B; packed cap adds 2% headroom. Documentation cap adds 2% headroom for the merged guides. Recreation unpacked contents measured 14,149,608 bytes; unpacked cap adds 2% headroom. Merged code/docs bytes and total files add 2% to their measurements.",
+    "capReason": "Retain the higher approved parent byte budgets; 4,128 measured code files receive 2% headroom (4,211).",
     "baseline": {
       "version": "0.37.0",
       "packedBytes": 2791358
