@@ -146,12 +146,13 @@ Checkout applies the configured attempt window, e-mail and requester counts, ret
 
 An admitted new checkout issues a 256-bit recovery token through the native
 PostgreSQL port. Only its SHA-256 hash is stored. Checkout creation, reminder
-waves and signed-in recovery issue links that expire 24 hours after order
-creation and preserve earlier links. Links in checkout-expiry notices instead
-expire 30 days after order creation and show the terminal order state without
-payment controls. An operator-issued checkout link revokes all earlier links
-for that order and expires at the earlier of issuance plus 24 hours or order
-creation plus 30 days. Payment prevents further payment through any link;
+waves and signed-in recovery issue links whose continuation authority ends 24 hours after order
+creation; these issuers preserve earlier links. Links in checkout-expiry notices instead
+expire 30 days after order creation and retain the terminal source order.
+Eligible expiry can start a replacement through the single Pay action; the
+source order itself cannot be paid. An operator-issued checkout link revokes all earlier links
+for that order; its continuation authority ends at the earlier of issuance plus
+24 hours or order creation plus 30 days. Payment prevents further payment through any link;
 other links remain subject to their own expiry and the operator revocation rule.
 Payment-case links rotate separately, leaving one live link per case.
 The token is returned only in the creating response and a separate private
@@ -159,9 +160,16 @@ captured checkout-recovery message, never an authentication challenge or event.
 The completion page reads the URL token once and replaces history synchronously
 before configuration fetch or rendering. Request bodies carry the token; memory
 and session storage preserve reload convenience but grant no authority. An unchanged repeated submit for the same order keeps its existing token when the replay response omits it. A different order never inherits that token. A new token replaces the token stored in this tab; this storage update does not revoke other links. Operator issuance revokes them through the native issuer.
-Native inspection allows payment only for an active pending order, recognizes
-an already-paid order without payment controls, and refuses expired, cancelled
-or unavailable links. Indexed hash lookup makes no constant-time claim.
+Live pending-order links support sandbox continuation payment of the original
+order. Dedicated token-pay retry and method switching remain unbound; that
+separate capability is not provided by the sandbox continuation action.
+Expired-policy inspection can offer recreation of a fresh order until 30 days
+after the source order was created, including system-abandoned initial checkouts.
+Frozen re-quoting, unchanged supported content, stock admission and proven prior
+payment non-settlement remain required. Manual cancellation, paid orders and
+revoked or unavailable links cannot start payment. Paid presentation has priority
+over any stored attempt. A recreated order uses only its recovery transition and
+replay receipt; the ordinary sandbox action cannot start another attempt. Indexed hash lookup makes no constant-time claim.
 Owning sessions retain order ownership checks. An email alone mints no link for
 an existing order. Recovery grants no account or subscription-command access.
 
@@ -238,3 +246,43 @@ Neither the runtime host nor installer provisions those rows. Never delete a
 Commerce operator row; withdraw by revoking membership. Native ports own provider,
 stock, fingerprint and replay fences. No arrival attestation caller exists.
 Continuation issuance and the embedded-browser buyer control remain deferred.
+
+
+## Expired checkout recovery and order holds
+
+Expired checkout entry inspects the original order and its latest recovery
+lineage. Paid and manually cancelled orders have no Pay control. Eligible
+expired orders retain a single Pay action: native frozen re-quote validation,
+prior sandbox non-settlement evidence and stock admission precede replacement
+payment start. Changed commercial facts, unsupported starter content and stock
+refusals cannot start payment. Durable draft, lineage and attempt receipts keep
+replay on one replacement and one attempt. Replacement-attempt simulator controls
+remain bound to the inspected bearer, lineage and durable execution receipt;
+reload reads the same attempt, independently of the recreation source link's
+continuation lifetime. Captured executions show no simulator controls. Dedicated token-pay retry and method switching, payment guidance, inline
+retry and embedded-browser continuation issuance remain unavailable.
+
+Hold and release resolve the human administrator before every command and replay.
+The database owner provisions one `commerce_operators` row per human admin, with
+`id` equal to the native principal ID. Never delete this row: holds retain its
+attribution. Withdraw access by revoking the membership through the identity
+owner. Distributors and admins without the Commerce row cannot issue or replay
+these commands. A locked upcoming cycle refuses an address change with
+`payment_blocked`; existing order and parcel destinations remain unchanged.
+
+The additional real-PostgreSQL journeys run in the `recovery extension ` group
+from the single shared `browser-groups.mjs` source. Each group uses a fresh
+installation pair, one worker and traces, screenshots and video off. Checkout
+quota and all runner guards remain unchanged.
+
+
+Recovery re-quoting uses the email in the original immutable private checkout
+capture, keyed by the source checkout's root order. It never substitutes the
+current account email or a later profile edit. Missing, corrupt or erased capture
+refuses recreation before a quote, draft or payment starts. This is the starter's
+owned frozen-source binding, separate from bearer authorization. The capture
+remains personal data under the existing private-mailbox export and erasure
+procedure; include it in the owner's private-state inventory and remove it when
+that procedure requires erasure. Erasure does not trigger reconstruction from
+an account, a profile or another notice. Private captures remain outside served
+assets, logs, traces and public reports.

@@ -472,7 +472,7 @@ runtime executor; the reader changes no role, grants, configuration or data.
 `createPostgresCommerceOmsPort`, `createPostgresCommerceOmsControlPlane`,
 `createPostgresProviderExceptionHealPort` and `createPostgresCommerceReturnsPort`.
 Supply an executor using the installation's restricted runtime login. These are
-unchanged store bindings: holds, exact release, unpaid cancellation, completed
+store bindings: holds, exact release, unpaid cancellation, completed
 external-refund marking and return request/approve/reject. Control-plane reads
 remain the reduced `control_plane_v1` projection. Rich OMS reads, notes, address
 correction retain their existing refusal. Replacement requests use the optional
@@ -490,6 +490,17 @@ deletes it; withdraw human access by revoking membership. Deletion would set
 `commerce_order_holds.created_by` to NULL, making a human fulfillment-exception
 hold eligible for automatic release. This existing FK hazard is not changed.
 See the [composition recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#native-oms-and-support-stores).
+
+With the complete catalogue through `20261110200000_operator_order_commands.sql`,
+unpaid cancellation locks the current payment aggregate and refuses in-flight,
+captured or indeterminate payment before writing one operator audit and releasing
+the order's held purchase reservations. Late captures remain review-required.
+Manual external-refund marking accepts paid orders only and records status without
+a payment-provider call, refund notification or accounting reversal event. Existing
+object metadata keeps its keys; other metadata is retained under `previousMetadata`
+before the command writes its top-level source.
+Genuine refund sources retain their event duties. Neither operation changes an
+active subscription's lifecycle or schedule.
 Native destinations use `./commerce/server/destinations` and the complete SQL
 catalogue. Hosts authorize parent reads and bind checkout/dispatch explicitly.
 The confirmation outbox is durable; native mail dispatch is unbound.

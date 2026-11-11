@@ -1330,6 +1330,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261110200000_operator_order_commands.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/20261110240000_subscription_saved_address_selection.sql",
       "class": "public-output"
     },
@@ -4439,6 +4443,10 @@
     },
     {
       "path": "packages/platform/sql/20261110190000_customer_saved_addresses.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261110200000_operator_order_commands.sql",
       "class": "public-output"
     },
     {
@@ -29395,6 +29403,10 @@
     },
     {
       "path": "tests/postgres/operatorInvitationManaged.conformance.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/operatorOrderCommands.test.ts",
       "class": "public-output"
     },
     {

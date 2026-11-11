@@ -149,3 +149,76 @@ test('second submit continues through completion and a cold module reload withou
     }
   }
 });
+
+import { supportsRecovery } from '../host/checkout-recovery.ts';
+import type { NativeCheckoutRecoveryOrder } from '@openlup/platform/commerce/server';
+
+test('the application content-loss fence refuses only the unsupported bound starter snapshot', () => {
+  const order = (context: unknown) => ({ quoteSnapshot: { quote: { context } } }) as NativeCheckoutRecoveryOrder;
+  assert.equal(supportsRecovery(order({ offerVersion: 'sized.v1', starterPack: {} })), false);
+  assert.equal(supportsRecovery(order({ offerVersion: 'sized.v1' })), true);
+  assert.equal(supportsRecovery(order({ starterPack: {} })), true);
+});
+
+import { readFrozenCheckoutEmail } from '../host/checkout-recovery.ts';
+import type { CaptureValue } from '../host/private-capture.ts';
+const orderId = '11111111-1111-4111-8111-111111111111';
+const frozen = { kind: 'checkout-recovery', orderRef: orderId, email: 'original@example.test' };
+const capture = (value: CaptureValue) => ({ read: async () => value, writeOnce: async () => { throw new Error('frozen_capture_write_forbidden'); } });
+test('re-quote email uses the original immutable capture and canonical order identity', async () => {
+  assert.equal(await readFrozenCheckoutEmail(orderId.toUpperCase(), capture(frozen)), frozen.email);
+});
+test('missing or erased original capture refuses a frozen re-quote', async () => {
+  assert.equal(await readFrozenCheckoutEmail(orderId, capture(null)), null);
+});
+test('corrupt, malformed and foreign original captures refuse a frozen re-quote', async () => {
+  assert.equal(await readFrozenCheckoutEmail(orderId, { ...capture(null), read: async () => { throw new Error('corrupt'); } }), null);
+  for (const value of [{ ...frozen, email: '' }, { ...frozen, kind: 'later-profile' }, { ...frozen, orderRef: 'foreign' }])
+    assert.equal(await readFrozenCheckoutEmail(orderId, capture(value)), null);
+});
+
+import { matchesRecreatedPaymentReceipt, recreatedExecutionForInspection } from '../host/checkout-recovery.ts';
+import { createCheckoutRecoveryInspection } from '@openlup/platform/commerce/server';
+import type { SandboxPaymentAttempt } from '@openlup/platform/payments/contracts';
+const predecessorId = '22222222-2222-4222-8222-222222222222';
+const executionOrder = { orderId, paymentIntentId: orderId, status: 'pending_payment', technicallyExpired: false, recreatedFromOrderId: predecessorId } as NativeCheckoutRecoveryOrder;
+const executionAttempt = { id: orderId, orderId, settlementIntentId: orderId, requestKey: `checkout-recovery-recreate:${predecessorId}:payment-execution`, state: 'dispatched', orderStatus: 'pending_payment', settlementStatus: 'created', latestObservation: null } as SandboxPaymentAttempt;
+
+test('a captured replacement between reads keeps native paid presentation above its stored attempt', async () => {
+  const paid = { orderId, clientId: orderId, status: 'paid', subscriptionCycleId: null } as NativeCheckoutRecoveryOrder;
+  const inspection = createCheckoutRecoveryInspection({
+    tokenPort: { validate: async () => null, inspect: async () => ({ tokenId: orderId, orderId, clientId: orderId,
+      mode: 'one_time_order', status: 'expired', subscriptionId: null, tokenState: 'order_not_recoverable' }) },
+    orderPort: { getRecoveryOrder: async () => paid, getLatestRecoveryOrder: async () => paid },
+    validation: { validate: async () => true }, clientHasLiveOrPendingSubscription: async () => false,
+  });
+  const result = await inspection.inspect({ token: 'opaque', capabilities: ['recreate_expired_order'] });
+  assert.equal(result.recoverable, false);
+  assert.equal('terminalStatus' in result && result.terminalStatus, 'paid');
+  assert.equal(recreatedExecutionForInspection(executionOrder, executionAttempt, result), null);
+});
+
+test('expired-policy inspection preserves the separately admitted replacement execution receipt', async () => {
+  const pending = { orderId, clientId: orderId, status: 'pending_payment', subscriptionCycleId: null,
+    paymentIntentId: orderId, technicallyExpired: false } as NativeCheckoutRecoveryOrder;
+  const inspection = createCheckoutRecoveryInspection({
+    tokenPort: { validate: async () => null, inspect: async () => ({ tokenId: orderId, orderId, clientId: orderId,
+      mode: 'one_time_order', status: 'expired', subscriptionId: null, tokenState: 'expired' }) },
+    orderPort: { getRecoveryOrder: async () => pending, getLatestRecoveryOrder: async () => pending },
+    validation: { validate: async () => true }, clientHasLiveOrPendingSubscription: async () => false,
+  });
+  const result = await inspection.inspect({ token: 'opaque', capabilities: ['recreate_expired_order'] });
+  assert.equal(result.recoverable, false);
+  assert.deepEqual(recreatedExecutionForInspection(executionOrder, executionAttempt, result), { latestOrderRef: orderId, attemptRef: orderId, state: 'dispatched' });
+});
+
+
+test('captured observations and mismatched receipts cannot expose replacement simulator controls', () => {
+  const result = { recoverable: false as const, fallback: 'fresh_checkout' as const };
+  assert.equal(recreatedExecutionForInspection(executionOrder, { ...executionAttempt, state: 'captured' }, result), null);
+  assert.equal(recreatedExecutionForInspection(executionOrder, { ...executionAttempt, latestObservation: { outcome: 'captured' } as NonNullable<SandboxPaymentAttempt['latestObservation']> }, result), null);
+  for (const attempt of [null, { ...executionAttempt, orderId: predecessorId }, { ...executionAttempt, settlementIntentId: predecessorId }, { ...executionAttempt, requestKey: 'ordinary-payment' }]) {
+    assert.equal(matchesRecreatedPaymentReceipt(executionOrder, attempt), false);
+    assert.equal(recreatedExecutionForInspection(executionOrder, attempt, result), null);
+  }
+});

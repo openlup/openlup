@@ -110,9 +110,17 @@ test('localized order controls and owned PDF in both languages', async ({ page, 
     await submitRefused(returns.locator('form').nth(1), 'operator.returnReject', { returnRef: fixture.orderRef });
     const hold = page.locator('#orders form').filter({ has: page.getByRole('button', { name: copy[locale].hold, exact: true }) });
     await expect(hold.locator('[name=reason]')).toHaveJSProperty('tagName', 'SELECT');
-    await submitRefused(hold, 'operator.hold', { orderRef: fixture.orderRef, note: 'Example hold' });
-    await submitRefused(page.locator('#orders form').filter({ has: page.getByRole('button', { name: copy[locale].releaseHold, exact: true }) }),
-      'operator.release', { holdRef: fixture.orderRef, note: 'Example release' });
+    await hold.locator('[name=orderRef]').fill(fixture.orderRef.toUpperCase());
+    await hold.locator('[name=note]').fill('Example hold');
+    const response = page.waitForResponse(response => response.url().endsWith('/api/actions/operator.hold'));
+    await hold.getByRole('button', { name: copy[locale].hold, exact: true }).click();
+    const held = await (await response).json(); expect(held.ok).toBe(true);
+    await expect(hold.locator('.action-result')).toContainText('active');
+    const release = page.locator('#orders form').filter({ has: page.getByRole('button', { name: copy[locale].releaseHold, exact: true }) });
+    await release.locator('[name=holdRef]').fill(held.value.hold.id.toUpperCase());
+    await release.locator('[name=note]').fill('Example release');
+    await release.getByRole('button', { name: copy[locale].releaseHold, exact: true }).click();
+    await expect(release.locator('.action-result')).toContainText('released');
     for (const [operation, label, fields] of [
       ['operator.cancelUnpaid', 'cancelUnpaid', { orderRef: fixture.orderRef, reason: 'reviewed' }],
       ['operator.externalRefund', 'externalRefund', { orderRef: fixture.orderRef, externalRefundRef: 'synthetic-refund', amountMinor: '1', confirmed: true }],
