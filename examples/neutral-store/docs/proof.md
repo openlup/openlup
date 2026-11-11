@@ -615,7 +615,12 @@ The required `install-proof` job now runs `journey.spec.ts` and
 `acquisition.spec.ts` in both configurations through
 [`starter-browser-ci.mjs`](../../../scripts/starter-browser-ci.mjs), after the
 package gates. It extracts the starter, installs the verified candidate tarballs,
-starts an isolated disposable PostgreSQL 16 per configuration through the shared
+runs the selections in `browser-groups.mjs`, giving each group a fresh pair of
+configuration installations. The local `./lifecycle browser` recipe reads the same
+module. Later, more specific patterns take precedence; the remainder covers all
+other journeys, so a new group needs one additional pattern. This keeps the
+unchanged checkout quota active while each selected case runs once. The runner
+starts an isolated disposable PostgreSQL 16 per configuration and group through the shared
 test helper and pinned `test-postgres` image. Each receives the complete selected
 history, repeated installation and its own repeated seed; two loopback hosts use
 the restricted runtime login. Separate installations preserve a unique active
@@ -775,3 +780,25 @@ check that these witnesses detect the corresponding regressions. Browser purchas
 recipes retain their existing carts and expectations; both demonstration offers
 charge 640 minor units below a 1,000-minor threshold. These proofs establish no
 provider access, publication or deployment qualification.
+
+
+## Account, checkout and parcel candidate
+
+Run `./lifecycle browser` from the application directory for the complete database
+configuration. It creates fresh installations for three sequential groups:
+subscription care, the new portal journeys and the purchase baseline. Tests use
+one worker and tracing, screenshots and video off. Independent processes and
+installations keep each group inside the normal checkout quota; production quota
+values and admission paths are unchanged. Focus the portal with `./lifecycle
+browser browser/acquisition.spec.ts --grep 'portal '`. Playwright's `--list` inventory
+selects fourteen definitions in both languages and both configurations, for
+fifty-six cases. The external
+parcel fixture freezes synthetic carrier contact and supplies normalized provider
+facts through existing native owners. It mounts no dispatch or delivery action.
+
+The recovery journeys distinguish issuer rules: checkout, reminder-wave and
+signed-in recovery links expire at order creation plus 24 hours and preserve
+earlier links; checkout-expiry notices use creation plus 30 days and a terminal
+landing without payment controls. Operator issuance revokes earlier links for
+the order and uses the earlier of issuance plus 24 hours or creation plus
+30 days. Payment prevents a further payment through any link.

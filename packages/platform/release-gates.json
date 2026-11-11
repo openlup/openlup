@@ -959,16 +959,16 @@
   "pack": {
     "code": {
       "maxPackedBytes": 2462162,
-      "maxFiles": 4117
+      "maxFiles": 4211
     },
     "docs": {
-      "maxPackedBytes": 86252,
+      "maxPackedBytes": 88483,
       "maxFiles": 10
     },
     "maxPackedBytes": 3033152,
-    "maxUnpackedBytes": 14408428,
+    "maxUnpackedBytes": 14432601,
     "maxFiles": 4344,
-    "capReason": "Billing profile storage, frozen invoice buyer inputs and additive contracts use 2% headroom for crossed packed/code/file caps; other caps and the released baseline are retained.",
+    "capReason": "Retain the higher approved parent byte and file budgets; 86,748 measured documentation bytes receive 2% headroom (88,483).",
     "baseline": {
       "version": "0.37.0",
       "packedBytes": 2791358

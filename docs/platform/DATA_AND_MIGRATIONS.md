@@ -475,6 +475,24 @@ equality cannot relink it. Dependent memberships, privacy receipts, history and
 credential/session disposition remain part of the full
 [M14 transfer outcome](plans/oss-m14-operations-portability.md).
 
+## Human OMS admission
+
+`20261110160000_oms_human_operator_admission.sql` replaces only
+`oms_control_resolve_operator(uuid)`. Its SQL STABLE invoker header,
+`search_path = pg_catalog`, owner and ACL remain unchanged. An existing Commerce
+operator resolves through the unchanged active-control route, or through active
+human `admin` membership with no control row of any state. A distributor or
+revoked member does not enter the human route. No INSERT, provisioning, lock,
+DEFINER or grant is added. Hosts authenticate the principal, require human admin
+for hold/release and resolve before every invocation and replay.
+
+The owner provisions each human admin's Commerce row and never deletes it:
+revoke membership to withdraw access. The existing ON DELETE SET NULL on
+`commerce_order_holds.created_by` would otherwise make that operator's
+fulfillment-exception holds look system-created and eligible for automatic
+release. This forward preserves that FK; see the [owner step](../../examples/neutral-store/README.md#commerce-operator-roster-for-hold-and-release-admission).
+The starter's hold/release binding remains a separate change.
+
 ## Additive forward release path
 
 A development preview may append expand-only platform forwards to either chain:
@@ -3660,6 +3678,33 @@ time after blocking writes and roll back elapsed issuance. The additive buyer
 delivery gate leaves automatic and operator authorizers unchanged. See the
 [entry-point recipe](PLATFORM_PACKAGE_REFERENCE.md#customer-checkout-recovery-entry-points)
 for the host authority boundary and configured deadlines.
+
+### Checkout recovery lineage
+
+`20261110170000_checkout_recovery_inspection.sql` adds nullable
+`commerce_orders.recovery_root_order_id` and `recreated_from_order_id`, each with
+an `ON DELETE RESTRICT NOT VALID` self-FK. Existing rows remain null; new writes
+must satisfy both constraints. The partial root/created index serves the latest
+reader, and the partial unique predecessor index permits one immediate replacement.
+The two stable definer snapshots grant execution only to `service_role`, with no
+new raw-table grants. Their [package composition](PLATFORM_PACKAGE_REFERENCE.md#checkout-recovery-inspection)
+binds client ownership and separates expired inspection from payment authority.
+This forward contains no recreation writer or historical backfill.
+
+### Expired checkout preparation
+
+`20261110180000_checkout_recovery_recreation.sql` adds the service-only definer
+`commerce_prepare_expired_checkout_recovery(text,uuid,uuid,bigint,timestamptz)`.
+It replaces no function and adds no table, lifecycle CHECK, trigger or backfill.
+It uses the existing recovery lineage, draft receipt, destination, provisional
+activation and sandbox payment owners. Its fixed path is `pg_catalog, pg_temp`;
+PUBLIC, anon and authenticated have no EXECUTE grant. Exact linked replay precedes
+fresh checks; a replacement with either lineage field already populated refuses
+fresh preparation. The source payment/window checks follow blocking aggregate
+locks. Runtime first payment admission also rechecks source evidence under the
+source order lock before any replacement stock or payment write. A fresh initial declaration belongs to the replacement; the predecessor
+is never reopened. See the [recreation composition](PLATFORM_PACKAGE_REFERENCE.md#expired-checkout-recreation)
+for commercial validation, transaction binding, compensation and profile limits.
 
 ## Customer billing profile and invoice buyer data
 

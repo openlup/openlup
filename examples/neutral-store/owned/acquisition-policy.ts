@@ -28,3 +28,11 @@ export function createAcquisitionFinancialPolicy(): AcquisitionFinancialPolicy<P
     unconfiguredTerms: () => { throw new AcquisitionTermsError('acquisition_terms_invalid'); },
   };
 }
+
+/** Neutral demonstration bounds; these values do not establish a real market or phone jurisdiction. */
+export const customerAccountPolicy = { key: { min: 8, max: 180 }, name: { min: 2, max: 80 },
+  phone: { callingCode: '999', localDigits: 9 }, correction: { reasonMin: 8, reasonMax: 500, fieldsMax: 20, fieldMax: 80, noteMax: 500 } };
+export const checkoutLinkPolicy = { operatorLifetimeMs: 86400000, recoveryWindowMs: 2592000000 };
+export const checkoutWavePolicy = { profile: 'starter_capture', firstOffsetSeconds: 3600, finalOffsetSeconds: 72000,
+  checkoutSeconds: 86400, recoverySeconds: 2592000, activitySeconds: 900 };
+export const checkoutRecoverySchedule = { enabled: true, leaseSeconds: 120, batchSize: 100, initialTimeoutSeconds: 7200, softBudgetMs: 15000 };

@@ -104,13 +104,6 @@ export const nativeLimits: readonly NativeLimit[] = [
     },
   },
   {
-    id: 'N4', actions: ['requestReplacement', 'cancelFulfillment'], code: 'host_binding_required',
-    explanation: {
-      en: 'Replacement requests and complete fulfillment cancellation are unavailable. Undelivered replacement confirmation is never exposed.',
-      pl: 'Przesyłki zastępcze i pełne anulowanie realizacji są niedostępne. Nie udostępniamy potwierdzania niedoręczonej przesyłki zastępczej.',
-    },
-  },
-  {
     id: 'N5', actions: ['savedAddresses', 'billing', 'deliveryPreference', 'paymentPreference', 'privateProfile', 'profileViews'], code: 'starter_account_preferences_unavailable',
     explanation: {
       en: 'Saved addresses, billing profiles, delivery preferences, payment preferences, private-profile views and profile/address/billing/private-profile views are unavailable on the portable rail.',
@@ -122,13 +115,6 @@ export const nativeLimits: readonly NativeLimit[] = [
     explanation: {
       en: 'Sandbox payments only. Real PSP attempts, method setup, card replacement, cumulative refunds and absence reopen are unsupported on this rail.',
       pl: 'Wyłącznie płatności testowe. Ta ścieżka nie obsługuje rzeczywistych prób PSP, konfiguracji metod, zmiany karty, zwrotów skumulowanych ani wznowienia po braku próby.',
-    },
-  },
-  {
-    id: 'N7', actions: ['editProfile'], code: 'starter_profile_edit_unavailable',
-    explanation: {
-      en: 'Customer profile editing is unavailable on the portable rail.',
-      pl: 'Edycja profilu klienta jest niedostępna na ścieżce przenośnej.',
     },
   },
   {
@@ -153,10 +139,10 @@ export const nativeLimits: readonly NativeLimit[] = [
     },
   },
   {
-    id: 'N9', actions: ['richOms', 'paymentLink', 'resumeAccountDraft'], code: 'starter_rich_oms_unavailable',
+    id: 'N9', actions: ['richOms', 'resumeAccountDraft'], code: 'starter_rich_oms_unavailable',
     explanation: {
-      en: 'Reduced OMS reads do not provide rich reports, analytics, document guidance, operator payment links or saved account draft resume.',
-      pl: 'Ograniczone odczyty OMS nie zapewniają rozbudowanych raportów, analityki, instrukcji dokumentów, linków płatności operatora ani wznawiania wersji roboczych konta.',
+      en: 'Reduced OMS reads do not provide rich reports, analytics, document guidance or saved account draft resume.',
+      pl: 'Ograniczone odczyty OMS nie zapewniają rozbudowanych raportów, analityki, instrukcji dokumentów ani wznawiania wersji roboczych konta.',
     },
   },
   {

@@ -69,9 +69,16 @@ test('entry removes URL token synchronously and retains a private reload conveni
     } });
     captureCompletionEntry();
     assert.equal(replaced, '/account/complete-payment?other=kept#anchor');
+    // Rendering after bootstrap sees the redacted URL and must retain its entry.
+    captureCompletionEntry();
     assert.deepEqual(currentPurchase('entry-test'), { token: 'private-value' });
-    assert.deepEqual(visiblePurchase({ token: 'private-value', status: 'pending_payment' }), { status: 'pending_payment' });
     assert.ok([...data.values()].some(value => JSON.parse(value).token === 'private-value'));
+    rememberPurchase('entry-test', { orderRef: 'other-order', token: 'other-token' });
+    location.search = '?token=navigation-token';
+    captureCompletionEntry();
+    captureCompletionEntry();
+    assert.deepEqual(currentPurchase('entry-test'), { token: 'navigation-token' });
+    assert.deepEqual(visiblePurchase({ token: 'private-value', status: 'pending_payment' }), { status: 'pending_payment' });
   } finally {
     for (const [name, descriptor] of saved) {
       if (descriptor) Object.defineProperty(globalThis, name, descriptor); else Reflect.deleteProperty(globalThis, name);

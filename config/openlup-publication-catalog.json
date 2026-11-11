@@ -1310,6 +1310,22 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261110155000_fulfillment_parcel_status_fence.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261110160000_oms_human_operator_admission.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261110170000_checkout_recovery_inspection.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261110180000_checkout_recovery_recreation.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/20261110190000_customer_saved_addresses.sql",
       "class": "public-output"
     },
@@ -1994,6 +2010,14 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/browser-groups.d.mts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/browser-groups.mjs",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/browser/acquisition.spec.ts",
       "class": "public-output"
     },
@@ -2491,6 +2515,10 @@
     },
     {
       "path": "examples/neutral-store/test/bindings.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/browser-groups.test.ts",
       "class": "public-output"
     },
     {
@@ -4394,6 +4422,22 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261110155000_fulfillment_parcel_status_fence.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261110160000_oms_human_operator_admission.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261110170000_checkout_recovery_inspection.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261110180000_checkout_recovery_recreation.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20261110190000_customer_saved_addresses.sql",
       "class": "public-output"
     },
@@ -5410,6 +5454,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/server/checkoutRecoveryInspection.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/server/checkoutRecoveryOrderPort.ts",
       "class": "public-output"
     },
@@ -5570,6 +5618,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/server/expiredCheckoutRecovery.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/server/handlerSupport.ts",
       "class": "public-output"
     },
@@ -5579,6 +5631,10 @@
     },
     {
       "path": "packages/platform/src/commerce/server/native-checkout/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/nativeExpiredCheckoutRecovery.ts",
       "class": "public-output"
     },
     {
@@ -5706,7 +5762,15 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/server/postgresCheckoutRecoveryOrderPort.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/server/postgresCheckoutRecoveryTokenPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/postgresExpiredCheckoutRecovery.ts",
       "class": "public-output"
     },
     {
@@ -7618,6 +7682,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/payments/expiredCheckoutSafety.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/payments/index.ts",
       "class": "public-output"
     },
@@ -8850,6 +8918,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/commerce/checkoutRecoveryInspection.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/commerce/checkoutRecoveryToken.test.ts",
       "class": "public-output"
     },
@@ -9071,6 +9143,10 @@
     },
     {
       "path": "packages/platform/test/commerce/effects/commerceSalesChannelSeam.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/expiredCheckoutRecovery.test.ts",
       "class": "public-output"
     },
     {
@@ -10886,7 +10962,23 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/agent-review-derived.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/agent-review-derived.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/agent-review-gate.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/agent-review-generators.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/agent-review-landing.mjs",
       "class": "public-output"
     },
     {
@@ -11455,6 +11547,10 @@
     },
     {
       "path": "scripts/github-api-retry-core.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/installation-inventory-refresh.ts",
       "class": "public-output"
     },
     {
@@ -28770,7 +28866,19 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/checkoutRecoveryInspection.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/checkoutRecoveryInspectionUpgrade.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/checkoutRecoveryLinkLifecycle.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/checkoutRecoveryRecreation.test.ts",
       "class": "public-output"
     },
     {
@@ -28835,6 +28943,10 @@
     },
     {
       "path": "tests/postgres/contactClientRegistrar.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/current-installation-inventory.json",
       "class": "public-output"
     },
     {
@@ -28935,6 +29047,10 @@
     },
     {
       "path": "tests/postgres/fulfillmentParcelContacts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fulfillmentParcelStatusFence.test.ts",
       "class": "public-output"
     },
     {
@@ -29227,6 +29343,18 @@
     },
     {
       "path": "tests/postgres/omsControlPlaneNative.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/omsHumanAdmission.fixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/omsHumanAdmission.host.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/omsHumanAdmission.test.ts",
       "class": "public-output"
     },
     {
@@ -29704,6 +29832,26 @@
       "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
     },
     {
+      "name": "inventory:refresh",
+      "command": "node --import tsx scripts/installation-inventory-refresh.ts",
+      "publicDocs": [
+        "CONTRIBUTING.md",
+        "README.md"
+      ],
+      "publicCiEntrypoint": ".github/workflows/published-tree-ci.yml",
+      "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
+    },
+    {
+      "name": "landing:merge",
+      "command": "node scripts/agent-review-landing.mjs",
+      "publicDocs": [
+        "CONTRIBUTING.md",
+        "README.md"
+      ],
+      "publicCiEntrypoint": ".github/workflows/published-tree-ci.yml",
+      "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
+    },
+    {
       "name": "lint",
       "command": "node scripts/ast-grep/check-filewide-ignore.mjs && ast-grep scan --error=no-suppress-all --error=unused-suppression && ast-grep test --skip-snapshot-tests && eslint .",
       "publicDocs": [
@@ -29791,7 +29939,7 @@
     },
     {
       "path": "package.json",
-      "digest": "sha256-603435d758079376c31fba3b643e3c24c22b587309d461d7e7bbb4de483d99e1"
+      "digest": "sha256-55476e48a3bed78e607741082323510fe2c55a0cc9a7209f82ba208516171b78"
     },
     {
       "path": "packages/core/package.json",

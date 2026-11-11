@@ -765,7 +765,8 @@ export async function mapManagedRetainedBusiness(input: {
       paid_at: row.status === "paid" ? transitions.find(transition => transition.payment_intent_id === paidIntents[0]!.id)?.occurred_at : null,
       cancelled_at: null, refunded_at: null, metadata: row.metadata,
       currency_code: row.currency, total_amount_minor: row.total_cents, source_kind: row.source_kind,
-      source_channel_id: null, source_order_ref: null, renewal_operation_id: null, renewal_operation_fingerprint: null });
+      source_channel_id: null, source_order_ref: null, renewal_operation_id: null, renewal_operation_fingerprint: null,
+      recovery_root_order_id: null, recreated_from_order_id: null });
   }
   for (const row of items) {
     if (!orderById.has(row.order_id) || typeof row.allocation_ordinal !== "number" || row.sku_id === null
