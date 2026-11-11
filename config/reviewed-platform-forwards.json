@@ -4027,6 +4027,35 @@
         "absorptionCensusTables": [
           "public.customer_saved_addresses"
         ]
+      },
+      {
+        "row": "operator-order-commands",
+        "path": "db/platform/migrations/20261110200000_operator_order_commands.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.oms_cancel_unpaid_order(text,uuid,text,uuid,jsonb,timestamptz)",
+            "beforeSha256": "efce0f0aa437072db17609230590fb75f97412075e6e48ef51cf8a953c1e3d6d",
+            "searchPath": "public, pg_catalog"
+          },
+          {
+            "signature": "public.oms_mark_refunded(text,uuid,text,uuid,jsonb,timestamptz)",
+            "beforeSha256": "be957b74bb52219208dfb0fc60f7c63b3002993cde8444aacc94e893e4309e55",
+            "searchPath": "public, pg_catalog"
+          },
+          {
+            "signature": "public.commerce_order_emit_refunded_notification()",
+            "beforeSha256": "713dd8d4e407411b1fd07dcfb7f4b0f91e23954ad803cf7901e1601cb2f2bb04",
+            "searchPath": "public, pg_catalog"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.oms_cancel_unpaid_order_owned(text,uuid,text,uuid,jsonb,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -4974,6 +5003,32 @@
           "signature": "public.customer_saved_addresses_prepare_erasure()",
           "beforeSha256": null,
           "afterSha256": "2617e5a5babb2ec7c66fbb1461543ad0fad4fee5af2a363a92ee99565b1b46cc"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261110200000_operator_order_commands.sql",
+      "sha256": "c5de471e952fc3bac4a5c618729e506b17a24b5d0f629f35593e67ac2afa884f",
+      "functions": [
+        {
+          "signature": "public.oms_cancel_unpaid_order(text,uuid,text,uuid,jsonb,timestamptz)",
+          "beforeSha256": "efce0f0aa437072db17609230590fb75f97412075e6e48ef51cf8a953c1e3d6d",
+          "afterSha256": "3bf0eba0e9e747b800638d1ea2322158dc8f8cbd3ba50aace60d0953be4f570f"
+        },
+        {
+          "signature": "public.oms_mark_refunded(text,uuid,text,uuid,jsonb,timestamptz)",
+          "beforeSha256": "be957b74bb52219208dfb0fc60f7c63b3002993cde8444aacc94e893e4309e55",
+          "afterSha256": "e66cd3284645ce866589552b59f70eba5ae72c990a7a7b3a5383aacfd48c0f60"
+        },
+        {
+          "signature": "public.commerce_order_emit_refunded_notification()",
+          "beforeSha256": "713dd8d4e407411b1fd07dcfb7f4b0f91e23954ad803cf7901e1601cb2f2bb04",
+          "afterSha256": "37b8ce8f36ce450a1b302ab1a0d86135d85a99b20a1e1125e2cfdaf3280d2e6a"
+        },
+        {
+          "signature": "public.oms_cancel_unpaid_order_owned(text,uuid,text,uuid,jsonb,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "e08aad49b02ed5f7b70b94fffce805e6703df7e8ea82ced705599321dce50282"
         }
       ]
     }
