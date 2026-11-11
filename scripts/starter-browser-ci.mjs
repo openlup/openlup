@@ -12,6 +12,7 @@ import { promisify } from 'node:util';
 import pg from 'pg';
 import { runPostgresContainer, waitForPostgresTcpReady } from '../tests/helpers/postgresContainer.ts';
 import { imageIo, imageReference, pullWithRetry, readCiImage } from './ci-image-pull.mjs';
+import { browserJourneyGroups } from '../examples/neutral-store/browser-groups.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const execute = promisify(execFile);
@@ -200,7 +201,8 @@ export async function runStarterBrowser(options) {
       const app = join(scratch, 'app');
       defer(async () => {
         // Scan credentials from failed journeys too, before deleting the private fixture.
-        for (const state of [app, ...['supplements', 'coffee'].map(id => join(app, '.context/care-browser', id))]) {
+        for (const state of [app, ...browserJourneyGroups.flatMap((_, index) =>
+          ['supplements', 'coffee'].map(id => join(app, '.context/care-browser', String(index), id)))]) {
           const capture = join(state, '.context/captured-messages');
           try {
             for (const file of await readdir(capture)) {
@@ -229,96 +231,107 @@ export async function runStarterBrowser(options) {
       const migrations = await import(pathToFileURL(installed.resolve('@openlup/platform/migrations')).href);
       const { applyDemoSeed, demonstrationMarker } = await import(pathToFileURL(join(app, 'installation/install.ts')).href);
       const { selectConfiguration } = await import(pathToFileURL(join(app, 'owned/store.config.ts')).href);
-      const suffix = randomBytes(6).toString('hex'), hosts = [];
       await mkdir(join(app, '.context'), { mode: 0o700 });
-      for (const configuration of ['supplements', 'coffee']) {
-        phase = `postgres_${configuration}`;
-        const postgres = await acquireStarterPostgres(defer);
-        cancellation.signal.throwIfAborted();
-        privateValues.push(postgres.password);
-        const bootstrap = guard(new pg.Client({ connectionString: postgres.connectionString, connectionTimeoutMillis: 5000 }));
-        defer(() => bootstrap.end());
-        await bootstrap.connect();
-        const installRole = 'starter_install', runtimeRole = 'starter_runtime', restoreRole = 'starter_restore';
-        const password = randomBytes(32).toString('hex');
-        privateValues.push(password);
-        for (const [role, privileges] of [[installRole, 'INHERIT SUPERUSER'], [runtimeRole, 'NOINHERIT NOSUPERUSER'], [restoreRole, 'NOINHERIT NOSUPERUSER']]) {
-          await bootstrap.query(`CREATE ROLE ${role} LOGIN ${privileges} NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD '${password}'`);
-        }
-        phase = `install_${configuration}`;
-        const database = 'neutral_store';
-        await bootstrap.query(`CREATE DATABASE ${database} OWNER ${installRole}`);
-        await bootstrap.query(`COMMENT ON DATABASE ${database} IS '${demonstrationMarker}'`);
-        const installUrl = `postgresql://${installRole}:${password}@127.0.0.1:${postgres.port}/${database}`;
-        const selection = { generation: 'qualified-v2', roleMode: 'installer-managed', bootstrapLogin: 'postgres', migrationLogin: installRole, runtimeLogin: runtimeRole, restoreLogin: restoreRole };
-        const migrationPool = guard(new pg.Pool({ connectionString: installUrl,
-          options: migrations.qualifiedPostgresStartupOptions(selection), connectionTimeoutMillis: 5000 }));
-        defer(() => migrationPool.end());
-        const runner = migrations.createPlatformPostgresMigrationRunner({ connectionString: installUrl }, { installation: selection, poolFactory: () => migrationPool });
-        const first = await runner.apply(), repeat = await runner.apply(), status = await runner.status();
-        if (repeat.applied.length || status.pending.length) throw new Error('starter_browser_migration_replay_failed');
-        console.log(`Starter ${configuration} migrations: ${first.applied.length}; repeat: ${repeat.applied.length}; elapsed: ${Math.round(performance.now() - started)} ms`);
-        const installer = guard(new pg.Client({ connectionString: installUrl, connectionTimeoutMillis: 5000 }));
-        await installer.connect();
+      const groupFailures = [];
+      for (const [groupIndex, selection] of browserJourneyGroups.entries()) {
         try {
-          const seed = { connection: installer, installRole, runtimeRole };
-          phase = `seed_${configuration}`;
-          await applyDemoSeed(selectConfiguration(configuration), seed);
-          await applyDemoSeed(selectConfiguration(configuration), seed);
-        } finally { await installer.end(); }
-        phase = 'runtime';
-        const runtimeUrl = `postgresql://${runtimeRole}@127.0.0.1:${postgres.port}/${database}`;
-        const runtime = guard(new pg.Client({ host: '127.0.0.1', port: postgres.port, database, user: runtimeRole, password, connectionTimeoutMillis: 5000 }));
-        await runtime.connect();
-        try {
-          const { rows } = await runtime.query('SELECT session_user,current_user,rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user');
-          if (rows[0]?.session_user !== runtimeRole || rows[0]?.current_user !== runtimeRole || rows[0]?.rolsuper !== false || rows[0]?.rolbypassrls !== false) throw new Error('starter_browser_runtime_role_required');
-        } finally { await runtime.end(); }
-        const key = randomBytes(32).toString('base64url');
-        privateValues.push(key);
-        const keyFile = join(scratch, `${configuration}-key.json`);
-        await writeFile(keyFile, JSON.stringify({ current: key }), { mode: 0o600 });
-        const state = join(app, '.context/care-browser', configuration);
-        await mkdir(state, { recursive: true, mode: 0o700 });
-        const port = await freePort(), baseURL = `http://127.0.0.1:${port}`;
-        phase = `host_${configuration}`;
-        const child = spawn(process.execPath, ['--experimental-strip-types', join(app, 'host/server.ts'), '--configuration', configuration,
-          '--port', String(port), '--listen', '127.0.0.1', '--database-url', runtimeUrl, '--quote-acceptance-key-file', keyFile],
-        { cwd: state, env: { ...env, PGPASSWORD: password }, stdio: ['ignore', 'pipe', 'pipe'] });
-        const exited = watchStarterHost(child, configuration, defer, recordLoss);
-        let hostOutput = '';
-        for (const stream of [child.stdout, child.stderr]) stream.on('data', chunk => { hostOutput += String(chunk); outputs.push(String(chunk)); });
-        const deadline = performance.now() + 30000;
-        let ready = false;
-        while (!exited() && performance.now() < deadline) {
-          cancellation.signal.throwIfAborted();
-          try {
-            const response = await fetch(`${baseURL}/api/config`, { signal: AbortSignal.timeout(1000) });
-            if (response.ok && (await response.json()).config.id === configuration) { ready = true; break; }
-          } catch { /* The host has not bound its loopback socket yet. */ }
-          await new Promise(done => setTimeout(done, 100));
+          await withCleanup(async defer => {
+            const suffix = randomBytes(6).toString('hex'), hosts = [];
+            for (const configuration of ['supplements', 'coffee']) {
+              phase = `postgres_${configuration}`;
+              const postgres = await acquireStarterPostgres(defer);
+              cancellation.signal.throwIfAborted();
+              privateValues.push(postgres.password);
+              const bootstrap = guard(new pg.Client({ connectionString: postgres.connectionString, connectionTimeoutMillis: 5000 }));
+              defer(() => bootstrap.end());
+              await bootstrap.connect();
+              const installRole = 'starter_install', runtimeRole = 'starter_runtime', restoreRole = 'starter_restore';
+              const password = randomBytes(32).toString('hex');
+              privateValues.push(password);
+              for (const [role, privileges] of [[installRole, 'INHERIT SUPERUSER'], [runtimeRole, 'NOINHERIT NOSUPERUSER'], [restoreRole, 'NOINHERIT NOSUPERUSER']]) {
+                await bootstrap.query(`CREATE ROLE ${role} LOGIN ${privileges} NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD '${password}'`);
+              }
+              phase = `install_${configuration}`;
+              const database = 'neutral_store';
+              await bootstrap.query(`CREATE DATABASE ${database} OWNER ${installRole}`);
+              await bootstrap.query(`COMMENT ON DATABASE ${database} IS '${demonstrationMarker}'`);
+              const installUrl = `postgresql://${installRole}:${password}@127.0.0.1:${postgres.port}/${database}`;
+              const selection = { generation: 'qualified-v2', roleMode: 'installer-managed', bootstrapLogin: 'postgres', migrationLogin: installRole, runtimeLogin: runtimeRole, restoreLogin: restoreRole };
+              const migrationPool = guard(new pg.Pool({ connectionString: installUrl,
+                options: migrations.qualifiedPostgresStartupOptions(selection), connectionTimeoutMillis: 5000 }));
+              defer(() => migrationPool.end());
+              const runner = migrations.createPlatformPostgresMigrationRunner({ connectionString: installUrl }, { installation: selection, poolFactory: () => migrationPool });
+              const first = await runner.apply(), repeat = await runner.apply(), status = await runner.status();
+              if (repeat.applied.length || status.pending.length) throw new Error('starter_browser_migration_replay_failed');
+              console.log(`Starter ${configuration} migrations: ${first.applied.length}; repeat: ${repeat.applied.length}; elapsed: ${Math.round(performance.now() - started)} ms`);
+              const installer = guard(new pg.Client({ connectionString: installUrl, connectionTimeoutMillis: 5000 }));
+              await installer.connect();
+              try {
+                const seed = { connection: installer, installRole, runtimeRole };
+                phase = `seed_${configuration}`;
+                await applyDemoSeed(selectConfiguration(configuration), seed);
+                await applyDemoSeed(selectConfiguration(configuration), seed);
+              } finally { await installer.end(); }
+              phase = 'runtime';
+              const runtimeUrl = `postgresql://${runtimeRole}@127.0.0.1:${postgres.port}/${database}`;
+              const runtime = guard(new pg.Client({ host: '127.0.0.1', port: postgres.port, database, user: runtimeRole, password, connectionTimeoutMillis: 5000 }));
+              await runtime.connect();
+              try {
+                const { rows } = await runtime.query('SELECT session_user,current_user,rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user');
+                if (rows[0]?.session_user !== runtimeRole || rows[0]?.current_user !== runtimeRole || rows[0]?.rolsuper !== false || rows[0]?.rolbypassrls !== false) throw new Error('starter_browser_runtime_role_required');
+              } finally { await runtime.end(); }
+              const key = randomBytes(32).toString('base64url');
+              privateValues.push(key);
+              const keyFile = join(scratch, `${groupIndex}-${configuration}-key.json`);
+              await writeFile(keyFile, JSON.stringify({ current: key }), { mode: 0o600 });
+              const state = join(app, '.context/care-browser', String(groupIndex), configuration);
+              await mkdir(state, { recursive: true, mode: 0o700 });
+              const port = await freePort(), baseURL = `http://127.0.0.1:${port}`;
+              phase = `host_${configuration}`;
+              const child = spawn(process.execPath, ['--experimental-strip-types', join(app, 'host/server.ts'), '--configuration', configuration,
+                '--port', String(port), '--listen', '127.0.0.1', '--database-url', runtimeUrl, '--quote-acceptance-key-file', keyFile],
+              { cwd: state, env: { ...env, PGPASSWORD: password }, stdio: ['ignore', 'pipe', 'pipe'] });
+              const exited = watchStarterHost(child, configuration, defer, recordLoss);
+              let hostOutput = '';
+              for (const stream of [child.stdout, child.stderr]) stream.on('data', chunk => { hostOutput += String(chunk); outputs.push(String(chunk)); });
+              const deadline = performance.now() + 30000;
+              let ready = false;
+              while (!exited() && performance.now() < deadline) {
+                cancellation.signal.throwIfAborted();
+                try {
+                  const response = await fetch(`${baseURL}/api/config`, { signal: AbortSignal.timeout(1000) });
+                  if (response.ok && (await response.json()).config.id === configuration) { ready = true; break; }
+                } catch { /* The host has not bound its loopback socket yet. */ }
+                await new Promise(done => setTimeout(done, 100));
+              }
+              if (!ready) {
+                const code = /\b(starter_[a-z_]+|ERR_[A-Z_]+)\b/u.exec(hostOutput)?.[1] ?? 'not_ready';
+                throw new Error(`starter_browser_host_${configuration}_${code}`);
+              }
+              const browserRuntime = new URL(runtimeUrl);
+              browserRuntime.password = password;
+              hosts.push({ id: configuration, baseURL, ownerUrl: installUrl, runtimeUrl: browserRuntime.href,
+                state: `/app/.context/care-browser/${groupIndex}/${configuration}` });
+            }
+            await writeBrowserFixtures(app, hosts);
+            phase = 'journeys';
+            const name = `starter-browser-${suffix}`;
+            // Registered before launch: a timed-out Docker client may leave its container running.
+            defer(async () => {
+              try { await execute('docker', ['rm', '-f', '-v', name], { timeout: 30000 }); }
+              catch (error) { if (!/No such container/iu.test(error.stderr ?? '')) throw new Error('starter_browser_container_cleanup_failed'); }
+            });
+            const output = await command('docker', [...browserArguments(app, image, name, options.localImage), ...selection]);
+            const counts = output.match(/\b\d+ (?:passed|skipped|failed|did not run)\b/gu) ?? [];
+            if (!counts.some(count => count.endsWith(' passed'))) throw new Error('starter_browser_results_missing');
+            console.log(`Starter database journeys: ${counts.join(', ')}; group ${groupIndex + 1}`);
+          });
+        } catch (error) {
+          if (cancellation.signal.aborted) throw error;
+          groupFailures.push(error);
         }
-        if (!ready) {
-          const code = /\b(starter_[a-z_]+|ERR_[A-Z_]+)\b/u.exec(hostOutput)?.[1] ?? 'not_ready';
-          throw new Error(`starter_browser_host_${configuration}_${code}`);
-        }
-        const browserRuntime = new URL(runtimeUrl);
-        browserRuntime.password = password;
-        hosts.push({ id: configuration, baseURL, ownerUrl: installUrl, runtimeUrl: browserRuntime.href,
-          state: `/app/.context/care-browser/${configuration}` });
       }
-      await writeBrowserFixtures(app, hosts);
-      phase = 'journeys';
-      const name = `starter-browser-${suffix}`;
-      // Registered before launch: a timed-out Docker client may leave its container running.
-      defer(async () => {
-        try { await execute('docker', ['rm', '-f', '-v', name], { timeout: 30000 }); }
-        catch (error) { if (!/No such container/iu.test(error.stderr ?? '')) throw new Error('starter_browser_container_cleanup_failed'); }
-      });
-      const output = await command('docker', browserArguments(app, image, name, options.localImage));
-      const counts = output.match(/\b\d+ (?:passed|skipped|failed|did not run)\b/gu) ?? [];
-      if (!counts.some(count => count.endsWith(' passed'))) throw new Error('starter_browser_results_missing');
-      console.log(`Starter database journeys: ${counts.join(', ')}`);
+      if (groupFailures.length) throw groupFailures[0];
 
     });
   } catch (error) {

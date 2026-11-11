@@ -32,7 +32,7 @@ export const omsControlPlaneHoldSchema = z.object({
 
 export const omsControlPlaneOperationSchema = z.object({
   id: uuidSchema,
-  action: z.enum(["hold_created", "hold_released", "order_cancelled", "order_refunded"]),
+  action: z.enum(["hold_created", "hold_released", "order_cancelled", "order_refunded", "replacement_shipment_requested"]),
   holdId: uuidSchema.nullable(),
   actorId: uuidSchema.nullable(),
   occurredAt: datetimeSchema,

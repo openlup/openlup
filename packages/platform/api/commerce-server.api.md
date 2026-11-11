@@ -952,7 +952,7 @@ type OmsControlPlaneHold = {
 };
 type OmsControlPlaneOperation = {
     id: string;
-    action: "hold_created" | "hold_released" | "order_cancelled" | "order_refunded";
+    action: "hold_created" | "hold_released" | "order_cancelled" | "order_refunded" | "replacement_shipment_requested";
     holdId: null | string;
     actorId: null | string;
     occurredAt: string;
@@ -5704,6 +5704,7 @@ export declare const omsControlPlaneOperationSchema: z.ZodObject<{
     action: z.ZodEnum<{
         hold_created: "hold_created";
         hold_released: "hold_released";
+        replacement_shipment_requested: "replacement_shipment_requested";
         order_cancelled: "order_cancelled";
         order_refunded: "order_refunded";
     }>;
@@ -5922,6 +5923,7 @@ export declare const omsControlPlaneDetailResponseSchema: z.ZodObject<{
         action: z.ZodEnum<{
             hold_created: "hold_created";
             hold_released: "hold_released";
+            replacement_shipment_requested: "replacement_shipment_requested";
             order_cancelled: "order_cancelled";
             order_refunded: "order_refunded";
         }>;
@@ -11984,6 +11986,8 @@ export interface FulfillmentOperatorMutationResult {
     orderId: string;
     status: 'created' | 'packed' | 'label_pending' | 'label_created' | 'handed_over' | 'in_transit' | 'delivered' | 'exception' | 'cancelled';
     replayed: boolean;
+    releasedReservationCount?: number;
+    reservationDisposition?: 'recorded' | 'reservations_not_recorded';
 }
 export interface FulfillmentOperatorMutationPort {
     createCommerceFulfillmentOrder(request: AdminCommerceFulfillmentCreateRequest & {
@@ -13508,6 +13512,11 @@ export declare const adminCommerceFulfillmentMutationResponseSchema: z.ZodObject
         in_transit: "in_transit";
     }>;
     replayed: z.ZodBoolean;
+    releasedReservationCount: z.ZodOptional<z.ZodNumber>;
+    reservationDisposition: z.ZodOptional<z.ZodEnum<{
+        recorded: "recorded";
+        reservations_not_recorded: "reservations_not_recorded";
+    }>>;
 }, z.core.$strict>;
 export type AdminCommerceFulfillmentOrdersListRequest = z.infer<typeof adminCommerceFulfillmentOrdersListRequestSchema>;
 export type AdminCommerceFulfillmentOrderDetailRequest = z.infer<typeof adminCommerceFulfillmentOrderDetailRequestSchema>;
@@ -18218,7 +18227,7 @@ export interface ShippingBindingDependencies {
     nativeRateReadiness?: ReadinessReport;
     /** Same-database Core observation of the applied shipping seed and required objects. */
     nativeRateSchema?: SchemaObservation;
-    nativeStore?: Omit<Store, "addressMutationPort"> | null;
+    nativeStore?: Store | null;
     responder: BffResponder;
     selection?: {
         port: DeliverySelectionPort;
@@ -18578,6 +18587,44 @@ import type { CustomerAddressesDeps } from "./addressPorts.js";
 import type { CustomerAddressSchemas } from "./addressSchemas.js";
 export declare function createCustomerAddressesHandler({ addressBookPort, addressMutationPort, authenticateUser, }: CustomerAddressesDeps, schemas: CustomerAddressSchemas, responder: BffResponder): (req: HttpRequest, res: HttpResponse) => Promise<void>;
 ```
+## dist/shipping/customerSavedAddressSchemas.d.ts
+
+```ts
+import type { CustomerAddressUpsertRequest, CustomerAddressDeleteRequest } from './contracts/address.js';
+type RequestSchema<T> = {
+    safeParse(input: unknown): {
+        success: true;
+        data: T;
+    } | {
+        success: false;
+        error: {
+            flatten(): unknown;
+        };
+    };
+};
+export interface CustomerSavedAddressRequestSchemas {
+    customerAddressUpsertRequestSchema: RequestSchema<CustomerAddressUpsertRequest>;
+    customerAddressDeleteRequestSchema: RequestSchema<CustomerAddressDeleteRequest>;
+}
+export interface CustomerSavedAddressValidationPolicy {
+    /** ISO code and aliases for the local address policy; the code is also the default. */
+    country: string;
+    countryAliases: readonly string[];
+    phonePrefix: string;
+    normalizeTaxId(value: string | null): string | null;
+    isValidTaxId(value: string): boolean;
+    messages: {
+        name: string;
+        country: string;
+        phone: string;
+        postalCode: string;
+        taxId: string;
+    };
+}
+/** Fixed reference bounds and normalization order; local formats and copy are host policy. */
+export declare function createCustomerSavedAddressRequestSchemas(policy: CustomerSavedAddressValidationPolicy): CustomerSavedAddressRequestSchemas;
+export {};
+```
 ## dist/shipping/customerSelfServiceAddressModels.d.ts
 
 ```ts
@@ -18703,6 +18750,18 @@ export declare const SHIPPING_MIGRATIONS: readonly [{
     readonly sha256: "34f8696f515a2cc072395db5a3de2d9b09643d13236ee3851d0d78123f907eae";
     readonly url: URL;
 }];
+export { createPostgresCustomerSavedAddressPort, CustomerSavedAddressRefused } from "./postgresAddressBook.js";
+export type { SavedAddressQueryExecutor, CustomerSavedAddressScope, CustomerSavedAddressOptions, CustomerSavedAddressRefusalCode, CustomerSavedAddressPort } from "./postgresAddressBook.js";
+export { createCustomerSavedAddressRequestSchemas } from "./customerSavedAddressSchemas.js";
+export type { CustomerSavedAddressValidationPolicy, CustomerSavedAddressRequestSchemas } from "./customerSavedAddressSchemas.js";
+/** Sparse asset reference; install the complete selected native catalogue. */
+export declare const CUSTOMER_SAVED_ADDRESS_MIGRATIONS: readonly [{
+    readonly id: "20261110190000_customer_saved_addresses";
+    readonly catalogPath: "db/platform/migrations/20261110190000_customer_saved_addresses.sql";
+    readonly position: 117;
+    readonly sha256: "0cf335d6a2497015d9218a6ab64fe888a3143290d7f6605a115c848eee4c042a";
+    readonly url: URL;
+}];
 ```
 ## dist/shipping/pickupPointSearchPort.d.ts
 
@@ -18711,6 +18770,40 @@ import type { PickupPointSearchRequest, PickupPointSearchResult } from "./contra
 export interface PickupPointSearchPort {
     searchPickupPoints(request: PickupPointSearchRequest): Promise<PickupPointSearchResult[]>;
 }
+```
+## dist/shipping/postgresAddressBook.d.ts
+
+```ts
+import type { CustomerAddressesResponse, CustomerAddressUpsertRequest, CustomerAddressDeleteRequest } from './contracts/address.js';
+export interface CustomerSavedAddressPort {
+    getAddressBook(userId: string): Promise<CustomerAddressesResponse | null>;
+    upsertAddress(userId: string, input: CustomerAddressUpsertRequest): Promise<CustomerAddressesResponse | null>;
+    deleteAddress(userId: string, input: CustomerAddressDeleteRequest): Promise<CustomerAddressesResponse | null>;
+}
+import { type CustomerSavedAddressValidationPolicy } from "./customerSavedAddressSchemas.js";
+export interface SavedAddressQueryExecutor {
+    query(sql: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+export interface CustomerSavedAddressScope {
+    principalId: string;
+    clientId: string;
+}
+export interface CustomerSavedAddressOptions {
+    validation: CustomerSavedAddressValidationPolicy;
+    now(): string;
+    /** Explicit billing-profile reader; this port does not install a billing store. */
+    readOrdererProfiles(clientId: string): Promise<Record<string, unknown>[]>;
+    inUseMessage: string;
+}
+export type CustomerSavedAddressRefusalCode = 'address_scope_mismatch' | 'address_invalid_input' | 'address_invalid_response' | 'address_in_use' | 'address_not_found' | 'address_event_append_failed';
+export declare class CustomerSavedAddressRefused extends Error {
+    readonly code: CustomerSavedAddressRefusalCode;
+    constructor(code: CustomerSavedAddressRefusalCode, message?: string);
+}
+/** Each query call commits separately, matching default-clear/write/event failure and replay behavior. */
+export declare function createPostgresCustomerSavedAddressPort(executor: SavedAddressQueryExecutor, scope: CustomerSavedAddressScope, options: CustomerSavedAddressOptions): CustomerSavedAddressPort;
 ```
 ## dist/shipping/readDeliverySelectionEvidence.d.ts
 

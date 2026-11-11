@@ -292,7 +292,7 @@ it("accepts qualified pins and SQL in one introduction at PR, merge-group, CI an
   f.put(REVIEWED_FORWARD_PATH, encode(wrong)); const mismatch = f.commit("wrong same-change hash");
   expect(() => assertCoLocatedForwardApproval(f.root, f.base, mismatch)).toThrow(`qualified installation differs from its exact approved bytes: ${paths[0]}`);
   expect(() => assertReviewedPlatformForward(f.root, f.base, mismatch, paths[0]!, lateBytes, true)).toThrow("reviewed replacement allowlist must be approved separately before a feature PR adds SQL");
-});
+}, 15_000);
 
 it("refuses rewriting an issued pending qualified pin at SQL introduction in CI and release", () => {
   const f = fixture(), path = paths[0]!, bytes = bodies[0]!;

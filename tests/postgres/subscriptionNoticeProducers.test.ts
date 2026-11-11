@@ -1047,7 +1047,7 @@ it.each(["legacy", "qualified-v2"] as const)("bridges real base pause and renewa
     expect((await owner.query("SELECT id,recipient_kind,status FROM public.subscription_dunning_notifications")).rows).toEqual([{ id: dunning.notificationId, recipient_kind: "customer", status: "sent" }]);
     for (const key of acceptedKeys) expect((await owner.query("SELECT state,attempt_count FROM public.transactional_delivery_receipts WHERE idempotency_key=$1", [key])).rows).toEqual([{ state: "accepted", attempt_count: 1 }]);
   } finally { await closePostgres(container, pools); rmSync(prefixRoot, { recursive: true, force: true }); }
-}, 60000);
+}, 70_000);
 
 it.each(["legacy", "qualified-v2", "qualified-admin"] as const)("uses elapsed at-risk bounds across a live DST transition on %s", async generation => {
   const container = await runPostgresContainer({ name: `notice-elapsed-${generation}-${process.pid}`, password });

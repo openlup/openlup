@@ -1,3 +1,4 @@
+import installationInventory from "./current-installation-inventory.json" with { type: "json" };
 import { beforeAll, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
@@ -5,8 +6,8 @@ import { dockerAvailable, postgresSetupTimeoutMs } from "../helpers/postgresCont
 import { runQualifiedAdminCompositionProof } from "./m14QualifiedAdminComposition.proof.js";
 
 const modes = [
-  { roleMode: "installer-managed", currentInventory: "451bbaacfd4cd02f1927facb56111ba609d431270bb8b96f569d37467cd7dc81", inventory: "c94d71fd28d5571cda30307bce4c4b48ebe0a3685c76819d8fa3b3efa8fa9ae7" },
-  { roleMode: "operator-provisioned", currentInventory: "25f7a0cc405a9be68add20854bbf77f88518baec1fbe0ac00ea1195da12d9467", inventory: "807ea0c9b303c04c4ad3e9892ab16ee7e89acaea8b7641d1cedd4c79949fab7d" },
+  { roleMode: "installer-managed", currentInventory: installationInventory.current.profiles["admin-managed"].objectInventorySha256, inventory: "c94d71fd28d5571cda30307bce4c4b48ebe0a3685c76819d8fa3b3efa8fa9ae7" },
+  { roleMode: "operator-provisioned", currentInventory: installationInventory.current.profiles["admin-operator"].objectInventorySha256, inventory: "807ea0c9b303c04c4ad3e9892ab16ee7e89acaea8b7641d1cedd4c79949fab7d" },
 ] as const;
 
 beforeAll(async () => {
@@ -17,7 +18,7 @@ for (const mode of modes) {
   it(`qualifies the restricted issued prefix and current production suffix in ${mode.roleMode} mode`, async () => {
     const current = selectPlatformMigrationManifest(JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")), "qualified-admin", { roleMode: mode.roleMode });
     const count = 1 + current.forward.length;
-    expect(count).toBe(124);
+    expect(count).toBe(installationInventory.current.profiles[mode.roleMode === "installer-managed" ? "admin-managed" : "admin-operator"].count);
     expect(current.objectInventorySha256).toBe(mode.currentInventory);
     const result = await runQualifiedAdminCompositionProof(mode);
     expect(result).toMatchObject({

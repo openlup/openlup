@@ -575,6 +575,8 @@ export interface FulfillmentOperatorMutationResult {
     orderId: string;
     status: 'created' | 'packed' | 'label_pending' | 'label_created' | 'handed_over' | 'in_transit' | 'delivered' | 'exception' | 'cancelled';
     replayed: boolean;
+    releasedReservationCount?: number;
+    reservationDisposition?: 'recorded' | 'reservations_not_recorded';
 }
 export interface FulfillmentOperatorMutationPort {
     createCommerceFulfillmentOrder(request: AdminCommerceFulfillmentCreateRequest & {

@@ -177,6 +177,7 @@ bearer; its local fixture establishes no hosted revocation guarantee.
 | `./payments` | Experimental prepared-attempt ordering with injected persistence, execution and failure policy; contracts at `./payments/contracts`. |
 | `./fulfillment`, `./fulfillment/contracts` | [Experimental fulfillment services, contracts and status canon](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#fulfillment-contracts). |
 | `./fulfillment/native` | Experimental `createNativeFulfillmentBinding` locked dispatch-preparation binding; the host supplies authoritative facts, a capability-local transaction lane and contribution composition. |
+| `./fulfillment/native` (operator transactions) | Experimental `createPostgresFulfillmentOperatorPort` for replacement and complete cancellation, with authenticated actor and explicit provider/stock-source binding; `createPostgresParcelReservationConsumption` supplies exact parcel stock consumption. Install the complete catalogue and retain the [legacy cancellation limits](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#native-parity-boundaries). |
 | `./fulfillment/native` (commerce projection) | Experimental reduced `createPostgresFulfillmentCommerceReadPort`; requires the existing eligibility policy and explicit order-mode mapping. Its default destination reader calls the nonmutating shipment view through the supplied executor; an optional injected reader wins. Select `nativeFulfillmentCommerceResponseSchemas` explicitly when composing served commerce handlers; managed schemas remain the default. The preparation reader does not supply that boundary. [Limits](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#native-commerce-read-projection). |
 | `./subscriptions`, `./subscriptions/contracts` | Default-off, incomplete; [experimental subscription contracts and renewal port](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts). |
 | `./invoicing`, `./invoicing/contracts` | Default-off invoicing contracts and independent duty collection; no provider activation. |
@@ -471,24 +472,47 @@ runtime executor; the reader changes no role, grants, configuration or data.
 `createPostgresCommerceOmsPort`, `createPostgresCommerceOmsControlPlane`,
 `createPostgresProviderExceptionHealPort` and `createPostgresCommerceReturnsPort`.
 Supply an executor using the installation's restricted runtime login. These are
-unchanged store bindings: holds, exact release, unpaid cancellation, completed
+store bindings: holds, exact release, unpaid cancellation, completed
 external-refund marking and return request/approve/reject. Control-plane reads
 remain the reduced `control_plane_v1` projection. Rich OMS reads, notes, address
-correction and replacement requests retain their existing refusal. Returns record
+correction retain their existing refusal. Replacement requests use the optional
+explicit replacement binding, which can be supplied by
+`createPostgresFulfillmentOperatorPort` from `./fulfillment/native`. Returns record
 intent; they do not receive, restock or execute a refund. The host authenticates
-and authorizes each operation. See the [composition recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#native-oms-and-support-stores).
+and authorizes each operation. The native operator resolver accepts an existing
+Commerce operator whose UUID is either an active control principal or an active
+human `admin` membership with no control row of any state. A human distributor,
+revoked member or admin without a Commerce row does not resolve. No authority is
+provisioned by the resolver. Human hosts must enforce admin-only admission and
+resolve again before every command and replay; the existing machine path is
+unchanged. The owner provisions a Commerce row for each human admin and never
+deletes it; withdraw human access by revoking membership. Deletion would set
+`commerce_order_holds.created_by` to NULL, making a human fulfillment-exception
+hold eligible for automatic release. This existing FK hazard is not changed.
+See the [composition recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#native-oms-and-support-stores).
+
+With the complete catalogue through `20261110200000_operator_order_commands.sql`,
+unpaid cancellation locks the current payment aggregate and refuses in-flight,
+captured or indeterminate payment before writing one operator audit and releasing
+the order's held purchase reservations. Late captures remain review-required.
+Manual external-refund marking accepts paid orders only and records status without
+a payment-provider call, refund notification or accounting reversal event. Existing
+object metadata keeps its keys; other metadata is retained under `previousMetadata`
+before the command writes its top-level source.
+Genuine refund sources retain their event duties. Neither operation changes an
+active subscription's lifecycle or schedule.
 Native destinations use `./commerce/server/destinations` and the complete SQL
 catalogue. Hosts authorize parent reads and bind checkout/dispatch explicitly.
 The confirmation outbox is durable; native mail dispatch is unbound.
 Addresses and identifying reference strings persist. Use opaque references;
-address export/erasure is unavailable. No saved address book is provided.
+destination-row export/erasure is unavailable in this port. This destination port provides no mutable address book; select the separate [saved-address port](#saved-customer-address-book) when needed.
 
 
 Native destinations use `./commerce/server/destinations` and the complete SQL
 catalogue. Hosts authorize parent reads and bind checkout/dispatch explicitly.
 The confirmation outbox is durable; native mail dispatch is unbound.
 Full postal addresses, contact phone numbers, command reasons and identifying reference strings persist. Use opaque references;
-there is no address export or erasure path. No saved address book is provided.
+there is no destination-row export or erasure path through this port. This destination port provides no mutable address book; select the separate [saved-address port](#saved-customer-address-book) when needed.
 The port's PostgreSQL routines are included in the native migration chain.
 Address-change events retain the optional command reason in their top-level and nested payloads.
 The shipment reader and dispatch enqueue must share one transaction; otherwise the host owns the intervening window.
@@ -2042,7 +2066,7 @@ order-summary DTO remains unchanged.
 `createPostgresAccountReadSources` implements native subscriptions, accepted line
 prices, blockers, pause windows, method/stock-wait evidence, delivery alignment
 and dunning/cycle action states. Extension and next-charge policy are required
-host inputs. Saved addresses, billing profiles, payment/delivery preferences and
+host inputs. Saved addresses (available through the selected shipping port), billing profiles, payment/delivery preferences and
 account events are optional explicit sources: each missing section throws
 `host_binding_required` with its section name. The same limit applies to the
 private-profile view. These refusals do not prevent independent reads of owned
@@ -2350,3 +2374,76 @@ cookie and existing result without redispatch, including safe polling when
 readback lags. Renewal cycles and observed success refuse. See the
 [composition recipe](../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md#exact-inline-checkout-retry)
 and [PostgreSQL witnesses](../../tests/postgres/checkoutInlineRecovery.test.ts).
+
+## Saved customer address book
+
+`@openlup/platform/shipping` exports
+`createPostgresCustomerSavedAddressPort`, `CustomerSavedAddressRefused`,
+`createCustomerSavedAddressRequestSchemas`, their structural executor/scope/options
+and validation-policy types, and `CUSTOMER_SAVED_ADDRESS_MIGRATIONS`. No public
+signature requires `pg`. Browser DTOs remain in `./shipping/contracts`; the SQL
+factory is a server entry point. The migration descriptor is sparse: install the
+complete selected native catalogue through `20261110190000_customer_saved_addresses.sql`.
+
+Construct the port with a trusted `principalId`/`clientId` pair, a query executor,
+an explicit raw billing-profile reader, a clock and
+localized in-use message. The database checks `clients.principal_id` on every
+customer operation. Do not derive the scope from request bodies. Billing-profile
+storage is separate; an empty reader is an explicit host choice, not a fallback.
+The returned object implements the existing address-book and mutation ports:
+
+```ts
+import { createPostgresCustomerSavedAddressPort,
+  createCustomerSavedAddressRequestSchemas } from '@openlup/platform/shipping';
+const requests = createCustomerSavedAddressRequestSchemas(localPolicy);
+const addresses = createPostgresCustomerSavedAddressPort(database, trustedScope, {
+  validation: localPolicy,
+  readOrdererProfiles, now: () => new Date().toISOString(), inUseMessage: copy.addressInUse,
+});
+```
+
+The local policy supplies an ISO country/default and aliases, calling prefix,
+tax normalization/validation and messages. The request mechanism retains fixed
+limits on field lengths and idempotency identifiers, trimming and whitespace
+collapse, local nine-digit phone normalization,
+local five-digit postal formatting, foreign-format behavior and shipping-only
+company/tax omission. Neutral demo values can use `ZZ` and calling prefix `99`.
+Bind `requests` and the host response validator into the existing customer address
+handler schemas and recognize
+`CustomerSavedAddressRefused` with code `address_in_use` as a mutation conflict.
+`createShippingBindings` accepts an explicitly selected complete native book and
+mutation port; an unbound or incomplete native writer still refuses. Construction
+mounts no route, and starter pages remain separately bound work.
+
+Save updates an owned ID, reuses the canonical match, or inserts. Defaults clear
+only the same customer and exact kind (`shipping`, `billing`, `both` are distinct).
+Clear, write and account-event append are separate calls/commits; do not wrap
+them in a transaction when retaining this contract. A failed write can leave the
+prior default clear committed, and an append failure leaves the address write
+committed. A recorded client/event/key replays the current book without repeating
+mutation or append; concurrent exactly-once behavior is not promised. A missing
+or foreign entity ID on delete is a zero-row acknowledgement with an event,
+while foreign updates and mismatched customer scopes refuse.
+
+Delete refuses an address referenced by an active or paused subscription's saved
+shipping or billing pointer. Nullable pointer columns are storage for that guard;
+saved-address subscription selection is not supplied by this port. Existing
+destinations and claimed renewal snapshots are unchanged.
+
+Saved rows, canonical keys, contact/tax/free-text/metadata and linked event
+payloads are personal data. Compose
+`createCustomerSavedAddressPrivacyContributor` from `./identity` with the existing
+identity/subscription owners and require contributor ID `customer-saved-addresses`
+in the privacy registry. Its preparation lock precedes identity row locks and
+waiting writers recheck ownership after unlinking. It exports exact saved rows and erases them through an
+owned subject-client routine even after identity unlinks the principal. Compose
+the separate account-event contributor and explicit retention policy: erasing the
+address book does not erase retained event payloads or immutable destination
+copies. No retention period or blanket erasure claim is supplied.
+
+Finite restore targets qualified installations; legacy installations are capture sources.
+The finite connected-store profile carries exact saved rows and event history,
+restores addresses after clients and before subscription pointers, and replays
+without rewriting them. The smaller compatible-row copier remains a separate
+closed profile. Delivery/payment preferences, checkout hints, billing profiles,
+subscription saved-ID commands and browser journeys are later capabilities.

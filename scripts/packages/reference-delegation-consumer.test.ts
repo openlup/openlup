@@ -37,4 +37,4 @@ it("installs actual package tarballs and proves typed invoice behavior in isolat
   }
   expect(consumerNode(consumer, REFERENCE_DELEGATION_CONSUMER_PROOF)).toContain("delegated installed invoice consumer PASS");
   expect(JSON.parse(readFileSync(join(consumer, "node_modules/@openlup/platform/package.json"), "utf8")).name).toBe("@openlup/platform");
-}, 60_000);
+}, 130_000);

@@ -1,3 +1,4 @@
+import installationInventory from "./current-installation-inventory.json" with { type: "json" };
 // One disposable installation's production proof; invoked only by its adjacent test.
 import assert from "node:assert/strict";
 import { createCapturedFulfillmentAdapter } from "@openlup/platform/fulfillment";
@@ -664,7 +665,7 @@ async function prove() {
   const issuedExpected = [issued.baseline, ...issued.forward];
   assert.equal(issuedExpected.length, 92);
   const expected = [manifest.baseline, ...manifest.forward];
-  assert.equal(expected.length, 125);
+  assert.equal(expected.length, installationInventory.current.profiles[selection.migrationLogin === selection.bootstrapLogin ? "bootstrap" : "separate"].count);
   assert.deepEqual(expected.slice(0, issuedExpected.length), issuedExpected);
   for (const entry of expected) assert.equal(digest(readFileSync(entry.file, "utf8")), entry.sha256);
   const { restoreLogin: _restoreLogin, ...withoutRestore } = selection;

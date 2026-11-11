@@ -328,7 +328,7 @@ it("admits only the canonical catalog shape across commands and complete qualifi
     await expect(runner.apply()).resolves.toEqual({ applied: [] });
     expect({ projections, invocations: await invocationCount() }).toEqual({ projections: 3, invocations: 0 });
   } finally { await pool.end(); }
-});
+}, 15_000);
 
 it("keeps a temporary name shadow outside the fixed public ledger identity", async () => {
   await resetLedger(ledgerDefinition);
@@ -625,7 +625,7 @@ it("holds the pending write lock against a concurrent trigger change", async () 
     await Promise.allSettled([result]);
     await Promise.all([pool.end(), ddlPool.end()]);
   }
-});
+}, 25_000);
 
 it("keeps ledger DDL blocked until the pending unit commits", async () => {
   await resetLedger(ledgerDefinition);

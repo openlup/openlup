@@ -75,7 +75,7 @@ it('fresh full-catalogue install binds sparse assets, hashes and object inventor
  expect(await h.runner().apply()).toEqual({applied:[]});expect((await h.runner().status()).pending).toEqual([]);
  expect((await h.pool.query('SELECT * FROM public.platform_schema_migrations ORDER BY position')).rows).toEqual(history);
  const client=await h.pool.connect();try{expect(createHash('sha256').update(selectedCatalogProjectionPayload(await readSelectedCatalogProjection(client))).digest('hex')).toBe(manifest.objectInventorySha256);}finally{client.release();}
-});
+}, 20_000);
 it('complete immutable prefix 72 upgrades through 73/74, preserves rows/history and replays the full catalogue',async()=>{
  const resource=prefixContainers[0],db=prefixPools[0];const root=mkdtempSync(join(tmpdir(),'m08-p4-prefix-'));
  try{

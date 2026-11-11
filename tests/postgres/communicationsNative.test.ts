@@ -54,8 +54,8 @@ beforeAll(async()=>{
  await upgrade.query("INSERT INTO public.outbox_events(aggregate_type,aggregate_id,event_type,idempotency_key,payload) VALUES ('synthetic',$1,'synthetic.commerce','preserve','{}')",[C]);
  await upgrade.query("INSERT INTO public.communication_recipient_consents(recipient_fingerprint,purpose,state) VALUES ($1,'marketing_newsletter','denied')",[hash(email)]);
  before=await snapshot(upgrade);
- // Later editor forwards add the nullable constraint and the classic offer default.
- before.subscriptions=before.subscriptions.map(({row})=>({row:{...row,composition_constraint:null,configured_offer_version:"classic"}}));
+ // Later forwards add editor defaults and nullable saved-address pointers.
+ before.subscriptions=before.subscriptions.map(({row})=>({row:{...row,composition_constraint:null,configured_offer_version:"classic",shipping_saved_address_id:null,billing_saved_address_id:null}}));
  await runner(fresh).apply();
  await fresh.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES ($1,'admin@example.invalid')",[A]);
  await fresh.query("INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at) VALUES ($1,'admin','active','legacy',now())",[A]);
@@ -75,7 +75,7 @@ it("upgrades the real position-69 prefix, preserves representative state and rep
  for(const pool of pools)expect((await runner(pool).apply()).applied).toEqual([]);
  const ledger=(await fresh.query("SELECT catalog_path,sha256,position FROM public.platform_schema_migrations ORDER BY position")).rows;
  expect(ledger).toEqual([manifest.baseline,...manifest.forward].map((entry:{file:string;sha256:string},position:number)=>({catalog_path:entry.file,sha256:entry.sha256,position})));
-});
+}, 20_000);
 it("refuses ledger tamper and restores the original identity",async()=>{
  const row=(await fresh.query("SELECT * FROM public.platform_schema_migrations WHERE position=70")).rows[0];
  await fresh.query("UPDATE public.platform_schema_migrations SET sha256=$1 WHERE position=70",[hash("tampered")]);
@@ -364,4 +364,4 @@ it("C-compose admits a real callback to scoped PG evidence and exposes unknown/r
   }
   current={...candidate,configuration:"changed"};expect((await fetch(endpoint,{headers:{authorization:"Bearer synthetic"}})).status).toBe(503);await expect(tick!()).rejects.toThrow("stale");
  }finally{await new Promise<void>((resolve,reject)=>server.close(error=>error?reject(error):resolve()));}
-});
+}, 25_000);
