@@ -964,13 +964,13 @@
       "maxFiles": 4211
     },
     "docs": {
-      "maxPackedBytes": 86252,
+      "maxPackedBytes": 90455,
       "maxFiles": 10
     },
-    "maxPackedBytes": 3023741,
-    "maxUnpackedBytes": 14432601,
+    "maxPackedBytes": 3089709,
+    "maxUnpackedBytes": 14804413,
     "maxFiles": 4339,
-    "capReason": "Retain the higher approved parent byte budgets; 4,128 measured code files receive 2% headroom (4,211).",
+    "capReason": "Measured before this cap adjustment: 3,029,126 B packed, 14,514,130 B unpacked and 88,681 B documentation; unpacked cap approved by the maintainers for the bundled F5-F9 row.",
     "baseline": {
       "version": "0.37.0",
       "packedBytes": 2791358

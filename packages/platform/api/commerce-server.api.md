@@ -18348,6 +18348,67 @@ export type { DeliveryKind, DeliveryProviderKind, DeliveryCarrierKind, DeliveryS
 export type { CanonicalAddressInput, AddressCanonSource, AddressCanonLocalityCandidate, AddressCanonStreet, AddressCanonPostalCodeLookupRequest, AddressCanonLocalitiesLookupRequest, AddressCanonStreetsLookupRequest, AddressCanonPostalCodeLookupResponse, AddressCanonLocalitiesLookupResponse, AddressCanonStreetsLookupResponse, CustomerAddressKind, CustomerAddress, CustomerOrdererProfile, CustomerAddressesRequest, CustomerAddressesResponse, CustomerAddressUpsertRequest, CustomerAddressDeleteRequest } from "./address.js";
 export type { AdminShippingRateResponse, AdminSetShippingRateRequest, AdminSetShippingRateResponse } from "./shippingRate.js";
 export type { ShippingTerms, ShippingPolicyEntry, ShippingPolicy, ShippingSettings } from "./threshold.js";
+export type { CustomerPreferenceDefaultsSnapshot, CustomerPreferenceScope, CustomerPaymentPreferenceInput, CustomerPaymentPreference, CustomerPreferencePickupPoint, CustomerDeliveryPreferenceInput, CustomerDeliveryPreference } from './preferences.js';
+```
+## dist/shipping/contracts/preferences.d.ts
+
+```ts
+export type CustomerPreferenceScope = 'one_time' | 'subscription' | 'any';
+export interface CustomerPaymentPreferenceInput {
+    scope: CustomerPreferenceScope;
+    methodKind: string;
+}
+export interface CustomerPaymentPreference extends CustomerPaymentPreferenceInput {
+    lastSelectedAt: string;
+}
+export interface CustomerPreferencePickupPoint {
+    id: string;
+    name: string;
+    address: {
+        line1: string;
+        postalCode: string;
+        city: string;
+        country: string;
+    } | null;
+}
+export interface CustomerDeliveryPreferenceInput {
+    scope: CustomerPreferenceScope;
+    deliveryKind: 'courier' | 'parcel-locker';
+    providerKind: string;
+    carrierKind: string;
+    carrierCode: string;
+    serviceCode: string;
+    pickupPoint?: CustomerPreferencePickupPoint | null;
+}
+export interface CustomerDeliveryPreference extends Omit<CustomerDeliveryPreferenceInput, 'pickupPoint'> {
+    pickupPoint: CustomerPreferencePickupPoint | null;
+    lastSelectedAt: string;
+}
+/** Redacted hints only. A missing address or profile is represented by null. */
+export interface CustomerPreferenceDefaultsSnapshot {
+    version: 'commerce.customer_defaults_snapshot.v1';
+    clientId: string;
+    payment: {
+        available: boolean;
+        scope: CustomerPreferenceScope | null;
+        methodKind: string | null;
+        source: 'customer_payment_preferences';
+        applied: false;
+    };
+    addresses: {
+        hasDefaultShippingAddress: boolean;
+        defaultShippingAddressId: string | null;
+        hasDefaultBillingAddress: boolean;
+        defaultBillingAddressId: string | null;
+        hasDefaultOrdererProfile: boolean;
+        defaultOrdererProfileId: string | null;
+        hasDeliveryNotes: boolean;
+        hasCourierInstructions: boolean;
+        source: 'customer_address_profiles';
+        applied: false;
+    };
+    redactedFields: ('contact' | 'orderer_profile' | 'shipping_address' | 'billing_address' | 'delivery_notes' | 'courier_instructions' | 'payment_provider' | 'payment_secret')[];
+}
 ```
 ## dist/shipping/contracts/shippingRate.d.ts
 
@@ -18398,6 +18459,135 @@ import type { BffResponder } from "../bff/index.js";
 import type { CustomerAddressesDeps } from "./addressPorts.js";
 import type { CustomerAddressSchemas } from "./addressSchemas.js";
 export declare function createCustomerAddressesHandler({ addressBookPort, addressMutationPort, authenticateUser, }: CustomerAddressesDeps, schemas: CustomerAddressSchemas, responder: BffResponder): (req: HttpRequest, res: HttpResponse) => Promise<void>;
+```
+## dist/shipping/customerPreferenceHandlers.d.ts
+
+```ts
+import type { HttpRequest, HttpResponse } from '../http/index.js';
+import type { BffResponder } from '../bff/index.js';
+import { type CustomerPreferencePolicy } from './customerPreferenceSchemas.js';
+import type { createPostgresCustomerPreferencePort } from './postgresCustomerPreferences.js';
+export interface CustomerPreferenceHandlerOptions {
+    port: ReturnType<typeof createPostgresCustomerPreferencePort>;
+    policy: CustomerPreferencePolicy;
+    authenticateUser(req: HttpRequest): Promise<{
+        ok: true;
+        userId: string;
+    } | {
+        ok: false;
+        code: 'UNAUTHORIZED' | 'FORBIDDEN';
+        message: string;
+    }>;
+    responder: BffResponder;
+    messages: {
+        authentication: string;
+        unlinked: string;
+        invalid: string;
+        upstream: string;
+        invalidResponse: string;
+    };
+}
+export declare const createCustomerPaymentPreferencesHandler: (options: CustomerPreferenceHandlerOptions) => (req: HttpRequest, res: HttpResponse) => Promise<void>;
+export declare const createCustomerDeliveryPreferencesHandler: (options: CustomerPreferenceHandlerOptions) => (req: HttpRequest, res: HttpResponse) => Promise<void>;
+```
+## dist/shipping/customerPreferenceSchemas.d.ts
+
+```ts
+import { z } from 'zod';
+export interface CustomerPreferencePolicy {
+    messages?: {
+        pickupPointRequired?: string;
+    };
+    methods: {
+        instant: string;
+        card: string;
+        transfer: string;
+    };
+    providers: {
+        warehouse: string;
+        carrier: string;
+        manual: string;
+        simulator: string;
+    };
+}
+export declare function createCustomerPreferenceSchemas(policy: CustomerPreferencePolicy): {
+    payment: z.ZodObject<{
+        scope: z.ZodEnum<{
+            one_time: "one_time";
+            subscription: "subscription";
+            any: "any";
+        }>;
+        methodKind: z.ZodEnum<{
+            [x: string]: string;
+        }>;
+    }, z.core.$strict>;
+    delivery: z.ZodObject<{
+        scope: z.ZodEnum<{
+            one_time: "one_time";
+            subscription: "subscription";
+            any: "any";
+        }>;
+        deliveryKind: z.ZodEnum<{
+            courier: "courier";
+            "parcel-locker": "parcel-locker";
+        }>;
+        providerKind: z.ZodEnum<{
+            [x: string]: string;
+        }>;
+        carrierKind: z.ZodString;
+        carrierCode: z.ZodString;
+        serviceCode: z.ZodString;
+        pickupPoint: z.ZodDefault<z.ZodNullable<z.ZodObject<{
+            id: z.ZodString;
+            name: z.ZodString;
+            address: z.ZodDefault<z.ZodNullable<z.ZodObject<{
+                line1: z.ZodString;
+                postalCode: z.ZodString;
+                city: z.ZodString;
+                country: z.ZodString;
+            }, z.core.$strict>>>;
+        }, z.core.$strict>>>;
+    }, z.core.$strict>;
+    paymentResponse: z.ZodObject<{
+        scope: z.ZodEnum<{
+            one_time: "one_time";
+            subscription: "subscription";
+            any: "any";
+        }>;
+        methodKind: z.ZodEnum<{
+            [x: string]: string;
+        }>;
+        lastSelectedAt: z.ZodISODateTime;
+    }, z.core.$strict>;
+    deliveryResponse: z.ZodObject<{
+        scope: z.ZodEnum<{
+            one_time: "one_time";
+            subscription: "subscription";
+            any: "any";
+        }>;
+        deliveryKind: z.ZodEnum<{
+            courier: "courier";
+            "parcel-locker": "parcel-locker";
+        }>;
+        providerKind: z.ZodEnum<{
+            [x: string]: string;
+        }>;
+        carrierKind: z.ZodString;
+        carrierCode: z.ZodString;
+        serviceCode: z.ZodString;
+        pickupPoint: z.ZodDefault<z.ZodNullable<z.ZodObject<{
+            id: z.ZodString;
+            name: z.ZodString;
+            address: z.ZodDefault<z.ZodNullable<z.ZodObject<{
+                line1: z.ZodString;
+                postalCode: z.ZodString;
+                city: z.ZodString;
+                country: z.ZodString;
+            }, z.core.$strict>>>;
+        }, z.core.$strict>>>;
+        lastSelectedAt: z.ZodISODateTime;
+    }, z.core.$strict>;
+};
 ```
 ## dist/shipping/customerSavedAddressSchemas.d.ts
 
@@ -18574,6 +18764,9 @@ export declare const CUSTOMER_SAVED_ADDRESS_MIGRATIONS: readonly [{
     readonly sha256: "0cf335d6a2497015d9218a6ab64fe888a3143290d7f6605a115c848eee4c042a";
     readonly url: URL;
 }];
+export { createPostgresCustomerPreferencePort, createPostgresCustomerDefaultsPort } from './postgresCustomerPreferences.js';
+export { createCustomerPreferenceSchemas, type CustomerPreferencePolicy } from './customerPreferenceSchemas.js';
+export { createCustomerPaymentPreferencesHandler, createCustomerDeliveryPreferencesHandler, type CustomerPreferenceHandlerOptions } from './customerPreferenceHandlers.js';
 ```
 ## dist/shipping/pickupPointSearchPort.d.ts
 
@@ -18616,6 +18809,42 @@ export declare class CustomerSavedAddressRefused extends Error {
 }
 /** Each query call commits separately, matching default-clear/write/event failure and replay behavior. */
 export declare function createPostgresCustomerSavedAddressPort(executor: SavedAddressQueryExecutor, scope: CustomerSavedAddressScope, options: CustomerSavedAddressOptions): CustomerSavedAddressPort;
+```
+## dist/shipping/postgresCustomerPreferences.d.ts
+
+```ts
+import type { SavedAddressQueryExecutor, CustomerSavedAddressScope } from './postgresAddressBook.js';
+import { type CustomerPreferencePolicy } from './customerPreferenceSchemas.js';
+import type { CustomerPaymentPreferenceInput, CustomerDeliveryPreferenceInput, CustomerPaymentPreference, CustomerDeliveryPreference, CustomerPreferenceDefaultsSnapshot } from './contracts/preferences.js';
+/** Closed canonical families are mapped bijectively to adopter-owned public values. */
+export declare function createPostgresCustomerPreferencePort(db: SavedAddressQueryExecutor, scope: CustomerSavedAddressScope, policy: CustomerPreferencePolicy, options: {
+    now(): string;
+    readOrdererHints(clientId: string): Promise<{
+        id: string;
+        isDefault: boolean;
+    }[]>;
+}): {
+    listPaymentPreferences(id: string): Promise<CustomerPaymentPreference[] | null>;
+    listDeliveryPreferences(id: string): Promise<CustomerDeliveryPreference[] | null>;
+    upsertPaymentPreference(id: string, input: CustomerPaymentPreferenceInput): Promise<CustomerPaymentPreference | null>;
+    upsertDeliveryPreference(id: string, input: CustomerDeliveryPreferenceInput): Promise<CustomerDeliveryPreference | null>;
+    getCustomerDefaultsSnapshot: (input: {
+        clientId: string;
+        checkoutKind: string;
+    }) => Promise<CustomerPreferenceDefaultsSnapshot>;
+};
+/** Bind only a client ID established by the checkout/customer identity owner. Returns redacted hints only. */
+export declare function createPostgresCustomerDefaultsPort(db: SavedAddressQueryExecutor, scope: {
+    clientId: string;
+}, policy: CustomerPreferencePolicy, readOrdererHints: (clientId: string) => Promise<{
+    id: string;
+    isDefault: boolean;
+}[]>): {
+    getCustomerDefaultsSnapshot(input: {
+        clientId: string;
+        checkoutKind: string;
+    }): Promise<CustomerPreferenceDefaultsSnapshot>;
+};
 ```
 ## dist/shipping/readDeliverySelectionEvidence.d.ts
 
