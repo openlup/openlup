@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   addedLines, formatCheckLine, isTestEntry, isTestFile, missingFragments, nearDates, parseNameStatus,
-  releasedPackageSource, shortExpiries, sqlTreeChanges, type AddedLine, type Change,
+  neutralityVerdict, releasedPackageSource, shortExpiries, sqlTreeChanges, type AddedLine, type Change,
 } from "./preflight.ts";
 
 const changed = (...paths: string[]): Change[] => paths.map((path) => ({ path, deleted: false }));
@@ -18,6 +18,22 @@ describe("preflight report", () => {
       .toBe("SKIP gitleaks: gitleaks is not on PATH");
     expect(formatCheckLine({ check: "fragments", status: "WARN", detail: "x" })).toBe("WARN fragments: x");
     expect(formatCheckLine({ check: "hosted tests", status: "FAIL", detail: "y" })).toBe("FAIL hosted tests: y");
+  });
+
+  it("turns the neutrality ratchet's exit and output into one check line", () => {
+    expect(neutralityVerdict(0, "Neutrality: 7410 text files, 57 binary files inventoried; 0 increases.", 12))
+      .toEqual({ check: "neutrality", status: "PASS", detail: "no neutrality count increase against the fork point (12 s)" });
+    // The ratchet can report one raised category twice; the line lists it once.
+    const raised = ['"scripts/a.ts": ui-9 increased 0 -> 1', '"scripts/b.mjs": brand increased 2 -> 3', '"scripts/a.ts": ui-9 increased 0 -> 1',
+      "Neutrality: 7416 text files, 57 binary files inventoried; 3 increases."].join("\n");
+    expect(neutralityVerdict(1, raised, 13)).toEqual({
+      check: "neutrality", status: "FAIL",
+      detail: "2 neutrality count increase(s) against the fork point; the required self-check job refuses them (13 s)",
+      notes: ['"scripts/a.ts": ui-9 increased 0 -> 1', '"scripts/b.mjs": brand increased 2 -> 3'],
+    });
+    expect(neutralityVerdict(1, "\nbaseline scanner pin drift: \"packages/ui/smoke/neutrality.ts\"\n", 2)).toEqual({
+      check: "neutrality", status: "FAIL", detail: "the neutrality ratchet failed (2 s)", notes: ['baseline scanner pin drift: "packages/ui/smoke/neutrality.ts"'],
+    });
   });
 
   it("reads name-status output with deletions and unusual names", () => {

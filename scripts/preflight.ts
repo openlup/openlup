@@ -155,6 +155,18 @@ const tail = (output: string, count = 30): string[] => output.split("\n").filter
 const lastLine = (output: string): string => tail(output, 1)[0]?.trim() ?? "";
 const findingNotes = (findings: readonly Finding[]): string[] => findings.map(({ path, line, reason, text }) => `${path}:${line}: ${reason}: ${text.trim().slice(0, 120)}`);
 
+// One line per raised category, as scripts/public-ci-neutrality.mjs reports it.
+const NEUTRALITY_INCREASE = /^".+": [\w-]+ increased \d+ -> \d+$/u;
+
+/** The verdict of `node scripts/public-ci-neutrality.mjs`, from its exit code and output. */
+export function neutralityVerdict(code: number | null, output: string, seconds: number): CheckResult {
+  if (code === 0) return { check: "neutrality", status: "PASS", detail: `no neutrality count increase against the fork point (${seconds} s)` };
+  const increases = [...new Set(output.split("\n").map((line) => line.trim()).filter((line) => NEUTRALITY_INCREASE.test(line)))];
+  return increases.length > 0
+    ? { check: "neutrality", status: "FAIL", detail: `${increases.length} neutrality count increase(s) against the fork point; the required self-check job refuses them (${seconds} s)`, notes: increases }
+    : { check: "neutrality", status: "FAIL", detail: `the neutrality ratchet failed (${seconds} s)`, notes: tail(output) };
+}
+
 function typecheck(): CheckResult {
   // The required typecheck job builds the packages through `npm run lint`'s prelint first.
   const build = execute("npm", ["run", "prelint"]);
@@ -258,6 +270,12 @@ function hostedTests(changes: readonly Change[]): CheckResult {
     : { check: "hosted tests", status: "FAIL", detail: `npm run test:hosted -- ${files.join(" ")} exited ${result.code ?? "on a signal"}${elsewhere}`, notes: tail(result.output, 60) };
 }
 
+function neutrality(base: string): CheckResult {
+  // The required self-check job's tree-wide ratchet; it scans the working tree, untracked files included.
+  const result = execute(process.execPath, ["scripts/public-ci-neutrality.mjs", "--base-commit", base]);
+  return neutralityVerdict(result.code, result.output, result.seconds);
+}
+
 function changedTestLines(base: string, changes: readonly Change[], untracked: ReadonlySet<string>): AddedLine[] | null {
   const files = changes.filter(({ path, deleted }) => !deleted && isTestFile(path)).map(({ path }) => path);
   if (files.length === 0) return null;
@@ -294,6 +312,7 @@ export function main(now: Date): number {
     ["test lines", () => testLineChecks(changedTestLines(base, changes, new Set(untrackedPaths)), now)],
     ["gitleaks", () => gitleaks(base, untrackedPaths)],
     ["hosted tests", () => hostedTests(changes)],
+    ["neutrality", () => neutrality(base)],
   ];
   const results: CheckResult[] = [];
   for (const [name, check] of checks) {

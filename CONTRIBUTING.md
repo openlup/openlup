@@ -781,7 +781,9 @@ one `PASS`, `WARN`, `SKIP` or `FAIL` line per check:
   expiries or TTLs under ten minutes; these simple patterns can misfire, so
   explain a false positive instead of contorting the test;
 - `gitleaks` with the repository configuration, when it is on `PATH`;
-- `test:hosted` for the changed root test files.
+- `test:hosted` for the changed root test files;
+- the tree-wide neutrality ratchet of the required `self-check` job,
+  `node scripts/public-ci-neutrality.mjs`, against the fork point.
 
 Unset `OPENLUP_VITEST_EXCLUDE_FILE` when requesting an unfiltered run. Outbox and Platform tests also run locally with `npm --workspace @openlup/outbox test` or `npm --workspace @openlup/platform test` after building prerequisites; their package configs use Node and do not inherit root setup. Their installed consumers belong to the shared package gate, not that local command.
 
