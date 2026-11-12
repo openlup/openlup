@@ -439,6 +439,38 @@ export interface NativeCustomerNewsletterPreferences {
     };
 }
 ```
+## dist/account-support/contracts/billing.d.ts
+
+```ts
+import type { AccountBillingProfile } from './account.js';
+export interface CustomerBillingProfileInput {
+    idempotencyKey: string;
+    profileId?: string;
+    label?: string | null;
+    fullName: string;
+    email: string;
+    phone?: string | null;
+    companyName?: string | null;
+    taxId?: string | null;
+    companyVerificationLevel?: 'registry_verified' | 'provider_verified' | 'manual_unverified' | 'invalid' | null;
+    companyIdentitySource?: string | null;
+    companyIdentityEvidenceHash?: string | null;
+    isDefault?: boolean;
+}
+export interface CustomerBillingProfileDelete {
+    idempotencyKey: string;
+    profileId: string;
+}
+export interface CustomerBillingProfilesResponse {
+    contractVersion: 'customer.billing.v1';
+    ordererProfiles: AccountBillingProfile[];
+}
+export interface CustomerBillingProfilePort {
+    listBillingProfiles(userId: string): Promise<CustomerBillingProfilesResponse | null>;
+    upsertBillingProfile(userId: string, input: CustomerBillingProfileInput): Promise<CustomerBillingProfilesResponse | null>;
+    deleteBillingProfile(userId: string, input: CustomerBillingProfileDelete): Promise<CustomerBillingProfilesResponse | null>;
+}
+```
 ## dist/account-support/contracts/capabilities.d.ts
 
 ```ts
@@ -1002,6 +1034,7 @@ export type { OperatorOwnerReceipt, NativeOperatorSubscriptionResult, OperatorAu
 export type { OperatorAuthorityCapabilities } from "./capabilities.js";
 export type { NativeCustomerSubscriptionSnapshot, NativeCustomerNewsletterPreferences } from "./account.js";
 export type { CustomerProfileUpdateRequest, CustomerProfileUpdateResponse, CustomerInvoiceCorrectionRequest, CustomerInvoiceCorrectionResponse, CustomerAccountMutationPort, CustomerAccountMutationPolicy, CustomerAccountMutationRefusalCode, } from "./mutations.js";
+export type { CustomerBillingProfileInput, CustomerBillingProfileDelete, CustomerBillingProfilesResponse, CustomerBillingProfilePort } from "./billing.js";
 ```
 ## dist/account-support/contracts/invoice.d.ts
 
@@ -1698,6 +1731,96 @@ export interface CustomerAccountMutationSchemas {
 /** Policy may only narrow validation bounds; the phone binding keeps nine local digits and nondigit stripping. */
 export declare function createCustomerAccountMutationSchemas(policy: CustomerAccountMutationPolicy): CustomerAccountMutationSchemas;
 ```
+## dist/account-support/customerAccount/billingProfiles.d.ts
+
+```ts
+import { z } from 'zod';
+import type { CustomerBillingProfilePort } from '../contracts/billing.js';
+import type { CustomerAccountMutationHandlerRequest, CustomerAccountMutationHandlerResponder } from './accountMutationHandlers.js';
+export interface BillingProfileTaxPolicy {
+    normalizeTaxId(value: string): string | null;
+    isValidTaxId(value: string): boolean;
+}
+export declare function createCustomerBillingProfileSchemas(policy: BillingProfileTaxPolicy): {
+    input: z.ZodObject<{
+        idempotencyKey: z.ZodString;
+        profileId: z.ZodOptional<z.ZodGUID>;
+        label: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        fullName: z.ZodString;
+        email: z.ZodString;
+        phone: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        companyName: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        taxId: z.ZodPipe<z.ZodOptional<z.ZodNullable<z.ZodString>>, z.ZodTransform<string | null | undefined, string | null | undefined>>;
+        companyVerificationLevel: z.ZodOptional<z.ZodNullable<z.ZodEnum<{
+            invalid: "invalid";
+            registry_verified: "registry_verified";
+            provider_verified: "provider_verified";
+            manual_unverified: "manual_unverified";
+        }>>>;
+        companyIdentitySource: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        companyIdentityEvidenceHash: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        isDefault: z.ZodOptional<z.ZodBoolean>;
+    }, z.core.$strict>;
+    response: z.ZodObject<{
+        contractVersion: z.ZodLiteral<"customer.billing.v1">;
+        ordererProfiles: z.ZodArray<z.ZodObject<{
+            profileId: z.ZodGUID;
+            label: z.ZodNullable<z.ZodString>;
+            fullName: z.ZodString;
+            email: z.ZodString;
+            phone: z.ZodNullable<z.ZodString>;
+            companyName: z.ZodNullable<z.ZodString>;
+            taxId: z.ZodNullable<z.ZodString>;
+            companyVerificationLevel: z.ZodOptional<z.ZodNullable<z.ZodEnum<{
+                invalid: "invalid";
+                registry_verified: "registry_verified";
+                provider_verified: "provider_verified";
+                manual_unverified: "manual_unverified";
+            }>>>;
+            companyIdentitySource: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+            companyIdentityEvidenceHash: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+            isDefault: z.ZodBoolean;
+            createdAt: z.ZodISODateTime;
+            updatedAt: z.ZodISODateTime;
+        }, z.core.$strict>>;
+    }, z.core.$strict>;
+    remove: z.ZodObject<{
+        idempotencyKey: z.ZodString;
+        profileId: z.ZodGUID;
+    }, z.core.$strict>;
+};
+/** An explicitly selected, authenticated principal/client pair; every RPC rechecks ownership. */
+export declare function createPostgresCustomerBillingProfilePort(db: {
+    query(sql: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}, scope: {
+    principalId: string;
+    clientId: string;
+}, options: {
+    tax: BillingProfileTaxPolicy;
+    now(): string;
+}): CustomerBillingProfilePort;
+export declare function createCustomerBillingProfilesHandler<Request extends CustomerAccountMutationHandlerRequest, Response>(options: {
+    port: CustomerBillingProfilePort;
+    tax: BillingProfileTaxPolicy;
+    authenticate(req: Request): Promise<{
+        ok: true;
+        userId: string;
+    } | {
+        ok: false;
+        code: 'UNAUTHORIZED' | 'FORBIDDEN';
+        message: string;
+    }>;
+    messages: {
+        authentication: string;
+        invalid: string;
+        unlinked: string;
+        failed: string;
+        invalidResponse: string;
+    };
+}, responder: CustomerAccountMutationHandlerResponder<Response>): (req: Request, res: Response) => Promise<void>;
+```
 ## dist/account-support/customerAccount/postgresAccountMutations.d.ts
 
 ```ts
@@ -1771,6 +1894,8 @@ export { createCustomerAccountMutationHandlers } from "./customerAccount/account
 export type { CustomerAccountMutationHandlerDependencies, CustomerAccountMutationHandlerRequest, CustomerAccountMutationHandlerResponder } from "./customerAccount/accountMutationHandlers.js";
 export { createAccountEventPrivacyContributor } from "./customerAccount/accountEventPrivacy.js";
 export type { AccountEventPrivacyJson, AccountEventPrivacyObligation, AccountEventPrivacyDocument, AccountEventPrivacySubject, AccountEventPrivacyAssessment, AccountEventPrivacyContributor, AccountEventPrivacyDependencies } from "./customerAccount/accountEventPrivacy.js";
+export { createPostgresCustomerBillingProfilePort, createCustomerBillingProfileSchemas, createCustomerBillingProfilesHandler } from "./customerAccount/billingProfiles.js";
+export type { BillingProfileTaxPolicy } from "./customerAccount/billingProfiles.js";
 ```
 ## dist/account-support/invoiceAccess.d.ts
 
@@ -4263,7 +4388,16 @@ export interface InvoiceBuyer {
         readonly postalCode: string | null;
         readonly city: string | null;
         readonly country: string | null;
+        readonly line2?: string | null;
+        readonly addressId?: string | null;
+        readonly source?: string | null;
     } | null;
+    readonly taxId?: string | null;
+    readonly source?: string | null;
+    readonly addressSource?: string | null;
+    readonly ordererProfileId?: string | null;
+    readonly billingAddressId?: string | null;
+    readonly legacyFallback?: boolean;
 }
 /** Safe integer minor amounts; taxRateBps is a rate, never a fiscal-support claim.
  * Preserve array order and quantityUnit; no inferred shipping residual or FX.
@@ -4336,6 +4470,16 @@ export interface InvoiceSellerRevision<Seller = InvoiceSeller> {
 export interface InvoiceClaimedFacts extends InvoiceFacts {
     readonly sellerRevision?: string;
     readonly sellerMode?: "frozen" | "legacy_fallback";
+}
+/** Frozen selection inputs; identifier normalization and fiscal routing remain explicit host policy. */
+export interface InvoiceBuyerSelection extends Omit<InvoiceBuyer, 'taxIdentifier' | 'name'> {
+    readonly name: string | null;
+    readonly taxId: string | null;
+    readonly source: string;
+    readonly addressSource: string;
+    readonly ordererProfileId: string | null;
+    readonly billingAddressId: string | null;
+    readonly legacyFallback: boolean;
 }
 ```
 ## dist/invoicing/contracts/host.d.ts
@@ -4606,6 +4750,7 @@ export type { InvoiceCompanyLookupPort } from "./companyLookup.js";
 export type { InvoiceStorePort, InvoiceDutyReadback } from "./store.js";
 /** @consumer Host composition and offline port-fit witnesses. */
 export type { InvoiceHostPorts, InvoiceServicesOptions } from "./host.js";
+export type { InvoiceBuyerSelection } from "./facts.js";
 ```
 ## dist/invoicing/contracts/provider.d.ts
 

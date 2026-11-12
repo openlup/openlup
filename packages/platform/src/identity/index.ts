@@ -73,3 +73,4 @@ export { createFulfillmentParcelContactPrivacyContributor } from './parcelContac
 export { createCustomerSavedAddressPrivacyContributor } from "./savedAddressPrivacy.js";
 
 export { createCustomerPreferencePrivacyContributor } from './customerPreferencePrivacy.js';
+export { createCustomerBillingPrivacyContributor } from './billingProfilePrivacy.js';

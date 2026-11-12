@@ -1358,6 +1358,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261110260000_customer_billing_profiles.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4490,6 +4494,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261110260000_customer_billing_profiles.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -4562,6 +4570,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/account-support/contracts/billing.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/account-support/contracts/capabilities.ts",
       "class": "public-output"
     },
@@ -4607,6 +4619,10 @@
     },
     {
       "path": "packages/platform/src/account-support/customerAccount/accountMutationSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/account-support/customerAccount/billingProfiles.ts",
       "class": "public-output"
     },
     {
@@ -6771,6 +6787,10 @@
     },
     {
       "path": "packages/platform/src/identity/authVerifyUrl.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/billingProfilePrivacy.ts",
       "class": "public-output"
     },
     {
@@ -28754,6 +28774,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/platform/account-support/customerBillingProfiles.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/platform/catalog-draft-extension.test.ts",
       "class": "public-output"
     },
@@ -29083,6 +29107,10 @@
     },
     {
       "path": "tests/postgres/customerAccountMutations.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/customerBillingProfiles.test.ts",
       "class": "public-output"
     },
     {
