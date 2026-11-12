@@ -670,6 +670,54 @@ describe("the workflow stays in step with what it claims to run", () => {
     expect(workflow).toContain("gitleaks git . --config config/gitleaks.toml --redact --no-banner");
   });
 
+  it("scans only the pull-request or merge-group range, full history otherwise, and refuses unreadable event SHAs", () => {
+    const job = workflowJob("gitleaks");
+    expect(job).toContain("fetch-depth: 0");
+    const step = job.split("      - name: Scan the event range, or the complete available history\n")[1] ?? "";
+    for (const binding of ["PR_BASE: ${{ github.event.pull_request.base.sha }}", "PR_HEAD: ${{ github.event.pull_request.head.sha }}",
+      "GROUP_BASE: ${{ github.event.merge_group.base_sha }}", "GROUP_HEAD: ${{ github.event.merge_group.head_sha }}"]) expect(step).toContain(binding);
+    const command = step.split("        run: |\n")[1]?.split("\n").map((line) => line.replace(/^ {10}/u, "")).join("\n");
+    expect(command).toBeTruthy();
+    expect(command).not.toContain("${{");
+    const root = mkdtempSync(join(tmpdir(), "public-gitleaks-range-"));
+    const repo = join(root, "repo"), bin = join(root, "bin"), calls = join(root, "calls");
+    const environment = { ...process.env, GIT_CONFIG_GLOBAL: "", GIT_CONFIG_SYSTEM: "", GIT_CONFIG_NOSYSTEM: "1" };
+    const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=A Contributor", "-c", "user.email=contributor@example.com", ...args], { cwd: repo, env: environment, encoding: "utf8" }).trim();
+    try {
+      mkdirSync(repo); mkdirSync(bin);
+      // A recording stand-in for the scanner: the step's argv is the contract under test.
+      writeFileSync(join(bin, "gitleaks"), "#!/bin/sh\nprintf '[%s]' \"$@\" >> \"$SCAN_CALLS\"\necho >> \"$SCAN_CALLS\"\n");
+      chmodSync(join(bin, "gitleaks"), 0o755);
+      git("init", "--quiet", "--initial-branch=main");
+      git("commit", "--quiet", "--allow-empty", "--no-gpg-sign", "-m", "base");
+      const base = git("rev-parse", "HEAD");
+      git("commit", "--quiet", "--allow-empty", "--no-gpg-sign", "-m", "head");
+      const head = git("rev-parse", "HEAD"), tree = git("rev-parse", "HEAD^{tree}");
+      const run = (event: string, patch: Record<string, string> = {}) => {
+        writeFileSync(calls, "");
+        const result = spawnSync("bash", ["-e", "-o", "pipefail", "-c", command!], { cwd: repo, encoding: "utf8", timeout: 20_000,
+          env: { ...environment, PATH: `${bin}:${process.env.PATH ?? ""}`, SCAN_CALLS: calls, GITHUB_EVENT_NAME: event, PR_BASE: "", PR_HEAD: "", GROUP_BASE: "", GROUP_HEAD: "", ...patch } });
+        return { status: result.status, calls: readFileSync(calls, "utf8") };
+      };
+      const full = "[git][.][--config][config/gitleaks.toml][--redact][--no-banner]\n";
+      const range = `[git][.][--config][config/gitleaks.toml][--redact][--no-banner][--log-opts][${base}..${head}]\n`;
+      const all = { PR_BASE: base, PR_HEAD: head, GROUP_BASE: base, GROUP_HEAD: head };
+      expect(run("pull_request", { PR_BASE: base, PR_HEAD: head })).toEqual({ status: 0, calls: range });
+      expect(run("merge_group", { GROUP_BASE: base, GROUP_HEAD: head })).toEqual({ status: 0, calls: range });
+      for (const event of ["push", "workflow_dispatch", ""]) expect(run(event, all)).toEqual({ status: 0, calls: full });
+      const absent = "1".repeat(40);
+      const refusals: [string, Record<string, string>][] = [
+        ["pull_request", {}], ["pull_request", { PR_BASE: base }], ["pull_request", { GROUP_BASE: base, GROUP_HEAD: head }],
+        ["pull_request", { PR_BASE: "A".repeat(40), PR_HEAD: head }], ["pull_request", { PR_BASE: base.slice(0, 39), PR_HEAD: head }],
+        ["pull_request", { PR_BASE: "--all", PR_HEAD: head }], ["pull_request", { PR_BASE: `${base} --all`, PR_HEAD: head }],
+        ["pull_request", { PR_BASE: absent, PR_HEAD: head }], ["pull_request", { PR_BASE: base, PR_HEAD: tree }],
+        ["merge_group", { PR_BASE: base, PR_HEAD: head }], ["merge_group", { GROUP_BASE: base, GROUP_HEAD: `${head}\n` }],
+        ["merge_group", { GROUP_BASE: base, GROUP_HEAD: absent }],
+      ];
+      for (const [event, patch] of refusals) expect(run(event, patch)).toEqual({ status: 1, calls: "" });
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
   it("runs the closed public root build instead of source-only prebuild machinery", () => {
     expect(workflow).toContain("npm run build");
     expect(workflow).not.toContain("--workspaces --if-present");

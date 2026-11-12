@@ -336,8 +336,31 @@ jobs:
           tar -xzf "$archive" -C "$install_dir" gitleaks
           echo "$install_dir" >> "$GITHUB_PATH"
           "$install_dir/gitleaks" version
-      - name: Scan the complete available history
-        run: gitleaks git . --config config/gitleaks.toml --redact --no-banner
+      # Pull requests and merge groups scan only the commits they add; main pushes and every other
+      # event keep the complete-history scan. Event SHAs arrive through the environment and must be
+      # full digests present in this checkout: gitleaks itself passes an unreadable range as zero
+      # commits scanned.
+      - name: Scan the event range, or the complete available history
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          GROUP_BASE: ${{ github.event.merge_group.base_sha }}
+          GROUP_HEAD: ${{ github.event.merge_group.head_sha }}
+        run: |
+          case "$GITHUB_EVENT_NAME" in
+            pull_request) range_base="$PR_BASE"; range_head="$PR_HEAD" ;;
+            merge_group) range_base="$GROUP_BASE"; range_head="$GROUP_HEAD" ;;
+            *) exec gitleaks git . --config config/gitleaks.toml --redact --no-banner ;;
+          esac
+          if [[ ! "$range_base" =~ ^[0-9a-f]{40}$ || ! "$range_head" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "The $GITHUB_EVENT_NAME scan needs full base and head commit SHAs." >&2
+            exit 1
+          fi
+          for commit in "$range_base" "$range_head"; do
+            git cat-file -e "$commit^{commit}" || { echo "Commit $commit is missing from this checkout." >&2; exit 1; }
+          done
+          echo "Scanning $GITHUB_EVENT_NAME range $range_base..$range_head"
+          gitleaks git . --config config/gitleaks.toml --redact --no-banner --log-opts "$range_base..$range_head"
 
   pgtap:
     name: pgtap
