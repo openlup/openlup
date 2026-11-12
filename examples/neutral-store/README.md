@@ -837,7 +837,7 @@ also requires confirmation; the native command owns provider fences and recorded
 reservation release. These actions do not confirm arrival, dispatch a real
 parcel, create a refund or move a subscription cycle earlier.
 Unpaid cancellation and completed external-refund marking use the native order
-commands. Shipment label, handoff and delivery evidence are also bound to native
+commands. Shipment label, handoff and tracking evidence are also bound to native
 operator commands; N3 order notes and order-address corrections remain unavailable.
 
 For replacement/cancellation, the database owner provisions one durable Commerce

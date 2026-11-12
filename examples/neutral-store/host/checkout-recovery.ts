@@ -91,6 +91,7 @@ export function recreatedExecutionForInspection(order: NativeCheckoutRecoveryOrd
 
 export function composeExpiredRecovery(pool: Pool, lane: Pick<PostgresRoleFreeTransactionLane, 'run'>, tokens: PurchaseRecovery['tokens'], keyring?: PromotionAcceptanceKeyring): ApplicationBindings['actions'] {
   const reader = createPostgresCheckoutRecoveryOrderPort(pool);
+  const renewal = createAcquisitionRenewalBinding(pool);
   return { 'checkout.recovery': async (payload, context) => {
     const refuse = (reason: string) => ({ ok: false as const, code: `starter_recovery_${reason}` });
     if (Object.keys(payload).some(key => !['locale','token','action','orderRef','attemptRef','outcome'].includes(key))
@@ -174,16 +175,31 @@ export function composeExpiredRecovery(pool: Pool, lane: Pick<PostgresRoleFreeTr
         || !recreatedExecutionForInspection(latest, attempt, { recoverable: false, fallback: 'fresh_checkout' })) return refuse('unavailable');
       if (!['captured','refused','expired','indeterminate'].includes(String(payload.outcome))) return refuse('unavailable');
       const outcome = payload.outcome as 'captured' | 'refused' | 'expired' | 'indeterminate';
+      const acceptedQuote = latest.quoteSnapshot as CreateQuoteResponse;
+      const acquisitionTerms = outcome === 'captured' && (acceptedQuote.quote.context as { acquisitionTerms?: unknown })?.acquisitionTerms;
+      if (outcome === 'captured' && acquisitionTerms) renewal.assertAvailable(acceptedQuote);
       const observation = await simulator.recordObservation({ attemptId: attempt.id,
         idempotencyKey: `starter-recreated:${attempt.id}:${outcome}`, outcome, occurredAt: attempt.dispatchedAt });
       const accepted = await simulator.ingress.receive({ rawBody: new TextEncoder().encode(JSON.stringify({
         settlementIntentId: latest.paymentIntentId, attemptId: attempt.id, observationId: observation.id })), headers: {}, receivedAt: attempt.dispatchedAt });
       if (accepted.status !== 200) return refuse('unavailable');
       if (outcome === 'captured' && latest.mode === 'subscription_cycle') {
-        const quote = latest.quoteSnapshot as Parameters<ReturnType<typeof createAcquisitionRenewalBinding>['activate']>[0]['acceptedQuote'];
-        await createAcquisitionRenewalBinding(pool).activate({ orderId: latest.orderId, acceptedQuote: quote,
-          capturedReference: latest.paymentIntentId, methodFacts: attempt.methodFacts,
-          stockSourceKey: `starter-demo:${context.config.id}`, templateId: `starter:${context.config.id}` });
+        const declaration = (await pool.query('SELECT cadence_days FROM public.subscription_activations WHERE order_id=$1', [latest.orderId])).rows[0];
+        if (declaration) {
+          if (acquisitionTerms) await renewal.activate({ orderId: latest.orderId, acceptedQuote,
+            capturedReference: latest.paymentIntentId, methodFacts: attempt.methodFacts,
+            stockSourceKey: `starter-demo:${context.config.id}`, templateId: `starter:${context.config.id}` });
+          else {
+            const shippingTerms = (acceptedQuote.quote.context as { shippingTerms?: import('@openlup/platform/shipping').ShippingTerms } | undefined)?.shippingTerms;
+            const facts: NativeRenewalPurchaseFacts = { settlementChannelKey: 'sandbox', ...attempt.methodFacts,
+              stockSourceKey: `starter-demo:${context.config.id}`, templateId: `starter:${context.config.id}`, cadenceDays: declaration.cadence_days,
+              currency: latest.currency, shippingAmountMinor: (acceptedQuote.quote.shippingGross?.amountMinor ?? 0) - (acceptedQuote.quote.shippingDiscountGross?.amountMinor ?? 0), acquisitionRef: null,
+              renewalTerms: { version: 'native.renewal-terms.v1', ...(shippingTerms === undefined ? {} : { shippingTerms }) },
+              lines: acceptedQuote.quote.lines.map((line, index) => ({ lineOrdinal: index + 1, sku: line.sku, quantity: line.quantity, unitAmountMinor: line.unitPriceGross.amountMinor })) };
+            await activateNativePurchaseWithRenewal(pool, { orderId: latest.orderId,
+              idempotencyKey: `activate:${latest.orderId}`, capturedReference: latest.paymentIntentId, facts });
+          }
+        }
       }
       return { ok: true, value: { ...lineage, state: outcome } };
     } catch (error) {

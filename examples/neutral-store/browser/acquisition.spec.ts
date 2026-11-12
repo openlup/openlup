@@ -872,8 +872,8 @@ for (const locale of ['en', 'pl'] as const) {
   });
 
 }
-async function expiredCheckout(page: Page, locale: Locale, mode: 'one_time' | 'subscription' = 'one_time') {
-  const f = await pendingCheckout(page, locale, mode);
+async function expiredCheckout(page: Page, locale: Locale, mode: 'one_time' | 'subscription' = 'one_time', existingEmail?: string) {
+  const f = await pendingCheckout(page, locale, mode, existingEmail);
   expect((await call(page, 'payment.simulate', { orderRef: f.orderRef, token: f.token, outcome: 'refused' })).ok).toBe(true);
   await owner.query("UPDATE public.commerce_orders SET created_at=now()-interval '2 hours' WHERE id=$1", [f.orderRef]);
   await owner.query("UPDATE public.fulfillment_inventory_reservations SET created_at=now()-interval '2 hours',expires_at=now()-interval '1 hour' WHERE purchase_order_id=$1", [f.orderRef]);
@@ -1731,6 +1731,47 @@ for (const locale of ['en','pl'] as const) {
     for (const action of ['inspect','simulate']) expect((await paymentCall(page,'checkout.payment',{
       action,token:own.token,orderRef:other.orderRef,attemptRef:started.value.attemptRef,outcome:'captured'})).code).toBe('starter_recovery_unavailable');
     expect(await snapshot()).toEqual(before);
+  });
+
+  test(`${locale}: payment retry recreated repeat subscription captures and activates classic renewal`, async ({page})=>{
+    const prior=await purchase(page), before=await state(prior);
+    const f=await expiredCheckout(page,locale,'subscription',prior.email);
+    expect((await owner.query("SELECT metadata#>'{quoteSnapshot,quote,context,acquisitionTerms}' IS NULL AS classic FROM public.commerce_orders WHERE id=$1",[f.orderRef])).rows[0].classic).toBe(true);
+    await page.goto(routes.completion[locale]+'?token='+f.token);
+    const payment=page.waitForResponse(r=>r.url().endsWith('/api/actions/checkout.recovery')&&r.request().postDataJSON()?.action==='pay');
+    await page.getByRole('button',{name:copy[locale].recoveryPay,exact:true}).click();
+    const started=await(await payment).json();expect(started.ok).toBe(true);
+    await expect(page.locator('main')).toContainText(started.value.attemptRef);
+    await accessible(page.locator('main'));
+    const captured=page.waitForResponse(r=>r.url().endsWith('/api/actions/checkout.recovery')&&r.request().postDataJSON()?.action==='simulate');
+    await page.getByRole('button',{name:copy[locale].simulatePaid,exact:true}).click();
+    expect((await(await captured).json()).ok).toBe(true);
+    await expect(page.locator('main')).toContainText(copy[locale].recoveryPaid);
+    const replacement=started.value.latestOrderRef;
+    expect((await owner.query(`SELECT o.status,a.state,s.status AS subscription_status,t.subscription_id IS NOT NULL AS renewal_attached
+      FROM public.commerce_orders o JOIN public.subscription_activations a ON a.order_id=o.id
+      JOIN public.subscriptions s ON s.id=a.subscription_id LEFT JOIN public.subscription_renewal_terms t ON t.subscription_id=s.id
+      WHERE o.id=$1`,[replacement])).rows).toEqual([{status:'paid',state:'active',subscription_status:'active',renewal_attached:true}]);
+    expect((await runtime.query('SELECT status FROM public.commerce_orders WHERE id=$1',[f.orderRef])).rows[0].status).toBe('cancelled');
+    expect((await owner.query('SELECT id FROM public.payment_simulator_attempts WHERE settlement_intent_id IN (SELECT id FROM public.commerce_settlement_intents WHERE order_id=$1)',[replacement])).rows).toHaveLength(1);
+    expect((await call(page,'checkout.recovery',{action:'simulate',token:f.token,orderRef:replacement,attemptRef:started.value.attemptRef,outcome:'captured'})).ok).toBe(false);
+    const after=await state(prior);expect(after.status).toBe('active');expect(after.next_cycle_at).toEqual(before.next_cycle_at);
+  });
+
+  test(`${locale}: payment retry recreated acquisition refuses damaged retained terms before capture`, async ({page})=>{
+    const f=await expiredCheckout(page,locale,'subscription');
+    const started=await call(page,'checkout.recovery',{action:'pay',token:f.token});expect(started.ok).toBe(true);
+    const replacement=started.value.latestOrderRef;
+    await owner.query("UPDATE public.commerce_orders SET metadata=metadata #- '{quoteSnapshot,quote,context,starterRenewalTerms}' WHERE id=$1",[replacement]);
+    await page.goto(routes.completion[locale]+'?token='+f.token);
+    await expect(page.locator('main')).toContainText(started.value.attemptRef);
+    const capture=page.waitForResponse(r=>r.url().endsWith('/api/actions/checkout.recovery')&&r.request().postDataJSON()?.action==='simulate');
+    await page.getByRole('button',{name:copy[locale].simulatePaid,exact:true}).click();
+    expect((await(await capture).json()).code).toBe('starter_recovery_unavailable');
+    expect((await runtime.query('SELECT status FROM public.commerce_orders WHERE id=$1',[replacement])).rows[0].status).toBe('pending_payment');
+    expect((await runtime.query('SELECT state FROM public.subscription_activations WHERE order_id=$1',[replacement])).rows[0].state).toBe('provisional');
+    expect((await owner.query('SELECT state,last_observation_id FROM public.payment_simulator_attempts WHERE id=$1',[started.value.attemptRef])).rows[0]).toEqual({state:'dispatched',last_observation_id:null});
+    expect((await owner.query('SELECT id FROM public.payment_simulator_observations WHERE attempt_id=$1',[started.value.attemptRef])).rows).toHaveLength(0);
   });
 
   test(`${locale}: payment retry replay, concurrent nonce and cookie authority never redispatch`, async ({ page, context }) => {

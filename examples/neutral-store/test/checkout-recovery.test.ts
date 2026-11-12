@@ -275,6 +275,7 @@ test('inline authority is the exact transport cookie, never a bearer or body coo
 import { createBuyerLinkConfirmation, isEmbeddedCheckoutBrowser } from '../client/pages/checkout.ts';
 import { embeddedCheckoutBrowserMarkers } from '../owned/acquisition-policy.ts';
 test('embedded detection is a display hint for the measured markers only', () => {
+  assert.deepEqual(embeddedCheckoutBrowserMarkers, ['FBAN/', 'FB_IAB/', 'Instagram']);
   for (const marker of embeddedCheckoutBrowserMarkers) assert.equal(isEmbeddedCheckoutBrowser(`Example ${marker} browser`),true);
   assert.equal(isEmbeddedCheckoutBrowser('Example ordinary browser'),false);
 });
