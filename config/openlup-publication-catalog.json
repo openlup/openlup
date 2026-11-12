@@ -12102,6 +12102,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/sql-admit.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/sql-admit.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/ssg-static-contract.mjs",
       "class": "public-output"
     },
@@ -29938,6 +29946,16 @@
       "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
     },
     {
+      "name": "sql:admit",
+      "command": "node --experimental-strip-types scripts/sql-admit.ts",
+      "publicDocs": [
+        "CONTRIBUTING.md",
+        "README.md"
+      ],
+      "publicCiEntrypoint": ".github/workflows/published-tree-ci.yml",
+      "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
+    },
+    {
       "name": "pretest",
       "command": "npm --workspace @openlup/core run build && npm --workspace @openlup/outbox run build && npm --workspace @openlup/platform run build",
       "publicDocs": [
@@ -29975,7 +29993,7 @@
     },
     {
       "path": "package.json",
-      "digest": "sha256-55476e48a3bed78e607741082323510fe2c55a0cc9a7209f82ba208516171b78"
+      "digest": "sha256-103eb5defa4fd82e6bdbae8387857376b9b3791705699a69da56dd3a8c697d3d"
     },
     {
       "path": "packages/core/package.json",

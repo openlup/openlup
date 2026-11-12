@@ -1,6 +1,6 @@
 /** Every directly runnable file admitted by the bounded public command/container contract. */
 export const PUBLIC_EXECUTION_ENTRYPOINTS = [
-  "scripts/agent-review-landing.mjs", "scripts/installation-inventory-refresh.ts",
+  "scripts/agent-review-landing.mjs", "scripts/installation-inventory-refresh.ts", "scripts/sql-admit.ts",
   "deploy/neutral-store/prove.mjs",
   "examples/neutral-store/browser/dev-loop.proof.ts",
   "examples/neutral-store/dev.mjs",

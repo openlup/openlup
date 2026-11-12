@@ -1083,6 +1083,14 @@ For SQL history, forward admission, expression classification and approval pins,
 follow [Data and migrations](docs/platform/DATA_AND_MIGRATIONS.md). The required
 self-check and release checks use those same contracts.
 
+Before pushing a SQL, migration or registry change, run `npm run sql:admit` after
+`git fetch origin`. It dry-runs the hosted admission locally: the self-check's
+forward admission and append-only history on `origin/main` and a temporary pull-request
+merge, and the queue's co-located approval guard on the fork point and on that merge.
+It checks the working tree, or `--head <rev>` against `--base <rev>`, changes no ref,
+index or worktree file, and prints PASS or REFUSED per added forward and check with a
+capability hint. Hosted CI and the merge queue remain authoritative.
+
 Against the same base, `--policy` refuses a change that removes or changes a
 line of a publishable package's API snapshot (`release-gates.json`
 `packageSurface`) unless that package's single `## [Unreleased]` changelog
