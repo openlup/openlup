@@ -514,6 +514,7 @@ npm run oss:published-tree -- --policy
 npm run oss:published-tree -- --inventory
 # dco (needs no install): the commits your branch adds to origin/main
 npm run check:dco-signoff -- "$(git rev-parse origin/main)" "$(git rev-parse HEAD)"
+# gitleaks: complete history, as on main pushes; CI scans only a PR or merge-group range
 gitleaks git . --config config/gitleaks.toml --redact --no-banner
 node scripts/public-ci-neutrality.mjs --base-commit "$(git merge-base HEAD origin/main)"
 node --experimental-strip-types packages/ui/smoke/neutrality.ts
