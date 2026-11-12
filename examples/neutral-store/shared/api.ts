@@ -3,6 +3,7 @@ import type { StoreConfig } from './config.ts';
 /** Host operations compose existing public ports; this is an application wire contract. */
 export const operations = [
   'checkout.recovery', 'checkout.create', 'checkout.read', 'payment.simulate', 'payment.recover',
+  'account.addresses', 'account.paymentPreference', 'account.deliveryPreference', 'subscription.savedAddress',
   'account.profile', 'account.invoiceCorrection', 'checkout.recoveryStart', 'operator.paymentLink', 'operator.replacement', 'operator.cancelFulfillment',
   'account.read', 'account.orders', 'account.invoice', 'account.consent',
   'subscription.command', 'subscription.preview', 'subscription.catalog', 'subscription.address', 'return.request',

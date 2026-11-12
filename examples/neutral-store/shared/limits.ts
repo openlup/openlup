@@ -64,10 +64,10 @@ export const nativeLimits: readonly NativeLimit[] = [
     },
   },
   {
-    id: 'N5', actions: ['savedAddresses', 'billing', 'deliveryPreference', 'paymentPreference', 'privateProfile', 'profileViews'], code: 'starter_account_preferences_unavailable',
+    id: 'N5', actions: ['billing', 'privateProfile', 'profileViews'], code: 'starter_account_preferences_unavailable',
     explanation: {
-      en: 'Saved addresses, billing profiles, delivery preferences, payment preferences, private-profile views and profile/address/billing/private-profile views are unavailable on the portable rail.',
-      pl: 'Ścieżka przenośna nie obsługuje zapisanych adresów, profili rozliczeniowych, preferencji dostawy i płatności, widoków profilu prywatnego ani widoków profilu, adresów, rozliczeń i profilu prywatnego.',
+      en: 'Billing profiles, private-profile views and complete profile views remain unavailable. Saved addresses and scoped delivery/payment preferences are bound separately.',
+      pl: 'Profile rozliczeniowe, widoki profilu prywatnego i pełne widoki profilu pozostają niedostępne. Zapisane adresy oraz preferencje dostawy i płatności są obsługiwane osobno.',
     },
   },
   {

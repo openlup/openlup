@@ -203,3 +203,48 @@ test('shipment command transaction supplies the verified human, commits success 
     else assert.equal(result.ok, true);
   }
 });
+
+for (const operation of ['account.addresses','account.paymentPreference','account.deliveryPreference','subscription.savedAddress'] as const) {
+  test(`${operation} admits only the server customer pair and rejects supplied authority before storage`, async () => {
+    const pool = { query() { throw new Error('unadmitted_customer_preferences_store'); } } as unknown as Pool;
+    const action = composeE4Capabilities(pool, async () => false)[operation]!;
+    const ref = 'abcdefab-cdef-4abc-8def-abcdefabcdef';
+    const customer = { ...context, actor: { principalRef: ref, customerRef: ref, operatorRef: null } };
+    const input = operation === 'subscription.savedAddress' ? { subscriptionRef: ref, savedAddressId: ref } : { action: 'read' };
+    assert.deepEqual(await action(input, context), { ok: false, code: 'customer_session_required' });
+    for (const field of ['actorUserId','actorId','principalRef','principalId','clientId','customerRef','userId','idempotencyKey'])
+      assert.deepEqual(await action({ ...input, [field]: ref }, customer), { ok: false, code: 'starter_input_invalid' });
+    assert.deepEqual(await action({ ...input, action: 'defaults' }, customer), { ok: false, code: 'starter_input_invalid' });
+  });
+}
+
+test('preference schema refusal precedes storage, and saved selection replay retains the native parsing order', async () => {
+  const ref = 'abcdefab-cdef-4abc-8def-abcdefabcdef';
+  const customer = { ...context, actor: { principalRef: ref, customerRef: ref, operatorRef: null } };
+  const pool = { query() { throw new Error('invalid_preference_store'); } } as unknown as Pool;
+  const actions = composeE4Capabilities(pool, async () => false);
+  for (const input of [{ action: 'save', scope: 'foreign', methodKind: 'demo-card' }, { action: 'save', scope: 'any', methodKind: 'provider-secret' }])
+    assert.deepEqual(await actions['account.paymentPreference']!(input, customer), { ok: false, code: 'starter_input_invalid' });
+  assert.deepEqual(await actions['account.deliveryPreference']!({ action: 'save', scope: 'any', deliveryKind: 'parcel-locker',
+    providerKind: 'demo-simulator', carrierKind: 'demo-carrier', carrierCode: 'courier', serviceCode: 'standard', pickupPoint: null }, customer),
+  { ok: false, code: 'starter_input_invalid' });
+  let args: unknown[] = [];
+  const replayPool = { async query(_sql: string, values: unknown[]) { args = values;
+    return { rows: [{ result: { status: 'replayed', shippingAddressId: ref } }] }; } } as unknown as Pool;
+  const result = await composeE4Capabilities(replayPool, async () => false)['subscription.savedAddress']!(
+    { subscriptionRef: ref, savedAddressId: 'malformed-replay-input' }, customer);
+  assert.equal(result.ok, true); assert.equal(result.ok && result.replayed, true);
+  assert.deepEqual(args.slice(0, 4), [ref, ref, customer.commandKey, ref]);
+  assert.equal(JSON.parse(String(args[4])).shippingAddressId, 'malformed-replay-input');
+});
+
+test('the explicitly unselected billing seam is not exposed as profiles or defaults and never hides an address read error', async () => {
+  const ref = 'abcdefab-cdef-4abc-8def-abcdefabcdef';
+  const customer = { ...context, actor: { principalRef: ref, customerRef: ref, operatorRef: null } };
+  const pool = { async query() { return { rows: [{ result: [] }] }; } } as unknown as Pool;
+  assert.deepEqual(await composeE4Capabilities(pool, async () => false)['account.addresses']!({ action: 'read' }, customer),
+    { ok: true, value: { addresses: [], billingProfilesAvailable: false } });
+  const failed = { async query() { throw new Error('address-read-offline'); } } as unknown as Pool;
+  assert.deepEqual(await composeE4Capabilities(failed, async () => false)['account.addresses']!({ action: 'read' }, customer),
+    { ok: false, code: 'starter_account_data_unavailable' });
+});

@@ -367,3 +367,39 @@ The existing paid-capture document policy is unchanged. The optional handoff
 accounting wrapper is only for an adopter that selects a handoff issue policy;
 any such callback belongs after the committed shipment transaction and remains
 fail-soft according to that wrapper's policy.
+
+
+## Saved addresses and scoped preferences
+
+The account page reads, creates, edits and deletes the signed-in customer's saved
+addresses, with native formatting, default clearing and account events. Default
+clearing, address writes and event append are separate commits: a failed save can
+leave earlier changes committed, so reload before retrying. An admitted command
+key returns the current book without another write. Deleting a missing or foreign
+row acknowledges a zero-row deletion and returns only the caller's book; updating
+a foreign row refuses. Active or paused subscription use prevents deletion.
+
+An active or paused subscription can select an owned shipping/both address.
+The native command owns the saved pointer, subscription/account events and outbox.
+A locked upcoming cycle refuses a fresh selection; an admitted key replays before
+saved-ID parsing and returns the current pointer. Null recipients remain null.
+Editing a saved row affects future destination materialization, while a retained
+renewal operation and existing parcel keep their immutable destination. Cadence,
+commercial terms and billing are unchanged.
+
+Payment and delivery selections use one-time, subscription or any scope. These
+preferences do not install an instrument, activate a provider, charge, or append
+account events. Native renewal preparation uses subscription scope before any
+scope and preserves an explicit delivery selection. Incomplete locker pickup
+addresses can be saved but are skipped when a renewal chooses a delivery.
+
+Billing storage is explicitly unselected in this composition. Address responses
+contain addresses and an unavailable-billing flag, not fabricated billing rows.
+No billing/default-hint or combined-profile endpoint is mounted. Billing and
+private-profile limits remain visible. The fictional country, phone prefix and
+numeric tax checksum are demonstration validation, not real-market certification.
+
+The saved addresses and preferences contain personal data. Application owners
+compose the native privacy contributors with identity, subscription and account
+event coverage and own retention and access. This starter supplies no customer
+export or erasure endpoint; saving a preference does not establish that workflow.

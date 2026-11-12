@@ -1460,4 +1460,150 @@ for (const locale of ['en','pl'] as const) {
   });
 }
 
+async function preferencesCustomer(page: Page, locale: Locale) {
+  const principal = randomUUID(), email = `preferences-${randomUUID()}@example.test`;
+  const accounts = createPostgresAccountLinkStore({ connectionString: material.runtimeUrl });
+  try { await accounts.createAccount({ email, principalId: principal, acquisitionSource: 'local-demonstration', lifecycleStage: 'customer' }); } finally { await accounts.close(); }
+  await signIn(page, email, locale);
+  return { principal, email, clientId: (await owner.query('SELECT id FROM public.clients WHERE principal_id=$1', [principal])).rows[0].id as string };
+}
+const savedAddressInput = (line1 = 'Saved Street 1') => ({ action: 'upsert', kind: 'shipping', label: 'Home', recipientName: null,
+  contactPhone: '123456789', line1, city: 'Example City', postalCode: '12345', country: 'ZZ', isDefault: false });
+async function saveAddress(page: Page, input: Record<string, unknown> = savedAddressInput()) {
+  const result = await call(page, 'account.addresses', input); expect(result.ok).toBe(true);
+  const address = result.value.addresses.find((row: { line1: string }) => row.line1 === input.line1);
+  if (!address) throw new Error('starter_saved_address_witness_missing'); return address;
+}
+for (const locale of ['en','pl'] as const) {
+  test(`${locale}: account preferences address forms normalize, default, delete and retain separate-commit failure semantics`, async ({ page }) => {
+    const f = await preferencesCustomer(page, locale); await page.goto(routes.account[locale]);
+    const section = page.locator('#account-preferences'); await accessible(section);
+    const form = section.locator('form').filter({ has: page.getByRole('heading', { name: copy[locale].addSavedAddress, exact: true }) });
+    await form.locator('[name=label]').fill('Home'); await form.locator('[name=contactPhone]').fill('123456789');
+    await form.locator('[name=line1]').fill('Saved Street 1'); await form.locator('[name=city]').fill('Example City'); await form.locator('[name=postalCode]').fill('12345');
+    await form.locator('[name=isDefault]').check();
+    const request = page.waitForRequest(r => r.url().endsWith('/api/actions/account.addresses'));
+    await form.getByRole('button', { name: copy[locale].save, exact: true }).click();
+    const sent = await request, key = sent.headers()['idempotency-key']!;
+    await expect(section.locator('[data-saved-address]')).toHaveCount(1);
+    const book = await call(page, 'account.addresses', { action: 'read' }); expect(book.ok).toBe(true); expect(book.value.billingProfilesAvailable).toBe(false);
+    expect(book.value.ordererProfiles).toBeUndefined();
+    const first = book.value.addresses[0]; expect(first).toMatchObject({ recipientName: null, postalCode: '12-345', contactPhone: '+999123456789', isDefault: true });
+    expect((await call(page, 'account.addresses', { ...sent.postDataJSON(), line1: 'Changed replay input' }, key)).value.addresses[0].line1).toBe('Saved Street 1');
+    const second = await saveAddress(page, { ...savedAddressInput('Other Street 2'), isDefault: true });
+    const changed = await call(page, 'account.addresses', { action: 'read' });
+    expect(changed.value.addresses.find((r: { addressId: string }) => r.addressId === first.addressId).isDefault).toBe(false);
+    expect((await call(page, 'account.addresses', { action: 'delete', addressId: second.addressId })).ok).toBe(true);
+    await saveAddress(page, { ...savedAddressInput(), addressId: first.addressId, isDefault: true });
+    const failedKey = randomUUID(), failedInput = { ...savedAddressInput('Committed before event failure'), isDefault: true };
+    const events = async () => (await owner.query("SELECT count(*)::int AS n FROM public.customer_account_events WHERE client_id=$1 AND event_type='customer.address_upserted'", [f.clientId])).rows[0].n;
+    const before = await events();
+    // Owner-only fault fixture: fail the final event statement, not the earlier committed address/default writes.
+    await owner.query("ALTER TABLE public.customer_account_events ADD CONSTRAINT starter_address_event_failure CHECK (event_type<>'customer.address_upserted') NOT VALID");
+    try {
+      expect((await call(page, 'account.addresses', failedInput, failedKey)).ok).toBe(false);
+      const partial = await call(page, 'account.addresses', { action: 'read' }); expect(partial.ok).toBe(true);
+      expect(partial.value.addresses.find((r: { line1: string }) => r.line1 === failedInput.line1).isDefault).toBe(true);
+      expect(partial.value.addresses.find((r: { addressId: string }) => r.addressId === first.addressId).isDefault).toBe(false);
+      expect(await events()).toBe(before);
+    } finally { await owner.query('ALTER TABLE public.customer_account_events DROP CONSTRAINT starter_address_event_failure'); }
+    expect((await call(page, 'account.addresses', failedInput, failedKey)).ok).toBe(true); expect(await events()).toBe(before + 1);
+    expect((await call(page, 'account.addresses', { ...failedInput, line1: 'Ignored replay' }, failedKey)).ok).toBe(true); expect(await events()).toBe(before + 1);
+  });
+
+  test(`${locale}: account preferences saved subscription selection preserves replay, ownership and in-use refusal`, async ({ page, context }) => {
+    const f = await purchase(page); await signIn(page, f.email, locale);
+    const address = await saveAddress(page), billing = await saveAddress(page, { ...savedAddressInput('Billing Street'), kind: 'billing' });
+    const before = (await owner.query('SELECT cadence_days,template_version,billing_saved_address_id,next_cycle_at FROM public.subscriptions WHERE id=$1', [f.subscriptionId])).rows[0];
+    await page.goto(routes.account[locale]); const selection = page.locator(`[data-saved-selection="${f.subscriptionId}"]`);
+    await selection.getByRole('button', { name: copy[locale].savedAddressLoad, exact: true }).click();
+    await expect(selection.locator('[name=savedAddressId] option')).toHaveCount(1);
+    await selection.locator('[name=savedAddressId]').selectOption(address.addressId); await accessible(selection);
+    const request = page.waitForRequest(r => r.url().endsWith('/api/actions/subscription.savedAddress'));
+    await selection.getByRole('button', { name: copy[locale].savedAddressSelect, exact: true }).click(); const key = (await request).headers()['idempotency-key']!;
+    await expect(selection.locator('[data-saved-address-pointer]')).toHaveText(address.addressId);
+    const events = async () => (await runtime.query("SELECT count(*)::int AS n FROM public.subscription_events WHERE subscription_id=$1 AND event_type='subscription.customer_self_service.change_shipping_address'", [f.subscriptionId])).rows[0].n;
+    const count = await events(); expect(count).toBe(1);
+    expect((await call(page, 'subscription.savedAddress', { subscriptionRef: f.subscriptionId, savedAddressId: 'malformed-replay-input' }, key)).replayed).toBe(true);
+    expect((await call(page, 'subscription.savedAddress', { subscriptionRef: f.subscriptionId, savedAddressId: billing.addressId })).code).toBe('starter_address_invalid');
+    expect((await call(page, 'subscription.savedAddress', { subscriptionRef: f.subscriptionId, savedAddressId: 'malformed-fresh-input' })).code).toBe('starter_address_invalid');
+    expect((await owner.query('SELECT cadence_days,template_version,billing_saved_address_id,next_cycle_at FROM public.subscriptions WHERE id=$1', [f.subscriptionId])).rows[0]).toEqual(before);
+    const cookies = await context.cookies(); await context.clearCookies();
+    await preferencesCustomer(page, locale); const foreign = await saveAddress(page, savedAddressInput('Foreign Street'));
+    expect((await call(page, 'subscription.savedAddress', { subscriptionRef: f.subscriptionId, savedAddressId: foreign.addressId })).code).toBe('starter_subscription_forbidden');
+    const ownBook = await call(page, 'account.addresses', { action: 'read' });
+    const foreignDelete = await call(page, 'account.addresses', { action: 'delete', addressId: address.addressId });
+    // Native deletion acknowledges zero rows without revealing another customer's existence.
+    expect(foreignDelete.ok).toBe(true); expect(foreignDelete.value.addresses).toEqual(ownBook.value.addresses);
+    expect((await owner.query('SELECT id FROM public.customer_saved_addresses WHERE id=$1', [address.addressId])).rows).toHaveLength(1);
+    await context.clearCookies(); await context.addCookies(cookies);
+    expect((await call(page, 'subscription.savedAddress', { subscriptionRef: f.subscriptionId, savedAddressId: foreign.addressId })).code).toBe('starter_address_invalid');
+    expect((await call(page, 'subscription.savedAddress', { subscriptionRef: f.subscriptionId, savedAddressId: foreign.addressId }, key)).replayed).toBe(true); expect(await events()).toBe(count);
+    await page.goto(routes.account[locale]); await page.locator('#account-preferences').getByRole('button', { name: copy[locale].savedAddressLoad, exact: true }).click();
+    const row = page.locator(`[data-saved-address="${address.addressId}"]`);
+    await row.getByRole('button', { name: copy[locale].deleteSavedAddress, exact: true }).click();
+    await expect(row.locator('.action-result').last()).toContainText('starter_address_in_use');
+    expect((await call(page, 'subscription.command', { subscriptionRef: f.subscriptionId, action: 'pause', pausePreset: '2_weeks' })).ok).toBe(true);
+    expect((await call(page, 'subscription.savedAddress', { subscriptionRef: f.subscriptionId, savedAddressId: address.addressId })).ok).toBe(true);
+  });
+
+  test(`${locale}: account preferences retained renewal keeps its destination while future reads materialize edits`, async ({ page }) => {
+    const { createPostgresDestinationPort } = await import('@openlup/platform/commerce/server/destinations');
+    const f = await purchase(page); await signIn(page, f.email, locale);
+    const address = await saveAddress(page), selectKey = randomUUID();
+    expect((await call(page, 'subscription.savedAddress', { subscriptionRef: f.subscriptionId, savedAddressId: address.addressId }, selectKey)).ok).toBe(true);
+    const courier = { action: 'save', scope: 'any', deliveryKind: 'courier', providerKind: 'demo-simulator', carrierKind: 'demo-carrier', carrierCode: 'courier', serviceCode: 'preferred-service', pickupPoint: null };
+    expect((await call(page, 'account.deliveryPreference', courier)).ok).toBe(true);
+    expect((await call(page, 'account.deliveryPreference', { ...courier, scope: 'subscription', deliveryKind: 'parcel-locker', pickupPoint: { id: 'locker', name: 'Locker', address: null } })).ok).toBe(true);
+    await failedRenewal(f);
+    const operation = (await owner.query('SELECT id,cycle_snapshot FROM public.subscription_renewal_operations WHERE subscription_id=$1 ORDER BY created_at DESC LIMIT 1', [f.subscriptionId])).rows[0];
+    const order = (await owner.query('SELECT id,metadata FROM public.commerce_orders WHERE renewal_operation_id=$1', [operation.id])).rows[0];
+    expect(order.metadata.selectedDelivery).toMatchObject({ providerKind: 'demo-simulator', serviceCode: 'preferred-service', deliveryKind: 'courier' });
+    const destinations = createPostgresDestinationPort(runtime), frozen = await destinations.readWithSaved('order', order.id);
+    expect(frozen.address).toMatchObject({ savedAddressId: address.addressId, recipientName: null, line1: address.line1 });
+    const snapshot = async () => (await owner.query('SELECT to_jsonb(d) AS value,xmin::text AS version FROM public.commerce_destinations d WHERE id=$1', [frozen.destinationId])).rows;
+    const immutable = await snapshot();
+    await saveAddress(page, { ...savedAddressInput('Future Street'), addressId: address.addressId, recipientName: 'Future Recipient' });
+    expect((await destinations.readWithSaved('order', order.id)).destinationId).toBe(frozen.destinationId); expect(await snapshot()).toEqual(immutable);
+    expect((await owner.query('SELECT cycle_snapshot FROM public.subscription_renewal_operations WHERE id=$1', [operation.id])).rows[0].cycle_snapshot).toEqual(operation.cycle_snapshot);
+    const future = await destinations.readWithSaved('subscription', f.subscriptionId);
+    expect(future.destinationId).not.toBe(frozen.destinationId); expect(future.address).toMatchObject({ savedAddressId: address.addressId, recipientName: 'Future Recipient', line1: 'Future Street' });
+    expect(await snapshot()).toEqual(immutable);
+    expect((await call(page, 'subscription.savedAddress', { subscriptionRef: f.subscriptionId, savedAddressId: address.addressId })).code).toBe('starter_payment_blocked');
+    expect((await call(page, 'subscription.savedAddress', { subscriptionRef: f.subscriptionId, savedAddressId: 'malformed-replay-input' }, selectKey)).replayed).toBe(true);
+    expect((await state(f)).status).toBe('active');
+  });
+
+  test(`${locale}: account preferences scoped selections validate lockers and never replace instruments or existing orders`, async ({ page, context }) => {
+    const f = await purchase(page); await signIn(page, f.email, locale); await page.goto(routes.account[locale]);
+    const effectSnapshot = async () => (await owner.query(`SELECT jsonb_build_object('subscription',(SELECT to_jsonb(s) FROM public.subscriptions s WHERE id=$1),
+      'methods',(SELECT jsonb_agg(to_jsonb(m) ORDER BY m.subscription_id) FROM public.subscription_method_states m WHERE subscription_id=$1),
+      'orders',(SELECT jsonb_agg(to_jsonb(o) ORDER BY o.id) FROM public.commerce_orders o WHERE client_id=$2),
+      'events',(SELECT count(*) FROM public.customer_account_events WHERE client_id=$2)) AS value`, [f.subscriptionId, f.clientId])).rows[0].value;
+    const before = await effectSnapshot(); const section = page.locator('#account-preferences'); await accessible(section);
+    const payment = section.locator('[data-payment-preferences] form');
+    await payment.locator('[name=scope]').selectOption('subscription'); await payment.locator('[name=methodKind]').selectOption('demo-card');
+    await payment.getByRole('button', { name: copy[locale].save, exact: true }).click(); await expect(payment.locator('.action-result')).toContainText('demo-card');
+    for (const scope of ['one_time','any']) expect((await call(page, 'account.paymentPreference', { action: 'save', scope, methodKind: 'demo-transfer' })).ok).toBe(true);
+    expect((await call(page, 'account.paymentPreference', { action: 'read' })).value.preferences).toHaveLength(3);
+    const delivery = section.locator('[data-delivery-preferences] form'); await delivery.locator('[name=scope]').selectOption('any');
+    await delivery.getByRole('button', { name: copy[locale].save, exact: true }).click(); await expect(delivery.locator('.action-result')).toContainText('demo-warehouse');
+    for (const invalid of [{ scope: 'foreign', methodKind: 'demo-card' }, { scope: 'any', methodKind: 'credential' }, { scope: 'any', methodKind: 'demo-card', token: 'forged' }])
+      expect((await call(page, 'account.paymentPreference', { action: 'save', ...invalid })).code).toBe('starter_input_invalid');
+    expect((await call(page, 'account.deliveryPreference', { action: 'save', scope: 'any', deliveryKind: 'parcel-locker', providerKind: 'demo-simulator', carrierKind: 'carrier', carrierCode: 'courier', serviceCode: 'standard', pickupPoint: null })).code).toBe('starter_input_invalid');
+    for (const operation of ['account.addresses','account.paymentPreference','account.deliveryPreference','subscription.savedAddress']) {
+      for (const field of ['principalId','principalRef','clientId','customerRef','actorUserId','idempotencyKey'])
+        expect((await call(page, operation, { action: 'read', [field]: randomUUID() })).code).toBe('starter_input_invalid');
+    }
+    expect(await effectSnapshot()).toEqual(before);
+    const cookies = await context.cookies(); await context.clearCookies(); await preferencesCustomer(page, locale);
+    expect((await call(page, 'account.paymentPreference', { action: 'read' })).value.preferences).toEqual([]);
+    expect((await call(page, 'account.deliveryPreference', { action: 'read' })).value.preferences).toEqual([]);
+    await context.clearCookies();
+    for (const operation of ['account.addresses','account.paymentPreference','account.deliveryPreference','subscription.savedAddress'])
+      expect((await call(page, operation, { action: 'read', clientId: f.clientId })).code).toBe('customer_session_required');
+    await context.addCookies(cookies);
+  });
+}
+
 });

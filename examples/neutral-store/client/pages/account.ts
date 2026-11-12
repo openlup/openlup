@@ -1,3 +1,4 @@
+import { accountPreferencePolicy } from '../../owned/renewal.config.ts';
 import { rememberPurchase } from '../purchase.ts';
 import { act } from '../api.ts';
 import { careAvailability, saveOfferKind, saveRescheduleTarget, type CareAction, type PortalSubscription } from '../../shared/renewal-config.ts';
@@ -19,6 +20,7 @@ export function accountPage(context: PageContext): HTMLElement {
       link(context.t('invoices'), routes.invoices[context.locale], 'button-link secondary')),
     readPanel(context, 'account', 'account.read'),
     orderPortal(context), profileEditor(context),
+    accountPreferences(context),
     subscriptionPortal(context),
     subscriptionEditorEntries(context),
     addressForm(context, 'subscription.address'),
@@ -153,7 +155,9 @@ export function subscriptionPortal(context: PageContext): HTMLElement {
         if (reason) { control.disabled = true; control.title = `${context.t('careUnavailable')} ${reason}`; }
         append(actions, control);
       }
-      append(card, actions); append(output, card);
+      append(card, actions);
+      if (['active','paused'].includes(row.status)) append(card, savedSelection(context, row.subscriptionId, typeof value.shippingSavedAddressId === 'string' ? value.shippingSavedAddressId : null));
+      append(output, card);
       if (target === row.subscriptionId) { found = true; queueMicrotask(() => { card.focus(); card.scrollIntoView(); }); }
     }
     if (target && !found) append(output, el('p', { role: 'status' }, context.t('careNotFound')));
@@ -284,4 +288,90 @@ function profileEditor(context: PageContext): HTMLElement {
       onSuccess: () => { void refresh(); } }));
   }
   void refresh(); return section;
+}
+
+
+function savedSelection(context: PageContext, subscriptionRef: string, initial: string | null): HTMLElement {
+  const output = el('div', { 'aria-live': 'polite' });
+  const pointer = el('p', { 'data-saved-address-pointer': '' }, initial ?? context.t('savedAddressNone'));
+  let generation = 0;
+  const section = el('section', { 'data-saved-selection': subscriptionRef }, el('h4', {}, context.t('savedAddressSelect')), pointer);
+  const load = button(context.t('savedAddressLoad'), async () => {
+    const current = ++generation;
+    const result = await act('account.addresses', { action: 'read' }, crypto.randomUUID());
+    if (!section.isConnected || current !== generation) return;
+    output.replaceChildren();
+    if (!result.ok) { append(output, refusal(context, result.code)); return; }
+    const rows = isRecord(result.value) && Array.isArray(result.value.addresses) ? result.value.addresses.filter(isRecord)
+      .filter(row => ['shipping','both'].includes(String(row.kind)) && typeof row.addressId === 'string') : [];
+    if (!rows.length) { append(output, el('p', {}, context.t('savedAddressNone'))); return; }
+    append(output, actionForm(context, { operation: 'subscription.savedAddress', submit: 'savedAddressSelect',
+      input: () => ({ subscriptionRef }), resultMessage: () => 'savedAddressSelected',
+      fields: [{ name: 'savedAddressId', label: 'savedAddresses', type: 'select', options: rows.map(row =>
+        ({ value: String(row.addressId), text: `${row.label || row.line1} · ${row.city}` })) },
+        { name: 'reason', label: 'reason', required: false }],
+      onSuccess: value => { if (isRecord(value)) pointer.textContent = typeof value.shippingAddressId === 'string' ? value.shippingAddressId : context.t('savedAddressNone'); } }));
+  });
+  append(section, el('p', {}, context.t('savedAddressEffect')), load, output);
+  return section;
+}
+
+function accountPreferences(context: PageContext): HTMLElement {
+  const book = el('div', { 'data-address-book': '', 'aria-live': 'polite' });
+  const section = el('section', { id: 'account-preferences', class: 'panel' }, el('h2', {}, context.t('accountPreferences')),
+    el('p', {}, context.t('preferencesEffect')), el('p', {}, context.t('savedAddressCommitNote')));
+  const addressFields = (row: Record<string, unknown> = {}): FieldSpec[] => {
+    const text = (name: string) => typeof row[name] === 'string' ? String(row[name]) : '';
+    return [{ name: 'kind', label: 'addressKind', type: 'select', value: text('kind') || 'shipping', options: [
+      { value: 'shipping', text: context.t('addressShipping') }, { value: 'billing', text: context.t('addressBilling') }, { value: 'both', text: context.t('addressBoth') }] },
+      ...(['label','recipientName','contactPhone','companyName','taxId','line1','line2','city','postalCode','country','deliveryNotes','courierInstructions'] as const).map(name => ({ name,
+        label: ({ label: 'savedAddressLabel', recipientName: 'savedRecipientName', contactPhone: 'phone', companyName: 'addressCompany', taxId: 'addressTaxId', line1: 'address', line2: 'address2',
+          city: 'city', postalCode: 'postalCode', country: 'country', deliveryNotes: 'deliveryNotes', courierInstructions: 'courierInstructions' } as const)[name],
+        value: text(name) || (name === 'country' ? context.config.market.country : ''), maxLength: ['deliveryNotes','courierInstructions'].includes(name) ? 500 : 240,
+        required: ['line1','city','postalCode','country'].includes(name) })),
+      { name: 'isDefault', label: 'addressDefault', type: 'checkbox', required: false, value: row.isDefault ? 'true' : '' }];
+  };
+  function showBook(value: unknown) {
+    if (!section.isConnected || !isRecord(value) || !Array.isArray(value.addresses)) return;
+    book.replaceChildren();
+    for (const row of value.addresses) {
+      if (!isRecord(row) || typeof row.addressId !== 'string') continue;
+      const article = el('article', { 'data-saved-address': row.addressId }, el('h3', {}, String(row.label || row.line1)), renderValue(row));
+      append(article, addressFormFor(row), actionForm(context, { operation: 'account.addresses', submit: 'deleteSavedAddress',
+        input: () => ({ action: 'delete', addressId: row.addressId }), onSuccess: showBook }));
+      append(book, article);
+    }
+    if (!book.children.length) append(book, el('p', {}, context.t('savedAddressNone')));
+  }
+  function addressFormFor(row?: Record<string, unknown>) {
+    const form = actionForm(context, { operation: 'account.addresses', title: row ? 'editSavedAddress' : 'addSavedAddress', submit: 'save', fields: addressFields(row),
+      transform: values => Object.fromEntries(Object.entries(values).map(([key, value]) => [key, value === '' && !['kind','line1','city','postalCode','country'].includes(key) ? null : value])),
+      input: () => ({ action: 'upsert', ...(row ? { addressId: row.addressId } : {}) }), onSuccess: showBook });
+    if (row?.isDefault) form.querySelector<HTMLInputElement>('[name=isDefault]')!.checked = true;
+    return form;
+  }
+  append(section, actionForm(context, { operation: 'account.addresses', submit: 'savedAddressLoad', input: () => ({ action: 'read' }), onSuccess: showBook }), book, addressFormFor());
+  const scopes = [{ value: 'one_time', text: context.t('preferenceOneTime') }, { value: 'subscription', text: context.t('subscription') }, { value: 'any', text: context.t('preferenceAny') }];
+  append(section, el('section', { 'data-payment-preferences': '' }, el('h3', {}, context.t('paymentPreference')),
+    readPanel(context, 'paymentPreference', 'account.paymentPreference', { action: 'read' }),
+    actionForm(context, { operation: 'account.paymentPreference', submit: 'save', input: () => ({ action: 'save' }), fields: [
+      { name: 'scope', label: 'preferenceScope', type: 'select', options: scopes },
+      { name: 'methodKind', label: 'payment', type: 'select', options: Object.entries(accountPreferencePolicy.methods).map(([key, value]) =>
+        ({ value, text: context.t(key === 'card' ? 'preferenceCard' : key === 'instant' ? 'preferenceInstant' : 'preferenceTransfer') })) }] })),
+    el('section', { 'data-delivery-preferences': '' }, el('h3', {}, context.t('deliveryPreference')), el('p', {}, context.t('lockerPreferenceEffect')),
+      readPanel(context, 'deliveryPreference', 'account.deliveryPreference', { action: 'read' }),
+      actionForm(context, { operation: 'account.deliveryPreference', submit: 'save', fields: [
+        { name: 'scope', label: 'preferenceScope', type: 'select', options: scopes },
+        { name: 'deliveryKind', label: 'deliveryPreference', type: 'select', options: [{ value: 'courier', text: context.t('preferenceCourier') }, { value: 'parcel-locker', text: context.t('preferenceLocker') }] },
+        { name: 'providerKind', label: 'shipmentProvider', type: 'select', options: Object.entries(accountPreferencePolicy.providers).map(([key, value]) => ({ value, text: context.t(key === 'warehouse' ? 'preferenceWarehouse' : key === 'carrier' ? 'preferenceCarrier' : key === 'manual' ? 'preferenceManual' : 'preferenceSimulator') })) },
+        { name: 'carrierKind', label: 'preferenceCarrierKind', value: 'demo-carrier' }, { name: 'carrierCode', label: 'preferenceCarrierCode', value: 'demo-courier' },
+        { name: 'serviceCode', label: 'preferenceService', value: 'demo-standard' },
+        ...(['pickupId','pickupName','pickupLine1','pickupPostalCode','pickupCity','pickupCountry'] as const).map(name => ({ name,
+          label: ({ pickupId: 'pickupId', pickupName: 'pickupName', pickupLine1: 'address', pickupPostalCode: 'postalCode', pickupCity: 'city', pickupCountry: 'country' } as const)[name], required: false })),
+      ], input: () => ({ action: 'save' }), transform: values => {
+        const { pickupId, pickupName, pickupLine1, pickupPostalCode, pickupCity, pickupCountry, ...rest } = values;
+        return { ...rest, pickupPoint: pickupId || pickupName ? { id: pickupId, name: pickupName,
+          address: pickupLine1 || pickupPostalCode || pickupCity || pickupCountry ? { line1: pickupLine1, postalCode: pickupPostalCode, city: pickupCity, country: pickupCountry } : null } : null };
+      } })));
+  return section;
 }

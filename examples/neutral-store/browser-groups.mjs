@@ -19,4 +19,5 @@ export const browserJourneyGroups = journeySelections([
   'returns portal ',
   'payment guidance ',
   'shipment operations ',
+  'account preferences ',
 ]);

@@ -12,7 +12,7 @@ application composition limits; they are not claims of exported package errors.
 | N1 | Live products, SKUs, price lists, price entries and promotions are seed data: one owned demo-seed step with the install connection, no runtime writer for them and no checkout promotion codes. Bundle drafts, compositions, target prices and activation, and catalogue drafts, are administered by a native human operator through their native writers. An activated bundle is not purchasable in this release. | `starter_promotion_write_unavailable` |
 | N2 | Operator email/phone correction and account linking | `operator_subscription_authority_unavailable` |
 | N3 | Order note and order-address correction | `starter_order_correction_unavailable` |
-| N5 | Saved addresses, billing profiles, delivery preferences, payment preferences, private-profile views and the profile/address/billing/private-profile views action | `starter_account_preferences_unavailable` |
+| N5 | Billing profiles, private-profile views and combined profile views | `starter_account_preferences_unavailable` |
 | N6 | Real PSP, payment method setup, card replacement and unsupported money recovery | `native_prepared_attempt_store_unsupported` |
 | N8 | Demand-driven plan-length and portion resizing are unconfigured; the seven exact commands are API-only | `starter_subscription_resize_unconfigured` |
 | N9 | Rich OMS, commercial analytics and saved draft resume | `starter_rich_oms_unavailable` |
@@ -44,9 +44,10 @@ Readers of the supplement and coffee configurations may expect these features;
 the examples provide none of them and make no health or compliance claim.
 The same statement is visible in both locales on the limits page.
 
-Every N5 action is visible on both account and limits pages in Polish and English and
-refuses with `starter_account_preferences_unavailable`, including private-profile
-views and the combined profile/address/billing/private-profile views action.
+The remaining N5 billing and private/profile-view actions are visible on the account
+and limits pages in both languages and refuse with
+`starter_account_preferences_unavailable`. Saved addresses, subscription destination
+selection and scoped delivery/payment preferences are bound separately.
 
 Sandbox payments only are in scope on this rail. Real-money commerce currently needs a
 separately qualified rail and provider; this app does not claim real-money
@@ -164,7 +165,7 @@ receipts and unprovable parcel facts omit the note.
 No generic contact form; the partner inquiry is the durable intake.
 Support is static and shows optional validated `supportEmail` as plain text,
 with an account link. Missing contact configuration is stated explicitly.
-The application declares 60 operations (56 bound with a runtime connection). With a runtime connection, the partner
+The application declares 64 operations (60 bound with a runtime connection). With a runtime connection, the partner
 submit/list/transition and review read/submit/list/moderation actions are mounted.
 Without that connection they remain unbound, like the other native actions.
 
@@ -357,7 +358,7 @@ The portal displays native refusal and host-recorded delivery outcomes. It has
 no retention-consent capture; newsletter/offers do not authorize retention.
 A trusted host may record consent through the native routine. Adopter policy
 changes follow the [owning section](../../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#composed-subscription-module).
-Full account preferences, real payment methods and signed unsubscribe retain
+Billing and private-profile views, real payment methods and signed unsubscribe retain
 their separately named boundaries. No generic edit verbs are mounted.
 
 The finite auto-resume host is bound and proved in both configurations after a
@@ -371,8 +372,8 @@ supplies its own external fulfillment facts; operator tracking commands have a s
 
 N4 and N7 are closed: both replacement and complete fulfillment cancellation,
 and customer name/phone editing, now use the installed native ports. Replacement
-arrival confirmation remains absent. N5 retains every saved-address, billing,
-preference and private-view limitation. N9 retains rich reports/analytics and
+arrival confirmation remains absent. N5 retains billing and private/profile views. Saved addresses, subscription
+destination selection and scoped preferences use their native ports. N9 retains rich reports/analytics and
 saved account draft resume; operator checkout links are bound separately.
 
 Current invoice entries accept an append-only correction request, with no fiscal
@@ -510,3 +511,39 @@ The existing paid-capture document policy is unchanged. The optional handoff
 accounting wrapper is only for an adopter that selects a handoff issue policy;
 any such callback belongs after the committed shipment transaction and remains
 fail-soft according to that wrapper's policy.
+
+
+## Saved addresses and scoped preferences
+
+The account page reads, creates, edits and deletes the signed-in customer's saved
+addresses, with native formatting, default clearing and account events. Default
+clearing, address writes and event append are separate commits: a failed save can
+leave earlier changes committed, so reload before retrying. An admitted command
+key returns the current book without another write. Deleting a missing or foreign
+row acknowledges a zero-row deletion and returns only the caller's book; updating
+a foreign row refuses. Active or paused subscription use prevents deletion.
+
+An active or paused subscription can select an owned shipping/both address.
+The native command owns the saved pointer, subscription/account events and outbox.
+A locked upcoming cycle refuses a fresh selection; an admitted key replays before
+saved-ID parsing and returns the current pointer. Null recipients remain null.
+Editing a saved row affects future destination materialization, while a retained
+renewal operation and existing parcel keep their immutable destination. Cadence,
+commercial terms and billing are unchanged.
+
+Payment and delivery selections use one-time, subscription or any scope. These
+preferences do not install an instrument, activate a provider, charge, or append
+account events. Native renewal preparation uses subscription scope before any
+scope and preserves an explicit delivery selection. Incomplete locker pickup
+addresses can be saved but are skipped when a renewal chooses a delivery.
+
+Billing storage is explicitly unselected in this composition. Address responses
+contain addresses and an unavailable-billing flag, not fabricated billing rows.
+No billing/default-hint or combined-profile endpoint is mounted. Billing and
+private-profile limits remain visible. The fictional country, phone prefix and
+numeric tax checksum are demonstration validation, not real-market certification.
+
+The saved addresses and preferences contain personal data. Application owners
+compose the native privacy contributors with identity, subscription and account
+event coverage and own retention and access. This starter supplies no customer
+export or erasure endpoint; saving a preference does not establish that workflow.

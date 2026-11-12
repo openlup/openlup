@@ -941,7 +941,7 @@ pairs, one worker, zero retries and traces, video and screenshots off. Both
 configurations have identical counters. The checkout quota remains 36 per 180
 seconds. The unchanged private-output guard passed for every successful group;
 the logs also contain no synthetic private label URL or provider-payload marker.
-The generated current inventory has 324 cases partitioned as
+At the shipment checkpoint, the generated inventory had 324 cases partitioned as
 62/56/52/12/12/12/16/102, every case selected once and no duplicate identities.
 
 Starter units passed 320/320 and the PostgreSQL integration witness passed 7/7,
@@ -951,3 +951,46 @@ global Git configuration disabled. New times are current or relative UTC values;
 no fixed dates or short expiries were introduced. Public tracking authorization,
 physical return execution and the remaining account/payment integrations retain
 their separate limits.
+
+
+## Saved subscription addresses and scoped preferences
+
+The account page binds native saved-address reads, upsert and deletion, explicit
+subscription shipping selection, and scoped payment/delivery preferences. HTTP
+and browser witnesses cover session ownership, forged identity refusal, address
+normalization and null recipients, default clearing, separate-commit event failure,
+canonical replay, zero-row deletion acknowledgment, foreign updates/selections,
+active/paused in-use refusal and locked upcoming-cycle admission. A real renewal
+skips an incomplete subscription locker, selects the complete any-scope courier,
+and retains its immutable operation and destination after the saved address changes.
+Future destination materialization reads the edit. Preference saves preserve
+existing subscriptions, payment instruments, orders and account events.
+
+The billing reader is explicitly unselected; only address rows and an unavailable
+billing flag reach the browser. Read errors refuse rather than becoming an empty
+book. Billing, combined profile and private-profile views remain under N5.
+Independent extraction still accepts a replacement owned registry without requiring
+additional registry exports. Personal-data export/erasure integration retains its
+separate application-owner responsibility.
+
+| Group | Passing cases, both configurations | Original checkouts per configuration | Replacement checkout receipts per configuration |
+| --- | ---: | ---: | ---: |
+| Account preferences | 16 | 6 | 0 |
+| Subscription care | 62 | 34 | 0 |
+| Portal | 56 | 36 | 0 |
+| Remainder | 102 | 2 | 0 |
+
+All 236 affected cases passed through the shared database recipe, with one fresh
+installation pair per group, one worker, zero retries and captures off. Both
+configurations have identical checkout counts; the quota stays 36 per 180 seconds.
+The unchanged private-output guard passed every successful group log, with the
+flag absent. The generated current inventory contains 340 cases partitioned as
+62/56/52/12/12/12/16/16/102, every case selected once and no duplicate identities.
+The remaining N5 refusal journey now asserts the three actions still unavailable;
+new PostgreSQL journeys witness the newly bound actions.
+
+Starter units passed 326/326, including independent extraction, and the PostgreSQL
+integration witness passed 7/7, including both extracted browser cases and the
+64 declared / 60 bound census. Changed files ran in CI parity with global Git
+configuration disabled, using their owned Node, Playwright and Vitest runners.
+New tests introduce no fixed dates or short expiries.

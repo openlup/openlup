@@ -45,10 +45,10 @@ test('both locales supply every copy key and every named-limit action', () => {
 });
 
 
-test('all unavailable account preference and private-view actions retain the same explicit refusal', () => {
+test('the partial account limit retains billing and private views while bound preferences are omitted', () => {
   const limit = nativeLimits.find(limit => limit.id === 'N5')!;
   assert.equal(limit.code, 'starter_account_preferences_unavailable');
-  assert.deepEqual(limit.actions, ['savedAddresses', 'billing', 'deliveryPreference', 'paymentPreference', 'privateProfile', 'profileViews']);
+  assert.deepEqual(limit.actions, ['billing', 'privateProfile', 'profileViews']);
 });
 
 test('operator select choices use copy keys present in both languages', async () => {
@@ -79,7 +79,7 @@ test('the message intake destination opens the operator partner panel; support i
   assert.deepEqual(messageDestinations.find(item => item.id === 'T07-13'),
     { id: 'T07-13', route: 'support' });
   for (const path of ['/inquiry', '/zapytanie']) assert.equal(resolveRoute(path).key, 'notFound');
-  assert.equal(operations.length, 60);
+  assert.equal(operations.length, 64);
   assert.equal(isOperation(['inquiry', 'submit'].join('.')), false);
 });
 

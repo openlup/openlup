@@ -1,3 +1,6 @@
+import { createPostgresCustomerSavedAddressPort, createCustomerSavedAddressRequestSchemas, CustomerSavedAddressRefused, createPostgresCustomerPreferencePort, createCustomerPreferenceSchemas } from '@openlup/platform/shipping';
+import { accountPreferencePolicy } from '../owned/renewal.config.ts';
+import { savedAddressValidation, accountBillingSelection } from '../owned/acquisition-policy.ts';
 import { createPostgresCommerceReturnsPort, createPostgresCommerceOmsPort, createPostgresCommerceOmsControlPlane } from '@openlup/platform/commerce/server/postgres';
 import { createCommerceReturnsSchemas, returnApproveSchema, returnRejectSchema, adminCommerceOrderCancelRequestSchema, adminCommerceOrderMarkRefundedRequestSchema, CommerceOmsConflictError } from '@openlup/platform/commerce';
 import { isUuid } from './recurring-fence.ts';
@@ -71,6 +74,7 @@ ApplicationBindings['actions'] {
     ...composeOrderTransitions(pool, authorizeOperator),
     ...composeReturnCapabilities(pool, authorizeOperator),
     ...composeShipmentCapabilities(pool, authorizeOperator),
+    ...composeAccountPreferences(pool),
     'operator.shipments': shipmentRead(false),
     'operator.shipment': shipmentRead(true),
     'account.invoice': async (payload, context) => {
@@ -363,4 +367,71 @@ export function composeShipmentCapabilities(pool: Pool, authorize: (context: Act
     }
   };
   return { 'operator.label': command('label'), 'operator.handoff': command('handoff'), 'operator.delivery': command('tracking') };
+}
+
+
+/** This selected adapter represents an unbound billing store, never a failed-read fallback.
+ * Only address rows are exposed; no billing/profile/default-hint action is mounted. */
+const unselectedBillingRows = async () => {
+  if (accountBillingSelection !== 'not_selected') throw new Error('starter_billing_reader_required');
+  return [];
+};
+export function composeAccountPreferences(pool: Pool): ApplicationBindings['actions'] {
+  const action = (kind: 'addresses' | 'payment' | 'delivery' | 'selection'): ActionBinding => async (payload, context) => {
+    const { principalRef, customerRef } = context.actor;
+    if (!principalRef || !customerRef) return refused('customer_session_required');
+    const fields = kind === 'addresses' ? ['action','addressId','kind','label','recipientName','contactPhone','companyName','taxId','line1','line2','city','postalCode','country','isDefault','deliveryNotes','courierInstructions']
+      : kind === 'payment' ? ['action','scope','methodKind']
+        : kind === 'delivery' ? ['action','scope','deliveryKind','providerKind','carrierKind','carrierCode','serviceCode','pickupPoint']
+          : ['subscriptionRef','savedAddressId','reason'];
+    if (Object.keys(payload).some(key => key !== 'locale' && !fields.includes(key))) return refused('starter_input_invalid');
+    const { locale: _locale, action: verb, ...input } = payload;
+    const scope = { principalId: principalRef, clientId: customerRef };
+    try {
+      if (kind === 'selection') {
+        if (!uuid(input.subscriptionRef) || typeof input.savedAddressId !== 'string'
+          || (input.reason !== undefined && typeof input.reason !== 'string')) return refused('starter_input_invalid');
+        // Do not parse the saved ID here: native admitted-key replay precedes that parsing.
+        const value = await createPostgresDestinationPort(pool).selectSavedShippingAddress({ actorId: principalRef, clientId: customerRef,
+          subscriptionId: input.subscriptionRef, savedAddressId: input.savedAddressId, idempotencyKey: context.commandKey,
+          ...(typeof input.reason === 'string' ? { reason: input.reason } : {}), now: new Date().toISOString() });
+        return { ok: true, value, replayed: value.status === 'replayed' };
+      }
+      if (kind === 'addresses') {
+        if (!['read','upsert','delete'].includes(String(verb)) || (verb === 'read' && Object.keys(input).length)) return refused('starter_input_invalid');
+        const validation = savedAddressValidation(context.config.market.country);
+        const schemas = createCustomerSavedAddressRequestSchemas(validation);
+        const parsed = verb === 'upsert' ? schemas.customerAddressUpsertRequestSchema.safeParse({ ...input, idempotencyKey: context.commandKey })
+          : verb === 'delete' ? schemas.customerAddressDeleteRequestSchema.safeParse({ ...input, idempotencyKey: context.commandKey }) : null;
+        if (parsed && !parsed.success) return refused('starter_input_invalid');
+        const port = createPostgresCustomerSavedAddressPort(pool, scope, { validation, now: () => new Date().toISOString(),
+          readOrdererProfiles: unselectedBillingRows, inUseMessage: 'Saved address is used by an active subscription' });
+        const request = { ...input, idempotencyKey: context.commandKey };
+        const book = verb === 'read' ? await port.getAddressBook(principalRef)
+          : verb === 'delete' ? await port.deleteAddress(principalRef, { addressId: String(input.addressId), idempotencyKey: context.commandKey })
+            : await port.upsertAddress(principalRef, request as Parameters<typeof port.upsertAddress>[1]);
+        return book ? { ok: true, value: { addresses: book.addresses, billingProfilesAvailable: false } } : refused('customer_session_required');
+      }
+      if (!['read','save'].includes(String(verb)) || (verb === 'read' && Object.keys(input).length)) return refused('starter_input_invalid');
+      const schemas = createCustomerPreferenceSchemas(accountPreferencePolicy);
+      const parsed = kind === 'payment' ? schemas.payment.safeParse(input) : schemas.delivery.safeParse(input);
+      if (verb === 'save' && !parsed.success) return refused('starter_input_invalid');
+      const port = createPostgresCustomerPreferencePort(pool, scope, accountPreferencePolicy,
+        { now: () => new Date().toISOString(), readOrdererHints: unselectedBillingRows });
+      const value = verb === 'read' ? kind === 'payment' ? await port.listPaymentPreferences(principalRef) : await port.listDeliveryPreferences(principalRef)
+        : kind === 'payment' ? await port.upsertPaymentPreference(principalRef, schemas.payment.parse(input))
+          : await port.upsertDeliveryPreference(principalRef, schemas.delivery.parse(input));
+      return value === null ? refused('customer_session_required') : { ok: true, value: verb === 'read' ? { preferences: value } : { preference: value } };
+    } catch (error) {
+      if (error instanceof CustomerSavedAddressRefused) return refused(`starter_${error.code}`);
+      const message = error instanceof Error ? error.message : '';
+      if (error && typeof error === 'object' && 'code' in error && error.code === '22P02') return refused('starter_address_invalid');
+      const reasons: Record<string, string> = { customer_self_service_invalid_address: 'address_invalid', customer_self_service_forbidden: 'subscription_forbidden',
+        customer_self_service_not_found: 'subscription_not_found', customer_self_service_payment_blocked: 'payment_blocked',
+        customer_self_service_invalid_idempotency_key: 'input_invalid' };
+      return refused(reasons[message] ? `starter_${reasons[message]}` : 'starter_account_data_unavailable');
+    }
+  };
+  return { 'account.addresses': action('addresses'), 'account.paymentPreference': action('payment'),
+    'account.deliveryPreference': action('delivery'), 'subscription.savedAddress': action('selection') };
 }
