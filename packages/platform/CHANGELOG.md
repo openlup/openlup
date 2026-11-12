@@ -196,6 +196,17 @@ Migration: install the complete native catalogue through `20261110240000_subscri
 
 - Package size: saved selection, private preference routines and server contracts add SQL and portable source. Crossed packed, code, documentation and file budgets use measured contents with 2% headroom; the released baseline is unchanged.
 
+- Add sandbox token payment and exact cookie-only inline retry on the existing intent and durable attempt owner. Token admission rechecks bearer ownership; inline admission requires the exact failed predecessor, failed intent and permitted method action. Transition/nonce/rail replay rotates the replacement cookie without redispatch, with safe polling when action readback lags. Both fresh paths reuse the injected first-purchase hold wrapper. Renewal cycles refuse; initial declarations remain eligible. Verified ingress retains settlement ownership and other rails keep their named native refusal.
+
+Migration: Apply the additive checkout-attempt admission forward after atomic guidance. The single forward creates two service-only entry points without replacing existing functions or adding storage. Bind an explicit synthetic-method registry and purchase-context policy for inline retry; no method taxonomy is inferred from opaque references. Host routing and browser journeys remain separate.
+
+- Add owned customer billing profile CRUD and strict request/handler binding, preserving separate default-clear/write/event failures and stored request identifiers without deduplication.
+- Add explicit invoice-store selection that freezes buyer inputs with the invoice request, including retained sources collected by the sweep. Existing owed duties are never backfilled on replay. Preserve line2 and source/profile/address references in additive public fields and provider projection. Profile edits leave existing invoice facts and issued bytes unchanged; later requests use the new profile.
+
+Migration: install the complete native catalogue through `20261110260000_customer_billing_profiles.sql`. Bind the selected billing invoice store and its frozen reader before fiscal composition. Register the explicit billing privacy contributor: editable profiles erase, invoice components retain under the invoicing owner. Finite native transfer carries exact rows to qualified targets. New routines grant EXECUTE only to service_role; raw access is limited to profile client-ID absorption census. Existing generic invoicing and historical facts remain unchanged. No automatic checkout application, registry workflow, starter UI or fiscal provider qualification is added.
+
+Package caps: packed 3,033,152 B, code 2,462,162 B and 4,344 files retain the reviewed headroom for the crossed classes. Other limits and the released baseline remain unchanged.
+
 ## [0.38.0]
 
 - Publishable on the npm `latest` dist-tag as `0.38.0`, from tag

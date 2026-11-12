@@ -14,3 +14,5 @@ export type { InvoiceCompanyLookupPort } from "./companyLookup.js";
 export type { InvoiceStorePort, InvoiceDutyReadback } from "./store.js";
 /** @consumer Host composition and offline port-fit witnesses. */
 export type { InvoiceHostPorts, InvoiceServicesOptions } from "./host.js";
+
+export type { InvoiceBuyerSelection } from "./facts.js";

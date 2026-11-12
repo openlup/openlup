@@ -16,7 +16,14 @@ export interface InvoiceBuyer {
   readonly email: string | null;
   readonly taxIdentifier: { readonly scheme: string; readonly value: string } | null;
   readonly companyName: string | null;
-  readonly address: { readonly line1: string | null; readonly postalCode: string | null; readonly city: string | null; readonly country: string | null } | null;
+  readonly address: { readonly line1: string | null; readonly postalCode: string | null; readonly city: string | null; readonly country: string | null;
+    readonly line2?: string | null; readonly addressId?: string | null; readonly source?: string | null } | null;
+  readonly taxId?: string | null;
+  readonly source?: string | null;
+  readonly addressSource?: string | null;
+  readonly ordererProfileId?: string | null;
+  readonly billingAddressId?: string | null;
+  readonly legacyFallback?: boolean;
 }
 /** Safe integer minor amounts; taxRateBps is a rate, never a fiscal-support claim.
  * Preserve array order and quantityUnit; no inferred shipping residual or FX.
@@ -68,4 +75,15 @@ export interface InvoiceSellerRevision<Seller = InvoiceSeller> {
 export interface InvoiceClaimedFacts extends InvoiceFacts {
   readonly sellerRevision?: string;
   readonly sellerMode?: "frozen" | "legacy_fallback";
+}
+
+/** Frozen selection inputs; identifier normalization and fiscal routing remain explicit host policy. */
+export interface InvoiceBuyerSelection extends Omit<InvoiceBuyer, 'taxIdentifier' | 'name'> {
+ readonly name: string | null;
+ readonly taxId: string | null;
+ readonly source: string;
+ readonly addressSource: string;
+ readonly ordererProfileId: string | null;
+ readonly billingAddressId: string | null;
+ readonly legacyFallback: boolean;
 }
