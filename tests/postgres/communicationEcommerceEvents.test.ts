@@ -100,6 +100,25 @@ it('qualifies checkout once without token and suppresses the paid checkout befor
  const p=projection();await p.initialize();await p.project();
  expect((await env.db.query(`SELECT state,reason FROM public.communication_event_receipts WHERE source_key=$1 ORDER BY updated_at DESC LIMIT 1`,[`checkout:${order}`])).rows[0]).toEqual({state:'refused',reason:'source_ineligible'});
 });
+it('drains eligible checkout qualifications across bounded runs without repeating the qualified prefix',async()=>{
+ const orders=[randomUUID(),randomUUID()];
+ await env.withTransaction(async db=>{
+  for(const [index,order] of orders.entries()){
+   const client=randomUUID();
+   await db.query('INSERT INTO public.clients(id,email) VALUES($1,$2)',[client,`${client}@example.invalid`]);
+   await db.query(`INSERT INTO public.commerce_orders(id,client_id,created_at,currency_code,total_amount_minor,metadata)
+    VALUES($1,$2,$3::timestamptz,'USD',100,'{"orderDraftSnapshot":{"context":{"mode":"one_time"}}}')`,[order,client,`2026-11-11T10:0${index}:00Z`]);
+   await db.query('INSERT INTO public.commerce_order_items(order_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor) VALUES($1,1,1,100,100)',[order]);
+  }
+ });
+ const counts=[];
+ for(let run=0;run<3;run++)counts.push((await env.db.query(`SELECT public.communication_checkout_qualify(1,'{}',$1) AS value`,[at])).rows[0].value);
+ expect(counts).toEqual([1,1,0]);
+ expect((await env.db.query(`SELECT aggregate_id,count(*)::integer AS count FROM public.outbox_events
+  WHERE event_type='commerce.checkout.recovery_qualified.v1' AND aggregate_id=ANY($1::uuid[]) GROUP BY aggregate_id ORDER BY aggregate_id`,[orders])).rows)
+  .toEqual([...orders].sort().map(aggregate_id=>({aggregate_id,count:1})));
+ expect((await env.db.query('SELECT status FROM public.commerce_orders WHERE id=ANY($1::uuid[])',[orders])).rows.every(row=>row.status==='pending_payment')).toBe(true);
+});
 it('captures created, rapid pause/resume/cancel owner facts without rebuilding from final status',async()=>{
  const f=await paid({initial:true});
  const activated=(await env.db.query(`SELECT public.subscription_activate_from_captured_payment($1,$2,encode(sha256(convert_to('synthetic-paid','UTF8')),'hex')) AS value`,[randomUUID(),f.order])).rows[0].value;

@@ -158,6 +158,9 @@ BEGIN
   AND o.created_at<p_now-make_interval(secs=>(policy->>'firstOffsetSeconds')::integer)
   AND o.created_at>p_now-make_interval(secs=>(policy->>'checkoutSeconds')::integer)
   AND NOT public.commerce_checkout_recovery_payment_blocked(o.id,(policy->>'activitySeconds')::integer,p_now)
+  AND NOT EXISTS(SELECT 1 FROM public.outbox_events qualified
+   WHERE qualified.event_type='commerce.checkout.recovery_qualified.v1'
+    AND qualified.idempotency_key='checkout_qualified:'||o.id)
   ORDER BY o.created_at,o.id LIMIT least(greatest(coalesce(p_limit,100),1),1000) FOR UPDATE SKIP LOCKED
  ), inserted AS (
  INSERT INTO public.outbox_events(aggregate_type,aggregate_id,event_type,idempotency_key,payload,metadata,status,processed_at)
