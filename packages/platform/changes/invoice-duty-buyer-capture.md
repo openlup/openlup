@@ -1,0 +1,3 @@
+Native invoicing freezes the lossless buyer component atomically when an original owed duty is first captured, including the payment-truth path. Selection keeps order facts, owned default/latest billing profile and address, then the marked shipping fallback, including the second address line and provenance. No opt-in or payment-side account-data binding is required.
+
+Existing duties and documents never acquire a buyer component later. The selected billing invoice store reads the component for fiscal composition and validates installation; profile edits leave captured facts and issued bytes unchanged. Private access, invoice retention and exact native transfer remain under their existing owners.

@@ -1850,8 +1850,8 @@ export declare function runNativeInvoiceIssueJob(input: {
     failures: number;
     ok: boolean;
 }>;
-/** Explicit billing selection. Buyer selection freezes with invoice request, before later host fiscal work.
- * Generic/unselected invoice stores retain their existing behavior; existing obligations are never backfilled. */
+/** Read the buyer frozen by first native duty capture and enforce it during later fiscal-fact installation.
+ * Existing obligations without a buyer component are never backfilled. */
 export declare function createPostgresBillingInvoiceStore(db: {
     query(text: string, values?: unknown[]): Promise<{
         rows: Record<string, unknown>[];

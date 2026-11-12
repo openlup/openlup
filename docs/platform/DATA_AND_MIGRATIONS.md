@@ -3844,14 +3844,15 @@ Selection is order facts, then default/latest profile and billing/both address,
 then marked shipping fallback. Paid capture uses the order destination; handoff
 capture uses the owned parcel destination. Later full fiscal composition reads
 the component; the selected installer checks its retained fields before calling
-the existing immutable full-facts owner. Generic unselected invoice capture is
-unchanged. The selected retained-source sweep calls the same atomic wrapper.
+the existing immutable full-facts owner. The later first-duty capture forward
+below also installs this component on the native payment path. The selected
+retained-source sweep calls the same atomic wrapper.
 Creation eligibility is checked under the existing invoice order advisory lock;
 a prior duty or document never acquires a component on replay, including an owed
 duty without installed facts. Historical obligations receive no component backfill. The public
 buyer contract adds optional fields only, and provider projection carries line2
-and provenance without flattening or fabrication. No existing SQL function,
-trigger, grant or fiscal policy is replaced.
+and provenance without flattening or fabrication. This profile-storage forward
+replaces no existing function, trigger, grant or fiscal policy.
 
 Contact/tax/company/verification/source values, linked events and frozen buyers
 are personal data. The explicit `customer-billing` contributor exports both
@@ -3871,3 +3872,39 @@ rather than disappear. No restore applies profile defaults, rewrites invoices,
 performs fiscal/provider work or activates a target. See the
 [package recipe](../../packages/platform/README.md#customer-billing-profiles-and-frozen-invoice-buyers)
 for explicit ports, handler binding and the required privacy contributor.
+
+
+### First-duty invoice buyer capture
+
+`20261110270000_invoicing_duty_buyer_capture.sql` replaces only
+`invoicing_capture_duty(text,text,uuid,uuid,jsonb,timestamptz)`, retaining its
+installed header, owner, search path and ACL. It delegates to the new closed
+`invoicing_capture_duty_with_buyer` routine. The latter preserves capture
+validation, the order advisory lock and source/key receipts, and freezes the
+existing buyer component only for its own fresh original-duty insertion.
+An existing original document suppresses selection too. No duty or invoice is
+backfilled, even if an older owed duty has no full facts yet.
+
+The selection is the existing lossless billing rule: order buyer facts, then
+the owned default/latest profile and billing-or-both address, then the marked
+shipping fallback. The second address line and selection provenance remain in
+`invoicing_buyer_snapshots`. The component and duty commit atomically; a failed
+component insert rolls both back. Payment truth passes exactly its existing
+inputs and keeps its existing bounded capture-fault/retry behavior. Payments
+receives no account-data reader, callback or grant. There is no opt-in: first
+native capture uses this rule, including the fallback when no profile exists.
+
+Only `service_role` receives EXECUTE on the new definer routine. Its direct call
+has the same fresh-insert guard, so it cannot be used to backfill a duty. Browser
+roles remain denied; no raw table grant, table, trigger, status or public type
+is added. The selected billing store reads the frozen component and validates
+later host fiscal facts; it never rereads a mutable profile for that duty.
+Edits affect later captures and cannot rewrite requested facts or issued bytes.
+The existing billing privacy contributor, invoice-document retention owner and
+exact finite transfer/qualified restore coverage continue to cover these rows.
+
+A new source whose destination was never recorded refuses with the existing
+`commerce_destination_unavailable` result and leaves no duty, buyer component
+or source receipt. Record the owned order destination before retrying retained
+capture; no address is inferred from another customer or field. Payment truth
+continues to commit money and record its bounded capture fault independently.
