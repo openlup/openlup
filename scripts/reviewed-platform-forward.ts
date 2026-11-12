@@ -859,20 +859,33 @@ export function assertForwardApproval(root: string, base: string, head: string):
   }
 }
 
-export function assertUnchangedForwardApproval(root: string, base: string, head: string, path?: string): void {
-  const before = blob(root, base, REVIEWED_FORWARD_PATH), after = blob(root, head, REVIEWED_FORWARD_PATH);
-  if (before && after) {
-    if (path === undefined && before.equals(after)) return;
-    // Release pins each approval's content and position so later controls may append unrelated approvals.
-    if (path !== undefined) {
-      try {
-        const prior = readForwardRegistry(before, true), current = readForwardRegistry(after, true);
-        const previous = approvalBinding(prior, path), next = approvalBinding(current, path);
-        const nativeSlot = (registry: ReviewedForwardRegistry) => registry.nativeStoreForwardClass?.slots.find(slot => slot.path === path);
-        if (canonical(nativeSlot(prior)) === canonical(nativeSlot(current)) && canonical(sharedApproval(prior)) === canonical(sharedApproval(current)) && previous && next && canonical(previous) === canonical(next)) return;
-      } catch { /* Invalid historical approvals cannot authorize a release. */ }
+/** `path`'s entry keeps its content. Entries before it keep their order; issued ones also keep content and index. */
+function keepsApprovalOrder(before: readonly { path: string }[], after: readonly { path: string }[], issued: ReadonlySet<string>, path: string): boolean {
+  const end = before.findIndex(entry => entry.path === path), last = after.findIndex(entry => entry.path === path);
+  const known = new Set(before.map(entry => entry.path)), earlier = before.slice(0, end);
+  return end >= 0 && last >= 0 && canonical(after[last]) === canonical(before[end])
+    && canonical(after.slice(0, last).flatMap(entry => known.has(entry.path) ? [entry.path] : [])) === canonical(earlier.map(entry => entry.path))
+    && earlier.every((entry, index) => !issued.has(entry.path) || canonical(after[index]) === canonical(entry));
+}
+
+// Release binds an approval by content, not by array index: its list entry, native slot and the shared fields stay
+// unchanged. Entries before it keep their order; those whose SQL had landed before `base` (in its first parent, or in
+// `base` itself for a root commit) are issued and also keep their content and index. Only approvals new at `head` may
+// come before the ones `base` introduced, as when a landing merge places main's newer approvals before the candidate's own.
+export function assertUnchangedForwardApproval(root: string, base: string, head: string, path: string): void {
+  try {
+    const before = blob(root, base, REVIEWED_FORWARD_PATH), after = blob(root, head, REVIEWED_FORWARD_PATH);
+    if (before && after) {
+      const prior = readForwardRegistry(before, true), current = readForwardRegistry(after, true);
+      const parent = git(root, ["rev-list", "--parents", "-n", "1", base]).toString("utf8").trim().split(" ")[1] ?? base;
+      const issued = new Set(git(root, ["ls-tree", "-r", "-z", "--name-only", parent, "--", "db/platform/migrations/", "supabase/migrations/"]).toString("utf8").split("\0"));
+      const slots = (registry: ReviewedForwardRegistry) => registry.nativeStoreForwardClass?.slots ?? [];
+      const binding = approvalBinding(prior, path), native = [prior, current].some(registry => slots(registry).some(slot => slot.path === path));
+      if (binding && canonical(sharedApproval(prior)) === canonical(sharedApproval(current))
+        && keepsApprovalOrder(prior[binding.list]!, current[binding.list] ?? [], issued, path)
+        && (!native || keepsApprovalOrder(slots(prior), slots(current), issued, path))) return;
     }
-  }
+  } catch { /* Invalid historical approvals cannot authorize a release. */ }
   throw new Error("reviewed replacement allowlist must be approved separately before a feature PR adds SQL");
 }
 
