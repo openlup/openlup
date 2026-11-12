@@ -1490,9 +1490,13 @@ to this repository with no bypass; its private key stays in the main-only
 workflow token is read-only. Activation and settings remain maintainer actions.
 
 Admission waits up to twenty minutes for a receipt after the six mechanical
-checks pass. Posting a comment does not restart CI. After a PR receipt timeout,
-submit or check the receipt and rerun the failed `native-review` job within rerun
-authority. A group timeout needs a requeue under merge authority. Queue recovery
+checks pass. Where it is activated, a new receipt comment from an owner, member
+or collaborator starts the trusted
+[receipt rerun](.github/workflows/native-review-receipt-rerun.yml). When `native-review`
+is the only failed job of the current head's latest completed run, it reruns the
+failed jobs once with the built-in token's `actions: write`. In any other state,
+after a PR receipt timeout, submit or check the receipt and rerun the failed
+`native-review` job within rerun authority. A group timeout needs a requeue under merge authority. Queue recovery
 is bounded at two retries; a second timeout or removal of the same head stops
 for diagnosis. A flake requires a passing rerun on the same tree; missing or late
 receipts are not flakes. A timely valid receipt rejected without a conflict is
