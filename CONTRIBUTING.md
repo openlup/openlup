@@ -371,6 +371,10 @@ See [Test scope and diagnostics](#test-scope-and-diagnostics) for selection,
 sharding, discovery and test-author guidance.
 
 The required `install-proof` job runs the shared package gate after both reference-profile builds, independently of the required `test` job in a separate checkout and installation. It discovers every publishable package from `config/openlup-packages.json` and its actual npm workspace, and refuses missing `api:check`, `ci:required` or `test:consumer` scripts before packing. The existing cold producer emits one current-set manifest. All API checks run before any package's `ci:required`, which receives the same verified manifest and exact checkout commit through `OPENLUP_PACK_MANIFEST` and `OPENLUP_PACK_COMMIT`. Cold preparation clears each workspace per target, so the API phase restores each package's built declarations and prerequisites through the existing build helper; it leaves the retained tarballs untouched and includes that cost in its timing. There is no missing-script skip or package-name routing table. A new module must supply installed-artifact consumer coverage, meaningful failure cases and its owning required batch; script declarations alone do not prove that those assertions are sound. Review checks that the batch actually invokes its consumer and preserves its required tests. Keep API checks out of that batch because the shared phase already runs them.
+The `install-proof` job has a 35-minute deadline, at least 1.3x the slowest observed
+hosted total, because each sequential starter browser group provisions fresh
+databases and hosts; the passing measured run took about 16 minutes, with about
+11.5 minutes of browser journeys, and four of six runs reached the former 20-minute limit.
 
 The same required job then runs the starter's installed PostgreSQL browser
 journeys through [`starter-browser-ci.mjs`](scripts/starter-browser-ci.mjs).

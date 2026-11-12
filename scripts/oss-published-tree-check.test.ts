@@ -360,9 +360,9 @@ describe("complete public CI", () => {
   });
   it("runs package proof, root shards and database diagnostics independently", () => {
     for (const name of ["install-proof", "test-full-shard", "pgtap"]) expect(workflowJob(name)).not.toMatch(/^ {4}needs:/mu);
-    for (const name of ["install-proof", "test-full-shard"]) {
+    for (const [name, timeoutMinutes] of [["install-proof", 35], ["test-full-shard", 20]] as const) {
       const job = workflowJob(name);
-      expect(job).toContain("    runs-on: ubuntu-latest\n    timeout-minutes: 20\n");
+      expect(job).toContain(`    runs-on: ubuntu-latest\n    timeout-minutes: ${timeoutMinutes}\n`);
       expect(job).toContain("      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7\n        with:\n          persist-credentials: false\n");
       expect(job).toContain("      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6\n        with:\n          node-version: 24.21.0\n          cache: npm\n");
       const unconditionalPrGroup = job.replace(/^ {8}if: (?:github\.event_name == 'push'|steps\.reused\.outputs\.reuse != 'true')\n/gmu, "");
