@@ -9980,6 +9980,9 @@ export { createPostgresExpiredCheckoutRecoveryPort } from './postgresExpiredChec
 export type { CheckoutRecoveryWriteExecutor } from './postgresExpiredCheckoutRecovery.js';
 export { createPostgresExpiredCheckoutDraftPort, createPostgresExpiredCheckoutRuntime, createPostgresExpiredCheckoutCompensation, checkoutRecoveryExecutionFingerprint } from './nativeExpiredCheckoutRecovery.js';
 export type { ExpiredRecoveryRuntimeInput, ExpiredRecoveryTransactionLane } from './nativeExpiredCheckoutRecovery.js';
+export { readAuthorizedPaymentRecovery } from './paymentRecoveryGuidance.js';
+export type { PaymentRecoveryStatusSnapshot, PaymentRecoverySnapshot, PaymentRecoverySnapshotPort, CheckoutPaymentRecoveryGuidance, PaymentRecoveryReadStatus, PaymentRecoveryReadDeps } from './paymentRecoveryGuidance.js';
+export { createPostgresPaymentRecoveryGuidancePort } from './postgresPaymentRecoveryGuidance.js';
 ```
 ## dist/commerce/server/nativeExpiredCheckoutRecovery.d.ts
 
@@ -10757,6 +10760,87 @@ export declare function createOutboxShipmentExceptionEmailHandler<Locale extends
     recipientPort: OrderRecipientPort;
 }): OutboxHandler;
 ```
+## dist/commerce/server/paymentRecoveryGuidance.d.ts
+
+```ts
+import { type PaymentRecoveryAttempt, type PaymentRecoveryGuidance, type PaymentIntentStatus, type PaymentAttemptStatus } from '@openlup/core/payment';
+import type { CheckoutPaymentContinuationClaims } from './checkoutPaymentContinuationCredential.js';
+import type { CheckoutRecoveryTokenPort } from './checkoutRecoveryToken.js';
+export interface PaymentRecoveryStatusSnapshot {
+    orderId: string;
+    clientId: string;
+    orderStatus: string;
+    paymentIntentId: string;
+    intentStatus: PaymentIntentStatus;
+    paymentAttemptId: string | null;
+    attemptStatus: PaymentAttemptStatus | null;
+    provider: string | null;
+    providerPaymentId: string | null;
+    updatedAt: string;
+    failureReason: string | null;
+    subscriptionId: string | null;
+    subscriptionActivationStatus: 'not_applicable' | 'waiting_for_mandate' | 'active' | 'action_required';
+}
+export interface PaymentRecoverySnapshot extends PaymentRecoveryStatusSnapshot {
+    eligible: boolean;
+    purchaseContext: 'one_time' | 'subscription_initial' | null;
+    subscriptionStatus: string | null;
+    tokenAuthorized: boolean;
+    historyComplete: boolean;
+    observedSuccess: boolean;
+    /** Native lifecycle facts do not imply a mandate or change the legacy presentation. */
+    activationState?: string | null;
+    hasExactGap?: boolean;
+    paidAt?: string | null;
+    attempts: (PaymentRecoveryAttempt & {
+        provider?: string;
+        providerFlow?: string | null;
+    })[];
+}
+export interface PaymentRecoverySnapshotPort {
+    getGuidanceSnapshot(input: {
+        orderId: string;
+        paymentIntentId: string;
+        recoveryTokenId?: string;
+    }): Promise<PaymentRecoverySnapshot | null>;
+}
+export interface CheckoutPaymentRecoveryGuidance {
+    version: 1;
+    paymentAttemptId: string;
+    purchaseContext: 'one_time' | 'subscription_initial';
+    cause: PaymentRecoveryGuidance['cause'];
+    methodKind: string | null;
+    methodKey: string | null;
+    operation: PaymentRecoveryGuidance['operation'];
+    restriction: 'method' | 'instrument' | 'operation' | null;
+    actions: PaymentRecoveryGuidance['actions'][number][];
+    consecutiveRefusals: PaymentRecoveryGuidance['consecutiveRefusals'];
+    emphasis: PaymentRecoveryGuidance['emphasis'];
+}
+export type PaymentRecoveryReadStatus = 'paid' | 'failed' | 'expired' | 'pending';
+export interface PaymentRecoveryReadDeps {
+    port: PaymentRecoverySnapshotPort;
+    tokenPort?: Pick<CheckoutRecoveryTokenPort, 'validate'>;
+    /** The host retains its existing display policy, without inferring new evidence. */
+    projectGuidance?(snapshot: PaymentRecoverySnapshot, status: PaymentRecoveryReadStatus, projected: PaymentRecoveryGuidance | null): CheckoutPaymentRecoveryGuidance | null;
+}
+/** Optional inspection only. Read errors invoke the host's unchanged legacy reader. */
+export declare function readAuthorizedPaymentRecovery(input: {
+    request: {
+        orderId: string;
+        clientId: string;
+        paymentIntentId: string;
+        journeyId?: string;
+    };
+    claims: CheckoutPaymentContinuationClaims | null;
+    authorization: unknown;
+    deps: PaymentRecoveryReadDeps;
+    now?: number;
+}): Promise<{
+    snapshot: PaymentRecoverySnapshot;
+    guidance: CheckoutPaymentRecoveryGuidance | null;
+} | null>;
+```
 ## dist/commerce/server/postgresCheckoutRecoveryOrderPort.d.ts
 
 ```ts
@@ -10810,6 +10894,18 @@ export declare function createPostgresExpiredCheckoutRecoveryPort(db: CheckoutRe
     recoveryWindowMs: number;
     now?: () => Date;
 }): ExpiredCheckoutRecoveryWritePort;
+```
+## dist/commerce/server/postgresPaymentRecoveryGuidance.d.ts
+
+```ts
+import type { PaymentRecoveryEvidence } from '@openlup/core/payment';
+import type { CheckoutRecoveryWriteExecutor } from './postgresExpiredCheckoutRecovery.js';
+import type { PaymentRecoverySnapshotPort } from './paymentRecoveryGuidance.js';
+/** One closed SQL read. Operational/malformed results throw so optional status reads can fall back. */
+export declare function createPostgresPaymentRecoveryGuidancePort(db: CheckoutRecoveryWriteExecutor, normalize: (input: {
+    provider: string;
+    evidence: unknown[];
+}) => PaymentRecoveryEvidence | null): PaymentRecoverySnapshotPort;
 ```
 ## dist/commerce/server/referenceCheckoutHandler.d.ts
 
@@ -17943,7 +18039,7 @@ export interface ShippingBindingDependencies {
     nativeRateReadiness?: ReadinessReport;
     /** Same-database Core observation of the applied shipping seed and required objects. */
     nativeRateSchema?: SchemaObservation;
-    nativeStore?: Omit<Store, "addressMutationPort"> | null;
+    nativeStore?: Store | null;
     responder: BffResponder;
     selection?: {
         port: DeliverySelectionPort;
@@ -18303,6 +18399,44 @@ import type { CustomerAddressesDeps } from "./addressPorts.js";
 import type { CustomerAddressSchemas } from "./addressSchemas.js";
 export declare function createCustomerAddressesHandler({ addressBookPort, addressMutationPort, authenticateUser, }: CustomerAddressesDeps, schemas: CustomerAddressSchemas, responder: BffResponder): (req: HttpRequest, res: HttpResponse) => Promise<void>;
 ```
+## dist/shipping/customerSavedAddressSchemas.d.ts
+
+```ts
+import type { CustomerAddressUpsertRequest, CustomerAddressDeleteRequest } from './contracts/address.js';
+type RequestSchema<T> = {
+    safeParse(input: unknown): {
+        success: true;
+        data: T;
+    } | {
+        success: false;
+        error: {
+            flatten(): unknown;
+        };
+    };
+};
+export interface CustomerSavedAddressRequestSchemas {
+    customerAddressUpsertRequestSchema: RequestSchema<CustomerAddressUpsertRequest>;
+    customerAddressDeleteRequestSchema: RequestSchema<CustomerAddressDeleteRequest>;
+}
+export interface CustomerSavedAddressValidationPolicy {
+    /** ISO code and aliases for the local address policy; the code is also the default. */
+    country: string;
+    countryAliases: readonly string[];
+    phonePrefix: string;
+    normalizeTaxId(value: string | null): string | null;
+    isValidTaxId(value: string): boolean;
+    messages: {
+        name: string;
+        country: string;
+        phone: string;
+        postalCode: string;
+        taxId: string;
+    };
+}
+/** Fixed reference bounds and normalization order; local formats and copy are host policy. */
+export declare function createCustomerSavedAddressRequestSchemas(policy: CustomerSavedAddressValidationPolicy): CustomerSavedAddressRequestSchemas;
+export {};
+```
 ## dist/shipping/customerSelfServiceAddressModels.d.ts
 
 ```ts
@@ -18428,6 +18562,18 @@ export declare const SHIPPING_MIGRATIONS: readonly [{
     readonly sha256: "34f8696f515a2cc072395db5a3de2d9b09643d13236ee3851d0d78123f907eae";
     readonly url: URL;
 }];
+export { createPostgresCustomerSavedAddressPort, CustomerSavedAddressRefused } from "./postgresAddressBook.js";
+export type { SavedAddressQueryExecutor, CustomerSavedAddressScope, CustomerSavedAddressOptions, CustomerSavedAddressRefusalCode, CustomerSavedAddressPort } from "./postgresAddressBook.js";
+export { createCustomerSavedAddressRequestSchemas } from "./customerSavedAddressSchemas.js";
+export type { CustomerSavedAddressValidationPolicy, CustomerSavedAddressRequestSchemas } from "./customerSavedAddressSchemas.js";
+/** Sparse asset reference; install the complete selected native catalogue. */
+export declare const CUSTOMER_SAVED_ADDRESS_MIGRATIONS: readonly [{
+    readonly id: "20261110190000_customer_saved_addresses";
+    readonly catalogPath: "db/platform/migrations/20261110190000_customer_saved_addresses.sql";
+    readonly position: 117;
+    readonly sha256: "0cf335d6a2497015d9218a6ab64fe888a3143290d7f6605a115c848eee4c042a";
+    readonly url: URL;
+}];
 ```
 ## dist/shipping/pickupPointSearchPort.d.ts
 
@@ -18436,6 +18582,40 @@ import type { PickupPointSearchRequest, PickupPointSearchResult } from "./contra
 export interface PickupPointSearchPort {
     searchPickupPoints(request: PickupPointSearchRequest): Promise<PickupPointSearchResult[]>;
 }
+```
+## dist/shipping/postgresAddressBook.d.ts
+
+```ts
+import type { CustomerAddressesResponse, CustomerAddressUpsertRequest, CustomerAddressDeleteRequest } from './contracts/address.js';
+export interface CustomerSavedAddressPort {
+    getAddressBook(userId: string): Promise<CustomerAddressesResponse | null>;
+    upsertAddress(userId: string, input: CustomerAddressUpsertRequest): Promise<CustomerAddressesResponse | null>;
+    deleteAddress(userId: string, input: CustomerAddressDeleteRequest): Promise<CustomerAddressesResponse | null>;
+}
+import { type CustomerSavedAddressValidationPolicy } from "./customerSavedAddressSchemas.js";
+export interface SavedAddressQueryExecutor {
+    query(sql: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+export interface CustomerSavedAddressScope {
+    principalId: string;
+    clientId: string;
+}
+export interface CustomerSavedAddressOptions {
+    validation: CustomerSavedAddressValidationPolicy;
+    now(): string;
+    /** Explicit billing-profile reader; this port does not install a billing store. */
+    readOrdererProfiles(clientId: string): Promise<Record<string, unknown>[]>;
+    inUseMessage: string;
+}
+export type CustomerSavedAddressRefusalCode = 'address_scope_mismatch' | 'address_invalid_input' | 'address_invalid_response' | 'address_in_use' | 'address_not_found' | 'address_event_append_failed';
+export declare class CustomerSavedAddressRefused extends Error {
+    readonly code: CustomerSavedAddressRefusalCode;
+    constructor(code: CustomerSavedAddressRefusalCode, message?: string);
+}
+/** Each query call commits separately, matching default-clear/write/event failure and replay behavior. */
+export declare function createPostgresCustomerSavedAddressPort(executor: SavedAddressQueryExecutor, scope: CustomerSavedAddressScope, options: CustomerSavedAddressOptions): CustomerSavedAddressPort;
 ```
 ## dist/shipping/readDeliverySelectionEvidence.d.ts
 

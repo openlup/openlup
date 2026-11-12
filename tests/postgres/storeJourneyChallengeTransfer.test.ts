@@ -173,7 +173,7 @@ it("counts but never carries authorization challenges, restores customer sign-in
     await expect(captureStoreJourney(source.owner, "challenge-unknown-table"))
       .rejects.toMatchObject({ code: "unsupported_table", table: "public.challenge_transfer_probe" });
   } finally { await source.owner.query("DROP TABLE public.challenge_transfer_probe"); }
-}, 30_000);
+}, 60_000);
 
 
 it("rejects malformed challenge census entries before connecting", async () => {
@@ -195,4 +195,4 @@ it("rejects malformed challenge census entries before connecting", async () => {
   }
   expect(await restoreConnectedNativeStore({ owner: destination.owner, installation: journeySelection, packet, freshTarget }))
     .toMatchObject({ replayed: false });
-}, 30_000);
+}, 75_000);

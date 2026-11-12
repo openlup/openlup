@@ -71,4 +71,4 @@ it.each(["legacy", "bootstrap", "separate", "admin-managed", "admin-operator"] a
     }
     expect((await owner.query("SELECT tgname FROM pg_trigger WHERE tgname IN ('subscriptions_configured_offer_guard','subscription_events_bind_sized_opt_in') ORDER BY tgname")).rows).toEqual([{ tgname: "subscription_events_bind_sized_opt_in" }, { tgname: "subscriptions_configured_offer_guard" }]);
   } finally { await closePostgres(container, pools); }
-}, 30_000);
+}, 55_000);

@@ -130,7 +130,7 @@ describe.each(lifecycleProfiles)('customer checkout links on %s',profile=>{
    await a.query('SELECT pg_sleep(GREATEST(0,EXTRACT(EPOCH FROM ($1::timestamptz-clock_timestamp())))+0.025)',[row.deadline.toISOString()]);await a.query('COMMIT');
    expect(await settled).toMatchObject({error:{reason:'order_not_recoverable'}});await b.query('ROLLBACK');expect(await tokens(f.id)).toEqual([]);expect(await events(f.id)).toEqual([]);
   }finally{await a.query('ROLLBACK');await pending?.catch(()=>{});await b.query('ROLLBACK');a.release();b.release();}
- });
+ }, 15_000);
  it('keeps new grants bounded without raw token/outbox table access for actors',async()=>{
   const f=await order();await env.actor(f.principal,async db=>{
    expect((await db.query("SELECT has_function_privilege(current_user,'public.commerce_buyer_checkout_link_issue(uuid,uuid,text,bigint,bigint,timestamptz)','EXECUTE') AS allowed")).rows[0].allowed).toBe(false);

@@ -112,7 +112,7 @@ export function verificationPlan(candidate, build, packs, pgtap = false) {
     selection: 'All thirteen mandatory local phases; no path-based narrowing or result reuse.',
     pgtap: pgtap ? 'selected' : 'not selected; use --pgtap for database inputs or an explicit diagnostic request',
     hostedOnly: [
-      { context: 'test', reason: 'Four independent hosted shards and their complete success aggregation; local selection does not prove hosted execution.' },
+      { context: 'test', reason: 'Six independent hosted shards and their complete success aggregation; local selection does not prove hosted execution.' },
       { context: 'install-proof', reason: 'Event-bound dependency comparison and hosted installation environment.' },
       { context: 'native-review', reason: 'Live source/group receipt admission; local review is an execution prerequisite.' },
     ],

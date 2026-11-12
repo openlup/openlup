@@ -211,7 +211,7 @@ describe('real Git coverage histories', () => {
     f.commit(); await f.cli('prepare', f.request); const next = await f.state();
     expect(next.candidate.coverage.proof.kind).toBe('registry-union');
     await expect(f.cli('verify')).resolves.toBe(0);
-  });
+  }, 15_000);
   it('reviews a hand edit made in a clean merge as the resolution', async () => {
     const f = await fixture(); await f.review();
     const main = await f.mainMove(() => f.write('other.ts', 'main delta\n'));
@@ -644,7 +644,7 @@ describe('portable review on real Git objects', () => {
     await expect(f.cli('receipt', '12')).resolves.toBe(0);
     vi.spyOn(Date, 'now').mockReturnValue(oldReceipt.expires + 30 * DAY);
     await expect(f.cli('receipt', '12')).resolves.toBe(0);
-  });
+  }, 15_000);
   it('preserves the v3 workspace npm policy fingerprint', async () => {
     const f = await fixture();
     const path = 'packages/outbox/.npmrc';

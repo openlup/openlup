@@ -176,9 +176,43 @@ account events after their client parents; populated-ledger witnesses check exac
 rows on a pristine qualified target and a replay that leaves rows unchanged. This extends
 the finite capture/restore inventory only; the smaller compatible-row utility's
 allowlist remains unchanged. No schema/control/credential transfer or target
-activation is authorized by these rows. Saved addresses and billing tables remain
+activation is authorized by these rows. Saved-address coverage is described below; billing tables remain
 separate changes. The account migration descriptor is sparse; install the entire
 selected native catalogue rather than just its two exported units.
+
+## Saved customer address rows
+
+`20261110190000_customer_saved_addresses.sql` adds private
+`customer_saved_addresses`, exact-kind default uniqueness, a nonunique canonical
+lookup index and nullable saved shipping/billing pointers on subscriptions.
+Pointers use ON DELETE SET NULL; the customer delete routine refuses use by an
+active or paused subscription. Selection commands are separate. Ten owned
+routines cover customer reads/replay/canonical lookup/default clear/write/delete,
+usage checks and subject export/erasure preparation. No existing function is replaced.
+
+Runtime customer access is through principal/client-owned DEFINER routines with
+fixed search paths and EXECUTE only for `service_role`; PUBLIC, anon and
+authenticated have no table or routine access. The table is `block` classified
+for lead absorption, with only the admitted client-ID census column/policy.
+Saved address and event writes retain their separate-commit failure/replay rules;
+see the [package recipe](../../packages/platform/README.md#saved-customer-address-book).
+
+All row content, including canonical keys, company/tax/contact/free text,
+last-use/source metadata and possible pickup history, is personal data. The
+explicit saved-address privacy contributor exports all columns and erases saved
+rows without relying on client clearing or cascade. Its preparation lock precedes
+identity row locks; mutators recheck ownership after acquiring their DML lock, so
+a waiting save cannot recreate saved rows after unlinking. Identity/subscription vetoes
+and the account-event retention contributor remain separate required owners;
+retained event payloads and immutable destination snapshots are not erased by
+this contributor. There is no default retention period.
+
+Finite connected transfer explicitly carries the exact classified rows, following
+the account-event ledger and private parcel-contact ownership pattern. Restore
+inserts addresses after clients and before subscriptions; populated-row/pointer
+and replay witnesses check the result. The smaller compatible-row copier does
+not admit this table. No trigger applies defaults during import, and no target
+activation or credential transfer follows.
 
 ## Partner acquisition data
 
@@ -457,7 +491,7 @@ revoke membership to withdraw access. The existing ON DELETE SET NULL on
 `commerce_order_holds.created_by` would otherwise make that operator's
 fulfillment-exception holds look system-created and eligible for automatic
 release. This forward preserves that FK; see the [owner step](../../examples/neutral-store/README.md#commerce-operator-roster-for-hold-and-release-admission).
-The starter's hold/release binding remains a separate change.
+The starter binds hold and release with a fresh human-admin and Commerce-operator check on every command and replay.
 
 ## Additive forward release path
 
@@ -3690,3 +3724,16 @@ locks. Runtime first payment admission also rechecks source evidence under the
 source order lock before any replacement stock or payment write. A fresh initial declaration belongs to the replacement; the predecessor
 is never reopened. See the [recreation composition](PLATFORM_PACKAGE_REFERENCE.md#expired-checkout-recreation)
 for commercial validation, transaction binding, compensation and profile limits.
+
+### Atomic checkout guidance read
+
+`20261110220000_checkout_payment_guidance.sql` creates only
+`commerce_checkout_payment_guidance_snapshot(uuid,uuid,uuid DEFAULT NULL)`.
+The SQL/STABLE definer fixes `search_path = pg_catalog, pg_temp` and exposes only
+service EXECUTE. It replaces no function and adds no table, trigger or backfill.
+Pure joins read checkout provenance, token authority, native attempts and bounded
+correlated observations/truth/readback evidence together. It neither calls a
+materializing reader nor treats observed capture as completed settlement.
+Current complete-installation inventories include the new function; historical
+prefixes are unchanged. The [composition recipe](PLATFORM_PACKAGE_REFERENCE.md#atomic-checkout-payment-guidance)
+owns capability opt-in, neutral normalization and the sandbox profile limits.

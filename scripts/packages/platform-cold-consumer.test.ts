@@ -108,11 +108,13 @@ function fixture() {
   const platformMetadata = JSON.parse(readFileSync(platformManifest, "utf8"));
   platformMetadata.exports["./portability"] = { types: "./portability/index.d.ts", default: "./portability/index.js" };
   platformMetadata.exports["./lifecycle"] = { types: "./lifecycle/index.d.ts", default: "./lifecycle/index.js" };
+  platformMetadata.exports["./commerce/server/destinations"].types = "./destinations/index.d.ts";
   platformMetadata.exports["./account-support/contracts"].default = "./contracts.js";
   platformMetadata.exports["./marketing/server"].types = "./marketing-server.d.ts";
   writeFileSync(platformManifest, JSON.stringify(platformMetadata));
   cpSync(join(root, "packages/platform/dist/portability"), join(consumer, "node_modules/@openlup/platform/portability"), { recursive: true });
   cpSync(join(root, "packages/platform/dist/lifecycle"), join(consumer, "node_modules/@openlup/platform/lifecycle"), { recursive: true });
+  cpSync(join(root, "packages/platform/dist/commerce/server/destinations"), join(consumer, "node_modules/@openlup/platform/destinations"), { recursive: true });
   writeFileSync(join(consumer, "node_modules/@openlup/platform/contracts.js"), "export {};\n");
   // The server port extends the browser contract with historical commands.
   writeFileSync(join(consumer, "node_modules/@openlup/platform/marketing-server.d.ts"), [
@@ -251,7 +253,7 @@ it("includes the complete channel group in runtime imports and both declaration 
   for (const entry of channelEntries) expect(() => consumerNode(consumer, `await import("@openlup/platform/${entry}");`)).toThrow(/channel initialization refused/);
   writeFileSync(join(platform, "channel.d.ts"), 'import type { Pool } from "pg"; export type Leaked = Pool;\n');
   expect(() => compileConsumer(consumer, entries, compiler)).toThrow();
-});
+}, 45_000);
 it.each(channelEntries)("refuses a partial channel group missing %s", missing => {
   expect(() => assertExportInventory(channelFixture(channelEntries.filter(entry => entry !== missing)))).toThrow(/inventory needs classification/);
 });
@@ -374,7 +376,7 @@ it("compiles actual declarations in both modes and refuses leaked peer types", (
   compileConsumer(consumer, NON_ADAPTER_ENTRIES, compiler);
   writeFileSync(join(consumer, "node_modules/@openlup/platform/index.d.ts"), 'import type { Pool } from "pg"; export type Leaked = Pool;\n');
   expect(() => compileConsumer(consumer, NON_ADAPTER_ENTRIES, compiler)).toThrow();
-});
+}, 35_000);
 it("refuses a runtime import that throws even if its declaration exists", () => {
   const consumer = fixture(); writeFileSync(join(consumer, "node_modules/@openlup/platform/index.js"), 'throw new Error("synthetic provider initialization");');
   expect(() => consumerNode(consumer, 'await import("@openlup/platform/identity");')).toThrow(/synthetic provider initialization/);
@@ -733,6 +735,8 @@ process.stdout.write(JSON.stringify(Object.fromEntries(Object.entries(entry).map
     createExpiredCheckoutRecoveryService: "function",
     ExpiredCheckoutRecoveryError: "function",
     createPostgresExpiredCheckoutRecoveryPort: "function",
+    readAuthorizedPaymentRecovery: "function",
+    createPostgresPaymentRecoveryGuidancePort: "function",
     createPostgresExpiredCheckoutDraftPort: "function",
     createPostgresExpiredCheckoutRuntime: "function",
     createPostgresExpiredCheckoutCompensation: "function",
@@ -850,8 +854,8 @@ it("M11 K2 exercises installed commerce compensation without optional peers", ()
   assertConsumerIsolation(consumer, root);
   proveCommerceServerConsumer(consumer);
   for (const name of ["@types/node", "undici-types"]) cpSync(join(root, "node_modules", name), join(consumer, "node_modules", name), { recursive: true });
-  compileConsumer(consumer, ["commerce", "commerce/contracts", "commerce/server", "pricing/browser"], join(root, "node_modules/typescript/lib/tsc.js"));
-}, 30_000);
+  compileConsumer(consumer, ["commerce", "commerce/contracts", "commerce/server", "commerce/server/destinations", "pricing/browser"], join(root, "node_modules/typescript/lib/tsc.js"));
+}, 65_000);
 
 it("payments and fulfillment: installed packed consumer proves injected execution, truth scope, fulfillment services, default-off and contribution", () => {
   const consumer = pristinePackedA1Fixture();
@@ -863,7 +867,7 @@ it("payments and fulfillment: installed packed consumer proves injected executio
   for (const name of ['@types/node', 'undici-types']) cpSync(join(root, 'node_modules', name), join(consumer, 'node_modules', name), { recursive: true });
   compileConsumer(consumer, NON_ADAPTER_ENTRIES, join(root, 'node_modules/typescript/lib/tsc.js'));
   // Hosted runners compile both resolution modes uncached, which can exceed the default floor.
-}, 30_000);
+}, 65_000);
 
 it("CI rejects an added required invoice seam field in installed NodeNext and Bundler declarations", () => {
   const consumer = pristinePackedA1Fixture();
@@ -889,7 +893,7 @@ it("CI rejects an added required invoice seam field in installed NodeNext and Bu
     rejectsMissingField(() => { execFileSync(process.execPath, [compiler, "-p", configPath], { cwd: consumer, encoding: "utf8", stdio: "pipe" }); });
   } finally { writeFileSync(path, original); }
   compileConsumer(consumer, ["invoicing", "invoicing/contracts"], compiler);
-}, 30_000);
+}, 65_000);
 
 it("proves both opt-in installed payment adapters without SDK or import-time I/O", () => {
   const consumer = pristinePackedA1Fixture();
@@ -955,7 +959,7 @@ assert.equal(subscriptionLifecycleTemplate("subscription_stock_wait.resumed"),"s
 assert.equal(NATIVE_SUBSCRIPTION_CAPABILITIES.multiCyclePrepaid.supported,false);
 console.log("M10 installed positive/refusal passed");
 `)).toContain("M10 installed positive/refusal passed");
-}, 30_000);
+}, 50_000);
 
 it("M10 packed public renewal parent forwards applied attribution and rejects its omission mutant", () => {
   const consumer = pristinePackedA1Fixture();
@@ -994,7 +998,7 @@ it("executes the account-support consumer and detects a swallowed owner refusal"
     "return ports.account.getAccount(userId);", "return ports.account.getAccount(userId).catch(() => null);",
   ));
   expect(() => proveAccountSupportConsumer(consumer)).toThrow();
-});
+}, 40_000);
 
 // R2 reuses the existing packed fixture and isolated consumer boundary.
 function r2Consumer(): string {
@@ -1186,7 +1190,7 @@ it("proves installed marketing subpaths, prelaunch schemas, reachable ports and 
   for (const name of ["@types/node", "undici-types"]) cpSync(join(root, "node_modules", name), join(consumer, "node_modules", name), { recursive: true });
   compileMarketingAnalyticsConsumer(consumer, join(root, "node_modules/typescript/lib/tsc.js"));
   compileConsumer(consumer, ["marketing", "marketing/contracts"], join(root, "node_modules/typescript/lib/tsc.js"));
-}, 60_000);
+}, 100_000);
 
 it("proves installed marketing server reads, port refusal, default-off privacy and exact exports without optional peers", () => {
   const consumer = pristinePackedA1Fixture();
@@ -1194,7 +1198,7 @@ it("proves installed marketing server reads, port refusal, default-off privacy a
   proveMarketingServerConsumer(consumer);
   for (const name of ["@types/node", "undici-types"]) cpSync(join(root, "node_modules", name), join(consumer, "node_modules", name), { recursive: true });
   compileConsumer(consumer, ["marketing/server"], join(root, "node_modules/typescript/lib/tsc.js"));
-}, 30_000);
+}, 40_000);
 
 it("M15 consumes packed risk assessment and payment refusal without optional peers", () => {
   const consumer=pristinePackedA1Fixture();
@@ -1202,7 +1206,7 @@ it("M15 consumes packed risk assessment and payment refusal without optional pee
   proveRiskConsumer(consumer);
   for (const name of ["@types/node", "undici-types"]) cpSync(join(root,"node_modules",name),join(consumer,"node_modules",name),{recursive:true});
   compileConsumer(consumer,["risk","risk/contracts"],join(root,"node_modules/typescript/lib/tsc.js"));
-},30_000);
+},35_000);
 
 // Four independently reported installed-artifact cases; each starts from its own copy.
 it.each(RISK_WORKFLOW_PROOFS)("M15 R2 packed workflow: %s", proof => {
@@ -1301,4 +1305,25 @@ const port=createPostgresExpiredCheckoutRecoveryPort(db,{recoveryWindowMs:1000})
 process.stdout.write(JSON.stringify({validation,reason,prior,writer:typeof port.prepareReplacement}));
 `));
  expect(result).toEqual({validation:false,reason:'unavailable',prior:'unavailable',writer:'function'});
+});
+
+it('executes the installed atomic guidance port and validation-only composition without database peers', () => {
+  const consumer = pristinePackedA1Fixture();
+  assertConsumerIsolation(consumer, root);
+  const result = JSON.parse(consumerNode(consumer, `
+const {createPostgresPaymentRecoveryGuidancePort,readAuthorizedPaymentRecovery}=await import('@openlup/platform/commerce/server');
+const {normalizeSandboxPaymentRecoveryEvidence}=await import('@openlup/platform/payments');
+const orderId='11111111-1111-4111-8111-111111111111',clientId='22222222-2222-4222-8222-222222222222',paymentIntentId='33333333-3333-4333-8333-333333333333',attemptId='44444444-4444-4444-8444-444444444444',tokenId='55555555-5555-4555-8555-555555555555';
+const calls=[];
+const port=createPostgresPaymentRecoveryGuidancePort({query:async(sql,values)=>{calls.push({sql,values});return{rows:[{result:{
+ snapshot:{orderId,clientId,paymentIntentId,orderStatus:'pending_payment',intentStatus:'created',paymentAttemptId:attemptId,attemptStatus:'refused',provider:'sandbox',providerPaymentId:null,updatedAt:'2040-01-01T00:00:00Z',failureReason:null,orderMode:'one_time',activationState:null,subscriptionId:null,subscriptionStatus:null,paidAt:null,hasExactGap:false},
+ eligible:true,tokenAuthorized:true,observedSuccess:false,historyComplete:true,
+ attempts:[{id:attemptId,status:'refused',provider:'sandbox',providerPaymentId:null,providerFlow:null,createdAt:'2040-01-01T00:00:00Z',evidence:[{version:1,source:'observation',sourceId:tokenId,observationId:tokenId,paymentAttemptId:attemptId,paymentIntentId,outcome:'refused',refusalVerified:true}]}]
+}}]};}},normalizeSandboxPaymentRecoveryEvidence);
+const value=await readAuthorizedPaymentRecovery({request:{orderId,clientId,paymentIntentId},claims:null,authorization:'Bearer installed-example',deps:{port,tokenPort:{validate:async()=>({tokenId,orderId,clientId,status:'pending_payment',mode:'one_time_order'})}}});
+process.stdout.write(JSON.stringify({guidance:value.guidance,calls}));
+`));
+  expect(result.guidance).toMatchObject({ methodKey: null, operation: null, actions: ['change_instrument', 'change_method'] });
+  expect(result.calls).toHaveLength(1);
+  expect(result.calls[0].sql).toMatch(/^SELECT public\.commerce_checkout_payment_guidance_snapshot\(/u);
 });

@@ -199,3 +199,6 @@ export { createPostgresExpiredCheckoutRecoveryPort } from './postgresExpiredChec
 export type { CheckoutRecoveryWriteExecutor } from './postgresExpiredCheckoutRecovery.js';
 export { createPostgresExpiredCheckoutDraftPort, createPostgresExpiredCheckoutRuntime, createPostgresExpiredCheckoutCompensation, checkoutRecoveryExecutionFingerprint } from './nativeExpiredCheckoutRecovery.js';
 export type { ExpiredRecoveryRuntimeInput, ExpiredRecoveryTransactionLane } from './nativeExpiredCheckoutRecovery.js';
+export { readAuthorizedPaymentRecovery } from './paymentRecoveryGuidance.js';
+export type { PaymentRecoveryStatusSnapshot, PaymentRecoverySnapshot, PaymentRecoverySnapshotPort, CheckoutPaymentRecoveryGuidance, PaymentRecoveryReadStatus, PaymentRecoveryReadDeps } from './paymentRecoveryGuidance.js';
+export { createPostgresPaymentRecoveryGuidancePort } from './postgresPaymentRecoveryGuidance.js';

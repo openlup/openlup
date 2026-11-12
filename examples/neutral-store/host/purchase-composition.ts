@@ -44,7 +44,7 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
   const compensation = createPostgresAbandonedCheckoutCompensationPort(db);
   const readOrder = async (id: unknown) => {
     if (!uuid(id)) return null;
-    return (await db.query(`SELECT id,client_id,status,total_amount_minor,currency_code,metadata,created_at
+    return (await db.query(`SELECT id,client_id,status,total_amount_minor,currency_code,metadata,created_at,recreated_from_order_id
       FROM public.commerce_orders WHERE id=$1`, [id])).rows[0] ?? null;
   };
   const token = (value: unknown): value is string => typeof value === 'string' && /^rcv_(?:[A-Za-z0-9_-]{43}|[a-f0-9]{64})$/.test(value);
@@ -199,6 +199,8 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
     if (!only(payload, ['orderRef', 'token', 'outcome']) || !['captured', 'refused', 'expired', 'indeterminate'].includes(String(payload.outcome))) return refused('starter_input_invalid');
     const order = await authorizedOrder(payload, context);
     if (!order) return refused('starter_order_not_found');
+    // Replacement payments belong exclusively to the recovery transition and its durable attempt receipt.
+    if (order.recreated_from_order_id) return refused('starter_recovery_unavailable');
     const intent = (await db.query('SELECT id,status,external_ref FROM public.commerce_settlement_intents WHERE order_id=$1 AND channel_key=$2', [order.id, 'sandbox'])).rows[0];
     if (!intent) return refused('starter_sandbox_intent_unavailable');
     try {

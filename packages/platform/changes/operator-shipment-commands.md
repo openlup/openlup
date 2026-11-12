@@ -3,5 +3,5 @@
 
 Install the complete selected native catalogue through `20261110230000_operator_shipment_commands.sql`. Hosts retain administrator authorization, provider selection, duty policy and connection ownership. No operator UI or live carrier call is added.
 
-- The approved packed-byte cap of 3,023,741 B is retained. Code files measured 4,120 against the prior cap of 4,117; the code-file cap is 4,203 (measurement plus 2%, rounded up). The released baseline is unchanged.
+- The approved packed-byte cap of 3,023,741 B is retained. The higher approved code-file cap of 4,211 is retained; its prior measurement was 4,128 files plus 2% headroom. The released baseline is unchanged.
 - Tracking-reference writers require READ COMMITTED and an explicit provider namespace, including shared shipment evidence. Exact handoff receipts replay before any new status transition.
