@@ -70,6 +70,10 @@
       "class": "public-output"
     },
     {
+      "path": ".github/workflows/native-review-receipt-rerun.yml",
+      "class": "public-output"
+    },
+    {
       "path": ".github/workflows/publish-package.yml",
       "class": "public-output"
     },
@@ -11163,6 +11167,14 @@
     },
     {
       "path": "scripts/ci-image-pull.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ci-receipt-rerun.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ci-receipt-rerun.test.ts",
       "class": "public-output"
     },
     {
