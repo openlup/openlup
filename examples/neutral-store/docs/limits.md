@@ -95,17 +95,16 @@ localized explanation to action results and the limits page. Named deferred
 actions remain unbound and refuse after customer/operator admission, before any
 native routine. Return forms retain reason codes, order-item quantities and
 refund intent. No operator returns list or detail; the operator approves or
-rejects by the return reference the customer receives. Approval and rejection
-are unavailable in this release. The removed `operator.returns` route returns
+rejects by the return reference the customer receives. Authenticated customers request returns for owned paid or fulfilled orders. Active
+human admins approve or reject the exact request reference; these decisions record
+intent only. Receiving, restocking and financial refund execution remain unavailable. The removed `operator.returns` route returns
 HTTP 404 with `starter_operation_unknown`.
 
-The catalogue covers 13 declared named-refusal operations. The removed reader
+The catalogue covers six declared named-refusal operations. The removed reader
 retains its separate HTTP 404 protocol.
 
 | Operations | Named refusal |
 | --- | --- |
-| `return.request` | `starter_return_request_unavailable` |
-| `operator.returnApprove`, `operator.returnReject` | `starter_return_decision_unavailable` |
 | `operator.label`, `operator.handoff`, `operator.delivery` | `starter_shipment_mutation_unavailable` |
 | `tracking.read` | `starter_tracking_access_unavailable` |
 | `research.submit`, `ingest.submit` | `host_binding_required` |
@@ -165,7 +164,7 @@ receipts and unprovable parcel facts omit the note.
 No generic contact form; the partner inquiry is the durable intake.
 Support is static and shows optional validated `supportEmail` as plain text,
 with an account link. Missing contact configuration is stated explicitly.
-The application declares 60 operations (50 bound with a runtime connection). With a runtime connection, the partner
+The application declares 60 operations (53 bound with a runtime connection). With a runtime connection, the partner
 submit/list/transition and review read/submit/list/moderation actions are mounted.
 Without that connection they remain unbound, like the other native actions.
 
@@ -386,7 +385,7 @@ revokes earlier checkout links and optionally queues mail. A completed capture
 is evidence for this demonstration transport only. Expired checkouts retain a
 terminal source while eligible recreation can start a fresh order. Live pending-order
 links support original-order sandbox continuation payment; dedicated token-pay retry
-and method switching, payment guidance, inline retry and the embedded-browser
+and method switching, inline retry and the embedded-browser
 buyer-link control remain unavailable. No continuation issuer
 is mounted. Every other separately named operation limit remains.
 See the [candidate recipe and owner steps](../README.md#checkout-and-account-candidate-changes).
@@ -403,7 +402,7 @@ refusals cannot start payment. Durable draft, lineage and attempt receipts keep
 replay on one replacement and one attempt. Replacement-attempt simulator controls
 remain bound to the inspected bearer, lineage and durable execution receipt;
 reload reads the same attempt, independently of the recreation source link's
-continuation lifetime. Captured executions show no simulator controls. Dedicated token-pay retry and method switching, payment guidance, inline
+continuation lifetime. Captured executions show no simulator controls. Dedicated token-pay retry and method switching, inline
 retry and embedded-browser continuation issuance remain unavailable.
 
 Hold and release resolve the human administrator before every command and replay.
@@ -446,5 +445,32 @@ Each command and replay rechecks the human admin and resolves the existing Comme
 operator row. Caller identities, missing confirmation, invalid reasons, stale
 order status and conflicting commands refuse. Reasons use the package's trimmed
 1–2,000 character contract. Native durable receipts own replay. The two formerly
-unavailable actions are bound; return, shipment and account limits stay separately
+unavailable actions are bound; physical-return, shipment and account limits stay separately
 listed until their own complete bindings exist.
+
+## Return requests and decisions
+
+Signed-in customers submit configured reason codes and positive quantities for
+items from their own paid or fulfilled order. Native ownership, quantity and
+canonical replay checks own admission. The customer retains the returned request
+reference. There is no operator returns list or detail: an active human admin
+uses that exact reference to approve or reject. Every decision and replay resolves
+the existing Commerce operator after fresh membership admission. Full, partial
+(including zero) and no-refund modes record intent; partial requires an amount.
+A repeated decision receipt preserves the original note. These operations do not
+receive goods, restock, execute a refund or change a subscription.
+
+## Optional payment guidance
+
+The ordinary completion reader may add safe payment guidance for an exact live
+order bearer. A native atomic snapshot rechecks token authority and binds the
+order, client, intent and current attempt. No continuation cookie or issuer is
+invented. The sandbox can establish a verified generic decline; it cannot identify
+a method, instrument, operation or consecutive same-method refusal count. The
+localized notice explains that limit without offering an unbound method-switch
+control. Missing, unreadable or unsupported evidence, ineligible orders,
+indeterminate attempts, observed success and read failures leave the existing
+presentation unchanged. No raw evidence or attempt history reaches the browser.
+Dedicated token-pay retry, method switching, inline retry and embedded-browser
+continuation issuance remain deferred. This optional read creates no payment,
+notification or mutation.

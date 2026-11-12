@@ -819,7 +819,7 @@ refusals cannot start payment. Durable draft, lineage and attempt receipts keep
 replay on one replacement and one attempt. Replacement-attempt simulator controls
 remain bound to the inspected bearer, lineage and durable execution receipt;
 reload reads the same attempt, independently of the recreation source link's
-continuation lifetime. Captured executions show no simulator controls. Dedicated token-pay retry and method switching, payment guidance, inline
+continuation lifetime. Captured executions show no simulator controls. Dedicated token-pay retry and method switching, inline
 retry and embedded-browser continuation issuance remain unavailable.
 
 Hold and release resolve the human administrator before every command and replay.
@@ -861,5 +861,50 @@ Each command and replay rechecks the human admin and resolves the existing Comme
 operator row. Caller identities, missing confirmation, invalid reasons, stale
 order status and conflicting commands refuse. Reasons use the package's trimmed
 1–2,000 character contract. Native durable receipts own replay. The two formerly
-unavailable actions are bound; return, shipment and account limits stay separately
+unavailable actions are bound; physical-return, shipment and account limits stay separately
 listed until their own complete bindings exist.
+
+
+## Return intent and optional payment guidance
+
+The return forms now use the native owned-request and administrator decision
+ports. Customer journeys request an owned paid order, retain its exact reference,
+replay canonical input and refuse foreign ownership, duplicate lines, excessive
+quantities and forged identities. Administrator journeys approve full, partial
+zero and no-refund intent, reject requested returns and replay changed notes
+without changing the original decision. Distributor sessions, missing Commerce
+provisioning and withdrawn memberships refuse. The witnesses compare unchanged
+order, reservation, payment truth and subscription facts and count the native
+decision outbox events. Receiving, restocking and sending a refund remain unbound.
+
+Optional completion guidance uses a native atomic snapshot and the real order
+bearer. Journeys cover localized safe generic-decline copy, repeated read-only
+inspection, foreign/revoked/expired authority, forged selectors, indeterminate
+fallback, initial subscription context and observed capture before settlement.
+A unit witness checks missing intent, lookup failure and malformed native output
+falling back to the ordinary reader. There is no synthetic cookie, method
+identity or evidence taxonomy.
+
+The single shared grouping source adds `returns portal ` and `payment guidance `.
+The generated database-profile listing has 308 cases, partitioned as
+62/56/52/12/12/12/102; every case is selected exactly once. Each group receives a
+fresh installation pair. Workers remain one, retries zero and all captures off;
+the checkout quota stays 36 per 180 seconds.
+
+
+The affected groups passed all 144 cases on real PostgreSQL in both languages:
+
+| Group | Cases, both configurations | Original checkouts per configuration | Replacement receipts per configuration |
+| --- | ---: | ---: | ---: |
+| Portal | 56 | 36 | 0 |
+| Recovery extension | 52 | 26 | 10 |
+| Operator operations | 12 | 10 | 0 |
+| Returns | 12 | 8 | 0 |
+| Payment guidance | 12 | 10 | 0 |
+
+Both configurations have the same counters. Successful output from every group
+passed the unchanged private-output guard against the private captured values.
+Starter units passed 319/319; the PostgreSQL integration witness passed 7/7,
+including the extracted application browser witness and the 60 declared / 53
+bound operation census. These tests ran with `CI=1` and global Git configuration
+disabled, using each test suite's native runner.

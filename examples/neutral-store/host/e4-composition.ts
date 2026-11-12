@@ -1,5 +1,5 @@
-import { createPostgresCommerceOmsPort, createPostgresCommerceOmsControlPlane } from '@openlup/platform/commerce/server/postgres';
-import { adminCommerceOrderCancelRequestSchema, adminCommerceOrderMarkRefundedRequestSchema, CommerceOmsConflictError } from '@openlup/platform/commerce';
+import { createPostgresCommerceReturnsPort, createPostgresCommerceOmsPort, createPostgresCommerceOmsControlPlane } from '@openlup/platform/commerce/server/postgres';
+import { createCommerceReturnsSchemas, returnApproveSchema, returnRejectSchema, adminCommerceOrderCancelRequestSchema, adminCommerceOrderMarkRefundedRequestSchema, CommerceOmsConflictError } from '@openlup/platform/commerce';
 import { isUuid } from './recurring-fence.ts';
 import { createPostgresDestinationPort } from '@openlup/platform/commerce/server/destinations';
 import { createNativeQuoteService } from './quote-composition.ts';
@@ -69,6 +69,7 @@ ApplicationBindings['actions'] {
   return {
     ...composeOrderHolds(pool, authorizeOperator),
     ...composeOrderTransitions(pool, authorizeOperator),
+    ...composeReturnCapabilities(pool, authorizeOperator),
     'operator.shipments': shipmentRead(false),
     'operator.shipment': shipmentRead(true),
     'account.invoice': async (payload, context) => {
@@ -266,4 +267,41 @@ export function composeOrderTransitions(pool: Pool, authorize: (context: ActionC
     }
   };
   return { 'operator.cancelUnpaid': action(false), 'operator.externalRefund': action(true) };
+}
+
+/** Native return intent only; identity and configured reasons belong to this host. */
+export function composeReturnCapabilities(pool: Pool, authorize: (context: ActionContext) => Promise<boolean>): ApplicationBindings['actions'] {
+  const port = createPostgresCommerceReturnsPort(pool);
+  const request: ActionBinding = async (payload, context) => {
+    if (!context.actor.principalRef || !context.actor.customerRef) return refused('customer_session_required');
+    if (Object.keys(payload).some(key => !['locale','orderRef','lines','reasonCode','customerNote'].includes(key))
+      || !Array.isArray(payload.lines) || payload.lines.some(line => !line || typeof line !== 'object' || Array.isArray(line)
+        || Object.keys(line).some(key => !['orderItemId','quantity','sku','restockDisposition'].includes(key)))) return refused('starter_input_invalid');
+    const reasons = context.config.returns.reasons.map(choice => choice.code);
+    if (!reasons.length) return refused('starter_return_unavailable');
+    const schema = createCommerceReturnsSchemas(reasons as [string, ...string[]]).returnRequestCreateSchema;
+    const parsed = schema.safeParse({ ...payload, orderId: payload.orderRef, idempotencyKey: context.commandKey });
+    if (!parsed.success) return refused('starter_input_invalid');
+    try {
+      const value = await port.createRequest({ ...parsed.data, requestedBy: context.actor.principalRef });
+      return { ok: true, value, replayed: value.replayed };
+    } catch { return refused('starter_return_refused'); }
+  };
+  const decision = (approve: boolean): ActionBinding => async (payload, context) => {
+    if (!context.actor.operatorRef || !await authorize(context)) return refused('operator_required');
+    if (Object.keys(payload).some(key => !['locale','returnRef','adminNote', ...(approve ? ['refundMode','refundAmountCents'] : [])].includes(key)))
+      return refused('starter_input_invalid');
+    const input = { ...payload, returnRequestId: payload.returnRef, idempotencyKey: context.commandKey };
+    const parsed = approve ? returnApproveSchema.safeParse(input) : returnRejectSchema.safeParse(input);
+    if (!parsed.success || (approve && 'refundMode' in parsed.data && parsed.data.refundMode === 'partial'
+      && payload.refundAmountCents === undefined)) return refused('starter_input_invalid');
+    const actorUserId = await createPostgresCommerceOmsControlPlane(pool).resolveOperator(context.actor.operatorRef);
+    if (!actorUserId) return refused('operator_required');
+    try {
+      const value = approve ? await port.approve({ ...returnApproveSchema.parse(input), actorUserId })
+        : await port.reject({ ...returnRejectSchema.parse(input), actorUserId });
+      return { ok: true, value, replayed: value.replayed };
+    } catch { return refused('starter_return_refused'); }
+  };
+  return { 'return.request': request, 'operator.returnApprove': decision(true), 'operator.returnReject': decision(false) };
 }

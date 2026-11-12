@@ -12,18 +12,6 @@ export interface NativeLimit {
 
 /** One immutable catalogue for unmounted operations and their visible explanations. */
 export const operationLimitDefinitions = Object.freeze({
-  returnRequest: Object.freeze({
-    id: 'returnRequest', actions: Object.freeze(["requestReturn"] as const), code: 'starter_return_request_unavailable',
-    explanation: Object.freeze({ en: "Requesting a return is unavailable in this release.",
-      pl: "Zgłoszenie zwrotu jest niedostępne w tym wydaniu." }),
-  }),
-  returnDecision: Object.freeze({
-    id: 'returnDecision', actions: Object.freeze(["approveReturn", "rejectReturn"] as const), code: 'starter_return_decision_unavailable',
-    explanation: Object.freeze({ en: "Approving and rejecting a return are unavailable in this release. These actions use the customer's return reference.",
-      pl: "Zatwierdzanie i odrzucanie zwrotu są niedostępne w tym wydaniu. Te działania używają numeru zgłoszenia otrzymanego przez klienta." }),
-  }),
-
-
   shipmentMutation: Object.freeze({
     id: 'shipmentMutation', actions: Object.freeze(["label", "handoff", "delivery"] as const), code: 'starter_shipment_mutation_unavailable',
     explanation: Object.freeze({ en: "Recording a label, handing over a parcel and recording delivery are unavailable in this release. Shipment reads remain available.",
@@ -52,9 +40,6 @@ export const operationLimitDefinitions = Object.freeze({
 } satisfies Record<string, NativeLimit>);
 
 export const operationLimits: Readonly<Partial<Record<Operation, NativeLimit>>> = Object.freeze({
-  'return.request': operationLimitDefinitions.returnRequest,
-  'operator.returnApprove': operationLimitDefinitions.returnDecision,
-  'operator.returnReject': operationLimitDefinitions.returnDecision,
   'operator.label': operationLimitDefinitions.shipmentMutation,
   'operator.handoff': operationLimitDefinitions.shipmentMutation,
   'operator.delivery': operationLimitDefinitions.shipmentMutation,

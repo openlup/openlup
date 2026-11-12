@@ -18,6 +18,7 @@ import type { NativeRenewalPurchaseFacts } from '@openlup/platform/subscriptions
 import type { ApplicationBindings, ActionContext } from './bindings.ts';
 import { validateCart, isRecord } from '../shared/offer.ts';
 import { generateCheckoutRecoveryToken } from '@openlup/platform/commerce/server';
+import { readCheckoutGuidance } from './checkout-recovery.ts';
 import type { PurchaseRecovery } from './checkout-recovery.ts';
 
 const refused = (code: string) => ({ ok: false as const, code });
@@ -193,7 +194,10 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
     if (inspected.status === 'expired' && inspected.tokenState !== 'revoked') return success({ status: 'expired', orderRef: inspected.orderId });
     if (inspected.tokenState !== 'active' || inspected.status !== 'pending_payment') return refused('starter_recovery_unavailable');
     const order = await authorizedOrder(payload, context);
-    return order ? success({ ...present(order), mode: inspected.mode, cadenceDays: inspected.cadenceDays }) : refused('starter_recovery_unavailable');
+    if (!order) return refused('starter_recovery_unavailable');
+    const recoveryGuidance = await readCheckoutGuidance(db, recovery.tokens, payload.token, order);
+    return success({ ...present(order), mode: inspected.mode, cadenceDays: inspected.cadenceDays,
+      ...(recoveryGuidance ? { recoveryGuidance } : {}) });
   };
   actions['payment.simulate'] = async (payload, context) => {
     if (!only(payload, ['orderRef', 'token', 'outcome']) || !['captured', 'refused', 'expired', 'indeterminate'].includes(String(payload.outcome))) return refused('starter_input_invalid');

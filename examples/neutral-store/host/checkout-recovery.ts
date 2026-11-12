@@ -55,11 +55,11 @@ import type { PromotionAcceptanceKeyring } from '@openlup/platform/promotions';
 import type { Pool } from 'pg';
 import type { SandboxPaymentAttempt } from '@openlup/platform/payments/contracts';
 import type { PostgresRoleFreeTransactionLane } from '@openlup/platform/data';
-import { createCheckoutRecoveryInspection, createExpiredCheckoutRecoveryService, createPostgresCheckoutRecoveryOrderPort,
+import { readAuthorizedPaymentRecovery, createPostgresPaymentRecoveryGuidancePort, createCheckoutRecoveryInspection, createExpiredCheckoutRecoveryService, createPostgresCheckoutRecoveryOrderPort,
   createPostgresExpiredCheckoutRecoveryPort, createPostgresExpiredCheckoutDraftPort, createPostgresExpiredCheckoutRuntime,
   createPostgresExpiredCheckoutCompensation, checkoutRecoveryExecutionFingerprint, ExpiredCheckoutRecoveryError,
   classifyCheckoutRecoveryTokenState, type NativeCheckoutRecoveryOrder, type CheckoutRecoveryInspectionResult } from '@openlup/platform/commerce/server';
-import { createPostgresSandboxExpiredCheckoutSafety, createPostgresSandboxPaymentSimulator } from '@openlup/platform/payments';
+import { normalizeSandboxPaymentRecoveryEvidence, createPostgresSandboxExpiredCheckoutSafety, createPostgresSandboxPaymentSimulator } from '@openlup/platform/payments';
 import { createPostgresPurchaseReservationPort } from '@openlup/platform/inventory';
 import { createNativeQuoteService } from './quote-composition.ts';
 import { installedAcquisitionPredecessors, createAcquisitionRenewalBinding } from './acquisition-predecessors.ts';
@@ -192,4 +192,17 @@ export function composeExpiredRecovery(pool: Pool, lane: Pick<PostgresRoleFreeTr
       throw error;
     }
   } };
+}
+
+/** Optional exact-order guidance. Absence or failure preserves the ordinary reader. */
+export async function readCheckoutGuidance(pool: Pool, tokens: PurchaseRecovery['tokens'], rawToken: string,
+  order: { id: string; client_id: string }) {
+  try {
+    const intent = (await pool.query("SELECT id FROM public.commerce_settlement_intents WHERE order_id=$1 AND channel_key='sandbox'", [order.id])).rows[0];
+    if (!intent) return undefined;
+    const result = await readAuthorizedPaymentRecovery({ request: { orderId: order.id, clientId: order.client_id, paymentIntentId: intent.id },
+      claims: null, authorization: `Bearer ${rawToken}`, deps: { tokenPort: tokens,
+        port: createPostgresPaymentRecoveryGuidancePort(pool, normalizeSandboxPaymentRecoveryEvidence) } });
+    return result?.guidance ?? undefined;
+  } catch { return undefined; }
 }

@@ -133,3 +133,27 @@ test('order cancellation and manual refund recheck admission and reject forged i
       assert.deepEqual(await action({ ...input, ...forged }, context), { ok: false, code: 'starter_input_invalid' });
   }
 });
+
+
+test('return commands reject caller identities and validate native decisions before access', async () => {
+  const pool = { query() { throw new Error('unvalidated_return_store_touched'); } } as unknown as Pool;
+  const actions = composeE4Capabilities(pool, async () => true);
+  const ref = 'abcdefab-cdef-4abc-8def-abcdefabcdef';
+  const customer = { ...context, actor: { principalRef: ref, customerRef: ref, operatorRef: null } };
+  const input = { orderRef: ref, reasonCode: context.config.returns.reasons[0]!.code, lines: [{ orderItemId: ref, quantity: 1 }] };
+  for (const field of ['actorUserId','principalRef','requestedBy','customerRef','clientId','idempotencyKey']) {
+    assert.deepEqual(await actions['return.request']!({ ...input, [field]: ref }, customer), { ok: false, code: 'starter_input_invalid' });
+    for (const operation of ['operator.returnApprove','operator.returnReject'] as const)
+      assert.deepEqual(await actions[operation]!({ returnRef: ref, [field]: ref }, context), { ok: false, code: 'starter_input_invalid' });
+  }
+  for (const invalid of [{ ...input, reasonCode: 'unconfigured' }, { ...input, lines: [...input.lines, ...input.lines] },
+    { ...input, lines: [{ orderItemId: ref, quantity: 0 }] }, { ...input, lines: [{ ...input.lines[0], actorUserId: ref }] }])
+    assert.deepEqual(await actions['return.request']!(invalid, customer), { ok: false, code: 'starter_input_invalid' });
+  assert.deepEqual(await actions['operator.returnApprove']!({ returnRef: ref, refundMode: 'partial' }, context), { ok: false, code: 'starter_input_invalid' });
+  assert.deepEqual(await actions['return.request']!(input, context), { ok: false, code: 'customer_session_required' });
+  let checks = 0;
+  const denied = composeE4Capabilities(pool, async () => { checks++; return false; });
+  for (const operation of ['operator.returnApprove','operator.returnReject'] as const)
+    for (let replay = 0; replay < 3; replay++) assert.deepEqual(await denied[operation]!({ returnRef: ref }, context), { ok: false, code: 'operator_required' });
+  assert.equal(checks, 6);
+});

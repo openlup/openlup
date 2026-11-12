@@ -94,7 +94,7 @@ function shipmentActions(context: PageContext): HTMLElement {
 function returnActions(context: PageContext): HTMLElement {
   return el('section', { id: 'returns', class: 'panel' }, el('h2', {}, context.t('returns')),
     el('p', {}, operationLimitDefinitions.returnsReader.explanation[context.locale]),
-    el('p', {}, operationLimitDefinitions.returnDecision.explanation[context.locale]),
+    el('p', {}, context.t('returnIntentBody')),
     ...(['operator.returnApprove', 'operator.returnReject'] as const).map(operation => actionForm(context, {
       operation, submit: operation === 'operator.returnApprove' ? 'approveReturn' : 'rejectReturn',
       fields: [{ name: 'returnRef', label: 'returnRef' }, { name: 'note', label: 'note', type: 'textarea', required: false },

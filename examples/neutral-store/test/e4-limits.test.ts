@@ -9,9 +9,6 @@ import { dispatchAction, pendingBindings, type ActionContext } from '../host/bin
 import { createApplication } from '../host/server.ts';
 
 const dispositions: Array<[Operation, string]> = [
-  ['return.request', 'starter_return_request_unavailable'],
-  ['operator.returnApprove', 'starter_return_decision_unavailable'],
-  ['operator.returnReject', 'starter_return_decision_unavailable'],
   ['operator.label', 'starter_shipment_mutation_unavailable'],
   ['operator.handoff', 'starter_shipment_mutation_unavailable'],
   ['operator.delivery', 'starter_shipment_mutation_unavailable'],
@@ -38,8 +35,7 @@ for (const [operation, code] of dispositions) test(`${operation} refuses before 
 
 test('actor admission precedes the named refusal and ignores body identities and receipts', async () => {
   for (const [operation] of dispositions) {
-    const required = operation.startsWith('operator.') || operation === 'ingest.submit' ? 'operator_required'
-      : ['return.request', 'subscription.command'].includes(operation) ? 'customer_session_required' : undefined;
+    const required = operation.startsWith('operator.') || operation === 'ingest.submit' ? 'operator_required' : undefined;
     if (!required) continue;
     assert.deepEqual(await dispatchAction(pendingBindings(), operation, { operatorRef: 'operator', customerRef: 'customer',
       actorUserId: 'operator', principalRef: 'customer', receipt: { admitted: true } },

@@ -16,4 +16,6 @@ export const browserJourneyGroups = journeySelections([
   'portal ',
   'recovery extension ',
   'operator operations ',
+  'returns portal ',
+  'payment guidance ',
 ]);

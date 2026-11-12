@@ -108,6 +108,8 @@ export function completionPage(context: PageContext): HTMLElement {
     const inspected = Object.freeze({ ...credential, orderRef: result.value.orderRef });
     rememberPurchase(context.config.id, inspected);
     state.replaceChildren(el('p', {}, context.t('sandboxOnly')), renderValue(result.value),
+      ...(isRecord(result.value.recoveryGuidance) ? [el('section', { 'data-payment-guidance': '' },
+        el('h2', {}, context.t('guidanceTitle')), el('p', {}, context.t('guidanceBody')))] : []),
       el('h2', {}, context.t('payment')),
       ...(['captured', 'refused', 'expired', 'indeterminate'] as const).map(outcome => actionForm(context, {
         operation: 'payment.simulate',

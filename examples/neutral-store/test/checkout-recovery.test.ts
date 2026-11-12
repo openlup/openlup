@@ -222,3 +222,15 @@ test('captured observations and mismatched receipts cannot expose replacement si
     assert.equal(recreatedExecutionForInspection(executionOrder, attempt, result), null);
   }
 });
+
+
+test('optional guidance preserves the ordinary reader when lookup or native snapshot is unavailable', async () => {
+  const { readCheckoutGuidance } = await import('../host/checkout-recovery.ts');
+  const ref = 'abcdefab-cdef-4abc-8def-abcdefabcdef';
+  const tokens = { async validate() { return { orderId: ref, clientId: ref, tokenId: ref }; } } as unknown as import('../host/checkout-recovery.ts').PurchaseRecovery['tokens'];
+  for (const query of [async () => { throw new Error('offline'); }, async () => ({ rows: [] }),
+    async (sql: string) => sql.includes('settlement_intents') ? { rows: [{ id: ref }] } : { rows: [{ result: { malformed: true } }] }]) {
+    const pool = { query } as unknown as import('pg').Pool;
+    assert.equal(await readCheckoutGuidance(pool, tokens, 'private-bearer', { id: ref, client_id: ref }), undefined);
+  }
+});

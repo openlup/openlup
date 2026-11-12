@@ -259,7 +259,7 @@ refusals cannot start payment. Durable draft, lineage and attempt receipts keep
 replay on one replacement and one attempt. Replacement-attempt simulator controls
 remain bound to the inspected bearer, lineage and durable execution receipt;
 reload reads the same attempt, independently of the recreation source link's
-continuation lifetime. Captured executions show no simulator controls. Dedicated token-pay retry and method switching, payment guidance, inline
+continuation lifetime. Captured executions show no simulator controls. Dedicated token-pay retry and method switching, inline
 retry and embedded-browser continuation issuance remain unavailable.
 
 Hold and release resolve the human administrator before every command and replay.
@@ -302,5 +302,32 @@ Each command and replay rechecks the human admin and resolves the existing Comme
 operator row. Caller identities, missing confirmation, invalid reasons, stale
 order status and conflicting commands refuse. Reasons use the package's trimmed
 1–2,000 character contract. Native durable receipts own replay. The two formerly
-unavailable actions are bound; return, shipment and account limits stay separately
+unavailable actions are bound; physical-return, shipment and account limits stay separately
 listed until their own complete bindings exist.
+
+## Return requests and decisions
+
+Signed-in customers submit configured reason codes and positive quantities for
+items from their own paid or fulfilled order. Native ownership, quantity and
+canonical replay checks own admission. The customer retains the returned request
+reference. There is no operator returns list or detail: an active human admin
+uses that exact reference to approve or reject. Every decision and replay resolves
+the existing Commerce operator after fresh membership admission. Full, partial
+(including zero) and no-refund modes record intent; partial requires an amount.
+A repeated decision receipt preserves the original note. These operations do not
+receive goods, restock, execute a refund or change a subscription.
+
+## Optional payment guidance
+
+The ordinary completion reader may add safe payment guidance for an exact live
+order bearer. A native atomic snapshot rechecks token authority and binds the
+order, client, intent and current attempt. No continuation cookie or issuer is
+invented. The sandbox can establish a verified generic decline; it cannot identify
+a method, instrument, operation or consecutive same-method refusal count. The
+localized notice explains that limit without offering an unbound method-switch
+control. Missing, unreadable or unsupported evidence, ineligible orders,
+indeterminate attempts, observed success and read failures leave the existing
+presentation unchanged. No raw evidence or attempt history reaches the browser.
+Dedicated token-pay retry, method switching, inline retry and embedded-browser
+continuation issuance remain deferred. This optional read creates no payment,
+notification or mutation.
