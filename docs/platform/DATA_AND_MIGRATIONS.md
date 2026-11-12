@@ -3341,7 +3341,7 @@ and `metadata.retainPayload=true` survive uncertain effects and terminal discard
 Both compactors skip pinned payloads and retain unique keys. A dispatching or
 unknown receipt requires explicit quiesced reconciliation with its exact request
 digest, scope and evidence reference; identical retry additionally requires
-qualified deduplication semantics and current authority. No background resend is
+qualified deduplication semantics and current authority. No background retry is
 inferred from a lost response. Currency exponent and resolver provenance are
 frozen once from the qualified host currency, never replaced during retry.
 

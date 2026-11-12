@@ -428,9 +428,8 @@ It does not expose a separate retry-after delay. A 2xx response without an ID
 retains historical transport acceptance with `resendId: null`; do not interpret
 it as delivery or automatically send a replacement. Provider idempotency keys
 have a limited retention window (currently 24 hours), so preserve the local
-effect ledger independently of that window. See the
-[provider key contract](https://resend.com/docs/dashboard/emails/idempotency-keys)
-before selecting the host retry horizon.
+effect ledger independently of that window. Check the provider's published
+idempotency-key contract before selecting the host retry horizon.
 
 ### Opt-in singleton marketing adapter
 

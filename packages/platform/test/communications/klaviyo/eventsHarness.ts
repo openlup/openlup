@@ -14,7 +14,7 @@ export function eventFixture() {
   const request: EcommerceEventExportRequest = { binding, subjectReference: "subject:1", profileId: "owned_1", generation: 1,
     authorityReference: "authority:paid:1", classification: "live", currencyExponent: 2, currencyExponentSource: "offline:currency-table-v1",
     event: { schemaVersion: 1, sourceId: "paid:1", sourceType: "order.paid", occurredAt: new Date(1).toISOString(), subject: { clientId },
-      data: { orderId, settlementIntentId: intentId, purchaseKind: "one_time", amountMinor: 12345, currency: "PLN", lines: [{ sku: "ITEM-1", quantity: 1, amountMinor: 12345 }] } } };
+      data: { orderId, settlementIntentId: intentId, purchaseKind: "one_time", amountMinor: 12345, currency: "USD", lines: [{ sku: "ITEM-1", quantity: 1, amountMinor: 12345 }] } } };
   const state = { current: true, retained: structuredClone(request) };
   h.config.events = { liveSinceMs: 0, authorize: candidate => state.current && JSON.stringify(candidate) === JSON.stringify(state.retained),
     verification: { binding, revision: "2026-07-15", evidenceReference: "offline:synthetic-not-TEST", scopes: ["events:write"],

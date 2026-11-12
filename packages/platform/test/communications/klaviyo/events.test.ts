@@ -4,7 +4,7 @@ import { withdraw, request as syncRequest } from "./harness.js";
 import { clientId, orderId, eventFixture } from "./eventsHarness.js";
 
 it("E01 emits the frozen existing-profile tuple and uses authoritative currency exponent without consent writes", async () => {
-  for (const [currency, exponent] of [["JPY", 0], ["PLN", 2], ["BHD", 3]] as const) {
+  for (const [currency, exponent] of [["JPY", 0], ["USD", 2], ["BHD", 3]] as const) {
     const h = eventFixture(), request = { ...h.request, currencyExponent: exponent,
       event: { ...h.request.event, data: { ...(h.request.event as Extract<EcommerceEvent, { sourceType: "order.paid" }>).data, currency } } } as EcommerceEventExportRequest;
     h.approve(request);
