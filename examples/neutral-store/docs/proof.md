@@ -785,8 +785,10 @@ provider access, publication or deployment qualification.
 ## Account, checkout and parcel candidate
 
 Run `./lifecycle browser` from the application directory for the complete database
-configuration. It creates fresh installations for five sequential groups:
-subscription care, portal journeys, recovery extensions, operator operations and the purchase baseline. Tests use
+configuration. It creates a fresh installation pair for each of the ten named groups
+in `browser-groups.mjs`: subscription care, portal, recovery extension, operator
+operations, returns portal, payment guidance, shipment operations, account
+preferences, payment retry and embedded browser, followed by the remainder. Tests use
 one worker and tracing, screenshots and video off. Independent processes and
 installations keep each group inside the normal checkout quota; production quota
 values and admission paths are unchanged. Focus the portal with `./lifecycle
@@ -794,7 +796,8 @@ browser browser/acquisition.spec.ts --grep 'portal '`. Playwright's `--list` inv
 selects fourteen definitions in both languages and both configurations, for
 fifty-six cases. The external
 parcel fixture freezes synthetic carrier contact and supplies normalized provider
-facts through existing native owners. It mounts no dispatch or delivery action.
+facts through existing native owners. The fixture itself mounts no action;
+operator pages bind label, handoff and delivery evidence separately.
 
 The recovery journeys distinguish issuer rules: checkout, reminder-wave and
 signed-in recovery links end continuation at order creation plus 24 hours and preserve
@@ -1030,17 +1033,46 @@ refusal after a real legacy sandbox dispatch. No test cookie is fabricated.
 | Payment guidance | 12 | 10 | 0 |
 | Remainder | 102 | 2 | 0 |
 
-All 250 affected cases passed on real PostgreSQL with the single shared selections,
+At the token/inline checkpoint, all 250 affected cases passed on real PostgreSQL
+with the single shared selections,
 fresh installation pairs, one worker, zero retries and captures off. Both
 configurations have identical counters. Original and replacement drafts together
 stay within the unchanged 36-checkout quota. All successful logs passed the
-unchanged private-output guard, with its flag absent. The generated full listing
-has 368 cases partitioned as 62/56/52/12/12/12/16/16/20/8/102, every case selected
+unchanged private-output guard, with its flag absent. At that checkpoint the generated
+full listing contained 368 cases partitioned as 62/56/52/12/12/12/16/16/20/8/102, every case selected
 exactly once and no duplicates.
 
-Starter units passed 332/332, including extraction and owned-registry witnesses.
+At that checkpoint starter units passed 332/332, including extraction and owned-registry witnesses.
 The PostgreSQL integration witness passed 7/7, including the extracted browser
 cases and 68 declared / 64 bound operation census. Changed Node, Playwright and
 Vitest suites ran with CI enabled and global Git configuration disabled. New
 fixtures use current/relative ordered instants and no short expiries. No complete
 native-limit row is removed: real-provider and remaining account boundaries stay.
+
+
+## Recovery capture and continuation display witnesses
+
+A repeat subscriber has no acquisition terms on the next initial checkout. Native
+HTTP and browser journeys pay that checkout through dedicated token pay or exact
+inline retry, simulate capture, and require both a paid order and an active
+subscription with attached renewal terms. Acquisition snapshots validate retained
+renewal availability before recording any capture observation; damaged retained
+terms leave the order pending, the declaration provisional and the attempt
+dispatched with no observation. A live token for another customer cannot inspect
+or simulate the target payment and leaves its durable state unchanged.
+
+Buyer-link confirmation is keyed by the inspected continuation order. Unit proof
+keeps each order's confirmation independent across remounts. The owned
+`embeddedCheckoutBrowserMarkers` policy controls display hints only; native cookie
+authorization continues to own delivery and payment admission. The group partition
+unit includes payment-retry and embedded-browser sample titles.
+
+The affected shared groups pass 152 cases: portal 56, recovery extension 52,
+payment retry 36 and embedded browser 8. Original/replacement draft counts per
+configuration are 36/0, 26/10, 24/2 and 4/0 respectively, identical for both
+configurations and within the unchanged quota. Every group uses a fresh pair,
+one worker, zero retries and captures off. The current generated full listing
+contains 384 cases partitioned as 62/56/52/12/12/12/16/16/36/8/102, with each
+identity selected once and no duplicates. Starter units pass 333/333 and the
+PostgreSQL integration witness passes 7/7, including the extracted application
+and unchanged 68 declared / 64 bound operation census.

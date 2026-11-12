@@ -9,20 +9,26 @@ import { act } from '../api.ts';
 import { renderValue } from '../dom.ts';
 import { offerIssues } from './storefront.ts';
 import { currentPurchase, rememberPurchase, visiblePurchase } from '../purchase.ts';
+import { embeddedCheckoutBrowserMarkers } from '../../owned/acquisition-policy.ts';
 
 // Confirmation survives panel remounts; it never suppresses the send-again control.
-let buyerLinkSent = false;
-export function isEmbeddedCheckoutBrowser(userAgent = navigator.userAgent): boolean {
-  return ['FBAN/','FB_IAB/','Instagram'].some(marker => userAgent.includes(marker));
+export function createBuyerLinkConfirmation() {
+  const sentOrders = new Set<string>();
+  return { wasSent: (orderRef: string) => sentOrders.has(orderRef), markSent: (orderRef: string) => { sentOrders.add(orderRef); } };
 }
-function buyerLinkControl(context: PageContext): HTMLElement {
+const buyerLinkConfirmation = createBuyerLinkConfirmation();
+export function isEmbeddedCheckoutBrowser(userAgent = navigator.userAgent): boolean {
+  return embeddedCheckoutBrowserMarkers.some(marker => userAgent.includes(marker));
+}
+function buyerLinkControl(context: PageContext, orderRef: string): HTMLElement {
+  const buyerLinkSent = buyerLinkConfirmation.wasSent(orderRef);
   const status = el('p', { role: 'status' }, buyerLinkSent ? context.t('buyerLinkSent') : '');
   const control = button(context.t(buyerLinkSent ? 'buyerLinkResend' : 'buyerLinkSend'), async () => {
     if (control.disabled) return; control.disabled = true;
     const result = await act('checkout.paymentLink', {}, crypto.randomUUID());
     control.disabled = false;
     if (!section.isConnected) return;
-    if (result.ok) { buyerLinkSent = true; status.textContent = context.t('buyerLinkSent'); control.textContent = context.t('buyerLinkResend'); }
+    if (result.ok) { buyerLinkConfirmation.markSent(orderRef); status.textContent = context.t('buyerLinkSent'); control.textContent = context.t('buyerLinkResend'); }
     else status.textContent = context.t('buyerLinkFailed');
   });
   const section = el('section', { 'data-buyer-link': '', 'aria-label': context.t('buyerLinkPrompt') },
@@ -112,7 +118,7 @@ export function completionPage(context: PageContext): HTMLElement {
       }
       state.replaceChildren(el('p', {}, context.t('sandboxOnly')), renderValue({ orderRef: inspected.orderRef, attemptRef, state: value.state }),
         ...(isRecord(value.recoveryGuidance) ? [el('section', { 'data-payment-guidance': '' }, el('h2', {}, context.t('guidanceTitle')), el('p', {}, context.t('guidanceBody')))] : []),
-        ...forms, ...(value.continuationAvailable === true && isEmbeddedCheckoutBrowser() ? [buyerLinkControl(context)] : []));
+        ...forms, ...(value.continuationAvailable === true && typeof inspected.orderRef === 'string' && isEmbeddedCheckoutBrowser() ? [buyerLinkControl(context, inspected.orderRef)] : []));
       return true;
     }
 
@@ -178,7 +184,7 @@ export function completionPage(context: PageContext): HTMLElement {
         el('h2', {}, context.t('guidanceTitle')), el('p', {}, context.t('guidanceBody')))] : []),
       el('h2', {}, context.t('payment')),
       ...(inspected.token ? [freshPay(inspected)] : []),
-      ...(value?.continuationAvailable === true && isEmbeddedCheckoutBrowser() ? [buyerLinkControl(context)] : []),
+      ...(value?.continuationAvailable === true && typeof inspected.orderRef === 'string' && isEmbeddedCheckoutBrowser() ? [buyerLinkControl(context, inspected.orderRef)] : []),
       ...(['captured', 'refused', 'expired', 'indeterminate'] as const).map(outcome => actionForm(context, {
         operation: 'payment.simulate',
         submit: outcome === 'captured' ? 'simulatePaid' : outcome === 'refused' ? 'simulateDeclined' : outcome === 'expired' ? 'simulateExpired' : 'simulateIndeterminate',

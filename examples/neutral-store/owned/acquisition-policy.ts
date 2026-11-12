@@ -54,3 +54,6 @@ export const accountBillingSelection = 'not_selected' as const;
 /** Explicit synthetic identities only; no real instrument or provider taxonomy. */
 export const sandboxRecoveryPolicy = { cookieName: '__Host-openlup_checkout_continuation', rails: ['sandbox','external'] as const,
   methodKeys: ['primary','secondary'] as const, buyerLifetimeMs: 86400000, buyerSendBucketMs: 600000 };
+
+/** Case-sensitive display hints only. Matching a marker grants no payment or delivery authority. */
+export const embeddedCheckoutBrowserMarkers = Object.freeze(['FBAN/', 'FB_IAB/', 'Instagram']);

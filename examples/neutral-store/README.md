@@ -160,7 +160,7 @@ newsletter read/withdraw, and the reduced operator order control-plane view.
 Invoice history, owned captured PDF access, operator document summaries and
 shipment reads are also bound, alongside authenticated recovery, scheduled sandbox
 renewal and private transactional notices. The full account projection remains a
-named refusal. Deferred order and shipment mutations retain their named limits.
+named refusal. The remaining N3 order notes and order-address corrections retain their named limit.
 Guest purchase, account and operator order reads have committed source and
 real-HTTP proofs. Separate local real-browser evidence passes the unchanged
 required journey and recovery checks in both configurations; those browser runs
@@ -765,8 +765,9 @@ From this application directory, with the selected package set installed, run
 `./lifecycle browser`. It reads the selections from `browser-groups.mjs`. Each
 group gets a fresh pair of throwaway PostgreSQL 16 databases with the public
 qualified installation and owned demo catalogue, plus two restricted hosts.
-The groups are subscription care, portal, recovery extension, operator operations
-and the remainder. They run every test selected by `playwright.database.config.ts` once,
+The ten named groups are subscription care, portal, recovery extension, operator
+operations, returns portal, payment guidance, shipment operations, account
+preferences, payment retry and embedded browser, followed by the remainder. They run every test selected by `playwright.database.config.ts` once,
 with one worker. The command
 creates both the UI-origin file and the private
 `.context/care-browser/fixtures.json` required only by the database subscription
@@ -836,7 +837,8 @@ also requires confirmation; the native command owns provider fences and recorded
 reservation release. These actions do not confirm arrival, dispatch a real
 parcel, create a refund or move a subscription cycle earlier.
 Unpaid cancellation and completed external-refund marking use the native order
-commands. Other shipment mutations keep their named refusals.
+commands. Shipment label, handoff and delivery evidence are also bound to native
+operator commands; N3 order notes and order-address corrections remain unavailable.
 
 For replacement/cancellation, the database owner provisions one durable Commerce
 operator row per active human admin, using the principal ID found in the roster
@@ -1058,6 +1060,8 @@ No payment-method hold policy is selected by this application; the public hold
 wrapper receives that explicit unconfigured policy. Real-provider execution,
 method setup and card replacement keep their named refusals.
 
+The owned `embeddedCheckoutBrowserMarkers` constant in `owned/acquisition-policy.ts`
+contains display hints only and grants no payment or delivery authority.
 Only detected embedded browsers show the buyer send/send-again control after real
 continuation exists. Detection is a display hint, never authority. The native
 cookie-only handler obtains order/client from verified claims, uses the saved

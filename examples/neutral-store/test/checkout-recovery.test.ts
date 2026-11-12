@@ -272,8 +272,22 @@ test('inline authority is the exact transport cookie, never a bearer or body coo
 });
 
 
-import { isEmbeddedCheckoutBrowser } from '../client/pages/checkout.ts';
+import { createBuyerLinkConfirmation, isEmbeddedCheckoutBrowser } from '../client/pages/checkout.ts';
+import { embeddedCheckoutBrowserMarkers } from '../owned/acquisition-policy.ts';
 test('embedded detection is a display hint for the measured markers only', () => {
-  for (const marker of ['FBAN/','FB_IAB/','Instagram']) assert.equal(isEmbeddedCheckoutBrowser(`Example ${marker} browser`),true);
+  for (const marker of embeddedCheckoutBrowserMarkers) assert.equal(isEmbeddedCheckoutBrowser(`Example ${marker} browser`),true);
   assert.equal(isEmbeddedCheckoutBrowser('Example ordinary browser'),false);
+});
+
+test('buyer-link confirmation survives remounts only for the continuation order that sent it', () => {
+  const confirmation = createBuyerLinkConfirmation();
+  const first = 'abcdefab-cdef-4abc-8def-abcdefabcdef', second = 'bcdefabc-defa-4bcd-8efa-bcdefabcdefa';
+  assert.equal(confirmation.wasSent(first), false);
+  confirmation.markSent(first);
+  assert.equal(confirmation.wasSent(first), true);
+  assert.equal(confirmation.wasSent(second), false);
+  confirmation.markSent(second);
+  assert.equal(confirmation.wasSent(first), true);
+  assert.equal(confirmation.wasSent(second), true);
+  assert.equal(createBuyerLinkConfirmation().wasSent(first), false);
 });
