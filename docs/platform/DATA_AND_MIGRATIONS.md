@@ -3691,25 +3691,6 @@ new raw-table grants. Their [package composition](PLATFORM_PACKAGE_REFERENCE.md#
 binds client ownership and separates expired inspection from payment authority.
 This forward contains no recreation writer or historical backfill.
 
-
-## Operator shipment evidence
-
-The native `20261110230000_operator_shipment_commands.sql` forward adds three
-bounded owned shipment commands and reuses the private operator receipt table.
-It widens its kind CHECK, adds nullable provider identity to tracking references,
-and expands reference uniqueness by provider while preserving duplicate-null
-behavior. Explicit same-order reattribution retains displaced reference rows in
-the private receipt; it performs no historical backfill. Existing runtime table
-privileges and receipt privacy remain unchanged.
-
-A fresh nullable operation actor column references the human principal with
-`ON DELETE SET NULL`; historical actors stay null. The arrival recorder retains
-its INVOKER header, owner, ACL and subscription-before-parcel lock order.
-Ordinary arrival keys retain strict timestamp replay. The operator chronology
-namespace permits earlier-only repair and retains the original arrival receipt.
-No decision or status evidence alone calls replacement confirmation. See the
-[shipment composition and limits](PLATFORM_PACKAGE_REFERENCE.md#native-operator-shipment-commands).
-
 ### Expired checkout preparation
 
 `20261110180000_checkout_recovery_recreation.sql` adds the service-only definer
@@ -3737,3 +3718,21 @@ materializing reader nor treats observed capture as completed settlement.
 Current complete-installation inventories include the new function; historical
 prefixes are unchanged. The [composition recipe](PLATFORM_PACKAGE_REFERENCE.md#atomic-checkout-payment-guidance)
 owns capability opt-in, neutral normalization and the sandbox profile limits.
+
+### Operator shipment evidence
+
+The native `20261110230000_operator_shipment_commands.sql` forward adds three
+bounded owned shipment commands and reuses the private operator receipt table.
+It widens its kind CHECK, adds nullable provider identity to tracking references,
+and expands reference uniqueness by provider while preserving duplicate-null
+behavior. Explicit same-order reattribution retains displaced reference rows in
+the private receipt; it performs no historical backfill. Existing runtime table
+privileges and receipt privacy remain unchanged.
+
+A fresh nullable operation actor column references the human principal with
+`ON DELETE SET NULL`; historical actors stay null. The arrival recorder retains
+its INVOKER header, owner, ACL and subscription-before-parcel lock order.
+Ordinary arrival keys retain strict timestamp replay. The operator chronology
+namespace permits earlier-only repair and retains the original arrival receipt.
+No decision or status evidence alone calls replacement confirmation. See the
+[shipment composition and limits](PLATFORM_PACKAGE_REFERENCE.md#native-operator-shipment-commands).
