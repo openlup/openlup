@@ -12,7 +12,7 @@ application composition limits; they are not claims of exported package errors.
 | N1 | Live products, SKUs, price lists, price entries and promotions are seed data: one owned demo-seed step with the install connection, no runtime writer for them and no checkout promotion codes. Bundle drafts, compositions, target prices and activation, and catalogue drafts, are administered by a native human operator through their native writers. An activated bundle is not purchasable in this release. | `starter_promotion_write_unavailable` |
 | N2 | Operator email/phone correction and account linking | `operator_subscription_authority_unavailable` |
 | N3 | Order note and order-address correction | `starter_order_correction_unavailable` |
-| N5 | Billing profiles, private-profile views and combined profile views | `starter_account_preferences_unavailable` |
+| N5 | Private-profile views and combined profile views | `starter_account_preferences_unavailable` |
 | N6 | Real PSP, payment method setup, card replacement and unsupported money recovery | `native_prepared_attempt_store_unsupported` |
 | N8 | Demand-driven plan-length and portion resizing are unconfigured; the seven exact commands are API-only | `starter_subscription_resize_unconfigured` |
 | N9 | Rich OMS, commercial analytics and saved draft resume | `starter_rich_oms_unavailable` |

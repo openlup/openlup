@@ -168,7 +168,7 @@ for (const locale of ['en', 'pl'] as const) {
     }
   });
 
-  test(`${locale}: remaining billing and private views refuse visibly`, async ({ page }) => {
+  test(`${locale}: remaining private and combined profile views refuse visibly`, async ({ page }) => {
     for (const path of [routes.account[locale], routes.limits[locale]]) {
       await page.goto(path);
       for (const key of ['privateProfile', 'profileViews'] as const) {
