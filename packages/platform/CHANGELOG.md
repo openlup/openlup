@@ -23,7 +23,7 @@ Migration: Apply the additive native-store forward before composing the new read
 
 - Add safety-first expired initial checkout recreation with frozen commercial validation, one permanent linked replacement, source-payment checks at first runtime admission, native purchase compensation and a shared adopter content fence. A replacement initial subscription gets a new provisional declaration; renewal cycles refuse. Native payment evidence qualification is limited to the sandbox owner; real-provider paths retain their named refusal.
 
-Migration: Apply the additive service-only preparation forward after the recovery-lineage forward. No history is backfilled and no predecessor or live subscription is reopened. Hosts bind authority, quote extensions and a transaction-scoped sandbox runtime.
+Migration: Apply the complete catalogue through `20261110280000_checkout_recovery_buyer_snapshot.sql`, which preserves snapshot absence during preparation. No history is backfilled and no predecessor or live subscription is reopened. Hosts bind authority, quote extensions and a transaction-scoped sandbox runtime.
 
 - @openlup/platform size growth: The packed cap is 3,023,741 B, adding 2% to the hosted 2,964,451 B measure; the approved unpacked, code/documentation and file-count limits are retained.
 
@@ -214,6 +214,10 @@ Existing duties and documents never acquire a buyer component later. The selecte
 Migration: install the complete native catalogue through `20261110270000_invoicing_duty_buyer_capture.sql`. Record the owned order destination before capture: missing data refuses with `commerce_destination_unavailable`. A handoff source must name a shipment owned by that order, or capture refuses with `customer_billing_shipment_mismatch`. Payment truth absorbs these as bounded retryable capture faults without rolling back money; the retained-source sweep marks the source `faulted` when its eight-attempt ceiling is reached. Correct the source while it remains retryable. After it is faulted, the sweep excludes it and there is no supported operator reset/requeue command; recording a destination alone does not resume it. Escalate for an invoicing-owned recovery procedure rather than changing or deleting ledger rows.
 
 Compose `createCustomerBillingPrivacyContributor` with required ID `customer-billing` even without selecting the billing invoice store, as described in the identity privacy guidance. The Node reference host composes it alongside its identity, subscription and parcel-contact contributors. Editable profiles erase; frozen invoice buyers retain under the existing invoicing owner.
+
+- Fix expired checkout recreation creating an empty invoice buyer snapshot when the source has none. Preparation now preserves absence so first-duty capture selects the owned billing profile/address, then the marked shipping fallback. Recorded snapshots, including explicit empty objects, remain unchanged; capture replay and later profile edits preserve frozen buyer facts.
+
+Migration: Apply the complete native catalogue through `20261110280000_checkout_recovery_buyer_snapshot.sql`. The forward replaces only the preparation function; it adds no backfill and changes no buyer selector, lineage, payment authority or grants.
 
 ## [0.38.0]
 

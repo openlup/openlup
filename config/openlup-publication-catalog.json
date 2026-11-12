@@ -1366,6 +1366,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261110280000_checkout_recovery_buyer_snapshot.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4503,6 +4507,10 @@
     },
     {
       "path": "packages/platform/sql/20261110270000_invoicing_duty_buyer_capture.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261110280000_checkout_recovery_buyer_snapshot.sql",
       "class": "public-output"
     },
     {

@@ -3925,3 +3925,23 @@ marks it `faulted`. There is no supported operator reset/requeue command: merely
 recording a destination after that point does not resume the source. Escalate for
 an invoicing-owned recovery procedure; do not edit or delete ledger rows to reset
 it. Settled money and historical documents remain unchanged.
+
+### Checkout recreation buyer snapshot repair (slot 28)
+
+`20261110280000_checkout_recovery_buyer_snapshot.sql` replaces only
+`commerce_prepare_expired_checkout_recovery(text,uuid,uuid,bigint,timestamptz)`.
+Its installed header, owner, `pg_catalog, pg_temp` search path and ACL remain
+unchanged. The forward adds no table, grant, trigger or backfill.
+
+Fresh preparation copies a recorded source `invoiceBuyerSnapshot`, preserving
+its JSON value exactly. A nonempty `runtimeFinalize.invoiceBuyerSnapshot` keeps
+its existing precedence over the top-level snapshot; recorded empty objects
+remain explicit. When neither source contains a snapshot, preparation adds no
+snapshot key. Runtime metadata and lineage fields retain their existing behavior.
+
+The first-duty buyer rule remains unchanged: an explicit object, then the owned
+billing profile/address, then the marked shipping fallback. A recreated order
+without explicit buyer facts can now reach those existing fallback branches.
+Preparation replay never rewrites its linked replacement, and later profile or
+address edits cannot change the buyer frozen by first capture. Historical orders
+and previously captured duties are not repaired or reselected.
