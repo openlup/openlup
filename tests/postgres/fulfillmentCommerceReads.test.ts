@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createPostgresFulfillmentCommerceReadPort, nativeFulfillmentCommerceResponseSchemas } from '@openlup/platform/fulfillment/native';
+import { createPostgresFulfillmentCommerceReadPort, createPostgresFulfillmentShipmentCommandPort, nativeFulfillmentCommerceResponseSchemas } from '@openlup/platform/fulfillment/native';
 import { createAdminCommerceFulfillmentOrderDetailHandler, createAdminCommerceFulfillmentOrdersListHandler } from '@openlup/platform/fulfillment';
 import { createBffResponder } from '@openlup/platform/bff';
 import type { HttpResponse } from '@openlup/platform/http';
@@ -200,6 +200,31 @@ it('forwards the same database timestamp spelling in list and detail, including 
   if (zone === 'default') expect(detail.order).toMatchObject({ createdAt: '2026-06-05T10:00:00.123456+00:00', updatedAt: '2026-06-05T10:01:00.654321+00:00' });
 });
 
+it('reads a coherent tracking/provider pair with a recorded-time tie and stable reference id', async () => {
+  const f = await fixture();
+  await owner.query("INSERT INTO public.shipment_external_refs(id,shipment_id,ref_role,external_id,provider_kind,recorded_at) VALUES('00000000-0000-4000-8000-000000000001',$1,'tracking','first-number','first-provider','2026-06-01T00:00:00Z'),('00000000-0000-4000-8000-000000000002',$1,'tracking','second-number','second-provider','2026-06-01T00:00:00Z')", [f.shipment]);
+  const expected = { order: { providerTrackingId: 'second-number', providerKind: 'second-provider' } };
+  expect(await port().getCommerceFulfillmentOrderDetail({ fulfillmentOrderId: f.shipment })).toMatchObject(expected);
+  expect(await port().getCommerceFulfillmentOrderDetail({ orderId: f.order })).toMatchObject(expected);
+});
+it('returns durable label URLs to the service operator read while keeping the full request private', async () => {
+  const f = await fixture(), actor = randomUUID(), key = randomUUID();
+  const labelUrl = 'https://labels.example.invalid/unit?signature=opaque';
+  await owner.query('INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,$2)', [actor, actor + '@example.invalid']);
+  await owner.query("UPDATE public.fulfillment_shipment_operations SET occurred_at='2020-01-01T00:00:00Z' WHERE shipment_id=$1", [f.shipment]);
+  const commands = createPostgresFulfillmentShipmentCommandPort(runtime);
+  const request = { idempotencyKey: key, fulfillmentOrderId: f.shipment, actorUserId: actor,
+    providerKind: 'read-provider', providerTrackingId: randomUUID(), labelUrl, rawProviderPayload: { retained: 'private-label-response' } };
+  await commands.recordCommerceFulfillmentLabel(request);
+  const detail = await port().getCommerceFulfillmentOrderDetail({ fulfillmentOrderId: f.shipment });
+  expect(detail).toMatchObject({ order: { latestOperation: { type: 'label_created', payload: { labelUrl } } } });
+  expect(JSON.stringify(detail)).not.toContain('private-label-response');
+  const receipt = (await owner.query("SELECT command FROM public.fulfillment_operator_receipts WHERE kind='label' AND idempotency_key=$1", [key])).rows;
+  expect(receipt[0].command.request).toMatchObject({ labelUrl, rawProviderPayload: request.rawProviderPayload });
+  await expect(runtime.query('SELECT * FROM public.fulfillment_operator_receipts')).rejects.toMatchObject({ code: '42501' });
+  expect(await commands.recordCommerceFulfillmentLabel({ ...request, rawProviderPayload: { changed: true } })).toMatchObject({ replayed: true });
+  expect((await owner.query("SELECT command FROM public.fulfillment_operator_receipts WHERE kind='label' AND idempotency_key=$1", [key])).rows).toEqual(receipt);
+});
 it('retains newest order tracking for unattributed historical references on current and earlier shipments', async () => {
   const f = await fixture(), replacement = randomUUID();
   await owner.query("INSERT INTO public.fulfillment_shipments(id,order_id,port_key,provider_type,status,create_idempotency_key,sequence_no,replaces_shipment_id,replacement_reason) VALUES($1,$2,'read-port','3pl','created',$1::uuid::text,1,$3,'lost')", [replacement, f.order, f.shipment]);

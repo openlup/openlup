@@ -17,7 +17,7 @@ export function fixture() {
     payment: { id: id(4), status: 'settled', external_ref: 'payment-ref' }, cycle: null as { status: string } | null, holds: 0,
     lines: [{ id: id(5), sku_id: id(6), line_ordinal: 1, quantity: 2 }],
     operation: { id: id(7), operation_type: 'shipment_created', payload: {}, occurred_at: at },
-    tracking: 'tracking-ref', provider: 'dispatch-provider',
+    tracking: { externalId: 'tracking-ref', providerKind: null as string | null }, provider: 'dispatch-provider',
     reservations: [{ id: id(8), status: 'held', expires_at: '2026-11-04T00:00:00.000Z', elapsed: false, lines: [{ sku: 'UNIT', quantity: 2 }] }] };
   return { shipment, facts, destination: { destinationId: id(9), clientId: id(3), address: { label: null, line1: 'Unit street', line2: null, city: 'Fixture', postalCode: '00000', country: 'ZZ' } } };
 }
@@ -51,6 +51,13 @@ it('projects the reduced native shipment facts with explicit unavailable identit
     omsEligibility: { allowed: true, reason: null }, latestOperation: { id: id(7), type: 'created', actorUserId: null },
   } });
   expect(await port.getCommerceFulfillmentOrderDetail({ orderId: id(2) })).toEqual(first);
+});
+it('keeps the tracking namespace paired with its identifier instead of using the dispatch provider', async () => {
+  const h = harness();
+  h.f.facts.tracking = { externalId: 'paired-tracking', providerKind: 'tracking-provider' };
+  expect(await h.port.getCommerceFulfillmentOrderDetail({ orderId: id(2) })).toMatchObject({
+    order: { providerTrackingId: 'paired-tracking', providerKind: 'tracking-provider' },
+  });
 });
 it('forwards selectors, status, offset, page size and unpaged total', async () => {
   const h = harness();
@@ -208,7 +215,8 @@ it('forwards stored expiry and string timestamps without interpreting the clock'
     createdAt: '2026-06-05T10:00:00.123456+00:00', updatedAt: '2026-06-05T10:01:00.654321+00:00',
     inventory: { status: 'reserved', expiresAt: '2020-01-01T00:00:00+00:00' },
   });
-  expect(h.queries.map(q => q.sql).join(' ')).not.toMatch(/UNION ALL|CURRENT_TIMESTAMP|s\.created_at DESC|op\.id DESC|r\.id DESC|recorded_at DESC,id DESC/);
+  expect(h.queries.map(q => q.sql).join(' ')).not.toMatch(/UNION ALL|CURRENT_TIMESTAMP|s\.created_at DESC|op\.id DESC/);
+  expect(h.queries.map(q => q.sql).join(' ')).toContain('ORDER BY r.recorded_at DESC,r.id DESC');
 });
 
 it('takes the order mode from host configuration rather than inferring it from a cycle id', async () => {

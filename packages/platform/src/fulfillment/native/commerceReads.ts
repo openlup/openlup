@@ -46,15 +46,16 @@ export function createPostgresFulfillmentCommerceReadPort(input: {
       (SELECT jsonb_agg(to_jsonb(i) ORDER BY i.created_at ASC) FROM public.commerce_order_items i WHERE i.order_id=o.id) AS lines,
       (SELECT to_jsonb(op) FROM public.fulfillment_shipment_operations op WHERE shipment_id=$2::uuid
         ORDER BY occurred_at DESC LIMIT 1) AS operation,
-      (SELECT r.external_id FROM public.shipment_external_refs r JOIN public.fulfillment_shipments s ON s.id=r.shipment_id
-        WHERE s.order_id=o.id AND (r.shipment_id=$2::uuid OR r.provider_kind IS NULL) AND r.ref_role='tracking' ORDER BY r.recorded_at DESC LIMIT 1) AS tracking,
-      (SELECT r.provider_kind FROM public.shipment_external_refs r JOIN public.fulfillment_shipments s ON s.id=r.shipment_id WHERE s.order_id=o.id AND (r.shipment_id=$2::uuid OR r.provider_kind IS NULL) AND r.ref_role='tracking' ORDER BY r.recorded_at DESC LIMIT 1) AS tracking_provider,
+      (SELECT jsonb_build_object('externalId',r.external_id,'providerKind',r.provider_kind)
+        FROM public.shipment_external_refs r JOIN public.fulfillment_shipments s ON s.id=r.shipment_id
+        WHERE s.order_id=o.id AND (r.shipment_id=$2::uuid OR r.provider_kind IS NULL) AND r.ref_role='tracking'
+        ORDER BY r.recorded_at DESC,r.id DESC LIMIT 1) AS tracking,
       (SELECT jsonb_agg(to_jsonb(r) ORDER BY r.created_at DESC)
         FROM public.fulfillment_inventory_reservations r WHERE r.purchase_order_id=o.id
           OR (r.renewal_operation_id=o.renewal_operation_id AND r.operation_fingerprint=o.renewal_operation_fingerprint)) AS reservations
       FROM public.commerce_orders o WHERE o.id=$1::uuid`, [shipment.order_id, shipment.id]);
     if (!facts) return limit('order_unavailable');
-    const order = record(facts.order_context), payment = record(facts.payment);
+    const order = record(facts.order_context), payment = record(facts.payment), tracking = record(facts.tracking);
     if (!payment.id) return limit('payment_intent_unavailable');
     let destination: Awaited<ReturnType<DestinationReader['read']>>;
     try { destination = await destinations.read('shipment', String(shipment.id)); }
@@ -93,7 +94,7 @@ export function createPostgresFulfillmentCommerceReadPort(input: {
     }
     return buildCommerceFulfillmentOrderDetailResponse({
       fulfillmentOrder: { id: String(shipment.id), order_id: String(order.id), client_id: null,
-        status: shipment.status as CommerceFulfillmentOrderRow['status'], provider_kind: typeof facts.tracking_provider === 'string' ? facts.tracking_provider : null,
+        status: shipment.status as CommerceFulfillmentOrderRow['status'], provider_kind: typeof tracking.providerKind === 'string' ? tracking.providerKind : null,
         shipping_address_snapshot: { addressId: null, clientId: destination.clientId, ...destination.address },
         created_at: String(shipment.created_at), updated_at: String(shipment.updated_at) },
       responseSchemas: nativeFulfillmentCommerceResponseSchemas, hasShippingAddress: Boolean(destination),
@@ -104,7 +105,7 @@ export function createPostgresFulfillmentCommerceReadPort(input: {
       paymentIntent: { id: String(payment.id), order_id: String(order.id), status: payment.status === 'settled' ? 'succeeded' : payment.status,
         provider_payment_id: payment.external_ref } as CommerceFulfillmentPaymentIntentRow,
       inventoryReservations: reservations,
-      shipmentRef: facts.tracking ? { order_id: String(order.id), provider_tracking_id: String(facts.tracking), active: true } : null,
+      shipmentRef: tracking.externalId ? { order_id: String(order.id), provider_tracking_id: String(tracking.externalId), active: true } : null,
       activeHoldCount: Number(facts.holds), subscriptionCycleStatus: (record(facts.cycle).status ?? null) as Parameters<typeof buildCommerceFulfillmentOrderDetailResponse>[0]['subscriptionCycleStatus'],
     }, input.policy);
   }
