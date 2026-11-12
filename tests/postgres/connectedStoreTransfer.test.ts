@@ -198,7 +198,10 @@ async function paymentTransferFixture() {
   const unknown = await paymentObservation(source.runtime, active, "indeterminate");
   expect((await paymentReceive(source.runtime, active, unknown.id)).status).toBe(200);
   const captured = await paymentObservation(source.runtime, pending.attempt, "captured");
-  await source.runtime.query("SELECT public.oms_cancel_unpaid_order($1,$2,'buyer cancelled')", [`cancel:${review.orderId}`, review.orderId]);
+  await expect(source.runtime.query("SELECT public.oms_cancel_unpaid_order($1,$2,'buyer cancelled')", [`cancel:${review.orderId}`, review.orderId]))
+    .rejects.toMatchObject({ code: "23505", message: "oms_cancel_unpaid_order_payment_in_flight" });
+  // Retained historical cancellation remains transferable even with late payment evidence.
+  await source.owner.query("UPDATE public.commerce_orders SET status='cancelled' WHERE id=$1", [review.orderId]);
   const cancelled = await paymentObservation(source.runtime, review.attempt, "captured");
   expect((await paymentReceive(source.runtime, review.attempt, cancelled.id)).status).toBe(200);
   const reviewEvent = (await source.owner.query("SELECT id FROM public.payment_truth_events WHERE source_event_id=$1", [`sandbox:${cancelled.id}`])).rows[0].id as string;
@@ -216,8 +219,10 @@ async function identityFixture() {
       return new Response(null, { status: 404 });
     },
   });
+  // The retained token is minted once in beforeAll and verified late in this file. Hosted runs take up to
+  // 660 s for the whole file, so the lifetime is about 4x that and stays below the verifier's 3,600 s maximum.
   const token = (subject: string) => new jose.SignJWT({ email: "retained@example.invalid", email_verified: true })
-    .setIssuer(issuer).setAudience(audience).setSubject(subject).setIssuedAt().setExpirationTime("5m")
+    .setIssuer(issuer).setAudience(audience).setSubject(subject).setIssuedAt().setExpirationTime("45m")
     .setProtectedHeader({ alg: "ES256", kid: jwk.kid }).sign(key.privateKey);
   const accessToken = await token("original-native-subject"), verified = await verifier.verifyToken(accessToken);
   if (!verified.ok) throw new Error("Owned signed native fixture did not verify");
@@ -496,7 +501,7 @@ function corruptDeclaredTotal(): ConnectedNativeStoreCapture {
   return copy;
 }
 
-// Solo median 6.32 s, max 6.44 s; source CI 14.9 s and merge group 21.3 s both ran without coverage (10 s flat limit).
+// About 4x the slowest hosted run (24,807 ms), rounded up to 5 s.
 it("restores writer-created sandbox attempts, cyclic observations and terminal review truth, then continues once", async () => {
   const before = await census(source.owner);
   expect(JSON.stringify(packet)).not.toContain("dispatch-only@example.invalid");
@@ -548,9 +553,9 @@ it("restores writer-created sandbox attempts, cyclic observations and terminal r
     expect(rows.join()).not.toContain("dispatch-only@example.invalid");
     expect(rows.join()).not.toContain("rawPayload"); expect(rows.join()).not.toContain("payerEmail");
   }
-}, 65_000);
+}, 100_000);
 
-// Solo median 4.31 s, max 4.34 s; allow headroom for hosted database contention.
+// About 4x the slowest hosted run (16,613 ms), rounded up to 5 s.
 it("rolls back the whole restore when a captured simulator observation is missing", async () => {
   const corrupted = structuredClone(packet), observations = corrupted.owned.find(data => data.table === "payment_simulator_observations")!;
   observations.rows = observations.rows.filter(row => (JSON.parse(row) as { id: string }).id !== payments.captured.id);
@@ -558,9 +563,9 @@ it("rolls back the whole restore when a captured simulator observation is missin
   const before = await census(target.owner);
   await expect(restore(corrupted)).rejects.toMatchObject({ code: "target_conflict" });
   expect(await census(target.owner)).toEqual(before);
-}, 30_000);
+}, 70_000);
 
-// Solo medians 3.70/3.64 s, maxima 3.78/3.69 s for the two table-limit cases.
+// About 4x the slowest hosted run (14,260 ms), rounded up to 5 s.
 for (const table of ["payment_simulator_attempts", "payment_simulator_observations"] as const) it(`counts linkable ${table} rows and bytes toward the transfer limits`, async () => {
   const all = [...packet.compatible.tables, ...packet.owned], index = all.findIndex(data => data.table === table);
   const through = all.slice(0, index + 1), rows = through.reduce((sum, data) => sum + data.rows.length, 0);
@@ -573,9 +578,9 @@ for (const table of ["payment_simulator_attempts", "payment_simulator_observatio
   const before = await census(target.owner);
   await expect(restore(oversized)).rejects.toMatchObject({ code: "limit_exceeded" });
   expect(await census(target.owner)).toEqual(before);
-}, 30_000);
+}, 60_000);
 
-// Solo without coverage: 6.30 s including restore; retain 30 s headroom.
+// About 4x the slowest hosted run (25,145 ms), rounded up to 5 s.
 it("transfers purchase owners, lines and receipts losslessly and preserves replay and bounded capture", async () => {
   for (const table of ["subscription_activations", "commerce_checkout_compensations", "fulfillment_stock_current", "fulfillment_inventory_reservations", "fulfillment_inventory_reservation_lines", "fulfillment_purchase_reservation_receipts"]) {
     expect(packet.owned.find(value => value.table === table)?.rows.length).toBeGreaterThan(0);
@@ -606,9 +611,9 @@ it("transfers purchase owners, lines and receipts losslessly and preserves repla
   expect(await port.reserveOrderItems(purchaseHold)).toMatchObject({ replayed: true, reservations: [{ reservationId: purchaseHoldId }] });
   await expect(port.reserveOrderItems({ ...purchaseHold, metadata: { note: "changed" } })).rejects.toMatchObject({ code: "23505" });
   expect((await target.owner.query("SELECT count(*)::int n FROM public.fulfillment_inventory_reservations WHERE purchase_order_id=$1", [purchaseHold.orderId])).rows).toEqual([{ n: 1 }]);
-}, 30_000);
+}, 105_000);
 
-// Solo median 3.55 s, max 3.61 s; allow headroom for hosted database contention.
+// About 4x the slowest hosted run (12,820 ms), rounded up to 5 s.
 it("refuses a native capture login that row security would silently filter", async () => {
   const login = "transfer_filtered_reader";
   await source.owner.query(`CREATE ROLE ${login} LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD 'synthetic-transfer';
@@ -643,17 +648,17 @@ it("refuses a native capture login that row security would silently filter", asy
     await reader.end();
     await source.owner.query(`DROP ROLE ${login}`);
   }
-}, 30_000);
+}, 55_000);
 
-// Solo median 5.03 s, max 5.21 s; allow headroom for hosted database contention.
+// About 4x the slowest hosted run (18,202 ms), rounded up to 5 s.
 it("preserves native JSON digits above the JavaScript exact integer range", async () => {
   const carried = await capture(source.owner, "native-json-number-source");
   await restore(carried);
   expect((await target.owner.query("SELECT payload->>'frozen' AS value FROM public.outbox_events WHERE idempotency_key='original-effect-key'"))
     .rows).toEqual([{ value: "9007199254740993" }]);
-}, 30_000);
+}, 75_000);
 
-// Solo median 5.17 s, max 5.18 s; allow headroom for hosted database contention.
+// About 4x the slowest hosted run (18,068 ms), rounded up to 5 s.
 it("refuses a changed known trigger body and an unknown INSERT trigger before importing rows", async () => {
   const before = await census(target.owner);
   const original = (await target.owner.query<{ definition: string }>(
@@ -673,9 +678,9 @@ it("refuses a changed known trigger body and an unknown INSERT trigger before im
     expect(await census(target.owner)).toEqual(before);
   } finally { await target.owner.query("DROP TRIGGER IF EXISTS retained_transfer_unapproved ON public.commerce_order_holds"); }
   expect(await census(target.owner)).toEqual(before);
-}, 30_000);
+}, 75_000);
 
-// Uses the existing 30-second connected-transfer integration deadline.
+// About 4x the slowest hosted run (30,363 ms), rounded up to 5 s.
 it("captures only the address-reference registry census and preserves the target installation registry", async () => {
   const references = [randomUUID(), randomUUID()];
   const localReference = randomUUID();
@@ -735,9 +740,9 @@ it("captures only the address-reference registry census and preserves the target
     await source.owner.query("DELETE FROM acquisition_private.address_references WHERE source='census_fixture'");
     await target.owner.query("DELETE FROM acquisition_private.address_references WHERE source='census_fixture'");
   }
-}, 30_000);
+}, 125_000);
 
-// Uses the existing 30-second connected-transfer integration deadline.
+// About 4x the slowest hosted run (19,769 ms), rounded up to 5 s.
 it("refuses nonempty acquisition cases despite the address-reference census exception", async () => {
   const id = randomUUID();
   const insertCase = (db: Pool) => db.query(`INSERT INTO acquisition_private.cases
@@ -757,9 +762,9 @@ it("refuses nonempty acquisition cases despite the address-reference census exce
     await source.owner.query("DELETE FROM acquisition_private.cases WHERE id=$1", [id]);
     await target.owner.query("DELETE FROM acquisition_private.cases WHERE id=$1", [id]);
   }
-}, 30_000);
+}, 80_000);
 
-// Uses the existing 30-second connected-transfer integration deadline.
+// About 4x the slowest hosted run (13,055 ms), rounded up to 5 s.
 it.each(["acquisition_private.address_references_extra", "other_private.address_references"])("refuses other private relation %s", async relation => {
   if (relation.startsWith("other_private.")) await source.owner.query("CREATE SCHEMA other_private");
   await source.owner.query(`CREATE TABLE ${relation}(value text); INSERT INTO ${relation} VALUES('synthetic-private-row')`);
@@ -770,9 +775,9 @@ it.each(["acquisition_private.address_references_extra", "other_private.address_
     await source.owner.query(`DROP TABLE ${relation}`);
     if (relation.startsWith("other_private.")) await source.owner.query("DROP SCHEMA other_private");
   }
-}, 30_000);
+}, 55_000);
 
-// Solo median 5.18 s, max 5.29 s; allow headroom for hosted database contention.
+// About 4x the slowest hosted run (19,152 ms), rounded up to 5 s.
 it("refuses private business omission and nonpristine targets without deleting existing obligations", async () => {
   const targetBefore = await census(target.owner);
   // An actual canonical private BUSINESS row must not disappear as if private
@@ -804,9 +809,9 @@ it("refuses private business omission and nonpristine targets without deleting e
     await target.owner.query("DELETE FROM public.outbox_events WHERE event_type='commerce.shipment.exception' AND idempotency_key=$1", [`shipment_exception:${retainedHold}`]);
   }
   expect(await census(target.owner)).toEqual(targetBefore);
-}, 30_000);
+}, 80_000);
 
-// Solo median 3.86 s, max 4.07 s; allow headroom for hosted database contention.
+// About 4x the slowest hosted run (13,499 ms), rounded up to 5 s.
 it("bounds customer-linked purchase facts, method events and method state in transfer", async () => {
   const compatibleRows = packet.compatible.tables.reduce((sum, table) => sum + table.rows.length, 0);
   const compatibleBytes = packet.compatible.tables.reduce((sum, table) => sum + table.rows.reduce((bytes, row) => bytes + Buffer.byteLength(row), 0), 0);
@@ -833,7 +838,7 @@ it("bounds customer-linked purchase facts, method events and method state in tra
   oversized.sha256 = createHash("sha256").update(JSON.stringify(body)).digest("hex");
   await expect(restore(oversized)).rejects.toMatchObject({ code: "limit_exceeded" });
   expect(await census(target.owner)).toEqual(Object.fromEntries([...pristine.compatible.tables, ...pristine.owned].map(table => [table.table, [...table.rows].sort()])));
-}, 30_000);
+}, 55_000);
 
 it("restores writer-produced renewal data and pending duties, then renews through the restricted runtime", async () => {
   await restore();
@@ -893,7 +898,7 @@ it("restores writer-produced renewal data and pending duties, then renews throug
   }, due, renewalDue);
   expect(result.status).toBe("succeeded");
   expect((await target.runtime.query("SELECT status FROM public.subscriptions WHERE id=$1", [retainedRenewal.subscriptionId])).rows[0].status).toBe("active");
-}, 30_000);
+}, 110_000);
 
 // Three real restore outcomes, full graph censuses and post-replay runtime
 // checks share one bounded hosted integration deadline; retry remains zero.
@@ -960,9 +965,9 @@ it("preserves the connected retained graph, pruned history and exact replay unde
   await arrival();
   expect((await target.owner.query("SELECT next_cycle_at::text FROM public.subscriptions WHERE id=$1", [graph.subscription])).rows).toEqual(schedule);
   expect(schedule[0].next_cycle_at).toBe("2027-04-07 12:00:00.654321+00");
-}, 30_000);
+}, 115_000);
 
-// Solo without coverage: 7.90 s; 30 s exceeds three times that measurement.
+// About 4x the slowest hosted run (28,914 ms), rounded up to 5 s.
 it("retains actor-written consent history, replay, suppression and trusted target across a store move", async () => {
   expect(pristine.owned.find(table => table.table === "customer_account_consent_sync_targets")!.rows).toEqual([]);
   await target.owner.query("INSERT INTO public.customer_account_consent_sync_targets(binding,provider_kind,enabled) VALUES('different-target','synthetic-provider',false)");
@@ -996,9 +1001,9 @@ it("retains actor-written consent history, replay, suppression and trusted targe
     .toBe(beforeReplay.customer_account_consent_events.length + 1);
   expect((await target.owner.query("SELECT to_jsonb(t)::text AS value FROM public.customer_account_consent_sync_targets t")).rows.map(row => row.value))
     .toEqual(packet.owned.find(table => table.table === "customer_account_consent_sync_targets")!.rows);
-}, 30_000);
+}, 120_000);
 
-// Solo without coverage: 4.18 s; 30 s exceeds three times that measurement.
+// About 4x the slowest hosted run (13,048 ms), rounded up to 5 s.
 it("counts personal consent history and attribution toward whole-capture row and byte limits", async () => {
   const index = packet.owned.findIndex(table => table.table === "customer_account_consent_events");
   const ledger = packet.owned[index]!;
@@ -1021,9 +1026,9 @@ it("counts personal consent history and attribution toward whole-capture row and
       } },
     })).rejects.toMatchObject({ code: "limit_exceeded", table: "customer_account_consent_events" });
   }
-}, 30_000);
+}, 55_000);
 
-// Solo without coverage: 6.52 s; 30 s exceeds three times that measurement.
+// About 4x the slowest hosted run (27,387 ms), rounded up to 5 s.
 it("retains terminal event and reminder refusals after changed policy, restore and replay", async () => {
   await restore();
   const rows = async () => (await target.runtime.query(`SELECT source,source_id,reason,
@@ -1039,9 +1044,9 @@ it("retains terminal event and reminder refusals after changed policy, restore a
   }
   expect((await restore()).replayed).toBe(true);
   expect(await rows()).toEqual(before);
-}, 30_000);
+}, 110_000);
 
-// Solo without coverage: 3.85 s; 30 s exceeds three times that measurement.
+// About 4x the slowest hosted run (12,970 ms), rounded up to 5 s.
 it("counts terminal refusal source identities and times toward capture row and byte limits", async () => {
   const index = packet.owned.findIndex(table => table.table === "subscription_notice_refusals");
   const retained = packet.owned[index]!;
@@ -1055,7 +1060,7 @@ it("counts terminal refusal source identities and times toward capture row and b
       (error: { code: string; table?: string }) => expect({ code: error.code, table: error.table })
         .toEqual({ code: "limit_exceeded", table: "subscription_notice_refusals" }));
   }
-}, 30_000);
+}, 55_000);
 
 
 it("checks the identity mapper's erased-subject and conflict branches with synthetic records", async () => {
@@ -1217,9 +1222,9 @@ it("checks the identity mapper's erased-subject and conflict branches with synth
     { ...linkedSource, id: randomUUID(), email: "other@example.invalid" }, erasedSource] },
   freshTarget: pristine, targetOwner: target.owner })).rejects.toMatchObject({ code: "target_conflict", table: "clients" });
   expect(before.clients).toEqual([]);
-}, 30_000);
+}, 100_000);
 
-// Solo without coverage: 4.97 s including restore; retain 30 s headroom.
+// About 4x the slowest hosted run (20,554 ms), rounded up to 5 s.
 it("retains private destinations, scoped bindings, support replay and exact address data after restore", async () => {
   await restore();
   // The existing census compares every field in UTC without truncating stored microseconds.
@@ -1233,9 +1238,9 @@ it("retains private destinations, scoped bindings, support replay and exact addr
   const replay = await target.runtime.query("SELECT public.customer_support_change_shipping_destination($1,$2,$3,$4,$5,'2026-09-02T12:00:00Z') result", [destinationCommand.operator, destinationCommand.subscription, destinationCommand.payload, destinationCommand.version, destinationCommand.key]);
   expect(replay.rows[0].result).toMatchObject({ replayed: true });
   await expect(target.runtime.query("SELECT public.customer_support_change_shipping_destination($1,$2,$3,$4,$5,'2026-09-02T12:00:00Z')", [destinationCommand.operator, destinationCommand.subscription, destinationCommand.payload, destinationCommand.version + 1, destinationCommand.key])).rejects.toMatchObject({ code: "23505" });
-}, 30_000);
+}, 85_000);
 
-// Solo without coverage: 3.68 s including restore; retain 30 s headroom.
+// About 4x the slowest hosted run (13,155 ms), rounded up to 5 s.
 it("enforces actual cumulative row and byte limits at EACH address relation", async () => {
   for (const table of ["commerce_destinations", "commerce_destination_bindings"]) {
     const index = packet.owned.findIndex(t => t.table === table);
@@ -1255,7 +1260,7 @@ it("enforces actual cumulative row and byte limits at EACH address relation", as
         } } })).rejects.toMatchObject({ code: "limit_exceeded", table });
     }
   }
-}, 30_000);
+}, 55_000);
 
 
 it("drains every target acquisition command before opening a new installation-key namespace", async () => {
@@ -1310,10 +1315,10 @@ it("drains every target acquisition command before opening a new installation-ke
   expect((await target.owner.query("SELECT count(*)::integer AS count FROM acquisition_private.commands WHERE scope='partner_submit'")).rows[0].count).toBe(2);
   expect((await source.owner.query("SELECT to_jsonb(c)::text AS value FROM acquisition_private.commands c WHERE scope='partner_submit' AND idempotency_key=$1", [input.idempotencyKey])).rows).toEqual(sourceReceipt);
   expect((await target.owner.query("SELECT tableoid::text,ctid::text,xmin::text FROM acquisition_private.installation_key")).rows).toEqual(keyIdentity);
-}, 30_000);
+}, 55_000);
 
 
-// Solo 15.06 s without coverage; 60 s covers installed tarballs, capture/restore and child restart with headroom.
+// About 4x the slowest hosted run (60,584 ms), rounded up to 5 s.
 it("preserves native checkout receipt identity, privacy and microseconds across transfer and restart", async () => {
   const { installSubscriptionConsumer } = await import("../helpers/installSubscriptionConsumer.js");
   const { execFileSync } = await import("node:child_process");
@@ -1395,9 +1400,9 @@ try {
     expect(await restore(carried)).toMatchObject({ replayed: true });
     console.info("Checkout transfer retained tables:", connectedNativeStoreTables.length);
   } finally { await rm(consumer, { recursive: true, force: true }); }
-}, 60_000);
+}, 245_000);
 
-// Local no-coverage case: 8.141 s; fourfold 32.564 s rounds to a 40 s deadline.
+// About 4x the slowest hosted run (24,658 ms), rounded up to 5 s.
 it("round-trips open and accepted package previews with their event and subscription parents", async () => {
   const captured = packet.owned.find(table => table.table === "subscription_quote_previews");
   expect(captured?.rows).toHaveLength(2);
@@ -1412,7 +1417,7 @@ it("round-trips open and accepted package previews with their event and subscrip
   const beforeReplay = await census(target.owner);
   expect((await restore()).replayed).toBe(true);
   expect(await census(target.owner)).toEqual(beforeReplay);
-}, 40_000);
+}, 100_000);
 
 
 it("refuses a real sized opt-in before target writes while the classic source still transfers", async () => {
@@ -1486,7 +1491,7 @@ it("refuses a real sized opt-in before target writes while the classic source st
   expect(await census(target.owner)).toEqual(before);
   expect((await restore(classic)).replayed).toBe(false);
   expect(await census(target.owner)).toEqual(classicRows);
-}, 30_000);
+}, 140_000);
 
 
 const lineageIds = {
@@ -1533,7 +1538,7 @@ it("restores both order-lineage parents before children without changing capture
   expect(JSON.stringify(carried)).toBe(originalPacket);
   expect((await restore(carried)).replayed).toBe(true);
   expect(await census(target.owner)).toEqual(before);
-}, 30_000);
+}, 140_000);
 it.each(["recovery_root_order_id", "recreated_from_order_id"] as const)("refuses a captured order cycle through %s with no target writes", async field => {
   const native = await lineageStore();
   // Both referenced rows exist; PostgreSQL permits this cycle. The importer
@@ -1542,7 +1547,7 @@ it.each(["recovery_root_order_id", "recreated_from_order_id"] as const)("refuses
   const carried = await capture(native.owner, `lineage-cycle-${field}`), before = await census(target.owner);
   await expect(restore(carried)).rejects.toMatchObject({ code: "target_conflict", table: "commerce_orders" });
   expect(await census(target.owner)).toEqual(before);
-}, 30_000);
+}, 110_000);
 it.each(["recovery_root_order_id", "recreated_from_order_id"] as const)("refuses a parent absent from the captured set for %s with no target writes", async field => {
   const native = await lineageStore(), carried = await capture(native.owner, `lineage-missing-${field}`);
   // Remove a real parent from the captured set. Keep the remaining PostgreSQL
@@ -1556,7 +1561,7 @@ it.each(["recovery_root_order_id", "recreated_from_order_id"] as const)("refuses
   const before = await census(target.owner);
   await expect(restore(sealLineageCapture(carried))).rejects.toMatchObject({ code: "target_conflict", table: "commerce_orders" });
   expect(await census(target.owner)).toEqual(before);
-}, 30_000);
+}, 110_000);
 
 it("round-trips an actually recreated checkout and its root with complete row equality", async () => {
   const native = await installation("recreated-checkout-source");
@@ -1629,4 +1634,4 @@ it("round-trips an actually recreated checkout and its root with complete row eq
   expect((await census(target.owner)).commerce_orders).toEqual(rows);
   expect((await restore(carried)).replayed).toBe(true);
   expect(await census(target.owner)).toEqual(before);
-}, 30_000);
+}, 160_000);

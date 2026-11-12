@@ -416,7 +416,7 @@ it('admits an active distributor session but refuses admin-only OMS, shipment an
   expect(await snapshot()).toEqual(before);
 }, adminReadRefusalTimeoutMs);
 
-it('all fourteen operation limits preserve the complete effect snapshot over replay and forgery', async () => {
+it('all eleven operation limits preserve the complete effect snapshot over replay and forgery', async () => {
   const orderRef = await purchase(false);
   const paid = await purchase(true);
   const before = await snapshot();
@@ -434,8 +434,8 @@ it('all fourteen operation limits preserve the complete effect snapshot over rep
   expect(removed.body.code).toBe('starter_operation_unknown');
   for (const host of hosts) {
     const status = (await action('application.status', {}, operatorCookie, randomUUID(), host.baseURL)).body.value.bindings;
-    expect(status.length).toBe(59);
-    expect(status.filter((item: { bound: boolean }) => item.bound)).toHaveLength(45);
+    expect(status.length).toBe(60);
+    expect(status.filter((item: { bound: boolean }) => item.bound)).toHaveLength(48);
     for (const operation of Object.keys(operationLimits)) {
       expect(status.find((item: { operation: string }) => item.operation === operation).bound).toBe(false);
     }

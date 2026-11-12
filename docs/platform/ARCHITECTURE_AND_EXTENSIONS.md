@@ -1106,9 +1106,12 @@ subscription-status types. No topology trigger requires another package or
 dependency. Platform owns the server orchestration and selects only injected
 capability profiles. Provider,
 carrier and service remain independent; empty provider selection refuses, and
-potential support never enables a dormant route. Raw commands, credentials and
-signed label URLs stay transient at the host/adapter boundary; durable contracts
-carry typed facts, safe references and actual-command fingerprints. Reference status-map, normalized-fact and current-parcel facades delegate to
+potential support never enables a dormant route. Dispatch adapter credentials stay transient at the host boundary; dispatch
+contracts carry typed facts, references and actual-command fingerprints. Native
+operator shipment commands separately retain label URLs and raw provider inputs
+as durable operator-only evidence. Label URLs can appear in operator operation
+payloads; full requests stay in private receipts under host retention policy.
+These records are not customer-facing tracking facts. Reference status-map, normalized-fact and current-parcel facades delegate to
 `@openlup/core/fulfillment`; the status facade adds only private provider trace
 metadata. Account order UI imports progress values and types directly from core.
 Browser graphs declare only core fulfillment modules and exclude platform
@@ -1365,9 +1368,17 @@ confirmation or subscription alignment operation.
 The operator lifecycle handlers preserve the host's mutation schemas and response
 receipts. Every mutation callback requires the authorized actor and idempotency
 key; the host must bind both into its replay fingerprint and commit all effects
-and the response receipt atomically. Provider payloads and signed label URLs in
-operator mutation inputs stay transient at this host boundary; they are not safe
-durable evidence for the native stores. Replacement creation remains a host-owned
+and the response receipt atomically. The native shipment binding durably stores the first accepted label/tracking
+request in its private operator receipt, including label URLs, raw provider
+payloads and raw tracking events. Replay preserves the original evidence.
+The label URL also remains in the operation payload returned by the
+operator/service commerce read. These potentially sensitive values are not
+redacted customer facts. The read factory does not authenticate: hosts must
+keep it behind operator authorization and must not expose its payload through
+customer routes. Customer order history excludes operation payloads.
+There is no automatic expiry or purge of these records; expiring a signed URL
+does not erase its stored value. Hosts govern authorized retention and cleanup
+of operations, private receipts and their backup/transfer copies. Replacement creation remains a host-owned
 transaction: it checks paid state, current parcel, contact, blocking holds and
 stock reservations, releases only fulfillment-exception holds and creates the
 successor with its predecessor and sequence. Requesting or replaying a replacement
@@ -1450,7 +1461,10 @@ order-mode values instead of the reader choosing application policy.
 | Complete parcel cancellation | The explicit operator port releases exactly the parcel’s recorded reservations; latest provider-confirmed cancellation has its own paid-order transaction | Authenticated operator; provider observations recorded through the native shipment spine |
 | Legacy parcel reservations | A parcel created before association capture cancels with `reservations_not_recorded` and released count 0; reservations are not released automatically | The operator corrects stock by hand |
 | Legacy paid-order mode | Provider-confirmed paid cancellation refuses with `commerce_fulfillment_provider_cancel_order_mode_unproven` when no mode was recorded | The operator handles cancellation by hand or outside this path; cycle, renewal, activation and email defaults do not supply mode |
-| Other operator lifecycle mutations | The native shipment spine port does not carry their operator transaction | Actor-bound mutation callbacks and replay receipts |
+| Label, handoff and tracking evidence | `createPostgresFulfillmentShipmentCommandPort` commits each command with server actor, replay evidence and a convertible shipment operation; handoff consumes the frozen parcel set once | Authenticated administrator; configured provider/tracking evidence; accounting wrapper after committed handoff |
+| Other operator lifecycle mutations | `createCommerceFulfillmentOrder` and `recordCommerceFulfillmentProviderAttempt` still return `native_unsupported`; the shipment command port covers label, handoff and tracking only | Separate explicitly authorized host callbacks for creation and provider-attempt recording |
+| Legacy handoff stock | A parcel without a recorded reservation set hands off with `reservationDisposition: "reservations_not_recorded"` and `consumedReservationCount: 0`; parent stock is never reconstructed | The operator corrects stock by hand |
+| Historical tracking namespace | A number on another order without recorded provider identity refuses with `tracking_reference_unattributed` and the conflicting order reference. Rarely, the same number at a different carrier produces a false refusal. Same-order reuse records the supplied provider identity; there is no backfill | The operator checks the referenced order through authorized reads and resolves the carrier/reference evidence by hand before retrying |
 | Commerce orders list/detail and shipments overview | No equivalent native commerce read | Host read callbacks for orders list, detail and shipments overview; payment status passes through the existing payments projection using core payment-intent statuses |
 | Dispatch preparation writer | Explicit host preparation binding synchronizes revision, provider and withholding under the shipment lock, including authoritative edits | Required host reader/edit closures and transaction lane; disabled, capability-selection/readiness and unsupported-dispatch refusals precede the shared typed refusal for an absent binding, all before any worker |
 | Enforcing delivery alignment | The [host admission decorator](../../server/runtime/subscription/deliveryAlignmentRenewalStore.ts) preserves static terms and captured cases, skips off/no-case admission and obtains one-use schedule receipts before new cycles. Native denials return non-terminal `deferred` results, leaving claims retryable at the same schedule after lease expiry; static refusals remain terminal | A host that composes the native automatic-renewal runner must wrap its store port with the decorator; until it does, native delivery-alignment mode stays off or shadow. No runner composer, factory or production entrypoint is supplied |
@@ -1536,11 +1550,19 @@ no quantity-coverage override is applied.
 6. **FR06 — Address authority:** a null saved-address id means no saved-address
    record in this store's native model. A resolved shipment destination does not
    establish a captured fulfillment-address snapshot or its saved-address identity.
-7. **FR07 — Tracking activity:** tracking uses the newest order-linked tracking
-   reference; the native ledger has no separate active/deactivated flag.
-8. **FR08 — Operation evidence:** latest operation uses only the shipment ledger,
-   retains its native payload and has no actor id; required vocabulary conversions
-   do not reconstruct unavailable operator evidence, and unrepresentable types refuse.
+7. **FR07 — Tracking activity:** newly attributed references follow the selected
+   parcel. Historical references without provider identity retain the existing
+   newest order-linked fallback. Identifier and provider come from one row, ordered
+   by recorded time descending, then stable reference ID descending on ties.
+   Same-order reuse records provider identity and
+   parcel attribution; displaced facts remain in the private label receipt.
+   The native ledger has no separate active/deactivated flag.
+8. **FR08 — Operation evidence:** latest operation uses only the shipment ledger
+   and retains its operator-only payload, including a stored label URL when
+   present. New operator shipment commands record their authenticated actor;
+   historical actors stay null. Raw provider payloads and tracking events remain
+   in private receipts. This read requires host operator authorization. Required vocabulary conversions do not reconstruct
+   unavailable evidence, and unrepresentable types refuse.
 9. **FR10 — Order mode:** captured draft mode and cycle identity are supplied to
     the host's mode mapping; legacy rows without captured mode do not prove the
     original stored order-mode value.

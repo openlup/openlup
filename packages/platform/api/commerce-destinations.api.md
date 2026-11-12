@@ -34,6 +34,26 @@ export interface DestinationDocument {
     clientId: string;
     address: Required<DestinationAddress>;
 }
+/** A saved row can be incomplete for a carrier; its immutable snapshot retains that fact. */
+export interface SavedDestinationDocument {
+    destinationId: string;
+    revision: 1;
+    clientId: string;
+    address: Omit<Required<DestinationAddress>, "recipientName"> & {
+        savedAddressId: string;
+        recipientName: string | null;
+    };
+}
+export type DestinationReadDocument = DestinationDocument | SavedDestinationDocument;
+export interface SavedShippingAddressSelectionResult {
+    status: "applied" | "replayed";
+    subscriptionId: string;
+    shippingAddressId: string | null;
+    subscriptionStatus: string;
+    nextCycleAt: string | null;
+    templateVersion: number;
+    eventId: string;
+}
 export type DestinationChangeResult = {
     outcome: "applied" | "applied_from_next_parcel";
     appliesFrom: "current_parcel" | "next_parcel";
@@ -58,7 +78,8 @@ export interface DestinationQueryExecutor {
 }
 /** The shipment reader pins its first destination under the native dispatch lock. Use the same
  * connection as authoritative preparation. Subscription reads lock their parent; retain the
- * transaction through renewal claim. No saved-address selector or automatic route exists. */
+ * transaction through renewal claim. Saved selections snapshot the current address for a new
+ * claim; a retained operation keeps its prior immutable destination. No automatic route exists. */
 export declare function createPostgresDestinationPort(db: DestinationQueryExecutor): {
     registerOrder(input: {
         idempotencyKey: string;
@@ -67,6 +88,18 @@ export declare function createPostgresDestinationPort(db: DestinationQueryExecut
         now: string;
     }): Promise<DestinationDocument>;
     read(scope: "order" | "subscription" | "shipment", id: string): Promise<DestinationDocument>;
+    /** Saved snapshots may retain a null recipient; use this reader when selecting saved addresses. */
+    readWithSaved(scope: "order" | "subscription" | "shipment", id: string): Promise<DestinationReadDocument>;
+    /** Replays an existing subscription-event key before parsing/validating the saved ID. */
+    selectSavedShippingAddress(input: {
+        actorId: string;
+        clientId: string;
+        idempotencyKey: string;
+        subscriptionId: string;
+        savedAddressId: string;
+        reason?: string;
+        now: string;
+    }): Promise<SavedShippingAddressSelectionResult>;
     changeShippingAddress(input: {
         actorId: string;
         clientId: string;

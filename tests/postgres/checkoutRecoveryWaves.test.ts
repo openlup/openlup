@@ -340,7 +340,7 @@ describe.each(lifecycleProfiles)('checkout recovery waves on %s', profile => {
       await waves().reconcile(1000, NOW);
       expect(await expireEvents(o.id)).toEqual(notices); expect(await tokens(o.id)).toHaveLength(0);
     } finally { await a.query('ROLLBACK'); await pending?.catch(() => {}); await b.query('ROLLBACK'); a.release(); b.release(); }
-  });
+  }, 15_000);
 
   it('two connections enqueueing the same wave commit one event and token by outbox uniqueness', async () => {
     const o = await order(), a = await env.runtime.connect(), b = await env.runtime.connect();

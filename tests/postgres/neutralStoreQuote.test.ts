@@ -165,8 +165,7 @@ const shippingScript = String.raw`
   } finally {await new Promise(resolve=>{server.close(resolve);server.closeIdleConnections();});await bindings.close();await runtime.end();await owner.end();}
 `;
 
-// Measured shipping bodies: 9.334 s / 8.768 s, including both scratch mutations.
-// Four times the maximum fits the 45 s body bound.
+// About 4x the slowest hosted run (23,351 ms), rounded up to 5 s.
 // The child measured at most 2.703 s; retain its separate 20 s deadline.
 for (const { configuration, multiSize } of [{ configuration: 'supplements', multiSize: false }, { configuration: 'coffee', multiSize: false }, { configuration: 'coffee', multiSize: true }]) it(multiSize ? 'multi-size checkout selects its SKU and refuses a SKU absent from the shared product document' : `${configuration}: installed seed, strict quotes, capability refusal and retained-promise acceptance`, async () => {
   const caseStarted = performance.now();
@@ -379,4 +378,4 @@ for (const { configuration, multiSize } of [{ configuration: 'supplements', mult
     } finally { writeFileSync(mutation.path,original); }
   }
   console.info(JSON.stringify({ configuration, caseMs: performance.now() - caseStarted, childMs: performance.now() - childStarted }));
-}, 45_000);
+}, 95_000);

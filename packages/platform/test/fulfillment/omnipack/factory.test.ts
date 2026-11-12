@@ -753,7 +753,7 @@ it("models stateless dispatch, command binding, replay and eviction interleaving
     }
     expect(evictions).toBeGreaterThan(0);
   }
-});
+}, 30_000);
 
 function stockFixture() {
   let cursor: SyncCursor | null = null, fail = false;

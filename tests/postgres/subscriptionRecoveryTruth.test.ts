@@ -37,13 +37,18 @@ describe.each(["legacy", "qualified-v2", "qualified-admin"] as const)("retry rec
   }, postgresSetupTimeoutMs);
   afterAll(async () => { await closePostgres(container, pools); }, postgresTeardownTimeoutMs);
 
-  async function capturedDecline() {
+  async function capturedDecline(cancelPrefix?: string) {
     const f = await renewal(owner), original = await prepareOriginal(owner, f), operator = randomUUID();
     await owner.query("INSERT INTO public.commerce_operators(id,label) VALUES($1,'Synthetic operator')", [operator]);
     await call(runtime, "subscription_retry_apply_failure", [f.operation, `failure:${f.operation}`, failure()]);
     await call(runtime, "subscription_retry_open_case", [f.operation, "payment_failed", "/recover"]);
     await owner.query("UPDATE public.commerce_settlement_intents SET channel_key='sandbox' WHERE id=$1", [original.settlementIntentId]);
     const attempt = await call(runtime, "payment_simulator_begin_attempt", [`capture:${f.operation}`, original.settlementIntentId, "a".repeat(64), {}, AT]);
+    if (cancelPrefix) {
+      // A terminal unpaid attempt permits cancellation before the late capture.
+      await call(runtime, "payment_simulator_record_observation", [attempt.id, `expired:${attempt.id}`, "c".repeat(64), "expired", AT]);
+      await createPostgresCommerceOmsPort(runtime).cancelOrder({ idempotencyKey: `${cancelPrefix}:${original.orderId}`, orderId: original.orderId, reason: "synthetic cancellation", actorUserId: operator });
+    }
     const at = later(1), observation = await call(runtime, "payment_simulator_record_observation", [attempt.id, `capture:${attempt.id}`, "b".repeat(64), "captured", at]);
     const input = { evidenceKey: `sandbox:${observation.id}`, occurredAt: at, firstRecordedAt: at, externalRef: `capture:${observation.id}`,
       amountMinor: f.snapshot.totalAmountMinor, currency: "XXX", template: "payment_recovered", sourceKind: "accepted_event",
@@ -61,8 +66,7 @@ describe.each(["legacy", "qualified-v2", "qualified-admin"] as const)("retry rec
       'recoveryReceipts',(SELECT coalesce(jsonb_agg(to_jsonb(r) ORDER BY id),'[]'::jsonb) FROM public.subscription_retry_receipts r WHERE obligation_id=(SELECT id FROM public.subscription_retry_obligations WHERE renewal_operation_id=$1) AND kind='recovery')) AS value`, [f.operation, f.subscription])).rows[0].value;
   }
   it("keeps cancelled-order capture in review through the public recovery entry and exact redelivery", async () => {
-    const f = await capturedDecline(), store = createPostgresRetryStore(runtime), key = `recover:${f.operation}`;
-    await createPostgresCommerceOmsPort(runtime).cancelOrder({ idempotencyKey: `cancel:${f.original.orderId}`, orderId: f.original.orderId, reason: "synthetic cancellation", actorUserId: f.operator });
+    const f = await capturedDecline("cancel"), store = createPostgresRetryStore(runtime), key = `recover:${f.operation}`;
     const before = await effects(f);
     expect(before.terms.next_cycle_number).toBe(2);
     expect(before.stock).toEqual([expect.objectContaining({ status: "released", expires_at: null })]);
@@ -81,8 +85,7 @@ describe.each(["legacy", "qualified-v2", "qualified-admin"] as const)("retry rec
     expect(await effects(f)).toEqual(before);
   }, 30_000);
   it("does not replay a released false-paid receipt as paid and preserves its history", async () => {
-    const f = await capturedDecline(), store = createPostgresRetryStore(runtime), key = `historical:${f.operation}`;
-    await createPostgresCommerceOmsPort(runtime).cancelOrder({ idempotencyKey: `historical-cancel:${f.original.orderId}`, orderId: f.original.orderId, reason: "synthetic cancellation", actorUserId: f.operator });
+    const f = await capturedDecline("historical-cancel"), store = createPostgresRetryStore(runtime), key = `historical:${f.operation}`;
     const released = readFileSync("db/platform/migrations/20261024184500_subscription_retry_late_positive_stock.sql", "utf8");
     try {
       await owner.query(released.slice(released.indexOf("CREATE OR REPLACE FUNCTION")));

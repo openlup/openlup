@@ -22,11 +22,6 @@ export const operationLimitDefinitions = Object.freeze({
     explanation: Object.freeze({ en: "Approving and rejecting a return are unavailable in this release. These actions use the customer's return reference.",
       pl: "Zatwierdzanie i odrzucanie zwrotu są niedostępne w tym wydaniu. Te działania używają numeru zgłoszenia otrzymanego przez klienta." }),
   }),
-  orderHold: Object.freeze({
-    id: 'orderHold', actions: Object.freeze(["hold", "releaseHold"] as const), code: 'starter_order_hold_unavailable',
-    explanation: Object.freeze({ en: "Placing and releasing an order hold are unavailable in this release.",
-      pl: "Wstrzymanie i zwolnienie zamówienia są niedostępne w tym wydaniu." }),
-  }),
   orderCancellation: Object.freeze({
     id: 'orderCancellation', actions: Object.freeze(["cancelUnpaid"] as const), code: 'starter_order_cancellation_unavailable',
     explanation: Object.freeze({ en: "Cancelling an unpaid order is unavailable in this release.",
@@ -68,8 +63,6 @@ export const operationLimits: Readonly<Partial<Record<Operation, NativeLimit>>> 
   'return.request': operationLimitDefinitions.returnRequest,
   'operator.returnApprove': operationLimitDefinitions.returnDecision,
   'operator.returnReject': operationLimitDefinitions.returnDecision,
-  'operator.hold': operationLimitDefinitions.orderHold,
-  'operator.release': operationLimitDefinitions.orderHold,
   'operator.cancelUnpaid': operationLimitDefinitions.orderCancellation,
   'operator.externalRefund': operationLimitDefinitions.externalRefundMark,
   'operator.label': operationLimitDefinitions.shipmentMutation,

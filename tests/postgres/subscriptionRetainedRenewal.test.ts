@@ -365,7 +365,7 @@ it("keeps the graduated cycle monotonic after late payment and parcel arrival", 
   // No replacement confirmation is used to manufacture an arrival.
 }, 30_000);
 
-// Solo: 6.21 s without coverage; 30 s retains more than three times that bound.
+// About 4x the slowest hosted run (21,103 ms), rounded up to 5 s.
 it("transfers paid shipping, retained terms, graduation agreements and frozen replay", async () => {
   await admin.query("SELECT public.subscription_delivery_alignment_set_mode('off')");
   const f = await active(), d = await nextDelivery(f);
@@ -390,7 +390,7 @@ it("transfers paid shipping, retained terms, graduation agreements and frozen re
     d.due, days(d.when, 1))).toMatchObject({ status: "terminal_replay", operationId: original.operationId });
     expect(forbidden).not.toHaveBeenCalled(); expect(await allPublicRows(target.owner)).toEqual(before);
   });
-}, 30_000);
+}, 85_000);
 
 /** Accepted server quote fixture, applied through the restricted C SQL boundary. */
 async function classicEdit(f: Awaited<ReturnType<typeof active>>, input: {

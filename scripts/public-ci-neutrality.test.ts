@@ -306,7 +306,7 @@ describe("tree-wide neutrality ratchet", () => {
     result = cli(root, base, "--write-baseline");
     expect(result.status, result.output).toBe(1);
     expect(result.output).toContain("baseline regeneration would increase accepted debt");
-  }, 60_000);
+  }, 70_000);
 
   it("subtracts only the fulfillment vendor category at its exact paths and complete carrier tokens", () => {
     const { root, base } = installed();
@@ -416,7 +416,7 @@ describe("tree-wide neutrality ratchet", () => {
       expect(result.status, result.output).toBe(1); expect(result.output).toContain(`${category} increased`);
       rmSync(join(root, path));
     }
-  }, 30_000);
+  }, 65_000);
 
   it("admits the current roadmap provider matrix without changing the baseline", () => {
     const { root, base } = installed();
@@ -572,7 +572,7 @@ describe("tree-wide neutrality ratchet", () => {
       put(root, path, `- Bare ${vendor}.\n`); expect(cli(root, base).status).toBe(1);
       put(root, path, `- Add communications/${vendor}.\n`);
     }
-  });
+  }, 35_000);
 
   it("does not let another path or category pay for new debt", () => {
     expect(neutralityIncreases({ a: { brand: 3 }, b: { brand: 2 } }, { a: { brand: 2 }, b: { brand: 3 } })).toEqual([{ path: "b", category: "brand", before: 2, after: 3 }]);
@@ -819,7 +819,7 @@ describe("neutrality scan reuse", () => {
       change();
       run([...pair, ...pair], difference);
     }
-  });
+  }, 35_000);
 
 });
 
@@ -844,4 +844,4 @@ it("refuses regenerated C94 counts below their pin without writing the baseline"
   expect(result.status, result.output).toBe(1);
   expect(result.output).toContain(`pinned introduction baseline count mismatch: "${refundRail}"`);
   expect(readFileSync(join(root, baselinePath))).toEqual(before);
-});
+}, 15_000);

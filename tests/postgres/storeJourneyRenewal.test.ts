@@ -75,8 +75,8 @@ it("executes the transferred paid subscription once and replays its terminal res
     answers.push({ status: result.status, reason: result.reason, identityKey: result.identityKey, snapshot: operation.cycleSnapshot, effects });
   }
   expect(answers[1]).toEqual(answers[0]);
-// Two-store joined cases measured at most 11 s; 90 s retains installation and loaded-host headroom.
-}, 90_000);
+// About 4x the slowest hosted run (33,061 ms), rounded up to 5 s.
+}, 135_000);
 
 
 it("retains a protected predecessor, extends the restored schedule on actual late arrival and renews only at that later instant", async () => {
@@ -156,5 +156,5 @@ it("retains a protected predecessor, extends the restored schedule on actual lat
       status: result.status, identityKey: result.identityKey });
   }
   expect(answers[1]).toEqual(answers[0]);
-// The two-store renewal witness measured under 11 s; 90 s leaves headroom for real alignment and restore.
-}, 90_000);
+// About 4x the slowest hosted run (32,897 ms), rounded up to 5 s.
+}, 135_000);

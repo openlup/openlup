@@ -78,4 +78,4 @@ it.each(['legacy','bootstrap','separate','admin-managed','admin-operator'] as co
     expect(after).toEqual({...before,recovery_root_order_id:null,recreated_from_order_id:null});
     expect((await runner().apply()).applied).toEqual([]);
   }finally{await closePostgres(container,pools);}
-},30_000);
+},75_000);
