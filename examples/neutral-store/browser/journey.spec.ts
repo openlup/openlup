@@ -171,7 +171,7 @@ for (const locale of ['en', 'pl'] as const) {
   test(`${locale}: remaining billing and private views refuse visibly`, async ({ page }) => {
     for (const path of [routes.account[locale], routes.limits[locale]]) {
       await page.goto(path);
-      for (const key of ['billing', 'privateProfile', 'profileViews'] as const) {
+      for (const key of ['privateProfile', 'profileViews'] as const) {
         const name = copy[locale][key];
         const action = page.locator('.refused-action').filter({ has: page.getByRole('button', { name, exact: true }) });
         await action.getByRole('button', { name, exact: true }).click();

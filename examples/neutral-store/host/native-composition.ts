@@ -1,5 +1,8 @@
 import { composeSandboxRecoveryPayments, composeExpiredRecovery } from './checkout-recovery.ts';
-import { readPostgresCustomerAccountClient, createPostgresCustomerAccountMutationPort, createCustomerAccountMutationSchemas } from '@openlup/platform/account-support';
+import { readPostgresCustomerAccountClient, createPostgresCustomerAccountMutationPort, createCustomerAccountMutationSchemas, createAccountEventPrivacyContributor } from '@openlup/platform/account-support';
+import { createPersonalDataContributorRegistry, createCustomerBillingPrivacyContributor, createCustomerSavedAddressPrivacyContributor,
+  createCustomerPreferencePrivacyContributor, createFulfillmentParcelContactPrivacyContributor, type PersonalDataContributor } from '@openlup/platform/identity';
+import type { PgQueryExecutor } from '@openlup/platform/data';
 import { customerAccountPolicy } from '../owned/acquisition-policy.ts';
 import type { SubscriptionCommand } from '@openlup/platform/subscriptions/contracts';
 import { createPostgresSubscriptionCommands } from '@openlup/platform/subscriptions';
@@ -37,6 +40,16 @@ const success = (value: unknown) => ({ ok: true as const, value });
 const uuid = (value: unknown): value is string => typeof value === 'string'
   && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 
+/** Native data owners are registered even without a browser privacy workflow.
+ * Missing identity/subscription owners and unresolved event retention remain explicit. */
+export function createStarterPersonalDataRegistry(additional: readonly PersonalDataContributor<PgQueryExecutor>[] = []) {
+  return createPersonalDataContributorRegistry<PgQueryExecutor>([...additional, createCustomerBillingPrivacyContributor(),
+    createCustomerSavedAddressPrivacyContributor(), createCustomerPreferencePrivacyContributor(), createFulfillmentParcelContactPrivacyContributor(),
+    createAccountEventPrivacyContributor({ read: null, assess: null })], { requiredContributorIds: [
+      'identity','subscriptions','account-support','fulfillment-parcel-contacts','customer-billing','customer-saved-addresses','customer-preferences',
+    ] });
+}
+
 /** Local demonstration only. All database connections use the restricted runtime URL. */
 export async function composeNativeBindings(connectionString: string, origin: OriginPolicy, quoteAcceptanceKeyring?: PromotionAcceptanceKeyring): Promise<ApplicationBindings> {
   const pool = new pg.Pool({ connectionString, max: 4 });
@@ -45,6 +58,8 @@ export async function composeNativeBindings(connectionString: string, origin: Or
       rolsuper, rolbypassrls FROM pg_roles WHERE rolname=current_user`)).rows[0];
     if (identity?.login !== 'starter_runtime' || identity.role !== 'starter_runtime'
       || identity.rolsuper !== false || identity.rolbypassrls !== false) throw new Error('starter_runtime_connection_required');
+    if (!(await pool.query("SELECT to_regprocedure('public.invoicing_capture_duty_with_buyer(text,text,uuid,uuid,jsonb,timestamp with time zone)') IS NOT NULL AS ready")).rows[0]?.ready)
+      throw new Error('starter_billing_installation_required');
   } catch (error) { await pool.end(); throw error; }
   const sessions = createSessions(origin.secureCookies);
   const gateway = createPostgresDataGateway({ connectionString }, { poolFactory: () => pool });
@@ -200,6 +215,7 @@ export async function composeNativeBindings(connectionString: string, origin: Or
     return value ? success(value) : refused('starter_order_not_found');
   };
   return {
+    personalData: createStarterPersonalDataRegistry(),
     actions,
     async authenticate(request) {
       // This local host trusts its socket peer only, never forwarding headers or

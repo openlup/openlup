@@ -4,7 +4,7 @@ import type { StoreConfig } from './config.ts';
 export const operations = [
   'checkout.tokenPay', 'checkout.inlineRetry', 'checkout.payment', 'checkout.paymentLink',
   'checkout.recovery', 'checkout.create', 'checkout.read', 'payment.simulate', 'payment.recover',
-  'account.addresses', 'account.paymentPreference', 'account.deliveryPreference', 'subscription.savedAddress',
+  'account.billing', 'account.defaults', 'account.addresses', 'account.paymentPreference', 'account.deliveryPreference', 'subscription.savedAddress',
   'account.profile', 'account.invoiceCorrection', 'checkout.recoveryStart', 'operator.paymentLink', 'operator.replacement', 'operator.cancelFulfillment',
   'account.read', 'account.orders', 'account.invoice', 'account.consent',
   'subscription.command', 'subscription.preview', 'subscription.catalog', 'subscription.address', 'return.request',

@@ -1,6 +1,6 @@
 import { once } from 'node:events';
 import { createPostgresCommerceOmsPort } from '@openlup/platform/commerce/server/postgres';
-import { createPostgresInvoiceStore, runNativeInvoiceIssueJob } from '@openlup/platform/invoicing';
+import { createPostgresBillingInvoiceStore, runNativeInvoiceIssueJob } from '@openlup/platform/invoicing';
 import { createCapturedPostgresInvoiceProvider } from '@openlup/platform/invoicing/postgres';
 import { runCheckoutRecovery } from '../host/paid-mail.ts';
 import { readFile, readdir } from 'node:fs/promises';
@@ -397,13 +397,13 @@ test('operator escalation uses configured recipients and narrow captured fields'
 
 
 
-async function pendingCheckout(page: Page, locale: Locale, mode: 'one_time' | 'subscription' = 'one_time', existingEmail?: string) {
+async function pendingCheckout(page: Page, locale: Locale, mode: 'one_time' | 'subscription' = 'one_time', existingEmail?: string, line2?: string) {
   const config = configurations[material.id]!, email = existingEmail ?? `portal-${randomUUID()}@example.test`;
   if (!existingEmail) {
     const accounts = createPostgresAccountLinkStore({ connectionString: material.runtimeUrl });
     try { await accounts.createAccount({ email, principalId: randomUUID(), acquisitionSource: 'local-demonstration', lifecycleStage: 'customer' }); } finally { await accounts.close(); }
   }
-  const input = { locale, configuration: config.id, email, country: config.market.country,
+  const input = { locale, configuration: config.id, email, ...(line2 ? {line2} : {}), country: config.market.country,
     firstName: 'Example', lastName: 'Buyer', phone: '000000000', line1: '1 Example Lane', city: 'Example City', postalCode: '00000',
     termsAccepted: true, termsRevision: config.legal.revision, ...(mode === 'subscription' ? { acquisitionCapability: 'subscription-acquisition.v1' } : {}),
     cart: { schemaVersion: 1, configuration: config.id, mode, cadenceDays: mode === 'subscription' ? config.offer.defaultCadenceDays : null,
@@ -471,18 +471,20 @@ async function issuedInvoice(orderId: string) {
   const order = (await runtime.query('SELECT total_amount_minor,currency_code FROM public.commerce_orders WHERE id=$1', [orderId])).rows[0];
   const intent = (await runtime.query('SELECT id FROM public.commerce_settlement_intents WHERE order_id=$1', [orderId])).rows[0].id;
   const total = Number(order.total_amount_minor), currency = String(order.currency_code);
-  const proof = { evidenceRef: 'synthetic-money', fingerprint: 'a'.repeat(64), observedAt: '2026-11-01T12:00:00Z' };
-  const store = createPostgresInvoiceStore(runtime, { seller: { read: async () => ({ kind: 'found',
+  const proof = { evidenceRef: 'synthetic-money', fingerprint: 'a'.repeat(64), observedAt: new Date().toISOString() };
+  const store = createPostgresBillingInvoiceStore(runtime, { seller: { read: async () => ({ kind: 'found',
     seller: { name: 'Synthetic seller', address: { line1: '1 Example Street', postalCode: '00000', city: 'Example' },
       taxIdentifier: { scheme: 'synthetic', value: 'seller' }, bankAccount: null, routingRef: null }, revisionRef: 'seller-v1' }) } });
   const duty = await store.captureDuty({ requestKey: `invoice:${orderId}`, sourceKind: 'paid', sourceId: randomUUID(), orderId,
     occurredAt: proof.observedAt, evidence: { settlementIntentId: intent, amountMinor: total, currency } });
   if ('kind' in duty) throw new Error('portal_invoice_duty_required');
+  const buyer=await store.readCapturedBuyer(orderId);
+  if(!buyer || !(buyer.name || buyer.companyName))throw Error('starter_invoice_buyer_required');
   await store.installFacts({ dutyId: duty.dutyId, facts: { factRevision: `facts:${orderId}`, policyVersion: 'sandbox-v1',
     refs: { orderId, orderRef: orderId, invoiceRef: `INVOICE/${orderId}` },
-    dates: { issueDate: '2026-11-01', sellDate: '2026-11-01', handedOverAt: null, paymentCompletedAt: proof.observedAt },
+    dates: { issueDate: proof.observedAt.slice(0,10), sellDate: proof.observedAt.slice(0,10), handedOverAt: null, paymentCompletedAt: proof.observedAt },
     documentKind: 'sandbox-document', clearanceRequired: false, currency,
-    buyer: { name: 'Example Customer', email: null, taxIdentifier: null, companyName: null, address: null },
+    buyer: { ...buyer, name: (buyer.name || buyer.companyName)!, taxIdentifier: buyer.taxId ? {scheme:'synthetic',value:buyer.taxId} : null },
     payment: { intentRef: intent, providerRef: 'sandbox-money', providerPaymentRef: null, amountMinor: total, currency, localSettlementState: 'matched' },
     orderMoney: null, lines: [{ description: 'Synthetic item', quantity: 1, unitNetMinor: total, unitGrossMinor: total,
       totalNetMinor: total, totalTaxMinor: 0, totalGrossMinor: total, taxRateBps: 0, positionKind: 'item',
@@ -1489,7 +1491,7 @@ for (const locale of ['en','pl'] as const) {
     await form.getByRole('button', { name: copy[locale].save, exact: true }).click();
     const sent = await request, key = sent.headers()['idempotency-key']!;
     await expect(section.locator('[data-saved-address]')).toHaveCount(1);
-    const book = await call(page, 'account.addresses', { action: 'read' }); expect(book.ok).toBe(true); expect(book.value.billingProfilesAvailable).toBe(false);
+    const book = await call(page, 'account.addresses', { action: 'read' }); expect(book.ok).toBe(true); expect(book.value.billingProfilesAvailable).toBe(true);
     expect(book.value.ordererProfiles).toBeUndefined();
     const first = book.value.addresses[0]; expect(first).toMatchObject({ recipientName: null, postalCode: '12-345', contactPhone: '+999123456789', isDefault: true });
     expect((await call(page, 'account.addresses', { ...sent.postDataJSON(), line1: 'Changed replay input' }, key)).value.addresses[0].line1).toBe('Saved Street 1');
@@ -1606,6 +1608,38 @@ for (const locale of ['en','pl'] as const) {
     for (const operation of ['account.addresses','account.paymentPreference','account.deliveryPreference','subscription.savedAddress'])
       expect((await call(page, operation, { action: 'read', clientId: f.clientId })).code).toBe('customer_session_required');
     await context.addCookies(cookies);
+  });
+
+  test(`${locale}: billing profiles recreated fallback freezes the source destination on payment`, async ({page})=>{
+    const f=await expiredCheckout(page,locale);
+    const started=await call(page,'checkout.recovery',{action:'pay',token:f.token});expect(started.ok).toBe(true);
+    const orderRef=started.value.latestOrderRef;
+    expect((await call(page,'checkout.recovery',{action:'simulate',token:f.token,orderRef,attemptRef:started.value.attemptRef,outcome:'captured'})).ok).toBe(true);
+    const buyer=(await runtime.query('SELECT public.customer_billing_buyer_read($1) AS buyer',[orderRef])).rows[0].buyer;
+    expect(buyer).toMatchObject({name:'Example Buyer',source:'legacy_shipping_address_fallback',legacyFallback:true});
+  });
+
+  test(`${locale}: billing profiles recreated profile preserves native first-duty selection`, async ({page})=>{
+    const f=await expiredCheckout(page,locale);
+    await signIn(page,f.email,locale);
+    const profile={fullName:'Example Billing Buyer',email:f.email,isDefault:true};
+    const saved=await call(page,'account.billing',{action:'upsert',...profile});expect(saved.ok).toBe(true);
+    const profileId=saved.value.ordererProfiles[0].profileId;
+    expect((await call(page,'account.addresses',{action:'upsert',kind:'billing',recipientName:'Example Billing Buyer',line1:'Billing Lane 1',line2:'Billing Unit 2',city:'Example',postalCode:'00000',country:configurations[material.id]!.market.country,isDefault:true})).ok).toBe(true);
+    const ordinary=await pendingCheckout(page,locale,'one_time',f.email);
+    expect((await call(page,'payment.simulate',{orderRef:ordinary.orderRef,token:ordinary.token,outcome:'captured'})).ok).toBe(true);
+    const ordinaryBuyer=(await runtime.query('SELECT public.customer_billing_buyer_read($1) AS buyer',[ordinary.orderRef])).rows[0].buyer;
+    expect(ordinaryBuyer).toMatchObject({name:profile.fullName,source:'customer_orderer_profile',ordererProfileId:profileId,address:{line2:'Billing Unit 2'}});
+    const document=await issuedInvoice(ordinary.orderRef);
+    const facts=(await owner.query('SELECT facts FROM public.invoicing_fact_revisions WHERE duty_id=(SELECT id FROM public.invoicing_duties WHERE document_id=$1)',[document])).rows;
+    expect((await call(page,'account.billing',{action:'upsert',...profile,profileId,fullName:'Later Billing Buyer'})).ok).toBe(true);
+    expect((await runtime.query('SELECT public.customer_billing_buyer_read($1) AS buyer',[ordinary.orderRef])).rows[0].buyer).toEqual(ordinaryBuyer);
+    expect((await owner.query('SELECT facts FROM public.invoicing_fact_revisions WHERE duty_id=(SELECT id FROM public.invoicing_duties WHERE document_id=$1)',[document])).rows).toEqual(facts);
+    const started=await call(page,'checkout.recovery',{action:'pay',token:f.token});expect(started.ok).toBe(true);
+    const orderRef=started.value.latestOrderRef;
+    expect((await call(page,'checkout.recovery',{action:'simulate',token:f.token,orderRef,attemptRef:started.value.attemptRef,outcome:'captured'})).ok).toBe(true);
+    const buyer=(await runtime.query('SELECT public.customer_billing_buyer_read($1) AS buyer',[orderRef])).rows[0].buyer;
+    expect(buyer).toMatchObject({name:'Later Billing Buyer',source:'customer_orderer_profile',ordererProfileId:profileId,address:{line2:'Billing Unit 2'}});
   });
 
   async function paymentCall(page: Page, operation: string, data: Record<string,unknown>, key: string = randomUUID()) {

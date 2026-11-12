@@ -48,7 +48,7 @@ test('both locales supply every copy key and every named-limit action', () => {
 test('the partial account limit retains billing and private views while bound preferences are omitted', () => {
   const limit = nativeLimits.find(limit => limit.id === 'N5')!;
   assert.equal(limit.code, 'starter_account_preferences_unavailable');
-  assert.deepEqual(limit.actions, ['billing', 'privateProfile', 'profileViews']);
+  assert.deepEqual(limit.actions, ['privateProfile', 'profileViews']);
 });
 
 test('operator select choices use copy keys present in both languages', async () => {

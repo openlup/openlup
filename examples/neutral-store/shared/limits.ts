@@ -64,10 +64,10 @@ export const nativeLimits: readonly NativeLimit[] = [
     },
   },
   {
-    id: 'N5', actions: ['billing', 'privateProfile', 'profileViews'], code: 'starter_account_preferences_unavailable',
+    id: 'N5', actions: ['privateProfile', 'profileViews'], code: 'starter_account_preferences_unavailable',
     explanation: {
-      en: 'Billing profiles, private-profile views and complete profile views remain unavailable. Saved addresses and scoped delivery/payment preferences are bound separately.',
-      pl: 'Profile rozliczeniowe, widoki profilu prywatnego i pełne widoki profilu pozostają niedostępne. Zapisane adresy oraz preferencje dostawy i płatności są obsługiwane osobno.',
+      en: 'Private-profile views and complete profile views remain unavailable. Billing profiles, saved addresses and scoped delivery/payment preferences are bound separately.',
+      pl: 'Widoki profilu prywatnego i pełne widoki profilu pozostają niedostępne. Profile rozliczeniowe, zapisane adresy oraz preferencje dostawy i płatności są obsługiwane osobno.',
     },
   },
   {

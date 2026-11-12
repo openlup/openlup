@@ -20,7 +20,7 @@ export function accountPage(context: PageContext): HTMLElement {
       link(context.t('invoices'), routes.invoices[context.locale], 'button-link secondary')),
     readPanel(context, 'account', 'account.read'),
     orderPortal(context), profileEditor(context),
-    accountPreferences(context),
+    accountPreferences(context), billingProfiles(context),
     subscriptionPortal(context),
     subscriptionEditorEntries(context),
     addressForm(context, 'subscription.address'),
@@ -31,12 +31,14 @@ export function accountPage(context: PageContext): HTMLElement {
 
 export function invoicesPage(context: PageContext): HTMLElement {
   const corrections = el('section', { 'data-invoice-corrections': '' });
+  const buyer = el('section', { 'data-invoice-buyer': '' });
   return el('div', {}, el('h1', {}, context.t('orders')),
     readPanel(context, 'orders', 'account.orders'),
     el('p', {}, context.t('sandboxInvoice')),
     actionForm(context, { operation: 'account.invoice', title: 'invoiceHistory', submit: 'read',
       fields: [{ name: 'orderRef', label: 'orderRef' }], onSuccess(value) {
-        corrections.replaceChildren();
+        corrections.replaceChildren();buyer.replaceChildren();
+        if (isRecord(value) && isRecord(value.buyerSnapshot)) append(buyer, el('h2', {}, context.t('invoiceBuyer')), renderValue(value.buyerSnapshot));
         if (!isRecord(value) || !Array.isArray(value.documents)) return;
         for (const document of value.documents) {
           if (!isRecord(document) || document.isCurrent !== true || typeof document.documentRef !== 'string') continue;
@@ -49,7 +51,7 @@ export function invoicesPage(context: PageContext): HTMLElement {
             resultMessage: () => 'correctionRecorded' }));
         }
       } }),
-    corrections,
+    buyer, corrections,
     actionForm(context, {
       operation: 'account.invoice', title: 'invoices', submit: 'download',
       fields: [{ name: 'orderRef', label: 'orderRef' }, { name: 'documentRef', label: 'documentRef' }],
@@ -57,6 +59,44 @@ export function invoicesPage(context: PageContext): HTMLElement {
       display: value => isRecord(value) ? { contentType: value.contentType, fileName: value.fileName } : value,
     }),
     link(context.t('account'), routes.account[context.locale]));
+}
+
+function billingProfiles(context: PageContext): HTMLElement {
+  const book = el('div', { 'data-billing-book': '', 'aria-live': 'polite' });
+  const section = el('section', { class: 'panel', 'data-billing-profiles': '' }, el('h2', {}, context.t('billing')),
+    el('p', {}, context.t('billingEffect')), el('p', {}, context.t('billingCommitNote')));
+  function show(value: unknown) {
+    if (!section.isConnected || !isRecord(value) || !Array.isArray(value.ordererProfiles)) return;
+    book.replaceChildren();
+    for (const row of value.ordererProfiles) {
+      if (!isRecord(row) || typeof row.profileId !== 'string') continue;
+      append(book, el('article', { 'data-billing-profile': row.profileId }, el('h3', {}, String(row.label || row.fullName)), renderValue(row),
+        form(row), actionForm(context, { operation: 'account.billing', submit: 'billingDelete',
+          input: () => ({ action: 'delete', profileId: row.profileId }), onSuccess: show })));
+    }
+  }
+  function form(row: Record<string, unknown> = {}) {
+    const fields: FieldSpec[] = [
+      ...(['label','fullName','email','phone','companyName','taxId','companyIdentitySource','companyIdentityEvidenceHash'] as const).map(name => ({ name,
+        label: ({ label: 'savedAddressLabel', fullName: 'billingName', email: 'email', phone: 'phone', companyName: 'addressCompany', taxId: 'addressTaxId', companyIdentitySource: 'billingSource', companyIdentityEvidenceHash: 'billingEvidence' } as const)[name],
+        type: name === 'email' ? 'email' as const : 'text' as const, value: typeof row[name] === 'string' ? String(row[name]) : '',
+        required: ['fullName','email'].includes(name), maxLength: ({ label: 120, fullName: 200, email: 320, phone: 64, companyName: 200, taxId: 64, companyIdentitySource: 120, companyIdentityEvidenceHash: 160 } as const)[name] })),
+      { name: 'companyVerificationLevel', label: 'billingVerification', type: 'select', value: String(row.companyVerificationLevel || ''), options: [
+        ['', 'billingUnspecified'], ['registry_verified','billingRegistry'], ['provider_verified','billingProvider'], ['manual_unverified','billingManual'], ['invalid','billingInvalid'],
+      ].map(([value, key]) => ({ value: value!, text: context.t(key as CopyKey) })) },
+      { name: 'isDefault', label: 'addressDefault', type: 'checkbox', required: false },
+    ];
+    const result = actionForm(context, { operation: 'account.billing', title: row.profileId ? 'billingEdit' : 'billingAdd', submit: 'save', fields,
+      input: () => ({ action: 'upsert', ...(row.profileId ? { profileId: row.profileId } : {}) }),
+      transform: values => Object.fromEntries(Object.entries(values).map(([key, value]) => [key, value === '' && !['fullName','email'].includes(key) ? null : value])), onSuccess: show });
+    if (row.isDefault) result.querySelector<HTMLInputElement>('[name=isDefault]')!.checked = true;
+    return result;
+  }
+  append(section, actionForm(context, { operation: 'account.billing', submit: 'billingLoad', input: () => ({ action: 'read' }), onSuccess: show }), book, form(),
+    el('p', {}, context.t('defaultsEffect')), actionForm(context, { operation: 'account.defaults', submit: 'defaultsRead', fields: [
+      { name: 'checkoutKind', label: 'purchaseMode', type: 'select', options: [{ value: 'one_time', text: context.t('oneTime') }, { value: 'subscription_initial', text: context.t('subscription') }] },
+    ] }));
+  return section;
 }
 
 function communicationChoices(context: PageContext): HTMLElement {

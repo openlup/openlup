@@ -47,8 +47,9 @@ export function savedAddressValidation(country: string) {
     messages: { name: 'Invalid recipient', country: 'Invalid country', phone: 'Invalid phone', postalCode: 'Invalid postal code', taxId: 'Invalid demonstration tax identifier' } };
 }
 
-/** Billing/default hints deliberately stay unselected until the billing store is composed. */
-export const accountBillingSelection = 'not_selected' as const;
+/** Owned demonstration tax policy; the native schema also enforces its fixed checksum. */
+export const billingTaxPolicy = { normalizeTaxId: (value: string) => value.replace(/\D/g, '') || null,
+  isValidTaxId: (value: string) => savedAddressValidation('ZZ').isValidTaxId(value) };
 
 
 /** Explicit synthetic identities only; no real instrument or provider taxonomy. */

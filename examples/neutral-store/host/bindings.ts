@@ -3,6 +3,8 @@ import type { StoreConfig } from '../shared/config.ts';
 import type { ActionInput, ActionResult, Operation } from '../shared/api.ts';
 import { operationLimits } from '../shared/limits.ts';
 import { evaluateOffer, validateCart } from '../shared/offer.ts';
+import type { PersonalDataContributorRegistry } from '@openlup/platform/identity';
+import type { PgQueryExecutor } from '@openlup/platform/data';
 
 export interface VerifiedActor {
   customerRef: string | null;
@@ -29,6 +31,8 @@ export interface ActionContext {
 export type ActionBinding = (input: ActionInput, context: ActionContext) => Promise<ActionResult>;
 
 export interface ApplicationBindings {
+  /** Programmatic owner composition only; never serialized as an HTTP action. */
+  personalData?: PersonalDataContributorRegistry<PgQueryExecutor>;
   actions: Partial<Record<Operation, ActionBinding>>;
   authenticate(request: IncomingMessage): Promise<VerifiedActor>;
   close(): Promise<void>;
@@ -44,7 +48,7 @@ export function pendingBindings(): ApplicationBindings {
 }
 
 export const customerOperations = new Set<Operation>([
-  'account.addresses', 'account.paymentPreference', 'account.deliveryPreference', 'subscription.savedAddress',
+  'account.billing', 'account.defaults', 'account.addresses', 'account.paymentPreference', 'account.deliveryPreference', 'subscription.savedAddress',
   'account.profile', 'account.invoiceCorrection', 'checkout.recoveryStart',
   'account.read', 'account.orders', 'account.invoice', 'account.consent',
   'subscription.command', 'subscription.preview', 'subscription.catalog', 'subscription.address', 'return.request',

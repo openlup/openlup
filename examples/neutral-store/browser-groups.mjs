@@ -22,4 +22,5 @@ export const browserJourneyGroups = journeySelections([
   'account preferences ',
   'payment retry ',
   'embedded browser ',
+  'billing profiles ',
 ]);

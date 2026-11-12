@@ -238,13 +238,29 @@ test('preference schema refusal precedes storage, and saved selection replay ret
   assert.equal(JSON.parse(String(args[4])).shippingAddressId, 'malformed-replay-input');
 });
 
-test('the explicitly unselected billing seam is not exposed as profiles or defaults and never hides an address read error', async () => {
+test('the selected scoped billing reader returns the real book and never hides a read error', async () => {
   const ref = 'abcdefab-cdef-4abc-8def-abcdefabcdef';
   const customer = { ...context, actor: { principalRef: ref, customerRef: ref, operatorRef: null } };
-  const pool = { async query() { return { rows: [{ result: [] }] }; } } as unknown as Pool;
+  const pool = { async query(sql: string) { return { rows: [sql.includes('customer_billing_profiles_read') ? { value: [] } : { result: [] }] }; } } as unknown as Pool;
   assert.deepEqual(await composeE4Capabilities(pool, async () => false)['account.addresses']!({ action: 'read' }, customer),
-    { ok: true, value: { addresses: [], billingProfilesAvailable: false } });
+    { ok: true, value: { contractVersion: 'customer.addresses.v1', ordererProfiles: [], addresses: [], billingProfilesAvailable: true } });
   const failed = { async query() { throw new Error('address-read-offline'); } } as unknown as Pool;
   assert.deepEqual(await composeE4Capabilities(failed, async () => false)['account.addresses']!({ action: 'read' }, customer),
     { ok: false, code: 'starter_account_data_unavailable' });
+});
+
+
+import { createStarterPersonalDataRegistry } from '../host/native-composition.ts';
+test('the host requires billing privacy coverage and exposes incomplete privacy owners without a browser workflow', () => {
+  const registry=createStarterPersonalDataRegistry();
+  assert.ok(registry.contributors.some(c=>c.id==='customer-billing'));
+  assert.deepEqual(registry.missingContributors,['identity','subscriptions']);
+  assert.ok(registry.contributors.some(c=>c.id==='account-support'));
+});
+for(const operation of ['account.billing','account.defaults'] as const)test(`${operation} refuses caller-supplied identity before native storage`,async()=>{
+  const ref='abcdefab-cdef-4abc-8def-abcdefabcdef';
+  const pool={query(){throw Error('unexpected_billing_storage');}} as unknown as Pool;
+  const actor={principalRef:ref,customerRef:ref,operatorRef:null};
+  const action=composeE4Capabilities(pool,async()=>false)[operation]!;
+  for(const key of ['actorUserId','principalRef','clientId','idempotencyKey'])assert.deepEqual(await action({action:'read',[key]:ref},{...context,actor}),{ok:false,code:'starter_input_invalid'});
 });
