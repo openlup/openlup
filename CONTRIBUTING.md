@@ -591,7 +591,7 @@ The complete projected root command inventory is `build`,
 `build:public-reference:prerender`, `build:public-reference:ssr`,
 `check:dco-signoff`, `guard:client-secret-boundary`,
 `guard:public-reference-site-routes`, `inventory:refresh`, `landing:merge`, `lint`, `prelint`,
-`oss:published-tree`, `packages:check`, `release:bump`, `pretest`, `test`, and `test:scoped`.
+`oss:published-tree`, `packages:check`, `release:bump`, `sql:admit`, `pretest`, `test`, and `test:scoped`.
 This reclassifies the complete current root script inventory; all commands are
 public, with `test:scoped` as the local wrapper around the unchanged `test` command.
 `npm run build` is the public build truth; its public-reference subcommands and
@@ -1089,7 +1089,12 @@ forward admission and append-only history on `origin/main` and a temporary pull-
 merge, and the queue's co-located approval guard on the fork point and on that merge.
 It checks the working tree, or `--head <rev>` against `--base <rev>`, changes no ref,
 index or worktree file, and prints PASS or REFUSED per added forward and check with a
-capability hint. Hosted CI and the merge queue remain authoritative.
+capability hint. Hosted CI judges with the merge commit's admission code and the queue
+with main's, so the command exits 2 when the code it loads differs from the base; merge
+`origin/main` first, or pass `--allow-stale-rules` to run it with a warning. A PASS does
+not cover `npm run oss:published-tree -- --policy` and `-- --inventory`, the neutrality
+ratchet, the real-PostgreSQL native catalogue test or pgTAP. Hosted CI and the merge queue
+remain authoritative.
 
 Against the same base, `--policy` refuses a change that removes or changes a
 line of a publishable package's API snapshot (`release-gates.json`
