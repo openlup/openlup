@@ -123,6 +123,8 @@ const serverExports = [
   "createExpiredCheckoutRecoveryService",
   "ExpiredCheckoutRecoveryError",
   "createPostgresExpiredCheckoutRecoveryPort",
+  "readAuthorizedPaymentRecovery",
+  "createPostgresPaymentRecoveryGuidancePort",
   "createPostgresExpiredCheckoutDraftPort",
   "createPostgresExpiredCheckoutRuntime",
   "createPostgresExpiredCheckoutCompensation",

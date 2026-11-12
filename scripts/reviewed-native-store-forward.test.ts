@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { PLATFORM_BASELINE_FILE } from "./platform-migration-manifest.ts";
@@ -1030,6 +1030,87 @@ describe("parameterized native Git history", () => {
   it("keeps static preimages distinct from a DO-patched installed body", () => {
     const patch = "DO $$ BEGIN EXECUTE $patch$CREATE OR REPLACE FUNCTION public.fixture_existing(p_id uuid) RETURNS text LANGUAGE sql SECURITY INVOKER SET search_path = pg_catalog AS $body$ SELECT 'patched'; $body$;$patch$; END; $$;";
     expect(() => parameterForward("", () => {}, patch)).not.toThrow();
+  });
+});
+
+// Main lands A; a feature adds X1 and X2 in one commit; main then lands an unrelated Y; the feature's landing
+// merge places Y before X1 and X2. Release reads the feature's own first-parent history.
+type LandingContext = { folder: string; git: (...args: string[]) => string; put: (path: string, bytes: string | Buffer) => void; issued: string; feature: string; moved: string; merged: ReviewedForwardRegistry; text: Record<string, string>; land: (registry: ReviewedForwardRegistry | Buffer) => string };
+function landingFixture(run: (context: LandingContext) => void) {
+  nativeGitFixture(({ folder, git, put, commit }) => {
+    const [a, y, x1, x2] = ["a_issued", "y_moved", "x1_candidate", "x2_candidate"].map((name, index) => emptySlot(`db/platform/migrations/2027110610${index}000_${name}.sql`, name.toUpperCase()));
+    const text = Object.fromEntries([a, y, x1, x2].map(slot => [slot.path, `CREATE TABLE public.${slot.row.toLowerCase()} (id uuid);`]));
+    const value = (slots: NativeStoreSlot[]) => { const result = registry(); result.nativeStoreForwardClass = { sealed: false, slots }; result.nativeStoreForwards = slots.map(slot => ({ path: slot.path, sha256: sqlSha256(text[slot.path]!), functions: [] })); return result; };
+    const write = (slots: NativeStoreSlot[]) => { for (const slot of slots) put(slot.path, text[slot.path]!); put("config/reviewed-platform-forwards.json", encode(value(slots))); };
+    put(PLATFORM_BASELINE_FILE, before); write([a]); const issued = commit();
+    write([a, x1, x2]); const feature = commit();
+    git("reset", "-q", "--hard", issued); write([a, y]); const moved = commit();
+    write([a, y, x1, x2]);
+    const land = (data: ReviewedForwardRegistry | Buffer) => {
+      put("config/reviewed-platform-forwards.json", Buffer.isBuffer(data) ? data : encode(data)); git("add", ".");
+      return git("commit-tree", git("write-tree"), "-p", feature, "-p", moved, "-m", "Synthetic landing merge");
+    };
+    run({ folder, git, put, issued, feature, moved, merged: value([a, y, x1, x2]), text, land });
+  });
+}
+const separately = "reviewed replacement allowlist must be approved separately before a feature PR adds SQL";
+describe("release approval binding across a landing merge", () => {
+  // Six history checks: measured at most 3.5 s alone at load average 15; the bound is four times that.
+  it("admits the candidate's unchanged approvals after main's unrelated slot moved them", () => {
+    landingFixture(({ folder, git, issued, feature, moved, merged, text, land }) => {
+      const landing = land(merged), mainline = git("commit-tree", `${landing}^{tree}`, "-p", moved, "-p", landing, "-m", "Synthetic mainline merge");
+      for (const pin of merged.nativeStoreForwards!.slice(2)) {
+        expect(() => assertUnchangedForwardApproval(folder, feature, landing, pin.path)).not.toThrow();
+        for (const head of [landing, mainline]) expect(() => assertReviewedPlatformForward(folder, issued, head, pin.path, Buffer.from(text[pin.path]!), true)).not.toThrow();
+      }
+    });
+  }, 14_000);
+  it.each(["candidate pin", "candidate slot"])("refuses a changed %s", change => {
+    landingFixture(({ folder, put, issued, feature, merged, text, land }) => {
+      const path = merged.nativeStoreForwards![2]!.path;
+      if (change === "candidate pin") { text[path] = `${text[path]}\nCREATE INDEX x1_lookup ON public.x1_candidate (id);`; put(path, text[path]!); merged.nativeStoreForwards![2]!.sha256 = sqlSha256(text[path]!); }
+      else merged.nativeStoreForwardClass!.slots[2]!.dataStatements = ["DELETE FROM public.x1_candidate;"];
+      const landing = land(merged);
+      expect(() => assertUnchangedForwardApproval(folder, feature, landing, path)).toThrow(separately);
+      expect(() => assertReviewedPlatformForward(folder, issued, landing, path, Buffer.from(text[path]!), true)).toThrow(separately);
+    });
+  });
+  it.each(["an unknown registry key", "an unknown pin key", "a malformed registry"])("refuses %s", change => {
+    landingFixture(({ folder, feature, merged, land }) => {
+      const path = merged.nativeStoreForwards![2]!.path;
+      if (change === "an unknown registry key") Object.assign(merged, { unreviewedForwards: [] });
+      if (change === "an unknown pin key") Object.assign(merged.nativeStoreForwards![2]!, { note: "unreviewed" });
+      const landing = land(change === "a malformed registry" ? encode(merged).subarray(1) : merged);
+      expect(() => assertUnchangedForwardApproval(folder, feature, landing, path)).toThrow(separately);
+    });
+  });
+  it.each(["an edited issued pin", "an edited issued slot", "a slot inserted before the issued one"])("refuses %s", change => {
+    landingFixture(({ folder, put, feature, merged, text, land }) => {
+      const path = merged.nativeStoreForwards![2]!.path, issuedPin = merged.nativeStoreForwards![0]!;
+      if (change === "an edited issued pin") { text[issuedPin.path] = `${text[issuedPin.path]} `; put(issuedPin.path, text[issuedPin.path]!); issuedPin.sha256 = sqlSha256(text[issuedPin.path]!); }
+      if (change === "an edited issued slot") merged.nativeStoreForwardClass!.slots[0]!.dataStatements = ["DELETE FROM public.a_issued;"];
+      if (change === "a slot inserted before the issued one") merged.nativeStoreForwardClass!.slots.unshift(emptySlot("db/platform/migrations/20271106090000_inserted.sql", "Inserted"));
+      expect(() => readReviewedForwardRegistry(encode(merged))).not.toThrow();
+      expect(() => assertUnchangedForwardApproval(folder, feature, land(merged), path)).toThrow(separately);
+    });
+  });
+  it("refuses a later forward when an earlier unissued forward's slot and pin are removed", () => {
+    landingFixture(({ folder, feature, merged, land }) => {
+      const removed = merged.nativeStoreForwards![2]!.path, path = merged.nativeStoreForwards![3]!.path;
+      merged.nativeStoreForwards!.splice(2, 1); merged.nativeStoreForwardClass!.slots.splice(2, 1);
+      expect(() => readReviewedForwardRegistry(encode(merged))).not.toThrow();
+      const landing = land(merged);
+      expect(() => assertUnchangedForwardApproval(folder, feature, landing, removed)).toThrow(separately);
+      expect(() => assertUnchangedForwardApproval(folder, feature, landing, path)).toThrow(separately);
+    });
+  });
+  it("keeps the regular-file refusal for a non-regular registry", () => {
+    landingFixture(({ folder, git, feature, merged }) => {
+      const registryPath = resolve(folder, "config/reviewed-platform-forwards.json");
+      writeFileSync(resolve(folder, "config/forwards.json"), encode(merged)); rmSync(registryPath); symlinkSync("forwards.json", registryPath); git("add", "-A");
+      const linked = git("commit-tree", git("write-tree"), "-p", feature, "-m", "Synthetic non-regular registry");
+      expect(() => assertUnchangedForwardApproval(folder, feature, linked, merged.nativeStoreForwards![2]!.path)).toThrow("reviewed replacement requires a regular file: config/reviewed-platform-forwards.json");
+    });
   });
 });
 

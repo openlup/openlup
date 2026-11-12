@@ -140,6 +140,62 @@ Migration: `20261109150000_subscription_auto_resume_paid_history.sql` replaces o
 
 Migration: `20261110105000_subscription_pause_duration.sql` replaces only the timed auto-resume function and the pause-reminder producer, preserving their skip guards, headers, owners and execution privileges.
 
+- Add one atomic, service-only checkout payment guidance read with exact token/attempt binding, captured-observation suppression, bounded correlated evidence and validation-only status composition. Generic sandbox refusals use Core derivation; method, operation and advice remain unknown. Real-provider paths retain their named refusal and existing payment-owner closure. Legacy status responses retain capability opt-in and fallback.
+
+Migration: Apply the additive guidance forward after checkout recreation. No token writes, table, backfill, lifecycle change or existing-function replacement is included.
+
+- @openlup/platform size growth: Guidance uses the inherited approved packed and unpacked limits. The code-file limit is 4,207, the measured 4,124 files plus 2%; other internal limits are retained.
+
+- Accept the native activation owner's `active` state and cover native-to-HTTP status projection on legacy and both qualified runtimes, including capability opt-in, strict legacy output, read fallback, revocation and activated checkout.
+
+- Add the experimental native operator shipment command factory for atomic label evidence, exact reservation consumption at handoff and tracking chronology with server actor and durable replay evidence.
+- Preserve earlier-only delivered replay through the arrival recorder, operator-authorized latest-operation reads and fail-soft accounting composition after handoff. Historical missing reservation sets return a named zero-consumption result; unattributed cross-order tracking references refuse with the conflicting order reference. The documented limits describe manual resolution.
+
+Migration: Apply the complete native catalogue through
+`20261110230000_operator_shipment_commands.sql` before selecting these stores.
+Tracking-reference writes through `fulfillment_record_evidence` (including spine
+`recordTracking` with an evidence channel) require explicit
+`metadata.providerKind` and READ COMMITTED. Missing provider identity or another
+isolation level refuses before writing; non-tracking evidence is unchanged.
+
+Install the complete selected native catalogue through `20261110230000_operator_shipment_commands.sql`. Hosts retain administrator authorization, provider selection, duty policy and connection ownership. No operator UI or live carrier call is added.
+
+- The approved packed-byte cap of 3,023,741 B is retained. The higher approved code-file cap of 4,211 is retained; its prior measurement was 4,128 files plus 2% headroom. The released baseline is unchanged.
+- Tracking-reference writers require READ COMMITTED and an explicit provider namespace, including shared shipment evidence. Exact handoff receipts replay before any new status transition.
+
+Label URLs are durable operator-only operation evidence, and the full label and
+tracking requests retain raw provider payloads/events in private operator
+receipts. Hosts authorize these reads and govern retention of records and
+backup/transfer copies; there is no automatic expiry or purge. Do not forward
+operation payloads to customer routes. Replay preserves original evidence.
+
+- Return requests bind the authenticated customer to an owned order before
+  command-key lookup. Fresh requests accept paid/fulfilled orders, with one line
+  per item and quantity capped at the ordered quantity.
+- New receipts normalize key/note whitespace, UUIDs, line order, SKU and
+  disposition defaults. Historical receipts retain their stored fingerprint;
+  historical NULL SKU means not recorded. Hosts declare a subset of stored reasons.
+- Partial approval requires an amount. Approved/rejected decisions produce
+  deduplicated intent events; request creation produces none. Receive, restock,
+  provider refund and subscription lifecycle actions remain separate.
+
+Migration: apply the complete native catalogue through
+`20261110210000_return_request_decisions.sql`. Existing primitive headers and
+privileges remain unchanged. Historical replay uses a bounded owned command;
+there is no additional runtime SELECT grant on return lines.
+
+Historical and canonical key aliases are resolved by operation type and stored
+fingerprint version before creation. Unique matches replay their own request ID;
+ambiguous matches refuse uniformly. A historical request cannot act as a decision
+receipt through a suffixed key. Existing receipts are retained unchanged.
+
+- Select an owned saved shipping or both-kind address for future subscription deliveries. Preserve nullable saved recipients, replay precedence and immutable claimed destinations. Newly typed addresses still require a recipient; a successful typed change clears the saved selection. Keep the existing typed destination reader and use the additive saved-aware reader for nullable saved snapshots. First parcel-contact capture preserves null saved recipients without substituting customer names or address labels; typed/legacy fallback is unchanged.
+- Add scoped delivery/payment preferences, explicit server handlers and redacted checkout hints that remain unapplied. Fresh renewal metadata selects complete delivery preferences before an anchor fallback; payment instruments and cycle alignment remain unchanged.
+
+Migration: install the complete native catalogue through `20261110240000_subscription_saved_address_selection.sql`. New closed routines grant EXECUTE only to service_role; raw table access is limited to client-ID absorption census. Register the explicit preference privacy contributor for export and subject erasure. Native finite transfer carries exact rows to qualified targets; managed-source nonempty preferences refuse without a typed path. Saved snapshots keep existing privacy boundaries; destination-row erasure and starter binding are not added.
+
+- Package size: saved selection, private preference routines and server contracts add SQL and portable source. Crossed packed, code, documentation and file budgets use measured contents with 2% headroom; the released baseline is unchanged.
+
 ## [0.38.0]
 
 - Publishable on the npm `latest` dist-tag as `0.38.0`, from tag

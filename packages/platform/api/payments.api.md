@@ -1643,6 +1643,7 @@ export { createPaymentServices } from "./bindings.js";
 export { createPostgresSandboxPaymentSimulator } from "./postgresSandboxPaymentSimulator.js";
 export { createPostgresSandboxExpiredCheckoutSafety } from './expiredCheckoutSafety.js';
 export type { ExpiredPaymentSafetyOrder } from './expiredCheckoutSafety.js';
+export { normalizeSandboxPaymentRecoveryEvidence } from './sandboxRecoveryGuidance.js';
 ```
 ## dist/payments/paymentMethodLifecycle.d.ts
 
@@ -1799,6 +1800,16 @@ import type { PreparedAttemptExecutionInput, PreparedAttemptExecutionResult, Pre
 export declare function executePreparedAttemptMechanism<I extends PaymentExecutionBaseInput, R extends PaymentExecutionBaseResult & {
     nextActionKind: N | null;
 }, P extends string, N extends string, E extends Error>(input: PreparedAttemptExecutionInput<I, R, P, N>, policy: PreparedAttemptFailurePolicy<E, N>): Promise<PreparedAttemptExecutionResult<R>>;
+```
+## dist/payments/sandboxRecoveryGuidance.d.ts
+
+```ts
+import type { PaymentRecoveryEvidence } from '@openlup/core/payment';
+/** Native observations prove only the outcome, never a method, operation or provider advice. */
+export declare function normalizeSandboxPaymentRecoveryEvidence(input: {
+    provider: string;
+    evidence: unknown[];
+}): PaymentRecoveryEvidence | null;
 ```
 ## dist/payments/schemaCapabilities.d.ts
 

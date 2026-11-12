@@ -1,0 +1,45 @@
+# A receipt comment does not restart a native-review job whose receipt wait expired.
+# This reruns the failed jobs of the current head's latest Published Tree CI run once,
+# only when native-review is its only failed job (scripts/ci-receipt-rerun.mjs decides).
+#
+# issue_comment runs this file and the script from the default branch. Pull-request code is
+# never checked out or executed. The comment body is untrusted data: the job condition and the
+# script only test its marker prefix, and it is never interpolated into a shell. Each comment id
+# runs at most once, without retry.
+
+name: Native Review Receipt Rerun
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions: {}
+
+concurrency:
+  group: native-review-receipt-rerun-${{ github.event.comment.id }}
+  cancel-in-progress: false
+
+jobs:
+  rerun:
+    if: ${{ github.repository == 'openlup/openlup' && vars.OPENLUP_NATIVE_QUEUE == 'enabled' && github.event.issue.pull_request && startsWith(github.event.comment.body, '<!-- openlup-native-review-receipt') && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          sparse-checkout: scripts/ci-receipt-rerun.mjs
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24.21.0
+          package-manager-cache: false
+      - name: Rerun a receipt-blocked native-review job once
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/ci-receipt-rerun.mjs

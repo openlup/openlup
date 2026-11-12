@@ -1073,7 +1073,13 @@ maintainer/delegate read of workflow edits remain the control for that case.
 Release binds each forward to its unique first-parent mainline introduction.
 Its pin may first appear with the SQL and class data in that introduction
 and must remain unchanged afterwards; a later
-repin cannot legalize an earlier invalid installation. Existing separate
+repin cannot legalize an earlier invalid installation. Unchanged means content,
+list and the order of earlier entries, not the array index: approvals new at the
+release head may precede the ones that introduction added, as a landing merge
+places them, while earlier entries whose SQL landed before it keep content and
+index. The same rule reads mainline history; for append-only order on main,
+release relies on the strict registry reader's per-index identities and on
+`assertNativeStoreClassTransition` in the merge queue. Existing separate
 control → feature histories remain valid. Pin-only preparation of future SQL
 retains its existing control decision; it is not an unrelated companion of a
 feature. Once introduced, migration bytes remain immutable and repairs use a
@@ -2253,8 +2259,9 @@ The destination forward adds immutable address documents and scoped order,
 subscription and shipment bindings. Both relations revoke PUBLIC, browser and
 runtime table privileges and enable RLS; trusted runtime uses four bounded
 definer routines with pinned search paths. Parent/client consistency is checked,
-but host authorization of each parent read remains necessary. There is no saved
-address book or arbitrary destination-ID reader. Subscription defaults read
+but host authorization of each parent read remains necessary. The separate saved
+address book owns mutable customer rows; there is no arbitrary destination-ID
+reader. Subscription defaults read
 through an active purchase; renewal orders resolve their own frozen operation
 reference, never the subscription's later future address. Shipment preparation
 pins its first document under the native dispatch lock. Hosts compose this reader
@@ -3705,3 +3712,95 @@ locks. Runtime first payment admission also rechecks source evidence under the
 source order lock before any replacement stock or payment write. A fresh initial declaration belongs to the replacement; the predecessor
 is never reopened. See the [recreation composition](PLATFORM_PACKAGE_REFERENCE.md#expired-checkout-recreation)
 for commercial validation, transaction binding, compensation and profile limits.
+
+### Atomic checkout guidance read
+
+`20261110220000_checkout_payment_guidance.sql` creates only
+`commerce_checkout_payment_guidance_snapshot(uuid,uuid,uuid DEFAULT NULL)`.
+The SQL/STABLE definer fixes `search_path = pg_catalog, pg_temp` and exposes only
+service EXECUTE. It replaces no function and adds no table, trigger or backfill.
+Pure joins read checkout provenance, token authority, native attempts and bounded
+correlated observations/truth/readback evidence together. It neither calls a
+materializing reader nor treats observed capture as completed settlement.
+Current complete-installation inventories include the new function; historical
+prefixes are unchanged. The [composition recipe](PLATFORM_PACKAGE_REFERENCE.md#atomic-checkout-payment-guidance)
+owns capability opt-in, neutral normalization and the sandbox profile limits.
+
+### Operator shipment evidence
+
+The native `20261110230000_operator_shipment_commands.sql` forward adds three
+bounded owned shipment commands and reuses the private operator receipt table.
+It widens its kind CHECK, adds nullable provider identity to tracking references,
+and expands reference uniqueness by provider while preserving duplicate-null
+behavior. Explicit same-order reattribution retains displaced reference rows in
+the private receipt; it performs no historical backfill. Existing runtime table
+privileges and receipt privacy remain unchanged.
+
+A fresh nullable operation actor column references the human principal with
+`ON DELETE SET NULL`; historical actors stay null. The arrival recorder retains
+its INVOKER header, owner, ACL and subscription-before-parcel lock order.
+Ordinary arrival keys retain strict timestamp replay. The operator chronology
+namespace permits earlier-only repair and retains the original arrival receipt.
+No decision or status evidence alone calls replacement confirmation. See the
+[shipment composition and limits](PLATFORM_PACKAGE_REFERENCE.md#native-operator-shipment-commands).
+
+### Saved subscription destination selection
+
+`20261110240000_subscription_saved_address_selection.sql` creates the owned
+`subscription_select_saved_shipping_address` wrapper and replaces the existing
+subscription destination reader, typed-address command and parcel-contact resolver
+without changing their
+headers, owners or ACLs. The wrapper retains principal/client ownership,
+subscription-event replay precedence, shipping/both-kind validation and the
+existing lifecycle/locked-cycle refusals. It persists the existing saved pointer;
+a successful typed command clears it. This selection adds no column or raw DML grant;
+the same forward also creates the private preference tables described below.
+Only `service_role` receives EXECUTE on the new closed definer routines.
+
+New subscription reads create an immutable snapshot of the selected saved row,
+including its explicit ID and nullable recipient. Prior destination rows and
+retained claims are unchanged; a future unclaimed renewal sees saved-row edits.
+The public `read()` contract remains `Promise<DestinationDocument>`; the additive
+`readWithSaved()` carries nullable saved snapshots. Typed address input still
+requires a recipient. First parcel-contact capture preserves a null saved recipient
+even with a nonempty label or current customer name; typed/legacy fallback remains
+unchanged. Existing parcel contact ownership
+and carrier-completeness checks remain decisive; frozen nulls are preserved.
+Saved snapshots use the existing destination personal-data and finite-transfer
+boundary. No new destination export/erasure path or blanket erasure coverage is
+claimed. See [the package composition](../../packages/platform/README.md#saved-subscription-shipping-selection).
+
+
+### Scoped customer preference data
+
+The saved-selection forward also creates `customer_payment_preferences` and
+`customer_delivery_preferences`, with client cascade, one row per client/scope,
+recent-selection indexes, enabled RLS and owner-only raw access. Both are `block`
+classified with the admitted service-role client-ID census grant and SELECT policy.
+Owned definer routines provide principal/client-checked read/upsert, redacted
+checkout hints, private renewal selection and explicit subject export/erasure.
+PUBLIC and browser roles receive no routine or raw table access; only
+`service_role` receives routine EXECUTE. Payment values and provider families are
+closed, with a bijective adopter policy for public values; delivery stores the
+configured provider reference separately. No account-event append, instrument or
+provider action is performed by a preference save.
+
+`commerce_prepare_subscription_renewal` is the only native fresh cycle-order
+writer. Its listed replacement retains its header, ACL and complete body except
+for passing new order metadata through the selector. Explicit selections are
+preserved; complete subscription/any preferences precede the earliest anchor
+order. No trigger is added. Claims, replay, payment selection, delivery alignment
+and the monotonic schedule clamp retain their existing owners and behavior.
+
+All preference columns, scope history and pickup/address JSON are personal data.
+The required `customer-preferences` identity contributor exports exact rows and
+erases by subject client, without relying on client clearing or cascade. Its
+preparation lock precedes identity locks; waiting saves recheck ownership.
+Other privacy vetoes and retained account events stay separately owned. No
+retention period is supplied. Finite native capture/qualified restore carries exact
+rows after clients, with unchanged replay. Legacy installations are capture
+sources; the compatible-row copier is unchanged. Managed-source nonempty
+preferences have no typed projection and explicitly refuse. See the
+[composition recipe](../../packages/platform/README.md#customer-delivery-and-payment-preferences)
+for the trusted checkout-client boundary, required billing-hint reader and
+redacted `applied:false` defaults. No defaults are applied during import.
