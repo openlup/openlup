@@ -188,8 +188,16 @@ it("requests, approves and rejects returns with ownership refusal and one operat
   const first = await port.createRequest(request);
   expect(first).toMatchObject({ status: "requested", replayed: false });
   expect(await port.createRequest(request)).toMatchObject({ returnRequestId: first.returnRequestId, replayed: true });
-  await expect(port.createRequest({ ...request, idempotencyKey: `foreign-${value.id}`, requestedBy: stranger })).rejects.toMatchObject({ code: "22023" });
-  await expect(port.createRequest({ ...request, reasonCode: "other" })).rejects.toMatchObject({ code: "23505" });
+  const state = () => owner.query(`SELECT to_jsonb(r) AS request,
+    (SELECT jsonb_agg(to_jsonb(l) ORDER BY l.order_item_id) FROM public.commerce_return_lines l WHERE l.return_request_id=r.id) AS lines,
+    (SELECT jsonb_agg(to_jsonb(o) ORDER BY o.id) FROM public.commerce_return_operations o WHERE o.return_request_id=r.id) AS operations,
+    (SELECT count(*)::int FROM public.outbox_events e WHERE e.aggregate_id=r.id) AS events
+    FROM public.commerce_return_requests r WHERE r.id=$1`, [first.returnRequestId]);
+  const before = (await state()).rows;
+  const refusal = { code: "22023", message: "commerce_return_request_create_order_not_found" };
+  await expect(port.createRequest({ ...request, idempotencyKey: `foreign-${value.id}`, requestedBy: stranger })).rejects.toMatchObject(refusal);
+  await expect(port.createRequest({ ...request, reasonCode: "other" })).rejects.toMatchObject(refusal);
+  expect((await state()).rows).toEqual(before);
   const approval = { idempotencyKey: `approve-${value.id}`, returnRequestId: first.returnRequestId, refundMode: "none" as const, actorUserId: actor };
   expect(await port.approve(approval)).toMatchObject({ status: "approved", replayed: false });
   expect(await port.approve(approval)).toMatchObject({ status: "approved", replayed: true });

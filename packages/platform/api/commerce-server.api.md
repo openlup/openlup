@@ -9980,6 +9980,9 @@ export { createPostgresExpiredCheckoutRecoveryPort } from './postgresExpiredChec
 export type { CheckoutRecoveryWriteExecutor } from './postgresExpiredCheckoutRecovery.js';
 export { createPostgresExpiredCheckoutDraftPort, createPostgresExpiredCheckoutRuntime, createPostgresExpiredCheckoutCompensation, checkoutRecoveryExecutionFingerprint } from './nativeExpiredCheckoutRecovery.js';
 export type { ExpiredRecoveryRuntimeInput, ExpiredRecoveryTransactionLane } from './nativeExpiredCheckoutRecovery.js';
+export { readAuthorizedPaymentRecovery } from './paymentRecoveryGuidance.js';
+export type { PaymentRecoveryStatusSnapshot, PaymentRecoverySnapshot, PaymentRecoverySnapshotPort, CheckoutPaymentRecoveryGuidance, PaymentRecoveryReadStatus, PaymentRecoveryReadDeps } from './paymentRecoveryGuidance.js';
+export { createPostgresPaymentRecoveryGuidancePort } from './postgresPaymentRecoveryGuidance.js';
 ```
 ## dist/commerce/server/nativeExpiredCheckoutRecovery.d.ts
 
@@ -10757,6 +10760,87 @@ export declare function createOutboxShipmentExceptionEmailHandler<Locale extends
     recipientPort: OrderRecipientPort;
 }): OutboxHandler;
 ```
+## dist/commerce/server/paymentRecoveryGuidance.d.ts
+
+```ts
+import { type PaymentRecoveryAttempt, type PaymentRecoveryGuidance, type PaymentIntentStatus, type PaymentAttemptStatus } from '@openlup/core/payment';
+import type { CheckoutPaymentContinuationClaims } from './checkoutPaymentContinuationCredential.js';
+import type { CheckoutRecoveryTokenPort } from './checkoutRecoveryToken.js';
+export interface PaymentRecoveryStatusSnapshot {
+    orderId: string;
+    clientId: string;
+    orderStatus: string;
+    paymentIntentId: string;
+    intentStatus: PaymentIntentStatus;
+    paymentAttemptId: string | null;
+    attemptStatus: PaymentAttemptStatus | null;
+    provider: string | null;
+    providerPaymentId: string | null;
+    updatedAt: string;
+    failureReason: string | null;
+    subscriptionId: string | null;
+    subscriptionActivationStatus: 'not_applicable' | 'waiting_for_mandate' | 'active' | 'action_required';
+}
+export interface PaymentRecoverySnapshot extends PaymentRecoveryStatusSnapshot {
+    eligible: boolean;
+    purchaseContext: 'one_time' | 'subscription_initial' | null;
+    subscriptionStatus: string | null;
+    tokenAuthorized: boolean;
+    historyComplete: boolean;
+    observedSuccess: boolean;
+    /** Native lifecycle facts do not imply a mandate or change the legacy presentation. */
+    activationState?: string | null;
+    hasExactGap?: boolean;
+    paidAt?: string | null;
+    attempts: (PaymentRecoveryAttempt & {
+        provider?: string;
+        providerFlow?: string | null;
+    })[];
+}
+export interface PaymentRecoverySnapshotPort {
+    getGuidanceSnapshot(input: {
+        orderId: string;
+        paymentIntentId: string;
+        recoveryTokenId?: string;
+    }): Promise<PaymentRecoverySnapshot | null>;
+}
+export interface CheckoutPaymentRecoveryGuidance {
+    version: 1;
+    paymentAttemptId: string;
+    purchaseContext: 'one_time' | 'subscription_initial';
+    cause: PaymentRecoveryGuidance['cause'];
+    methodKind: string | null;
+    methodKey: string | null;
+    operation: PaymentRecoveryGuidance['operation'];
+    restriction: 'method' | 'instrument' | 'operation' | null;
+    actions: PaymentRecoveryGuidance['actions'][number][];
+    consecutiveRefusals: PaymentRecoveryGuidance['consecutiveRefusals'];
+    emphasis: PaymentRecoveryGuidance['emphasis'];
+}
+export type PaymentRecoveryReadStatus = 'paid' | 'failed' | 'expired' | 'pending';
+export interface PaymentRecoveryReadDeps {
+    port: PaymentRecoverySnapshotPort;
+    tokenPort?: Pick<CheckoutRecoveryTokenPort, 'validate'>;
+    /** The host retains its existing display policy, without inferring new evidence. */
+    projectGuidance?(snapshot: PaymentRecoverySnapshot, status: PaymentRecoveryReadStatus, projected: PaymentRecoveryGuidance | null): CheckoutPaymentRecoveryGuidance | null;
+}
+/** Optional inspection only. Read errors invoke the host's unchanged legacy reader. */
+export declare function readAuthorizedPaymentRecovery(input: {
+    request: {
+        orderId: string;
+        clientId: string;
+        paymentIntentId: string;
+        journeyId?: string;
+    };
+    claims: CheckoutPaymentContinuationClaims | null;
+    authorization: unknown;
+    deps: PaymentRecoveryReadDeps;
+    now?: number;
+}): Promise<{
+    snapshot: PaymentRecoverySnapshot;
+    guidance: CheckoutPaymentRecoveryGuidance | null;
+} | null>;
+```
 ## dist/commerce/server/postgresCheckoutRecoveryOrderPort.d.ts
 
 ```ts
@@ -10810,6 +10894,18 @@ export declare function createPostgresExpiredCheckoutRecoveryPort(db: CheckoutRe
     recoveryWindowMs: number;
     now?: () => Date;
 }): ExpiredCheckoutRecoveryWritePort;
+```
+## dist/commerce/server/postgresPaymentRecoveryGuidance.d.ts
+
+```ts
+import type { PaymentRecoveryEvidence } from '@openlup/core/payment';
+import type { CheckoutRecoveryWriteExecutor } from './postgresExpiredCheckoutRecovery.js';
+import type { PaymentRecoverySnapshotPort } from './paymentRecoveryGuidance.js';
+/** One closed SQL read. Operational/malformed results throw so optional status reads can fall back. */
+export declare function createPostgresPaymentRecoveryGuidancePort(db: CheckoutRecoveryWriteExecutor, normalize: (input: {
+    provider: string;
+    evidence: unknown[];
+}) => PaymentRecoveryEvidence | null): PaymentRecoverySnapshotPort;
 ```
 ## dist/commerce/server/referenceCheckoutHandler.d.ts
 
@@ -11701,6 +11797,7 @@ export interface FulfillmentOperatorMutationResult {
     status: 'created' | 'packed' | 'label_pending' | 'label_created' | 'handed_over' | 'in_transit' | 'delivered' | 'exception' | 'cancelled';
     replayed: boolean;
     releasedReservationCount?: number;
+    consumedReservationCount?: number;
     reservationDisposition?: 'recorded' | 'reservations_not_recorded';
 }
 export interface FulfillmentOperatorMutationPort {
@@ -13227,6 +13324,7 @@ export declare const adminCommerceFulfillmentMutationResponseSchema: z.ZodObject
     }>;
     replayed: z.ZodBoolean;
     releasedReservationCount: z.ZodOptional<z.ZodNumber>;
+    consumedReservationCount: z.ZodOptional<z.ZodNumber>;
     reservationDisposition: z.ZodOptional<z.ZodEnum<{
         recorded: "recorded";
         reservations_not_recorded: "reservations_not_recorded";

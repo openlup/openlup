@@ -178,6 +178,7 @@ bearer; its local fixture establishes no hosted revocation guarantee.
 | `./fulfillment`, `./fulfillment/contracts` | [Experimental fulfillment services, contracts and status canon](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#fulfillment-contracts). |
 | `./fulfillment/native` | Experimental `createNativeFulfillmentBinding` locked dispatch-preparation binding; the host supplies authoritative facts, a capability-local transaction lane and contribution composition. |
 | `./fulfillment/native` (operator transactions) | Experimental `createPostgresFulfillmentOperatorPort` for replacement and complete cancellation, with authenticated actor and explicit provider/stock-source binding; `createPostgresParcelReservationConsumption` supplies exact parcel stock consumption. Install the complete catalogue and retain the [legacy cancellation limits](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#native-parity-boundaries). |
+| `./fulfillment/native` (shipment commands) | Experimental `createPostgresFulfillmentShipmentCommandPort` records label evidence, handoff and tracking atomically with server actor and durable replay evidence. Handoff consumes only frozen parcel reservation IDs. Compose `withAccountingInvoiceShadowTrigger` from `./invoicing` after the committed command, using host channel policy and fail-soft accounting. [Historical limits](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#native-parity-boundaries). |
 | `./fulfillment/native` (commerce projection) | Experimental reduced `createPostgresFulfillmentCommerceReadPort`; requires the existing eligibility policy and explicit order-mode mapping. Its default destination reader calls the nonmutating shipment view through the supplied executor; an optional injected reader wins. Select `nativeFulfillmentCommerceResponseSchemas` explicitly when composing served commerce handlers; managed schemas remain the default. The preparation reader does not supply that boundary. [Limits](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#native-commerce-read-projection). |
 | `./subscriptions`, `./subscriptions/contracts` | Default-off, incomplete; [experimental subscription contracts and renewal port](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts). |
 | `./invoicing`, `./invoicing/contracts` | Default-off invoicing contracts and independent duty collection; no provider activation. |
@@ -477,8 +478,8 @@ external-refund marking and return request/approve/reject. Control-plane reads
 remain the reduced `control_plane_v1` projection. Rich OMS reads, notes, address
 correction retain their existing refusal. Replacement requests use the optional
 explicit replacement binding, which can be supplied by
-`createPostgresFulfillmentOperatorPort` from `./fulfillment/native`. Returns record
-intent; they do not receive, restock or execute a refund. The host authenticates
+`createPostgresFulfillmentOperatorPort` from `./fulfillment/native`. Returns allow one line per order item per request, with quantity capped at the
+ordered quantity. Returns record intent; they do not receive, restock or execute a refund. The host authenticates
 and authorizes each operation. The native operator resolver accepts an existing
 Commerce operator whose UUID is either an active control principal or an active
 human `admin` membership with no control row of any state. A human distributor,
@@ -501,6 +502,17 @@ object metadata keeps its keys; other metadata is retained under `previousMetada
 before the command writes its top-level source.
 Genuine refund sources retain their event duties. Neither operation changes an
 active subscription's lifecycle or schedule.
+With the complete catalogue through `20261110210000_return_request_decisions.sql`,
+fresh return requests accept paid or fulfilled orders owned by the authenticated
+customer. Replay normalizes key/note whitespace, UUIDs, line order and defaults.
+Hosts declare a subset of the database's stored reason set. Codes outside the
+stored set receive a clean command refusal. New line SKUs use a trimmed supplied value, then the
+order-item snapshot SKU, then `unknown`. Historical NULL SKUs mean not recorded;
+historical receipts replay against their stored fingerprints. Trimmed key aliases
+are resolved before creation; a unique matching receipt replays its own ID, and
+ambiguous matches receive the uniform refusal without changing historical rows. Partial approval
+requires an amount. Approved/rejected decisions each emit one intent event;
+requests emit none. These commands do not receive goods, restock or execute refunds.
 Native destinations use `./commerce/server/destinations` and the complete SQL
 catalogue. Hosts authorize parent reads and bind checkout/dispatch explicitly.
 The confirmation outbox is durable; native mail dispatch is unbound.
@@ -2337,6 +2349,18 @@ unchanged. Renewal cycles refuse. The native prior-payment safety adapter in
 `./payments` uses actual simulator attempts; real-provider paths retain their
 named unsupported refusal. See the [recreation recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#expired-checkout-recreation)
 for required host authority, executor binding and the real-money closure limit.
+
+Atomic sandbox checkout guidance uses
+`createPostgresPaymentRecoveryGuidancePort` in `./commerce/server`, with
+`normalizeSandboxPaymentRecoveryEvidence` from `./payments`.
+`readAuthorizedPaymentRecovery` binds validation-only token or verified cookie
+authority and derives Core refusal actions. One service-only SQL statement
+rechecks authority and reads status, raw activation/gap facts and bounded evidence.
+Captured observations suppress refusal advice without claiming settlement.
+Opaque native method references establish no method or operation; those guidance
+fields remain unknown. Non-sandbox channels retain the existing named refusal.
+The host keeps status capability opt-in, its legacy display fallback and response
+shape. See the [atomic guidance recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#atomic-checkout-payment-guidance).
 
 ## Saved customer address book
 

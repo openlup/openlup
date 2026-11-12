@@ -1459,6 +1459,58 @@ PostgreSQL evidence is separate from offline conformance and installed-tarball
 proof. Native list/detail reads still return `host_binding_required`; they wait
 for destination and reservation facts in a separate change.
 
+## Native operator shipment commands
+
+The experimental `createPostgresFulfillmentShipmentCommandPort` from
+`@openlup/platform/fulfillment/native` takes a structural SQL executor. Install
+the complete selected catalogue through `20261110230000_operator_shipment_commands.sql`.
+Bind its three methods to the existing authenticated admin label, handoff and
+tracking handlers. The handlers derive `actorUserId` on the server. Construction
+mounts no route or operator UI and makes no carrier call. These commands require
+READ COMMITTED transactions; stronger isolation levels refuse before writing.
+The shared `fulfillment_record_evidence` writer requires an explicit
+`metadata.providerKind` for tracking references and applies the same correlation
+lock and cross-order refusals. Missing provider identity refuses with
+`fulfillment_record_evidence_provider_kind_required`; non-tracking evidence keeps
+its existing behavior.
+
+Label recording commits a succeeded evidence snapshot, provider/tracking
+correlation, actor and operation together. Same-key replay returns the original
+parcel's current status. A provider/number pair on another order conflicts;
+same-order reuse attributes it to the selected parcel. The first accepted label
+and tracking writes retain full requests, including label URLs, raw provider
+payloads and raw tracking events, in the private operator receipt. Runtime roles
+cannot select that receipt table; owner routines use it for replay. The label URL
+also remains in the operation payload returned to authorized operator/service
+readers. Treat it as potentially sensitive or expiring access information, not a
+public tracking URL. The read store does not authenticate and must not be bound
+to customer routes; customer order history omits operation payloads. No automatic
+TTL or purge removes this evidence. Hosts own authorized retention and cleanup,
+including backup and transfer copies; replay preserves the original receipt.
+
+Handoff accepts packed or labelled parcels, consumes only the frozen purchase
+or renewal reservation IDs and commits the stock effect with its audit. Terminal
+handoff is inert replay. An exact recorded command also replays after an
+exception and relabel, without changing status, timestamps or audit. The result includes `reservationDisposition` and
+`consumedReservationCount`. See the [historical stock and tracking limits](ARCHITECTURE_AND_EXTENSIONS.md#native-parity-boundaries)
+for manual resolution when facts were never recorded.
+
+Compose `withAccountingInvoiceShadowTrigger` from `@openlup/platform/invoicing`
+around a command port whose executor commits before returning (for example an
+autocommit pool). With an outer transaction lane, commit that lane before
+returning its handoff method to the wrapper. Supply the host's provider, duty keys and
+channel policy reader. Leave `failOnAccountingError` false for fail-soft document
+handling: document failure does not undo a successful handoff.
+
+Tracking requires the corresponding label/handoff state and a same-order
+reference when one is supplied. Delivered parcels refuse regression. An explicit
+zone in `rawEvent.occurredAt` supplies provider chronology; unusable chronology
+falls back to receipt time on the first delivery. Delivered replay may repair
+arrival earlier through the arrival recorder, never later, without rewriting the
+original operation or repeating delivery alignment. A late actual arrival may
+extend the next cycle; evidence that a parcel has only been labelled or is in
+transit never confirms arrival of a replacement.
+
 ## PostgreSQL checkout recovery tokens
 
 Development preview, Node only, through `@openlup/platform/commerce/server`.
@@ -1813,3 +1865,55 @@ cover legacy and both qualified runtimes.
 
 This mechanism adds no route, UI, token issuer, recreation guidance or real-provider
 qualification. Those remain separate host composition and payment-owner work.
+
+## Atomic checkout payment guidance
+
+In the development-preview sandbox profile,
+`createPostgresPaymentRecoveryGuidancePort(executor, normalizeSandboxPaymentRecoveryEvidence)`
+reads status, checkout provenance, authority and evidence through one service-only
+`commerce_checkout_payment_guidance_snapshot` call. Use a fresh READ COMMITTED
+statement on a service executor. The query joins existing native owners; it never
+materializes destinations, issues tokens or changes payment state. Non-sandbox
+channels retain `native_prepared_attempt_store_unsupported` and the N6 payment-owner
+limit above.
+
+The snapshot binds the exact order, client, intent and current native attempt.
+A draft receipt and frozen checkout context establish one-time provenance; an
+initial subscription also needs its own declaration. Renewal-cycle orders are
+ineligible. Token authority is rechecked at statement time against the exact
+order/client, expiry, revocation and pending checkout state. A previously
+validated token cannot bypass that check. An exactly linked captured observation,
+including an older attempt outside the returned history, suppresses refusal
+advice before settlement converges. This does not declare the order paid.
+
+The read probes 101 attempts and returns at most 100, newest first. It probes 33
+evidence members per attempt and admits at most 32; overflow or a contradictory
+or oversized envelope drops that attempt's whole proof set and marks history
+incomplete. Native observation records and truth/readback source envelopes have
+an 8,192-byte bound. Only correlated identity/outcome fields are projected; raw
+source envelopes, request keys, token hashes and opaque authorization/method
+references are excluded. The adapter maps native state to the existing Core
+attempt vocabulary and derives public actions through Core. Native observations
+prove generic refusal only: method, operation and advice remain unknown. They do
+not establish complete method-specific guidance or a reusable payment method.
+
+`readAuthorizedPaymentRecovery` accepts only token validation or verified
+continuation claims bound to the exact journey/order/client/intent/current
+attempt/rail. Its token dependency exposes only `validate`. The status host calls
+it only for the existing `X-Payment-Recovery-Guidance: 1` opt-in. Missing authority,
+infrastructure or malformed snapshots retain the legacy reader fallback; an
+atomic snapshot with dead token authority carries no guidance. Without opt-in,
+the legacy response shape is unchanged. The optional `projectGuidance` callback
+retains the host's existing display fallback; it cannot turn observed success
+into refusal advice.
+
+Raw `activationState`, `subscriptionStatus`, `paidAt` and `hasExactGap` come from
+the same statement. The native activation owner stores exactly `provisional`,
+`active` and `compensated`; the reader accepts those states. Handler-level
+PostgreSQL witnesses cover opt-in, legacy responses, read failure, revocation and
+an activated checkout without falling back from the atomic read. A provisional declaration is not relabelled as a subscription
+or mandate state. Its raw paid gap remains available without fabricating a
+mandate-wait display. Guidance is inspection only and authorizes no new payment.
+The host owns rendering and route mounting. See the
+[PostgreSQL witnesses](../../tests/postgres/checkoutPaymentGuidance.test.ts) and
+[package characterizations](../../packages/platform/test/commerce/paymentRecoveryGuidance.test.ts).

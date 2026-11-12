@@ -70,6 +70,10 @@
       "class": "public-output"
     },
     {
+      "path": ".github/workflows/native-review-receipt-rerun.yml",
+      "class": "public-output"
+    },
+    {
       "path": ".github/workflows/publish-package.yml",
       "class": "public-output"
     },
@@ -1331,6 +1335,18 @@
     },
     {
       "path": "db/platform/migrations/20261110200000_operator_order_commands.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261110210000_return_request_decisions.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261110220000_checkout_payment_guidance.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261110230000_operator_shipment_commands.sql",
       "class": "public-output"
     },
     {
@@ -4450,6 +4466,18 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261110210000_return_request_decisions.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261110220000_checkout_payment_guidance.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261110230000_operator_shipment_commands.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20261110240000_subscription_saved_address_selection.sql",
       "class": "public-output"
     },
@@ -5734,6 +5762,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/server/paymentRecoveryGuidance.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/server/postgres/commercePriceRead.ts",
       "class": "public-output"
     },
@@ -5771,6 +5803,10 @@
     },
     {
       "path": "packages/platform/src/commerce/server/postgresExpiredCheckoutRecovery.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/postgresPaymentRecoveryGuidance.ts",
       "class": "public-output"
     },
     {
@@ -6443,6 +6479,10 @@
     },
     {
       "path": "packages/platform/src/fulfillment/native/parcelContact.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/native/shipmentCommands.ts",
       "class": "public-output"
     },
     {
@@ -7743,6 +7783,10 @@
     },
     {
       "path": "packages/platform/src/payments/preparedAttemptFinalization.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/sandboxRecoveryGuidance.ts",
       "class": "public-output"
     },
     {
@@ -9382,6 +9426,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/commerce/paymentRecoveryGuidance.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/commerce/portFit.test.ts",
       "class": "public-output"
     },
@@ -9643,6 +9691,10 @@
     },
     {
       "path": "packages/platform/test/fulfillment/nativePreparation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/nativeShipmentCommands.test.ts",
       "class": "public-output"
     },
     {
@@ -11159,6 +11211,14 @@
     },
     {
       "path": "scripts/ci-image-pull.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ci-receipt-rerun.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ci-receipt-rerun.test.ts",
       "class": "public-output"
     },
     {
@@ -28882,6 +28942,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/checkoutPaymentGuidance.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/checkoutRecoveryInspection.test.ts",
       "class": "public-output"
     },
@@ -29079,6 +29143,10 @@
     },
     {
       "path": "tests/postgres/fulfillmentRenewalAdmission.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fulfillmentShipmentCommands.test.ts",
       "class": "public-output"
     },
     {
@@ -29455,6 +29523,10 @@
     },
     {
       "path": "tests/postgres/retainedClientSubscriptionImport.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/returnRequestCommands.test.ts",
       "class": "public-output"
     },
     {

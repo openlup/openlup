@@ -1073,7 +1073,13 @@ maintainer/delegate read of workflow edits remain the control for that case.
 Release binds each forward to its unique first-parent mainline introduction.
 Its pin may first appear with the SQL and class data in that introduction
 and must remain unchanged afterwards; a later
-repin cannot legalize an earlier invalid installation. Existing separate
+repin cannot legalize an earlier invalid installation. Unchanged means content,
+list and the order of earlier entries, not the array index: approvals new at the
+release head may precede the ones that introduction added, as a landing merge
+places them, while earlier entries whose SQL landed before it keep content and
+index. The same rule reads mainline history; for append-only order on main,
+release relies on the strict registry reader's per-index identities and on
+`assertNativeStoreClassTransition` in the merge queue. Existing separate
 control → feature histories remain valid. Pin-only preparation of future SQL
 retains its existing control decision; it is not an unrelated companion of a
 feature. Once introduced, migration bytes remain immutable and repairs use a
@@ -3707,8 +3713,38 @@ source order lock before any replacement stock or payment write. A fresh initial
 is never reopened. See the [recreation composition](PLATFORM_PACKAGE_REFERENCE.md#expired-checkout-recreation)
 for commercial validation, transaction binding, compensation and profile limits.
 
+### Atomic checkout guidance read
 
-## Saved subscription destination selection
+`20261110220000_checkout_payment_guidance.sql` creates only
+`commerce_checkout_payment_guidance_snapshot(uuid,uuid,uuid DEFAULT NULL)`.
+The SQL/STABLE definer fixes `search_path = pg_catalog, pg_temp` and exposes only
+service EXECUTE. It replaces no function and adds no table, trigger or backfill.
+Pure joins read checkout provenance, token authority, native attempts and bounded
+correlated observations/truth/readback evidence together. It neither calls a
+materializing reader nor treats observed capture as completed settlement.
+Current complete-installation inventories include the new function; historical
+prefixes are unchanged. The [composition recipe](PLATFORM_PACKAGE_REFERENCE.md#atomic-checkout-payment-guidance)
+owns capability opt-in, neutral normalization and the sandbox profile limits.
+
+### Operator shipment evidence
+
+The native `20261110230000_operator_shipment_commands.sql` forward adds three
+bounded owned shipment commands and reuses the private operator receipt table.
+It widens its kind CHECK, adds nullable provider identity to tracking references,
+and expands reference uniqueness by provider while preserving duplicate-null
+behavior. Explicit same-order reattribution retains displaced reference rows in
+the private receipt; it performs no historical backfill. Existing runtime table
+privileges and receipt privacy remain unchanged.
+
+A fresh nullable operation actor column references the human principal with
+`ON DELETE SET NULL`; historical actors stay null. The arrival recorder retains
+its INVOKER header, owner, ACL and subscription-before-parcel lock order.
+Ordinary arrival keys retain strict timestamp replay. The operator chronology
+namespace permits earlier-only repair and retains the original arrival receipt.
+No decision or status evidence alone calls replacement confirmation. See the
+[shipment composition and limits](PLATFORM_PACKAGE_REFERENCE.md#native-operator-shipment-commands).
+
+### Saved subscription destination selection
 
 `20261110240000_subscription_saved_address_selection.sql` creates the owned
 `subscription_select_saved_shipping_address` wrapper and replaces the existing
@@ -3735,7 +3771,7 @@ boundary. No new destination export/erasure path or blanket erasure coverage is
 claimed. See [the package composition](../../packages/platform/README.md#saved-subscription-shipping-selection).
 
 
-## Scoped customer preference data
+### Scoped customer preference data
 
 The saved-selection forward also creates `customer_payment_preferences` and
 `customer_delivery_preferences`, with client cascade, one row per client/scope,

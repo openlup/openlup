@@ -70,4 +70,4 @@ it.each(["legacy", "bootstrap", "separate", "admin-managed", "admin-operator"] a
         .toEqual([{ allowed: role === "service_role" }]);
     }
   } finally { await closePostgres(container, pools); }
-}, 30_000);
+}, 55_000);

@@ -93,8 +93,8 @@ function observedOwner(observe: (sql: string, query: (sql: string) => Promise<{ 
   } } as unknown as Pool;
 }
 
-// Retain the predecessor's explicit 30-second connected-transfer case budget;
-// container installation has its separate deadline and cases never retry.
+// Each case bound is about 4x its slowest hosted run, rounded up to 5 s.
+// Container installation keeps its separate deadline; cases never retry.
 for (const table of carried) {
   it(`carries ${table} byte-exactly and replays without changing rows`, async () => {
     const before = await journeyCensus(source.owner);
@@ -111,7 +111,7 @@ for (const table of carried) {
     expect(await journeyCensus(target.owner)).toEqual(before);
     expect(await restore()).toMatchObject({ replayed: true });
     expect(await journeyCensus(target.owner)).toEqual(before);
-  }, 30_000);
+  }, 105_000);
 
   it(`refuses a broken ${table} reference in a distinct target and rolls back`, async () => {
     const pristine = await journeyCensus(target.owner);
@@ -134,7 +134,7 @@ for (const table of carried) {
       ? "catalog_sku_identifiers_catalog_sku_id_fkey" : table === "subscription_price_policy_revisions"
         ? "subscription_price_policy_revisions_price_list_context_fkey" : "commerce_order_adjustments_promotion_id_fkey" });
     expect(await journeyCensus(target.owner)).toEqual(pristine);
-  }, 30_000);
+  }, 70_000);
 
   it(`restores a store without ${table} unchanged`, async () => {
     const before = await journeyCensus(empty.owner);
@@ -144,5 +144,5 @@ for (const table of carried) {
     expect(await journeyCensus(target.owner)).toEqual(before);
     expect(await restore(emptyPacket)).toMatchObject({ replayed: true });
     expect(await journeyCensus(target.owner)).toEqual(before);
-  }, 30_000);
+  }, 105_000);
 }

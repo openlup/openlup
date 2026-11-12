@@ -267,7 +267,7 @@ it("preserves N1 historical 14-pin approval through the re-pin and separately ap
   } finally { rmSync(folder, { recursive: true, force: true }); }
 }, 60_000);
 
-// Measured alone at 74.99 s (2026-10-23); about 3x keeps shared-machine load from timing it out.
+// About 4x the slowest hosted run (92,958 ms), rounded up to 5 s.
 it("retains separate prior approval in CI and release, and refuses incorrect pins", () => {
   const folder = mkdtempSync(join(tmpdir(), "openlup-batch-control-"));
   const git = (...args: string[]) => execFileSync("git", ["-C", folder, ...args], { encoding: "utf8" }).trim();
@@ -341,7 +341,7 @@ it("retains separate prior approval in CI and release, and refuses incorrect pin
     const self = commit("Feature attempts to change its own approval");
     expect(() => assertReviewedPlatformForward(folder, approval, self, pins[0]!.path, bytes(pins[0]!))).toThrow(/path or bytes/u);
   } finally { rmSync(folder, { recursive: true, force: true }); }
-}, 240_000);
+}, 375_000);
 
 // Repin the changed statement so refusal reaches the grantee predicate.
 it.each(["authenticated", "service_role, authenticated"])("refuses a repinned managed creation grantee: %s", grantee => {
@@ -427,7 +427,7 @@ describe("co-located SQL and pins under an existing policy", () => {
       const head = f.git("rev-parse", "HEAD");
       for (const path of correctionPaths) expect(() => assertReviewedPlatformForward(f.root, f.base, head, path, readFileSync(path), true)).not.toThrow();
     } finally { f.cleanup(); }
-  });
+  }, 15_000);
 
   it.each(["admission", "migration", "release"] as const)("accepts the historical M09 correction pair in %s checks", check => {
     const f = correctionFixture();
@@ -457,7 +457,7 @@ describe("co-located SQL and pins under an existing policy", () => {
       expect(() => assertAppendOnlyMigrationHistory(f.root, control, feature)).not.toThrow();
       for (const path of correctionPaths) expect(() => assertReviewedPlatformForward(f.root, f.base, feature, path, readFileSync(path), true)).not.toThrow();
     } finally { f.cleanup(); }
-  });
+  }, 15_000);
 
   it.each(["future entry", "installed entry", "shared field", "position", "unknown class"])("refuses a co-located %s delta", probe => {
     const f = correctionFixture();
@@ -531,7 +531,7 @@ describe("co-located SQL and pins under an existing policy", () => {
         expect(() => assertReviewedPlatformForward(f.root, f.base, introduction, path, readFileSync(join(f.root, path)), true)).toThrow(/reviewed/u);
       }
     } finally { f.cleanup(); }
-  });
+  }, 15_000);
 
   for (const eventName of ["pull_request", "merge_group"]) it(`runs actual migration and native admission entry points for ${eventName}`, async () => {
     const f = correctionFixture();
@@ -555,7 +555,7 @@ describe("co-located SQL and pins under an existing policy", () => {
       const runGit = (cwd: string, ...args: string[]) => args.includes("fetch") ? Promise.resolve("") : reviewGit(cwd, ...args);
       await expect(waitNativeAdmission({ cwd: f.root, event, env, api, runGit, now: () => 1000, deadlineMs: 1 })).resolves.toEqual(receipt);
     } finally { f.cleanup(); }
-  }, eventName === "merge_group" ? 30_000 : undefined);
+  }, 30_000);
 
   it("keeps unchanged bindings and their positions while recognizing the pending M09 repins", () => {
     const previous = structuredClone(registry);
@@ -718,7 +718,7 @@ describe("admitted M11 commerce live registry", () => {
       expect(sources.filter(source => source.path === pin.path)).toEqual([{ path: pin.path, bytes: readFileSync(pin.path) }]);
       expect(readFileSync(pin.path)).toEqual(readFileSync(`scripts/fixtures/reviewed-m11/${pin.path}`));
     }
-  }, 60_000);
+  }, 70_000);
 
   it.each(commerce)("accepts only the live class, after the real prefix: $path", pin => {
     expect(() => assert(pin)).not.toThrow();
@@ -761,7 +761,7 @@ describe("admitted M11 commerce live registry", () => {
         expect(() => assertUnchangedForwardApproval(f.root, invalid, approval8, commerce[0]!.path), attack).toThrow("approved separately");
       }
     } finally { f.cleanup(); }
-  });
+  }, 20_000);
 
   it("uses the live approval through the production CI and release entrypoint", () => {
     const f = correctionFixture();
@@ -793,7 +793,7 @@ describe("admitted M11 commerce live registry", () => {
       const cochanged = f.commit();
       expect(() => assertCoLocatedForwardApproval(f.root, live, cochanged)).toThrow("reviewed replacement admission machinery must be approved separately before co-located SQL/pins");
     } finally { f.cleanup(); }
-  }, 120_000);
+  }, 170_000);
 
   it("refuses unregistered M11 paths and byte drift through production admission", () => {
     const f = correctionFixture();
@@ -984,7 +984,7 @@ describe("admitted M11 commerce live registry", () => {
       const invalid = f.commit();
       expect(() => assertUnchangedForwardApproval(f.root, invalid, same, commerce[0]!.path)).toThrow("approved separately");
     } finally { f.cleanup(); }
-  });
+  }, 25_000);
 
   it.each(["SECURITY INVOKER", "search_path", "public overload path", "implicit pg_temp"])("refuses a fully repinned stock-reader %s header drift", attack => {
     const sql = commerceBytes(stockReader).toString();
@@ -1182,7 +1182,7 @@ it("preserves exact 16-pin release history before the separate 18-pin control", 
       expect(() => assertUnchangedForwardApproval(folder, invalid, approval18, pins[0]!.path)).toThrow(/approved separately/u);
     }
   } finally { rmSync(folder, { recursive: true, force: true }); }
-});
+}, 15_000);
 
 it("refuses co-location of the new M10-9 class with its admitting checker", () => {
   const folder = mkdtempSync(join(tmpdir(), "openlup-m10-9-colocation-"));
@@ -1432,7 +1432,7 @@ it("proves M12 trusted preparation, own-file introduction, queue/release binding
       }
     }
   } finally { f.cleanup(); }
-}, 120_000);
+}, 230_000);
 const REVIEWED_PATH = "config/reviewed-platform-forwards.json";
 
 

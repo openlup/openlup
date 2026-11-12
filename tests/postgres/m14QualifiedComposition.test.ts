@@ -71,7 +71,6 @@ for (const profile of profiles) for (const shape of shapes) {
       // Also runs after partial startup, a failed assertion or killed child.
       await closePostgres(container);
     }
-  // Hosted maximum 54.315 s: fourfold 217.260 s rounds to the existing 240 s child bound.
-  // Five-row tail estimate leaves at least 122.907 s of case headroom.
-  }, 240_000);
+  // About 4x the slowest hosted run (61,139 ms), rounded up to 5 s.
+  }, 245_000);
 }
