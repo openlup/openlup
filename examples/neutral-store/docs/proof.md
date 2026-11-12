@@ -971,7 +971,7 @@ existing subscriptions, payment instruments, orders and account events.
 
 The scoped billing reader supplies owned profiles alongside saved address rows;
 default snapshots expose redacted, unapplied hints. Read errors refuse rather than becoming an empty
-book. Billing, combined profile and private-profile views remain under N5.
+book. Only combined profile and private-profile views remain under N5.
 Independent extraction still accepts a replacement owned registry without requiring
 additional registry exports. Personal-data export/erasure integration retains its
 separate application-owner responsibility.
@@ -989,7 +989,7 @@ configurations have identical checkout counts; the quota stays 36 per 180 second
 The unchanged private-output guard passed every successful group log, with the
 flag absent. At the account-preferences checkpoint, the generated inventory contained 340 cases partitioned as
 62/56/52/12/12/12/16/16/102, every case selected once and no duplicate identities.
-The remaining N5 refusal journey now asserts the three actions still unavailable;
+At that checkpoint, the remaining N5 refusal journey asserted the three actions still unavailable;
 new PostgreSQL journeys witness the newly bound actions.
 
 Starter units passed 326/326, including independent extraction, and the PostgreSQL
