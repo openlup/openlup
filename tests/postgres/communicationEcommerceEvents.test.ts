@@ -1,4 +1,5 @@
 import { currencyExponent } from '@openlup/platform/market-packs';
+import { PLATFORM_EVENT_VOCABULARY } from '@openlup/core/outbox';
 import { randomUUID } from 'node:crypto';
 import { afterAll,beforeAll,expect,it } from 'vitest';
 import { ecommerceInstallation,ecommercePaid,ecommerceAt as at } from './communicationEcommerceFixture.js';
@@ -111,7 +112,7 @@ it('drains eligible checkout qualifications across bounded runs without repeatin
    await db.query('INSERT INTO public.commerce_order_items(order_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor) VALUES($1,1,1,100,100)',[order]);
   }
  });
- const counts=[];
+ const counts:number[]=[];
  for(let run=0;run<3;run++)counts.push((await env.db.query(`SELECT public.communication_checkout_qualify(1,'{}',$1) AS value`,[at])).rows[0].value);
  expect(counts).toEqual([1,1,0]);
  expect((await env.db.query(`SELECT aggregate_id,count(*)::integer AS count FROM public.outbox_events
@@ -171,6 +172,33 @@ it('requires exact quiesced recovery evidence before retrying the original unkno
  expect(await reconcilePostgresEcommerceEvent(options)).toBe('resolved');
  expect((await env.db.query('SELECT payload FROM public.outbox_events WHERE id=$1',[work.id])).rows[0].payload).toEqual(work.payload);
  expect((await env.db.query('SELECT state,recovery_reference FROM public.communication_event_receipts WHERE outbox_event_id=$1',[work.id])).rows[0]).toEqual({state:'pending',recovery_reference:'qualified-identical-event:1'});
+});
+it('retries a terminal unknown duty with a fresh bounded worker budget and retained consumed counters',async()=>{
+ const {reconcilePostgresEcommerceEvent}=await import('@openlup/platform/communications');
+ const p=projection();await p.initialize();const f=await paid();await p.project();
+ const work=(await env.db.query(`SELECT e.id,e.payload,r.request_digest FROM public.outbox_events e JOIN public.communication_event_receipts r ON r.outbox_event_id=e.id WHERE r.source_key=$1`,[`paid:${f.order}`])).rows[0];
+ const outbox=createPostgresOutboxStore(env.db);
+ const claim=async()=>(await outbox.claimBatch({eventTypes:[ECOMMERCE_EXPORT_EVENT_TYPE],knownEventTypes:PLATFORM_EVENT_VOCABULARY.map(row=>row.eventType),batchSize:1000,visibilitySeconds:300,maxAttempts:1})).find(row=>row.id===work.id);
+ let accepted=false,calls=0;
+ const handler=createPostgresEcommerceEventHandler({binding:binding(),now,withTransaction:env.withTransaction,authorize:async()=>true,provider:{async exportEvent(){calls++;return accepted?{kind:'accepted'}:{kind:'unknown',reason:'acceptance_ambiguous'};}}});
+ const first=(await claim())!;
+ expect(await handler.handle(first,new AbortController().signal)).toMatchObject({kind:'snooze'});
+ expect(await outbox.markFailed({eventId:work.id,claimToken:String(first.metadata.claimToken),outcome:'snooze',error:'ecommerce_reconciliation_required',baseDelaySeconds:1,maxDelaySeconds:1,maxAttempts:1,snoozeSeconds:60})).toEqual({status:'snoozed'});
+ await env.db.query(`UPDATE public.outbox_events SET available_at='2000-01-01' WHERE id=$1`,[work.id]);
+ const second=(await claim())!;
+ expect(await handler.handle(second,new AbortController().signal)).toMatchObject({kind:'snooze'});
+ expect(calls).toBe(1);
+ expect(await outbox.markFailed({eventId:work.id,claimToken:String(second.metadata.claimToken),outcome:'retry',error:'snooze_budget_exhausted:ecommerce_reconciliation_required',baseDelaySeconds:1,maxDelaySeconds:1,maxAttempts:1,snoozeSeconds:60})).toEqual({status:'discarded'});
+ expect((await env.db.query('SELECT status,attempts,metadata FROM public.outbox_events WHERE id=$1',[work.id])).rows[0]).toMatchObject({status:'discarded',attempts:1,metadata:{snoozeCount:1,finalAttempts:1,retainPayload:true}});
+ expect(await reconcilePostgresEcommerceEvent({binding:binding(),eventId:work.id,expectedRequestDigest:work.request_digest,evidenceReference:'qualified-terminal-retry:1',resolution:'retry',quiesced:true,qualifiedIdenticalRetry:true,now,withTransaction:env.withTransaction,authorize:async()=>true})).toBe('resolved');
+ const retried=await claim();
+ expect(retried).toBeDefined();
+ expect(retried).toMatchObject({id:work.id,attempts:1,payload:work.payload,metadata:{snoozeCount:0,recoveryAttempts:1,recoverySnoozes:1,finalAttempts:1}});
+ accepted=true;
+ expect(await handler.handle(retried!,new AbortController().signal)).toEqual({kind:'processed'});
+ expect(calls).toBe(2);
+ expect(await outbox.markProcessed({eventId:work.id,claimToken:String(retried!.metadata.claimToken)})).toEqual({applied:true});
+ expect((await env.db.query('SELECT state,request_digest,recovery_reference FROM public.communication_event_receipts WHERE outbox_event_id=$1',[work.id])).rows[0]).toEqual({state:'accepted',request_digest:work.request_digest,recovery_reference:'qualified-terminal-retry:1'});
 });
 it('native renewal uses its operation identity, not initial acquisition cycle presence',async()=>{
  const {renewal,prepareOriginal}=await import('./subscriptionNativeFixture.js');

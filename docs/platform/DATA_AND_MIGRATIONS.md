@@ -3344,6 +3344,9 @@ digest, scope and evidence reference; identical retry additionally requires
 qualified deduplication semantics and current authority. No background retry is
 inferred from a lost response. Currency exponent and resolver provenance are
 frozen once from the qualified host currency, never replaced during retry.
+Explicit qualified retry resets the active attempt/snooze counters for one new
+configured worker budget and preserves their cumulative consumed values in
+`recoveryAttempts`/`recoverySnoozes`, alongside the receipt's recovery reference.
 
 The communications privacy contributor erases frozen recipient projections and
 records a subject erasure fence. It retains pseudonymous source/deduplication

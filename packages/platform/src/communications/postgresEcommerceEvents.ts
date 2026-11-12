@@ -103,9 +103,16 @@ export async function reconcilePostgresEcommerceEvent(options:EcommerceEventTran
     if(!parsed.success||digest(JSON.stringify(parsed.data))!==options.expectedRequestDigest||!sameBinding(parsed.data.binding,options.binding))return 'refused';
     if(options.resolution==='retry'&&(!options.qualifiedIdenticalRetry||!await sourceCurrent(db,parsed.data.event,options.now())||!await options.authorize(parsed.data)))return 'refused';
     if(!await settle(db,options.eventId,options.expectedRequestDigest,String(row.state),options.resolution==='retry'?'pending':options.resolution,'explicit_reconciliation',options.evidenceReference))return 'refused';
+    // Only this explicit, qualified recovery opens a new bounded worker budget;
+    // retain cumulative consumed counters rather than silently erasing them.
     await db.query(`UPDATE public.outbox_events SET status=$2,available_at=$3::timestamptz,
+      attempts=CASE WHEN $2='pending' THEN 0 ELSE attempts END,
       processed_at=CASE WHEN $2='processed' THEN $3::timestamptz ELSE processed_at END,
-      metadata=metadata||CASE WHEN $2='discarded' THEN jsonb_build_object('discardedAt',$3::timestamptz) ELSE '{}'::jsonb END WHERE id=$1::uuid`,
+      metadata=metadata||CASE WHEN $2='pending' THEN jsonb_build_object(
+        'recoveryAttempts',COALESCE((metadata->>'recoveryAttempts')::bigint,0)+attempts,
+        'recoverySnoozes',COALESCE((metadata->>'recoverySnoozes')::bigint,0)+COALESCE((metadata->>'snoozeCount')::bigint,0),
+        'snoozeCount',0)
+        WHEN $2='discarded' THEN jsonb_build_object('discardedAt',$3::timestamptz) ELSE '{}'::jsonb END WHERE id=$1::uuid`,
       [options.eventId,options.resolution==='accepted'?'processed':options.resolution==='refused'?'discarded':'pending',options.now().toISOString()]);
     return 'resolved';
   });

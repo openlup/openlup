@@ -560,6 +560,10 @@ For uncertainty, `reconcilePostgresEcommerceEvent` requires quiesced work, the
 matching request digest, binding and an operator evidence reference. Retrying
 additionally requires the original qualified deduplication semantics and current
 authority. An active claim, mismatched identity or missing evidence refuses.
+Each explicit qualified retry opens a fresh worker budget under the existing
+configured attempt and snooze limits, including after terminal exhaustion.
+Consumed counters accumulate in outbox metadata as `recoveryAttempts` and
+`recoverySnoozes`; the receipt retains the recovery evidence reference.
 Unknown duties retain `retainPayload` even if the worker exhausts its retry
 budget; terminal compaction skips them and continues with unrelated rows.
 Confirmed acceptance/refusal or erasure can release the pin. Reconciliation
