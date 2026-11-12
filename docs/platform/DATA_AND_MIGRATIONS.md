@@ -1077,7 +1077,9 @@ repin cannot legalize an earlier invalid installation. Unchanged means content,
 list and the order of earlier entries, not the array index: approvals new at the
 release head may precede the ones that introduction added, as a landing merge
 places them, while earlier entries whose SQL landed before it keep content and
-index. Existing separate
+index. The same rule reads mainline history; release relies on required CI and
+the queue (`assertNativeStoreClassTransition`, `changedForwardApprovals`) to keep
+main's order append-only. Existing separate
 control → feature histories remain valid. Pin-only preparation of future SQL
 retains its existing control decision; it is not an unrelated companion of a
 feature. Once introduced, migration bytes remain immutable and repairs use a

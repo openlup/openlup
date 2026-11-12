@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { PLATFORM_BASELINE_FILE } from "./platform-migration-manifest.ts";
@@ -1092,6 +1092,24 @@ describe("release approval binding across a landing merge", () => {
       if (change === "a slot inserted before the issued one") merged.nativeStoreForwardClass!.slots.unshift(emptySlot("db/platform/migrations/20271106090000_inserted.sql", "Inserted"));
       expect(() => readReviewedForwardRegistry(encode(merged))).not.toThrow();
       expect(() => assertUnchangedForwardApproval(folder, feature, land(merged), path)).toThrow(separately);
+    });
+  });
+  it("refuses a later forward when an earlier unissued forward's slot and pin are removed", () => {
+    landingFixture(({ folder, feature, merged, land }) => {
+      const removed = merged.nativeStoreForwards![2]!.path, path = merged.nativeStoreForwards![3]!.path;
+      merged.nativeStoreForwards!.splice(2, 1); merged.nativeStoreForwardClass!.slots.splice(2, 1);
+      expect(() => readReviewedForwardRegistry(encode(merged))).not.toThrow();
+      const landing = land(merged);
+      expect(() => assertUnchangedForwardApproval(folder, feature, landing, removed)).toThrow(separately);
+      expect(() => assertUnchangedForwardApproval(folder, feature, landing, path)).toThrow(separately);
+    });
+  });
+  it("keeps the regular-file refusal for a non-regular registry", () => {
+    landingFixture(({ folder, git, feature, merged }) => {
+      const registryPath = resolve(folder, "config/reviewed-platform-forwards.json");
+      writeFileSync(resolve(folder, "config/forwards.json"), encode(merged)); rmSync(registryPath); symlinkSync("forwards.json", registryPath); git("add", "-A");
+      const linked = git("commit-tree", git("write-tree"), "-p", feature, "-m", "Synthetic non-regular registry");
+      expect(() => assertUnchangedForwardApproval(folder, feature, linked, merged.nativeStoreForwards![2]!.path)).toThrow("reviewed replacement requires a regular file: config/reviewed-platform-forwards.json");
     });
   });
 });

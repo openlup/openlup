@@ -872,9 +872,11 @@ function keepsApprovalOrder(before: readonly { path: string }[], after: readonly
 // unchanged. Entries before it keep their order; those whose SQL had landed before `base` (in its first parent, or in
 // `base` itself for a root commit) are issued and also keep their content and index. Only approvals new at `head` may
 // come before the ones `base` introduced, as when a landing merge places main's newer approvals before the candidate's own.
+// The same rule reads mainline history; append-only order on main is kept by required CI and the queue
+// (assertNativeStoreClassTransition, changedForwardApprovals). A non-regular registry keeps its own refusal.
 export function assertUnchangedForwardApproval(root: string, base: string, head: string, path: string): void {
+  const before = blob(root, base, REVIEWED_FORWARD_PATH), after = blob(root, head, REVIEWED_FORWARD_PATH);
   try {
-    const before = blob(root, base, REVIEWED_FORWARD_PATH), after = blob(root, head, REVIEWED_FORWARD_PATH);
     if (before && after) {
       const prior = readForwardRegistry(before, true), current = readForwardRegistry(after, true);
       const parent = git(root, ["rev-list", "--parents", "-n", "1", base]).toString("utf8").trim().split(" ")[1] ?? base;
