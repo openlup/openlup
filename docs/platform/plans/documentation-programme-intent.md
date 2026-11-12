@@ -22,9 +22,9 @@ implementing it.
    inventories) stay where they are. The directory is the marker, so the npm
    package, the agent instructions in an adopter application and openlup.com
    publish exactly that set from the same bytes at the same commit.
-   Existing maintainer pages are not restructured, but what is untrue in them
-   (stale release status, contradictory counts, adopter-specific terms, local
-   paths) is corrected once and kept from returning.
+   Every existing file is brought to the standard of its class: reader
+   knowledge moves into the guide, entry points become short, maintainer pages
+   keep only how to change OpenLup, and evidence is frozen and labelled.
 3. **No silent drift.** A change to a public surface (exports, API reports,
    SQL catalogue, configuration keys, CLI, refusal codes, status of a
    capability) cannot land without the affected reader pages being updated or
@@ -82,6 +82,6 @@ rendering).
 ## Decisions requested
 
 The plan's [owner decisions](documentation-programme.md#owner-decisions) list
-D1–D5 with recommendations: adopting the six mechanisms, where the guide
+D1–D6 with recommendations: adopting the five mechanisms, where the guide
 lives, page order, when the tutorial job becomes required, and who runs the
-per-release documentation pass.
+per-release documentation pass, and the destination map with its class standards.

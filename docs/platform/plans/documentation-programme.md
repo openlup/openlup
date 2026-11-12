@@ -21,14 +21,16 @@ Audience: the maintainer and the agents implementing the programme.
   getting-started path runs in CI.
 - **Smallest complete scope.**
   - Five mechanisms, S1, S2, S4, S5 and S6 (below), built on existing scripts.
-  - A new guide written for readers. Existing large pages stay where they are
-    as maintainer evidence and are not rewritten. Their factual defects are
-    corrected once (W1b), and one repository-wide rule (no absolute local
-    paths) keeps the only pattern-shaped class from returning.
+  - A guide for readers, built from the reader sections of existing pages,
+    which are moved rather than copied, plus the pages nothing covers today:
+    the tutorial, the glossary and the generated reference.
+  - Every existing file gets one class (guide, entry point, maintainer,
+    evidence) and that class's standard (see "Existing documentation").
+    Factual defects are corrected first (W1b).
   - The website consumes the guide at the pinned release commit.
 - **Exclusions.**
-  - Rewriting or restructuring existing platform pages. W1b corrects only
-    what is untrue.
+  - Rewriting evidence: plans, task records, ledgers and generated
+    inventories stay frozen and are only labelled.
   - Vale, markdownlint, TypeDoc and a hosted docs platform.
   - Per-page version or review-date metadata.
   - A per-release documentation bundle.
@@ -194,48 +196,77 @@ a stated limit, not hidden by documentation.
   guide alone, the routes table and `AGENT_CONTEXT.md` corpora are removed in
   a separate wave (W6).
 
-### Existing pages — corrected once, protected after
+### Existing documentation — one destination and one standard per page
 
-The existing `docs/platform/*` pages, package READMEs, examples and policies
-stay as maintainer evidence and as the targets the guide links to. They are
-not restructured, but agents and readers already read them: through GitHub
-and through the installed `AGENT_CONTEXT.md` excerpts until W6. Wave W1b
-therefore corrects every defect the reconnaissance found:
+Every existing Markdown file ends in exactly one of four classes. Each class
+has its own standard, and no file stays in between. Reader knowledge in an
+existing page is **moved** into the guide, not copied: the guide becomes its
+only home, and the old page keeps only what belongs to its class, with a link
+to the guide.
+
+| Class | Standard | Enforced by |
+| --- | --- | --- |
+| **Guide** (`packages/core/docs/guide/`) | The full reader standard of S1. | S2 in full. |
+| **Entry points**: package READMEs (the npm page), root README, package and root `AGENTS.md` | Short. What it is, install, the first example, the maturity table, links into the guide. No ledgers, no release-preparation notes. | S2 in full; size cap for `AGENTS.md`. |
+| **Maintainer pages**: contributor process, architecture rules for changing the platform, release mechanics, domain READMEs, reference-app recipes | True at the current main. One canonical home per rule. Concise. Explains how to change OpenLup, not how to use it, and links to the guide for usage. A status line that names its audience. | S2 compiled fences and the absolute-path rule; review under "Deliver a change". |
+| **Evidence**: plans, task records, ledgers, proof logs, generated inventories, API reports, changelog history | Frozen. A dated status line ("historical record, YYYY-MM-DD" or "generated"). Not edited except to correct a privacy or safety defect. | The absolute-path rule; the publication catalogue class. |
+
+**Destination map.** This is drawn from the full reading of the 0.38.0
+documentation. Paths are relative to the repository root; "move" names what
+goes into the guide.
+
+| File | Class after the programme | Moves into the guide |
+| --- | --- | --- |
+| `packages/core/docs/SUBSCRIPTION_ENGINE.md` | guide | the whole page (concepts) |
+| `docs/platform/adopter-kit/README.md` | guide | the whole page (start / adopt from npm); `AGENTS.template.md` stays a template linked from it |
+| `examples/neutral-store/docs/customization.md`, `limits.md`, `destinations.md` | guide | whole pages (how-to: customize the starter; reference: limits, routes) |
+| `examples/neutral-store/docs/ownership.md` | guide | the ownership table and page ownership (concepts) |
+| `examples/own-stack/README.md` | guide | the whole page (how-to: add OpenLup to an existing app) |
+| `examples/neutral-store/README.md` | entry point | the walkthrough into the tutorial |
+| `README.md` | entry point | "Use OpenLup", the example and current limits into start and reference |
+| `packages/{core,platform,outbox}/README.md` | entry point | usage and composition sections into how-to and reference; release-preparation notes leave for the changelog |
+| `packages/{core,platform}/AGENTS.md`, `AGENTS.md` | entry point | nothing; held to the size cap and S2; `docs/platform/AGENT_GUIDE.md` becomes a link to the root `AGENTS.md` |
+| `docs/platform/ARCHITECTURE_AND_EXTENSIONS.md` | maintainer | ownership, layering, extension seams, adapter conformance, source ejection, package kinds, compatibility posture, application CLI |
+| `docs/platform/DATA_AND_MIGRATIONS.md` | maintainer | data ownership, connection roles, the additive forward path, installing the complete catalogue, delivery-alignment modes, the compatibility lifecycle, operator queries |
+| `docs/platform/CANONICAL_CONTRACTS.md` | maintainer | canonical status, idempotency, provider adapters and classes, subscription lifecycle and delivery alignment, neutral marketing sync |
+| `docs/platform/RUNTIME_AND_SELF_HOSTING.md` | maintainer | the PostgreSQL connection recipe, runtime model, self-host boundary, shutdown, diagnostic history and retention, preview posture |
+| `docs/platform/IDENTITY.md` | maintainer | magic-link policy, email trust, operator invitations, direct login and bootstrap, personal data, guest contact resolution, OIDC tokens |
+| `docs/platform/PLATFORM_PACKAGE_REFERENCE.md` | maintainer | each composition recipe (prices, app-file upgrade, marketing, invoicing, OMS stores, account and support, SEO slots, bundles, fulfillment, checkout recovery) |
+| `docs/platform/SUBSCRIPTION_WORKFLOWS.md` | maintainer | the installed subscription boundary, retry cadence, delivery protection |
+| `docs/platform/DEVELOPMENT_AND_RELEASE.md` | maintainer | "Verify the published npm artifact" (how-to) |
+| `.github/VERSIONING_AND_EOL.md`, `.github/AI_CONTRIBUTION_POLICY.md` | maintainer | the public parts (versioning lines 1–114; the four rules) into reference; the policy files keep the rest |
+| `.github/GOVERNANCE.md`, `TIER_POLICY.md`, `SUPPORT.md`, `SECURITY_RESPONSE_POSTURE.md`, `LICENSE_OF_TRADEMARK_AND_LOGO.md`, `INSTALL_SUPPORT_POLICY.md`, `SECURITY.md` | stay where GitHub expects them, held to the reader standard | nothing moves; the guide links them |
+| `CONTRIBUTING.md`, `docs/platform/DOCUMENTATION.md`, `docs/platform/README.md`, `docs/platform/SUBSCRIPTION_REFERENCE.md`, `docs/platform/IDENTITY_BROWSER_REFERENCE.md`, `deploy/neutral-store/README.md`, `src/**/README.md`, `server/**/README.md` | maintainer | nothing; `docs/platform/README.md` becomes the maintainer index and points readers to the guide |
+| `docs/platform/plans/**`, `docs/platform/DISTRIBUTION_EVIDENCE.md`, `docs/platform/OUTCOME_PROJECTION.md`, `docs/platform/SOURCE_MAP.md`, `.github/PUBLICATION_COMPLETENESS.md`, `examples/neutral-store/docs/proof.md`, `packages/*/CHANGELOG-HISTORY.md`, `packages/*/api/**` | evidence | nothing; the guide's reference links the API reports at the release tag |
+| `packages/*/CHANGELOG.md` | entry point (release notes) | nothing; linked from the guide's upgrade page |
+
+A maintainer page shrinks as its reader sections leave. What remains still
+has to meet the maintainer standard. Repeated paragraphs, superseded ledgers
+and snapshot counts are removed rather than moved. A long ledger that is only
+history moves into a dated evidence file under `plans/`.
+
+**Immediate corrections (W1b).** Agents and readers read the existing pages
+now, through GitHub and through the installed `AGENT_CONTEXT.md` excerpts until
+W6. Defects in pages that will not be reworked soon are therefore corrected
+first, without restructuring:
 
 - **Release status.** Status lines and release notes that call published code
-  a candidate or unpublished, for example:
-  - `IDENTITY.md`
-  - `PLATFORM_PACKAGE_REFERENCE.md`
-  - `SUBSCRIPTION_REFERENCE.md`
-  - the `docs/platform/README.md` plan list
-  - the package READMEs' "Preparation establishes no npm publication"
-- **Hand-typed counts and versions that disagree.** Selected-plan unit counts
-  in `CANONICAL_CONTRACTS.md` and `DATA_AND_MIGRATIONS.md`, and similar.
-  Each is replaced by a pointer to its owning manifest or removed.
-- **Adopter-specific terms where they impose the first-party store's industry
-  on adopters.** This follows the rule of the
-  [documentation quality audit](documentation-quality-audit.md): historical
-  facts, opaque adopter values and faithful reference descriptions are not
-  defects only because they use application vocabulary. Each occurrence of
-  `petId`, `petName`, the `pets` table, live Tpay settlement and "donor
-  adopter" is judged against that rule. Only those presented as generic
-  platform contract are neutralised.
-- **Absolute local paths.** `plans/oss-m19-g18.md:120`.
-- **Pasted duplicates and stale tool references.** For example the block
-  repeated in `ARCHITECTURE_AND_EXTENSIONS.md`, and links to an old release
-  tag in the core README.
+  a candidate or unpublished.
+- **Hand-typed counts and versions that disagree.** Selected-plan unit counts,
+  replaced by a pointer to the owning manifest or removed.
+- **Adopter-specific terms presented as generic platform contract.** The
+  [documentation quality audit](documentation-quality-audit.md)'s rule
+  applies unchanged: historical facts, opaque adopter values and faithful
+  reference descriptions are not defects only because they use application
+  vocabulary.
+- **The absolute local path** in `plans/oss-m19-g18.md:120`.
+- **Pasted duplicates and stale tool references.**
 
-Only one class gets a repository-wide rule, because only one is
+Only one class gets a new repository-wide rule, because only one is
 pattern-shaped without false positives: the published-tree check refuses
-absolute filesystem paths in any tracked Markdown file.
-
-The other classes need no new rule:
-
-- **Release status.** After W1b the guide states no status per page (S1), and
-  the website and `openlup-context` take the version from the release.
-- **Counts.** These move into generated regions or pointers.
-- **Vocabulary.** This stays a judgement under the audit's rule; the guide's
-  own pattern list (S2) covers reader pages.
+absolute filesystem paths in any tracked Markdown file. Release status stops
+recurring because the guide states none per page. Counts move into generated
+regions or pointers. Vocabulary stays a judgement under the audit's rule.
 
 ### S6 — written with the code, checked once per release
 
@@ -260,11 +291,12 @@ The other classes need no new rule:
 
 | Wave | Delivers | Exit |
 | --- | --- | --- |
-| W0 | This intent, reconnaissance and plan, as a Markdown-only draft PR. | Owner decisions D1–D5 recorded. |
+| W0 | This intent, reconnaissance and plan, as a Markdown-only draft PR. | Owner decisions D1–D6 recorded. |
 | W1 | S2 checks for all three packages and the (empty) guide directory; the S2 `AGENTS.md` cap. Updates `DOCUMENTATION.md`. | Required `install-proof` and `self-check` green. Each new refusal has a falsifying test. |
-| W1b | Corrections in existing pages (section "Existing pages"), as small PRs by file group, plus the absolute-path refusal. No restructuring. | Each listed defect fixed, or kept with its reason under the audit's rule. The absolute-path rule is green with a falsifying test. The 10-query agent-context smoke is still green. |
+| W1b | Corrections in existing pages ("Immediate corrections" under "Existing documentation"), as small PRs by file group, plus the absolute-path refusal. No restructuring. | Each listed defect fixed, or kept with its reason under the audit's rule. The absolute-path rule is green with a falsifying test. The 10-query agent-context smoke is still green. |
 | W2 | Guide skeleton and index with the writing rules; `start/` tutorial; `glossary.md`; `reference/` generated regions; S4 job (advisory). Authored by agents from code at the current release; every capability statement the owner must confirm is listed in the PR. | S2 green on the guide. S4 job green, or each failing step recorded as an owner finding. Owner confirms the capability statements. |
-| W3 | `how-to/` and `concepts/` pages, in the order of D3. Root `README.md`, `docs/platform/README.md` and the package READMEs link to the guide. | S2 green; every page reachable from the guide index; no page duplicates another's explanation. |
+| W3 | Move reader sections into `how-to/` and `concepts/` per the destination map, in the order of D3, one source page per PR. Each source page keeps only its class's content and links to the guide. | S2 green; every moved section exists in exactly one place; every guide page reachable from the index. |
+| W3b | Entry points and maintainer pages brought to their standard: slimmed package and root READMEs (the npm pages), `docs/platform/README.md` as the maintainer index, repeated paragraphs and snapshot counts removed from the shrunken maintainer pages, long history ledgers moved to dated evidence files, dated status lines on evidence. | Every file in the map has its class's status line; S2 green on entry points; no maintainer page restates a guide page. |
 | W4 | S5 for npm and agents: `files` entry, `openlup-context init` managed block and guide indexing; root `AGENTS.md` becomes the single agent guide and `docs/platform/AGENT_GUIDE.md` is reduced to a link. | A cold consumer installs the packed candidate, runs `openlup-context init`, and the block and index match the installed guide (extends the existing cold-consumer witness). |
 | W5 | Website consumption (openlup-website repository): `/docs/` built from the guide at the pinned commit, per-page Markdown alternates, guide pages in `llms.txt`; the pin-bump PR from a scheduled job merges and deploys to production automatically when CI is green (owner decision, 2026-11-12). S6 release step added to release preparation. | The next release reaches openlup.com without a manual step. |
 | W6 | Retire the curated routes table and `AGENT_CONTEXT.md` corpora once `evaluate.mjs` passes on the guide; retire the uninvoked orientation audits. | Smoke matrix green on the guide alone; nothing references the removed files. |
@@ -300,9 +332,10 @@ each other once W2 has landed.
 
 ## Cost and budget
 
-- **Agent time.** W1 and W4 are each a few agent-hours plus review. W2 and W3
-  are the bulk: page drafting is fast, and the limiting factor is the owner
-  confirming what each capability does at the release. W5 is about one wave of
+- **Agent time.** W1 and W4 are each a few agent-hours plus review. W2, W3 and
+  W3b are the bulk: about 20 source pages to split, moving sections is fast,
+  and the limiting factor is the owner confirming what each capability does at
+  the release. W5 is about one wave of
   the website's size. W6 is small.
 - **Running cost.**
   - CI: one PostgreSQL-backed job for S4. The S2 additions run inside existing
@@ -320,6 +353,7 @@ each other once W2 has landed.
 | D3 | Page order after the tutorial. | Glossary and reference first; then how-to pages for composing the platform, subscriptions, payments in the sandbox, outbox, extensions, upgrade and operations; then concepts. |
 | D4 | S4 becomes a required context. | After two green runs on main. |
 | D5 | Who runs the per-release documentation pass. | The maintainer's agent during release preparation. A CI agent with an API secret can be added later if the manual step is skipped in practice. |
+| D6 | The destination map and the four class standards. | Adopt as drafted; changes to a row are made in the W3 PR that moves that page. |
 
 ## Documentation impact
 
@@ -331,5 +365,8 @@ each other once W2 has landed.
 
   `CONTRIBUTING.md` is unchanged: "Deliver a change", step 2 already requires
   same-PR documentation.
+- W3 and W3b update every page in the destination map, the publication
+  catalogue for moved or new evidence files, and `config/doc-routing.json` so
+  each route's owner is its guide page where one exists.
 - W4 updates `AGENTS.md`, `docs/platform/AGENT_GUIDE.md` and the adopter kit.
 - W6 updates `DOCUMENTATION.md` for the retired corpus.
