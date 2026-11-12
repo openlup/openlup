@@ -96,7 +96,11 @@ const LEDGER_IDENTITY = `SELECT c.oid::pg_catalog.text AS ledger_oid,
         a.attnum, a.attname, a.atttypid, a.atttypmod, a.attcollation, a.attnotnull,
         a.attgenerated, a.attidentity, a.atthasdef, a.attisdropped, a.attinhcount,
         a.atthasmissing, a.attstorage, a.attcompression,
-        CASE WHEN a.attoptions IS NOT NULL AND NOT EXISTS (
+        CASE WHEN a.attoptions IS NOT NULL
+          AND pg_catalog.array_ndims(a.attoptions) OPERATOR(pg_catalog.=) 1::pg_catalog.int4
+          AND pg_catalog.array_lower(a.attoptions, 1::pg_catalog.int4) OPERATOR(pg_catalog.=) 1::pg_catalog.int4
+          AND pg_catalog.cardinality(a.attoptions) OPERATOR(pg_catalog.>=) 1::pg_catalog.int4
+          AND NOT EXISTS (
           SELECT 1 FROM pg_catalog.unnest(a.attoptions) AS o(opt)
           WHERE o.opt IS NULL OR o.opt OPERATOR(pg_catalog.!~) '^pg_attver=[0-9]+$'::pg_catalog.text
         ) THEN NULL ELSE a.attoptions END, a.attfdwoptions)

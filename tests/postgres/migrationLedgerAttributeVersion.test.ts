@@ -6,6 +6,7 @@ import { Pool } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createPostgresMigrationRunner } from "@openlup/platform/migrations";
 import { imageReference, readCiImage } from "../../scripts/ci-image-pull.mjs";
+import { disposableLabelArgs } from "../../scripts/disposable-docker.mjs";
 import {
   closePostgres, defaultPostgresImage, dockerAvailable, postgresSetupTimeoutMs,
   postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady,
@@ -126,15 +127,31 @@ describe.each(postgresImages)("migration ledger on PostgreSQL $version", ({ vers
       WHERE attrelid='public.platform_schema_migrations'::pg_catalog.regclass AND attname='sha256'`);
     await assertReplay(pool);
   });
+
+  if (version === "16.16") {
+    it.each(["{}", "{{pg_attver=1}}", "[0:0]={pg_attver=1}"])("refuses noncanonical attribute array %s", { timeout: 30_000, retry: 0 }, async (options) => {
+      await runnerFor(pool).apply();
+      const original = (await columnOptions(pool))[1].attoptions;
+      try {
+        await pool.query(`UPDATE pg_catalog.pg_attribute SET attoptions=$1::pg_catalog.text[]
+          WHERE attrelid='public.platform_schema_migrations'::pg_catalog.regclass AND attname='sha256'`, [options]);
+        await assertRefusal(pool);
+      } finally {
+        await pool.query(`UPDATE pg_catalog.pg_attribute SET attoptions=$1::pg_catalog.text[]
+          WHERE attrelid='public.platform_schema_migrations'::pg_catalog.regclass AND attname='sha256'`, [original]);
+      }
+      await assertReplay(pool);
+    });
+  }
 });
 
-it("retains a pre-upgrade ledger across a PostgreSQL 16.15 to 16.16 restart", { timeout: 180_000, retry: 0 }, async () => {
+it("retains a pre-upgrade ledger across a PostgreSQL 16.15 to 16.16 restart", { timeout: postgresSetupTimeoutMs, retry: 0 }, async () => {
   if (!await dockerAvailable()) throw new Error("Migration ledger upgrade witness requires Docker PostgreSQL");
   const volume = `ledger-attribute-upgrade-${process.pid}-${randomUUID()}`;
   const data = "/var/lib/postgresql/ledger-upgrade";
   const containers: PostgresContainer[] = [];
   const pools: Pool[] = [];
-  await docker(["volume", "create", volume]);
+  await docker(["volume", "create", ...disposableLabelArgs(), volume]);
   try {
     let before: unknown[] | undefined;
     for (const [index, { version, image }] of postgresImages.slice(0, 2).entries()) {
