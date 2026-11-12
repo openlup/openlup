@@ -5705,7 +5705,7 @@
     },
     {
       "path": "db/platform/migrations/20261111120000_communication_ecommerce_sources.sql",
-      "sha256": "12e7b91048fcfafe840c20f386d9af5c776d7df5c9c9e8288ac7a9057b205aa4",
+      "sha256": "1784eece20c831ce1d7eb1adfe19150d525b6c161cd0bebe1e6ade22b6b74256",
       "functions": [
         {
           "signature": "public.commerce_order_emit_paid_notification()",
@@ -5725,7 +5725,7 @@
         {
           "signature": "public.communication_event_capture_subject()",
           "beforeSha256": null,
-          "afterSha256": "a5e81b00c2aa927da558b2665856ce5de393d9af32b5be92882a4bf31620f5d2"
+          "afterSha256": "2d8b449e9b2385e92a5ae5c1754a08027f9b495da1888253b39953163277b822"
         },
         {
           "signature": "public.communication_paid_fact(public.commerce_orders)",

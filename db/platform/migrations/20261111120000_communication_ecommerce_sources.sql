@@ -23,8 +23,10 @@ BEGIN
  SELECT pg_get_userbyid(proowner) INTO sealed_owner FROM pg_proc WHERE oid='public.commerce_order_emit_paid_notification()'::regprocedure;
  IF current_setting('app.communication_retained_copy',true)='on' AND pg_has_role(current_user,sealed_owner,'USAGE') THEN RETURN NEW; END IF;
  IF TG_TABLE_NAME='subscription_events' THEN
+  IF NEW.event_type NOT IN ('subscription.activated','subscription.customer_self_service.pause','subscription.customer_self_service.resume','subscription.system.auto_resume','subscription.customer_self_service.cancel') THEN RETURN NEW; END IF;
   SELECT client_id INTO NEW.communication_subject_id FROM public.subscriptions WHERE id=NEW.subscription_id;
  ELSE
+  IF NEW.operation_type IS DISTINCT FROM 'order_refunded' THEN RETURN NEW; END IF;
   SELECT client_id INTO NEW.communication_subject_id FROM public.commerce_orders WHERE id=NEW.order_id;
  END IF;
  RETURN NEW;

@@ -274,3 +274,25 @@ it('records subjectless legacy and guest refusals without stalling a valid fact 
  expect(effects).toEqual([`paid:${valid.order}`]);
  expect(await p.project(1000)).toEqual({projected:0,refused:0,deferred:0});
 });
+it('preserves narrow legacy event inserts without reading unrelated source owners',async()=>{
+ const f=await paid(),event=randomUUID(),operation=randomUUID(),subscription=randomUUID();
+ await env.db.query(`INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at) VALUES($1,$2,28,'2026-12-11')`,[subscription,f.client]);
+ await env.withTransaction(async db=>{
+  await db.query(`CREATE ROLE ecommerce_legacy_insert NOLOGIN;
+   GRANT USAGE ON SCHEMA public TO ecommerce_legacy_insert;
+   GRANT SELECT,INSERT ON public.subscription_events,public.commerce_order_operations TO ecommerce_legacy_insert`);
+  await db.query('SET LOCAL ROLE ecommerce_legacy_insert');
+  await db.query(`INSERT INTO public.subscription_events(id,subscription_id,event_type,idempotency_key,payload)
+   VALUES($1::uuid,$2::uuid,'dunning_ladder_exhausted',$1::text,'{}')`,[event,subscription]);
+  await db.query(`INSERT INTO public.commerce_order_operations(id,order_id,operation_type,idempotency_key)
+   VALUES($1::uuid,$2::uuid,'hold_created',$1::text)`,[operation,f.order]);
+ });
+ expect((await env.db.query('SELECT communication_subject_id FROM public.subscription_events WHERE id=$1',[event])).rows).toEqual([{communication_subject_id:null}]);
+ expect((await env.db.query('SELECT communication_subject_id FROM public.commerce_order_operations WHERE id=$1',[operation])).rows).toEqual([{communication_subject_id:null}]);
+ expect((await env.db.query('SELECT source_key FROM public.communication_event_sources WHERE source_key=ANY($1::text[])',[[`subscription:${event}`,`refund-status:${f.order}`]])).rows).toEqual([]);
+ await expect(env.withTransaction(async db=>{
+  await db.query('SET LOCAL ROLE ecommerce_legacy_insert');
+  await db.query(`INSERT INTO public.subscription_events(subscription_id,event_type,idempotency_key,payload)
+   VALUES($1,'subscription.activated',$2,'{}')`,[subscription,randomUUID()]);
+ })).rejects.toMatchObject({code:'42501'});
+});

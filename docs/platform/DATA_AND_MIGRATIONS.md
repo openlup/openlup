@@ -3326,8 +3326,12 @@ without undoing payment, and is never reconstructed from later catalogue data.
 The postcommit projector checks the bound succeeded settlement transition.
 
 Refund status unions the existing provider-status source and manual OMS operation
-with one per-order status identity, without refund value. Lifecycle event and
-manual-operation rows capture their subject at insertion. Checkout qualification
+with one per-order status identity, without refund value. Selected lifecycle events
+and refunded manual operations capture their subject at insertion. Other event
+and operation types retain their existing insertion permissions without new
+reads of subscription or order owners. Managed historical subscription events
+map the absent captured subject to `null`; current ownership cannot reconstruct
+that historical association. Checkout qualification
 is one processed, token-free source fact per order, using pending-checkout age,
 activation and payment-activity eligibility; email waves remain separate. Current
 checkout eligibility is checked again before export. Source event times are
