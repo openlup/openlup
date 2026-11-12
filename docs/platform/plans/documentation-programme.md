@@ -16,15 +16,15 @@ Audience: the maintainer and the agents implementing the programme.
   - openlup.com.
 
   Checks that already run in required CI keep its examples compiling, its
-  tables generated and its pages free of repository-internal language. A
-  public-surface change cannot land without naming its documentation impact.
-  The getting-started path runs in CI.
+  tables generated and its pages free of repository-internal language, so an
+  API change that breaks a page fails the build by construction. The
+  getting-started path runs in CI.
 - **Smallest complete scope.**
-  - Six mechanisms, S1–S6 (below), built on existing scripts.
+  - Five mechanisms, S1, S2, S4, S5 and S6 (below), built on existing scripts.
   - A new guide written for readers. Existing large pages stay where they are
     as maintainer evidence and are not rewritten. Their factual defects are
-    corrected once (W1b), and two repository-wide rules keep them from
-    returning.
+    corrected once (W1b), and one repository-wide rule (no absolute local
+    paths) keeps the only pattern-shaped class from returning.
   - The website consumes the guide at the pinned release commit.
 - **Exclusions.**
   - Rewriting or restructuring existing platform pages. W1b corrects only
@@ -34,11 +34,15 @@ Audience: the maintainer and the agents implementing the programme.
   - A per-release documentation bundle.
   - An agent maintenance run per merge.
   - An agent evaluation suite (deferred behind S4).
+  - A documentation-impact obligation in the PR record, and any change to
+    review floors. Both were removed or set on 2026-11-06 (`9a94ffe7b`); see
+    [Relation to earlier plans](#relation-to-earlier-plans).
   - Any public API change made to suit documentation.
   - Translation.
 - **Authority.** This record grants nothing. Each wave needs the owner's
-  decisions and an explicit delivery grant. W1 changes review machinery and a
-  required check, so it takes two independent fresh reviews.
+  decisions and an explicit delivery grant. Review floors are the existing
+  ones; W1 changes a required package gate and takes the floor that applies to
+  its paths.
 - **Evidence for completion.**
   - Every wave's exit below.
   - A release cut after W5 whose guide, npm package and openlup.com pages come
@@ -58,14 +62,14 @@ Audience: the maintainer and the agents implementing the programme.
   - API reports with the Migration block: `packages/*/api`, `api:check` in
     required `install-proof`.
   - Core's documentation contract: `packages/core/scripts/documentation-contract.ts`
-    via `npm run docs:check`, in required `install-proof`. It compiles the
+    via the core package's `docs:check` script, in required `install-proof`. It compiles the
     README and AGENTS examples and generates the maturity tables, for core
     only.
   - The neutrality ratchet.
   - The installed agent context: `scripts/agent-context/generate.mjs`, with 12
     hand-curated routes.
 - **Markdown-only changes outside rule files need zero reviewers.**
-  `deltaFloor` in `scripts/agent-review-decide.mjs:84`.
+  `deltaFloor` in `scripts/agent-review-decide.mjs:84`, as set on 2026-11-06.
 - **`@openlup/platform` and `@openlup/outbox` depend on `@openlup/core`**, so
   core is installed in every adopter application.
 
@@ -139,22 +143,18 @@ required `install-proof`. It gains:
    under a fixed line cap; the root `AGENTS.md` becomes the single agent guide
    (W4).
 
-### S3 — documentation impact on surface changes
+### No impact gate (was S3 in the reconnaissance)
 
-A change to any of these surfaces must carry a `Docs-impact:` line in the PR
-task record:
+A `Docs-impact` line in the PR record is not reintroduced. The owner removed
+that obligation on 2026-11-06 because review already covers it. This plan
+gets the same protection by construction:
 
-- `packages/*/api/*.api.md`
-- `packages/*/package.json` `exports` or `bin`
-- the SQL install catalogue
-- the guide's generated sources
-
-The line names either the guide or package page changed in the same PR, or
-`none — <reason>`. The check lives in the existing routing step of the
-published-tree policy, which already reads the PR record for the Migration
-block. It refuses a missing line and a named page that the diff does not
-touch. Whether `none` is right is the reviewer's call: the native review's
-`documentation` assessment already asks for it.
+- **Examples and generated regions.** Every guide example compiles and every
+  closed list is generated (S2), so an API change that invalidates them fails
+  `install-proof` in the same PR.
+- **Prose.** Whatever a pattern cannot catch is reviewed where it is cheapest:
+  - by the author of the change, under "Deliver a change", step 2;
+  - in the per-release pass (S6), against the release's API diff.
 
 ### S4 — the tutorial runs in CI
 
@@ -212,35 +212,45 @@ therefore corrects every defect the reconnaissance found:
 - **Hand-typed counts and versions that disagree.** Selected-plan unit counts
   in `CANONICAL_CONTRACTS.md` and `DATA_AND_MIGRATIONS.md`, and similar.
   Each is replaced by a pointer to its owning manifest or removed.
-- **Adopter-specific terms in generic pages.** `petId`, `petName`, the `pets`
-  table, live Tpay settlement and "donor adopter" are replaced by neutral
-  terms.
+- **Adopter-specific terms where they impose the first-party store's industry
+  on adopters.** This follows the rule of the
+  [documentation quality audit](documentation-quality-audit.md): historical
+  facts, opaque adopter values and faithful reference descriptions are not
+  defects only because they use application vocabulary. Each occurrence of
+  `petId`, `petName`, the `pets` table, live Tpay settlement and "donor
+  adopter" is judged against that rule. Only those presented as generic
+  platform contract are neutralised.
 - **Absolute local paths.** `plans/oss-m19-g18.md:120`.
 - **Pasted duplicates and stale tool references.** For example the block
   repeated in `ARCHITECTURE_AND_EXTENSIONS.md`, and links to an old release
   tag in the core README.
 
-Two rules keep these classes from returning everywhere, not only in the guide.
-Both reuse existing mechanisms:
+Only one class gets a repository-wide rule, because only one is
+pattern-shaped without false positives: the published-tree check refuses
+absolute filesystem paths in any tracked Markdown file.
 
-- the published-tree check refuses absolute filesystem paths in any tracked
-  Markdown file;
-- the neutrality ratchet adds `pet`, `donor` and the remaining store terms to
-  its counted vocabulary, so existing hits may only shrink.
+The other classes need no new rule:
 
-The release-status class needs no rule after W1b: the guide states no status
-per page (S1), and the website and `openlup-context` take the version from the
-release.
+- **Release status.** After W1b the guide states no status per page (S1), and
+  the website and `openlup-context` take the version from the release.
+- **Counts.** These move into generated regions or pointers.
+- **Vocabulary.** This stays a judgement under the audit's rule; the guide's
+  own pattern list (S2) covers reader pages.
 
 ### S6 — written with the code, checked once per release
 
-- **The same-PR rule becomes enforceable.** The agent or contributor changing
-  a surface updates the guide in the same PR, and S3 makes that visible.
-- **Guide changes get a reviewer.** `deltaFloor` gives Markdown-only changes
-  under `packages/core/docs/guide/` a floor of one instead of zero.
+- **Same-PR updates under the existing rule.** The agent or contributor
+  changing a surface updates the guide in the same PR, as "Deliver a change",
+  step 2 already requires. A compiled example or generated region that the
+  change breaks makes the omission visible in CI.
+- **Review floors unchanged.** Guide pages are Markdown outside the rule
+  files, so they keep the floor of zero set on 2026-11-06. CI checks and the
+  per-release pass carry the quality. Capability statements in W2 and W3 are
+  confirmed by the owner as part of those waves.
 - **One documentation pass per release.** Release preparation gains a
   read-only step that lists:
-  - the API-report and catalogue diff since the previous release tag;
+  - the API-report, catalogue and maintainer-page diff since the previous
+    release tag;
   - the guide pages that the routing maps to those paths.
 
   An agent, run by the maintainer as part of release preparation, drafts one
@@ -251,8 +261,8 @@ release.
 | Wave | Delivers | Exit |
 | --- | --- | --- |
 | W0 | This intent, reconnaissance and plan, as a Markdown-only draft PR. | Owner decisions D1–D5 recorded. |
-| W1 | S2 checks for all three packages and the (empty) guide directory; S3 `Docs-impact` check; S6 review floor for the guide; S2 `AGENTS.md` cap. Updates `CONTRIBUTING.md` ("Deliver a change", step 3) and `DOCUMENTATION.md`. | Required `install-proof` and `self-check` green. Each new refusal has a falsifying test. Two fresh reviews (review machinery). |
-| W1b | Corrections in existing pages (section "Existing pages"), as small PRs by file group; the absolute-path refusal and the extended neutrality vocabulary. No restructuring. | Each listed defect fixed or recorded as intentional history with its date; both rules green with falsifying tests; the 10-query agent-context smoke still green. |
+| W1 | S2 checks for all three packages and the (empty) guide directory; the S2 `AGENTS.md` cap. Updates `DOCUMENTATION.md`. | Required `install-proof` and `self-check` green. Each new refusal has a falsifying test. |
+| W1b | Corrections in existing pages (section "Existing pages"), as small PRs by file group, plus the absolute-path refusal. No restructuring. | Each listed defect fixed, or kept with its reason under the audit's rule. The absolute-path rule is green with a falsifying test. The 10-query agent-context smoke is still green. |
 | W2 | Guide skeleton and index with the writing rules; `start/` tutorial; `glossary.md`; `reference/` generated regions; S4 job (advisory). Authored by agents from code at the current release; every capability statement the owner must confirm is listed in the PR. | S2 green on the guide. S4 job green, or each failing step recorded as an owner finding. Owner confirms the capability statements. |
 | W3 | `how-to/` and `concepts/` pages, in the order of D3. Root `README.md`, `docs/platform/README.md` and the package READMEs link to the guide. | S2 green; every page reachable from the guide index; no page duplicates another's explanation. |
 | W4 | S5 for npm and agents: `files` entry, `openlup-context init` managed block and guide indexing; root `AGENTS.md` becomes the single agent guide and `docs/platform/AGENT_GUIDE.md` is reduced to a link. | A cold consumer installs the packed candidate, runs `openlup-context init`, and the block and index match the installed guide (extends the existing cold-consumer witness). |
@@ -264,15 +274,28 @@ W1b can run in parallel with W1 and W2, because it touches different files.
 W2 and W3 can proceed page by page in small PRs. W4 and W5 are independent of
 each other once W2 has landed.
 
+## Relation to earlier plans
+
+- **[Documentation maintenance](documentation-maintenance.md)** (2026-09-27)
+  built the routing, generated navigation and documentation bundle this plan
+  reuses. Its impact checker was removed on 2026-11-06 (`9a94ffe7b`). This
+  plan does not bring it back, for the reason given in "No impact gate".
+- **[Documentation quality audit](documentation-quality-audit.md)**
+  (2026-10-28/29) was a finite, point-in-time correction of the existing
+  pages. Release-status lines went stale again with the next releases. That is
+  the gap this plan closes with mechanisms rather than another audit: a guide
+  without per-page status, generated regions, compiled examples, and a pass
+  per release. W1b applies the audit's vocabulary rule unchanged.
+
 ## Risks
 
 | Risk | Mitigation |
 | --- | --- |
 | The tutorial cannot reach a running store from npm at the current release (candidate archive, owner SQL for the first operator). | S4 records each blocked step as an owner finding. The tutorial states the limit; the product fix is separate work. |
 | The pattern list rejects real API names or legitimate text. | Allow-list in the contract, reviewed like any rule. The list stays short; anything not expressible as a pattern stays with review. |
-| `Docs-impact: none` becomes a reflex. | The reviewer's `documentation` assessment covers it. The per-release pass (S6) catches what slipped, and S4 catches a broken first path. |
+| A prose change slips through without a guide update, since guide pages keep a review floor of zero. | Compiled examples and generated regions fail on API changes; the per-release pass (S6) compares the release's API diff with the guide; S4 catches a broken first path. If misses appear in practice, the owner can raise the floor for the guide path then. |
 | Agent-drafted pages state capabilities that are not true at the release. | Every `ts` fence compiles; generated regions come from code; the owner confirms capability statements in W2 and W3; the review floor is one. |
-| The guide and the maintainer pages say different things. | The guide links to evidence pages instead of copying them. When a maintainer page changes meaning, the routing maps it to its guide page through S3. |
+| The guide and the maintainer pages say different things. | The guide links to evidence pages instead of copying them. The per-release pass lists the guide pages routed to every changed path, maintainer pages included. |
 | The core package grows. | About twenty Markdown pages, small next to `dist/**` and `src/**`, which core already ships. |
 
 ## Cost and budget
@@ -292,7 +315,7 @@ each other once W2 has landed.
 
 | # | Decision | Recommendation |
 | --- | --- | --- |
-| D1 | Adopt S1–S6 with the exclusions above. | Yes. |
+| D1 | Adopt S1, S2, S4, S5 and S6 with the exclusions above (no impact gate, review floors unchanged). | Yes. |
 | D2 | Where the guide lives. | `packages/core/docs/guide/`: ships with npm without a copy step. Alternative: `docs/guide/` plus a checked copy into core, which adds a generator and a freshness check. |
 | D3 | Page order after the tutorial. | Glossary and reference first; then how-to pages for composing the platform, subscriptions, payments in the sandbox, outbox, extensions, upgrade and operations; then concepts. |
 | D4 | S4 becomes a required context. | After two green runs on main. |
@@ -302,10 +325,11 @@ each other once W2 has landed.
 
 - W1b updates only the pages it corrects, plus the neutrality baseline.
 - W1 updates:
-  - `CONTRIBUTING.md` ("Deliver a change": the `Docs-impact` line; review
-    floors);
   - `docs/platform/DOCUMENTATION.md` (the guide as the reader set, its
     contract, generated regions);
   - `docs/platform/README.md` (route readers to the guide).
+
+  `CONTRIBUTING.md` is unchanged: "Deliver a change", step 2 already requires
+  same-PR documentation.
 - W4 updates `AGENTS.md`, `docs/platform/AGENT_GUIDE.md` and the adopter kit.
 - W6 updates `DOCUMENTATION.md` for the retired corpus.

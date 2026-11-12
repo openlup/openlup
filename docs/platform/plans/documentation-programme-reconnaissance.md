@@ -74,7 +74,7 @@ Observed defects in reader-facing pages at 0.38.0:
 | Agent context (`generate.mjs`, `openlup-context` CLI/MCP, 10-query smoke) | installed corpus is a byte-fresh copy of 12 owner sections | required `typecheck`, `self-check`; smoke manual | correctness of the owner; coverage of new exports |
 | Native review | reviewer report must carry a `documentation` field | `native-review` when enabled | field accepts any string; Markdown-only PRs need zero reviewers |
 | Neutrality ratchet | brand, locale and vendor counts may only shrink | required `self-check` | existing hits grandfathered; `pet*`, "donor" not listed |
-| Orientation audits (`Verified against <sha>`, size caps) | — | not invoked; `config/orientation-truths.json` absent | — |
+| Orientation audits (`Verified against <sha>`, size caps) | — | not invoked; their truths configuration file does not exist | — |
 
 No style or prose tooling exists: no markdownlint, Vale, cspell, lychee,
 TypeDoc or API Extractor.
@@ -227,18 +227,18 @@ Keep nothing that needs a human to update metadata by hand.
 | --- | --- | --- | --- |
 | S1 | **One reader directory.** A small, new reader set (about 20 pages: start, guides, concepts, reference, glossary) in one directory. The location is the marker. No per-page version or status: the release is the version, and the preview status is one site-wide banner. | M1, decision 2, decision 7 | No front matter to maintain. Existing large pages are not rewritten; they stay where they are as maintainer evidence and reader pages link to them. |
 | S2 | **One docs contract for every package and the reader directory.** Extend the existing core `docs:check` (already in required `install-proof`) to: <br>• type-check every TypeScript fence; <br>• keep maturity tables generated; <br>• refuse a regex list in reader pages: task IDs, absolute paths, store terms, links into `tests/` or `plans/`, digits next to counted nouns; <br>• cap the `AGENTS.md` size. | M3, M4, M5, M11 | One existing script instead of Vale, markdownlint and new generators. A rule that cannot be written as a pattern belongs in review, not in a linter with false positives. |
-| S3 | **Docs-impact line on surface changes.** When an API report, the SQL catalogue, the CLI or `exports` change, the PR record must name the reader page changed or say `Docs-impact: none` with a reason. Implemented in the existing routing check. | M2 | Reuses the routing that already knows owners. One line, judged by the reviewer. |
+| S3 | ~~Docs-impact line on surface changes.~~ **Withdrawn**: the owner removed this obligation on 2026-11-06 (`9a94ffe7b`). Compiled examples and generated regions (S2) give the same protection by construction, and the per-release pass (S6) covers prose. | M2 | — |
 | S4 | **Executable tutorial.** The npm-to-store tutorial's commands run in CI against a fresh PostgreSQL: advisory at first, required once green twice. | M9 (agent eval suite) as the first measure | Deterministic and cheap. It proves the path every human and every agent takes first. An agent eval is added only if this proves insufficient. |
 | S5 | **One corpus, three outputs from the same files.** <br>• openlup.com reads the reader directory at the pinned commit through Git: the commit hash is the provenance. <br>• The npm packages ship the same directory. <br>• `openlup-context init` writes a managed block with a compact index of it into the adopter's `AGENTS.md`. | M7, M10, the hand-curated `AGENT_CONTEXT.md` routes over time | Removes the per-release bundle step and, later, the excerpt corpus with its route table. The pattern measured best for agents is a compact pointer to version-matched docs in `AGENTS.md`. |
-| S6 | **Docs are written in the same PR as the code, plus one agent pass per release.** <br>• The authoring agent updates the reader page with the code, as S3 asks. <br>• Before each release, one agent compares the API-report diff since the last release with the reader set and opens one PR. <br>• Reader-page PRs take one reviewer instead of zero. | M8 | One scheduled run per release instead of a run per merge. All agent output passes S2–S4, which it cannot fake. |
+| S6 | **Docs are written in the same PR as the code, plus one agent pass per release.** <br>• The authoring agent updates the reader page with the code, as S3 asks. <br>• Before each release, one agent compares the API-report diff since the last release with the reader set and opens one PR. <br>• Review floors stay as set on 2026-11-06 (zero for Markdown outside rule files). | M8 | One scheduled run per release instead of a run per merge. All agent output passes S2–S4, which it cannot fake. |
 
 ### Drop or defer
 
 - **Vale and markdownlint (M5).** Covered by the S2 pattern list and by review.
   Revisit only if style drift shows up in practice.
 - **`verified_against` headers and the staleness job (M6).** Date bumps
-  without review are the known failure mode. S3 ties freshness to the actual
-  change instead. The dormant orientation audits can be retired.
+  without review are the known failure mode. Compiled examples, generated regions and
+  the per-release pass tie freshness to the actual change instead. The dormant orientation audits can be retired.
 - **Per-release documentation bundle (M7).** Git at a pinned commit already
   gives integrity and provenance.
 - **Agent maintenance pass per merge (M8).** Replaced by same-PR updates plus
@@ -251,6 +251,6 @@ Keep nothing that needs a human to update metadata by hand.
 
 ### Decisions left for the owner
 
-1. Approve S1–S6 as the programme, with the drops above.
+1. Approve S1, S2, S4, S5 and S6 as the programme, with the drops above.
 2. Reader set and order: tutorial, glossary and configuration reference first.
 3. Whether S4 becomes required once it has passed twice.
