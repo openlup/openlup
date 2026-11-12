@@ -220,7 +220,16 @@ export interface InvoiceBuyer {
         readonly postalCode: string | null;
         readonly city: string | null;
         readonly country: string | null;
+        readonly line2?: string | null;
+        readonly addressId?: string | null;
+        readonly source?: string | null;
     } | null;
+    readonly taxId?: string | null;
+    readonly source?: string | null;
+    readonly addressSource?: string | null;
+    readonly ordererProfileId?: string | null;
+    readonly billingAddressId?: string | null;
+    readonly legacyFallback?: boolean;
 }
 /** Safe integer minor amounts; taxRateBps is a rate, never a fiscal-support claim.
  * Preserve array order and quantityUnit; no inferred shipping residual or FX.
@@ -293,6 +302,16 @@ export interface InvoiceSellerRevision<Seller = InvoiceSeller> {
 export interface InvoiceClaimedFacts extends InvoiceFacts {
     readonly sellerRevision?: string;
     readonly sellerMode?: "frozen" | "legacy_fallback";
+}
+/** Frozen selection inputs; identifier normalization and fiscal routing remain explicit host policy. */
+export interface InvoiceBuyerSelection extends Omit<InvoiceBuyer, 'taxIdentifier' | 'name'> {
+    readonly name: string | null;
+    readonly taxId: string | null;
+    readonly source: string;
+    readonly addressSource: string;
+    readonly ordererProfileId: string | null;
+    readonly billingAddressId: string | null;
+    readonly legacyFallback: boolean;
 }
 ```
 ## dist/invoicing/contracts/host.d.ts
@@ -563,6 +582,7 @@ export type { InvoiceCompanyLookupPort } from "./companyLookup.js";
 export type { InvoiceStorePort, InvoiceDutyReadback } from "./store.js";
 /** @consumer Host composition and offline port-fit witnesses. */
 export type { InvoiceHostPorts, InvoiceServicesOptions } from "./host.js";
+export type { InvoiceBuyerSelection } from "./facts.js";
 ```
 ## dist/invoicing/contracts/provider.d.ts
 

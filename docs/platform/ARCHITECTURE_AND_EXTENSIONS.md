@@ -2767,6 +2767,14 @@ retain provider selection, invoice reference, status and replay. The
 delivery retry evidence, correction, payout item and account-lineage seams and
 their source witnesses.
 
+An explicitly selected customer-billing invoice store freezes buyer inputs in the
+invoice-request transaction; later host fiscal composition reads that component.
+The existing facts installer runs separately, so it cannot serve as that freeze
+point. Profiles, provenance and the second address line remain lossless; existing
+unselected stores and historical facts keep their behavior. See the
+[billing storage owner](DATA_AND_MIGRATIONS.md#customer-billing-profile-and-invoice-buyer-data)
+for selection precedence, atomicity, retention and exact transfer.
+
 The [invoicing design](plans/oss-m09-invoicing.md) separates the available issue helpers and
 native persistence and explicit service composition from activation. The native refusal factory has no
 executor and never inspects inputs. The conformance helper consumes offline

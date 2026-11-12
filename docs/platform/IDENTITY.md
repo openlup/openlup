@@ -797,6 +797,15 @@ and preserves the payloads. Clearing client profile fields or the client FK's
 cascade does not erase this ledger: identity keeps the client row. This factory
 adds no default reference registration, deletion policy or retention period.
 
+Hosts selecting billing profiles must register `createCustomerBillingPrivacyContributor`
+and require ID `customer-billing`. It exports exact editable profiles and frozen
+invoice buyers, erases only the subject's profiles, and retains the invoice
+components under the invoicing owner's existing document-retention boundary.
+Account-event payloads keep their separate contributor and retention declaration;
+client-field clearing does not cover either new table. See the
+[billing data owner](DATA_AND_MIGRATIONS.md#customer-billing-profile-and-invoice-buyer-data)
+for finite native capture/qualified restore and explicit managed-source refusals.
+
 `@openlup/platform/identity/contracts` exports strict contact/principal subject
 references, versioned contributor documents, erasure receipts and named privacy
 refusals. Each contributor declares `ownedResources` alongside its ID and version. `createPersonalDataContributorRegistry` registers explicit owners and

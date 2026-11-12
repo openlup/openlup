@@ -4260,6 +4260,64 @@
         ],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "customer-billing-profiles",
+        "path": "db/platform/migrations/20261110260000_customer_billing_profiles.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.customer_billing_profiles_read(uuid,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_billing_profiles_clear_defaults(uuid,uuid,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_billing_profile_write(uuid,uuid,uuid,jsonb,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_billing_profile_delete(uuid,uuid,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_billing_prepare_erasure()",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_billing_export(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_billing_erase(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_billing_capture_invoice(text,text,uuid,uuid,jsonb,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_billing_buyer_read(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_billing_install_invoice_facts(uuid,jsonb,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_billing_sweep_invoice_duties(integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [
+          "INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('customer_orderer_profiles', 'block', 'Personal billing profiles belong to their customer and prevent lead absorption.');"
+        ],
+        "absorptionCensusTables": [
+          "public.customer_orderer_profiles"
+        ]
       }
     ]
   },
@@ -5388,6 +5446,67 @@
           "signature": "public.commerce_checkout_inline_retry_begin(text,uuid,uuid,uuid,uuid,text,jsonb,timestamptz)",
           "beforeSha256": null,
           "afterSha256": "eae0ddf33504b3e86ab47425d1c80c09f12a43e53d21ab6aa7a72ce6eb3539a0"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261110260000_customer_billing_profiles.sql",
+      "sha256": "2e79d84391f30ef629b40bb9e306308242b228a3a3c5e36ae2839cbcad6abf6e",
+      "functions": [
+        {
+          "signature": "public.customer_billing_profiles_read(uuid,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "c79dde6a12c5310db8d89dd4dfd7ec8d70789e1b60c86803594341172359328b"
+        },
+        {
+          "signature": "public.customer_billing_profiles_clear_defaults(uuid,uuid,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "f367bacf20c9f8499a8908ff128a3b9dbba3eb2749c457ecac65d9f6bed5ef93"
+        },
+        {
+          "signature": "public.customer_billing_profile_write(uuid,uuid,uuid,jsonb,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "ffd498502671db84e5764fdb9b45278e855f1dbfdac1efa1467c510f9b4006c1"
+        },
+        {
+          "signature": "public.customer_billing_profile_delete(uuid,uuid,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "2b03fee9792eabf176e255487cfa498735d93a0e943529d2dd258196ab9042c4"
+        },
+        {
+          "signature": "public.customer_billing_prepare_erasure()",
+          "beforeSha256": null,
+          "afterSha256": "13848956a506a48c89a7b1f3cfd102cc564009f9070e9df76e7f702235925419"
+        },
+        {
+          "signature": "public.customer_billing_export(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "324541da1189fded3670db6ced63524c6a1fdc1fa382e3f771e9cc7d855d0601"
+        },
+        {
+          "signature": "public.customer_billing_erase(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "af6bbc4ee3355686b7dd38b41a3da0ec5428e8b10f3d157f75771dc69a8506ff"
+        },
+        {
+          "signature": "public.customer_billing_capture_invoice(text,text,uuid,uuid,jsonb,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "b446bab985bb56c28326e5743d91cc24f7d421bfa86bc6ae36004f52ff518052"
+        },
+        {
+          "signature": "public.customer_billing_buyer_read(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "0554a0a049aaf1213cc28a8af0e1a64529c6eb81f0cc6321d9317e1f99b03cd6"
+        },
+        {
+          "signature": "public.customer_billing_install_invoice_facts(uuid,jsonb,text)",
+          "beforeSha256": null,
+          "afterSha256": "2c6a5bcba3d9d12f3c4b5045b933ac146c7e2284b1458ed9fc15d1bcc005de0b"
+        },
+        {
+          "signature": "public.customer_billing_sweep_invoice_duties(integer)",
+          "beforeSha256": null,
+          "afterSha256": "f993cdf4150e49b24fcc253df116a4cc275b137ea301f8808bf854de16a1f089"
         }
       ]
     }
