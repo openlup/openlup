@@ -106,10 +106,15 @@ BEGIN
  UPDATE public.commerce_orders SET recovery_root_order_id=root_id,recreated_from_order_id=source.id,
   metadata=metadata||jsonb_build_object('recreatedFromOrderId',source.id,'recoveryRootOrderId',root_id,
    'recoveryReason','expired_checkout_recreate','recoveryIdempotencyKey',p_idempotency_key,
-   'runtimeFinalize',COALESCE(source.metadata->'runtimeFinalize','{}'::jsonb),
-   'invoiceBuyerSnapshot',CASE WHEN jsonb_typeof(source.metadata#>'{runtimeFinalize,invoiceBuyerSnapshot}')='object'
-    AND source.metadata#>'{runtimeFinalize,invoiceBuyerSnapshot}'<>'{}'::jsonb THEN source.metadata#>'{runtimeFinalize,invoiceBuyerSnapshot}'
-    ELSE COALESCE(source.metadata->'invoiceBuyerSnapshot','{}'::jsonb) END),
+   'runtimeFinalize',COALESCE(source.metadata->'runtimeFinalize','{}'::jsonb))||
+   CASE WHEN jsonb_typeof(source.metadata#>'{runtimeFinalize,invoiceBuyerSnapshot}')='object'
+    AND source.metadata#>'{runtimeFinalize,invoiceBuyerSnapshot}'<>'{}'::jsonb
+    THEN jsonb_build_object('invoiceBuyerSnapshot',source.metadata#>'{runtimeFinalize,invoiceBuyerSnapshot}')
+    WHEN source.metadata ? 'invoiceBuyerSnapshot'
+    THEN jsonb_build_object('invoiceBuyerSnapshot',source.metadata->'invoiceBuyerSnapshot')
+    WHEN jsonb_typeof(source.metadata#>'{runtimeFinalize,invoiceBuyerSnapshot}')='object'
+    THEN jsonb_build_object('invoiceBuyerSnapshot',source.metadata#>'{runtimeFinalize,invoiceBuyerSnapshot}')
+    ELSE '{}'::jsonb END,
   updated_at=p_now WHERE id=replacement.id;
  RETURN jsonb_build_object('contractVersion','commerce.v0','replacementOrderId',replacement.id,'replayed',false);
 END;
