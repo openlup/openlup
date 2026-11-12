@@ -222,3 +222,73 @@ test('captured observations and mismatched receipts cannot expose replacement si
     assert.equal(recreatedExecutionForInspection(executionOrder, attempt, result), null);
   }
 });
+
+
+test('optional guidance preserves the ordinary reader when lookup or native snapshot is unavailable', async () => {
+  const { readCheckoutGuidance } = await import('../host/checkout-recovery.ts');
+  const ref = 'abcdefab-cdef-4abc-8def-abcdefabcdef';
+  const tokens = { async validate() { return { orderId: ref, clientId: ref, tokenId: ref }; } } as unknown as import('../host/checkout-recovery.ts').PurchaseRecovery['tokens'];
+  for (const query of [async () => { throw new Error('offline'); }, async () => ({ rows: [] }),
+    async (sql: string) => sql.includes('settlement_intents') ? { rows: [{ id: ref }] } : { rows: [{ result: { malformed: true } }] }]) {
+    const pool = { query } as unknown as import('pg').Pool;
+    assert.equal(await readCheckoutGuidance(pool, tokens, 'private-bearer', { id: ref, client_id: ref }), undefined);
+  }
+});
+
+
+import { composeSandboxRecoveryPayments, sandboxRecoveryMethod } from '../host/checkout-recovery.ts';
+import type { Pool } from 'pg';
+import type { PostgresRoleFreeTransactionLane } from '@openlup/platform/data';
+import { createCheckoutPaymentContinuationCodec } from '@openlup/platform/commerce/server';
+import { sandboxRecoveryPolicy } from '../owned/acquisition-policy.ts';
+
+for (const operation of ['checkout.tokenPay','checkout.inlineRetry','checkout.payment','checkout.paymentLink'] as const) {
+  test(`${operation} refuses caller identities before constructing durable payment work`, async () => {
+    const pool = { query() { throw new Error('unexpected_payment_storage'); } } as unknown as Pool;
+    const lane = { run() { throw new Error('unexpected_payment_lane'); } } as unknown as PostgresRoleFreeTransactionLane;
+    const tokens = { validate() { throw new Error('unexpected_token_read'); } } as unknown as import('../host/checkout-recovery.ts').PurchaseRecovery['tokens'];
+    const action = composeSandboxRecoveryPayments(pool,lane,tokens)[operation]!;
+    const context = { config: Object.values(configurations)[0]!, commandKey: 'test-command-identity',actor: { customerRef:null,operatorRef:null } };
+    for (const field of ['actorUserId','principalRef','clientId','paymentIntentId','cookie','idempotencyKey'])
+      assert.deepEqual(await action({ [field]: 'forged' },context), { ok:false,code:'starter_input_invalid' });
+  });
+}
+
+test('inline authority is the exact transport cookie, never a bearer or body cookie', async () => {
+  const pool = { query() { throw new Error('unexpected_cookie_read'); } } as unknown as Pool;
+  const lane = {} as PostgresRoleFreeTransactionLane;
+  const tokens = {} as import('../host/checkout-recovery.ts').PurchaseRecovery['tokens'];
+  const secret = 'a'.repeat(64), codec = createCheckoutPaymentContinuationCodec(secret,{cookieName:sandboxRecoveryPolicy.cookieName,executionRails:sandboxRecoveryPolicy.rails})!;
+  const id='abcdefab-cdef-4abc-8def-abcdefabcdef', other='bcdefabc-defa-4bcd-8efa-bcdefabcdefa';
+  const cookie=codec.issue({ journeyId:`checkout:${id}`,orderId:id,clientId:id,paymentIntentId:id,paymentAttemptId:id,executionRail:'sandbox' }).setCookie.split(';')[0]!;
+  const action=composeSandboxRecoveryPayments(pool,lane,tokens,{current:secret})['checkout.inlineRetry']!;
+  const context={ config:Object.values(configurations)[0]!,commandKey:'test-command-identity',actor:{customerRef:null,operatorRef:null} };
+  const input={orderRef:id,expectedAttemptRef:id,retryRequestId:id,methodKey:'primary'};
+  assert.deepEqual(await action(input,context),{ok:false,code:'starter_continuation_required'});
+  assert.deepEqual(await action({...input,orderRef:other},{...context,requestCookie:cookie}),{ok:false,code:'starter_continuation_required'});
+  assert.deepEqual(await action({...input,expectedAttemptRef:other},{...context,requestCookie:cookie}),{ok:false,code:'starter_continuation_required'});
+  assert.deepEqual(await action(input,{...context,requestCookie:cookie.replace(sandboxRecoveryPolicy.cookieName,'other_cookie')}),{ok:false,code:'starter_continuation_required'});
+  assert.equal(sandboxRecoveryMethod({authorizationRef:'opaque',unattendedChargeAuthorizedAt:new Date().toISOString(),payerAccountRef:null,methodRef:'card',methodEvidenceRef:'card'}),null);
+});
+
+
+import { createBuyerLinkConfirmation, isEmbeddedCheckoutBrowser } from '../client/pages/checkout.ts';
+import { embeddedCheckoutBrowserMarkers } from '../owned/quote-copy.ts';
+test('embedded detection is a display hint for the measured markers only', () => {
+  assert.deepEqual(embeddedCheckoutBrowserMarkers, ['FBAN/', 'FB_IAB/', 'Instagram']);
+  for (const marker of embeddedCheckoutBrowserMarkers) assert.equal(isEmbeddedCheckoutBrowser(`Example ${marker} browser`),true);
+  assert.equal(isEmbeddedCheckoutBrowser('Example ordinary browser'),false);
+});
+
+test('buyer-link confirmation survives remounts only for the continuation order that sent it', () => {
+  const confirmation = createBuyerLinkConfirmation();
+  const first = 'abcdefab-cdef-4abc-8def-abcdefabcdef', second = 'bcdefabc-defa-4bcd-8efa-bcdefabcdefa';
+  assert.equal(confirmation.wasSent(first), false);
+  confirmation.markSent(first);
+  assert.equal(confirmation.wasSent(first), true);
+  assert.equal(confirmation.wasSent(second), false);
+  confirmation.markSent(second);
+  assert.equal(confirmation.wasSent(first), true);
+  assert.equal(confirmation.wasSent(second), true);
+  assert.equal(createBuyerLinkConfirmation().wasSent(first), false);
+});

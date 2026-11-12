@@ -238,7 +238,7 @@ This is a four-table data-composition proof, not a packaged installer or complet
 portable-rail qualification. At that earlier stage the installed bootstrap binding was absent,
 and `./lifecycle up` refused `starter_installation_binding_required`.
 
-Both configurations pass 38 browser UI specs, including the six N5 actions on
+At that checkpoint, both configurations passed 38 browser UI specs, including the six N5 actions on
 account and limits pages in Polish and English and the visible inventory-traceability
 boundary. Each retains the single unchanged required purchase failure with
 `host_binding_required`. No native purchase or upgrade result follows from these
@@ -785,8 +785,10 @@ provider access, publication or deployment qualification.
 ## Account, checkout and parcel candidate
 
 Run `./lifecycle browser` from the application directory for the complete database
-configuration. It creates fresh installations for four sequential groups:
-subscription care, portal journeys, recovery extensions and the purchase baseline. Tests use
+configuration. It creates a fresh installation pair for each of the eleven named groups
+in `browser-groups.mjs`: subscription care, portal, recovery extension, operator
+operations, returns portal, payment guidance, shipment operations, account
+preferences, payment retry, embedded browser and billing profiles, followed by the remainder. Tests use
 one worker and tracing, screenshots and video off. Independent processes and
 installations keep each group inside the normal checkout quota; production quota
 values and admission paths are unchanged. Focus the portal with `./lifecycle
@@ -794,7 +796,8 @@ browser browser/acquisition.spec.ts --grep 'portal '`. Playwright's `--list` inv
 selects fourteen definitions in both languages and both configurations, for
 fifty-six cases. The external
 parcel fixture freezes synthetic carrier contact and supplies normalized provider
-facts through existing native owners. It mounts no dispatch or delivery action.
+facts through existing native owners. The fixture itself mounts no action;
+operator pages bind label, handoff and delivery evidence separately.
 
 The recovery journeys distinguish issuer rules: checkout, reminder-wave and
 signed-in recovery links end continuation at order creation plus 24 hours and preserve
@@ -819,8 +822,8 @@ refusals cannot start payment. Durable draft, lineage and attempt receipts keep
 replay on one replacement and one attempt. Replacement-attempt simulator controls
 remain bound to the inspected bearer, lineage and durable execution receipt;
 reload reads the same attempt, independently of the recreation source link's
-continuation lifetime. Captured executions show no simulator controls. Dedicated token-pay retry and method switching, payment guidance, inline
-retry and embedded-browser continuation issuance remain unavailable.
+continuation lifetime. Captured executions show no simulator controls. Dedicated token pay, exact inline retry and the embedded-browser buyer-link
+control are bound for sandbox attempts; real-provider execution remains unavailable.
 
 Hold and release resolve the human administrator before every command and replay.
 The database owner provisions one `commerce_operators` row per human admin, with
@@ -845,3 +848,262 @@ sandbox action even for their signed-in owner after a refused attempt. The
 expiry-notice journeys click Pay without prior provider evidence and prove the
 reference safety refusal with no replacement or payment; display validation
 checks the quote, while Pay checks prior-payment safety.
+
+## Unpaid cancellation and manual refund records
+
+The operator first reads the exact order, enters a reason and confirms the shown
+consequence. Unpaid cancellation uses the native unpaid-order command and releases
+only held purchase reservations. Dispatched, indeterminate and captured payment
+evidence can refuse it. It does not cancel a subscription or a dispatched parcel.
+Manual refund marking records a paid order as refunded after the operator confirms
+that the refund was completed outside this application. This command moves no
+money, sends no refund email, creates no fiscal reversal and changes no subscription.
+Genuine provider-refund duties retain their existing owners.
+
+Each command and replay rechecks the human admin and resolves the existing Commerce
+operator row. Caller identities, missing confirmation, invalid reasons, stale
+order status and conflicting commands refuse. Reasons use the package's trimmed
+1–2,000 character contract. Native durable receipts own replay. The two formerly
+unavailable actions are bound; physical-return, tracking and account limits stay separately
+listed until their own complete bindings exist.
+
+
+## Return intent and optional payment guidance
+
+The return forms now use the native owned-request and administrator decision
+ports. Customer journeys request an owned paid order, retain its exact reference,
+replay canonical input and refuse foreign ownership, duplicate lines, excessive
+quantities and forged identities. Administrator journeys approve full, partial
+zero and no-refund intent, reject requested returns and replay changed notes
+without changing the original decision. Distributor sessions, missing Commerce
+provisioning and withdrawn memberships refuse. The witnesses compare unchanged
+order, reservation, payment truth and subscription facts and count the native
+decision outbox events. Receiving, restocking and sending a refund remain unbound.
+
+Optional completion guidance uses a native atomic snapshot and the real order
+bearer. Journeys cover localized safe generic-decline copy, repeated read-only
+inspection, foreign/revoked/expired authority, forged selectors, indeterminate
+fallback, initial subscription context and observed capture before settlement.
+A unit witness checks missing intent, lookup failure and malformed native output
+falling back to the ordinary reader. There is no synthetic cookie, method
+identity or evidence taxonomy.
+
+The single shared grouping source adds `returns portal ` and `payment guidance `.
+At the return/guidance checkpoint, the generated database-profile listing had
+308 cases, partitioned as 62/56/52/12/12/12/102; every case is selected exactly once. Each group receives a
+fresh installation pair. Workers remain one, retries zero and all captures off;
+the checkout quota stays 36 per 180 seconds.
+
+
+The affected groups passed all 144 cases on real PostgreSQL in both languages:
+
+| Group | Cases, both configurations | Original checkouts per configuration | Replacement receipts per configuration |
+| --- | ---: | ---: | ---: |
+| Portal | 56 | 36 | 0 |
+| Recovery extension | 52 | 26 | 10 |
+| Operator operations | 12 | 10 | 0 |
+| Returns | 12 | 8 | 0 |
+| Payment guidance | 12 | 10 | 0 |
+
+Both configurations have the same counters. Successful output from every group
+passed the unchanged private-output guard against the private captured values.
+Starter units passed 319/319; the PostgreSQL integration witness passed 7/7,
+including the extracted application browser witness and the 60 declared / 53
+bound operation census. These tests ran with `CI=1` and global Git configuration
+disabled, using each test suite's native runner.
+
+
+## Operator shipment commands
+
+Confirmed operator forms bind label, handoff and tracking evidence through the
+public native handlers and shipment command port. Every invocation, including
+replay, checks active human-admin authority and pins the parcel from fresh detail.
+The human principal owns audit attribution; the shipment commands do not require
+a Commerce operator row. Invalid identities and unconfirmed input refuse before effects. Unknown targets
+for fresh commands refuse; receipt replays retain their native target rules. Native commands run in READ COMMITTED transactions.
+
+The shipment journeys cover label URL/full provider-payload retention, operator
+read admission, customer/public-read isolation, exact stock consumption, terminal
+and old-key handoff replay, provider-scoped conflicts, unattributed history,
+same-order correlation, historical missing reservation sets, exception recovery,
+actual replacement arrival, explicit-zone chronology and no-zone fallback.
+Earlier/later replay preserves the original private receipt and never moves the
+next cycle earlier. Distributor, customer, revoked and anonymous commands refuse.
+No undelivered replacement attestation is invoked.
+
+| Group | Passing cases, both configurations | Original checkouts per configuration | Replacement checkout receipts per configuration |
+| --- | ---: | ---: | ---: |
+| Portal | 56 | 36 | 0 |
+| Operator operations | 12 | 10 | 0 |
+| Returns | 12 | 8 | 0 |
+| Shipment operations | 16 | 12 | 0 |
+| Remainder | 102 | 2 | 0 |
+
+All 198 affected cases passed with the shared database recipe, fresh installation
+pairs, one worker, zero retries and traces, video and screenshots off. Both
+configurations have identical counters. The checkout quota remains 36 per 180
+seconds. The unchanged private-output guard passed for every successful group;
+the logs also contain no synthetic private label URL or provider-payload marker.
+At the shipment checkpoint, the generated inventory had 324 cases partitioned as
+62/56/52/12/12/12/16/102, every case selected once and no duplicate identities.
+
+Starter units passed 320/320 and the PostgreSQL integration witness passed 7/7,
+including both extracted application browser cases and the 60 declared / 56
+bound operation census. Changed tests use their native runners with `CI=1` and
+global Git configuration disabled. New times are current or relative UTC values;
+no fixed dates or short expiries were introduced. Public tracking authorization,
+physical return execution and the remaining account/payment integrations retain
+their separate limits.
+
+
+## Saved subscription addresses and scoped preferences
+
+The account page binds native saved-address reads, upsert and deletion, explicit
+subscription shipping selection, and scoped payment/delivery preferences. HTTP
+and browser witnesses cover session ownership, forged identity refusal, address
+normalization and null recipients, default clearing, separate-commit event failure,
+canonical replay, zero-row deletion acknowledgment, foreign updates/selections,
+active/paused in-use refusal and locked upcoming-cycle admission. A real renewal
+skips an incomplete subscription locker, selects the complete any-scope courier,
+and retains its immutable operation and destination after the saved address changes.
+Future destination materialization reads the edit. Preference saves preserve
+existing subscriptions, payment instruments, orders and account events.
+
+The scoped billing reader supplies owned profiles alongside saved address rows;
+default snapshots expose redacted, unapplied hints. Read errors refuse rather than becoming an empty
+book. Only combined profile and private-profile views remain under N5.
+Independent extraction still accepts a replacement owned registry without requiring
+additional registry exports. Personal-data export/erasure integration retains its
+separate application-owner responsibility.
+
+| Group | Passing cases, both configurations | Original checkouts per configuration | Replacement checkout receipts per configuration |
+| --- | ---: | ---: | ---: |
+| Account preferences | 16 | 6 | 0 |
+| Subscription care | 62 | 34 | 0 |
+| Portal | 56 | 36 | 0 |
+| Remainder | 102 | 2 | 0 |
+
+All 236 affected cases passed through the shared database recipe, with one fresh
+installation pair per group, one worker, zero retries and captures off. Both
+configurations have identical checkout counts; the quota stays 36 per 180 seconds.
+The unchanged private-output guard passed every successful group log, with the
+flag absent. At the account-preferences checkpoint, the generated inventory contained 340 cases partitioned as
+62/56/52/12/12/12/16/16/102, every case selected once and no duplicate identities.
+At that checkpoint, the remaining N5 refusal journey asserted the three actions still unavailable;
+new PostgreSQL journeys witness the newly bound actions.
+
+Starter units passed 326/326, including independent extraction, and the PostgreSQL
+integration witness passed 7/7, including both extracted browser cases and the
+64 declared / 60 bound census. Changed files ran in CI parity with global Git
+configuration disabled, using their owned Node, Playwright and Vitest runners.
+New tests introduce no fixed dates or short expiries.
+
+
+## Dedicated sandbox payment recovery and browser handoff
+
+Dedicated token pay binds the latest owned recovery order, intent and reservation.
+Exact inline retry uses the real Secure/HttpOnly/Strict continuation cookie,
+atomic guidance, expected predecessor and retry nonce. Witnesses cover one-time
+and provisional initial subscription dispatch, same/different demo choices,
+verified refusal, concurrent nonces, replay through a fresh host process with the
+same private signing root, cookie rotation, stale predecessor refusal, captured
+settlement and reload. The replay journey owns its private host key from the first
+native dispatch, crashes that disposable host and starts a distinct process with the persisted
+key. Browser requests navigate to the actual host origin and verify that origin
+after replay. Exited children are not awaited a second time. Cancellation journeys
+wait for the specifically named cancellation form, independently of earlier order
+controls and asynchronous parcel reads. Token and inline retries create no new order or second financial settlement.
+A lineage journey retries a declined replacement through the dedicated entry,
+keeps one replacement order and leaves the expired predecessor terminal.
+Missing or mismatched cookie, supplied identity, real-provider rail, expired or
+revoked token and terminal/in-flight state refuse. Native observed capture wins
+over stale control availability. Original ordinary continuation keeps its retry
+after decline; recreated targets stay fenced to the separate lineage receipt.
+
+Embedded-browser journeys use the measured user-agent hints only for display,
+then the actual native cookie for send authority. Send/send-again in one bucket queues
+one buyer event, remount retains the confirmation, transport failure keeps retry
+reachable, and authorized native outbox delivery captures the link privately.
+An independent ordinary browser context opens that real email link without the
+embedded tab's cookie, starts a new attempt after decline, and settles the same
+order once. Another journey proves ordinary-browser hiding and missing-cookie
+refusal after a real legacy sandbox dispatch. No test cookie is fabricated.
+
+| Group | Passing cases, both configurations | Original checkouts per configuration | Replacement checkout receipts per configuration |
+| --- | ---: | ---: | ---: |
+| Payment retry | 20 | 10 | 2 |
+| Embedded browser | 8 | 4 | 0 |
+| Portal | 56 | 36 | 0 |
+| Recovery extension | 52 | 26 | 10 |
+| Payment guidance | 12 | 10 | 0 |
+| Remainder | 102 | 2 | 0 |
+
+At the token/inline checkpoint, all 250 affected cases passed on real PostgreSQL
+with the single shared selections,
+fresh installation pairs, one worker, zero retries and captures off. Both
+configurations have identical counters. Original and replacement drafts together
+stay within the unchanged 36-checkout quota. All successful logs passed the
+unchanged private-output guard, with its flag absent. At that checkpoint the generated
+full listing contained 368 cases partitioned as 62/56/52/12/12/12/16/16/20/8/102, every case selected
+exactly once and no duplicates.
+
+At that checkpoint starter units passed 332/332, including extraction and owned-registry witnesses.
+The PostgreSQL integration witness passed 7/7, including the extracted browser
+cases and 68 declared / 64 bound operation census. Changed Node, Playwright and
+Vitest suites ran with CI enabled and global Git configuration disabled. New
+fixtures use current/relative ordered instants and no short expiries. No complete
+native-limit row is removed: real-provider and remaining account boundaries stay.
+
+
+## Recovery capture and continuation display witnesses
+
+A repeat subscriber has no acquisition terms on the next initial checkout. Native
+HTTP and browser journeys pay that checkout through dedicated token pay or exact
+inline retry, simulate capture, and require both a paid order and an active
+subscription with attached renewal terms. Acquisition snapshots validate retained
+renewal availability before recording any capture observation; damaged retained
+terms leave the order pending, the declaration provisional and the attempt
+dispatched with no observation. A live token for another customer cannot inspect
+or simulate the target payment and leaves its durable state unchanged.
+
+Buyer-link confirmation is keyed by the inspected continuation order. Unit proof
+keeps each order's confirmation independent across remounts. The owned
+`embeddedCheckoutBrowserMarkers` policy controls display hints only; native cookie
+authorization continues to own delivery and payment admission. The group partition
+unit includes payment-retry and embedded-browser sample titles.
+
+At the initial capture-repair checkpoint, the affected shared groups passed 152 cases: portal 56, recovery extension 52,
+payment retry 36 and embedded browser 8. Original/replacement draft counts per
+configuration are 36/0, 26/10, 24/2 and 4/0 respectively, identical for both
+configurations and within the unchanged quota. Every group uses a fresh pair,
+one worker, zero retries and captures off. At that checkpoint the generated full listing
+contained 384 cases partitioned as 62/56/52/12/12/12/16/16/36/8/102, with each
+identity selected once and no duplicates. Starter units passed 333/333 and the
+PostgreSQL integration witness passed 7/7, including the extracted application
+and the then-current 68 declared / 64 bound operation census.
+
+
+## Billing and shared capture activation
+
+The billing group covers browser profile creation, editing and deletion; owned
+redacted default hints; invalid and forged input; foreign update refusal and
+zero-row delete acknowledgement; separate default/write/event commits and repeated
+keys without deduplication. Sandbox payment creates the first owed duty with an
+explicit buyer, an owned profile/billing address or a marked shipping fallback.
+The invoice uses the actual captured buyer, including line2 and provenance.
+Recreated profile/fallback cases use the native slot-28 absence-preserving forward.
+Later profile edits/deletions leave captured buyers and installed invoice facts
+unchanged. The customer invoice page displays the authorized frozen snapshot.
+
+All sandbox capture actions share the pre-capture acquisition check and native
+classic/acquisition activation selection. Real-PostgreSQL/browser regressions
+require repeat-subscriber token pay, inline retry and recreation to produce a paid
+order and an active subscription with attached renewal terms; damaged acquisition
+terms refuse before any capture observation. The browser-safe owned display module
+contains the three measured embedded-browser hints, which confer no authority.
+
+The final shared selection inventory contains 408 cases partitioned as
+62/56/52/12/12/12/16/16/44/8/16/102, including billing profiles before the
+remainder. Playwright listing confirms every case is selected exactly once and
+there are no duplicates. Each group still receives a fresh installation pair,
+one worker, zero retries and captures off.

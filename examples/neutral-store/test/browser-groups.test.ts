@@ -10,11 +10,15 @@ function matches(selection: string[], title: string) {
   return (pattern('--grep')?.test(title) ?? true) && !(pattern('--grep-invert')?.test(title) ?? false);
 }
 
-test('the current care and remainder groups partition all journey titles', () => {
-  for (const title of ['database subscription care pause', 'en: follows T01', 'sandbox purchase']) {
+test('the named groups and remainder partition journey titles', () => {
+  for (const title of ['database subscription care pause', 'database subscription care en: portal recovery', 'database subscription care en: recovery extension payment', 'database subscription care en: operator operations refund', 'database subscription care en: returns portal request', 'database subscription care pl: payment guidance refusal', 'database subscription care en: shipment operations label', 'database subscription care pl: account preferences saved selection', 'database subscription care en: payment retry replay', 'database subscription care pl: embedded browser handoff', 'en: follows T01', 'sandbox purchase']) {
     assert.equal(browserJourneyGroups.filter(group => matches(group, title)).length, 1);
   }
   assert.ok(matches(browserJourneyGroups[0]!, 'database subscription care pause'));
+  assert.ok(matches(browserJourneyGroups[8]!, 'database subscription care en: payment retry replay'));
+  assert.ok(matches(browserJourneyGroups[9]!, 'database subscription care pl: embedded browser handoff'));
+  assert.ok(matches(browserJourneyGroups[10]!, 'database subscription care en: billing profiles invoice'));
+  assert.equal(browserJourneyGroups.filter(group => matches(group, 'database subscription care en: billing profiles invoice')).length, 1);
   assert.ok(matches(browserJourneyGroups.at(-1)!, 'sandbox purchase'));
 });
 

@@ -388,8 +388,9 @@ mailbox directory. Only that care directory is writable in the browser, which
 runs with the host user identity to preserve private capture permissions.
 The script captures output privately, scans it for credentials, removes its
 hosts, containers, databases, roles and scratch files on success or failure, and
-prints the public image identity, counts, timings and bounded failure diagnostics. It uploads no artifacts. The job retains
-its 20-minute limit and existing required-check dependencies. See the
+prints the public image identity, counts, timings and bounded failure diagnostics. It uploads no artifacts.
+The job has a 35-minute deadline, at least 1.3 times the estimated slowest hosted
+run of its sequential browser groups, and keeps its existing required-check dependencies. See the
 [starter proof recipe](examples/neutral-store/docs/proof.md#database-backed-purchase-acceptance-recipe)
 for the selected journeys and the separate local proofs.
 
