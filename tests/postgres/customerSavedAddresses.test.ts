@@ -1,3 +1,4 @@
+import { preferencePort, courierPreference } from './customerPreferences.fixture.js';
 import { randomUUID } from 'node:crypto';
 import type { PgQueryExecutor } from '@openlup/platform/data';
 import { beforeAll, afterAll, describe, expect, it } from 'vitest';
@@ -48,8 +49,14 @@ for (const profile of ['legacy','bootstrap','separate','admin-managed','admin-op
     const f = await customer(source), id = addressId(await f.port.upsertAddress(f.principal, { ...input(), kind: 'both', companyName: 'Private Company', taxId: '1234563218', deliveryNotes: 'Private instructions' }));
     const subscription = randomUUID(); await source.owner.query("INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at,status,shipping_saved_address_id,billing_saved_address_id) VALUES($1,$2,28,$3,'cancelled',$4,$4)", [subscription,f.client,at,id]);
     await source.owner.query("UPDATE public.customer_saved_addresses SET metadata=$2::jsonb,last_used_at=$3 WHERE id=$1", [id,JSON.stringify({ pickupHistory: ['retained private location'] }),at]);
+    const preferences = preferencePort(source.runtime,f.principal,f.client);
+    await preferences.upsertPaymentPreference(f.principal,{ scope: 'any',methodKind: 'card' });
+    await preferences.upsertDeliveryPreference(f.principal,{ ...courierPreference,deliveryKind: 'parcel-locker',pickupPoint: { id: 'point-a',name: 'Private point',address: { line1: 'Private 1',postalCode: '12345',city: 'Example',country: 'ZZ' } } });
+    const preferenceRows = async (store = source) => Promise.all(['customer_payment_preferences','customer_delivery_preferences'].map(async table => ({ table,rows: (await store.owner.query(`SELECT to_jsonb(p) AS row,xmin::text FROM public.${table} p ORDER BY id`)).rows })));
+    const savedPreferences = await preferenceRows();
     const packet = await capture(source), expected = await rows(f.client, source), history = await events(f.client, source);
     expect(packet.owned.find(table => table.table === 'customer_saved_addresses')?.rows).toHaveLength(1);
+    for (const entry of savedPreferences) expect(packet.owned.find(table => table.table === entry.table)?.rows.map(row => JSON.parse(row))).toEqual(entry.rows.map(row => row.row));
     if (profile === 'legacy') {
       expect(packet.owned.find(table => table.table === 'customer_saved_addresses')?.rows.map(row => JSON.parse(row))).toEqual(expected.map(row => row.row));
       const pointers = (await source.owner.query('SELECT to_jsonb(s) AS row FROM public.subscriptions s WHERE id=$1', [subscription])).rows.map(row => row.row);
@@ -82,7 +89,10 @@ for (const profile of ['legacy','bootstrap','separate','admin-managed','admin-op
     const first = await actual(); expect(first.map(row => row.row)).toEqual(expected.map(row => row.row));
     expect((await target.owner.query('SELECT shipping_saved_address_id,billing_saved_address_id FROM public.subscriptions WHERE id=$1', [subscription])).rows).toEqual([{ shipping_saved_address_id: id, billing_saved_address_id: id }]);
     expect((await target.owner.query('SELECT to_jsonb(e) AS row FROM public.customer_account_events e WHERE client_id=$1 ORDER BY id', [f.client])).rows.map(row => row.row)).toEqual(history.map(row => row.row));
+    const restoredPreferences = await preferenceRows(target);
+    expect(restoredPreferences.map(entry => entry.rows.map(row => row.row))).toEqual(savedPreferences.map(entry => entry.rows.map(row => row.row)));
     expect(await restoreConnectedNativeStore(request)).toMatchObject({ replayed: true }); expect(await actual()).toEqual(first);
+    expect(await preferenceRows(target)).toEqual(restoredPreferences);
   }, postgresSetupTimeoutMs);
   it('reads, saves, updates and canonically reuses only the owned address', async () => {
     const f = await customer(); expect(await f.port.getAddressBook(f.principal)).toMatchObject({ addresses: [], ordererProfiles: [] });

@@ -40,6 +40,8 @@ const workflow = readFileSync(join(ROOT, WORKFLOW), "utf8");
 const sourcePreviewWorkflow = readFileSync(join(ROOT, ".github/workflows/publish-source-preview.yml"), "utf8");
 const workflowJob = (name: string, source = workflow) => source.split(`\n  ${name}:\n`)[1]?.split(/^ {2}[a-z][a-z-]*:\n/mu)[0] ?? "";
 const workflowCommands = (job: string) => [...job.matchAll(/^ {6}(?:- | {2})run: (?!\|)(.+)$/gmu)].map((match) => match[1]);
+// Fixture repositories ignore the runner's global and system Git configuration.
+const gitFixtureEnvironment = { ...process.env, GIT_CONFIG_GLOBAL: "", GIT_CONFIG_SYSTEM: "", GIT_CONFIG_NOSYSTEM: "1" };
 
 describe("queue completion trust boundary", () => {
   const source = readFileSync(join(ROOT, ".github/workflows/queue-handoff.yml"), "utf8");
@@ -568,7 +570,7 @@ describe("the workflow stays in step with what it claims to run", () => {
 
   it("checks the actual main-push DCO step for root, descendant and refusal ranges", () => {
     const root = mkdtempSync(join(tmpdir(), "public-main-dco-"));
-    const environment = { ...process.env, GIT_CONFIG_GLOBAL: "", GIT_CONFIG_SYSTEM: "", GIT_CONFIG_NOSYSTEM: "1" };
+    const environment = gitFixtureEnvironment;
     const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=A Contributor", "-c", "user.email=contributor@example.com", ...args], { cwd: root, env: environment, encoding: "utf8" }).trim();
     const step = workflow.split("      - name: Sign-off on every main push\n")[1]?.split("\n  typecheck:")[0];
     const command = step?.split("        run: |\n")[1]?.split("\n").map((line) => line.replace(/^ {10}/u, "")).join("\n");
@@ -594,7 +596,7 @@ describe("the workflow stays in step with what it claims to run", () => {
   });
   it("checks the actual group DCO range and refuses unsigned contributions, unsigned group tips and event drift", () => {
     const root = mkdtempSync(join(tmpdir(), "public-queue-dco-"));
-    const environment = { ...process.env, GIT_CONFIG_GLOBAL: "", GIT_CONFIG_SYSTEM: "", GIT_CONFIG_NOSYSTEM: "1" };
+    const environment = gitFixtureEnvironment;
     const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=A Contributor", "-c", "user.email=contributor@example.com", ...args], { cwd: root, env: environment, encoding: "utf8" }).trim();
     const step = workflow.split("      - name: Sign-off on every merge-group commit\n")[1]?.split("      - name: Sign-off on every main push\n")[0];
     const command = step?.split("        run: |\n")[1]?.split("\n").map((line) => line.replace(/^ {10}/u, "")).join("\n");
@@ -668,6 +670,70 @@ describe("the workflow stays in step with what it claims to run", () => {
     expect(workflow).toContain("gitleaks_8.30.1_linux_x64.tar.gz");
     expect(workflow).toContain("551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb");
     expect(workflow).toContain("gitleaks git . --config config/gitleaks.toml --redact --no-banner");
+  });
+
+  it("scans only a non-empty pull-request or merge-group range, full history otherwise or on scanner input changes, and refuses unreadable event SHAs", () => {
+    const job = workflowJob("gitleaks");
+    expect(job).toContain("fetch-depth: 0");
+    const step = job.split("      - name: Scan the event range, or the complete available history\n")[1] ?? "";
+    for (const binding of ["PR_BASE: ${{ github.event.pull_request.base.sha }}", "PR_HEAD: ${{ github.event.pull_request.head.sha }}",
+      "GROUP_BASE: ${{ github.event.merge_group.base_sha }}", "GROUP_HEAD: ${{ github.event.merge_group.head_sha }}"]) expect(step).toContain(binding);
+    const command = step.split("        run: |\n")[1]?.split("\n").map((line) => line.replace(/^ {10}/u, "")).join("\n");
+    expect(command).toBeTruthy();
+    expect(command).not.toContain("${{");
+    const root = mkdtempSync(join(tmpdir(), "public-gitleaks-range-"));
+    const repo = join(root, "repo"), bin = join(root, "bin"), calls = join(root, "calls");
+    const environment = gitFixtureEnvironment;
+    const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=A Contributor", "-c", "user.email=contributor@example.com", ...args], { cwd: repo, env: environment, encoding: "utf8" }).trim();
+    try {
+      mkdirSync(repo); mkdirSync(bin);
+      // A recording stand-in for the scanner: the step's argv is the contract under test.
+      writeFileSync(join(bin, "gitleaks"), "#!/bin/sh\nprintf '[%s]' \"$@\" >> \"$SCAN_CALLS\"\necho >> \"$SCAN_CALLS\"\n");
+      chmodSync(join(bin, "gitleaks"), 0o755);
+      git("init", "--quiet", "--initial-branch=main");
+      git("commit", "--quiet", "--allow-empty", "--no-gpg-sign", "-m", "base");
+      const base = git("rev-parse", "HEAD");
+      git("commit", "--quiet", "--allow-empty", "--no-gpg-sign", "-m", "head");
+      const head = git("rev-parse", "HEAD"), tree = git("rev-parse", "HEAD^{tree}");
+      // Each later commit changes one scanner input, so a range that includes it re-checks history.
+      mkdirSync(join(repo, "config"));
+      writeFileSync(join(repo, "config/gitleaks.toml"), "[extend]\nuseDefault = true\n");
+      git("add", "config/gitleaks.toml"); git("commit", "--quiet", "--no-gpg-sign", "-m", "scanner rules");
+      const rules = git("rev-parse", "HEAD");
+      writeFileSync(join(repo, ".gitleaksignore"), "fingerprint\n");
+      git("add", ".gitleaksignore"); git("commit", "--quiet", "--no-gpg-sign", "-m", "scanner ignore list");
+      const ignored = git("rev-parse", "HEAD");
+      git("rm", "--quiet", ".gitleaksignore"); git("commit", "--quiet", "--no-gpg-sign", "-m", "remove the ignore list");
+      const unignored = git("rev-parse", "HEAD");
+      const run =(event: string, patch: Record<string, string> = {}) => {
+        writeFileSync(calls, "");
+        const result = spawnSync("bash", ["-e", "-o", "pipefail", "-c", command!], { cwd: repo, encoding: "utf8", timeout: 20_000,
+          env: { ...environment, PATH: `${bin}:${environment.PATH ?? ""}`, SCAN_CALLS: calls, GITHUB_EVENT_NAME: event, PR_BASE: "", PR_HEAD: "", GROUP_BASE: "", GROUP_HEAD: "", ...patch } });
+        return { status: result.status, calls: readFileSync(calls, "utf8") };
+      };
+      const full = "[git][.][--config][config/gitleaks.toml][--redact][--no-banner]\n";
+      const range = `[git][.][--config][config/gitleaks.toml][--redact][--no-banner][--log-opts][${base}..${head}]\n`;
+      const all = { PR_BASE: base, PR_HEAD: head, GROUP_BASE: base, GROUP_HEAD: head };
+      expect(run("pull_request", { PR_BASE: base, PR_HEAD: head })).toEqual({ status: 0, calls: range });
+      expect(run("merge_group", { GROUP_BASE: base, GROUP_HEAD: head })).toEqual({ status: 0, calls: range });
+      for (const event of ["push", "workflow_dispatch", ""]) expect(run(event, all)).toEqual({ status: 0, calls: full });
+      expect(run("pull_request", { PR_BASE: head, PR_HEAD: rules })).toEqual({ status: 0, calls: full });
+      expect(run("pull_request", { PR_BASE: base, PR_HEAD: ignored })).toEqual({ status: 0, calls: full });
+      expect(run("merge_group", { GROUP_BASE: rules, GROUP_HEAD: ignored })).toEqual({ status: 0, calls: full });
+      expect(run("merge_group", { GROUP_BASE: ignored, GROUP_HEAD: unignored })).toEqual({ status: 0, calls: full });
+      const absent = "1".repeat(40);
+      const refusals: [string, Record<string, string>][] = [
+        ["pull_request", {}], ["pull_request", { PR_BASE: base }], ["pull_request", { GROUP_BASE: base, GROUP_HEAD: head }],
+        ["pull_request", { PR_BASE: "A".repeat(40), PR_HEAD: head }], ["pull_request", { PR_BASE: base.slice(0, 39), PR_HEAD: head }],
+        ["pull_request", { PR_BASE: "--all", PR_HEAD: head }], ["pull_request", { PR_BASE: `${base} --all`, PR_HEAD: head }],
+        ["pull_request", { PR_BASE: absent, PR_HEAD: head }], ["pull_request", { PR_BASE: base, PR_HEAD: tree }],
+        ["merge_group", { PR_BASE: base, PR_HEAD: head }], ["merge_group", { GROUP_BASE: base, GROUP_HEAD: `${head}\n` }],
+        ["merge_group", { GROUP_BASE: base, GROUP_HEAD: absent }],
+        ["pull_request", { PR_BASE: head, PR_HEAD: head }], ["merge_group", { GROUP_BASE: head, GROUP_HEAD: head }],
+        ["pull_request", { PR_BASE: head, PR_HEAD: base }], ["merge_group", { GROUP_BASE: head, GROUP_HEAD: base }],
+      ];
+      for (const [event, patch] of refusals) expect(run(event, patch)).toEqual({ status: 1, calls: "" });
+    } finally { rmSync(root, { recursive: true, force: true }); }
   });
 
   it("runs the closed public root build instead of source-only prebuild machinery", () => {

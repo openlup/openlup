@@ -17,3 +17,4 @@ export type {
 } from "./address.js";
 export type { AdminShippingRateResponse, AdminSetShippingRateRequest, AdminSetShippingRateResponse } from "./shippingRate.js";
 export type { ShippingTerms, ShippingPolicyEntry, ShippingPolicy, ShippingSettings } from "./threshold.js";
+export type { CustomerPreferenceDefaultsSnapshot, CustomerPreferenceScope, CustomerPaymentPreferenceInput, CustomerPaymentPreference, CustomerPreferencePickupPoint, CustomerDeliveryPreferenceInput, CustomerDeliveryPreference } from './preferences.js';

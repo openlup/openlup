@@ -178,6 +178,7 @@ bearer; its local fixture establishes no hosted revocation guarantee.
 | `./fulfillment`, `./fulfillment/contracts` | [Experimental fulfillment services, contracts and status canon](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#fulfillment-contracts). |
 | `./fulfillment/native` | Experimental `createNativeFulfillmentBinding` locked dispatch-preparation binding; the host supplies authoritative facts, a capability-local transaction lane and contribution composition. |
 | `./fulfillment/native` (operator transactions) | Experimental `createPostgresFulfillmentOperatorPort` for replacement and complete cancellation, with authenticated actor and explicit provider/stock-source binding; `createPostgresParcelReservationConsumption` supplies exact parcel stock consumption. Install the complete catalogue and retain the [legacy cancellation limits](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#native-parity-boundaries). |
+| `./fulfillment/native` (shipment commands) | Experimental `createPostgresFulfillmentShipmentCommandPort` records label evidence, handoff and tracking atomically with server actor and durable replay evidence. Handoff consumes only frozen parcel reservation IDs. Compose `withAccountingInvoiceShadowTrigger` from `./invoicing` after the committed command, using host channel policy and fail-soft accounting. [Historical limits](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#native-parity-boundaries). |
 | `./fulfillment/native` (commerce projection) | Experimental reduced `createPostgresFulfillmentCommerceReadPort`; requires the existing eligibility policy and explicit order-mode mapping. Its default destination reader calls the nonmutating shipment view through the supplied executor; an optional injected reader wins. Select `nativeFulfillmentCommerceResponseSchemas` explicitly when composing served commerce handlers; managed schemas remain the default. The preparation reader does not supply that boundary. [Limits](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#native-commerce-read-projection). |
 | `./subscriptions`, `./subscriptions/contracts` | Default-off, incomplete; [experimental subscription contracts and renewal port](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts). |
 | `./invoicing`, `./invoicing/contracts` | Default-off invoicing contracts and independent duty collection; no provider activation. |
@@ -2438,8 +2439,8 @@ while foreign updates and mismatched customer scopes refuse.
 
 Delete refuses an address referenced by an active or paused subscription's saved
 shipping or billing pointer. Nullable pointer columns are storage for that guard;
-saved-address subscription selection is not supplied by this port. Existing
-destinations and claimed renewal snapshots are unchanged.
+select a saved address for future subscription delivery through the destination
+port described below. Existing claimed renewal snapshots remain unchanged.
 
 Saved rows, canonical keys, contact/tax/free-text/metadata and linked event
 payloads are personal data. Compose
@@ -2456,5 +2457,121 @@ Finite restore targets qualified installations; legacy installations are capture
 The finite connected-store profile carries exact saved rows and event history,
 restores addresses after clients and before subscription pointers, and replays
 without rewriting them. The smaller compatible-row copier remains a separate
-closed profile. Delivery/payment preferences, checkout hints, billing profiles,
-subscription saved-ID commands and browser journeys are later capabilities.
+closed profile. Delivery/payment preferences and checkout hints are described
+below; billing-profile persistence and browser journeys remain separately bound work.
+
+
+### Saved subscription shipping selection
+
+After installing the complete native catalogue through
+`20261110240000_subscription_saved_address_selection.sql`, select an owned
+shipping or both-kind address through the existing server entry:
+
+```ts
+import { createPostgresDestinationPort } from '@openlup/platform/commerce/server/destinations';
+const destinations = createPostgresDestinationPort(database);
+await destinations.selectSavedShippingAddress({ actorId, clientId, subscriptionId,
+  idempotencyKey, savedAddressId, now: new Date().toISOString() });
+```
+
+Hosts authenticate the actor and bind the client from trusted session ownership.
+The owned command persists the saved ID and emits the subscription audit,
+account event and confirmation intent in the same database transaction. It
+checks the owned subscription before looking up the saved ID. An existing
+subscription-event key replays the current subscription state before parsing or
+checking the address, even if the supplied address changed or was deleted.
+This command retains that replay rule; typed destination commands keep their
+existing fingerprint-conflict rule. Active and paused subscriptions are allowed;
+locked cycles and already claimed next-cycle operations refuse a fresh selection.
+Billing pointers, cadence and template versions are unchanged.
+
+`DestinationAddress` and `NewDestinationAddress` retain their required
+`recipientName` for newly typed input. The existing `read()` method retains
+`Promise<DestinationDocument>`; use the additive `readWithSaved()` for saved
+selections and their order/parcel snapshots. It returns `DestinationReadDocument`,
+a union with `SavedDestinationDocument`: only the saved representation permits
+a null recipient, and its address carries the explicit `savedAddressId`. The
+compatibility reader refuses a null saved recipient instead of returning it as
+a required string.
+Canonical bytes never identify a saved row. Each new subscription destination
+read snapshots the current saved row into a fresh immutable destination without
+replacing prior destinations or the last typed binding. Retain the existing
+subscription-read/renewal-claim transaction. Retained claims and existing orders
+or parcels keep their frozen destination; later unclaimed cycles consume edits.
+A successful new typed-address command clears the saved pointer atomically;
+replayed or refused typed commands do not clear it.
+
+A null saved recipient stays null in the destination and first parcel-contact
+snapshots, even when a customer name or saved-address label is present. Typed and
+legacy recipient fallback remains unchanged. The existing
+contact/preparation owner decides carrier eligibility; a frozen null is never
+replaced by a fabricated fallback. In-use deletion uses the real saved pointer.
+Saved contact, tax and free-text copied into a destination remain personal data.
+Finite connected transfer carries the saved rows, pointers, immutable destination
+rows and retained events under their existing classifications. Address-book
+erasure does not erase immutable destination copies; this port adds no
+export/erasure operation for destination rows. Starter selection pages and routes
+remain separately bound work. The new SQL routine grants EXECUTE only to
+`service_role`; PUBLIC and browser roles remain closed.
+
+
+### Customer delivery and payment preferences
+
+The same `20261110240000_subscription_saved_address_selection.sql` forward adds
+private scoped preferences and a delivery selector used by the renewal writer.
+Use `createPostgresCustomerPreferencePort`, `createCustomerPreferenceSchemas`,
+`createCustomerPaymentPreferencesHandler` and
+`createCustomerDeliveryPreferencesHandler` from `@openlup/platform/shipping`.
+Browser input/output types live in `@openlup/platform/shipping/contracts`.
+Bind a server-authenticated principal/client pair and a structural query executor;
+no connection or provider SDK is created. Handlers support GET/PATCH, use only
+the authenticated user ID, validate strict request/response envelopes, and require
+host authentication, responder and copy configuration. They mount no routes.
+
+`CustomerPreferencePolicy` supplies exactly three payment values (canonical
+families `instant`, `card`, `transfer`) and four provider values (`warehouse`,
+`carrier`, `manual`, `simulator`). Each map must contain distinct nonempty values;
+extra families refuse construction. These are bijective labels, not extra payment
+methods or providers. SQL stores the closed canonical family and, for delivery,
+the configured provider reference. The same policy must be used for reads and
+writes. Scopes are `one_time`, `subscription` and `any`. Saves upsert one row per
+client/scope and update its selection time; they do not touch payment instruments,
+mandates, account events or provider state. Carrier and pickup fields retain the
+fixed trim/length validation. A locker requires a pickup point, but its address
+may be null when saved; incomplete locker addresses are skipped by renewal.
+
+The renewal writer calls the private selector only when constructing fresh order
+metadata. An explicit top-level `selectedDelivery` key (including null), or a
+nested runtime-finalization selection, is preserved. Otherwise a complete
+subscription preference wins over `any`, followed by the earliest qualifying
+subscription order's selection. Only an object is copied. No trigger, raw
+preference read grant or payment-selection change is added. The renewal owner's
+claim, replay, delivery clamp and cycle scheduling stay unchanged: late delivery
+extends the next cycle and never stacks deliveries.
+
+`createPostgresCustomerDefaultsPort` binds a client ID established by the trusted
+checkout identity owner, including a provisioned client without a linked account.
+Do not bind it to an unverified request ID. Its required `readOrdererHints` port
+returns billing-profile IDs ordered by default first, then latest update; this
+change supplies no billing-profile store. The snapshot chooses scoped payment
+then `any`, and default/most recent shipping or billing IDs (including `both`).
+It returns redacted hints with `applied: false`; nothing is automatically applied
+and no contact, free text, provider secret or delivery instruction is exposed.
+The authenticated preference port also exposes this snapshot for its bound client.
+
+Preference rows, client links and pickup history are personal data. Compose
+`createCustomerPreferencePrivacyContributor` from `@openlup/platform/identity`
+and require `customer-preferences` in the existing privacy registry, alongside
+the identity/subscription veto and account-event owners. It exports exact rows
+and erases only the subject's rows, using a preparation lock before identity row
+locks. Waiting saves recheck ownership after unlinking. There is no automatic
+retention period. Both tables are `block` classified for lead absorption;
+service_role has only client-ID census SELECT at table level and EXECUTE on the
+closed routines, with no raw preference access for browser roles.
+
+Finite native capture carries exact preference rows. Qualified restore inserts
+them after their clients and replay leaves them unchanged. Legacy installations
+are capture sources. The smaller compatible-row copier is unchanged; a managed
+source with nonempty preferences has no typed projection and refuses as an
+unsupported relation. Restore does not apply defaults, select payment instruments
+or activate a target. Starter pages and routes remain separately bound work.
