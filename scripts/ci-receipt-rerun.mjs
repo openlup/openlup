@@ -13,10 +13,15 @@ export const RECEIPT_MARKER_PREFIX = '<!-- openlup-native-review-receipt';
 export const WORKFLOW_PATH = '.github/workflows/published-tree-ci.yml';
 // No job in the workflow needs native-review, so no aggregate fails because of it.
 export const RERUN_JOB = 'native-review';
+// Hosted admission (readReceipts in agent-review-queue.mjs) trusts a receipt author by
+// the same rule: the base permission, or the role name when that is absent.
+export const WRITE_PERMISSIONS = ['admin', 'maintain', 'write'];
+export const hasWriteAccess = access => WRITE_PERMISSIONS.includes(access?.permission ?? access?.role_name);
 const TRUSTED_ASSOCIATIONS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
 const PASSED = new Set(['success', 'skipped', 'neutral']);
 const SHA = /^[a-f0-9]{40}$/u;
 const positive = value => Number.isSafeInteger(value) && value > 0;
+const validSource = source => typeof source?.branch === 'string' && source.branch.length > 0 && positive(source.repositoryId);
 const decision = (rerun, reason, run) => rerun ? { rerun, reason, runId: run.id, attempt: run.run_attempt } : { rerun, reason };
 
 export function receiptComment(event) {
@@ -24,20 +29,25 @@ export function receiptComment(event) {
   if (!event.issue?.pull_request || typeof event.issue.pull_request !== 'object' || !positive(event.issue.number)) return { ok: false, reason: 'comment is not on a pull request' };
   if (typeof event.comment?.body !== 'string' || !event.comment.body.startsWith(RECEIPT_MARKER_PREFIX)) return { ok: false, reason: 'comment is not a review receipt' };
   if (!TRUSTED_ASSOCIATIONS.has(event.comment.author_association)) return { ok: false, reason: 'commenter is not an owner, member or collaborator' };
-  return { ok: true, pr: event.issue.number };
+  const login = event.comment.user?.login;
+  if (event.comment.user?.type !== 'User' || typeof login !== 'string' || !login) return { ok: false, reason: 'commenter is not a user account' };
+  return { ok: true, pr: event.issue.number, login };
 }
 
-export function latestRun(runs, headSha) {
-  if (!Array.isArray(runs)) return undefined;
+// `source` is the pull request's head branch and head repository id.
+export function latestRun(runs, headSha, source) {
+  if (!Array.isArray(runs) || !SHA.test(headSha ?? '') || !validSource(source)) return undefined;
   // No matching run leaves the initial undefined: no rerun.
-  return runs.filter(run => positive(run?.id) && run.head_sha === headSha && run.event === 'pull_request' && run.path === WORKFLOW_PATH)
+  return runs.filter(run => positive(run?.id) && run.head_sha === headSha && run.event === 'pull_request' && run.path === WORKFLOW_PATH
+    && run.head_branch === source.branch && run.head_repository?.id === source.repositoryId)
     .reduce((latest, run) => latest === undefined || run.id > latest.id ? run : latest, undefined);
 }
 
-// `jobs` are the latest execution of each job of latestRun(runs, headSha).
-export function selectRerun(runs, jobs, headSha) {
+// `jobs` are the latest execution of each job of latestRun(runs, headSha, source).
+export function selectRerun(runs, jobs, headSha, source) {
   if (!SHA.test(headSha ?? '')) return decision(false, 'pull request head is invalid');
-  const run = latestRun(runs, headSha);
+  if (!validSource(source)) return decision(false, 'pull request head branch or repository is invalid');
+  const run = latestRun(runs, headSha, source);
   if (!run) return decision(false, 'no Published Tree CI run exists for the current head');
   if (!positive(run.run_attempt)) return decision(false, 'latest run attempt is invalid');
   if (run.status !== 'completed') return decision(false, `latest run ${run.id} is ${run.status}`);
@@ -54,34 +64,41 @@ export function selectRerun(runs, jobs, headSha) {
   return decision(true, `${RERUN_JOB} is the only failed job of run ${run.id} attempt ${run.run_attempt}`, run);
 }
 
+// The live pull request, or undefined unless it is an open main candidate.
+function candidate(pr, number) {
+  return pr?.number === number && pr.state === 'open' && pr.base?.ref === 'main' && SHA.test(pr.head?.sha ?? '')
+    && validSource({ branch: pr.head.ref, repositoryId: pr.head.repo?.id }) ? pr : undefined;
+}
+
 export async function receiptRerun({ event, repository, api, log = console.log }) {
   if (!/^[A-Za-z0-9-]+\/(?!\.\.?$)[\w.-]+$/u.test(repository ?? '')) throw new Error('repository is invalid');
+  const skip = reason => { log(`No rerun: ${reason}.`); return { rerun: false, reason }; };
   const gate = receiptComment(event);
-  if (!gate.ok) { log(`No rerun: ${gate.reason}.`); return { rerun: false, reason: gate.reason }; }
+  if (!gate.ok) return skip(gate.reason);
   const root = `repos/${repository}`;
-  const pr = await api.get(`${root}/pulls/${gate.pr}`);
-  if (pr?.number !== gate.pr || pr.state !== 'open' || pr.base?.ref !== 'main' || !SHA.test(pr.head?.sha ?? '')) {
-    const reason = 'pull request is not an open main candidate'; log(`No rerun: ${reason}.`); return { rerun: false, reason };
-  }
-  const head = pr.head.sha;
+  let access;
+  try { access = await api.get(`${root}/collaborators/${encodeURIComponent(gate.login)}/permission`); } catch { /* A failed lookup never establishes trust. */ }
+  if (!hasWriteAccess(access)) return skip('commenter has no write, maintain or admin permission');
+  const pr = candidate(await api.get(`${root}/pulls/${gate.pr}`), gate.pr);
+  if (!pr) return skip('pull request is not an open main candidate');
+  const head = pr.head.sha; const source = { branch: pr.head.ref, repositoryId: pr.head.repo.id };
   const listing = await api.get(`${root}/actions/workflows/published-tree-ci.yml/runs?event=pull_request&head_sha=${head}&per_page=100`);
   const runs = listing?.workflow_runs;
-  if (!Array.isArray(runs) || runs.length > 100 || listing.total_count !== runs.length) {
-    const reason = 'run listing is incomplete or invalid'; log(`No rerun: ${reason}.`); return { rerun: false, reason };
-  }
-  const run = latestRun(runs, head);
+  if (!Array.isArray(runs) || runs.length > 100 || listing.total_count !== runs.length) return skip('run listing is incomplete or invalid');
+  const run = latestRun(runs, head, source);
   let jobs = [];
   if (run?.status === 'completed') {
     const result = await api.get(`${root}/actions/runs/${run.id}/jobs?filter=latest&per_page=100`);
     if (Array.isArray(result?.jobs) && result.jobs.length <= 100 && result.total_count === result.jobs.length) jobs = result.jobs;
   }
-  const selected = selectRerun(runs, jobs, head);
-  if (!selected.rerun) { log(`No rerun: ${selected.reason}.`); return selected; }
+  const selected = selectRerun(runs, jobs, head, source);
+  if (!selected.rerun) return skip(selected.reason);
   // Another rerun or push may have started meanwhile; act only on the attempt just read.
   const current = await api.get(`${root}/actions/runs/${selected.runId}`);
-  if (current?.id !== selected.runId || current.run_attempt !== selected.attempt || current.status !== 'completed' || current.conclusion !== 'failure' || current.head_sha !== head) {
-    const reason = `run ${selected.runId} changed before the rerun`; log(`No rerun: ${reason}.`); return { rerun: false, reason };
-  }
+  if (current?.id !== selected.runId || current.run_attempt !== selected.attempt || current.status !== 'completed' || current.conclusion !== 'failure'
+    || current.head_sha !== head || current.head_branch !== source.branch || current.head_repository?.id !== source.repositoryId) return skip(`run ${selected.runId} changed before the rerun`);
+  const live = candidate(await api.get(`${root}/pulls/${gate.pr}`), gate.pr);
+  if (!live || live.head.sha !== head || live.head.ref !== source.branch || live.head.repo.id !== source.repositoryId) return skip('pull request head changed before the rerun');
   await api.post(`${root}/actions/runs/${selected.runId}/rerun-failed-jobs`);
   log(`Requested one rerun of the failed jobs: ${selected.reason}.`);
   return selected;
