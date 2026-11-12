@@ -149,7 +149,7 @@ function git(args: readonly string[]): string {
   return result.output;
 }
 
-const tail = (output: string, count = 30): string[] => output.trimEnd().split("\n").slice(-count);
+const tail = (output: string, count = 30): string[] => output.split("\n").filter((line) => line.trim()).slice(-count);
 const lastLine = (output: string): string => tail(output, 1)[0]?.trim() ?? "";
 const findingNotes = (findings: readonly Finding[]): string[] => findings.map(({ path, line, reason, text }) => `${path}:${line}: ${reason}: ${text.trim().slice(0, 120)}`);
 
@@ -229,7 +229,7 @@ function rootVitestFiles(candidates: readonly string[]): string[] {
   const directory = mkdtempSync(join(tmpdir(), "openlup-preflight-"));
   try {
     const listing = join(directory, "files.json");
-    const env = { ...process.env, VITEST_SKIP_INSTALL_CHECKS: "1" };
+    const env: NodeJS.ProcessEnv = { ...process.env, VITEST_SKIP_INSTALL_CHECKS: "1" };
     delete env.OPENLUP_VITEST_EXCLUDE_FILE;
     // `--json` takes an optional path, so it goes after the files.
     const result = execute("npx", ["--no", "--", "vitest", "list", ...candidates, "--filesOnly", `--json=${listing}`], { env });
