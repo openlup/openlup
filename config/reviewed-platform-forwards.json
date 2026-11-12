@@ -4337,6 +4337,20 @@
         ],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "checkout-recovery-buyer-snapshot",
+        "path": "db/platform/migrations/20261110280000_checkout_recovery_buyer_snapshot.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.commerce_prepare_expired_checkout_recovery(text,uuid,uuid,bigint,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp",
+            "beforeSha256": "776cb4cde206c1e9a0286eadf8477fb062debe7a631f5db42f73be60f906f7f9"
+          }
+        ],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -5542,6 +5556,17 @@
           "signature": "public.invoicing_capture_duty_with_buyer(text,text,uuid,uuid,jsonb,timestamptz)",
           "beforeSha256": null,
           "afterSha256": "f060e74ebe69af70344565b9f3b656ccb177ed913d63c7587ac7b40c5d997b85"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261110280000_checkout_recovery_buyer_snapshot.sql",
+      "sha256": "541f309cd3679753fd72d431484589814473fde2d9a5be0729cdf7b340901170",
+      "functions": [
+        {
+          "signature": "public.commerce_prepare_expired_checkout_recovery(text,uuid,uuid,bigint,timestamptz)",
+          "beforeSha256": "776cb4cde206c1e9a0286eadf8477fb062debe7a631f5db42f73be60f906f7f9",
+          "afterSha256": "4bdbcb36118ad31857221334c457287078e060dea84d7ad357efa59d37b1205c"
         }
       ]
     }

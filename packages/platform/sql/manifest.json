@@ -522,6 +522,10 @@
       {
         "file": "db/platform/migrations/20261110270000_invoicing_duty_buyer_capture.sql",
         "sha256": "2f0e989e57705d35efc1c8d40017337875bf840263fa74acfa9cd6c5db77768f"
+      },
+      {
+        "file": "db/platform/migrations/20261110280000_checkout_recovery_buyer_snapshot.sql",
+        "sha256": "541f309cd3679753fd72d431484589814473fde2d9a5be0729cdf7b340901170"
       }
     ],
     "objectInventorySha256": "b6d30efdcc35d8e1b375cd5a257fe51497b0edd92822c1901ea9776570d7d216",
@@ -1066,6 +1070,10 @@
         {
           "file": "db/platform/migrations/20261110270000_invoicing_duty_buyer_capture.sql",
           "sha256": "2f0e989e57705d35efc1c8d40017337875bf840263fa74acfa9cd6c5db77768f"
+        },
+        {
+          "file": "db/platform/migrations/20261110280000_checkout_recovery_buyer_snapshot.sql",
+          "sha256": "541f309cd3679753fd72d431484589814473fde2d9a5be0729cdf7b340901170"
         }
       ],
       "objectInventorySha256": {
@@ -1614,6 +1622,10 @@
         {
           "file": "db/platform/migrations/20261110270000_invoicing_duty_buyer_capture.sql",
           "sha256": "2f0e989e57705d35efc1c8d40017337875bf840263fa74acfa9cd6c5db77768f"
+        },
+        {
+          "file": "db/platform/migrations/20261110280000_checkout_recovery_buyer_snapshot.sql",
+          "sha256": "541f309cd3679753fd72d431484589814473fde2d9a5be0729cdf7b340901170"
         }
       ],
       "objectInventorySha256": {
@@ -2272,6 +2284,11 @@
       "file": "20261110270000_invoicing_duty_buyer_capture.sql",
       "source": "db/platform/migrations/20261110270000_invoicing_duty_buyer_capture.sql",
       "sha256": "2f0e989e57705d35efc1c8d40017337875bf840263fa74acfa9cd6c5db77768f"
+    },
+    {
+      "file": "20261110280000_checkout_recovery_buyer_snapshot.sql",
+      "source": "db/platform/migrations/20261110280000_checkout_recovery_buyer_snapshot.sql",
+      "sha256": "541f309cd3679753fd72d431484589814473fde2d9a5be0729cdf7b340901170"
     },
     {
       "file": "q2_00000000000000_platform_baseline.sql",
