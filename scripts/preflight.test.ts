@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   addedLines, formatCheckLine, isTestEntry, isTestFile, missingFragments, nearDates, parseNameStatus,
-  shortExpiries, sqlTreeChanges, type AddedLine, type Change,
+  releasedPackageSource, shortExpiries, sqlTreeChanges, type AddedLine, type Change,
 } from "./preflight.ts";
 
 const changed = (...paths: string[]): Change[] => paths.map((path) => ({ path, deleted: false }));
@@ -56,6 +56,9 @@ describe("change-set triggers", () => {
     { path: "packages/outbox/changes/old.md", deleted: true }])).toEqual(["packages/outbox"]);
     // Unreleased packages and non-source paths take no fragment.
     expect(missingFragments(changed("packages/ui/src/index.ts", "packages/platform/README.md", "src/app.ts"))).toEqual([]);
+    expect(releasedPackageSource("packages/outbox/src/a.ts")).toBe("packages/outbox");
+    expect(releasedPackageSource("packages/ui/src/index.ts")).toBeUndefined();
+    expect(releasedPackageSource("packages/platform/test/a.test.ts")).toBeUndefined();
   });
 
   it("classifies test entries and test-directory helpers", () => {

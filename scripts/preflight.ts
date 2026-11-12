@@ -35,14 +35,15 @@ export function sqlTreeChanges(changes: readonly Change[]): string[] {
   return changes.map(({ path }) => path).filter((path) => SQL_TREE.test(path));
 }
 
-const PACKAGE_SOURCE = /^packages\/([^/]+)\/src\//u;
+/** The package directory of a released package's source path: one that takes changelog fragments. */
+export function releasedPackageSource(path: string): string | undefined {
+  const name = /^packages\/([^/]+)\/src\//u.exec(path)?.[1];
+  return name && isChangelogFragmentArea(`packages/${name}/changes`) ? `packages/${name}` : undefined;
+}
 
 /** Package directories whose `src/` changed without a new or changed `changes/*.md` fragment. */
 export function missingFragments(changes: readonly Change[]): string[] {
-  const touched = new Set(changes.flatMap(({ path }) => {
-    const name = PACKAGE_SOURCE.exec(path)?.[1];
-    return name && isChangelogFragmentArea(`packages/${name}/changes`) ? [`packages/${name}`] : [];
-  }));
+  const touched = new Set(changes.flatMap(({ path }) => releasedPackageSource(path) ?? []));
   const fragmented = new Set(changes.filter(({ path, deleted }) => !deleted && isChangelogFragment(path))
     .map(({ path }) => path.slice(0, path.indexOf("/changes/"))));
   return [...touched].filter((directory) => !fragmented.has(directory)).sort();
@@ -172,7 +173,7 @@ function astGrep(): CheckResult {
 function inventory(changes: readonly Change[]): CheckResult {
   const triggers = sqlTreeChanges(changes);
   if (triggers.length === 0) return { check: "inventory", status: "SKIP", detail: "no SQL under db/ or packages/*/sql/ changed" };
-  if (execute("docker", ["info"]).code !== 0) {
+  if (execute("docker", ["info"], { timeout: 30_000 }).code !== 0) {
     return { check: "inventory", status: "WARN", detail: `${triggers.length} SQL file(s) changed but Docker is unavailable; run npm run inventory:refresh with Docker and commit ${INVENTORY_PATH}` };
   }
   // inventory:refresh has no check mode: it rewrites the file's `current` section.
@@ -191,8 +192,8 @@ function inventory(changes: readonly Change[]): CheckResult {
 function fragments(changes: readonly Change[]): CheckResult {
   const missing = missingFragments(changes);
   if (missing.length > 0) return { check: "fragments", status: "WARN", detail: `source changed without a changes/*.md fragment in ${missing.join(", ")}` };
-  const touched = changes.some(({ path }) => PACKAGE_SOURCE.test(path));
-  return touched ? { check: "fragments", status: "PASS", detail: "every changed package source has a fragment" } : { check: "fragments", status: "SKIP", detail: "no package source changed" };
+  const touched = changes.some(({ path }) => releasedPackageSource(path) !== undefined);
+  return touched ? { check: "fragments", status: "PASS", detail: "every changed released package source has a fragment" } : { check: "fragments", status: "SKIP", detail: "no released package source changed" };
 }
 
 function testLineChecks(lines: readonly AddedLine[] | null, now: Date): CheckResult[] {
