@@ -1334,6 +1334,14 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261110210000_return_request_decisions.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261110220000_checkout_payment_guidance.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4446,6 +4454,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261110210000_return_request_decisions.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261110220000_checkout_payment_guidance.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -5726,6 +5742,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/server/paymentRecoveryGuidance.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/server/postgres/commercePriceRead.ts",
       "class": "public-output"
     },
@@ -5763,6 +5783,10 @@
     },
     {
       "path": "packages/platform/src/commerce/server/postgresExpiredCheckoutRecovery.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/postgresPaymentRecoveryGuidance.ts",
       "class": "public-output"
     },
     {
@@ -7734,6 +7758,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/payments/sandboxRecoveryGuidance.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/payments/schemaCapabilities.ts",
       "class": "public-output"
     },
@@ -9351,6 +9379,10 @@
     },
     {
       "path": "packages/platform/test/commerce/outboxEventContracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/paymentRecoveryGuidance.test.ts",
       "class": "public-output"
     },
     {
@@ -28850,6 +28882,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/checkoutPaymentGuidance.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/checkoutRecoveryInspection.test.ts",
       "class": "public-output"
     },
@@ -29415,6 +29451,10 @@
     },
     {
       "path": "tests/postgres/retainedClientSubscriptionImport.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/returnRequestCommands.test.ts",
       "class": "public-output"
     },
     {

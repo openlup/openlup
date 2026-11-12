@@ -17,7 +17,15 @@ export function createCommerceReturnsSchemas<const Reasons extends readonly [str
       idempotencyKey: z.string().trim().min(8).max(200),
       orderId: z.guid(),
       reasonCode: z.enum(reasonCodes),
-      lines: z.array(returnRequestLineSchema).min(1),
+      lines: z.array(returnRequestLineSchema).min(1).superRefine((lines, context) => {
+        const seen = new Set<string>();
+        for (const [index, line] of lines.entries()) {
+          const item = line.orderItemId.toLowerCase();
+          if (seen.has(item)) context.addIssue({ code: "custom", path: [index, "orderItemId"],
+            message: "commerce_return_request_create_duplicate_line" });
+          seen.add(item);
+        }
+      }),
       customerNote: z.string().trim().max(2000).optional(),
     }),
   };

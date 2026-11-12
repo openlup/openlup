@@ -4056,6 +4056,59 @@
         ],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "return-request-decisions",
+        "path": "db/platform/migrations/20261110210000_return_request_decisions.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.commerce_return_request_create(text,uuid,jsonb,text,text,uuid)",
+            "beforeSha256": "9d8cbc55cd5529b8c754732cb7e5f531822d468fbe70097e24425d423bc10e45",
+            "searchPath": "public, pg_catalog"
+          },
+          {
+            "signature": "public.commerce_return_approve(text,uuid,uuid,text,bigint,text)",
+            "beforeSha256": "79c77da9a90ede4fe0238540985a92cac4022f53dee185f21cdf99ca1150da42",
+            "searchPath": "public, pg_catalog"
+          },
+          {
+            "signature": "public.commerce_return_reject(text,uuid,uuid,text)",
+            "beforeSha256": "7d61c59fe6fc479bb7f33af02b1929eb9d1e7692170e085c9c81c4f9b5c3c60d",
+            "searchPath": "public, pg_catalog"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.commerce_return_request_create_owned(text,uuid,jsonb,text,text,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_emit_return_outbox()",
+            "searchPath": "public, pg_catalog"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "createdTriggers": [
+          {
+            "name": "trg_commerce_return_decision_outbox",
+            "table": "public.commerce_return_requests",
+            "sha256": "8e8b4da49847e1eceff3888f2ed1f1e6a74ead04117b6b460e58f7b624cf3e1a"
+          }
+        ]
+      },
+      {
+        "row": "checkout-payment-guidance",
+        "path": "db/platform/migrations/20261110220000_checkout_payment_guidance.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.commerce_checkout_payment_guidance_snapshot(uuid,uuid,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -5029,6 +5082,48 @@
           "signature": "public.oms_cancel_unpaid_order_owned(text,uuid,text,uuid,jsonb,timestamptz)",
           "beforeSha256": null,
           "afterSha256": "e08aad49b02ed5f7b70b94fffce805e6703df7e8ea82ced705599321dce50282"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261110210000_return_request_decisions.sql",
+      "sha256": "518424cc5eba55c292725781f4e16fcae082b732e1304fcf4c5ce23c50da7f1c",
+      "functions": [
+        {
+          "signature": "public.commerce_return_request_create(text,uuid,jsonb,text,text,uuid)",
+          "beforeSha256": "9d8cbc55cd5529b8c754732cb7e5f531822d468fbe70097e24425d423bc10e45",
+          "afterSha256": "18670c52ec9bd1807a04414f5eb18798145dbbb650e7977d02e9753dd706309c"
+        },
+        {
+          "signature": "public.commerce_return_approve(text,uuid,uuid,text,bigint,text)",
+          "beforeSha256": "79c77da9a90ede4fe0238540985a92cac4022f53dee185f21cdf99ca1150da42",
+          "afterSha256": "349bc5b75bc45c4e134201ff90b41e026d2ff4d5370f2ed354bf1c12ac75fe4a"
+        },
+        {
+          "signature": "public.commerce_return_reject(text,uuid,uuid,text)",
+          "beforeSha256": "7d61c59fe6fc479bb7f33af02b1929eb9d1e7692170e085c9c81c4f9b5c3c60d",
+          "afterSha256": "15ce7f46447685a04f8aeef0109a86b6dc4ee500d254b90f619a1fd2ef7165cc"
+        },
+        {
+          "signature": "public.commerce_return_request_create_owned(text,uuid,jsonb,text,text,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "e3ffd4849151467cb1c62b363fabac49c811e86d7fb6b64f1da74d094ade741a"
+        },
+        {
+          "signature": "public.commerce_emit_return_outbox()",
+          "beforeSha256": null,
+          "afterSha256": "25be373832b1a605550e2fd390e6f3246db645a82b16f3d77989b8915d9a4daa"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261110220000_checkout_payment_guidance.sql",
+      "sha256": "7b6d46e974b3b2cbd1153d5cd4cc5858bff5da3156d72722e7318d1acae22bd3",
+      "functions": [
+        {
+          "signature": "public.commerce_checkout_payment_guidance_snapshot(uuid,uuid,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "a18c02a841b3322369ae49745ac354228a97df351b2b7db796721a1370240d1d"
         }
       ]
     }
