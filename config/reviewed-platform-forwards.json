@@ -4174,6 +4174,75 @@
             ]
           }
         ]
+      },
+      {
+        "row": "subscription-saved-address-selection",
+        "path": "db/platform/migrations/20261110240000_subscription_saved_address_selection.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.commerce_read_destination(text,uuid)",
+            "beforeSha256": "98281cc8a26421dc08506cec7d6332c75d35f74f9ebe57e8a1d627a0cb5f2c4f",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_change_shipping_destination(uuid,uuid,text,uuid,jsonb,integer,timestamptz)",
+            "beforeSha256": "f7ac65daae911830b0fd1e2f8dd36c38ad0ee4b2bae25ed0407b60d5c17e7362",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_prepare_subscription_renewal(uuid,uuid,timestamptz)",
+            "beforeSha256": "fdf5dd6e73764a6404aeb9ed5e05dfc6e66b28044c464905b6f5375410c496e0",
+            "searchPath": "pg_catalog"
+          },
+          {
+            "signature": "public.fulfillment_resolve_parcel_contact(uuid)",
+            "beforeSha256": "52bbdf0cb4da004e053e929a109916e63199da32f399fa46eb6d98a67ce30a2e",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.subscription_select_saved_shipping_address(uuid,uuid,text,uuid,jsonb,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_preferences_read(uuid,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_preference_save(uuid,uuid,text,jsonb,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_renewal_delivery_selection(uuid,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_preferences_prepare_erasure()",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_preferences_export(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_preferences_erase(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_default_address_hints(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [
+          "INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('customer_payment_preferences', 'block', 'Customer preference history stays with its owner.');",
+          "INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('customer_delivery_preferences', 'block', 'Customer preference history stays with its owner.');"
+        ],
+        "absorptionCensusTables": [
+          "public.customer_payment_preferences",
+          "public.customer_delivery_preferences"
+        ]
       }
     ]
   },
@@ -5220,6 +5289,72 @@
           "signature": "public.fulfillment_operator_record_tracking(text,uuid,jsonb,uuid)",
           "beforeSha256": null,
           "afterSha256": "e8dbcef71cd1c2f78afe40d39aca0f0f8f2d9e054e9db099114450c5dab05368"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261110240000_subscription_saved_address_selection.sql",
+      "sha256": "281a43d4139811ec04d920d1c7b336140710af4153c67e6983fd82ad41a55c23",
+      "functions": [
+        {
+          "signature": "public.commerce_read_destination(text,uuid)",
+          "beforeSha256": "98281cc8a26421dc08506cec7d6332c75d35f74f9ebe57e8a1d627a0cb5f2c4f",
+          "afterSha256": "e5ec5dbb7c4bcc3c35dc4181df4ad86227747134a432e8d3a474369275a29420"
+        },
+        {
+          "signature": "public.subscription_change_shipping_destination(uuid,uuid,text,uuid,jsonb,integer,timestamptz)",
+          "beforeSha256": "f7ac65daae911830b0fd1e2f8dd36c38ad0ee4b2bae25ed0407b60d5c17e7362",
+          "afterSha256": "a177c3a1503b44d07c8428a56437bc7ea3e5ab3c7fa834d64183967477af3e43"
+        },
+        {
+          "signature": "public.commerce_prepare_subscription_renewal(uuid,uuid,timestamptz)",
+          "beforeSha256": "fdf5dd6e73764a6404aeb9ed5e05dfc6e66b28044c464905b6f5375410c496e0",
+          "afterSha256": "3cf562f5c52737c545c7c53ee6caf698c587c01e2ef738b9f56e25edd1e22e9e"
+        },
+        {
+          "signature": "public.fulfillment_resolve_parcel_contact(uuid)",
+          "beforeSha256": "52bbdf0cb4da004e053e929a109916e63199da32f399fa46eb6d98a67ce30a2e",
+          "afterSha256": "b4bc5331e732055d0ce641173e599d82e14de25c5fe754c161e9b0fb81e045ae"
+        },
+        {
+          "signature": "public.subscription_select_saved_shipping_address(uuid,uuid,text,uuid,jsonb,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "5aca8850f0d9f1d58a7412380cb84addec8dba60372a16c0558d89a5f04353db"
+        },
+        {
+          "signature": "public.customer_preferences_read(uuid,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "b661dc84c2247fa85ac7c2e2cfd47f20a7e881efbe097f2b28efe04b5642f33b"
+        },
+        {
+          "signature": "public.customer_preference_save(uuid,uuid,text,jsonb,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "5188e31f346abf4ee41a38843ce264101ca907834a83927c46693556eda435fc"
+        },
+        {
+          "signature": "public.customer_renewal_delivery_selection(uuid,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "0382ad8978064f7c584116ef25c8e8fe9d602b3a23c10a3b24f4664ea23d2cf6"
+        },
+        {
+          "signature": "public.customer_preferences_prepare_erasure()",
+          "beforeSha256": null,
+          "afterSha256": "80ffd6d4b8637fe5b79a1fece39e266caeb445798cf18b193e51a273c3755773"
+        },
+        {
+          "signature": "public.customer_preferences_export(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "0b0eadf68d764ddaa24fb654015760ff30f8bf79798f6478a27091efc71b2da6"
+        },
+        {
+          "signature": "public.customer_preferences_erase(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "a570ba6ac4e2992a55a24e4b1c8ac9c1fd6bde4768e8ce3a6ef81b9511c67ee0"
+        },
+        {
+          "signature": "public.customer_default_address_hints(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "034145d369a415051ea5c43e45448c6f37a0f96445bf9af2853b59d9f0408c12"
         }
       ]
     }

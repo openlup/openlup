@@ -219,8 +219,10 @@ async function identityFixture() {
       return new Response(null, { status: 404 });
     },
   });
+  // The retained token is minted once in beforeAll and verified late in this file. Hosted runs take up to
+  // 660 s for the whole file, so the lifetime is about 4x that and stays below the verifier's 3,600 s maximum.
   const token = (subject: string) => new jose.SignJWT({ email: "retained@example.invalid", email_verified: true })
-    .setIssuer(issuer).setAudience(audience).setSubject(subject).setIssuedAt().setExpirationTime("5m")
+    .setIssuer(issuer).setAudience(audience).setSubject(subject).setIssuedAt().setExpirationTime("45m")
     .setProtectedHeader({ alg: "ES256", kid: jwk.kid }).sign(key.privateKey);
   const accessToken = await token("original-native-subject"), verified = await verifier.verifyToken(accessToken);
   if (!verified.ok) throw new Error("Owned signed native fixture did not verify");
