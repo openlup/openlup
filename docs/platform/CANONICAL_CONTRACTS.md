@@ -332,6 +332,14 @@ consent push. The marketing example also implements
 See the [communications import](PLATFORM_PACKAGE_REFERENCE.md#communications-import)
 and the [marketing adapter](#opt-in-singleton-marketing-adapter).
 
+An ecommerce-events adapter implements `EcommerceEventsPort`, independently of
+profile and consent support. Declare the selected scope and qualification, retain
+the source/profile/mapping identity on retry, and recheck local authority before
+each effect. The existing communications fixture runner covers email and
+marketing sync only; event adapters additionally need an offline sink/protocol
+proof for acceptance, zero-effect refusal, replay and uncertain acceptance.
+Neither a passing fixture runner nor a synthetic sink qualifies a live account.
+
 A payments (M07) adapter implements `PaymentAdapter` and declares
 `PaymentAdapterCapabilities` from `./payments/contracts`. Prove it with
 `runPaymentAdapterConformance` from `@openlup/platform/payments`, using
@@ -407,6 +415,23 @@ reader or reference binding is installed. Fetch is injectable; no SDK or new
 dependency is required. [A1 evidence and limits](plans/oss-a1-communications-adapters.md)
 are protocol-only; account verification remains pending.
 
+For host composition, begin with `createInMemoryEmailTransport` and inspect its
+captured envelopes before selecting this network transport. Supply the message's
+content, egress policy, credential selection, abort deadline and observation
+store explicitly. Bind the webhook to the untouched request bytes and the
+selected environment, and schedule reconciliation only for existing message
+identifiers. Neither callback receipt nor transport acceptance proves delivery.
+
+The host owns retry policy: this adapter forwards an optional `AbortSignal`,
+returns HTTP status and bounded provider errors, and never retries a POST.
+It does not expose a separate retry-after delay. A 2xx response without an ID
+retains historical transport acceptance with `resendId: null`; do not interpret
+it as delivery or automatically send a replacement. Provider idempotency keys
+have a limited retention window (currently 24 hours), so preserve the local
+effect ledger independently of that window. See the
+[provider key contract](https://resend.com/docs/dashboard/emails/idempotency-keys)
+before selecting the host retry horizon.
+
 ### Opt-in singleton marketing adapter
 
 `communications/klaviyo` exposes one Node factory implementing the neutral
@@ -417,6 +442,11 @@ storage; fetch and clock are injectable. Nothing installs a route or worker.
 
 Account-dependent operations remain `verification_pending` until owner TEST
 readback binds scopes, mappings and operation-specific no-trigger evidence.
+The consent-push capability requires `profiles:read`, `profiles:write`,
+`subscriptions:write` and `lists:write`: the read scope admits the preflight,
+while the write scopes cover the subscription job and list effects. Missing
+any required scope refuses locally before provider HTTP. This declaration
+checks host-supplied evidence; it does not independently inspect API-key scopes.
 Deletion read is unsupported; audience-only deletion cannot become account-wide.
 Profile writes change owned fields only and verify the private projection.
 Negative readback preserves each fact's scope; scoped remote consent is unknown,
@@ -449,6 +479,116 @@ on uncertainty. A host restart begins quarantined; only explicit host journal
 reconciliation and adapter reconstruction restore admission. Default pacing waits within the deadline so
 preflight reads cannot starve the mutation. See the [A1 ledger](plans/oss-a1-communications-adapters.md#p2-opt-in-singleton-marketing-adapter)
 for construction requirements, offline evidence and remaining account gates.
+
+### Reference PostgreSQL marketing host
+
+The source-only [single-process reference host](../../server/runtime/communications/marketingPostgresHost.ts)
+implements the existing private construction storage seam with exact TEXT CAS.
+Its exported setup SQL is an application-owned recipe, never an automatic
+platform migration. The application supplies committed-operation PostgreSQL
+execution, explicit grants, personal-data contributor/retention policy and one
+shared host instance per account/environment. Selecting the profile does not
+establish multi-process exclusion or qualify a deployment.
+
+Construction starts quarantined. An authenticated operator must stop old adapter
+work, inspect the exact recovery snapshot and account for every unresolved entry
+before reconciliation. Recovery changes only slot/quarantine flags and retains
+request/result identities, withdrawals, tombstones and cooling; it does not
+invent provider settlement or reopen an old adapter instance. A stale snapshot,
+incomplete entry list, active work or uncertain repair write keeps admission
+closed. The [real PostgreSQL witness](../../server/runtime/communications/marketingPostgresHost.test.ts)
+uses fake provider HTTP and checks committed reply loss, replay and withdrawal.
+
+Journal v1 retains original requests and targets, including personal data.
+Compaction and erasure of this journal are unsupported in this reference profile;
+the adopter must register its actual retained-data disposition. Deleting entries
+or replacing them with hashes would lose receipt validation/replay evidence.
+The caller supplies a measured finite byte budget; exceeding it follows the
+existing host-storage failure path. Privileged recovery snapshots are not log
+content. This profile provides local persistence evidence, not account TEST proof.
+
+## Ecommerce event export
+
+This experimental communications surface exports retained facts through
+`EcommerceEventsPort`. It is independent of transactional transport, profile
+projection and consent mutation. The browser-shareable contracts contain no
+provider payload or credential. Closed Node validators refuse extra fields,
+invalid source identities and incomplete paid data before provider dispatch.
+
+| Fact | Owning source | Allowed event data |
+| --- | --- | --- |
+| `order.paid` | Required commerce paid fact, with a paid-time metadata snapshot and corroborating succeeded settlement | Order and intent IDs, purchase kind, integer minor amount, currency and frozen SKU/quantity/line amounts |
+| `order.refund_status_changed` | Commerce refunded-status fact or manual order operation, one identity per order | Order ID and `refunded` status; no value, revenue or partial-refund claim |
+| `checkout.recovery_qualified` | Token-free commerce qualification, one identity per order, independent of message waves | Order ID and expiry; no recovery token or address |
+| `subscription.created`, `.paused`, `.resumed`, `.cancelled` | Retained subscription owner events, including automatic resume | Subscription ID; no reconstruction from current status or email retries |
+
+Every fact also has its schema version, source identity, occurrence time and
+subject identity. Paid snapshots distinguish initial subscription acquisition
+from renewal using the owning activation/renewal evidence. Missing or malformed
+evidence records an incomplete disposition; later catalogue/order edits cannot
+repair it into a different purchase. Monetary conversion uses the currency
+owner's exponent and retains its provenance, including zero- and three-decimal
+currencies. The refunded-status metric is deliberately nonfinancial.
+
+The PostgreSQL projection runs after the source transaction through explicit
+host composition. It fixes the account, environment, namespace, mapping and live
+cutoff, and uses per-source receipts instead of a high-water cursor. Enqueue and
+handoff commit together. A failed projection leaves the source available for a
+later bounded pass; it adds no export-store dependency to payment commit.
+The initial native-store profile admits one immutable exporter binding; a second
+account or binding refuses rather than sharing an unscoped claim invocation.
+Existing source consumers retain their payloads. Importing the helpers installs
+no route or schedule, and existing facts are not automatically backfilled.
+
+The existing outbox owns claims and retries. Invoke export and commerce workers
+separately with disjoint event allowlists and lease identities; adding remote
+HTTP to a shared serial commerce batch would not provide that isolation. The
+frozen export request binds the source, existing profile, generation, local
+authority and mapping. Current authority, erasure and checkout eligibility must
+still hold at dispatch. An email change, ambiguous merge, deleted subject or
+mapping change cannot silently redirect an already queued fact.
+
+`createPostgresEcommerceEventProjection` initializes the fixed binding/cutoff and
+projects a bounded batch; `createPostgresEcommerceEventHandler` binds the neutral
+port to the existing worker. Their transaction callback must use one committed
+PostgreSQL connection. The native tables and source view stay private; narrow
+service-only functions mediate source selection, atomic handoff, claim-bound
+receipt changes and privacy. Runtime has no general table-write grant. The
+privacy contributor scrubs recipient projections while retaining source/replay
+fences, and connected-store transfer preserves those fences and unknown duties.
+
+For uncertainty, `reconcilePostgresEcommerceEvent` requires quiesced work, the
+matching request digest, binding and an operator evidence reference. Retrying
+additionally requires the original qualified deduplication semantics and current
+authority. An active claim, mismatched identity or missing evidence refuses.
+Unknown duties retain `retainPayload` even if the worker exhausts its retry
+budget; terminal compaction skips them and continues with unrelated rows.
+Confirmed acceptance/refusal or erasure can release the pin. Reconciliation
+does not change source identity, mapping, profile or currency provenance.
+
+The opt-in `communications/klaviyo` factory exposes `events` separately from its
+profile/consent ports. Mapping `ecommerce-v1` uses one fixed metric per source
+type and the source ID as `unique_id`, with an existing profile ID and no profile
+attributes or upsert. Support requires `events:write` and separate account-effect
+and sole-message-owner qualification. Scopes and qualification are host-supplied
+evidence, not an API-key introspection result. No selection remains pending;
+historical requests refuse with zero HTTP.
+
+Events share the account's slot, pacing and durable cooldown with profile/consent
+operations. A single event's uncertain response stays in its own export duty;
+it does not create a new consent-journal quarantine that would prevent
+withdrawal. Uncertainty in the shared storage or slot still closes account
+admission. A bodyless 202 proves acceptance only; response bodies are cancelled
+without exposing customer data. Retry retains the exact profile/metric/source
+tuple and payload. It never inherits consent-mutation retry semantics.
+
+Local offline examples and real PostgreSQL tests establish protocol and retained
+state behavior. Before any account activation, independently prove actual TEST
+ingestion, receiver deduplication, unchanged profile/consent data and disabled
+competing notification flows. The existing checkout sender remains the message
+owner. Production publication, deployment and activation need their own grants;
+an accepted event cannot be undone by a code rollback. Disabling dispatch must
+preserve pending identities and uncertainty for reconciliation.
 
 ## Subscription lifecycle
 

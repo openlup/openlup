@@ -7,7 +7,7 @@ Shipped package-local sources are relative to this package. Other sources link t
 Repository paths, imports and relative links inside verbatim excerpts describe that source checkout, not files to find or create in your application.
 Consult installed declarations and README for the installed version.
 
-<!-- openlup-context-inventory [{"id":"configure-dispatch","source":"README.md","heading":"Dispatch configuration and optional diagnostics","startLine":49,"endLine":65,"sha256":"e7a3e7c564b70a20f0ab73d6d1df54a03f44540c10d5615e57371942ec6d71da"},{"id":"install-outbox","source":"README.md","heading":"PostgreSQL installation and transactions","startLine":66,"endLine":75,"sha256":"7b0ce57ce577ee91f317b0b766d3a15d3a3c6eee54849241c307b58bfd44070c"},{"id":"outbox-retry-dispatch-handler-idempotency","source":"https://github.com/openlup/openlup/blob/openlup-outbox-v0.38.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Idempotency","startLine":250,"endLine":272,"sha256":"2d719cee94edefe6eccf76aa9c34bbf8a40cdb7e478e313b4a939e769c2e4d71"}] -->
+<!-- openlup-context-inventory [{"id":"configure-dispatch","source":"README.md","heading":"Dispatch configuration and optional diagnostics","startLine":49,"endLine":65,"sha256":"e7a3e7c564b70a20f0ab73d6d1df54a03f44540c10d5615e57371942ec6d71da"},{"id":"install-outbox","source":"README.md","heading":"PostgreSQL installation and transactions","startLine":66,"endLine":75,"sha256":"c8c296aec57ed0f3c8529a5d1fbbe4957326baa32540276a19ba007a9c4cee15"},{"id":"outbox-retry-dispatch-handler-idempotency","source":"https://github.com/openlup/openlup/blob/openlup-outbox-v0.38.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Idempotency","startLine":250,"endLine":272,"sha256":"2d719cee94edefe6eccf76aa9c34bbf8a40cdb7e478e313b4a939e769c2e4d71"}] -->
 
 ## configure-dispatch: Configure dispatch and diagnostics
 
@@ -37,7 +37,7 @@ acknowledgement policy.
 
 Source: [README.md](README.md).
 
-<!-- openlup-context {"id":"install-outbox","source":"README.md","heading":"PostgreSQL installation and transactions","startLine":66,"endLine":75,"sha256":"7b0ce57ce577ee91f317b0b766d3a15d3a3c6eee54849241c307b58bfd44070c"} -->
+<!-- openlup-context {"id":"install-outbox","source":"README.md","heading":"PostgreSQL installation and transactions","startLine":66,"endLine":75,"sha256":"c8c296aec57ed0f3c8529a5d1fbbe4957326baa32540276a19ba007a9c4cee15"} -->
 ## PostgreSQL installation and transactions
 
 Apply [the baseline](sql/0001_outbox.sql) through your own migration chain on a fresh PostgreSQL database. [The manifest](sql/manifest.json) binds its bytes to their public migration owner. PostgreSQL 16 or later supplies the validated timestamp parser used by compaction. Importing the package never applies SQL. Existing managed schemas need their own compatibility assessment; do not apply the fresh-install baseline over them. The default does not supply provider recovery, RLS or role grants.
@@ -46,7 +46,7 @@ Apply [the baseline](sql/0001_outbox.sql) through your own migration chain on a 
 
 Claims retain six timestamp digits, per-aggregate ordering, exact dormant identities and claim-token fences. An unknown non-dormant predecessor blocks its aggregate; a known but currently unclaimed type may be bypassed. Snooze and release refund attempts. Storage errors remain exceptions; unstarted claims from an interrupted batch expire rather than being falsely settled.
 
-Prune defaults to 30 days for processed and 90 for discarded, in batches of 500. It empties terminal payload/error and stamps `retentionCompactedAt`, `retentionCompactedBy` and `retentionCompactedStatus`; rows and unique dedupe keys survive. Missing/malformed discard timestamps are ineligible. Pending, failed and processing work remains untouched. Application delivery/ledger adjunct retention remains application-owned.
+Prune defaults to 30 days for processed and 90 for discarded, in batches of 500. It empties terminal payload/error and stamps `retentionCompactedAt`, `retentionCompactedBy` and `retentionCompactedStatus`; rows and unique dedupe keys survive. Missing/malformed discard timestamps are ineligible. Pending, failed and processing work remains untouched. Application delivery/ledger adjunct retention remains application-owned. An owner may set `metadata.retainPayload=true` while a downstream obligation needs the original payload. The compactor skips that row, including terminal discarded work, and continues pruning unrelated rows. The owner must preserve the pin until durable handoff or resolution and then clear it; this hint supplies no recovery or erasure authority.
 
 <!-- /openlup-context -->
 

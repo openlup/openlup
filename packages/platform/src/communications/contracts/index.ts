@@ -50,3 +50,4 @@ export * from "./roleNotificationContent.js";
 export * from "./inquiryContent.js";
 export * from "./optOutContent.js";
 export type * from "./marketingSync.js";
+export type * from "./ecommerceEvents.js";

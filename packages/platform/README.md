@@ -1361,6 +1361,22 @@ See [disposable identity composition](https://github.com/openlup/openlup/blob/ma
 
 ## Communications import
 
+For transactional email, email provider setup, marketing automation and ecommerce events, use the
+[installed provider wiring recipes](AGENTS.md#provider-wiring-recipes): captured
+delivery, signed observations, an unqualified marketing operation with zero HTTP,
+and retained event identities against a fake endpoint.
+
+`EcommerceEventsPort` and its closed event/request types live in the contracts
+entry. The Node communications entry supplies validation and the explicit
+PostgreSQL source projection/outbox-handler composition. The first catalogue
+covers paid orders, nonfinancial refunded status, token-free checkout eligibility
+and four subscription lifecycle facts. Install the complete migration chain,
+select an account/environment and a fixed live cutoff, and keep commerce and
+export claims in separate invocations with disjoint allowlists. No route,
+schedule, provider effect or historical backfill is installed by importing them.
+See the [event source and dispatch contract](https://github.com/openlup/openlup/blob/main/docs/platform/CANONICAL_CONTRACTS.md#ecommerce-event-export)
+at the source revision matching this package for retention, authority and recovery.
+
 The Node-only communications entry includes `runCommunicationsAdapterConformance`
 for adapter-owned offline email and marketing-sync fixtures. It returns passed
 case labels or throws a sanitized finding with a fix and recheck instruction.

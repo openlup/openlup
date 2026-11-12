@@ -491,6 +491,8 @@ function marketingFixture(mode: "correct" | "extra-export" | "unverified") {
   writeFileSync(join(packageRoot, "package.json"), JSON.stringify(metadata));
   const entry = "communications/klaviyo";
   cpSync(join(root, "packages/platform/dist", entry), join(packageRoot, entry), { recursive: true });
+  copyFileSync(join(root, "packages/platform/dist/communications/ecommerceEvents.js"), join(packageRoot, "communications/ecommerceEvents.js"));
+  cpSync(join(root, "node_modules/zod"), join(consumer, "node_modules/zod"), { recursive: true });
   const path = join(packageRoot, entry, "index.js");
   if (mode === "extra-export") writeFileSync(path, readFileSync(path, "utf8") + "\nexport const unexpected = true;\n");
   if (mode === "unverified") writeFileSync(path, readFileSync(path, "utf8").replace('state: "verification_pending"', 'state: "supported"'));

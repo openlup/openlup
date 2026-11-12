@@ -174,7 +174,8 @@
       "packageSmokeEvidence": [
         "test/communications/klaviyo/portConformance.test.ts",
         "test/communications/klaviyo/protocol.test.ts",
-        "test/communications/klaviyo/permissions.test.ts"
+        "test/communications/klaviyo/permissions.test.ts",
+        "test/communications/klaviyo/events.test.ts"
       ],
       "entrypoint": "dist/communications/klaviyo/index.d.ts",
       "snapshot": "api/communications-klaviyo.api.md"
@@ -962,13 +963,13 @@
       "maxFiles": 4211
     },
     "docs": {
-      "maxPackedBytes": 86252,
+      "maxPackedBytes": 93184,
       "maxFiles": 10
     },
     "maxPackedBytes": 3023741,
-    "maxUnpackedBytes": 14432601,
+    "maxUnpackedBytes": 14745600,
     "maxFiles": 4339,
-    "capReason": "Retain the higher approved parent byte budgets; 4,128 measured code files receive 2% headroom (4,211).",
+    "capReason": "Retain the prior code, tarball, file and browser budgets. The locally approved communications programme measured 90,714 compressed documentation bytes and 14,446,981 unpacked bytes; documentation 93,184 and unpacked 14,745,600 reserve approximately 2% headroom for its complete installed recipes and source contracts. Code files retain 4,211 from 4,128 measured files.",
     "baseline": {
       "version": "0.37.0",
       "packedBytes": 2791358

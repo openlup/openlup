@@ -522,6 +522,73 @@ export interface CommunicationPurposeRegistry<Purpose extends string = Communica
     classification(purpose: Purpose): CommunicationPurposeClassification | undefined;
 }
 ```
+## dist/communications/contracts/ecommerceEvents.d.ts
+
+```ts
+import type { SyncBinding } from './marketingSync.js';
+type Fact<K extends string, D> = Readonly<{
+    schemaVersion: 1;
+    sourceId: string;
+    sourceType: K;
+    occurredAt: string;
+    subject: Readonly<{
+        clientId: string;
+    }>;
+    data: Readonly<D>;
+}>;
+export type EcommerceEvent = Fact<'order.paid', {
+    orderId: string;
+    settlementIntentId: string;
+    purchaseKind: 'one_time' | 'subscription_initial' | 'renewal';
+    amountMinor: number;
+    currency: string;
+    lines: readonly Readonly<{
+        sku: string;
+        quantity: number;
+        amountMinor: number;
+    }>[];
+}> | Fact<'order.refund_status_changed', {
+    orderId: string;
+    status: 'refunded';
+}> | Fact<'checkout.recovery_qualified', {
+    orderId: string;
+    expiresAt: string;
+}> | Fact<'subscription.created' | 'subscription.paused' | 'subscription.resumed' | 'subscription.cancelled', {
+    subscriptionId: string;
+}>;
+/** Frozen host projection. Provider profiles already exist; no email or implicit upsert. */
+export interface EcommerceEventExportRequest {
+    readonly binding: SyncBinding;
+    readonly event: EcommerceEvent;
+    readonly subjectReference: string;
+    readonly profileId: string;
+    readonly generation: number;
+    readonly authorityReference: string;
+    readonly classification: 'live' | 'historical';
+    readonly currencyExponent?: number;
+    readonly currencyExponentSource?: string;
+}
+export type EcommerceEventExportResult = {
+    readonly kind: 'accepted';
+} | {
+    readonly kind: 'retryable';
+    readonly reason: 'cooling' | 'host' | 'provider';
+    readonly afterSeconds: number;
+} | {
+    readonly kind: 'unknown';
+    readonly reason: 'acceptance_ambiguous' | 'dispatch_unresolved' | 'record_failed';
+} | {
+    readonly kind: 'refused';
+    readonly reason: string;
+};
+export interface EcommerceEventsPort {
+    exportEvent(request: EcommerceEventExportRequest, context?: Readonly<{
+        signal?: AbortSignal;
+        deadlineMs?: number;
+    }>): Promise<EcommerceEventExportResult>;
+}
+export {};
+```
 ## dist/communications/contracts/email.d.ts
 
 ```ts
@@ -1290,6 +1357,23 @@ export declare function runDeliveryReconciliation<Read extends DeliveryStatusRea
     limit: number;
 }): Promise<DeliveryReconciliationResult>;
 ```
+## dist/communications/ecommerceEventPrivacy.d.ts
+
+```ts
+import type { PersonalDataContributor } from '../identity/index.js';
+import type { PgQueryExecutor } from '../data/index.js';
+/** Local event projection erasure; commercial source facts and replay fences remain. */
+export declare function createEcommerceEventPrivacyContributor(): PersonalDataContributor<PgQueryExecutor>;
+```
+## dist/communications/ecommerceEvents.d.ts
+
+```ts
+import { z } from 'zod';
+import type { EcommerceEvent, EcommerceEventExportRequest } from './contracts/ecommerceEvents.js';
+export declare const ECOMMERCE_EXPORT_EVENT_TYPE = "communication.ecommerce.export.v1";
+export declare const ecommerceEventSchema: z.ZodType<EcommerceEvent>;
+export declare const ecommerceEventExportRequestSchema: z.ZodType<EcommerceEventExportRequest>;
+```
 ## dist/communications/emailEgress.d.ts
 
 ```ts
@@ -1615,7 +1699,11 @@ export * from "./postgresNotificationRecipients.js";
 export * from "./postgresConsentEvaluator.js";
 export type * from "./contracts/marketingSync.js";
 export * from "./testing/adapterConformance.js";
+export type * from './contracts/ecommerceEvents.js';
+export * from './ecommerceEvents.js';
+export * from './postgresEcommerceEvents.js';
 export { withCheckoutRecoverySendEvidence } from './checkoutRecoverySendEvidence.js';
+export * from './ecommerceEventPrivacy.js';
 ```
 ## dist/communications/integrationEventSignature.d.ts
 
@@ -2061,6 +2149,64 @@ export declare function createPostgresConsentEvaluator(env: PostgresDataGatewayE
 import type { PostgresDataGatewayEnv } from "../data/index.js";
 import type { NativeCommunicationsOptions, NativeDeliveryStore } from "./nativeOperations.js";
 export declare function createPostgresDeliveryReconciliationPort(env: PostgresDataGatewayEnv, options: NativeCommunicationsOptions): NativeDeliveryStore;
+```
+## dist/communications/postgresEcommerceEvents.d.ts
+
+```ts
+import type { SqlExecutor } from '@openlup/core/readiness';
+import type { OutboxHandler } from '@openlup/core/outbox';
+import type { SyncBinding } from './contracts/marketingSync.js';
+import type { EcommerceEvent, EcommerceEventExportRequest, EcommerceEventsPort } from './contracts/ecommerceEvents.js';
+export interface EcommerceEventTransaction {
+    withTransaction<T>(work: (db: SqlExecutor) => Promise<T>): Promise<T>;
+}
+export interface EcommerceEventTarget {
+    subjectReference: string;
+    profileId: string;
+    generation: number;
+    authorityReference: string;
+}
+export interface PostgresEcommerceEventOptions extends EcommerceEventTransaction {
+    binding: SyncBinding;
+    liveSince: Date;
+    now(): Date;
+    /** Existing qualified profile only; missing or ambiguous identity records a refusal. */
+    resolveTarget(event: EcommerceEvent): Promise<EcommerceEventTarget | null>;
+    /** Derived once by the host's existing settlement/currency owner, never guessed. */
+    currency: Readonly<{
+        code: string;
+        exponent: number;
+        provenance: string;
+    }>;
+}
+/** One postcommit projection transaction; receipt anti-join cannot skip late commits. */
+export declare function createPostgresEcommerceEventProjection(options: PostgresEcommerceEventOptions): {
+    initialize(): Promise<void>;
+    project(limit?: number): Promise<{
+        projected: number;
+        refused: number;
+        deferred: number;
+    }>;
+};
+/** Register in a separately invoked, export-only existing outbox worker. */
+export declare function createPostgresEcommerceEventHandler(options: EcommerceEventTransaction & {
+    binding: SyncBinding;
+    provider: EcommerceEventsPort;
+    now(): Date;
+    authorize(request: EcommerceEventExportRequest): Promise<boolean>;
+}): OutboxHandler<AbortSignal>;
+/** Explicit quiesced recovery. Qualified retry retains the exact original tuple and bytes. */
+export declare function reconcilePostgresEcommerceEvent(options: EcommerceEventTransaction & {
+    binding: SyncBinding;
+    eventId: string;
+    expectedRequestDigest: string;
+    evidenceReference: string;
+    resolution: 'accepted' | 'refused' | 'retry';
+    quiesced: boolean;
+    qualifiedIdenticalRetry?: boolean;
+    now(): Date;
+    authorize(request: EcommerceEventExportRequest): Promise<boolean>;
+}): Promise<'resolved' | 'refused'>;
 ```
 ## dist/communications/postgresNotificationRecipients.d.ts
 
@@ -3014,4 +3160,2176 @@ export declare function verifyHmacSignature(input: {
  * length mismatch rather than returning false, and the length of a shared token is not the secret.
  */
 export declare function timingSafeStringEqual(left: string, right: string): boolean;
+```
+## dist/identity/adminAuthBinding.d.ts
+
+```ts
+import type { AdminAuthPort } from "./ports.js";
+import type { AdminAuthBinding } from "./adminPreflight.js";
+type Env = Record<string, string | undefined>;
+export interface PlatformOperatorChecker {
+    isOperatorAllowed(principalId: string): Promise<boolean>;
+    close(): Promise<void>;
+}
+export type PlatformOperatorCheckerFactory = (env: Env) => PlatformOperatorChecker | Promise<PlatformOperatorChecker>;
+export type AdminAuthBindingResolution = {
+    readonly binding: AdminAuthBinding;
+    readonly error?: undefined;
+} | {
+    readonly binding?: undefined;
+    readonly error: "managed_admin_auth_env_required" | "direct_admin_auth_config_invalid";
+};
+export interface AdminAuthBindingOptions {
+    humanAuthFactory?: (env: Env) => AdminAuthPort & {
+        close(): Promise<void>;
+    };
+    checkerFactory?: PlatformOperatorCheckerFactory;
+    managedAuthFactory?: (env: {
+        url: string;
+        anonKey: string;
+    }, accessToken: string | null) => AdminAuthPort;
+}
+/** Bind the admin authorizer selected by PLATFORM_BUNDLE. */
+export declare function createAdminAuthBindingResolver(defaults: Required<Pick<AdminAuthBindingOptions, "checkerFactory" | "managedAuthFactory">> & Pick<AdminAuthBindingOptions, "humanAuthFactory">): (env: Env, options?: AdminAuthBindingOptions) => AdminAuthBindingResolution;
+export {};
+```
+## dist/identity/adminAuthorization.d.ts
+
+```ts
+import type { HttpResponse, HttpRequest } from "../http/index.js";
+import { type IdentityResponseOptions } from "./response.js";
+export type AdminRole = "admin" | "distributor";
+/** Authorization outcome: a resolved admin `userId`, or a typed denial. */
+export type AdminAuthorization = {
+    ok: true;
+    userId: string;
+    role: AdminRole;
+    isMachineActor: boolean;
+} | {
+    ok: false;
+    code: "UNAUTHORIZED" | "FORBIDDEN";
+    message: string;
+    identityCode?: string;
+};
+/** A request-bound thunk that resolves the calling admin (or a denial). */
+export type AuthorizeAdmin = () => Promise<AdminAuthorization>;
+export declare function authorizeAdminWithUser(rawClient: unknown, accessToken: string | null, options?: {
+    allowedRoles?: readonly AdminRole[];
+}): Promise<AdminAuthorization>;
+export declare function authorizeCommerceAdminWithUser(client: unknown, accessToken: string | null): Promise<AdminAuthorization>;
+export declare function authorizeAdminBooleanWithUser(client: unknown, accessToken: string | null, options?: {
+    allowedRoles?: readonly AdminRole[];
+}): Promise<boolean>;
+/**
+ * Shared authz gate: returns the resolved admin (`userId` + DB-derived
+ * `isMachineActor`) or sends the error envelope and returns null.
+ */
+export declare function resolveAdmin(authorizeAdmin: AuthorizeAdmin, res: HttpResponse, options?: IdentityResponseOptions): Promise<{
+    userId: string;
+    role: AdminRole;
+    isMachineActor: boolean;
+} | null>;
+export declare function readBearerToken(req: HttpRequest): string | null;
+```
+## dist/identity/adminContracts.d.ts
+
+```ts
+import { z } from "zod";
+export declare const adminUserRoleSchema: z.ZodEnum<{
+    admin: "admin";
+    distributor: "distributor";
+}>;
+export declare const adminPlatformMeRequestSchema: z.ZodObject<{}, z.core.$strict>;
+export declare const adminPlatformMeResponseSchema: z.ZodObject<{
+    isAdmin: z.ZodBoolean;
+    role: z.ZodNullable<z.ZodEnum<{
+        admin: "admin";
+        distributor: "distributor";
+    }>>;
+}, z.core.$strip>;
+export declare const adminUserRoleUpdateRequestSchema: z.ZodObject<{
+    userId: z.ZodString;
+    role: z.ZodEnum<{
+        admin: "admin";
+        distributor: "distributor";
+    }>;
+}, z.core.$strip>;
+export declare const adminUserRoleUpdateResponseSchema: z.ZodObject<{
+    userId: z.ZodString;
+    role: z.ZodEnum<{
+        admin: "admin";
+        distributor: "distributor";
+    }>;
+    saved: z.ZodLiteral<true>;
+}, z.core.$strip>;
+export declare const adminUserInviteRequestSchema: z.ZodObject<{
+    email: z.ZodString;
+    role: z.ZodEnum<{
+        admin: "admin";
+        distributor: "distributor";
+    }>;
+}, z.core.$strip>;
+export declare const adminUserInviteResponseSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
+    principalId: z.ZodString;
+    invitationId: z.ZodString;
+    membershipState: z.ZodLiteral<"invited">;
+    role: z.ZodEnum<{
+        admin: "admin";
+        distributor: "distributor";
+    }>;
+    invitedAt: z.ZodISODateTime;
+    expiresAt: z.ZodISODateTime;
+    code: z.ZodEnum<{
+        INVITATION_CREATED: "INVITATION_CREATED";
+        ALREADY_INVITED: "ALREADY_INVITED";
+        INVITATION_REISSUED: "INVITATION_REISSUED";
+    }>;
+    message: z.ZodOptional<z.ZodString>;
+}, z.core.$strip>, z.ZodObject<{
+    principalId: z.ZodString;
+    membershipState: z.ZodLiteral<"active">;
+    role: z.ZodEnum<{
+        admin: "admin";
+        distributor: "distributor";
+    }>;
+    code: z.ZodEnum<{
+        MEMBERSHIP_CREATED: "MEMBERSHIP_CREATED";
+        ALREADY_ACTIVE: "ALREADY_ACTIVE";
+    }>;
+    message: z.ZodOptional<z.ZodString>;
+}, z.core.$strip>], "membershipState">;
+export declare const adminUserRemoveRequestSchema: z.ZodObject<{
+    userId: z.ZodString;
+}, z.core.$strip>;
+export declare const adminUserRemoveResponseSchema: z.ZodObject<{
+    revoked: z.ZodLiteral<true>;
+}, z.core.$strip>;
+```
+## dist/identity/adminMagicLinkHandler.d.ts
+
+```ts
+import { type IdentityResponseOptions } from "./response.js";
+import type { z } from "zod";
+import type { HttpRequest, HttpResponse } from "../http/index.js";
+import type { MagicLinkAuthClient, MagicLinkRateLimitClient, MagicLinkDecision } from "./magicLinkPorts.js";
+export interface AdminMagicLinkHandlerOptions extends IdentityResponseOptions {
+    requestSchema: z.ZodType<{
+        email: string;
+    }>;
+    responseSchema: z.ZodType<{
+        accepted: true;
+    }>;
+    readEnvironment: () => {
+        url: string;
+        anonKey: string;
+        serviceRoleKey: string;
+    } | null;
+    createRuntime: (env: {
+        url: string;
+        anonKey: string;
+        serviceRoleKey: string;
+    }) => {
+        authClient: MagicLinkAuthClient;
+        rateLimitClient: MagicLinkRateLimitClient;
+        platformPort: {
+            checkAdminMagicLinkEligibility(email: string): Promise<string>;
+        };
+    };
+    checkAttempt: (input: {
+        client: MagicLinkRateLimitClient;
+        ip: string;
+        email: string;
+    }) => Promise<MagicLinkDecision>;
+    extractClientIp: (headers: HttpRequest["headers"]) => string;
+    padResponseTime: (startedAt: number, floor: number) => Promise<void>;
+    redirectOrigins?: readonly string[];
+    resolveOrigin?: (req: HttpRequest) => string | null;
+    callbackPath: string;
+}
+export declare function createAdminMagicLinkHandler(options: AdminMagicLinkHandlerOptions): (req: HttpRequest, res: HttpResponse) => Promise<void>;
+```
+## dist/identity/adminMeHandler.d.ts
+
+```ts
+import type { OperatorInvitationStore } from "./operatorInvitationPorts.js";
+import { type IdentityResponseOptions } from "./response.js";
+import type { HttpRequest, HttpResponse } from "../http/index.js";
+import type { PlatformUserAuthenticationResult } from "./platformAdminAuth.js";
+export interface AdminPlatformMeDeps extends IdentityResponseOptions {
+    invitationStore?: Pick<OperatorInvitationStore, "acceptOperatorInvitation">;
+    platformPort: {
+        getAdminMe(userId: string): Promise<{
+            isAdmin: boolean;
+            role: "admin" | "distributor" | null;
+        }>;
+    };
+    authenticateUser: (req: HttpRequest) => Promise<PlatformUserAuthenticationResult>;
+}
+export declare function createAdminPlatformMeHandler({ platformPort, invitationStore, authenticateUser, responseRequestId, }: AdminPlatformMeDeps): (req: HttpRequest, res: HttpResponse) => Promise<void>;
+```
+## dist/identity/adminPreflight.d.ts
+
+```ts
+import { type IdentityResponseOptions } from "./response.js";
+import type { HttpRequest, HttpResponse } from "../http/index.js";
+import type { AdminAuthPort, AdminPrincipalRole } from "./ports.js";
+export interface AdminAuthBinding {
+    readonly identity: string;
+    run<T>(accessToken: string | null, work: (auth: AdminAuthPort) => Promise<T>): Promise<T>;
+}
+export declare function createAdminBffPreflight(options: IdentityResponseOptions & {
+    allowedRoles: (route: string) => readonly AdminPrincipalRole[] | null;
+    resolveBinding: () => {
+        binding?: AdminAuthBinding;
+        error?: string;
+    };
+    machineWriteRoutes?: readonly string[];
+    managedEnvironmentMessage?: string;
+}): (req: HttpRequest, res: HttpResponse, route: string) => Promise<boolean>;
+```
+## dist/identity/adminUserActionPorts.d.ts
+
+```ts
+import type { IdentityAdminActionsPort } from "./adminUserHandlers.js";
+import type { runInviteAdminUserUseCase } from "./inviteAdminUserUseCase.js";
+import type { runRemoveAdminUserUseCase } from "./removeAdminUserUseCase.js";
+export interface AdminUserInviteErrorDetails {
+    identityCode?: string;
+    invitationId?: string;
+    principalId?: string;
+    membershipState?: "active";
+    role?: "admin" | "distributor";
+}
+type AdminUserActionRuntimeEnv = Record<string, string | undefined>;
+type AdminUserInviteRunner = (request: {
+    accessToken: string | null;
+    email: string;
+    role: "admin" | "distributor";
+}, env?: AdminUserActionRuntimeEnv) => ReturnType<typeof runInviteAdminUserUseCase>;
+type AdminUserRemoveRunner = (request: {
+    accessToken: string | null;
+    userId: string;
+}, env?: AdminUserActionRuntimeEnv) => ReturnType<typeof runRemoveAdminUserUseCase>;
+export declare function createAdminUserInvitePort(options: {
+    accessToken: string | null;
+    env?: AdminUserActionRuntimeEnv;
+    runInviteAdminUser: AdminUserInviteRunner;
+}): Pick<IdentityAdminActionsPort, "inviteAdminUser">;
+export declare function createAdminUserRemovePort(options: {
+    accessToken: string | null;
+    env?: AdminUserActionRuntimeEnv;
+    runRemoveAdminUser: AdminUserRemoveRunner;
+}): Pick<IdentityAdminActionsPort, "removeAdminUser">;
+export {};
+```
+## dist/identity/adminUserHandlers.d.ts
+
+```ts
+import { type IdentityResponseOptions } from "./response.js";
+import type { HttpRequest, HttpResponse } from "../http/index.js";
+import type { PlatformAdminAuthorizationResult } from "./platformAdminAuth.js";
+import type { OperatorInviteResult } from "./contracts/operatorInvitations.js";
+export interface IdentityAdminActionsPort {
+    inviteAdminUser(request: {
+        email: string;
+        role: "admin" | "distributor";
+    }): Promise<OperatorInviteResult>;
+    removeAdminUser(request: {
+        userId: string;
+    }): Promise<{
+        revoked: true;
+    }>;
+    updateAdminUserRole(request: {
+        userId: string;
+        role: "admin" | "distributor";
+    }): Promise<{
+        userId: string;
+        role: "admin" | "distributor";
+        saved: true;
+    }>;
+}
+export interface AdminUserRoleUpdateDeps extends IdentityResponseOptions {
+    settingsPort: Pick<IdentityAdminActionsPort, "updateAdminUserRole">;
+    authorizeAdmin: (req: HttpRequest) => Promise<PlatformAdminAuthorizationResult>;
+}
+export interface AdminUserInviteDeps extends IdentityResponseOptions {
+    settingsPort: Pick<IdentityAdminActionsPort, "inviteAdminUser">;
+    authorizeAdmin: (req: HttpRequest) => Promise<PlatformAdminAuthorizationResult>;
+}
+export interface AdminUserRemoveDeps extends IdentityResponseOptions {
+    settingsPort: Pick<IdentityAdminActionsPort, "removeAdminUser">;
+    authorizeAdmin: (req: HttpRequest) => Promise<PlatformAdminAuthorizationResult>;
+}
+export declare function createAdminUserRoleUpdateHandler({ settingsPort, authorizeAdmin, responseRequestId, }: AdminUserRoleUpdateDeps): (req: HttpRequest, res: HttpResponse) => Promise<void>;
+export declare function createAdminUserInviteHandler({ settingsPort, authorizeAdmin, responseRequestId, }: AdminUserInviteDeps): (req: HttpRequest, res: HttpResponse) => Promise<void>;
+export declare function createAdminUserRemoveHandler({ settingsPort, authorizeAdmin, responseRequestId, }: AdminUserRemoveDeps): (req: HttpRequest, res: HttpResponse) => Promise<void>;
+```
+## dist/identity/authVerifyUrl.d.ts
+
+```ts
+import type { HttpRequest } from "../http/index.js";
+export declare function buildAuthVerifyUrl(authServiceUrl: string, actionType: string, tokenHash: string, redirectTo: string): string;
+/** Only configured HTTP(S) origins authorize the default magic-link destination. */
+export declare function createMagicLinkOriginResolver(configuredOrigins: readonly string[]): (req: HttpRequest) => string | null;
+/** Invalid return targets use the callback's default landing page. */
+export declare function normalizeMagicLinkReturnPath(value: string | undefined, origin: string): string | undefined;
+```
+## dist/identity/contracts/emailTrust.d.ts
+
+```ts
+/** Browser-safe email-association refusal codes. */
+export declare const EMAIL_TRUST_FAILURE_CODES: readonly ["EMAIL_TRUST_ENVELOPE_REFUSED", "EMAIL_TRUST_SETTINGS_UNAVAILABLE"];
+export type EmailTrustFailureCode = typeof EMAIL_TRUST_FAILURE_CODES[number];
+```
+## dist/identity/contracts/oidc.d.ts
+
+```ts
+/** Credential and dependency refusals; no token or transport details are exposed. */
+export declare const OIDC_FAILURE_CODES: readonly ["OIDC_CONFIGURATION_INVALID", "OIDC_DISCOVERY_UNAVAILABLE", "OIDC_DISCOVERY_INVALID", "OIDC_JWKS_UNAVAILABLE", "OIDC_JWKS_INVALID", "OIDC_JWKS_REFRESH_RATE_LIMITED", "OIDC_JWT_LIBRARY_UNAVAILABLE", "OIDC_TOKEN_INVALID", "OIDC_KID_UNKNOWN", "OIDC_ISSUER_MISMATCH", "OIDC_AUDIENCE_MISMATCH", "OIDC_TOKEN_EXPIRED", "OIDC_TOKEN_NOT_ACTIVE", "OIDC_TOKEN_LIFETIME_INVALID", "OIDC_SUBJECT_INVALID", "OIDC_EMAIL_INVALID", "OIDC_EMAIL_UNVERIFIED", "OIDC_NATIVE_SESSION_REQUIRED"];
+export type OidcFailureCode = typeof OIDC_FAILURE_CODES[number];
+```
+## dist/identity/contracts/operatorAuth.d.ts
+
+```ts
+export interface OperatorSession {
+    accessToken: string;
+    expiresAt: string;
+    user: {
+        id: string;
+        email: string;
+    };
+}
+export interface OperatorChallengeRequest {
+    email: string;
+}
+export interface OperatorChallengeVerification {
+    token: string;
+}
+export interface OperatorBrowserAuthPort {
+    getSession(): Promise<OperatorSession | null>;
+    requestChallenge(email: string): Promise<void>;
+    verifyChallenge(token: string): Promise<OperatorSession>;
+    signOut(): Promise<void>;
+    onAuthStateChange(listener: (session: OperatorSession | null) => void): () => void;
+}
+/** Strict parsers keep the contracts entry independent of the server validator. */
+export interface OperatorSchema<T> {
+    parse(value: unknown): T;
+    safeParse(value: unknown): {
+        success: true;
+        data: T;
+    } | {
+        success: false;
+        error: Error;
+    };
+}
+export declare const operatorChallengeRequestSchema: OperatorSchema<OperatorChallengeRequest>;
+export declare const operatorChallengeVerificationSchema: OperatorSchema<OperatorChallengeVerification>;
+export declare const operatorSessionSchema: OperatorSchema<OperatorSession>;
+```
+## dist/identity/contracts/operatorInvitations.d.ts
+
+```ts
+/** Pending invitations confer no authority; only accepted native memberships do. */
+export type OperatorRole = "admin" | "distributor";
+export type OperatorMembershipState = "invited" | "active" | "expired" | "revoked";
+export type OperatorInvitationOutcome = "INVITATION_CREATED" | "ALREADY_INVITED" | "INVITATION_REISSUED";
+export type OperatorInvitationConflict = "MEMBERSHIP_ALREADY_ACTIVE" | "INVITATION_ROLE_CONFLICT" | "IDENTITY_CONFLICT" | "MANAGED_REINVITE_UNSUPPORTED";
+export interface OperatorInvitation {
+    principalId: string;
+    invitationId: string;
+    membershipState: "invited";
+    role: OperatorRole;
+    invitedAt: string;
+    expiresAt: string;
+}
+export interface OperatorInvitationResult extends OperatorInvitation {
+    code: OperatorInvitationOutcome;
+    message?: string;
+}
+export interface OperatorMembershipSnapshot {
+    principalId: string;
+    membershipState: OperatorMembershipState;
+    role: OperatorRole;
+}
+export type OperatorInvitationAcceptance = {
+    code: "ACTIVATED" | "ALREADY_ACTIVE";
+    role: OperatorRole;
+} | {
+    code: "INVITATION_EXPIRED" | "INVITATION_REVOKED" | "NO_INVITATION";
+};
+/** Managed invitations activate membership immediately; no pending attempt is stored. */
+export interface ManagedOperatorMembershipResult {
+    principalId: string;
+    membershipState: "active";
+    role: OperatorRole;
+    code: "MEMBERSHIP_CREATED" | "ALREADY_ACTIVE";
+    message?: string;
+}
+export type OperatorInviteResult = OperatorInvitationResult | ManagedOperatorMembershipResult;
+```
+## dist/identity/contracts/privacy.d.ts
+
+```ts
+import type { OperatorSchema } from "./operatorAuth.js";
+export type PrivacySubjectRef = {
+    kind: "contact";
+    contactId: string;
+} | {
+    kind: "principal";
+    principalId: string;
+};
+export type PrivacyJson = null | boolean | number | string | PrivacyJson[] | {
+    [key: string]: PrivacyJson;
+};
+export interface PersonalDataObligation {
+    owner: string;
+    resource: string;
+    disposition: "erase" | "retain" | "unresolved";
+    reasonCode: string;
+    remote: boolean;
+}
+export interface PersonalDataDocument {
+    contributorId: string;
+    version: string;
+    data: PrivacyJson;
+    coverage: {
+        complete: boolean;
+        included: string[];
+        unavailable: string[];
+    };
+    obligations: PersonalDataObligation[];
+}
+export interface ErasureReceipt {
+    version: "identity.erasure.v1";
+    erasureId: string;
+    completedAt: string;
+    outcome: "ERASED" | "ALREADY_ERASED";
+    obligations: PersonalDataObligation[];
+}
+export interface PrivacyEraseRequest {
+    subject: PrivacySubjectRef;
+    idempotencyKey: string;
+}
+export interface PrivacyExport {
+    format: "personal-data.v1";
+    generatedAt: string;
+    subject: PrivacySubjectRef;
+    documents: PersonalDataDocument[];
+    missingContributors: string[];
+    erasure: ErasureReceipt | null;
+}
+export declare const privacySubjectSchema: OperatorSchema<PrivacySubjectRef>;
+export declare const personalDataObligationSchema: OperatorSchema<PersonalDataObligation>;
+export declare const personalDataDocumentSchema: OperatorSchema<PersonalDataDocument>;
+export declare const erasureReceiptSchema: OperatorSchema<ErasureReceipt>;
+export declare const privacyExportRequestSchema: OperatorSchema<{
+    subject: PrivacySubjectRef;
+}>;
+export declare const privacyEraseRequestSchema: OperatorSchema<PrivacyEraseRequest>;
+export declare const privacyExportResponseSchema: OperatorSchema<PrivacyExport>;
+export declare const privacyEraseResponseSchema: OperatorSchema<ErasureReceipt>;
+declare const refusalCodes: readonly ["PRIVACY_SUBJECT_NOT_FOUND", "PRIVACY_CONTRIBUTOR_DUPLICATE", "PRIVACY_CONTRIBUTOR_MISSING", "PRIVACY_ASSESSMENT_UNAVAILABLE", "PRIVACY_OWNERSHIP_UNDECLARED", "PRIVACY_ACTIVE_SUBSCRIPTION", "PRIVACY_RESUMABLE_SUBSCRIPTION", "PRIVACY_PROTECTED_OPERATOR", "PRIVACY_IDEMPOTENCY_CONFLICT", "PRIVACY_SUBJECT_ERASED", "PRIVACY_STORE_PRIVILEGES_UNSAFE", "MANAGED_PRIVACY_ERASURE_UNAVAILABLE"];
+export type PrivacyRefusalCode = typeof refusalCodes[number];
+export declare const privacyRefusalCodeSchema: OperatorSchema<PrivacyRefusalCode>;
+export {};
+```
+## dist/identity/contribution.d.ts
+
+```ts
+import type { Contribution, RequiredSchema } from "@openlup/core/readiness";
+/** Host-selected schema inventory: managed and direct installations have different objects. */
+export declare function createIdentityContribution(options: {
+    version: string;
+    requiredSchema: RequiredSchema;
+    routes?: Contribution["routes"];
+    requiredPorts?: readonly string[];
+}): Contribution;
+```
+## dist/identity/customerAuth.d.ts
+
+```ts
+export type CustomerUserAuthenticationResult = {
+    ok: true;
+    userId: string;
+} | {
+    ok: false;
+    code: "UNAUTHORIZED";
+    message: string;
+};
+```
+## dist/identity/customerAuthorization.d.ts
+
+```ts
+import type { CustomerUserAuthenticationResult } from "./customerAuth.js";
+import type { IdentityVerifierPort } from "./ports.js";
+export declare function authenticateCustomerUserWith(verifier: IdentityVerifierPort, accessToken: string | null): Promise<CustomerUserAuthenticationResult>;
+export declare function optionalCustomerSubject(rawClient: unknown, accessToken: string | null): Promise<string | null>;
+export declare function authenticateCustomerUser(rawClient: unknown, accessToken: string | null): Promise<CustomerUserAuthenticationResult>;
+```
+## dist/identity/customerContracts.d.ts
+
+```ts
+import { z } from "zod";
+export declare const customerLifecycleStageSchema: z.ZodEnum<{
+    customer: "customer";
+    lead: "lead";
+    tester: "tester";
+    inactive: "inactive";
+}>;
+export declare const customerMeRequestSchema: z.ZodObject<{}, z.core.$strict>;
+export declare const customerMeResponseSchema: z.ZodObject<{
+    clientId: z.ZodString;
+    email: z.ZodString;
+    firstName: z.ZodNullable<z.ZodString>;
+    lastName: z.ZodNullable<z.ZodString>;
+    lifecycleStage: z.ZodEnum<{
+        customer: "customer";
+        lead: "lead";
+        tester: "tester";
+        inactive: "inactive";
+    }>;
+    subscriptions: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        subscriptionId: z.ZodGUID;
+        status: z.ZodString;
+        cadenceDays: z.ZodNumber;
+        nextCycleAt: z.ZodNullable<z.ZodString>;
+        paymentMethodKind: z.ZodNullable<z.ZodString>;
+    }, z.core.$strict>>>;
+    recentOrders: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        orderId: z.ZodGUID;
+        orderRef: z.ZodString;
+        status: z.ZodString;
+        mode: z.ZodEnum<{
+            one_time: "one_time";
+            subscription_cycle: "subscription_cycle";
+        }>;
+        total: z.ZodObject<{
+            amountMinor: z.ZodNumber;
+            currency: z.ZodString;
+        }, z.core.$strip>;
+        createdAt: z.ZodString;
+    }, z.core.$strict>>>;
+}, z.core.$strip>;
+export type CustomerMeResponse = z.infer<typeof customerMeResponseSchema>;
+```
+## dist/identity/customerIdentityBinding.d.ts
+
+```ts
+import type { IdentityJwtLibraryLoader } from "./jwtLibrary.js";
+import { authenticateCustomerUser } from "./customerAuthorization.js";
+import { readBearerToken } from "./adminAuthorization.js";
+import { createPostgresCustomerMePort } from "./postgresCustomerMe.js";
+import { createSupabaseCustomerMePort as createManagedCustomerMePort } from "./managedCustomerMe.js";
+import { createCustomerIdentityVerifier } from "./customerIdentityVerifier.js";
+import type { CustomerMeDeps } from "./customerMeHandler.js";
+import { resolveBundleId } from "../kernel/index.js";
+type Env = Record<string, string | undefined>;
+type CustomerRequest = Parameters<typeof readBearerToken>[0];
+type ManagedReadEnv = {
+    url: string;
+    anonKey: string;
+};
+type CreateCustomerClient = (env: ManagedReadEnv, token: string | null) => unknown;
+type ActorGateway = {
+    asActor<T>(claims: {
+        role: "authenticated";
+        sub: string;
+    }, work: (gateway: unknown) => Promise<T>): Promise<T>;
+};
+export type CustomerIdentityBindingOptions = {
+    authenticateManaged?: typeof authenticateCustomerUser;
+    createManagedClient?: CreateCustomerClient;
+    createManagedPort?: typeof createManagedCustomerMePort;
+    readManagedEnv?: () => ManagedReadEnv | null;
+    readToken?: typeof readBearerToken;
+    createPostgresGateway?: (env: Env) => ActorGateway;
+    createPostgresPort?: typeof createPostgresCustomerMePort;
+    createVerifier?: (config: Parameters<typeof createCustomerIdentityVerifier>[0]) => ReturnType<typeof createCustomerIdentityVerifier>;
+    resolveBundle?: typeof resolveBundleId;
+};
+/**
+ * Select the customer identity/read composition for one request. The direct
+ * path constructs its profile port only inside one actor-scoped transaction;
+ * it never uses a generic service lane or caller-provided token role.
+ */
+export declare function createCustomerIdentityBindingFactory(defaults: {
+    loadJwt: IdentityJwtLibraryLoader;
+    createManagedClient: CreateCustomerClient;
+    readManagedEnv: (env: Env) => ManagedReadEnv | null;
+    bindRequestActorDataPort: (token: string, env: Env) => ActorGateway | null;
+}): (req: CustomerRequest, env: Env, options?: CustomerIdentityBindingOptions) => Omit<CustomerMeDeps, "responseSchema"> | null;
+export {};
+```
+## dist/identity/customerIdentityVerifier.d.ts
+
+```ts
+import type { IdentityJwtLibraryLoader } from "./jwtLibrary.js";
+import type { IdentityVerifierPort } from "./ports.js";
+export interface CustomerIdentityVerifierConfig {
+    audience: string;
+    issuer: string;
+    jwks: string;
+}
+export declare function createCustomerIdentityVerifier(config: CustomerIdentityVerifierConfig, loadJwt: IdentityJwtLibraryLoader): IdentityVerifierPort;
+```
+## dist/identity/customerMagicLinkHandler.d.ts
+
+```ts
+import { type IdentityResponseOptions } from "./response.js";
+import type { HttpRequest, HttpResponse } from "../http/index.js";
+import type { MagicLinkAuthClient, MagicLinkRateLimitClient, MagicLinkDecision } from "./magicLinkPorts.js";
+import { resolveCustomerSessionBinding } from "./customerSessionBinding.js";
+import type { z } from "zod";
+export type CustomerMagicLinkEnvironment = {
+    url: string;
+    anonKey: string;
+    serviceRoleKey: string;
+};
+export interface CustomerMagicLinkHandlerOptions<E extends CustomerMagicLinkEnvironment = CustomerMagicLinkEnvironment> extends IdentityResponseOptions {
+    enabled: () => boolean;
+    env: Record<string, string | undefined>;
+    disabledDetails?: Record<string, unknown>;
+    requestSchema: z.ZodType<{
+        email: string;
+        locale: "pl" | "en";
+        returnTo?: string;
+    }>;
+    responseSchema: z.ZodType<{
+        accepted: true;
+    }>;
+    readEnvironment: () => E | null;
+    createCustomerClient: (env: E, token: null) => MagicLinkAuthClient;
+    createCustomerServiceClient: (env: E) => unknown;
+    checkAttempt: (input: {
+        client: MagicLinkRateLimitClient;
+        ip: string;
+        email: string;
+    }) => Promise<MagicLinkDecision>;
+    extractClientIp: (headers: HttpRequest["headers"]) => string;
+    padResponseTime: (startedAt: number, floor: number) => Promise<void>;
+    redirectOrigins?: readonly string[];
+    resolveOrigin?: (req: HttpRequest) => string | null;
+    callbackPath: (locale: "pl" | "en") => string;
+    resolveSession: typeof resolveCustomerSessionBinding;
+}
+export declare function createCustomerMagicLinkHandler<E extends CustomerMagicLinkEnvironment>(options: CustomerMagicLinkHandlerOptions<E>): (req: HttpRequest, res: HttpResponse) => Promise<void>;
+```
+## dist/identity/customerMeHandler.d.ts
+
+```ts
+import { type IdentityResponseOptions } from "./response.js";
+import type { HttpRequest, HttpResponse } from "../http/index.js";
+import { customerMeResponseSchema } from "./customerContracts.js";
+import type { CustomerMePort } from "./customerPorts.js";
+import type { CustomerUserAuthenticationResult } from "./customerAuth.js";
+export interface CustomerMeDeps extends IdentityResponseOptions {
+    responseSchema: typeof customerMeResponseSchema;
+    mePort: CustomerMePort;
+    authenticateUser: (req: HttpRequest) => Promise<CustomerUserAuthenticationResult>;
+}
+export declare function createCustomerMeHandler({ mePort, authenticateUser, responseSchema, responseRequestId }: CustomerMeDeps): (req: HttpRequest, res: HttpResponse) => Promise<void>;
+```
+## dist/identity/customerPorts.d.ts
+
+```ts
+import type { CustomerMeResponse } from "./customerContracts.js";
+export interface CustomerMePort {
+    getCustomerMe(principalId: string): Promise<CustomerMeResponse | null>;
+}
+```
+## dist/identity/customerSessionBinding.d.ts
+
+```ts
+import type { IdentityJwtLibraryLoader } from "./jwtLibrary.js";
+import type { CustomerChallengeDeliveryPort, CustomerChallengeStore, CustomerSessionIssuerPort } from "./ports.js";
+type Env = Record<string, string | undefined>;
+export type CapturedCustomerChallenge = {
+    readonly email: string;
+    readonly token: string;
+    readonly expiresAt: string;
+};
+/** Deterministic no-egress reference delivery; deployments inject mail. */
+export declare function createCapturedCustomerChallengeDelivery(sink?: (challenge: CapturedCustomerChallenge) => Promise<void>): CustomerChallengeDeliveryPort;
+export interface CustomerSessionBinding {
+    requestChallenge(email: string): Promise<void>;
+    verifyChallenge(token: string): Promise<{
+        accessToken: string;
+        expiresAt: string;
+        user: {
+            id: string;
+            email: string;
+        };
+    } | null>;
+}
+export declare function resolveCustomerSessionBinding(env: Env, options?: {
+    createStore?: (connectionString: string) => CustomerChallengeStore & {
+        close(): Promise<void>;
+    };
+    delivery?: CustomerChallengeDeliveryPort;
+    issuer?: CustomerSessionIssuerPort;
+    loadJwt?: IdentityJwtLibraryLoader;
+    generateToken?: () => string;
+    now?: () => Date;
+}): {
+    binding: CustomerSessionBinding;
+    error?: undefined;
+} | {
+    binding?: undefined;
+    error: string;
+};
+export {};
+```
+## dist/identity/customerSessionIssuer.d.ts
+
+```ts
+import type { IdentityJwtLibraryLoader } from "./jwtLibrary.js";
+import type { CustomerSessionIssuerPort } from "./ports.js";
+export interface CustomerSessionIssuerConfig {
+    audience: string;
+    issuer: string;
+    keyId: string;
+    privateJwk: string;
+    ttlSeconds: number;
+}
+export declare function createCustomerSessionIssuer(config: CustomerSessionIssuerConfig, loadJwt: IdentityJwtLibraryLoader): CustomerSessionIssuerPort;
+```
+## dist/identity/customerVerifyOtpHandler.d.ts
+
+```ts
+import { type IdentityResponseOptions } from "./response.js";
+import type { HttpRequest, HttpResponse } from "../http/index.js";
+import { resolveCustomerSessionBinding } from "./customerSessionBinding.js";
+export declare function createCustomerVerifyOtpHandler(options: IdentityResponseOptions & {
+    enabled: () => boolean;
+    env: Record<string, string | undefined>;
+    resolveSession: typeof resolveCustomerSessionBinding;
+}): (req: HttpRequest, res: HttpResponse) => Promise<void>;
+```
+## dist/identity/directOperatorInvitationStore.d.ts
+
+```ts
+import { type PgQueryExecutor, type PostgresDataGatewayEnv, type PostgresDataGatewayOptions } from "../data/index.js";
+import type { OperatorInvitationStore } from "./operatorInvitationPorts.js";
+/** Owner-authority lane, never the actor gateway. One transaction per command. */
+export declare function createDirectOperatorInvitationStore(env: PostgresDataGatewayEnv, options?: PostgresDataGatewayOptions): OperatorInvitationStore & {
+    close(): Promise<void>;
+};
+/** Principal creation commits independently; an invitation failure leaves it reusable. */
+export declare function createDirectOperatorIdentityDirectory(env: PostgresDataGatewayEnv, options?: PostgresDataGatewayOptions): {
+    ensurePrincipal(input: {
+        email: string;
+        redirectTo: string;
+    }): Promise<{
+        principalId: string;
+        created: boolean;
+    }>;
+    close: () => Promise<void>;
+};
+/** Trusted authentication only; caller owns the transaction, including challenge consumption. */
+export declare function acceptDirectOperatorInvitationInTransaction(db: PgQueryExecutor, id: string): Promise<import("./contracts/operatorInvitations.js").OperatorInvitationAcceptance>;
+```
+## dist/identity/emailTrustPolicy.d.ts
+
+```ts
+import type { EmailTrustFailureCode } from "./contracts/emailTrust.js";
+export type EmailTrustAssessment = {
+    trusted: true;
+} | {
+    trusted: false;
+    code: EmailTrustFailureCode;
+};
+export interface EmailTrustPolicy {
+    assess(): Promise<EmailTrustAssessment>;
+}
+/** Explicitly retain verifier-only admission. This does not bypass mailbox verification. */
+export declare function createVerifierResultOnlyEmailTrustPolicy(): EmailTrustPolicy;
+/** Invalid, absent or throwing JavaScript bindings fail closed, including invalid results. */
+export declare function assessEmailTrust(policy: EmailTrustPolicy): Promise<EmailTrustAssessment>;
+```
+## dist/identity/identityPersonalDataContributor.d.ts
+
+```ts
+import type { PersonalDataObligation } from "./contracts/privacy.js";
+import { type PersonalDataContributor, type PrivacyStore } from "./privacyPorts.js";
+export interface IdentityPrivacyPolicy {
+    /** Explicit dispositions for populated opaque contact fields; absence refuses erasure. */
+    retainedContactFields: Readonly<Record<string, PersonalDataObligation>>;
+}
+export declare function createIdentityPersonalDataContributor<C>(store: PrivacyStore<C>, policy: IdentityPrivacyPolicy, randomId: () => string): PersonalDataContributor<C>;
+```
+## dist/identity/identityReadiness.d.ts
+
+```ts
+import type { ReadinessIssue } from "@openlup/core/readiness";
+import { type EmailTrustPolicy } from "./emailTrustPolicy.js";
+/** The module field stays structural so older core readiness types still compile; no new core code is needed. */
+export declare function identityEmailTrustReadiness(policy: EmailTrustPolicy): Promise<readonly (ReadinessIssue & {
+    module: "identity";
+})[]>;
+/** Discovery and fresh key availability are independent readiness observations. */
+export declare function identityOidcReadiness(verifier: import("./oidcIdentityVerifier.js").OidcIdentityVerifier): Promise<readonly (ReadinessIssue & {
+    module: "identity";
+})[]>;
+```
+## dist/identity/index.d.ts
+
+```ts
+export * from "./adminMagicLinkHandler.js";
+export * from "./reconcileAccountForPrincipal.js";
+export * from "./customerVerifyOtpHandler.js";
+export * from "./authVerifyUrl.js";
+export * from "./customerIdentityVerifier.js";
+export * from "./operatorTokenAdminAuth.js";
+export * from "./managedIdentityVerifier.js";
+export * from "./managedAdminAuthVerifier.js";
+export * from "./managedCustomerMe.js";
+export * from "./sql.js";
+export * from "./customerMeHandler.js";
+export * from "./messages.js";
+export * from "./managedAccountLinkStore.js";
+export * from "./customerIdentityBinding.js";
+export * from "./adminUserActionPorts.js";
+export * from "./contribution.js";
+export * from "./customerContracts.js";
+export * from "./machineActorWriteFence.js";
+export * from "./managedClient.js";
+export * from "./customerAuthorization.js";
+export * from "./customerSessionIssuer.js";
+export * from "./managedClientAuthLink.js";
+export * from "./customerAuth.js";
+export * from "./reconcileAccountHandler.js";
+export * from "./postgresCustomerMe.js";
+export * from "./ports.js";
+export * from "./postgresCustomerRecovery.js";
+export * from "./customerMagicLinkHandler.js";
+export * from "./customerSessionBinding.js";
+export * from "./adminUserHandlers.js";
+export * from "./adminPreflight.js";
+export * from "./adminAuthBinding.js";
+export * from "./customerPorts.js";
+export * from "./magicLinkPorts.js";
+export * from "./inviteAdminUserUseCase.js";
+export * from "./adminAuthorization.js";
+export * from "./removeAdminUserUseCase.js";
+export * from "./adminMeHandler.js";
+export * from "./managedAdminUserGateways.js";
+export * from "./jwtLibrary.js";
+export * from "./platformAdminAuth.js";
+export * from "./adminContracts.js";
+export * from "./contracts/emailTrust.js";
+export { createVerifierResultOnlyEmailTrustPolicy } from "./emailTrustPolicy.js";
+export type { EmailTrustAssessment, EmailTrustPolicy } from "./emailTrustPolicy.js";
+export * from "./managedEmailTrustPolicy.js";
+export * from "./identityReadiness.js";
+export * from "./operatorInvitationPorts.js";
+export * from "./operatorInvitationLifecycle.js";
+export * from "./directOperatorInvitationStore.js";
+export * from "./operatorPorts.js";
+export * from "./operatorSession.js";
+export * from "./operatorIdentityVerifier.js";
+export * from "./operatorAdminAuth.js";
+export * from "./operatorAuthHandlers.js";
+export * from "./postgresOperatorIdentity.js";
+export * from "./privacyPorts.js";
+export * from "./personalDataRegistry.js";
+export * from "./privacyUseCases.js";
+export * from "./identityPersonalDataContributor.js";
+export * from "./postgresPrivacy.js";
+export * from "./managedPrivacy.js";
+export * from "./privacyHandlers.js";
+export * from "./oidcIdentityVerifier.js";
+export * from "./oidcPrincipal.js";
+export * from "./postgresAccountLinkStore.js";
+export * from "./postgresContactClientRegistrar.js";
+export * from "./contracts/oidc.js";
+export { createFulfillmentParcelContactPrivacyContributor } from './parcelContactPrivacy.js';
+export { createCustomerSavedAddressPrivacyContributor } from "./savedAddressPrivacy.js";
+```
+## dist/identity/inviteAdminUserUseCase.d.ts
+
+```ts
+import type { ManagedOperatorMembershipResult, OperatorInvitationConflict } from "./contracts/operatorInvitations.js";
+import type { OperatorInvitationStore } from "./operatorInvitationPorts.js";
+import { type IdentityMessages } from "./messages.js";
+export type AdminUserInviteRole = "admin" | "distributor";
+export declare const ADMIN_ROLE_NOTIFICATION_LOCALE: "en";
+export type AdminRoleNotificationSkipReason = "admin_disabled" | "egress_suppressed";
+export type InviteAdminUserResponse = {
+    [key: string]: unknown;
+    success?: boolean;
+    message?: string;
+    error?: string;
+    code?: string;
+    deliveryReference?: string | null;
+    deliveryReferencePresent?: boolean;
+};
+export interface InviteAdminUserGateway {
+    getUser: (accessToken: string) => Promise<{
+        user: {
+            id: string;
+        } | null;
+        error: unknown;
+    }>;
+    findAdminUser: (userId: string) => Promise<{
+        id: string;
+        role: string;
+        membership_state: string;
+        is_machine_actor: boolean;
+    } | null>;
+    findAdminUserByEmail: (email: string) => Promise<{
+        id: string;
+    } | null>;
+    findAuthUserByEmail: (email: string) => Promise<{
+        id: string;
+        email?: string | null;
+    } | null>;
+    inviteAuthUser: (input: {
+        email: string;
+        redirectTo: string;
+        role: AdminUserInviteRole;
+    }) => Promise<{
+        user: {
+            id: string;
+        } | null;
+        error: {
+            message: string;
+        } | null;
+    }>;
+}
+export interface AdminRoleNotificationPort {
+    sendRoleGranted: (input: {
+        email: string;
+        authUserId: string;
+        role: AdminUserInviteRole;
+        locale: "pl" | "en";
+        invitationId?: string;
+        expiresAt?: string;
+    }) => Promise<{
+        ok: boolean;
+        providerMessageId: string | null;
+        providerError: string | null;
+        skipped: boolean;
+        skipReason: AdminRoleNotificationSkipReason | null;
+    }>;
+}
+export declare function runInviteAdminUserUseCase(request: {
+    accessToken: string | null;
+    email: string;
+    role: string;
+}, deps: {
+    gateway: InviteAdminUserGateway;
+    roleNotificationPort: AdminRoleNotificationPort;
+    siteUrl: string;
+    messages?: IdentityMessages;
+    notificationLocale?: "pl" | "en";
+} & ({
+    invitationStore: OperatorInvitationStore;
+    ttlSeconds: number;
+} | {
+    activateMembership: (input: {
+        principalId: string;
+        email: string;
+        role: AdminUserInviteRole;
+    }) => Promise<ManagedOperatorMembershipResult | {
+        code: OperatorInvitationConflict;
+    }>;
+})): Promise<{
+    status: number;
+    body: InviteAdminUserResponse;
+}>;
+```
+## dist/identity/jwtLibrary.d.ts
+
+```ts
+export interface IdentityJwk {
+    [key: string]: unknown;
+    kty?: string;
+    alg?: string;
+    crv?: string;
+    kid?: string;
+    use?: string;
+    x?: string;
+    y?: string;
+    d?: string;
+}
+type Key = CryptoKey | Uint8Array;
+interface Signer {
+    setProtectedHeader(header: {
+        alg: string;
+        kid: string;
+        typ: string;
+    }): Signer;
+    setSubject(value: string): Signer;
+    setIssuer(value: string): Signer;
+    setAudience(value: string): Signer;
+    setIssuedAt(value: number): Signer;
+    setExpirationTime(value: number): Signer;
+    sign(key: Key): Promise<string>;
+}
+/** The host loads its selected JWT implementation only for the selected adapter. */
+export interface IdentityJwtLibrary {
+    importJWK(jwk: IdentityJwk, alg: string): Promise<Key>;
+    jwtVerify(token: string, key: (header: {
+        alg?: string;
+        kid?: string;
+    }) => Promise<Key>, options: {
+        algorithms: string[];
+        audience: string;
+        issuer: string;
+        currentDate?: Date;
+        clockTolerance?: number;
+    }): Promise<{
+        payload: IdentityJwtClaims;
+    }>;
+    SignJWT: new (payload: Record<string, unknown>) => Signer;
+}
+export type IdentityJwtLibraryLoader = () => Promise<IdentityJwtLibrary>;
+/** Claims returned only after signature verification by the host library. */
+export interface IdentityJwtClaims {
+    [claim: string]: unknown;
+    sub?: string;
+    iss?: string;
+    aud?: string | string[];
+    exp?: number;
+    iat?: number;
+    nbf?: number;
+}
+export {};
+```
+## dist/identity/machineActorWriteFence.d.ts
+
+```ts
+import type { HttpResponse } from "../http/index.js";
+import { type IdentityResponseOptions } from "./response.js";
+export declare function refusesMachineActorRequest(route: string, method: string | undefined, isMachineActor: boolean | undefined, writeRoutes?: readonly string[]): boolean;
+export declare function sendMachineActorWriteRefused(res: HttpResponse, options?: IdentityResponseOptions): void;
+```
+## dist/identity/magicLinkPorts.d.ts
+
+```ts
+export interface MagicLinkAuthClient {
+    auth: {
+        signInWithOtp(input: {
+            email: string;
+            options: {
+                shouldCreateUser: false;
+                emailRedirectTo: string;
+            };
+        }): Promise<{
+            error: {
+                name?: string;
+                message?: string;
+            } | null;
+        }>;
+    };
+}
+export interface MagicLinkRateLimitClient {
+    rpc(fn: string, args: Record<string, unknown>): Promise<{
+        data: unknown;
+        error: {
+            message?: string;
+        } | null;
+    }>;
+}
+export interface MagicLinkDecision {
+    allowed: boolean;
+    reason?: string;
+}
+```
+## dist/identity/managedAccountLinkStore.d.ts
+
+```ts
+import type { AccountLinkStore } from "./ports.js";
+export declare function createSupabaseAccountLinkStore(rawClient: unknown): AccountLinkStore;
+```
+## dist/identity/managedAdminAuthVerifier.d.ts
+
+```ts
+import type { SupabaseCreateClient } from "../data/index.js";
+import type { AdminAuthPort } from "./ports.js";
+export declare function createSupabaseAdminAuth(rawClient: unknown): AdminAuthPort;
+export declare function createSupabaseAdminAuthFromEnv(env: {
+    url: string;
+    anonKey: string;
+}, accessToken: string | null, createClient: SupabaseCreateClient): AdminAuthPort;
+```
+## dist/identity/managedAdminUserGateways.d.ts
+
+```ts
+import type { AdminUserInviteRole } from "./inviteAdminUserUseCase.js";
+import type { ManagedOperatorMembershipResult, OperatorInvitationConflict } from "./contracts/operatorInvitations.js";
+import type { InviteAdminUserGateway } from "./inviteAdminUserUseCase.js";
+import type { RemoveAdminUserGateway } from "./removeAdminUserUseCase.js";
+interface InviteAdminUserQuery {
+    insert(row: {
+        id: string;
+        email: string;
+        role: AdminUserInviteRole;
+        membership_state: "active";
+        membership_provenance: "invitation";
+        membership_accepted_at: string;
+    }): PromiseLike<{
+        error: {
+            code?: string;
+            message?: string;
+        } | null;
+    }>;
+    select(columns: string): {
+        eq(column: string, value: string): {
+            maybeSingle(): PromiseLike<{
+                data: {
+                    id: string;
+                    role?: string;
+                    membership_state?: string;
+                    is_machine_actor?: boolean | null;
+                } | null;
+                error?: unknown;
+            }>;
+        };
+    };
+}
+export interface InviteAdminUserClient {
+    auth: {
+        getUser(token: string): PromiseLike<{
+            data: {
+                user: {
+                    id: string;
+                } | null;
+            };
+            error: unknown;
+        }>;
+        admin: {
+            listUsers(options: {
+                page: number;
+                perPage: number;
+            }): PromiseLike<{
+                data: {
+                    users: Array<{
+                        id: string;
+                        email?: string | null;
+                    }>;
+                    nextPage?: number | null;
+                } | null;
+                error: unknown;
+            }>;
+            inviteUserByEmail(email: string, options: {
+                redirectTo: string;
+            }): PromiseLike<{
+                data: {
+                    user: {
+                        id: string;
+                    } | null;
+                };
+                error: {
+                    message: string;
+                } | null;
+            }>;
+        };
+    };
+    from(table: "admin_users"): InviteAdminUserQuery;
+}
+interface RemoveAdminUserQuery {
+    select(columns: string): {
+        eq(column: string, value: string): RemoveAdminUserQueryResult;
+    };
+}
+interface RemoveAdminUserQueryResult {
+    eq(column: string, value: string): RemoveAdminUserQueryResult;
+    maybeSingle(): PromiseLike<{
+        data: {
+            id: string;
+            role: string;
+        } | null;
+        error: {
+            message: string;
+        } | null;
+    }>;
+}
+export interface RemoveAdminUserClient {
+    auth: {
+        getUser(token: string): PromiseLike<{
+            data: {
+                user: {
+                    id: string;
+                } | null;
+            };
+            error: unknown;
+        }>;
+    };
+    from(table: "admin_users"): RemoveAdminUserQuery;
+    rpc(fn: "admin_revoke_admin_user", args: {
+        p_target: string;
+        p_reason: string | null;
+    }): PromiseLike<{
+        error: {
+            message: string;
+        } | null;
+    }>;
+}
+export declare function createInviteAdminUserGateway(clientFactory: () => InviteAdminUserClient): InviteAdminUserGateway & {
+    activateMembership(input: {
+        principalId: string;
+        email: string;
+        role: AdminUserInviteRole;
+    }): Promise<ManagedOperatorMembershipResult | {
+        code: OperatorInvitationConflict;
+    }>;
+};
+export declare function createRemoveAdminUserGateway(clientFactory: () => RemoveAdminUserClient): RemoveAdminUserGateway;
+/** Managed eligibility depends only on active native membership and known roles. */
+export declare function managedOperatorMagicLinkEligibility(rawClient: unknown, email: string): Promise<"eligible" | "not_allowlisted" | "role_not_allowed">;
+export {};
+```
+## dist/identity/managedClient.d.ts
+
+```ts
+import type { SupabaseCreateClient } from "../data/index.js";
+export interface ManagedIdentityUser {
+    id: string;
+    email?: string | null;
+    email_confirmed_at?: string | null;
+    user_metadata?: Record<string, unknown> | null;
+}
+export interface ManagedIdentityRow {
+    id: string;
+    email?: string | null;
+    auth_user_id?: string | null;
+    role?: string | null;
+    is_machine_actor?: boolean | null;
+    membership_state?: string;
+}
+export interface ManagedIdentityQuery extends PromiseLike<{
+    data: ManagedIdentityRow[] | null;
+    error: unknown;
+}> {
+    select(columns: string): ManagedIdentityQuery;
+    eq(column: string, value: string): ManagedIdentityQuery;
+    filter(column: string, operator: "imatch", value: string): ManagedIdentityQuery;
+    is(column: string, value: null): ManagedIdentityQuery;
+    order(column: string, options: {
+        ascending: boolean;
+    }): ManagedIdentityQuery;
+    limit(count: number): ManagedIdentityQuery;
+    maybeSingle(): PromiseLike<{
+        data: ManagedIdentityRow | null;
+        error: unknown;
+    }>;
+    single(): PromiseLike<{
+        data: ManagedIdentityRow | null;
+        error: unknown;
+    }>;
+}
+export interface ManagedIdentityTable {
+    select(columns: string): ManagedIdentityQuery;
+    update(value: Record<string, unknown>): ManagedIdentityQuery;
+    insert(value: Record<string, unknown>): ManagedIdentityQuery;
+}
+/** Only the methods consumed by the identity adapters; the host owns the SDK. */
+export interface ManagedIdentityClient {
+    from(table: string): ManagedIdentityTable;
+    auth: {
+        getUser(token: string): PromiseLike<{
+            data: {
+                user: ManagedIdentityUser | null;
+            };
+            error: unknown;
+        }>;
+        admin: {
+            listUsers(options: {
+                page: number;
+                perPage: number;
+            }): PromiseLike<{
+                data: {
+                    users: ManagedIdentityUser[];
+                    nextPage?: number | null;
+                };
+                error: unknown;
+            }>;
+            getUserById(id: string): PromiseLike<{
+                data: {
+                    user: ManagedIdentityUser | null;
+                };
+                error: unknown;
+            }>;
+            createUser(input: {
+                email: string;
+                email_confirm: boolean;
+            }): PromiseLike<{
+                data: {
+                    user: ManagedIdentityUser | null;
+                };
+                error: unknown;
+            }>;
+        };
+    };
+}
+export declare function createManagedIdentityClients(createClient: SupabaseCreateClient): {
+    actor: (env: {
+        url: string;
+        anonKey: string;
+    }, accessToken: string | null) => ManagedIdentityClient;
+    service: (env: {
+        url: string;
+        serviceRoleKey: string;
+    }) => ManagedIdentityClient;
+};
+```
+## dist/identity/managedClientAuthLink.d.ts
+
+```ts
+import type { EmailTrustPolicy } from "./emailTrustPolicy.js";
+import type { ClientAuthLinkStore } from "./ports.js";
+export declare function createSupabaseClientAuthLinkStore(rawClient: unknown, emailTrustPolicy: EmailTrustPolicy): ClientAuthLinkStore;
+```
+## dist/identity/managedCustomerMe.d.ts
+
+```ts
+import type { CustomerMeResponse } from "./customerContracts.js";
+import type { CustomerMePort } from "./customerPorts.js";
+type LinkedCustomerRow = {
+    id: string;
+    email: string;
+    first_name: string | null;
+    last_name: string | null;
+    phone: string | null;
+    lifecycle_stage: CustomerMeResponse["lifecycleStage"];
+};
+export declare function readLinkedCustomer(rawClient: unknown, userId: string, includePhone?: boolean): Promise<LinkedCustomerRow | null>;
+export declare function createSupabaseCustomerMePort(rawClient: unknown): CustomerMePort;
+export {};
+```
+## dist/identity/managedEmailTrustPolicy.d.ts
+
+```ts
+import type { EmailTrustPolicy } from "./emailTrustPolicy.js";
+/** Server-side assertion by the adopter, never a provider certification. */
+export declare function parseEmailVerifyingProviders(value: string): readonly string[];
+/** One immutable origin/key/allowlist binding; import and construction perform no I/O. */
+export declare function createManagedEmailTrustPolicy(options: {
+    authBaseUrl: string;
+    publicKey: string;
+    emailVerifyingProviders?: readonly string[];
+    fetch?: typeof globalThis.fetch;
+    now?: () => number;
+}): EmailTrustPolicy;
+```
+## dist/identity/managedIdentityVerifier.d.ts
+
+```ts
+import type { IdentityVerifierPort } from "./ports.js";
+export declare function createSupabaseIdentityVerifier(rawClient: unknown): IdentityVerifierPort;
+```
+## dist/identity/managedPrivacy.d.ts
+
+```ts
+import type { ManagedIdentityClient } from "./managedClient.js";
+import { type PrivacyStore } from "./privacyPorts.js";
+/** Reads only committed service projections. No managed write or provider delete is composed. */
+export declare function createManagedPrivacyStore(): PrivacyStore<ManagedIdentityClient>;
+```
+## dist/identity/messages.d.ts
+
+```ts
+type Role = "admin" | "distributor";
+declare const en: {
+    unauthorized: string;
+    invalidToken: string;
+    inviteForbidden: string;
+    emailRequired: string;
+    invalidRole: string;
+    alreadyAdded: string;
+    addFailed: (detail: string) => string;
+    notificationFailed: (detail: string) => string;
+    roleAddedDisabled: (email: string, role: Role) => string;
+    roleAddedSuppressed: (email: string, role: Role) => string;
+    roleAdded: (email: string, role: Role) => string;
+    inviteFailed: (detail: string) => string;
+    roleInsertFailed: (detail: string) => string;
+    invited: (email: string, role: Role) => string;
+    removeForbidden: string;
+    userIdRequired: string;
+    selfRemoveForbidden: string;
+    lastAdmin: string;
+    selfRevoke: string;
+    machineRevoke: string;
+    adminNotFound: string;
+    adminRequired: string;
+    revokeFailed: (detail: string) => string;
+};
+export type IdentityMessages = typeof en;
+export declare const identityMessages: Readonly<Record<"en" | "pl", IdentityMessages>>;
+export {};
+```
+## dist/identity/oidcIdentityVerifier.d.ts
+
+```ts
+import type { IdentityJwtLibraryLoader } from "./jwtLibrary.js";
+import type { IdentityVerifierPort, VerifiedPrincipal } from "./ports.js";
+import type { OidcFailureCode } from "./contracts/oidc.js";
+export interface OidcIdentityVerifierConfig {
+    issuer: string;
+    audience: string;
+    algorithms: readonly ("RS256" | "ES256")[];
+    maxTokenLifetimeSeconds: number;
+    requireSingleAudience?: boolean;
+    /** Conformance only: literal loopback addresses, never arbitrary HTTP hosts. */
+    allowLoopbackHttp?: boolean;
+}
+export type OidcVerificationResult = {
+    ok: true;
+    principal: VerifiedPrincipal;
+    expiresAt: string;
+} | {
+    ok: false;
+    code: OidcFailureCode;
+};
+export interface OidcReadinessReport {
+    state: "ready" | "unknown" | "unsatisfied";
+    discovery: {
+        reachable: boolean;
+        valid: boolean;
+        checkedAt: string | null;
+        expiresAt: string | null;
+    };
+    jwks: {
+        loaded: boolean;
+        checkedAt: string | null;
+        expiresAt: string | null;
+    };
+    code?: OidcFailureCode;
+}
+export interface OidcIdentityVerifier extends IdentityVerifierPort {
+    verifyToken(token: string): Promise<OidcVerificationResult>;
+    readiness(): Promise<OidcReadinessReport>;
+}
+/** One binding per host/configuration. Imports and construction perform no I/O or JWT loading. */
+export declare function createOidcIdentityVerifier(config: OidcIdentityVerifierConfig, dependencies: {
+    loadJwt: IdentityJwtLibraryLoader;
+    fetch?: typeof globalThis.fetch;
+    now?: () => number;
+}): OidcIdentityVerifier;
+```
+## dist/identity/oidcPrincipal.d.ts
+
+```ts
+/** Frozen UTF-8, domain-separated SHA-256 UUIDv8 mapping of the exact issuer/subject pair. */
+export declare function deriveOidcPrincipalId(issuer: string, subject: string): string;
+```
+## dist/identity/operatorAdminAuth.d.ts
+
+```ts
+import type { AdminAuthPort, IdentityVerifierPort } from "./ports.js";
+import type { OperatorIdentityStore } from "./operatorPorts.js";
+export declare function createOperatorAdminAuth(options: {
+    verifier: IdentityVerifierPort;
+    authority: Pick<OperatorIdentityStore, "findMembership">;
+}): AdminAuthPort;
+```
+## dist/identity/operatorAuthHandlers.d.ts
+
+```ts
+import { type IdentityResponseOptions } from "./response.js";
+import type { HttpRequest, HttpResponse } from "../http/index.js";
+import type { createOperatorSessionService } from "./operatorSession.js";
+export interface OperatorAuthMessages {
+    invalidRequest: string;
+    forbidden: string;
+    unauthorized: string;
+    unavailable: string;
+}
+export declare function createOperatorAuthHandlers(options: IdentityResponseOptions & {
+    sessions: ReturnType<typeof createOperatorSessionService>;
+    origin: string;
+    messages: OperatorAuthMessages;
+    padResponseTime(startedAt: number, minimumMs: number): Promise<void>;
+}): {
+    requestChallenge(req: HttpRequest, res: HttpResponse): Promise<void>;
+    verifyChallenge(req: HttpRequest, res: HttpResponse): Promise<void>;
+};
+```
+## dist/identity/operatorIdentityVerifier.d.ts
+
+```ts
+import type { IdentityJwtLibraryLoader } from "./jwtLibrary.js";
+import type { IdentityVerifierPort } from "./ports.js";
+export declare function createOperatorIdentityVerifier(config: {
+    issuer: string;
+    audience: string;
+    customerAudience: string;
+    jwks: string;
+}, loadJwt: IdentityJwtLibraryLoader): IdentityVerifierPort;
+```
+## dist/identity/operatorInvitationLifecycle.d.ts
+
+```ts
+export declare function assertOperatorInvitationTtl(value: number): void;
+export declare function invitationFailure(identityCode: string, bffCode?: string): Error & {
+    identityCode: string;
+    bffCode: string;
+};
+/** Pure parser; direct hosts call it before effects and pass the number to identity. */
+export declare function parseOperatorInvitationTtl(raw?: string): number;
+```
+## dist/identity/operatorInvitationPorts.d.ts
+
+```ts
+import type { OperatorInvitationAcceptance, OperatorInvitationConflict, OperatorInvitationResult, OperatorMembershipSnapshot, OperatorRole } from "./contracts/operatorInvitations.js";
+export interface OperatorIdentityDirectoryPort {
+    ensurePrincipal(input: {
+        email: string;
+        redirectTo: string;
+    }): Promise<{
+        principalId: string;
+        created: boolean;
+    }>;
+}
+export interface OperatorInvitationStore {
+    issue(input: {
+        actorPrincipalId: string;
+        targetPrincipalId: string;
+        email: string;
+        role: OperatorRole;
+        ttlSeconds: number;
+    }): Promise<OperatorInvitationResult | {
+        code: OperatorInvitationConflict;
+    }>;
+    read(principalId: string): Promise<OperatorMembershipSnapshot | null>;
+    /** Trusted server input only: principal must come from successful authentication. */
+    acceptOperatorInvitation(principalId: string): Promise<OperatorInvitationAcceptance>;
+    remove(input: {
+        actorPrincipalId: string;
+        targetPrincipalId: string;
+        reason?: string;
+    }): Promise<{
+        revoked: true;
+    }>;
+}
+```
+## dist/identity/operatorPorts.d.ts
+
+```ts
+export interface OperatorIdentity {
+    principalId: string;
+    email: string;
+}
+export interface OperatorMembership extends OperatorIdentity {
+    membershipState: string;
+    role: unknown;
+}
+export interface OperatorIdentityStore {
+    issue(input: {
+        email: string;
+        tokenHash: string;
+    }): Promise<{
+        deliverable: false;
+    } | {
+        deliverable: true;
+        email: string;
+        expiresAt: string;
+    }>;
+    /** Activation and consumption commit together before signing. */
+    redeem(input: {
+        tokenHash: string;
+    }): Promise<OperatorIdentity | null>;
+    findMembership(principalId: string): Promise<OperatorMembership | null>;
+    bootstrapFirstAdministrator(input: {
+        email: string;
+    }): Promise<{
+        principalId: string;
+        membershipState: "invited";
+    }>;
+    pruneChallenges(input: {
+        limit: number;
+    }): Promise<{
+        deleted: number;
+    }>;
+    close(): Promise<void>;
+}
+```
+## dist/identity/operatorSession.d.ts
+
+```ts
+import type { CustomerChallengeDeliveryPort, CustomerSessionIssuerPort } from "./ports.js";
+import type { OperatorIdentityStore } from "./operatorPorts.js";
+import type { OperatorSession } from "./contracts/operatorAuth.js";
+export declare function createOperatorSessionService(options: {
+    store: OperatorIdentityStore;
+    delivery: CustomerChallengeDeliveryPort;
+    issuer: CustomerSessionIssuerPort;
+    generateToken?: () => string;
+    deliveryFailed?: (code: "operator_challenge_delivery_failed") => void;
+}): {
+    /**
+     * Issue a challenge, then await the optional acceptance callback before mailbox delivery
+     * for every eligibility outcome. Custom HTTP hosts MUST use it to send their padded generic
+     * response before transport. Non-HTTP compositions may omit it; this service sends no HTTP
+     * responses itself.
+     */
+    requestChallenge(email: string, accept?: () => Promise<void>): Promise<void>;
+    verifyChallenge(token: string): Promise<OperatorSession | null>;
+};
+```
+## dist/identity/operatorTokenAdminAuth.d.ts
+
+```ts
+import type { AdminAuthPort } from "./ports.js";
+export type PlatformOperatorAuthConfig = {
+    readonly operatorToken: string;
+    readonly operatorId: string;
+};
+export type PlatformOperatorAllowlistCheck = (principalId: string) => Promise<boolean>;
+export type PlatformOperatorAuthConfigResolution = {
+    readonly config: PlatformOperatorAuthConfig;
+    readonly error?: undefined;
+} | {
+    readonly config?: undefined;
+    readonly error: "platform_operator_token_required" | "platform_operator_token_invalid" | "platform_operator_id_required" | "platform_operator_id_invalid";
+};
+export declare function resolvePlatformOperatorAuthConfig(env: Record<string, string | undefined>): PlatformOperatorAuthConfigResolution;
+export declare function createOperatorTokenAdminAuth(config: PlatformOperatorAuthConfig, isOperatorAllowed: PlatformOperatorAllowlistCheck): AdminAuthPort;
+```
+## dist/identity/parcelContactPrivacy.d.ts
+
+```ts
+import type { PersonalDataContributor } from './privacyPorts.js';
+import type { PgQueryExecutor } from '../data/index.js';
+/** Compose with the existing identity transaction and subscriptions veto. */
+export declare function createFulfillmentParcelContactPrivacyContributor(): PersonalDataContributor<PgQueryExecutor>;
+```
+## dist/identity/personalDataRegistry.d.ts
+
+```ts
+import { type PersonalDataContributor, type PersonalDataContributorRegistry } from "./privacyPorts.js";
+export declare function createPersonalDataContributorRegistry<Context>(contributors: readonly PersonalDataContributor<Context>[], options: {
+    requiredContributorIds: readonly string[];
+}): PersonalDataContributorRegistry<Context>;
+```
+## dist/identity/platformAdminAuth.d.ts
+
+```ts
+export type PlatformAdminAuthorizationResult = {
+    ok: true;
+} | {
+    ok: false;
+    code: "UNAUTHORIZED" | "FORBIDDEN";
+    message: string;
+};
+export type PlatformUserAuthenticationResult = {
+    ok: true;
+    userId: string;
+} | {
+    ok: false;
+    code: "UNAUTHORIZED";
+    message: string;
+};
+```
+## dist/identity/ports.d.ts
+
+```ts
+import { type EmailTrustPolicy } from "./emailTrustPolicy.js";
+import type { EmailTrustFailureCode } from "./contracts/emailTrust.js";
+export interface VerifiedPrincipal {
+    principalId: string;
+    email: string | null;
+    emailVerified: boolean;
+}
+export interface IdentityVerifierPort {
+    verifyAccessToken(accessToken: string): Promise<VerifiedPrincipal | null>;
+}
+export interface CustomerChallengeStore {
+    issue(input: {
+        email: string;
+        tokenHash: string;
+        expiresAt: string;
+    }): Promise<{
+        deliverable: boolean;
+    }>;
+    redeem(input: {
+        tokenHash: string;
+        now: string;
+    }): Promise<{
+        principalId: string;
+        email: string;
+    } | null>;
+}
+export interface CustomerChallengeDeliveryPort {
+    deliver(input: {
+        email: string;
+        token: string;
+        expiresAt: string;
+    }): Promise<void>;
+}
+export interface CustomerSessionIssuerPort {
+    issue(input: {
+        principalId: string;
+        email: string;
+    }): Promise<{
+        accessToken: string;
+        expiresAt: string;
+    }>;
+}
+export type LinkClientAuthUserResult = {
+    ok: true;
+    clientId: string;
+    authUserId: string;
+    created: boolean;
+    alreadyLinked: boolean;
+    adminSelfLink: boolean;
+} | {
+    ok: false;
+    code: EmailTrustFailureCode | "CLIENT_NOT_FOUND" | "MACHINE_ACTOR_REFUSED" | "CLIENT_AUTH_LINK_CONFLICT";
+    message: string;
+};
+export type SetClientAuthUserIdResult = {
+    ok: true;
+    alreadyLinked: boolean;
+} | {
+    ok: false;
+    code: "CLIENT_AUTH_LINK_CONFLICT";
+    existingAuthUserId: string | null;
+};
+export interface ClientAuthLinkStore {
+    emailTrustPolicy: EmailTrustPolicy;
+    findClientByEmail(email: string): Promise<{
+        id: string;
+        authUserId: string | null;
+    } | null>;
+    findAuthUserIdByEmail(email: string): Promise<string | null>;
+    findAuthUserEmailById(authUserId: string): Promise<string | null>;
+    /** Provision an unconfirmed principal; null means an existing identity needs lookup. */
+    createAuthUser(email: string): Promise<string | null>;
+    findAdminIdentity(authUserId: string): Promise<{
+        isMachineActor: boolean;
+    } | null>;
+    setClientAuthUserId(clientId: string, authUserId: string): Promise<SetClientAuthUserIdResult>;
+}
+/** Link a commerce contact without proving mailbox ownership; failed links never delete identities. */
+export declare function linkClientAuthUser(store: ClientAuthLinkStore, rawEmail: string): Promise<LinkClientAuthUserResult>;
+export type AdminPrincipalRole = "admin" | "distributor";
+export type AdminAuthorizationResult = {
+    ok: true;
+    principalId: string;
+    role: AdminPrincipalRole;
+    isMachineActor: boolean;
+} | {
+    ok: false;
+    code: "UNAUTHORIZED" | "FORBIDDEN";
+    message: string;
+};
+export interface AdminAuthPort {
+    authorize(accessToken: string | null, options?: {
+        allowedRoles?: readonly AdminPrincipalRole[];
+    }): Promise<AdminAuthorizationResult>;
+}
+export interface CustomerAccount {
+    id: string;
+    email: string | null;
+    principalId: string | null;
+}
+export interface CreateAccountInput {
+    email: string;
+    principalId: string;
+    acquisitionSource: string;
+    lifecycleStage: string;
+}
+export type LinkPrincipalResult = {
+    ok: true;
+    alreadyLinked: boolean;
+} | {
+    ok: false;
+    existingPrincipalId: string | null;
+};
+export interface AccountLinkStore {
+    findAccountByPrincipalId(principalId: string): Promise<CustomerAccount | null>;
+    findAccountByEmail(email: string): Promise<CustomerAccount | null>;
+    isReservedPrincipal(principalId: string): Promise<boolean>;
+    linkPrincipalToAccount(accountId: string, principalId: string): Promise<LinkPrincipalResult>;
+    createAccount(input: CreateAccountInput): Promise<{
+        id: string;
+    }>;
+}
+/** Attempt creation before scanning the existing identity directory. */
+export declare function findOrCreateAuthUserId(store: Pick<ClientAuthLinkStore, "createAuthUser" | "findAuthUserIdByEmail">, email: string): Promise<{
+    authUserId: string;
+    created: boolean;
+}>;
+```
+## dist/identity/postgresAccountLinkStore.d.ts
+
+```ts
+import type { AccountLinkStore } from "./ports.js";
+/** Trusted contact-link capability; conditional writes never replace an existing principal. */
+export declare function createPostgresAccountLinkStore(env: {
+    connectionString: string;
+}): AccountLinkStore & {
+    close(): Promise<void>;
+};
+```
+## dist/identity/postgresContactClientRegistrar.d.ts
+
+```ts
+export interface EnsureContactClientInput {
+    email: string;
+    acquisitionSource: string;
+    lifecycleStage: "lead" | "customer" | "inactive";
+    profileDefaults?: {
+        firstName?: string | null;
+        lastName?: string | null;
+        phone?: string | null;
+        country?: string | null;
+    };
+    journey?: {
+        idempotencyKey: string;
+        locale: string;
+        mode: "one_time" | "subscription";
+    };
+}
+export type EnsureContactClientResult = {
+    ok: true;
+    clientId: string;
+    created: boolean;
+    linked: boolean;
+} | {
+    ok: false;
+    code: "contact_client_email_invalid" | "contact_client_input_invalid" | "account_erased_refused";
+};
+/** Host-only contact resolution, never authentication. Never expose linked or created
+ * to the browser: they would reveal account existence. Keep clientId internal to
+ * the host's admitted purchase; it grants no access to existing customer data. */
+export interface PostgresContactClientRegistrar {
+    ensureContactClient(input: EnsureContactClientInput): Promise<EnsureContactClientResult>;
+    close(): Promise<void>;
+}
+/** Ensure an unverified checkout contact; refresh defaults and journey facts only
+ * while it remains unlinked. Linked rows are never updated or relinked.
+ * The host owns validation, requester quotas, checkout admission and retention.
+ * Receipt-bound shells refuse; a freed original email starts a fresh client. */
+export declare function createPostgresContactClientRegistrar(env: {
+    connectionString: string;
+}): PostgresContactClientRegistrar;
+```
+## dist/identity/postgresCustomerMe.d.ts
+
+```ts
+import type { CustomerMePort } from "./customerPorts.js";
+import type { PgGatewayClient } from "../data/index.js";
+export declare function createPostgresCustomerMePort(gateway: PgGatewayClient): CustomerMePort;
+```
+## dist/identity/postgresCustomerRecovery.d.ts
+
+```ts
+import type { CustomerChallengeStore } from "./ports.js";
+import { type PostgresDataGatewayEnv, type PostgresDataGatewayOptions } from "../data/index.js";
+export type PostgresCustomerChallengeStore = CustomerChallengeStore & {
+    close(): Promise<void>;
+    pruneChallenges(input: {
+        limit: number;
+    }): Promise<{
+        deleted: number;
+    }>;
+};
+export declare function createPostgresCustomerChallengeStore(env: PostgresDataGatewayEnv, options?: PostgresDataGatewayOptions): PostgresCustomerChallengeStore;
+```
+## dist/identity/postgresOperatorIdentity.d.ts
+
+```ts
+import type { OperatorIdentityStore } from "./operatorPorts.js";
+/** Dedicated owner lane: no actor gateway, customer writes or machine grants. */
+export declare function createPostgresOperatorIdentityStore(env: {
+    connectionString: string;
+}): OperatorIdentityStore;
+```
+## dist/identity/postgresPrivacy.d.ts
+
+```ts
+import { type PgQueryExecutor, type PostgresDataGatewayEnv, type PostgresDataGatewayOptions } from "../data/index.js";
+import { type PrivacyStore } from "./privacyPorts.js";
+export declare function createPostgresPrivacyStore(): PrivacyStore<PgQueryExecutor>;
+export declare function createPostgresPrivacyUnitOfWork(env: PostgresDataGatewayEnv, options?: PostgresDataGatewayOptions): {
+    run: <T>(work: (context: PgQueryExecutor) => Promise<T>) => Promise<T>;
+    close: () => Promise<void>;
+};
+```
+## dist/identity/privacyHandlers.d.ts
+
+```ts
+import type { HttpHandler } from "../http/index.js";
+import type { AdminAuthorizationResult } from "./ports.js";
+import { type IdentityResponseOptions } from "./response.js";
+import { type PrivacyOperations } from "./privacyPorts.js";
+export interface PrivacyHandlerDependencies extends IdentityResponseOptions {
+    authorizeAdmin: () => Promise<AdminAuthorizationResult>;
+    operations: PrivacyOperations;
+}
+export declare const createPrivacyExportHandler: (deps: PrivacyHandlerDependencies) => HttpHandler;
+export declare const createPrivacyEraseHandler: (deps: PrivacyHandlerDependencies) => HttpHandler;
+```
+## dist/identity/privacyPorts.d.ts
+
+```ts
+import type { PrivacySubjectRef, PrivacyExport, ErasureReceipt, PersonalDataDocument, PersonalDataObligation, PrivacyJson, PrivacyRefusalCode } from "./contracts/privacy.js";
+export declare class PrivacyRefusal extends Error {
+    readonly code: PrivacyRefusalCode;
+    constructor(code: PrivacyRefusalCode);
+}
+export interface AuthorizedHumanAdministrator {
+    principalId: string;
+}
+export interface ResolvedPrivacySubject {
+    contactId: string | null;
+    principalId: string | null;
+    /** Only explicitly selected identity fields; never credentials. */
+    identity: {
+        [key: string]: PrivacyJson;
+    };
+}
+export interface ErasureAssessment {
+    obligations: PersonalDataObligation[];
+}
+export interface ContributorDisposition {
+    contributorId: string;
+    version: string;
+    obligations: PersonalDataObligation[];
+}
+export interface PersonalDataContributor<Context> {
+    readonly id: string;
+    readonly version: string;
+    readonly ownedResources: readonly string[];
+    prepareErasure(context: Context): Promise<void>;
+    export(context: Context, subject: ResolvedPrivacySubject): Promise<PersonalDataDocument>;
+    assessErasure(context: Context, subject: ResolvedPrivacySubject): Promise<ErasureAssessment>;
+    eraseOrRetain(context: Context, subject: ResolvedPrivacySubject, assessment: ErasureAssessment, actor: AuthorizedHumanAdministrator): Promise<ContributorDisposition>;
+}
+export interface PersonalDataContributorRegistry<Context> {
+    readonly contributors: readonly PersonalDataContributor<Context>[];
+    readonly missingContributors: readonly string[];
+}
+export interface PrivacyUnitOfWork<Context> {
+    run<T>(work: (context: Context) => Promise<T>): Promise<T>;
+}
+export interface PrivacyStore<Context> {
+    readonly erasureSupported: boolean;
+    prepareErasure(context: Context): Promise<void>;
+    authorizeErasure(context: Context, actor: AuthorizedHumanAdministrator): Promise<void>;
+    resolve(context: Context, subject: PrivacySubjectRef, actor?: AuthorizedHumanAdministrator): Promise<ResolvedPrivacySubject | null>;
+    findReceipt(context: Context, subject: PrivacySubjectRef, key?: string): Promise<ErasureReceipt | null>;
+    eraseIdentity(context: Context, subject: ResolvedPrivacySubject, actor: AuthorizedHumanAdministrator, pseudonym: string): Promise<void>;
+    saveReceipt(context: Context, subject: ResolvedPrivacySubject, actor: AuthorizedHumanAdministrator, key: string, receipt: ErasureReceipt, dispositions: ContributorDisposition[]): Promise<void>;
+}
+export interface PrivacyUseCaseDependencies<Context> {
+    unitOfWork: PrivacyUnitOfWork<Context>;
+    registry: PersonalDataContributorRegistry<Context>;
+    store: PrivacyStore<Context>;
+    now(): Date;
+    randomId(): string;
+}
+export interface PrivacyOperations {
+    export(actor: AuthorizedHumanAdministrator, subject: PrivacySubjectRef): Promise<PrivacyExport>;
+    erase(actor: AuthorizedHumanAdministrator, input: {
+        subject: PrivacySubjectRef;
+        idempotencyKey: string;
+    }): Promise<ErasureReceipt>;
+}
+/** A host may compose this only after a committed local erasure; never delete an identity. */
+export interface ProviderIdentityErasurePort {
+    disableIdentity(input: {
+        principalId: string;
+        committedErasureId: string;
+    }): Promise<{
+        status: "disabled" | "already_disabled";
+    }>;
+}
+```
+## dist/identity/privacyUseCases.d.ts
+
+```ts
+import { type PrivacyUseCaseDependencies, type AuthorizedHumanAdministrator, type PrivacyOperations } from "./privacyPorts.js";
+import type { PrivacySubjectRef, PrivacyEraseRequest, PrivacyExport, ErasureReceipt } from "./contracts/privacy.js";
+export declare function exportPersonalData<C>(deps: PrivacyUseCaseDependencies<C>, actor: AuthorizedHumanAdministrator, input: PrivacySubjectRef): Promise<PrivacyExport>;
+export declare function erasePersonalData<C>(deps: PrivacyUseCaseDependencies<C>, actor: AuthorizedHumanAdministrator, request: PrivacyEraseRequest): Promise<ErasureReceipt>;
+export declare function createPrivacyOperations<C>(deps: PrivacyUseCaseDependencies<C>): PrivacyOperations;
+```
+## dist/identity/reconcileAccountForPrincipal.d.ts
+
+```ts
+import { type EmailTrustPolicy } from "./emailTrustPolicy.js";
+import type { EmailTrustFailureCode } from "./contracts/emailTrust.js";
+import type { AccountLinkStore } from "./ports.js";
+export interface ReconcileAccountInput {
+    principalId: string;
+    email: string | null;
+    emailVerified: boolean;
+}
+export type ReconcileAccountErrorCode = EmailTrustFailureCode | "NO_VERIFIED_EMAIL" | "RESERVED_PRINCIPAL_REFUSED" | "PRINCIPAL_EMAIL_MISMATCH" | "ACCOUNT_LINK_CONFLICT" | "EMAIL_OWNED_BY_OTHER_PRINCIPAL";
+export type ReconcileAccountResult = {
+    ok: true;
+    accountId: string;
+    created: boolean;
+    linked: boolean;
+} | {
+    ok: false;
+    code: ReconcileAccountErrorCode;
+    existingPrincipalId?: string | null;
+};
+export declare function reconcileAccountForPrincipal(store: AccountLinkStore, input: ReconcileAccountInput, emailTrustPolicy: EmailTrustPolicy): Promise<ReconcileAccountResult>;
+```
+## dist/identity/reconcileAccountHandler.d.ts
+
+```ts
+import type { EmailTrustPolicy } from "./emailTrustPolicy.js";
+import { type IdentityResponseOptions } from "./response.js";
+import type { HttpRequest, HttpResponse } from "../http/index.js";
+import type { AccountLinkStore, IdentityVerifierPort } from "./ports.js";
+import { type ReconcileAccountErrorCode } from "./reconcileAccountForPrincipal.js";
+export declare function createReconcileAccountHandler(options: IdentityResponseOptions & {
+    verifier: IdentityVerifierPort;
+    store: AccountLinkStore;
+    emailTrustPolicy: EmailTrustPolicy;
+    message?: (code: ReconcileAccountErrorCode) => string;
+}): (req: HttpRequest, res: HttpResponse) => Promise<void>;
+```
+## dist/identity/removeAdminUserUseCase.d.ts
+
+```ts
+import type { OperatorInvitationStore } from "./operatorInvitationPorts.js";
+import { type IdentityMessages } from "./messages.js";
+export type RemoveAdminUserResponse = {
+    revoked?: true;
+    error?: string;
+    code?: string;
+};
+export interface RemoveAdminUserGateway {
+    getUser: (accessToken: string) => Promise<{
+        user: {
+            id: string;
+        } | null;
+        error: unknown;
+    }>;
+    findAdminUser: (userId: string) => Promise<{
+        id: string;
+        role: string;
+    } | null>;
+    revokeAdminUser: (userId: string) => Promise<{
+        error: {
+            message: string;
+        } | null;
+    }>;
+}
+export declare function runRemoveAdminUserUseCase(request: {
+    accessToken: string | null;
+    userId: string;
+}, gateway: RemoveAdminUserGateway, messages?: IdentityMessages, invitationStore?: Pick<OperatorInvitationStore, "remove">): Promise<{
+    status: number;
+    body: RemoveAdminUserResponse;
+}>;
+```
+## dist/identity/response.d.ts
+
+```ts
+import { createBffResponder, type BffResponderOptions } from "../bff/index.js";
+export type IdentityResponseOptions = BffResponderOptions;
+export declare const createIdentityResponder: typeof createBffResponder;
+```
+## dist/identity/savedAddressPrivacy.d.ts
+
+```ts
+import type { PersonalDataContributor } from './privacyPorts.js';
+import type { PgQueryExecutor } from '../data/index.js';
+/** Compose with identity authorization, the subscriptions veto and account-event ownership. */
+export declare function createCustomerSavedAddressPrivacyContributor(): PersonalDataContributor<PgQueryExecutor>;
+```
+## dist/identity/sql.d.ts
+
+```ts
+/** A projection of canonical migration units, never a second migration chain. */
+export declare const IDENTITY_MIGRATIONS: readonly [{
+    readonly id: "20260810180001_self_host_actor_auth";
+    readonly catalogPath: "db/platform/migrations/20260810180001_self_host_actor_auth.sql";
+    readonly position: 11;
+    readonly sha256: "84c80d328785151f1fdb5fc4b69220469ffb9c8579054c473ead910a273dfe7b";
+    readonly url: URL;
+}, {
+    readonly id: "20260810204057_customer_identity_read";
+    readonly catalogPath: "db/platform/migrations/20260810204057_customer_identity_read.sql";
+    readonly position: 12;
+    readonly sha256: "1aa626c0187a4ed9d08f152540e0d17c68cd678d2caf3e896ac444b5a38aafe3";
+    readonly url: URL;
+}, {
+    readonly id: "20260814090000_customer_selfservice_recovery";
+    readonly catalogPath: "db/platform/migrations/20260814090000_customer_selfservice_recovery.sql";
+    readonly position: 29;
+    readonly sha256: "ca7f58994533727eb58da148d549ff986fe8f55bb2ffc9eaf61e7d239675ba2e";
+    readonly url: URL;
+}, {
+    readonly id: "20260901143000_admin_membership_authority_foundation";
+    readonly catalogPath: "db/platform/migrations/20260901143000_admin_membership_authority_foundation.sql";
+    readonly position: 60;
+    readonly sha256: "bb4703b669d17e5a0eb4d9a4e8889d12e5286d4b5a813226a77ef2b71df8281f";
+    readonly url: URL;
+}, {
+    readonly id: "20261018120000_identity_operator_invitations";
+    readonly catalogPath: "db/platform/migrations/20261018120000_identity_operator_invitations.sql";
+    readonly position: 67;
+    readonly sha256: "b73034908bd5e27819bcd421d17037a0f00a24aa3df1be1f8f9ca411bf984349";
+    readonly url: URL;
+}, {
+    readonly id: "20261018180000_identity_operator_challenges";
+    readonly catalogPath: "db/platform/migrations/20261018180000_identity_operator_challenges.sql";
+    readonly position: 68;
+    readonly sha256: "191cf0c151a5882ad20d6043624da50afad799df739fff326d67560d3e00a031";
+    readonly url: URL;
+}, {
+    readonly id: "20261018190000_identity_privacy_erasures";
+    readonly catalogPath: "db/platform/migrations/20261018190000_identity_privacy_erasures.sql";
+    readonly position: 69;
+    readonly sha256: "f39b691cb14c0e9ec1a7460d77dc46e16bca4d2448838e4882f78885a6d92351";
+    readonly url: URL;
+}];
+```
+## dist/kernel/index.d.ts
+
+```ts
+export { BLOB_CAPABILITIES, DEFAULT_PLATFORM_BUNDLE, ENV_MISSING_CODE, PLATFORM_BUNDLE_DESCRIPTORS, PLATFORM_BUNDLE_IDS, getBundleDescriptor, isPlatformBundleId, platformEnvSchema, resolveBlobCapability, resolveBundleId, type BlobCapability, type PlatformBundleDescriptor, type PlatformBundleId, type PlatformBundleReadiness, type PlatformEnv, } from "./platformKernel.js";
+```
+## dist/kernel/platformKernel.d.ts
+
+```ts
+import { z } from "zod";
+import { type PlatformBundleDescriptor as CorePlatformBundleDescriptor, type PlatformBundleReadiness, type PlatformEnvInput } from "@openlup/core/platform-runtime";
+/** The bundles a deployment can select with `PLATFORM_BUNDLE`. */
+export declare const PLATFORM_BUNDLE_IDS: readonly ["vercel-supabase", "node-supabase", "node-postgres"];
+export type PlatformBundleId = (typeof PLATFORM_BUNDLE_IDS)[number];
+/**
+ * Fallback used when `PLATFORM_BUNDLE` is absent or unknown during bundle resolution.
+ * Readiness still refuses an unknown nonempty `PLATFORM_BUNDLE` value.
+ */
+export declare const DEFAULT_PLATFORM_BUNDLE: PlatformBundleId;
+export declare const isPlatformBundleId: import("@openlup/core/platform-runtime").PlatformBundleIdGuard<"vercel-supabase" | "node-supabase" | "node-postgres">;
+export type PlatformBundleDescriptor = CorePlatformBundleDescriptor & {
+    id: PlatformBundleId;
+};
+export type { PlatformBundleReadiness };
+/** The readiness code a bundle reports when a selected capability lacks its configuration. */
+export declare const ENV_MISSING_CODE = "OPENLUP_E_ENV_MISSING";
+/** The blob capabilities a deployment can select with `PLATFORM_BLOB`. */
+export declare const BLOB_CAPABILITIES: readonly ["filesystem", "s3", "supabase", "vercel-blob"];
+export type BlobCapability = (typeof BLOB_CAPABILITIES)[number];
+/**
+ * The blob capability in effect: a valid `PLATFORM_BLOB` selection, else the bundle's own. An
+ * invalid selection keeps the bundle's own here and is refused by readiness.
+ */
+export declare function resolveBlobCapability(descriptor: Pick<PlatformBundleDescriptor, "capabilities">, env: PlatformEnvInput): string;
+export declare const PLATFORM_BUNDLE_DESCRIPTORS: readonly PlatformBundleDescriptor[];
+export declare function getBundleDescriptor(id: PlatformBundleId): PlatformBundleDescriptor;
+export declare function resolveBundleId(env: PlatformEnvInput): PlatformBundleId;
+export declare const platformEnvSchema: z.ZodObject<{
+    APP_BASE_URL: z.ZodOptional<z.ZodString>;
+    PLATFORM_BUNDLE: z.ZodOptional<z.ZodEnum<{
+        "vercel-supabase": "vercel-supabase";
+        "node-supabase": "node-supabase";
+        "node-postgres": "node-postgres";
+    }>>;
+}, z.core.$strip>;
+export type PlatformEnv = z.infer<typeof platformEnvSchema>;
 ```

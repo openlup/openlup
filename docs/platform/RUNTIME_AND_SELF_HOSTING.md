@@ -1378,6 +1378,15 @@ provider SDK, deployment setting, route, scheduler or second outbox executor;
 managed receipt service-scope and fixture construction remain in the reference
 adapter.
 
+For explicit marketing composition, the
+[single-process PostgreSQL host](CANONICAL_CONTRACTS.md#reference-postgresql-marketing-host)
+provides exact-byte CAS and startup quarantine through the existing private
+storage seam. The application installs its setup, shares one host per account,
+supplies grants and retained-data policy, and reconciles stopped work before
+reconstructing adapters. Importing the host installs no schema, route or job.
+Its retained journal and recovery snapshot require privileged handling; the
+reference does not support compaction, multiple processes or account certification.
+
 `createOidcComposition` is an explicit direct-bundle option, supplied with the
 existing environment reader's `IDENTITY_OIDC_ISSUER`, customer audience and
 distinct operator audience. Retain its verifiers for the host lifetime and

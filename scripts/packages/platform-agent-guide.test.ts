@@ -17,17 +17,35 @@ function checkGuide(packageRoot: string) {
   });
 }
 
-it("ships a guide with the exact release-gate maturity table and compiled wiring example", () => {
+it("ships a guide with the exact release-gate maturity table and compiled wiring examples and provider recipes", () => {
   expect(manifest.files).toContain("AGENTS.md");
   const result = checkGuide(root);
   expect(result.status, result.stderr).toBe(0);
   const example = readFileSync(join(root, "test/agentsWiringExample.ts"), "utf8");
   expect(readFileSync(join(root, "README.md"), "utf8")).toContain("```ts\n" + example + "```");
-  const program = ts.createProgram([join(root, "test/agentsWiringExample.ts")], {
+  const guide = readFileSync(join(root, "AGENTS.md"), "utf8");
+  const recipes = guide.split("## Provider wiring recipes\n")[1]?.split("\n## ")[0];
+  const snippets = [...(recipes ?? "").matchAll(/```ts\n([\s\S]*?)```/g)].map(match => match[1]);
+  expect(snippets).toHaveLength(3);
+  const virtualFiles = new Map(snippets.map((source, index) => [join(root, `test/providerRecipe${index + 1}.mts`), source]));
+  const options: ts.CompilerOptions = {
     noEmit: true, strict: true, skipLibCheck: true, target: ts.ScriptTarget.ES2022,
     module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
     types: ["node"],
-  });
+  };
+  const host = ts.createCompilerHost(options);
+  const originalGetSourceFile = host.getSourceFile.bind(host);
+  const originalFileExists = host.fileExists.bind(host);
+  const originalReadFile = host.readFile.bind(host);
+  host.fileExists = file => virtualFiles.has(file) || originalFileExists(file);
+  host.readFile = file => virtualFiles.get(file) ?? originalReadFile(file);
+  host.getSourceFile = (file, languageVersion, onError, shouldCreateNewSourceFile) => {
+    const source = virtualFiles.get(file);
+    return source === undefined
+      ? originalGetSourceFile(file, languageVersion, onError, shouldCreateNewSourceFile)
+      : ts.createSourceFile(file, source, languageVersion);
+  };
+  const program = ts.createProgram([join(root, "test/agentsWiringExample.ts"), ...virtualFiles.keys()], options, host);
   expect(ts.getPreEmitDiagnostics(program).map(diagnostic => ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"))).toEqual([]);
 }, 30_000);
 

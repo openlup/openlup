@@ -4056,6 +4056,139 @@
         ],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "communications-ecommerce",
+        "path": "db/platform/migrations/20261111120000_communication_ecommerce_sources.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.commerce_order_emit_paid_notification()",
+            "beforeSha256": "3867ff50323886f39fd10a2d37182a4d3a27a4a811a63cb6d0184bbe354bcf93",
+            "searchPath": "public, pg_catalog"
+          },
+          {
+            "signature": "public.commerce_order_emit_refunded_notification()",
+            "beforeSha256": "37b8ce8f36ce450a1b302ab1a0d86135d85a99b20a1e1125e2cfdaf3280d2e6a",
+            "searchPath": "public, pg_catalog"
+          },
+          {
+            "signature": "public.commerce_outbox_compact_terminal(integer,timestamptz)",
+            "beforeSha256": "24dbe34023eade8e50200322647411fe63264c2a85b065a069b1aa4abee29bb9",
+            "searchPath": "pg_catalog"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.communication_event_capture_subject()",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.communication_paid_fact(public.commerce_orders)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.communication_event_paid_write(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.communication_event_refund_write(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.communication_checkout_qualify(integer,jsonb,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.communication_event_binding(jsonb,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.communication_event_handoff_missing(text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.communication_event_payload_releasable(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.communication_event_guard()",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.communication_event_ledger_guard()",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.communication_event_candidates(jsonb,timestamptz,integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.communication_event_source_current(jsonb,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.communication_event_enqueue(jsonb,timestamptz,text,text,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.communication_event_work(uuid,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.communication_event_settle(uuid,text,text,text,text,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.communication_event_privacy(uuid,boolean)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [
+          "INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('communication_event_receipts', 'block', 'Frozen provider identity and event deduplication stay with their subject.');",
+          "INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('communication_event_erasures', 'block', 'An erased subject must not be silently absorbed into another identity.');"
+        ],
+        "existingTableStatements": [
+          "ALTER TABLE public.commerce_order_operations ADD COLUMN communication_subject_id uuid;",
+          "ALTER TABLE public.subscription_events ADD COLUMN communication_subject_id uuid;"
+        ],
+        "absorptionCensusTables": [
+          "public.communication_event_receipts",
+          "public.communication_event_erasures"
+        ],
+        "createdViews": [
+          {
+            "name": "public.communication_event_sources",
+            "sha256": "3168b548d5d66a3779ed890bb4d4f15bd9ec9030f84ffd0df341388986f65b92"
+          }
+        ],
+        "createdTriggers": [
+          {
+            "name": "communication_subscription_subject",
+            "table": "public.subscription_events",
+            "sha256": "ac0444c1d00b1d1683648f5cf5b293ec37ced539877846daf29d518582abdf09"
+          },
+          {
+            "name": "communication_refund_subject",
+            "table": "public.commerce_order_operations",
+            "sha256": "f22d34b1a71658f4c7aed25d7ba0d5f422b7b7cc87f681e83f7810b77d23e401"
+          },
+          {
+            "name": "communication_event_source_guard",
+            "table": "public.outbox_events",
+            "sha256": "da4882e5d1f0b5c28e6cb1dd24c2cf3b9c64fceac54c139aea67fe7cbe351841"
+          },
+          {
+            "name": "communication_subscription_source_guard",
+            "table": "public.subscription_events",
+            "sha256": "32bb3b15351551394883bf2d4122f661970d19a1773e04841f1e636b9f6bb3e1"
+          },
+          {
+            "name": "communication_refund_source_guard",
+            "table": "public.commerce_order_operations",
+            "sha256": "46f068638500fc06d265d14ce3a7c9dec091417979fa1b0fd51ba4911ac19623"
+          }
+        ]
       }
     ]
   },
@@ -5029,6 +5162,107 @@
           "signature": "public.oms_cancel_unpaid_order_owned(text,uuid,text,uuid,jsonb,timestamptz)",
           "beforeSha256": null,
           "afterSha256": "e08aad49b02ed5f7b70b94fffce805e6703df7e8ea82ced705599321dce50282"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261111120000_communication_ecommerce_sources.sql",
+      "sha256": "a26abd8afaaca1362357d5fd4c5b047ac453289ecb8e9f9ca8ceb0e573ca4309",
+      "functions": [
+        {
+          "signature": "public.commerce_order_emit_paid_notification()",
+          "beforeSha256": "3867ff50323886f39fd10a2d37182a4d3a27a4a811a63cb6d0184bbe354bcf93",
+          "afterSha256": "bafe20c352a9b06aa5028f833177968257186038ad2ddd38574b754f3a82f938"
+        },
+        {
+          "signature": "public.commerce_order_emit_refunded_notification()",
+          "beforeSha256": "37b8ce8f36ce450a1b302ab1a0d86135d85a99b20a1e1125e2cfdaf3280d2e6a",
+          "afterSha256": "0e57eb91a36b66ca02e992aea616cb6baa4b0e911635a48ef72d2f8611aff130"
+        },
+        {
+          "signature": "public.commerce_outbox_compact_terminal(integer,timestamptz)",
+          "beforeSha256": "24dbe34023eade8e50200322647411fe63264c2a85b065a069b1aa4abee29bb9",
+          "afterSha256": "e83d3283c94ead57054e4507bb6b7a2a15164b44ae596258f211e4ec5988a9fb"
+        },
+        {
+          "signature": "public.communication_event_capture_subject()",
+          "beforeSha256": null,
+          "afterSha256": "a5e81b00c2aa927da558b2665856ce5de393d9af32b5be92882a4bf31620f5d2"
+        },
+        {
+          "signature": "public.communication_paid_fact(public.commerce_orders)",
+          "beforeSha256": null,
+          "afterSha256": "0e55300d0091d46051c603cd118ce8613e970fdda68259fea58536efcf47e489"
+        },
+        {
+          "signature": "public.communication_event_paid_write(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "3b0316fcf1f82115e67b72be2ddc30f615bc2550fad95c3721ed1db3c9f488d3"
+        },
+        {
+          "signature": "public.communication_event_refund_write(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "3bf12c4bc941eaafb59e5794b6fa3a1b036f8c8a5719bd595c0fb430d861e577"
+        },
+        {
+          "signature": "public.communication_checkout_qualify(integer,jsonb,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "523463d9e6f15898a4cf65f23b18aebf396b9f32649c7047274c0d4f4814c57d"
+        },
+        {
+          "signature": "public.communication_event_binding(jsonb,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "62b59a68cc3f1a56f5deae64928ab33438ccc7bcef2b296c9c1e6cdee706cd92"
+        },
+        {
+          "signature": "public.communication_event_handoff_missing(text)",
+          "beforeSha256": null,
+          "afterSha256": "fe7dbc35b507aa330d9bf9be1d2a469e241bf848e6b21940bc0fbf8e424c49fb"
+        },
+        {
+          "signature": "public.communication_event_payload_releasable(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "b1aceae0530e35a7ace2ced4f643d6423fdd9e12f3d49941091bf92cacb7e637"
+        },
+        {
+          "signature": "public.communication_event_guard()",
+          "beforeSha256": null,
+          "afterSha256": "02e4485430d234146793c7a6ed68ea4283fcb962f9749a5476f8d775ff64ca8c"
+        },
+        {
+          "signature": "public.communication_event_ledger_guard()",
+          "beforeSha256": null,
+          "afterSha256": "9371869feaf09162c12b62465726bff94b3b2417c9d4fa65659ad77db81b9012"
+        },
+        {
+          "signature": "public.communication_event_candidates(jsonb,timestamptz,integer)",
+          "beforeSha256": null,
+          "afterSha256": "ce731da087d194c25b8a9cc9c71f8da6b867fd548d8241091cc9125f12e5dcbe"
+        },
+        {
+          "signature": "public.communication_event_source_current(jsonb,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "2b9a49463023f1b25b16d6e6e01b951768c325f13e6994f0cbfb8d0ef6fa24ea"
+        },
+        {
+          "signature": "public.communication_event_enqueue(jsonb,timestamptz,text,text,text)",
+          "beforeSha256": null,
+          "afterSha256": "c61cda89404fdea05c1c994fa8c48c2585f1688708c22c1c71ef68c9ec6e5732"
+        },
+        {
+          "signature": "public.communication_event_work(uuid,text)",
+          "beforeSha256": null,
+          "afterSha256": "48abb1e11a5aade00c0b7e6179b128d853cb2f85a826d954937a07b260697c63"
+        },
+        {
+          "signature": "public.communication_event_settle(uuid,text,text,text,text,text)",
+          "beforeSha256": null,
+          "afterSha256": "57efaebdd801f89ccce554d6aa889f75e38fc37bf8be5148fd132690b73e3f3f"
+        },
+        {
+          "signature": "public.communication_event_privacy(uuid,boolean)",
+          "beforeSha256": null,
+          "afterSha256": "6ed4f3250a493ec5825800e3c7c30ba9015315663c90c415476504e6cd3c9e28"
         }
       ]
     }
