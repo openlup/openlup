@@ -2254,19 +2254,20 @@ SQL wrappers persist it for eligible obligations. `InvoiceSellerRevision` is als
 available from the type-only contracts entry. Legacy obligations keep fallback.
 
 For the prepared `0.39.0` set, read the [adjacent-release migration and known
-limitations](CHANGELOG.md#0390) before selecting optional services. This set adds
-checkout recovery inspection, expired initial-checkout recreation, reminder waves
-with reservation-backed expiry, checkout payment guidance, sandbox token payment
-and inline retry, and customer and operator payment-link entry points; customer
-account history, profile edits, billing profiles with frozen invoice buyer
-inputs, a saved address book with future-delivery selection and scoped
-preferences; native operator parcel replacement and cancellation with private
-parcel contacts and a parcel status fence, and operator shipment commands; human operator admission,
-unpaid cancellation commands and owned return requests and decisions; and an
-opt-in sized future-plan editor. A timed pause now shifts the next cycle
-by its length, and timed auto-resume no longer stays paused after a delivered
-paid first order. Apply the complete selected migration catalogue before
-composing the new native bindings. Experimental
+limitations](CHANGELOG.md#0390) before selecting optional services. This set
+adds checkout recovery inspection, expired initial-checkout recreation, reminder
+waves with reservation-backed expiry, checkout payment guidance, sandbox token
+payment and inline retry, and customer and operator payment-link entry points;
+customer account history, profile edits, billing profiles, invoice buyer inputs
+frozen on first native duty capture, a saved address book with future-delivery
+selection and scoped preferences; native operator parcel replacement and
+cancellation with private parcel contacts and a parcel status fence, and
+operator shipment commands; human operator admission, unpaid cancellation
+commands and owned return requests and decisions; and an opt-in sized
+future-plan editor. A timed pause now shifts the next cycle by its length, and
+timed auto-resume no longer stays paused after a delivered paid first order.
+Apply the complete selected migration catalogue before composing the new native
+bindings. Experimental
 marketing uses browser-safe `./marketing`, type-only browser-safe
 `./marketing/contracts`, and Node-only `./marketing/server` and
 `./marketing/server/postgres`. Marketing contributions and bindings remain
@@ -2587,7 +2588,7 @@ or activate a target. Starter pages and routes remain separately bound work.
 ### Customer billing profiles and frozen invoice buyers
 
 Install the complete native catalogue through
-`20261110260000_customer_billing_profiles.sql`. Select
+`20261110270000_invoicing_duty_buyer_capture.sql`. Select
 `createPostgresCustomerBillingProfilePort`, `createCustomerBillingProfileSchemas`
 and `createCustomerBillingProfilesHandler` from `@openlup/platform/account-support`;
 browser request/response/port types live in `account-support/contracts`.
@@ -2606,19 +2607,26 @@ a delete of a missing/foreign ID acknowledges zero rows and records its event.
 Verification level/source/evidence supplied by the customer is retained as data;
 no registry verification workflow is performed.
 
-For invoices that select these profiles, explicitly bind
-`createPostgresBillingInvoiceStore` from `@openlup/platform/invoicing` instead of
-the generic invoice store. The simplicity pre-check found that full fiscal-fact
-installation is a separate call after invoice request. The selected request
-wrapper therefore freezes ONE buyer component atomically with the existing
-invoice-request transaction. `readCapturedBuyer(orderId)` supplies that immutable
-component for subsequent host fiscal composition. Its retained-source sweep uses
-the same atomic capture boundary; pre-existing duties or documents never acquire
-a component on replay, even before full facts are installed. The selected installer refuses
-facts that contradict it. It preserves order buyer facts first, then the default
-or latest owned profile/billing-or-both address, then the marked shipping fallback.
-Handoff requests read the owned parcel destination; paid requests read the order.
-There is no second full invoice ledger, provider executor or scheduler.
+Native invoicing now freezes ONE buyer component atomically with the first owed
+duty, including native payment-truth capture. No opt-in or payment callback is
+needed. It preserves order buyer facts first, then the default or latest owned
+profile/billing-or-both address, then the marked shipping fallback. Handoff
+requests read the owned parcel destination; paid requests read the order.
+Pre-existing duties or documents never acquire a component on replay, even
+before full facts are installed.
+
+Bind `createPostgresBillingInvoiceStore` from `@openlup/platform/invoicing` for
+subsequent host fiscal composition: `readCapturedBuyer(orderId)` supplies the
+immutable buyer, and the selected installer refuses facts that contradict it.
+Full fiscal-fact installation is a separate call and cannot be the buyer freeze
+point. The retained-source sweep also reaches the first-duty capture boundary.
+A missing recorded destination refuses with `commerce_destination_unavailable`:
+record the owned order destination before retrying capture while its fault is
+still retryable. Handoff sources must name an order-owned shipment or refuse with
+`customer_billing_shipment_mismatch`. Once the sweep marks the source `faulted`,
+there is no supported operator reset/requeue command; escalate for an
+invoicing-owned recovery procedure. No buyer or address
+is fabricated. There is no second full invoice ledger, provider executor or scheduler.
 
 `InvoiceBuyer` adds only optional `line2`, raw identifier and provenance fields,
 so historical facts and existing typed consumers remain valid. Provider

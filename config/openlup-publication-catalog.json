@@ -1362,6 +1362,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261110270000_invoicing_duty_buyer_capture.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4495,6 +4499,10 @@
     },
     {
       "path": "packages/platform/sql/20261110260000_customer_billing_profiles.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261110270000_invoicing_duty_buyer_capture.sql",
       "class": "public-output"
     },
     {
@@ -28730,6 +28738,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/helpers/invoicingBuyerDestination.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/helpers/invoicingNativeHarness.ts",
       "class": "public-output"
     },
@@ -29251,6 +29263,10 @@
     },
     {
       "path": "tests/postgres/inventoryNative.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/invoicingBuyerCapture.test.ts",
       "class": "public-output"
     },
     {

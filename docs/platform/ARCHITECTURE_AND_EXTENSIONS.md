@@ -2767,11 +2767,13 @@ retain provider selection, invoice reference, status and replay. The
 delivery retry evidence, correction, payout item and account-lineage seams and
 their source witnesses.
 
-An explicitly selected customer-billing invoice store freezes buyer inputs in the
-invoice-request transaction; later host fiscal composition reads that component.
+Native invoicing freezes buyer inputs atomically with the first owed-duty capture,
+including the payment-truth path. The customer-billing invoice store reads that
+component for later host fiscal composition and checks installed buyer facts.
 The existing facts installer runs separately, so it cannot serve as that freeze
 point. Profiles, provenance and the second address line remain lossless; existing
-unselected stores and historical facts keep their behavior. See the
+historical duties without a component and historical facts keep their behavior.
+No adopter switch is needed for first capture. See the
 [billing storage owner](DATA_AND_MIGRATIONS.md#customer-billing-profile-and-invoice-buyer-data)
 for selection precedence, atomicity, retention and exact transfer.
 

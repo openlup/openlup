@@ -4318,6 +4318,25 @@
         "absorptionCensusTables": [
           "public.customer_orderer_profiles"
         ]
+      },
+      {
+        "row": "invoicing-duty-buyer-capture",
+        "path": "db/platform/migrations/20261110270000_invoicing_duty_buyer_capture.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.invoicing_capture_duty(text,text,uuid,uuid,jsonb,timestamptz)",
+            "searchPath": "pg_catalog",
+            "beforeSha256": "5bad48e2e13089139e07955ab9d91aa98aef17caa6a1066bf44bbfa2ff9608bc"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.invoicing_capture_duty_with_buyer(text,text,uuid,uuid,jsonb,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -5507,6 +5526,22 @@
           "signature": "public.customer_billing_sweep_invoice_duties(integer)",
           "beforeSha256": null,
           "afterSha256": "f993cdf4150e49b24fcc253df116a4cc275b137ea301f8808bf854de16a1f089"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261110270000_invoicing_duty_buyer_capture.sql",
+      "sha256": "2f0e989e57705d35efc1c8d40017337875bf840263fa74acfa9cd6c5db77768f",
+      "functions": [
+        {
+          "signature": "public.invoicing_capture_duty(text,text,uuid,uuid,jsonb,timestamptz)",
+          "beforeSha256": "5bad48e2e13089139e07955ab9d91aa98aef17caa6a1066bf44bbfa2ff9608bc",
+          "afterSha256": "f5a572cdbc786d637bee591b5901d31f56af3f72d8ebc77de62567c74b6e237c"
+        },
+        {
+          "signature": "public.invoicing_capture_duty_with_buyer(text,text,uuid,uuid,jsonb,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "f060e74ebe69af70344565b9f3b656ccb177ed913d63c7587ac7b40c5d997b85"
         }
       ]
     }

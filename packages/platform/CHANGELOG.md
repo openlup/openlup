@@ -144,7 +144,7 @@ Migration: `20261110105000_subscription_pause_duration.sql` replaces only the ti
 
 Migration: Apply the additive guidance forward after checkout recreation. No token writes, table, backfill, lifecycle change or existing-function replacement is included.
 
-- @openlup/platform size growth: Guidance uses the inherited approved packed and unpacked limits. The code-file limit is 4,207, the measured 4,124 files plus 2%; other internal limits are retained.
+- @openlup/platform size growth: Guidance fits the inherited approved package limits, including the 4,211 code-file limit; no cap adjustment is required.
 
 - Accept the native activation owner's `active` state and cover native-to-HTTP status projection on legacy and both qualified runtimes, including capability opt-in, strict legacy output, read fallback, revocation and activated checkout.
 
@@ -194,18 +194,26 @@ receipt through a suffixed key. Existing receipts are retained unchanged.
 
 Migration: install the complete native catalogue through `20261110240000_subscription_saved_address_selection.sql`. New closed routines grant EXECUTE only to service_role; raw table access is limited to client-ID absorption census. Register the explicit preference privacy contributor for export and subject erasure. Native finite transfer carries exact rows to qualified targets; managed-source nonempty preferences refuse without a typed path. Saved snapshots keep existing privacy boundaries; destination-row erasure and starter binding are not added.
 
-- Package size: saved selection, private preference routines and server contracts add SQL and portable source. Crossed packed, code, documentation and file budgets use measured contents with 2% headroom; the released baseline is unchanged.
+- Package size: saved selection, private preference routines and server contracts add SQL and portable source. Crossed packed, unpacked and documentation budgets use measured contents with 2% headroom; code and file limits are retained, and the released baseline is unchanged.
 
 - Add sandbox token payment and exact cookie-only inline retry on the existing intent and durable attempt owner. Token admission rechecks bearer ownership; inline admission requires the exact failed predecessor, failed intent and permitted method action. Transition/nonce/rail replay rotates the replacement cookie without redispatch, with safe polling when action readback lags. Both fresh paths reuse the injected first-purchase hold wrapper. Renewal cycles refuse; initial declarations remain eligible. Verified ingress retains settlement ownership and other rails keep their named native refusal.
 
 Migration: Apply the additive checkout-attempt admission forward after atomic guidance. The single forward creates two service-only entry points without replacing existing functions or adding storage. Bind an explicit synthetic-method registry and purchase-context policy for inline retry; no method taxonomy is inferred from opaque references. Host routing and browser journeys remain separate.
 
 - Add owned customer billing profile CRUD and strict request/handler binding, preserving separate default-clear/write/event failures and stored request identifiers without deduplication.
-- Add explicit invoice-store selection that freezes buyer inputs with the invoice request, including retained sources collected by the sweep. Existing owed duties are never backfilled on replay. Preserve line2 and source/profile/address references in additive public fields and provider projection. Profile edits leave existing invoice facts and issued bytes unchanged; later requests use the new profile.
+- Freeze buyer inputs on first native duty capture, including payment truth and retained sources collected by the sweep. The selected billing invoice store reads the component for later fiscal composition and validates installation. Existing owed duties are never backfilled on replay. Preserve line2 and source/profile/address references in additive public fields and provider projection. Profile edits leave existing invoice facts and issued bytes unchanged; later requests use the new profile.
 
-Migration: install the complete native catalogue through `20261110260000_customer_billing_profiles.sql`. Bind the selected billing invoice store and its frozen reader before fiscal composition. Register the explicit billing privacy contributor: editable profiles erase, invoice components retain under the invoicing owner. Finite native transfer carries exact rows to qualified targets. New routines grant EXECUTE only to service_role; raw access is limited to profile client-ID absorption census. Existing generic invoicing and historical facts remain unchanged. No automatic checkout application, registry workflow, starter UI or fiscal provider qualification is added.
+Migration: install the complete native catalogue through `20261110270000_invoicing_duty_buyer_capture.sql`. Bind the selected billing invoice store and its frozen reader before fiscal composition. Register the explicit billing privacy contributor: editable profiles erase, invoice components retain under the invoicing owner. Finite native transfer carries exact rows to qualified targets. New routines grant EXECUTE only to service_role; raw access is limited to profile client-ID absorption census. Generic native duty capture now freezes buyer inputs by default; pre-existing duties and historical facts remain unchanged. Follow the first-duty buyer-capture migration guidance for recorded destinations, order-owned handoff shipments and capture-fault limits. No automatic checkout application, registry workflow, starter UI or fiscal provider qualification is added.
 
-Package caps: packed 3,033,152 B, code 2,462,162 B and 4,344 files retain the reviewed headroom for the crossed classes. Other limits and the released baseline remain unchanged.
+Package caps: code 2,513,518 B, documentation 92,404 B and 4,435 files retain the reviewed headroom for the crossed classes. Other limits and the released baseline remain unchanged.
+
+Native invoicing freezes the lossless buyer component atomically when an original owed duty is first captured, including the payment-truth path. Selection keeps order facts, owned default/latest billing profile and address, then the marked shipping fallback, including the second address line and provenance. No opt-in or payment-side account-data binding is required.
+
+Existing duties and documents never acquire a buyer component later. The selected billing invoice store reads the component for fiscal composition and validates installation; profile edits leave captured facts and issued bytes unchanged. Private access, invoice retention and exact native transfer remain under their existing owners.
+
+Migration: install the complete native catalogue through `20261110270000_invoicing_duty_buyer_capture.sql`. Record the owned order destination before capture: missing data refuses with `commerce_destination_unavailable`. A handoff source must name a shipment owned by that order, or capture refuses with `customer_billing_shipment_mismatch`. Payment truth absorbs these as bounded retryable capture faults without rolling back money; the retained-source sweep marks the source `faulted` when its eight-attempt ceiling is reached. Correct the source while it remains retryable. After it is faulted, the sweep excludes it and there is no supported operator reset/requeue command; recording a destination alone does not resume it. Escalate for an invoicing-owned recovery procedure rather than changing or deleting ledger rows.
+
+Compose `createCustomerBillingPrivacyContributor` with required ID `customer-billing` even without selecting the billing invoice store, as described in the identity privacy guidance. The Node reference host composes it alongside its identity, subscription and parcel-contact contributors. Editable profiles erase; frozen invoice buyers retain under the existing invoicing owner.
 
 ## [0.38.0]
 
