@@ -1,3 +1,4 @@
+import { recordInvoiceDestination } from '../helpers/invoicingBuyerDestination.js';
 /** W7 D7/F13: real native continuity; synthetic facts/provider proof, no live I/O. */
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -52,6 +53,7 @@ async function fixture(subscriptionDate?: string) {
   await db.query("INSERT INTO public.commerce_settlement_intents(id,order_id,channel_key,amount_minor,currency_code,open_idempotency_key) VALUES ($1,$2,'provider-a',900,'XXX',$3)", [intent, order, `open-${intent}`]);
   await db.query("COMMIT");
   } catch (error) { await db.query("ROLLBACK"); throw error; } finally { db.release(); }
+  await recordInvoiceDestination(pool, order);
   const input = {
     sourceEventId: `provider-a:${intent}`, idempotencyKey: `event-${intent}`, settlementIntentId: intent,
     outcome: "captured" as const, amountMinor: 900, currency: "XXX", occurredAt: "2026-08-12T12:00:00.000Z", failure: null,
