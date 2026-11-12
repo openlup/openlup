@@ -199,3 +199,14 @@ export { createPostgresExpiredCheckoutRecoveryPort } from './postgresExpiredChec
 export type { CheckoutRecoveryWriteExecutor } from './postgresExpiredCheckoutRecovery.js';
 export { createPostgresExpiredCheckoutDraftPort, createPostgresExpiredCheckoutRuntime, createPostgresExpiredCheckoutCompensation, checkoutRecoveryExecutionFingerprint } from './nativeExpiredCheckoutRecovery.js';
 export type { ExpiredRecoveryRuntimeInput, ExpiredRecoveryTransactionLane } from './nativeExpiredCheckoutRecovery.js';
+export { readAuthorizedPaymentRecovery } from './paymentRecoveryGuidance.js';
+export type { PaymentRecoveryStatusSnapshot, PaymentRecoverySnapshot, PaymentRecoverySnapshotPort, CheckoutPaymentRecoveryGuidance, PaymentRecoveryReadStatus, PaymentRecoveryReadDeps } from './paymentRecoveryGuidance.js';
+export { createPostgresPaymentRecoveryGuidancePort } from './postgresPaymentRecoveryGuidance.js';
+
+export { createCheckoutRecoveryPayService, createCheckoutRecoveryTokenPay, CheckoutRecoveryPayError } from './checkoutRecoveryPay.js';
+export type { CheckoutRecoveryPayInput, CheckoutRecoveryPayResult, CheckoutRecoveryAttemptPort, CheckoutRecoveryPayService } from './checkoutRecoveryPay.js';
+export { withCheckoutRecoveryPaymentHold } from './checkoutRecoveryPaymentHold.js';
+export type { CheckoutRecoveryMethodHold } from './checkoutRecoveryPaymentHold.js';
+
+export { createCheckoutInlineRecovery, checkoutInlineRecoveryTransitionKey, CheckoutInlineRecoveryError } from './checkoutInlineRecovery.js';
+export type { CheckoutInlineRecoveryRequest, CheckoutInlineRecoveryAdmission, CheckoutInlineRecoveryAttemptPort } from './checkoutInlineRecovery.js';

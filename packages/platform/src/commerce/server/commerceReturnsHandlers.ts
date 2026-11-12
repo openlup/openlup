@@ -26,7 +26,7 @@ type CustomerAuthResult =
   | { ok: false; code: "UNAUTHORIZED"; message: string };
 
 // RPC validation/state errors that map to a 400 (vs an unexpected 500).
-const CLIENT_ERROR = /_invalid_input|_invalid_state|_not_found|_not_returnable|_quantity_exceeds_ordered|_line_not_in_order/;
+const CLIENT_ERROR = /_invalid_input|_invalid_state|_not_found|_not_returnable|_quantity_exceeds_ordered|_line_not_in_order|_duplicate_line/;
 
 function methodGuard(req: HttpRequest, res: HttpResponse, responder: BffResponder): boolean {
   const { sendBffError } = responder;

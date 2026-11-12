@@ -737,6 +737,15 @@ process.stdout.write(JSON.stringify(Object.fromEntries(Object.entries(entry).map
     createExpiredCheckoutRecoveryService: "function",
     ExpiredCheckoutRecoveryError: "function",
     createPostgresExpiredCheckoutRecoveryPort: "function",
+    readAuthorizedPaymentRecovery: "function",
+    createPostgresPaymentRecoveryGuidancePort: "function",
+    createCheckoutRecoveryPayService: "function",
+    createCheckoutRecoveryTokenPay: "function",
+    createCheckoutInlineRecovery: "function",
+    checkoutInlineRecoveryTransitionKey: "function",
+    CheckoutInlineRecoveryError: "function",
+    CheckoutRecoveryPayError: "function",
+    withCheckoutRecoveryPaymentHold: "function",
     createPostgresExpiredCheckoutDraftPort: "function",
     createPostgresExpiredCheckoutRuntime: "function",
     createPostgresExpiredCheckoutCompensation: "function",
@@ -1305,4 +1314,63 @@ const port=createPostgresExpiredCheckoutRecoveryPort(db,{recoveryWindowMs:1000})
 process.stdout.write(JSON.stringify({validation,reason,prior,writer:typeof port.prepareReplacement}));
 `));
  expect(result).toEqual({validation:false,reason:'unavailable',prior:'unavailable',writer:'function'});
+});
+
+it('executes the installed atomic guidance port and validation-only composition without database peers', () => {
+  const consumer = pristinePackedA1Fixture();
+  assertConsumerIsolation(consumer, root);
+  const result = JSON.parse(consumerNode(consumer, `
+const {createPostgresPaymentRecoveryGuidancePort,readAuthorizedPaymentRecovery}=await import('@openlup/platform/commerce/server');
+const {normalizeSandboxPaymentRecoveryEvidence}=await import('@openlup/platform/payments');
+const orderId='11111111-1111-4111-8111-111111111111',clientId='22222222-2222-4222-8222-222222222222',paymentIntentId='33333333-3333-4333-8333-333333333333',attemptId='44444444-4444-4444-8444-444444444444',tokenId='55555555-5555-4555-8555-555555555555';
+const calls=[];
+const port=createPostgresPaymentRecoveryGuidancePort({query:async(sql,values)=>{calls.push({sql,values});return{rows:[{result:{
+ snapshot:{orderId,clientId,paymentIntentId,orderStatus:'pending_payment',intentStatus:'created',paymentAttemptId:attemptId,attemptStatus:'refused',provider:'sandbox',providerPaymentId:null,updatedAt:'2040-01-01T00:00:00Z',failureReason:null,orderMode:'one_time',activationState:null,subscriptionId:null,subscriptionStatus:null,paidAt:null,hasExactGap:false},
+ eligible:true,tokenAuthorized:true,observedSuccess:false,historyComplete:true,
+ attempts:[{id:attemptId,status:'refused',provider:'sandbox',providerPaymentId:null,providerFlow:null,createdAt:'2040-01-01T00:00:00Z',evidence:[{version:1,source:'observation',sourceId:tokenId,observationId:tokenId,paymentAttemptId:attemptId,paymentIntentId,outcome:'refused',refusalVerified:true}]}]
+}}]};}},normalizeSandboxPaymentRecoveryEvidence);
+const value=await readAuthorizedPaymentRecovery({request:{orderId,clientId,paymentIntentId},claims:null,authorization:'Bearer installed-example',deps:{port,tokenPort:{validate:async()=>({tokenId,orderId,clientId,status:'pending_payment',mode:'one_time_order'})}}});
+process.stdout.write(JSON.stringify({guidance:value.guidance,calls}));
+`));
+  expect(result.guidance).toMatchObject({ methodKey: null, operation: null, actions: ['change_instrument', 'change_method'] });
+  expect(result.calls).toHaveLength(1);
+  expect(result.calls[0].sql).toMatch(/^SELECT public\.commerce_checkout_payment_guidance_snapshot\(/u);
+});
+
+it('executes installed token pay and hold composition without database peers', () => {
+ const consumer=pristinePackedA1Fixture();assertConsumerIsolation(consumer,root);
+ const result=JSON.parse(consumerNode(consumer,`
+const {createCheckoutRecoveryPayService,createCheckoutRecoveryTokenPay,withCheckoutRecoveryPaymentHold}=await import('@openlup/platform/commerce/server');
+const {createPostgresSandboxCheckoutRecoveryAttemptPort}=await import('@openlup/platform/payments');
+const order={orderId:'11111111-1111-4111-8111-111111111111',clientId:'22222222-2222-4222-8222-222222222222',status:'pending_payment',subscriptionCycleId:null,paymentIntentId:'33333333-3333-4333-8333-333333333333',paymentIntentStatus:'pending',totalMinor:100,currency:'XXX',mode:'one_time_order',createdAt:'2040-01-02T00:00:00Z'};
+const calls=[];
+const attemptPort=createPostgresSandboxCheckoutRecoveryAttemptPort({query:async(sql,values)=>{calls.push({sql,values});return{rows:[{response:{id:'44444444-4444-4444-8444-444444444444',orderId:order.orderId,settlementIntentId:order.paymentIntentId,state:'dispatched',replayed:false,dispatchedAt:'2040-01-02T00:00:00Z',methodFacts:{unattendedChargeAuthorizedAt:'2040-01-02T00:00:00Z'},latestObservation:null}}]};}},{dunningTemplateSlug:'dunning',recoveryUrlPath:'/recover',recoveryTemplateSlug:'recover'});
+const service=withCheckoutRecoveryPaymentHold(createCheckoutRecoveryPayService(attemptPort),{classify:()=>null,readHolds:async()=>[],offeredMethods:()=>new Set()});
+const api=createCheckoutRecoveryTokenPay({tokenPort:{validate:async()=>({tokenId:'55555555-5555-4555-8555-555555555555',orderId:order.orderId,clientId:order.clientId}),inspect:async()=>null},orderPort:{getRecoveryOrder:async()=>order},payService:service});
+const value=await api.pay({token:'installed-example',idempotencyKey:'installed-click',method:undefined});
+process.stdout.write(JSON.stringify({value,calls}));
+`));
+ expect(result.value).toMatchObject({status:'processing',replayed:false,paymentAttemptId:'44444444-4444-4444-8444-444444444444'});
+ expect(result.calls).toHaveLength(1);expect(result.calls[0].sql).toContain('public.commerce_checkout_recovery_attempt_begin');
+ expect(JSON.parse(result.calls[0].values[5])).toEqual({recoveryTokenId:'55555555-5555-4555-8555-555555555555',methodFacts:{}});
+});
+
+it('executes installed cookie-only inline authority and sandbox replay ports without database peers',()=>{
+ const consumer=pristinePackedA1Fixture();assertConsumerIsolation(consumer,root);
+ const result=JSON.parse(consumerNode(consumer,`
+const {createCheckoutInlineRecovery,createCheckoutPaymentContinuationCodec,checkoutInlineRecoveryTransitionKey}=await import('@openlup/platform/commerce/server');
+const {createPostgresSandboxInlineRecoveryAttemptPort}=await import('@openlup/platform/payments');
+const orderId='11111111-1111-4111-8111-111111111111',clientId='22222222-2222-4222-8222-222222222222',intent='33333333-3333-4333-8333-333333333333',previous='44444444-4444-4444-8444-444444444444',nonce='55555555-5555-4555-8555-555555555555',attempt='66666666-6666-4666-8666-666666666666';
+const calls=[],facts={methodRef:'sandbox:registered',methodEvidenceRef:'sandbox:registered:evidence',authorizationRef:'sandbox:authorization',payerAccountRef:null,unattendedChargeAuthorizedAt:'2026-11-10T00:00:00Z'};
+const port=createPostgresSandboxInlineRecoveryAttemptPort({query:async(sql,values)=>{calls.push({sql,values});return{rows:[{response:{id:attempt,orderId,settlementIntentId:intent,settlementChannelKey:'sandbox',state:'dispatched',replayed:true,dispatchedAt:'2026-11-10T00:00:00Z',methodFacts:facts,latestObservation:null}}]};}},{dunningTemplateSlug:'dunning',recoveryUrlPath:'/recover',recoveryTemplateSlug:'recover',methodKeyFor:()=>{throw Error('replay_must_not_resolve_method');}});
+const codec=createCheckoutPaymentContinuationCodec('synthetic-cookie-key-material'.repeat(2),{cookieName:'configured-inline',executionRails:['sandbox','external']});
+const service=createCheckoutInlineRecovery({codec,guidance:{port:{getGuidanceSnapshot:async()=>{throw Error('unexpected_read');}}},orderPort:{getRecoveryOrder:async()=>{throw Error('unexpected_read');}},attemptPort:port,executionAllowed:()=>false});
+let refusal;try{await service.retry({headers:{authorization:'Bearer ignored'},orderId,clientId,paymentIntentId:intent,journeyId:'checkout:'+orderId,expectedPaymentAttemptId:previous,retryRequestId:nonce,executionRail:'sandbox',methodKey:'registered',method:facts});}catch(e){refusal=e.kind;}
+if(calls.length)throw Error('cookie_guard_read');
+const value=await port.begin({order:{orderId},request:{orderId,clientId,paymentIntentId:intent,expectedPaymentAttemptId:previous,retryRequestId:nonce,executionRail:'sandbox',methodKey:'changed-after-response-loss'},method:facts,admission:{replayOnly:true,purchaseContext:null,previousMethodKey:null,actions:[],restriction:null}});
+process.stdout.write(JSON.stringify({refusal,value,calls,key:checkoutInlineRecoveryTransitionKey(previous)}));
+`));
+ expect(result.refusal).toBe('unauthorized');expect(result.value).toMatchObject({status:'processing',replayed:true});expect(result.calls).toHaveLength(1);
+ expect(result.calls[0].sql).toContain('public.commerce_checkout_inline_retry_begin');expect(result.calls[0].values[0]).toBe(`${result.key}:payment-execution:prepare-attempt`);
+ expect(JSON.parse(result.calls[0].values[6])).toMatchObject({replayOnly:true,retryRequestId:'55555555-5555-4555-8555-555555555555',methodFacts:{}});
 });

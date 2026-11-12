@@ -1058,6 +1058,14 @@ export declare function createMagicLinkOriginResolver(configuredOrigins: readonl
 /** Invalid return targets use the callback's default landing page. */
 export declare function normalizeMagicLinkReturnPath(value: string | undefined, origin: string): string | undefined;
 ```
+## dist/identity/billingProfilePrivacy.d.ts
+
+```ts
+import type { PersonalDataContributor } from './privacyPorts.js';
+import type { PgQueryExecutor } from '../data/index.js';
+/** Editable profiles erase; frozen invoice buyer components follow the invoicing owner's retention boundary. */
+export declare function createCustomerBillingPrivacyContributor(): PersonalDataContributor<PgQueryExecutor>;
+```
 ## dist/identity/contracts/emailTrust.d.ts
 
 ```ts
@@ -1422,6 +1430,14 @@ export interface CustomerMePort {
     getCustomerMe(principalId: string): Promise<CustomerMeResponse | null>;
 }
 ```
+## dist/identity/customerPreferencePrivacy.d.ts
+
+```ts
+import type { PersonalDataContributor } from './privacyPorts.js';
+import type { PgQueryExecutor } from '../data/index.js';
+/** Compose with identity authorization, the subscriptions veto and account-event ownership. */
+export declare function createCustomerPreferencePrivacyContributor(): PersonalDataContributor<PgQueryExecutor>;
+```
 ## dist/identity/customerSessionBinding.d.ts
 
 ```ts
@@ -1629,6 +1645,8 @@ export * from "./postgresContactClientRegistrar.js";
 export * from "./contracts/oidc.js";
 export { createFulfillmentParcelContactPrivacyContributor } from './parcelContactPrivacy.js';
 export { createCustomerSavedAddressPrivacyContributor } from "./savedAddressPrivacy.js";
+export { createCustomerPreferencePrivacyContributor } from './customerPreferencePrivacy.js';
+export { createCustomerBillingPrivacyContributor } from './billingProfilePrivacy.js';
 ```
 ## dist/identity/inviteAdminUserUseCase.d.ts
 

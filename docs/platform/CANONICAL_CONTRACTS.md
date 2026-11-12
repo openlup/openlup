@@ -571,8 +571,9 @@ profile/consent ports. Mapping `ecommerce-v1` uses one fixed metric per source
 type and the source ID as `unique_id`, with an existing profile ID and no profile
 attributes or upsert. Support requires `events:write` and separate account-effect
 and sole-message-owner qualification. Scopes and qualification are host-supplied
-evidence, not an API-key introspection result. No selection remains pending;
-historical requests refuse with zero HTTP.
+evidence, not an API-key introspection result. An unqualified selected mapping
+remains `verification_pending`; an unrecognized mapping is `unsupported`.
+Historical requests refuse with zero HTTP.
 
 Events share the account's slot, pacing and durable cooldown with profile/consent
 operations. A single event's uncertain response stays in its own export duty;

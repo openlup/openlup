@@ -194,3 +194,36 @@ it('does not recreate a recipient projection when erasure commits during target 
  expect((await env.db.query(`SELECT state,outbox_event_id FROM public.communication_event_receipts WHERE source_key=$1`,[`paid:${f.order}`])).rows[0]).toEqual({state:'erased',outbox_event_id:null});
  expect((await env.db.query(`SELECT count(*)::integer AS count FROM public.outbox_events WHERE event_type=$1 AND payload#>>'{event,subject,clientId}'=$2`,[ECOMMERCE_EXPORT_EVENT_TYPE,f.client])).rows[0].count).toBe(0);
 });
+it('records subjectless legacy and guest refusals without stalling a valid fact in the same batch',async()=>{
+ const valid=await paid(),subscription=randomUUID(),legacy=randomUUID(),guest=randomUUID();
+ await env.withTransaction(async db=>{
+  await db.query(`INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at) VALUES($1,$2,28,'2026-12-11')`,[subscription,valid.client]);
+  // Retained pre-migration rows have no captured subject; the current subscription
+  // owner must not be used to invent the missing historical association.
+  await db.query("SELECT set_config('app.communication_retained_copy','on',true)");
+  await db.query(`INSERT INTO public.subscription_events(id,subscription_id,event_type,idempotency_key,occurred_at,communication_subject_id)
+   VALUES($1::uuid,$2::uuid,'subscription.activated',$1::text,$3,NULL)`,[legacy,subscription,at]);
+  await db.query(`INSERT INTO public.commerce_orders(id,client_id,currency_code,total_amount_minor) VALUES($1,NULL,'USD',100)`,[guest]);
+  await db.query(`INSERT INTO public.commerce_order_items(order_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor) VALUES($1,1,1,100,100)`,[guest]);
+  await db.query(`SELECT public.commerce_open_settlement_intent($1,$2,'synthetic',100,'USD','{}',$3)`,[randomUUID(),guest,at]);
+  const intent=(await db.query('SELECT id FROM public.commerce_settlement_intents WHERE order_id=$1',[guest])).rows[0].id;
+  await db.query(`SELECT public.commerce_record_settlement($1,$2,'succeeded','guest-paid','{}',$3)`,[randomUUID(),intent,at]);
+ });
+ const resolved:string[]=[],p=createPostgresEcommerceEventProjection({binding:binding(),liveSince:new Date('2026-11-11T11:00Z'),
+  currency:{code:'USD',exponent:currencyExponent('USD'),provenance:'runtime-icu:currencyExponent.v1'},now,withTransaction:env.withTransaction,
+  resolveTarget:async event=>{resolved.push(event.sourceId);return target();}});
+ expect((await env.db.query(`SELECT attnotnull FROM pg_attribute WHERE attrelid='public.communication_event_receipts'::regclass AND attname='client_id'`)).rows[0]).toEqual({attnotnull:false});
+ expect(await p.project(1000)).toEqual({projected:1,refused:2,deferred:0});
+ const rows=(await env.db.query(`SELECT source_key,client_id,state,reason,outbox_event_id FROM public.communication_event_receipts
+  WHERE source_key=ANY($1::text[]) ORDER BY source_key`,[[`subscription:${legacy}`,`paid:${guest}`,`paid:${valid.order}`]])).rows;
+ expect(rows.find(row=>row.source_key===`subscription:${legacy}`)).toEqual({source_key:`subscription:${legacy}`,client_id:null,state:'refused',reason:'source_snapshot_missing',outbox_event_id:null});
+ expect(rows.find(row=>row.source_key===`paid:${guest}`)).toEqual({source_key:`paid:${guest}`,client_id:null,state:'refused',reason:'order_evidence',outbox_event_id:null});
+ expect(resolved).toEqual([`paid:${valid.order}`]);
+ const work=(await createPostgresOutboxStore(env.db).claimBatch({eventTypes:[ECOMMERCE_EXPORT_EVENT_TYPE],batchSize:1000,visibilitySeconds:300,maxAttempts:8}))
+  .find(row=>row.id===rows.find(receipt=>receipt.source_key===`paid:${valid.order}`)!.outbox_event_id)!;
+ const effects:string[]=[],handler=createPostgresEcommerceEventHandler({binding:binding(),now,withTransaction:env.withTransaction,authorize:async()=>true,
+  provider:{async exportEvent(request){effects.push(request.event.sourceId);return {kind:'accepted'};}}});
+ expect(await handler.handle(work,new AbortController().signal)).toEqual({kind:'processed'});
+ expect(effects).toEqual([`paid:${valid.order}`]);
+ expect(await p.project(1000)).toEqual({projected:0,refused:0,deferred:0});
+});

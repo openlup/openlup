@@ -144,3 +144,5 @@ export type {
   CustomerProfileUpdateRequest, CustomerProfileUpdateResponse, CustomerInvoiceCorrectionRequest, CustomerInvoiceCorrectionResponse,
   CustomerAccountMutationPort, CustomerAccountMutationPolicy, CustomerAccountMutationRefusalCode,
 } from "./mutations.js";
+
+export type { CustomerBillingProfileInput, CustomerBillingProfileDelete, CustomerBillingProfilesResponse, CustomerBillingProfilePort } from "./billing.js";

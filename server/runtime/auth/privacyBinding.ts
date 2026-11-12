@@ -2,7 +2,7 @@ import { createEcommerceEventPrivacyContributor } from '@openlup/platform/commun
 import { randomUUID } from "node:crypto";
 import { createPostgresPrivacyUnitOfWork, createPostgresPrivacyStore, createManagedPrivacyStore, createIdentityPersonalDataContributor,
   createPersonalDataContributorRegistry, createPrivacyOperations, createPrivacyExportHandler, createPrivacyEraseHandler,
-  readBearerToken, createFulfillmentParcelContactPrivacyContributor, type ManagedIdentityClient, type IdentityPrivacyPolicy } from "@openlup/platform/identity";
+  readBearerToken, createFulfillmentParcelContactPrivacyContributor, createCustomerBillingPrivacyContributor, type ManagedIdentityClient, type IdentityPrivacyPolicy } from "@openlup/platform/identity";
 import type { HttpRequest, HttpResponse } from "@openlup/platform/http";
 import { resolveAdminAuthBinding } from "./adminAuthBinding.js";
 import { createSubscriptionsPrivacyContributor } from "./subscriptionsPrivacyContributor.js";
@@ -25,7 +25,7 @@ export async function handlePrivacyRequest(operation: "export" | "erase", req: H
       if (!env.DATABASE_URL?.trim()) throw new Error("privacy_database_required");
       const unitOfWork = createPostgresPrivacyUnitOfWork({ connectionString: env.DATABASE_URL }); close = unitOfWork.close;
       const store = createPostgresPrivacyStore();
-      const registry = createPersonalDataContributorRegistry([createIdentityPersonalDataContributor(store, policy, randomUUID), createSubscriptionsPrivacyContributor(), createFulfillmentParcelContactPrivacyContributor(), createEcommerceEventPrivacyContributor()], { requiredContributorIds: ["identity", "subscriptions", "fulfillment-parcel-contacts", "communication-events"] });
+      const registry = createPersonalDataContributorRegistry([createIdentityPersonalDataContributor(store, policy, randomUUID), createSubscriptionsPrivacyContributor(), createFulfillmentParcelContactPrivacyContributor(), createCustomerBillingPrivacyContributor(), createEcommerceEventPrivacyContributor()], { requiredContributorIds: ["identity", "subscriptions", "fulfillment-parcel-contacts", "customer-billing", "communication-events"] });
       return await createHandler({ authorizeAdmin, responseRequestId, operations: createPrivacyOperations({ store, unitOfWork, registry, now: () => new Date(), randomId: randomUUID }) })(req, res);
     }
     const service = resolveSupabaseServiceRoleEnv(env);

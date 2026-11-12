@@ -405,7 +405,16 @@ export interface InvoiceBuyer {
         readonly postalCode: string | null;
         readonly city: string | null;
         readonly country: string | null;
+        readonly line2?: string | null;
+        readonly addressId?: string | null;
+        readonly source?: string | null;
     } | null;
+    readonly taxId?: string | null;
+    readonly source?: string | null;
+    readonly addressSource?: string | null;
+    readonly ordererProfileId?: string | null;
+    readonly billingAddressId?: string | null;
+    readonly legacyFallback?: boolean;
 }
 /** Safe integer minor amounts; taxRateBps is a rate, never a fiscal-support claim.
  * Preserve array order and quantityUnit; no inferred shipping residual or FX.
@@ -478,6 +487,16 @@ export interface InvoiceSellerRevision<Seller = InvoiceSeller> {
 export interface InvoiceClaimedFacts extends InvoiceFacts {
     readonly sellerRevision?: string;
     readonly sellerMode?: "frozen" | "legacy_fallback";
+}
+/** Frozen selection inputs; identifier normalization and fiscal routing remain explicit host policy. */
+export interface InvoiceBuyerSelection extends Omit<InvoiceBuyer, 'taxIdentifier' | 'name'> {
+    readonly name: string | null;
+    readonly taxId: string | null;
+    readonly source: string;
+    readonly addressSource: string;
+    readonly ordererProfileId: string | null;
+    readonly billingAddressId: string | null;
+    readonly legacyFallback: boolean;
 }
 ```
 ## dist/invoicing/contracts/host.d.ts
@@ -748,6 +767,7 @@ export type { InvoiceCompanyLookupPort } from "./companyLookup.js";
 export type { InvoiceStorePort, InvoiceDutyReadback } from "./store.js";
 /** @consumer Host composition and offline port-fit witnesses. */
 export type { InvoiceHostPorts, InvoiceServicesOptions } from "./host.js";
+export type { InvoiceBuyerSelection } from "./facts.js";
 ```
 ## dist/invoicing/contracts/provider.d.ts
 
@@ -1636,6 +1656,7 @@ export type { InvoiceServices } from "./bindings.js";
 export { createInvoiceContribution } from "./contribution.js";
 export { claimInvoiceSellerRevision } from "./sellerRevision.js";
 export type { InvoiceSellerRevision, InvoiceClaimedFacts } from "./contracts/facts.js";
+export { createPostgresBillingInvoiceStore } from "./postgresInvoiceStore.js";
 ```
 ## dist/invoicing/issue.d.ts
 
@@ -1829,6 +1850,171 @@ export declare function runNativeInvoiceIssueJob(input: {
     failures: number;
     ok: boolean;
 }>;
+/** Read the buyer frozen by first native duty capture and enforce it during later fiscal-fact installation.
+ * Existing obligations without a buyer component are never backfilled. */
+export declare function createPostgresBillingInvoiceStore(db: {
+    query(text: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}, options?: Parameters<typeof createPostgresInvoiceStore>[1]): {
+    sweep: (limit: number) => ReturnType<InvoiceStorePort["sweep"]>;
+    captureDuty(v: Parameters<InvoiceStorePort["captureDuty"]>[0]): ReturnType<InvoiceStorePort["captureDuty"]>;
+    installFacts(v: Parameters<InvoiceStorePort["installFacts"]>[0]): ReturnType<InvoiceStorePort["installFacts"]>;
+    readCapturedBuyer(orderId: string): Promise<import("./contracts/facts.js").InvoiceBuyerSelection | null>;
+    prepareFacts(input: {
+        readonly dutyId: string;
+        readonly token: string;
+    }): Promise<{
+        readonly status: "owed" | "ready" | "issued" | "voided" | "unsupported" | "stale";
+        readonly documentId?: string;
+        readonly requestId?: string;
+        readonly code?: "retryable" | "legacy_facts_unproved";
+    } | import("./contracts/provider.js").InvoiceUnsupported>;
+    finishFacts(input: {
+        readonly dutyId: string;
+        readonly token: string;
+        readonly result: Omit<Exclude<Awaited<ReturnType<InvoiceStorePort["prepareFacts"]>>, import("./contracts/provider.js").InvoiceUnsupported>, "status"> & {
+            readonly status: "owed" | "ready" | "issued" | "voided" | "unsupported";
+        };
+    }): Promise<{
+        readonly dutyId: string;
+        readonly status: "owed" | "ready" | "issued" | "voided" | "unsupported" | "faulted" | "stale";
+    } | import("./contracts/provider.js").InvoiceUnsupported>;
+    readDuties(orderId: string): Promise<import("./contracts/store.js").InvoiceDutyReadback | import("./contracts/provider.js").InvoiceUnsupported>;
+    claim(input: {
+        readonly limit: number;
+        readonly visibilitySeconds: number;
+        readonly providerRef: string;
+        readonly orderId?: string | null;
+    }): Promise<readonly import("./contracts/store.js").InvoiceClaim[] | import("./contracts/provider.js").InvoiceUnsupported>;
+    preflight(input: {
+        readonly claim: import("./contracts/store.js").InvoiceClaim;
+        readonly amountMinor: number | null;
+        readonly currency: string | null;
+    } & ({
+        readonly status: "succeeded" | "failed" | "pending" | "unknown" | "unavailable";
+        readonly proof: import("./contracts/provider.js").InvoiceProof | null;
+    } | {
+        readonly status: "absent";
+        readonly evidence: Extract<Awaited<ReturnType<InvoiceHostPorts["money"]["read"]>>, {
+            kind: "absent";
+        }>["evidence"];
+    })): Promise<{
+        readonly kind: "ready" | "blocked" | "mismatch" | "unavailable" | "stale";
+    } | import("./contracts/provider.js").InvoiceUnsupported>;
+    finish(input: {
+        readonly claim: import("./contracts/store.js").InvoiceClaim;
+        readonly result: Extract<import("./contracts/provider.js").InvoiceWriteResult, {
+            kind: "issued";
+        }> | Extract<import("./contracts/provider.js").InvoiceReadbackResult, {
+            kind: "found";
+        }>;
+    }): Promise<{
+        readonly kind: "issued";
+        readonly replayed: boolean;
+    } | {
+        readonly kind: "stale";
+    } | import("./contracts/provider.js").InvoiceUnsupported>;
+    fail(input: {
+        readonly claim: import("./contracts/store.js").InvoiceClaim;
+        readonly retrySeconds: number;
+    } & ({
+        readonly kind: "absent";
+        readonly evidence: Extract<import("./contracts/provider.js").InvoiceReadbackResult, {
+            kind: "absent";
+        }>;
+    } | {
+        readonly kind: "retryable";
+        readonly phase: "before_send";
+        readonly proof: import("./contracts/provider.js").InvoiceProof | null;
+    } | {
+        readonly kind: "blocked" | "unsupported" | "unknown";
+        readonly proof: import("./contracts/provider.js").InvoiceProof | null;
+    })): Promise<{
+        readonly kind: "recorded" | "voided" | "stale";
+    } | import("./contracts/provider.js").InvoiceUnsupported>;
+    requestReversal(input: {
+        readonly requestKey: string;
+        readonly orderId: string;
+        readonly reason: "order_canceled" | "order_refunded";
+        readonly proof: import("./contracts/provider.js").InvoiceProof;
+    }): Promise<{
+        readonly kind: "missing" | "voided" | "pending_readback" | "correction_requested";
+        readonly dutyId?: string;
+        readonly replayed?: boolean;
+    } | {
+        readonly kind: "unsupported_recorded";
+        readonly dutyId?: string;
+        readonly replayed?: boolean;
+    } | {
+        readonly kind: "conflict";
+        readonly code: "identity_mismatch";
+    } | import("./contracts/provider.js").InvoiceUnsupported>;
+    requestLocalDocument(input: {
+        readonly requestKey: string;
+        readonly orderId: string;
+        readonly providerRef: string;
+    }): Promise<{
+        readonly kind: "requested";
+        readonly documentId: string;
+        readonly invoiceRef: string;
+        readonly status: string;
+        readonly replayed: boolean;
+    } | import("./contracts/provider.js").InvoiceUnsupported>;
+    listClearanceTargets(limit: number): Promise<readonly {
+        readonly documentId: string;
+        readonly identity: import("./contracts/provider.js").InvoiceDocumentIdentity;
+        readonly providerDocumentRef: string;
+        readonly providerDocumentNumber: string | null;
+        readonly state: import("./contracts/delivery.js").InvoiceClearanceObservation["state"];
+    }[] | import("./contracts/provider.js").InvoiceUnsupported>;
+    recordObservation(input: {
+        readonly requestKey: string;
+        readonly documentId: string;
+        readonly eventRef: string;
+        readonly eventKind: "clearance" | "artifacts" | "unsupported" | "provider_mismatch";
+        readonly identity: import("./contracts/provider.js").InvoiceDocumentIdentity;
+        readonly providerDocumentRef: string;
+        readonly providerDocumentNumber: string | null;
+        readonly clearance: import("./contracts/delivery.js").InvoiceClearanceObservation | null;
+        readonly artifacts: readonly Extract<import("./contracts/delivery.js").InvoiceArtifactResult, {
+            kind: "found";
+        }>["artifact"][];
+        readonly observedAt: string;
+        readonly payloadHash: string;
+        readonly source: "provider_api" | "provider_webhook" | "manual_reconciliation";
+    }): Promise<{
+        readonly replayed: boolean;
+    } | import("./contracts/provider.js").InvoiceUnsupported>;
+    claimDeliveries(input: {
+        readonly limit: number;
+        readonly visibilitySeconds: number;
+        readonly requireClearance: boolean;
+        readonly orderId?: string | null;
+    }): Promise<readonly {
+        readonly token: string;
+        readonly generation: number;
+        readonly identity: import("./contracts/provider.js").InvoiceDocumentIdentity;
+        readonly providerDocumentRef: string;
+        readonly delivery: Omit<Parameters<import("./contracts/delivery.js").InvoiceDeliveryPort["send"]>[0], "filename" | "content" | "contentType">;
+    }[] | import("./contracts/provider.js").InvoiceUnsupported>;
+    settleDelivery(input: {
+        readonly deliveryRef: string;
+        readonly token: string;
+        readonly generation: number;
+        readonly providerDocumentRef: string;
+        readonly retrySeconds: number;
+        readonly result: Exclude<Awaited<ReturnType<import("./contracts/delivery.js").InvoiceDeliveryPort["send"]>>, import("./contracts/provider.js").InvoiceUnsupported>;
+    }): Promise<{
+        readonly kind: "recorded" | "stale";
+        readonly replayed: boolean;
+    } | import("./contracts/provider.js").InvoiceUnsupported>;
+    /** Read-only discovery before a host can install facts. Replays may repeat targets. */
+    discoverDuties(limit: number, afterDutyId?: string | null): Promise<readonly {
+        readonly dutyId: string;
+        readonly orderId: string;
+    }[]>;
+};
 export {};
 ```
 ## dist/invoicing/readModel.d.ts
@@ -2029,6 +2215,11 @@ export declare function mapInvoiceClaimToProviderSnapshot<Seller, Kind, Payment>
     currency: string;
     seller: Seller;
     buyer: {
+        source?: string | null;
+        addressSource?: string | null;
+        ordererProfileId?: string | null;
+        billingAddressId?: string | null;
+        legacyFallback?: boolean;
         name: string;
         email: string | null;
         taxId: string | null;
@@ -2038,6 +2229,9 @@ export declare function mapInvoiceClaimToProviderSnapshot<Seller, Kind, Payment>
             readonly postalCode: string | null;
             readonly city: string | null;
             readonly country: string | null;
+            readonly line2?: string | null;
+            readonly addressId?: string | null;
+            readonly source?: string | null;
         };
     };
     documentKind: Kind;

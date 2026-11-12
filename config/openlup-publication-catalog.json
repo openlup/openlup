@@ -70,6 +70,10 @@
       "class": "public-output"
     },
     {
+      "path": ".github/workflows/native-review-receipt-rerun.yml",
+      "class": "public-output"
+    },
+    {
       "path": ".github/workflows/publish-package.yml",
       "class": "public-output"
     },
@@ -1331,6 +1335,38 @@
     },
     {
       "path": "db/platform/migrations/20261110200000_operator_order_commands.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261110210000_return_request_decisions.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261110220000_checkout_payment_guidance.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261110230000_operator_shipment_commands.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261110240000_subscription_saved_address_selection.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261110250000_checkout_recovery_attempt.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261110260000_customer_billing_profiles.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261110270000_invoicing_duty_buyer_capture.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261110280000_checkout_recovery_buyer_snapshot.sql",
       "class": "public-output"
     },
     {
@@ -4450,6 +4486,38 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261110210000_return_request_decisions.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261110220000_checkout_payment_guidance.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261110230000_operator_shipment_commands.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261110240000_subscription_saved_address_selection.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261110250000_checkout_recovery_attempt.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261110260000_customer_billing_profiles.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261110270000_invoicing_duty_buyer_capture.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261110280000_checkout_recovery_buyer_snapshot.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20261111120000_communication_ecommerce_sources.sql",
       "class": "public-output"
     },
@@ -4526,6 +4594,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/account-support/contracts/billing.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/account-support/contracts/capabilities.ts",
       "class": "public-output"
     },
@@ -4571,6 +4643,10 @@
     },
     {
       "path": "packages/platform/src/account-support/customerAccount/accountMutationSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/account-support/customerAccount/billingProfiles.ts",
       "class": "public-output"
     },
     {
@@ -5438,6 +5514,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/server/checkoutInlineRecovery.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/server/checkoutInvoiceBuyerSnapshot.ts",
       "class": "public-output"
     },
@@ -5459,6 +5539,14 @@
     },
     {
       "path": "packages/platform/src/commerce/server/checkoutRecoveryOrderPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/checkoutRecoveryPay.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/checkoutRecoveryPaymentHold.ts",
       "class": "public-output"
     },
     {
@@ -5734,6 +5822,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/server/paymentRecoveryGuidance.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/server/postgres/commercePriceRead.ts",
       "class": "public-output"
     },
@@ -5771,6 +5863,10 @@
     },
     {
       "path": "packages/platform/src/commerce/server/postgresExpiredCheckoutRecovery.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/postgresPaymentRecoveryGuidance.ts",
       "class": "public-output"
     },
     {
@@ -6466,6 +6562,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/fulfillment/native/shipmentCommands.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/fulfillment/nativeUnsupported.ts",
       "class": "public-output"
     },
@@ -6734,6 +6834,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/identity/billingProfilePrivacy.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/identity/contracts/contracts.ts",
       "class": "public-output"
     },
@@ -6807,6 +6911,10 @@
     },
     {
       "path": "packages/platform/src/identity/customerPorts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/customerPreferencePrivacy.ts",
       "class": "public-output"
     },
     {
@@ -7762,6 +7870,18 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/payments/sandboxCheckoutRecoveryPay.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/sandboxInlineRecovery.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/sandboxRecoveryGuidance.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/payments/schemaCapabilities.ts",
       "class": "public-output"
     },
@@ -8382,6 +8502,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/shipping/contracts/preferences.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/shipping/contracts/shippingRate.ts",
       "class": "public-output"
     },
@@ -8391,6 +8515,14 @@
     },
     {
       "path": "packages/platform/src/shipping/customerAddressesHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/customerPreferenceHandlers.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/customerPreferenceSchemas.ts",
       "class": "public-output"
     },
     {
@@ -8427,6 +8559,10 @@
     },
     {
       "path": "packages/platform/src/shipping/postgresAddressBook.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/postgresCustomerPreferences.ts",
       "class": "public-output"
     },
     {
@@ -8926,6 +9062,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/commerce/checkoutInlineRecovery.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/commerce/checkoutOfferPolicyPort.test.ts",
       "class": "public-output"
     },
@@ -8935,6 +9075,10 @@
     },
     {
       "path": "packages/platform/test/commerce/checkoutRecoveryInspection.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/checkoutRecoveryPay.test.ts",
       "class": "public-output"
     },
     {
@@ -9382,6 +9526,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/commerce/paymentRecoveryGuidance.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/commerce/portFit.test.ts",
       "class": "public-output"
     },
@@ -9651,6 +9799,10 @@
     },
     {
       "path": "packages/platform/test/fulfillment/nativePreparation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/nativeShipmentCommands.test.ts",
       "class": "public-output"
     },
     {
@@ -11167,6 +11319,14 @@
     },
     {
       "path": "scripts/ci-image-pull.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ci-receipt-rerun.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ci-receipt-rerun.test.ts",
       "class": "public-output"
     },
     {
@@ -28630,6 +28790,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/helpers/invoicingBuyerDestination.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/helpers/invoicingNativeHarness.ts",
       "class": "public-output"
     },
@@ -28671,6 +28835,10 @@
     },
     {
       "path": "tests/platform/__snapshots__/communicationsPublicW4.test.ts.snap",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/platform/account-support/customerBillingProfiles.test.ts",
       "class": "public-output"
     },
     {
@@ -28814,6 +28982,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/platform/shipping/customerPreferences.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/platform/shipping/deliveryAddressContinuityCharacterization.test.ts",
       "class": "public-output"
     },
@@ -28894,6 +29066,14 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/checkoutInlineRecovery.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/checkoutPaymentGuidance.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/checkoutRecoveryInspection.test.ts",
       "class": "public-output"
     },
@@ -28903,6 +29083,10 @@
     },
     {
       "path": "tests/postgres/checkoutRecoveryLinkLifecycle.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/checkoutRecoveryPay.test.ts",
       "class": "public-output"
     },
     {
@@ -29006,6 +29190,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/customerBillingProfiles.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/customerCheckoutLinks.test.ts",
       "class": "public-output"
     },
@@ -29015,6 +29203,14 @@
     },
     {
       "path": "tests/postgres/customerNewsletterWithdrawal.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/customerPreferences.fixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/customerPreferences.test.ts",
       "class": "public-output"
     },
     {
@@ -29102,6 +29298,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/fulfillmentShipmentCommands.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/fulfillmentStockEvidenceReplay.test.ts",
       "class": "public-output"
     },
@@ -29131,6 +29331,10 @@
     },
     {
       "path": "tests/postgres/inventoryNative.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/invoicingBuyerCapture.test.ts",
       "class": "public-output"
     },
     {
@@ -29478,6 +29682,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/returnRequestCommands.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/reviewedBatchCatalog.ts",
       "class": "public-output"
     },
@@ -29679,6 +29887,10 @@
     },
     {
       "path": "tests/postgres/subscriptionRetryResumeCatalog.proof.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionSavedAddressSelection.test.ts",
       "class": "public-output"
     },
     {
