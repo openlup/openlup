@@ -785,10 +785,10 @@ provider access, publication or deployment qualification.
 ## Account, checkout and parcel candidate
 
 Run `./lifecycle browser` from the application directory for the complete database
-configuration. It creates a fresh installation pair for each of the ten named groups
+configuration. It creates a fresh installation pair for each of the eleven named groups
 in `browser-groups.mjs`: subscription care, portal, recovery extension, operator
 operations, returns portal, payment guidance, shipment operations, account
-preferences, payment retry and embedded browser, followed by the remainder. Tests use
+preferences, payment retry, embedded browser and billing profiles, followed by the remainder. Tests use
 one worker and tracing, screenshots and video off. Independent processes and
 installations keep each group inside the normal checkout quota; production quota
 values and admission paths are unchanged. Focus the portal with `./lifecycle
@@ -969,8 +969,8 @@ and retains its immutable operation and destination after the saved address chan
 Future destination materialization reads the edit. Preference saves preserve
 existing subscriptions, payment instruments, orders and account events.
 
-The billing reader is explicitly unselected; only address rows and an unavailable
-billing flag reach the browser. Read errors refuse rather than becoming an empty
+The scoped billing reader supplies owned profiles alongside saved address rows;
+default snapshots expose redacted, unapplied hints. Read errors refuse rather than becoming an empty
 book. Billing, combined profile and private-profile views remain under N5.
 Independent extraction still accepts a replacement owned registry without requiring
 additional registry exports. Personal-data export/erasure integration retains its
@@ -1081,3 +1081,29 @@ contains 384 cases partitioned as 62/56/52/12/12/12/16/16/36/8/102, with each
 identity selected once and no duplicates. Starter units pass 333/333 and the
 PostgreSQL integration witness passes 7/7, including the extracted application
 and unchanged 68 declared / 64 bound operation census.
+
+
+## Billing and shared capture activation
+
+The billing group covers browser profile creation, editing and deletion; owned
+redacted default hints; invalid and forged input; foreign update refusal and
+zero-row delete acknowledgement; separate default/write/event commits and repeated
+keys without deduplication. Sandbox payment creates the first owed duty with an
+explicit buyer, an owned profile/billing address or a marked shipping fallback.
+The invoice uses the actual captured buyer, including line2 and provenance.
+Recreated profile/fallback cases use the native slot-28 absence-preserving forward.
+Later profile edits/deletions leave captured buyers and installed invoice facts
+unchanged. The customer invoice page displays the authorized frozen snapshot.
+
+All sandbox capture actions share the pre-capture acquisition check and native
+classic/acquisition activation selection. Real-PostgreSQL/browser regressions
+require repeat-subscriber token pay, inline retry and recreation to produce a paid
+order and an active subscription with attached renewal terms; damaged acquisition
+terms refuse before any capture observation. The browser-safe owned display module
+contains the three measured embedded-browser hints, which confer no authority.
+
+The final shared selection inventory contains 408 cases partitioned as
+62/56/52/12/12/12/16/16/44/8/16/102, including billing profiles before the
+remainder. Playwright listing confirms every case is selected exactly once and
+there are no duplicates. Each group still receives a fresh installation pair,
+one worker, zero retries and captures off.

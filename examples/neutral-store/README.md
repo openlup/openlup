@@ -765,9 +765,9 @@ From this application directory, with the selected package set installed, run
 `./lifecycle browser`. It reads the selections from `browser-groups.mjs`. Each
 group gets a fresh pair of throwaway PostgreSQL 16 databases with the public
 qualified installation and owned demo catalogue, plus two restricted hosts.
-The ten named groups are subscription care, portal, recovery extension, operator
+The eleven named groups are subscription care, portal, recovery extension, operator
 operations, returns portal, payment guidance, shipment operations, account
-preferences, payment retry and embedded browser, followed by the remainder. They run every test selected by `playwright.database.config.ts` once,
+preferences, payment retry, embedded browser and billing profiles, followed by the remainder. They run every test selected by `playwright.database.config.ts` once,
 with one worker. The command
 creates both the UI-origin file and the private
 `.context/care-browser/fixtures.json` required only by the database subscription
@@ -1014,11 +1014,18 @@ account events. Native renewal preparation uses subscription scope before any
 scope and preserves an explicit delivery selection. Incomplete locker pickup
 addresses can be saved but are skipped when a renewal chooses a delivery.
 
-Billing storage is explicitly unselected in this composition. Address responses
-contain addresses and an unavailable-billing flag, not fabricated billing rows.
-No billing/default-hint or combined-profile endpoint is mounted. Billing and
-private-profile limits remain visible. The fictional country, phone prefix and
-numeric tax checksum are demonstration validation, not real-market certification.
+Billing profiles are bound through the native session-scoped reader and mutation
+handler. The portal supports create, read, edit and delete, including the native
+company identity fields and the owned tax normalization/checksum policy. Default
+clearing, profile writing and account-event append remain separate commits: a
+later failure can leave earlier writes committed, and billing command keys do not
+deduplicate writes or events. Foreign edits refuse; deleting a foreign or missing
+row acknowledges a zero-row deletion. Address-book responses include real owned
+billing profiles. Default snapshots expose redacted, unapplied selection hints;
+they install no instrument and do not apply a profile to an existing order.
+Private and combined-profile views remain limited under N5. The fictional country,
+phone prefix and numeric tax checksum are demonstration validation, not real-market
+certification.
 
 The saved addresses and preferences contain personal data. Application owners
 compose the native privacy contributors with identity, subscription and account
@@ -1070,3 +1077,39 @@ The sent confirmation survives panel remounts while sending again remains reacha
 failure offers a neutral retry. Delivery rechecks the native buyer authorization
 and captures the link in the existing private mailbox. The source marker
 distinguishes the buyer landing. Enqueue, capture and payment are separate facts.
+
+
+## Billing profiles and frozen invoice buyers
+
+Install the complete ordered package history through
+`20261110280000_checkout_recovery_buyer_snapshot` before starting this composition.
+The host requires the slot-27 first-duty buyer-capture entry; slot 28 preserves
+absence of explicit buyer facts during recreation. `./lifecycle up` installs the
+complete history. No duty or historical invoice is backfilled.
+
+Before sandbox payment capture, initial checkout records its owned order
+destination; native recreation and renewal record theirs through their native
+owners. On the first owed-duty capture, the invoice owner freezes explicit order
+buyer facts when present, otherwise the default or latest owned billing profile
+with a billing/both address, otherwise the marked shipping fallback. The frozen
+address keeps line2 and source provenance. Recreation copies explicit buyer facts
+only when the source has them; absent facts remain absent so first-duty selection
+can use an owned profile or the marked fallback. Later profile/address edits or
+deletions cannot change a captured buyer, installed invoice facts or issued bytes.
+Customer invoice history checks ownership before reading this snapshot; operator
+summary requires current human-admin authorization.
+
+`payment.simulate`, `checkout.payment` and recreated `checkout.recovery` simulation
+share one capture/activation helper. Retained acquisition renewal availability
+validates before a capture observation is recorded. After successful native ingress,
+an initial subscription declaration activates through its native acquisition or
+classic renewal branch. Capture and activation keep their existing transaction
+boundaries; a cross-transaction outage is not an atomicity guarantee.
+
+The Node host composes customer-billing, saved-address, preference and parcel-contact
+privacy contributors. Its programmatic registry requires identity and subscription
+coverage from the application owner and reports missing contributors; account-event
+retention remains unresolved. It supplies no HTTP export/erasure workflow. Owners
+must complete these boundaries and retain authorized cleanup of private captures.
+Erasure or corruption of the original immutable checkout capture refuses recovery
+re-quoting; it is never reconstructed from current billing or profile data.

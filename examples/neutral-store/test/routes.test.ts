@@ -45,7 +45,7 @@ test('both locales supply every copy key and every named-limit action', () => {
 });
 
 
-test('the partial account limit retains billing and private views while bound preferences are omitted', () => {
+test('the partial account limit retains private views while billing and preferences are bound', () => {
   const limit = nativeLimits.find(limit => limit.id === 'N5')!;
   assert.equal(limit.code, 'starter_account_preferences_unavailable');
   assert.deepEqual(limit.actions, ['privateProfile', 'profileViews']);

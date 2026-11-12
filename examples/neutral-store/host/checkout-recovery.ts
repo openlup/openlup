@@ -62,7 +62,7 @@ import { readAuthorizedPaymentRecovery, createPostgresPaymentRecoveryGuidancePor
 import { normalizeSandboxPaymentRecoveryEvidence, createPostgresSandboxExpiredCheckoutSafety, createPostgresSandboxPaymentSimulator } from '@openlup/platform/payments';
 import { createPostgresPurchaseReservationPort } from '@openlup/platform/inventory';
 import { createNativeQuoteService } from './quote-composition.ts';
-import { installedAcquisitionPredecessors, createAcquisitionRenewalBinding } from './acquisition-predecessors.ts';
+import { installedAcquisitionPredecessors } from './acquisition-predecessors.ts';
 import { createAcquisitionFinancialPolicy, checkoutLinkPolicy } from '../owned/acquisition-policy.ts';
 import { isRecord } from '../shared/offer.ts';
 import { sameUuid, isInitialCheckoutOrder } from './recurring-fence.ts';
@@ -91,7 +91,7 @@ export function recreatedExecutionForInspection(order: NativeCheckoutRecoveryOrd
 
 export function composeExpiredRecovery(pool: Pool, lane: Pick<PostgresRoleFreeTransactionLane, 'run'>, tokens: PurchaseRecovery['tokens'], keyring?: PromotionAcceptanceKeyring): ApplicationBindings['actions'] {
   const reader = createPostgresCheckoutRecoveryOrderPort(pool);
-  const renewal = createAcquisitionRenewalBinding(pool);
+  const activation = createInitialPurchaseActivation(pool);
   return { 'checkout.recovery': async (payload, context) => {
     const refuse = (reason: string) => ({ ok: false as const, code: `starter_recovery_${reason}` });
     if (Object.keys(payload).some(key => !['locale','token','action','orderRef','attemptRef','outcome'].includes(key))
@@ -176,30 +176,16 @@ export function composeExpiredRecovery(pool: Pool, lane: Pick<PostgresRoleFreeTr
       if (!['captured','refused','expired','indeterminate'].includes(String(payload.outcome))) return refuse('unavailable');
       const outcome = payload.outcome as 'captured' | 'refused' | 'expired' | 'indeterminate';
       const acceptedQuote = latest.quoteSnapshot as CreateQuoteResponse;
-      const acquisitionTerms = outcome === 'captured' && (acceptedQuote.quote.context as { acquisitionTerms?: unknown })?.acquisitionTerms;
-      if (outcome === 'captured' && acquisitionTerms) renewal.assertAvailable(acceptedQuote);
+      if (outcome === 'captured') activation.assertCaptureAvailable(acceptedQuote);
       const observation = await simulator.recordObservation({ attemptId: attempt.id,
         idempotencyKey: `starter-recreated:${attempt.id}:${outcome}`, outcome, occurredAt: attempt.dispatchedAt });
       const accepted = await simulator.ingress.receive({ rawBody: new TextEncoder().encode(JSON.stringify({
         settlementIntentId: latest.paymentIntentId, attemptId: attempt.id, observationId: observation.id })), headers: {}, receivedAt: attempt.dispatchedAt });
       if (accepted.status !== 200) return refuse('unavailable');
       if (outcome === 'captured' && latest.mode === 'subscription_cycle') {
-        const declaration = (await pool.query('SELECT cadence_days FROM public.subscription_activations WHERE order_id=$1', [latest.orderId])).rows[0];
-        if (declaration) {
-          if (acquisitionTerms) await renewal.activate({ orderId: latest.orderId, acceptedQuote,
-            capturedReference: latest.paymentIntentId, methodFacts: attempt.methodFacts,
-            stockSourceKey: `starter-demo:${context.config.id}`, templateId: `starter:${context.config.id}` });
-          else {
-            const shippingTerms = (acceptedQuote.quote.context as { shippingTerms?: import('@openlup/platform/shipping').ShippingTerms } | undefined)?.shippingTerms;
-            const facts: NativeRenewalPurchaseFacts = { settlementChannelKey: 'sandbox', ...attempt.methodFacts,
-              stockSourceKey: `starter-demo:${context.config.id}`, templateId: `starter:${context.config.id}`, cadenceDays: declaration.cadence_days,
-              currency: latest.currency, shippingAmountMinor: (acceptedQuote.quote.shippingGross?.amountMinor ?? 0) - (acceptedQuote.quote.shippingDiscountGross?.amountMinor ?? 0), acquisitionRef: null,
-              renewalTerms: { version: 'native.renewal-terms.v1', ...(shippingTerms === undefined ? {} : { shippingTerms }) },
-              lines: acceptedQuote.quote.lines.map((line, index) => ({ lineOrdinal: index + 1, sku: line.sku, quantity: line.quantity, unitAmountMinor: line.unitPriceGross.amountMinor })) };
-            await activateNativePurchaseWithRenewal(pool, { orderId: latest.orderId,
-              idempotencyKey: `activate:${latest.orderId}`, capturedReference: latest.paymentIntentId, facts });
-          }
-        }
+        await activation.activate({ orderId: latest.orderId, acceptedQuote, currency: latest.currency,
+          capturedReference: latest.paymentIntentId, methodFacts: attempt.methodFacts,
+          stockSourceKey: `starter-demo:${context.config.id}`, templateId: `starter:${context.config.id}` });
       }
       return { ok: true, value: { ...lineage, state: outcome } };
     } catch (error) {
@@ -232,7 +218,7 @@ import { createPostgresSandboxCheckoutRecoveryAttemptPort, createPostgresSandbox
 import { sandboxRecoveryPolicy } from '../owned/acquisition-policy.ts';
 import { portalResponder } from './e4-composition.ts';
 import { isUuid } from './recurring-fence.ts';
-import { activateNativePurchaseWithRenewal, type NativeRenewalPurchaseFacts } from '@openlup/platform/subscriptions';
+import { createInitialPurchaseActivation } from './purchase-activation.ts';
 import type { CreateQuoteResponse } from '@openlup/platform/pricing';
 
 type DemoMethod = typeof sandboxRecoveryPolicy.methodKeys[number];
@@ -251,7 +237,7 @@ export function composeSandboxRecoveryPayments(pool: Pool, lane: Pick<PostgresRo
   const codec = createCheckoutPaymentContinuationCodec(keyring?.current, { cookieName: sandboxRecoveryPolicy.cookieName,
     executionRails: sandboxRecoveryPolicy.rails });
   const reader = createPostgresCheckoutRecoveryOrderPort(pool);
-  const renewal = createAcquisitionRenewalBinding(pool);
+  const activation = createInitialPurchaseActivation(pool);
   const refused = (code = 'starter_recovery_unavailable') => ({ ok: false as const, code });
   const paymentFailure = (error: unknown): import('../shared/api.ts').ActionResult => {
     const kind = error instanceof Error && 'kind' in error ? error.kind : null;
@@ -338,31 +324,17 @@ export function composeSandboxRecoveryPayments(pool: Pool, lane: Pick<PostgresRo
           || !['captured','refused','expired','indeterminate'].includes(String(payload.outcome))) return refused();
         const outcome = payload.outcome as 'captured'|'refused'|'expired'|'indeterminate';
         const acceptedQuote = order.quoteSnapshot as CreateQuoteResponse;
-        const acquisitionTerms = outcome === 'captured' && (acceptedQuote.quote.context as { acquisitionTerms?: unknown })?.acquisitionTerms;
         // Validate the retained renewal binding before payment truth can become paid.
-        if (outcome === 'captured' && acquisitionTerms) renewal.assertAvailable(acceptedQuote);
+        if (outcome === 'captured') activation.assertCaptureAvailable(acceptedQuote);
         const observation = await simulator.recordObservation({ attemptId: attempt.id, idempotencyKey: `starter-execution:${attempt.id}:${outcome}`,
           outcome, occurredAt: attempt.dispatchedAt });
         const accepted = await simulator.ingress.receive({ rawBody: new TextEncoder().encode(JSON.stringify({ settlementIntentId: order.paymentIntentId,
           attemptId: attempt.id, observationId: observation.id })), headers: {}, receivedAt: attempt.dispatchedAt });
         if (accepted.status !== 200) return refused();
         if (outcome === 'captured' && order.mode === 'subscription_cycle') {
-          const declaration = (await pool.query('SELECT cadence_days FROM public.subscription_activations WHERE order_id=$1', [order.orderId])).rows[0];
-          if (declaration) {
-            if (acquisitionTerms) await renewal.activate({ orderId: order.orderId, acceptedQuote,
-              capturedReference: order.paymentIntentId, methodFacts: attempt.methodFacts,
-              stockSourceKey: `starter-demo:${context.config.id}`, templateId: `starter:${context.config.id}` });
-            else {
-              const shippingTerms = (acceptedQuote.quote.context as { shippingTerms?: import('@openlup/platform/shipping').ShippingTerms } | undefined)?.shippingTerms;
-              const facts: NativeRenewalPurchaseFacts = { settlementChannelKey: 'sandbox', ...attempt.methodFacts,
-                stockSourceKey: `starter-demo:${context.config.id}`, templateId: `starter:${context.config.id}`, cadenceDays: declaration.cadence_days,
-                currency: order.currency, shippingAmountMinor: (acceptedQuote.quote.shippingGross?.amountMinor ?? 0) - (acceptedQuote.quote.shippingDiscountGross?.amountMinor ?? 0), acquisitionRef: null,
-                renewalTerms: { version: 'native.renewal-terms.v1', ...(shippingTerms === undefined ? {} : { shippingTerms }) },
-                lines: acceptedQuote.quote.lines.map((line, index) => ({ lineOrdinal: index + 1, sku: line.sku, quantity: line.quantity, unitAmountMinor: line.unitPriceGross.amountMinor })) };
-              await activateNativePurchaseWithRenewal(pool, { orderId: order.orderId,
-                idempotencyKey: `activate:${order.orderId}`, capturedReference: order.paymentIntentId, facts });
-            }
-          }
+          await activation.activate({ orderId: order.orderId, acceptedQuote, currency: order.currency,
+            capturedReference: order.paymentIntentId, methodFacts: attempt.methodFacts,
+            stockSourceKey: `starter-demo:${context.config.id}`, templateId: `starter:${context.config.id}` });
         }
         return { ok: true, value: { orderRef: order.orderId, attemptRef: attempt.id, state: outcome } };
       } catch { return refused(); }

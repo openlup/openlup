@@ -872,8 +872,8 @@ for (const locale of ['en', 'pl'] as const) {
   });
 
 }
-async function expiredCheckout(page: Page, locale: Locale, mode: 'one_time' | 'subscription' = 'one_time', existingEmail?: string) {
-  const f = await pendingCheckout(page, locale, mode, existingEmail);
+async function expiredCheckout(page: Page, locale: Locale, mode: 'one_time' | 'subscription' = 'one_time', existingEmail?: string, line2?: string) {
+  const f = await pendingCheckout(page, locale, mode, existingEmail, line2);
   expect((await call(page, 'payment.simulate', { orderRef: f.orderRef, token: f.token, outcome: 'refused' })).ok).toBe(true);
   await owner.query("UPDATE public.commerce_orders SET created_at=now()-interval '2 hours' WHERE id=$1", [f.orderRef]);
   await owner.query("UPDATE public.fulfillment_inventory_reservations SET created_at=now()-interval '2 hours',expires_at=now()-interval '1 hour' WHERE purchase_order_id=$1", [f.orderRef]);
@@ -1492,7 +1492,7 @@ for (const locale of ['en','pl'] as const) {
     const sent = await request, key = sent.headers()['idempotency-key']!;
     await expect(section.locator('[data-saved-address]')).toHaveCount(1);
     const book = await call(page, 'account.addresses', { action: 'read' }); expect(book.ok).toBe(true); expect(book.value.billingProfilesAvailable).toBe(true);
-    expect(book.value.ordererProfiles).toBeUndefined();
+    expect(book.value.ordererProfiles).toEqual([]);
     const first = book.value.addresses[0]; expect(first).toMatchObject({ recipientName: null, postalCode: '12-345', contactPhone: '+999123456789', isDefault: true });
     expect((await call(page, 'account.addresses', { ...sent.postDataJSON(), line1: 'Changed replay input' }, key)).value.addresses[0].line1).toBe('Saved Street 1');
     const second = await saveAddress(page, { ...savedAddressInput('Other Street 2'), isDefault: true });
@@ -1611,12 +1611,14 @@ for (const locale of ['en','pl'] as const) {
   });
 
   test(`${locale}: billing profiles recreated fallback freezes the source destination on payment`, async ({page})=>{
-    const f=await expiredCheckout(page,locale);
+    const f=await expiredCheckout(page,locale,'one_time',undefined,'Shipping Unit 2');
     const started=await call(page,'checkout.recovery',{action:'pay',token:f.token});expect(started.ok).toBe(true);
     const orderRef=started.value.latestOrderRef;
     expect((await call(page,'checkout.recovery',{action:'simulate',token:f.token,orderRef,attemptRef:started.value.attemptRef,outcome:'captured'})).ok).toBe(true);
     const buyer=(await runtime.query('SELECT public.customer_billing_buyer_read($1) AS buyer',[orderRef])).rows[0].buyer;
-    expect(buyer).toMatchObject({name:'Example Buyer',source:'legacy_shipping_address_fallback',legacyFallback:true});
+    expect(buyer).toMatchObject({name:'Example Buyer',source:'legacy_shipping_address_fallback',legacyFallback:true,address:{line2:'Shipping Unit 2'}});
+    await issuedInvoice(orderRef);
+    expect((await owner.query("SELECT f.facts->'buyer' AS buyer FROM public.invoicing_fact_revisions f JOIN public.invoicing_duties d ON d.id=f.duty_id WHERE d.order_id=$1",[orderRef])).rows[0].buyer).toMatchObject(buyer);
   });
 
   test(`${locale}: billing profiles recreated profile preserves native first-duty selection`, async ({page})=>{
@@ -1640,6 +1642,80 @@ for (const locale of ['en','pl'] as const) {
     expect((await call(page,'checkout.recovery',{action:'simulate',token:f.token,orderRef,attemptRef:started.value.attemptRef,outcome:'captured'})).ok).toBe(true);
     const buyer=(await runtime.query('SELECT public.customer_billing_buyer_read($1) AS buyer',[orderRef])).rows[0].buyer;
     expect(buyer).toMatchObject({name:'Later Billing Buyer',source:'customer_orderer_profile',ordererProfileId:profileId,address:{line2:'Billing Unit 2'}});
+    await issuedInvoice(orderRef);
+    expect((await owner.query("SELECT f.facts->'buyer' AS buyer FROM public.invoicing_fact_revisions f JOIN public.invoicing_duties d ON d.id=f.duty_id WHERE d.order_id=$1",[orderRef])).rows[0].buyer).toMatchObject(buyer);
+    expect((await call(page,'account.billing',{action:'delete',profileId})).ok).toBe(true);
+    expect((await runtime.query('SELECT public.customer_billing_buyer_read($1) AS buyer',[orderRef])).rows[0].buyer).toEqual(buyer);
+  });
+
+  test(`${locale}: billing profiles browser CRUD preserves scope, defaults and separate commits`, async ({page,context})=>{
+    const f=await preferencesCustomer(page,locale);await page.goto(routes.account[locale]);
+    const section=page.locator('[data-billing-profiles]');await accessible(section);
+    const form=section.locator('form').filter({has:page.getByRole('heading',{name:copy[locale].billingAdd,exact:true})});
+    await form.locator('[name=fullName]').fill('Billing Customer');await form.locator('[name=email]').fill(f.email);
+    await form.locator('[name=taxId]').fill('123-456-32-18');await form.locator('[name=isDefault]').check();
+    await form.getByRole('button',{name:copy[locale].save,exact:true}).click();
+    await expect(section.locator('[data-billing-profile]')).toHaveCount(1);
+    const read=()=>call(page,'account.billing',{action:'read'});
+    const first=(await read()).value.ordererProfiles[0];expect(first).toMatchObject({fullName:'Billing Customer',taxId:'1234563218',isDefault:true});
+    const edit=section.locator('[data-billing-profile] form').filter({has:page.getByRole('heading',{name:copy[locale].billingEdit,exact:true})});
+    await edit.locator('[name=fullName]').fill('Updated Billing Customer');
+    await edit.getByRole('button',{name:copy[locale].save,exact:true}).click();
+    await expect(section.locator('[data-billing-profile] h3')).toHaveText('Updated Billing Customer');
+    const input={action:'upsert',fullName:'Other Billing Customer',email:f.email,isDefault:true};
+    const second=(await call(page,'account.billing',input)).value.ordererProfiles.find((r:{profileId:string})=>r.profileId!==first.profileId);
+    expect((await read()).value.ordererProfiles.find((r:{profileId:string})=>r.profileId===first.profileId).isDefault).toBe(false);
+    const defaults=await call(page,'account.defaults',{checkoutKind:'subscription_initial'});
+    expect(defaults.value.addresses).toMatchObject({defaultOrdererProfileId:second.profileId,hasDefaultOrdererProfile:true,applied:false});
+    expect(defaults.value.redactedFields).toContain('orderer_profile');expect(JSON.stringify(defaults.value)).not.toContain(f.email);
+    const cookies=await context.cookies();await context.clearCookies();await preferencesCustomer(page,locale);
+    expect((await read()).value.ordererProfiles).toEqual([]);
+    expect((await call(page,'account.billing',{...input,profileId:first.profileId})).ok).toBe(false);
+    expect((await call(page,'account.billing',{action:'delete',profileId:first.profileId})).ok).toBe(true);
+    await context.clearCookies();
+    expect((await read()).code).toBe('customer_session_required');await context.addCookies(cookies);
+    for(const field of ['actorUserId','principalId','principalRef','clientId','customerRef','idempotencyKey'])
+      expect((await call(page,'account.billing',{...input,[field]:randomUUID()})).code).toBe('starter_input_invalid');
+    for(const invalid of [{taxId:'1234563219'},{email:'invalid'},{companyVerificationLevel:'trusted'}])
+      expect((await call(page,'account.billing',{...input,...invalid})).code).toBe('starter_input_invalid');
+    // Native default clearing, profile writing and account-event append are separate commits.
+    await owner.query("ALTER TABLE public.customer_account_events ADD CONSTRAINT starter_billing_event_failure CHECK (event_type<>'customer.billing_profile_upserted') NOT VALID");
+    const key=randomUUID(),events=async()=>(await owner.query("SELECT count(*)::int AS n FROM public.customer_account_events WHERE client_id=$1 AND event_type='customer.billing_profile_upserted'",[f.clientId])).rows[0].n;
+    const before=await events();
+    try{
+      expect((await call(page,'account.billing',{...input,fullName:'Committed Billing Customer'},key)).ok).toBe(false);
+      const rows=(await read()).value.ordererProfiles;
+      expect(rows.find((r:{fullName:string})=>r.fullName==='Committed Billing Customer').isDefault).toBe(true);
+      expect(rows.find((r:{profileId:string})=>r.profileId===second.profileId).isDefault).toBe(false);expect(await events()).toBe(before);
+    }finally{await owner.query('ALTER TABLE public.customer_account_events DROP CONSTRAINT starter_billing_event_failure');}
+    expect((await call(page,'account.billing',{...input,profileId:first.profileId},key)).ok).toBe(true);
+    expect((await call(page,'account.billing',{...input,profileId:first.profileId},key)).ok).toBe(true);
+    expect(await events()).toBe(before+2); // Billing keys do not deduplicate writes or events.
+    await page.goto(routes.account[locale]);const panel=page.locator('[data-billing-profiles]');
+    await panel.getByRole('button',{name:copy[locale].billingLoad,exact:true}).click();
+    const row=panel.locator(`[data-billing-profile="${first.profileId}"]`);await expect(row).toBeVisible();
+    await row.getByRole('button',{name:copy[locale].billingDelete,exact:true}).click();
+    await expect(panel.locator(`[data-billing-profile="${first.profileId}"]`)).toHaveCount(0);
+    expect((await read()).value.ordererProfiles.some((r:{profileId:string})=>r.profileId===first.profileId)).toBe(false);
+  });
+
+  test(`${locale}: billing profiles explicit order buyer takes precedence at payment capture`,async({page})=>{
+    const f=await pendingCheckout(page,locale);await signIn(page,f.email,locale);
+    expect((await call(page,'account.billing',{action:'upsert',fullName:'Owned Profile Buyer',email:f.email,isDefault:true})).ok).toBe(true);
+    const explicit={name:'Explicit Order Buyer',email:f.email,source:'explicit_order',address:{line1:'Explicit Lane 1',line2:'Explicit Unit 2',city:'Example',postalCode:'00000',country:configurations[material.id]!.market.country,source:'explicit_address'}};
+    // Owner fixture supplies actual order facts before capture; no duty or payment truth is fabricated.
+    await owner.query("UPDATE public.commerce_orders SET metadata=jsonb_set(metadata,'{invoiceBuyerSnapshot}',$2::jsonb) WHERE id=$1",[f.orderRef,JSON.stringify(explicit)]);
+    expect((await call(page,'payment.simulate',{orderRef:f.orderRef,token:f.token,outcome:'captured'})).ok).toBe(true);
+    const buyer=(await runtime.query('SELECT public.customer_billing_buyer_read($1) AS buyer',[f.orderRef])).rows[0].buyer;
+    expect(buyer).toMatchObject({...explicit,addressSource:'explicit_address',legacyFallback:false});
+    await issuedInvoice(f.orderRef);
+    expect((await owner.query("SELECT f.facts->'buyer' AS buyer FROM public.invoicing_fact_revisions f JOIN public.invoicing_duties d ON d.id=f.duty_id WHERE d.order_id=$1",[f.orderRef])).rows[0].buyer).toMatchObject(buyer);
+    await page.goto(routes.invoices[locale]);
+    const history=page.locator('form').filter({has:page.getByRole('heading',{name:copy[locale].invoiceHistory,exact:true})});
+    await history.locator('[name=orderRef]').fill(f.orderRef);
+    await history.getByRole('button',{name:copy[locale].read,exact:true}).click();
+    await expect(page.locator('[data-invoice-buyer]')).toContainText('Explicit Order Buyer');
+    await expect(page.locator('[data-invoice-buyer]')).toContainText('Explicit Unit 2');await accessible(page.locator('main'));
   });
 
   async function paymentCall(page: Page, operation: string, data: Record<string,unknown>, key: string = randomUUID()) {

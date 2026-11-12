@@ -13,9 +13,8 @@ import { createPostgresDestinationPort } from '@openlup/platform/commerce/server
 import { createPostgresPurchaseReservationPort, createPostgresAbandonedCheckoutCompensationPort } from '@openlup/platform/inventory';
 import { createPostgresFulfillmentStockSyncPort } from '@openlup/platform/fulfillment';
 import { createPostgresSandboxPaymentSimulator } from '@openlup/platform/payments';
-import { activateNativePurchaseWithRenewal } from '@openlup/platform/subscriptions';
+import { createInitialPurchaseActivation } from './purchase-activation.ts';
 import { ACQUISITION_TERMS_CAPABILITY, type CreateQuoteResponse } from '@openlup/platform/pricing';
-import type { NativeRenewalPurchaseFacts } from '@openlup/platform/subscriptions';
 import type { ApplicationBindings, ActionContext } from './bindings.ts';
 import { validateCart, isRecord } from '../shared/offer.ts';
 import { generateCheckoutRecoveryToken } from '@openlup/platform/commerce/server';
@@ -40,6 +39,7 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
   let attemptBindings: ReturnType<typeof createCheckoutAttemptBindings> | undefined;
   const predecessors = quoteOptions.predecessors ?? installedAcquisitionPredecessors();
   const renewal = quoteOptions.renewal ?? createAcquisitionRenewalBinding(db);
+  const activation = createInitialPurchaseActivation(db, renewal);
   const quotes = createNativeQuoteService(db, predecessors, quoteOptions.keyring);
   const destinations = createPostgresDestinationPort(db);
   const reservations = createPostgresPurchaseReservationPort(db);
@@ -211,7 +211,7 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
     try {
       const key = command(context, 'payment');
       const storedQuote = order.metadata.quoteSnapshot as CreateQuoteResponse;
-      if (payload.outcome === 'captured' && (storedQuote.quote.context as { acquisitionTerms?: unknown })?.acquisitionTerms) renewal.assertAvailable(storedQuote);
+      if (payload.outcome === 'captured') activation.assertCaptureAvailable(storedQuote);
       const simulator = createPostgresSandboxPaymentSimulator(db, context.config.purchase.sandbox);
       const attempt = await simulator.beginAttempt({ settlementIntentId: intent.id, idempotencyKey: key,
         requestFingerprint: hash([order.id, payload.outcome]), at: new Date().toISOString() });
@@ -225,26 +225,9 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
       let renewalAttachment: string | undefined;
       if (payload.outcome === 'captured') {
         if (!await isInitialCheckoutOrder(db, order.id)) return refused('starter_order_not_found');
-        const declaration = (await db.query('SELECT cadence_days FROM public.subscription_activations WHERE order_id=$1', [order.id])).rows[0];
-        if (declaration) {
-          const acceptedQuote = order.metadata.quoteSnapshot as CreateQuoteResponse;
-          const acquisitionTerms = (acceptedQuote.quote.context as { acquisitionTerms?: unknown }).acquisitionTerms;
-          if (acquisitionTerms) {
-            renewalAttachment = await renewal.activate({ orderId: order.id, acceptedQuote,
-              capturedReference: intent.external_ref ?? intent.id, methodFacts: attempt.methodFacts,
-              stockSourceKey: source(context), templateId: `starter:${context.config.id}` });
-          } else {
-          const lines = acceptedQuote.quote.lines;
-          const shippingTerms = (acceptedQuote.quote.context as { shippingTerms?: import('@openlup/platform/shipping').ShippingTerms } | undefined)?.shippingTerms;
-          const facts: NativeRenewalPurchaseFacts = { settlementChannelKey: 'sandbox', ...attempt.methodFacts,
-            stockSourceKey: source(context), templateId: `starter:${context.config.id}`, cadenceDays: declaration.cadence_days,
-            currency: order.currency_code, shippingAmountMinor: (acceptedQuote.quote.shippingGross?.amountMinor ?? 0) - (acceptedQuote.quote.shippingDiscountGross?.amountMinor ?? 0), acquisitionRef: null,
-            renewalTerms: { version: 'native.renewal-terms.v1', ...(shippingTerms === undefined ? {} : { shippingTerms }) },
-            lines: lines.map((line, index) => ({ lineOrdinal: index + 1, sku: line.sku, quantity: line.quantity, unitAmountMinor: line.unitPriceGross.amountMinor })) };
-          renewalAttachment = (await activateNativePurchaseWithRenewal(db, { orderId: order.id,
-            idempotencyKey: `activate:${order.id}`, capturedReference: intent.external_ref ?? intent.id, facts })).renewalAttachment;
-          }
-        }
+        renewalAttachment = await activation.activate({ orderId: order.id, acceptedQuote: storedQuote,
+          currency: order.currency_code, capturedReference: intent.external_ref ?? intent.id, methodFacts: attempt.methodFacts,
+          stockSourceKey: source(context), templateId: `starter:${context.config.id}` });
       }
       const updated = await readOrder(order.id);
       return { ...success({ ...present(updated!), ...(renewalAttachment ? { renewalAttachment } : {}) }), replayed: attempt.replayed };
