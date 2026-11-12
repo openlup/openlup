@@ -18,6 +18,8 @@ export interface VerifiedActor {
 
 export interface ActionContext {
   commandKey: string;
+  /** Actual transport cookie; never supplied by an action body. */
+  requestCookie?: string;
   actor: VerifiedActor;
   config: StoreConfig;
   setCookie?: (cookie: string) => void;

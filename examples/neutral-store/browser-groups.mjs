@@ -20,4 +20,6 @@ export const browserJourneyGroups = journeySelections([
   'payment guidance ',
   'shipment operations ',
   'account preferences ',
+  'payment retry ',
+  'embedded browser ',
 ]);

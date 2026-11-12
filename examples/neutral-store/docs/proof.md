@@ -819,8 +819,8 @@ refusals cannot start payment. Durable draft, lineage and attempt receipts keep
 replay on one replacement and one attempt. Replacement-attempt simulator controls
 remain bound to the inspected bearer, lineage and durable execution receipt;
 reload reads the same attempt, independently of the recreation source link's
-continuation lifetime. Captured executions show no simulator controls. Dedicated token-pay retry and method switching, inline
-retry and embedded-browser continuation issuance remain unavailable.
+continuation lifetime. Captured executions show no simulator controls. Dedicated token pay, exact inline retry and the embedded-browser buyer-link
+control are bound for sandbox attempts; real-provider execution remains unavailable.
 
 Hold and release resolve the human administrator before every command and replay.
 The database owner provisions one `commerce_operators` row per human admin, with
@@ -984,7 +984,7 @@ All 236 affected cases passed through the shared database recipe, with one fresh
 installation pair per group, one worker, zero retries and captures off. Both
 configurations have identical checkout counts; the quota stays 36 per 180 seconds.
 The unchanged private-output guard passed every successful group log, with the
-flag absent. The generated current inventory contains 340 cases partitioned as
+flag absent. At the account-preferences checkpoint, the generated inventory contained 340 cases partitioned as
 62/56/52/12/12/12/16/16/102, every case selected once and no duplicate identities.
 The remaining N5 refusal journey now asserts the three actions still unavailable;
 new PostgreSQL journeys witness the newly bound actions.
@@ -994,3 +994,53 @@ integration witness passed 7/7, including both extracted browser cases and the
 64 declared / 60 bound census. Changed files ran in CI parity with global Git
 configuration disabled, using their owned Node, Playwright and Vitest runners.
 New tests introduce no fixed dates or short expiries.
+
+
+## Dedicated sandbox payment recovery and browser handoff
+
+Dedicated token pay binds the latest owned recovery order, intent and reservation.
+Exact inline retry uses the real Secure/HttpOnly/Strict continuation cookie,
+atomic guidance, expected predecessor and retry nonce. Witnesses cover one-time
+and provisional initial subscription dispatch, same/different demo choices,
+verified refusal, concurrent nonces, replay through a fresh host process with the
+same private signing root, cookie rotation, stale predecessor refusal, captured
+settlement and reload. Token and inline retries create no new order or second financial settlement.
+A lineage journey retries a declined replacement through the dedicated entry,
+keeps one replacement order and leaves the expired predecessor terminal.
+Missing or mismatched cookie, supplied identity, real-provider rail, expired or
+revoked token and terminal/in-flight state refuse. Native observed capture wins
+over stale control availability. Original ordinary continuation keeps its retry
+after decline; recreated targets stay fenced to the separate lineage receipt.
+
+Embedded-browser journeys use the measured user-agent hints only for display,
+then the actual native cookie for send authority. Send/resend in one bucket queues
+one buyer event, remount retains the confirmation, transport failure keeps retry
+reachable, and authorized native outbox delivery captures the link privately.
+An independent ordinary browser context opens that real email link without the
+embedded tab's cookie, starts a new attempt after decline, and settles the same
+order once. Another journey proves ordinary-browser hiding and missing-cookie
+refusal after a real legacy sandbox dispatch. No test cookie is fabricated.
+
+| Group | Passing cases, both configurations | Original checkouts per configuration | Replacement checkout receipts per configuration |
+| --- | ---: | ---: | ---: |
+| Payment retry | 20 | 10 | 2 |
+| Embedded browser | 8 | 4 | 0 |
+| Portal | 56 | 36 | 0 |
+| Recovery extension | 52 | 26 | 10 |
+| Payment guidance | 12 | 10 | 0 |
+| Remainder | 102 | 2 | 0 |
+
+All 250 affected cases passed on real PostgreSQL with the single shared selections,
+fresh installation pairs, one worker, zero retries and captures off. Both
+configurations have identical counters. Original and replacement drafts together
+stay within the unchanged 36-checkout quota. All successful logs passed the
+unchanged private-output guard, with its flag absent. The generated full listing
+has 368 cases partitioned as 62/56/52/12/12/12/16/16/20/8/102, every case selected
+exactly once and no duplicates.
+
+Starter units passed 332/332, including extraction and owned-registry witnesses.
+The PostgreSQL integration witness passed 7/7, including the extracted browser
+cases and 68 declared / 64 bound operation census. Changed Node, Playwright and
+Vitest suites ran with CI enabled and global Git configuration disabled. New
+fixtures use current/relative ordered instants and no short expiries. No complete
+native-limit row is removed: real-provider and remaining account boundaries stay.

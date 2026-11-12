@@ -161,15 +161,17 @@ The completion page reads the URL token once and replaces history synchronously
 before configuration fetch or rendering. Request bodies carry the token; memory
 and session storage preserve reload convenience but grant no authority. An unchanged repeated submit for the same order keeps its existing token when the replay response omits it. A different order never inherits that token. A new token replaces the token stored in this tab; this storage update does not revoke other links. Operator issuance revokes them through the native issuer.
 Live pending-order links support sandbox continuation payment of the original
-order, including retry after a decline. Dedicated token-pay retry and method switching remain unbound; that
-separate capability is not provided by the sandbox continuation action.
+order, including retry after a decline. Dedicated token pay and exact cookie-authorized
+inline retry are also bound for the explicit synthetic sandbox choices. Real-provider
+method switching and instrument setup remain unavailable.
 Expired-policy inspection can offer recreation of a fresh order until 30 days
 after the source order was created, including system-abandoned initial checkouts.
 Frozen re-quoting, unchanged supported content, stock admission and proven prior
 payment non-settlement remain required. Manual cancellation, paid orders and
 revoked or unavailable links cannot start payment. Paid presentation has priority
-over any stored attempt. A recreated order uses only its recovery transition and
-replay receipt; the ordinary sandbox action cannot start another attempt. Indexed hash lookup makes no constant-time claim.
+over any stored attempt. Fresh recreation uses its transition and replay receipt. Dedicated token or
+exact-cookie retry can then act on its same pending replacement; the ordinary
+sandbox action cannot start an attempt on that replacement. Indexed hash lookup makes no constant-time claim.
 Owning sessions retain order ownership checks. An email alone mints no link for
 an existing order. Recovery grants no account or subscription-command access.
 
@@ -245,7 +247,8 @@ parcel operations, plus the separate communications roster for operator links.
 Neither the runtime host nor installer provisions those rows. Never delete a
 Commerce operator row; withdraw by revoking membership. Native ports own provider,
 stock, fingerprint and replay fences. No arrival attestation caller exists.
-Continuation issuance and the embedded-browser buyer control remain deferred.
+Fresh sandbox attempt dispatch can issue continuation; the embedded-browser
+buyer control uses that exact cookie. Checkout creation never issues it.
 
 
 ## Expired checkout recovery and order holds
@@ -259,8 +262,8 @@ refusals cannot start payment. Durable draft, lineage and attempt receipts keep
 replay on one replacement and one attempt. Replacement-attempt simulator controls
 remain bound to the inspected bearer, lineage and durable execution receipt;
 reload reads the same attempt, independently of the recreation source link's
-continuation lifetime. Captured executions show no simulator controls. Dedicated token-pay retry and method switching, inline
-retry and embedded-browser continuation issuance remain unavailable.
+continuation lifetime. Captured executions show no simulator controls. Dedicated token pay, exact inline retry and the embedded-browser buyer-link
+control are bound for sandbox attempts; real-provider execution remains unavailable.
 
 Hold and release resolve the human administrator before every command and replay.
 The database owner provisions one `commerce_operators` row per human admin, with
@@ -321,15 +324,14 @@ receive goods, restock, execute a refund or change a subscription.
 
 The ordinary completion reader may add safe payment guidance for an exact live
 order bearer. A native atomic snapshot rechecks token authority and binds the
-order, client, intent and current attempt. No continuation cookie or issuer is
-invented. The sandbox can establish a verified generic decline; it cannot identify
+order, client, intent and current attempt. The optional reader issues no credential. The sandbox can establish a verified generic decline; it cannot identify
 a method, instrument, operation or consecutive same-method refusal count. The
-localized notice explains that limit without offering an unbound method-switch
-control. Missing, unreadable or unsupported evidence, ineligible orders,
+localized notice explains that limit; synthetic choices use the explicit sandbox
+registry rather than an inferred provider method. Missing, unreadable or unsupported evidence, ineligible orders,
 indeterminate attempts, observed success and read failures leave the existing
 presentation unchanged. No raw evidence or attempt history reaches the browser.
-Dedicated token-pay retry, method switching, inline retry and embedded-browser
-continuation issuance remain deferred. This optional read creates no payment,
+Sandbox token pay, exact inline retry and the embedded-browser buyer control
+have separate mutation bindings. Real-provider methods remain unavailable. This optional read creates no payment,
 notification or mutation.
 
 
@@ -403,3 +405,47 @@ The saved addresses and preferences contain personal data. Application owners
 compose the native privacy contributors with identity, subscription and account
 event coverage and own retention and access. This starter supplies no customer
 export or erasure endpoint; saving a preference does not establish that workflow.
+
+
+## Sandbox token payment and exact continuation
+
+Completion can start dedicated token payment for a live checkout continuation with
+one of two explicit synthetic demo choices. Native admission reuses the existing
+latest owned recovery descendant, intent and reservation and refuses expired/revoked authority, renewals,
+terminal orders and unresolved attempts. Fresh recreation retains its lineage/receipt transition. A later explicit token
+retry may dispatch another attempt on that same replacement, while the ordinary
+simulator remains fenced from creating attempts on recreated targets. No real-provider or instrument capability is implied.
+
+Only an actual fresh dispatched sandbox attempt can mint the native continuation
+cookie. Its private claims bind the real order, client, intent, attempt and rail;
+this composition uses the native order UUID for the opaque checkout journey. The
+codec purpose-derives its signing key from the existing private host keyring's
+current root, supplied by `--quote-acceptance-key-file`. Keep that root stable across a host restart; rotating it invalidates
+old continuation cookies. No key, raw cookie or token belongs in logs or public
+reports. The cookie keeps its native Secure, HttpOnly, SameSite=Strict and Path=/
+attributes and lifetime. Checkout creation mints no continuation. Browser storage
+is reload convenience and never grants this authority. Missing signing material
+leaves cookie-only controls unavailable; it does not fabricate a credential.
+
+An exact failed predecessor and native guidance admit inline retry with a stable
+retry nonce. The actual transport cookie is required: a bearer token or body
+identity cannot widen the entry. Registered demo references supply synthetic
+method identity; the sandbox evidence normalizer still reports method, operation
+and provider advice as unknown. Opaque, unregistered attempt references do not
+authorize inline retry; a still-live recovery token can use dedicated token pay
+instead. No method identity is guessed for an older/default attempt. Atomic native admission owns competing nonces,
+current-attempt checks and replay. Response-loss replay returns the one dispatched
+replacement attempt without another dispatch and rotates its cookie. Terminal,
+captured, technically expired and stale targets refuse before simulator effects.
+No payment-method hold policy is selected by this application; the public hold
+wrapper receives that explicit unconfigured policy. Real-provider execution,
+method setup and card replacement keep their named refusals.
+
+Only detected embedded browsers show the buyer send/resend control after real
+continuation exists. Detection is a display hint, never authority. The native
+cookie-only handler obtains order/client from verified claims, uses the saved
+checkout recipient, and deduplicates sends in its unchanged ten-minute bucket.
+The sent confirmation survives panel remounts while resend remains reachable;
+failure offers a neutral retry. Delivery rechecks the native buyer authorization
+and captures the link in the existing private mailbox. The source marker
+distinguishes the buyer landing. Enqueue, capture and payment are separate facts.

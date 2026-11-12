@@ -3,12 +3,32 @@ import { authenticatedRepairPage } from '../recovery-page.ts';
 import type { PageContext } from '../context.ts';
 import { validateCart, isRecord } from '../../shared/offer.ts';
 import { routes } from '../../shared/routes.ts';
-import { append, el, link } from '../dom.ts';
+import { append, el, link, button } from '../dom.ts';
 import { actionForm, nativeActions } from '../forms.ts';
 import { act } from '../api.ts';
 import { renderValue } from '../dom.ts';
 import { offerIssues } from './storefront.ts';
 import { currentPurchase, rememberPurchase, visiblePurchase } from '../purchase.ts';
+
+// Confirmation survives panel remounts; it never suppresses the resend control.
+let buyerLinkSent = false;
+export function isEmbeddedCheckoutBrowser(userAgent = navigator.userAgent): boolean {
+  return ['FBAN/','FB_IAB/','Instagram'].some(marker => userAgent.includes(marker));
+}
+function buyerLinkControl(context: PageContext): HTMLElement {
+  const status = el('p', { role: 'status' }, buyerLinkSent ? context.t('buyerLinkSent') : '');
+  const control = button(context.t(buyerLinkSent ? 'buyerLinkResend' : 'buyerLinkSend'), async () => {
+    if (control.disabled) return; control.disabled = true;
+    const result = await act('checkout.paymentLink', {}, crypto.randomUUID());
+    control.disabled = false;
+    if (!section.isConnected) return;
+    if (result.ok) { buyerLinkSent = true; status.textContent = context.t('buyerLinkSent'); control.textContent = context.t('buyerLinkResend'); }
+    else status.textContent = context.t('buyerLinkFailed');
+  });
+  const section = el('section', { 'data-buyer-link': '', 'aria-label': context.t('buyerLinkPrompt') },
+    el('p', {}, context.t('buyerLinkPrompt')), status, control);
+  return section;
+}
 
 export function checkoutPage(context: PageContext): HTMLElement {
   const result = validateCart(context.config, context.getCart());
@@ -62,20 +82,62 @@ export function completionPage(context: PageContext): HTMLElement {
     if (!isRecord(result) || typeof result.latestOrderRef !== 'string' || typeof result.attemptRef !== 'string') return;
     if (result.state === 'captured') { state.replaceChildren(el('p', {}, context.t('loading'))); void inspect(); return; }
     const started = Object.freeze({ token: credential.token, orderRef: result.latestOrderRef, attemptRef: result.attemptRef });
-    state.replaceChildren(renderValue(result), ...(['captured', 'refused', 'expired', 'indeterminate'] as const).map(outcome =>
+    state.replaceChildren(renderValue(result), ...(result.state==='refused' && result.canTokenPay===true ? [freshPay({orderRef:result.latestOrderRef,token:credential.token})] : []), ...(['captured', 'refused', 'expired', 'indeterminate'] as const).map(outcome =>
       actionForm(context, { operation: 'checkout.recovery',
         submit: outcome === 'captured' ? 'simulatePaid' : outcome === 'refused' ? 'simulateDeclined' : outcome === 'expired' ? 'simulateExpired' : 'simulateIndeterminate',
         input: () => ({ ...started, action: 'simulate', outcome }), onSuccess: () => { void inspect(); } })));
   };
+  const freshPay = (inspected: {orderRef?: unknown;token?: string | undefined}) => actionForm(context, { operation: 'checkout.tokenPay', submit: 'recoveryPay',
+      fields: [{ name: 'methodKey', label: 'sandboxChoice', type: 'select', options: [
+        { value: 'primary', text: context.t('sandboxPrimary') }, { value: 'secondary', text: context.t('sandboxSecondary') }] }],
+      input: () => ({ token: inspected.token, executionRail: 'sandbox' }), onSuccess: () => { state.replaceChildren(el('p', {}, context.t('loading'))); void inspect(); } });
+  const renderExecution = (inspected: {orderRef?: unknown;token?: string | undefined}, value: Record<string,unknown> | null): boolean => {
+    if (value?.paymentBlocked === true) { state.replaceChildren(el('p', {}, context.t('recoveryUnavailable')),renderValue({orderRef:inspected.orderRef})); return true; }
+    if (value && typeof value.attemptRef === 'string' && value.methodKey !== null) {
+      const attemptRef = value.attemptRef;
+      const forms: HTMLElement[] = [];
+      if (value.state === 'refused') {
+        if (value.canInlineRetry === true) {
+          const retryRequestId = crypto.randomUUID();
+          forms.push(actionForm(context, { operation: 'checkout.inlineRetry', submit: 'inlineRetry',
+            fields: [{ name: 'methodKey', label: 'sandboxChoice', type: 'select', options: [
+              { value: 'primary', text: context.t('sandboxPrimary') }, { value: 'secondary', text: context.t('sandboxSecondary') }] }],
+            input: () => ({ orderRef: inspected.orderRef, expectedAttemptRef: attemptRef, retryRequestId, executionRail: 'sandbox' }),
+            onSuccess: () => { void inspect(); }, onFailure: code => { if (code !== 'starter_transport_unavailable') void inspect(); } }));
+        } else if (inspected.token) forms.push(freshPay(inspected));
+      } else if (['dispatched','indeterminate'].includes(String(value.state))) {
+        forms.push(...(['captured','refused','expired','indeterminate'] as const).map(outcome => actionForm(context, {
+          operation: 'checkout.payment', submit: outcome === 'captured' ? 'simulatePaid' : outcome === 'refused' ? 'simulateDeclined' : outcome === 'expired' ? 'simulateExpired' : 'simulateIndeterminate',
+          input: () => ({ ...inspected, action: 'simulate', attemptRef, outcome }), onSuccess: () => { void inspect(); } })));
+      }
+      state.replaceChildren(el('p', {}, context.t('sandboxOnly')), renderValue({ orderRef: inspected.orderRef, attemptRef, state: value.state }),
+        ...(isRecord(value.recoveryGuidance) ? [el('section', { 'data-payment-guidance': '' }, el('h2', {}, context.t('guidanceTitle')), el('p', {}, context.t('guidanceBody')))] : []),
+        ...forms, ...(value.continuationAvailable === true && isEmbeddedCheckoutBrowser() ? [buyerLinkControl(context)] : []));
+      return true;
+    }
+
+    return false;
+  };
+  let inspectionGeneration = 0;
   const inspect = async () => {
+    const generation = ++inspectionGeneration;
     const recovered = credential.token ? await act('checkout.recovery', { token: credential.token, action: 'inspect' }, crypto.randomUUID()) : null;
-    if (!page.isConnected) return;
+    if (!page.isConnected || generation !== inspectionGeneration) return;
     if (recovered?.ok && isRecord(recovered.value)) {
       const value = recovered.value;
       if (value.terminalStatus === 'paid') {
         state.replaceChildren(el('p', {}, context.t('recoveryPaid')), renderValue(value)); return;
       }
-      if (!value.terminalStatus && isRecord(value.recreatedExecution) && value.recreatedExecution.state !== 'captured') { showStarted(value.recreatedExecution); return; }
+      let execution: Record<string,unknown> | null = null;
+      if (!value.terminalStatus && typeof value.latestOrderRef === 'string') {
+        const read=await act('checkout.payment',{action:'inspect',orderRef:value.latestOrderRef,token:credential.token},crypto.randomUUID());
+        if (!page.isConnected || generation !== inspectionGeneration) return;
+        execution=read.ok&&isRecord(read.value)?read.value:null;
+        const admittedExecution = value.recoverable === true && value.recoveryKind !== 'recreate_expired'
+          || isRecord(value.recreatedExecution) || execution?.continuationAvailable === true;
+        if (admittedExecution && renderExecution({orderRef:value.latestOrderRef,token:credential.token},execution)) return;
+      }
+      if (!value.terminalStatus && isRecord(value.recreatedExecution) && value.recreatedExecution.state !== 'captured') { showStarted({...value.recreatedExecution,canTokenPay:execution?.canTokenPay===true}); return; }
       if (value.recoverable === true && value.recoveryKind === 'recreate_expired') {
         const pay = actionForm(context, { operation: 'checkout.recovery', submit: 'recoveryPay',
           input: () => ({ token: credential.token, action: 'pay' }),
@@ -90,7 +152,7 @@ export function completionPage(context: PageContext): HTMLElement {
       }
     }
     const result = await act('checkout.read', credential, crypto.randomUUID());
-    if (!page.isConnected) return;
+    if (!page.isConnected || generation !== inspectionGeneration) return;
     if (!result.ok || !isRecord(result.value)) {
       const code = result.ok ? 'starter_recovery_unavailable' : result.code;
       state.replaceChildren(el('p', {}, context.t(code === 'starter_recovery_expired' ? 'recoveryExpired'
@@ -107,10 +169,16 @@ export function completionPage(context: PageContext): HTMLElement {
     }
     const inspected = Object.freeze({ ...credential, orderRef: result.value.orderRef });
     rememberPurchase(context.config.id, inspected);
+    const execution = await act('checkout.payment', { action: 'inspect', ...inspected }, crypto.randomUUID());
+    if (!page.isConnected || generation !== inspectionGeneration) return;
+    const value = execution.ok && isRecord(execution.value) ? execution.value : null;
+    if (renderExecution(inspected,value)) return;
     state.replaceChildren(el('p', {}, context.t('sandboxOnly')), renderValue(result.value),
       ...(isRecord(result.value.recoveryGuidance) ? [el('section', { 'data-payment-guidance': '' },
         el('h2', {}, context.t('guidanceTitle')), el('p', {}, context.t('guidanceBody')))] : []),
       el('h2', {}, context.t('payment')),
+      ...(inspected.token ? [freshPay(inspected)] : []),
+      ...(value?.continuationAvailable === true && isEmbeddedCheckoutBrowser() ? [buyerLinkControl(context)] : []),
       ...(['captured', 'refused', 'expired', 'indeterminate'] as const).map(outcome => actionForm(context, {
         operation: 'payment.simulate',
         submit: outcome === 'captured' ? 'simulatePaid' : outcome === 'refused' ? 'simulateDeclined' : outcome === 'expired' ? 'simulateExpired' : 'simulateIndeterminate',

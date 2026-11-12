@@ -54,7 +54,7 @@ export async function readFrozenCheckoutEmail(orderRef: string, capture = create
 import type { PromotionAcceptanceKeyring } from '@openlup/platform/promotions';
 import type { Pool } from 'pg';
 import type { SandboxPaymentAttempt } from '@openlup/platform/payments/contracts';
-import type { PostgresRoleFreeTransactionLane } from '@openlup/platform/data';
+import type { PgGatewayClient, PostgresRoleFreeTransactionLane } from '@openlup/platform/data';
 import { readAuthorizedPaymentRecovery, createPostgresPaymentRecoveryGuidancePort, createCheckoutRecoveryInspection, createExpiredCheckoutRecoveryService, createPostgresCheckoutRecoveryOrderPort,
   createPostgresExpiredCheckoutRecoveryPort, createPostgresExpiredCheckoutDraftPort, createPostgresExpiredCheckoutRuntime,
   createPostgresExpiredCheckoutCompensation, checkoutRecoveryExecutionFingerprint, ExpiredCheckoutRecoveryError,
@@ -205,4 +205,149 @@ export async function readCheckoutGuidance(pool: Pool, tokens: PurchaseRecovery[
         port: createPostgresPaymentRecoveryGuidancePort(pool, normalizeSandboxPaymentRecoveryEvidence) } });
     return result?.guidance ?? undefined;
   } catch { return undefined; }
+}
+
+
+import { createCheckoutRecoveryTokenPay, createCheckoutRecoveryPayService, withCheckoutRecoveryPaymentHold,
+  createCheckoutInlineRecovery, createCheckoutPaymentContinuationCodec, mintPaymentContinuationOnFreshAction,
+  createCheckoutPaymentLinkHandler, createPostgresBuyerCheckoutLinkPort } from '@openlup/platform/commerce/server';
+import type { SandboxMethodFacts } from '@openlup/platform/payments/contracts';
+import { createPostgresSandboxCheckoutRecoveryAttemptPort, createPostgresSandboxInlineRecoveryAttemptPort } from '@openlup/platform/payments';
+import { sandboxRecoveryPolicy } from '../owned/acquisition-policy.ts';
+import { portalResponder } from './e4-composition.ts';
+import { isUuid } from './recurring-fence.ts';
+
+type DemoMethod = typeof sandboxRecoveryPolicy.methodKeys[number];
+export function sandboxRecoveryMethod(facts: SandboxMethodFacts): DemoMethod | null {
+  return sandboxRecoveryPolicy.methodKeys.find(key => facts.methodRef === `sandbox:demo:${key}`
+    && facts.methodEvidenceRef === `sandbox:demo:${key}:evidence`) ?? null;
+}
+function sandboxRecoveryFacts(order: NativeCheckoutRecoveryOrder, key: DemoMethod): SandboxMethodFacts {
+  return { authorizationRef: `sandbox:demo:${order.orderId}`, unattendedChargeAuthorizedAt: order.createdAt,
+    payerAccountRef: null, methodRef: `sandbox:demo:${key}`, methodEvidenceRef: `sandbox:demo:${key}:evidence` };
+}
+
+/** Exact native attempt execution. No browser assertion establishes payment truth. */
+export function composeSandboxRecoveryPayments(pool: Pool, lane: Pick<PostgresRoleFreeTransactionLane,'run'>,
+  tokens: PurchaseRecovery['tokens'], keyring?: PromotionAcceptanceKeyring): ApplicationBindings['actions'] {
+  const codec = createCheckoutPaymentContinuationCodec(keyring?.current, { cookieName: sandboxRecoveryPolicy.cookieName,
+    executionRails: sandboxRecoveryPolicy.rails });
+  const reader = createPostgresCheckoutRecoveryOrderPort(pool);
+  const refused = (code = 'starter_recovery_unavailable') => ({ ok: false as const, code });
+  const paymentFailure = (error: unknown): import('../shared/api.ts').ActionResult => {
+    const kind = error instanceof Error && 'kind' in error ? error.kind : null;
+    return { ...refused(error instanceof Error && error.message.includes('native_prepared_attempt_store_unsupported') ? 'native_prepared_attempt_store_unsupported' : undefined),
+      status: kind === 'upstream_unavailable' ? 503 : kind === 'unauthorized' ? 403 : kind === 'bad_request' ? 400 : 409 };
+  };
+  const fields = (payload: Record<string,unknown>, allowed: string[]) => Object.keys(payload).every(key => key === 'locale' || allowed.includes(key));
+  const method = (value: unknown): value is DemoMethod => sandboxRecoveryPolicy.methodKeys.some(key => key === value);
+  const hold = { readHolds: async () => [], classify: (_input: unknown) => null, offeredMethods: (_kind: string) => new Set<string>() };
+  return {
+    'checkout.tokenPay': async (payload, context) => {
+      if (!fields(payload,['token','methodKey','executionRail']) || typeof payload.token !== 'string' || !method(payload.methodKey)) return refused('starter_input_invalid');
+      if (payload.executionRail !== undefined && payload.executionRail !== 'sandbox') return refused('native_prepared_attempt_store_unsupported');
+      try {
+        const base = createCheckoutRecoveryPayService(createPostgresSandboxCheckoutRecoveryAttemptPort(pool,context.config.purchase.sandbox));
+        const service = createCheckoutRecoveryTokenPay({ tokenPort: tokens, orderPort: reader, payService: withCheckoutRecoveryPaymentHold(base,hold) });
+        // Resolve method facts only from the token's real order, never supplied identities.
+        const bearer = await tokens.inspect(payload.token);
+        if (!bearer || classifyCheckoutRecoveryTokenState(bearer.tokenState) !== 'continuation') return refused();
+        const order = await reader.getLatestRecoveryOrder!({ orderId: bearer.orderId });
+        if (!order || order.clientId !== bearer.clientId) return refused();
+        const result = await service.pay({ token: payload.token, followLatest: true, idempotencyKey: `starter-token-pay:${context.commandKey}`,
+          method: sandboxRecoveryFacts(order,payload.methodKey) });
+        mintSandboxContinuation(context,keyring,{ ...result, replayed:result.replayed });
+        return { ok: true, value: { orderRef: result.orderId, attemptRef: result.paymentAttemptId, state: result.status }, replayed: result.replayed };
+      } catch (error) { return paymentFailure(error); }
+    },
+    'checkout.inlineRetry': async (payload, context) => {
+      if (!fields(payload,['orderRef','expectedAttemptRef','retryRequestId','methodKey','executionRail'])
+        || !isUuid(payload.orderRef) || !isUuid(payload.expectedAttemptRef) || !isUuid(payload.retryRequestId) || !method(payload.methodKey)) return refused('starter_input_invalid');
+      const claims = codec?.verifyCookieHeader(context.requestCookie);
+      if (!codec || !claims || claims.orderId !== payload.orderRef || claims.paymentAttemptId !== payload.expectedAttemptRef) return refused('starter_continuation_required');
+      try {
+        const order = await reader.getRecoveryOrder({ orderId: claims.orderId });
+        if (!order) return refused();
+        const result = await createCheckoutInlineRecovery({ codec, guidance: { port: createPostgresPaymentRecoveryGuidancePort(pool,normalizeSandboxPaymentRecoveryEvidence) },
+          orderPort: reader, attemptPort: createPostgresSandboxInlineRecoveryAttemptPort(pool,{ ...context.config.purchase.sandbox, methodKeyFor: sandboxRecoveryMethod }),
+          executionAllowed: input => input.executionRail === 'sandbox' && method(input.methodKey), hold,
+        }).retry({ headers: { cookie: context.requestCookie }, orderId: claims.orderId, clientId: claims.clientId,
+          paymentIntentId: claims.paymentIntentId, journeyId: claims.journeyId, expectedPaymentAttemptId: payload.expectedAttemptRef,
+          retryRequestId: payload.retryRequestId, executionRail: typeof payload.executionRail === 'string' ? payload.executionRail : 'sandbox',
+          methodKey: payload.methodKey, method: sandboxRecoveryFacts(order,payload.methodKey) });
+        context.setCookie?.(result.setCookie);
+        return { ok: true, value: { orderRef: result.result.orderId, attemptRef: result.result.paymentAttemptId, state: result.result.status,
+          clientAction: result.result.clientAction }, replayed: result.result.replayed };
+      } catch (error) { return paymentFailure(error); }
+    },
+    'checkout.payment': async (payload, context) => {
+      if (!fields(payload,['action','orderRef','token','attemptRef','outcome']) || !isUuid(payload.orderRef)
+        || !['inspect','simulate'].includes(String(payload.action))) return refused('starter_input_invalid');
+      const claims = codec?.verifyCookieHeader(context.requestCookie);
+      const bound = claims?.orderId === payload.orderRef ? claims : null;
+      const inspected = typeof payload.token === 'string' ? await tokens.inspect(payload.token) : null;
+      const bearer = inspected && classifyCheckoutRecoveryTokenState(inspected.tokenState) === 'continuation' ? inspected : null;
+      if (!bound && !bearer) return refused('starter_continuation_required');
+      try {
+        const order = await reader.getRecoveryOrder({ orderId: payload.orderRef });
+        if (!order || order.subscriptionCycleId !== null || !order.paymentIntentId
+          || order.clientId !== (bound?.clientId ?? bearer?.clientId)) return refused();
+        const latest = bearer ? await reader.getLatestRecoveryOrder!({orderId:bearer.orderId}) : null;
+        const original = bearer ? await reader.getRecoveryOrder({orderId:bearer.orderId}) : null;
+        const tokenBound = !!bearer && !!original && original.subscriptionCycleId === null && original.clientId === order.clientId
+          && latest?.orderId === order.orderId && latest.clientId === order.clientId;
+        if (!bound && !tokenBound) return refused();
+        const simulator = createPostgresSandboxPaymentSimulator(pool,context.config.purchase.sandbox);
+        const attempt = await simulator.readAttempt({ settlementIntentId: order.paymentIntentId });
+        if (!tokenBound && (!bound || bound.paymentIntentId !== attempt?.settlementIntentId || bound.paymentAttemptId !== attempt?.id)) return refused('starter_continuation_required');
+        if (payload.action === 'inspect') {
+          const recovery = await readAuthorizedPaymentRecovery({ request: { orderId: order.orderId, clientId: order.clientId,
+            paymentIntentId: order.paymentIntentId, ...(bound ? { journeyId: bound.journeyId } : {}) }, claims: bound,
+            authorization: bearer ? `Bearer ${String(payload.token)}` : undefined,
+            deps: { tokenPort: tokens, port: createPostgresPaymentRecoveryGuidancePort(pool,normalizeSandboxPaymentRecoveryEvidence) } });
+          const paymentBlocked = order.status !== 'pending_payment' || order.technicallyExpired || attempt?.state === 'captured'
+            || attempt?.latestObservation?.outcome === 'captured' || recovery?.snapshot.observedSuccess === true;
+          const current = !paymentBlocked && !!attempt && bound?.paymentAttemptId === attempt.id && bound.paymentIntentId === attempt.settlementIntentId;
+          const key = attempt ? sandboxRecoveryMethod(attempt.methodFacts) : null;
+          return { ok: true, value: { orderRef: order.orderId, attemptRef: attempt?.id ?? null, state: attempt?.state ?? null,
+            paymentBlocked, canTokenPay: !paymentBlocked && tokenBound, continuationAvailable: current, methodKey: key, canInlineRetry: current && !!key && attempt?.state === 'refused'
+              && !!recovery?.guidance && recovery.guidance.actions.some(action => ['change_instrument','correct_data','change_method'].includes(action)),
+            ...(recovery?.guidance ? { recoveryGuidance: recovery.guidance } : {}) } };
+        }
+        if (!attempt || !sameUuid(payload.attemptRef,attempt.id) || order.status !== 'pending_payment' || order.technicallyExpired
+          || attempt.state === 'captured' || attempt.latestObservation?.outcome === 'captured'
+          || !['captured','refused','expired','indeterminate'].includes(String(payload.outcome))) return refused();
+        const outcome = payload.outcome as 'captured'|'refused'|'expired'|'indeterminate';
+        const observation = await simulator.recordObservation({ attemptId: attempt.id, idempotencyKey: `starter-execution:${attempt.id}:${outcome}`,
+          outcome, occurredAt: attempt.dispatchedAt });
+        const accepted = await simulator.ingress.receive({ rawBody: new TextEncoder().encode(JSON.stringify({ settlementIntentId: order.paymentIntentId,
+          attemptId: attempt.id, observationId: observation.id })), headers: {}, receivedAt: attempt.dispatchedAt });
+        if (accepted.status !== 200) return refused();
+        if (outcome === 'captured' && order.mode === 'subscription_cycle') await createAcquisitionRenewalBinding(pool).activate({ orderId: order.orderId,
+          acceptedQuote: order.quoteSnapshot as Parameters<ReturnType<typeof createAcquisitionRenewalBinding>['activate']>[0]['acceptedQuote'],
+          capturedReference: order.paymentIntentId, methodFacts: attempt.methodFacts, stockSourceKey: `starter-demo:${context.config.id}`, templateId: `starter:${context.config.id}` });
+        return { ok: true, value: { orderRef: order.orderId, attemptRef: attempt.id, state: outcome } };
+      } catch { return refused(); }
+    },
+    'checkout.paymentLink': async (payload, context) => {
+      if (!fields(payload,[])) return refused('starter_input_invalid');
+      const response = { result: refused() as Awaited<ReturnType<NonNullable<ApplicationBindings['actions']['checkout.paymentLink']>>> };
+      const handler = createCheckoutPaymentLinkHandler<typeof response>({ codec, respond: portalResponder,
+        createPort: () => ({ issue: input => lane.run(db => createPostgresBuyerCheckoutLinkPort(db as PgGatewayClient,{ lifetimeMs: sandboxRecoveryPolicy.buyerLifetimeMs,
+          sendBucketMs: sandboxRecoveryPolicy.buyerSendBucketMs }).issue(input)) }) });
+      await handler({ method: 'POST', headers: { cookie: context.requestCookie }, body: {} },response);
+      return response.result;
+    },
+  };
+}
+
+
+/** Called only after the native owner returned a dispatched attempt. */
+export function mintSandboxContinuation(context: ActionContext, keyring: PromotionAcceptanceKeyring | undefined,
+  result: { orderId:string;clientId:string;paymentIntentId:string;paymentAttemptId:string;replayed:boolean }) {
+  const codec=createCheckoutPaymentContinuationCodec(keyring?.current,{cookieName:sandboxRecoveryPolicy.cookieName,executionRails:sandboxRecoveryPolicy.rails});
+  if (!codec) return;
+  mintPaymentContinuationOnFreshAction({mint:(_res,input)=>context.setCookie?.(codec.issue(input).setCookie),res:{setHeader(){}},
+    journeyId:`checkout:${result.orderId}`,clientId:result.clientId,requestRail:'sandbox',
+    response:{status:'processing',clientAction:{kind:'none'}},result:{...result,executionRail:'sandbox',continuationActionOrigin:result.replayed?null:'fresh_execution'}},sandboxRecoveryPolicy.rails);
 }

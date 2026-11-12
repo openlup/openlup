@@ -1,9 +1,9 @@
-import { createPostgresCheckoutRecoveryWaves, createPostgresOperatorCheckoutLinkStore, createOutboxCheckoutRecoveryEmailHandler, createOutboxCheckoutExpiredEmailHandler } from '@openlup/platform/commerce/server';
+import { createPostgresBuyerCheckoutLinkPort, createPostgresCheckoutRecoveryWaves, createPostgresOperatorCheckoutLinkStore, createOutboxCheckoutRecoveryEmailHandler, createOutboxCheckoutExpiredEmailHandler } from '@openlup/platform/commerce/server';
 import type { OrderPaymentLifecyclePort } from '@openlup/platform/commerce';
 import { createPostgresPlatformJobRunLedger } from '@openlup/platform/job-ledger';
 import { createCheckoutRecoveryWaveJob } from '@openlup/platform/composition';
 import { withCheckoutRecoverySendEvidence } from '@openlup/platform/communications';
-import { checkoutRecoverySchedule, checkoutWavePolicy } from '../owned/acquisition-policy.ts';
+import { sandboxRecoveryPolicy, checkoutRecoverySchedule, checkoutWavePolicy } from '../owned/acquisition-policy.ts';
 import { copy } from '../owned/copy.ts';
 import { routes } from '../shared/routes.ts';
 import { PLATFORM_EVENT_VOCABULARY } from '@openlup/core/outbox';
@@ -156,11 +156,12 @@ export async function runCheckoutRecovery(input: { executor: import('pg').Pool; 
       subscriptionActivationAbandoned: row.metadata?.subscriptionActivation === 'abandoned' } : null;
   } };
   const key = (eventId: string) => `checkout-mail:${eventId}`;
-  const send = async (send: { to: string; orderId: string; recoveryToken?: string | null; outboxEventId: string; locale?: Locale; signal: AbortSignal }, expired: boolean, final = false) => {
+  const send = async (send: { to: string; orderId: string; recoveryToken?: string | null; outboxEventId: string; locale?: Locale; signal: AbortSignal; linkSource?: string }, expired: boolean, final = false) => {
     send.signal.throwIfAborted();
     const language = send.locale ?? locale(null), selected = copy[language];
     const url = new URL(routes.completion[language], input.publicOrigin);
     if (send.recoveryToken) url.searchParams.set('token', send.recoveryToken);
+    if (send.linkSource) url.searchParams.set('source', send.linkSource);
     const messageKey = key(send.outboxEventId);
     if (!await capture.read(messageKey)) await capture.writeOnce(messageKey, { schemaVersion: 1,
       kind: expired ? 'checkout_expired' : 'checkout_recovery', outboxEventId: send.outboxEventId,
@@ -193,14 +194,16 @@ export async function runCheckoutRecovery(input: { executor: import('pg').Pool; 
   const registry = uniqueRegistry([
     { ...automatic, async handle(row, signal) {
       const operatorIssued = row.metadata.source === 'admin_payment_link';
-      const gate = operatorIssued ? await createPostgresOperatorCheckoutLinkStore(executor).authorize(row.id, String(row.metadata.claimToken))
+      const buyerRequested = row.metadata.source === 'buyer_payment_link';
+      const gate = buyerRequested ? await createPostgresBuyerCheckoutLinkPort(executor,{ lifetimeMs: sandboxRecoveryPolicy.buyerLifetimeMs, sendBucketMs: sandboxRecoveryPolicy.buyerSendBucketMs }).authorize(row.id,String(row.metadata.claimToken))
+        : operatorIssued ? await createPostgresOperatorCheckoutLinkStore(executor).authorize(row.id, String(row.metadata.claimToken))
         : await waves.authorize(row.id, String(row.metadata.claimToken));
       if (!gate.authorized) return gate.reason === 'checkout_recovery_no_longer_allowed'
         ? { kind: 'retry' as const, reason: gate.reason }
         : { kind: 'processed' as const, detail: { skipped: gate.reason ?? 'not_authorized' } };
       // Reclaimed automatic mail must restore confirmed evidence even when the private send already exists.
-      if (!operatorIssued && await capture.read(key(row.id))) await waves.recordConfirmedSend(row.id, key(row.id));
-      return (operatorIssued ? operator : automatic).handle(row, signal);
+      if (!operatorIssued && !buyerRequested && await capture.read(key(row.id))) await waves.recordConfirmedSend(row.id, key(row.id));
+      return (operatorIssued || buyerRequested ? operator : automatic).handle(row, signal);
     } }, expiredHandler,
   ]);
   const delivered = await runOutboxDispatchWorker({ store: createPostgresOutboxStore(executor), registry,

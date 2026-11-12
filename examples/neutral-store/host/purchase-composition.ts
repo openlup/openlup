@@ -1,3 +1,4 @@
+import { mintSandboxContinuation } from './checkout-recovery.ts';
 import { isInitialCheckoutOrder, sameUuid } from './recurring-fence.ts';
 import { createHash } from 'node:crypto';
 import type { Pool } from 'pg';
@@ -214,6 +215,8 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
       const simulator = createPostgresSandboxPaymentSimulator(db, context.config.purchase.sandbox);
       const attempt = await simulator.beginAttempt({ settlementIntentId: intent.id, idempotencyKey: key,
         requestFingerprint: hash([order.id, payload.outcome]), at: new Date().toISOString() });
+      mintSandboxContinuation(context,quoteOptions.keyring,{orderId:attempt.orderId,clientId:order.client_id,
+        paymentIntentId:attempt.settlementIntentId,paymentAttemptId:attempt.id,replayed:attempt.replayed});
       const observation = await simulator.recordObservation({ attemptId: attempt.id, idempotencyKey: `${key}:observation`,
         outcome: payload.outcome as 'captured' | 'refused' | 'expired' | 'indeterminate', occurredAt: attempt.dispatchedAt });
       const accepted = await simulator.ingress.receive({ rawBody: new TextEncoder().encode(JSON.stringify({

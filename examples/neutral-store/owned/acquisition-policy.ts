@@ -49,3 +49,8 @@ export function savedAddressValidation(country: string) {
 
 /** Billing/default hints deliberately stay unselected until the billing store is composed. */
 export const accountBillingSelection = 'not_selected' as const;
+
+
+/** Explicit synthetic identities only; no real instrument or provider taxonomy. */
+export const sandboxRecoveryPolicy = { cookieName: '__Host-openlup_checkout_continuation', rails: ['sandbox','external'] as const,
+  methodKeys: ['primary','secondary'] as const, buyerLifetimeMs: 86400000, buyerSendBucketMs: 600000 };

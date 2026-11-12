@@ -1604,6 +1604,171 @@ for (const locale of ['en','pl'] as const) {
       expect((await call(page, operation, { action: 'read', clientId: f.clientId })).code).toBe('customer_session_required');
     await context.addCookies(cookies);
   });
+
+  async function paymentCall(page: Page, operation: string, data: Record<string,unknown>, key: string = randomUUID()) {
+    if (!page.url().startsWith(material.baseURL)) await page.goto(routes.builder[locale]);
+    return page.evaluate(async ({ operation,data,key }) => {
+      const response=await fetch(`/api/actions/${operation}`,{method:'POST',credentials:'same-origin',
+        headers:{'Content-Type':'application/json','X-Starter-Request':'1','Idempotency-Key':key},body:JSON.stringify(data)});
+      return response.json();
+    },{operation,data,key});
+  }
+
+  for (const mode of ['one_time','subscription'] as const) test(`${locale}: payment retry token pay and exact cookie retry settle one ${mode} order`, async ({ page, context }) => {
+    const f = await pendingCheckout(page,locale,mode);
+    expect((await context.cookies()).filter(c => c.name === '__Host-openlup_checkout_continuation')).toHaveLength(0);
+    await page.goto(routes.completion[locale] + '?token=' + f.token);
+    const paidStart=page.waitForResponse(r=>r.url().endsWith('/api/actions/checkout.tokenPay'));
+    await page.getByRole('button', { name: copy[locale].recoveryPay, exact: true }).click();
+    const started=(await (await paidStart).json()); expect(started.ok).toBe(true);
+    await expect(page.locator('main')).toContainText(started.value.attemptRef);
+    await expect(page.getByRole('button', { name: copy[locale].simulateDeclined, exact: true })).toBeVisible();
+    const issued = (await context.cookies()).find(c => c.name === '__Host-openlup_checkout_continuation');
+    expect(issued).toMatchObject({ secure: true, httpOnly: true, sameSite: 'Strict', path: '/' });
+    const count = async () => (await owner.query('SELECT count(*)::int AS n FROM public.payment_simulator_attempts WHERE settlement_intent_id IN (SELECT id FROM public.commerce_settlement_intents WHERE order_id=$1)',[f.orderRef])).rows[0].n;
+    expect(await count()).toBe(1);
+    await page.getByRole('button', { name: copy[locale].simulateDeclined, exact: true }).click();
+    await expect(page.locator('[data-payment-guidance]')).toContainText(copy[locale].guidanceBody);
+    const retry = page.locator('form').filter({ has: page.getByRole('button',{ name: copy[locale].inlineRetry, exact: true }) });
+    await retry.locator('[name=methodKey]').selectOption(mode==='one_time'?'primary':'secondary'); await accessible(retry);
+    await retry.getByRole('button',{ name: copy[locale].inlineRetry, exact: true }).click();
+    await expect(page.getByRole('button',{ name: copy[locale].simulatePaid, exact: true })).toBeVisible();
+    expect(await count()).toBe(2);
+    await page.reload(); await page.getByRole('button',{ name: copy[locale].simulatePaid, exact: true }).click();
+    await expect(page.locator('main')).toContainText(copy[locale].recoveryPaid);
+    expect(await count()).toBe(2);
+    expect((await owner.query('SELECT count(*)::int AS n FROM public.commerce_orders WHERE client_id=(SELECT client_id FROM public.commerce_orders WHERE id=$1)',[f.orderRef])).rows[0].n).toBe(1);
+    expect((await owner.query("SELECT count(*)::int AS n FROM public.commerce_settlement_transitions t JOIN public.commerce_settlement_intents i ON i.id=t.intent_id WHERE i.order_id=$1 AND t.outcome='succeeded'",[f.orderRef])).rows[0].n).toBe(1);
+    expect((await paymentCall(page,'checkout.tokenPay',{ token:f.token,methodKey:'primary' })).ok).toBe(false);
+  });
+
+  test(`${locale}: payment retry replay, concurrent nonce and cookie authority never redispatch`, async ({ page, context }) => {
+    const f = await pendingCheckout(page,locale);
+    const key=randomUUID(), start=await paymentCall(page,'checkout.tokenPay',{ token:f.token,methodKey:'primary' },key); expect(start.ok).toBe(true);
+    expect((await paymentCall(page,'checkout.tokenPay',{ token:f.token,methodKey:'primary' },key)).value.attemptRef).toBe(start.value.attemptRef);
+    const cookies=await context.cookies();
+    expect((await paymentCall(page,'checkout.payment',{ action:'simulate',orderRef:f.orderRef,attemptRef:start.value.attemptRef,outcome:'refused' })).ok).toBe(true);
+    const input={ orderRef:f.orderRef,expectedAttemptRef:start.value.attemptRef,retryRequestId:randomUUID(),methodKey:'secondary',executionRail:'sandbox' };
+    await context.clearCookies();
+    expect((await paymentCall(page,'checkout.inlineRetry',{ ...input,token:f.token })).ok).toBe(false);
+    expect((await paymentCall(page,'checkout.inlineRetry',input)).code).toBe('starter_continuation_required');
+    await context.addCookies(cookies);
+    expect((await paymentCall(page,'checkout.inlineRetry',{ ...input,executionRail:'external' })).code).toBe('native_prepared_attempt_store_unsupported');
+    for(const field of ['actorUserId','clientId','principalRef','paymentIntentId','cookie']) expect((await paymentCall(page,'checkout.inlineRetry',{ ...input,[field]:randomUUID() })).code).toBe('starter_input_invalid');
+    const other={ ...input,retryRequestId:randomUUID() };
+    const both=await Promise.all([paymentCall(page,'checkout.inlineRetry',input),paymentCall(page,'checkout.inlineRetry',other)]);
+    expect(both.filter(result=>result.ok)).toHaveLength(1);
+    const winner=both.find(result=>result.ok)!;
+    const admitted=both[0].ok?input:other;
+    // Re-submit only the nonce that actually won, using the actual old cookie after response loss.
+    await context.clearCookies();await context.addCookies(cookies);
+    expect((await paymentCall(page,'checkout.payment',{action:'simulate',orderRef:f.orderRef,attemptRef:winner.value.attemptRef,outcome:'captured'})).code).toBe('starter_continuation_required');
+    const { spawn } = await import('node:child_process'), { createServer } = await import('node:net');
+    const probe=createServer().listen(0,'127.0.0.1');await once(probe,'listening');
+    const port=(probe.address() as {port:number}).port;await new Promise<void>(done=>probe.close(()=>done()));
+    const priorURL=material.baseURL, connection=new URL(material.runtimeUrl), password=decodeURIComponent(connection.password);connection.password='';
+    const child=spawn(process.execPath,['--experimental-strip-types',resolve('host/server.ts'),'--configuration',material.id,'--port',String(port),
+      '--database-url',connection.href,'--quote-acceptance-key-file',resolve(material.state,'quote-key.json')],{cwd:material.state,env:{PGPASSWORD:password},stdio:['ignore','pipe','pipe']});
+    let diagnostic='';child.stdout.on('data',value=>{diagnostic+=String(value);});child.stderr.on('data',value=>{diagnostic+=String(value);});
+    try {
+      material.baseURL=`http://127.0.0.1:${port}`;
+      await expect.poll(()=>fetch(material.baseURL+'/api/config').then(r=>r.ok).catch(()=>false)).toBe(true);
+      const replay=await paymentCall(page,'checkout.inlineRetry',{ ...admitted,methodKey:'primary' });expect(replay.ok).toBe(true);expect(replay.replayed).toBe(true);expect(replay.value.attemptRef).toBe(winner.value.attemptRef);
+    } finally { material.baseURL=priorURL;await createPrivateCapture(resolve(material.state,'.context/captured-messages')).writeOnce('payment-restart:'+randomUUID(),{diagnostic});
+      const exited=once(child,'exit');child.kill('SIGTERM');await exited; }
+    expect((await owner.query('SELECT count(*)::int AS n FROM public.payment_simulator_attempts WHERE settlement_intent_id IN (SELECT id FROM public.commerce_settlement_intents WHERE order_id=$1)',[f.orderRef])).rows[0].n).toBe(2);
+    expect((await paymentCall(page,'checkout.inlineRetry',input)).code).toBe('starter_continuation_required');
+    expect((await paymentCall(page,'checkout.payment',{ action:'simulate',orderRef:f.orderRef,attemptRef:start.value.attemptRef,outcome:'captured' })).ok).toBe(false);
+  });
+
+  test(`${locale}: payment retry expired revoked foreign and terminal authority refuses without new attempts`, async ({ page }) => {
+    const f=await pendingCheckout(page,locale), tokenHash=createHash('sha256').update(f.token).digest('hex');
+    for(const change of ["created_at=clock_timestamp()-interval '2 days',expires_at=clock_timestamp()-interval '1 day'","revoked_at=clock_timestamp()"]){
+      await owner.query(`UPDATE public.commerce_checkout_recovery_tokens SET ${change} WHERE token_hash=$1`,[tokenHash]);
+      expect((await paymentCall(page,'checkout.tokenPay',{ token:f.token,methodKey:'primary' })).ok).toBe(false);
+      await owner.query("UPDATE public.commerce_checkout_recovery_tokens SET expires_at=clock_timestamp()+interval '1 day',revoked_at=NULL WHERE token_hash=$1",[tokenHash]);
+    }
+    expect((await paymentCall(page,'checkout.tokenPay',{ token:f.token,methodKey:'primary',clientId:randomUUID() })).code).toBe('starter_input_invalid');
+    expect((await paymentCall(page,'checkout.tokenPay',{ token:f.token,methodKey:'primary',executionRail:'external' })).code).toBe('native_prepared_attempt_store_unsupported');
+    expect((await owner.query('SELECT id FROM public.payment_simulator_attempts WHERE settlement_intent_id IN (SELECT id FROM public.commerce_settlement_intents WHERE order_id=$1)',[f.orderRef])).rows).toHaveLength(0);
+    const started=await paymentCall(page,'checkout.tokenPay',{ token:f.token,methodKey:'primary' });expect(started.ok).toBe(true);
+    expect((await paymentCall(page,'checkout.tokenPay',{ token:f.token,methodKey:'secondary' })).ok).toBe(false);
+    expect((await paymentCall(page,'checkout.payment',{ action:'simulate',token:f.token,orderRef:f.orderRef,attemptRef:started.value.attemptRef,outcome:'captured' })).ok).toBe(true);
+    expect((await paymentCall(page,'checkout.tokenPay',{ token:f.token,methodKey:'primary' })).ok).toBe(false);
+    const terminal=await paymentCall(page,'checkout.payment',{action:'inspect',orderRef:f.orderRef});
+    // Native paid snapshots intentionally have no open payment intent. The execution entry refuses.
+    expect(terminal.code).toBe('starter_recovery_unavailable');
+    await page.goto(routes.completion[locale]+'?token='+f.token);
+    await expect(page.locator('main')).toContainText(copy[locale].recoveryPaid);
+    await expect(page.getByRole('button',{name:copy[locale].recoveryPay,exact:true})).toHaveCount(0);
+    expect((await paymentCall(page,'checkout.paymentLink',{})).ok).toBe(false);
+  });
+
+  test(`${locale}: payment retry follows the latest recovery lineage without ordinary-action bypass`, async ({ page }) => {
+    const f=await expiredCheckout(page,locale);
+    const first=await call(page,'checkout.recovery',{token:f.token,action:'pay'});expect(first.ok).toBe(true);
+    const target={token:f.token,orderRef:first.value.latestOrderRef,attemptRef:first.value.attemptRef};
+    expect((await call(page,'checkout.recovery',{...target,action:'simulate',outcome:'refused'})).ok).toBe(true);
+    expect((await call(page,'payment.simulate',{token:f.token,orderRef:target.orderRef,outcome:'captured'})).ok).toBe(false);
+    await page.goto(routes.completion[locale]+'?token='+f.token);
+    await expect(page.locator('main')).toContainText(target.orderRef);
+    const started=page.waitForResponse(r=>r.url().endsWith('/api/actions/checkout.tokenPay'));
+    await page.getByRole('button',{name:copy[locale].recoveryPay,exact:true}).click();
+    const result=await (await started).json();expect(result.ok).toBe(true);expect(result.value.orderRef).toBe(target.orderRef);
+    await expect(page.locator('main')).toContainText(result.value.attemptRef);
+    await owner.query("UPDATE public.commerce_checkout_recovery_tokens SET created_at=clock_timestamp()-interval '2 days',expires_at=clock_timestamp()-interval '1 day' WHERE token_hash=$1",[createHash('sha256').update(f.token).digest('hex')]);
+    await page.reload();await expect(page.locator('main')).toContainText(result.value.attemptRef);
+    await page.getByRole('button',{name:copy[locale].simulatePaid,exact:true}).click();
+    await expect(page.locator('main')).toContainText(copy[locale].recoveryPaid);await page.reload();await expect(page.locator('main')).toContainText(copy[locale].recoveryPaid);
+    expect((await runtime.query('SELECT status FROM public.commerce_orders WHERE id=$1',[f.orderRef])).rows[0].status).toBe('expired');
+    expect((await runtime.query('SELECT id FROM public.commerce_orders WHERE recreated_from_order_id=$1',[f.orderRef])).rows).toHaveLength(1);
+    expect((await owner.query('SELECT a.id FROM public.payment_simulator_attempts a JOIN public.commerce_settlement_intents i ON i.id=a.settlement_intent_id WHERE i.order_id=$1',[target.orderRef])).rows).toHaveLength(2);
+  });
+
+  test(`${locale}: embedded browser send resend remount and failure preserve one buyer link and the same order`, async ({ page, browser }) => {
+    await page.addInitScript(()=>Object.defineProperty(navigator,'userAgent',{ get:()=> 'Example FB_IAB/ webview' }));
+    const f=await pendingCheckout(page,locale);
+    await page.goto(routes.completion[locale]+'?token='+f.token);
+    await expect(page.locator('[data-buyer-link]')).toHaveCount(0);
+    await page.getByRole('button',{ name:copy[locale].recoveryPay,exact:true }).click();
+    const hatch=page.locator('[data-buyer-link]');await expect(hatch).toBeVisible();await accessible(hatch);
+    await page.getByRole('button',{name:copy[locale].simulateDeclined,exact:true}).click();
+    await expect(page.locator('[data-payment-guidance]')).toContainText(copy[locale].guidanceBody);
+    await hatch.getByRole('button',{ name:copy[locale].buyerLinkSend,exact:true }).click();await expect(hatch).toContainText(copy[locale].buyerLinkSent);
+    await hatch.getByRole('button',{ name:copy[locale].buyerLinkResend,exact:true }).click();
+    const events=async()=>(await runtime.query("SELECT id FROM public.outbox_events WHERE aggregate_id=$1 AND metadata->>'source'='buyer_payment_link'",[f.orderRef])).rows;
+    expect(await events()).toHaveLength(1);
+    await page.locator('main').getByRole('link',{ name:copy[locale].account,exact:true }).click(); await page.goBack();
+    await expect(hatch.getByRole('button',{ name:copy[locale].buyerLinkResend,exact:true })).toBeVisible();
+    await page.route('**/api/actions/checkout.paymentLink',route=>route.abort());
+    await hatch.getByRole('button',{ name:copy[locale].buyerLinkResend,exact:true }).click();await expect(hatch).toContainText(copy[locale].buyerLinkFailed);
+    await page.unroute('**/api/actions/checkout.paymentLink');
+    await checkoutMail(locale);
+    const event=(await events())[0];const artifact=(await messages()).find(row=>row.outboxEventId===event.id);
+    expect(Boolean(artifact?.recoveryUrl)).toBe(true);
+    const outsideContext=await browser.newContext(),outside=await outsideContext.newPage();await outside.goto(String(artifact!.recoveryUrl));
+    await expect(outside.locator('main')).toContainText(f.orderRef);
+    // A fresh browser has bearer authority but no continuation cookie from the embedded tab.
+    const start=outside.waitForResponse(r=>r.url().endsWith('/api/actions/checkout.tokenPay'));
+    await outside.getByRole('button',{name:copy[locale].recoveryPay,exact:true}).click();
+    const issued=await (await start).json();expect(issued.ok).toBe(true);await expect(outside.locator('main')).toContainText(issued.value.attemptRef);
+    await outside.getByRole('button',{ name:copy[locale].simulatePaid,exact:true }).click();await expect(outside.locator('main')).toContainText(copy[locale].recoveryPaid);
+    expect((await owner.query('SELECT id FROM public.payment_simulator_attempts WHERE settlement_intent_id IN (SELECT id FROM public.commerce_settlement_intents WHERE order_id=$1)',[f.orderRef])).rows).toHaveLength(2);
+    await outsideContext.close();
+  });
+
+  test(`${locale}: embedded browser cookie-only link refuses missing cookie and ordinary browser hides the control`, async ({ page, context }) => {
+    const f=await pendingCheckout(page,locale);
+    expect((await paymentCall(page,'checkout.paymentLink',{})).ok).toBe(false);
+    const started=await paymentCall(page,'payment.simulate',{ orderRef:f.orderRef,token:f.token,outcome:'refused' });expect(started.ok).toBe(true);
+    expect((await context.cookies()).some(c=>c.name==='__Host-openlup_checkout_continuation')).toBe(true);
+    await page.goto(routes.completion[locale]+'?token='+f.token);await expect(page.getByRole('button',{ name:copy[locale].simulatePaid,exact:true })).toBeVisible();
+    await expect(page.locator('[data-buyer-link]')).toHaveCount(0);
+    expect((await paymentCall(page,'checkout.paymentLink',{ orderId:randomUUID(),email:'forged@example.test' })).code).toBe('starter_input_invalid');
+    await context.clearCookies();expect((await paymentCall(page,'checkout.paymentLink',{})).ok).toBe(false);
+    expect((await owner.query("SELECT id FROM public.outbox_events WHERE aggregate_id=$1 AND metadata->>'source'='buyer_payment_link'",[f.orderRef])).rows).toHaveLength(0);
+  });
+
 }
 
 });
