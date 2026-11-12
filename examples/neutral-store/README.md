@@ -1067,7 +1067,7 @@ No payment-method hold policy is selected by this application; the public hold
 wrapper receives that explicit unconfigured policy. Real-provider execution,
 method setup and card replacement keep their named refusals.
 
-The owned `embeddedCheckoutBrowserMarkers` constant in `owned/acquisition-policy.ts`
+The owned `embeddedCheckoutBrowserMarkers` constant in `owned/checkout-display.ts`
 contains display hints only and grants no payment or delivery authority.
 Only detected embedded browsers show the buyer send/send-again control after real
 continuation exists. Detection is a display hint, never authority. The native
