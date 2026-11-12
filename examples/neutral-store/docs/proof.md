@@ -1007,7 +1007,12 @@ atomic guidance, expected predecessor and retry nonce. Witnesses cover one-time
 and provisional initial subscription dispatch, same/different demo choices,
 verified refusal, concurrent nonces, replay through a fresh host process with the
 same private signing root, cookie rotation, stale predecessor refusal, captured
-settlement and reload. Token and inline retries create no new order or second financial settlement.
+settlement and reload. The replay journey owns its private host key from the first
+native dispatch, crashes that disposable host and starts a distinct process with the persisted
+key. Browser requests navigate to the actual host origin and verify that origin
+after replay. Exited children are not awaited a second time. Cancellation journeys
+wait for the specifically named cancellation form, independently of earlier order
+controls and asynchronous parcel reads. Token and inline retries create no new order or second financial settlement.
 A lineage journey retries a declined replacement through the dedicated entry,
 keeps one replacement order and leaves the expired predecessor terminal.
 Missing or mismatched cookie, supplied identity, real-provider rail, expired or

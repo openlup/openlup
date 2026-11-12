@@ -811,7 +811,7 @@ for (const locale of ['en', 'pl'] as const) {
     expect((await call(page, 'payment.simulate', { orderRef: f.orderRef, token: f.token, outcome: 'captured' })).ok).toBe(true);
     const shipment = await parcel(f.orderRef); await portalOperator(page, locale);
     const panel = await operatorDetail(page, f.orderRef, locale);
-    const form = panel.locator('form').filter({ has: page.locator('[name=confirmed]') }).last(); await expect(form).toBeVisible(); await accessible(form);
+    const form = panel.locator('form').filter({ has: page.getByRole('button', { name: copy[locale].cancelFulfillment, exact: true }) }); await expect(form).toBeVisible(); await accessible(form);
     await form.locator('[name=reason]').fill('Cancel this fictional parcel'); await form.locator('[name=confirmed]').check();
     const request = page.waitForRequest(row => row.url().endsWith('/api/actions/operator.cancelFulfillment'));
     await form.getByRole('button', { name: copy[locale].cancelFulfillment, exact: true }).click();
@@ -850,7 +850,8 @@ for (const locale of ['en', 'pl'] as const) {
     const facts = async () => ({ money: (await runtime.query('SELECT to_jsonb(i) AS value FROM public.commerce_settlement_intents i WHERE order_id=$1', [f.orderRef])).rows,
       invoice: (await runtime.query('SELECT to_jsonb(d) AS value FROM public.accounting_documents d WHERE id=$1', [document])).rows });
     const before = await facts(), panel = await operatorDetail(page, f.orderRef, locale);
-    const form = panel.locator('form').filter({ has: page.locator('[name=confirmed]') }).last();
+    const form = panel.locator('form').filter({ has: page.getByRole('button', { name: copy[locale].cancelFulfillment, exact: true }) });
+    await expect(form).toBeVisible(); await accessible(form);
     await form.locator('[name=reason]').fill(request.reason); await form.locator('[name=confirmed]').check();
     await form.getByRole('button', { name: copy[locale].cancelFulfillment, exact: true }).click();
     await expect(page.locator('[data-parcel-result]')).toContainText('cancelled');
@@ -1608,7 +1609,7 @@ for (const locale of ['en','pl'] as const) {
   });
 
   async function paymentCall(page: Page, operation: string, data: Record<string,unknown>, key: string = randomUUID()) {
-    if (!page.url().startsWith(material.baseURL)) await page.goto(routes.builder[locale]);
+    if (new URL(page.url()).origin !== material.baseURL) await page.goto(new URL(routes.builder[locale], material.baseURL).href);
     return page.evaluate(async ({ operation,data,key }) => {
       const response=await fetch(`/api/actions/${operation}`,{method:'POST',credentials:'same-origin',
         headers:{'Content-Type':'application/json','X-Starter-Request':'1','Idempotency-Key':key},body:JSON.stringify(data)});
@@ -1699,42 +1700,69 @@ for (const locale of ['en','pl'] as const) {
   });
 
   test(`${locale}: payment retry replay, concurrent nonce and cookie authority never redispatch`, async ({ page, context }) => {
-    const f = await pendingCheckout(page,locale);
-    const key=randomUUID(), start=await paymentCall(page,'checkout.tokenPay',{ token:f.token,methodKey:'primary' },key); expect(start.ok).toBe(true);
-    expect((await paymentCall(page,'checkout.tokenPay',{ token:f.token,methodKey:'primary' },key)).value.attemptRef).toBe(start.value.attemptRef);
-    const cookies=await context.cookies();
-    expect((await paymentCall(page,'checkout.payment',{ action:'simulate',orderRef:f.orderRef,attemptRef:start.value.attemptRef,outcome:'refused' })).ok).toBe(true);
-    const input={ orderRef:f.orderRef,expectedAttemptRef:start.value.attemptRef,retryRequestId:randomUUID(),methodKey:'secondary',executionRail:'sandbox' };
-    await context.clearCookies();
-    expect((await paymentCall(page,'checkout.inlineRetry',{ ...input,token:f.token })).ok).toBe(false);
-    expect((await paymentCall(page,'checkout.inlineRetry',input)).code).toBe('starter_continuation_required');
-    await context.addCookies(cookies);
-    expect((await paymentCall(page,'checkout.inlineRetry',{ ...input,executionRail:'external' })).code).toBe('native_prepared_attempt_store_unsupported');
-    for(const field of ['actorUserId','clientId','principalRef','paymentIntentId','cookie']) expect((await paymentCall(page,'checkout.inlineRetry',{ ...input,[field]:randomUUID() })).code).toBe('starter_input_invalid');
-    const other={ ...input,retryRequestId:randomUUID() };
-    const both=await Promise.all([paymentCall(page,'checkout.inlineRetry',input),paymentCall(page,'checkout.inlineRetry',other)]);
-    expect(both.filter(result=>result.ok)).toHaveLength(1);
-    const winner=both.find(result=>result.ok)!;
-    const admitted=both[0].ok?input:other;
-    // Re-submit only the nonce that actually won, using the actual old cookie after response loss.
-    await context.clearCookies();await context.addCookies(cookies);
-    expect((await paymentCall(page,'checkout.payment',{action:'simulate',orderRef:f.orderRef,attemptRef:winner.value.attemptRef,outcome:'captured'})).code).toBe('starter_continuation_required');
     const { spawn } = await import('node:child_process'), { createServer } = await import('node:net');
-    const probe=createServer().listen(0,'127.0.0.1');await once(probe,'listening');
-    const port=(probe.address() as {port:number}).port;await new Promise<void>(done=>probe.close(()=>done()));
-    const priorURL=material.baseURL, connection=new URL(material.runtimeUrl), password=decodeURIComponent(connection.password);connection.password='';
-    const child=spawn(process.execPath,['--experimental-strip-types',resolve('host/server.ts'),'--configuration',material.id,'--port',String(port),
-      '--database-url',connection.href,'--quote-acceptance-key-file',resolve(material.state,'quote-key.json')],{cwd:material.state,env:{PGPASSWORD:password},stdio:['ignore','pipe','pipe']});
-    let diagnostic='';child.stdout.on('data',value=>{diagnostic+=String(value);});child.stderr.on('data',value=>{diagnostic+=String(value);});
-    try {
+    const { mkdtemp, writeFile, rm } = await import('node:fs/promises'), { randomBytes } = await import('node:crypto');
+    const priorURL=material.baseURL, directory=await mkdtemp(resolve(material.state,'payment-replay-'));
+    const keyFile=resolve(directory,'quote-key.json'), capture=createPrivateCapture(resolve(material.state,'.context/captured-messages'));
+    await writeFile(keyFile,JSON.stringify({current:randomBytes(32).toString('base64url')}),{mode:0o600,flag:'wx'});
+    const connection=new URL(material.runtimeUrl),password=decodeURIComponent(connection.password);connection.password='';
+    const processes:number[]=[],readinessMs:number[]=[];
+    let stopHost:(()=>Promise<void>)|undefined;
+    const startHost=async()=>{
+      const probe=createServer().listen(0,'127.0.0.1');await once(probe,'listening');
+      const port=(probe.address() as {port:number}).port;await new Promise<void>(done=>probe.close(()=>done()));
+      const child=spawn(process.execPath,['--experimental-strip-types',resolve('host/server.ts'),'--configuration',material.id,
+        '--port',String(port),'--listen','127.0.0.1','--database-url',connection.href,'--quote-acceptance-key-file',keyFile],
+      {cwd:material.state,env:{PGPASSWORD:password},stdio:['ignore','pipe','pipe']});
+      processes.push(child.pid!);
+      let diagnostic='';child.stdout.on('data',value=>{diagnostic+=String(value);});child.stderr.on('data',value=>{diagnostic+=String(value);});
+      stopHost=async()=>{
+        // Crash/restart proves the committed receipt survives without a graceful drain.
+        if(child.exitCode===null && child.signalCode===null){const exited=once(child,'exit');child.kill('SIGKILL');await exited;}
+        await capture.writeOnce('payment-restart:'+randomUUID(),{diagnostic});
+      };
       material.baseURL=`http://127.0.0.1:${port}`;
+      const started=performance.now();
       await expect.poll(()=>fetch(material.baseURL+'/api/config').then(r=>r.ok).catch(()=>false)).toBe(true);
-      const replay=await paymentCall(page,'checkout.inlineRetry',{ ...admitted,methodKey:'primary' });expect(replay.ok).toBe(true);expect(replay.replayed).toBe(true);expect(replay.value.attemptRef).toBe(winner.value.attemptRef);
-    } finally { material.baseURL=priorURL;await createPrivateCapture(resolve(material.state,'.context/captured-messages')).writeOnce('payment-restart:'+randomUUID(),{diagnostic});
-      const exited=once(child,'exit');child.kill('SIGTERM');await exited; }
-    expect((await owner.query('SELECT count(*)::int AS n FROM public.payment_simulator_attempts WHERE settlement_intent_id IN (SELECT id FROM public.commerce_settlement_intents WHERE order_id=$1)',[f.orderRef])).rows[0].n).toBe(2);
-    expect((await paymentCall(page,'checkout.inlineRetry',input)).code).toBe('starter_continuation_required');
-    expect((await paymentCall(page,'checkout.payment',{ action:'simulate',orderRef:f.orderRef,attemptRef:start.value.attemptRef,outcome:'captured' })).ok).toBe(false);
+      readinessMs.push(Math.round(performance.now()-started));
+    };
+    try {
+      // The first real dispatch and its cookie belong to this host's private persisted key.
+      await startHost();
+      const f = await pendingCheckout(page,locale);
+      const key=randomUUID(), start=await paymentCall(page,'checkout.tokenPay',{ token:f.token,methodKey:'primary' },key); expect(start.ok).toBe(true);
+      expect((await paymentCall(page,'checkout.tokenPay',{ token:f.token,methodKey:'primary' },key)).value.attemptRef).toBe(start.value.attemptRef);
+      const cookies=await context.cookies();
+      expect((await paymentCall(page,'checkout.payment',{ action:'simulate',orderRef:f.orderRef,attemptRef:start.value.attemptRef,outcome:'refused' })).ok).toBe(true);
+      const input={ orderRef:f.orderRef,expectedAttemptRef:start.value.attemptRef,retryRequestId:randomUUID(),methodKey:'secondary',executionRail:'sandbox' };
+      await context.clearCookies();
+      expect((await paymentCall(page,'checkout.inlineRetry',{ ...input,token:f.token })).ok).toBe(false);
+      expect((await paymentCall(page,'checkout.inlineRetry',input)).code).toBe('starter_continuation_required');
+      await context.addCookies(cookies);
+      expect((await paymentCall(page,'checkout.inlineRetry',{ ...input,executionRail:'external' })).code).toBe('native_prepared_attempt_store_unsupported');
+      for(const field of ['actorUserId','clientId','principalRef','paymentIntentId','cookie']) expect((await paymentCall(page,'checkout.inlineRetry',{ ...input,[field]:randomUUID() })).code).toBe('starter_input_invalid');
+      const other={ ...input,retryRequestId:randomUUID() };
+      const both=await Promise.all([paymentCall(page,'checkout.inlineRetry',input),paymentCall(page,'checkout.inlineRetry',other)]);
+      expect(both.filter(result=>result.ok)).toHaveLength(1);
+      const winner=both.find(result=>result.ok)!;
+      const admitted=both[0].ok?input:other;
+      // Re-submit only the nonce that actually won, using the actual old cookie after response loss.
+      await context.clearCookies();await context.addCookies(cookies);
+      expect((await paymentCall(page,'checkout.payment',{action:'simulate',orderRef:f.orderRef,attemptRef:winner.value.attemptRef,outcome:'captured'})).code).toBe('starter_continuation_required');
+      await stopHost!();stopHost=undefined;
+      await startHost();
+      expect(processes).toHaveLength(2);expect(processes[1]).not.toBe(processes[0]);
+      const replay=await paymentCall(page,'checkout.inlineRetry',{ ...admitted,methodKey:'primary' });
+      expect(new URL(page.url()).origin).toBe(material.baseURL);
+      expect(replay.ok).toBe(true);expect(replay.replayed).toBe(true);expect(replay.value.attemptRef).toBe(winner.value.attemptRef);
+      expect((await owner.query('SELECT count(*)::int AS n FROM public.payment_simulator_attempts WHERE settlement_intent_id IN (SELECT id FROM public.commerce_settlement_intents WHERE order_id=$1)',[f.orderRef])).rows[0].n).toBe(2);
+      expect((await paymentCall(page,'checkout.inlineRetry',input)).code).toBe('starter_continuation_required');
+      expect((await paymentCall(page,'checkout.payment',{ action:'simulate',orderRef:f.orderRef,attemptRef:start.value.attemptRef,outcome:'captured' })).ok).toBe(false);
+    } finally {
+      await stopHost?.();material.baseURL=priorURL;
+      await capture.writeOnce('payment-restart-timing:'+randomUUID(),{readinessMs,processes});
+      await rm(directory,{recursive:true,force:true});
+    }
   });
 
   test(`${locale}: payment retry expired revoked foreign and terminal authority refuses without new attempts`, async ({ page }) => {
