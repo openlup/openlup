@@ -31,6 +31,7 @@ partner privacy export/erasure and hosted qualification are not supplied.
 
 Plans and task records are plain Markdown under `plans/`. There is no plan template, generator or Plan Protocol validator; reviewing the record is its acceptance, and limits a plan states are enforced only where a named check runs them.
 
+- [Documentation programme](plans/documentation-programme.md) — one reader guide that stays true for readers and coding agents ([intent](plans/documentation-programme-intent.md), [reconnaissance](plans/documentation-programme-reconnaissance.md)); draft awaiting owner decisions.
 - [Public delivery workflow](plans/delivery-workflow.md) — shared local obligations, read-only explanation and early neutrality checks; later proof reuse and delivery improvements remain pending.
 - [Partner acquisition R1](plans/oss-m18-r1-partner-acquisition.md) — unchanged contribution, frozen witnesses, explicit privacy and later-phase limits.
 - [Partner reference delegation R2](plans/oss-m18-r2-reference-delegation.md) — thin source bindings, installed-artifact proof and preserved host behavior.
