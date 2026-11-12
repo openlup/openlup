@@ -60,16 +60,6 @@ test('localized order controls and owned PDF in both languages', async ({ page, 
     };
     await context.clearCookies();
     await context.addCookies(customerCookies);
-    await page.goto(routes.returns[locale]);
-    const request = page.locator('main form');
-    await request.locator('[name=orderRef]').fill(fixture.orderRef.toUpperCase());
-    await expect(request.locator('[name=reasonCode]')).toHaveJSProperty('tagName', 'SELECT');
-    await request.locator('[name=orderItemId]').fill(fixture.orderItemId.toUpperCase());
-    await request.locator('[name=quantity]').fill('1');
-    await request.getByRole('button', { name: copy[locale].requestReturn, exact: true }).click();
-    const returnLimit = operationLimits['return.request']!;
-    await expect(request.locator('.action-result')).toContainText(returnLimit.code);
-    await expect(request.locator('.action-result')).toContainText(returnLimit.explanation[locale]);
     await page.goto(routes.tracking[locale]);
     await submitRefused(page.locator('main form'), 'tracking.read', { shipmentRef: fixture.orderRef });
     await page.goto(routes.research[locale]);
@@ -95,19 +85,6 @@ test('localized order controls and owned PDF in both languages', async ({ page, 
     const returns = page.locator('#returns');
     await expect(returns.locator('section.panel')).toHaveCount(0);
     await expect(returns.locator('[name=returnRef]')).toHaveCount(2);
-    const approve = returns.locator('form').first();
-    await approve.locator('[name=returnRef]').fill(fixture.orderRef);
-    const decision = operationLimits['operator.returnApprove']!;
-    await approve.getByRole('button', { name: copy[locale].approveReturn, exact: true }).click();
-    await expect(approve.locator('.action-result')).toContainText(decision.code);
-    await approve.locator('[name=refundMode]').selectOption('partial');
-    await approve.getByRole('button', { name: copy[locale].approveReturn, exact: true }).click();
-    await expect(approve.locator('.action-result')).toContainText('starter_input_invalid');
-    await approve.locator('[name=refundAmountCents]').fill('0');
-    await approve.getByRole('button', { name: copy[locale].approveReturn, exact: true }).click();
-    await expect(approve.locator('.action-result')).toContainText(decision.code);
-    await expect(approve.locator('.action-result')).toContainText(decision.explanation[locale]);
-    await submitRefused(returns.locator('form').nth(1), 'operator.returnReject', { returnRef: fixture.orderRef });
     const hold = page.locator('#orders form').filter({ has: page.getByRole('button', { name: copy[locale].hold, exact: true }) });
     await expect(hold.locator('[name=reason]')).toHaveJSProperty('tagName', 'SELECT');
     await hold.locator('[name=orderRef]').fill(fixture.orderRef.toUpperCase());
@@ -121,25 +98,8 @@ test('localized order controls and owned PDF in both languages', async ({ page, 
     await release.locator('[name=note]').fill('Example release');
     await release.getByRole('button', { name: copy[locale].releaseHold, exact: true }).click();
     await expect(release.locator('.action-result')).toContainText('released');
-    for (const [operation, label, fields] of [
-      ['operator.cancelUnpaid', 'cancelUnpaid', { orderRef: fixture.orderRef, reason: 'reviewed' }],
-      ['operator.externalRefund', 'externalRefund', { orderRef: fixture.orderRef, externalRefundRef: 'synthetic-refund', amountMinor: '1', confirmed: true }],
-    ] as const) {
-      await submitRefused(page.locator('#orders form').filter({ has: page.getByRole('button', { name: copy[locale][label], exact: true }) }), operation, fields);
-    }
     await submitRefused(page.locator('#ingest form'), 'ingest.submit', { order: '{}' });
     const shipments = page.locator('#shipments');
-    const label = shipments.locator('form').filter({ has: page.getByRole('button', { name: copy[locale].label, exact: true }) });
-    await label.locator('[name=shipmentRef]').fill(fixture.orderRef);
-    await label.locator('[name=labelRef]').fill('synthetic-label');
-    await label.getByRole('button', { name: copy[locale].label, exact: true }).click();
-    const shipment = operationLimits['operator.label']!;
-    await expect(label.locator('.action-result')).toContainText(shipment.code);
-    await expect(label.locator('.action-result')).toContainText(shipment.explanation[locale]);
-    for (const [operation, label] of [['operator.handoff', 'handoff'], ['operator.delivery', 'delivery']] as const) {
-      await submitRefused(shipments.locator('form').filter({ has: page.getByRole('button', { name: copy[locale][label], exact: true }) }),
-        operation, { shipmentRef: fixture.orderRef, evidenceRef: 'synthetic-evidence' });
-    }
     const list = shipments.locator('section.panel');
     await list.getByRole('button', { name: copy[locale].readStatus, exact: true }).click();
     await expect(list.locator('[role=status]')).toContainText(fixture.shipmentRef);

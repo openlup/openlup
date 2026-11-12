@@ -161,15 +161,17 @@ The completion page reads the URL token once and replaces history synchronously
 before configuration fetch or rendering. Request bodies carry the token; memory
 and session storage preserve reload convenience but grant no authority. An unchanged repeated submit for the same order keeps its existing token when the replay response omits it. A different order never inherits that token. A new token replaces the token stored in this tab; this storage update does not revoke other links. Operator issuance revokes them through the native issuer.
 Live pending-order links support sandbox continuation payment of the original
-order. Dedicated token-pay retry and method switching remain unbound; that
-separate capability is not provided by the sandbox continuation action.
+order, including retry after a decline. Dedicated token pay and exact cookie-authorized
+inline retry are also bound for the explicit synthetic sandbox choices. Real-provider
+method switching and instrument setup remain unavailable.
 Expired-policy inspection can offer recreation of a fresh order until 30 days
 after the source order was created, including system-abandoned initial checkouts.
 Frozen re-quoting, unchanged supported content, stock admission and proven prior
 payment non-settlement remain required. Manual cancellation, paid orders and
 revoked or unavailable links cannot start payment. Paid presentation has priority
-over any stored attempt. A recreated order uses only its recovery transition and
-replay receipt; the ordinary sandbox action cannot start another attempt. Indexed hash lookup makes no constant-time claim.
+over any stored attempt. Fresh recreation uses its transition and replay receipt. Dedicated token or
+exact-cookie retry can then act on its same pending replacement; the ordinary
+sandbox action cannot start an attempt on that replacement. Indexed hash lookup makes no constant-time claim.
 Owning sessions retain order ownership checks. An email alone mints no link for
 an existing order. Recovery grants no account or subscription-command access.
 
@@ -245,7 +247,8 @@ parcel operations, plus the separate communications roster for operator links.
 Neither the runtime host nor installer provisions those rows. Never delete a
 Commerce operator row; withdraw by revoking membership. Native ports own provider,
 stock, fingerprint and replay fences. No arrival attestation caller exists.
-Continuation issuance and the embedded-browser buyer control remain deferred.
+Fresh sandbox attempt dispatch can issue continuation; the embedded-browser
+buyer control uses that exact cookie. Checkout creation never issues it.
 
 
 ## Expired checkout recovery and order holds
@@ -259,8 +262,8 @@ refusals cannot start payment. Durable draft, lineage and attempt receipts keep
 replay on one replacement and one attempt. Replacement-attempt simulator controls
 remain bound to the inspected bearer, lineage and durable execution receipt;
 reload reads the same attempt, independently of the recreation source link's
-continuation lifetime. Captured executions show no simulator controls. Dedicated token-pay retry and method switching, payment guidance, inline
-retry and embedded-browser continuation issuance remain unavailable.
+continuation lifetime. Captured executions show no simulator controls. Dedicated token pay, exact inline retry and the embedded-browser buyer-link
+control are bound for sandbox attempts; real-provider execution remains unavailable.
 
 Hold and release resolve the human administrator before every command and replay.
 The database owner provisions one `commerce_operators` row per human admin, with
@@ -281,8 +284,212 @@ capture, keyed by the source checkout's root order. It never substitutes the
 current account email or a later profile edit. Missing, corrupt or erased capture
 refuses recreation before a quote, draft or payment starts. This is the starter's
 owned frozen-source binding, separate from bearer authorization. The capture
-remains personal data under the existing private-mailbox export and erasure
-procedure; include it in the owner's private-state inventory and remove it when
-that procedure requires erasure. Erasure does not trigger reconstruction from
-an account, a profile or another notice. Private captures remain outside served
+file is personal data. This starter supplies no private-mailbox export or erasure
+procedure. The application owner handles access, retention and deletion under
+their own privacy policy. Deleting that capture file makes future recreation
+refuse; no account, profile or later notice reconstructs it. Private captures remain outside served
 assets, logs, traces and public reports.
+
+## Unpaid cancellation and manual refund records
+
+The operator first reads the exact order, enters a reason and confirms the shown
+consequence. Unpaid cancellation uses the native unpaid-order command and releases
+only held purchase reservations. Dispatched, indeterminate and captured payment
+evidence can refuse it. It does not cancel a subscription or a dispatched parcel.
+Manual refund marking records a paid order as refunded after the operator confirms
+that the refund was completed outside this application. This command moves no
+money, sends no refund email, creates no fiscal reversal and changes no subscription.
+Genuine provider-refund duties retain their existing owners.
+
+Each command and replay rechecks the human admin and resolves the existing Commerce
+operator row. Caller identities, missing confirmation, invalid reasons, stale
+order status and conflicting commands refuse. Reasons use the package's trimmed
+1–2,000 character contract. Native durable receipts own replay. The two formerly
+unavailable actions are bound; physical-return, tracking and account limits stay separately
+listed until their own complete bindings exist.
+
+## Return requests and decisions
+
+Signed-in customers submit configured reason codes and positive quantities for
+items from their own paid or fulfilled order. Native ownership, quantity and
+canonical replay checks own admission. The customer retains the returned request
+reference. There is no operator returns list or detail: an active human admin
+uses that exact reference to approve or reject. Every decision and replay resolves
+the existing Commerce operator after fresh membership admission. Full, partial
+(including zero) and no-refund modes record intent; partial requires an amount.
+A repeated decision receipt preserves the original note. These operations do not
+receive goods, restock, execute a refund or change a subscription.
+
+## Optional payment guidance
+
+The ordinary completion reader may add safe payment guidance for an exact live
+order bearer. A native atomic snapshot rechecks token authority and binds the
+order, client, intent and current attempt. The optional reader issues no credential. The sandbox can establish a verified generic decline; it cannot identify
+a method, instrument, operation or consecutive same-method refusal count. The
+localized notice explains that limit; synthetic choices use the explicit sandbox
+registry rather than an inferred provider method. Missing, unreadable or unsupported evidence, ineligible orders,
+indeterminate attempts, observed success and read failures leave the existing
+presentation unchanged. No raw evidence or attempt history reaches the browser.
+Sandbox token pay, exact inline retry and the embedded-browser buyer control
+have separate mutation bindings. Real-provider methods remain unavailable. This optional read creates no payment,
+notification or mutation.
+
+
+## Operator shipment evidence
+
+The operator reads the exact parcel and confirms each label, handoff or tracking
+action. Every command and replay rechecks an active human admin session; the
+native human principal supplies audit attribution. Caller identities and command
+keys in the body refuse. Public package handlers own request validation and the
+native command runs in a host-owned READ COMMITTED transaction. Existing order,
+hold and return commands retain their separate Commerce operator provisioning.
+
+Label evidence includes an explicit provider namespace and tracking number.
+Native correlation refuses cross-order reuse in the same namespace and refuses
+unattributed conflicting history rather than guessing. Same-order reassignment
+and raw label-key replay retain the native receipt behavior. Handoff consumes
+only the recorded parcel reservation IDs once. Historical missing associations
+report `reservations_not_recorded` and never acquire today's stock. Before a fresh nonterminal tracking event, native state and any supplied
+same-order reference must be admitted. Terminal replay and earlier chronology
+repair retain their native rules. A delivered event
+records actual arrival. Explicit-zone occurrence times can repair chronology
+earlier; later inputs cannot postpone recorded arrival, replace the original
+receipt or move the next cycle earlier. An undelivered replacement remains an
+outstanding obligation. There is no separate replacement-delivery attestation control.
+
+Label URLs and full provider payloads are durable operator/service evidence.
+URLs may appear in authorized operator operation detail; complete label requests
+and raw tracking events remain in private operator receipts. URL expiry does not
+erase their stored bytes. No automatic purge or TTL is supplied: the application
+owner controls retention and authorized cleanup, including backups and transferred
+copies. Customer pages, account reads and public tracking do not expose this
+operator evidence. Public tracking authorization remains unavailable.
+
+The existing paid-capture document policy is unchanged. The optional handoff
+accounting wrapper is only for an adopter that selects a handoff issue policy;
+any such callback belongs after the committed shipment transaction and remains
+fail-soft according to that wrapper's policy.
+
+
+## Saved addresses and scoped preferences
+
+The account page reads, creates, edits and deletes the signed-in customer's saved
+addresses, with native formatting, default clearing and account events. Default
+clearing, address writes and event append are separate commits: a failed save can
+leave earlier changes committed, so reload before retrying. An admitted command
+key returns the current book without another write. Deleting a missing or foreign
+row acknowledges a zero-row deletion and returns only the caller's book; updating
+a foreign row refuses. Active or paused subscription use prevents deletion.
+
+An active or paused subscription can select an owned shipping/both address.
+The native command owns the saved pointer, subscription/account events and outbox.
+A locked upcoming cycle refuses a fresh selection; an admitted key replays before
+saved-ID parsing and returns the current pointer. Null recipients remain null.
+Editing a saved row affects future destination materialization, while a retained
+renewal operation and existing parcel keep their immutable destination. Cadence,
+commercial terms and billing are unchanged.
+
+Payment and delivery selections use one-time, subscription or any scope. These
+preferences do not install an instrument, activate a provider, charge, or append
+account events. Native renewal preparation uses subscription scope before any
+scope and preserves an explicit delivery selection. Incomplete locker pickup
+addresses can be saved but are skipped when a renewal chooses a delivery.
+
+Billing profiles are bound through the native session-scoped reader and mutation
+handler. The portal supports create, read, edit and delete, including the native
+company identity fields and the owned tax normalization/checksum policy. Default
+clearing, profile writing and account-event append remain separate commits: a
+later failure can leave earlier writes committed, and billing command keys do not
+deduplicate writes or events. Foreign edits refuse; deleting a foreign or missing
+row acknowledges a zero-row deletion. Address-book responses include real owned
+billing profiles. Default snapshots expose redacted, unapplied selection hints;
+they install no instrument and do not apply a profile to an existing order.
+Private and combined-profile views remain limited under N5. The fictional country,
+phone prefix and numeric tax checksum are demonstration validation, not real-market
+certification.
+
+The saved addresses and preferences contain personal data. Application owners
+compose the native privacy contributors with identity, subscription and account
+event coverage and own retention and access. This starter supplies no customer
+export or erasure endpoint; saving a preference does not establish that workflow.
+
+
+## Sandbox token payment and exact continuation
+
+Completion can start dedicated token payment for a live checkout continuation with
+one of two explicit synthetic demo choices. Native admission reuses the existing
+latest owned recovery descendant, intent and reservation and refuses expired/revoked authority, renewals,
+terminal orders and unresolved attempts. Fresh recreation retains its lineage/receipt transition. A later explicit token
+retry may dispatch another attempt on that same replacement, while the ordinary
+simulator remains fenced from creating attempts on recreated targets. No real-provider or instrument capability is implied.
+
+Only an actual fresh dispatched sandbox attempt can mint the native continuation
+cookie. Its private claims bind the real order, client, intent, attempt and rail;
+this composition uses the native order UUID for the opaque checkout journey. The
+codec purpose-derives its signing key from the existing private host keyring's
+current root, supplied by `--quote-acceptance-key-file`. Keep that root stable across a host restart; rotating it invalidates
+old continuation cookies. No key, raw cookie or token belongs in logs or public
+reports. The cookie keeps its native Secure, HttpOnly, SameSite=Strict and Path=/
+attributes and lifetime. Checkout creation mints no continuation. Browser storage
+is reload convenience and never grants this authority. Missing signing material
+leaves cookie-only controls unavailable; it does not fabricate a credential.
+
+An exact failed predecessor and native guidance admit inline retry with a stable
+retry nonce. The actual transport cookie is required: a bearer token or body
+identity cannot widen the entry. Registered demo references supply synthetic
+method identity; the sandbox evidence normalizer still reports method, operation
+and provider advice as unknown. Opaque, unregistered attempt references do not
+authorize inline retry; a still-live recovery token can use dedicated token pay
+instead. No method identity is guessed for an older/default attempt. Atomic native admission owns competing nonces,
+current-attempt checks and replay. Response-loss replay returns the one dispatched
+replacement attempt without another dispatch and rotates its cookie. Terminal,
+captured, technically expired and stale targets refuse before simulator effects.
+No payment-method hold policy is selected by this application; the public hold
+wrapper receives that explicit unconfigured policy. Real-provider execution,
+method setup and card replacement keep their named refusals.
+
+Only detected embedded browsers show the buyer send/send-again control after real
+continuation exists. Detection is a display hint, never authority. The native
+cookie-only handler obtains order/client from verified claims, uses the saved
+checkout recipient, and deduplicates sends in its unchanged ten-minute bucket.
+The sent confirmation survives panel remounts while sending again remains reachable;
+failure offers a neutral retry. Delivery rechecks the native buyer authorization
+and captures the link in the existing private mailbox. The source marker
+distinguishes the buyer landing. Enqueue, capture and payment are separate facts.
+
+
+## Billing profiles and frozen invoice buyers
+
+Install the complete ordered package history through
+`20261110280000_checkout_recovery_buyer_snapshot` before starting this composition.
+The host requires the slot-27 first-duty buyer-capture entry; slot 28 preserves
+absence of explicit buyer facts during recreation. `./lifecycle up` installs the
+complete history. No duty or historical invoice is backfilled.
+
+Before sandbox payment capture, initial checkout records its owned order
+destination; native recreation and renewal record theirs through their native
+owners. On the first owed-duty capture, the invoice owner freezes explicit order
+buyer facts when present. Otherwise it selects the default or latest owned profile
+and billing/both address independently, using the recorded shipping address when
+no billing address exists. With neither profile nor billing address, it records the
+marked shipping fallback. The frozen address keeps line2 and source provenance. Recreation copies explicit buyer facts
+only when the source has them; absent facts remain absent so first-duty selection
+can use an owned profile or the marked fallback. Later profile/address edits or
+deletions cannot change a captured buyer, installed invoice facts or issued bytes.
+Customer invoice history checks ownership before reading this snapshot; operator
+summary requires current human-admin authorization.
+
+`payment.simulate`, `checkout.payment` and recreated `checkout.recovery` simulation
+share one capture/activation helper. Retained acquisition renewal availability
+validates before a capture observation is recorded. After successful native ingress,
+an initial subscription declaration activates through its native acquisition or
+classic renewal branch. Capture and activation keep their existing transaction
+boundaries; a cross-transaction outage is not an atomicity guarantee.
+
+The Node host composes customer-billing, saved-address, preference and parcel-contact
+privacy contributors. Its programmatic registry requires identity and subscription
+coverage from the application owner and reports missing contributors; account-event
+retention remains unresolved. It supplies no HTTP export/erasure workflow. Owners
+must complete these boundaries and retain authorized cleanup of private captures.
+Erasure or corruption of the original immutable checkout capture refuses recovery
+re-quoting; it is never reconstructed from current billing or profile data.
