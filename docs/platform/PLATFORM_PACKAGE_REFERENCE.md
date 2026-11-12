@@ -1854,7 +1854,14 @@ The preparation writer locks the source and replacement, checks current payment
 evidence and the current recovery deadline after blocking locks, and admits one
 immediate replacement. Exact linked replay precedes fresh admission checks,
 including after compensation. A linked replacement can never be reparented to
-another source. An initial subscription gets a new provisional
+another source. With the complete catalogue through
+`20261110280000_checkout_recovery_buyer_snapshot.sql`, preparation copies recorded
+buyer snapshots without creating an absent `invoiceBuyerSnapshot` key. A nonempty
+runtime snapshot retains precedence; recorded empty objects stay explicit.
+First-duty capture can therefore select the owned billing profile/address and
+then the marked shipping fallback when the source has no snapshot. Captured buyer
+facts remain immutable after later profile edits. No existing order is backfilled.
+An initial subscription gets a new provisional
 declaration; the terminal predecessor stays compensated. Recreation creates no
 cycle, never mutates an active/paused subscription, and refuses every non-null
 source subscription cycle. Existing captured-payment activation creates a live
