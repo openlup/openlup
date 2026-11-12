@@ -672,7 +672,7 @@ describe("the workflow stays in step with what it claims to run", () => {
     expect(workflow).toContain("gitleaks git . --config config/gitleaks.toml --redact --no-banner");
   });
 
-  it("scans only the pull-request or merge-group range, full history otherwise, and refuses unreadable event SHAs", () => {
+  it("scans only a non-empty pull-request or merge-group range, full history otherwise or on scanner input changes, and refuses unreadable event SHAs", () => {
     const job = workflowJob("gitleaks");
     expect(job).toContain("fetch-depth: 0");
     const step = job.split("      - name: Scan the event range, or the complete available history\n")[1] ?? "";
@@ -695,7 +695,17 @@ describe("the workflow stays in step with what it claims to run", () => {
       const base = git("rev-parse", "HEAD");
       git("commit", "--quiet", "--allow-empty", "--no-gpg-sign", "-m", "head");
       const head = git("rev-parse", "HEAD"), tree = git("rev-parse", "HEAD^{tree}");
-      const run = (event: string, patch: Record<string, string> = {}) => {
+      // Each later commit changes one scanner input, so a range that includes it re-checks history.
+      mkdirSync(join(repo, "config"));
+      writeFileSync(join(repo, "config/gitleaks.toml"), "[extend]\nuseDefault = true\n");
+      git("add", "config/gitleaks.toml"); git("commit", "--quiet", "--no-gpg-sign", "-m", "scanner rules");
+      const rules = git("rev-parse", "HEAD");
+      writeFileSync(join(repo, ".gitleaksignore"), "fingerprint\n");
+      git("add", ".gitleaksignore"); git("commit", "--quiet", "--no-gpg-sign", "-m", "scanner ignore list");
+      const ignored = git("rev-parse", "HEAD");
+      git("rm", "--quiet", ".gitleaksignore"); git("commit", "--quiet", "--no-gpg-sign", "-m", "remove the ignore list");
+      const unignored = git("rev-parse", "HEAD");
+      const run =(event: string, patch: Record<string, string> = {}) => {
         writeFileSync(calls, "");
         const result = spawnSync("bash", ["-e", "-o", "pipefail", "-c", command!], { cwd: repo, encoding: "utf8", timeout: 20_000,
           env: { ...environment, PATH: `${bin}:${environment.PATH ?? ""}`, SCAN_CALLS: calls, GITHUB_EVENT_NAME: event, PR_BASE: "", PR_HEAD: "", GROUP_BASE: "", GROUP_HEAD: "", ...patch } });
@@ -707,6 +717,10 @@ describe("the workflow stays in step with what it claims to run", () => {
       expect(run("pull_request", { PR_BASE: base, PR_HEAD: head })).toEqual({ status: 0, calls: range });
       expect(run("merge_group", { GROUP_BASE: base, GROUP_HEAD: head })).toEqual({ status: 0, calls: range });
       for (const event of ["push", "workflow_dispatch", ""]) expect(run(event, all)).toEqual({ status: 0, calls: full });
+      expect(run("pull_request", { PR_BASE: head, PR_HEAD: rules })).toEqual({ status: 0, calls: full });
+      expect(run("pull_request", { PR_BASE: base, PR_HEAD: ignored })).toEqual({ status: 0, calls: full });
+      expect(run("merge_group", { GROUP_BASE: rules, GROUP_HEAD: ignored })).toEqual({ status: 0, calls: full });
+      expect(run("merge_group", { GROUP_BASE: ignored, GROUP_HEAD: unignored })).toEqual({ status: 0, calls: full });
       const absent = "1".repeat(40);
       const refusals: [string, Record<string, string>][] = [
         ["pull_request", {}], ["pull_request", { PR_BASE: base }], ["pull_request", { GROUP_BASE: base, GROUP_HEAD: head }],
@@ -715,6 +729,8 @@ describe("the workflow stays in step with what it claims to run", () => {
         ["pull_request", { PR_BASE: absent, PR_HEAD: head }], ["pull_request", { PR_BASE: base, PR_HEAD: tree }],
         ["merge_group", { PR_BASE: base, PR_HEAD: head }], ["merge_group", { GROUP_BASE: base, GROUP_HEAD: `${head}\n` }],
         ["merge_group", { GROUP_BASE: base, GROUP_HEAD: absent }],
+        ["pull_request", { PR_BASE: head, PR_HEAD: head }], ["merge_group", { GROUP_BASE: head, GROUP_HEAD: head }],
+        ["pull_request", { PR_BASE: head, PR_HEAD: base }], ["merge_group", { GROUP_BASE: head, GROUP_HEAD: base }],
       ];
       for (const [event, patch] of refusals) expect(run(event, patch)).toEqual({ status: 1, calls: "" });
     } finally { rmSync(root, { recursive: true, force: true }); }

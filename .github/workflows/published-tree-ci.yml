@@ -337,9 +337,14 @@ jobs:
           echo "$install_dir" >> "$GITHUB_PATH"
           "$install_dir/gitleaks" version
       # Pull requests and merge groups scan only the commits they add; main pushes and every other
-      # event keep the complete-history scan. Event SHAs arrive through the environment and must be
-      # full digests present in this checkout: gitleaks itself passes an unreadable range as zero
-      # commits scanned.
+      # event keep the complete-history scan. Merge-group ranges cover everything that reaches main
+      # only while the main ruleset's merge queue is ALLGREEN, merges one entry per group with the
+      # MERGE method and has no bypass actor; a change to those settings needs this scope reviewed
+      # again. A range that changes config/gitleaks.toml or .gitleaksignore scans the complete
+      # history instead, so a tightened rule or a removed fingerprint re-checks history before
+      # landing. Event SHAs arrive through the environment and must be full digests of commits in
+      # this checkout with at least one commit between them: gitleaks itself passes an unreadable
+      # or empty range as zero commits scanned.
       - name: Scan the event range, or the complete available history
         env:
           PR_BASE: ${{ github.event.pull_request.base.sha }}
@@ -359,7 +364,16 @@ jobs:
           for commit in "$range_base" "$range_head"; do
             git cat-file -e "$commit^{commit}" || { echo "Commit $commit is missing from this checkout." >&2; exit 1; }
           done
-          echo "Scanning $GITHUB_EVENT_NAME range $range_base..$range_head"
+          range_commits="$(git rev-list --count "$range_base..$range_head")"
+          if [[ ! "$range_commits" =~ ^[1-9][0-9]*$ ]]; then
+            echo "The $GITHUB_EVENT_NAME range $range_base..$range_head adds no commits." >&2
+            exit 1
+          fi
+          if ! git diff --quiet "$range_base" "$range_head" -- config/gitleaks.toml .gitleaksignore; then
+            echo "The range changes config/gitleaks.toml or .gitleaksignore; scanning the complete available history."
+            exec gitleaks git . --config config/gitleaks.toml --redact --no-banner
+          fi
+          echo "Scanning $range_commits commits in $GITHUB_EVENT_NAME range $range_base..$range_head"
           gitleaks git . --config config/gitleaks.toml --redact --no-banner --log-opts "$range_base..$range_head"
 
   pgtap:
