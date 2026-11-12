@@ -12,11 +12,6 @@ export interface NativeLimit {
 
 /** One immutable catalogue for unmounted operations and their visible explanations. */
 export const operationLimitDefinitions = Object.freeze({
-  shipmentMutation: Object.freeze({
-    id: 'shipmentMutation', actions: Object.freeze(["label", "handoff", "delivery"] as const), code: 'starter_shipment_mutation_unavailable',
-    explanation: Object.freeze({ en: "Recording a label, handing over a parcel and recording delivery are unavailable in this release. Shipment reads remain available.",
-      pl: "Zapisanie etykiety, przekazanie przesyłki i zapisanie doręczenia są niedostępne w tym wydaniu. Odczyt przesyłek pozostaje dostępny." }),
-  }),
   trackingAccess: Object.freeze({
     id: 'trackingAccess', actions: Object.freeze(["tracking"] as const), code: 'starter_tracking_access_unavailable',
     explanation: Object.freeze({ en: "Public tracking lookup is unavailable.",
@@ -40,9 +35,6 @@ export const operationLimitDefinitions = Object.freeze({
 } satisfies Record<string, NativeLimit>);
 
 export const operationLimits: Readonly<Partial<Record<Operation, NativeLimit>>> = Object.freeze({
-  'operator.label': operationLimitDefinitions.shipmentMutation,
-  'operator.handoff': operationLimitDefinitions.shipmentMutation,
-  'operator.delivery': operationLimitDefinitions.shipmentMutation,
   'tracking.read': operationLimitDefinitions.trackingAccess,
   'research.submit': operationLimitDefinitions.researchAuthority,
   'ingest.submit': operationLimitDefinitions.ingestBinding,

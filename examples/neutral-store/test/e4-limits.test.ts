@@ -9,9 +9,6 @@ import { dispatchAction, pendingBindings, type ActionContext } from '../host/bin
 import { createApplication } from '../host/server.ts';
 
 const dispositions: Array<[Operation, string]> = [
-  ['operator.label', 'starter_shipment_mutation_unavailable'],
-  ['operator.handoff', 'starter_shipment_mutation_unavailable'],
-  ['operator.delivery', 'starter_shipment_mutation_unavailable'],
   ['tracking.read', 'starter_tracking_access_unavailable'],
   ['research.submit', 'host_binding_required'], ['ingest.submit', 'host_binding_required'],
 ];

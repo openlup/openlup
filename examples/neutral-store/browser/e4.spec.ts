@@ -100,17 +100,6 @@ test('localized order controls and owned PDF in both languages', async ({ page, 
     await expect(release.locator('.action-result')).toContainText('released');
     await submitRefused(page.locator('#ingest form'), 'ingest.submit', { order: '{}' });
     const shipments = page.locator('#shipments');
-    const label = shipments.locator('form').filter({ has: page.getByRole('button', { name: copy[locale].label, exact: true }) });
-    await label.locator('[name=shipmentRef]').fill(fixture.orderRef);
-    await label.locator('[name=labelRef]').fill('synthetic-label');
-    await label.getByRole('button', { name: copy[locale].label, exact: true }).click();
-    const shipment = operationLimits['operator.label']!;
-    await expect(label.locator('.action-result')).toContainText(shipment.code);
-    await expect(label.locator('.action-result')).toContainText(shipment.explanation[locale]);
-    for (const [operation, label] of [['operator.handoff', 'handoff'], ['operator.delivery', 'delivery']] as const) {
-      await submitRefused(shipments.locator('form').filter({ has: page.getByRole('button', { name: copy[locale][label], exact: true }) }),
-        operation, { shipmentRef: fixture.orderRef, evidenceRef: 'synthetic-evidence' });
-    }
     const list = shipments.locator('section.panel');
     await list.getByRole('button', { name: copy[locale].readStatus, exact: true }).click();
     await expect(list.locator('[role=status]')).toContainText(fixture.shipmentRef);

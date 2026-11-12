@@ -861,7 +861,7 @@ Each command and replay rechecks the human admin and resolves the existing Comme
 operator row. Caller identities, missing confirmation, invalid reasons, stale
 order status and conflicting commands refuse. Reasons use the package's trimmed
 1–2,000 character contract. Native durable receipts own replay. The two formerly
-unavailable actions are bound; physical-return, shipment and account limits stay separately
+unavailable actions are bound; physical-return, tracking and account limits stay separately
 listed until their own complete bindings exist.
 
 
@@ -886,8 +886,8 @@ falling back to the ordinary reader. There is no synthetic cookie, method
 identity or evidence taxonomy.
 
 The single shared grouping source adds `returns portal ` and `payment guidance `.
-The generated database-profile listing has 308 cases, partitioned as
-62/56/52/12/12/12/102; every case is selected exactly once. Each group receives a
+At the return/guidance checkpoint, the generated database-profile listing had
+308 cases, partitioned as 62/56/52/12/12/12/102; every case is selected exactly once. Each group receives a
 fresh installation pair. Workers remain one, retries zero and all captures off;
 the checkout quota stays 36 per 180 seconds.
 
@@ -908,3 +908,46 @@ Starter units passed 319/319; the PostgreSQL integration witness passed 7/7,
 including the extracted application browser witness and the 60 declared / 53
 bound operation census. These tests ran with `CI=1` and global Git configuration
 disabled, using each test suite's native runner.
+
+
+## Operator shipment commands
+
+Confirmed operator forms bind label, handoff and tracking evidence through the
+public native handlers and shipment command port. Every invocation, including
+replay, checks active human-admin authority and pins the parcel from fresh detail.
+The human principal owns audit attribution; the shipment commands do not require
+a Commerce operator row. Invalid identities and unconfirmed input refuse before effects. Unknown targets
+for fresh commands refuse; receipt replays retain their native target rules. Native commands run in READ COMMITTED transactions.
+
+The shipment journeys cover label URL/full provider-payload retention, operator
+read admission, customer/public-read isolation, exact stock consumption, terminal
+and old-key handoff replay, provider-scoped conflicts, unattributed history,
+same-order correlation, historical missing reservation sets, exception recovery,
+actual replacement arrival, explicit-zone chronology and no-zone fallback.
+Earlier/later replay preserves the original private receipt and never moves the
+next cycle earlier. Distributor, customer, revoked and anonymous commands refuse.
+No undelivered replacement attestation is invoked.
+
+| Group | Passing cases, both configurations | Original checkouts per configuration | Replacement checkout receipts per configuration |
+| --- | ---: | ---: | ---: |
+| Portal | 56 | 36 | 0 |
+| Operator operations | 12 | 10 | 0 |
+| Returns | 12 | 8 | 0 |
+| Shipment operations | 16 | 12 | 0 |
+| Remainder | 102 | 2 | 0 |
+
+All 198 affected cases passed with the shared database recipe, fresh installation
+pairs, one worker, zero retries and traces, video and screenshots off. Both
+configurations have identical counters. The checkout quota remains 36 per 180
+seconds. The unchanged private-output guard passed for every successful group;
+the logs also contain no synthetic private label URL or provider-payload marker.
+The generated current inventory has 324 cases partitioned as
+62/56/52/12/12/12/16/102, every case selected once and no duplicate identities.
+
+Starter units passed 320/320 and the PostgreSQL integration witness passed 7/7,
+including both extracted application browser cases and the 60 declared / 56
+bound operation census. Changed tests use their native runners with `CI=1` and
+global Git configuration disabled. New times are current or relative UTC values;
+no fixed dates or short expiries were introduced. Public tracking authorization,
+physical return execution and the remaining account/payment integrations retain
+their separate limits.

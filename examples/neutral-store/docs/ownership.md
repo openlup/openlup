@@ -302,7 +302,7 @@ Each command and replay rechecks the human admin and resolves the existing Comme
 operator row. Caller identities, missing confirmation, invalid reasons, stale
 order status and conflicting commands refuse. Reasons use the package's trimmed
 1–2,000 character contract. Native durable receipts own replay. The two formerly
-unavailable actions are bound; physical-return, shipment and account limits stay separately
+unavailable actions are bound; physical-return, tracking and account limits stay separately
 listed until their own complete bindings exist.
 
 ## Return requests and decisions
@@ -331,3 +331,39 @@ presentation unchanged. No raw evidence or attempt history reaches the browser.
 Dedicated token-pay retry, method switching, inline retry and embedded-browser
 continuation issuance remain deferred. This optional read creates no payment,
 notification or mutation.
+
+
+## Operator shipment evidence
+
+The operator reads the exact parcel and confirms each label, handoff or tracking
+action. Every command and replay rechecks an active human admin session; the
+native human principal supplies audit attribution. Caller identities and command
+keys in the body refuse. Public package handlers own request validation and the
+native command runs in a host-owned READ COMMITTED transaction. Existing order,
+hold and return commands retain their separate Commerce operator provisioning.
+
+Label evidence includes an explicit provider namespace and tracking number.
+Native correlation refuses cross-order reuse in the same namespace and refuses
+unattributed conflicting history rather than guessing. Same-order reassignment
+and raw label-key replay retain the native receipt behavior. Handoff consumes
+only the recorded parcel reservation IDs once. Historical missing associations
+report `reservations_not_recorded` and never acquire today's stock. Before a fresh nonterminal tracking event, native state and any supplied
+same-order reference must be admitted. Terminal replay and earlier chronology
+repair retain their native rules. A delivered event
+records actual arrival. Explicit-zone occurrence times can repair chronology
+earlier; later inputs cannot postpone recorded arrival, replace the original
+receipt or move the next cycle earlier. An undelivered replacement remains an
+outstanding obligation. There is no separate replacement-delivery attestation control.
+
+Label URLs and full provider payloads are durable operator/service evidence.
+URLs may appear in authorized operator operation detail; complete label requests
+and raw tracking events remain in private operator receipts. URL expiry does not
+erase their stored bytes. No automatic purge or TTL is supplied: the application
+owner controls retention and authorized cleanup, including backups and transferred
+copies. Customer pages, account reads and public tracking do not expose this
+operator evidence. Public tracking authorization remains unavailable.
+
+The existing paid-capture document policy is unchanged. The optional handoff
+accounting wrapper is only for an adopter that selects a handoff issue policy;
+any such callback belongs after the committed shipment transaction and remains
+fail-soft according to that wrapper's policy.

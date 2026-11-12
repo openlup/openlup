@@ -100,12 +100,11 @@ human admins approve or reject the exact request reference; these decisions reco
 intent only. Receiving, restocking and financial refund execution remain unavailable. The removed `operator.returns` route returns
 HTTP 404 with `starter_operation_unknown`.
 
-The catalogue covers six declared named-refusal operations. The removed reader
+The catalogue covers three declared named-refusal operations. The removed reader
 retains its separate HTTP 404 protocol.
 
 | Operations | Named refusal |
 | --- | --- |
-| `operator.label`, `operator.handoff`, `operator.delivery` | `starter_shipment_mutation_unavailable` |
 | `tracking.read` | `starter_tracking_access_unavailable` |
 | `research.submit`, `ingest.submit` | `host_binding_required` |
 
@@ -114,14 +113,15 @@ read-only snapshot after native human-admin authorization on each request.
 Unknown input fields and invalid selectors refuse before shipment I/O.
 The destination view never prepares or pins a shipment. A pinned parcel retains
 its destination when the order's current destination changes. This reduced
-projection keeps the captured fulfillment client id, provider kind, parcel-line
-ids and saved-address id null, item reservation links empty, and reservation
+projection keeps the captured fulfillment client id, parcel-line
+ids and saved-address id null. Provider kind and tracking number come from the same
+parcel-correlated reference; historical unknown namespaces remain null. It keeps item reservation links empty, and reservation
 locations null. It supplies
 no contact revision, digest, correction target or baseline comparison. Tracking
 and operation evidence retain the native reader's limits; missing required facts
 refuse rather than omit a selected shipment. See the canonical
 [native read limits](../../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#native-parity-boundaries).
-Shipment mutations remain unavailable. Owned account tracking needs
+Operator label, handoff and tracking evidence commands are bound. Owned account tracking needs
 its separate account composition proof. Signed unsubscribe retains its separately
 owned pending binding. Other absent bindings return `host_binding_required` after
 admission. An invalid-grant example does not
@@ -164,7 +164,7 @@ receipts and unprovable parcel facts omit the note.
 No generic contact form; the partner inquiry is the durable intake.
 Support is static and shows optional validated `supportEmail` as plain text,
 with an account link. Missing contact configuration is stated explicitly.
-The application declares 60 operations (53 bound with a runtime connection). With a runtime connection, the partner
+The application declares 60 operations (56 bound with a runtime connection). With a runtime connection, the partner
 submit/list/transition and review read/submit/list/moderation actions are mounted.
 Without that connection they remain unbound, like the other native actions.
 
@@ -364,7 +364,7 @@ The finite auto-resume host is bound and proved in both configurations after a
 synthetically delivered first order. A clock past the finite pause and renewal
 date produces an active subscription, a date rolled forward by whole cadences
 and one locally captured resumed confirmation, including replay. The fixture
-supplies external fulfillment facts; operator delivery mutations remain unavailable.
+supplies its own external fulfillment facts; operator tracking commands have a separate witness.
 
 
 ## Account and operator bindings
@@ -445,7 +445,7 @@ Each command and replay rechecks the human admin and resolves the existing Comme
 operator row. Caller identities, missing confirmation, invalid reasons, stale
 order status and conflicting commands refuse. Reasons use the package's trimmed
 1–2,000 character contract. Native durable receipts own replay. The two formerly
-unavailable actions are bound; physical-return, shipment and account limits stay separately
+unavailable actions are bound; physical-return, tracking and account limits stay separately
 listed until their own complete bindings exist.
 
 ## Return requests and decisions
@@ -474,3 +474,39 @@ presentation unchanged. No raw evidence or attempt history reaches the browser.
 Dedicated token-pay retry, method switching, inline retry and embedded-browser
 continuation issuance remain deferred. This optional read creates no payment,
 notification or mutation.
+
+
+## Operator shipment evidence
+
+The operator reads the exact parcel and confirms each label, handoff or tracking
+action. Every command and replay rechecks an active human admin session; the
+native human principal supplies audit attribution. Caller identities and command
+keys in the body refuse. Public package handlers own request validation and the
+native command runs in a host-owned READ COMMITTED transaction. Existing order,
+hold and return commands retain their separate Commerce operator provisioning.
+
+Label evidence includes an explicit provider namespace and tracking number.
+Native correlation refuses cross-order reuse in the same namespace and refuses
+unattributed conflicting history rather than guessing. Same-order reassignment
+and raw label-key replay retain the native receipt behavior. Handoff consumes
+only the recorded parcel reservation IDs once. Historical missing associations
+report `reservations_not_recorded` and never acquire today's stock. Before a fresh nonterminal tracking event, native state and any supplied
+same-order reference must be admitted. Terminal replay and earlier chronology
+repair retain their native rules. A delivered event
+records actual arrival. Explicit-zone occurrence times can repair chronology
+earlier; later inputs cannot postpone recorded arrival, replace the original
+receipt or move the next cycle earlier. An undelivered replacement remains an
+outstanding obligation. There is no separate replacement-delivery attestation control.
+
+Label URLs and full provider payloads are durable operator/service evidence.
+URLs may appear in authorized operator operation detail; complete label requests
+and raw tracking events remain in private operator receipts. URL expiry does not
+erase their stored bytes. No automatic purge or TTL is supplied: the application
+owner controls retention and authorized cleanup, including backups and transferred
+copies. Customer pages, account reads and public tracking do not expose this
+operator evidence. Public tracking authorization remains unavailable.
+
+The existing paid-capture document policy is unchanged. The optional handoff
+accounting wrapper is only for an adopter that selects a handoff issue policy;
+any such callback belongs after the committed shipment transaction and remains
+fail-soft according to that wrapper's policy.

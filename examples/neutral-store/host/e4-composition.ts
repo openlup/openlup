@@ -10,13 +10,13 @@ import type { CreateQuoteResponse } from '@openlup/platform/pricing';
 import { createCustomerAccountMutationSchemas, createPostgresCustomerAccountMutationPort } from '@openlup/platform/account-support';
 import { createAdminCheckoutPaymentLinkHandler, createPostgresOperatorCheckoutLinkStore, type OperatorCheckoutLinkOrder } from '@openlup/platform/commerce/server';
 import { createPostgresFulfillmentOperatorPort } from '@openlup/platform/fulfillment/native';
-import { CommerceFulfillmentConflictError } from '@openlup/platform/fulfillment';
+import { createAdminCommerceFulfillmentRecordLabelHandler, createAdminCommerceFulfillmentHandOffHandler, createAdminCommerceFulfillmentTrackingEventHandler, CommerceFulfillmentConflictError } from '@openlup/platform/fulfillment';
 import { customerAccountPolicy, checkoutLinkPolicy } from '../owned/acquisition-policy.ts';
 import type { Pool } from 'pg';
 import { evaluateCommerceFulfillmentEligibility, uuidSchema } from '@openlup/platform/commerce';
 import { createInvoiceAccess } from '@openlup/platform/account-support';
 import { createPostgresInvoiceAccountHistory, createCapturedPostgresInvoiceProvider } from '@openlup/platform/invoicing/postgres';
-import { createPostgresFulfillmentCommerceReadPort, nativeFulfillmentCommerceResponseSchemas } from '@openlup/platform/fulfillment/native';
+import { createPostgresFulfillmentShipmentCommandPort, createPostgresFulfillmentCommerceReadPort, nativeFulfillmentCommerceResponseSchemas } from '@openlup/platform/fulfillment/native';
 import type { ActionBinding, ActionContext, ApplicationBindings } from './bindings.ts';
 import { readOperatorInvoiceSummary } from './e4-invoice-summary.ts';
 
@@ -70,6 +70,7 @@ ApplicationBindings['actions'] {
     ...composeOrderHolds(pool, authorizeOperator),
     ...composeOrderTransitions(pool, authorizeOperator),
     ...composeReturnCapabilities(pool, authorizeOperator),
+    ...composeShipmentCapabilities(pool, authorizeOperator),
     'operator.shipments': shipmentRead(false),
     'operator.shipment': shipmentRead(true),
     'account.invoice': async (payload, context) => {
@@ -304,4 +305,62 @@ export function composeReturnCapabilities(pool: Pool, authorize: (context: Actio
     } catch { return refused('starter_return_refused'); }
   };
   return { 'return.request': request, 'operator.returnApprove': decision(true), 'operator.returnReject': decision(false) };
+}
+
+
+/** Human-admin evidence only. Native commands own the READ COMMITTED transaction's effects. */
+export function composeShipmentCapabilities(pool: Pool, authorize: (context: ActionContext) => Promise<boolean>): ApplicationBindings['actions'] {
+  const command = (kind: 'label' | 'handoff' | 'tracking'): ActionBinding => async (payload, context) => {
+    if (!context.actor.operatorRef || !await authorize(context)) return refused('operator_required');
+    const fields = kind === 'label' ? ['providerKind','providerTrackingId','labelUrl','deliveryEstimateDays','rawProviderPayload']
+      : kind === 'tracking' ? ['status','providerTrackingId','rawEvent'] : [];
+    if (payload.confirmed !== true || Object.keys(payload).some(key => !['locale','shipmentRef','confirmed','metadata', ...fields].includes(key)))
+      return refused('starter_input_invalid');
+    const { locale: _locale, shipmentRef, confirmed: _confirmed, ...input } = payload;
+    type Response = { result: Awaited<ReturnType<ActionBinding>> };
+    const response: Response = { result: refused('starter_shipment_unavailable') };
+    const respond = {
+      sendMethodNotAllowed(res: Response) { res.result = refused('method_not_allowed'); },
+      sendBffSuccess(res: Response, value: unknown) { res.result = { ok: true, value,
+        ...(value && typeof value === 'object' && 'replayed' in value && typeof value.replayed === 'boolean' ? { replayed: value.replayed } : {}) }; },
+      sendBffError(res: Response, code: string, _message: string, options?: { details: unknown }) {
+        const detail = options?.details as { reason?: unknown } | undefined;
+        const reason = typeof detail?.reason === 'string' && /^[a-z_]+$/.test(detail.reason) ? detail.reason : 'conflict';
+        res.result = refused(code === 'BAD_REQUEST' ? 'starter_input_invalid'
+          : code === 'CONFLICT' ? `starter_shipment_${reason}` : 'starter_shipment_unavailable');
+      },
+    };
+    // Public handlers validate before the lazy port opens a connection. The host
+    // admission above is fresh for this invocation, including native receipt replay.
+    let db: import('pg').PoolClient | undefined;
+    const port = async () => {
+      db = await pool.connect();
+      await db.query('BEGIN ISOLATION LEVEL READ COMMITTED');
+      return createPostgresFulfillmentShipmentCommandPort(db);
+    };
+    // Handler ports are synchronous factories; validate in the public handler,
+    // and acquire the transaction only inside the selected mutation method.
+    const fulfillmentPort = {
+      async recordCommerceFulfillmentLabel(request: Parameters<ReturnType<typeof createPostgresFulfillmentShipmentCommandPort>['recordCommerceFulfillmentLabel']>[0]) {
+        return (await port()).recordCommerceFulfillmentLabel(request);
+      },
+      async handOffCommerceFulfillmentOrder(request: Parameters<ReturnType<typeof createPostgresFulfillmentShipmentCommandPort>['handOffCommerceFulfillmentOrder']>[0]) {
+        return (await port()).handOffCommerceFulfillmentOrder(request);
+      },
+      async recordCommerceFulfillmentTrackingEvent(request: Parameters<ReturnType<typeof createPostgresFulfillmentShipmentCommandPort>['recordCommerceFulfillmentTrackingEvent']>[0]) {
+        return (await port()).recordCommerceFulfillmentTrackingEvent(request);
+      },
+    };
+    const deps = { respond, fulfillmentPort, authorizeAdmin: async () => ({ ok: true as const, userId: context.actor.operatorRef! }) };
+    const handler = kind === 'label' ? createAdminCommerceFulfillmentRecordLabelHandler(deps)
+      : kind === 'handoff' ? createAdminCommerceFulfillmentHandOffHandler(deps) : createAdminCommerceFulfillmentTrackingEventHandler(deps);
+    try {
+      await handler({ method: 'POST', query: {}, body: { ...input, fulfillmentOrderId: shipmentRef, idempotencyKey: context.commandKey } }, response);
+      if (db) await db.query(response.result.ok ? 'COMMIT' : 'ROLLBACK');
+      return response.result;
+    } finally {
+      if (db) { try { await db.query('ROLLBACK'); } finally { db.release(); } }
+    }
+  };
+  return { 'operator.label': command('label'), 'operator.handoff': command('handoff'), 'operator.delivery': command('tracking') };
 }

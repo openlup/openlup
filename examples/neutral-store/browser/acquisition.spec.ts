@@ -276,7 +276,7 @@ test('pause remains available during an open payment case and closes that case',
 });
 test('clock-driven finite auto-resume captures the resumed confirmation once', async ({ page }) => {
   const f = await purchase(page); await signIn(page, f.email, 'en'); await pause(page, f, 'en');
-  // The disposable fixture supplies carrier facts; no operator delivery action is mounted.
+  // This care fixture supplies its own external carrier facts.
   await owner.query("INSERT INTO public.fulfillment_ports(port_key,provider_type,routable) VALUES('care-parcels','simulator',true) ON CONFLICT DO NOTHING");
   const parcels = createPostgresFulfillmentShipmentSpinePort(runtime, { portKey: 'care-parcels' });
   const parcel = await parcels.createShipment({ idempotencyKey: `parcel:${f.orderRef}`, orderId: f.orderRef });
@@ -456,7 +456,7 @@ async function parcel(orderRef: string) {
   await owner.query("INSERT INTO public.fulfillment_ports(port_key,provider_type,routable) VALUES('portal-parcels','simulator',true) ON CONFLICT DO NOTHING");
   const result = await createPostgresFulfillmentShipmentSpinePort(runtime, { portKey: 'portal-parcels' })
     .createShipment({ idempotencyKey: `portal-parcel:${orderRef}`, orderId: orderRef });
-  // The external dispatch host freezes carrier contact. The starter mounts no dispatch or arrival writer.
+  // The external dispatch fixture freezes carrier contact before operator evidence.
   await runtime.query('SELECT public.fulfillment_capture_parcel_contact($1,$2)', [result.shipmentId,
     { schemaVersion: 1, source: 'contact', revision: 1, recipientName: 'Example Buyer', contactEmail: 'parcel@example.test',
       contactPhone: '+999123456789', line1: '1 Example Lane', line2: null, city: 'Example City', postalCode: '00000', country: 'ZZ',
@@ -1299,6 +1299,164 @@ for (const locale of ['en','pl'] as const) {
     await simulator.recordObservation({ attemptId: attempt!.id, idempotencyKey: randomUUID(), outcome: 'captured', occurredAt: new Date().toISOString() });
     const observed = await call(page, 'checkout.read', credential);
     expect(observed.ok).toBe(true); expect(observed.value.status).toBe('pending_payment'); expect(observed.value.recoveryGuidance).toBeUndefined();
+  });
+}
+
+async function shipmentSubject(page: Page, locale: Locale) {
+  const f = await pendingCheckout(page, locale);
+  expect((await call(page, 'payment.simulate', { orderRef: f.orderRef, token: f.token, outcome: 'captured' })).ok).toBe(true);
+  const result = await parcel(f.orderRef);
+  return { ...f, shipmentRef: result.shipmentId };
+}
+async function shipmentPanel(page: Page, shipmentRef: string, locale: Locale) {
+  const form = page.locator('#shipments form').filter({ has: page.getByRole('button', { name: copy[locale].read, exact: true }) });
+  await form.locator('[name=shipmentRef]').fill(shipmentRef.toUpperCase()); await form.getByRole('button', { name: copy[locale].read, exact: true }).click();
+  const panel = page.locator('[data-shipment-controls]'); await expect(panel).toContainText(shipmentRef); return panel;
+}
+for (const locale of ['en','pl'] as const) {
+  test(`${locale}: shipment operations confirmed label and handoff retain private evidence and consume exact stock once`, async ({ page, context }) => {
+    const f = await shipmentSubject(page, locale), other = await shipmentSubject(page, locale);
+    const reservations = async (id: string) => (await owner.query('SELECT id,status FROM public.fulfillment_inventory_reservations WHERE purchase_order_id=$1 ORDER BY id', [id])).rows;
+    const unrelated = await reservations(other.orderRef);
+    const actor = await portalOperator(page, locale); const panel = await shipmentPanel(page, f.shipmentRef, locale);
+    await accessible(panel);
+    const labelUrl = `https://labels.example.invalid/private/${randomUUID()}`, raw = { captured: `operator-evidence-${randomUUID()}` }, tracking = `TRACK-${randomUUID()}`;
+    const form = panel.locator('form').filter({ has: page.getByRole('button', { name: copy[locale].label, exact: true }) });
+    await form.locator('[name=providerKind]').fill('synthetic-carrier'); await form.locator('[name=providerTrackingId]').fill(tracking);
+    await form.locator('[name=labelUrl]').fill(labelUrl); await form.locator('[name=rawProviderPayload]').fill(JSON.stringify(raw));
+    const input = { shipmentRef: f.shipmentRef, providerKind: 'synthetic-carrier', providerTrackingId: tracking, labelUrl, rawProviderPayload: raw, confirmed: true };
+    expect((await call(page, 'operator.label', { ...input, confirmed: false })).code).toBe('starter_input_invalid');
+    await form.locator('[name=confirmed]').check();
+    const request = page.waitForRequest(r => r.url().endsWith('/api/actions/operator.label'));
+    await form.getByRole('button', { name: copy[locale].label, exact: true }).click(); const key = (await request).headers()['idempotency-key']!;
+    await expect(panel.getByRole('button', { name: copy[locale].handoff, exact: true })).toBeVisible();
+    expect((await call(page, 'operator.label', { ...input, shipmentRef: other.shipmentRef, providerKind: 'changed-provider' }, key)).value.fulfillmentOrderId).toBe(f.shipmentRef);
+    const detail = await call(page, 'operator.shipment', { shipmentRef: f.shipmentRef.toUpperCase() });
+    expect(detail.ok).toBe(true); expect(JSON.stringify(detail.value).includes(labelUrl)).toBe(true);
+    expect(detail.value.order.latestOperation.actorUserId).toBe(actor);
+    const receipt = (await owner.query("SELECT command FROM public.fulfillment_operator_receipts WHERE kind='label' AND idempotency_key=$1", [key])).rows[0].command;
+    expect(receipt.request.rawProviderPayload).toEqual(raw); expect(receipt.request.labelUrl === labelUrl).toBe(true);
+    const handoff = panel.locator('form').filter({ has: page.getByRole('button', { name: copy[locale].handoff, exact: true }) });
+    await handoff.locator('[name=confirmed]').check();
+    const handoffRequest = page.waitForRequest(r => r.url().endsWith('/api/actions/operator.handoff'));
+    await handoff.getByRole('button', { name: copy[locale].handoff, exact: true }).click(); const handoffKey = (await handoffRequest).headers()['idempotency-key']!;
+    await expect(page.locator('[data-shipment-result]')).toContainText('handed_over');
+    const heldIds = (await owner.query(`SELECT DISTINCT reservation_id AS id FROM public.fulfillment_parcel_line_reservations r
+      JOIN public.fulfillment_parcel_lines l ON l.id=r.line_id WHERE l.shipment_id=$1 ORDER BY reservation_id`, [f.shipmentRef])).rows.map(r => r.id);
+    expect(heldIds.length).toBeGreaterThan(0);
+    expect((await reservations(f.orderRef)).filter(r => heldIds.includes(r.id)).every(r => r.status === 'consumed')).toBe(true);
+    expect(await reservations(other.orderRef)).toEqual(unrelated);
+    const before = (await owner.query("SELECT to_jsonb(r) AS value FROM public.fulfillment_operator_receipts r WHERE kind='handoff' AND command->>'idempotencyKey'=$1", [handoffKey])).rows;
+    expect((await call(page, 'operator.handoff', { shipmentRef: f.shipmentRef, confirmed: true }, handoffKey)).replayed).toBe(true);
+    expect((await call(page, 'operator.handoff', { shipmentRef: f.shipmentRef, confirmed: true })).replayed).toBe(true);
+    expect((await owner.query("SELECT to_jsonb(r) AS value FROM public.fulfillment_operator_receipts r WHERE kind='handoff' AND command->>'idempotencyKey'=$1", [handoffKey])).rows).toEqual(before);
+    expect((await call(page, 'operator.delivery', { shipmentRef: f.shipmentRef, status: 'in_transit', providerTrackingId: tracking, confirmed: true })).ok).toBe(true);
+    const oldHandoff = await call(page, 'operator.handoff', { shipmentRef: f.shipmentRef, confirmed: true }, handoffKey);
+    expect(oldHandoff.replayed).toBe(true); expect(oldHandoff.value.status).toBe('in_transit');
+    expect((await owner.query("SELECT to_jsonb(r) AS value FROM public.fulfillment_operator_receipts r WHERE kind='handoff' AND command->>'idempotencyKey'=$1", [handoffKey])).rows).toEqual(before);
+    const naiveTime = new Date(Date.now() - 2 * 86400000).toISOString().slice(0, -1);
+    expect((await call(page, 'operator.delivery', { shipmentRef: f.shipmentRef, status: 'delivered', providerTrackingId: tracking, rawEvent: { occurredAt: naiveTime }, confirmed: true })).ok).toBe(true);
+    expect((await owner.query('SELECT delivered_at FROM public.fulfillment_shipments WHERE id=$1', [f.shipmentRef])).rows[0].delivered_at.getTime()).toBeGreaterThan(Date.now() - 86400000);
+    await context.clearCookies(); await signIn(page, f.email, locale);
+    for (const operation of ['operator.shipments','operator.shipment','operator.label','operator.handoff','operator.delivery'])
+      expect((await call(page, operation, { ...input, actorUserId: actor })).code).toBe('operator_required');
+    const customer = await call(page, 'account.orders', { orderRef: f.orderRef }); expect(customer.ok).toBe(true);
+    for (const response of [customer, await call(page, 'checkout.read', { token: f.token }), await call(page, 'tracking.read', { shipmentRef: f.shipmentRef })]) {
+      expect(JSON.stringify(response).includes(labelUrl)).toBe(false); expect(JSON.stringify(response).includes(raw.captured)).toBe(false);
+    }
+    await page.goto(routes.account[locale]); expect((await page.locator('main').textContent())?.includes(labelUrl)).toBe(false);
+    expect((await owner.query("SELECT command FROM public.fulfillment_operator_receipts WHERE kind='label' AND idempotency_key=$1", [key])).rows[0].command).toEqual(receipt);
+  });
+
+  test(`${locale}: shipment operations provider correlation and historical handoff refuse unsafe ownership`, async ({ page }) => {
+    const a = await shipmentSubject(page, locale), b = await shipmentSubject(page, locale); await portalOperator(page, locale);
+    const number = `PARCEL-${randomUUID()}`, historical = `HISTORY-${randomUUID()}`;
+    const input = { shipmentRef: b.shipmentRef, providerKind: 'carrier-a', providerTrackingId: number, confirmed: true };
+    await owner.query("INSERT INTO public.shipment_external_refs(shipment_id,ref_role,external_id) VALUES($1,'tracking',$2)", [a.shipmentRef, historical]);
+    const before = (await owner.query('SELECT to_jsonb(s) AS value FROM public.fulfillment_shipments s WHERE id=$1', [b.shipmentRef])).rows;
+    expect((await call(page, 'operator.label', { ...input, providerTrackingId: historical })).code).toBe('starter_shipment_tracking_reference_unattributed');
+    expect((await owner.query('SELECT to_jsonb(s) AS value FROM public.fulfillment_shipments s WHERE id=$1', [b.shipmentRef])).rows).toEqual(before);
+    expect((await call(page, 'operator.label', input)).ok).toBe(true);
+    expect((await call(page, 'operator.label', { ...input, shipmentRef: a.shipmentRef })).code).toBe('starter_shipment_tracking_ref_conflict');
+    expect((await call(page, 'operator.label', { ...input, shipmentRef: a.shipmentRef, providerKind: 'carrier-b' })).ok).toBe(true);
+    const sibling = randomUUID();
+    // Historical parcel fixture deliberately has no frozen reservation set; it must never capture today's stock.
+    await owner.query(`INSERT INTO public.fulfillment_shipments(id,order_id,port_key,provider_type,create_idempotency_key,sequence_no,replaces_shipment_id,replacement_reason)
+      SELECT $1,order_id,port_key,provider_type,$2,1,id,'lost' FROM public.fulfillment_shipments WHERE id=$3`, [sibling, randomUUID(), a.shipmentRef]);
+    expect((await call(page, 'operator.label', { ...input, shipmentRef: sibling, providerKind: 'carrier-b' })).ok).toBe(true);
+    const refs = (await owner.query("SELECT shipment_id,provider_kind FROM public.shipment_external_refs WHERE ref_role='tracking' AND external_id=$1 ORDER BY provider_kind", [number])).rows;
+    expect(refs).toEqual([{ shipment_id: b.shipmentRef, provider_kind: 'carrier-a' }, { shipment_id: sibling, provider_kind: 'carrier-b' }]);
+    const selected = (await call(page, 'operator.shipment', { shipmentRef: sibling })).value.order;
+    expect(selected.providerTrackingId).toBe(number); expect(selected.providerKind).toBe('carrier-b');
+    const original = (await call(page, 'operator.shipment', { shipmentRef: a.shipmentRef })).value.order;
+    expect(original.providerTrackingId).toBe(historical); expect(original.providerKind).toBeNull();
+    expect((await call(page, 'operator.delivery', { shipmentRef: sibling, status: 'delivered', confirmed: true })).code).toBe('starter_shipment_tracking_before_handoff_forbidden');
+    expect((await call(page, 'operator.delivery', { shipmentRef: sibling, status: 'exception', confirmed: true })).ok).toBe(true);
+    expect((await call(page, 'operator.delivery', { shipmentRef: sibling, status: 'in_transit', confirmed: true })).code).toBe('starter_shipment_tracking_before_handoff_forbidden');
+    expect((await call(page, 'operator.label', { ...input, shipmentRef: sibling, providerKind: 'carrier-b' })).ok).toBe(true);
+    const stock = (await owner.query('SELECT id,status FROM public.fulfillment_inventory_reservations WHERE purchase_order_id=$1 ORDER BY id', [a.orderRef])).rows;
+    expect((await call(page, 'operator.handoff', { shipmentRef: sibling, confirmed: true })).value).toMatchObject({ status: 'handed_over', reservationDisposition: 'reservations_not_recorded', consumedReservationCount: 0 });
+    expect((await owner.query('SELECT id,status FROM public.fulfillment_inventory_reservations WHERE purchase_order_id=$1 ORDER BY id', [a.orderRef])).rows).toEqual(stock);
+    const foreignNumber = `FOREIGN-${randomUUID()}`;
+    expect((await call(page, 'operator.label', { ...input, providerTrackingId: foreignNumber })).ok).toBe(true);
+    expect((await call(page, 'operator.delivery', { shipmentRef: sibling, providerTrackingId: foreignNumber, status: 'in_transit', confirmed: true })).code).toBe('starter_shipment_tracking_ref_not_active');
+  });
+
+  test(`${locale}: shipment operations actual replacement arrival and earlier-only replay preserve the cycle clamp`, async ({ page }) => {
+    const f = await purchase(page), first = await parcel(f.orderRef), before = await state(f); await portalOperator(page, locale);
+    await owner.query("SELECT public.subscription_delivery_alignment_set_mode('auto_align')");
+    const hold = await call(page, 'operator.hold', { orderRef: f.orderRef, reason: 'fulfillment_exception' }); expect(hold.ok).toBe(true);
+    const replaced = await call(page, 'operator.replacement', { orderRef: f.orderRef, reason: 'lost', confirmed: true }); expect(replaced.ok).toBe(true);
+    const shipmentRef = replaced.value.replacement.fulfillmentOrderId;
+    expect((await owner.query('SELECT replaces_shipment_id,delivered_at FROM public.fulfillment_shipments WHERE id=$1', [shipmentRef])).rows[0]).toEqual({ replaces_shipment_id: first.shipmentId, delivered_at: null });
+    const panel = await shipmentPanel(page, shipmentRef, locale); await accessible(panel);
+    expect((await call(page, 'operator.label', { shipmentRef, providerKind: 'synthetic-carrier', providerTrackingId: `REPLACEMENT-${randomUUID()}`, confirmed: true })).ok).toBe(true);
+    expect((await call(page, 'operator.handoff', { shipmentRef, confirmed: true })).ok).toBe(true); expect(await state(f)).toEqual(before);
+    const deliveredAt = new Date(before.next_cycle_at.getTime() + 3 * 86400000).toISOString();
+    await shipmentPanel(page, shipmentRef, locale);
+    const tracking = page.locator('[data-shipment-controls] form').filter({ has: page.getByRole('button', { name: copy[locale].delivery, exact: true }) });
+    await tracking.locator('[name=status]').selectOption('delivered'); await tracking.locator('[name=rawEvent]').fill(JSON.stringify({ occurredAt: deliveredAt, captured: 'Original tracking evidence' }));
+    await tracking.locator('[name=confirmed]').check();
+    const request = page.waitForRequest(r => r.url().endsWith('/api/actions/operator.delivery'));
+    await tracking.getByRole('button', { name: copy[locale].delivery, exact: true }).click(); const key = (await request).headers()['idempotency-key']!;
+    await expect(page.locator('[data-shipment-result]')).toContainText('delivered');
+    const after = await state(f); expect(after.status).toBe('active'); expect(after.next_cycle_at.getTime()).toBeGreaterThanOrEqual(Date.parse(deliveredAt) + f.cadenceDays * 86400000);
+    const receipt = async () => (await owner.query("SELECT command FROM public.fulfillment_operator_receipts WHERE kind='tracking' AND idempotency_key=$1", [key])).rows[0].command;
+    const originalReceipt = await receipt();
+    const earlier = new Date(Date.parse(deliveredAt) - 86400000).toISOString(), later = new Date(Date.parse(deliveredAt) + 86400000).toISOString();
+    for (const occurredAt of [earlier,later]) expect((await call(page, 'operator.delivery', { shipmentRef, status: 'delivered', providerTrackingId: originalReceipt.request.providerTrackingId, confirmed: true, rawEvent: { occurredAt, captured: 'Later input' } }, key)).replayed).toBe(true);
+    expect((await owner.query('SELECT delivered_at FROM public.fulfillment_shipments WHERE id=$1', [shipmentRef])).rows[0].delivered_at.toISOString()).toBe(earlier);
+    expect(await receipt()).toEqual(originalReceipt); expect(await state(f)).toEqual(after);
+    expect((await call(page, 'operator.delivery', { shipmentRef, status: 'in_transit', confirmed: true })).code).toBe('starter_shipment_tracking_after_delivered_forbidden');
+    expect((await call(page, 'operator.delivery', { shipmentRef, status: 'exception', confirmed: true }, key)).code).toBe('starter_shipment_tracking_idempotency_conflict');
+    expect((await owner.query('SELECT count(*)::int AS n FROM public.subscription_delivery_alignment_arrivals WHERE shipment_id=$1', [shipmentRef])).rows[0].n).toBe(1);
+    expect((await runtime.query('SELECT id FROM public.subscription_pause_windows WHERE subscription_id=$1', [f.subscriptionId])).rows).toHaveLength(0);
+  });
+
+  test(`${locale}: shipment operations recheck human authority on replay and reject forgery and stale parcels`, async ({ page, context }) => {
+    const f = await shipmentSubject(page, locale); await portalOperator(page, locale, 'distributor');
+    const input = { shipmentRef: f.shipmentRef, confirmed: true, providerKind: 'synthetic-carrier', providerTrackingId: `AUTH-${randomUUID()}` };
+    const commands = ['operator.label','operator.handoff','operator.delivery'];
+    for (const operation of commands) expect((await call(page, operation, input)).code).toBe('operator_required');
+    await context.clearCookies(); const principal = await portalOperator(page, locale);
+    const body = (operation: string) => operation === 'operator.label' ? input : { shipmentRef: f.shipmentRef, confirmed: true, ...(operation === 'operator.delivery' ? { status: 'in_transit' } : {}) };
+    for (const operation of commands) {
+      for (const field of ['actorUserId','principalRef','operatorRef','customerRef','clientId','idempotencyKey'])
+        expect((await call(page, operation, { ...body(operation), [field]: principal })).code).toBe('starter_input_invalid');
+      expect((await call(page, operation, { ...body(operation), confirmed: false })).code).toBe('starter_input_invalid');
+      expect((await call(page, operation, { ...body(operation), shipmentRef: randomUUID() })).code).toBe('starter_shipment_not_found');
+    }
+    // Shipment audit attribution is the human principal; it does not depend on an unused Commerce row.
+    await owner.query('DELETE FROM public.commerce_operators WHERE id=$1', [principal]);
+    const keys: string[] = [];
+    for (const operation of commands) { const key = randomUUID(); keys.push(key); expect((await call(page, operation, body(operation), key)).ok).toBe(true); }
+    const rows = async () => (await owner.query('SELECT to_jsonb(s) AS value FROM public.fulfillment_shipments s WHERE id=$1', [f.shipmentRef])).rows;
+    const before = await rows(), root = (await owner.query("SELECT principal_id FROM public.platform_human_memberships WHERE membership_state='active' AND role='admin' AND principal_id<>$1 LIMIT 1", [principal])).rows[0].principal_id;
+    const invitations = createDirectOperatorInvitationStore({ connectionString: material.ownerUrl });
+    try { await invitations.remove({ actorPrincipalId: root, targetPrincipalId: principal }); } finally { await invitations.close(); }
+    for (const [index,operation] of commands.entries()) expect((await call(page, operation, body(operation), keys[index])).code).toBe('operator_required');
+    expect(await rows()).toEqual(before); await context.clearCookies();
+    for (const operation of commands) expect((await call(page, operation, body(operation))).code).toBe('operator_required');
   });
 }
 

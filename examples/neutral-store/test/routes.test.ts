@@ -34,7 +34,7 @@ test('malformed path encoding is an unknown page, never an exception', () => {
 
 test('both locales supply every copy key and every named-limit action', () => {
   assert.deepEqual(Object.keys(copy.en).sort(), Object.keys(copy.pl).sort());
-  assert.equal(nativeLimits.length, 15);
+  assert.equal(nativeLimits.length, 14);
   for (const limit of nativeLimits) {
     assert.ok(limit.code.trim());
     for (const action of limit.actions) {

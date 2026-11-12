@@ -78,17 +78,59 @@ function customerActions(context: PageContext): HTMLElement {
 }
 
 function shipmentActions(context: PageContext): HTMLElement {
-  const make = (operation: Operation, title: CopyKey, fields: FieldSpec[]) => actionForm(context, {
-    operation, title, submit: title, fields: [shipmentRef, ...fields],
-  });
   return el('section', { id: 'shipments', class: 'panel' }, el('h2', {}, context.t('shipments')),
-    el('p', {}, context.t('trackingBody')),
-    readPanel(context, 'shipments', 'operator.shipments'),
-    el('div', { class: 'form-grid' },
-      make('operator.shipment', 'read', []),
-      make('operator.label', 'label', [{ name: 'labelRef', label: 'actionRef' }]),
-      make('operator.handoff', 'handoff', [{ name: 'evidenceRef', label: 'actionRef' }]),
-      make('operator.delivery', 'delivery', [{ name: 'evidenceRef', label: 'actionRef' }])));
+    el('p', {}, context.t('shipmentEvidenceBody')),
+    readPanel(context, 'shipments', 'operator.shipments'), operatorShipmentPortal(context));
+}
+
+function operatorShipmentPortal(context: PageContext): HTMLElement {
+  const controls = el('div', { 'data-shipment-controls': '' });
+  const outcome = el('div', { 'data-shipment-result': '', role: 'status', 'aria-live': 'polite' });
+  let generation = 0;
+  const json = (value: unknown) => {
+    const parsed: unknown = JSON.parse(String(value));
+    if (!isRecord(parsed)) throw new Error('starter_input_invalid');
+    return parsed;
+  };
+  async function show(value: unknown) {
+    const current = ++generation; controls.replaceChildren();
+    if (!isRecord(value) || !isRecord(value.order) || typeof value.order.id !== 'string') return;
+    const parcel = value.order, target = Object.freeze({ shipmentRef: parcel.id });
+    const refresh = (result: unknown) => {
+      if (current !== generation) return;
+      outcome.replaceChildren(renderValue(result));
+      void (async () => {
+        const fresh = await act('operator.shipment', target, crypto.randomUUID());
+        if (current === generation) { if (fresh.ok) await show(fresh.value); else { ++generation; controls.replaceChildren(refusal(context, fresh.code)); } }
+      })();
+    };
+    append(controls, el('h3', {}, String(parcel.id)), renderValue(value));
+    const metadata: FieldSpec = { name: 'metadata', label: 'shipmentMetadata', type: 'textarea', value: '{}', maxLength: 20000 };
+    const confirm: FieldSpec = { name: 'confirmed', label: 'shipmentConfirm', type: 'checkbox' };
+    if (!['handed_over','in_transit','delivered','cancelled'].includes(String(parcel.status))) append(controls,
+      actionForm(context, { operation: 'operator.label', title: 'label', submit: 'label', input: () => target, onSuccess: refresh,
+        fields: [{ name: 'providerKind', label: 'shipmentProvider' }, { name: 'providerTrackingId', label: 'trackingNumber' },
+          { name: 'labelUrl', label: 'shipmentLabelUrl', required: false, maxLength: 2000 },
+          { name: 'deliveryEstimateDays', label: 'shipmentEstimate', type: 'number', min: 0, required: false },
+          { name: 'rawProviderPayload', label: 'shipmentRawPayload', type: 'textarea', value: '{}', maxLength: 20000 }, metadata, confirm],
+        transform: values => ({ providerKind: values.providerKind, providerTrackingId: values.providerTrackingId,
+          ...(values.labelUrl ? { labelUrl: values.labelUrl } : {}),
+          ...(Number.isSafeInteger(values.deliveryEstimateDays) ? { deliveryEstimateDays: values.deliveryEstimateDays } : {}),
+          rawProviderPayload: json(values.rawProviderPayload), metadata: json(values.metadata), confirmed: values.confirmed }) }));
+    if (['packed','label_created'].includes(String(parcel.status))) append(controls,
+      actionForm(context, { operation: 'operator.handoff', title: 'handoff', submit: 'handoff', fields: [metadata, confirm],
+        input: () => target, transform: values => ({ metadata: json(values.metadata), confirmed: values.confirmed }), onSuccess: refresh }));
+    if (['label_created','handed_over','in_transit','exception','delivered'].includes(String(parcel.status))) append(controls,
+      actionForm(context, { operation: 'operator.delivery', title: 'delivery', submit: 'delivery', input: () => target, onSuccess: refresh,
+        fields: [{ name: 'status', label: 'status', type: 'select', options: (parcel.status === 'delivered' ? ['delivered'] : ['in_transit','delivered','exception']).map(value =>
+          ({ value, text: context.t(value === 'delivered' ? 'shipmentDelivered' : value === 'exception' ? 'shipmentException' : 'shipmentInTransit') })) },
+          { name: 'providerTrackingId', label: 'trackingNumber', required: false, value: typeof parcel.providerTrackingId === 'string' ? parcel.providerTrackingId : '' },
+          { name: 'rawEvent', label: 'shipmentRawEvent', type: 'textarea', value: '{}', maxLength: 20000 }, metadata, confirm],
+        transform: values => ({ status: values.status, ...(values.providerTrackingId ? { providerTrackingId: values.providerTrackingId } : {}),
+          rawEvent: json(values.rawEvent), metadata: json(values.metadata), confirmed: values.confirmed }) }));
+  }
+  return el('div', {}, actionForm(context, { operation: 'operator.shipment', submit: 'read', fields: [shipmentRef],
+    prepare: async values => { ++generation; controls.replaceChildren(); return values; }, onSuccess: value => { void show(value); } }), outcome, controls);
 }
 
 function returnActions(context: PageContext): HTMLElement {
