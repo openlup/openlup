@@ -797,11 +797,12 @@ and preserves the payloads. Clearing client profile fields or the client FK's
 cascade does not erase this ledger: identity keeps the client row. This factory
 adds no default reference registration, deletion policy or retention period.
 
-Native first-duty capture also creates frozen buyer components for payment duties,
-including the marked shipping fallback when no billing profile exists. Hosts must
+Native first-duty capture also creates frozen buyer components for payment and
+handoff duties, including the marked shipping fallback when no billing profile exists. Hosts must
 register `createCustomerBillingPrivacyContributor`
-and require ID `customer-billing`. It exports exact editable profiles and frozen
-invoice buyers, erases only the subject's profiles, and retains the invoice
+and require ID `customer-billing`, even without selecting the billing invoice
+store. The Node reference host registers it alongside the parcel-contact
+contributor. It exports exact editable profiles and frozen invoice buyers, erases only the subject's profiles, and retains the invoice
 components under the invoicing owner's existing document-retention boundary.
 Account-event payloads keep their separate contributor and retention declaration;
 client-field clearing does not cover either new table. See the

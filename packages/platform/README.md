@@ -2579,7 +2579,7 @@ or activate a target. Starter pages and routes remain separately bound work.
 ### Customer billing profiles and frozen invoice buyers
 
 Install the complete native catalogue through
-`20261110260000_customer_billing_profiles.sql`. Select
+`20261110270000_invoicing_duty_buyer_capture.sql`. Select
 `createPostgresCustomerBillingProfilePort`, `createCustomerBillingProfileSchemas`
 and `createCustomerBillingProfilesHandler` from `@openlup/platform/account-support`;
 browser request/response/port types live in `account-support/contracts`.
@@ -2612,7 +2612,11 @@ immutable buyer, and the selected installer refuses facts that contradict it.
 Full fiscal-fact installation is a separate call and cannot be the buyer freeze
 point. The retained-source sweep also reaches the first-duty capture boundary.
 A missing recorded destination refuses with `commerce_destination_unavailable`:
-record the owned order destination before retrying capture. No buyer or address
+record the owned order destination before retrying capture while its fault is
+still retryable. Handoff sources must name an order-owned shipment or refuse with
+`customer_billing_shipment_mismatch`. Once the sweep marks the source `faulted`,
+there is no supported operator reset/requeue command; escalate for an
+invoicing-owned recovery procedure. No buyer or address
 is fabricated. There is no second full invoice ledger, provider executor or scheduler.
 
 `InvoiceBuyer` adds only optional `line2`, raw identifier and provenance fields,

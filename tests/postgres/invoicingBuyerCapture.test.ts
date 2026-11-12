@@ -21,10 +21,10 @@ async function subject(db: Db) {
     [client, `${client}@example.invalid`, 'Example', 'Customer', at]);
   return client;
 }
-async function profile(db: Db, client: string) {
+async function profile(db: Db, client: string, kind: 'both' | 'profile' | 'address' = 'both') {
   const id = randomUUID(), address = randomUUID();
-  await db.owner.query("INSERT INTO public.customer_orderer_profiles(id,client_id,full_name,email,is_default,created_at,updated_at) VALUES($1,$2,'Profile Buyer','billing@example.invalid',true,$3,$3)", [id, client, at]);
-  await db.owner.query("INSERT INTO public.customer_saved_addresses(id,client_id,kind,line1,line2,city,postal_code,country,is_default,created_at,updated_at) VALUES($1,$2,'both','Billing 1','Billing unit 2','Example','12345','ZZ',true,$3,$3)", [address, client, at]);
+  if (kind !== 'address') await db.owner.query("INSERT INTO public.customer_orderer_profiles(id,client_id,full_name,email,is_default,created_at,updated_at) VALUES($1,$2,'Profile Buyer','billing@example.invalid',true,$3,$3)", [id, client, at]);
+  if (kind !== 'profile') await db.owner.query("INSERT INTO public.customer_saved_addresses(id,client_id,kind,line1,line2,city,postal_code,country,is_default,created_at,updated_at) VALUES($1,$2,'both','Billing 1','Billing unit 2','Example','12345','ZZ',true,$3,$3)", [address, client, at]);
   return { id, address };
 }
 async function order(db: Db, client: string, metadata = {}, withDestination = true) {
@@ -42,8 +42,8 @@ async function order(db: Db, client: string, metadata = {}, withDestination = tr
 }
 const request = (id: string) => ({ requestKey: randomUUID(), sourceKind: 'paid' as const, sourceId: randomUUID(), orderId: id,
   evidence: { settlementIntentId: randomUUID(), amountMinor: 100, currency: 'XXX' }, occurredAt: at });
-async function capture(db: Db, input: ReturnType<typeof request>) {
-  return (await db.runtime.query('SELECT public.invoicing_capture_duty($1,$2,$3,$4,$5,$6) AS value',
+async function capture(db: Db, input: ReturnType<typeof request>, executor: Pick<Db['runtime'], 'query'> = db.runtime) {
+  return (await executor.query('SELECT public.invoicing_capture_duty($1,$2,$3,$4,$5,$6) AS value',
     [input.requestKey, input.sourceKind, input.sourceId, input.orderId, input.evidence, input.occurredAt])).rows[0].value as { dutyId: string; status: string };
 }
 const rows = async (db: Db, duty: string) => ({
@@ -81,6 +81,57 @@ for (const installation of profiles) describe(`invoicing first-duty buyer on ${i
     expect(await capture(db, input)).toEqual(duty);
     expect(await store.captureDuty(input)).toEqual(duty);
     expect(await rows(db, duty.dutyId)).toEqual(before);
+  });
+  it.each(['profile', 'address'] as const)('freezes the %s-only selection branch without inventing the missing saved source', async kind => {
+    const client = await subject(db), saved = await profile(db, client, kind), id = await order(db, client);
+    await capture(db, request(id));
+    // This retained profile-only branch marks its fallback in addressSource, with legacyFallback=false.
+    expect(await createPostgresBillingInvoiceStore(db.runtime).readCapturedBuyer(id)).toMatchObject(kind === 'profile'
+      ? { name: 'Profile Buyer', source: 'customer_orderer_profile', ordererProfileId: saved.id, billingAddressId: null,
+        addressSource: 'shipping_address_legacy_fallback', legacyFallback: false, address: { line2: 'Shipping unit 2' } }
+      : { name: 'Example Customer', source: 'customer_billing_address', ordererProfileId: null, billingAddressId: saved.address,
+        addressSource: 'customer_billing_address', legacyFallback: false, address: { line2: 'Billing unit 2', addressId: saved.address } });
+  });
+  it('never selects a buyer around an existing original accounting document', async () => {
+    const client = await subject(db), id = await order(db, client), store = createPostgresBillingInvoiceStore(db.runtime);
+    await db.owner.query("UPDATE public.commerce_orders SET status='paid',paid_at=$2 WHERE id=$1", [id, at]);
+    const document = await store.requestLocalDocument({ requestKey: randomUUID(), orderId: id, providerRef: 'synthetic-history' });
+    if (document.kind !== 'requested') throw Error('historical document required');
+    expect((await db.owner.query('SELECT id FROM public.invoicing_duties WHERE order_id=$1', [id])).rows).toEqual([]);
+    const before = (await db.owner.query('SELECT to_jsonb(d) AS row,d.xmin::text FROM public.accounting_documents d WHERE id=$1', [document.documentId])).rows;
+    await profile(db, client);
+    const input = request(id), duty = await capture(db, input);
+    expect((await rows(db, duty.dutyId)).buyer).toEqual([]);
+    expect(await store.captureDuty(input)).toMatchObject({ dutyId: duty.dutyId });
+    expect(await store.readCapturedBuyer(id)).toBeNull();
+    expect((await db.owner.query('SELECT to_jsonb(d) AS row,d.xmin::text FROM public.accounting_documents d WHERE id=$1', [document.documentId])).rows).toEqual(before);
+  });
+  it('serializes two first-capture connections and absorbs the busy loser without a second duty or buyer', async () => {
+    const client = await subject(db); await profile(db, client);
+    const id = await order(db, client), first = request(id), second = request(id);
+    const winner = await db.runtime.connect(), loser = await db.runtime.connect();
+    try {
+      expect((await winner.query('SELECT pg_backend_pid() AS pid')).rows[0].pid).not.toBe((await loser.query('SELECT pg_backend_pid() AS pid')).rows[0].pid);
+      await winner.query('BEGIN'); await winner.query("SET LOCAL statement_timeout='2s'");
+      const duty = await capture(db, first, winner);
+      // Keep the successful first capture uncommitted while another connection attempts its first capture.
+      await loser.query('BEGIN'); await loser.query("SET LOCAL statement_timeout='2s'");
+      await loser.query('SAVEPOINT capture');
+      await expect(capture(db, second, loser)).rejects.toMatchObject({ code: '55P03', message: 'invoicing_capture_busy' });
+      // Like payment truth's absorbed capture subtransaction, retain a retryable source fault and commit the caller.
+      await loser.query('ROLLBACK TO SAVEPOINT capture');
+      await loser.query("INSERT INTO public.invoicing_capture_faults(order_id,source_kind,source_id,attempts,state,available_at) VALUES($1,'paid',$2,1,'retryable',now())", [id, second.sourceId]);
+      await loser.query('COMMIT'); await winner.query('COMMIT');
+      const before = await rows(db, duty.dutyId);
+      expect((await db.owner.query('SELECT id FROM public.invoicing_duties WHERE order_id=$1', [id])).rows).toEqual([{ id: duty.dutyId }]);
+      expect(before.buyer).toHaveLength(1);
+      expect(before.receipts).toHaveLength(2);
+      expect((await db.owner.query('SELECT state,attempts FROM public.invoicing_capture_faults WHERE order_id=$1 AND source_id=$2', [id, second.sourceId])).rows).toEqual([{ state: 'retryable', attempts: 1 }]);
+      expect(await capture(db, second, loser)).toEqual(duty);
+      const replay = await rows(db, duty.dutyId);
+      expect(replay.duty).toEqual(before.duty); expect(replay.buyer).toEqual(before.buyer);
+      expect((await db.owner.query('SELECT id FROM public.invoicing_duties WHERE order_id=$1', [id])).rows).toEqual([{ id: duty.dutyId }]);
+    } finally { await winner.query('ROLLBACK'); await loser.query('ROLLBACK'); winner.release(); loser.release(); }
   });
   it('refuses an unrecorded destination by name without capturing a duty or inventing buyer facts', async () => {
     const client = await subject(db), id = await order(db, client, {}, false), input = request(id);

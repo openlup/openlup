@@ -3338,9 +3338,13 @@ The fourth native pin is the single exact replacement of
 `payment_truth_apply_terminal(uuid,text,text,timestamptz,text,text,jsonb,text,text,text)`.
 Its declaration/settings and every statement outside the former accounting block
 remain unchanged. That block captures an `invoicing_duties` obligation and exact
-source/key receipts in the money transaction without consulting accounting
-objects. Captured settlement and dunning recovery therefore survive accounting
-failure. Capture uses a nonblocking advisory lock and a 100 ms lock timeout;
+source/key receipts in the money transaction. First-duty buyer capture now reads
+accounting documents and customer, profile and destination rows inside that
+absorbed subtransaction, bounded by its 100 ms lock timeout; it performs no
+accounting document construction or provider work there. Captured settlement
+and dunning recovery therefore survive capture failure. Accounting, customer and
+profile lookups are plain reads; destination resolution uses its existing owner.
+Capture uses a nonblocking advisory lock and a 100 ms lock timeout;
 its subtransaction catches conflicts, permission failures and cancellation without
 rolling back settlement or dunning. An append-only capture-fault marker is visible
 in readback. If the payment principal lacks marker privileges, the retained paid
@@ -3837,9 +3841,10 @@ stored-but-not-deduplicated request identifiers.
 
 The simplicity pre-check rejects reusing the existing full-facts installer as
 the request freeze point: request and installation are separate native calls.
-An explicitly selected billing invoice-store factory therefore uses the owned
-`customer_billing_capture_invoice` transaction, which delegates existing invoice
-request ownership and freezes one `invoicing_buyer_snapshots` row per duty.
+The selected billing invoice-store factory uses the owned
+`customer_billing_capture_invoice` transaction to delegate invoice request
+ownership. Capture itself now freezes one `invoicing_buyer_snapshots` row for
+every new original duty, including direct, payment-truth and sweep paths.
 Selection is order facts, then default/latest profile and billing/both address,
 then marked shipping fallback. Paid capture uses the order destination; handoff
 capture uses the owned parcel destination. Later full fiscal composition reads
@@ -3872,7 +3877,6 @@ rather than disappear. No restore applies profile defaults, rewrites invoices,
 performs fiscal/provider work or activates a target. See the
 [package recipe](../../packages/platform/README.md#customer-billing-profiles-and-frozen-invoice-buyers)
 for explicit ports, handler binding and the required privacy contributor.
-
 
 ### First-duty invoice buyer capture
 
@@ -3908,3 +3912,16 @@ A new source whose destination was never recorded refuses with the existing
 or source receipt. Record the owned order destination before retrying retained
 capture; no address is inferred from another customer or field. Payment truth
 continues to commit money and record its bounded capture fault independently.
+
+Handoff capture must name a shipment owned by the order; otherwise it refuses
+with `customer_billing_shipment_mismatch`. Destination reads use the existing
+owner's locks; other buyer-selection lookups are plain reads. These reads remain
+inside the payment owner's bounded, absorbed capture subtransaction when called
+from payment truth.
+
+Correct missing destination or shipment data while the capture fault remains
+retryable. The sweep stops rediscovering a source after its eight-attempt ceiling
+marks it `faulted`. There is no supported operator reset/requeue command: merely
+recording a destination after that point does not resume the source. Escalate for
+an invoicing-owned recovery procedure; do not edit or delete ledger rows to reset
+it. Settled money and historical documents remain unchanged.
