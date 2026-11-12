@@ -11797,6 +11797,7 @@ export interface FulfillmentOperatorMutationResult {
     status: 'created' | 'packed' | 'label_pending' | 'label_created' | 'handed_over' | 'in_transit' | 'delivered' | 'exception' | 'cancelled';
     replayed: boolean;
     releasedReservationCount?: number;
+    consumedReservationCount?: number;
     reservationDisposition?: 'recorded' | 'reservations_not_recorded';
 }
 export interface FulfillmentOperatorMutationPort {
@@ -13323,6 +13324,7 @@ export declare const adminCommerceFulfillmentMutationResponseSchema: z.ZodObject
     }>;
     replayed: z.ZodBoolean;
     releasedReservationCount: z.ZodOptional<z.ZodNumber>;
+    consumedReservationCount: z.ZodOptional<z.ZodNumber>;
     reservationDisposition: z.ZodOptional<z.ZodEnum<{
         recorded: "recorded";
         reservations_not_recorded: "reservations_not_recorded";
