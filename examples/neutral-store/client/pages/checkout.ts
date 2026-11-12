@@ -10,7 +10,7 @@ import { renderValue } from '../dom.ts';
 import { offerIssues } from './storefront.ts';
 import { currentPurchase, rememberPurchase, visiblePurchase } from '../purchase.ts';
 
-// Confirmation survives panel remounts; it never suppresses the resend control.
+// Confirmation survives panel remounts; it never suppresses the send-again control.
 let buyerLinkSent = false;
 export function isEmbeddedCheckoutBrowser(userAgent = navigator.userAgent): boolean {
   return ['FBAN/','FB_IAB/','Instagram'].some(marker => userAgent.includes(marker));

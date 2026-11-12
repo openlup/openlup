@@ -583,11 +583,11 @@ No payment-method hold policy is selected by this application; the public hold
 wrapper receives that explicit unconfigured policy. Real-provider execution,
 method setup and card replacement keep their named refusals.
 
-Only detected embedded browsers show the buyer send/resend control after real
+Only detected embedded browsers show the buyer send/send-again control after real
 continuation exists. Detection is a display hint, never authority. The native
 cookie-only handler obtains order/client from verified claims, uses the saved
 checkout recipient, and deduplicates sends in its unchanged ten-minute bucket.
-The sent confirmation survives panel remounts while resend remains reachable;
+The sent confirmation survives panel remounts while sending again remains reachable;
 failure offers a neutral retry. Delivery rechecks the native buyer authorization
 and captures the link in the existing private mailbox. The source marker
 distinguishes the buyer landing. Enqueue, capture and payment are separate facts.

@@ -1725,7 +1725,7 @@ for (const locale of ['en','pl'] as const) {
     expect((await owner.query('SELECT a.id FROM public.payment_simulator_attempts a JOIN public.commerce_settlement_intents i ON i.id=a.settlement_intent_id WHERE i.order_id=$1',[target.orderRef])).rows).toHaveLength(2);
   });
 
-  test(`${locale}: embedded browser send resend remount and failure preserve one buyer link and the same order`, async ({ page, browser }) => {
+  test(`${locale}: embedded browser send send-again remount and failure preserve one buyer link and the same order`, async ({ page, browser }) => {
     await page.addInitScript(()=>Object.defineProperty(navigator,'userAgent',{ get:()=> 'Example FB_IAB/ webview' }));
     const f=await pendingCheckout(page,locale);
     await page.goto(routes.completion[locale]+'?token='+f.token);

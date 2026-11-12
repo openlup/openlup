@@ -1013,7 +1013,7 @@ over stale control availability. Original ordinary continuation keeps its retry
 after decline; recreated targets stay fenced to the separate lineage receipt.
 
 Embedded-browser journeys use the measured user-agent hints only for display,
-then the actual native cookie for send authority. Send/resend in one bucket queues
+then the actual native cookie for send authority. Send/send-again in one bucket queues
 one buyer event, remount retains the confirmation, transport failure keeps retry
 reachable, and authorized native outbox delivery captures the link privately.
 An independent ordinary browser context opens that real email link without the
