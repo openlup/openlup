@@ -4,3 +4,6 @@ export const quoteCopy = {
   pl: { loading: 'Odświeżanie ceny zakupu…', unavailable: 'Aktualna cena zakupu jest niedostępna.',
     second: 'Druga dostawa', refresh: 'Sprawdź odświeżone warunki i zaakceptuj je przed złożeniem zamówienia.' },
 };
+
+/** Browser-safe, case-sensitive display hints only; no payment or delivery authority. */
+export const embeddedCheckoutBrowserMarkers = Object.freeze(['FBAN/', 'FB_IAB/', 'Instagram']);

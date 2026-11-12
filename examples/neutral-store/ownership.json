@@ -21,7 +21,6 @@
     "owned/editor-copy.ts",
     "owned/subscription-editing.ts",
     "owned/acquisition-policy.ts",
-    "owned/checkout-display.ts",
     "owned/quote.config.ts",
     "owned/quote-copy.ts"
   ],
@@ -108,7 +107,6 @@
     "test/routes.test.ts",
     "tsconfig.json",
     "host/purchase-composition.ts",
-    "host/purchase-activation.ts",
     "client/purchase.ts",
     "playwright.database.config.ts",
     "test/interim-pricing.test.ts",

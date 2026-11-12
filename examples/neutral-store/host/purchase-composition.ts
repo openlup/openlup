@@ -5,7 +5,7 @@ import type { Pool } from 'pg';
 import { setTimeout } from 'node:timers/promises';
 import type { PostgresContactClientRegistrar } from '@openlup/platform/identity';
 import { createInterimCheckoutLimiter, createCheckoutAttemptBindings, admitCheckoutAttempt, type CheckoutRateLimit } from './checkout-attempts.ts';
-import { installedAcquisitionPredecessors, createAcquisitionRenewalBinding, type AcquisitionPredecessors, type AcquisitionRenewalBinding } from './acquisition-predecessors.ts';
+import { installedAcquisitionPredecessors, createInitialPurchaseActivation, createAcquisitionRenewalBinding, type AcquisitionPredecessors, type AcquisitionRenewalBinding } from './acquisition-predecessors.ts';
 import { createNativeQuoteService, quoteFailure } from './quote-composition.ts';
 import { createAcquisitionFinancialPolicy } from '../owned/acquisition-policy.ts';
 import type { PromotionAcceptanceKeyring } from '@openlup/platform/promotions';
@@ -13,7 +13,6 @@ import { createPostgresDestinationPort } from '@openlup/platform/commerce/server
 import { createPostgresPurchaseReservationPort, createPostgresAbandonedCheckoutCompensationPort } from '@openlup/platform/inventory';
 import { createPostgresFulfillmentStockSyncPort } from '@openlup/platform/fulfillment';
 import { createPostgresSandboxPaymentSimulator } from '@openlup/platform/payments';
-import { createInitialPurchaseActivation } from './purchase-activation.ts';
 import { ACQUISITION_TERMS_CAPABILITY, type CreateQuoteResponse } from '@openlup/platform/pricing';
 import type { ApplicationBindings, ActionContext } from './bindings.ts';
 import { validateCart, isRecord } from '../shared/offer.ts';

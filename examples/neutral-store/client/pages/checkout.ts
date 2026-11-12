@@ -9,7 +9,7 @@ import { act } from '../api.ts';
 import { renderValue } from '../dom.ts';
 import { offerIssues } from './storefront.ts';
 import { currentPurchase, rememberPurchase, visiblePurchase } from '../purchase.ts';
-import { embeddedCheckoutBrowserMarkers } from '../../owned/checkout-display.ts';
+import { embeddedCheckoutBrowserMarkers } from '../../owned/quote-copy.ts';
 
 // Confirmation survives panel remounts; it never suppresses the send-again control.
 export function createBuyerLinkConfirmation() {

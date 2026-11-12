@@ -62,7 +62,7 @@ import { readAuthorizedPaymentRecovery, createPostgresPaymentRecoveryGuidancePor
 import { normalizeSandboxPaymentRecoveryEvidence, createPostgresSandboxExpiredCheckoutSafety, createPostgresSandboxPaymentSimulator } from '@openlup/platform/payments';
 import { createPostgresPurchaseReservationPort } from '@openlup/platform/inventory';
 import { createNativeQuoteService } from './quote-composition.ts';
-import { installedAcquisitionPredecessors } from './acquisition-predecessors.ts';
+import { installedAcquisitionPredecessors, createInitialPurchaseActivation } from './acquisition-predecessors.ts';
 import { createAcquisitionFinancialPolicy, checkoutLinkPolicy } from '../owned/acquisition-policy.ts';
 import { isRecord } from '../shared/offer.ts';
 import { sameUuid, isInitialCheckoutOrder } from './recurring-fence.ts';
@@ -218,7 +218,6 @@ import { createPostgresSandboxCheckoutRecoveryAttemptPort, createPostgresSandbox
 import { sandboxRecoveryPolicy } from '../owned/acquisition-policy.ts';
 import { portalResponder } from './e4-composition.ts';
 import { isUuid } from './recurring-fence.ts';
-import { createInitialPurchaseActivation } from './purchase-activation.ts';
 import type { CreateQuoteResponse } from '@openlup/platform/pricing';
 
 type DemoMethod = typeof sandboxRecoveryPolicy.methodKeys[number];
