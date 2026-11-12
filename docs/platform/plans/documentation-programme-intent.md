@@ -82,6 +82,7 @@ rendering).
 ## Decisions requested
 
 The plan's [owner decisions](documentation-programme.md#owner-decisions) list
-D1–D6 with recommendations: adopting the five mechanisms, where the guide
+D1–D7 with recommendations: adopting the five mechanisms, where the guide
 lives, page order, when the tutorial job becomes required, and who runs the
-per-release documentation pass, and the destination map with its class standards.
+per-release documentation pass, the destination map with its class standards,
+and the guide's review floor.
