@@ -238,7 +238,7 @@ This is a four-table data-composition proof, not a packaged installer or complet
 portable-rail qualification. At that earlier stage the installed bootstrap binding was absent,
 and `./lifecycle up` refused `starter_installation_binding_required`.
 
-Both configurations pass 38 browser UI specs, including the six N5 actions on
+At that checkpoint, both configurations passed 38 browser UI specs, including the six N5 actions on
 account and limits pages in Polish and English and the visible inventory-traceability
 boundary. Each retains the single unchanged required purchase failure with
 `host_binding_required`. No native purchase or upgrade result follows from these
