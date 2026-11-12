@@ -968,13 +968,13 @@
       "maxFiles": 4211
     },
     "docs": {
-      "maxPackedBytes": 86252,
+      "maxPackedBytes": 88290,
       "maxFiles": 10
     },
     "maxPackedBytes": 3023741,
     "maxUnpackedBytes": 14732929,
     "maxFiles": 4339,
-    "capReason": "Higher approved parent caps retained. Unpacked contents measured 14,444,048 B; cap adds 2% headroom.",
+    "capReason": "Higher approved parent caps retained. Documentation measured 86,558 gzip B; docs cap adds 2% headroom. Prior unpacked cap retained.",
     "baseline": {
       "version": "0.37.0",
       "packedBytes": 2791358
