@@ -5,6 +5,7 @@ import { spawnSync, type SpawnSyncOptions } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
+import { env as processEnvironment } from "node:process";
 import { pathToFileURL } from "node:url";
 
 import { INVENTORY_PATH } from "./agent-review-derived.mjs";
@@ -230,7 +231,7 @@ function rootVitestFiles(candidates: readonly string[]): string[] {
   const directory = mkdtempSync(join(tmpdir(), "openlup-preflight-"));
   try {
     const listing = join(directory, "files.json");
-    const env: NodeJS.ProcessEnv = { ...process.env, VITEST_SKIP_INSTALL_CHECKS: "1" };
+    const env: NodeJS.ProcessEnv = { ...processEnvironment, VITEST_SKIP_INSTALL_CHECKS: "1" };
     delete env.OPENLUP_VITEST_EXCLUDE_FILE;
     // `--json` takes an optional path, so it goes after the files.
     const result = execute("npx", ["--no", "--", "vitest", "list", ...candidates, "--filesOnly", `--json=${listing}`], { env });

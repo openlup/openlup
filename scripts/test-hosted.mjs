@@ -4,6 +4,7 @@
 // See CONTRIBUTING.md#test-scope-and-diagnostics.
 import { spawn } from "node:child_process";
 import { devNull } from "node:os";
+import { env as processEnvironment } from "node:process";
 import { pathToFileURL } from "node:url";
 
 // GitHub's standard Linux runner for public repositories has 4 vCPUs, and
@@ -57,7 +58,7 @@ export function hostedTestRun(argv, environment) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const run = hostedTestRun(process.argv.slice(2), process.env);
+  const run = hostedTestRun(process.argv.slice(2), processEnvironment);
   if (run.refusal) {
     console.error(run.refusal);
     process.exit(2);
