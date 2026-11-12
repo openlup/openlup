@@ -29,8 +29,9 @@ export function receiptComment(event) {
 
 export function latestRun(runs, headSha) {
   if (!Array.isArray(runs)) return undefined;
-  const current = runs.filter(run => positive(run?.id) && run.head_sha === headSha && run.event === 'pull_request' && run.path === WORKFLOW_PATH);
-  return current.length === 0 ? undefined : current.reduce((a, b) => a.id > b.id ? a : b);
+  // No matching run leaves the initial undefined: no rerun.
+  return runs.filter(run => positive(run?.id) && run.head_sha === headSha && run.event === 'pull_request' && run.path === WORKFLOW_PATH)
+    .reduce((latest, run) => latest === undefined || run.id > latest.id ? run : latest, undefined);
 }
 
 // `jobs` are the latest execution of each job of latestRun(runs, headSha).

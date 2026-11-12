@@ -3,7 +3,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { ECONOMY_RECEIPT_MARKER, RECEIPT_MARKER } from "./agent-review-decide.mjs";
-import { RECEIPT_MARKER_PREFIX, RERUN_JOB, WORKFLOW_PATH, receiptComment, receiptRerun, selectRerun } from "./ci-receipt-rerun.mjs";
+import { RECEIPT_MARKER_PREFIX, RERUN_JOB, WORKFLOW_PATH, latestRun, receiptComment, receiptRerun, selectRerun } from "./ci-receipt-rerun.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const head = "a".repeat(40);
@@ -109,6 +109,25 @@ describe("rerun selection", () => {
     ["an invalid runs value", null, jobs()],
   ])("fails closed on %s", (_label, runs, list) => {
     expect(selectRerun(runs, list, head).rerun).toBe(false);
+  });
+
+  it.each([
+    ["an empty list", []],
+    ["a missing list", undefined],
+    ["a non-list", { workflow_runs: [run()] }],
+    ["only non-object entries", [null, 1, "run"]],
+    ["only entries without a valid id", [run({ id: 0 }), run({ id: -1 }), { ...run(), id: "200" }]],
+    ["only runs of another head", [run({ head_sha: previous })]],
+  ])("finds no latest run in %s without throwing", (_label, runs) => {
+    expect(latestRun(runs, head)).toBeUndefined();
+    expect(selectRerun(runs, jobs(), head)).toMatchObject({ rerun: false });
+  });
+
+  it("picks the highest run id regardless of order", () => {
+    const runs = [run({ id: 190 }), run({ id: 230 }), null, run({ id: 210 })];
+    expect(latestRun(runs, head)?.id).toBe(230);
+    expect(latestRun([...runs].reverse(), head)?.id).toBe(230);
+    expect(latestRun([run({ id: 5 })], head)?.id).toBe(5);
   });
 
   it("fails closed on an invalid head", () => {
