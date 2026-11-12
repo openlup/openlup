@@ -760,11 +760,13 @@ npm --workspace @openlup/core run ci
 settings of a hosted `test-full-shard` job: `CI=true`; no coverage (a
 `--coverage` flag or coverage environment is dropped); no external duration
 pins, so the flat test timeout applies; no exclusion file, so every named file
-runs; and three workers, the Vitest default on the 4-vCPU hosted runner. Git sees `GIT_CONFIG_GLOBAL=/dev/null`, no
+runs; three workers, the Vitest default on the 4-vCPU hosted runner; and the
+runner's `TZ=UTC` and `LANG=C.UTF-8`. Git sees `GIT_CONFIG_GLOBAL=/dev/null`, no
 `GIT_AUTHOR_*` or `GIT_COMMITTER_*` variables and `user.useConfigOnly`, so a
 fixture commit without explicit identity fails locally as it does on a runner,
 instead of using an identity guessed from the host name. It does not reproduce
 the hosted runner's CPU speed; size bounds for hosted runners as described below.
+Other local environment variables, such as `LC_ALL`, pass through unchanged.
 
 `preflight` is advisory: no CI job or review step runs it, and it exits non-zero
 only when a check reports `FAIL`. It reads the change since
@@ -775,7 +777,9 @@ one `PASS`, `WARN`, `SKIP` or `FAIL` line per check:
 - the ast-grep scan from [lint rules](#commands-and-lint-rules);
 - `npm run inventory:refresh` when SQL under `db/` or `packages/*/sql/` changed;
   it has no check mode, so a rewritten inventory stays in the working tree and
-  is reported for commit;
+  is reported for commit. It needs Docker and reports `WARN` without it; because
+  it refreshes five disposable installations, a preflight on an SQL change may
+  take longer than three minutes;
 - a `changes/*.md` fragment for each released package whose `src/` changed;
 - on added lines of test files, literal ISO dates within 400 days of now and
   expiries or TTLs under ten minutes; these simple patterns can misfire, so
@@ -1335,7 +1339,7 @@ that required CI and the change's own review would miss.
 2. **Implement, test and document in the same PR.** Implement the change, add
    tests, and update the documentation it makes stale; this is implementation
    work, and the reviewer checks it. Locally run only the tests being written,
-   with `npm run test:hosted -- <files>`, `npm run lint`, and
+   root test files with `npm run test:hosted -- <files>`, `npm run lint`, and
    `npx --no -- ast-grep scan --error=no-suppress-all --error=unused-suppression`.
    Before `prepare`, run `npm run preflight` and have it green, or explain each
    `WARN` in the task record. Full local verification is optional.

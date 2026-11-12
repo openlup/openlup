@@ -16,9 +16,12 @@ export const HOSTED_VITEST_WORKERS = "3";
 // GIT_CONFIG_GLOBAL hides the contributor's identity and defaults, and
 // user.useConfigOnly stops Git from guessing an identity from the login and host
 // name instead: a hosted runner cannot guess one, so a fixture commit without
-// explicit identity fails there.
+// explicit identity fails there. TZ and LANG are the hosted Ubuntu runner's
+// values, so local clock and collation settings do not leak in either.
 const HOSTED_ENVIRONMENT = {
   CI: "true",
+  TZ: "UTC",
+  LANG: "C.UTF-8",
   GIT_CONFIG_GLOBAL: devNull,
   GIT_CONFIG_COUNT: "1",
   GIT_CONFIG_KEY_0: "user.useConfigOnly",

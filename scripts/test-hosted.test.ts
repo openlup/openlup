@@ -9,6 +9,8 @@ const contributor = {
   PATH: "/usr/bin",
   HOME: "/home/contributor",
   CI: "1",
+  TZ: "Asia/Tokyo",
+  LANG: "en_US.UTF-8",
   GIT_AUTHOR_NAME: "Contributor",
   GIT_AUTHOR_EMAIL: "contributor@example.com",
   GIT_AUTHOR_DATE: "2001-02-03T04:05:06Z",
@@ -41,6 +43,8 @@ describe("hosted-parity test runs", () => {
       PATH: "/usr/bin",
       HOME: "/home/contributor",
       CI: "true",
+      TZ: "UTC",
+      LANG: "C.UTF-8",
       GIT_CONFIG_GLOBAL: devNull,
       GIT_CONFIG_COUNT: "1",
       GIT_CONFIG_KEY_0: "user.useConfigOnly",
@@ -50,8 +54,8 @@ describe("hosted-parity test runs", () => {
   });
 
   it("drops undefined values and keeps unrelated variables", () => {
-    const run = hostedTestRun(["a.test.ts"], { LANG: "C", EMPTY: undefined, GITHUB_ACTIONS: "true" });
-    expect(run.env).toMatchObject({ LANG: "C", GITHUB_ACTIONS: "true", CI: "true" });
+    const run = hostedTestRun(["a.test.ts"], { SHELL: "/bin/sh", EMPTY: undefined, GITHUB_ACTIONS: "true" });
+    expect(run.env).toMatchObject({ SHELL: "/bin/sh", GITHUB_ACTIONS: "true", CI: "true" });
     expect(run.env).not.toHaveProperty("EMPTY");
   });
 
