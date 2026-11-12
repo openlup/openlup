@@ -3804,3 +3804,22 @@ preferences have no typed projection and explicitly refuse. See the
 [composition recipe](../../packages/platform/README.md#customer-delivery-and-payment-preferences)
 for the trusted checkout-client boundary, required billing-hint reader and
 redacted `applied:false` defaults. No defaults are applied during import.
+
+### Checkout attempt admission
+
+`20261110250000_checkout_recovery_attempt.sql` creates the service-only
+`commerce_checkout_recovery_attempt_begin(text,uuid,uuid,uuid,text,jsonb,timestamptz)`
+and `commerce_checkout_inline_retry_begin(text,uuid,uuid,uuid,uuid,text,jsonb,timestamptz)`
+entry points. Both fixed-path procedural definers lock the existing order and
+intent, check checkout provenance and delegate to `payment_simulator_begin_attempt`.
+Token payment rechecks its token identity; inline retry locks the exact active
+attempt and compares its predecessor or durable transition replay. The latter
+uses the existing request key/fingerprint for nonce/rail binding, without new
+storage. Captured observations and renewal cycles refuse both mutations.
+
+Only service EXECUTE is granted, after all PUBLIC revokes and grouped role
+revokes. No existing function, table, trigger, column or historical row is
+changed. The ordered plans append one unit containing both entry points;
+current complete inventories advance while issued and released prefixes remain
+fixed. See [token payment](PLATFORM_PACKAGE_REFERENCE.md#checkout-token-payment)
+and [exact inline retry](PLATFORM_PACKAGE_REFERENCE.md#exact-inline-checkout-retry).
