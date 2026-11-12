@@ -40,6 +40,8 @@ const workflow = readFileSync(join(ROOT, WORKFLOW), "utf8");
 const sourcePreviewWorkflow = readFileSync(join(ROOT, ".github/workflows/publish-source-preview.yml"), "utf8");
 const workflowJob = (name: string, source = workflow) => source.split(`\n  ${name}:\n`)[1]?.split(/^ {2}[a-z][a-z-]*:\n/mu)[0] ?? "";
 const workflowCommands = (job: string) => [...job.matchAll(/^ {6}(?:- | {2})run: (?!\|)(.+)$/gmu)].map((match) => match[1]);
+// Fixture repositories ignore the runner's global and system Git configuration.
+const gitFixtureEnvironment = { ...process.env, GIT_CONFIG_GLOBAL: "", GIT_CONFIG_SYSTEM: "", GIT_CONFIG_NOSYSTEM: "1" };
 
 describe("queue completion trust boundary", () => {
   const source = readFileSync(join(ROOT, ".github/workflows/queue-handoff.yml"), "utf8");
@@ -568,7 +570,7 @@ describe("the workflow stays in step with what it claims to run", () => {
 
   it("checks the actual main-push DCO step for root, descendant and refusal ranges", () => {
     const root = mkdtempSync(join(tmpdir(), "public-main-dco-"));
-    const environment = { ...process.env, GIT_CONFIG_GLOBAL: "", GIT_CONFIG_SYSTEM: "", GIT_CONFIG_NOSYSTEM: "1" };
+    const environment = gitFixtureEnvironment;
     const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=A Contributor", "-c", "user.email=contributor@example.com", ...args], { cwd: root, env: environment, encoding: "utf8" }).trim();
     const step = workflow.split("      - name: Sign-off on every main push\n")[1]?.split("\n  typecheck:")[0];
     const command = step?.split("        run: |\n")[1]?.split("\n").map((line) => line.replace(/^ {10}/u, "")).join("\n");
@@ -594,7 +596,7 @@ describe("the workflow stays in step with what it claims to run", () => {
   });
   it("checks the actual group DCO range and refuses unsigned contributions, unsigned group tips and event drift", () => {
     const root = mkdtempSync(join(tmpdir(), "public-queue-dco-"));
-    const environment = { ...process.env, GIT_CONFIG_GLOBAL: "", GIT_CONFIG_SYSTEM: "", GIT_CONFIG_NOSYSTEM: "1" };
+    const environment = gitFixtureEnvironment;
     const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=A Contributor", "-c", "user.email=contributor@example.com", ...args], { cwd: root, env: environment, encoding: "utf8" }).trim();
     const step = workflow.split("      - name: Sign-off on every merge-group commit\n")[1]?.split("      - name: Sign-off on every main push\n")[0];
     const command = step?.split("        run: |\n")[1]?.split("\n").map((line) => line.replace(/^ {10}/u, "")).join("\n");
@@ -681,7 +683,7 @@ describe("the workflow stays in step with what it claims to run", () => {
     expect(command).not.toContain("${{");
     const root = mkdtempSync(join(tmpdir(), "public-gitleaks-range-"));
     const repo = join(root, "repo"), bin = join(root, "bin"), calls = join(root, "calls");
-    const environment = { ...process.env, GIT_CONFIG_GLOBAL: "", GIT_CONFIG_SYSTEM: "", GIT_CONFIG_NOSYSTEM: "1" };
+    const environment = gitFixtureEnvironment;
     const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=A Contributor", "-c", "user.email=contributor@example.com", ...args], { cwd: repo, env: environment, encoding: "utf8" }).trim();
     try {
       mkdirSync(repo); mkdirSync(bin);
@@ -696,7 +698,7 @@ describe("the workflow stays in step with what it claims to run", () => {
       const run = (event: string, patch: Record<string, string> = {}) => {
         writeFileSync(calls, "");
         const result = spawnSync("bash", ["-e", "-o", "pipefail", "-c", command!], { cwd: repo, encoding: "utf8", timeout: 20_000,
-          env: { ...environment, PATH: `${bin}:${process.env.PATH ?? ""}`, SCAN_CALLS: calls, GITHUB_EVENT_NAME: event, PR_BASE: "", PR_HEAD: "", GROUP_BASE: "", GROUP_HEAD: "", ...patch } });
+          env: { ...environment, PATH: `${bin}:${environment.PATH ?? ""}`, SCAN_CALLS: calls, GITHUB_EVENT_NAME: event, PR_BASE: "", PR_HEAD: "", GROUP_BASE: "", GROUP_HEAD: "", ...patch } });
         return { status: result.status, calls: readFileSync(calls, "utf8") };
       };
       const full = "[git][.][--config][config/gitleaks.toml][--redact][--no-banner]\n";
