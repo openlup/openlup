@@ -197,9 +197,9 @@ The separate [CI image mirror](.github/workflows/mirror-ci-images.yml) runs in
 `openlup/openlup` on pushes to `main` that change one of its three input paths
 (the image inventory, the mirror script and the workflow), and on manual dispatch
 from `main`. Its single job reads only the committed
-[image inventory](config/ci-images.json): install-proof PostgreSQL, which is also
-the pgTAP server and the managed-rail test database, the test harness default and
-the starter browser image.
+[image inventory](config/ci-images.json): four PostgreSQL images (the install-proof
+database, also used by pgTAP and managed-rail tests, the test harness default, and
+two attribute-version witness pins) plus the starter browser image.
 Every pin is validated before the first registry request. No Supabase CLI or
 derived image set takes part.
 The reviewed-batch gate and shared PostgreSQL test helper read these JSON pins
@@ -207,7 +207,7 @@ through [the shared reader and pull loop](scripts/ci-image-pull.mjs). The reader
 imports the JSON module directly so the same pins load in plain Node and both
 Vitest projects, including jsdom. In CI and locally they try the organization
 mirror first, then the upstream order with the same digest: Docker Hub, then
-ECR, for both library PostgreSQL pins. Private or absent organization
+ECR, for all four library PostgreSQL pins. Private or absent organization
 packages do not remove these public upstream fallbacks. Microsoft registry
 sources, such as the starter browser image's, are mirror inputs only: that image
 is pulled from the organization mirror alone, with no upstream fallback.

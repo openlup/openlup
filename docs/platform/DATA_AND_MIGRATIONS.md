@@ -559,6 +559,7 @@ The package runner admits the migration ledger only when its system-catalog
 shape matches the canonical baseline ledger: a permanent heap table with the
 expected owner, columns, defaults, constraints and indexes, without partition
 or inheritance links, triggers, rules, row policies or extended statistics.
+The fingerprint stays exact except for numeric `pg_attver` column version markers in a nonempty, one-dimensional array starting at index 1; every other attribute option refuses admission.
 The ledger catalog shape is qualified on PostgreSQL 16 and 17; a different
 major with different catalog expression trees is refused until separately qualified.
 It checks this before reading applied rows, keeps the admitted relation stable
