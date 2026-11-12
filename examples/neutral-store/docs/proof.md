@@ -1072,15 +1072,15 @@ keeps each order's confirmation independent across remounts. The owned
 authorization continues to own delivery and payment admission. The group partition
 unit includes payment-retry and embedded-browser sample titles.
 
-The affected shared groups pass 152 cases: portal 56, recovery extension 52,
+At the initial capture-repair checkpoint, the affected shared groups passed 152 cases: portal 56, recovery extension 52,
 payment retry 36 and embedded browser 8. Original/replacement draft counts per
 configuration are 36/0, 26/10, 24/2 and 4/0 respectively, identical for both
 configurations and within the unchanged quota. Every group uses a fresh pair,
-one worker, zero retries and captures off. The current generated full listing
-contains 384 cases partitioned as 62/56/52/12/12/12/16/16/36/8/102, with each
-identity selected once and no duplicates. Starter units pass 333/333 and the
-PostgreSQL integration witness passes 7/7, including the extracted application
-and unchanged 68 declared / 64 bound operation census.
+one worker, zero retries and captures off. At that checkpoint the generated full listing
+contained 384 cases partitioned as 62/56/52/12/12/12/16/16/36/8/102, with each
+identity selected once and no duplicates. Starter units passed 333/333 and the
+PostgreSQL integration witness passed 7/7, including the extracted application
+and the then-current 68 declared / 64 bound operation census.
 
 
 ## Billing and shared capture activation

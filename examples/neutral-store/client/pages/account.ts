@@ -81,7 +81,7 @@ function billingProfiles(context: PageContext): HTMLElement {
         label: ({ label: 'savedAddressLabel', fullName: 'billingName', email: 'email', phone: 'phone', companyName: 'addressCompany', taxId: 'addressTaxId', companyIdentitySource: 'billingSource', companyIdentityEvidenceHash: 'billingEvidence' } as const)[name],
         type: name === 'email' ? 'email' as const : 'text' as const, value: typeof row[name] === 'string' ? String(row[name]) : '',
         required: ['fullName','email'].includes(name), maxLength: ({ label: 120, fullName: 200, email: 320, phone: 64, companyName: 200, taxId: 64, companyIdentitySource: 120, companyIdentityEvidenceHash: 160 } as const)[name] })),
-      { name: 'companyVerificationLevel', label: 'billingVerification', type: 'select', value: String(row.companyVerificationLevel || ''), options: [
+      { name: 'companyVerificationLevel', label: 'billingVerification', type: 'select', required: false, value: String(row.companyVerificationLevel || ''), options: [
         ['', 'billingUnspecified'], ['registry_verified','billingRegistry'], ['provider_verified','billingProvider'], ['manual_unverified','billingManual'], ['invalid','billingInvalid'],
       ].map(([value, key]) => ({ value: value!, text: context.t(key as CopyKey) })) },
       { name: 'isDefault', label: 'addressDefault', type: 'checkbox', required: false },

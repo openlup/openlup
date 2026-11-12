@@ -469,9 +469,10 @@ complete history. No duty or historical invoice is backfilled.
 Before sandbox payment capture, initial checkout records its owned order
 destination; native recreation and renewal record theirs through their native
 owners. On the first owed-duty capture, the invoice owner freezes explicit order
-buyer facts when present, otherwise the default or latest owned billing profile
-with a billing/both address, otherwise the marked shipping fallback. The frozen
-address keeps line2 and source provenance. Recreation copies explicit buyer facts
+buyer facts when present. Otherwise it selects the default or latest owned profile
+and billing/both address independently, using the recorded shipping address when
+no billing address exists. With neither profile nor billing address, it records the
+marked shipping fallback. The frozen address keeps line2 and source provenance. Recreation copies explicit buyer facts
 only when the source has them; absent facts remain absent so first-duty selection
 can use an owned profile or the marked fallback. Later profile/address edits or
 deletions cannot change a captured buyer, installed invoice facts or issued bytes.

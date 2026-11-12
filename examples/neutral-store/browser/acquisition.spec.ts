@@ -1661,7 +1661,7 @@ for (const locale of ['en','pl'] as const) {
     const edit=section.locator('[data-billing-profile] form').filter({has:page.getByRole('heading',{name:copy[locale].billingEdit,exact:true})});
     await edit.locator('[name=fullName]').fill('Updated Billing Customer');
     await edit.getByRole('button',{name:copy[locale].save,exact:true}).click();
-    await expect(section.locator('[data-billing-profile] h3')).toHaveText('Updated Billing Customer');
+    await expect(section.locator('[data-billing-profile] > h3')).toHaveText('Updated Billing Customer');
     const input={action:'upsert',fullName:'Other Billing Customer',email:f.email,isDefault:true};
     const second=(await call(page,'account.billing',input)).value.ordererProfiles.find((r:{profileId:string})=>r.profileId!==first.profileId);
     expect((await read()).value.ordererProfiles.find((r:{profileId:string})=>r.profileId===first.profileId).isDefault).toBe(false);
