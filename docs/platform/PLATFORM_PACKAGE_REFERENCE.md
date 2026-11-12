@@ -1455,6 +1455,58 @@ PostgreSQL evidence is separate from offline conformance and installed-tarball
 proof. Native list/detail reads still return `host_binding_required`; they wait
 for destination and reservation facts in a separate change.
 
+## Native operator shipment commands
+
+The experimental `createPostgresFulfillmentShipmentCommandPort` from
+`@openlup/platform/fulfillment/native` takes a structural SQL executor. Install
+the complete selected catalogue through `20261110230000_operator_shipment_commands.sql`.
+Bind its three methods to the existing authenticated admin label, handoff and
+tracking handlers. The handlers derive `actorUserId` on the server. Construction
+mounts no route or operator UI and makes no carrier call. These commands require
+READ COMMITTED transactions; stronger isolation levels refuse before writing.
+The shared `fulfillment_record_evidence` writer requires an explicit
+`metadata.providerKind` for tracking references and applies the same correlation
+lock and cross-order refusals. Missing provider identity refuses with
+`fulfillment_record_evidence_provider_kind_required`; non-tracking evidence keeps
+its existing behavior.
+
+Label recording commits a succeeded evidence snapshot, provider/tracking
+correlation, actor and operation together. Same-key replay returns the original
+parcel's current status. A provider/number pair on another order conflicts;
+same-order reuse attributes it to the selected parcel. The first accepted label
+and tracking writes retain full requests, including label URLs, raw provider
+payloads and raw tracking events, in the private operator receipt. Runtime roles
+cannot select that receipt table; owner routines use it for replay. The label URL
+also remains in the operation payload returned to authorized operator/service
+readers. Treat it as potentially sensitive or expiring access information, not a
+public tracking URL. The read store does not authenticate and must not be bound
+to customer routes; customer order history omits operation payloads. No automatic
+TTL or purge removes this evidence. Hosts own authorized retention and cleanup,
+including backup and transfer copies; replay preserves the original receipt.
+
+Handoff accepts packed or labelled parcels, consumes only the frozen purchase
+or renewal reservation IDs and commits the stock effect with its audit. Terminal
+handoff is inert replay. An exact recorded command also replays after an
+exception and relabel, without changing status, timestamps or audit. The result includes `reservationDisposition` and
+`consumedReservationCount`. See the [historical stock and tracking limits](ARCHITECTURE_AND_EXTENSIONS.md#native-parity-boundaries)
+for manual resolution when facts were never recorded.
+
+Compose `withAccountingInvoiceShadowTrigger` from `@openlup/platform/invoicing`
+around a command port whose executor commits before returning (for example an
+autocommit pool). With an outer transaction lane, commit that lane before
+returning its handoff method to the wrapper. Supply the host's provider, duty keys and
+channel policy reader. Leave `failOnAccountingError` false for fail-soft document
+handling: document failure does not undo a successful handoff.
+
+Tracking requires the corresponding label/handoff state and a same-order
+reference when one is supplied. Delivered parcels refuse regression. An explicit
+zone in `rawEvent.occurredAt` supplies provider chronology; unusable chronology
+falls back to receipt time on the first delivery. Delivered replay may repair
+arrival earlier through the arrival recorder, never later, without rewriting the
+original operation or repeating delivery alignment. A late actual arrival may
+extend the next cycle; evidence that a parcel has only been labelled or is in
+transit never confirms arrival of a replacement.
+
 ## PostgreSQL checkout recovery tokens
 
 Development preview, Node only, through `@openlup/platform/commerce/server`.

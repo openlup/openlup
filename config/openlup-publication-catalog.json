@@ -70,6 +70,10 @@
       "class": "public-output"
     },
     {
+      "path": ".github/workflows/native-review-receipt-rerun.yml",
+      "class": "public-output"
+    },
+    {
       "path": ".github/workflows/publish-package.yml",
       "class": "public-output"
     },
@@ -1339,6 +1343,10 @@
     },
     {
       "path": "db/platform/migrations/20261110220000_checkout_payment_guidance.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261110230000_operator_shipment_commands.sql",
       "class": "public-output"
     },
     {
@@ -4462,6 +4470,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261110230000_operator_shipment_commands.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -6459,6 +6471,10 @@
     },
     {
       "path": "packages/platform/src/fulfillment/native/parcelContact.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/native/shipmentCommands.ts",
       "class": "public-output"
     },
     {
@@ -9650,6 +9666,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/fulfillment/nativeShipmentCommands.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/fulfillment/observationEffects.test.ts",
       "class": "public-output"
     },
@@ -11163,6 +11183,14 @@
     },
     {
       "path": "scripts/ci-image-pull.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ci-receipt-rerun.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ci-receipt-rerun.test.ts",
       "class": "public-output"
     },
     {
@@ -29075,6 +29103,10 @@
     },
     {
       "path": "tests/postgres/fulfillmentRenewalAdmission.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fulfillmentShipmentCommands.test.ts",
       "class": "public-output"
     },
     {

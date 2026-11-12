@@ -211,6 +211,7 @@ export const adminCommerceFulfillmentMutationResponseSchema = z.object({
   status: commerceFulfillmentStatusSchema,
   replayed: z.boolean(),
   releasedReservationCount: z.number().int().nonnegative().optional(),
+  consumedReservationCount: z.number().int().nonnegative().optional(),
   reservationDisposition: z.enum(['recorded', 'reservations_not_recorded']).optional(),
 }).strict();
 

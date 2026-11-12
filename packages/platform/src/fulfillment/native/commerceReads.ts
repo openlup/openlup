@@ -14,7 +14,7 @@ type Executor = { query(sql: string, values?: unknown[]): Promise<{ rows: Row[] 
 type DestinationReader = { read(scope: 'shipment', id: string): Promise<{ destinationId: string; clientId: string; address: { label: string | null; line1: string; line2: string | null; city: string; postalCode: string; country: string } }> };
 const record = (value: unknown): Row => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Row : {};
 const array = (value: unknown): Row[] => Array.isArray(value) ? value.map(record) : [];
-const operationStatuses: Record<string, CommerceFulfillmentOperationRow['operation_type']> = { packed: 'packed', label_created: 'label_created', handed_over: 'handed_over', in_transit: 'tracking_event_recorded', delivered: 'tracking_event_recorded' };
+const operationStatuses: Record<string, CommerceFulfillmentOperationRow['operation_type']> = { packed: 'packed', label_created: 'label_created', handed_over: 'handed_over', in_transit: 'tracking_event_recorded', delivered: 'tracking_event_recorded', exception: 'tracking_event_recorded' };
 const limit = (name: string): never => { throw new Error(`native_fulfillment_${name}`); };
 
 function canonicalUuidKey(value: unknown): unknown {
@@ -46,14 +46,16 @@ export function createPostgresFulfillmentCommerceReadPort(input: {
       (SELECT jsonb_agg(to_jsonb(i) ORDER BY i.created_at ASC) FROM public.commerce_order_items i WHERE i.order_id=o.id) AS lines,
       (SELECT to_jsonb(op) FROM public.fulfillment_shipment_operations op WHERE shipment_id=$2::uuid
         ORDER BY occurred_at DESC LIMIT 1) AS operation,
-      (SELECT r.external_id FROM public.shipment_external_refs r JOIN public.fulfillment_shipments s ON s.id=r.shipment_id
-        WHERE s.order_id=o.id AND r.ref_role='tracking' ORDER BY r.recorded_at DESC LIMIT 1) AS tracking,
+      (SELECT jsonb_build_object('externalId',r.external_id,'providerKind',r.provider_kind)
+        FROM public.shipment_external_refs r JOIN public.fulfillment_shipments s ON s.id=r.shipment_id
+        WHERE s.order_id=o.id AND (r.shipment_id=$2::uuid OR r.provider_kind IS NULL) AND r.ref_role='tracking'
+        ORDER BY r.recorded_at DESC,r.id DESC LIMIT 1) AS tracking,
       (SELECT jsonb_agg(to_jsonb(r) ORDER BY r.created_at DESC)
         FROM public.fulfillment_inventory_reservations r WHERE r.purchase_order_id=o.id
           OR (r.renewal_operation_id=o.renewal_operation_id AND r.operation_fingerprint=o.renewal_operation_fingerprint)) AS reservations
       FROM public.commerce_orders o WHERE o.id=$1::uuid`, [shipment.order_id, shipment.id]);
     if (!facts) return limit('order_unavailable');
-    const order = record(facts.order_context), payment = record(facts.payment);
+    const order = record(facts.order_context), payment = record(facts.payment), tracking = record(facts.tracking);
     if (!payment.id) return limit('payment_intent_unavailable');
     let destination: Awaited<ReturnType<DestinationReader['read']>>;
     try { destination = await destinations.read('shipment', String(shipment.id)); }
@@ -88,11 +90,11 @@ export function createPostgresFulfillmentCommerceReadPort(input: {
         : op.operation_type === 'evidence_recorded' ? payload.refRole === 'label' ? 'label_created' : payload.refRole === 'tracking' ? 'tracking_event_recorded' : null : null;
       if (!type) return limit('operation_unrepresentable');
       latestOperation = { id: String(op.id), fulfillment_order_id: String(shipment.id), operation_type: type,
-        occurred_at: String(op.occurred_at), actor_user_id: null, payload };
+        occurred_at: String(op.occurred_at), actor_user_id: typeof op.actor_user_id === 'string' ? op.actor_user_id : null, payload };
     }
     return buildCommerceFulfillmentOrderDetailResponse({
       fulfillmentOrder: { id: String(shipment.id), order_id: String(order.id), client_id: null,
-        status: shipment.status as CommerceFulfillmentOrderRow['status'], provider_kind: null,
+        status: shipment.status as CommerceFulfillmentOrderRow['status'], provider_kind: typeof tracking.providerKind === 'string' ? tracking.providerKind : null,
         shipping_address_snapshot: { addressId: null, clientId: destination.clientId, ...destination.address },
         created_at: String(shipment.created_at), updated_at: String(shipment.updated_at) },
       responseSchemas: nativeFulfillmentCommerceResponseSchemas, hasShippingAddress: Boolean(destination),
@@ -103,7 +105,7 @@ export function createPostgresFulfillmentCommerceReadPort(input: {
       paymentIntent: { id: String(payment.id), order_id: String(order.id), status: payment.status === 'settled' ? 'succeeded' : payment.status,
         provider_payment_id: payment.external_ref } as CommerceFulfillmentPaymentIntentRow,
       inventoryReservations: reservations,
-      shipmentRef: facts.tracking ? { order_id: String(order.id), provider_tracking_id: String(facts.tracking), active: true } : null,
+      shipmentRef: tracking.externalId ? { order_id: String(order.id), provider_tracking_id: String(tracking.externalId), active: true } : null,
       activeHoldCount: Number(facts.holds), subscriptionCycleStatus: (record(facts.cycle).status ?? null) as Parameters<typeof buildCommerceFulfillmentOrderDetailResponse>[0]['subscriptionCycleStatus'],
     }, input.policy);
   }

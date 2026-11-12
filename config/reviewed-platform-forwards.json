@@ -4109,6 +4109,71 @@
         ],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "operator-shipment-commands",
+        "path": "db/platform/migrations/20261110230000_operator_shipment_commands.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.fulfillment_record_alignment_arrival(text,uuid,timestamptz,text)",
+            "beforeSha256": "7bb3c025376c206438fd3856bb58d3ba3bd64b25a06e3230b7abeaec0a183149",
+            "searchPath": "pg_catalog"
+          },
+          {
+            "signature": "public.fulfillment_record_evidence(text,uuid,text,text,text,jsonb,timestamptz)",
+            "beforeSha256": "727e24d59b3fa24869bc731cc5dab7ad035726d0d88311f520baae0f54072809",
+            "searchPath": "public, pg_catalog"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.fulfillment_operator_record_label(text,uuid,jsonb,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_operator_hand_off(text,uuid,uuid,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_operator_record_tracking(text,uuid,jsonb,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "existingTableStatements": [
+          "ALTER TABLE public.fulfillment_shipment_operations ADD COLUMN actor_user_id uuid;",
+          "ALTER TABLE public.fulfillment_shipment_operations ADD CONSTRAINT fulfillment_shipment_operations_actor_user_id_fkey FOREIGN KEY (actor_user_id) REFERENCES public.platform_human_principals(principal_id) ON DELETE SET NULL NOT VALID;",
+          "ALTER TABLE public.shipment_external_refs ADD COLUMN provider_kind text;"
+        ],
+        "uniqueSupersets": [
+          {
+            "table": "public.shipment_external_refs",
+            "constraint": "shipment_external_refs_shipment_role_id_key",
+            "columns": [
+              "shipment_id",
+              "ref_role",
+              "external_id",
+              "provider_kind"
+            ],
+            "nullsNotDistinct": true
+          }
+        ],
+        "checkSupersets": [
+          {
+            "table": "public.fulfillment_operator_receipts",
+            "constraint": "fulfillment_operator_receipts_kind_check",
+            "column": "kind",
+            "values": [
+              "replacement",
+              "cancel",
+              "consume",
+              "label",
+              "handoff",
+              "tracking"
+            ]
+          }
+        ]
       }
     ]
   },
@@ -5124,6 +5189,37 @@
           "signature": "public.commerce_checkout_payment_guidance_snapshot(uuid,uuid,uuid)",
           "beforeSha256": null,
           "afterSha256": "a18c02a841b3322369ae49745ac354228a97df351b2b7db796721a1370240d1d"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261110230000_operator_shipment_commands.sql",
+      "sha256": "4bb26623ecd9a9eaa1662dab1a3900b501a11323f45032153a640b639caa88ed",
+      "functions": [
+        {
+          "signature": "public.fulfillment_record_alignment_arrival(text,uuid,timestamptz,text)",
+          "beforeSha256": "7bb3c025376c206438fd3856bb58d3ba3bd64b25a06e3230b7abeaec0a183149",
+          "afterSha256": "14b20f0ea67378576429e6ab8c0c0128b40d00a83c146fe49cc550a52cbdb1f6"
+        },
+        {
+          "signature": "public.fulfillment_record_evidence(text,uuid,text,text,text,jsonb,timestamptz)",
+          "beforeSha256": "727e24d59b3fa24869bc731cc5dab7ad035726d0d88311f520baae0f54072809",
+          "afterSha256": "c7663ef7837fba77d0a1a99262db0d6c53a90aa1145c3d1756fc258d2e793b5e"
+        },
+        {
+          "signature": "public.fulfillment_operator_record_label(text,uuid,jsonb,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "372399f274bc23a288cc5c7b3ba3763798d22a76d7631bad6d7d647f63507135"
+        },
+        {
+          "signature": "public.fulfillment_operator_hand_off(text,uuid,uuid,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "8663c9b955e7fde0653cb2baa7894b68171dacd917e53a9143ddad84d03f2215"
+        },
+        {
+          "signature": "public.fulfillment_operator_record_tracking(text,uuid,jsonb,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "e8dbcef71cd1c2f78afe40d39aca0f0f8f2d9e054e9db099114450c5dab05368"
         }
       ]
     }
