@@ -649,6 +649,22 @@ export function renderGeneratedRegion(name: string, repositoryRoot: string, core
     });
     return `${markdownTable(["Package", "Section", "Field", "Value"], rows)}\n${link(".github/VERSIONING_AND_EOL.md", "Versioning and end-of-life policy")}\n`;
   }
+  if (name === "compatibility-policies") {
+    // Read the validator's mapping, not a second list inferred from today's exports.
+    const path = "packages/core/scripts/public-api-config.ts";
+    const source = ts.createSourceFile(path, readFileSync(join(repositoryRoot, path), "utf8"), ts.ScriptTarget.Latest, true);
+    const mapping = source.statements.flatMap((statement) => ts.isVariableStatement(statement) ? [...statement.declarationList.declarations] : [])
+      .find((declaration) => ts.isIdentifier(declaration.name) && declaration.name.text === "compatibilityByMaturity")?.initializer;
+    const error = `${path}: expected a nonempty static compatibilityByMaturity object with literal policies`;
+    if (!mapping || !ts.isObjectLiteralExpression(mapping) || mapping.properties.length === 0) throw new Error(error);
+    const rows = mapping.properties.map((property) => {
+      if (!ts.isPropertyAssignment(property) || !(ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)) || !ts.isStringLiteralLike(property.initializer)) {
+        throw new Error(error);
+      }
+      return [codeLiteral(property.name.text), codeLiteral(property.initializer.text)];
+    }).sort(([left], [right]) => left!.localeCompare(right!));
+    return `${markdownTable(["Maturity", "Compatibility policy"], rows)}\n${link(path, "Compatibility policy mapping")}\n`;
+  }
   if (name === "refusal-codes" || name === "refusal-codes-open") {
     const types = collectRefusalTypes(repositoryRoot);
     if (name === "refusal-codes-open") {

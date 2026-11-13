@@ -110,7 +110,7 @@ if (command === 'candidate') {
     const code = error instanceof Error ? error.message : 'starter_installation_failed';
     process.stderr.write(`${code}\n`);
     if (code === 'starter_seed_demonstration_database_required') {
-      process.stderr.write('See README.md#reset-an-interrupted-first-install for the local demonstration reset recipe.\n');
+      process.stderr.write('See node_modules/@openlup/core/docs/guide/how-to/build/customize-the-starter.md#reset-an-interrupted-first-install for the local demonstration reset recipe.\n');
     }
     process.exitCode = 2;
   }

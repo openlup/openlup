@@ -24,7 +24,7 @@ npm 11.19.0: `npm install --save-exact @openlup/core@<version>`, where `<version
 is the current set on npm (`npm view @openlup/core version`); install every
 `@openlup/*` package you use at that same version. Read the installed
 `AGENTS.md` and its [typed wiring example](packages/core/AGENTS.md#wiring-example),
-then use the [adopter route](docs/platform/adopter-kit/README.md). No OpenLup
+then use the [adopter route](packages/core/docs/guide/start/adopt-from-npm.md). No OpenLup
 clone or contributor check is needed to compose an installed package. Your
 application's instructions and task authority govern that work.
 
@@ -487,7 +487,7 @@ acceptance even when unit tests pass. This specifies later foundation/module
 proof, not a claim that today's core/outbox gate already tests platform.
 Only schema-owning modules need database proof, including deterministic fresh
 and upgrade/replay boundaries under the
-[migration contract](docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories).
+[migration contract](packages/core/docs/guide/upgrade/database-migrations.md#select-the-complete-catalogue).
 
 Core's required batch retains coverage, standalone types, documentation, release checks and its supplied-artifact consumer. Outbox's batch owns schema/SQL/replay against its installed tarball; its unit/factory/admission tests run once through the protected root selectors. The outbox workspace builds after core for root lint and test entrypoints. Package-local import checks still reject private subpaths, cross-directory escapes, aliases and other workspace dependencies; portable outbox production source also rejects provider SDKs. Missing artifacts or a required runtime refuse; there is no workspace fallback or DB skip. Only modules with SQL obligations need a database. Outbox's pinned job-owned PostgreSQL service is separate from raw pgTAP; see [the rail guide](packages/outbox/README.md) for ownership and proof limits.
 
@@ -1237,7 +1237,7 @@ or a dependency, is releasable on those terms. Before it tags, the release
 workflow checks the target against the previous preview with
 `assertDescendantSourceRelease` (`scripts/oss-source-release-contract.ts`). That
 check admits additive forwards and the separate exact reviewed function class under
-[Data and migrations](docs/platform/DATA_AND_MIGRATIONS.md#additive-forward-release-path).
+[Data and migrations](packages/core/docs/guide/upgrade/database-migrations.md#follow-the-additive-forward-path).
 Reviewed function forwards use the same checker in required self-check and release
 prepare. Their whole-file bytes, signatures, old/new definitions and runtime
 privileges are pinned in `config/reviewed-platform-forwards.json`. The runtime

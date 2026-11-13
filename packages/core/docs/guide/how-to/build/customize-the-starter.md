@@ -44,7 +44,7 @@ the prepared application directory:
 ```
 
 This builds the image, starts PostgreSQL, applies the packaged migration history
-and fictional seed, then serves the application on the [starter's loopback listener](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/neutral-store/README.md#run-the-local-application).
+and fictional seed, then serves the application at `http://127.0.0.1:4319`.
 Pass `--configuration <id>` to select another owned configuration.
 `./lifecycle down` stops the project while preserving its data. Keep the
 passwordless demonstration network and its database isolated; do not reuse this
@@ -101,8 +101,8 @@ sessions, and client and configuration changes do not reload atomically.
 ## Select your configuration
 
 Add a configuration satisfying `StoreConfig` from `shared/config.ts` to the
-owned registry and choose its ID as the default. The [registry contract](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/neutral-store/docs/customization.md#one-input-and-three-fragments)
-identifies its exports. The host and
+owned registry in `owned/store.config.ts`, which exports `configurations`,
+`defaultConfigurationId` and `selectConfiguration`. The host and
 lifecycle use that default unless you pass `--configuration <id>`; an unknown ID
 refuses with `starter_configuration_unknown`. IDs use lowercase letters and
 digits separated by single hyphens, within the length bound checked by
@@ -149,16 +149,16 @@ trimmed, nonempty legal revision within `assertConfig`'s limits. Configuration
 validation runs before composition; do not rely on browser controls to enforce
 these limits.
 
-Read the [configuration validator](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/neutral-store/docs/customization.md#one-input-and-three-fragments)
-and [cart validator](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/neutral-store/docs/customization.md#acquisition-location-choices) for exact
+Read the configuration validator in `shared/config.ts`
+and cart validator in `shared/offer.ts` for exact
 text, color, cadence, cart, stock and price bounds.
 
 ## Replace a presentation fragment
 
 Edit the `fragments` object in `owned/fragments.ts`:
 
-Select the fragment for the offer introduction, product presentation or
-checkout summary using the [fragment inventory](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/neutral-store/docs/customization.md#one-input-and-three-fragments).
+Select `offerIntro`, `productCard` or `checkoutSummary` for the offer introduction,
+product presentation or checkout summary.
 
 Each function receives `PageContext` and returns a DOM element; the card also
 receives its product and the summary its quote. Keep fragments about
@@ -235,7 +235,7 @@ The lifecycle validates configuration before starting containers and the host
 validates it again on startup.
 
 Use canonical lowercase ASCII or already encoded punycode, within the
-[origin parser's input bound](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/neutral-store/docs/customization.md#public-origin). A root slash and an
+origin parser's 256-character input bound. A root slash and an
 explicit default port normalize to the URL origin. Userinfo, whitespace,
 wildcards, trailing dots, paths, query strings, fragments, other schemes and
 parser repairs such as uppercase or Unicode host input refuse. Host matching

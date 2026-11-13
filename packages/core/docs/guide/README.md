@@ -19,24 +19,90 @@ versions and upgrade all `@openlup/*` packages together.
 
 ## Pages
 
-The guide is being written. Each section below is listed with what it will
-hold; a section marked "to be written" has no page yet.
+### Start
 
-| Section | What it holds | State |
-| --- | --- | --- |
-| [Start](start/README.md) | Whether OpenLup fits, its limits and maturity, and a [tutorial](start/tutorial.md) from installing the packages to a documented result. | written |
-| How-to: build | Composing the packages, customizing the starter, adding OpenLup to an existing application. | [Read prices for a quote](how-to/build/quote-prices.md), [Compose marketing handlers](how-to/build/marketing.md), [Compose invoicing](how-to/build/invoicing.md), [Compose order management stores](how-to/build/oms-stores.md), [Compose account and support services](how-to/build/account-and-support.md), [Compose SEO and content slots](how-to/build/seo-and-content-slots.md), [Compose native bundle writes](how-to/build/bundles.md), [Compose native fulfillment](how-to/build/fulfillment.md), [Recover abandoned checkouts and payments](how-to/build/checkout-recovery.md), [Add OpenLup to an existing application](how-to/build/own-stack.md); customizing the starter to be written |
-| How-to: extend | Adapters, providers and extension seams. | [Choose an extension seam](how-to/extend/choose-an-extension-seam.md), [Compose a provider adapter](how-to/extend/provider-adapters.md), [Run an adapter conformance check](how-to/extend/adapter-conformance.md), [Take ownership of a copied component or page](how-to/extend/eject-source.md) |
-| How-to: operate | Deployment and self-hosting, a production checklist, retention, shutdown and security hardening. | [Connect to PostgreSQL](how-to/operate/connect-postgresql.md), [Run OpenLup on your own host](how-to/operate/self-host.md), [Shut down a host cleanly](how-to/operate/shutdown.md), [Customer diagnostic history and retention](how-to/operate/diagnostics-and-retention.md); production checklist and security hardening to be written |
-| [Upgrade](upgrade/README.md) | The upgrade procedure and one page per release. | [Upgrade an application](upgrade/README.md), [Upgrade the database](upgrade/database-migrations.md), [Upgrade application files](upgrade/application-files.md); release pages to be written |
-| Concepts | Architecture and ownership, one page per commerce domain, and the security model. | [Architecture and ownership](concepts/architecture-and-ownership.md), [Subscriptions](concepts/subscriptions.md), [Subscription engine](concepts/subscription-engine.md), [Payments](concepts/payments.md), [Idempotency](concepts/idempotency.md), [Identity](concepts/identity.md), [Personal data](concepts/personal-data.md), [Marketing sync](concepts/marketing-sync.md); catalogue and prices, checkout, orders, fulfillment and the security model to be written |
-| [Reference](reference/README.md) | Exports, configuration keys, SQL catalogue, command line, refusal codes, capability maturity, limits, versioning and stability policy. | written |
-| [Troubleshooting](troubleshooting.md) | Symptom or refusal code, its cause and the fix. | written for codes whose cause the source states |
-| [Glossary](glossary.md) | The words this guide uses. | written |
+- [Is OpenLup for you?](start/README.md)
+- [Adopt OpenLup from npm](start/adopt-from-npm.md)
+- [Record a subscription cycle and process its event](start/tutorial.md)
 
-Until a section exists, the repository
-[README](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/README.md)
-is the starting point.
+### How-to: build
+
+- [Compose account and support services](how-to/build/account-and-support.md)
+- [Compose native bundle writes](how-to/build/bundles.md)
+- [Recover abandoned checkouts and payments](how-to/build/checkout-recovery.md)
+- [Customize the starter store](how-to/build/customize-the-starter.md)
+- [Compose native fulfillment](how-to/build/fulfillment.md)
+- [Compose invoicing](how-to/build/invoicing.md)
+- [Compose marketing handlers](how-to/build/marketing.md)
+- [Compose order management stores](how-to/build/oms-stores.md)
+- [Deliver events with the outbox](how-to/build/outbox.md)
+- [Add OpenLup to an existing application](how-to/build/own-stack.md)
+- [Read prices for a quote](how-to/build/quote-prices.md)
+- [Compose SEO and content slots](how-to/build/seo-and-content-slots.md)
+
+### How-to: extend
+
+- [Run an adapter conformance check](how-to/extend/adapter-conformance.md)
+- [Choose an extension seam](how-to/extend/choose-an-extension-seam.md)
+- [Take ownership of a copied component or page](how-to/extend/eject-source.md)
+- [Compose a provider adapter](how-to/extend/provider-adapters.md)
+
+### How-to: operate
+
+- [Connect to PostgreSQL](how-to/operate/connect-postgresql.md)
+- [Customer diagnostic history and retention](how-to/operate/diagnostics-and-retention.md)
+- [Production checklist](how-to/operate/production-checklist.md)
+- [Harden a deployment](how-to/operate/security-hardening.md)
+- [Run OpenLup on your own host](how-to/operate/self-host.md)
+- [Shut down a host cleanly](how-to/operate/shutdown.md)
+- [Verify the published packages](how-to/operate/verify-published-packages.md)
+
+### Upgrade
+
+- [Upgrade an application](upgrade/README.md)
+- [Upgrade the database](upgrade/database-migrations.md)
+- [Upgrade application files](upgrade/application-files.md)
+
+Per-release upgrade pages are not yet written.
+
+### Concepts
+
+- [Architecture and ownership](concepts/architecture-and-ownership.md)
+- [Catalogue and prices](concepts/catalogue-and-prices.md)
+- [Checkout](concepts/checkout.md)
+- [Fulfillment and delivery](concepts/fulfillment.md)
+- [Idempotency](concepts/idempotency.md)
+- [Identity](concepts/identity.md)
+- [Marketing sync](concepts/marketing-sync.md)
+- [Orders](concepts/orders.md)
+- [Payments](concepts/payments.md)
+- [Personal data](concepts/personal-data.md)
+- [Security model](concepts/security-model.md)
+- [Who owns what in the starter](concepts/starter-ownership.md)
+- [Subscription engine](concepts/subscription-engine.md)
+- [Subscriptions](concepts/subscriptions.md)
+
+### Reference
+
+- [Reference](reference/README.md)
+- [AI-assisted contributions](reference/ai-contributions.md)
+- [Command line](reference/cli.md)
+- [Configuration keys](reference/configuration.md)
+- [Exports](reference/exports.md)
+- [Starter limits](reference/limits.md)
+- [Maturity](reference/maturity.md)
+- [Refusal codes](reference/refusal-codes.md)
+- [SQL catalogue](reference/sql.md)
+- [Versioning and stability](reference/stability.md)
+- [Starter routes](reference/starter-routes.md)
+
+### Troubleshooting
+
+- [Troubleshooting](troubleshooting.md)
+
+### Glossary
+
+- [Glossary](glossary.md)
 
 ## Writing this guide
 

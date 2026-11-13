@@ -301,5 +301,5 @@ required ports without bindings; duplicate route IDs throw
 emissions and schedules. Construction mounts no route or schedule. Your host
 maps refusals and admits routes before serving them. Install the [complete
 selected
-catalogue](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/DATA_AND_MIGRATIONS.md#compatibility-lifecycle)
+catalogue](../../upgrade/database-migrations.md#check-application-compatibility)
 before selecting native operations; module SQL lists alone are not an installer.

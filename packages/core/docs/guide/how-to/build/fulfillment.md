@@ -13,7 +13,7 @@ its [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/pa
 `@openlup/platform/composition` for contribution composition. Consult the
 [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/fulfillment.api.md), [contracts report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/fulfillment-contracts.api.md)
 and [composition report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/composition.api.md) for those inventories. Install the
-[complete selected catalogue](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/DATA_AND_MIGRATIONS.md#compatibility-lifecycle),
+[complete selected catalogue](../../upgrade/database-migrations.md#check-application-compatibility),
 including the operator shipment routines, before selecting native commands.
 
 ## Select shipping rules

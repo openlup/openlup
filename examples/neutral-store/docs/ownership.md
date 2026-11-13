@@ -1,7 +1,6 @@
 # Application ownership
-Moved to [Who owns what in the starter](../../../packages/core/docs/guide/concepts/starter-ownership.md#read-the-inventory).
 
-Status: moved to the [OpenLup guide](../../../packages/core/docs/guide/concepts/starter-ownership.md); this page keeps its headings so links resolve. Sections marked "Evidence" are frozen historical records.
+Status: maintainer implementation notes. Reader guidance: [OpenLup guide](../../../packages/core/docs/guide/concepts/starter-ownership.md). Sections marked "Evidence" are frozen historical records.
 
 `ownership.json` is the machine-readable split. Its `owned` and `managed`
 arrays contain exact application-relative paths. `sourceMappings` maps application
@@ -198,8 +197,6 @@ the source-release witnesses or claim a native database result.
 
 ## Paid-order message ownership
 
-Moved to [Who owns what in the starter](../../../packages/core/docs/guide/concepts/starter-ownership.md#paid-order-messages-and-shipping).
-
 Shipping fee and free-delivery threshold are owned offer values. The managed
 quote binding passes them to the installed shipping policy; it owns no threshold
 calculation. The purchase binding retains the accepted shipping agreement for
@@ -218,8 +215,6 @@ the customer uses only sign-in and account read controls. Fixture files and
 Playwright configurations under `.context/` are generated private state.
 
 ## Subscription care ownership
-
-Moved to [Who owns what in the starter](../../../packages/core/docs/guide/concepts/starter-ownership.md#subscription-care).
 
 `owned/renewal.config.ts` owns neutral timing, cancellation taxonomy,
 notice windows, operator caps and retry offsets.
@@ -246,8 +241,6 @@ migration runner owns the database schema; no starter migration or grant is adde
 
 ## Account, checkout and parcel controls
 
-Moved to [Who owns what in the starter](../../../packages/core/docs/guide/concepts/starter-ownership.md#account-and-operator-authority).
-
 `owned/acquisition-policy.ts` owns account validation, fictional phone and checkout
 wave/link timing values. English and Polish copy stays in `owned/copy.ts`. The managed account
 and operator pages bind native capabilities through `host/e4-composition.ts` and
@@ -273,8 +266,6 @@ buyer control uses that exact cookie. Checkout creation never issues it.
 
 ## Expired checkout recovery and order holds
 
-Moved to [Who owns what in the starter](../../../packages/core/docs/guide/concepts/starter-ownership.md#checkout-continuation-and-recovery).
-
 Hold and release resolve the human administrator before every command and replay.
 The database owner provisions one `commerce_operators` row per human admin, with
 `id` equal to the native principal ID. Never delete this row: holds retain its
@@ -296,8 +287,6 @@ quota and all runner guards remain unchanged.
 
 ## Unpaid cancellation and manual refund records
 
-Moved to [Who owns what in the starter](../../../packages/core/docs/guide/concepts/starter-ownership.md#cancellation-refund-records-and-returns).
-
 Each command and replay rechecks the human admin and resolves the existing Commerce
 operator row. Caller identities, missing confirmation, invalid reasons, stale
 order status and conflicting commands refuse. Reasons use the package's trimmed
@@ -306,13 +295,10 @@ unavailable actions are bound; physical-return, tracking and account limits stay
 listed until their own complete bindings exist.
 
 ## Optional payment guidance
-Moved to [Who owns what in the starter](../../../packages/core/docs/guide/concepts/starter-ownership.md#payment-guidance-and-sandbox-continuation).
 
 `host/checkout-recovery.ts` composes the optional native guidance reader.
 
 ## Sandbox token payment and exact continuation
-
-Moved to [Who owns what in the starter](../../../packages/core/docs/guide/concepts/starter-ownership.md#payment-guidance-and-sandbox-continuation).
 
 The continuation codec purpose-derives its signing key from the private
 keyring root supplied by `--quote-acceptance-key-file`. This composition uses
@@ -320,8 +306,6 @@ the native order UUID for the opaque checkout journey.
 
 
 ## Billing profiles and frozen invoice buyers
-
-Moved to [Who owns what in the starter](../../../packages/core/docs/guide/concepts/starter-ownership.md#frozen-invoice-buyers-and-privacy).
 
 Install the complete ordered package history through
 `20261110280000_checkout_recovery_buyer_snapshot` before starting this composition.

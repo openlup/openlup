@@ -17,7 +17,7 @@ export const bindStore = (executor: SqlExecutor) => createPostgresOutboxStore(ex
 ```
 
 This CI-compiled example binds a store; the executor must commit each operation
-before resolving. Read [installation and transactions](#postgresql-installation-and-transactions) before use.
+before resolving. Read [installation and transactions](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/core/docs/guide/how-to/build/outbox.md#postgresql-installation-and-transactions) before use.
 [AGENTS.md](AGENTS.md) explains application ownership and extension boundaries.
 Node 24 or newer is required. Declaration maps connect `dist/` declarations to
 shipped `src/`; JavaScript source maps are not shipped.
@@ -50,14 +50,10 @@ See [lookup instructions](https://github.com/openlup/openlup/blob/main/packages/
 
 ## Dispatch configuration and optional diagnostics
 
-Moved to [Bind scheduled or immediate dispatch](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/outbox.md#dispatch-configuration-and-optional-diagnostics).
-
 The parser and `validateScheduledConfig` share [`src/config.ts`](src/config.ts).
 The optional diagnostics deadline in `src/worker.ts` is three seconds.
 
 ## PostgreSQL installation and transactions
-
-Moved to [Install and enqueue](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/outbox.md#postgresql-installation-and-transactions).
 
 [`sql/manifest.json`](sql/manifest.json) binds [`sql/0001_outbox.sql`](sql/0001_outbox.sql)
 to its public migration owner. PostgreSQL 16 or later supplies the validated
