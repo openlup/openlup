@@ -33,9 +33,12 @@ Collection is off unless explicitly enabled on both sides.
 
 Before allowing retained ingest, also enable the prune flag and its control row
 described below. A disabled, absent or unreadable control row refuses ingest.
-Missing retention, key, origin or data configuration also fails closed through
-`customer_diagnostic_history_configuration_invalid`; the HTTP ingest handler
-returns `UPSTREAM_UNAVAILABLE`. A foreign or missing request Origin produces
+Missing retention, key or origin configuration, or a missing `DATABASE_URL` on
+the PostgreSQL lane, also fails closed through
+`customer_diagnostic_history_configuration_invalid`, and the HTTP ingest handler
+returns `UPSTREAM_UNAVAILABLE`. On a managed data lane, incomplete adapter
+configuration fails when the adapter is used; the ingest handler then reports
+`UPSTREAM_UNAVAILABLE` with an unknown persistence outcome. A foreign or missing request Origin produces
 `customer_diagnostic_origin_invalid` internally and `FORBIDDEN` over HTTP. The
 binding accepts the configured origin or the request's own served origin; keep
 host and forwarded-origin handling within your trusted deployment boundary.
