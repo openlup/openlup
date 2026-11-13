@@ -471,7 +471,7 @@ in `scripts/ci-test-scope.mjs`: unlisted tests always run. The contract refuses:
 - a stale or unknown `<!-- generated:<name> -->` region. The generators are
   `maturity:<core|outbox|platform>` from that package's `release-gates.json`,
   `exports:<core|outbox|platform>` from its `package.json` and release gates,
-  `sql:<outbox|platform>` from the shipped SQL manifest, `cli:openlup` and
+  `sql:<outbox|platform>` from the `.sql` files the package ships under `sql/`, `cli:openlup` and
   `cli:openlup-context` from their static help constants, `versioning` from release
   gates, `configuration-keys` from `config/environment-variables.json`, and
   `refusal-codes` and `refusal-codes-open` from exported API report aliases and

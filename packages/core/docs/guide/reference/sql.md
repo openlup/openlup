@@ -22,6 +22,7 @@ Find the SQL files each package ships, listed by file name. This is an inventory
 | [`20260808180000_oms_order_hold_rail.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/sql/20260808180000_oms_order_hold_rail.sql) |
 | [`20260808210000_fulfillment_shipment_rail.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/sql/20260808210000_fulfillment_shipment_rail.sql) |
 | [`20260809150000_job_run_ledger.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/sql/20260809150000_job_run_ledger.sql) |
+| [`20260809150001_job_run_ledger_v3.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/sql/20260809150001_job_run_ledger_v3.sql) |
 | [`20260809210000_accounting_document_rail.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/sql/20260809210000_accounting_document_rail.sql) |
 | [`20260810120000_storefront_catalog_attributes.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/sql/20260810120000_storefront_catalog_attributes.sql) |
 | [`20260810120001_transactional_delivery_receipts.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/sql/20260810120001_transactional_delivery_receipts.sql) |

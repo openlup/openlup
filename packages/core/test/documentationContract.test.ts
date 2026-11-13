@@ -881,7 +881,8 @@ function referenceFixture() {
       catalog: { baseline: { file: "do-not-render.sql" } },
       migrations: [{ file: "z.sql", sha256: "do-not-render" }, { file: "a.sql", sha256: "do-not-render" }],
     }));
-    for (const file of ["z.sql", "a.sql"]) write(`packages/${pkg}/sql/${file}`, "select 1;\n");
+    for (const file of ["z.sql", "m.sql", "a.sql"]) write(`packages/${pkg}/sql/${file}`, "select 1;\n");
+    write(`packages/${pkg}/sql/README.md`, "SQL inventory fixture.\n");
   }
   write("packages/platform/src/lifecycle/openlup.mjs", 'const help = `openlup verify [--json]\n`; const a = "OPENLUP_E_CLI_INPUT"; const b = "OPENLUP_E_CLI_FAILURE"; const c = "OPENLUP_E_APP_UNKNOWN";');
   write("packages/core/src/openlup-context.js", 'import { runCli } from "../dist/agent-context-cli.js"; runCli();\n');
@@ -938,9 +939,9 @@ describe("generated reference regions", () => {
     expect(renderGeneratedRegion(`${kind}:core`, fixture.repository)).not.toContain("subpaths omitted");
   });
 
-  it.each(["outbox", "platform"])("lists %s shipped SQL as an inventory by file name and omits source paths and hashes", (pkg) => {
+  it.each(["outbox", "platform"])("lists all %s SQL files in name order, including files outside the manifest, and omits non-SQL files and hashes", (pkg) => {
     const { repository } = referenceFixture();
-    expect(renderGeneratedRegion(`sql:${pkg}`, repository)).toBe(`| File |\n| --- |\n| [\`a.sql\`](${repositoryLink(`packages/${pkg}/sql/a.sql`)}) |\n| [\`z.sql\`](${repositoryLink(`packages/${pkg}/sql/z.sql`)}) |\n`);
+    expect(renderGeneratedRegion(`sql:${pkg}`, repository)).toBe(`| File |\n| --- |\n| [\`a.sql\`](${repositoryLink(`packages/${pkg}/sql/a.sql`)}) |\n| [\`m.sql\`](${repositoryLink(`packages/${pkg}/sql/m.sql`)}) |\n| [\`z.sql\`](${repositoryLink(`packages/${pkg}/sql/z.sql`)}) |\n`);
   });
 
   it("reads CLI string and template constants without executing either bin", () => {

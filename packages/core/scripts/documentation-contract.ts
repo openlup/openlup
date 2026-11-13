@@ -604,10 +604,13 @@ export function renderGeneratedRegion(name: string, repositoryRoot: string, core
     if (!(publishedPackages as readonly string[]).includes(pkg!) || (kind === "sql" && pkg === "core")) return undefined;
     const base = `packages/${pkg}`;
     if (kind === "sql") {
-      const manifest = readJson<{ migrations: Array<{ file: string }> }>(repositoryRoot, `${base}/sql/manifest.json`);
-      // An inventory of the shipped files by name, not an installation sequence: which files apply,
-      // and in which order, depends on the catalogue an installation selects.
-      return markdownTable(["File"], [...manifest.migrations].sort((left, right) => left.file.localeCompare(right.file)).map(({ file }) => [link(`${base}/sql/${file}`, `\`${file}\``)]));
+      // Inventory the SQL files shipped under sql/** directly, including files outside the migration
+      // manifest. File-name order is not the installation sequence selected by a catalogue.
+      const files = readdirSync(join(repositoryRoot, base, "sql"), { withFileTypes: true })
+        .filter((entry) => entry.isFile() && entry.name.endsWith(".sql"))
+        .map((entry) => entry.name)
+        .sort();
+      return markdownTable(["File"], files.map((file) => [link(`${base}/sql/${file}`, `\`${file}\``)]));
     }
     const manifest = readJson<{ exports: Record<string, unknown> }>(repositoryRoot, `${base}/package.json`);
     const gates = readJson<{ packageSurface: Record<string, SurfaceContract> }>(repositoryRoot, `${base}/release-gates.json`);
