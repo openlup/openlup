@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { INVENTORY_PATH, MIGRATION_REGISTRIES, migrationRegistryUnion } from './agent-review-derived.mjs';
 import { runLandingGenerators } from './agent-review-generators.mjs';
@@ -28,6 +29,19 @@ function append(slot: string) {
   write(MIGRATION_REGISTRIES[1], json(registry));
   runLandingGenerators(root, git('ls-files', '-z').split('\0').filter(Boolean).concat([file, `packages/platform/sql/${slot}_landing_fixture.sql`]));
 }
+const CATALOGUE = 'config/openlup-publication-catalog.json';
+// Main adds a package command after the reviewed head forked; main's own owner
+// writes its catalogue in a new process, as a contributor's generator run would.
+function addPackageCommand() {
+  const policy = 'scripts/oss-publication-policy.ts', close = '\n];\nexport const PUBLIC_PACKAGE_EXECUTION_SURFACES';
+  expect(read(policy)).toContain(close);
+  write(policy, read(policy).replace(close, `\n  publicCommand("fixture:landing", "node -e 0"),${close}`));
+  const owner = pathToFileURL(join(root, policy)).href;
+  execFileSync(process.execPath, ['--input-type=module', '-e', `import { readFileSync, writeFileSync } from 'node:fs';
+    const { createPublicPublicationCatalog } = await import(${JSON.stringify(owner)});
+    const catalog = JSON.parse(readFileSync(${JSON.stringify(CATALOGUE)}, 'utf8'));
+    writeFileSync(${JSON.stringify(CATALOGUE)}, createPublicPublicationCatalog(catalog.publicPaths, catalog.guardViability).contents);`], { cwd: root, timeout: 30000 });
+}
 beforeAll(async () => {
   mkdirSync('.context/scratch', { recursive: true }); root = mkdtempSync(join(source, '.context/scratch/derived-live-'));
   execFileSync('/usr/bin/git', ['clone', '--shared', '--no-hardlinks', '-q', source, root], { timeout: 30000 });
@@ -38,7 +52,7 @@ beforeAll(async () => {
   git('config', 'user.name', 'Fixture'); git('config', 'user.email', 'fixture@example.invalid');
   base = commit();
   append('20990101010000'); reviewed = commit();
-  git('checkout', '-q', '--detach', base); append('20990101020000'); main = commit();
+  git('checkout', '-q', '--detach', base); append('20990101020000'); addPackageCommand(); main = commit();
   git('update-ref', 'refs/remotes/origin/main', main); git('checkout', '-q', '--detach', reviewed);
   merged = (await landingMerge(root)).head;
 }, 180000);
@@ -51,6 +65,12 @@ it('lands two independently appended real forwards through the CLI as derived', 
   expect(git('show', '-s', '--format=%B', merged)).toContain('Signed-off-by: Fixture <fixture@example.invalid>');
   expect(git('show', '-s', '--format=%an <%ae>%n%cn <%ce>', merged)).toBe('Fixture <fixture@example.invalid>\nFixture <fixture@example.invalid>');
 }, 50000);
+it('keeps a package command that main added after the reviewed head forked', () => {
+  const names = (revision: string) => JSON.parse(git('show', `${revision}:${CATALOGUE}`)).packageCommands.map(({ name }) => name);
+  expect(names(reviewed)).not.toContain('fixture:landing');
+  expect(names(main)).toContain('fixture:landing');
+  expect(git('show', `${merged}:${CATALOGUE}`)).toBe(git('show', `${main}:${CATALOGUE}`));
+});
 it.each(['user.name', 'user.email'])('refuses landing before merging without configured %s', async key => {
   git('reset', '--hard', merged); git('checkout', '-q', '--detach', merged);
   git('config', key, '');
