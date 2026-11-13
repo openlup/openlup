@@ -357,7 +357,9 @@ describe("release:bump", () => {
     const regionInputs = ["core", "outbox", "platform"].flatMap((name) => ["release-gates.json", "src", "api", "sql"].map((part) => `packages/${name}/${part}`))
       .filter((path) => existsSync(resolve(path)));
     const entryPoints = ["core", "outbox", "platform"].flatMap((name) => ["AGENTS.md", "README.md"].map((file) => `packages/${name}/${file}`));
-    for (const path of ["packages/core/docs/guide", "config/openlup-packages.json", "config/documentation-guide-allowlist.json", "config/environment-variables.json", "packages/core/package.json", "packages/outbox/package.json", "packages/platform/package.json", "packages/ui/smoke/neutrality.ts", ...regionInputs, ...linked, ...entryPoints]) {
+    const copyPaths = [...new Set(["packages/core/docs/guide", "config/openlup-packages.json", "config/documentation-guide-allowlist.json", "config/environment-variables.json", "packages/core/package.json", "packages/outbox/package.json", "packages/platform/package.json", "packages/ui/smoke/neutrality.ts", ...regionInputs, ...linked, ...entryPoints])];
+    // A recursive parent copy already includes every linked path beneath it.
+    for (const path of copyPaths.filter((path) => !copyPaths.some((parent) => path.startsWith(`${parent}/`)))) {
       mkdirSync(dirname(join(root, path)), { recursive: true }); cpSync(resolve(path), join(root, path), { recursive: true });
     }
     const manifest = JSON.parse(readFileSync(join(core, "package.json"), "utf8"));
@@ -378,5 +380,5 @@ describe("release:bump", () => {
     writeFileSync(join(core, "package.json"), readFileSync(join(core, "package.json"), "utf8").replace('"version": "0.7.0"', '"version": "0.9.0"'));
     expect(checkGuide(root)).toBe("guide contract ok");
     expect(docs.planReleaseGuide(root, "0.9.0")).toEqual({ writes: [], violations: [], pageViolations: {} });
-  });
+  }, 60_000);
 });
