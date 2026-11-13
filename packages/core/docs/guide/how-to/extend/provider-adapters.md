@@ -44,6 +44,100 @@ capability
 reference](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/AGENTS.md#subpath-maturity)
 for maturity.
 
+### Card and wallet payment template
+
+Use `createStripePaymentAdapter`, `StripePaymentAdapterConfig` and
+`stripePaymentCapabilities` from the card/wallet protocol entry listed in the
+installed export map, using a type import for the config. Inject a structural client, `webhookSigningSecrets`,
+explicit `mode` and a nonempty `supportedCurrencies` array of uppercase
+three-letter codes. Optional `toleranceSeconds` defaults to 300; `clock` returns
+UTC seconds. Your host constructs the SDK, associates stored methods with
+customers and confirms unattended requests. Interactive offers use the declared
+card/wallet flow. Construction performs no provider I/O.
+
+The adapter copies and freezes your currency list; the exported descriptor's
+list is empty. Cancellation is available only when your client implements it.
+Exact absence, refund creation and separate authorization/capture are
+unavailable. Establish account-specific readiness before live use.
+
+Verified dispute events keep a distinct money outcome and original payment
+identity. Audit projection includes filtered event, refund-snapshot and
+failure-provenance facts, excluding raw bodies, handoffs and authorization.
+Audit fields do not alter event identity or fingerprints. Method outcomes keep
+replacement/lifecycle evidence only with provider time; missing time never
+becomes an invented lifecycle timestamp.
+
+### Bank redirect and code payment template
+
+Use `createTpayPaymentAdapter`, `TpayPaymentAdapterConfig` and
+`tpayPaymentCapabilities` from the bank/code protocol entry in that map. Supply
+`http: { baseUrl, clientId, clientSecret, fetchImpl, timeoutMs? }`,
+`urls: { notificationUrl, successUrl, errorUrl }`, `modelOActivationEnabled`,
+`mode` and optionally a UTC-seconds `clock`. The notification binding requires
+`rootCertificatePem`, an HTTPS `allowedCertificateUrlPrefix` directory ending
+in `/`, and `resolveCertificate`. Your resolver enforces redirect and outbound
+access policy. Both root and resolved certificates must be valid at verification.
+
+Verify notifications over original bytes. Only signed protected-header `iat`
+supplies provider time; absent time stays null. `maxNotificationAgeSeconds`
+defaults to seven days, an assumed retry allowance rather than a verified
+provider schedule. `maxClockSkewSeconds` defaults to 300. Both limits must be
+finite and nonnegative and apply only with a signed issue time; a time outside
+the window refuses as `stale`. Receipt time checks freshness without inventing
+occurrence time. Dedupe by exact event identity and stable fingerprint when
+time is absent. Money identity includes outcome; method identity also retains
+event/alias outcome.
+
+Every attempt, including renewal, needs transient `payer: { email, name? }`.
+A blank or omitted name becomes `Customer`. For a bank redirect select
+`methodSelection: { family: "bank-redirect", channelRef }`; for a code select
+`{ family: "one-time-code" }` and pass `customerAuthorization` as a
+`TransientSecret`. Unattended renewal requires `storedMethod.reference` and
+its `O` recurring mandate. Other or unknown mandate models, missing payer,
+channel or code refuse before dispatch with exact `notDispatched` evidence.
+Keep payer and authorization out of persisted diagnostics, audits and return
+payloads. Readback uses the API transaction ID, not the notification title.
+
+Host mode, purpose and currency mismatch throws before I/O. Trusted document
+refusals require customer data correction; authenticated-request setup,
+encoding and exhausted pre-send deadlines retain transient retry advice when
+no dispatch is proved. Other execution errors remain ambiguous. Customer-data
+correction does not itself pause a subscription or terminate its retry schedule;
+your subscription failure policy decides retry termination.
+
+The descriptor and nested records are frozen. Currencyless money notifications
+bind to its single declared currency; multiple declared currencies refuse as
+`malformed`. Alias lifecycle evidence needs signed provider time. The factory
+offers no alias registration or recurring-card flow. Refund creation, close,
+exact absence and split authorization/capture are unavailable.
+
+Refunded/chargeback readback stays unknown for manual review, in either
+readback purpose. Pending/refused observations use validated configured money,
+including zero/absent paid amount. A refusal with different nonzero paid money,
+or success with underpayment/overpayment, remains unknown. Chargeback evidence
+keeps full reversal, original money and stable operation identity. Audit data
+contains only filtered transaction/alias facts, excluding payer, authorization,
+certificates and raw bodies. Missing failure provenance stays absent.
+
+### Reuse existing payment bindings
+
+The protocol entries also expose helpers for applications carrying existing
+bindings. Consult the [declarations](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api)
+before depending on their exact signatures:
+
+| Protocol entry | Helpers |
+| --- | --- |
+| Card/wallet | `createStripeSandboxPaymentExecutionAdapter`, `createStripePaymentReconciliationProvider`, `mapStripeIntent`, `mapSetupIntent`, `normalizeStripeFailureEvidence` |
+| Bank/code | `createTpayPaymentExecutionAdapter`, `createTpayPaymentReconciliationProvider`, `createTpayHttpClient`, `normalizeTpayFailureEvidence`, `aliasValue`, `ProviderAttemptPreDispatchError` |
+
+Infer types from the functions where no separate type is exported. Reuse the
+same `ProviderAttemptPreDispatchError` constructor across wrappers so
+`instanceof` retains its no-charge trust boundary. Your host still supplies SDK
+construction, flags, callback/return UI, account readiness and simulator
+composition. These helpers do not widen the neutral adapter's capabilities or
+activate a provider. Check their [maturity](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/AGENTS.md#subpath-maturity)
+before selection.
+
 ### Node email protocol template
 
 The experimental Node-only email template offers exactly three runtime

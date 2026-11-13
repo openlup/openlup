@@ -1,6 +1,8 @@
 # M14 legacy installation qualification
 
-Status: development-preview finite observer delivered with C in
+Status: historical record, 2026-10-29.
+
+Recorded status: development-preview finite observer delivered with C in
 [#401](https://github.com/openlup/openlup/pull/401) and package set 0.30.0.
 This read-only probe does not enable restricted installation or complete M14.
 The [module record](oss-m14-operations-portability.md) owns current D32,

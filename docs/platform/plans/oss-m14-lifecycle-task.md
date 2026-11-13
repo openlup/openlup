@@ -1,6 +1,8 @@
 # M14 C: application lifecycle task
 
-Status: development-preview source delivered. The combined C+D slice landed in
+Status: historical record, 2026-10-29.
+
+Recorded status: development-preview source delivered. The combined C+D slice landed in
 [#401](https://github.com/openlup/openlup/pull/401) and package set 0.30.0;
 the executable application-upgrade proof subsequently landed as source in
 [#408](https://github.com/openlup/openlup/pull/408). Later source is not part of

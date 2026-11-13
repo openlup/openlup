@@ -1,6 +1,8 @@
 # M04 communications import
 
-Status: development-preview plan; no stable-framework or activation claim.
+Status: historical record, 2026-10-29.
+
+Recorded status: development-preview plan; no stable-framework or activation claim.
 
 ## Outcome and authority
 

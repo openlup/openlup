@@ -46,6 +46,13 @@ replace missing grants with an owner login in request handling.
 
 Before admitting a locked callback, the adapter acquires the advisory key, then
 checks the backend PID and ownership of that exact key in a separate statement.
+The adapter reserves the numeric key locally before acquisition, so pending or
+held grants also exclude reentry on the same session. Distinct job IDs can
+share a hashed key and therefore exclude one another. Ordinary contention
+releases the local reservation; uncertain acquisition retains it and refuses
+further grants until disposal. Release requires an actual unlock on the same
+backend; a failed unlock retains the reservation too.
+
 A changed PID, missing ownership or uncertain acquisition produces
 `OPENLUP_E_ADVISORY_SESSION_AFFINITY`. The callback does not start, and later
 acquisitions on that adapter are refused. Release also checks the backend PID

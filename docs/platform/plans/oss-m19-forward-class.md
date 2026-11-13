@@ -1,6 +1,8 @@
 # Closed native forward admission class
 
-Status: landed in openlup/openlup#501 (merge `5f9c45e6c5b77b5861b486593b51af2babdd6e25`, 2026-11-02). The final state, including six native review cycles, the mechanical integration with main and the two integration reviews, is recorded in "Final state" at the end of this record. Earlier sections are the history of the work as it stood when each was written.
+Status: historical record, 2026-11-04.
+
+Recorded status: landed in openlup/openlup#501 (merge `5f9c45e6c5b77b5861b486593b51af2babdd6e25`, 2026-11-02). The final state, including six native review cycles, the mechanical integration with main and the two integration reviews, is recorded in "Final state" at the end of this record. Earlier sections are the history of the work as it stood when each was written.
 
 Outcome: admit one separately approved, finite native forward inventory for
 neutral-store work. This control contains no active SQL, feature code, package

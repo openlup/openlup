@@ -1,5 +1,7 @@
 # Joined starter recovery and scheduled notices
 
+Status: historical record, 2026-11-06.
+
 Historical joined checkpoint; the current task record is
 [PR #546](https://github.com/openlup/openlup/pull/546). The merged native
 installation now includes the receipt-lock completion and both operator cases

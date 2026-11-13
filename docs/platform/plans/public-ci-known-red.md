@@ -1,6 +1,8 @@
 # Public CI diagnostic obligations
 
-Status: the managed runtime repair closes the twelve SQL obligations recorded below. Historical measurements are archived; the required root-suite `test` aggregate (four `test-full-shard` jobs and `pgtap`) and the unrestricted `pgtap` diagnostic must remain visible and new failures require triage.
+Status: historical record, 2026-11-06.
+
+Recorded status: the managed runtime repair closes the twelve SQL obligations recorded below. Historical measurements are archived; the required root-suite `test` aggregate (four `test-full-shard` jobs and `pgtap`) and the unrestricted `pgtap` diagnostic must remain visible and new failures require triage.
 Audience: contributors repairing published tests and runtime contracts.
 
 Accountable triage owner for **every row**: **OpenLup maintainer**. Each follow-up family identifies repair scope, not an assigned person's commitment. These records introduce no skip, exception, assertion budget or waiver. Failed behavior and ACL checks are unresolved defects or contract mismatches; calling a test fixture incomplete does not prove the runtime safe.

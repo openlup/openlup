@@ -1,6 +1,8 @@
 # M14 operations and diagnostics
 
-Status: development-preview source delivered in [#397](https://github.com/openlup/openlup/pull/397)
+Status: historical record, 2026-10-28.
+
+Recorded status: development-preview source delivered in [#397](https://github.com/openlup/openlup/pull/397)
 and included in package set 0.30.0. This is the bounded A record; the
 [module record](oss-m14-operations-portability.md) owns current whole-M14 status,
 the remaining D32 acceptance and subsequent source-only work. Neither this slice

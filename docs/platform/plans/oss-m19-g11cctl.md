@@ -1,5 +1,7 @@
 # Native-store terms, guards, destination policy and measured test deadline
 
+Status: historical record, 2026-11-03.
+
 Status — four registry amendments and the measured per-case deadline are
 committed for native review. The combined maintainer read was accepted on
 2026-11-03 for tree `c93385557b604030c8b06d653094069ac22c3fbe` and the separately

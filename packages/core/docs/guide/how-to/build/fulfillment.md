@@ -133,3 +133,25 @@ Delivered replay may repair arrival earlier, never later, without repeating
 delivery alignment. Confirm a replacement's arrival only when it reached the
 customer. A label or in-transit observation is not arrival evidence; a late actual
 arrival may extend the next subscription cycle.
+
+## Protect parcel contacts
+
+Preparation keeps recipient and delivery-selection snapshots in the private
+parcel contact store, outside dispatch evidence and public commerce reads.
+Compose `createFulfillmentParcelContactPrivacyContributor` from
+`@openlup/platform/identity` in the identity privacy registry and require
+`fulfillment-parcel-contacts`, alongside identity and the subscription veto.
+Erasure removes the contact payload and retains a marker that prevents legacy
+inference from recreating it. Finite native-store transfer must carry both live
+contacts and those markers. Install the complete native catalogue before
+selecting this preparation path.
+
+## Replay stock evidence
+
+With the complete catalogue installed, a matching-fingerprint stock alert
+replay preserves identity, first-seen time and historical resolver metadata,
+refreshes severity/quantities, reopens the alert and clears `resolved_at`.
+A different fingerprint refuses with
+`fulfillment_stock_evidence_idempotency_conflict` (SQLSTATE `23505`). Earlier
+whole-input fingerprints are not rewritten: resolving an alert does not make
+its key available for changed input.
