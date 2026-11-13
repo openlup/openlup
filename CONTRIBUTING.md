@@ -1227,7 +1227,7 @@ red root suite or `pgtap` run now refuses release through `test`.
 
 For independently discovered documentation falsifiers and their proof limits,
 follow [Test scope and diagnostics](#test-scope-and-diagnostics). Documentation
-regeneration and export remain owned by [Documentation maintenance](docs/platform/DOCUMENTATION.md).
+regeneration remains owned by [Documentation maintenance](docs/platform/DOCUMENTATION.md).
 
 A change can be released as the next source preview when the required checks of
 Published Tree CI pass and its tree describes itself: the publication catalogue

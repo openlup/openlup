@@ -483,7 +483,7 @@ describe("complete public CI", () => {
         expect(result.status).toBe(29);
         expect(JSON.parse(readFileSync(log, "utf8"))).toEqual(args);
       }
-      const additional = "server/runtime/public-reference src/pages/account/v2/subscriptions/modals/RescheduleModal.test.tsx scripts/oss-published-tree-check.test.ts scripts/documentation-bundle.test.ts scripts/documentation-cli.test.ts scripts/ast-grep/check-filewide-ignore.test.ts scripts/ast-grep/rule-tests/portable-no-industry-contracts.test.ts scripts/public-ci-neutrality.test.ts".split(" ");
+      const additional = "server/runtime/public-reference src/pages/account/v2/subscriptions/modals/RescheduleModal.test.tsx scripts/oss-published-tree-check.test.ts scripts/documentation-cli.test.ts scripts/ast-grep/check-filewide-ignore.test.ts scripts/ast-grep/rule-tests/portable-no-industry-contracts.test.ts scripts/public-ci-neutrality.test.ts".split(" ");
       const combined = run(["run", ...additional], 29);
       expect(combined.error).toBeUndefined();
       expect(combined.status).toBe(29);

@@ -133,7 +133,7 @@ selection: 10 files and 467 tests passed, with no skips:
 
 - `scripts/oss-published-tree-check.test.ts`
 - `scripts/public-ci-neutrality.test.ts`
-- `scripts/documentation-bundle.test.ts`
+- [retired `documentation-bundle.test.ts`](https://github.com/openlup/openlup/blob/5acb11d04b9a0db2fc73417b24d518ac257731d8/scripts/documentation-bundle.test.ts)
 - `scripts/documentation-cli.test.ts`
 - the former documentation-impact suite
 - `scripts/documentation-links.test.ts`
