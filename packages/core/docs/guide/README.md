@@ -32,8 +32,8 @@ hold; a section marked "to be written" has no page yet.
 | How-to: operate | Deployment and self-hosting, a production checklist, retention, shutdown and security hardening. | to be written |
 | Upgrade | The upgrade procedure and one page per release. | to be written |
 | Concepts | Architecture and ownership, one page per commerce domain, and the security model. | to be written |
-| Reference | Exports, configuration keys, SQL catalogue, command line, refusal codes, capability maturity, limits, versioning and stability policy. | to be written |
-| Troubleshooting | Symptom or refusal code, its cause and the fix. | to be written |
+| [Reference](reference/README.md) | Exports, configuration keys, SQL catalogue, command line, refusal codes, capability maturity, limits, versioning and stability policy. | written, except limits |
+| [Troubleshooting](troubleshooting.md) | Symptom or refusal code, its cause and the fix. | written for codes whose cause the source states |
 | Glossary | The words this guide uses. | to be written |
 
 Until a section exists, the repository

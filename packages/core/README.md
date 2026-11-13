@@ -297,8 +297,9 @@ Raw ampersands, angle characters and Unicode whitespace in local destinations
 require a canonical rewrite rather than passing an incomplete link check.
 It also type-checks TypeScript examples in `README.md` and `AGENTS.md` against
 the built package, holds `AGENTS.md` to a size cap, and checks the reader guide
-under `docs/guide/` when the package sits in its source repository;
-`npm run docs:check -- --write` refreshes the guide's generated sections.
+under `docs/guide/` if it exists; a guide without a detected source repository
+root refuses. `npm run docs:check -- --write` refreshes generated regions in
+`README.md`, `AGENTS.md` and the guide.
 
 The [repository neutrality checks](https://github.com/openlup/openlup/blob/openlup-core-v0.12.0/CONTRIBUTING.md#development-preview-checks)
 reuse the source scanner through `./scripts/neutrality-tree-counts.ts` relative

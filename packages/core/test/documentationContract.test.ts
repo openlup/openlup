@@ -1,10 +1,11 @@
+import { spawnSync } from "node:child_process";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { agentsFileCap, assertDocumentationContract, assertGuideContract, assertPackageDocumentation, assertRefusalCodeReachability, listOpenRefusalTypes, providerSpecificKeys, refusalTypeSuffixes, renderGeneratedRegion, syncGeneratedRegions } from "../scripts/documentation-contract.ts";
+import { agentsFileCap, assertCompiledFences, assertDocumentationContract, assertGuideContract, assertPackageDocumentation, assertRefusalCodeReachability, listOpenRefusalTypes, providerSpecificKeys, refusalTypeSuffixes, renderGeneratedRegion, syncGeneratedRegions } from "../scripts/documentation-contract.ts";
 
 const roots: string[] = [];
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -96,10 +97,10 @@ function surfaceTable(): string {
   ].join("\n");
 }
 
-describe("extracted-root documentation contract", { timeout: 60_000 }, () => {
+describe("extracted-root documentation contract", () => {
   it("accepts the current package surface from release-gates.json", () => {
     expect(() => assertDocumentationContract(packageRoot)).not.toThrow();
-  });
+  }, 30_000);
 
   it("keeps downstream documentation identifiers readable in the production contract", () => {
     const source = readFileSync(join(packageRoot, "scripts", "documentation-contract.ts"), "utf8");
@@ -412,6 +413,7 @@ function guideFixture(index: string, pages: Record<string, string> = {}) {
     mkdirSync(dirname(join(repository, path)), { recursive: true });
     writeFileSync(join(repository, path), contents);
   };
+  write("config/openlup-packages.json", "{}\n");
   write("README.md", "# Repository\n");
   write("AGENTS.md", "# Agents\n");
   write("config/documentation-guide-allowlist.json", '{"schemaVersion":1,"terms":["S3"]}\n');
@@ -446,13 +448,103 @@ function checkGuide(fixtureRoots: { repository: string; core: string }, write = 
 const coreRegion = (body: string) => `<!-- generated:maturity:outbox -->\n${body}<!-- /generated:maturity:outbox -->\n`;
 const freshMaturity = "| Export | Role | Maturity |\n| --- | --- | --- |\n| `.` | rail | experimental |\n";
 
-describe("reader guide contract", { timeout: 60_000 }, () => {
+describe("reader guide contract", () => {
   it("accepts relative links, pinned repository links, fresh regions, allowed terms and compiled fences", () => {
     const roots = guideFixture(
       `# Guide\n\n[Start](start/tutorial.md) and [the README](${repositoryLink("README.md")}) store files in S3.\n\n${coreRegion(freshMaturity)}\n\`\`\`ts\nconst total: number = 1 + 1;\nexport const doubled = total * 2;\n\`\`\`\n`,
       { "start/tutorial.md": "# Tutorial\n\n[Back](../README.md)\n" },
     );
     expect(() => checkGuide(roots)).not.toThrow();
+  }, 30_000);
+
+  it.each(["README.md", "AGENTS.md"])("checks and regenerates core's own %s regions", (file) => {
+    const roots = guideFixture("# Guide\n");
+    const path = join(roots.core, file);
+    const original = readFileSync(path, "utf8");
+    writeFileSync(path, original + "\n## Generated facts\n\n" + coreRegion("stale\n"));
+    expect(() => checkGuide(roots)).toThrow(`${file}: generated region maturity:outbox is stale`);
+    checkGuide(roots, true);
+    expect(readFileSync(path, "utf8")).toBe(original + "\n## Generated facts\n\n" + coreRegion(freshMaturity));
+    expect(() => checkGuide(roots)).not.toThrow();
+  });
+
+  it.each([false, true])("regenerates package regions through --package with example=%s", (withExample) => {
+    const roots = guideFixture("# Guide\n");
+    const outbox = join(roots.repository, "packages/outbox");
+    for (const file of ["package.json", "release-gates.json", "README.md", "AGENTS.md", "smoke"]) cpDir(join(roots.core, file), join(outbox, file));
+    const manifestPath = join(outbox, "package.json");
+    writeFileSync(manifestPath, JSON.stringify({ ...JSON.parse(readFileSync(manifestPath, "utf8")), name: "fixture", version: "1.2.3" }));
+    // Use valid standalone examples for both the compiler and the optional source witness.
+    for (const file of ["README.md", "AGENTS.md", "smoke/agentsWiringExample.ts"]) {
+      const path = join(outbox, file);
+      writeFileSync(path, readFileSync(path, "utf8").replaceAll(wiringExample, "export const wired = 1;\n").replaceAll(readmeExample, "export const value = 1;\n"));
+    }
+    const originals = ["README.md", "AGENTS.md"].map((file) => readFileSync(join(outbox, file), "utf8"));
+    for (const [index, file] of ["README.md", "AGENTS.md"].entries()) writeFileSync(join(outbox, file), originals[index] + "\n" + coreRegion("stale\n"));
+    const args = ["--experimental-strip-types", join(packageRoot, "scripts/documentation-contract.ts"), "--package", outbox, ...(withExample ? ["smoke/agentsWiringExample.ts"] : [])];
+    const run = (extra: string[]) => spawnSync(process.execPath, [...args, ...extra], { encoding: "utf8", timeout: 30_000 });
+    const packed = () => ["README.md", "AGENTS.md", "package.json"];
+    expect(() => assertPackageDocumentation(outbox, withExample ? "smoke/agentsWiringExample.ts" : null, packed)).toThrow("generated region maturity:outbox is stale");
+    const written = run(["--write"]);
+    expect(written.status, written.stderr).toBe(0);
+    const body = renderGeneratedRegion("maturity:outbox", roots.repository)!;
+    for (const [index, file] of ["README.md", "AGENTS.md"].entries()) expect(readFileSync(join(outbox, file), "utf8")).toBe(originals[index] + "\n" + coreRegion(body));
+    expect(() => assertPackageDocumentation(outbox, withExample ? "smoke/agentsWiringExample.ts" : null, packed)).not.toThrow();
+  }, 60_000);
+
+  it.each([
+    ["--package"], ["--package", "--write"], ["--package", ".", "--unknown"],
+    ["--package", ".", "--write", "--write"], ["--package", ".", "example.ts", "--unknown"],
+    ["--package", ".", "example.ts", "--write", "extra"], ["--unknown"], ["--agent-guide", ".", "--unknown"],
+  ])("refuses unknown or malformed command arguments %j", (...args) => {
+    const result = spawnSync(process.execPath, ["--experimental-strip-types", join(packageRoot, "scripts/documentation-contract.ts"), ...args], { encoding: "utf8", timeout: 10_000 });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("Usage: documentation-contract.ts");
+  });
+
+  it.each([
+    `https://raw.githubusercontent.com/openlup/openlup/${tag}/README.md`,
+    `http://github.com/openlup/openlup/blob/${tag}/README.md`,
+    `https://www.github.com/openlup/openlup/blob/${tag}/README.md`,
+    `https://github.com/openlup/openlup/tree/${tag}/README.md`,
+  ])("refuses non-canonical repository URL %s in Markdown and HTML without rewriting it", (url) => {
+    for (const link of [`[README](${url})`, `<a href="${url}">README</a>`]) {
+      const roots = guideFixture(`# Guide\n\n${link}\n`);
+      for (const write of [false, true]) expect(() => checkGuide(roots, write)).toThrow(`use https://github.com/openlup/openlup/blob/${tag}/<path>`);
+      expect(readFileSync(join(roots.core, "docs/guide/README.md"), "utf8")).toContain(url);
+    }
+  });
+
+  it.each(['"', "'", ""])("checks HTML href local targets and release tags with delimiter %s", (quote) => {
+    const link = (target: string) => `<A title="href='../../CHANGELOG.md' > text" HREF=${quote}${target}${quote}>Read</A>`;
+    const outside = guideFixture(`# Guide\n${link("../../CHANGELOG.md")}\n`);
+    expect(() => checkGuide(outside)).toThrow("leaves the guide");
+    const missing = guideFixture(`# Guide\n${link("missing.md")}\n`);
+    expect(() => checkGuide(missing)).toThrow("dangling local link missing.md");
+    const stale = guideFixture(`# Guide\n${link(repositoryLink("README.md", "openlup-core-v0.1.0"))}\n`);
+    expect(() => checkGuide(stale)).toThrow(`must pin ${tag}`);
+    checkGuide(stale, true);
+    expect(readFileSync(join(stale.core, "docs/guide/README.md"), "utf8")).toContain(link(repositoryLink("README.md")));
+    const branch = guideFixture(`# Guide\n${link(repositoryLink("README.md", "main"))}\n`);
+    expect(() => checkGuide(branch, true)).toThrow(`must pin ${tag}`);
+  });
+
+  it.each(["coordinator", "supervisor", "shard", "worktree", "self-check"])("keeps %s as repository process vocabulary", (word) => {
+    expect(() => checkGuide(guideFixture(`# Guide\nAsk the ${word} before continuing.\n`))).toThrow(`CI or delivery-process vocabulary): ${word}`);
+  });
+
+  it("matches allow-list terms exactly and case-sensitively", () => {
+    const roots = guideFixture("# Guide\nS3 and self-check are named here.\n");
+    const path = join(roots.repository, "config/documentation-guide-allowlist.json");
+    writeFileSync(path, JSON.stringify({ schemaVersion: 1, terms: ["s3", "self"] }));
+    expect(() => checkGuide(roots)).toThrow("task or milestone ID): S3");
+    expect(() => checkGuide(roots)).toThrow("CI or delivery-process vocabulary): self-check");
+    writeFileSync(path, JSON.stringify({ schemaVersion: 1, terms: ["S3", "self-check"] }));
+    expect(() => checkGuide(roots)).not.toThrow();
+  });
+
+  it.each(["file:///Users/someone/store", "file:///home/someone/store", "C:/Users/someone/store"])("refuses the filesystem path %s", (path) => {
+    expect(() => checkGuide(guideFixture(`# Guide\nOpen ${path}.\n`))).toThrow(`absolute filesystem path): ${path.slice(0, path.lastIndexOf("/"))}`);
   });
 
   it("refuses a relative link that leaves the guide", () => {
@@ -528,7 +620,7 @@ describe("reader guide contract", { timeout: 60_000 }, () => {
     expect(() => checkGuide(unexplained)).toThrow("docs/guide/README.md:4: a ts nocheck fence must open with a // reason line");
     const explained = guideFixture("# Guide\n\n```ts nocheck\n// Fragment: the host supplies the total.\nconst total: number = \"two\";\n```\n");
     expect(() => checkGuide(explained)).not.toThrow();
-  });
+  }, 30_000);
 
   it("refuses a README fence that does not compile, beyond the smoke example", () => {
     const roots = guideFixture("# Guide\n");
@@ -536,7 +628,7 @@ describe("reader guide contract", { timeout: 60_000 }, () => {
     writeFileSync(join(roots.core, "README.md"), `${readme}\n\`\`\`ts\nundeclaredName();\n\`\`\`\n`);
     expect(() => checkGuide(roots)).toThrow("README.md:");
     expect(() => checkGuide(roots)).toThrow("Cannot find name 'undeclaredName'");
-  });
+  }, 30_000);
 
   it("caps package and repository AGENTS.md by lines and bytes", () => {
     const roots = guideFixture("# Guide\n");
@@ -560,7 +652,7 @@ describe("reader guide contract", { timeout: 60_000 }, () => {
     cpDir(join(roots.core, "smoke/agentsWiringExample.ts"), join(outbox, "smoke/agentsWiringExample.ts"));
     cpDir(join(roots.core, "smoke/readmeExample.ts"), join(outbox, "smoke/readmeExample.ts"));
     expect(() => assertPackageDocumentation(outbox, "smoke/agentsWiringExample.ts", packed)).toThrow("README.md:2: TypeScript fence does not compile");
-  });
+  }, 30_000);
 
   it("refuses an agent guide whose wiring example has no ts fence when no example file backs it", () => {
     const roots = guideFixture("# Guide\n");
@@ -569,6 +661,45 @@ describe("reader guide contract", { timeout: 60_000 }, () => {
     writeFileSync(join(outbox, "release-gates.json"), '{"kind":"kernel","packageSurface":{"./subscription":{"role":"kernel","maturity":"candidate"}}}\n');
     writeFileSync(join(outbox, "AGENTS.md"), readFileSync(join(roots.core, "AGENTS.md"), "utf8").replace(/```ts\n[\s\S]*?```\n/, "Wire the kernel.\n"));
     expect(() => assertPackageDocumentation(outbox, null, () => ["AGENTS.md", "package.json"])).toThrow("AGENTS.md: wiring example has no ts fence");
+  });
+});
+
+
+describe("TypeScript fence compilation", () => {
+  it.each(["TS", "TypeScript", "TYPESCRIPT", "tsx", "TSX", "mts", "MTS", "cts", "CTS", "ts {1,3}", 'ts title="x"', 'ts title="nocheck"', "ts {nocheck}", "ts attributes nocheck"])("compiles info string %s instead of skipping invalid code", (info) => {
+    const root = fixture("# Fixture\n");
+    const path = join(root, "example.md");
+    writeFileSync(path, `# Example\n\`\`\`${info}\n// Intentionally invalid.\nconst value: number = "bad";\n\`\`\`\n`);
+    const violations: string[] = [];
+    assertCompiledFences(root, [path], violations);
+    expect(violations.join("\n")).toContain("Type 'string' is not assignable to type 'number'");
+  }, 15_000);
+
+  it("compiles JSX with preserve and refreshes virtual and dependency source between calls", () => {
+    const root = fixture("# Fixture\n");
+    const path = join(root, "example.md");
+    const declaration = join(root, "value.d.ts");
+    writeFileSync(declaration, "export declare const value: number;\n");
+    writeFileSync(path, '```tsx title="example"\nimport { value } from "./value.js";\nconst count: number = value;\nconst View = () => null;\nconst view = <View />;\n```\n');
+    const check = () => { const violations: string[] = []; assertCompiledFences(root, [path], violations); return violations; };
+    expect(check()).toEqual([]);
+    writeFileSync(declaration, "export declare const value: string;\n");
+    expect(check().join("\n")).toContain("Type 'string' is not assignable to type 'number'");
+    writeFileSync(path, "```ts\nconst count: boolean = 1;\n```\n");
+    expect(check().join("\n")).toContain("Type 'number' is not assignable to type 'boolean'");
+  }, 30_000);
+
+  it.each(["TS nocheck {1}", 'tsx nocheck title="x"', "mts nocheck", "cts nocheck"])("requires a reason only for leading nocheck in %s", (info) => {
+    const root = fixture("# Fixture\n");
+    const path = join(root, "example.md");
+    writeFileSync(path, `\`\`\`${info}\nconst value: number = "bad";\n\`\`\`\n`);
+    const violations: string[] = [];
+    assertCompiledFences(root, [path], violations);
+    expect(violations.join("\n")).toContain("must open with a // reason line");
+    writeFileSync(path, `\`\`\`${info}\n// Deliberately invalid example.\nconst value: number = "bad";\n\`\`\`\n`);
+    const explained: string[] = [];
+    assertCompiledFences(root, [path], explained);
+    expect(explained).toEqual([]);
   });
 });
 
@@ -615,7 +746,7 @@ function referenceFixture() {
 
 const generatedRegion = (name: string, body: string) => `<!-- generated:${name} -->\n${body}<!-- /generated:${name} -->\n`;
 
-describe("generated reference regions", { timeout: 60_000 }, () => {
+describe("generated reference regions", () => {
   it.each(referenceRegions)("renders deterministic, fresh, valid Markdown for %s from its owner", (name) => {
     const fixture = referenceFixture();
     const body = renderGeneratedRegion(name, fixture.repository, "1.2.3")!;
@@ -642,6 +773,23 @@ describe("generated reference regions", { timeout: 60_000 }, () => {
     expect(body.indexOf("| `.`")).toBeLessThan(body.indexOf("| `./nested/a`"));
     expect(body).not.toContain("package.json");
     expect(body).not.toContain("ParcelRefusal");
+  });
+
+  it.each(["exports", "maturity"])("omits and counts provider-named subpaths in %s regions", (kind) => {
+    const fixture = referenceFixture();
+    const provider = ["str", "ipe"].join("");
+    const subpath = `./payments/${provider}`;
+    const manifest = JSON.parse(readFileSync(join(fixture.repository, "packages/platform/package.json"), "utf8"));
+    fixture.write("packages/platform/package.json", JSON.stringify({ ...manifest, exports: { ...manifest.exports, [subpath]: {} } }));
+    const gates = JSON.parse(readFileSync(join(fixture.repository, "packages/platform/release-gates.json"), "utf8"));
+    fixture.write("packages/platform/release-gates.json", JSON.stringify({ ...gates, packageSurface: { ...gates.packageSurface, [subpath]: { role: "implementation", maturity: "experimental" } } }));
+    const body = renderGeneratedRegion(`${kind}:platform`, fixture.repository)!;
+    expect(body).not.toContain(provider);
+    expect(body).toContain("1 subpaths omitted because their names are provider-specific.");
+    expect(body).toContain(repositoryLink("packages/platform/package.json"));
+    expect(body).toContain(repositoryLink("packages/platform/AGENTS.md#subpath-maturity"));
+    expect(body).toContain("| `./nested/a` |");
+    expect(renderGeneratedRegion(`${kind}:core`, fixture.repository)).not.toContain("subpaths omitted");
   });
 
   it.each(["outbox", "platform"])("preserves %s shipped SQL apply order and omits source paths and hashes", (pkg) => {
@@ -824,6 +972,14 @@ describe("generated reference regions", { timeout: 60_000 }, () => {
     const names = [...body.matchAll(/^\| `([^`]+)`/gm)].map((match) => match[1]);
     expect(providerSpecificKeys(repositoryRoot, names).size).toBe(0);
     expect(Number(/(\d+) package-read keys omitted/.exec(body)?.[1])).toBeGreaterThan(0);
+  });
+
+  it.each(["exports", "maturity"])("renders real %s subpaths without scanner-counted vocabulary", (kind) => {
+    for (const pkg of ["core", "outbox", "platform"]) {
+      const body = renderGeneratedRegion(`${kind}:${pkg}`, repositoryRoot)!;
+      expect(providerSpecificKeys(repositoryRoot, [body]).size).toBe(0);
+      if (pkg === "platform") expect(body).toMatch(/[1-9]\d* subpaths omitted because their names are provider-specific/);
+    }
   });
 
   it("shows exactly the real open inventory and every reachable closed code", () => {

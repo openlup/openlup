@@ -452,33 +452,50 @@ The reader guide lives in
 holds the writing rules. The `docs:check` script of each publishable package runs the
 [documentation contract](../../packages/core/scripts/documentation-contract.ts).
 Core runs it inside its `ci:required`; the root test suite runs it for outbox and
-platform, so a required check covers all three. The contract refuses:
+platform, so a required check covers all three. This root-suite enforcement of
+outbox and platform `docs:check` depends on
+`scripts/packages/platform-agent-guide.test.ts` staying out of `TOOLING_INPUTS`
+in `scripts/ci-test-scope.mjs`: unlisted tests always run. The contract refuses:
 
-- a `ts` fence in the guide or a package `README.md` or `AGENTS.md` that does not
+- a TypeScript fence (`ts`, `typescript`, `tsx`, `mts` or `cts`, case-insensitive,
+  with optional trailing attributes) in the guide or a package `README.md` or `AGENTS.md` that does not
   type-check against the built packages; a fence identical to the package's
   type-checked smoke example is already compiled, and a fence that must not
-  compile is marked `ts nocheck` and opens with a `//` reason line;
+  compile puts `nocheck` first after the language and opens with a `//` reason
+  line; JSX is checked with `jsx: preserve`;
 - a stale or unknown `<!-- generated:<name> -->` region. The generators are
-  `maturity:<core|outbox|platform>` from that package's `release-gates.json`
-  and `configuration-keys` from `config/environment-variables.json`;
+  `maturity:<core|outbox|platform>` from that package's `release-gates.json`,
+  `exports:<core|outbox|platform>` from its `package.json` and release gates,
+  `sql:<outbox|platform>` from the shipped SQL manifest, `cli:openlup` and
+  `cli:openlup-context` from their static help constants, `versioning` from release
+  gates, `configuration-keys` from `config/environment-variables.json`, and
+  `refusal-codes` and `refusal-codes-open` from exported API report aliases and
+  the lifecycle command's CLI codes;
 - in the guide, a relative link that leaves the guide, a repository link that
   is not `https://github.com/openlup/openlup/blob/openlup-core-v<version>/<path>`
   at the core version or whose path is missing, and repository-internal
   language: task and milestone IDs, plan names, paths into tests, plans or agent
   scratch, delivery-process vocabulary and absolute filesystem paths. Exact
-  terms such as product and algorithm names are admitted by
+  terms such as product and algorithm names are admitted by exact,
+  case-sensitive matching in
   [`config/documentation-guide-allowlist.json`](../../config/documentation-guide-allowlist.json);
 - an `AGENTS.md` at a package root or the repository root above 200 lines or
   10240 bytes.
 
-`npm --workspace @openlup/core run docs:check -- --write` regenerates the regions and
-rewrites the release tag of every repository link in the guide. Guide pages
+Each package's `docs:check -- --write` regenerates regions in its `README.md`
+and `AGENTS.md`; core also regenerates guide regions and rewrites release tags
+only in canonical repository URLs in the guide. HTML anchor `href` targets
+participate in local-link and release-tag checks. Export and maturity regions
+omit provider-specific subpath names using the neutrality scanner and, when any
+are omitted, give the count and link to the complete manifest and package
+`AGENTS.md` maturity section at the release tag. Guide pages
 need no publication catalogue row; see
 [the catalogue rule](../../CONTRIBUTING.md#package-policy-and-release-checks). Store vocabulary
 stays out of the guide through the tree-wide neutrality ratchet, which counts
 the adopter store terms in Markdown as categories `store-0` and `store-1`. Separately,
 `npm run oss:published-tree -- --policy` refuses a home-directory path
-(`/Users/…`, `/home/…`, `C:\Users\…`) in any tracked Markdown.
+(`/Users/…`, `/home/…`, their `file://` forms, `C:\Users\…` and `C:/Users/…`)
+in any tracked Markdown.
 
 ## Impact
 
@@ -490,7 +507,9 @@ Documentation updates and their review follow
 Delivery, review and same-PR documentation updates follow
 [Deliver a change](../../CONTRIBUTING.md#deliver-a-change).
 The policy self-check validates owner paths and anchors, ordinary local Markdown
-links and generated navigation/source-map freshness. It checks structure; the
+links and generated navigation/source-map freshness. Local Markdown links may
+also target content-validated, pattern-admitted package changelog fragments in
+the effective publication catalogue. It checks structure; the
 reviewer checks whether the explanation remains true against source and contracts.
 
 The root [`AGENTS.md`](../../AGENTS.md) is the single source of the
