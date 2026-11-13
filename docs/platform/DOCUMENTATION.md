@@ -236,13 +236,16 @@ The CI image mirror workflow, dependency-free script and offline witnesses are
 public source outputs in the publication catalogue. Contributor checks own its
 default-branch execution and one-time package visibility/access setup; canonical
 contracts own the single owned digest inventory, the checksum-pinned PostgreSQL
-test packages and mirror-first consumer selection with public upstream fallback.
+test packages and mirror-first PostgreSQL consumer selection with public upstream
+fallback, except the mirror-only required `install-packages` startup step.
 The shared pull module, PostgreSQL helper and stock pgTAP runner are public
 source outputs. Contributor checks own their bounded, digest-only retry/fallback,
 including exact local reuse, the gate's shared pull path and remaining-budget
 Retry-After fall-through within the selected sources. The mirror reads only that
-inventory, and every consumer, including the pgTAP runner's install-proof pin,
-retains its upstream sources in CI and locally.
+inventory. PostgreSQL consumers, including the pgTAP runner's install-proof pin,
+retain upstream sources in CI and locally, except the required `install-packages`
+PostgreSQL startup step: it selects only the GHCR mirror, has no upstream fallback
+and requires access to that organization package.
 The active CLI bump task is included as an authored catalogue output. Generated
 bindings establish no registry publication.
 
@@ -490,6 +493,13 @@ The policy self-check validates owner paths and anchors, ordinary local Markdown
 links and generated navigation/source-map freshness. It checks structure; the
 reviewer checks whether the explanation remains true against source and contracts.
 
+The root [`AGENTS.md`](../../AGENTS.md) is the single source of the
+[public agent guide](AGENT_GUIDE.md). `--docs-update` copies it to
+`docs/platform/AGENT_GUIDE.md`, relocating each relative Markdown link outside
+code for that directory and replacing only the status paragraph that names the
+source. The check refuses a guide that differs from this generated form, so
+edit the root file and regenerate; never edit the guide by hand.
+
 The migration-history and package Migration-block checks use an explicit full
 base SHA or a local merge base with `origin/main`. Hosted checks use validated
 event attribution and checkout identity, taking precedence over `--docs-base`.
@@ -512,7 +522,8 @@ npm run oss:published-tree -- --policy --docs-update
 ```
 
 The routing map selects canonical owners; it is navigation rather than a second
-capability census. Regenerate after adding or moving sources or changing headings.
+capability census. Regenerate after adding or moving sources, changing headings
+or editing the root `AGENTS.md`.
 Generated output does not establish runtime behavior, hosted qualification or
 compatibility with a different installed package version.
 

@@ -876,14 +876,6 @@ Catalog now also owns fixed-bundle application/admin factories at its existing
 entry. Its http/bff inputs remain type-only. The native read store takes the data
 entry's executor without constructing a driver or pool; the native writer uses
 data's role-free pooled transaction lane at runtime.
-The physical-table availability projection also lives at commerce/server over a
-structural query client and a required host provider predicate. Its pure ladder
-is browser-safe commerce; SDK narrowing stays in the reference adapter. The
-reference reservation allocator imports M06's policy, retaining scoped lock-error
-translation and original retry keys locally. The existing M06 normalized read
-composition passes its selected port through unchanged; PostgreSQL binds the
-native ATP reader when the host supplies `stockSourceKey`. Private preview
-transport remains host-owned.
 
 Effective bundle selection adds the pricing value edge described above;
 there is no promotions edge. Reference wrappers bind

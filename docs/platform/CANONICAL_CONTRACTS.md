@@ -629,8 +629,7 @@ That destination unit supplies no saved address book, privacy erasure/export or
 automatic host/mail wiring. The separate saved-address unit declares its own
 [storage and privacy coverage](DATA_AND_MIGRATIONS.md#saved-customer-address-rows). The source task and data owner describe the explicit limits.
 
-The M17 channel suffix appends two native units to each existing selected plan:
-legacy now has 91 units, qualified selections 95, and restricted selections 94.
+The M17 channel suffix appends two native units to each existing selected plan.
 Each installation shape retains its separately measured catalogue digest. Four
 reviewed source pins bind the two native and two managed forwards, including
 ordered companion statements; they grant no installation or provider authority.
@@ -639,8 +638,8 @@ sites. Managed settlement uses the existing ATP exposure hook and allocator;
 portable source capture/read/CAS declares physical conversion unavailable. Fresh
 qualification and privacy lifecycle capabilities remain outside this import.
 
-The native paid-notice suffix appends one source unit, preserving those exact
-prefixes: selected source plans now contain 92, 96 and 95 units respectively.
+The native paid-notice suffix appends one source unit to each selected plan,
+preserving the existing prefixes.
 All five installation-shape inventories are measured separately before and
 after applying the forward. The conditional grants expose only the eight
 existing native notice helpers to service_role; an absent legacy role receives
@@ -661,8 +660,8 @@ grants; issued migration files remain immutable.
 The earlier qualified retained-import selection requires an actual restore login and one
 of the two independently measured 92-unit inventories for its migration/bootstrap
 shape. The manifest preserves the entire issued 91-unit prefix and appends the
-separately approved owner-path forward after runtime completion; legacy selection
-remains the issued 88-unit catalogue. The
+separately approved owner-path forward after runtime completion; it adds no
+legacy unit. The
 two reference-derived digests are expectations, not target observations or
 qualification. Production status/apply/replay and runtime/restore privilege
 witnesses remain required under the
@@ -706,9 +705,8 @@ lock and conflict completion tail that both qualified plans select after their
 issued tails, and all sixteen earlier rows stay fixed. The approval itself adds
 no active SQL, manifest row, inventory or package change. The identical active
 SQL follows as its own change, after the delivery destination forward whose
-created state it guards. Both plans select it last: the qualified plan has 103
-units and the restricted plan 102, with four newly measured inventories; the
-legacy plan is unchanged.
+created state it guards. Both plans select it once, with four newly measured
+inventories; it adds no legacy unit.
 
 The reference qualified selection declares actual migration/bootstrap/runtime
 and optional restore principals; omitted selection remains legacy. The E2
@@ -866,10 +864,13 @@ implementation; long Retry-After hints advance by the remaining per-source
 share, while shorter waits are capped to preserve non-GHCR fallback.
 A Docker-free guard rejects literal digests or registry source lists in the gate test.
 An explicit source tag must match the entry's tag and is preserved during
-resolution. Mirror absence/private access immediately advances to upstream;
-these consumers do not depend on organization package access or publication.
-The install-proof service retains its unchanged Docker Hub PostgreSQL 17 digest
-and needs no organization package before steps run.
+resolution. PostgreSQL consumers with upstream sources immediately advance on
+mirror absence/private access and do not depend on organization package access
+or publication. The required `install-packages` PostgreSQL 17 startup step is an
+exception: it selects only the GHCR mirror, has no upstream fallback and requires
+access to that organization package. It uses the same inventory digest and starts
+explicitly after job-token GHCR login.
+It runs with `--pull=never` and is removed after package proof, including failure.
 Other local launchers retain their existing behavior. These changes
 establish no public package visibility or runtime/application default.
 

@@ -1,7 +1,9 @@
 # OpenLup Public Agent Guide
 
-Status: development-preview guidance. The authoritative public guide is
-`docs/platform/AGENT_GUIDE.md`. Keep both copies aligned, adjusting relative links.
+Status: development-preview guidance.
+This page is generated from the root [AGENTS.md](../../AGENTS.md) with links
+adjusted for this location. Edit that file, then run
+`npm run oss:published-tree -- --policy --docs-update`.
 
 OpenLup is a subscription-commerce platform. The platform's public tree is a platform monorepo; an adopter owns its own application, brand, content, local policy, and integrations.
 This guide governs work in that public tree only. It does not authorize releases, external mutations, or stable-framework claims.

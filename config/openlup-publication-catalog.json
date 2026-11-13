@@ -1578,6 +1578,18 @@
       "class": "platform-documentation"
     },
     {
+      "path": "docs/platform/plans/documentation-programme-intent.md",
+      "class": "platform-documentation"
+    },
+    {
+      "path": "docs/platform/plans/documentation-programme-reconnaissance.md",
+      "class": "platform-documentation"
+    },
+    {
+      "path": "docs/platform/plans/documentation-programme.md",
+      "class": "platform-documentation"
+    },
+    {
       "path": "docs/platform/plans/documentation-quality-audit.md",
       "class": "public-output"
     },
@@ -12074,6 +12086,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/preflight.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/preflight.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/prelaunch-acquisition-schema.test.ts",
       "class": "public-output"
     },
@@ -12222,6 +12242,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/sql-admit.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/sql-admit.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/ssg-static-contract.mjs",
       "class": "public-output"
     },
@@ -12243,6 +12271,14 @@
     },
     {
       "path": "scripts/subscriber-retention-authorization-fixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/test-hosted.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/test-hosted.test.ts",
       "class": "public-output"
     },
     {
@@ -30066,6 +30102,16 @@
       "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
     },
     {
+      "name": "preflight",
+      "command": "node --experimental-strip-types scripts/preflight.ts",
+      "publicDocs": [
+        "CONTRIBUTING.md",
+        "README.md"
+      ],
+      "publicCiEntrypoint": ".github/workflows/published-tree-ci.yml",
+      "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
+    },
+    {
       "name": "prelint",
       "command": "npm --workspace @openlup/core run build && npm --workspace @openlup/outbox run build && npm --workspace @openlup/platform run build",
       "publicDocs": [
@@ -30106,6 +30152,16 @@
       "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
     },
     {
+      "name": "sql:admit",
+      "command": "node --experimental-strip-types scripts/sql-admit.ts",
+      "publicDocs": [
+        "CONTRIBUTING.md",
+        "README.md"
+      ],
+      "publicCiEntrypoint": ".github/workflows/published-tree-ci.yml",
+      "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
+    },
+    {
       "name": "pretest",
       "command": "npm --workspace @openlup/core run build && npm --workspace @openlup/outbox run build && npm --workspace @openlup/platform run build",
       "publicDocs": [
@@ -30118,6 +30174,16 @@
     {
       "name": "test",
       "command": "node scripts/run-vitest.mjs run",
+      "publicDocs": [
+        "CONTRIBUTING.md",
+        "README.md"
+      ],
+      "publicCiEntrypoint": ".github/workflows/published-tree-ci.yml",
+      "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
+    },
+    {
+      "name": "test:hosted",
+      "command": "node scripts/test-hosted.mjs",
       "publicDocs": [
         "CONTRIBUTING.md",
         "README.md"
@@ -30143,7 +30209,7 @@
     },
     {
       "path": "package.json",
-      "digest": "sha256-55476e48a3bed78e607741082323510fe2c55a0cc9a7209f82ba208516171b78"
+      "digest": "sha256-0933c941a2365a330414a877f6e2ccb35697ba5a0b243984f4e5812cf635400f"
     },
     {
       "path": "packages/core/package.json",

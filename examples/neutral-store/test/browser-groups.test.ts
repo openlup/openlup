@@ -11,13 +11,18 @@ function matches(selection: string[], title: string) {
 }
 
 test('the named groups and remainder partition journey titles', () => {
+  assert.equal(browserJourneyGroups.length, 7);
   for (const title of ['database subscription care pause', 'database subscription care en: portal recovery', 'database subscription care en: recovery extension payment', 'database subscription care en: operator operations refund', 'database subscription care en: returns portal request', 'database subscription care pl: payment guidance refusal', 'database subscription care en: shipment operations label', 'database subscription care pl: account preferences saved selection', 'database subscription care en: payment retry replay', 'database subscription care pl: embedded browser handoff', 'en: follows T01', 'sandbox purchase']) {
     assert.equal(browserJourneyGroups.filter(group => matches(group, title)).length, 1);
   }
   assert.ok(matches(browserJourneyGroups[0]!, 'database subscription care pause'));
-  assert.ok(matches(browserJourneyGroups[8]!, 'database subscription care en: payment retry replay'));
-  assert.ok(matches(browserJourneyGroups[9]!, 'database subscription care pl: embedded browser handoff'));
-  assert.ok(matches(browserJourneyGroups[10]!, 'database subscription care en: billing profiles invoice'));
+  for (const pattern of ['operator operations ', 'returns portal ', 'shipment operations ']) {
+    assert.ok(matches(browserJourneyGroups[3]!, `database subscription care en: ${pattern}command`));
+  }
+  for (const pattern of ['payment guidance ', 'account preferences ', 'embedded browser ', 'billing profiles ']) {
+    assert.ok(matches(browserJourneyGroups[4]!, `database subscription care pl: ${pattern}selection`));
+  }
+  assert.ok(matches(browserJourneyGroups[5]!, 'database subscription care en: payment retry replay'));
   assert.equal(browserJourneyGroups.filter(group => matches(group, 'database subscription care en: billing profiles invoice')).length, 1);
   assert.ok(matches(browserJourneyGroups.at(-1)!, 'sandbox purchase'));
 });

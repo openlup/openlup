@@ -295,8 +295,8 @@ profile readers, session adapters and BFF factories into one capability. Its
 `./identity/contracts` entry is declared browser-safe and currently exposes the
 customer auth port, value types and provider parser. Runtime-schema extraction
 is pending the contracts-boundary choice described in the
-[identity owner page](IDENTITY.md). Both entries remain an
-unpublished development-preview import candidate.
+[identity owner page](IDENTITY.md). Both entries ship in the published package
+as an experimental development-preview capability.
 
 Application composition supplies SDK clients/loaders, feature admission, redirect
 policy, rate limiting, messages, sender and deployment URLs. Factories use the

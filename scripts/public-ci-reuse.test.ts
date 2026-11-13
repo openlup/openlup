@@ -7,7 +7,8 @@ function fixture() {
   const run = { id: 100, workflow_id: 30, run_attempt: 2, event: "merge_group", head_sha: sha,
     path: ".github/workflows/published-tree-ci.yml", repository, head_repository: repository,
     head_branch: "gh-readonly-queue/main/pr-1", status: "completed", conclusion: "success" };
-  const jobs = ["dco", "typecheck", "install-proof", "test", "self-check", "gitleaks", "pgtap",
+  const jobs = ["dco", "typecheck", "install-proof", "test", "self-check", "gitleaks", "pgtap", "install-packages",
+    "install-browser (0)", "install-browser (1,6)", "install-browser (2,4)", "install-browser (3,5)",
     "test-full-shard (1/6)", "test-full-shard (2/6)", "test-full-shard (3/6)", "test-full-shard (4/6)", "test-full-shard (5/6)", "test-full-shard (6/6)"].map((name, id) => ({
     id: id + 1, name, head_sha: sha, status: "completed", conclusion: "success",
   }));
