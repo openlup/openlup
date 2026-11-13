@@ -1388,7 +1388,7 @@ host-injected persistence/effect keys must keep the donor namespace for replay.
 Native 0.22.0 digest receipts/effects and superseded outcomes are outside that
 compatibility: retries can repeat tracking or fail with
 `fulfillment_observation_outcome_conflict`. Drain in-flight observation retries
-before upgrading; the [Unreleased migration note](../../packages/platform/CHANGELOG.md#unreleased)
+before upgrading; the [0.23.0 migration note](../../packages/platform/CHANGELOG-HISTORY.md#0230)
 records these limitations without a bridge or alias migration.
 The normalized fact uses a separate opaque identity. Hosts must retain the raw
 evidence referenced by its opaque pointer, with access/retention policy of their own.
