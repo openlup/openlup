@@ -71,7 +71,6 @@ Stable upgrades are supported one major at a time, in order; skipping a major
 is unsupported even if it appears to work.
 
 Database schema changes are forward-only; there is no supported downgrade path.
-Before upgrading, take a backup you have actually restored from at least once.
 
 ## Pending preview upgrade notes: public coordinates
 
