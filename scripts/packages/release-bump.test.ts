@@ -2,11 +2,11 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { bumpRelease, npmPublishedPackedBytes, setVersionFields } from "./release-bump.ts";
 
 const roots: string[] = [];
-afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+afterEach(() => { vi.restoreAllMocks(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 
 const lock = (packages: Record<string, unknown>) => `${JSON.stringify({ name: "fixture", version: "0.0.0", lockfileVersion: 3, requires: true, packages }, null, 2)}\n`;
 const changelog = "# Changelog\n\n## [Unreleased]\n\n- Publishable on the npm `preview` dist-tag as `0.7.0`, for source preview\n  `openlup-source-preview/7`.\n- Publishable on the npm `preview` dist-tag as `0.6.0`, for source preview\n  `openlup-source-preview/6`.\n";
@@ -73,27 +73,46 @@ describe("release:bump", () => {
     expect(read(root, files)).toEqual({ ...files, "packages/core/CHANGELOG.md": "# Changelog\n" });
   });
 
-  it("moves the growth baseline to the published version it replaces, or writes nothing", () => {
+  it("moves the growth baseline to the published version it replaces, keeps it for an unpublished one, or writes nothing", () => {
     const gates = '{\n  "pack": {\n    "maxFiles": 10,\n    "baseline": {\n      "version": "0.6.0",\n      "packedBytes": 100\n    }\n  }\n}\n';
     const moved = '{\n  "pack": {\n    "maxFiles": 10,\n    "baseline": {\n      "version": "0.7.0",\n      "packedBytes": 12345\n    }\n  }\n}\n';
-    const { root, files } = fixture(), path = "packages/core/release-gates.json";
+    const path = "packages/core/release-gates.json";
+    const refused = fixture();
+    writeFileSync(join(refused.root, path), gates);
+    expect(() => bumpRelease(refused.root, "core", "0.9.0", () => { throw new Error("@openlup/core@0.7.0: the registry could not be read"); })).toThrow("the registry could not be read");
+    expect({ ...read(refused.root, refused.files), [path]: readFileSync(join(refused.root, path), "utf8") }).toEqual({ ...refused.files, [path]: gates });
+    for (const baseline of ["null", '{ "version": "0.6.0" }', '{ "version": 6, "packedBytes": 100 }']) {
+      writeFileSync(join(refused.root, path), `{ "pack": { "baseline": ${baseline} } }\n`);
+      expect(() => bumpRelease(refused.root, "core", "0.9.0", () => 12345), baseline).toThrow(`${path}: pack.baseline needs a version string and an integer packedBytes`);
+    }
+    const unpublished = fixture();
+    writeFileSync(join(unpublished.root, path), gates);
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(bumpRelease(unpublished.root, "core", "0.9.0", () => undefined)).not.toContain(path);
+    expect(readFileSync(join(unpublished.root, path), "utf8")).toBe(gates);
+    expect(JSON.parse(readFileSync(join(unpublished.root, "packages/core/package.json"), "utf8")).version).toBe("0.9.0");
+    const { root } = fixture(), asked: string[] = [];
     writeFileSync(join(root, path), gates);
-    expect(() => bumpRelease(root, "core", "0.9.0", () => { throw new Error("@openlup/core@0.7.0 is not published"); })).toThrow("@openlup/core@0.7.0 is not published");
-    expect({ ...read(root, files), [path]: readFileSync(join(root, path), "utf8") }).toEqual({ ...files, [path]: gates });
-    const asked: string[] = [];
     expect(bumpRelease(root, "core", "0.9.0", (name, version) => { asked.push(`${name}@${version}`); return 12345; })).toContain(path);
     expect(asked).toEqual(["@openlup/core@0.7.0"]);
     expect(readFileSync(join(root, path), "utf8")).toBe(moved);
   });
 
-  it("takes the packed bytes of exactly one published registry tarball", () => {
+  it("takes the packed bytes of exactly one published tarball with the registry's integrity", () => {
     const row = { name: "@openlup/core", version: "0.7.0", size: 12345, integrity: "sha512-fixture" };
     const calls: string[][] = [];
-    const npm = (rows: unknown) => (args: string[]) => { calls.push(args); return JSON.stringify(rows); };
+    const failure = (stdout: string) => Object.assign(new Error("Command failed: npm view"), { stdout });
+    const npm = (rows: unknown, view: () => string = () => JSON.stringify("sha512-fixture")) => (args: string[]) => { calls.push(args); return args[0] === "view" ? view() : JSON.stringify(rows); };
     expect(npmPublishedPackedBytes("@openlup/core", "0.7.0", npm([row]))).toBe(12345);
-    expect(calls).toEqual([["pack", "@openlup/core@0.7.0", "--dry-run", "--json", "--ignore-scripts"]]);
+    expect(calls).toEqual([["view", "@openlup/core@0.7.0", "dist.integrity", "--json"], ["pack", "@openlup/core@0.7.0", "--dry-run", "--json", "--ignore-scripts"]]);
+    expect(npmPublishedPackedBytes("@openlup/core", "0.7.0", npm([row], () => { throw failure('{ "error": { "code": "E404" } }'); }))).toBeUndefined();
+    for (const stdout of ['{ "error": { "code": "EAI_AGAIN" } }', "", "not json"]) {
+      expect(() => npmPublishedPackedBytes("@openlup/core", "0.7.0", npm([row], () => { throw failure(stdout); })), stdout).toThrow("@openlup/core@0.7.0: the registry could not be read");
+    }
+    const views = [() => JSON.stringify("sha512-other"), () => "null"];
+    for (const view of views) expect(() => npmPublishedPackedBytes("@openlup/core", "0.7.0", npm([row], view))).toThrow("@openlup/core@0.7.0: npm reported no single published tarball with the registry's integrity");
     for (const rows of [[], [row, row], [{ ...row, version: "0.6.0" }], [{ ...row, name: "@openlup/kit" }], [{ ...row, size: 0 }], [{ ...row, size: "12345" }], [{ ...row, integrity: undefined }], { 0: row }]) {
-      expect(() => npmPublishedPackedBytes("@openlup/core", "0.7.0", npm(rows)), JSON.stringify(rows)).toThrow("@openlup/core@0.7.0: npm reported no single verified published tarball");
+      expect(() => npmPublishedPackedBytes("@openlup/core", "0.7.0", npm(rows)), JSON.stringify(rows)).toThrow("@openlup/core@0.7.0: npm reported no single published tarball with the registry's integrity");
     }
   });
 

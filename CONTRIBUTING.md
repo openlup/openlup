@@ -1296,8 +1296,9 @@ internal pin on one, and assembles each changelog's version section below a fres
 Unreleased heading: legacy Unreleased body first, then fragments in byte order
 of path. It also moves each package's growth baseline (`pack.baseline` in
 `release-gates.json`) to the version being replaced, with the packed bytes of
-that version's published registry tarball as `npm pack --dry-run` reports them
-after npm verifies its integrity; an unpublished predecessor refuses the bump. All packages are validated and planned before writes, and only
+that version's published registry tarball, so release preparation needs registry
+access; see [Package artifact limits](.github/VERSIONING_AND_EOL.md#package-artifact-limits).
+All packages are validated and planned before writes, and only
 consumed fragments are deleted after successful writes, then exactly those
 deletions are staged so source preparation sees the updated Git inventory;
 no other changes are staged. Historical sections

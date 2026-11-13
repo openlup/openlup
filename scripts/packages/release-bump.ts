@@ -15,7 +15,11 @@
  * under a new `## [<version>]` heading that opens with the "Publishable" line,
  * below a fresh empty Unreleased heading. Every other byte stays, and each
  * rewritten JSON file must parse to its original with only those fields
- * changed. Nothing is written unless every file passes; consumed fragments are deleted
+ * changed. For a publishable package it also moves `pack.baseline` in its
+ * `release-gates.json` to the version being replaced, with the packed bytes of
+ * that version's published registry tarball (so preparation needs registry
+ * access); when that version was never published, the baseline stays.
+ * Nothing is written unless every file passes; consumed fragments are deleted
  * only after all planned writes succeed, then only those deletions are staged.
  * The package release workflow refuses a version that differs from the package's manifest.
  */
@@ -31,8 +35,8 @@ import { documentationGit } from "../documentation-routing.ts";
 
 type Json = Record<string, unknown>;
 type Edit = { path: readonly string[]; from: string | number; to: string | number };
-/** The packed bytes of a published version's registry tarball. */
-export type PublishedPackedBytes = (name: string, version: string) => number;
+/** The packed bytes of a published version's registry tarball; undefined when that version is not published. */
+export type PublishedPackedBytes = (name: string, version: string) => number | undefined;
 const PACKAGE = /^[a-z0-9][a-z0-9-]*$/u;
 const UNRELEASED = /^## \[Unreleased\]\n\n/mu;
 const PIN_FIELDS = ["dependencies", "peerDependencies", "optionalDependencies"] as const;
@@ -77,13 +81,24 @@ export function addReleaseSection(file: string, text: string, version: string, t
 }
 
 /**
- * Reads the registry tarball of `name@version` without writing it. npm verifies
- * the download against the registry's integrity, and `size` is its byte length.
+ * The registry's integrity for `name@version`, then that tarball read without
+ * saving it: its `size` is the byte length, and its integrity must match the
+ * registry's. Undefined only when the registry answers E404 for the version.
  */
-export function npmPublishedPackedBytes(name: string, version: string, npm = (args: string[]) => execFileSync("npm", args, { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] })): number {
-  const packed = JSON.parse(npm(["pack", `${name}@${version}`, "--dry-run", "--json", "--ignore-scripts"])) as Array<{ name?: unknown; version?: unknown; size?: unknown; integrity?: unknown }>;
+export function npmPublishedPackedBytes(name: string, version: string, npm = (args: string[]) => execFileSync("npm", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] })): number | undefined {
+  const spec = `${name}@${version}`;
+  let integrity: unknown;
+  try {
+    integrity = JSON.parse(npm(["view", spec, "dist.integrity", "--json"]));
+  } catch (error) {
+    let code: unknown;
+    try { code = (JSON.parse(String((error as { stdout?: unknown }).stdout)) as { error?: { code?: unknown } }).error?.code; } catch { code = undefined; }
+    if (code === "E404") return undefined;
+    throw new Error(`${spec}: the registry could not be read: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  const packed = JSON.parse(npm(["pack", spec, "--dry-run", "--json", "--ignore-scripts"])) as Array<{ name?: unknown; version?: unknown; size?: unknown; integrity?: unknown }>;
   const [row] = Array.isArray(packed) && packed.length === 1 ? packed : [];
-  if (row?.name !== name || row.version !== version || typeof row.integrity !== "string" || !Number.isSafeInteger(row.size) || (row.size as number) <= 0) throw new Error(`${name}@${version}: npm reported no single verified published tarball`);
+  if (typeof integrity !== "string" || row?.name !== name || row.version !== version || row.integrity !== integrity || !Number.isSafeInteger(row.size) || (row.size as number) <= 0) throw new Error(`${spec}: npm reported no single published tarball with the registry's integrity`);
   return row.size as number;
 }
 
@@ -119,13 +134,13 @@ function bumpFiles(root: string, config: PackagesConfig, entries: readonly Packa
       consumed.push(...fragments.map(({ path }) => path));
       // The growth baseline is the version this one replaces, as published.
       const gates = `${entry.directory}/release-gates.json`;
-      const baseline = existsSync(join(root, gates)) ? at(JSON.parse(read(gates)), ["pack", "baseline"]) as { version?: unknown; packedBytes?: unknown } | undefined : undefined;
+      const baseline = existsSync(join(root, gates)) ? at(JSON.parse(read(gates)), ["pack", "baseline"]) : undefined;
       if (baseline !== undefined) {
-        const path = ["pack", "baseline"];
-        writes.push([gates, setStringFields(gates, read(gates), [
-          { path: [...path, "version"], from: baseline.version as string, to: from },
-          { path: [...path, "packedBytes"], from: baseline.packedBytes as number, to: packed(entry.name, from) },
-        ])]);
+        const { version: was, packedBytes } = (baseline ?? {}) as Json;
+        if (typeof was !== "string" || !Number.isSafeInteger(packedBytes)) throw new Error(`${gates}: pack.baseline needs a version string and an integer packedBytes`);
+        const bytes = packed(entry.name, from);
+        if (bytes === undefined) console.warn(`release:bump: kept ${gates}: ${entry.name}@${from} is not published, so its baseline stays`);
+        else writes.push([gates, setStringFields(gates, read(gates), [{ path: ["pack", "baseline", "version"], from: was, to: from }, { path: ["pack", "baseline", "packedBytes"], from: packedBytes as number, to: bytes }])]);
       }
     }
   }
