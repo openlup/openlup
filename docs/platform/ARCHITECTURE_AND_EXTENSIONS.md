@@ -1025,7 +1025,7 @@ provider command bytes. Shadow instead builds a local command identity from the
 host candidate; it requires neither a provider port nor provider preparation or
 credentials. Legacy `0.22.0` native shadow drafts/attempts do not replay under that
 new identity; complete or abandon them before upgrading (see the package
-[migration note](../../packages/platform/CHANGELOG.md#unreleased)). Host readiness
+[migration note](../../packages/platform/CHANGELOG-HISTORY.md#0230)). Host readiness
 and selected capability checks still apply.
 
 Dispatch results retain neutral typed error code, HTTP status, retryability and
@@ -1110,7 +1110,7 @@ and durable receipt namespace when switching from the donor. This compatibility
 does not cover native 0.22.0 digest receipts/effects or superseded outcomes: retries
 can repeat tracking or fail with `fulfillment_observation_outcome_conflict`.
 Drain in-flight observation retries before upgrading; see the
-[Unreleased migration note](../../packages/platform/CHANGELOG.md#unreleased).
+[0.23.0 migration note](../../packages/platform/CHANGELOG-HISTORY.md#0230).
 
 The adapter's optional `observationCodecs.normalizeCarrier({ carrierRef, serviceRef })`
 returns the normalized carrier kind stored in `carrierRef` and passed to effects as
