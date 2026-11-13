@@ -58,6 +58,7 @@ export const PUBLIC_PACKAGE_COMMANDS: PublicPackageCommand[] = [
   publicCommand("oss:published-tree", "node --experimental-strip-types scripts/oss-published-tree-check.ts"),
   publicCommand("packages:check", "node --experimental-strip-types scripts/packages/packages-check.ts"),
   publicCommand("release:bump", "node --experimental-strip-types scripts/packages/release-bump.ts"),
+  publicCommand("release:docs-pass", "node --experimental-strip-types scripts/packages/release-docs-pass.ts"),
   publicCommand("sql:admit", "node --experimental-strip-types scripts/sql-admit.ts"),
   publicCommand("pretest", "npm --workspace @openlup/core run build && npm --workspace @openlup/outbox run build && npm --workspace @openlup/platform run build"),
   publicCommand("test", PUBLIC_TEST_COMMAND),

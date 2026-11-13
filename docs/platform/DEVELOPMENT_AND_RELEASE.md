@@ -252,7 +252,9 @@ lockstep cut that also published a package.
 The [versioning policy](../../.github/VERSIONING_AND_EOL.md#package-releases)
 owns release permissions, setup, detailed refusals and recovery. The sequence is:
 
-1. Prepare the next set version, above every version npm holds, with
+1. Before the bump, run `npm run release:docs-pass`, adding `-- --website <path>`
+   when an openlup.com checkout is available, and attach its output to the
+   preparation PR. Prepare the next set version, above every version npm holds, with
    `npm run release:bump -- --set <version>` in a reviewed ordinary PR, either
    separate preparation or an explicitly approved bounded implementation-and-set-bump
    contribution. It sets
@@ -260,8 +262,13 @@ owns release permissions, setup, detailed refusals and recovery. The sequence is
    changelog's version section below a fresh Unreleased heading. It assembles the
    legacy body first, then validated package fragments in byte order of path,
    and deletes only consumed fragments after successful planning and writes,
-   then stages exactly those deletions so preparation can read the Git inventory;
-   historical sections stay byte-identical. Each packed package
+   then stages those deletions and guide writes so preparation can read
+   the Git inventory; historical sections stay byte-identical. The bump assembles
+   `packages/core/docs/guide/upgrade/v<major>-<minor>-<patch>.md` from the consumed
+   fragments and API diff; the maintainer's agent edits that page and the listed guide pages in
+   the same PR. The bump also re-pins the guide's repository links and refreshes
+   its generated regions. If no core release tag is an ancestor of HEAD, the listing
+   and page say that the previous release could not be determined. Each packed package
    CHANGELOG keeps the current release and the two previous ones; older sections
    move verbatim to its non-packed `CHANGELOG-HISTORY.md`. Add notable-change notes under
    `packages/<package>/changes/`, with no per-file catalogue rows. A version bump

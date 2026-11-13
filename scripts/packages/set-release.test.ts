@@ -1,4 +1,5 @@
 import { createSourceReleaseContract, deriveSourceReleaseContract } from "../oss-source-release-contract.ts";
+import { isGuidePage } from "../oss-publication-policy.ts";
 // Seeded falsifiers for set releases: below 1.0 every publishable package ships at one set
 // version 0.N.P from one commit. Each control is a behaviour of a committed module, checked
 // against real Git fixtures and a recorded GitHub and npm API. Each planted defect edits that
@@ -37,6 +38,9 @@ const git = (cwd: string, ...args: string[]) => execFileSync("git", ["-c", "core
 /** The annotated tag the release workflow makes: the release App as tagger, the release message. */
 const appTag = (cwd: string, name: string, version: string, commit: string, message = `OpenLup package @openlup/${name} ${version}.`) => execFileSync("git", ["-c", "core.hooksPath=/dev/null", "tag", "-a", "-m", message, `openlup-${name}-v${version}`, commit], { cwd, env: { ...inherited, ...identity, GIT_COMMITTER_NAME: "openlup-release[bot]", GIT_COMMITTER_EMAIL: "334697227+openlup-release[bot]@users.noreply.github.com" }, stdio: "ignore" });
 let scratch = "";
+/** Answers release:bump's registry read: every replaced version is published at this many packed bytes. */
+const PUBLISHED_BYTES = 1000000;
+const published = () => PUBLISHED_BYTES;
 
 
 /** Minimal committed source snapshot for release falsifiers; classification stays explicit. */
@@ -48,8 +52,8 @@ function snapshotFixture(root: string, write: (path: string, bytes: string) => v
   write("config/openlup-source-release-contract.json", createSourceReleaseContract({ inventoryDigest: zero, classDigest: zero, packageDigest: zero, rootLockDigest: zero, coreLockDigest: zero, migrationManifestDigest: zero, databaseTypesDigest: zero, policyRegistryDigest: zero, publicationCatalogDigest: zero }).contents);
   write("config/openlup-publication-catalog.json", "{}\n");
   const paths = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z"], { cwd: root, encoding: "utf8" }).split("\0").filter(Boolean);
-  write("config/openlup-publication-catalog.json", JSON.stringify({ schemaVersion: 1, publicPaths: [...new Set(paths)].sort().map((path) => ({ path, class: "public-output" })), guardViability: [] }));
-  write("config/openlup-source-release-contract.json", deriveSourceReleaseContract((path) => existsSync(join(root, path)) ? readFileSync(join(root, path)) : undefined).contents);
+  write("config/openlup-publication-catalog.json", JSON.stringify({ schemaVersion: 1, publicPaths: [...new Set(paths)].filter((path) => !isGuidePage(path)).sort().map((path) => ({ path, class: "public-output" })), guardViability: [] }));
+  write("config/openlup-source-release-contract.json", deriveSourceReleaseContract((path) => existsSync(join(root, path)) ? readFileSync(join(root, path)) : undefined, [...new Set(paths)].map((path) => ({ path, mode: "100644" }))).contents);
 }
 
 // --- A repository with two publishable packages and one private package that pins core. ---
@@ -186,7 +190,10 @@ const BEHAVIOUR: Record<string, (m: Modules) => Promise<void>> = {
   },
   "release:bump --set moves every publishable package and every exact pin on one": async (m) => {
     const { root, read } = fixture();
-    expect(m.bump.bumpSet(root, "0.5.0").sort()).toEqual(["package-lock.json", "packages/core/CHANGELOG.md", "packages/core/package-lock.json", "packages/core/package.json", "packages/demo/package.json", "packages/kit/CHANGELOG.md", "packages/kit/package-lock.json", "packages/kit/package.json"]);
+    const asked: string[] = [];
+    expect(m.bump.bumpSet(root, "0.5.0", (name, version) => { asked.push(`${name}@${version}`); return 123456; }).sort()).toEqual(["package-lock.json", "packages/core/CHANGELOG.md", "packages/core/docs/guide/upgrade/v0-5-0.md", "packages/core/package-lock.json", "packages/core/package.json", "packages/core/release-gates.json", "packages/demo/package.json", "packages/kit/CHANGELOG.md", "packages/kit/package-lock.json", "packages/kit/package.json", "packages/kit/release-gates.json"]);
+    expect(asked, "each baseline reads the version the set replaces").toEqual(["@openlup/core@0.4.0", "@openlup/kit@0.4.0"]);
+    for (const name of ["core", "kit"]) expect(JSON.parse(read(`packages/${name}/release-gates.json`)).pack.baseline, name).toEqual({ version: "0.4.0", packedBytes: 123456 });
     const manifest = (name: string) => JSON.parse(read(`packages/${name}/package.json`));
     expect([manifest("core").version, manifest("kit").version, manifest("kit").peerDependencies, manifest("demo").version, manifest("demo").dependencies, manifest("demo").optionalDependencies]).toEqual(["0.5.0", "0.5.0", { "@openlup/core": "0.5.0" }, "0.1.0", { "@openlup/core": "0.5.0" }, { "@openlup/kit": "0.5.0" }]);
     expect(JSON.parse(read("package-lock.json")).packages).toMatchObject({ "node_modules/unrelated": { version: "0.4.0" }, "packages/core": { version: "0.5.0" }, "packages/kit": { version: "0.5.0", peerDependencies: { "@openlup/core": "0.5.0" } }, "packages/demo": { version: "0.1.0", dependencies: { "@openlup/core": "0.5.0" }, optionalDependencies: { "@openlup/kit": "0.5.0" } } });
@@ -194,11 +201,11 @@ const BEHAVIOUR: Record<string, (m: Modules) => Promise<void>> = {
     expect(JSON.parse(read("packages/kit/package-lock.json"))).toMatchObject({ version: "0.5.0", packages: { "": { version: "0.5.0", peerDependencies: { "@openlup/core": "0.5.0" } } } });
     quiet();
     expect(committed.check.runPackagesCheck(root, ["--manifest-only"]), "the bumped tree passes packages:check").toBe(0);
-    for (const version of ["0.5.0", "0.4.9", "1.0.0", "0.0.9"]) expect(() => m.bump.bumpSet(root, version), version).toThrow(/is not a set version|the next set version must be above it/u);
+    for (const version of ["0.5.0", "0.4.9", "1.0.0", "0.0.9"]) expect(() => m.bump.bumpSet(root, version, published), version).toThrow(/is not a set version|the next set version must be above it/u);
     const skewed = fixture();
     skewed.write("packages/kit/package.json", skewed.read("packages/kit/package.json").replace('"version": "0.4.0"', '"version": "0.3.0"'));
     const before = skewed.read("packages/core/package.json");
-    expect(() => m.bump.bumpSet(skewed.root, "0.5.0")).toThrow("the publishable packages carry different versions (@openlup/core@0.4.0, @openlup/kit@0.3.0); packages:check refuses that");
+    expect(() => m.bump.bumpSet(skewed.root, "0.5.0", published)).toThrow("the publishable packages carry different versions (@openlup/core@0.4.0, @openlup/kit@0.3.0); packages:check refuses that");
     expect(skewed.read("packages/core/package.json")).toBe(before);
   },
   "the Publishable line opens a new version section below Unreleased": async (m) => {
@@ -209,10 +216,10 @@ const BEHAVIOUR: Record<string, (m: Modules) => Promise<void>> = {
   },
   "a publishable package moves only with its set, at a set version": async (m) => {
     const both = fixture();
-    expect(() => m.bump.bumpRelease(both.root, "core", "0.5.0")).toThrow("@openlup/core moves with its set: npm run release:bump -- --set <version>");
+    expect(() => m.bump.bumpRelease(both.root, "core", "0.5.0", published)).toThrow("@openlup/core moves with its set: npm run release:bump -- --set <version>");
     const alone = fixture({ kitPublishable: false });
-    expect(() => m.bump.bumpRelease(alone.root, "core", "1.0.0")).toThrow("@openlup/core is publishable, so its next version is a set version 0.N.P below 1.0, not 1.0.0");
-    expect(m.bump.bumpRelease(alone.root, "core", "0.5.0")).toContain("packages/core/package.json");
+    expect(() => m.bump.bumpRelease(alone.root, "core", "1.0.0", published)).toThrow("@openlup/core is publishable, so its next version is a set version 0.N.P below 1.0, not 1.0.0");
+    expect(m.bump.bumpRelease(alone.root, "core", "0.5.0", published)).toContain("packages/core/package.json");
     expect(JSON.parse(alone.read("packages/kit/package.json")).peerDependencies).toEqual({ "@openlup/core": "0.5.0" });
   },
   "a package's tag, release and npm state decide skip, resume or full": async (m) => {
@@ -327,7 +334,7 @@ const BEHAVIOUR: Record<string, (m: Modules) => Promise<void>> = {
   },
   "every preflight and each release leg run the patch-set check, before any network read": async (m) => {
     const repository = fixture();
-    committed.bump.bumpSet(repository.root, "0.4.1");
+    committed.bump.bumpSet(repository.root, "0.4.1", published);
     repository.write("packages/core/api/core.api.md", "# core API\n\nexport declare const added: 1;\n");
     const change = repository.commit("B: an API change in the patch set 0.4.1");
     const calls: string[] = [];
@@ -344,7 +351,7 @@ const BEHAVIOUR: Record<string, (m: Modules) => Promise<void>> = {
     }
     expect(existsSync(join(out, "notes.md")), "a refused leg prepares no note").toBe(false);
     const fixed = fixture();
-    committed.bump.bumpSet(fixed.root, "0.4.1");
+    committed.bump.bumpSet(fixed.root, "0.4.1", published);
     fixed.write("packages/core/src/a.ts", "export const a = 2;\n");
     const fix = fixed.commit("B: a fix in the patch set 0.4.1");
     const set = cli(m.releaseScript, fixed.root, ["preflight"], { PACKAGE: "all", VERSION: "0.4.1", TARGET_COMMIT: fix });
@@ -375,7 +382,7 @@ const BEHAVIOUR: Record<string, (m: Modules) => Promise<void>> = {
   },
   "the set preflight checks the clean target, the set and every package's patch": async (m) => {
     const repository = fixture();
-    committed.bump.bumpSet(repository.root, "0.4.1");
+    committed.bump.bumpSet(repository.root, "0.4.1", published);
     repository.write("packages/kit/src/a.ts", "export const a = 3;\n");
     const fix = repository.commit("B: set 0.4.1 with a fix");
     const manifestCheck = vi.fn((root: string, version: string) => { expect([root, version]).toEqual([repository.root, "0.4.1"]); });
@@ -413,7 +420,9 @@ const DEFECTS: Defect[] = [
   { control: "release:bump --set moves every publishable package and every exact pin on one", plant: "lockfile pins left behind", in: "bump", from: ", ...pins(lockEntry, [\"packages\", entry.directory], bumped, from, version));", to: ");" },
   { control: "release:bump --set moves every publishable package and every exact pin on one", plant: "own-lockfile pins left behind", in: "bump", from: ", ...pins(at(JSON.parse(read(ownLock)), [\"packages\", \"\"]), [\"packages\", \"\"], bumped, from, version)];", to: "];" },
   { control: "release:bump --set moves every publishable package and every exact pin on one", plant: "optionalDependencies pins left behind", in: "bump", from: "const PIN_FIELDS = [\"dependencies\", \"peerDependencies\", \"optionalDependencies\"] as const;", to: "const PIN_FIELDS = [\"dependencies\", \"peerDependencies\"] as const;" },
-  { control: "release:bump --set moves every publishable package and every exact pin on one", plant: "only the first publishable package moves", in: "bump", from: "bumpFiles(root, config, publishable, from, version)", to: "bumpFiles(root, config, publishable.slice(0, 1), from, version)" },
+  { control: "release:bump --set moves every publishable package and every exact pin on one", plant: "only the first publishable package moves", in: "bump", from: "bumpFiles(root, config, publishable, from, version, packed)", to: "bumpFiles(root, config, publishable.slice(0, 1), from, version, packed)" },
+  { control: "release:bump --set moves every publishable package and every exact pin on one", plant: "a growth baseline left behind", in: "bump", from: "else writes.push([gates, setStringFields(", to: "else void ([gates, setStringFields(" },
+  { control: "release:bump --set moves every publishable package and every exact pin on one", plant: "the candidate's own version read as its baseline", in: "bump", from: "const bytes = packed(entry.name, from);", to: "const bytes = packed(entry.name, version);" },
   { control: "release:bump --set moves every publishable package and every exact pin on one", plant: "a skewed set bumped", in: "bump", from: "if (current.some(([, other]) => other !== from)) throw", to: "if (false) throw" },
   { control: "the Publishable line opens a new version section below Unreleased", plant: "the line inside Unreleased, as before", in: "bump", from: "return `${text.slice(0, end)}## [${version}]\\n\\n- Publishable", to: "return `${text.slice(0, end)}- Publishable" },
   { control: "the Publishable line opens a new version section below Unreleased", plant: "a second section of one version", in: "bump", from: "if (text.includes(`\\n## [${version}]`)) throw", to: "if (false) throw" },

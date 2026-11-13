@@ -12026,6 +12026,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/packages/release-docs-pass.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/release-docs-pass.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/packages/release-gate.test.ts",
       "class": "public-output"
     },
@@ -30184,6 +30192,16 @@
       "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
     },
     {
+      "name": "release:docs-pass",
+      "command": "node --experimental-strip-types scripts/packages/release-docs-pass.ts",
+      "publicDocs": [
+        "CONTRIBUTING.md",
+        "README.md"
+      ],
+      "publicCiEntrypoint": ".github/workflows/published-tree-ci.yml",
+      "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
+    },
+    {
       "name": "sql:admit",
       "command": "node --experimental-strip-types scripts/sql-admit.ts",
       "publicDocs": [
@@ -30241,7 +30259,7 @@
     },
     {
       "path": "package.json",
-      "digest": "sha256-8607dbd14d4b6da615e9fed72af056d17b2096e8ee679e6f1d32c77bba7d19f1"
+      "digest": "sha256-2031519770f977de75b1836c28d953fc6cea9544ffa4dd1f4d994c463d14d6a2"
     },
     {
       "path": "packages/core/package.json",
