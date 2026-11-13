@@ -763,8 +763,9 @@ one additive native unit extends those prefix counts to legacy 92, qualified 96
 and restricted 95, with separate reference digests for all five installation
 shapes. It preserves every earlier migration identity and existing state CHECK;
 its additive review marker distinguishes terminal cancelled capture from work
-awaiting reconciliation. The new attempt/readback factory is sandbox-only;
-generic prepared-provider storage and real PSP qualification remain unavailable.
+awaiting reconciliation. At that historical checkpoint, the new attempt/readback factory was sandbox-only.
+The appended prepared provider store now supplies durable preparation; real PSP
+qualification remains a separate obligation.
 Class data and feature pins may accompany SQL in its feature pull request; a local manifest entry alone grants no delivery or release authority.
 
 The G4 purchase-hold forward appends the same native forward path/hash to all three

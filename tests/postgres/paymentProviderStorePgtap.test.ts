@@ -21,10 +21,10 @@ beforeAll(async () => {
 afterAll(async () => { db?.release(); await closePostgres(container, pool); }, postgresTeardownTimeoutMs);
 
 it.each([
-  ["durability.sql", 43], ["blockedPreflight.sql", 9], ["eventFingerprint.sql", 8], ["zeroAmountAndAttribution.sql", 44],
-  ["notChargeableCleanup.sql", 13],
+  ["durability.sql", 46], ["blockedPreflight.sql", 9], ["eventFingerprint.sql", 8], ["zeroAmountAndAttribution.sql", 44],
+  ["notChargeableCleanup.sql", 15],
   ["terminalizedCycle.sql", 104],
-  ["intentReplay.sql", 4], ["duplicateFailure.sql", 3],
+  ["intentReplay.sql", 4], ["duplicateFailure.sql", 6],
 ] as const)("retains the native assertions in %s", async (file, count) => {
   try {
     const response = await db.query(readFileSync(`tests/postgres/fixtures/paymentProvider/${file}`, "utf8"));

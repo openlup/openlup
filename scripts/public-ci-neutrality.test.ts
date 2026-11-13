@@ -204,7 +204,7 @@ describe("tree-wide neutrality ratchet", () => {
     expect(sources.get(paymentAttemptSql)).toEqual(sources.get(paymentAttemptMirror));
     const measured = scanSnapshots(sources);
     expect(measured.rows).toEqual(Object.fromEntries(paths.map(path => [hash(path), path === paymentAttemptFixture
-      ? { "ui-13": 6, "ui-14": 1 } : { "ui-13": 4, "ui-14": 3 }])));
+      ? { "ui-13": 6, "ui-14": 5 } : { "ui-13": 4, "ui-14": 3 }])));
     const introductions = neutralityIncreases({}, measured.rows);
     expect(introductions).toHaveLength(6);
     expect(unreviewedPinnedIntroductionIncreases(introductions, sources)).toEqual([]);
@@ -942,11 +942,11 @@ it("keeps the managed, operations and R1 pins closed at exactly 17 paths and 22 
   const paymentPins = reviewedPinnedIntroductions.filter(([path]) => paymentPaths.includes(path));
   expect(paymentPins.map(([path]) => path)).toEqual(paymentPaths);
   for (const [, digest, counts] of paymentPins) {
-    expect(digest).toBe("3d0e3c5696e417f47a30c0581915df86c5386d4bcec9b0715c9f561fd7b6c291");
+    expect(digest).toBe("52dd5b748a96c4ebdf7ce7ba173e1aa1f6a8b415bf0ac6e6d05ec57f38f71827");
     expect(counts).toEqual([["ui-13", 0, 4], ["ui-14", 0, 3]]);
   }
   expect(reviewedPinnedIntroductions.filter(([path]) => path === paymentAttemptFixture)).toEqual([
-    [paymentAttemptFixture, "7410a02abc33f13b8ce7d3ed9c8c4acd51c2434fd82425d90ef74cbf27d8f649", [["ui-13", 0, 6], ["ui-14", 0, 1]]],
+    [paymentAttemptFixture, "362072b2c6edc0ade23b102e69c31ad871dda7f5dfa87b06a6cd2813fe50343d", [["ui-13", 0, 6], ["ui-14", 0, 5]]],
   ]);
 });
 

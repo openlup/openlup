@@ -1,7 +1,7 @@
 -- Native preparation and inline retry; assertions retained from the managed witness.
 
 BEGIN;
-SELECT plan(43);
+SELECT plan(46);
 
 INSERT INTO public.clients (id, email)
 VALUES ('cfa00000-0000-4000-8000-000000000001', 'provider-attempt@example.invalid');
@@ -587,6 +587,37 @@ SELECT throws_like($$SELECT public.payment_provider_attempt_prepare(
 )$$, '%payment_control_inline_retry_order_not_payable%',
   'technical expiry wins under lock before another provider attempt');
 
+
+
+SELECT pg_temp.provider_order('cfa40000-0000-4000-8000-000000000099','cfa00000-0000-4000-8000-000000000001',2599);
+SELECT public.subscription_declare_provisional_activation('inline-cas-sub-declare','cfa40000-0000-4000-8000-000000000099',28,'2026-11-13T12:00:00Z');
+CREATE TEMP TABLE _inline_sub_intent AS SELECT (pg_temp.provider_intent('inline-cas-sub-intent','one_time_order',
+ 'cfa40000-0000-4000-8000-000000000099',NULL,NULL,2599,'XXX','{}')#>>'{paymentIntent,id}')::uuid AS intent_id;
+CREATE TEMP TABLE _inline_sub_old AS SELECT public.payment_provider_attempt_prepare('inline-cas-sub-old',
+ (SELECT intent_id FROM _inline_sub_intent),'tpay','inline-cas-sub-old-provider','inline-cas-sub-old-fingerprint','blik_recurring_activation',NULL,'{}') AS response;
+UPDATE public.payment_provider_attempts SET status='failed' WHERE id=(SELECT (response#>>'{paymentAttempt,id}')::uuid FROM _inline_sub_old);
+UPDATE public.payment_provider_states SET status='failed' WHERE id=(SELECT intent_id FROM _inline_sub_intent);
+CREATE TEMP TABLE _inline_sub_retry AS SELECT public.payment_provider_attempt_prepare('inline-cas-sub-valid',
+ (SELECT intent_id FROM _inline_sub_intent),'tpay','inline-cas-sub-valid-provider','inline-cas-sub-valid-fingerprint','blik_recurring_activation',NULL,
+ jsonb_build_object('source','commerce.checkout-inline-recovery.prepare.v1','expectedPaymentAttemptId',
+ (SELECT response#>>'{paymentAttempt,id}' FROM _inline_sub_old),'retryRequestId','cfa90000-0000-4000-8000-000000000006','purchaseContext','subscription_initial')) AS response;
+SELECT ok((SELECT response#>>'{paymentAttempt,id}' FROM _inline_sub_retry) IS NOT NULL,
+ 'provisional activation flow admits the exact initial retry');
+SELECT is((SELECT count(*)::int FROM public.payment_provider_attempts WHERE settlement_intent_id=(SELECT intent_id FROM _inline_sub_intent)),2,
+ 'valid subscription inline retry creates exactly one new attempt');
+SELECT pg_temp.provider_subscription_order('cfa20000-0000-4000-8000-000000000098','cfa30000-0000-4000-8000-000000000098',
+ 'cfa40000-0000-4000-8000-000000000098','cfa00000-0000-4000-8000-000000000001','active');
+CREATE TEMP TABLE _inline_active_intent AS SELECT (pg_temp.provider_intent('inline-cas-active-intent','subscription_cycle',
+ 'cfa40000-0000-4000-8000-000000000098','cfa20000-0000-4000-8000-000000000098','cfa30000-0000-4000-8000-000000000098',12999,'XXX','{}')#>>'{paymentIntent,id}')::uuid AS intent_id;
+CREATE TEMP TABLE _inline_active_old AS SELECT public.payment_provider_attempt_prepare('inline-cas-active-old',
+ (SELECT intent_id FROM _inline_active_intent),'tpay','inline-cas-active-old-provider','inline-cas-active-old-fingerprint','blik_recurring_activation',NULL,'{}') AS response;
+UPDATE public.payment_provider_attempts SET status='failed' WHERE id=(SELECT (response#>>'{paymentAttempt,id}')::uuid FROM _inline_active_old);
+UPDATE public.payment_provider_states SET status='failed' WHERE id=(SELECT intent_id FROM _inline_active_intent);
+SELECT throws_like($$SELECT public.payment_provider_attempt_prepare('inline-cas-active-retry',
+ (SELECT intent_id FROM _inline_active_intent),'tpay','inline-cas-active-provider','inline-cas-active-fingerprint','blik_recurring_activation',NULL,
+ jsonb_build_object('source','commerce.checkout-inline-recovery.prepare.v1','expectedPaymentAttemptId',
+ (SELECT response#>>'{paymentAttempt,id}' FROM _inline_active_old),'retryRequestId','cfa90000-0000-4000-8000-000000000007','purchaseContext','subscription_initial'))$$,
+ '%payment_control_inline_retry_context_mismatch%','active subscription refuses an initial-subscription inline retry');
 
 SELECT * FROM finish();
 ROLLBACK;

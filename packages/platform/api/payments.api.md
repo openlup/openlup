@@ -1868,12 +1868,12 @@ export declare function createPostgresProviderPaymentControlPort(db: PaymentProv
         replayed: boolean;
     }>;
     recordAttempt(input: ProviderPaymentAttemptInput): Promise<{
-        paymentAttemptId: string;
-        status: "requires_action" | "blocked_preflight" | "failed" | "cancelled" | "created" | "expired" | "processing" | "succeeded" | "sent_to_provider";
+        id: string;
+        paymentIntentId: string;
+        status: "requires_action" | "blocked_preflight" | "processing" | "sent_to_provider";
+        provider: string;
+        idempotencyKey: string;
         replayed: boolean;
-        providerAttemptId: string | null;
-        providerSessionId: string | null;
-        nextActionKind: string | null;
     }>;
     applyPaymentResult(input: ProviderPaymentResultInput): Promise<{
         replayed: boolean;

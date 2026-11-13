@@ -31,7 +31,7 @@ CREATE TABLE public.payment_provider_attempts (
  currency text NOT NULL CHECK (char_length(currency)=3),
  next_action_kind text CHECK (next_action_kind IS NULL OR next_action_kind IN ('redirect','3ds_challenge','qr_code','blik_code_prompt','sca_required')),
  failure_reason text,
- failure_class text,
+ failure_class text CHECK (failure_class IN ('hard_do_not_retry','mandate_dead','sca_required','fix_and_retry_customer_action','soft_retry_delayed','soft_retryable','indeterminate')),
  request_payload jsonb NOT NULL DEFAULT '{}',
  response_payload jsonb NOT NULL DEFAULT '{}',
  metadata jsonb NOT NULL DEFAULT '{}',
@@ -128,7 +128,9 @@ RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog,
     AND e.signature_verified IS TRUE AND e.event_type='payment.succeeded'),
   'observedFailure',EXISTS(SELECT 1 FROM public.payment_provider_attempt_evidence e WHERE e.payment_attempt_id=a.id
    AND e.settlement_intent_id=s.id AND e.provider=a.provider AND e.provider_payment_id=a.provider_attempt_id
-   AND e.signature_verified IS TRUE AND e.event_type='payment.failed'))
+   AND e.signature_verified IS TRUE AND e.event_type='payment.failed'
+   AND (e.amount_minor IS NULL OR e.amount_minor=0 OR e.amount_minor=i.amount_minor)
+   AND (e.currency IS NULL OR e.currency=i.currency_code)))
  FROM public.payment_provider_attempts a JOIN public.payment_provider_states s ON s.id=a.settlement_intent_id
  JOIN public.commerce_settlement_intents i ON i.id=s.id
  WHERE s.id=p_intent_id AND a.id=COALESCE(p_attempt_id,s.active_attempt_id);
@@ -226,6 +228,7 @@ DECLARE
   v_subscription_status text;
   v_inline_retry boolean := COALESCE(p_request_payload->>'source','')='commerce.checkout-inline-recovery.prepare.v1';
   v_expected_attempt_id uuid;
+  v_hold record;
 BEGIN
   IF v_inline_retry THEN
    IF NOT COALESCE(pg_input_is_valid(p_request_payload->>'expectedPaymentAttemptId','uuid'),false)
@@ -378,6 +381,11 @@ BEGIN
     UPDATE public.subscription_retry_obligations SET next_retry_at=NULL,updated_at=now() WHERE cycle_id=v_intent.subscription_cycle_id AND state='waiting';
     UPDATE public.commerce_orders SET status='cancelled',updated_at=now(),metadata=metadata||jsonb_build_object('paymentStatus','cancelled','cancelReason','subscription_not_chargeable','source','payment.control.prepare')
      WHERE id=v_intent.order_id AND status='pending_payment';
+    FOR v_hold IN SELECT id FROM public.fulfillment_inventory_reservations
+     WHERE purchase_order_id=v_intent.order_id AND status='held' ORDER BY id FOR UPDATE LOOP
+     PERFORM public.fulfillment_release_purchase_reservation(
+      'not-chargeable:'||v_hold.id,v_hold.id,'subscription_not_chargeable','{}'::jsonb,now());
+    END LOOP;
    END IF;
    RETURN jsonb_build_object('contractVersion','commerce.v0','paymentAttemptAdmission',jsonb_build_object(
     'status','skipped_not_chargeable','reason','payment_control_subscription_not_chargeable','paymentIntentId',v_intent.id));
@@ -1184,7 +1192,7 @@ DECLARE fingerprint text; legacy_fingerprint text; receipt public.payment_provid
  i public.commerce_settlement_intents%ROWTYPE; s public.payment_provider_states%ROWTYPE;
  a public.payment_provider_attempts%ROWTYPE; e public.payment_provider_attempt_evidence%ROWTYPE;
  o public.commerce_orders%ROWTYPE; kind text:='state_changed'; answer jsonb; truth jsonb; evidence jsonb;
- outcome text; native_failure text; from_status text;
+ outcome text; native_failure text; from_status text; held record;
 BEGIN
  IF p_idempotency_key IS NULL OR btrim(p_idempotency_key)='' OR length(p_idempotency_key)<8
   OR p_payment_intent_id IS NULL OR p_result_status IS NULL OR p_result_status NOT IN ('succeeded','failed','expired','refunded','partially_refunded','disputed')
@@ -1255,7 +1263,29 @@ BEGIN
    provider_payment_id=CASE WHEN p_result_status='succeeded' THEN COALESCE(e.provider_payment_id,provider_payment_id) ELSE provider_payment_id END,
    failure_reason=CASE WHEN p_result_status='succeeded' THEN NULL ELSE COALESCE(p_failure_reason,p_result_status) END,updated_at=now() WHERE id=s.id;
   UPDATE public.payment_provider_attempts SET status=p_result_status,failure_reason=CASE WHEN p_result_status='succeeded' THEN NULL ELSE COALESCE(p_failure_reason,p_result_status) END,updated_at=now() WHERE id=a.id;
-  IF p_result_status='failed' AND o.subscription_cycle_id IS NULL THEN kind:='recoverable_decline'; END IF;
+  IF p_result_status IN ('failed','expired') AND o.subscription_cycle_id IS NULL THEN
+   IF p_result_status='failed' THEN
+    UPDATE public.commerce_orders SET metadata=metadata||jsonb_build_object(
+     'paymentStatus','declined','failureReason',COALESCE(p_failure_reason,p_result_status),
+     'lastDeclineAt',p_occurred_at,'recoverable',true,'source','payment.control.v0'),updated_at=now() WHERE id=o.id;
+    INSERT INTO public.outbox_events(aggregate_type,aggregate_id,event_type,idempotency_key,payload,metadata)
+    VALUES('commerce_order',o.id,'commerce.payment.failed','payment_failed:'||o.id,
+     jsonb_build_object('orderId','order_'||o.id,'orderUuid',o.id,'totalCents',o.total_amount_minor,
+      'currency',o.currency_code,'occurredAt',p_occurred_at),
+     jsonb_build_object('source','payment_provider_result_apply_recoverable_decline'))
+    ON CONFLICT (event_type,idempotency_key) DO NOTHING;
+    kind:='recoverable_decline';
+   ELSE
+    UPDATE public.commerce_orders SET status='expired',metadata=metadata||jsonb_build_object(
+     'paymentStatus','expired','failureReason',COALESCE(p_failure_reason,p_result_status),'source','payment.control.v0'),
+     updated_at=now() WHERE id=o.id;
+    FOR held IN SELECT id FROM public.fulfillment_inventory_reservations
+     WHERE purchase_order_id=o.id AND status='held' ORDER BY id FOR UPDATE LOOP
+     PERFORM public.fulfillment_release_purchase_reservation(
+      'payment-expired:'||held.id,held.id,'payment_expired','{}'::jsonb,p_occurred_at);
+    END LOOP;
+   END IF;
+  END IF;
  END IF;
  IF p_failure_class IS NOT NULL THEN
   UPDATE public.payment_provider_attempts SET failure_class=p_failure_class,response_payload=response_payload||
@@ -1574,6 +1604,13 @@ BEGIN
           v_open_case_id, p_occurred_at, p_recovery_template_slug
         );
       END IF;
+      -- Recovery also withdraws a decline notice already claimed by dispatch.
+      UPDATE public.subscription_dunning_notifications
+      SET status='skipped',error=COALESCE(error,'cycle_recovered'),settled_at=p_occurred_at,
+        claim_token=NULL,lease_expires_at=NULL,updated_at=p_occurred_at
+      WHERE case_id IN (SELECT id FROM public.subscription_dunning_cases WHERE cycle_id=v_order.subscription_cycle_id)
+        AND notification_kind='payment_failed'
+        AND status IN ('queued','sending');
     END IF;
   ELSE
     IF v_order.subscription_cycle_id IS NOT NULL THEN
@@ -1748,7 +1785,9 @@ BEGIN
     RAISE EXCEPTION 'commerce_settlement_record_intent_not_found' USING ERRCODE = '22023';
   END IF;
 
-  PERFORM public.payment_provider_lock_aggregate(p_intent_id);
+  IF p_outcome='succeeded' THEN
+    PERFORM public.payment_provider_lock_aggregate(p_intent_id);
+  END IF;
 
   SELECT * INTO v_order
     FROM public.commerce_orders WHERE id = v_intent.order_id FOR UPDATE;
@@ -1927,10 +1966,14 @@ BEGIN
   PERFORM a.id FROM public.payment_provider_attempts a JOIN public.commerce_settlement_intents i ON i.id=a.settlement_intent_id WHERE i.order_id=p_order_id ORDER BY a.id FOR UPDATE OF a;
   PERFORM e.id FROM public.payment_provider_attempt_evidence e JOIN public.commerce_settlement_intents i ON i.id=e.settlement_intent_id WHERE i.order_id=p_order_id ORDER BY e.id FOR UPDATE OF e;
   IF EXISTS(SELECT 1 FROM public.payment_provider_attempts pa JOIN public.commerce_settlement_intents pi ON pi.id=pa.settlement_intent_id
- WHERE pi.order_id=p_order_id AND (pa.status IN ('created','sent_to_provider','requires_action','processing','succeeded')
+ WHERE pi.order_id=p_order_id AND (pa.status='succeeded'
  OR EXISTS(SELECT 1 FROM public.payment_provider_attempt_evidence pe WHERE pe.settlement_intent_id=pa.settlement_intent_id
  AND pe.payment_attempt_id=pa.id AND pe.provider=pa.provider AND pe.provider_payment_id=pa.provider_attempt_id
  AND pe.signature_verified IS TRUE AND pe.event_type='payment.succeeded'))) THEN
+      RETURN jsonb_build_object('cancelled',false,'reason','payment_already_moved','orderStatus',target.status);
+  END IF;
+  IF EXISTS(SELECT 1 FROM public.payment_provider_attempts pa JOIN public.commerce_settlement_intents pi ON pi.id=pa.settlement_intent_id
+ WHERE pi.order_id=p_order_id AND pa.status IN ('created','sent_to_provider','requires_action','processing')) THEN
       RETURN jsonb_build_object('cancelled',false,'reason','provider_attempt_in_flight');
   END IF;
     IF EXISTS(SELECT 1 FROM public.payment_simulator_attempts a JOIN public.commerce_settlement_intents i
@@ -2009,10 +2052,14 @@ BEGIN
   PERFORM a.id FROM public.payment_provider_attempts a JOIN public.commerce_settlement_intents i ON i.id=a.settlement_intent_id WHERE i.order_id=p_order ORDER BY a.id FOR UPDATE OF a;
   PERFORM e.id FROM public.payment_provider_attempt_evidence e JOIN public.commerce_settlement_intents i ON i.id=e.settlement_intent_id WHERE i.order_id=p_order ORDER BY e.id FOR UPDATE OF e;
   IF EXISTS(SELECT 1 FROM public.payment_provider_attempts pa JOIN public.commerce_settlement_intents pi ON pi.id=pa.settlement_intent_id
- WHERE pi.order_id=p_order AND (pa.status IN ('created','sent_to_provider','requires_action','processing','succeeded')
+ WHERE pi.order_id=p_order AND (pa.status='succeeded'
  OR EXISTS(SELECT 1 FROM public.payment_provider_attempt_evidence pe WHERE pe.settlement_intent_id=pa.settlement_intent_id
  AND pe.payment_attempt_id=pa.id AND pe.provider=pa.provider AND pe.provider_payment_id=pa.provider_attempt_id
  AND pe.signature_verified IS TRUE AND pe.event_type='payment.succeeded'))) THEN
+    RAISE EXCEPTION 'oms_cancel_unpaid_order_payment_already_moved' USING ERRCODE='23505';
+  END IF;
+  IF EXISTS(SELECT 1 FROM public.payment_provider_attempts pa JOIN public.commerce_settlement_intents pi ON pi.id=pa.settlement_intent_id
+ WHERE pi.order_id=p_order AND pa.status IN ('created','sent_to_provider','requires_action','processing')) THEN
     RAISE EXCEPTION 'oms_cancel_unpaid_order_payment_in_flight' USING ERRCODE='23505';
   END IF;
   IF EXISTS(SELECT 1 FROM public.payment_simulator_attempts a JOIN public.commerce_settlement_intents i
@@ -2317,7 +2364,9 @@ BEGIN
   SELECT 1 FROM public.payment_provider_states s JOIN public.payment_provider_attempts a ON a.id=s.active_attempt_id
   JOIN public.payment_provider_attempt_evidence e ON e.payment_attempt_id=a.id AND e.settlement_intent_id=s.id
   WHERE s.id=intent.id AND a.settlement_intent_id=s.id AND a.status IN ('failed','expired') AND e.signature_verified IS TRUE
-   AND e.provider=a.provider AND e.provider_payment_id=a.provider_attempt_id AND e.event_type='payment.failed') THEN
+   AND e.provider=a.provider AND e.provider_payment_id=a.provider_attempt_id AND e.event_type='payment.failed'
+   AND (e.amount_minor IS NULL OR e.amount_minor=0 OR e.amount_minor=intent.amount_minor)
+   AND (e.currency IS NULL OR e.currency=intent.currency_code)) THEN
   RAISE EXCEPTION 'commerce_expired_recovery_payment_unavailable' USING ERRCODE='22023'; END IF;
  IF EXISTS(SELECT 1 FROM public.payment_provider_attempts pa JOIN public.payment_provider_attempt_evidence pe
    ON pe.payment_attempt_id=pa.id AND pe.settlement_intent_id=pa.settlement_intent_id

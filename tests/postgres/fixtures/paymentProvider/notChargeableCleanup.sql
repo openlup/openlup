@@ -1,12 +1,15 @@
 -- Native cleanup and observed-success assertions retained from the managed witness.
 
 BEGIN;
-SELECT plan(13);
+SELECT plan(15);
 
 INSERT INTO public.clients (id, email)
 VALUES ('ac100000-0000-4000-8000-000000000001', 'not-chargeable@example.invalid');
 
 SELECT pg_temp.provider_subscription_order('ac200000-0000-4000-8000-000000000001','ac300000-0000-4000-8000-000000000001','ac400000-0000-4000-8000-000000000001','ac100000-0000-4000-8000-000000000001','paused');
+
+INSERT INTO public.fulfillment_inventory_reservations(id,purchase_order_id,operation_fingerprint,source_key,status,created_at,expires_at)
+VALUES('ac500000-0000-4000-8000-000000000001','ac400000-0000-4000-8000-000000000001',repeat('a',64),'fixture','held','2026-11-13T12:00:00Z','2026-11-13T13:00:00Z');
 
 CREATE TEMP TABLE _not_chargeable_intent AS
 SELECT (pg_temp.provider_intent(
@@ -51,7 +54,7 @@ SELECT is(
 SELECT is(
   (SELECT status FROM public.commerce_orders WHERE id = 'ac400000-0000-4000-8000-000000000001'),
   'cancelled',
-  'pristine unpaid order is terminalized (reservation trigger owns hold release)'
+  'pristine unpaid order is terminalized'
 );
 
 SELECT is(
@@ -61,6 +64,10 @@ SELECT is(
   0,
   'no provider attempt exists and therefore no PSP call is authorized'
 );
+SELECT is((SELECT status FROM public.fulfillment_inventory_reservations WHERE id='ac500000-0000-4000-8000-000000000001'),
+ 'released','not-chargeable cleanup releases the inventory hold');
+SELECT is((SELECT count(*)::integer FROM public.fulfillment_purchase_reservation_receipts
+ WHERE command->>'reservationId'='ac500000-0000-4000-8000-000000000001'),1,'cleanup delegates release to the native reservation owner');
 INSERT INTO public.clients (id, email)
 VALUES ('ac100000-0000-4000-8000-000000000002', 'not-chargeable-history@example.invalid');
 

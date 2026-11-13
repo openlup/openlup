@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { PostgresPaymentTruthOptions } from "./contracts/truth.js";
-import { createPostgresPreparedAttemptPersistencePort, decodeProviderAttempt, type PaymentProviderExecutor } from "./postgresPreparedAttempt.js";
+import { createPostgresPreparedAttemptPersistencePort, type PaymentProviderExecutor } from "./postgresPreparedAttempt.js";
 
 export interface ProviderPaymentIntentInput {
   idempotencyKey: string;
@@ -50,11 +50,15 @@ export function createPostgresProviderPaymentControlPort(db: PaymentProviderExec
       return parsed.data.paymentIntent;
     },
     async recordAttempt(input: ProviderPaymentAttemptInput) {
-      return decodeProviderAttempt((await db.query(
+      const parsed = z.object({ paymentAttempt: z.object({ id: z.guid(), paymentIntentId: z.guid(),
+        status: z.enum(["blocked_preflight", "sent_to_provider", "requires_action", "processing"]), provider: z.string(),
+        idempotencyKey: z.string(), replayed: z.boolean() }) }).safeParse((await db.query(
         "SELECT public.payment_provider_attempt_record($1,$2::uuid,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb) AS response",
         [input.idempotencyKey, input.paymentIntentId, input.provider, input.providerAttemptId, input.providerSessionId,
           input.attemptStatus, input.nextActionKind, JSON.stringify(input.requestPayload), JSON.stringify(input.responsePayload)],
       )).rows[0]?.response);
+      if (!parsed.success) throw new Error("payment_provider_attempt_record_readback_invalid");
+      return parsed.data.paymentAttempt;
     },
     async applyPaymentResult(input: ProviderPaymentResultInput) {
       const parsed = z.object({ paymentResult: z.object({ replayed: z.boolean(), paymentIntentId: z.guid(),

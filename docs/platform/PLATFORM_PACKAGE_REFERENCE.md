@@ -897,8 +897,8 @@ Evidence (historical record, 2026-11-13):
 The [PostgreSQL witness](../../tests/postgres/checkoutRecoveryWaves.test.ts)
 exercises legacy and both qualified runtime profiles. It does not establish a
 running scheduler, browser journey, network delivery, real-provider prepared
-storage or expired-order recreation. The current native payment attempt store
-remains sandbox-only. Starter bindings and recreation consumers are separate
+storage or expired-order recreation. At that historical checkpoint, the native payment attempt store
+was sandbox-only; the appended prepared provider store now supplies durable preparation. Starter bindings and recreation consumers are separate
 obligations.
 
 ## Operator order payment links

@@ -5927,7 +5927,7 @@
     },
     {
       "path": "db/platform/migrations/20261114100000_payment_provider_attempt_store.sql",
-      "sha256": "3d0e3c5696e417f47a30c0581915df86c5386d4bcec9b0715c9f561fd7b6c291",
+      "sha256": "52dd5b748a96c4ebdf7ce7ba173e1aa1f6a8b415bf0ac6e6d05ec57f38f71827",
       "functions": [
         {
           "signature": "public.payment_simulator_begin_attempt(text,uuid,text,jsonb,timestamptz)",
@@ -5947,7 +5947,7 @@
         {
           "signature": "public.payment_truth_apply_terminal(uuid,text,text,timestamptz,text,text,jsonb,text,text,text)",
           "beforeSha256": "de7b4757b57b5469d8dc39abbae13def6f8223d66c4ec08a7cdd484948998744",
-          "afterSha256": "fcd4a448a971fb550242912fbab07789154b9168bee042f22d1e84732425f958"
+          "afterSha256": "71d6e4c4f01f6375f1634738b8f9c54d01596e72d750317f8bc03dc7d578bfcc"
         },
         {
           "signature": "public.payment_truth_record_reconciliation(uuid,text,text,text,text,timestamptz,text,text,jsonb,text,text,text)",
@@ -5957,17 +5957,17 @@
         {
           "signature": "public.commerce_record_settlement(text,uuid,text,text,jsonb,timestamptz)",
           "beforeSha256": "da2d65de325a94fc3535b67be243d4c0e472ff175fa1b8ea2419089fea1b59c6",
-          "afterSha256": "dd4a48675a78caf5daa7a7868914b501c353ecebb1a8b43d90b8eff9e999968d"
+          "afterSha256": "a964ca16e50e8903d6da680679362bba260f581cfa35493480afd2cf7d2cfe02"
         },
         {
           "signature": "public.commerce_cancel_abandoned_purchase_checkout(text,uuid,text,timestamptz)",
           "beforeSha256": "778ee6094bc0fd59e3fd73693fd7c2c1f68c07f921ebcd3a89774753cb3c6d44",
-          "afterSha256": "aff9d56a2dece8deb1ae1bab958e2c52d68f9aa0e2c7ea51dfe89f4b551dc08c"
+          "afterSha256": "016811c0871778661c99ceac4526e68a10140707b0bbdf8df496853d1224a7d3"
         },
         {
           "signature": "public.oms_cancel_unpaid_order_owned(text,uuid,text,uuid,jsonb,timestamptz)",
           "beforeSha256": "e08aad49b02ed5f7b70b94fffce805e6703df7e8ea82ced705599321dce50282",
-          "afterSha256": "37664eb39b771ef263203ab5b314cda7ac14d1a1bce2411e3310ed42caada197"
+          "afterSha256": "bdaa0be4f18d85d1a00148417f5ccd4d94f97aac2dfbfdf4d66a54dbe53bf0d0"
         },
         {
           "signature": "public.commerce_sweep_expired_checkouts(integer,jsonb,timestamptz)",
@@ -5997,7 +5997,7 @@
         {
           "signature": "public.commerce_prepare_expired_checkout_recovery(text,uuid,uuid,bigint,timestamptz)",
           "beforeSha256": "c0525d4523e1a247f927644622b3e7f80379649545e41d824bf88bd77e46ae4f",
-          "afterSha256": "83ab1ac530fcdec2c62cc334b90da3025b2fd7fd312fc8cc473475e434d5d885"
+          "afterSha256": "a21673bcb74d855843ff7e9d8df8dcccb179706c3ac550d21d64cf846f3a8e21"
         },
         {
           "signature": "public.commerce_checkout_payment_guidance_snapshot(uuid,uuid,uuid)",
@@ -6012,7 +6012,7 @@
         {
           "signature": "public.payment_provider_attempt_read(uuid,uuid)",
           "beforeSha256": null,
-          "afterSha256": "f11fcc1cda6456c6ebc971ad8ce915480b454a6481142deef577990150c9cd43"
+          "afterSha256": "cdb0211acf93e4046b9361cd17111f7b55d48b14814d3df2df243f42aa82221f"
         },
         {
           "signature": "public.payment_provider_intent_create(text,text,uuid,uuid,uuid,bigint,text,jsonb,text,timestamptz)",
@@ -6022,7 +6022,7 @@
         {
           "signature": "public.payment_provider_attempt_prepare(text,uuid,text,text,text,text,text,jsonb)",
           "beforeSha256": null,
-          "afterSha256": "bb3bfda6140a59ec3d63cce64a2a63c418729a6b882336cbc66487db6762d37b"
+          "afterSha256": "098a1308f09d9376f104e32691defbea07ad24f64e5db23d1b871523285c1fc0"
         },
         {
           "signature": "public.payment_provider_attempt_record(text,uuid,text,text,text,text,text,jsonb,jsonb)",
@@ -6047,7 +6047,7 @@
         {
           "signature": "public.payment_provider_result_apply(text,uuid,uuid,text,timestamptz,text,text,text,text,text,text)",
           "beforeSha256": null,
-          "afterSha256": "4cb9c9f77b5c858b7e9c84c30298671fe4082046c47dcec75ba1d9cce860dd35"
+          "afterSha256": "d0d8253c39c2928fa7ff2af3e05593951ff9791d0f4f9dd75955f291c2c44466"
         }
       ]
     }

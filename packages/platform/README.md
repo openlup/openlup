@@ -2539,8 +2539,10 @@ M10 subscription services and contributions remain **EXPERIMENTAL and DEFAULT-OF
 Hosts explicitly supply readiness, execution, commands, mandatory G23 admission,
 a population lease and M04 delivery. Factories activate no serving work. The inert
 native reference composes renewal, dunning and stock wait; managed TypeScript
-stock recovery, native multi-cycle prepaid and M07 prepared-attempt-store
-capabilities retain their named unsupported boundaries. Follow the older native-row
+stock recovery and native multi-cycle prepaid retain their named unsupported
+boundaries. The earlier M07 prepared-attempt-store refusal described the
+pre-store checkpoint; `paymentSchemaDescriptor.preparedDurableStore` is now
+`supported` with the appended store installed. Follow the older native-row
 migration precautions when upgrading `0.22.0` data.
 M09 invoicing remains **EXPERIMENTAL and DEFAULT-OFF**, available for explicit
 provider/capability selection and ready host composition, including issue,
