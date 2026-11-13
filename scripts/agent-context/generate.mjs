@@ -22,7 +22,7 @@ export const routes = {
     ['migration-data-ownership', 'Keep adopter data in its owned schema', 'docs/platform/DATA_AND_MIGRATIONS.md', 'Data ownership'],
     ['migration-forward-path', 'Follow the ordered additive migration path', 'docs/platform/DATA_AND_MIGRATIONS.md', 'Additive forward release path', 'The release producer refuses'],
     ['checkout-payment-outbox-idempotency', 'Preserve repeatable checkout effects', 'docs/platform/CANONICAL_CONTRACTS.md', 'Idempotency'],
-    ['host-provider-adapter-capability-refusal', 'Compose declared provider capabilities through ports', 'packages/core/docs/guide/how-to/extend/provider-adapters.md', 'Provider adapters'],
+    ['host-provider-adapter-capability-refusal', 'Compose declared provider capabilities through ports', 'packages/core/docs/guide/how-to/extend/provider-adapters.md', 'Provider adapters', 'Construct and inject the adapter explicitly.'],
   ],
 };
 
@@ -80,7 +80,7 @@ export function generateCorpus(root, packageName) {
     const metadata = { id, source: citation, heading, startLine, endLine, sha256 };
     inventory.push(metadata);
     const target = shipped ? citation : `${citation}#L${startLine}-L${endLine}`;
-    sections += `## ${id}: ${title}\n\nSource: [${shipped ? localPath : 'OpenLup repository at ' + releaseTag}](${target}).\n\n<!-- openlup-context ${JSON.stringify(metadata)} -->\n${excerpt}` +
+    sections += `## ${id}: ${title}\n\nSource: [${shipped ? localPath : 'OpenLup source repository at ' + releaseTag}](${target}).\n\n<!-- openlup-context ${JSON.stringify(metadata)} -->\n${excerpt}` +
       '<!-- /openlup-context -->\n\n';
   }
   output += `<!-- openlup-context-inventory ${JSON.stringify(inventory)} -->\n\n${sections}`;

@@ -7,11 +7,11 @@ Shipped package-local sources are relative to this package. Other sources link t
 Repository paths, imports and relative links inside verbatim excerpts describe that source checkout, not files to find or create in your application.
 Consult installed declarations and README for the installed version.
 
-<!-- openlup-context-inventory [{"id":"delivery-alignment","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Subscription delivery alignment","startLine":495,"endLine":524,"sha256":"db7d8be01a72b2ce76d6b4423c30115ac29cd16ffd48bbaf16fbfdd5540f1c5f"},{"id":"migration-data-ownership","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/DATA_AND_MIGRATIONS.md","heading":"Data ownership","startLine":6,"endLine":52,"sha256":"09f9ca46aa24eae3321a5f386f59d6a7f842d0aee5199e056b1e5688e4b521cb"},{"id":"migration-forward-path","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/DATA_AND_MIGRATIONS.md","heading":"Additive forward release path","startLine":496,"endLine":518,"sha256":"3503b3ac6f6da04912e9ecd9a5161d9641e68a21b82beafc31beb8c9dc026b64"},{"id":"checkout-payment-outbox-idempotency","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Idempotency","startLine":250,"endLine":272,"sha256":"2d719cee94edefe6eccf76aa9c34bbf8a40cdb7e478e313b4a939e769c2e4d71"},{"id":"host-provider-adapter-capability-refusal","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/packages/core/docs/guide/how-to/extend/provider-adapters.md","heading":"Provider adapters","startLine":6,"endLine":24,"sha256":"8cf816722c7a748a094355057c441d2711da639f47928c3b5aca1b12965a00bb"}] -->
+<!-- openlup-context-inventory [{"id":"delivery-alignment","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Subscription delivery alignment","startLine":495,"endLine":524,"sha256":"db7d8be01a72b2ce76d6b4423c30115ac29cd16ffd48bbaf16fbfdd5540f1c5f"},{"id":"migration-data-ownership","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/DATA_AND_MIGRATIONS.md","heading":"Data ownership","startLine":6,"endLine":52,"sha256":"09f9ca46aa24eae3321a5f386f59d6a7f842d0aee5199e056b1e5688e4b521cb"},{"id":"migration-forward-path","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/DATA_AND_MIGRATIONS.md","heading":"Additive forward release path","startLine":496,"endLine":518,"sha256":"3503b3ac6f6da04912e9ecd9a5161d9641e68a21b82beafc31beb8c9dc026b64"},{"id":"checkout-payment-outbox-idempotency","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Idempotency","startLine":250,"endLine":272,"sha256":"2d719cee94edefe6eccf76aa9c34bbf8a40cdb7e478e313b4a939e769c2e4d71"},{"id":"host-provider-adapter-capability-refusal","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/packages/core/docs/guide/how-to/extend/provider-adapters.md","heading":"Provider adapters","startLine":6,"endLine":19,"sha256":"c18d9a4c97117f2d70a33397282a5617ee5b60861059a701cc0ccedaa21878db"}] -->
 
 ## delivery-alignment: Preserve subscription cycle alignment after late delivery
 
-Source: [OpenLup repository at openlup-platform-v0.39.0](https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/CANONICAL_CONTRACTS.md#L495-L524).
+Source: [OpenLup source repository at openlup-platform-v0.39.0](https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/CANONICAL_CONTRACTS.md#L495-L524).
 
 <!-- openlup-context {"id":"delivery-alignment","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Subscription delivery alignment","startLine":495,"endLine":524,"sha256":"db7d8be01a72b2ce76d6b4423c30115ac29cd16ffd48bbaf16fbfdd5540f1c5f"} -->
 ## Subscription delivery alignment
@@ -48,7 +48,7 @@ deployment, provider adapter, or public release has activated the rail.
 
 ## migration-data-ownership: Keep adopter data in its owned schema
 
-Source: [OpenLup repository at openlup-platform-v0.39.0](https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/DATA_AND_MIGRATIONS.md#L6-L52).
+Source: [OpenLup source repository at openlup-platform-v0.39.0](https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/DATA_AND_MIGRATIONS.md#L6-L52).
 
 <!-- openlup-context {"id":"migration-data-ownership","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/DATA_AND_MIGRATIONS.md","heading":"Data ownership","startLine":6,"endLine":52,"sha256":"09f9ca46aa24eae3321a5f386f59d6a7f842d0aee5199e056b1e5688e4b521cb"} -->
 ## Data ownership
@@ -102,7 +102,7 @@ before enabling database adapters. It is not evidence of schema compatibility.
 
 ## migration-forward-path: Follow the ordered additive migration path
 
-Source: [OpenLup repository at openlup-platform-v0.39.0](https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/DATA_AND_MIGRATIONS.md#L496-L518).
+Source: [OpenLup source repository at openlup-platform-v0.39.0](https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/DATA_AND_MIGRATIONS.md#L496-L518).
 
 <!-- openlup-context {"id":"migration-forward-path","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/DATA_AND_MIGRATIONS.md","heading":"Additive forward release path","startLine":496,"endLine":518,"sha256":"3503b3ac6f6da04912e9ecd9a5161d9641e68a21b82beafc31beb8c9dc026b64"} -->
 ## Additive forward release path
@@ -132,7 +132,7 @@ Both gates refuse control characters other than tab and line feed in migration S
 
 ## checkout-payment-outbox-idempotency: Preserve repeatable checkout effects
 
-Source: [OpenLup repository at openlup-platform-v0.39.0](https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/CANONICAL_CONTRACTS.md#L250-L272).
+Source: [OpenLup source repository at openlup-platform-v0.39.0](https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/CANONICAL_CONTRACTS.md#L250-L272).
 
 <!-- openlup-context {"id":"checkout-payment-outbox-idempotency","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Idempotency","startLine":250,"endLine":272,"sha256":"2d719cee94edefe6eccf76aa9c34bbf8a40cdb7e478e313b4a939e769c2e4d71"} -->
 ## Idempotency
@@ -162,9 +162,9 @@ to one canonical effect.
 
 ## host-provider-adapter-capability-refusal: Compose declared provider capabilities through ports
 
-Source: [OpenLup repository at openlup-platform-v0.39.0](https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/packages/core/docs/guide/how-to/extend/provider-adapters.md#L6-L24).
+Source: [OpenLup source repository at openlup-platform-v0.39.0](https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/packages/core/docs/guide/how-to/extend/provider-adapters.md#L6-L19).
 
-<!-- openlup-context {"id":"host-provider-adapter-capability-refusal","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/packages/core/docs/guide/how-to/extend/provider-adapters.md","heading":"Provider adapters","startLine":6,"endLine":24,"sha256":"8cf816722c7a748a094355057c441d2711da639f47928c3b5aca1b12965a00bb"} -->
+<!-- openlup-context {"id":"host-provider-adapter-capability-refusal","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/packages/core/docs/guide/how-to/extend/provider-adapters.md","heading":"Provider adapters","startLine":6,"endLine":19,"sha256":"c18d9a4c97117f2d70a33397282a5617ee5b60861059a701cc0ccedaa21878db"} -->
 ## Provider adapters
 
 An adapter translates service requests, verification evidence and failures into
@@ -178,10 +178,5 @@ success. Marketing-sync operations use `kind: "refused"` with reason
 `unsupported` or `verification_pending` for the corresponding capability state.
 Payment readback uses `kind: "unsupported"` when unavailable. Fulfillment ports
 use their operation-specific result with refusal reason `unsupported`.
-
-Construct and inject the adapter explicitly. Importing a contract or an opt-in
-adapter does not install application routes, schedules or workers. Supply
-credentials from the host when needed; keep secrets out of source, fixtures,
-persisted diagnostics and logs.
 
 <!-- /openlup-context -->
