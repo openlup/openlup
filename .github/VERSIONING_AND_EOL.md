@@ -115,8 +115,8 @@ before upgrading.
 
 ## Pending preview upgrade notes: public coordinates
 
-Status: unreleased source change; these notes must accompany the preview that
-first includes it. They do not describe an already published preview transition.
+Status: released in `openlup-source-preview/7`; these notes describe the transition
+from `openlup-source-preview/6`.
 
 Rename every lowercase-prefixed `openlup_` environment key to `OPENLUP_` in an
 adopting deployment's configuration. In particular, use `OPENLUP_ENVIRONMENT`,
@@ -139,8 +139,7 @@ that deletion. No database schema changes accompany these upgrade actions.
 
 ## Pending preview upgrade notes: shared core schemas
 
-Status: unreleased source change; include these actions in the preview that
-first carries it. Stock and ATP contracts now use `@openlup/core/inventory`.
+Status: released in `openlup-source-preview/7`. Stock and ATP contracts now use `@openlup/core/inventory`.
 ATP no longer inserts an implicit country region. Set server-only
 `INVENTORY_REGION` for the admin ATP route or provide an explicit request region;
 without either, the optional region stays absent. An explicit request region
@@ -179,8 +178,7 @@ current callers. The newsletter provider registry had no compatibility re-export
 
 ## Pending preview upgrade notes: catalog draft validation
 
-Status: unreleased source change; include these notes in the preview that
-first carries it. The dark catalog draft command now refuses trade identifiers
+Status: released in `openlup-source-preview/10`. The dark catalog draft command now refuses trade identifiers
 that the previous preview accepted. Correct a refused draft and send it again
 under a new command key:
 
@@ -211,8 +209,7 @@ role validate as before. No database schema change accompanies these notes.
 
 ## Pending preview upgrade notes: declared primary SKU and stored sellability
 
-Status: unreleased source change; include these notes in the preview that
-first carries it. It changes the row-assembled catalog read ports
+Status: released in `openlup-source-preview/10`. It changes the row-assembled catalog read ports
 (`createSupabaseCatalogReadPort` and `createPostgresCatalogReadPort`, through the
 `assembleProduct` they share), the catalog pricing joins
 (`joinCatalogPricing`, `joinCatalogListPricing`), and the readers built on the
