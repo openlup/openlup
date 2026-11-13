@@ -1358,17 +1358,21 @@ slots 42–44 and their package mirrors retain the two reference payment adapter
 names in three ported predicates: inline-flow admission, historical channel
 routing and a refund-amount rule. Each row adds only its own whole-file SHA-256
 pins, exact counts and baseline keys with its files. R1's attempt-store slot and
-mirror each pin `ui-13` 0→4 and `ui-14` 0→3. A later provider-profile refactor
-must remove these literals; a third provider needs that refactor. The separate
-provider characterization fixture admission remains pending. No other native
+mirror each pin `ui-13` 0→4 and `ui-14` 0→3. Its unchanged characterization fixture,
+`tests/postgres/fixtures/paymentProvider/durability.sql`, pins `ui-13` 0→6 and
+`ui-14` 0→1 with its own whole-file digest and baseline key. This fixture keeps
+the same names until the provider-profile refactor removes them together with
+the predicates; a third provider needs that refactor. Every other test or
+fixture path remains refused by this extension. No other native
 or package SQL path is admitted beyond these six paths and the existing
 operations compatibility carrier; TypeScript and documentation remain outside
 this allowance. This is vocabulary debt, not provider activation or portable-contract parity;
 future neutral replacements must lower it. The [neutrality owner](../../CONTRIBUTING.md#package-policy-and-release-checks)
 owns the ratchet. Its `reviewedPinnedIntroductions` allowance is a closed list of
-16 paths and 20 tuples: six managed fixture/rail pairs and the registry
+17 paths and 22 tuples: six managed fixture/rail pairs and the registry
 (13 paths/15 tuples), the operations package SQL carrier (one path/tuple), and
-R1's native slot and mirror (two paths/four tuples). Each SQL pin requires the complete file's SHA-256
+R1's native slot, mirror and characterization witness (three paths/six tuples).
+Each SQL pin requires the complete file's SHA-256
 and exact category and before/after counts, on any base. The registry instead
 pins the exact refund COMMENT text because later approvals edit unrelated
 registry data; extra counted vocabulary still refuses. The allowance filters

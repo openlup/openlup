@@ -93,6 +93,7 @@ const registryPath = "config/reviewed-platform-forwards.json";
 const operationsSql = "packages/platform/sql/20260814010000_platform_control_plane.sql";
 const paymentAttemptSql = "db/platform/migrations/20261114100000_payment_provider_attempt_store.sql";
 const paymentAttemptMirror = "packages/platform/sql/20261114100000_payment_provider_attempt_store.sql";
+const paymentAttemptFixture = "tests/postgres/fixtures/paymentProvider/durability.sql";
 const refundRail = "supabase/migrations/20261024185000_provider_refund_evidence.sql";
 const refundFixture = `scripts/fixtures/reviewed-m10/${refundRail}`;
 function managedPinnedSources() {
@@ -174,6 +175,8 @@ describe("tree-wide neutrality ratchet", () => {
     "db/platform/migrations/20261114100001_payment_provider_attempt_store.sql",
     "packages/platform/sql/20261114120001_payment_reconciliation_refund_evidence.sql",
     "scripts/fixtures/reviewed-m10/db/platform/migrations/example.sql",
+    "tests/postgres/fixtures/paymentProvider/another.sql",
+    "tests/postgres/paymentProviderStore.test.ts",
     "supabase/migrations/example.ts", "scripts/example.ts", "package.json", "docs/example.md",
     "config/another-registry.json", "supabase/migrations/../example.sql",
   ])("refuses adding a C94 entry outside the exact reviewed path classes: %s", path => {
@@ -194,18 +197,20 @@ describe("tree-wide neutrality ratchet", () => {
     }
   });
 
-  it("pins both R1 SQL files to unchanged bytes, measured tuples and exact baseline keys", () => {
+  it("pins the R1 slot, mirror and witness to unchanged bytes, measured tuples and exact baseline keys", () => {
     const approved = JSON.parse(readFileSync(join(sourceRoot, baselinePath), "utf8")).counts;
-    const paths = [paymentAttemptSql, paymentAttemptMirror];
+    const paths = [paymentAttemptSql, paymentAttemptMirror, paymentAttemptFixture];
     const sources = new Map(paths.map(path => [path, readFileSync(join(sourceRoot, path))]));
     expect(sources.get(paymentAttemptSql)).toEqual(sources.get(paymentAttemptMirror));
     const measured = scanSnapshots(sources);
-    expect(measured.rows).toEqual(Object.fromEntries(paths.map(path => [hash(path), { "ui-13": 4, "ui-14": 3 }])));
+    expect(measured.rows).toEqual(Object.fromEntries(paths.map(path => [hash(path), path === paymentAttemptFixture
+      ? { "ui-13": 6, "ui-14": 1 } : { "ui-13": 4, "ui-14": 3 }])));
     const introductions = neutralityIncreases({}, measured.rows);
-    expect(introductions).toHaveLength(4);
+    expect(introductions).toHaveLength(6);
     expect(unreviewedPinnedIntroductionIncreases(introductions, sources)).toEqual([]);
     for (const path of paths) {
       const counts = measured.rows[hash(path)];
+      expect(() => validateReviewedPinnedIntroductions([[path, hash(sources.get(path)!), Object.entries(counts).map(([category, count]) => [category, 0, count])]])).not.toThrow();
       expect(approved[hash(path)]).toEqual(counts);
       const candidate = { ...validBaseline(), counts: { [hash(path)]: counts } };
       expect(() => validateBaseline(candidate)).not.toThrow();
@@ -222,6 +227,11 @@ describe("tree-wide neutrality ratchet", () => {
       expect(scanSnapshots(changed).rows).toEqual(measured.rows);
       expect(unreviewedPinnedIntroductionIncreases(introductions, changed)).toEqual(introductions.filter(row => row.path === hash(path)));
     }
+    const otherPath = paymentAttemptFixture.replace("durability.sql", "another.sql");
+    const copied = new Map([[otherPath, sources.get(paymentAttemptFixture)!]]);
+    const copiedRows = neutralityIncreases({}, scanSnapshots(copied).rows);
+    expect(copiedRows).toHaveLength(2);
+    expect(unreviewedPinnedIntroductionIncreases(copiedRows, copied)).toEqual(copiedRows);
   });
 
   it("binds the operations compatibility carrier to unchanged canonical bytes, one exact count and its baseline key", () => {
@@ -921,12 +931,12 @@ describe("neutrality scan reuse", () => {
 
 });
 
-it("keeps the managed, operations and R1 pins closed at exactly 16 paths and 20 tuples", () => {
-  expect(reviewedPinnedIntroductions).toHaveLength(16);
-  expect(new Set(reviewedPinnedIntroductions.map(([path]) => path)).size).toBe(16);
-  expect(reviewedPinnedIntroductions.flatMap(([, , counts]) => counts)).toHaveLength(20);
+it("keeps the managed, operations and R1 pins closed at exactly 17 paths and 22 tuples", () => {
+  expect(reviewedPinnedIntroductions).toHaveLength(17);
+  expect(new Set(reviewedPinnedIntroductions.map(([path]) => path)).size).toBe(17);
+  expect(reviewedPinnedIntroductions.flatMap(([, , counts]) => counts)).toHaveLength(22);
   const paymentPaths = [paymentAttemptSql, paymentAttemptMirror];
-  const c94 = reviewedPinnedIntroductions.filter(([path]) => path !== operationsSql && !paymentPaths.includes(path));
+  const c94 = reviewedPinnedIntroductions.filter(([path]) => path !== operationsSql && !paymentPaths.includes(path) && path !== paymentAttemptFixture);
   expect(c94).toHaveLength(13);
   expect(c94.flatMap(([, , counts]) => counts)).toHaveLength(15);
   const paymentPins = reviewedPinnedIntroductions.filter(([path]) => paymentPaths.includes(path));
@@ -935,6 +945,9 @@ it("keeps the managed, operations and R1 pins closed at exactly 16 paths and 20 
     expect(digest).toBe("3d0e3c5696e417f47a30c0581915df86c5386d4bcec9b0715c9f561fd7b6c291");
     expect(counts).toEqual([["ui-13", 0, 4], ["ui-14", 0, 3]]);
   }
+  expect(reviewedPinnedIntroductions.filter(([path]) => path === paymentAttemptFixture)).toEqual([
+    [paymentAttemptFixture, "7410a02abc33f13b8ce7d3ed9c8c4acd51c2434fd82425d90ef74cbf27d8f649", [["ui-13", 0, 6], ["ui-14", 0, 1]]],
+  ]);
 });
 
 it("refuses regenerated C94 counts below their pin without writing the baseline", () => {
