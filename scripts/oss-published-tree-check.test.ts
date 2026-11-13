@@ -696,6 +696,9 @@ describe("the workflow stays in step with what it claims to run", () => {
     expect(packages).toContain("node-version: ${{ steps.node.outputs.version }}");
     expect(workflowJob("pack", packages)).toContain('echo "version=$(node -p \'process.versions.node\')" >> "$GITHUB_OUTPUT"');
     expect(workflowJob("publish", packages)).toContain("node-version: ${{ needs.pack.outputs.node-version }}");
+    expect(workflowJob("registry-tutorial", packages)).toContain("node-version: 24.21.0");
+    expect(REQUIRED_CONTEXTS).not.toContain("registry-tutorial");
+    expect(REQUIRED_CONTEXTS).not.toContain("Guide tutorial against the npm registry (advisory)");
   });
 
   it("pins every action and verifies the runtime and scanner before use", () => {

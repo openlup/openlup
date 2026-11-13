@@ -323,6 +323,9 @@ The source-preview descendant check retains its strict snapshot equality.
 
 ### Verify the published npm artifact
 
+After a core publication, the publish workflow waits for the matching package set on npm and runs the guide tutorial against the registry, advisory until two green runs on main per decision D4.
+A tutorial failure appears as a warning annotation and in the step summary.
+
 Use a disposable directory outside any checkout, Node 24, npm 11.19.0 and an
 authenticated `gh`. Select the package/version and full commit from the reviewed
 release. This example verifies the first core set; replace both values together

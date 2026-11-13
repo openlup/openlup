@@ -940,7 +940,7 @@ A release takes three steps:
    does.
 
 The App-published release starts
-[`publish-packages.yml`](workflows/publish-packages.yml), which works in two
+[`publish-packages.yml`](workflows/publish-packages.yml), which works in three
 jobs:
 
 1. **pack** accepts only a `published` event from `openlup-release[bot]`
@@ -964,6 +964,13 @@ jobs:
    `npm publish ./packs/<file> --provenance --access public --tag latest`.
    GitHub's OIDC token is the npm trusted-publisher credential; there is no
    stored npm token, and only this job has `id-token: write`.
+3. **registry-tutorial** runs once after a successful core publication, with
+   only `contents: read`. It checks out the release commit and waits up to ten
+   minutes for the matching package set and core's `latest` value on npm, then
+   runs the guide tutorial against the registry and a disposable pinned
+   PostgreSQL database. The tutorial is advisory: a failure produces a warning
+   annotation and a step summary. A propagation timeout also warns and defers
+   the tutorial. This job is not a required context and cannot block publication.
 
 Every package release moves the npm `latest` dist-tag, which is why its version
 must be above every version npm holds. A package's `publishConfig.tag` stays
