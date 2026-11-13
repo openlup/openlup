@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import type { PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { createPostgresPaymentProviderReconciliationPort, createPostgresPaymentWebhookControlPort,
-  createPostgresProviderPaymentControlPort, runPaymentProviderReconciliationWorker } from "@openlup/platform/payments";
+  createPostgresProviderPaymentControlPort, createVerifiedPaymentIngress, runPaymentProviderReconciliationWorker } from "@openlup/platform/payments";
 import { lifecycleInstallation, type LifecycleInstallation } from "./subscriptionLifecycleClosureFixture.js";
 import { call } from "./subscriptionNativeFixture.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
@@ -13,14 +13,14 @@ const options = { dunningTemplateSlug: "dunning", recoveryUrlPath: "/recover", r
 let env: LifecycleInstallation, db: PoolClient;
 type Fixture = { intent: string; attempt: string; order: string; cycle: string | null; provider: string };
 type RefundInput = Parameters<ReturnType<typeof createPostgresPaymentWebhookControlPort>["ingestPaymentEvent"]>[0];
-let installed: { capture: Fixture; prepared: Fixture; refunds: RefundInput[] };
+let installed: { capture: Fixture; delta: Fixture; prepared: Fixture; refunds: RefundInput[] };
 beforeAll(async () => {
   env = await lifecycleInstallation("qualified-v2"); db = await env.owner.connect();
   for (const path of ["paymentProvider/setup.sql", "paymentReconciliation/setup.sql"]) {
     await db.query(readFileSync(`tests/postgres/fixtures/${path}`, "utf8"));
   }
   const fixtures = Object.fromEntries((await db.query("SELECT name,f FROM proof_fixture")).rows.map(row => [row.name, row.f]));
-  installed = { capture: fixtures.capture, prepared: fixtures.prepared, refunds: [] };
+  installed = { capture: fixtures.capture, delta: fixtures.delta, prepared: fixtures.prepared, refunds: [] };
   for (const [n, amount] of [3000, 12999, 3000, 12999].entries()) {
     installed.refunds.push((await db.query("SELECT pg_temp.refund_input($1::jsonb,$2,$3::integer) value",
       [installed.capture, `installed-refund:${n}`, amount])).rows[0].value);
@@ -99,6 +99,34 @@ it("proves cumulative refunds and default-off absence reopen using only the inst
     expect(await due(request.nextRetryAt, "installed-consumer")).toEqual(consumed);
     expect(await due(request.nextRetryAt, "installed-other-consumer")).toBeNull();
   } finally { runtime.release(); }
+});
+
+it("reads a verified 3000 event-delta refund on a 12999 payment through the runtime role", async () => {
+  const f = installed.delta, money = { amountMinor: 12999, currency: "XXX" };
+  const ingress = createVerifiedPaymentIngress({ provider: f.provider,
+    paymentControlPort: createPostgresPaymentWebhookControlPort(env.runtime, options),
+    verifyPort: { verifyAndNormalize: async () => ({ kind: "money", provider: f.provider,
+      providerEventId: "installed-delta-refund", fingerprint: "d".repeat(64), providerOccurredAt: at,
+      providerPaymentRef: `charge_${f.attempt}`, intentRef: f.intent, attemptRef: f.attempt,
+      outcome: "refunded", money, refund: { kind: "event-delta", operationId: "installed-delta-refund",
+        originalPaymentMoney: money, refundedMoney: { amountMinor: 3000, currency: "XXX" } } }) } });
+  const input = { rawBody: new Uint8Array(), headers: {}, receivedAt: at };
+  expect(await ingress.receive(input)).toMatchObject({ status: 200 });
+  expect(await ingress.receive(input)).toMatchObject({ status: 200 });
+  expect((await env.runtime.query("SELECT public.payment_refund_readback($1::uuid) value", [f.intent])).rows[0].value)
+    .toMatchObject({ refundCents: 3000, currency: "XXX" });
+  expect((await db.query(`SELECT e.amount_minor,e.payload#>>'{openlupEvidence,refund,refundedMoney,amountMinor}' AS delta,
+    r.amount_minor AS refunded FROM public.payment_provider_attempt_evidence e
+    JOIN public.payment_refund_evidence r ON r.source_evidence_id=e.id WHERE e.settlement_intent_id=$1`, [f.intent])).rows)
+    .toEqual([{ amount_minor: "12999", delta: "3000", refunded: "3000" }]);
+  expect((await env.runtime.query("SELECT amount_minor::text FROM public.commerce_settlement_intents WHERE id=$1", [f.intent]))
+    .rows[0].amount_minor).toBe("12999");
+});
+
+it("denies runtime calls to the sealed interactive reopen body", async () => {
+  await expect(env.runtime.query(`SELECT public.commerce_payment_reopen_interactive_sealed_v1(
+    'sealed-denied',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL)`))
+    .rejects.toMatchObject({ code: "42501", message: "permission denied for function commerce_payment_reopen_interactive_sealed_v1" });
 });
 
 it("bounds claims, retains latest-check fairness and skips a locked active attempt", async () => {

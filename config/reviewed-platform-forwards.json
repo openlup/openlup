@@ -6134,7 +6134,7 @@
     },
     {
       "path": "db/platform/migrations/20261114120000_payment_reconciliation_refund_evidence.sql",
-      "sha256": "f18ce79510f7bf33dd6418acf900281c1d8a37e6da0149e35e26e0c182d4dabe",
+      "sha256": "1630ebe3422045ceb5c7c73a25922271ec05337556fff25230863f8fcff61bfd",
       "functions": [
         {
           "signature": "public.payment_provider_result_apply(text,uuid,uuid,text,timestamptz,text,text,text,text,text,text)",
@@ -6174,7 +6174,7 @@
         {
           "signature": "public.payment_refund_evidence_record(uuid,text,bigint,text)",
           "beforeSha256": null,
-          "afterSha256": "e7a4db7d30c5d0762eb21ab60a141d54e94eff952f95e3c7425e108317ba6725"
+          "afterSha256": "a0bcea1a8af73d9aeeb004bf4de39e4c5ef9a9a59330d2499a1c20ee012cfba6"
         },
         {
           "signature": "public.payment_refund_readback(uuid)",
@@ -6189,7 +6189,7 @@
         {
           "signature": "public.payment_refund_apply_result(text,uuid,uuid,text,timestamptz,text,text,text)",
           "beforeSha256": null,
-          "afterSha256": "8927c9fea84752fecb8399005abbdae0cfe82a36de9ad384877072a6c4a945d1"
+          "afterSha256": "35a8d5c2b664e9b00fe297bc8927c731634b5b0649a9f0f75dbc78ad96ba92f0"
         },
         {
           "signature": "public.commerce_payment_control_reopen_prepared_attempt_after_absence(text,uuid,uuid,uuid,text,timestamptz,timestamptz,jsonb)",

@@ -775,7 +775,7 @@ exclusion retain their existing contract.
 for this complete installed chain. This is development-preview qualification,
 not provider activation. The [native attribution witnesses](../../tests/postgres/paymentReconciliationAttributionGap.test.ts),
 [pgTAP witnesses](../../tests/postgres/paymentReconciliationPgtap.test.ts) and
-[installed artifact proof](../../scripts/packages/platform-cold-consumer.ts)
+[installed runtime-role PostgreSQL witnesses](../../tests/postgres/paymentReconciliationStore.test.ts)
 exercise the boundary without live provider access.
 
 List payments awaiting operator review:

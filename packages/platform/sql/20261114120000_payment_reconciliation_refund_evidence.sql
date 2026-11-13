@@ -873,7 +873,13 @@ BEGIN
    RAISE EXCEPTION 'payment_control_result_refund_snapshot_unproven' USING ERRCODE='22023'; END IF;
   observation:='cumulative-snapshot'; operation:=e.payload#>>'{stripeRefundSnapshot,chargeId}';
  ELSE
-  IF p_amount IS DISTINCT FROM e.amount_minor THEN
+  IF e.payload#>>'{openlupEvidence,refund,kind}'='event-delta' THEN
+   IF jsonb_typeof(e.payload#>'{openlupEvidence,refund,refundedMoney,amountMinor}') IS DISTINCT FROM 'number'
+    OR COALESCE(e.payload#>>'{openlupEvidence,refund,refundedMoney,amountMinor}','') !~ '^[0-9]{1,10}$'
+    OR p_amount IS DISTINCT FROM (e.payload#>>'{openlupEvidence,refund,refundedMoney,amountMinor}')::bigint
+    OR e.payload#>>'{openlupEvidence,refund,refundedMoney,currency}' IS DISTINCT FROM p_currency THEN
+    RAISE EXCEPTION 'payment_control_result_refund_snapshot_unproven' USING ERRCODE='22023'; END IF;
+  ELSIF p_amount IS DISTINCT FROM e.amount_minor THEN
    RAISE EXCEPTION 'payment_control_result_refund_snapshot_unproven' USING ERRCODE='22023'; END IF;
   observation:='event-delta'; operation:=e.provider_event_id;
  END IF;
@@ -960,7 +966,11 @@ BEGIN
    RAISE EXCEPTION 'payment_control_result_currency_mismatch' USING ERRCODE='22023'; END IF;
   IF p_result_status IN ('refunded','partially_refunded') THEN
    amount:=CASE WHEN e.provider='stripe' AND e.payload#>>'{stripeRefundSnapshot,amountRefundedMinor}' ~ '^[0-9]{1,10}$'
-    THEN (e.payload#>>'{stripeRefundSnapshot,amountRefundedMinor}')::bigint ELSE e.amount_minor END;
+    THEN (e.payload#>>'{stripeRefundSnapshot,amountRefundedMinor}')::bigint
+    WHEN e.payload#>>'{openlupEvidence,refund,kind}'='event-delta' THEN
+     CASE WHEN e.payload#>>'{openlupEvidence,refund,refundedMoney,amountMinor}' ~ '^[0-9]{1,10}$'
+      THEN (e.payload#>>'{openlupEvidence,refund,refundedMoney,amountMinor}')::bigint END
+    ELSE e.amount_minor END;
    IF e.provider='stripe' AND ((p_result_status='refunded') IS DISTINCT FROM (amount=i.amount_minor)) THEN
     RAISE EXCEPTION 'payment_control_result_refund_snapshot_unproven' USING ERRCODE='22023'; END IF;
    accepted:=public.payment_refund_evidence_record(e.id,e.provider_payment_id,amount,e.currency);
@@ -2136,5 +2146,8 @@ DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
   EXECUTE 'REVOKE ALL ON TABLE public.payment_provider_reconciliation_runs,public.payment_prepared_absence_reopens,public.payment_dunning_case_attribution,public.payment_refund_evidence FROM service_role';
 END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
-  EXECUTE 'GRANT EXECUTE ON FUNCTION public.commerce_payment_reconciliation_claim_stale_attempts(timestamptz,integer,integer,text),public.commerce_payment_reconciliation_claim_prepared_attempts(timestamptz,integer,integer,text),public.commerce_payment_control_record_reconciliation(text,text,text,uuid,uuid,text,text,text,timestamptz,jsonb),public.commerce_payment_control_apply_reconciliation_result(text,uuid,uuid,uuid,uuid,text,text,text,text,text,timestamptz,text,timestamptz,jsonb,text,text,text,text,text),public.payment_reconciliation_open_dunning_from_failed_result(text,uuid,text,text,timestamptz,text,uuid,text,text),public.payment_refund_evidence_record(uuid,text,bigint,text),public.payment_refund_readback(uuid),public.commerce_order_provider_refund_evidence(uuid),public.payment_refund_apply_result(text,uuid,uuid,text,timestamptz,text,text,text),public.commerce_payment_control_reopen_prepared_attempt_after_absence(text,uuid,uuid,uuid,text,timestamptz,timestamptz,jsonb),public.commerce_payment_reopen_interactive_sealed_v1(text,uuid,uuid,uuid,uuid,uuid,text,text,text,text,text,timestamptz,jsonb),public.commerce_payment_control_reopen_interactive_prepared_attempt(text,uuid,uuid,uuid,uuid,uuid,text,text,text,text,text,timestamptz,jsonb),public.payment_prepared_absence_reopen_due(uuid,timestamptz,text),public.payment_provider_result_apply(text,uuid,uuid,text,timestamptz,text,text,text,text,text,text) TO service_role';
+  EXECUTE 'REVOKE ALL ON FUNCTION public.commerce_payment_reopen_interactive_sealed_v1(text,uuid,uuid,uuid,uuid,uuid,text,text,text,text,text,timestamptz,jsonb) FROM service_role';
+END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
+  EXECUTE 'GRANT EXECUTE ON FUNCTION public.commerce_payment_reconciliation_claim_stale_attempts(timestamptz,integer,integer,text),public.commerce_payment_reconciliation_claim_prepared_attempts(timestamptz,integer,integer,text),public.commerce_payment_control_record_reconciliation(text,text,text,uuid,uuid,text,text,text,timestamptz,jsonb),public.commerce_payment_control_apply_reconciliation_result(text,uuid,uuid,uuid,uuid,text,text,text,text,text,timestamptz,text,timestamptz,jsonb,text,text,text,text,text),public.payment_reconciliation_open_dunning_from_failed_result(text,uuid,text,text,timestamptz,text,uuid,text,text),public.payment_refund_evidence_record(uuid,text,bigint,text),public.payment_refund_readback(uuid),public.commerce_order_provider_refund_evidence(uuid),public.payment_refund_apply_result(text,uuid,uuid,text,timestamptz,text,text,text),public.commerce_payment_control_reopen_prepared_attempt_after_absence(text,uuid,uuid,uuid,text,timestamptz,timestamptz,jsonb),public.commerce_payment_control_reopen_interactive_prepared_attempt(text,uuid,uuid,uuid,uuid,uuid,text,text,text,text,text,timestamptz,jsonb),public.payment_prepared_absence_reopen_due(uuid,timestamptz,text),public.payment_provider_result_apply(text,uuid,uuid,text,timestamptz,text,text,text,text,text,text) TO service_role';
 END IF; END; $$;

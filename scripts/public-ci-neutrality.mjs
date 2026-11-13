@@ -232,10 +232,10 @@ export function neutralityIncreases(baseline, current) {
 // Exact category/before/after tuples and whole-file pins apply on any base.
 // Adding an entry requires the control review and coordinator read in CONTRIBUTING.md.
 export const reviewedPinnedIntroductions = [
-  ["db/platform/migrations/20261114120000_payment_reconciliation_refund_evidence.sql","f18ce79510f7bf33dd6418acf900281c1d8a37e6da0149e35e26e0c182d4dabe",[["ui-13",0,9],["ui-14",0,5]]],
-  ["packages/platform/sql/20261114120000_payment_reconciliation_refund_evidence.sql","f18ce79510f7bf33dd6418acf900281c1d8a37e6da0149e35e26e0c182d4dabe",[["ui-13",0,9],["ui-14",0,5]]],
+  ["db/platform/migrations/20261114120000_payment_reconciliation_refund_evidence.sql","1630ebe3422045ceb5c7c73a25922271ec05337556fff25230863f8fcff61bfd",[["ui-13",0,9],["ui-14",0,5]]],
+  ["packages/platform/sql/20261114120000_payment_reconciliation_refund_evidence.sql","1630ebe3422045ceb5c7c73a25922271ec05337556fff25230863f8fcff61bfd",[["ui-13",0,9],["ui-14",0,5]]],
   ["tests/postgres/fixtures/paymentReconciliation/setup.sql","8a17e1de319f07597dc2ca606800c08b9fcf5fba2e7231c06c21fd50ed6bca20",[["ui-13",0,4],["ui-14",0,2]]],
-  ["tests/postgres/fixtures/paymentReconciliation/evidence.sql","5a42c9e350204acb86b83ffc2addd577dfa3f5baf03aade5d1c5d22fc1befcd2",[["ui-13",0,1]]],
+  ["tests/postgres/fixtures/paymentReconciliation/evidence.sql","e55fa02a9d000143617a73fad40f1e760125bc3aebf6192476015d145f69d95c",[["ui-13",0,1]]],
   ["db/platform/migrations/20261114100000_payment_provider_attempt_store.sql", "5dca653dbb0f341723822dbb1be55263cf30375cb49410205dcc735a516b75ed", [["ui-13", 0, 4], ["ui-14", 0, 3]]],
   ["packages/platform/sql/20261114100000_payment_provider_attempt_store.sql", "5dca653dbb0f341723822dbb1be55263cf30375cb49410205dcc735a516b75ed", [["ui-13", 0, 4], ["ui-14", 0, 3]]],
   ["tests/postgres/fixtures/paymentProvider/durability.sql", "968618b954dd39f33034076633daa618ca81208ac27b7bc039e5a7988661da59", [["ui-13", 0, 6], ["ui-14", 0, 5]]],

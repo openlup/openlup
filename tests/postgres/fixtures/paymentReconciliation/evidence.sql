@@ -37,6 +37,7 @@ SELECT ok((SELECT payload->>'refundCents' IS NULL FROM public.outbox_events WHER
 SELECT throws_ok(format('SELECT pg_temp.refund_observe(%L::jsonb,%L,12999,%L,true)',f,'thin','XXX'),'22023','payment_control_result_refund_snapshot_unproven','thin refund payloads do not infer money from the order') FROM proof_fixture WHERE name='capture';
 SELECT throws_ok(format('SELECT pg_temp.refund_observe(%L::jsonb,%L,12999,%L)',f,'wrong-currency','XTS'),'22023','payment_control_result_currency_mismatch','different-currency evidence refuses') FROM proof_fixture WHERE name='capture';
 SELECT is(pg_temp.refund_observe(f,'delta-one',3000)#>>'{paymentResult,status}','partially_refunded','individual observations retain their delta meaning') FROM proof_fixture WHERE name='delta';
+SELECT is(public.payment_refund_readback((f->>'intent')::uuid)->>'refundCents','3000','one individual refund reads back its delta rather than original payment money') FROM proof_fixture WHERE name='delta';
 SELECT pg_temp.refund_observe(f,'delta-two',12999) FROM proof_fixture WHERE name='delta';
 SELECT is(public.payment_refund_readback((f->>'intent')::uuid)->>'refundCents','15999','individual-event amounts retain addition') FROM proof_fixture WHERE name='delta';
 SELECT pg_temp.refund_observe(f,'renewal-refund',12999) FROM proof_fixture WHERE name='renewal';
