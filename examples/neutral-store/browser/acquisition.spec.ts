@@ -187,11 +187,10 @@ async function failedRenewal(f: Purchase) {
   return row;
 }
 async function ageCancellation(f: Purchase) {
-  // Clock fixture only: preserve the actual native cancellation's event/state relation.
-  await owner.query(`WITH clock AS (SELECT now()-interval '20 days' AS at), changed AS (
-    UPDATE public.subscriptions SET started_at=started_at-interval '20 days',ended_at=clock.at FROM clock WHERE id=$1::uuid RETURNING ended_at)
-    UPDATE public.subscription_events SET occurred_at=changed.ended_at FROM changed
-    WHERE subscription_id=$1::uuid AND event_type='subscription.customer_self_service.cancel'`, [f.subscriptionId]);
+  // Clock fixture only: the recorded cancellation event is an immutable communication source, and
+  // it still occurs at or after the aged end, which is the native winback eligibility relation.
+  await owner.query(`UPDATE public.subscriptions SET started_at=started_at-interval '20 days',ended_at=now()-interval '20 days'
+    WHERE id=$1::uuid`, [f.subscriptionId]);
 }
 
 for (const locale of ['en', 'pl'] as const) {

@@ -32,6 +32,7 @@ const owned = [
   "platform_human_principals", "platform_human_memberships", "platform_human_membership_audit_events",
   "catalog_products", "catalog_product_document_revisions", "catalog_skus", "catalog_sku_identifiers",
   "price_lists", "subscription_price_policy_revisions", "price_entries", "subscription_lines",
+  "communication_event_bindings", "communication_event_receipts", "communication_event_erasures",
   "communication_recipient_consents", "communication_native_sends", "communication_native_observations", "communication_native_sync_state",
   "customer_account_consent_events", "customer_account_consent_sync_targets",
   "identity_operator_invitations", "identity_operator_invitation_events", "identity_privacy_erasures",

@@ -1,7 +1,10 @@
 import type { ConsentPushPort, ConsentPushRequest, ConsentPushResult, ConsentReadback, MarketingSyncProvider, NegativeFeedback, ProfileProjection, SyncAudience, SyncBinding, SyncRequest, SyncResult } from "../contracts/marketingSync.js";
 import type { MarketingAutomationClaim, MarketingAutomationObservation, MarketingAutomationProviderPort, MarketingAutomationScope } from "../contracts/marketingAutomation.js";
 import type { NewsletterSyncProviderPort } from "../contracts/newsletter.js";
+import type { EcommerceEvent, EcommerceEventExportRequest, EcommerceEventExportResult, EcommerceEventsPort } from "../contracts/ecommerceEvents.js";
+import { ecommerceEventExportRequestSchema } from "../ecommerceEvents.js";
 import { consentCommand } from "./consentPush.js";
+import { eventBody, eventMappingVersion, eventMetrics } from "./events.js";
 
 // Retain the cause when a grant admission CAS throws before any journal bytes
 // survive. Shared host availability keeps it across adapter reconstruction;
@@ -62,6 +65,15 @@ type Configuration = {
   fetch?: typeof fetch; now?: () => number;
   maxRequestBytes?: number; maxResponseBytes?: number; maxFeedbackItems?: number;
   timeoutMs?: number; rateIntervalMs?: number;
+  events?: {
+    /** Fixed start of this live programme; retain it on retry/restart. No historical importer. */
+    liveSinceMs: number;
+    /** Host checks its retained exact duty (including original currency-owner exponent/provenance)
+     * and current local authority. Do not recalculate frozen money on retry; remote consent is insufficient. */
+    authorize(request: EcommerceEventExportRequest): boolean;
+    verification?: { binding: SyncBinding; revision: string; evidenceReference: string; scopes: readonly string[];
+      sourceTypes: readonly EcommerceEvent["sourceType"][]; accountEffectsVerified: boolean; messageOwnershipVerified: boolean };
+  };
   legacy?: { scope: MarketingAutomationScope; claims: ReadonlyMap<string, { claim: MarketingAutomationClaim; request: Request }> };
 };
 const object = (value: unknown): Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -197,16 +209,28 @@ function consentValue(body: unknown, target: Subject, audience: SyncAudience, ve
 }
 
 /** Opt-in Node adapter; owner TEST evidence is required before any bound operation is enabled. */
-export function createKlaviyoMarketingAdapter(input: Configuration): MarketingSyncProvider & MarketingAutomationProviderPort & { readonly consentPush: ConsentPushPort; readonly newsletter: NewsletterSyncProviderPort } {
+export function createKlaviyoMarketingAdapter(input: Configuration): MarketingSyncProvider & MarketingAutomationProviderPort & {
+  readonly consentPush: ConsentPushPort; readonly newsletter: NewsletterSyncProviderPort;
+  readonly events: EcommerceEventsPort & { readonly capabilities: { readonly binding: SyncBinding;
+    readonly state: "supported" | "unsupported" | "verification_pending"; readonly sourceTypes: readonly EcommerceEvent["sourceType"][] } };
+} {
   const binding = copy(input.binding), audience = copy(input.audience), now = input.now ?? Date.now;
   const maxRequestBytes = input.maxRequestBytes ?? 65536, maxResponseBytes = input.maxResponseBytes ?? 1048576;
   const maxFeedbackItems = input.maxFeedbackItems ?? 64, timeoutMs = input.timeoutMs ?? 10000, rateIntervalMs = input.rateIntervalMs ?? 100;
   if (!validBinding(binding) || !validAudience(audience) || ![maxRequestBytes, maxResponseBytes, maxFeedbackItems, timeoutMs, rateIntervalMs].every(positive)) throw new Error("Invalid adapter configuration");
   const verification = input.verification ? copy(input.verification) : undefined;
+  const eventsVerification = input.events?.verification ? copy(input.events.verification) : undefined;
+  const eventsReady = !!input.events && Number.isFinite(input.events.liveSinceMs) && input.events.liveSinceMs >= 0 &&
+    !!eventsVerification && equal(eventsVerification.binding, binding) && eventsVerification.revision === REVISION &&
+    text(eventsVerification.evidenceReference) && eventsVerification.scopes.includes("events:write") &&
+    eventsVerification.accountEffectsVerified && eventsVerification.messageOwnershipVerified && eventsVerification.sourceTypes.length > 0 &&
+    eventsVerification.sourceTypes.every(type => Object.hasOwn(eventMetrics, type));
+  const eventCapabilities = copy({ binding, state: binding.mappingVersion !== eventMappingVersion ? "unsupported" as const
+    : eventsReady ? "supported" as const : "verification_pending" as const, sourceTypes: eventsReady ? eventsVerification!.sourceTypes : [] });
   if (verification && (!equal(verification.binding, binding) || !equal(verification.audience, audience) || verification.revision !== REVISION || !text(verification.evidenceReference))) throw new Error("Invalid verification binding");
   const operationScopes: Record<Exclude<Operation, "erasure.read">, string[]> = {
     "profile.sync": ["profiles:read", "profiles:write"], "consent.read": ["profiles:read"], "erasure.request": ["data-privacy:write"],
-    "consent.push": ["profiles:read", "subscriptions:write", "lists:write"],
+    "consent.push": ["profiles:read", "profiles:write", "subscriptions:write", "lists:write"],
   };
   const capability = (operation: Exclude<Operation, "erasure.read">) => verification?.operations.includes(operation) && operationScopes[operation].every(s => verification.scopes.includes(s))
     ? { state: "supported" as const, evidenceReference: verification.evidenceReference, maxRequestBytes, maxFeedbackItems }
@@ -607,6 +631,99 @@ export function createKlaviyoMarketingAdapter(input: Configuration): MarketingSy
     catch { closeAccount(); return result({ ...fallback, subjectReference: r.subjectReference, requestId: r.requestId, generation: r.generation }, { kind: "unknown", reason: "record_failed" }); }
     finally { if (ownsAvailability) availability.busy = false; }
   }
+  async function exportEvent(original: EcommerceEventExportRequest, context?: Parameters<EcommerceEventsPort["exportEvent"]>[1]): Promise<EcommerceEventExportResult> {
+    const deny = (reason: string): EcommerceEventExportResult => ({ kind: "refused", reason });
+    const cooling = (until = now()): EcommerceEventExportResult => ({ kind: "retryable", reason: "cooling", afterSeconds: Math.max(1, Math.ceil((until - now()) / 1000)) });
+    let request: EcommerceEventExportRequest;
+    try {
+      const snapshot = copy(original);
+      if (bytes(snapshot) > maxRequestBytes || !ecommerceEventExportRequestSchema.safeParse(snapshot).success || !id(snapshot.profileId)) return deny("invalid_request");
+      request = snapshot;
+    } catch { return deny("invalid_request"); }
+    if (!equal(request.binding, binding)) return deny("binding");
+    if (eventCapabilities.state !== "supported") return deny(eventCapabilities.state);
+    if (!eventCapabilities.sourceTypes.includes(request.event.sourceType)) return deny("unsupported");
+    if (request.classification !== "live" || Date.parse(request.event.occurredAt) < input.events!.liveSinceMs) return deny("historical");
+    if (Date.parse(request.event.occurredAt) > now()) return deny("future");
+    if (request.event.sourceType === "checkout.recovery_qualified" && Date.parse(request.event.data.expiresAt) <= now()) return deny("stale");
+    const deadlineMs = context?.deadlineMs ?? now() + timeoutMs;
+    if (!Number.isFinite(deadlineMs) || deadlineMs <= now() || context?.signal?.aborted) return deny("deadline");
+    let target: Subject | undefined;
+    try { const initial = input.subjectMapper(request.subjectReference); target = initial ? copy(initial) : undefined; }
+    catch { return { kind: "retryable", reason: "host", afterSeconds: 1 }; }
+    const guard = (): string | undefined => {
+      if (context?.signal?.aborted || deadlineMs <= now()) return "deadline";
+      if (request.event.sourceType === "checkout.recovery_qualified" && Date.parse(request.event.data.expiresAt) <= now()) return "stale";
+      let current: Subject | undefined;
+      try { current = input.subjectMapper(request.subjectReference); } catch { return "host"; }
+      if (!current || !target || !equal(current.binding, binding) || current.subjectReference !== request.subjectReference || current.id !== request.profileId) return "identity_conflict";
+      if (current.generation !== request.generation) return "stale";
+      if (current.erased) return "restricted";
+      if (!equal(current, target)) return "provenance";
+      try { if (input.events!.authorize(request) !== true) return "restricted"; } catch { return "restricted"; }
+    };
+    const guardedFailure = (reason: string): EcommerceEventExportResult => reason === "host" ? { kind: "retryable", reason: "host", afterSeconds: 1 } : deny(reason);
+    const before = guard(); if (before) return guardedFailure(before);
+    const body = eventBody(request);
+    if (!body) return deny("amount_unrepresentable");
+    if (bytes(body) > maxRequestBytes) return deny("invalid_request");
+    if (availability.busy) return cooling();
+    availability.busy = true;
+    let slotHeld = false;
+    try {
+      const loaded = await load(), ledger = loaded.ledger;
+      if (quarantine || availability.quarantined || ledger.quarantined || ledger.slot || ledger.nextAt > now() || ledger.coolingUntil > now()) return cooling(Math.max(ledger.nextAt, ledger.coolingUntil));
+      const owner = canonical([binding, request.subjectReference]);
+      if (ledger.tombstones.includes(owner) || Object.values(ledger.withdrawals).some(value => value.owner === owner && !value.resolved)) return deny("restricted");
+      const changed = guard(); if (changed) return guardedFailure(changed);
+      ledger.nextAt = now() + rateIntervalMs; ledger.slot = true;
+      const reserved = await persist(loaded.raw, ledger);
+      if (reserved !== "saved") return reserved === "conflict" ? { kind: "retryable", reason: "host", afterSeconds: 1 } : { kind: "unknown", reason: "dispatch_unresolved" };
+      slotHeld = true;
+      let credential: ReturnType<Configuration["resolveCredential"]>;
+      try { credential = input.resolveCredential(); } catch { return { kind: "retryable", reason: "host", afterSeconds: 1 }; }
+      if (!credential || !equal(credential.binding, binding) || !text(credential.key) || /\s/.test(credential.key)) return deny("binding");
+      const final = guard(); if (final) return guardedFailure(final);
+      if (quarantine || availability.quarantined || !availability.busy) return cooling();
+      const controller = new AbortController();
+      let timer: ReturnType<typeof setTimeout> | undefined, abortListener: (() => void) | undefined;
+      const aborted = new Promise<never>((_resolve, reject) => {
+        const abort = () => { controller.abort(); reject(new Error("event_deadline")); };
+        timer = setTimeout(abort, Math.min(timeoutMs, deadlineMs - now()));
+        abortListener = abort;
+        context?.signal?.addEventListener("abort", abort, { once: true });
+      });
+      try {
+        const response = await Promise.race([(input.fetch ?? fetch)(ORIGIN + "/api/events", {
+          method: "POST", body: JSON.stringify(body), signal: controller.signal, redirect: "manual",
+          headers: { Authorization: `Klaviyo-API-Key ${credential.key}`, revision: REVISION,
+            Accept: "application/vnd.api+json", "Content-Type": "application/vnd.api+json" },
+        }), aborted]);
+        // No response body is required: cancel without parsing/logging customer bytes.
+        // Even malformed 202 bodies mean acceptance only, never ingestion or delivery.
+        void response.body?.cancel().catch(() => {});
+        if (response.status === 202) return { kind: "accepted" };
+        if (response.status === 429) {
+          const value = response.headers.get("retry-after");
+          const parsed = value && /^\d+(?:\.\d+)?$/.test(value) ? Number(value) : value ? (Date.parse(value) - now()) / 1000 : NaN;
+          const afterSeconds = Number.isFinite(parsed) && parsed >= 0 && Number.isFinite(now() + Math.ceil(parsed) * 1000) ? Math.max(1, Math.ceil(parsed)) : 60;
+          providerCooling.set(availability, Math.max(providerCooling.get(availability) ?? 0, now() + afterSeconds * 1000));
+          const next = await load(); next.ledger.coolingUntil = Math.max(next.ledger.coolingUntil, now() + afterSeconds * 1000);
+          if (await persist(next.raw, next.ledger) !== "saved") closeAccount();
+          return { kind: "retryable", reason: "cooling", afterSeconds };
+        }
+        if (response.status >= 400 && response.status < 500) return deny(response.status === 409 ? "identity_conflict" : "provider_refusal");
+        return { kind: "unknown", reason: "acceptance_ambiguous" };
+      } catch { return { kind: "unknown", reason: "acceptance_ambiguous" }; }
+      finally { clearTimeout(timer); if (abortListener) context?.signal?.removeEventListener("abort", abortListener); }
+    } catch { closeAccount(); return { kind: "unknown", reason: "record_failed" }; }
+    finally {
+      // Event uncertainty stays in its separate duty, never consent entries/outcome
+      // quarantine. A genuine shared slot/storage failure still closes admission.
+      if (slotHeld) await releaseSlot();
+      availability.busy = false;
+    }
+  }
   const scope = copy(input.legacy?.scope ?? { bindingId: binding.namespace, accountReference: binding.account, audienceReference: audience.kind === "audience" ? audience.reference : "account-wide" });
   function legacyRequest(claim: MarketingAutomationClaim): Request | undefined {
     const saved = input.legacy?.claims.get(claim.effectId);
@@ -621,7 +738,7 @@ export function createKlaviyoMarketingAdapter(input: Configuration): MarketingSy
     return { ...base, status: "ambiguous", retryAfterMs: 1000 };
   };
   return {
-    capabilities, profiles: { sync: r => run(r, "profile.sync") as Promise<SyncResult<"profile.sync">> },
+    capabilities, events: { capabilities: eventCapabilities, exportEvent }, profiles: { sync: r => run(r, "profile.sync") as Promise<SyncResult<"profile.sync">> },
     consent: { read: r => run(r, "consent.read") as Promise<SyncResult<"consent.read">> },
     erasure: { request: r => run(r, "erasure.request") as Promise<SyncResult<"erasure.request">>, read: r => run(r, "erasure.read") as Promise<SyncResult<"erasure.read">> },
     consentPush: { capabilities, push: r => run(r, "consent.push") as Promise<ConsentPushResult> },

@@ -485,6 +485,22 @@ the adopter store terms in Markdown as categories `store-0` and `store-1`. Separ
 `npm run oss:published-tree -- --policy` refuses a home-directory path
 (`/Users/…`, `/home/…`, `C:\Users\…`) in any tracked Markdown.
 
+The [tutorial](../../packages/core/docs/guide/start/tutorial.md) marks runnable
+steps with `sh tutorial` fences and ordered stdout expectations with
+`text tutorial-expect` fences.
+[`guide-tutorial.ts`](../../scripts/packages/guide-tutorial.ts) executes those
+commands in one Bash session: `--packages` substitutes the candidate version
+and packed install artifacts, while `--registry` runs the page verbatim against
+the public registry.
+The `install-packages` job runs it after the package proofs and before PostgreSQL
+cleanup with `--advisory`: a failed tutorial becomes a warning annotation and a
+FAIL line in the step summary, and the step still succeeds. The workflow admits no
+`continue-on-error`, so this flag is how the step stays non-blocking; after two
+green merge-group runs on main the flag is removed and the step blocks.
+Push-to-main runs reuse merge-group evidence and skip the tutorial step when
+reuse succeeds.
+A step the product cannot pass is stated as a current limit, not worked around.
+
 ## Impact
 
 Documentation updates and their review follow

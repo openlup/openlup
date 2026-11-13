@@ -250,7 +250,7 @@ const order = [
   "subscription_reminder_ledger", "transactional_delivery_receipts",
   "subscription_notice_refusals",
   "payment_simulator_attempts", "payment_simulator_observations",
-  "payment_truth_events", "payment_truth_reconciliation_evidence", "subscription_renewal_outcomes", "outbox_events", "communication_native_sync_state", "outbox_dormant_event_types",
+  "payment_truth_events", "payment_truth_reconciliation_evidence", "subscription_renewal_outcomes", "outbox_events", "communication_event_bindings", "communication_event_receipts", "communication_event_erasures", "communication_native_sync_state", "outbox_dormant_event_types",
   "communication_recipient_consents", "communication_native_sends", "communication_native_observations",
   "customer_account_consent_events", "customer_account_consent_sync_targets",
   "fulfillment_ports", "fulfillment_shipments", "shipment_external_refs", "fulfillment_shipment_operations", "fulfillment_provider_attempts",
@@ -549,7 +549,11 @@ async function assertOutsideEmpty(client: PoolClient, relations: readonly { sche
 }
 async function insert(client: PoolClient, table: Rows, row: string): Promise<void> {
   const name = `public.${quoted(table.table)}`, columns = table.columns.map(column => quoted(column.name)).join(",");
+  const capturedSubject=table.table==='subscription_events'||table.table==='commerce_order_operations';
+  const prior=capturedSubject?(await client.query("SELECT current_setting('app.communication_retained_copy',true) AS value")).rows[0]?.value:undefined;
+  if(capturedSubject) await client.query("SELECT set_config('app.communication_retained_copy','on',true)");
   await client.query(`INSERT INTO ${name} (${columns}) SELECT ${columns} FROM pg_catalog.jsonb_populate_record(NULL::${name},$1::jsonb) ON CONFLICT DO NOTHING`, [row]);
+  if(capturedSubject) await client.query("SELECT set_config('app.communication_retained_copy',$1,true)",[prior??'']);
   if ((await client.query(`SELECT 1 FROM ${name} t WHERE pg_catalog.to_jsonb(t)=$1::jsonb`, [row])).rows.length !== 1) fail("target_conflict", table.table);
 }
 async function restoreSettings(client: PoolClient, baseline: Rows, source: Rows): Promise<void> {
@@ -601,11 +605,12 @@ async function assertInsertTriggers(client: PoolClient): Promise<void> {
     commerce_orders: ["trg_commerce_orders_line_sum"], commerce_order_items: ["trg_commerce_order_items_line_sum"],
     commerce_order_holds: ["trg_fulfillment_emit_shipment_exception", "trg_subscription_delivery_alignment_exception_case"],
     fulfillment_shipments: ["trg_subscription_delivery_alignment_on_delivery"],
-    outbox_events: ["channel_purchase_outbox_guard"],
+    outbox_events: ["channel_purchase_outbox_guard", "communication_event_source_guard"],
     // The guard admits only classic inserts. The binder acts only on opt-in
     // events, whose subscriptions are sized.v1 and refused before any writes.
     subscriptions: ["subscriptions_configured_offer_guard"],
-    subscription_events: ["subscription_events_bind_sized_opt_in"],
+    subscription_events: ["subscription_events_bind_sized_opt_in", "communication_subscription_subject"],
+    commerce_order_operations: ["communication_refund_subject"],
   };
   const actual = (await client.query<{ table: string; name: string }>(`SELECT c.relname AS table,t.tgname AS name FROM pg_catalog.pg_trigger t
     JOIN pg_catalog.pg_class c ON c.oid=t.tgrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace

@@ -33,6 +33,7 @@ contracts as the template for your implementation:
 | Marketing | Implement neutral profile, consent-readback and erasure ports from the [communications contracts report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/communications-contracts.api.md). Keep consent push separate. | Communications conformance covers marketing sync; consent push needs separate checks. |
 | Payments | Implement the payment contract and declare capabilities from the [payments contracts report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/payments-contracts.api.md). | Use the conformance runner and fixtures in the [payments API report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/payments.api.md). |
 | Fulfillment | Implement the operations you declare in the [fulfillment contracts report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/fulfillment-contracts.api.md). | Use the conformance runner with adapter-owned fixtures from the [fulfillment API report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/fulfillment.api.md). |
+| Ecommerce events | Implement `EcommerceEventsPort` from the [communications contracts report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/communications-contracts.api.md), independently of profile and consent support. Declare the selected scope and qualification, keep the source, profile and mapping identity on retry, and recheck local authority before each effect. | Communications conformance covers email and marketing sync only; prove event acceptance, refusal without effects, replay and uncertain acceptance with your own offline sink. A passing offline check does not qualify a live account. |
 
 Opt-in templates cover email, marketing, payments and fulfillment. Default
 wiring selects none of them. Find their protocol-specific entries in the
@@ -68,6 +69,19 @@ parsing and exclude explicitly foreign environments before lookup or writes. Use
 `runDeliveryReconciliation` to read existing message IDs and apply observations;
 reconciliation must not send replacement messages. Your host supplies routing,
 scheduling, storage and credential resolution.
+
+Start host composition with `createInMemoryEmailTransport` and inspect its
+captured envelopes before selecting a network transport. Supply the message
+content, egress policy, credential selection, abort deadline and observation
+store explicitly, bind the webhook to the untouched request bytes and the
+selected environment, and schedule reconciliation only for existing message
+identifiers. Your host owns retry policy: the template forwards an optional
+`AbortSignal`, returns the HTTP status and bounded provider errors, never
+retries a send and exposes no separate retry-after delay. A response without a
+message ID is acceptance, not delivery; do not send a replacement automatically.
+Provider idempotency keys expire after a provider-defined window, so keep your
+local effect ledger independent of it and check the provider's idempotency
+contract before choosing a retry horizon.
 
 For this protocol template, signatures accept bare or `v1,` members and literal
 keys or canonical base64 keys prefixed with `whsec_`. Supply a UTC-seconds

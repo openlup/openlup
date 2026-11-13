@@ -733,18 +733,21 @@ version equal to or newer than its candidate: use the previously released
 version and its tarball bytes as the baseline; a note in a released section
 cannot excuse that mismatch.
 
-In every S1 set-preparation PR, manually refresh each `pack.baseline` from the
-**previously released** artifact, retaining that baseline through the candidate's
-publication. For the next set after `0.16.0`, these initial records already name
-that previous release. At the following S1, replace them with the intervening
-released version and bytes. Use the retained release tarball's byte count (for
-example `wc -c < package.tgz`) or an offline build and
-`npm pack --dry-run --json --ignore-scripts --workspaces=false` of that exact
-released source. Record the artifact/source identity in the preparation evidence.
-Never baseline the unreleased candidate itself: that would erase the comparison.
-`release:bump` changes only versions, internal pins and changelog sections,
-and removes consumed fragments, staging exactly those deletions; it does not
-infer publication or fetch registry measurements.
+Each `pack.baseline` names the **previously released** artifact and is retained
+through the candidate's publication. `release:bump` sets it in every S1
+set-preparation PR, so the baseline is no longer edited by hand: for each bumped
+publishable package it reads the version being replaced from the npm registry
+(`npm view <name>@<version> dist.integrity`, then
+`npm pack <name>@<version> --dry-run --json --ignore-scripts`), requires the
+tarball's integrity to equal the registry's, and records that version and the
+tarball's byte count. Release preparation therefore needs registry access; any
+other registry failure refuses the bump before it writes. When the registry
+answers E404 because that version was never published (an abandoned prepared set
+or a newly publishable package), the existing baseline stays and the command
+says so. Never baseline the unreleased candidate itself: that would erase the
+comparison. Otherwise `release:bump` changes only versions, internal pins and
+changelog sections, and removes consumed fragments, staging exactly those
+deletions.
 
 **Packed content allowlist.** Legitimate current artifacts include root Markdown,
 `LICENSE`, `package.json`, `release-gates.json`, Markdown under `docs/` and `api/`,

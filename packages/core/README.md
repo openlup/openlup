@@ -487,6 +487,12 @@ a handler is retained without acknowledgement or delivery; no dormant seed is
 required. Readiness evaluation separately requires an explicit owned
 `ignored` or `dormant` exemption when that selected type has no handler.
 
+The platform communications owner also declares
+`commerce.checkout.recovery_qualified.v1` and `communication.ecommerce.export.v1`.
+The former is a recorded token-free source fact; the latter is an independently
+claimed export duty. Their vocabulary entries install no worker. Hosts select
+export and commerce handlers in separate invocations with disjoint allowlists.
+
 ## Platform runtime contracts
 
 The `./platform-runtime` export describes shared host capabilities and runtime
