@@ -28,57 +28,17 @@ See [Keep the packages together](https://github.com/openlup/openlup/blob/openlup
 
 ## Apply SQL through your migration chain
 
-Read the shipped [platform manifest](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/sql/manifest.json)
-and [outbox manifest](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/outbox/sql/manifest.json)
-for the SQL paths and hashes. Apply the complete catalogue selected for your
-existing installation through your application's migration chain; a sparse
-module projection is not a standalone installation chain.
-
-Keep applied SQL unchanged and add forward migrations in order. Use additive
-expansion, compatible application changes and resumable backfill before any
-later contraction. Code rollback must remain compatible with the expanded
-schema; destructive down migrations are not a rollback plan.
-
-Do not apply the outbox fresh-install baseline over an existing managed schema.
-Importing a package does not apply SQL. Follow the
-[data and migration contract](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
-and the [outbox installation boundary](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/outbox/README.md#postgresql-installation-and-transactions)
-for your selected history.
+Apply the database changes your selected packages require through your
+application's migration chain, as described in
+[Upgrade the database](database-migrations.md). Importing a package does not
+apply SQL.
 
 ## Reconcile application files
 
-The installed platform package supplies `openlup upgrade plan` and
-`openlup upgrade apply`. They read explicit predecessor and target JSON
-snapshots plus the application files named in those snapshots. Each snapshot
-has a nonblank `version`, a `schema` range with inclusive `min` and `max`, and
-`files`, a record mapping relative paths to exact UTF-8 file contents.
-
-Set `APP_ROOT` to your existing application directory, `FROM_SNAPSHOT` and
-`TO_SNAPSHOT` to those JSON files, and `SCHEMA_VERSION` to your observed
-nonnegative schema ordinal. Both snapshots must admit that ordinal; these
-commands do not observe the database.
-
-```sh
-./node_modules/.bin/openlup upgrade plan --root "$APP_ROOT" --from "$FROM_SNAPSHOT" --to "$TO_SNAPSHOT" --schema-version "$SCHEMA_VERSION" --json
-```
-
-Planning reads without writing. Review its file actions and conflicts.
-Unlisted paths remain application-owned; files unchanged between snapshots
-preserve local edits. Changed files must match predecessor or target bytes.
-Schema-range mismatches, symlinks and invalid managed file structures also
-produce conflicts. Conflicts return exit code `1`; apply refuses before writing.
-Reconcile affected paths and rerun with the same snapshots.
-
-Hold exclusive access to the application tree before applying:
-
-```sh
-./node_modules/.bin/openlup upgrade apply --root "$APP_ROOT" --from "$FROM_SNAPSHOT" --to "$TO_SNAPSHOT" --schema-version "$SCHEMA_VERSION" --json
-```
-
-Apply creates, replaces or removes snapshot-managed files. It runs no SQL,
-package installation, deployment, version-marker update or hooks. The complete
-operation is not atomic: after an I/O failure, rerun identical snapshots under
-exclusive access to recognize files already applied.
+Plan, reconcile and apply snapshot-managed application files with
+`openlup upgrade plan` and `openlup upgrade apply`, as described in
+[Upgrade application files](application-files.md). These commands run no SQL
+and do not observe the database.
 
 ## Check readiness
 
