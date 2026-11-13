@@ -8,4 +8,5 @@ Find package exports, configuration, SQL, commands and refusal codes, or read th
 - [SQL](sql.md) — the SQL files each package ships.
 - [Command line](cli.md) — command syntax and help.
 - [Refusal codes](refusal-codes.md) — closed code lists and types without a closed list.
-- [Versioning](versioning.md) — release policy.
+- [Versioning and stability](stability.md) — the versioning policy and each package's release policy.
+- [Limits](limits.md) — the starter's portable limits and their refusals.
