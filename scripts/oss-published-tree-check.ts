@@ -14,7 +14,7 @@ import { assertDocumentationNavigation, readDocumentationState } from "./documen
 import { documentationGit, resolveDocumentationBase } from "./documentation-git.ts";
 import { evaluatePlatformMigrationManifest, evaluatePlatformMigrationManifestHistory, isQualifiedPlatformMigrationPath, type PlatformMigrationManifest } from "./platform-migration-manifest.ts";
 import { assertAdmittedPlatformForward, deriveSourceReleaseContract } from "./oss-source-release-contract.ts";
-import { AGENT_GUIDE_PATH, AGENT_GUIDE_SOURCE_PATH, renderAgentGuide, renderDocumentationSourceMap, SOURCE_MAP_PATH } from "./documentation-navigation.ts";
+import { AGENT_GUIDE_PATH, renderAgentGuide, renderDocumentationSourceMap, SOURCE_MAP_PATH } from "./documentation-navigation.ts";
 import { createDocumentationBundle } from "./documentation-bundle.ts";
 import { validateDocumentationBundle, writeDocumentationBundle } from "./documentation-bundle-io.ts";
 import { assertMaterializedOutputInventory } from "./oss-published-tree-output.ts";
@@ -381,7 +381,7 @@ export function documentationPolicyCommand(root: string, argv: string[], log: (l
   }
   if (options.has("--docs-source") || options.has("--docs-digest")) throw new Error("consumer pins require --docs-check-bundle");
   let state = readDocumentationState(root);
-  const agentGuide = renderAgentGuide(readFileSync(join(root, AGENT_GUIDE_SOURCE_PATH), "utf8"));
+  const agentGuide = renderAgentGuide();
   if (options.has("--docs-update")) {
     writeFileSync(join(root, AGENT_GUIDE_PATH), agentGuide);
     writeFileSync(join(root, SOURCE_MAP_PATH), renderDocumentationSourceMap(state));
@@ -389,7 +389,7 @@ export function documentationPolicyCommand(root: string, argv: string[], log: (l
   }
   if (!existsSync(join(root, SOURCE_MAP_PATH)) || readFileSync(join(root, SOURCE_MAP_PATH), "utf8") !== renderDocumentationSourceMap(state)) throw new Error("documentation source map is stale; run --policy --docs-update");
   if (!existsSync(join(root, AGENT_GUIDE_PATH)) || readFileSync(join(root, AGENT_GUIDE_PATH), "utf8") !== agentGuide)
-    throw new Error(`${AGENT_GUIDE_PATH} differs from its generated form; edit ${AGENT_GUIDE_SOURCE_PATH}, then run --policy --docs-update`);
+    throw new Error(`${AGENT_GUIDE_PATH} differs from its generated form; run --policy --docs-update to restore the pointer page`);
   assertDocumentationNavigation(state);
   policyVerdict(root, log);
   const base = resolveDocumentationBase(root, { base: options.get("--docs-base") });

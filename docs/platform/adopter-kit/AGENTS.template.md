@@ -7,6 +7,7 @@ This application installs OpenLup packages (`@openlup/*`) from npm. If
 `packages/core/` is a workspace of this repository, you are in the OpenLup
 monorepo instead, and this file does not apply there.
 
+- **Read the installed guide first.** Read `node_modules/@openlup/core/docs/guide/README.md` before relying on memory: it ships with the installed version and lists the pages for that version.
 - **Read version-matched package guidance first.** Read
   `node_modules/@openlup/<package>/AGENTS.md` when that package ships one; otherwise read its
   installed `README.md`. Read the shipped `src/` and `.d.ts` files before guessing at a contract.

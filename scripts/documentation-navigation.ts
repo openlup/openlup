@@ -1,53 +1,26 @@
 import { isChangelogFragment } from "./packages/changelog-fragments.ts";
 import { readFileSync } from "node:fs";
 import { join, posix } from "node:path";
-import { maskMarkdownCode, resolveDocumentationOwner, type DocumentationState } from "./documentation-routing.ts";
+import { resolveDocumentationOwner, type DocumentationState } from "./documentation-routing.ts";
 import { documentationDigest } from "./documentation-git.ts";
 export { documentationDigest } from "./documentation-git.ts";
 
 export const SOURCE_MAP_PATH = "docs/platform/SOURCE_MAP.md";
-export const AGENT_GUIDE_SOURCE_PATH = "AGENTS.md";
 export const AGENT_GUIDE_PATH = "docs/platform/AGENT_GUIDE.md";
-/** The one source paragraph the generator swaps; every other byte is copied, with relative links relocated. */
-export const AGENT_GUIDE_SOURCE_STATUS = [
-  "Status: development-preview guidance.",
-  "This root file is the single source of the public agent guide; edit it here.",
-  "`npm run oss:published-tree -- --policy --docs-update` generates",
-  "`docs/platform/AGENT_GUIDE.md` from it with location-adjusted links.",
-].join("\n");
-const AGENT_GUIDE_STATUS = [
-  "Status: development-preview guidance.",
-  "This page is generated from the root [AGENTS.md](../../AGENTS.md) with links",
-  "adjusted for this location. Edit that file, then run",
-  "`npm run oss:published-tree -- --policy --docs-update`.",
-].join("\n");
 
-function relocatedAgentGuideLink(raw: string): string {
-  if (raw.startsWith("<")) throw new Error(`${AGENT_GUIDE_SOURCE_PATH}: angle-bracket link destinations are not relocated: ${raw}`);
-  if (/^(?:[#?]|[a-z][a-z0-9+.-]*:|\/)/iu.test(raw)) return raw;
-  const cut = raw.search(/[?#]/u);
-  const path = cut < 0 ? raw : raw.slice(0, cut);
-  const target = posix.normalize(path);
-  if (target === ".." || target.startsWith("../")) throw new Error(`${AGENT_GUIDE_SOURCE_PATH}: link escapes the repository: ${raw}`);
-  const relocated = posix.relative(posix.dirname(AGENT_GUIDE_PATH), target) || ".";
-  return `${relocated}${path.endsWith("/") && !relocated.endsWith("/") ? "/" : ""}${cut < 0 ? "" : raw.slice(cut)}`;
-}
-
-/** Derives the public agent guide from root AGENTS.md: relocated relative links plus the status swap. */
-export function renderAgentGuide(source: string): string {
-  if (source.split(AGENT_GUIDE_SOURCE_STATUS).length !== 2)
-    throw new Error(`${AGENT_GUIDE_SOURCE_PATH}: expected its single-source status paragraph exactly once; keep it or update the guide generator`);
-  // Inline destinations and reference definitions, outside code; the mask keeps source offsets.
-  const masked = maskMarkdownCode(source);
-  let guide = "";
-  let cursor = 0;
-  for (const match of masked.matchAll(/\]\(\s*([^\s)]+)|^ {0,3}\[(?!\^)[^\]\n]+\]:[ \t]*(\S+)/gmu)) {
-    const raw = match[1] ?? match[2]!;
-    const start = match.index! + match[0].length - raw.length;
-    guide += source.slice(cursor, start) + relocatedAgentGuideLink(raw);
-    cursor = start + raw.length;
-  }
-  return `${guide}${source.slice(cursor)}`.replace(AGENT_GUIDE_SOURCE_STATUS, () => AGENT_GUIDE_STATUS);
+/** Keeps the public URL as a fixed pointer to repository rules and installed reader documentation. */
+export function renderAgentGuide(): string {
+  return [
+    "# OpenLup Public Agent Guide",
+    "",
+    "Status: development-preview guidance.",
+    "",
+    '<a id="architecture-rules"></a>',
+    "The agent guide for this repository is the root [AGENTS.md](../../AGENTS.md).",
+    "An application that installs `@openlup/*` from npm reads the guide shipped in",
+    "[`node_modules/@openlup/core/docs/guide/README.md`](../../packages/core/docs/guide/README.md).",
+    "",
+  ].join("\n");
 }
 
 export type DocumentationSource = {

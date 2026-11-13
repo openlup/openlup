@@ -1,7 +1,7 @@
 # Data And Migrations
 
-Status: development-preview contract. It specifies a compatibility discipline;
-it does not certify a migration path or an upgrade service.
+Status: maintainer page: how to change OpenLup. Reader guidance lives in the [OpenLup guide](../../packages/core/docs/guide/README.md); sections marked "Evidence" are frozen historical records.
+
 
 ## Data ownership
 
@@ -245,22 +245,16 @@ this adapter does not authorize applying public migrations to that database.
 
 ## Connection roles
 
-Use the [runtime connection recipe](RUNTIME_AND_SELF_HOSTING.md#postgresql-connection-recipe)
-to separate restricted pooled request work, direct migration/admin work and
-session-affine scheduler locks. Migration and privileged administration connect
-directly to PostgreSQL, bypassing external transaction and session poolers. The
-existing migration runner takes `{ connectionString: directConnectionString }`;
-its internal `pg.Pool` leases one connection for the whole operation and its
-session advisory lock. That local client pool is distinct from a proxy that
-reassigns PostgreSQL backends between statements. Do not feed a pooled runtime
-URL through `resolvePostgresMigrationRunnerEnv` into a migration runner: that
-helper continues to read `DATABASE_URL`, with no implicit direct-endpoint lookup.
-Supply the migration port explicitly through the composition root's `migrations`
-binder, including when the Node host migrates before listening.
+Moved to [Connect to PostgreSQL](../../packages/core/docs/guide/how-to/operate/connect-postgresql.md#assign-connections-by-work).
 
-Connection separation preserves the selected installation's principal/grant
-contract; it grants no runtime DDL or migrator isolation. The current
-qualified-v2 profile still requires its declared privileged migration principal.
+Connection composition must preserve the selected installation's principal/grant
+contract; transport separation grants no runtime DDL or migrator isolation.
+The qualified-v2 profile requires its declared privileged migration principal.
+Qualified-admin provisioning and role-graph admission belong to
+[module catalogues and installed histories](#module-catalogues-and-installed-histories).
+
+Evidence (historical record, 2026-11-13):
+
 The [production composition witness](../../tests/postgres/m14QualifiedComposition.test.ts)
 installs/replays every selected unit through the direct endpoint, then exercises
 the pooled request and dedicated session-lock recipe through the restricted
@@ -495,6 +489,8 @@ The starter binds hold and release with a fresh human-admin and Commerce-operato
 
 ## Additive forward release path
 
+Moved to [Upgrade the database](../../packages/core/docs/guide/upgrade/database-migrations.md#follow-the-additive-forward-path).
+
 A development preview may append expand-only platform forwards to either chain:
 
 - Portable PostgreSQL: `db/platform/migrations/<14-digit-version>_<name>.sql`,
@@ -543,17 +539,12 @@ twin in the other chain is a documented compatibility gap, not implicit parity.
 
 ## Module catalogues and installed histories
 
-The installed platform package exposes the complete existing catalogue through
-`createPlatformPostgresMigrationRunner` in `@openlup/platform/migrations`. Its
-[installed recipe](../../packages/platform/README.md#install-the-portable-postgresql-schema)
-selects qualified-v2 or qualified-admin explicitly with the existing role-mode
-bindings. Legacy remains the default for compatibility. The generated
-`packages/platform/sql/manifest.json` preserves canonical paths, hashes, ordering
-and inventory pins from `config/platform-migration-manifest.json`; the required installed-consumer gate
-refuses projection drift. Packaging issued units adds no migration, changes no
-SQL bytes and leaves the managed rail untouched. Module-relative asset lookup
-needs no checkout. Existing session, ledger-prefix and inventory admission still
-apply, including on status and replay.
+Moved to [Upgrade the database](../../packages/core/docs/guide/upgrade/database-migrations.md#select-the-complete-catalogue).
+
+The generated `packages/platform/sql/manifest.json` projects canonical paths,
+hashes, ordering and inventory pins from `config/platform-migration-manifest.json`.
+The installed-consumer gate refuses projection drift. Keep this a projection of
+the canonical source; packaging issued units changes no SQL or managed rail.
 
 The package runner admits the migration ledger only when its system-catalog
 shape matches the canonical baseline ledger: a permanent heap table with the
@@ -571,26 +562,14 @@ requires its declared migration owner. Each applied unit is recorded after a
 fresh ledger check within that unit's transaction. Individual migration
 transactions and exact-prefix/replay behavior remain.
 
-Risk's Node-only `RISK_MIGRATIONS` descriptor projects the unchanged
-`20260813230000_post_order_control.sql` catalogue unit, including its co-located
-return/control objects. The package asset preserves the canonical SHA-256
-`f24ff3ee3c1022f73162db03b8900c93614d3d6d4c6375cf4aad8a3c0f3360a7`.
-It adds no installation-chain file, managed forward or reviewed-forward class.
-Install the full canonical catalogue and verify its installed prefix and live
-object inventory; this sparse asset is not an install chain. Managed risk keeps
+Managed risk keeps
 its existing frozen baseline functions, grants and RLS. Native risk uses invoker
 functions and host-provisioned permissions, with no production role/grant model
-introduced by this unit. The [risk contract](ARCHITECTURE_AND_EXTENSIONS.md#risk-contracts)
+introduced by the post-order control unit. The [risk contract](ARCHITECTURE_AND_EXTENSIONS.md#risk-contracts)
 records the intentional differences preserved by the contribution.
 
 
-Fulfillment appends native command and alignment units,
-`20261022080000_fulfillment_command_ledger.sql` and
-`20261022090000_fulfillment_delivery_alignment.sql`, after the shipping seed.
-`FULFILLMENT_MIGRATIONS` projects units 5, 27, 51, 73, 74 and 76 with canonical identities and byte-identical package assets. Install the
-complete catalogue, preserve the full installed prefix and verify its live
-object inventory; the sparse projections are not an install chain. Existing
-native and managed migration bytes remain unchanged.
+Existing native and managed migration bytes remain unchanged.
 
 For a fresh native install, the invariant "a late delivery extends the next cycle"
 is enforced automatically only when delivery-alignment control mode is
@@ -669,11 +648,7 @@ attestation with no automatic caller or new arrival predicate. The
 [arrival-only discipline](plans/oss-m08-fulfillment-physical-delivery.md#native-admission-and-delivery-alignment)
 remains binding.
 
-Payments publishes `PAYMENT_MIGRATIONS` as byte-identical projections of canonical
-positions 10 (settlement), 35 (truth/reconciliation) and 56 (later-only cycle).
-Each retains its canonical path, SHA-256 and package asset URL. These three assets
-are not an install chain: install the complete catalogue and preserve its exact
-ledger prefix. Those three projections alone add no migration or manifest row. `paymentSchemaDescriptor`
+`paymentSchemaDescriptor`
 declares direct truth, settlement and later-only alignment supported; durable
 prepared attempts, method setup, absence reopen and cumulative refund unsupported.
 Refunds are purely financial and do not cancel subscriptions. The direct truth
@@ -779,10 +754,7 @@ The opt-in real-issuer runner installs the full catalogue, checks exact ledger
 rows and proves replay and preservation of existing application state. Its
 [identity recipe](IDENTITY.md#real-issuer-oidc-recipe) requires real local services.
 
-The direct human-login forward `20261018180000_identity_operator_challenges`
-appends position 68 after invitations. Preserve every preceding file, digest and
-position. The identity projection carries the same bytes and canonical position;
-never install the sparse projection as a complete catalogue. Its normalized-email
+The direct human-login forward's normalized-email
 unique index refuses duplicates instead of merging principals. Recompute the live
 selected-catalog object inventory after applying the full chain. Fresh install,
 exact-prefix upgrade, replay and retention of customer, subscription and machine
@@ -893,15 +865,6 @@ does not sandbox PostgreSQL's own deparser or native type-output routines.
 The shared projector retains its legacy payload format and query identities;
 canonical legacy bytes and existing E-only pins still require execution proof.
 
-At the 27 October E2 89-unit proof-source checkpoint, the eight-case witness
-specified four fixed-pin references and four fresh targets through the real
-binding and built package executor. One healthy target supplied the inventory,
-unsafe-session and shadow-symbol discriminators before recovering to the same
-ledger; that source was still awaiting the receiving-machine run at this
-checkpoint. The linked test later evolved to the four-profile 91-unit
-runtime-completion witness; its dated result appears in the
-[M14 runtime-completion record](https://github.com/openlup/openlup/blob/535349050419abe5122bd74fa6766c58947be3dd/docs/platform/plans/oss-m14-operations-portability.md#runtime-completion-28-october-2026).
-
 The experimental trusted-source `PlatformMigrationSource.assertSession` callback
 runs once under the existing session advisory lock after exact-prefix validation
 and before status, dry-run or pending SQL. It can refuse changed host/login facts;
@@ -931,22 +894,36 @@ and their digests, not a second authoring source. Copying existing SQL into a
 tarball does not make it a new migration to replay. Never split, rename or edit
 an issued or applied SQL unit, including one that spans several modules.
 
-The planned foundation/identity path must prove both a fresh installation of
-the complete selected catalogue and an upgrade from the exact foundation chain
-to identity. The runner must match the applied ledger to the exact selected
-prefix by path, hash and position before appending; missing, reordered,
-duplicated or changed applied identities refuse. Preserve durable state and
-prove replay and refusal through the existing package-owned required proof.
-This is a future package-runner acceptance requirement, not evidence that a
-multi-module runner or catalogue already exists on this branch.
+Evidence (historical record, 2026-11-13):
 
-An adopter with an existing store retains its own reviewed migration chain and
-applied ledger. It compares required schema and migration identities with that
-store and applies only compatible reviewed forwards. It does not apply a fresh
-package baseline over an existing database, relabel old SQL as new, rewrite an
-applied prefix or discard pending work. Fresh-install proof does not establish
-that upgrade path. See [package architecture](ARCHITECTURE_AND_EXTENSIONS.md#versions-and-schema)
-for the shared set and shipment boundary.
+Risk's Node-only `RISK_MIGRATIONS` descriptor projects the unchanged
+`20260813230000_post_order_control.sql` catalogue unit, including its co-located
+return/control objects. The package asset preserves the canonical SHA-256
+`f24ff3ee3c1022f73162db03b8900c93614d3d6d4c6375cf4aad8a3c0f3360a7`.
+It adds no installation-chain file, managed forward or reviewed-forward class.
+
+Fulfillment appends native command and alignment units,
+`20261022080000_fulfillment_command_ledger.sql` and
+`20261022090000_fulfillment_delivery_alignment.sql`, after the shipping seed.
+`FULFILLMENT_MIGRATIONS` projects units 5, 27, 51, 73, 74 and 76 with canonical identities and byte-identical package assets.
+
+Payments publishes `PAYMENT_MIGRATIONS` as byte-identical projections of canonical
+positions 10 (settlement), 35 (truth/reconciliation) and 56 (later-only cycle).
+Each retains its canonical path, SHA-256 and package asset URL.
+
+The direct human-login forward `20261018180000_identity_operator_challenges`
+appends position 68 after invitations. Preserve every preceding file, digest and
+position. The identity projection carries the same bytes and canonical position;
+never install the sparse projection as a complete catalogue.
+
+At the 27 October E2 89-unit proof-source checkpoint, the eight-case witness
+specified four fixed-pin references and four fresh targets through the real
+binding and built package executor. One healthy target supplied the inventory,
+unsafe-session and shadow-symbol discriminators before recovering to the same
+ledger; that source was still awaiting the receiving-machine run at this
+checkpoint. The linked test later evolved to the four-profile 91-unit
+runtime-completion witness; its dated result appears in the
+[M14 runtime-completion record](https://github.com/openlup/openlup/blob/535349050419abe5122bd74fa6766c58947be3dd/docs/platform/plans/oss-m14-operations-portability.md#runtime-completion-28-october-2026).
 
 ## Database test fixtures and witnesses
 
@@ -1198,6 +1175,8 @@ These batch rules do not broaden the earlier #267, #295 or #300 classes.
 Review follows the [native review procedure](../../CONTRIBUTING.md#native-review-and-accountability).
 
 ### M10-9 attempt replay control fixtures
+
+Evidence: historical record, 2026-11-13. Not reader guidance.
 
 The inert managed fixtures
 [attempt replay](../../scripts/fixtures/reviewed-m10/supabase/migrations/20261025090000_subscription_dunning_attempt_replay.sql)
@@ -2034,6 +2013,8 @@ Git-history success and refusal boundaries.
 
 ## Disposable managed reference baseline
 
+Evidence: historical record, 2026-11-13. Not reader guidance.
+
 The opt-in [subscription reference](SUBSCRIPTION_REFERENCE.md) selects the
 managed Supabase baseline at
 `supabase/migrations/00000000000000_platform_schema_baseline.sql`. It does not
@@ -2118,6 +2099,10 @@ qualified installer or portable installation claim; those decisions remain
 separate from both this probe and application-file upgrades.
 
 ## Compatibility lifecycle
+
+Moved to [Upgrade the database](../../packages/core/docs/guide/upgrade/database-migrations.md#check-application-compatibility).
+
+Evidence (historical record, 2026-11-13):
 
 The lifecycle-closure forward is a closed-class function update: three existing
 function definitions retain their attributes and ACLs, four new invoker functions
@@ -2215,6 +2200,8 @@ does not qualify customer-data erasure; a host must account for this limit befor
 using the native notice path with customer data.
 
 ### Paid-mail capture repair
+
+Evidence: historical record, 2026-11-13. Not reader guidance.
 
 Run this read query through the trusted runtime or operator connection to find
 paid orders with a retained paid event and no mail event:
@@ -2648,6 +2635,8 @@ See the [M09 forward owner](#m09-invoicing-forward-design-and-control-approval) 
 
 ### Managed stock wait, ATP and refund parity
 
+Evidence: historical record, 2026-11-13. Not reader guidance.
+
 Migration: the managed prefix appends `20261024175000` (ATP seam), `180000`
 (M3 stock wait), `181000` (M4 due reader), `182000` (M5 message scan), `184000`
 (M6 allocator), `185000` (F17 evidence helper) and `185100` (F17 applicator/outbox).
@@ -2697,6 +2686,8 @@ or stable upgrade claim follows from these source/probe paths.
 
 ### Native stock wait and ATP (N3)
 
+Evidence: historical record, 2026-11-13. Not reader guidance.
+
 The native installation prefix now includes the five approved N3/seam/allocator/
 X/Y pins at `20261024180000`, `183000`, `184000`, `184500` and `184600`, each with
 its byte-identical package SQL twin. N3 adds frozen waiting cases and stock-only
@@ -2736,6 +2727,8 @@ its stock and accounting tables test behavior separately from SQL classification
 Stock recovery remains unselected until that real-PG proof is available.
 
 ### Native subscription commands (N2)
+
+Evidence: historical record, 2026-11-13. Not reader guidance.
 
 The later `20261106050000_customer_command_key_isolation.sql` forward isolates
 actor pause and bundle preview/apply keys as `command:` plus the SHA-256 of the
@@ -3103,6 +3096,8 @@ made.
 
 ## Identity reference grants
 
+Evidence: historical record, 2026-11-13. Not reader guidance.
+
 The disposable identity reference adds no migration. Its managed installed
 acceptance requires the separately reviewed forward
 supabase/migrations/20261018160000_identity_service_role_capabilities.sql.
@@ -3116,6 +3111,8 @@ that the shipped chain supplies these permissions. The acceptance runner adds
 no compensating grants and never writes a fabricated native migration ledger.
 
 ## Communications projections
+
+Evidence: historical record, 2026-11-13. Not reader guidance.
 
 `COMMUNICATIONS_MIGRATIONS` carries byte-identical projections of the existing
 canonical comms outbox, transactional receipt, communications control-plane,
@@ -3133,6 +3130,8 @@ mail-provider timeline/send-ledger implementations remain at their existing
 owners; no provider mapping or new schema enters the package.
 
 ### Complete account consent choices
+
+Evidence: historical record, 2026-11-13. Not reader guidance.
 
 The opt-in native forward `20261101232000_customer_account_consents.sql` adds
 `customer_account_communication_choices_as_actor(uuid)` and
@@ -3251,6 +3250,8 @@ hold through the restricted runtime adapter and verifies suppressed evaluator
 state, callback replay and suppression retention after subsequent account grants.
 
 ### Account newsletter withdrawal upgrade
+
+Evidence: historical record, 2026-11-13. Not reader guidance.
 
 After installing the complete portable chain containing
 `20261030110000_customer_newsletter_withdrawal.sql`, every account newsletter
@@ -3478,6 +3479,8 @@ adds committed-ACK loss and unchanged delivery/audit witnesses.
 
 ### M09 incumbent queue fence
 
+Evidence: historical record, 2026-11-13. Not reader guidance.
+
 M09 request rows use `available_at='infinity'` at prepare, claim and fail,
 including corrections, so the incumbent queue cannot lease them. M09 also checks
 request attempts/token against duty generation/token and marks drift unsupported.
@@ -3579,6 +3582,8 @@ provider, deployment or fiscal-readiness evidence.
 
 ### P4a native store projections
 
+Evidence: historical record, 2026-11-13. Not reader guidance.
+
 `INVOICING_MIGRATIONS.native.units` projects unchanged accounting rails at
 positions 7, 13 and 15 and the three pinned M09 forwards at 77, 78 and 79.
 Every packaged asset is byte-identical to its canonical file. The
@@ -3611,6 +3616,8 @@ key. This preserves canonical bytes without admitting other package SQL,
 changing scanner patterns or raising any existing count.
 
 ### Native retry timing and timed resume
+
+Evidence: historical record, 2026-11-13. Not reader guidance.
 
 `20261109100000_subscription_retry_resume.sql` replaces
 `subscription_retry_open_case(uuid,text,text)`,
@@ -3668,6 +3675,8 @@ legacy and both qualified runtime generations.
 
 ### Terminal native notice refusals
 
+Evidence: historical record, 2026-11-13. Not reader guidance.
+
 The native lifecycle binding retains `subscription_notice_refusals` by the
 original `(source, source_id)`, for event and reminder sources only. Its reason
 is the existing `notice_policy_refused` code and its time is database-recorded.
@@ -3694,6 +3703,8 @@ for the host authority boundary and configured deadlines.
 
 ### Checkout recovery lineage
 
+Evidence: historical record, 2026-11-13. Not reader guidance.
+
 `20261110170000_checkout_recovery_inspection.sql` adds nullable
 `commerce_orders.recovery_root_order_id` and `recreated_from_order_id`, each with
 an `ON DELETE RESTRICT NOT VALID` self-FK. Existing rows remain null; new writes
@@ -3705,6 +3716,8 @@ binds client ownership and separates expired inspection from payment authority.
 This forward contains no recreation writer or historical backfill.
 
 ### Expired checkout preparation
+
+Evidence: historical record, 2026-11-13. Not reader guidance.
 
 `20261110180000_checkout_recovery_recreation.sql` adds the service-only definer
 `commerce_prepare_expired_checkout_recovery(text,uuid,uuid,bigint,timestamptz)`.
@@ -3721,6 +3734,8 @@ for commercial validation, transaction binding, compensation and profile limits.
 
 ### Atomic checkout guidance read
 
+Evidence: historical record, 2026-11-13. Not reader guidance.
+
 `20261110220000_checkout_payment_guidance.sql` creates only
 `commerce_checkout_payment_guidance_snapshot(uuid,uuid,uuid DEFAULT NULL)`.
 The SQL/STABLE definer fixes `search_path = pg_catalog, pg_temp` and exposes only
@@ -3733,6 +3748,8 @@ prefixes are unchanged. The [composition recipe](PLATFORM_PACKAGE_REFERENCE.md#a
 owns capability opt-in, neutral normalization and the sandbox profile limits.
 
 ### Operator shipment evidence
+
+Evidence: historical record, 2026-11-13. Not reader guidance.
 
 The native `20261110230000_operator_shipment_commands.sql` forward adds three
 bounded owned shipment commands and reuses the private operator receipt table.
@@ -3751,6 +3768,8 @@ No decision or status evidence alone calls replacement confirmation. See the
 [shipment composition and limits](PLATFORM_PACKAGE_REFERENCE.md#native-operator-shipment-commands).
 
 ### Saved subscription destination selection
+
+Evidence: historical record, 2026-11-13. Not reader guidance.
 
 `20261110240000_subscription_saved_address_selection.sql` creates the owned
 `subscription_select_saved_shipping_address` wrapper and replaces the existing
@@ -3778,6 +3797,8 @@ claimed. See [the package composition](../../packages/platform/README.md#saved-s
 
 
 ### Scoped customer preference data
+
+Evidence: historical record, 2026-11-13. Not reader guidance.
 
 The saved-selection forward also creates `customer_payment_preferences` and
 `customer_delivery_preferences`, with client cascade, one row per client/scope,
@@ -3813,6 +3834,8 @@ redacted `applied:false` defaults. No defaults are applied during import.
 
 ### Checkout attempt admission
 
+Evidence: historical record, 2026-11-13. Not reader guidance.
+
 `20261110250000_checkout_recovery_attempt.sql` creates the service-only
 `commerce_checkout_recovery_attempt_begin(text,uuid,uuid,uuid,text,jsonb,timestamptz)`
 and `commerce_checkout_inline_retry_begin(text,uuid,uuid,uuid,uuid,text,jsonb,timestamptz)`
@@ -3831,6 +3854,8 @@ fixed. See [token payment](PLATFORM_PACKAGE_REFERENCE.md#checkout-token-payment)
 and [exact inline retry](PLATFORM_PACKAGE_REFERENCE.md#exact-inline-checkout-retry).
 
 ### Customer billing profile and invoice buyer data
+
+Evidence: historical record, 2026-11-13. Not reader guidance.
 
 `20261110260000_customer_billing_profiles.sql` adds private
 `customer_orderer_profiles`: client cascade, contact/company/tax fields,
@@ -3882,6 +3907,8 @@ for explicit ports, handler binding and the required privacy contributor.
 
 ### First-duty invoice buyer capture
 
+Evidence: historical record, 2026-11-13. Not reader guidance.
+
 `20261110270000_invoicing_duty_buyer_capture.sql` replaces only
 `invoicing_capture_duty(text,text,uuid,uuid,jsonb,timestamptz)`, retaining its
 installed header, owner, search path and ACL. It delegates to the new closed
@@ -3929,6 +3956,8 @@ an invoicing-owned recovery procedure; do not edit or delete ledger rows to rese
 it. Settled money and historical documents remain unchanged.
 
 ### Checkout recreation buyer snapshot repair (slot 28)
+
+Evidence: historical record, 2026-11-13. Not reader guidance.
 
 `20261110280000_checkout_recovery_buyer_snapshot.sql` replaces only
 `commerce_prepare_expired_checkout_recovery(text,uuid,uuid,bigint,timestamptz)`.

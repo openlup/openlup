@@ -7,7 +7,7 @@ Shipped package-local sources are relative to this package. Other sources link t
 Repository paths, imports and relative links inside verbatim excerpts describe that source checkout, not files to find or create in your application.
 Consult installed declarations and README for the installed version.
 
-<!-- openlup-context-inventory [{"id":"delivery-alignment","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Subscription delivery alignment","startLine":548,"endLine":577,"sha256":"db7d8be01a72b2ce76d6b4423c30115ac29cd16ffd48bbaf16fbfdd5540f1c5f"},{"id":"migration-data-ownership","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/DATA_AND_MIGRATIONS.md","heading":"Data ownership","startLine":6,"endLine":52,"sha256":"09f9ca46aa24eae3321a5f386f59d6a7f842d0aee5199e056b1e5688e4b521cb"},{"id":"migration-forward-path","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/DATA_AND_MIGRATIONS.md","heading":"Additive forward release path","startLine":496,"endLine":518,"sha256":"3503b3ac6f6da04912e9ecd9a5161d9641e68a21b82beafc31beb8c9dc026b64"},{"id":"checkout-payment-outbox-idempotency","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Idempotency","startLine":250,"endLine":272,"sha256":"2d719cee94edefe6eccf76aa9c34bbf8a40cdb7e478e313b4a939e769c2e4d71"},{"id":"host-provider-adapter-capability-refusal","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Provider adapters","startLine":307,"endLine":319,"sha256":"5e72a74503e7b2a85706abdf06484ffd03f95130e617995b8f649f6bc36cea23"}] -->
+<!-- openlup-context-inventory [{"id":"delivery-alignment","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Subscription delivery alignment","startLine":548,"endLine":577,"sha256":"db7d8be01a72b2ce76d6b4423c30115ac29cd16ffd48bbaf16fbfdd5540f1c5f"},{"id":"migration-data-ownership","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/DATA_AND_MIGRATIONS.md","heading":"Data ownership","startLine":6,"endLine":52,"sha256":"09f9ca46aa24eae3321a5f386f59d6a7f842d0aee5199e056b1e5688e4b521cb"},{"id":"migration-forward-path","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/packages/core/docs/guide/upgrade/database-migrations.md","heading":"Follow the additive forward path","startLine":7,"endLine":35,"sha256":"91dc7f74514d0bb92f1a0c923f123ea3db76dd63c74fc10a0d925f4246d05bfe"},{"id":"checkout-payment-outbox-idempotency","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Idempotency","startLine":250,"endLine":272,"sha256":"2d719cee94edefe6eccf76aa9c34bbf8a40cdb7e478e313b4a939e769c2e4d71"},{"id":"host-provider-adapter-capability-refusal","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Provider adapters","startLine":307,"endLine":319,"sha256":"5e72a74503e7b2a85706abdf06484ffd03f95130e617995b8f649f6bc36cea23"}] -->
 
 ## delivery-alignment: Preserve subscription cycle alignment after late delivery
 
@@ -102,31 +102,37 @@ before enabling database adapters. It is not evidence of schema compatibility.
 
 ## migration-forward-path: Follow the ordered additive migration path
 
-Source: [OpenLup source repository at openlup-platform-v0.39.0](https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/DATA_AND_MIGRATIONS.md#L496-L518).
+Source: [OpenLup source repository at openlup-platform-v0.39.0](https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/packages/core/docs/guide/upgrade/database-migrations.md#L7-L35).
 
-<!-- openlup-context {"id":"migration-forward-path","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/DATA_AND_MIGRATIONS.md","heading":"Additive forward release path","startLine":496,"endLine":518,"sha256":"3503b3ac6f6da04912e9ecd9a5161d9641e68a21b82beafc31beb8c9dc026b64"} -->
-## Additive forward release path
+<!-- openlup-context {"id":"migration-forward-path","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/packages/core/docs/guide/upgrade/database-migrations.md","heading":"Follow the additive forward path","startLine":7,"endLine":35,"sha256":"91dc7f74514d0bb92f1a0c923f123ea3db76dd63c74fc10a0d925f4246d05bfe"} -->
+## Follow the additive forward path
 
-A development preview may append expand-only platform forwards to either chain:
+Keep the installed baseline and every applied migration unchanged. Upgrade by
+appending the selected catalogue's ordered forward migrations; never split,
+rename, reorder or edit an applied unit, or relabel old SQL as new. The runner
+applies the baseline before forwards on a fresh installation and only the
+pending suffix on an existing matching installation. It provides no down-migration
+operation.
 
-- Portable PostgreSQL: `db/platform/migrations/<14-digit-version>_<name>.sql`,
-  with `config/platform-migration-manifest.json` preserving the baseline and all
-  previous forward rows as an exact prefix and binding the added files by SHA-256.
-- Managed Supabase: `supabase/migrations/<14-digit-version>_<name>.sql` after
-  the frozen `00000000000000_platform_schema_baseline.sql` baseline.
+The catalogue binds each SQL file by its canonical path and SHA-256 digest.
+Before executing SQL, the runner refuses missing or unlisted files, duplicate
+identities, changed bytes and an installed history that is not the exact
+selected prefix by path, digest and position. These refusals prevent a changed
+history from being mistaken for pending work. Repair through a new compatible
+forward, preserving the existing prefix.
 
-Each new version must exceed every preceding version in its own chain. Existing
-migration bytes and modes are immutable. The schema-5 release inventory binds
-forward bytes; the source contract binds the extended portable manifest digest.
-Database types, policy registry and bootstrap SQL remain frozen for this path.
-Required pull-request and merge-group self-check compares the exact event base
-with the candidate commit for this append-only migration rule. The preview
-producer separately compares the selected release commit with the prior preview;
-the earlier check does not replace that release-time comparison.
-The self-check validates the manifest's shape and history, while the portable
-runner checks `objectInventorySha256` against its live selected catalogue after
-applying the chain. That runtime check remains required for database acceptance.
-Both gates refuse control characters other than tab and line feed in migration SQL (parser parity with PostgreSQL).
+The additive release path admits bounded forms of object creation, table
+additions and literal, idempotent seeds. It refuses destructive operations,
+renames, schema moves, ownership transfers, writes to the application-owned
+`app` schema, procedural or dynamic SQL and unsupported expressions. These are
+release-time admission checks, separate from the runner's history checks;
+passing them does not prove that an older application can use the resulting
+schema. Changes outside this additive path need their own compatibility path.
+
+An existing application with its own migration chain must compare its schema
+and applied identities with the selected catalogue and prepare compatible
+forwards. A fresh package baseline is not an upgrade over an unrelated database.
+The runner refuses a mismatched ledger; it does not convert another history.
 
 <!-- /openlup-context -->
 

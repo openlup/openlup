@@ -288,6 +288,7 @@ describe("extracted-root documentation contract", () => {
   it.each([
     [".github/pull_request_template.md", "Stable API changes require review.", "retired stable API claim"],
     [".github/ISSUE_TEMPLATE/bug_report.yml", "description: public package subpath", "retired public package-subpath claim"],
+    [".github/ISSUE_TEMPLATE/documentation_problem.yml", "description: public package subpath", "retired public package-subpath claim"],
     [".github/pull_request_template.md", "Surface: stable headline", "retired stable headline claim"],
     [".github/ISSUE_TEMPLATE/feature_request.yml", "label: Adopter evidence", "retired adopter-evidence claim"],
   ])("rejects retired package-contribution language in %s", (path, source, violation) => {
