@@ -1572,14 +1572,9 @@ host paymentMethodSetup refusal by identity, commerce returns commerceRecovery b
 identity, and every other lane returns the frozen host_binding_required constant.
 The guard runs before every unselected-lane refusal. M07 method setup adapts setupMethod to the
 guarded paymentMethod.execute lane and collects a transient handoff only.
-The selected native `createPostgresPaymentMethodSetup` lane adds ownership-first
-collection, customer reuse and stable request keys. Its setup webhook registers
-the durable method before lifecycle delivery, retry scheduling and setup close.
-Read-time health and unattended chargeability remain separate. A fresh usable
-method can accelerate an existing automatic retry; exhausted or stopped work
-requires recorded token authority. Undispatched authority may rebind; dispatch
-freezes it without resetting the retry budget. Existing reference token HTTP
-routes still require host composition, and collection alone proves no payment.
+A45/A46 token routes remain reference handlers. Native repair authorization and
+scheduling are a registered follow-up, because the donor native graph does not
+serve them.
 See the [self-service reference](PLATFORM_PACKAGE_REFERENCE.md#account-and-support-contracts).
 
 

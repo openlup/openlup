@@ -77,3 +77,26 @@ authorization are transient secrets: do not persist, log or fingerprint them.
 Keep only explicitly redacted diagnostics. See the
 [execution contract](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/src/payments/contracts/adapter.ts)
 and [idempotency](idempotency.md#idempotency-contract) before retrying an attempt.
+
+## Saved payment methods
+
+With the complete native database catalogue installed, the host can select
+`createPostgresPaymentMethodSetup` from `@openlup/platform/payments`. It checks
+subscription ownership before provider calls, reuses a recorded customer and
+uses stable customer and setup request keys. The host supplies authentication,
+customer creation and the selected adapter's method port. Importing the package
+does not select this lane or mount account and recovery routes.
+
+Verified setup processing records the reusable method before applying lifecycle
+facts, scheduling an eligible retry and closing the setup event. Collection and
+linking alone prove no payment and do not change subscription service. See
+[recorded-method recovery](subscriptions.md#recorded-method-recovery) for the
+separate authority required to retry a charge.
+
+Read-time method health and unattended chargeability are separate decisions.
+An expiring method can remain chargeable until expiry. A historical healthy
+label or mirror without recorded reusable evidence returns
+`method_ref_not_recorded`; sandbox method evidence supplies no provider method
+evidence. Provider collection and recorded health do not establish a complete
+provider renewal journey. The [starter limits](../reference/limits.md#purchase-composition-boundaries)
+describe its available payment actions.

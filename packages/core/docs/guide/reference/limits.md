@@ -74,7 +74,8 @@ address tuple returns `starter_acquisition_seed_conflict` and rolls back.
 
 | Action | What happens | Refusal code |
 | --- | --- | --- |
-| Take real payments, set up a payment method, replace a card or use cumulative refunds or absence reopening | Only sandbox payment attempts are available. These actions do not pause or freeze an existing subscription. | `native_prepared_attempt_store_unsupported` |
+| Take real payments, set up a payment method or replace a card in the starter | The starter binds sandbox attempts only. The native provider store and method-setup lane require a complete installed database catalogue and explicit host composition; installing them does not enable these starter actions. | `native_prepared_attempt_store_unsupported` |
+| Use native cumulative refunds or absence reopening | These capabilities remain unsupported. Method collection, linking and retry scheduling do not settle money, pause or freeze a subscription. | —; unsupported capabilities |
 | Use an email address alone to access an existing purchase | Guest checkout is available, but existing-order access needs an owned customer session or an admitted recovery link. A recovery link grants no account or subscription-command access. | `customer_session_required` for account actions; `starter_recovery_unavailable` for unavailable recovery authority |
 | Change the address of a parcel already in flight through the customer action | The destination change applies from the next parcel; the parcel in flight keeps its address. | —; result `applied_from_next_parcel` |
 
