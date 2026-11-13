@@ -313,7 +313,7 @@ function assertInstalledContextMcp(executable: string, consumerDir: string, vers
   assert(JSON.stringify(replies[0].result.capabilities) === '{"tools":{}}', "installed MCP capabilities differ");
   assert(replies[1].result.tools.map((tool: { name: string }) => tool.name).join(",") === "search_openlup_context,read_openlup_file", "installed MCP tools differ");
   const search = replies[2].result;
-  assert(search.structuredContent.version === version && search.structuredContent.hits.some((hit: { owner?: string; file: string }) => hit.owner?.includes(`openlup-core-v${version}/`) && hit.file === "node_modules/@openlup/core/AGENT_CONTEXT.md"), "installed MCP search did not return relative installed context and release source");
+  assert(search.structuredContent.version === version && search.structuredContent.hits.some((hit: { file: string }) => hit.file === "node_modules/@openlup/core/docs/guide/how-to/extend/choose-an-extension-seam.md"), "installed MCP search did not return the relative installed guide page");
   assert(search.content[0].text.includes("node_modules/@openlup/core/"), "installed MCP search did not format citations");
   assert(replies[3].result.content[0].text.includes("1: # @openlup/core agent context"), "installed MCP file range did not contain numbered installed lines");
   console.log("core installed context MCP smoke ok (initialize, tools/list, search, read, EOF)");
@@ -414,7 +414,7 @@ export function runCorePackageConsumerSmoke(options: CorePackageConsumerSmokeOpt
     assert(existsSync(contextExecutable), "offline installation did not link the local context executable");
     assert(run(contextExecutable, ["--help"], consumerDir).includes("Usage: openlup-context"), "installed context executable did not print usage");
     const context = JSON.parse(run(contextExecutable, ["search", "extension seam", "--json"], consumerDir));
-    assert(context.hits.some((hit: { owner?: string }) => hit.owner === `https://github.com/openlup/openlup/blob/openlup-core-v${packageJson.version}/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md`), "installed context search did not retain its release-tagged source");
+    assert(context.hits.some((hit: { file?: string }) => hit.file?.endsWith(`/node_modules/${packageName}/docs/guide/how-to/extend/choose-an-extension-seam.md`) === true), "installed context search did not find the installed extension-seam guide page");
     const sourceContext = JSON.parse(run(contextExecutable, ["search", "nextRetryAttemptAt", "--package-code", "--json"], consumerDir));
     for (const scope of ["declarations", "package-source"]) {
       assert(sourceContext.scans.some((scan: { scope: string; packageName?: string; scannedFiles: number }) => scan.scope === scope && scan.packageName === packageName && scan.scannedFiles > 0), `installed context did not report a nonempty ${scope} scan`);

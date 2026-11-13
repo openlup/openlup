@@ -7,22 +7,22 @@ import { fileURLToPath } from 'node:url';
 // These canonical owner sections also appear in the public documentation routes.
 export const routes = {
   core: [
-    ['extend-platform', 'Choose an extension seam', 'docs/platform/ARCHITECTURE_AND_EXTENSIONS.md', 'Extension seams'],
-    ['canonical-status', 'Map provider status safely', 'docs/platform/CANONICAL_CONTRACTS.md', 'Canonical status'],
-    ['late-payment-cycle', 'Handle late payment without compressing the cycle', 'packages/core/docs/SUBSCRIPTION_ENGINE.md', 'A late payment shifts the cycle; it never compresses it'],
-    ['subscription-layer-delivery', 'Locate pure engine and durable delivery boundaries', 'docs/platform/SUBSCRIPTION_WORKFLOWS.md', 'Installed subscription boundary'],
+    ['extend-platform', 'Choose an extension seam', 'packages/core/docs/guide/how-to/extend/choose-an-extension-seam.md', 'Extension seams'],
+    ['canonical-status', 'Map provider status safely', 'packages/core/docs/guide/concepts/payments.md', 'Canonical status'],
+    ['late-payment-cycle', 'Handle late payment without compressing the cycle', 'packages/core/docs/guide/concepts/subscription-engine.md', 'A late payment shifts the cycle; it never compresses it'],
+    ['subscription-layer-delivery', 'Locate pure engine and durable delivery boundaries', 'packages/core/docs/guide/concepts/subscriptions.md', 'Installed subscription boundary'],
   ],
   outbox: [
     ['configure-dispatch', 'Configure dispatch and diagnostics', 'packages/outbox/README.md', 'Dispatch configuration and optional diagnostics'],
     ['install-outbox', 'Install SQL and enqueue transactionally', 'packages/outbox/README.md', 'PostgreSQL installation and transactions'],
-    ['outbox-retry-dispatch-handler-idempotency', 'Keep handler effects idempotent across retries', 'docs/platform/CANONICAL_CONTRACTS.md', 'Idempotency'],
+    ['outbox-retry-dispatch-handler-idempotency', 'Keep handler effects idempotent across retries', 'packages/core/docs/guide/concepts/idempotency.md', 'Idempotency contract'],
   ],
   platform: [
-    ['delivery-alignment', 'Preserve subscription cycle alignment after late delivery', 'docs/platform/CANONICAL_CONTRACTS.md', 'Subscription delivery alignment', 'The native fulfillment translation uses'],
-    ['migration-data-ownership', 'Keep adopter data in its owned schema', 'docs/platform/DATA_AND_MIGRATIONS.md', 'Data ownership'],
-    ['migration-forward-path', 'Follow the ordered additive migration path', 'packages/core/docs/guide/upgrade/database-migrations.md', 'Follow the additive forward path'],
-    ['checkout-payment-outbox-idempotency', 'Preserve repeatable checkout effects', 'docs/platform/CANONICAL_CONTRACTS.md', 'Idempotency'],
-    ['host-provider-adapter-capability-refusal', 'Compose declared provider capabilities through ports', 'docs/platform/CANONICAL_CONTRACTS.md', 'Provider adapters', '### Adapter classes and example templates'],
+    ['delivery-alignment', 'Preserve subscription cycle alignment after late delivery', 'packages/core/docs/guide/concepts/subscriptions.md', 'Subscription delivery alignment', '### Control modes'],
+    ['migration-data-ownership', 'Keep adopter data in its owned schema', 'packages/core/docs/guide/concepts/architecture-and-ownership.md', 'Data ownership'],
+    ['migration-forward-path', 'Follow the ordered additive migration path', 'packages/core/docs/guide/upgrade/database-migrations.md', 'Follow the additive forward path', 'The additive release path admits'],
+    ['checkout-payment-outbox-idempotency', 'Preserve repeatable checkout effects', 'packages/core/docs/guide/concepts/idempotency.md', 'Idempotency contract', '### Handler effects across retries'],
+    ['host-provider-adapter-capability-refusal', 'Compose declared provider capabilities through ports', 'packages/core/docs/guide/how-to/extend/provider-adapters.md', 'Provider adapters', 'Construct and inject the adapter explicitly.'],
   ],
 };
 
@@ -79,10 +79,8 @@ export function generateCorpus(root, packageName) {
     const citation = shipped ? localPath : `https://github.com/openlup/openlup/blob/${releaseTag}/${source}`;
     const metadata = { id, source: citation, heading, startLine, endLine, sha256 };
     inventory.push(metadata);
-    const repositoryNote = id === 'extend-platform'
-      ? 'The paths `src/lib/coreDomains.ts`, `src/domains`, `server/domains` and the `#application-domains` import below belong to the OpenLup source repository. They are not required application files or aliases; use your application\'s own composition.\n\n' : '';
     const target = shipped ? citation : `${citation}#L${startLine}-L${endLine}`;
-    sections += `## ${id}: ${title}\n\nSource: [${shipped ? localPath : 'OpenLup source repository at ' + releaseTag}](${target}).\n\n${repositoryNote}<!-- openlup-context ${JSON.stringify(metadata)} -->\n${excerpt}` +
+    sections += `## ${id}: ${title}\n\nSource: [${shipped ? localPath : 'OpenLup source repository at ' + releaseTag}](${target}).\n\n<!-- openlup-context ${JSON.stringify(metadata)} -->\n${excerpt}` +
       '<!-- /openlup-context -->\n\n';
   }
   output += `<!-- openlup-context-inventory ${JSON.stringify(inventory)} -->\n\n${sections}`;
