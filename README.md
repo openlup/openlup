@@ -6,6 +6,10 @@ Build recurring orders, payments and delivery cycles into your TypeScript
 application. Your application owns its brand, catalogue, policies and
 integrations; OpenLup supplies reusable commerce engines and contracts.
 
+Shaped by real subscription-commerce work at [Velipet](https://velipet.com/)
+and designed for development with AI agents, OpenLup combines explicit domain
+boundaries, typed ports and executable contract checks.
+
 [Reader guide](packages/core/docs/guide/README.md) ·
 [Start here](packages/core/docs/guide/start/README.md) ·
 [Apache-2.0](LICENSE)
@@ -16,6 +20,31 @@ integrations; OpenLup supplies reusable commerce engines and contracts.
 > evaluation profiles. It does not yet offer a stable framework API, a supported
 > full-platform installation or an upgrade guarantee. Source availability and a
 > successful build do not establish production readiness.
+
+## Shaped by a real business
+
+OpenLup's development is grounded in [Velipet](https://velipet.com/), a D2C
+physical-product subscription business. Its commerce workflows have been
+developed and exercised against that real use case, including the practical
+relationship between recurring orders, customer choices and physical deliveries.
+Those requirements shape the reusable platform contracts and regression tests.
+
+Velipet also exercises the full first-party adoption loop: changes go through
+OpenLup's admission and review process, packages are published through the release
+process, and the application adopts the published packages. This is dogfooding
+across the delivery lifecycle, with feedback from application use returning to
+the platform.
+
+Velipet is first-party operating experience. It is not independent-adopter
+certification, and it does not mean every extracted npm module or public
+reference profile reproduces the complete Velipet application. Velipet retains
+its own brand, catalog, policies and provider composition.
+
+[![Velipet's English storefront, a first-party D2C application shaped by OpenLup commerce work](docs/platform/assets/velipet-storefront-en.png)](https://velipet.com/en)
+
+*Velipet's English storefront. Application-specific branding and content;
+not the generic OpenLup reference profile.*
+
 
 ## Is OpenLup for you?
 
