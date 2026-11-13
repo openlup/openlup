@@ -37,9 +37,10 @@ Plans and task records are plain Markdown under `plans/`. There is no plan templ
 - [Partner reference delegation R2](plans/oss-m18-r2-reference-delegation.md) — thin source bindings, installed-artifact proof and preserved host behavior.
 - [Partner package set S1](plans/oss-m18-s1-0-36-0.md) — coherent 0.36.0 source preparation and publication boundary.
 - [Native commerce package set preparation](../../packages/platform/CHANGELOG-HISTORY.md#0370) — coherent 0.37.0 notes; published to npm.
-- [Subscription care package set preparation](../../packages/platform/CHANGELOG.md#0380) — coherent 0.38.0 notes; published to npm.
+- [Subscription care package set preparation](../../packages/platform/CHANGELOG-HISTORY.md#0380) — coherent 0.38.0 notes; published to npm.
 - [Checkout recovery and order operations package set preparation](../../packages/platform/CHANGELOG.md#0390) — coherent 0.39.0 notes; published to npm.
-- [Reader guide and ecommerce events package set preparation](../../packages/platform/CHANGELOG.md#0400) — coherent 0.40.0 notes; publication remains a separate owner action.
+- [Reader guide and ecommerce events package set preparation](../../packages/platform/CHANGELOG.md#0400) — coherent 0.40.0 notes; published to npm.
+- [Payment adapter testing kit package set preparation](../../packages/platform/CHANGELOG.md#0410) — coherent 0.41.0 notes; publication remains a separate owner action.
 
 - [Subscription renewal and dunning](plans/oss-m10-subscriptions-renewal-dunning.md) — frozen obligation ports, graph transaction units, continuity and explicit capability limits.
 

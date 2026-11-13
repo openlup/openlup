@@ -54,7 +54,7 @@ missing evidence must not be guessed into a full refund.
 The payment transitions exported from `@openlup/core/payment`
 (`transitionPaymentIntent`, `transitionPaymentAttempt`,
 `applyProviderPaymentEvent`) and the
-[verified evidence contracts](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/packages/platform/src/payments/contracts/evidence.ts)
+[verified evidence contracts](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/src/payments/contracts/evidence.ts)
 define these separate boundaries. Other commerce domains have their own status
 types; do not substitute payment statuses for them.
 
@@ -75,5 +75,5 @@ A redirect or client-confirmation handoff tells the host how to continue the
 interaction, not whether money settled. Client-confirmation payloads and customer
 authorization are transient secrets: do not persist, log or fingerprint them.
 Keep only explicitly redacted diagnostics. See the
-[execution contract](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/packages/platform/src/payments/contracts/adapter.ts)
+[execution contract](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/src/payments/contracts/adapter.ts)
 and [idempotency](idempotency.md#idempotency-contract) before retrying an attempt.

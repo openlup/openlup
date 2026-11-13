@@ -310,4 +310,4 @@ artifact evidence.
 
 ## Release notes
 
-Read [the changelog](CHANGELOG.md#0400) before upgrading the package set.
+Read [the changelog](CHANGELOG.md#0410) before upgrading the package set.

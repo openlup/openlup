@@ -10,6 +10,14 @@ in the source repository.
 
 ## [Unreleased]
 
+## [0.41.0]
+
+- Publishable on the npm `latest` dist-tag as `0.41.0`, from tag
+  `openlup-core-v0.41.0`.
+
+- Republish unchanged Core runtime, exports and SQL with the complete `0.41.0`
+  package set. The reader guide lists Platform's new `./payments/testing` subpath.
+
 ## [0.40.0]
 
 - Publishable on the npm `latest` dist-tag as `0.40.0`, from tag
@@ -30,22 +38,3 @@ in the source repository.
 
 - Republish unchanged Core runtime, exports and SQL with the complete `0.39.0`
   package set.
-
-## [0.38.0]
-
-- Publishable on the npm `latest` dist-tag as `0.38.0`, from tag
-  `openlup-core-v0.38.0`.
-
-Report bounded declaration and opt-in source scan coverage in `openlup-context` JSON, and show a notice when a scan reaches its file budget.
-
-Migration: JSON consumers may receive an additive top-level `scans` array. Its conservative `limitReached` indicates the budget was reached, not that another eligible file exists; filters and other bounds still apply.
-
-- Add opt-in `openlup-context mcp` stdio lookup for installed OpenLup context, with offline search and bounded installed-file reads. No kernel export or runtime dependency changes.
-
-- Declare npm `keywords`, a `homepage` pointing at the package README in the
-  source repository, and the issue tracker as `bugs`, so registry search and
-  package pages lead to the documentation and to issue reports.
-
-- Export `./package.json`, so tooling and agents can read the installed
-  version and metadata with `import.meta.resolve("@openlup/core/package.json")` or
-  a JSON import. It adds no code entry point.
