@@ -447,9 +447,9 @@ architecture owns explicit owner composition and provider readiness boundaries.
 The reader guide lives in
 [`packages/core/docs/guide/`](../../packages/core/docs/guide/README.md); its index
 holds the writing rules. The `docs:check` script of each publishable package runs the
-[documentation contract](../../packages/core/scripts/documentation-contract.ts)
-inside that package's `ci:required`, so the existing required package gates run
-it for core, outbox and platform. The contract refuses:
+[documentation contract](../../packages/core/scripts/documentation-contract.ts).
+Core runs it inside its `ci:required`; the root test suite runs it for outbox and
+platform, so a required check covers all three. The contract refuses:
 
 - a `ts` fence in the guide or a package `README.md` or `AGENTS.md` that does not
   type-check against the built packages; a fence identical to the package's

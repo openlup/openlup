@@ -65,8 +65,8 @@ export const PUBLIC_PACKAGE_EXECUTION_SURFACES: PublicPackageExecutionSurface[] 
   { path: "examples/neutral-store/package.json", digest: "sha256-2596e792092af299bdbb6b988b847a29caaa49aaec5d82954a9a6cb47e788d7b" },
   { path: "package.json", digest: packageExecutionDigest({ scripts: Object.fromEntries(PUBLIC_PACKAGE_COMMANDS.map(({ name, command }) => [name, command])) }) },
   { path: "packages/core/package.json", digest: "sha256-45f672a598c2c3f1d90c2a84fe2ddda11fb54315e2c52462691d2b22ca8dc7a6" },
-  { path: "packages/outbox/package.json", digest: "sha256-9959d50dca55d3a2a6f963dee7d1f1f22bd68aa5d5758812fc3a1472ede961a7" },
-  { path: "packages/platform/package.json", digest: "sha256-211a307bdd0b76e98dd3c1cb0356a8875e932907877596807f1076e3395a5d01" },
+  { path: "packages/outbox/package.json", digest: "sha256-c1989ac91260eb152a27b461f4eee0db11f04d9f17cccedc9bf41958ca0d3ef6" },
+  { path: "packages/platform/package.json", digest: "sha256-6f7e3e0ae256691c0860d7abd8b133b458d974b46f647075ae8435487e90aed3" },
   { path: "packages/ui/package.json", digest: "sha256-e57b14ab2c433bd03ae8e71aebf8c3b4eedafcc3177bf373230d45f84bccdb0b" },
 ];
 

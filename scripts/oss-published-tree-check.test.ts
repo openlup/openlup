@@ -404,7 +404,7 @@ describe("complete public CI", () => {
     expect(core.scripts["ci:required"].split(" && ")).toEqual(core.scripts.ci.split(" && ")
       .filter((command: string) => command !== "npm run api:check")
       .map((command: string) => command === "npm run release:check" ? "npm run release:admission" : command));
-    for (const directory of ["packages/outbox", "packages/platform"]) expect(JSON.parse(readFileSync(join(ROOT, directory, "package.json"), "utf8")).scripts["ci:required"]).toBe("npm run docs:check && npm run test:consumer");
+    for (const directory of ["packages/outbox", "packages/platform"]) expect(JSON.parse(readFileSync(join(ROOT, directory, "package.json"), "utf8")).scripts["ci:required"]).toBe("npm run test:consumer");
     const { createVitest } = await import("vitest/node");
     const root = await createVitest("test", { root: ROOT, watch: false });
     try {

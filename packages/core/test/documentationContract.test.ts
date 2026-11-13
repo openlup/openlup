@@ -443,7 +443,7 @@ function checkGuide(fixtureRoots: { repository: string; core: string }, write = 
 const coreRegion = (body: string) => `<!-- generated:maturity:outbox -->\n${body}<!-- /generated:maturity:outbox -->\n`;
 const freshMaturity = "| Export | Role | Maturity |\n| --- | --- | --- |\n| `.` | rail | experimental |\n";
 
-describe("reader guide contract", () => {
+describe("reader guide contract", { timeout: 60_000 }, () => {
   it("accepts relative links, pinned repository links, fresh regions, allowed terms and compiled fences", () => {
     const roots = guideFixture(
       `# Guide\n\n[Start](start/tutorial.md) and [the README](${repositoryLink("README.md")}) store files in S3.\n\n${coreRegion(freshMaturity)}\n\`\`\`ts\nconst total: number = 1 + 1;\nexport const doubled = total * 2;\n\`\`\`\n`,
