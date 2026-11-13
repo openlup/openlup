@@ -6134,12 +6134,12 @@
     },
     {
       "path": "db/platform/migrations/20261114120000_payment_reconciliation_refund_evidence.sql",
-      "sha256": "6063701721be0b828e47f392ddd801ac920a6a7b149e7750a9234f92fd1d043b",
+      "sha256": "f18ce79510f7bf33dd6418acf900281c1d8a37e6da0149e35e26e0c182d4dabe",
       "functions": [
         {
           "signature": "public.payment_provider_result_apply(text,uuid,uuid,text,timestamptz,text,text,text,text,text,text)",
           "beforeSha256": "096b7b34cce901bad47c121c3a68707d83d636dc39a7b1acf2f8b11da581853e",
-          "afterSha256": "80828574cb0b65f7a8d0b64232267324d33d1547107cac3484206102d3035b97"
+          "afterSha256": "8d8796f5f78e7e533ac3f4290df6795e644d7b100ed71e058c81f83d994cf662"
         },
         {
           "signature": "public.communication_event_refund_write(uuid)",
