@@ -316,8 +316,9 @@ owns release permissions, setup, detailed refusals and recovery. The sequence is
 After a successful core publication, the separate
 [Guide tutorial against the npm registry](../../.github/workflows/registry-tutorial.yml)
 workflow waits for the matching package set and core's `latest` value on npm,
-then runs the guide tutorial against the registry. It uses the default-branch
-workflow and checks out the completed publication's commit. It does not hold the
+then runs the guide tutorial against the registry. It runs trusted default-branch
+code and reads only the release tag's tutorial page, after checking the tag's
+commit against the completed publication run. It does not hold the
 publication run open or delay the next release dispatch, and is not a required
 check. The tutorial remains advisory until two green merge-group runs on main:
 a tutorial failure appears as a warning annotation and in the step summary.

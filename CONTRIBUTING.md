@@ -1045,7 +1045,7 @@ the host-local broker helper is absent, with the same arguments, environment
 and coverage-summary handling as an already admitted run. A focused subset still
 uses root percentage thresholds; it does not establish full-suite coverage.
 
-Keep documentation falsifiers independently discoverable for routing, navigation, bare-runtime CLI and bundle corruption; never import one test file from another. Disposable fixtures prove those refusals, not arbitrary prose meaning. Follow [lint rules](#commands-and-lint-rules), including valid/invalid cases for new ast-grep rules, and [documentation navigation](docs/platform/DOCUMENTATION.md#navigation-and-source-map). Fixtures still obey neutrality and secret-handling policy.
+Keep documentation falsifiers independently discoverable for routing, navigation, bare-runtime CLI; never import one test file from another. Disposable fixtures prove those refusals, not arbitrary prose meaning. Follow [lint rules](#commands-and-lint-rules), including valid/invalid cases for new ast-grep rules, and [documentation navigation](docs/platform/DOCUMENTATION.md#navigation-and-source-map). Fixtures still obey neutrality and secret-handling policy.
 
 ### Package, policy and release checks
 

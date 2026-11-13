@@ -1,6 +1,6 @@
 # Runs separately after publication so the tutorial never holds a publication run open.
-# workflow_run executes the default-branch copy of this workflow; the checkout below
-# uses the completed publication's commit instead of the default branch's commit.
+# workflow_run executes trusted default-branch workflow and runner code. Only the
+# release tag's tutorial page is read, after checking its commit against the completed run.
 # Publish Packages handles release: published. For a release run, head_branch is the
 # release tag and head_sha is its commit; refuse other events and malformed tags.
 # Only this repository's own release runs qualify: the head repository must be
@@ -36,12 +36,23 @@ jobs:
           [[ "$RELEASE_TAG" =~ ^openlup-core-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || { echo '::error::Expected an openlup-core-vMAJOR.MINOR.PATCH release tag'; exit 1; }
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
           persist-credentials: false
+          fetch-depth: 1
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 24.21.0
           package-manager-cache: false
+      - name: Read the release's tutorial page
+        env:
+          RELEASE_TAG: ${{ github.event.workflow_run.head_branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          git fetch --no-tags --depth=1 origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          if [ "$(git rev-list -n 1 "refs/tags/$RELEASE_TAG")" != "$HEAD_SHA" ]; then
+            echo '::error::Release tag commit does not match the completed publication run'
+            exit 1
+          fi
+          git show "refs/tags/$RELEASE_TAG:packages/core/docs/guide/start/tutorial.md" > "$RUNNER_TEMP/tutorial.md"
       - name: Wait for the published set on npm
         id: registry
         timeout-minutes: 11
@@ -49,6 +60,7 @@ jobs:
           RELEASE_TAG: ${{ github.event.workflow_run.head_branch }}
         run: |
           version="${RELEASE_TAG##*-v}"
+          # The publishable package set is stable, so use the trusted default-branch inventory.
           packages="$(node -p 'require("./config/openlup-packages.json").packages.filter(entry => entry.publish).map(entry => entry.name).join(" ")')"
           specs=""
           for package in $packages; do specs="$specs $package@$version"; done
@@ -96,7 +108,7 @@ jobs:
         timeout-minutes: 4
         env:
           OPENLUP_PROOF_SERVICE_PORT: ${{ steps.postgres.outputs.port }}
-        run: node --experimental-strip-types scripts/packages/guide-tutorial.ts --advisory --registry --page packages/core/docs/guide/start/tutorial.md --database-url "postgresql://postgres@127.0.0.1:$OPENLUP_PROOF_SERVICE_PORT/postgres"
+        run: node --experimental-strip-types scripts/packages/guide-tutorial.ts --advisory --registry --page "$RUNNER_TEMP/tutorial.md" --database-url "postgresql://postgres@127.0.0.1:$OPENLUP_PROOF_SERVICE_PORT/postgres"
       - name: Remove the package-proof PostgreSQL service
         if: always() && steps.postgres.outcome != 'skipped'
         run: docker rm -f install-proof-postgres
