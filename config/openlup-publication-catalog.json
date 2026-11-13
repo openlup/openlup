@@ -2070,6 +2070,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/README.template.md",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/artifacts/README.md",
       "class": "public-output"
     },

@@ -30,8 +30,8 @@ hold; a section marked "to be written" has no page yet.
 | How-to: operate | Deployment and self-hosting, a production checklist, retention, shutdown and security hardening. | [Connect to PostgreSQL](how-to/operate/connect-postgresql.md), [Run OpenLup on your own host](how-to/operate/self-host.md), [Shut down a host cleanly](how-to/operate/shutdown.md), [Customer diagnostic history and retention](how-to/operate/diagnostics-and-retention.md); production checklist and security hardening to be written |
 | [Upgrade](upgrade/README.md) | The upgrade procedure and one page per release. | [Upgrade an application](upgrade/README.md), [Upgrade the database](upgrade/database-migrations.md), [Upgrade application files](upgrade/application-files.md); release pages to be written |
 | Concepts | Architecture and ownership, one page per commerce domain, and the security model. | [Architecture and ownership](concepts/architecture-and-ownership.md), [Subscriptions](concepts/subscriptions.md), [Subscription engine](concepts/subscription-engine.md), [Payments](concepts/payments.md), [Idempotency](concepts/idempotency.md), [Identity](concepts/identity.md), [Personal data](concepts/personal-data.md), [Marketing sync](concepts/marketing-sync.md); catalogue and prices, checkout, orders, fulfillment and the security model to be written |
-| Reference | Exports, configuration keys, SQL catalogue, command line, refusal codes, capability maturity, limits, versioning and stability policy. | [Starter limits](reference/limits.md), [Versioning and stability](reference/stability.md); the generated references to be written |
-| Troubleshooting | Symptom or refusal code, its cause and the fix. | to be written |
+| [Reference](reference/README.md) | Exports, configuration keys, SQL catalogue, command line, refusal codes, capability maturity, limits, versioning and stability policy. | written |
+| [Troubleshooting](troubleshooting.md) | Symptom or refusal code, its cause and the fix. | written for codes whose cause the source states |
 | [Glossary](glossary.md) | The words this guide uses. | written |
 
 Until a section exists, the repository

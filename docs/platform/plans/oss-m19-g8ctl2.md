@@ -1,5 +1,7 @@
 # Bounded notice-table admission
 
+Status: historical record, 2026-11-05.
+
 ## Outcome and scope
 
 Stage one checker-pinned allowance for the native paid-notice forward to create

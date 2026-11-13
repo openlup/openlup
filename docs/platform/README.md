@@ -2,7 +2,7 @@
 
 Status: development-preview documentation. The platform is not yet a stable framework release or a supported adopter distribution.
 
-This is the public documentation set for the OpenLup platform. It describes the portable platform boundary and the limits of the current preview. It does not grant release, hosting, upgrade, or support commitments.
+This index is for maintainers changing OpenLup. For installing, composing, extending, operating or upgrading an application, read the [OpenLup reader guide](../../packages/core/docs/guide/README.md).
 
 ## Start here
 

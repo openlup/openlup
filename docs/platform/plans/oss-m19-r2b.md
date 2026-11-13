@@ -1,5 +1,7 @@
 # Starter scheduled renewal, account facts and notices
 
+Status: historical record, 2026-11-06.
+
 Historical implementation checkpoint; the current task record is
 [PR #546](https://github.com/openlup/openlup/pull/546). Joined recovery now passes
 on the completed native installation; earlier checkpoint observations below are

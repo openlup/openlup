@@ -15,10 +15,46 @@ import { platformEnvSchema } from "@openlup/core/platform-runtime";
 const env = platformEnvSchema.parse({ APP_BASE_URL: "https://shop.example" });
 ```
 
-Start with [AGENTS.md](AGENTS.md) for installed context lookup, subpath maturity
-and a complete wiring example that compiles in CI. Node 24 or newer is required.
-Declarations in `dist/` include declaration maps to the shipped `src/` files for
-editor source navigation; JavaScript source maps are not shipped.
+Node 24 or newer is required; the source adoption recipe uses npm 11.19.0. Declaration maps connect `dist/` declarations to
+shipped `src/`; JavaScript source maps are not shipped. Read [AGENTS.md](AGENTS.md) for the compiled wiring
+example and application ownership rules.
+
+## Package Surface Maturity
+
+| Export | Role | Maturity | Package smoke |
+| --- | --- | --- | --- |
+| `./bundle` | kernel | candidate | `smoke/subscriptionBundleStandalone.test.ts` |
+| `./catalog` | kernel | candidate | `smoke/catalogStandalone.test.ts` |
+| `./company-identity` | kernel | experimental | `smoke/companyIdentityStandalone.test.ts` |
+| `./fulfillment` | kernel | experimental | `smoke/fulfillmentStandalone.test.ts`<br>`test/fulfillmentStatusMap.test.ts`<br>`test/fulfillmentTrackingProgress.test.ts`<br>`test/fulfillmentCurrentParcel.test.ts`<br>`test/fulfillmentNormalizedFacts.test.ts` |
+| `./inventory` | kernel | candidate | `smoke/inventoryStandalone.test.ts` |
+| `./marketing/research` | kernel | experimental | `smoke/marketingResearchStandalone.test.ts` |
+| `./partners` | kernel | experimental | `smoke/partnersStandalone.test.ts` |
+| `./payment` | kernel | experimental | `smoke/paymentStandalone.test.ts` |
+| `./platform-runtime` | kernel | experimental | `smoke/platformRuntimeStandalone.test.ts` |
+| `./pricing` | kernel | candidate | `smoke/pricingStandalone.test.ts` |
+| `./promo` | kernel | candidate | `smoke/promoStandalone.test.ts` |
+| `./risk` | kernel | candidate | `smoke/riskStandalone.test.ts` |
+| `./shipping` | kernel | candidate | `smoke/shippingStandalone.test.ts` |
+| `./subscription` | kernel | candidate | `smoke/subscriptionBundleStandalone.test.ts` |
+| `./outbox` | kernel | experimental | `smoke/outboxStandalone.test.ts` |
+| `./readiness` | kernel | experimental | `smoke/readinessStandalone.test.ts` |
+| `./standard-schema` | kernel | experimental | `smoke/standardSchemaStandalone.test.ts` |
+| `./testing` | testing | testing | `smoke/testingStandalone.test.ts` |
+
+Every current code export is an internal candidate, experimental kernel, or
+testing surface; the `./package.json` export is the manifest itself. Its declaration snapshot is a reviewable drift proof, not a public API
+promise.
+
+`release-gates.json` records four distinct evidence classes:
+
+- `packageSmokeEvidence`: required hermetic build/import/pack/publish-refusal
+  proof for this package;
+- `conformanceEvidence`: required only when a declared port/adapter seam needs
+  a framework-free suite;
+- `dogfoodEvidence`: first-party integration seams, not independent adoption;
+- `externalConsumerEvidence`: not yet evaluated; a first-party packed consumer
+  remains package smoke, not external adoption.
 
 ## Channel and stability
 
@@ -94,97 +130,107 @@ measured budget decision. Passing a local pack does not authorize publication.
 
 `./fulfillment` owns pure status, tracking-progress, current-parcel and canonical fact-parser helpers.
 
-## Package Surface Maturity
+## Use in an application
 
-Every current code export is an internal candidate, experimental kernel, or
-testing surface; the `./package.json` export is the manifest itself. Its declaration snapshot is a reviewable drift proof, not a public API
-promise.
+[Start](docs/guide/start/README.md), [adopt from npm](docs/guide/start/adopt-from-npm.md),
+[the tutorial](docs/guide/start/tutorial.md) and [upgrade an application](docs/guide/upgrade/README.md).
+Use the [glossary](docs/guide/glossary.md) for shared terms.
 
-| Export | Role | Maturity | Package smoke |
-| --- | --- | --- | --- |
-| `./bundle` | kernel | candidate | `smoke/subscriptionBundleStandalone.test.ts` |
-| `./catalog` | kernel | candidate | `smoke/catalogStandalone.test.ts` |
-| `./company-identity` | kernel | experimental | `smoke/companyIdentityStandalone.test.ts` |
-| `./fulfillment` | kernel | experimental | `smoke/fulfillmentStandalone.test.ts`<br>`test/fulfillmentStatusMap.test.ts`<br>`test/fulfillmentTrackingProgress.test.ts`<br>`test/fulfillmentCurrentParcel.test.ts`<br>`test/fulfillmentNormalizedFacts.test.ts` |
-| `./inventory` | kernel | candidate | `smoke/inventoryStandalone.test.ts` |
-| `./marketing/research` | kernel | experimental | `smoke/marketingResearchStandalone.test.ts` |
-| `./partners` | kernel | experimental | `smoke/partnersStandalone.test.ts` |
-| `./payment` | kernel | experimental | `smoke/paymentStandalone.test.ts` |
-| `./platform-runtime` | kernel | experimental | `smoke/platformRuntimeStandalone.test.ts` |
-| `./pricing` | kernel | candidate | `smoke/pricingStandalone.test.ts` |
-| `./promo` | kernel | candidate | `smoke/promoStandalone.test.ts` |
-| `./risk` | kernel | candidate | `smoke/riskStandalone.test.ts` |
-| `./shipping` | kernel | candidate | `smoke/shippingStandalone.test.ts` |
-| `./subscription` | kernel | candidate | `smoke/subscriptionBundleStandalone.test.ts` |
-| `./outbox` | kernel | experimental | `smoke/outboxStandalone.test.ts` |
-| `./readiness` | kernel | experimental | `smoke/readinessStandalone.test.ts` |
-| `./standard-schema` | kernel | experimental | `smoke/standardSchemaStandalone.test.ts` |
-| `./testing` | testing | testing | `smoke/testingStandalone.test.ts` |
+## Kernel Documentation
+Moved to [Subscription engine](docs/guide/concepts/subscription-engine.md).
 
-`release-gates.json` records four distinct evidence classes:
+### Module readiness
 
-- `packageSmokeEvidence`: required hermetic build/import/pack/publish-refusal
-  proof for this package;
-- `conformanceEvidence`: required only when a declared port/adapter seam needs
-  a framework-free suite;
-- `dogfoodEvidence`: first-party integration seams, not independent adoption;
-- `externalConsumerEvidence`: not yet evaluated; a first-party packed consumer
-  remains package smoke, not external adoption.
+Selected `./readiness` modules retain independent schema requirements.
+Dependencies use the same or an earlier layer:
+`kernel`, `rail`, `capability`, `implementation`.
+See the optional current-source [module contributions, identity, and readiness
+guidance](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#contributions-seams-and-readiness)
+for selection, bindings, refusals and diagnostics; it is not version-specific
+migration guidance. For an installed package, its declarations for the selected
+version remain authoritative; the source checkout's `api/readiness.api.md` is a
+snapshot reference, and the host owns inventory.
+
+## Readiness contract
+
+The `./readiness` export evaluates inert package contributions against a complete
+host inventory and bounded schema observation. Its grouped PostgreSQL probe
+preserves request ordinals and distinguishes legitimate absence from malformed
+or incomplete results. Readiness evaluation calls the host's schema observation
+port; `createSchemaProbe` invokes the supplied identity callback and SQL executor.
+The grouped query builder and result decoder perform no I/O. The application
+retains database access, transaction and admission policy; these helpers do not
+run migrations, schedule work or activate a module.
+
+## Bundle contracts
+Moved to [Compose native bundle writes](docs/guide/how-to/build/bundles.md).
+
+## Commerce data contracts
+Moved to [Read prices for a quote](docs/guide/how-to/build/quote-prices.md) and [add OpenLup to an existing application](docs/guide/how-to/build/own-stack.md).
+
+### Catalog identifiers
+Moved to [Pure contract limits](docs/guide/reference/limits.md#pure-contract-limits).
+
+### Inventory availability
+Moved to [Pure contract limits](docs/guide/reference/limits.md#pure-contract-limits).
+
+### Price resolution and breakdown
+Moved to [Read prices for a quote](docs/guide/how-to/build/quote-prices.md).
+
+### Promotion evaluation and adjustments
+Moved to [Read prices for a quote](docs/guide/how-to/build/quote-prices.md).
+
+## Delivery contracts
+Moved to [Compose native fulfillment](docs/guide/how-to/build/fulfillment.md).
+
+### Fulfillment fact and status contracts
+Moved to [Canonical status](docs/guide/concepts/payments.md#canonical-status) and [compose native fulfillment](docs/guide/how-to/build/fulfillment.md).
+
+### Shipping rule resolution
+Moved to [Select shipping rules](docs/guide/how-to/build/fulfillment.md#select-shipping-rules).
+
+## Partner and risk contracts
+Moved to [Architecture and ownership](docs/guide/concepts/architecture-and-ownership.md).
+
+### Company identity lookup contracts
+Moved to [Pure contract limits](docs/guide/reference/limits.md#pure-contract-limits).
+
+### Partner lifecycle contracts
+
+[Compose marketing handlers](docs/guide/how-to/build/marketing.md); inquiry contracts are in the shipped `src/partners/`.
+
+### Risk evaluation contracts
+Moved to [Pure contract limits](docs/guide/reference/limits.md#pure-contract-limits).
+
+## Payment contracts
+Moved to [Payments](docs/guide/concepts/payments.md).
 
 The `./payment` export's `withinSchemeRetryCeiling` helper checks only its local
 15-attempt/30-day numeric bound. A passing result does not authorize a retry or
 certify compliance; the host/provider must apply actual decline advice and
 current applicable rules, including any narrower limits.
 
-## Use in an application
+## Marketing contracts
+Moved to [Marketing sync](docs/guide/concepts/marketing-sync.md) and [compose marketing handlers](docs/guide/how-to/build/marketing.md).
 
-From your application's root, with Node 24 and npm 11.19.0:
+## Outbox contracts
+Moved to [Deliver events with the outbox](docs/guide/how-to/build/outbox.md).
 
-```sh
-npm install --save-exact @openlup/core@<version>
-```
+## Platform runtime contracts
+Moved to [Run OpenLup on your own host](docs/guide/how-to/operate/self-host.md).
 
-Replace `<version>` with the exact published version selected for your complete
-`@openlup/*` package set. This source README does not establish registry
-publication.
-
-Read the installed `AGENTS.md`, then compose the [typed wiring example](AGENTS.md#wiring-example)
-with your application's own ports and options. Inspect the shipped sources and
-declarations for the exact version you installed. A missing seam needs an
-upstream proposal under your application's submission authority; the dependency
-guide grants no permission to publish an issue or change your application.
-Keep every installed `@openlup/*` package on the same exact set version.
-
-The package owns its engine; application handlers, policies, ports, composition
-and compatible native adapters remain yours. Use declared public exports, without
-autonomous package patching, vendoring, shadowing or copied-engine replacement.
-Follow the [using rules](AGENTS.md#using-this-package-in-an-application) for a
-missing seam and compatible recovery. First adoption and upgrade compare the
-actual npm artifact with current bindings and nominated extensions, preserving
-native effects and pending work. The public
-[adopter recipe](https://github.com/openlup/openlup/blob/main/docs/platform/adopter-kit/README.md#adopt-or-upgrade-a-package)
-is optional source guidance to select at a deliberate revision and compare with
-your installed contract; later guide changes do not alter this version or install
-application controls. Existing tests and the unchanged wiring example do not
-certify a complete module absorption or deployed adoption.
+## Standard schema contracts
+Moved to [Pure contract limits](docs/guide/reference/limits.md#pure-contract-limits).
 
 ## Agent context lookup
-
-After installing core, run the local executable from the application root:
 
 ```sh
 ./node_modules/.bin/openlup-context search "subscription renewal"
 ```
 
-This MVP indexes English documentation. Translate Polish or other natural-language
-tasks into concise English domain terms, or search an exact public symbol;
-freeform Polish queries may miss relevant guidance.
-
-The command searches the installed reader guide under core's `docs/guide/`,
-`AGENTS.md`, `README.md`, declarations and public exports offline, and includes
-`CHANGELOG.md` for upgrade, migration and release questions. It returns
-file-and-line citations. Add `--code` for a bounded local application source
-scan, or
+The command searches core's installed reader guide under `docs/guide/`, package
+`AGENTS.md`, `README.md`, declarations and exports, and `CHANGELOG.md` for upgrade
+questions. It returns file-and-line citations offline. Add `--code` for a bounded local application source scan, or
 `--package-code` to inspect the installed packages' `src/` files.
 Both scans are opt-in and may be incomplete; use direct `rg` when a path or
 symbol is known. Add `--json` for structured results, including a `scans` array
@@ -199,10 +245,9 @@ The top-eight result cap is separate from these scan limits. It never downloads
 packages or starts a service. Its Node-only launcher is isolated from the
 I/O-free kernel exports and adds no runtime dependency.
 
-Read a known path or symbol directly. Use the lookup to locate an unfamiliar
-package seam, then inspect the cited owner and follow its exports, callers and
-tests for cross-package work. A ranked result does not establish complete
-contract coverage.
+Nested Markdown headings return separate spans. Read the installed package version
+and cited source before changing a contract; a result locates evidence and grants
+no application policy or execution authority.
 
 ## Agent context over MCP
 
@@ -236,22 +281,16 @@ are supported; file realpaths must stay inside the resolved package root. Read
 refuses traversal and never fetches release-tag source URLs. These checks guard
 against wrong paths and links present when the file is read; they do not defend
 against a process that rewrites `node_modules` during the read, which can already
-change the code the application runs. Read repository URLs with your own client;
-application source hits also require your client's own file tool. Search tasks
-are limited to 1,000 characters, and each
+change the code the application runs. Read repository-only sources and application source hits with your client's own
+file tool. Search tasks are limited to 1,000 characters, and each
 incoming message line to 1 MiB. Oversized messages receive one error and are
 discarded through the next newline; the server continues serving. End stdin to
 stop the process.
 
-The server uses local files and Node built-ins, with no network access or extra
-runtime dependency. Kernel exports never load it. The same development-preview
-limits and application-owned instructions apply as for CLI lookup.
-
 ## Local verification from source
 
-The following developer commands require a source checkout of this package;
-the npm tarball omits its development scripts and tests. From the source package
-directory:
+See [the contribution guide](CONTRIBUTING.md) for source checks; the npm tarball
+omits development scripts and tests.
 
 ```sh
 npm ci
@@ -286,8 +325,9 @@ Raw ampersands, angle characters and Unicode whitespace in local destinations
 require a canonical rewrite rather than passing an incomplete link check.
 It also type-checks TypeScript examples in `README.md` and `AGENTS.md` against
 the built package, holds `AGENTS.md` to a size cap, and checks the reader guide
-under `docs/guide/` when the package sits in its source repository;
-`npm run docs:check -- --write` refreshes the guide's generated sections.
+under `docs/guide/` if it exists; a guide without a detected source repository
+root refuses. `npm run docs:check -- --write` refreshes generated regions in
+`README.md`, `AGENTS.md` and the guide.
 
 The [repository neutrality checks](https://github.com/openlup/openlup/blob/openlup-core-v0.12.0/CONTRIBUTING.md#development-preview-checks)
 reuse the source scanner through `./scripts/neutrality-tree-counts.ts` relative
@@ -309,29 +349,6 @@ Published Tree CI runs the repository ratchet in required `self-check` and its
 CLI refusal tests in required root `test`. This package's independent proof
 belongs to `install-proof`; see [repository testing](https://github.com/openlup/openlup/blob/main/CONTRIBUTING.md#test-scope-and-diagnostics).
 
-Together these interfaces let the repository measure existing findings without
-making one package import another package's internals. They provide source
-neutrality evidence, not package activation or consumer compatibility evidence.
-
-## Kernel Documentation
-
-- [`docs/SUBSCRIPTION_ENGINE.md`](docs/SUBSCRIPTION_ENGINE.md) — what the
-  `./subscription` kernel owns, its deterministic-clock contract, the
-  late-payment cycle-shift rule and its monotonic clamp, and how a host
-  application consumes it.
-
-### Module readiness
-
-Selected `./readiness` modules retain independent schema requirements.
-Dependencies use the same or an earlier layer:
-`kernel`, `rail`, `capability`, `implementation`.
-See the optional current-source [module contributions, identity, and readiness
-guidance](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#contributions-seams-and-readiness)
-for selection, bindings, refusals and diagnostics; it is not version-specific
-migration guidance. For an installed package, its declarations for the selected
-version remain authoritative; the source checkout's `api/readiness.api.md` is a
-snapshot reference, and the host owns inventory.
-
 ## Package artifact limits
 
 The monorepo's package artifact checker enforces this package's
@@ -343,169 +360,6 @@ for measured sizes, current caps, the S1 baseline refresh and refusal remedies.
 Artifact checks require a clean package directory; `--manifest-only` supplies no
 artifact evidence.
 
-Source contributors record notable changes in package changelog fragments;
-release preparation assembles the shipped CHANGELOG. Follow the
-[public contribution guide](https://github.com/openlup/openlup/blob/main/CONTRIBUTING.md#development-preview-checks).
-
-## Readiness contract
-
-The `./readiness` export evaluates inert package contributions against a complete
-host inventory and bounded schema observation. Its grouped PostgreSQL probe
-preserves request ordinals and distinguishes legitimate absence from malformed
-or incomplete results. Readiness evaluation calls the host's schema observation
-port; `createSchemaProbe` invokes the supplied identity callback and SQL executor.
-The grouped query builder and result decoder perform no I/O. The application
-retains database access, transaction and admission policy; these helpers do not
-run migrations, schedule work or activate a module.
-
-## Bundle contracts
-
-The `./bundle` export defines commerce composition: `Bundle` contains `coreLines`,
-`addonLines` and a `CompositionConstraint`. Its `BundleLineRef` identifies a line,
-and `CompositionRulesPort` supplies the application's composition rules. These
-are commerce bundle contracts. Platform bundle identifiers, descriptors and
-readiness composition belong to `./platform-runtime`.
-
-## Commerce data contracts
-
-Product identity, stock position, price decisions and promotion rules have
-separate owners. Membership, persistence, checkout composition and final
-selection remain host responsibilities.
-
-### Catalog identifiers
-
-The `./catalog` export provides bounded shape validators for product, SKU,
-variant and slug identifiers. Those open formats do not determine whether an
-identifier exists in a catalogue; the host's catalog read port owns membership
-and current product data.
-
-### Inventory availability
-
-The `./inventory` export calculates available-to-promise results from supplied
-stock lines, reservations, unavailable quantities, safety stock and lot facts.
-It selects a single location when possible and reports review-required or
-unsupported results when the request cannot be fulfilled under its declared
-no-split policy. It reads or reserves no inventory itself.
-
-### Price resolution and breakdown
-
-The `./pricing` export defines the asynchronous price-resolution port and pure
-pricing breakdown builders. The host resolves price-list entries and owns any
-fallback choice; the builders emit line and order components whose totals
-reconcile to the supplied resolved prices, discounts and shipping amount.
-
-### Promotion evaluation and adjustments
-
-The `./promo` export evaluates time-, region- and cart-eligible candidates with
-separate product and shipping lanes, including coupon and stacking rules. Its
-adjustment engine selects bounded winners and returns payable amounts and
-rejection facts. It performs no persistence or checkout activation.
-
-## Delivery contracts
-
-Delivery facts and shipping-rule results are separate inputs to host order and
-fulfillment workflows.
-
-### Fulfillment fact and status contracts
-
-The `./fulfillment` export defines canonical local statuses, normalized fact
-parsing, progress presentation and parcel precedence. These helpers normalize
-and order supplied evidence; they do not dispatch a shipment or establish that
-a parcel reached the customer.
-
-### Shipping rule resolution
-
-The `./shipping` export resolves active rules for the supplied region, currency,
-cart mode and time, then snapshots shipping amount and VAT treatment. A missing
-rule returns no result for the host to handle. Carrier choice, pickup points,
-labels and shipment execution remain outside the kernel.
-
-## Partner and risk contracts
-
-Identity lookup, partner inquiry state and risk assessment are distinct neutral
-contracts; host policy supplies authority and decides how to act on each result.
-
-### Company identity lookup contracts
-
-The `./company-identity` export defines lookup request and response shapes,
-purpose, per-source outcomes and verification levels. The host selects supported
-identifier kinds and decides whether the resulting trust level satisfies the
-lookup purpose; the schemas neither query registries nor approve a seller.
-
-### Partner lifecycle contracts
-
-The `./partners` export defines inquiry lifecycle statuses and the update
-request/acknowledgement port. Inquiry payloads, contact data and downstream CRM
-identifiers remain host-owned; a successful acknowledgement records the port
-result, not an independent qualification decision.
-
-### Risk evaluation contracts
-
-The `./risk` export matches supplied signals to deterministic rules and returns
-score, severity, reason codes and mode-dependent enforcement facts. The host
-supplies signals and selects whether a result is shadowed, reviewed or enforced;
-the evaluator does not authorize an order or payment by itself.
-
-## Payment contracts
-
-The `./payment` export defines provider-neutral payment status and money-path
-contracts. Host adapters translate provider results and retain authorization,
-verification and settlement policy; the kernel performs no provider I/O.
-
-## Marketing contracts
-
-The `./marketing/research` export represents consent-aware research evidence and
-its neutral projection contracts. Applications supply collection, retention,
-consent and persistence policy; the package does not activate collection.
-
-## Outbox contracts
-
-The `./outbox` export defines the shared event row, handler outcomes, execution
-context, inert handler descriptors, abort signal, handler interface and event
-vocabulary. Handlers must keep effects idempotent and honor the abort signal.
-The separate `@openlup/outbox` rail owns claiming and settlement ports; its host
-adapter and worker supply durable storage, transactions and external delivery.
-
-`PLATFORM_EVENT_VOCABULARY` includes `commerce.settlement.settled`, emitted by
-the platform settlement rail beside the paid-order events. A host that passes
-this vocabulary as the rail's known-type list can leave a settlement fact
-pending without blocking a later paid receipt on the same order aggregate.
-The claim allowlist still comes from registered handlers. A known type without
-a handler is retained without acknowledgement or delivery; no dormant seed is
-required. Readiness evaluation separately requires an explicit owned
-`ignored` or `dormant` exemption when that selected type has no handler.
-
-The platform communications owner also declares
-`commerce.checkout.recovery_qualified.v1` and `communication.ecommerce.export.v1`.
-The former is a recorded token-free source fact; the latter is an independently
-claimed export duty. Their vocabulary entries install no worker. Hosts select
-export and commerce handlers in separate invocations with disjoint allowlists.
-
-## Platform runtime contracts
-
-The `./platform-runtime` export describes shared host capabilities and runtime
-configuration inputs. It does not construct a server or read deployment
-configuration; the application binds and admits its own runtime.
-
-## Standard schema contracts
-
-The `./standard-schema` export exposes the framework-neutral schema interface
-used by package contracts. It keeps browser-safe consumers independent of a
-schema library runtime; validation behavior still belongs to each declared
-schema and its consumer.
-
 ## Release notes
 
-The prepared `0.39.0` set adds Platform's checkout recovery, customer account,
-operator order and parcel surfaces. Core runtime, exports and SQL are unchanged
-since `0.38.0`. Upgrade all packages together and read
-[the set notes](CHANGELOG.md#0390); Core introduces no schema migration.
-Size comparison uses the published `0.38.0` tarball; releases before `0.37.0`
-remain in the source-only `CHANGELOG-HISTORY.md`. Preparation establishes no
-npm publication.
-
-The set requires Zod `^4.6.6` for GHSA-mrhx-c7xc-m3w5.
-Oversized constrained collections fail before per-element errors accumulate;
-bounded valid inputs and public exports are preserved. Both dependency locks
-select the fixed runtime. The build uses the existing development-only Node
-types for Zod's standard `URL` declaration; Core adds no runtime Node import.
+Read [the changelog](CHANGELOG.md#0390) before upgrading the package set.

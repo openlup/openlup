@@ -1,5 +1,7 @@
 # Documentation navigation and maintenance
 
+Status: historical record, 2026-11-06.
+
 Status of documentation-impact obligations: historical and superseded by
 [Deliver a change](../../../CONTRIBUTING.md#deliver-a-change). A pull request
 updates the documentation it makes stale; the reviewer checks it; tooling checks

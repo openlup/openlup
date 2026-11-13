@@ -1,5 +1,7 @@
 # Public CI diagnostic obligations
 
+Status: historical record, 2026-11-06.
+
 Status: the managed runtime repair closes the twelve SQL obligations recorded below. Historical measurements are archived; the required root-suite `test` aggregate (four `test-full-shard` jobs and `pgtap`) and the unrestricted `pgtap` diagnostic must remain visible and new failures require triage.
 Audience: contributors repairing published tests and runtime contracts.
 

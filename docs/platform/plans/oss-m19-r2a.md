@@ -1,5 +1,7 @@
 # Starter authenticated recovery checkpoint
 
+Status: historical record, 2026-11-06.
+
 Historical checkpoint; the current task record is [PR #546](https://github.com/openlup/openlup/pull/546).
 The merged native installation now includes the receipt-lock completion. Both
 operator cases pass as ordinary committed HTTP proofs; no native prerequisite

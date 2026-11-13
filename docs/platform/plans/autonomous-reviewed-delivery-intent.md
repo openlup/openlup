@@ -1,5 +1,7 @@
 # Intent: autonomous delivery with accountable review
 
+Status: historical record, 2026-11-06.
+
 Status: historical intent; current delivery and review rules are in [Deliver a change](../../../CONTRIBUTING.md#deliver-a-change).
 
 The intent was to let authorized contributors complete bounded changes with

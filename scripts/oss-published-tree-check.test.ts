@@ -1159,6 +1159,9 @@ describe("absolute filesystem paths in tracked Markdown", () => {
 
   it.each([
     ["a macOS home", "Remove `/Users/someone/scratch` later.", "/Users/someone"],
+    ["a macOS file URL", "Open file:///Users/someone/store.", "file:///Users/someone"],
+    ["a Linux file URL", "Open file:///home/someone/store.", "file:///home/someone"],
+    ["a forward-slash Windows home", "Open C:/Users/someone/store.", "C:/Users/someone"],
     ["a Linux home", "Logs live in /home/runner/work.", "/home/runner"],
     ["a Windows home", "Open C:\\Users\\someone\\openlup first.", "C:\\Users\\someone"],
   ])("refuses %s in Markdown", (_name, line, found) => {

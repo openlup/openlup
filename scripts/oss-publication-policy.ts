@@ -123,7 +123,7 @@ export function publicPublicationCatalogDigests(source: string) { const catalog 
 /** The reader guide: Markdown pages under `packages/core/docs/guide/`, admitted by pattern like fragments. */
 export const isGuidePageArea = (path: string): boolean => /^packages\/core\/docs\/guide(?:\/|$)/u.test(path);
 export const isGuidePage = (path: string): boolean => /^packages\/core\/docs\/guide\/(?:[a-z0-9][a-z0-9-]*\/)*[A-Za-z0-9][A-Za-z0-9_-]*\.md$/u.test(path);
-/** Regular, non-executable, readable Markdown only; anything else under the guide needs a reviewed catalogue row. */
+/** Regular, non-executable, readable Markdown only; other guide paths and catalogue rows under the guide are refused. */
 export function validateGuidePage(path: string, bytes: string | Buffer, mode: string): string {
   if (!isGuidePage(path) || mode !== "100644") throw new Error(`${path}: guide pages must be docs/guide/**/*.md with lowercase directories, regular and non-executable`);
   let contents: string;

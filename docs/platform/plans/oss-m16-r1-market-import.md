@@ -1,5 +1,7 @@
 # M16 R1: company identity and market preservation import
 
+Status: historical record, 2026-10-29.
+
 ## Outcome and authority
 
 Prepare one draft PR containing the unchanged lookup engine and reusable money

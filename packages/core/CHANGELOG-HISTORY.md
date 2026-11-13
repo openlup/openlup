@@ -1,5 +1,7 @@
 # Changelog history
 
+Status: historical record, 2026-11-11.
+
 Releases moved verbatim out of the packed `CHANGELOG.md`, which keeps the current release and the two previous ones.
 
 ## [0.36.0]
