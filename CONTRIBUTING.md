@@ -305,9 +305,12 @@ GHCR creates packages private). After the first authorized run, for each package
 under **openlup → Packages**, use **Connect repository → openlup/openlup**; in
 **Package settings → Manage Actions access**, add that repository with **Write**
 access if inheritance does not already grant it. Under **Danger Zone → Change
-visibility**, select **Public** and confirm. Check anonymous mirror pulls after making packages public; consumers already
-fall back while packages are absent or private. `GITHUB_TOKEN` cannot make a package public; linking a public
-repository does not change package visibility. See GitHub's
+visibility**, select **Public** and confirm. Check anonymous mirror pulls after
+making packages public. PostgreSQL consumers with upstream sources fall back
+while packages are absent or private. The required `install-packages` PostgreSQL
+startup step and the starter browser image are mirror-only exceptions: an absent
+or inaccessible organization package fails `install-proof`. `GITHUB_TOKEN` cannot
+make a package public; linking a public repository does not change package visibility. See GitHub's
 [package access and visibility procedure](https://docs.github.com/en/packages/learn-github-packages/configuring-a-packages-access-control-and-visibility)
 and [repository linking procedure](https://docs.github.com/en/packages/learn-github-packages/connecting-a-repository-to-a-package).
 
@@ -565,7 +568,7 @@ OPENLUP_REFERENCE_PROFILE=subscription OPENLUP_BUILD_OUT_DIR=dist-subscription \
 # install-packages: package gates after both builds on a clean signed candidate
 # Keep package gates before root tests locally: one checkout shares build outputs.
 GATE_PACKS="$(mktemp -d)"
-# Local SQL proof owns one ephemeral PostgreSQL container; CI passes its job service identity/port.
+# Local SQL proof owns one ephemeral PostgreSQL container; CI passes the explicitly started container identity/port.
 node --experimental-strip-types scripts/packages/required-package-gates.ts \
   --out "$GATE_PACKS" --expected-commit "$(git rev-parse HEAD)"
 # test: omit bounded tooling fixtures whose inputs are untouched, including dirty files.

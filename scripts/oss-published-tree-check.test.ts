@@ -335,7 +335,7 @@ describe("complete public CI", () => {
     expect(shard).toContain("name: test-full-shard (${{ matrix.shard }}/6)");
     const eventFence = workflowJob("typecheck").split("\n").find(line => line.startsWith("    if:"))!;
     expect(shard).toContain(eventFence);
-    expect(workflowJob("test")).toContain(eventFence.replace("${{ ", "${{ always() && "));
+    expect(workflowJob("test").split("\n").find(line => line.startsWith("    if:"))).toBe(eventFence.replace("${{ ", "${{ always() && "));
     expect(shard).toContain("    strategy:\n      fail-fast: false\n      max-parallel: 6\n      matrix:\n        shard: [1, 2, 3, 4, 5, 6]\n");
     expect(shard).not.toMatch(/include:|exclude:|continue-on-error|--(?:maxWorkers|pool|retry|testTimeout|hookTimeout|bail)/u);
     expect(shard).toContain("    runs-on: ubuntu-latest\n    timeout-minutes: 20\n");
@@ -350,7 +350,6 @@ describe("complete public CI", () => {
     const aggregate = workflowJob("test");
     expect(aggregate).toContain("    name: test\n");
     expect(aggregate).toContain("    needs: [test-full-shard, pgtap]\n");
-    expect(aggregate).toContain("if: ${{ always() && github.event.repository.private == false &&");
     expect(aggregate).toContain("SHARD_RESULT: ${{ needs.test-full-shard.result }}");
     expect(workflowJob("pgtap").split("\n").find(line => line.startsWith("    if:"))).toBe(shard.split("\n").find(line => line.startsWith("    if:")));
     expect(aggregate).toContain("PGTAP_RESULT: ${{ needs.pgtap.result }}");
@@ -365,9 +364,9 @@ describe("complete public CI", () => {
   it("requires package proof and all browser shards, including on main-push reuse", () => {
     const browser = workflowJob("install-browser"), aggregate = workflowJob("install-proof");
     const eventFence = workflowJob("typecheck").split("\n").find(line => line.startsWith("    if:"))!;
-    expect(workflowJob("install-packages")).toContain(eventFence);
-    expect(browser).toContain(eventFence);
-    expect(aggregate).toContain(eventFence.replace("${{ ", "${{ always() && "));
+    expect(workflowJob("install-packages").split("\n").find(line => line.startsWith("    if:"))).toBe(eventFence);
+    expect(browser.split("\n").find(line => line.startsWith("    if:"))).toBe(eventFence);
+    expect(aggregate.split("\n").find(line => line.startsWith("    if:"))).toBe(eventFence.replace("${{ ", "${{ always() && "));
     expect(browser).toContain("needs: [install-packages]");
     expect(workflowJob("install-packages")).toContain("outputs:\n      reuse: ${{ steps.reused.outputs.reuse }}");
     expect(browser).toContain("if: needs.install-packages.outputs.reuse != 'true'");
@@ -376,7 +375,7 @@ describe("complete public CI", () => {
     expect(browser).toContain("groups: ['0', '1,6', '2,4', '3,5']");
     expect(aggregate).toContain("name: install-proof\n");
     expect(aggregate).toContain("needs: [install-packages, install-browser]");
-    expect(aggregate).toContain("timeout-minutes: 2");
+    expect(aggregate).toContain("\n    timeout-minutes: 2\n");
     expect(aggregate).toContain("PACKAGE_RESULT: ${{ needs.install-packages.result }}");
     expect(aggregate).toContain("BROWSER_RESULT: ${{ needs.install-browser.result }}");
     const commands = workflowCommands(aggregate);

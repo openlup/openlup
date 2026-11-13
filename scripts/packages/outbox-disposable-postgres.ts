@@ -69,13 +69,13 @@ export async function runDisposablePostgres(args: readonly string[]): Promise<vo
   const options = new Map<string, string>();
   for (let i = 0; i < args.length; i += 2) {
     const key = args[i]!, value = args[i + 1];
-    if (!["--manifest", "--expected-commit", "--service-container", "--service-port"].includes(key) || !value || options.has(key)) throw new Error("Use --manifest/--expected-commit, optionally both trusted job service identity/port inputs");
+    if (!["--manifest", "--expected-commit", "--service-container", "--service-port"].includes(key) || !value || options.has(key)) throw new Error("Use --manifest/--expected-commit, optionally both trusted container identity/port inputs");
     options.set(key, value);
   }
   if (options.has("--manifest") !== options.has("--expected-commit") || options.has("--service-container") !== options.has("--service-port")) throw new Error("Supply both artifact inputs and both optional service inputs");
   const manifest = options.get("--manifest") ?? processEnvironment.OPENLUP_PACK_MANIFEST, commit = options.get("--expected-commit") ?? processEnvironment.OPENLUP_PACK_COMMIT;
   const service = options.get("--service-container") ?? processEnvironment.OPENLUP_PROOF_SERVICE_CONTAINER, port = options.get("--service-port") ?? processEnvironment.OPENLUP_PROOF_SERVICE_PORT;
-  if (!manifest || !commit || !/^[a-f0-9]{40}$/u.test(commit) || Boolean(service) !== Boolean(port) || (service && (!/^[a-f0-9]{12,64}$/u.test(service) || !/^\d{1,5}$/u.test(port!) || Number(port) < 1 || Number(port) > 65535))) throw new Error("Missing or malformed artifact/job-service identity");
+  if (!manifest || !commit || !/^[a-f0-9]{40}$/u.test(commit) || Boolean(service) !== Boolean(port) || (service && (!/^[a-f0-9]{12,64}$/u.test(service) || !/^\d{1,5}$/u.test(port!) || Number(port) < 1 || Number(port) > 65535))) throw new Error("Missing or malformed artifact/container identity");
   const root = resolve(dirname(fileURLToPath(import.meta.url)), "../.."), scratchParent = join(root, ".context", "scratch");
   readCurrentPackManifest(root, resolve(manifest), commit); // Refuse before install, SQL or service startup.
   mkdirSync(scratchParent, { recursive: true });
@@ -92,8 +92,8 @@ export async function runDisposablePostgres(args: readonly string[]): Promise<vo
       // Identity comes from explicit CI service startup, not an ambient port/URL. Require the pinned image.
       const info = JSON.parse(docker(["inspect", service]))[0];
       const image = proofImage(), reference = info?.Config?.Image;
-      if (info?.Id !== service || ![POSTGRES_PROOF_IMAGE, ...image.sources.map((source: string) => imageReference(image, source))].includes(reference) || !info?.State?.Running || !info?.NetworkSettings?.Ports?.["5432/tcp"]?.some((binding: { HostPort: string }) => binding.HostPort === port)) throw new Error("Job service is not the exact pinned running container/port");
-      if (await resolvePinnedImage(image, reference, proofImageIo(controller.signal)) !== reference) throw new Error("Job service image is not the exact local pinned reference");
+      if (info?.Id !== service || ![POSTGRES_PROOF_IMAGE, ...image.sources.map((source: string) => imageReference(image, source))].includes(reference) || !info?.State?.Running || !info?.NetworkSettings?.Ports?.["5432/tcp"]?.some((binding: { HostPort: string }) => binding.HostPort === port)) throw new Error("Supplied PostgreSQL container is not the exact pinned running container/port");
+      if (await resolvePinnedImage(image, reference, proofImageIo(controller.signal)) !== reference) throw new Error("Supplied PostgreSQL container image is not the exact local pinned reference");
       container = service;
     } else {
       // Creation can succeed even when its response is interrupted. The known
