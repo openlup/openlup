@@ -16,6 +16,25 @@ and [composition report](https://github.com/openlup/openlup/blob/openlup-core-v0
 [complete selected catalogue](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/DATA_AND_MIGRATIONS.md#compatibility-lifecycle),
 including the operator shipment routines, before selecting native commands.
 
+## Select shipping rules
+
+Call `resolveShipping` from `@openlup/core/shipping` with your cart, rules and
+explicit resolution time. It selects active rules matching the cart's region,
+currency and validity window, preferring an exact cart mode over `any`. Within
+the same mode, lower `priority` wins. If no rule matches, it returns `null`;
+your application decides how to report or handle missing shipping terms.
+
+The result snapshots the shipping amount and VAT rate. Meeting or exceeding
+`free_threshold_minor` makes shipping free; otherwise `fixed_cost_minor` applies,
+with `null` meaning free. For VAT, `fixed` uses the rule's `vat_rate_bps`,
+`inherit_main_goods` uses the most frequent line rate, and `highest_in_cart` uses
+the highest line rate. With no line rates, either cart-based policy falls back
+to the rule's rate.
+
+The selected rule supplies a carrier kind and delivery estimate; it does not
+choose or call a carrier adapter. Your host owns carrier selection, pickup
+points, labels and shipment execution. Continue below to compose those effects.
+
 ## Provide preparation and dispatch ports
 
 Pass `createNativeFulfillmentBinding` a capability-local transaction lane,

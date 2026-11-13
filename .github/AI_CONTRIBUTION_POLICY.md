@@ -14,31 +14,16 @@ The policy is therefore **disclosure and accountability**, not permission.
 
 Moved to [AI-assisted contributions](../packages/core/docs/guide/reference/ai-contributions.md#contribution-responsibilities).
 
-1. **Disclose.** If an AI tool wrote, drafted, or materially shaped a
-   contribution, say so in the pull request or issue. A checkbox is enough. You
-   are not judged for it.
+Sign-off under the Developer Certificate of Origin is the accountable human's;
+the DCO requirement in `CONTRIBUTING.md` applies unchanged to AI-assisted work.
+A tool cannot sign off, and the maintainer's own agents are no exception: when
+an agent writes the sign-off line on a human's instruction, the sign-off is that
+human's, certified by that human's authority over provenance, submission rights
+and task delivery scope. Delegated technical review does not assert personal
+reading of every diff.
 
-2. **A human is accountable.** Every contribution has exactly one human author
-   who is answerable for it. Sign-off under the Developer Certificate of Origin
-   is that human's, and the DCO requirement in `CONTRIBUTING.md` applies
-   unchanged to AI-assisted work. A tool cannot sign off, and the maintainer's
-   own agents are no exception: when an agent writes the sign-off line on a
-   human's instruction, the sign-off is that human's, certified by that
-   human's authority over provenance, submission rights and task delivery scope.
-   Delegated technical review does not assert personal reading of every diff.
-
-3. **You must be able to explain every line.** If a reviewer asks why a line
-   exists and the honest answer is "the model wrote it", the contribution is not
-   ready. This is the whole test, and it is deliberately strict: it is what
-   separates an assisted contribution from an unreviewed one.
-
-4. **No unauthorized submissions.** An agent may implement and independently
-   review an authorized task. Opening or merging a pull request still needs the
-   applicable explicit maintainer authority; a generated plan or review receipt
-   cannot grant it. Record the actual task or batch authority without claiming
-   that the maintainer personally read the diff. Unsolicited bulk submissions
-   without an accountable human and authorized scope are closed regardless of
-   quality; repeated submission is treated as abuse.
+Record the actual task or batch authority without claiming that the maintainer
+personally read the diff.
 
 ## Admission, native review and DCO
 

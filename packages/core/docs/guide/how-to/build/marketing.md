@@ -54,6 +54,12 @@ so a custom evidence port must uphold its result contract.
 
 ## Bind partner inquiries
 
+Core's `@openlup/core/partners` contract describes inquiry lifecycle status and
+its update request and acknowledgement. Your adapter owns inquiry payloads,
+contact data and downstream identifiers. An acknowledgement records the
+update result; it does not independently qualify a partner.
+
+
 Use the strict partner case/list/transition and inquiry submit schemas from
 `@openlup/platform/marketing`, the `PartnerAcquisitionPort` type from its
 contracts entry and `createPostgresPartnerAcquisitionPort` from the PostgreSQL
@@ -79,6 +85,11 @@ and receipts are append-only, and store transfer with nonempty partner state
 requires a separate owner path.
 
 ## Bind research and notifications
+
+Core's `@openlup/core/marketing/research` contracts describe survey submissions
+and response reads. Your application supplies collection, consent, retention
+and persistence policy; importing the contracts activates no collection.
+
 
 `createResearchSurveySubmitHandler` takes a responder and
 `MarketingResearchSurveySubmitPort`. `createAdminSurveyResponsesHandler` takes a

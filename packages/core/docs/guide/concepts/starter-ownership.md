@@ -175,6 +175,16 @@ that read grants no consent writer. The starter leaves the native default
 retention gate in place. Arbitrary future-term edits refuse with
 `subscription_command_unsupported_action`.
 
+## Recurring payment recovery
+
+The recurring-payment repair page captures its entry token before application
+requests or sign-in, then rechecks the signed-in customer's owned payment case,
+obligation, renewal operation and order. Browser-supplied method or payment facts
+cannot authorize recovery. Confirming recovery schedules the same unpaid
+obligation and returns pending state; execution and native readback must establish
+that it recovered. Initial-checkout reads, simulator completion and acquisition
+activation refuse recurring obligations, including for the matching owner.
+
 ## Account and operator authority
 
 `owned/acquisition-policy.ts` supplies account validation and checkout link and

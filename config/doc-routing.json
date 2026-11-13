@@ -894,7 +894,7 @@
         "packages/core/src/pricing/**"
       ],
       "doc": "packages/core/docs/guide/how-to/build/quote-prices.md",
-      "anchor": "#read-prices-for-a-quote"
+      "anchor": "#resolve-prices-and-adjustments"
     },
     {
       "id": "core-promotions",
@@ -903,7 +903,7 @@
         "packages/core/src/promo/**"
       ],
       "doc": "packages/core/docs/guide/how-to/build/quote-prices.md",
-      "anchor": "#add-advisory-promotion-reads"
+      "anchor": "#resolve-prices-and-adjustments"
     },
     {
       "id": "core-fulfillment",
@@ -920,8 +920,8 @@
       "paths": [
         "packages/core/src/shipping/**"
       ],
-      "doc": "packages/core/docs/guide/how-to/build/quote-prices.md",
-      "anchor": "#compose-a-request-scope"
+      "doc": "packages/core/docs/guide/how-to/build/fulfillment.md",
+      "anchor": "#select-shipping-rules"
     },
     {
       "id": "core-company-identity",

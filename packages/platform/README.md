@@ -2408,6 +2408,21 @@ locked facts, independent of current active catalog selection. It exposes manage
 webhook/page/recovery callables without mounting routes or jobs; portable selection
 exposes source-only operations. This recipe is application source, outside the tarball.
 
+Both webhook composition and retained-purchase composition refuse missing channel
+reads before missing ingest rails, before any saga effect. Retained composition
+then requires the original retained rows before reading the saga dependencies.
+
+The managed rail can consume original retained paid obligations through the
+existing order, payment and inventory owners. Retained rows preserve the first
+approval/qualification, locked BOM, component weights, exact integer money groups
+and original payment identity across retries and changed current commercial
+facts. Reservations precede money effects. The ATP exposure hook reports the
+same retained outstanding obligations as channel admission; conversion credits
+its own validated exposure before the unchanged allocator clamps stock. Channel
+admission takes no subscription locks: uncommitted renewal-demand changes remain
+subject to existing stock-wait recovery. Ordinary reservation behavior is
+unchanged.
+
 The portable rail offers immutable source capture, protected readback and scoped
 page compare-and-swap through `createPostgresChannelPurchasedSourceStore`.
 Physical conversion refuses with `channel_purchase_physical_unavailable`; full
@@ -2416,6 +2431,14 @@ migration owner. Managed capture uses a closed NOLOGIN owner; runtime, browser
 and MCP callers receive only their declared entrypoints. Generic outbox source
 evidence omits normalized buyer/address bodies; authorized capture reads recover
 the original protected data. Privacy lifecycle export/erasure is unavailable.
+
+Fresh captures bind the normalized slug to their scoped channel and the raw-source
+digest to the original page event. Raw admission checks the existing normalized
+buyer, address and shipping scalar contract before persistence. Page watermarks
+use the public millisecond comparison and retain the original string on ties.
+Retained conversion readback verifies permanent holds by item, SKU, key and total
+quantity, including split local lots; recovery retains the sealed original order
+and holds when the channel's current delivery provider changes.
 
 `CHANNEL_INGEST_MIGRATIONS` projects the two canonical native units with exact
 SHA-256 identities and package SQL assets. It is a sparse projection, not an

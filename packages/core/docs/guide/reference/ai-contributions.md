@@ -9,7 +9,7 @@ prepare a contribution, these rules explain what you remain responsible for.
    drafted or materially shaped your contribution. A checkbox is enough;
    AI assistance alone does not count against you.
 
-2. **Keep a human accountable.** Each contribution needs an accountable human
+2. **Keep a human accountable.** Each contribution has exactly one accountable human
    author, as required by the [contribution policy](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/.github/AI_CONTRIBUTION_POLICY.md#the-four-rules). Using an agent does not transfer that
    responsibility to the tool.
 
@@ -20,7 +20,9 @@ prepare a contribution, these rules explain what you remain responsible for.
 4. **Stay within authorized scope.** An agent can implement and independently
    review an authorized task. Opening or merging a pull request requires the
    applicable explicit maintainer authority. Generated plans and automated
-   reviews cannot grant that authority.
+   reviews cannot grant that authority. Unsolicited bulk submissions without an
+   accountable human and authorized scope are closed regardless of quality;
+   repeated submission is treated as abuse.
 
 For sign-off, submission and review procedures, follow the
 [AI contribution policy](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/.github/AI_CONTRIBUTION_POLICY.md#admission-native-review-and-dco)

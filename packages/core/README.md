@@ -165,12 +165,6 @@ run migrations, schedule work or activate a module.
 ## Bundle contracts
 Moved to [Compose native bundle writes](docs/guide/how-to/build/bundles.md).
 
-The `./bundle` export defines commerce composition: `Bundle` contains `coreLines`,
-`addonLines` and a `CompositionConstraint`. Its `BundleLineRef` identifies a line,
-and `CompositionRulesPort` supplies the application's composition rules. These
-are commerce bundle contracts. Platform bundle identifiers, descriptors and
-readiness composition belong to `./platform-runtime`.
-
 ## Commerce data contracts
 Moved to [Read prices for a quote](docs/guide/how-to/build/quote-prices.md) and [add OpenLup to an existing application](docs/guide/how-to/build/own-stack.md).
 
@@ -193,7 +187,7 @@ Moved to [Compose native fulfillment](docs/guide/how-to/build/fulfillment.md).
 Moved to [Canonical status](docs/guide/concepts/payments.md#canonical-status) and [compose native fulfillment](docs/guide/how-to/build/fulfillment.md).
 
 ### Shipping rule resolution
-Moved to [Read prices for a quote](docs/guide/how-to/build/quote-prices.md).
+Moved to [Select shipping rules](docs/guide/how-to/build/fulfillment.md#select-shipping-rules).
 
 ## Partner and risk contracts
 Moved to [Architecture and ownership](docs/guide/concepts/architecture-and-ownership.md).

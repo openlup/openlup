@@ -317,63 +317,18 @@ Moved to [Who owns what in the starter](../../../packages/core/docs/guide/concep
 
 Moved to [Who owns what in the starter](../../../packages/core/docs/guide/concepts/starter-ownership.md#shipment-evidence-and-retention).
 
-Label evidence includes an explicit provider namespace and tracking number.
-Native correlation refuses cross-order reuse in the same namespace and refuses
-unattributed conflicting history rather than guessing. Same-order reassignment
-and raw label-key replay retain the native receipt behavior. Handoff consumes
-only the recorded parcel reservation IDs once. Historical missing associations
-report `reservations_not_recorded` and never acquire today's stock. Before a fresh nonterminal tracking event, native state and any supplied
-same-order reference must be admitted. Terminal replay and earlier chronology
-repair retain their native rules. A delivered event
-records actual arrival. Explicit-zone occurrence times can repair chronology
-earlier; later inputs cannot postpone recorded arrival, replace the original
-receipt or move the next cycle earlier. An undelivered replacement remains an
-outstanding obligation. There is no separate replacement-delivery attestation control.
-
-The existing paid-capture document policy is unchanged. The optional handoff
-accounting wrapper is only for an adopter that selects a handoff issue policy;
-any such callback belongs after the committed shipment transaction and remains
-fail-soft according to that wrapper's policy.
-
 ## Saved addresses and scoped preferences
 
 Moved to [Who owns what in the starter](../../../packages/core/docs/guide/concepts/starter-ownership.md#saved-addresses-billing-and-preferences).
-
-An active or paused subscription can select an owned shipping/both address.
-The native command owns the saved pointer, subscription/account events and outbox.
-A locked upcoming cycle refuses a fresh selection; an admitted key replays before
-saved-ID parsing and returns the current pointer. Null recipients remain null.
-Editing a saved row affects future destination materialization, while a retained
-renewal operation and existing parcel keep their immutable destination. Cadence,
-commercial terms and billing are unchanged.
-
-Billing profiles are bound through the native session-scoped reader and mutation
-handler. The portal supports create, read, edit and delete, including the native
-company identity fields and the owned tax normalization/checksum policy. Default
-clearing, profile writing and account-event append remain separate commits: a
-later failure can leave earlier writes committed, and billing command keys do not
-deduplicate writes or events. Foreign edits refuse; deleting a foreign or missing
-row acknowledges a zero-row deletion. Address-book responses include real owned
-billing profiles. Default snapshots expose redacted, unapplied selection hints;
-they install no instrument and do not apply a profile to an existing order.
-Private and combined-profile views remain limited under N5. The fictional country,
-phone prefix and numeric tax checksum are demonstration validation, not real-market
-certification.
 
 ## Sandbox token payment and exact continuation
 
 Moved to [Who owns what in the starter](../../../packages/core/docs/guide/concepts/starter-ownership.md#payment-guidance-and-sandbox-continuation).
 
-Only an actual fresh dispatched sandbox attempt can mint the native continuation
-cookie. Its private claims bind the real order, client, intent, attempt and rail;
-this composition uses the native order UUID for the opaque checkout journey. The
-codec purpose-derives its signing key from the existing private host keyring's
-current root, supplied by `--quote-acceptance-key-file`. Keep that root stable across a host restart; rotating it invalidates
-old continuation cookies. No key, raw cookie or token belongs in logs or public
-reports. The cookie keeps its native Secure, HttpOnly, SameSite=Strict and Path=/
-attributes and lifetime. Checkout creation mints no continuation. Browser storage
-is reload convenience and never grants this authority. Missing signing material
-leaves cookie-only controls unavailable; it does not fabricate a credential.
+The continuation codec purpose-derives its signing key from the private
+keyring root supplied by `--quote-acceptance-key-file`. This composition uses
+the native order UUID for the opaque checkout journey.
+
 
 ## Billing profiles and frozen invoice buyers
 
@@ -384,19 +339,6 @@ Install the complete ordered package history through
 The host requires the slot-27 first-duty buyer-capture entry; slot 28 preserves
 absence of explicit buyer facts during recreation. `./lifecycle up` installs the
 complete history. No duty or historical invoice is backfilled.
-
-Before sandbox payment capture, initial checkout records its owned order
-destination; native recreation and renewal record theirs through their native
-owners. On the first owed-duty capture, the invoice owner freezes explicit order
-buyer facts when present. Otherwise it selects the default or latest owned profile
-and billing/both address independently, using the recorded shipping address when
-no billing address exists. With neither profile nor billing address, it records the
-marked shipping fallback. The frozen address keeps line2 and source provenance. Recreation copies explicit buyer facts
-only when the source has them; absent facts remain absent so first-duty selection
-can use an owned profile or the marked fallback. Later profile/address edits or
-deletions cannot change a captured buyer, installed invoice facts or issued bytes.
-Customer invoice history checks ownership before reading this snapshot; operator
-summary requires current human-admin authorization.
 
 `payment.simulate`, `checkout.payment` and recreated `checkout.recovery` simulation
 share one capture/activation helper. Retained acquisition renewal availability

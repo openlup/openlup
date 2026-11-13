@@ -1,7 +1,7 @@
 # Add catalog drafts to your own application
 Moved to [Add OpenLup to an existing application](../../packages/core/docs/guide/how-to/build/own-stack.md#add-openlup-to-an-existing-application).
 
-Moved to the [OpenLup guide](../../packages/core/docs/guide/how-to/build/own-stack.md). This README keeps only what you need to work on the sample inside this repository.
+This README retains the sample's implementation constraints and verification record.
 
 Status: development-preview sample for `@openlup/core` and
 `@openlup/platform` 0.36.0, with Node 24 and PostgreSQL 16.

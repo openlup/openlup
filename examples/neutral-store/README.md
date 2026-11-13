@@ -113,10 +113,8 @@ sends the configured Host; any external health probe must also send that Host.
 
 Moved to [the reader guide](../../packages/core/docs/guide/how-to/build/customize-the-starter.md).
 
-Read [customization](docs/customization.md), [ownership](docs/ownership.md) and
-the generated application agent guide. The typed input lives in
-`owned/store.config.ts`; localized general copy lives in `owned/copy.ts`; three
-named UI fragments live in `owned/fragments.ts`.
+`owned/store.config.ts`, `owned/copy.ts` and `owned/fragments.ts` own typed
+configuration, localized general copy and the named presentation fragments.
 
 `./lifecycle verify` and `./lifecycle upgrade` delegate to the installed public
 CLI when it exists. They refuse explicitly before that capability is shipped.
@@ -416,20 +414,19 @@ store; database transfer alone does not preserve them.
 
 Moved to [the reader guide](../../packages/core/docs/guide/how-to/build/customize-the-starter.md#run-a-bounded-background-pass).
 
-The application owns [renewal configuration](owned/renewal.config.ts), including
-its explicit disabled default, population, cadence, batch and lease values. The
-installer and public configuration use the same object. After the selected
-installation is complete, an existing local scheduler may invoke
-`./lifecycle renewal --configuration <id> --database-url <restricted-runtime-url>`.
-This one-shot lifecycle entry runs one bounded paid-mail outbox pass and selects
-the native renewal service once; it creates no timer or second HTTP server.
-The renewal enable flag gates renewal claims; the paid-mail pass also runs when
-renewals are disabled. Structurally unready renewal invocations do not claim renewals. Population session exclusion and the durable job ledger serialize
-selected executors, including a callback longer than its lease interval.
-Returned batches record actual checked, updated, failure and deferred counts.
-An invocation that throws without a batch result marks counts unavailable; it
-does not guess partial progress. Lease configuration must stay within the native
-ledger's 60–3600 second range; unsupported values refuse before any claim.
+The installer and public configuration share [the owned renewal configuration
+object](owned/renewal.config.ts). Structurally unready renewal invocations do not
+claim renewals. Returned batches record actual checked, updated, failure and
+deferred counts. An invocation that throws without a batch result marks counts
+unavailable; it does not guess partial progress. The native ledger's lease
+range is 60–3600 seconds; unsupported values refuse before any claim.
+
+[Sandbox composition](host/renewal-sandbox.ts) uses frozen renewal money and the
+current server-owned method. A retry begins an attempt on the original intent,
+persists a simulator observation and reads that exact attempt before handing
+source evidence to the native recovery owner. An ambiguous prepared attempt is
+read again after restart and never dispatched again. This is local simulation;
+it does not qualify a real payment method or provider.
 
 The account response adds a narrow `renewal` projection from owned action,
 payment, alignment and frozen/retained charge facts. Charge dates are distinct
@@ -589,74 +586,20 @@ Moved to [the reader guide](../../packages/core/docs/guide/reference/limits.md#o
 
 Moved to [the reader guide](../../packages/core/docs/guide/reference/limits.md#operator-shipment-evidence).
 
-Label evidence includes an explicit provider namespace and tracking number.
-Native correlation refuses cross-order reuse in the same namespace and refuses
-unattributed conflicting history rather than guessing. Same-order reassignment
-and raw label-key replay retain the native receipt behavior. Handoff consumes
-only the recorded parcel reservation IDs once. Historical missing associations
-report `reservations_not_recorded` and never acquire today's stock. Before a fresh nonterminal tracking event, native state and any supplied
-same-order reference must be admitted. Terminal replay and earlier chronology
-repair retain their native rules. A delivered event
-records actual arrival. Explicit-zone occurrence times can repair chronology
-earlier; later inputs cannot postpone recorded arrival, replace the original
-receipt or move the next cycle earlier. An undelivered replacement remains an
-outstanding obligation. There is no separate replacement-delivery attestation control.
-
-The existing paid-capture document policy is unchanged. The optional handoff
-accounting wrapper is only for an adopter that selects a handoff issue policy;
-any such callback belongs after the committed shipment transaction and remains
-fail-soft according to that wrapper's policy.
-
 ## Saved addresses and scoped preferences
 
 Moved to [the reader guide](../../packages/core/docs/guide/reference/limits.md#saved-addresses-and-scoped-preferences).
-
-An active or paused subscription can select an owned shipping/both address.
-The native command owns the saved pointer, subscription/account events and outbox.
-A locked upcoming cycle refuses a fresh selection; an admitted key replays before
-saved-ID parsing and returns the current pointer. Null recipients remain null.
-Editing a saved row affects future destination materialization, while a retained
-renewal operation and existing parcel keep their immutable destination. Cadence,
-commercial terms and billing are unchanged.
-
-Billing profiles are bound through the native session-scoped reader and mutation
-handler. The portal supports create, read, edit and delete, including the native
-company identity fields and the owned tax normalization/checksum policy. Default
-clearing, profile writing and account-event append remain separate commits: a
-later failure can leave earlier writes committed, and billing command keys do not
-deduplicate writes or events. Foreign edits refuse; deleting a foreign or missing
-row acknowledges a zero-row deletion. Address-book responses include real owned
-billing profiles. Default snapshots expose redacted, unapplied selection hints;
-they install no instrument and do not apply a profile to an existing order.
-Private and combined-profile views remain limited under N5. The fictional country,
-phone prefix and numeric tax checksum are demonstration validation, not real-market
-certification.
 
 ## Sandbox token payment and exact continuation
 
 Moved to [the reader guide](../../packages/core/docs/guide/reference/limits.md#sandbox-token-payment-and-exact-continuation).
 
-Only an actual fresh dispatched sandbox attempt can mint the native continuation
-cookie. Its private claims bind the real order, client, intent, attempt and rail;
-this composition uses the native order UUID for the opaque checkout journey. The
-codec purpose-derives its signing key from the existing private host keyring's
-current root, supplied by `--quote-acceptance-key-file`. Keep that root stable across a host restart; rotating it invalidates
-old continuation cookies. No key, raw cookie or token belongs in logs or public
-reports. The cookie keeps its native Secure, HttpOnly, SameSite=Strict and Path=/
-attributes and lifetime. Checkout creation mints no continuation. Browser storage
-is reload convenience and never grants this authority. Missing signing material
-leaves cookie-only controls unavailable; it does not fabricate a credential.
+The continuation codec purpose-derives its signing key from the private
+keyring root supplied by `--quote-acceptance-key-file`. This composition uses
+the native order UUID for the opaque checkout journey. The owned
+`embeddedCheckoutBrowserMarkers` constant in `owned/quote-copy.ts` contains
+presentation hints only.
 
-The owned `embeddedCheckoutBrowserMarkers` constant in `owned/quote-copy.ts`
-contains display hints only and grants no payment or delivery authority.
-Only detected embedded browsers show the buyer send/send-again control after real
-continuation exists. Detection is a display hint, never authority. The native
-cookie-only handler obtains order/client from verified claims, uses the saved
-checkout recipient, and deduplicates sends in its unchanged ten-minute bucket.
-The sent confirmation survives panel remounts while sending again remains reachable;
-failure offers a neutral retry. Delivery rechecks the native buyer authorization
-and captures the link in the existing private mailbox. The source marker
-distinguishes the buyer landing. Enqueue, capture and payment are separate facts.
 
 ## Billing profiles and frozen invoice buyers
 
@@ -667,19 +610,6 @@ Install the complete ordered package history through
 The host requires the slot-27 first-duty buyer-capture entry; slot 28 preserves
 absence of explicit buyer facts during recreation. `./lifecycle up` installs the
 complete history. No duty or historical invoice is backfilled.
-
-Before sandbox payment capture, initial checkout records its owned order
-destination; native recreation and renewal record theirs through their native
-owners. On the first owed-duty capture, the invoice owner freezes explicit order
-buyer facts when present. Otherwise it selects the default or latest owned profile
-and billing/both address independently, using the recorded shipping address when
-no billing address exists. With neither profile nor billing address, it records the
-marked shipping fallback. The frozen address keeps line2 and source provenance. Recreation copies explicit buyer facts
-only when the source has them; absent facts remain absent so first-duty selection
-can use an owned profile or the marked fallback. Later profile/address edits or
-deletions cannot change a captured buyer, installed invoice facts or issued bytes.
-Customer invoice history checks ownership before reading this snapshot; operator
-summary requires current human-admin authorization.
 
 `payment.simulate`, `checkout.payment` and recreated `checkout.recovery` simulation
 share one capture/activation helper. Retained acquisition renewal availability
