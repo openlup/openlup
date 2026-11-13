@@ -5931,17 +5931,17 @@
     },
     {
       "path": "db/platform/migrations/20261114100000_payment_provider_attempt_store.sql",
-      "sha256": "5dca653dbb0f341723822dbb1be55263cf30375cb49410205dcc735a516b75ed",
+      "sha256": "46009c98ce9d77b126444ff3f2651a47af97048ee0df96e0561c211a38a28a56",
       "functions": [
         {
           "signature": "public.payment_simulator_begin_attempt(text,uuid,text,jsonb,timestamptz)",
           "beforeSha256": "d0dff73e4cf8f7ec392685badcd4ca08230cb2ec2572fdbfc65c0ea66404112e",
-          "afterSha256": "405b6e3b4061bd2ad33ba42b2d3ed2e3942f4be97f5df4adf55a612c02cc324f"
+          "afterSha256": "c8b90ddd69697d7304a041af937968e6e18e2d5eb52e2ee72e8ea9c023624fb1"
         },
         {
           "signature": "public.payment_simulator_record_observation(uuid,text,text,text,timestamptz)",
           "beforeSha256": "5a87e7bbaa9582c0ee42b52160c3ca31954fdfb693ec57790e0386bb15901629",
-          "afterSha256": "a8bc9eb8b1db070790a66c7c3edc9f00f6e4ca6210541edd9a814fdf0eedb01d"
+          "afterSha256": "f0e59a6acfe36658785f92725e47993910158c544f5855a1112afcdd0a0297ed"
         },
         {
           "signature": "public.payment_truth_ingest_event(text,text,text,uuid,text,bigint,text,timestamptz,text,text,jsonb,text,text,text)",

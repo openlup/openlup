@@ -7,10 +7,12 @@ import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/po
 
 const resources = storeJourneyResources(), at = "2032-01-01T12:00:00.000Z";
 let source: JourneyInstallation, target: JourneyInstallation;
-beforeAll(async () => { source = await resources.installation("provider-source"); target = await resources.installation("provider-target"); }, postgresSetupTimeoutMs);
+let packet: Awaited<ReturnType<typeof captureStoreJourney>>, freshTarget: typeof packet;
+let before: Awaited<ReturnType<typeof journeyCensus>>, pristine: typeof before, activeAttemptId: string;
 afterAll(() => resources.close(), postgresTeardownTimeoutMs);
 
-it("carries every provider relation and its cyclic active pointer byte-exactly, rejects a broken pointer and replays", async () => {
+beforeAll(async () => {
+  source = await resources.installation("provider-source"); target = await resources.installation("provider-target");
   const client = randomUUID(), sku = randomUUID(), order = randomUUID();
   await source.owner.query("INSERT INTO public.clients(id,email) VALUES($1,$2)", [client, `${client}@example.invalid`]);
   await source.owner.query("INSERT INTO public.catalog_products(id,slug,name) VALUES($1,$2,'Example')", [sku, sku]);
@@ -35,18 +37,25 @@ it("carries every provider relation and its cyclic active pointer byte-exactly, 
   await port.applyPaymentResult({ idempotencyKey: `apply:${order}`, paymentIntentId: intent.id, paymentEventId: event.paymentEventId,
     resultStatus: "failed", occurredAt: at, failureReason: "declined" });
   const second = await port.prepareProviderAttempt({ ...prepare, idempotencyKey: `retry:${order}`, providerIdempotencyKey: `provider-retry:${order}` });
+  activeAttemptId = second.paymentAttemptId;
   await source.owner.query(`UPDATE public.payment_provider_attempts SET response_payload=response_payload||'{"large":9007199254740993}'::jsonb WHERE id=$1`, [first.paymentAttemptId]);
-  const before = await journeyCensus(source.owner), packet = await captureStoreJourney(source.owner, "provider-source");
-  const freshTarget = await captureStoreJourney(target.owner, "provider-target"), pristine = await journeyCensus(target.owner);
+  before = await journeyCensus(source.owner); packet = await captureStoreJourney(source.owner, "provider-source");
+  freshTarget = await captureStoreJourney(target.owner, "provider-target"); pristine = await journeyCensus(target.owner);
+}, postgresSetupTimeoutMs);
+
+it("captures every provider relation byte-exactly and rolls back a broken cyclic active pointer", async () => {
   for (const table of ["payment_provider_states", "payment_provider_attempts", "payment_provider_attempt_evidence", "payment_provider_receipts", "payment_provider_transitions"] as const) {
     expect(packet.owned.find(value => value.table === table)?.rows).toEqual(before[table]); expect(before[table].length).toBeGreaterThan(0);
   }
   const broken = structuredClone(packet), state = broken.owned.find(value => value.table === "payment_provider_states")!;
-  expect(state.rows[0]).toContain(`"active_attempt_id": "${second.paymentAttemptId}"`);
+  expect(state.rows[0]).toContain(`"active_attempt_id": "${activeAttemptId}"`);
   state.rows[0] = state.rows[0].replace(/("active_attempt_id":\s*")[^"]+(")/u, `$1${randomUUID()}$2`);
   const { sha256: _old, ...body } = broken; broken.sha256 = createHash("sha256").update(JSON.stringify(body)).digest("hex");
   await expect(restoreConnectedNativeStore({ owner: target.owner, installation: journeySelection, packet: broken, freshTarget })).rejects.toMatchObject({ code: "target_conflict" });
   expect(await journeyCensus(target.owner)).toEqual(pristine);
+});
+
+it("restores every provider relation and its cyclic pointer byte-exactly and replays", async () => {
   expect(await restoreConnectedNativeStore({ owner: target.owner, installation: journeySelection, packet, freshTarget })).toMatchObject({ replayed: false });
   expect(await journeyCensus(target.owner)).toEqual(before);
   expect(await restoreConnectedNativeStore({ owner: target.owner, installation: journeySelection, packet, freshTarget })).toMatchObject({ replayed: true });

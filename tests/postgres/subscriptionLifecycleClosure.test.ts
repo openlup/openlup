@@ -211,10 +211,21 @@ describe.each(lifecycleProfiles)("subscription lifecycle closure on %s", profile
     try {
       await db.query("BEGIN");
       const attempt = await call(db, "payment_simulator_begin_attempt", [`sandbox:${f.subscription}`, f.original.settlementIntentId, "a".repeat(64), {}, AT]);
+      // Sandbox dispatch holds the order fence, leaving lifecycle roots free
+      // so pause reaches its existing NOWAIT refusal before dispatch commits.
+      await env.owner.query("SELECT id FROM public.subscriptions WHERE id=$1 FOR UPDATE NOWAIT", [f.subscription]);
+      await env.owner.query("SELECT id FROM public.subscription_renewal_operations WHERE id=$1 FOR UPDATE NOWAIT", [f.operation]);
       expect(await invoke(f, `dispatch-race:${f.subscription}`, "pause")).toMatchObject({ status: "refused", reason: "subscription_command_operation_busy" });
       await db.query("COMMIT");
       for (const state of ["dispatched", "indeterminate"] as const) {
-        if (state === "indeterminate") await call(env.runtime, "payment_simulator_record_observation", [attempt.id, `observation:${f.subscription}`, "b".repeat(64), state, later(1)]);
+        if (state === "indeterminate") {
+          await db.query("BEGIN");
+          await call(db, "payment_simulator_record_observation", [attempt.id, `observation:${f.subscription}`, "b".repeat(64), state, later(1)]);
+          await env.owner.query("SELECT id FROM public.subscriptions WHERE id=$1 FOR UPDATE NOWAIT", [f.subscription]);
+          await env.owner.query("SELECT id FROM public.subscription_renewal_operations WHERE id=$1 FOR UPDATE NOWAIT", [f.operation]);
+          expect(await invoke(f, `observation-race:${f.subscription}`, "pause")).toMatchObject({ status: "refused", reason: "subscription_command_operation_busy" });
+          await db.query("COMMIT");
+        }
         const before = await lifecycleRows(env.owner, true);
         expect(await invoke(f, `${state}:${f.subscription}`, "pause", {}, later(1))).toMatchObject({ status: "refused", reason: "subscription_command_payment_blocked" });
         expect(await lifecycleRows(env.owner, true)).toEqual(before);

@@ -658,6 +658,9 @@ Preparation commits before provider execution; ingress commits before applicatio
 An unresolved attempt or exact durable success fences another dispatch. Aggregate
 locks precede payment children, including the existing settlement and truth
 entry points. Financial effects and dunning recovery retain their existing owners.
+Sandbox dispatch and observation keep their native order-then-intent fence,
+leaving the subscription and renewal-operation roots free so lifecycle commands
+reach their existing `NOWAIT` busy refusal before the sandbox transaction commits.
 All five new tables have RLS and no runtime table privileges; service-role
 execution uses pinned function paths. Capture and restore carry their rows and
 restore the active-attempt pointer after its referenced attempt.

@@ -1409,7 +1409,6 @@ BEGIN
  SELECT * INTO i FROM public.commerce_settlement_intents WHERE id=p_intent_id;
  IF NOT FOUND THEN RAISE EXCEPTION 'payment_simulator_intent_not_found' USING ERRCODE='22023'; END IF;
  IF i.channel_key<>'sandbox' THEN RAISE EXCEPTION 'native_prepared_attempt_store_unsupported' USING ERRCODE='22023'; END IF;
- PERFORM public.payment_provider_lock_aggregate(p_intent_id);
  SELECT * INTO o FROM public.commerce_orders WHERE id=i.order_id FOR UPDATE;
  SELECT * INTO i FROM public.commerce_settlement_intents WHERE id=p_intent_id FOR UPDATE;
  SELECT * INTO a FROM public.payment_simulator_attempts WHERE request_key=p_request_key;
@@ -1463,7 +1462,6 @@ BEGIN
  IF NOT FOUND THEN RAISE EXCEPTION 'wrong_attempt' USING ERRCODE='22023'; END IF;
  SELECT i.order_id INTO order_id FROM public.commerce_settlement_intents i WHERE i.id=a.settlement_intent_id AND i.channel_key='sandbox';
  IF NOT FOUND THEN RAISE EXCEPTION 'native_prepared_attempt_store_unsupported' USING ERRCODE='22023'; END IF;
- PERFORM public.payment_provider_lock_aggregate(a.settlement_intent_id);
  PERFORM 1 FROM public.commerce_orders WHERE id=order_id FOR UPDATE;
  PERFORM 1 FROM public.commerce_settlement_intents WHERE id=a.settlement_intent_id FOR UPDATE;
  SELECT * INTO a FROM public.payment_simulator_attempts WHERE id=p_attempt_id FOR UPDATE;
