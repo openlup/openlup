@@ -10,6 +10,8 @@ in the source repository.
 
 ## [Unreleased]
 
+- @openlup/core size growth: The reader guide now ships under `docs/guide/` and is measured by its own `pack.guide` cap; the code and root documentation classes are unchanged.
+
 ## [0.39.0]
 
 - Publishable on the npm `latest` dist-tag as `0.39.0`, from tag

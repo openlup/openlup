@@ -73,7 +73,7 @@ compose `createGuardedEmailTransport` from
 malformed or unknown admission decisions refuse with
 `email_egress_policy_invalid` before sender entry.
 
-This self-host recipe is for evaluation and carries no stable installation,
+This self-host recipe is for evaluation and carries no installation,
 upgrade or host-support guarantee. Keep migration state, background-work policy,
 storage ownership and required provider capabilities explicit; stop admission
 when a required dependency is missing rather than substituting business behavior.
