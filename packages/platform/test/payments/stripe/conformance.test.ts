@@ -50,4 +50,11 @@ it("demonstrates two handoffs for the same family regardless of declaration orde
   await expect(runPaymentAdapterConformance(fixture.subjects)).resolves.toBeDefined();
 });
 
+it("rejects a declared flow family with no capability execution", async () => {
+  const fixture = stripeSafetyFixture();
+  const subject = fixture.subjects[0];
+  subject.safety!.capabilityInputs = subject.safety!.capabilityInputs.filter(input => input.methodSelection?.family !== "wallet");
+  await expect(runPaymentAdapterConformance(fixture.subjects)).rejects.toThrow("capture flow card_payment:client-confirmed:wallet");
+});
+
 paymentTestingDefects("stripe", stripeSafetyFixture);

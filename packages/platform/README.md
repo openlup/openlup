@@ -1732,8 +1732,8 @@ transport.assertDrained();
 
 In the author's test, pass `PaymentAdapterTestSubject[]` to
 `runPaymentAdapterConformance`. Supply `safety` on each subject for the named
-offline suite: `capabilityInputs` demonstrate every declared capture flow's handoff
-with one of its method families, every declared currency,
+offline suite: `capabilityInputs` demonstrate every declared family of every
+capture flow with that flow's handoff, every declared currency,
 and unattended support or refusal; `transport` invokes the real adapter against
 each scripted failure; `webhooks` supplies signed original bytes and independent
 expected evidence for valid/duplicate delivery, signature mismatch, partial/zero/

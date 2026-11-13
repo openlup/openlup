@@ -33,4 +33,18 @@ it("passes every named safety case with the extracted scripted HTTP client, JWS 
   fixture.fake.assertDrained();
 });
 
+it("rejects an added flow family whose only execution is refused", async () => {
+  const fixture = tpaySafetyFixture();
+  const subject = fixture.subjects[0];
+  subject.adapter = { ...subject.adapter, capabilities: { ...subject.adapter.capabilities,
+    captureFlows: subject.adapter.capabilities.captureFlows.map(flow => flow.handoff === "redirect"
+      ? { ...flow, methodFamilies: [...flow.methodFamilies, "wallet"] } : flow) } };
+  const input = { ...subject.safety!.capabilityInputs[0], methodSelection: { family: "wallet" as const } };
+  const before = subject.safety!.providerRequests();
+  await expect(subject.adapter.attemptPort.execute(input)).resolves.toMatchObject({ outcome: { kind: "decline" },
+    dispatch: { kind: "notDispatched", evidence: { exact: true, phase: "before-dispatch" } } });
+  expect(subject.safety!.providerRequests()).toBe(before);
+  await expect(runPaymentAdapterConformance(fixture.subjects)).rejects.toThrow("capture flow bank_redirect:redirect:wallet");
+});
+
 paymentTestingDefects("tpay", tpaySafetyFixture);

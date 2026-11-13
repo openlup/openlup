@@ -14,7 +14,7 @@ export async function runPaymentSafetyConformance(subject: PaymentAdapterTestSub
   };
   const capabilities = adapter.capabilities;
   const executions: PaymentAdapterTestSubject["executionInput"][] = [];
-  const demonstratedFlows = new Set<PaymentAdapterCapabilities["captureFlows"][number]>();
+  const demonstratedPairs = new Map<PaymentAdapterCapabilities["captureFlows"][number], Set<string>>();
   const execute = async (input: PaymentAdapterTestSubject["executionInput"]) => {
     const owner = subjects.find(row => row.executionInput.intentRef === input.intentRef
       && row.executionInput.attemptRef === input.attemptRef);
@@ -51,7 +51,11 @@ export async function runPaymentSafetyConformance(subject: PaymentAdapterTestSub
       const matched = flows.filter(flow => flow.handoff === "customer-authorization" ? Boolean(input.customerAuthorization)
         : result.handoff?.kind === flow.handoff);
       requireFact(matched.length > 0, "capture flow handoff");
-      matched.forEach(flow => demonstratedFlows.add(flow));
+      matched.forEach(flow => {
+        const families = demonstratedPairs.get(flow) ?? new Set<string>();
+        families.add(input.methodSelection!.family);
+        demonstratedPairs.set(flow, families);
+      });
     }
     executions.push(input);
   }
@@ -122,7 +126,9 @@ export async function runPaymentSafetyConformance(subject: PaymentAdapterTestSub
     mandateUpsertIsSubscriptionScoped: () => requireFact(typeof capabilities.mandateUpsertIsSubscriptionScoped === "boolean", "host-consumed declaration:mandateUpsertIsSubscriptionScoped well-formedness"),
     captureFlows: () => {
       for (const flow of capabilities.captureFlows) {
-        requireFact(demonstratedFlows.has(flow), `capture flow ${flow.kind}:${flow.handoff}`);
+        for (const family of flow.methodFamilies) {
+          requireFact(demonstratedPairs.get(flow)?.has(family) === true, `capture flow ${flow.kind}:${flow.handoff}:${family}`);
+        }
       }
     },
     supportedCurrencies: async () => {
