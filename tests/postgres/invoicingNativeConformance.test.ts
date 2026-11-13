@@ -1,3 +1,4 @@
+import { recordInvoiceDestination } from '../helpers/invoicingBuyerDestination.js';
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -7,7 +8,7 @@ import { createPostgresInvoiceStore, INVOICING_MIGRATIONS, runNativeInvoiceIssue
 import { createPostgresPaymentTruthPort } from "@openlup/platform/payments";
 import type { PaymentTruthEvent } from "@openlup/platform/payments/contracts";
 import { createPostgresFulfillmentDispatchStore } from "@openlup/platform/fulfillment";
-import { fixture as shipmentFixture } from "../helpers/fulfillmentNative.js";
+import { fixture as bareShipmentFixture } from "../helpers/fulfillmentNative.js";
 import { createPostgresAccountingPaidOrderDocumentPort } from "../../server/adapters/postgres/accountingPaidOrderDocument.js";
 import { invoicingNativeHarness, manifest, prefixLength, sha256, units } from "../helpers/invoicingNativeHarness.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
@@ -50,6 +51,11 @@ const facts = () => ({
   lines: [{ description: "Saved item", quantity: 1, unitNetMinor: 750, unitGrossMinor: 900, totalNetMinor: 750, totalTaxMinor: 150, totalGrossMinor: 900, taxRateBps: 2000, positionKind: "item", catalogTotalGrossMinor: null, discountAllocatedMinor: null, shippingGrossMinor: null, shippingDiscountMinor: null }],
   totalNetMinor: 750, totalTaxMinor: 150, totalGrossMinor: 900, chargedTotalGrossMinor: 900,
 });
+async function shipmentFixture(...args:Parameters<typeof bareShipmentFixture>) {
+  const value=await bareShipmentFixture(...args);
+  await recordInvoiceDestination(args[0],value.order);
+  return value;
+}
 async function paymentFixture() {
   const client=randomUUID(), order=randomUUID(), intent=randomUUID(), subscription=randomUUID(), cycle=randomUUID();
   await h.pool.query("INSERT INTO public.clients(id,email) VALUES($1,$2)",[client,`${client}@example.invalid`]);
@@ -63,6 +69,7 @@ async function paymentFixture() {
     await db.query("INSERT INTO public.commerce_settlement_intents(id,order_id,channel_key,amount_minor,currency_code,open_idempotency_key) VALUES($1,$2,'fixture',900,'XXX',$3)",[intent,order,`open-${intent}`]);
     await db.query("COMMIT");
   } catch(error) { await db.query("ROLLBACK"); throw error; } finally { db.release(); }
+  await recordInvoiceDestination(h.pool, order);
   const input: PaymentTruthEvent = { sourceEventId:`event:${intent}`,idempotencyKey:`event-${intent}`,settlementIntentId:intent,outcome:"captured",amountMinor:900,currency:"XXX",occurredAt:"2026-08-12T12:00:00.000Z",failure:null,
     evidence:{sourceKind:"accepted_event",sourceReference:`event:${intent}`,observedStatus:"captured",observedAt:"2026-08-12T12:00:00.000Z",payloadFingerprint:"a".repeat(64)} };
   return {client,order,intent,subscription,cycle,input};
@@ -137,10 +144,11 @@ it("fresh complete install and exact pre-M09 prefix upgrade preserve rows/histor
     await writer.query("UPDATE public.commerce_orders SET updated_at=updated_at WHERE id=$1",[h.witness.order]);
   } finally {await writer.query("ROLLBACK");await seed.query("ROLLBACK");writer.release();seed.release();}
 
-  const routines=(await h.pool.query("SELECT oid,prosecdef,proconfig,proacl FROM pg_proc WHERE pronamespace='public'::regnamespace AND proname LIKE 'invoicing_%'")).rows;
-  expect(routines.length).toBe(17);
+  const routines=(await h.pool.query("SELECT oid,proname,prosecdef,proconfig,proacl FROM pg_proc WHERE pronamespace='public'::regnamespace AND proname LIKE 'invoicing_%'")).rows;
+  expect(routines.length).toBe(18);
   for(const routine of routines) {
-    expect(routine.prosecdef).toBe(false);expect(routine.proconfig).toEqual(["search_path=pg_catalog"]);
+    const buyerCapture=routine.proname==="invoicing_capture_duty_with_buyer";
+    expect(routine.prosecdef).toBe(buyerCapture);expect(routine.proconfig).toEqual([buyerCapture?"search_path=pg_catalog, pg_temp":"search_path=pg_catalog"]);
     expect((await h.pool.query("SELECT has_function_privilege('anon',$1::oid,'EXECUTE') anon,has_function_privilege('authenticated',$1::oid,'EXECUTE') authenticated",[routine.oid])).rows).toEqual([{anon:false,authenticated:false}]);
   }
   const db=await h.pool.connect();try{await db.query("SET ROLE anon");await expect(call(db,"invoicing_sweep_duties",[1])).rejects.toMatchObject({code:"42501"});}finally{await db.query("RESET ROLE");db.release();}
@@ -596,6 +604,7 @@ it("keeps a native duty claimed before the seller upgrade in legacy fallback",as
     await db.query("INSERT INTO public.commerce_order_items(order_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor) VALUES($1,1,1,900,900)",[order]);
     await db.query("INSERT INTO public.commerce_settlement_intents(id,order_id,channel_key,amount_minor,currency_code,open_idempotency_key) VALUES($1,$2,'fixture',900,'XXX',$3)",[intent,order,`legacy-seller-${intent}`]);
     await rpc(db,"commerce_record_settlement",[`legacy-seller-${order}`,intent,"succeeded",null,{},"2026-10-22T12:00:00Z"]);
+    await recordInvoiceDestination(db,order);
     const captured=await rpc(db,"invoicing_capture_duty",[`legacy-seller-${order}`,"paid",intent,order,{},"2026-10-22T12:00:00Z"]);
     await rpc(db,"invoicing_install_facts",[captured.dutyId,facts(),"before-seller-upgrade"]);
     const leases=await rpc(db,"invoicing_sweep_duties",[10]);

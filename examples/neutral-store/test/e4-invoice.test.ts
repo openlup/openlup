@@ -14,15 +14,16 @@ const context: ActionContext = { commandKey: 'invoice-command-123456',
 
 test('customer history uses only the native session principal and preserves uppercase selectors', async () => {
   const calls: unknown[][] = [];
+  const buyer = { name: 'Frozen Example Buyer', address: { line2: 'Unit 2' }, source: 'customer_orderer_profile' };
   const pool = { async query(_sql: string, values: unknown[]) {
     calls.push(values);
-    return { rows: [{ documents: [] }] };
+    return { rows: [_sql.includes('customer_billing_buyer_read') ? { value: buyer } : { documents: [] }] };
   } } as unknown as Pool;
   const actions = composeE4Capabilities(pool, async () => false);
   assert.deepEqual(await actions['account.invoice']!({ orderRef: orderRef.toUpperCase(), accountRef: 'forged',
     principalRef: 'forged', actorUserId: 'forged', receipt: { ok: true } }, context),
-  { ok: true, value: { kind: 'found', accountRef: principal.toUpperCase(), orderId: orderRef.toUpperCase(), documents: [] } });
-  assert.deepEqual(calls, [[principal.toUpperCase(), orderRef.toUpperCase()]]);
+  { ok: true, value: { kind: 'found', accountRef: principal.toUpperCase(), orderId: orderRef.toUpperCase(), documents: [], buyerSnapshot: buyer } });
+  assert.deepEqual(calls, [[principal.toUpperCase(), orderRef.toUpperCase()], [orderRef.toUpperCase()]]);
 });
 
 test('foreign and mismatched documents refuse before artifact reads', async () => {

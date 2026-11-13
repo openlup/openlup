@@ -7368,6 +7368,110 @@ export declare function createExpiredCheckoutRecoveryPolicy<Order extends Checko
 export declare function quotesMatchForRecovery(frozen: RecoveryQuoteSnapshot, fresh: RecoveryQuoteSnapshot): boolean;
 export {};
 ```
+## dist/commerce/server/checkoutInlineRecovery.d.ts
+
+```ts
+import type { CheckoutContinuationAction, CheckoutPaymentContinuationCodec } from './checkoutPaymentContinuationCredential.js';
+import type { NativeCheckoutRecoveryOrder } from './checkoutRecoveryInspection.js';
+import type { CheckoutRecoveryOrderReadPort } from './checkoutRecoveryOrderPort.js';
+import type { CheckoutRecoveryPayResult } from './checkoutRecoveryPay.js';
+import { type CheckoutRecoveryMethodHold } from './checkoutRecoveryPaymentHold.js';
+import { type PaymentRecoveryReadDeps } from './paymentRecoveryGuidance.js';
+export interface CheckoutInlineRecoveryRequest<Method> {
+    headers: {
+        cookie?: unknown;
+        authorization?: unknown;
+    };
+    orderId: string;
+    clientId: string;
+    paymentIntentId: string;
+    journeyId: string;
+    expectedPaymentAttemptId: string;
+    retryRequestId: string;
+    executionRail: string;
+    methodKey: string;
+    method: Method;
+}
+export interface CheckoutInlineRecoveryAdmission {
+    replayOnly: boolean;
+    purchaseContext: 'one_time' | 'subscription_initial' | null;
+    previousMethodKey: string | null;
+    actions: readonly string[];
+    restriction: string | null;
+}
+export interface CheckoutInlineRecoveryAttemptPort<Method> {
+    assertExecutionRail(rail: string): void;
+    readPreviousMethod(input: {
+        orderId: string;
+        paymentIntentId: string;
+        paymentAttemptId: string;
+        executionRail: string;
+    }): Promise<string | null>;
+    begin(input: {
+        order: NativeCheckoutRecoveryOrder;
+        request: Omit<CheckoutInlineRecoveryRequest<Method>, 'headers' | 'method'>;
+        admission: CheckoutInlineRecoveryAdmission;
+        method: Method;
+    }): Promise<CheckoutRecoveryPayResult & {
+        executionRail: string;
+    }>;
+}
+export declare class CheckoutInlineRecoveryError extends Error {
+    readonly kind: 'bad_request' | 'unauthorized' | 'conflict' | 'upstream_unavailable';
+    readonly code: string;
+    constructor(kind: 'bad_request' | 'unauthorized' | 'conflict' | 'upstream_unavailable', code: string);
+}
+export declare function checkoutInlineRecoveryTransitionKey(expectedPaymentAttemptId: string): string;
+/** Cookie-only exact transition. Host transport and method/purchase eligibility remain injected policy. */
+export declare function createCheckoutInlineRecovery<Method>(deps: {
+    codec: CheckoutPaymentContinuationCodec;
+    guidance: Pick<PaymentRecoveryReadDeps, 'port' | 'projectGuidance'>;
+    orderPort: CheckoutRecoveryOrderReadPort<NativeCheckoutRecoveryOrder>;
+    attemptPort: CheckoutInlineRecoveryAttemptPort<Method>;
+    executionAllowed(input: {
+        methodKey: string;
+        executionRail: string;
+        purchaseContext: 'one_time' | 'subscription_initial';
+    }): boolean;
+    activeActionResolver?: {
+        readActiveAction(input: {
+            orderId: string;
+            clientId: string;
+            paymentIntentId: string;
+            paymentAttemptId: string;
+            executionRail: string;
+        }): Promise<CheckoutContinuationAction | null>;
+    };
+    hold?: {
+        readHolds(): Promise<readonly CheckoutRecoveryMethodHold[]>;
+        classify(input: {
+            order: NativeCheckoutRecoveryOrder;
+            method: Method;
+        }): {
+            kind: string;
+            method: string;
+        } | null;
+        offeredMethods(kind: string): ReadonlySet<string>;
+        isFirstPurchase?(order: NativeCheckoutRecoveryOrder): Promise<boolean | null>;
+    };
+}): {
+    retry(request: CheckoutInlineRecoveryRequest<Method>): Promise<{
+        result: {
+            orderRef: string;
+            clientAction: CheckoutContinuationAction;
+            orderId: string;
+            paymentIntentId: string;
+            clientId: string;
+            paymentAttemptId: string;
+            status: "processing" | "failed" | "expired" | "paid";
+            replayed: boolean;
+            failureReason: string | null;
+            executionRail: string;
+        };
+        setCookie: string;
+    }>;
+};
+```
 ## dist/commerce/server/checkoutInvoiceBuyerSnapshot.d.ts
 
 ```ts
@@ -7636,6 +7740,86 @@ export interface CheckoutRecoveryOrderReadPort<Order> {
         orderId: string;
     }): Promise<Order | null>;
 }
+```
+## dist/commerce/server/checkoutRecoveryPay.d.ts
+
+```ts
+import type { NativeCheckoutRecoveryOrder } from './checkoutRecoveryInspection.js';
+import type { CheckoutRecoveryOrderReadPort } from './checkoutRecoveryOrderPort.js';
+import { type CheckoutRecoveryTokenPort } from './checkoutRecoveryToken.js';
+export interface CheckoutRecoveryPayInput<Method> {
+    order: NativeCheckoutRecoveryOrder;
+    clientId: string;
+    recoveryTokenId: string;
+    idempotencyKey: string;
+    method: Method;
+}
+export interface CheckoutRecoveryPayResult {
+    orderId: string;
+    paymentIntentId: string;
+    clientId: string;
+    paymentAttemptId: string;
+    status: 'processing' | 'failed' | 'expired' | 'paid';
+    replayed: boolean;
+    failureReason: string | null;
+}
+/** The adapter owns durable dispatch, exact request/method binding and settlement evidence. */
+export interface CheckoutRecoveryAttemptPort<Method> {
+    begin(input: CheckoutRecoveryPayInput<Method> & {
+        paymentIntentId: string;
+    }): Promise<CheckoutRecoveryPayResult>;
+}
+export interface CheckoutRecoveryPayService<Method> {
+    pay(input: CheckoutRecoveryPayInput<Method>): Promise<CheckoutRecoveryPayResult>;
+}
+export declare class CheckoutRecoveryPayError extends Error {
+    readonly code: string;
+    readonly orderId: string;
+    readonly kind: 'conflict' | 'upstream_unavailable';
+    constructor(code: string, orderId: string, kind: 'conflict' | 'upstream_unavailable');
+}
+/** Existing order, intent and reservation only. No order creation or settlement shortcut. */
+export declare function createCheckoutRecoveryPayService<Method>(attemptPort: CheckoutRecoveryAttemptPort<Method>): CheckoutRecoveryPayService<Method>;
+/** Authority is token-derived; caller-supplied order/client identities are never accepted. */
+export declare function createCheckoutRecoveryTokenPay<Method>(deps: {
+    tokenPort: Pick<CheckoutRecoveryTokenPort, 'validate' | 'inspect'>;
+    orderPort: CheckoutRecoveryOrderReadPort<NativeCheckoutRecoveryOrder>;
+    payService: CheckoutRecoveryPayService<Method>;
+}): {
+    pay(input: {
+        token: string;
+        idempotencyKey: string;
+        method: Method;
+        followLatest?: boolean;
+    }): Promise<CheckoutRecoveryPayResult>;
+};
+```
+## dist/commerce/server/checkoutRecoveryPaymentHold.d.ts
+
+```ts
+import type { NativeCheckoutRecoveryOrder } from './checkoutRecoveryInspection.js';
+export interface CheckoutRecoveryMethodHold {
+    kind: string;
+    method: string;
+    createdAt: string;
+}
+/** Host policy supplies method classification, offered methods, hold storage and first-purchase evidence. */
+export declare function withCheckoutRecoveryPaymentHold<Input extends {
+    order: NativeCheckoutRecoveryOrder;
+    method: unknown;
+}, Result>(service: {
+    pay(input: Input): Promise<Result>;
+}, deps: {
+    readHolds(): Promise<readonly CheckoutRecoveryMethodHold[]>;
+    classify(input: Pick<Input, 'order' | 'method'>): {
+        kind: string;
+        method: string;
+    } | null;
+    offeredMethods(kind: string): ReadonlySet<string>;
+    isFirstPurchase?(order: NativeCheckoutRecoveryOrder): Promise<boolean | null>;
+}): {
+    pay(input: Input): Promise<Result>;
+};
 ```
 ## dist/commerce/server/checkoutRecoveryToken.d.ts
 
@@ -9983,6 +10167,12 @@ export type { ExpiredRecoveryRuntimeInput, ExpiredRecoveryTransactionLane } from
 export { readAuthorizedPaymentRecovery } from './paymentRecoveryGuidance.js';
 export type { PaymentRecoveryStatusSnapshot, PaymentRecoverySnapshot, PaymentRecoverySnapshotPort, CheckoutPaymentRecoveryGuidance, PaymentRecoveryReadStatus, PaymentRecoveryReadDeps } from './paymentRecoveryGuidance.js';
 export { createPostgresPaymentRecoveryGuidancePort } from './postgresPaymentRecoveryGuidance.js';
+export { createCheckoutRecoveryPayService, createCheckoutRecoveryTokenPay, CheckoutRecoveryPayError } from './checkoutRecoveryPay.js';
+export type { CheckoutRecoveryPayInput, CheckoutRecoveryPayResult, CheckoutRecoveryAttemptPort, CheckoutRecoveryPayService } from './checkoutRecoveryPay.js';
+export { withCheckoutRecoveryPaymentHold } from './checkoutRecoveryPaymentHold.js';
+export type { CheckoutRecoveryMethodHold } from './checkoutRecoveryPaymentHold.js';
+export { createCheckoutInlineRecovery, checkoutInlineRecoveryTransitionKey, CheckoutInlineRecoveryError } from './checkoutInlineRecovery.js';
+export type { CheckoutInlineRecoveryRequest, CheckoutInlineRecoveryAdmission, CheckoutInlineRecoveryAttemptPort } from './checkoutInlineRecovery.js';
 ```
 ## dist/commerce/server/nativeExpiredCheckoutRecovery.d.ts
 
@@ -11797,6 +11987,7 @@ export interface FulfillmentOperatorMutationResult {
     status: 'created' | 'packed' | 'label_pending' | 'label_created' | 'handed_over' | 'in_transit' | 'delivered' | 'exception' | 'cancelled';
     replayed: boolean;
     releasedReservationCount?: number;
+    consumedReservationCount?: number;
     reservationDisposition?: 'recorded' | 'reservations_not_recorded';
 }
 export interface FulfillmentOperatorMutationPort {
@@ -13323,6 +13514,7 @@ export declare const adminCommerceFulfillmentMutationResponseSchema: z.ZodObject
     }>;
     replayed: z.ZodBoolean;
     releasedReservationCount: z.ZodOptional<z.ZodNumber>;
+    consumedReservationCount: z.ZodOptional<z.ZodNumber>;
     reservationDisposition: z.ZodOptional<z.ZodEnum<{
         recorded: "recorded";
         reservations_not_recorded: "reservations_not_recorded";
@@ -18346,6 +18538,67 @@ export type { DeliveryKind, DeliveryProviderKind, DeliveryCarrierKind, DeliveryS
 export type { CanonicalAddressInput, AddressCanonSource, AddressCanonLocalityCandidate, AddressCanonStreet, AddressCanonPostalCodeLookupRequest, AddressCanonLocalitiesLookupRequest, AddressCanonStreetsLookupRequest, AddressCanonPostalCodeLookupResponse, AddressCanonLocalitiesLookupResponse, AddressCanonStreetsLookupResponse, CustomerAddressKind, CustomerAddress, CustomerOrdererProfile, CustomerAddressesRequest, CustomerAddressesResponse, CustomerAddressUpsertRequest, CustomerAddressDeleteRequest } from "./address.js";
 export type { AdminShippingRateResponse, AdminSetShippingRateRequest, AdminSetShippingRateResponse } from "./shippingRate.js";
 export type { ShippingTerms, ShippingPolicyEntry, ShippingPolicy, ShippingSettings } from "./threshold.js";
+export type { CustomerPreferenceDefaultsSnapshot, CustomerPreferenceScope, CustomerPaymentPreferenceInput, CustomerPaymentPreference, CustomerPreferencePickupPoint, CustomerDeliveryPreferenceInput, CustomerDeliveryPreference } from './preferences.js';
+```
+## dist/shipping/contracts/preferences.d.ts
+
+```ts
+export type CustomerPreferenceScope = 'one_time' | 'subscription' | 'any';
+export interface CustomerPaymentPreferenceInput {
+    scope: CustomerPreferenceScope;
+    methodKind: string;
+}
+export interface CustomerPaymentPreference extends CustomerPaymentPreferenceInput {
+    lastSelectedAt: string;
+}
+export interface CustomerPreferencePickupPoint {
+    id: string;
+    name: string;
+    address: {
+        line1: string;
+        postalCode: string;
+        city: string;
+        country: string;
+    } | null;
+}
+export interface CustomerDeliveryPreferenceInput {
+    scope: CustomerPreferenceScope;
+    deliveryKind: 'courier' | 'parcel-locker';
+    providerKind: string;
+    carrierKind: string;
+    carrierCode: string;
+    serviceCode: string;
+    pickupPoint?: CustomerPreferencePickupPoint | null;
+}
+export interface CustomerDeliveryPreference extends Omit<CustomerDeliveryPreferenceInput, 'pickupPoint'> {
+    pickupPoint: CustomerPreferencePickupPoint | null;
+    lastSelectedAt: string;
+}
+/** Redacted hints only. A missing address or profile is represented by null. */
+export interface CustomerPreferenceDefaultsSnapshot {
+    version: 'commerce.customer_defaults_snapshot.v1';
+    clientId: string;
+    payment: {
+        available: boolean;
+        scope: CustomerPreferenceScope | null;
+        methodKind: string | null;
+        source: 'customer_payment_preferences';
+        applied: false;
+    };
+    addresses: {
+        hasDefaultShippingAddress: boolean;
+        defaultShippingAddressId: string | null;
+        hasDefaultBillingAddress: boolean;
+        defaultBillingAddressId: string | null;
+        hasDefaultOrdererProfile: boolean;
+        defaultOrdererProfileId: string | null;
+        hasDeliveryNotes: boolean;
+        hasCourierInstructions: boolean;
+        source: 'customer_address_profiles';
+        applied: false;
+    };
+    redactedFields: ('contact' | 'orderer_profile' | 'shipping_address' | 'billing_address' | 'delivery_notes' | 'courier_instructions' | 'payment_provider' | 'payment_secret')[];
+}
 ```
 ## dist/shipping/contracts/shippingRate.d.ts
 
@@ -18396,6 +18649,135 @@ import type { BffResponder } from "../bff/index.js";
 import type { CustomerAddressesDeps } from "./addressPorts.js";
 import type { CustomerAddressSchemas } from "./addressSchemas.js";
 export declare function createCustomerAddressesHandler({ addressBookPort, addressMutationPort, authenticateUser, }: CustomerAddressesDeps, schemas: CustomerAddressSchemas, responder: BffResponder): (req: HttpRequest, res: HttpResponse) => Promise<void>;
+```
+## dist/shipping/customerPreferenceHandlers.d.ts
+
+```ts
+import type { HttpRequest, HttpResponse } from '../http/index.js';
+import type { BffResponder } from '../bff/index.js';
+import { type CustomerPreferencePolicy } from './customerPreferenceSchemas.js';
+import type { createPostgresCustomerPreferencePort } from './postgresCustomerPreferences.js';
+export interface CustomerPreferenceHandlerOptions {
+    port: ReturnType<typeof createPostgresCustomerPreferencePort>;
+    policy: CustomerPreferencePolicy;
+    authenticateUser(req: HttpRequest): Promise<{
+        ok: true;
+        userId: string;
+    } | {
+        ok: false;
+        code: 'UNAUTHORIZED' | 'FORBIDDEN';
+        message: string;
+    }>;
+    responder: BffResponder;
+    messages: {
+        authentication: string;
+        unlinked: string;
+        invalid: string;
+        upstream: string;
+        invalidResponse: string;
+    };
+}
+export declare const createCustomerPaymentPreferencesHandler: (options: CustomerPreferenceHandlerOptions) => (req: HttpRequest, res: HttpResponse) => Promise<void>;
+export declare const createCustomerDeliveryPreferencesHandler: (options: CustomerPreferenceHandlerOptions) => (req: HttpRequest, res: HttpResponse) => Promise<void>;
+```
+## dist/shipping/customerPreferenceSchemas.d.ts
+
+```ts
+import { z } from 'zod';
+export interface CustomerPreferencePolicy {
+    messages?: {
+        pickupPointRequired?: string;
+    };
+    methods: {
+        instant: string;
+        card: string;
+        transfer: string;
+    };
+    providers: {
+        warehouse: string;
+        carrier: string;
+        manual: string;
+        simulator: string;
+    };
+}
+export declare function createCustomerPreferenceSchemas(policy: CustomerPreferencePolicy): {
+    payment: z.ZodObject<{
+        scope: z.ZodEnum<{
+            one_time: "one_time";
+            subscription: "subscription";
+            any: "any";
+        }>;
+        methodKind: z.ZodEnum<{
+            [x: string]: string;
+        }>;
+    }, z.core.$strict>;
+    delivery: z.ZodObject<{
+        scope: z.ZodEnum<{
+            one_time: "one_time";
+            subscription: "subscription";
+            any: "any";
+        }>;
+        deliveryKind: z.ZodEnum<{
+            courier: "courier";
+            "parcel-locker": "parcel-locker";
+        }>;
+        providerKind: z.ZodEnum<{
+            [x: string]: string;
+        }>;
+        carrierKind: z.ZodString;
+        carrierCode: z.ZodString;
+        serviceCode: z.ZodString;
+        pickupPoint: z.ZodDefault<z.ZodNullable<z.ZodObject<{
+            id: z.ZodString;
+            name: z.ZodString;
+            address: z.ZodDefault<z.ZodNullable<z.ZodObject<{
+                line1: z.ZodString;
+                postalCode: z.ZodString;
+                city: z.ZodString;
+                country: z.ZodString;
+            }, z.core.$strict>>>;
+        }, z.core.$strict>>>;
+    }, z.core.$strict>;
+    paymentResponse: z.ZodObject<{
+        scope: z.ZodEnum<{
+            one_time: "one_time";
+            subscription: "subscription";
+            any: "any";
+        }>;
+        methodKind: z.ZodEnum<{
+            [x: string]: string;
+        }>;
+        lastSelectedAt: z.ZodISODateTime;
+    }, z.core.$strict>;
+    deliveryResponse: z.ZodObject<{
+        scope: z.ZodEnum<{
+            one_time: "one_time";
+            subscription: "subscription";
+            any: "any";
+        }>;
+        deliveryKind: z.ZodEnum<{
+            courier: "courier";
+            "parcel-locker": "parcel-locker";
+        }>;
+        providerKind: z.ZodEnum<{
+            [x: string]: string;
+        }>;
+        carrierKind: z.ZodString;
+        carrierCode: z.ZodString;
+        serviceCode: z.ZodString;
+        pickupPoint: z.ZodDefault<z.ZodNullable<z.ZodObject<{
+            id: z.ZodString;
+            name: z.ZodString;
+            address: z.ZodDefault<z.ZodNullable<z.ZodObject<{
+                line1: z.ZodString;
+                postalCode: z.ZodString;
+                city: z.ZodString;
+                country: z.ZodString;
+            }, z.core.$strict>>>;
+        }, z.core.$strict>>>;
+        lastSelectedAt: z.ZodISODateTime;
+    }, z.core.$strict>;
+};
 ```
 ## dist/shipping/customerSavedAddressSchemas.d.ts
 
@@ -18572,6 +18954,9 @@ export declare const CUSTOMER_SAVED_ADDRESS_MIGRATIONS: readonly [{
     readonly sha256: "0cf335d6a2497015d9218a6ab64fe888a3143290d7f6605a115c848eee4c042a";
     readonly url: URL;
 }];
+export { createPostgresCustomerPreferencePort, createPostgresCustomerDefaultsPort } from './postgresCustomerPreferences.js';
+export { createCustomerPreferenceSchemas, type CustomerPreferencePolicy } from './customerPreferenceSchemas.js';
+export { createCustomerPaymentPreferencesHandler, createCustomerDeliveryPreferencesHandler, type CustomerPreferenceHandlerOptions } from './customerPreferenceHandlers.js';
 ```
 ## dist/shipping/pickupPointSearchPort.d.ts
 
@@ -18614,6 +18999,42 @@ export declare class CustomerSavedAddressRefused extends Error {
 }
 /** Each query call commits separately, matching default-clear/write/event failure and replay behavior. */
 export declare function createPostgresCustomerSavedAddressPort(executor: SavedAddressQueryExecutor, scope: CustomerSavedAddressScope, options: CustomerSavedAddressOptions): CustomerSavedAddressPort;
+```
+## dist/shipping/postgresCustomerPreferences.d.ts
+
+```ts
+import type { SavedAddressQueryExecutor, CustomerSavedAddressScope } from './postgresAddressBook.js';
+import { type CustomerPreferencePolicy } from './customerPreferenceSchemas.js';
+import type { CustomerPaymentPreferenceInput, CustomerDeliveryPreferenceInput, CustomerPaymentPreference, CustomerDeliveryPreference, CustomerPreferenceDefaultsSnapshot } from './contracts/preferences.js';
+/** Closed canonical families are mapped bijectively to adopter-owned public values. */
+export declare function createPostgresCustomerPreferencePort(db: SavedAddressQueryExecutor, scope: CustomerSavedAddressScope, policy: CustomerPreferencePolicy, options: {
+    now(): string;
+    readOrdererHints(clientId: string): Promise<{
+        id: string;
+        isDefault: boolean;
+    }[]>;
+}): {
+    listPaymentPreferences(id: string): Promise<CustomerPaymentPreference[] | null>;
+    listDeliveryPreferences(id: string): Promise<CustomerDeliveryPreference[] | null>;
+    upsertPaymentPreference(id: string, input: CustomerPaymentPreferenceInput): Promise<CustomerPaymentPreference | null>;
+    upsertDeliveryPreference(id: string, input: CustomerDeliveryPreferenceInput): Promise<CustomerDeliveryPreference | null>;
+    getCustomerDefaultsSnapshot: (input: {
+        clientId: string;
+        checkoutKind: string;
+    }) => Promise<CustomerPreferenceDefaultsSnapshot>;
+};
+/** Bind only a client ID established by the checkout/customer identity owner. Returns redacted hints only. */
+export declare function createPostgresCustomerDefaultsPort(db: SavedAddressQueryExecutor, scope: {
+    clientId: string;
+}, policy: CustomerPreferencePolicy, readOrdererHints: (clientId: string) => Promise<{
+    id: string;
+    isDefault: boolean;
+}[]>): {
+    getCustomerDefaultsSnapshot(input: {
+        clientId: string;
+        checkoutKind: string;
+    }): Promise<CustomerPreferenceDefaultsSnapshot>;
+};
 ```
 ## dist/shipping/readDeliverySelectionEvidence.d.ts
 

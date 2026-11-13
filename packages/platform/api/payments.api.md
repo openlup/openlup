@@ -1463,6 +1463,17 @@ export interface SandboxPaymentSimulator {
         idempotencyKey: string;
         requestFingerprint: string;
         methodFacts?: SandboxMethodFacts;
+        inlineRetry?: {
+            orderId: string;
+            clientId: string;
+            expectedAttemptId: string;
+            context: Record<string, unknown>;
+        };
+        checkoutRecovery?: {
+            orderId: string;
+            clientId: string;
+            recoveryTokenId: string;
+        };
         at: string;
     }): Promise<SandboxPaymentAttempt & {
         replayed: boolean;
@@ -1644,6 +1655,8 @@ export { createPostgresSandboxPaymentSimulator } from "./postgresSandboxPaymentS
 export { createPostgresSandboxExpiredCheckoutSafety } from './expiredCheckoutSafety.js';
 export type { ExpiredPaymentSafetyOrder } from './expiredCheckoutSafety.js';
 export { normalizeSandboxPaymentRecoveryEvidence } from './sandboxRecoveryGuidance.js';
+export { createPostgresSandboxCheckoutRecoveryAttemptPort } from './sandboxCheckoutRecoveryPay.js';
+export { createPostgresSandboxInlineRecoveryAttemptPort } from "./sandboxInlineRecovery.js";
 ```
 ## dist/payments/paymentMethodLifecycle.d.ts
 
@@ -1800,6 +1813,94 @@ import type { PreparedAttemptExecutionInput, PreparedAttemptExecutionResult, Pre
 export declare function executePreparedAttemptMechanism<I extends PaymentExecutionBaseInput, R extends PaymentExecutionBaseResult & {
     nextActionKind: N | null;
 }, P extends string, N extends string, E extends Error>(input: PreparedAttemptExecutionInput<I, R, P, N>, policy: PreparedAttemptFailurePolicy<E, N>): Promise<PreparedAttemptExecutionResult<R>>;
+```
+## dist/payments/sandboxCheckoutRecoveryPay.d.ts
+
+```ts
+import type { SandboxMethodFacts, SandboxPaymentSimulatorOptions } from './contracts/sandbox.js';
+interface Executor {
+    query(sql: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+/** Neutral attempt-port implementation on the existing synthetic dispatch owner. */
+export declare function createPostgresSandboxCheckoutRecoveryAttemptPort(db: Executor, options: SandboxPaymentSimulatorOptions, now?: () => Date): {
+    begin(input: {
+        order: {
+            orderId: string;
+            totalMinor: number;
+            currency: string;
+        };
+        clientId: string;
+        recoveryTokenId: string;
+        paymentIntentId: string;
+        idempotencyKey: string;
+        method: SandboxMethodFacts | undefined;
+    }): Promise<{
+        orderId: string;
+        paymentIntentId: string;
+        clientId: string;
+        paymentAttemptId: string;
+        replayed: boolean;
+        status: "failed" | "expired" | "processing";
+        failureReason: string | null;
+    }>;
+};
+export {};
+```
+## dist/payments/sandboxInlineRecovery.d.ts
+
+```ts
+import type { SandboxMethodFacts, SandboxPaymentSimulatorOptions } from './contracts/sandbox.js';
+interface Executor {
+    query(sql: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+/** Register synthetic method identities explicitly. Opaque references never imply a method taxonomy. */
+export declare function createPostgresSandboxInlineRecoveryAttemptPort(db: Executor, options: SandboxPaymentSimulatorOptions & {
+    methodKeyFor(facts: SandboxMethodFacts): string | null;
+}, now?: () => Date): {
+    assertExecutionRail: (rail: string) => void;
+    readPreviousMethod(input: {
+        orderId: string;
+        paymentIntentId: string;
+        paymentAttemptId: string;
+        executionRail: string;
+    }): Promise<string | null>;
+    begin(input: {
+        order: {
+            orderId: string;
+        };
+        method: SandboxMethodFacts;
+        request: {
+            orderId: string;
+            clientId: string;
+            paymentIntentId: string;
+            expectedPaymentAttemptId: string;
+            retryRequestId: string;
+            executionRail: string;
+            methodKey: string;
+        };
+        admission: {
+            replayOnly: boolean;
+            purchaseContext: "one_time" | "subscription_initial" | null;
+            previousMethodKey: string | null;
+            actions: readonly string[];
+            restriction: string | null;
+        };
+    }): Promise<{
+        orderId: string;
+        paymentIntentId: string;
+        clientId: string;
+        paymentAttemptId: string;
+        executionRail: "sandbox";
+        replayed: boolean;
+        status: "failed" | "processing";
+        failureReason: string | null;
+    }>;
+};
+export {};
 ```
 ## dist/payments/sandboxRecoveryGuidance.d.ts
 

@@ -1,3 +1,4 @@
+import { recordInvoiceDestination } from '../helpers/invoicingBuyerDestination.js';
 import { createInvoiceAccess } from "@openlup/platform/account-support";
 import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
@@ -86,6 +87,7 @@ async function fixture(clearanceRequired = false) {
     await db.query("SELECT public.commerce_record_settlement($1,$2,'succeeded',NULL,'{}',now())", [`paid:${intent}`, intent]);
     await db.query("COMMIT");
   } catch (error) { await db.query("ROLLBACK"); throw error; } finally { db.release(); }
+  await recordInvoiceDestination(runtime, orderId);
   const store = createPostgresInvoiceStore(runtime, { seller: { read: async () => ({ kind: "found", seller, revisionRef: "seller-v1" }) } });
   const capture = { requestKey: `invoice:${orderId}`, sourceKind: "paid" as const, sourceId: randomUUID(), orderId,
     occurredAt: "2026-11-01T12:00:00Z", evidence: { settlementIntentId: intent, amountMinor: 900, currency: "XXX" } };

@@ -180,16 +180,18 @@ async function invoiceFixture(mode: 'pending' | 'issued' | 'corrected' | 'retry'
   const order = (await runtime.query('SELECT total_amount_minor,currency_code FROM public.commerce_orders WHERE id=$1', [orderId])).rows[0]!;
   const intent = (await runtime.query('SELECT id FROM public.commerce_settlement_intents WHERE order_id=$1', [orderId])).rows[0]!.id;
   const total = Number(order.total_amount_minor), currency = order.currency_code;
-  const store = invoices.createPostgresInvoiceStore(runtime, { seller: { read: async () => ({ kind: 'found', seller, revisionRef: 'seller-v1' }) } });
+  const store = invoices.createPostgresBillingInvoiceStore(runtime, { seller: { read: async () => ({ kind: 'found', seller, revisionRef: 'seller-v1' }) } });
   const duty = await store.captureDuty({ requestKey: `invoice:${orderId}`, sourceKind: 'paid', sourceId: randomUUID(), orderId,
     occurredAt: proof.observedAt, evidence: { settlementIntentId: intent, amountMinor: total, currency } });
   if ('kind' in duty) throw new Error('starter_fixture_invoice_duty');
   const items = (await runtime.query('SELECT quantity,unit_amount_minor,line_amount_minor FROM public.commerce_order_items WHERE order_id=$1 ORDER BY line_ordinal', [orderId])).rows;
+  const buyer=await store.readCapturedBuyer(orderId);
+  if(!buyer || !(buyer.name || buyer.companyName))throw Error('starter_invoice_buyer_required');
   const facts: InvoiceFacts = { factRevision: `facts:${orderId}`, policyVersion: 'sandbox-v1',
     refs: { orderId, orderRef: `ORDER/${orderId}`, invoiceRef: `INVOICE/${orderId}` },
     dates: { issueDate: '2026-11-01', sellDate: '2026-11-01', handedOverAt: null, paymentCompletedAt: proof.observedAt },
     documentKind: 'sandbox-document', clearanceRequired: false, currency,
-    buyer: { name: 'Example Customer', email: null, taxIdentifier: null, companyName: null, address: null },
+    buyer: { ...buyer, name: (buyer.name || buyer.companyName)!, taxIdentifier: buyer.taxId ? {scheme:'synthetic',value:buyer.taxId} : null },
     payment: { intentRef: intent, providerRef: 'sandbox-money', providerPaymentRef: null, amountMinor: total, currency, localSettlementState: 'matched' },
     orderMoney: null, lines: items.map(item => ({ description: 'Synthetic item', quantity: item.quantity,
       unitNetMinor: Number(item.unit_amount_minor), unitGrossMinor: Number(item.unit_amount_minor),
@@ -416,7 +418,7 @@ it('admits an active distributor session but refuses admin-only OMS, shipment an
   expect(await snapshot()).toEqual(before);
 }, adminReadRefusalTimeoutMs);
 
-it('all eleven operation limits preserve the complete effect snapshot over replay and forgery', async () => {
+it('all three operation limits preserve the complete effect snapshot over replay and forgery', async () => {
   const orderRef = await purchase(false);
   const paid = await purchase(true);
   const before = await snapshot();
@@ -434,8 +436,8 @@ it('all eleven operation limits preserve the complete effect snapshot over repla
   expect(removed.body.code).toBe('starter_operation_unknown');
   for (const host of hosts) {
     const status = (await action('application.status', {}, operatorCookie, randomUUID(), host.baseURL)).body.value.bindings;
-    expect(status.length).toBe(60);
-    expect(status.filter((item: { bound: boolean }) => item.bound)).toHaveLength(48);
+    expect(status.length).toBe(70);
+    expect(status.filter((item: { bound: boolean }) => item.bound)).toHaveLength(66);
     for (const operation of Object.keys(operationLimits)) {
       expect(status.find((item: { operation: string }) => item.operation === operation).bound).toBe(false);
     }

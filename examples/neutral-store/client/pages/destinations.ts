@@ -8,6 +8,7 @@ import { actionForm, otherRefusal, readPanel, refusedAction } from '../forms.ts'
 export function returnsPage(context: PageContext): HTMLElement {
   return el('div', {}, el('h1', {}, context.t('returns')),
     el('p', {}, context.t('returnsBody')),
+    el('p', {}, context.t('returnIntentBody')),
     el('p', {}, `${context.t('returnDays')}: ${context.config.legal.returnsDays}`),
     actionForm(context, {
       operation: 'return.request', submit: 'requestReturn',

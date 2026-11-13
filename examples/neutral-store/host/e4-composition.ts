@@ -1,5 +1,8 @@
-import { createPostgresCommerceOmsPort, createPostgresCommerceOmsControlPlane } from '@openlup/platform/commerce/server/postgres';
-import { CommerceOmsConflictError } from '@openlup/platform/commerce';
+import { createPostgresCustomerSavedAddressPort, createCustomerSavedAddressRequestSchemas, CustomerSavedAddressRefused, createPostgresCustomerPreferencePort, createCustomerPreferenceSchemas } from '@openlup/platform/shipping';
+import { accountPreferencePolicy } from '../owned/renewal.config.ts';
+import { savedAddressValidation, billingTaxPolicy } from '../owned/acquisition-policy.ts';
+import { createPostgresCommerceReturnsPort, createPostgresCommerceOmsPort, createPostgresCommerceOmsControlPlane } from '@openlup/platform/commerce/server/postgres';
+import { createCommerceReturnsSchemas, returnApproveSchema, returnRejectSchema, adminCommerceOrderCancelRequestSchema, adminCommerceOrderMarkRefundedRequestSchema, CommerceOmsConflictError } from '@openlup/platform/commerce';
 import { isUuid } from './recurring-fence.ts';
 import { createPostgresDestinationPort } from '@openlup/platform/commerce/server/destinations';
 import { createNativeQuoteService } from './quote-composition.ts';
@@ -7,16 +10,17 @@ import { installedAcquisitionPredecessors } from './acquisition-predecessors.ts'
 import { quotesMatchForRecovery } from '@openlup/platform/commerce/server';
 import type { PromotionAcceptanceKeyring } from '@openlup/platform/promotions';
 import type { CreateQuoteResponse } from '@openlup/platform/pricing';
-import { createCustomerAccountMutationSchemas, createPostgresCustomerAccountMutationPort } from '@openlup/platform/account-support';
+import { createCustomerAccountMutationSchemas, createPostgresCustomerAccountMutationPort, createPostgresCustomerBillingProfilePort, createCustomerBillingProfilesHandler } from '@openlup/platform/account-support';
+import { createPostgresBillingInvoiceStore } from '@openlup/platform/invoicing';
 import { createAdminCheckoutPaymentLinkHandler, createPostgresOperatorCheckoutLinkStore, type OperatorCheckoutLinkOrder } from '@openlup/platform/commerce/server';
 import { createPostgresFulfillmentOperatorPort } from '@openlup/platform/fulfillment/native';
-import { CommerceFulfillmentConflictError } from '@openlup/platform/fulfillment';
+import { createAdminCommerceFulfillmentRecordLabelHandler, createAdminCommerceFulfillmentHandOffHandler, createAdminCommerceFulfillmentTrackingEventHandler, CommerceFulfillmentConflictError } from '@openlup/platform/fulfillment';
 import { customerAccountPolicy, checkoutLinkPolicy } from '../owned/acquisition-policy.ts';
 import type { Pool } from 'pg';
 import { evaluateCommerceFulfillmentEligibility, uuidSchema } from '@openlup/platform/commerce';
 import { createInvoiceAccess } from '@openlup/platform/account-support';
 import { createPostgresInvoiceAccountHistory, createCapturedPostgresInvoiceProvider } from '@openlup/platform/invoicing/postgres';
-import { createPostgresFulfillmentCommerceReadPort, nativeFulfillmentCommerceResponseSchemas } from '@openlup/platform/fulfillment/native';
+import { createPostgresFulfillmentShipmentCommandPort, createPostgresFulfillmentCommerceReadPort, nativeFulfillmentCommerceResponseSchemas } from '@openlup/platform/fulfillment/native';
 import type { ActionBinding, ActionContext, ApplicationBindings } from './bindings.ts';
 import { readOperatorInvoiceSummary } from './e4-invoice-summary.ts';
 
@@ -68,6 +72,10 @@ ApplicationBindings['actions'] {
   };
   return {
     ...composeOrderHolds(pool, authorizeOperator),
+    ...composeOrderTransitions(pool, authorizeOperator),
+    ...composeReturnCapabilities(pool, authorizeOperator),
+    ...composeShipmentCapabilities(pool, authorizeOperator),
+    ...composeAccountPreferences(pool),
     'operator.shipments': shipmentRead(false),
     'operator.shipment': shipmentRead(true),
     'account.invoice': async (payload, context) => {
@@ -81,7 +89,8 @@ ApplicationBindings['actions'] {
       const request = { accountRef, orderId: payload.orderRef };
       if (payload.documentRef === undefined) {
         const value = await access.history(request);
-        return value.kind === 'found' ? { ok: true, value } : refused(`starter_invoice_${value.kind}`);
+        return value.kind === 'found' ? { ok: true, value: { ...value,
+          buyerSnapshot: await createPostgresBillingInvoiceStore(pool).readCapturedBuyer(payload.orderRef) } } : refused(`starter_invoice_${value.kind}`);
       }
       const value = await access.download({ ...request, documentRef: payload.documentRef });
       return value.kind === 'downloaded' ? { ok: true, value: { contentType: value.contentType,
@@ -241,4 +250,222 @@ export function composeOrderHolds(pool: Pool, authorize: (context: ActionContext
     }
   };
   return { 'operator.hold': action(false), 'operator.release': action(true) };
+}
+
+/** Host confirmation and human identity precede the package-owned order transitions. */
+export function composeOrderTransitions(pool: Pool, authorize: (context: ActionContext) => Promise<boolean>): ApplicationBindings['actions'] {
+  const action = (refund: boolean): ActionBinding => async (payload, context) => {
+    if (!context.actor.operatorRef || !await authorize(context)) return refused('operator_required');
+    if (Object.keys(payload).some(key => !['locale', 'orderRef', 'reason', 'confirmed'].includes(key)) || payload.confirmed !== true)
+      return refused('starter_input_invalid');
+    const schema = refund ? adminCommerceOrderMarkRefundedRequestSchema : adminCommerceOrderCancelRequestSchema;
+    const input = schema.safeParse({ idempotencyKey: context.commandKey, orderId: payload.orderRef, reason: payload.reason });
+    if (!input.success) return refused('starter_input_invalid');
+    const actor = await createPostgresCommerceOmsControlPlane(pool).resolveOperator(context.actor.operatorRef);
+    if (!actor) return refused('operator_required');
+    try {
+      const port = createPostgresCommerceOmsPort(pool);
+      const request = { ...input.data, orderId: input.data.orderId.toLowerCase(), actorUserId: actor };
+      const value = refund ? await port.markRefunded(request) : await port.cancelOrder(request);
+      return { ok: true, value, replayed: value.replayed };
+    } catch (error) {
+      if (error instanceof CommerceOmsConflictError) return refused('starter_order_transition_conflict');
+      return refused('starter_order_transition_unavailable');
+    }
+  };
+  return { 'operator.cancelUnpaid': action(false), 'operator.externalRefund': action(true) };
+}
+
+/** Native return intent only; identity and configured reasons belong to this host. */
+export function composeReturnCapabilities(pool: Pool, authorize: (context: ActionContext) => Promise<boolean>): ApplicationBindings['actions'] {
+  const port = createPostgresCommerceReturnsPort(pool);
+  const request: ActionBinding = async (payload, context) => {
+    if (!context.actor.principalRef || !context.actor.customerRef) return refused('customer_session_required');
+    if (Object.keys(payload).some(key => !['locale','orderRef','lines','reasonCode','customerNote'].includes(key))
+      || !Array.isArray(payload.lines) || payload.lines.some(line => !line || typeof line !== 'object' || Array.isArray(line)
+        || Object.keys(line).some(key => !['orderItemId','quantity','sku','restockDisposition'].includes(key)))) return refused('starter_input_invalid');
+    const reasons = context.config.returns.reasons.map(choice => choice.code);
+    if (!reasons.length) return refused('starter_return_unavailable');
+    const schema = createCommerceReturnsSchemas(reasons as [string, ...string[]]).returnRequestCreateSchema;
+    const parsed = schema.safeParse({ ...payload, orderId: payload.orderRef, idempotencyKey: context.commandKey });
+    if (!parsed.success) return refused('starter_input_invalid');
+    try {
+      const value = await port.createRequest({ ...parsed.data, requestedBy: context.actor.principalRef });
+      return { ok: true, value, replayed: value.replayed };
+    } catch { return refused('starter_return_refused'); }
+  };
+  const decision = (approve: boolean): ActionBinding => async (payload, context) => {
+    if (!context.actor.operatorRef || !await authorize(context)) return refused('operator_required');
+    if (Object.keys(payload).some(key => !['locale','returnRef','adminNote', ...(approve ? ['refundMode','refundAmountCents'] : [])].includes(key)))
+      return refused('starter_input_invalid');
+    const input = { ...payload, returnRequestId: payload.returnRef, idempotencyKey: context.commandKey };
+    const parsed = approve ? returnApproveSchema.safeParse(input) : returnRejectSchema.safeParse(input);
+    if (!parsed.success || (approve && 'refundMode' in parsed.data && parsed.data.refundMode === 'partial'
+      && payload.refundAmountCents === undefined)) return refused('starter_input_invalid');
+    const actorUserId = await createPostgresCommerceOmsControlPlane(pool).resolveOperator(context.actor.operatorRef);
+    if (!actorUserId) return refused('operator_required');
+    try {
+      const value = approve ? await port.approve({ ...returnApproveSchema.parse(input), actorUserId })
+        : await port.reject({ ...returnRejectSchema.parse(input), actorUserId });
+      return { ok: true, value, replayed: value.replayed };
+    } catch { return refused('starter_return_refused'); }
+  };
+  return { 'return.request': request, 'operator.returnApprove': decision(true), 'operator.returnReject': decision(false) };
+}
+
+
+/** Human-admin evidence only. Native commands own the READ COMMITTED transaction's effects. */
+export function composeShipmentCapabilities(pool: Pool, authorize: (context: ActionContext) => Promise<boolean>): ApplicationBindings['actions'] {
+  const command = (kind: 'label' | 'handoff' | 'tracking'): ActionBinding => async (payload, context) => {
+    if (!context.actor.operatorRef || !await authorize(context)) return refused('operator_required');
+    const fields = kind === 'label' ? ['providerKind','providerTrackingId','labelUrl','deliveryEstimateDays','rawProviderPayload']
+      : kind === 'tracking' ? ['status','providerTrackingId','rawEvent'] : [];
+    if (payload.confirmed !== true || Object.keys(payload).some(key => !['locale','shipmentRef','confirmed','metadata', ...fields].includes(key)))
+      return refused('starter_input_invalid');
+    const { locale: _locale, shipmentRef, confirmed: _confirmed, ...input } = payload;
+    type Response = { result: Awaited<ReturnType<ActionBinding>> };
+    const response: Response = { result: refused('starter_shipment_unavailable') };
+    const respond = {
+      sendMethodNotAllowed(res: Response) { res.result = refused('method_not_allowed'); },
+      sendBffSuccess(res: Response, value: unknown) { res.result = { ok: true, value,
+        ...(value && typeof value === 'object' && 'replayed' in value && typeof value.replayed === 'boolean' ? { replayed: value.replayed } : {}) }; },
+      sendBffError(res: Response, code: string, _message: string, options?: { details: unknown }) {
+        const detail = options?.details as { reason?: unknown } | undefined;
+        const reason = typeof detail?.reason === 'string' && /^[a-z_]+$/.test(detail.reason) ? detail.reason : 'conflict';
+        res.result = refused(code === 'BAD_REQUEST' ? 'starter_input_invalid'
+          : code === 'CONFLICT' ? `starter_shipment_${reason}` : 'starter_shipment_unavailable');
+      },
+    };
+    // Public handlers validate before the lazy port opens a connection. The host
+    // admission above is fresh for this invocation, including native receipt replay.
+    let db: import('pg').PoolClient | undefined;
+    const port = async () => {
+      db = await pool.connect();
+      await db.query('BEGIN ISOLATION LEVEL READ COMMITTED');
+      return createPostgresFulfillmentShipmentCommandPort(db);
+    };
+    // Handler ports are synchronous factories; validate in the public handler,
+    // and acquire the transaction only inside the selected mutation method.
+    const fulfillmentPort = {
+      async recordCommerceFulfillmentLabel(request: Parameters<ReturnType<typeof createPostgresFulfillmentShipmentCommandPort>['recordCommerceFulfillmentLabel']>[0]) {
+        return (await port()).recordCommerceFulfillmentLabel(request);
+      },
+      async handOffCommerceFulfillmentOrder(request: Parameters<ReturnType<typeof createPostgresFulfillmentShipmentCommandPort>['handOffCommerceFulfillmentOrder']>[0]) {
+        return (await port()).handOffCommerceFulfillmentOrder(request);
+      },
+      async recordCommerceFulfillmentTrackingEvent(request: Parameters<ReturnType<typeof createPostgresFulfillmentShipmentCommandPort>['recordCommerceFulfillmentTrackingEvent']>[0]) {
+        return (await port()).recordCommerceFulfillmentTrackingEvent(request);
+      },
+    };
+    const deps = { respond, fulfillmentPort, authorizeAdmin: async () => ({ ok: true as const, userId: context.actor.operatorRef! }) };
+    const handler = kind === 'label' ? createAdminCommerceFulfillmentRecordLabelHandler(deps)
+      : kind === 'handoff' ? createAdminCommerceFulfillmentHandOffHandler(deps) : createAdminCommerceFulfillmentTrackingEventHandler(deps);
+    try {
+      await handler({ method: 'POST', query: {}, body: { ...input, fulfillmentOrderId: shipmentRef, idempotencyKey: context.commandKey } }, response);
+      if (db) await db.query(response.result.ok ? 'COMMIT' : 'ROLLBACK');
+      return response.result;
+    } finally {
+      if (db) { try { await db.query('ROLLBACK'); } finally { db.release(); } }
+    }
+  };
+  return { 'operator.label': command('label'), 'operator.handoff': command('handoff'), 'operator.delivery': command('tracking') };
+}
+
+
+/** The native port rechecks the session principal/client pair on every billing read. */
+function scopedBilling(pool: Pool, scope: { principalId: string; clientId: string }) {
+  const port = createPostgresCustomerBillingProfilePort(pool, scope, { tax: billingTaxPolicy, now: () => new Date().toISOString() });
+  const profiles = async (clientId: string) => {
+    if (clientId !== scope.clientId) throw new Error('starter_account_owner_required');
+    const book = await port.listBillingProfiles(scope.principalId);
+    if (!book) throw new Error('starter_account_owner_required');
+    return book.ordererProfiles;
+  };
+  return { port,
+    rows: async (id: string) => (await profiles(id)).map(row => ({ id: row.profileId, label: row.label, full_name: row.fullName,
+      email: row.email, phone: row.phone, company_name: row.companyName, tax_id: row.taxId,
+      company_verification_level: row.companyVerificationLevel, company_identity_source: row.companyIdentitySource,
+      company_identity_evidence_hash: row.companyIdentityEvidenceHash, is_default: row.isDefault, created_at: row.createdAt, updated_at: row.updatedAt })),
+    hints: async (id: string) => (await profiles(id)).map(row => ({ id: row.profileId, isDefault: row.isDefault })),
+  };
+}
+export function composeAccountPreferences(pool: Pool): ApplicationBindings['actions'] {
+  const action = (kind: 'billing' | 'defaults' | 'addresses' | 'payment' | 'delivery' | 'selection'): ActionBinding => async (payload, context) => {
+    const { principalRef, customerRef } = context.actor;
+    if (!principalRef || !customerRef) return refused('customer_session_required');
+    const fields = kind === 'billing' ? ['action','profileId','label','fullName','email','phone','companyName','taxId','companyVerificationLevel','companyIdentitySource','companyIdentityEvidenceHash','isDefault']
+      : kind === 'defaults' ? ['checkoutKind']
+      : kind === 'addresses' ? ['action','addressId','kind','label','recipientName','contactPhone','companyName','taxId','line1','line2','city','postalCode','country','isDefault','deliveryNotes','courierInstructions']
+      : kind === 'payment' ? ['action','scope','methodKind']
+        : kind === 'delivery' ? ['action','scope','deliveryKind','providerKind','carrierKind','carrierCode','serviceCode','pickupPoint']
+          : ['subscriptionRef','savedAddressId','reason'];
+    if (Object.keys(payload).some(key => key !== 'locale' && !fields.includes(key))) return refused('starter_input_invalid');
+    const { locale: _locale, action: verb, ...input } = payload;
+    const scope = { principalId: principalRef, clientId: customerRef };
+    try {
+      const billing = scopedBilling(pool, scope);
+      if (kind === 'billing') {
+        if (!['read','upsert','delete'].includes(String(verb)) || (verb === 'read' && Object.keys(input).length)) return refused('starter_input_invalid');
+        const response = { result: refused('starter_account_data_unavailable') as Awaited<ReturnType<ActionBinding>> };
+        const handler = createCustomerBillingProfilesHandler({ port: billing.port, tax: billingTaxPolicy,
+          authenticate: async () => ({ ok: true as const, userId: principalRef }), messages: { authentication: 'starter_account_data_unavailable',
+            invalid: 'starter_input_invalid', unlinked: 'customer_session_required', failed: 'starter_account_data_unavailable', invalidResponse: 'starter_account_data_unavailable' } }, {
+          ...portalResponder, sendBffError(res, code) { res.result = refused(code === 'BAD_REQUEST' ? 'starter_input_invalid'
+            : code === 'FORBIDDEN' ? 'starter_billing_forbidden' : code === 'UNAUTHORIZED' ? 'customer_session_required' : 'starter_account_data_unavailable'); },
+        });
+        await handler({ method: verb === 'read' ? 'GET' : verb === 'delete' ? 'DELETE' : 'POST',
+          body: { ...input, idempotencyKey: context.commandKey } }, response);
+        return response.result;
+      }
+      if (kind === 'defaults') {
+        if (!['one_time','subscription_initial'].includes(String(input.checkoutKind))) return refused('starter_input_invalid');
+        return { ok: true, value: await createPostgresCustomerPreferencePort(pool, scope, accountPreferencePolicy,
+          { now: () => new Date().toISOString(), readOrdererHints: billing.hints }).getCustomerDefaultsSnapshot({ clientId: customerRef, checkoutKind: String(input.checkoutKind) }) };
+      }
+      if (kind === 'selection') {
+        if (!uuid(input.subscriptionRef) || typeof input.savedAddressId !== 'string'
+          || (input.reason !== undefined && typeof input.reason !== 'string')) return refused('starter_input_invalid');
+        // Do not parse the saved ID here: native admitted-key replay precedes that parsing.
+        const value = await createPostgresDestinationPort(pool).selectSavedShippingAddress({ actorId: principalRef, clientId: customerRef,
+          subscriptionId: input.subscriptionRef, savedAddressId: input.savedAddressId, idempotencyKey: context.commandKey,
+          ...(typeof input.reason === 'string' ? { reason: input.reason } : {}), now: new Date().toISOString() });
+        return { ok: true, value, replayed: value.status === 'replayed' };
+      }
+      if (kind === 'addresses') {
+        if (!['read','upsert','delete'].includes(String(verb)) || (verb === 'read' && Object.keys(input).length)) return refused('starter_input_invalid');
+        const validation = savedAddressValidation(context.config.market.country);
+        const schemas = createCustomerSavedAddressRequestSchemas(validation);
+        const parsed = verb === 'upsert' ? schemas.customerAddressUpsertRequestSchema.safeParse({ ...input, idempotencyKey: context.commandKey })
+          : verb === 'delete' ? schemas.customerAddressDeleteRequestSchema.safeParse({ ...input, idempotencyKey: context.commandKey }) : null;
+        if (parsed && !parsed.success) return refused('starter_input_invalid');
+        const port = createPostgresCustomerSavedAddressPort(pool, scope, { validation, now: () => new Date().toISOString(),
+          readOrdererProfiles: billing.rows, inUseMessage: 'Saved address is used by an active subscription' });
+        const request = { ...input, idempotencyKey: context.commandKey };
+        const book = verb === 'read' ? await port.getAddressBook(principalRef)
+          : verb === 'delete' ? await port.deleteAddress(principalRef, { addressId: String(input.addressId), idempotencyKey: context.commandKey })
+            : await port.upsertAddress(principalRef, request as Parameters<typeof port.upsertAddress>[1]);
+        return book ? { ok: true, value: { ...book, billingProfilesAvailable: true } } : refused('customer_session_required');
+      }
+      if (!['read','save'].includes(String(verb)) || (verb === 'read' && Object.keys(input).length)) return refused('starter_input_invalid');
+      const schemas = createCustomerPreferenceSchemas(accountPreferencePolicy);
+      const parsed = kind === 'payment' ? schemas.payment.safeParse(input) : schemas.delivery.safeParse(input);
+      if (verb === 'save' && !parsed.success) return refused('starter_input_invalid');
+      const port = createPostgresCustomerPreferencePort(pool, scope, accountPreferencePolicy,
+        { now: () => new Date().toISOString(), readOrdererHints: billing.hints });
+      const value = verb === 'read' ? kind === 'payment' ? await port.listPaymentPreferences(principalRef) : await port.listDeliveryPreferences(principalRef)
+        : kind === 'payment' ? await port.upsertPaymentPreference(principalRef, schemas.payment.parse(input))
+          : await port.upsertDeliveryPreference(principalRef, schemas.delivery.parse(input));
+      return value === null ? refused('customer_session_required') : { ok: true, value: verb === 'read' ? { preferences: value } : { preference: value } };
+    } catch (error) {
+      if (error instanceof CustomerSavedAddressRefused) return refused(`starter_${error.code}`);
+      const message = error instanceof Error ? error.message : '';
+      if (error && typeof error === 'object' && 'code' in error && error.code === '22P02') return refused('starter_address_invalid');
+      const reasons: Record<string, string> = { customer_self_service_invalid_address: 'address_invalid', customer_self_service_forbidden: 'subscription_forbidden',
+        customer_self_service_not_found: 'subscription_not_found', customer_self_service_payment_blocked: 'payment_blocked',
+        customer_self_service_invalid_idempotency_key: 'input_invalid' };
+      return refused(reasons[message] ? `starter_${reasons[message]}` : 'starter_account_data_unavailable');
+    }
+  };
+  return { 'account.billing': action('billing'), 'account.defaults': action('defaults'), 'account.addresses': action('addresses'), 'account.paymentPreference': action('payment'),
+    'account.deliveryPreference': action('delivery'), 'subscription.savedAddress': action('selection') };
 }

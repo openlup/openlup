@@ -1,3 +1,4 @@
+import { recordInvoiceDestination } from '../helpers/invoicingBuyerDestination.js';
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { createPostgresInvoiceStore, runNativeInvoiceIssueJob } from "@openlup/platform/invoicing";
@@ -68,6 +69,7 @@ async function seed() {
     await db.query("SELECT public.commerce_record_settlement($1,$2,'succeeded',NULL,'{}',now())", [`paid:${intent}`, intent]);
     await db.query("COMMIT");
   } catch (error) { await db.query("ROLLBACK"); throw error; } finally { db.release(); }
+  await recordInvoiceDestination(h.pool, orderId);
   const requestKey = ` exact capture:${orderId} `;
   const capture = { requestKey, sourceKind: "paid" as const, sourceId, orderId, occurredAt: "2026-10-18T09:08:07Z", evidence: { settlementIntentId: intent, amountMinor: 900, currency: "XXX" } };
   const captured = await store.captureDuty(capture);

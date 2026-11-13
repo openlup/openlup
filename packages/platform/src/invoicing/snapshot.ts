@@ -38,6 +38,7 @@ export function mapInvoiceClaimToProviderSnapshot<Seller, Kind, Payment>(input: 
       taxId: textValue(input.buyerSnapshot.taxId),
       companyName: textValue(input.buyerSnapshot.companyName),
       address: mapBuyerAddress(input.buyerSnapshot.address),
+      ...buyerProvenance(input.buyerSnapshot),
     },
     documentKind: input.documentKind,
     governmentClearanceRequired: input.governmentClearanceRequired,
@@ -145,6 +146,9 @@ function mapBuyerAddress(value: unknown): NonNullable<InvoiceBuyer["address"]> {
   const address = isRecord(value) ? value : {};
   return {
     line1: textValue(address.line1),
+    ...(Object.hasOwn(address, 'line2') ? { line2: rawText(address.line2) } : {}),
+    ...(Object.hasOwn(address, 'addressId') ? { addressId: rawText(address.addressId) } : {}),
+    ...(Object.hasOwn(address, 'source') ? { source: rawText(address.source) } : {}),
     postalCode: textValue(address.postalCode),
     city: textValue(address.city),
     country: textValue(address.country),
@@ -189,4 +193,13 @@ function numberValue(value: unknown): number | null {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function rawText(value: unknown): string | null { return typeof value === 'string' ? value : null; }
+function buyerProvenance(value: Record<string, unknown>): Pick<InvoiceBuyer,'source'|'addressSource'|'ordererProfileId'|'billingAddressId'|'legacyFallback'> {
+ return { ...(Object.hasOwn(value,'source') ? {source:rawText(value.source)} : {}),
+ ...(Object.hasOwn(value,'addressSource') ? {addressSource:rawText(value.addressSource)} : {}),
+ ...(Object.hasOwn(value,'ordererProfileId') ? {ordererProfileId:rawText(value.ordererProfileId)} : {}),
+ ...(Object.hasOwn(value,'billingAddressId') ? {billingAddressId:rawText(value.billingAddressId)} : {}),
+ ...(Object.hasOwn(value,'legacyFallback') ? {legacyFallback:value.legacyFallback === true} : {}) };
 }

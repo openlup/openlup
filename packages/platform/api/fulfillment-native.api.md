@@ -576,6 +576,7 @@ export interface FulfillmentOperatorMutationResult {
     status: 'created' | 'packed' | 'label_pending' | 'label_created' | 'handed_over' | 'in_transit' | 'delivered' | 'exception' | 'cancelled';
     replayed: boolean;
     releasedReservationCount?: number;
+    consumedReservationCount?: number;
     reservationDisposition?: 'recorded' | 'reservations_not_recorded';
 }
 export interface FulfillmentOperatorMutationPort {
@@ -1576,6 +1577,7 @@ export declare function createNativeFulfillmentBinding(input: {
 };
 export { createPostgresFulfillmentCommerceReadPort, nativeFulfillmentCommerceResponseSchemas, type NativeFulfillmentCommerceOrder, type NativeFulfillmentCommerceReadPort } from "./commerceReads.js";
 export { createPostgresFulfillmentOperatorPort, createPostgresParcelReservationConsumption } from "./operatorMutations.js";
+export { createPostgresFulfillmentShipmentCommandPort } from './shipmentCommands.js';
 ```
 ## dist/fulfillment/native/operatorMutations.d.ts
 
@@ -1600,6 +1602,19 @@ export declare function createPostgresParcelReservationConsumption(db: PgExecuto
     consumedReservationIds: string[];
     replayed: boolean;
 }>;
+export {};
+```
+## dist/fulfillment/native/shipmentCommands.d.ts
+
+```ts
+import type { FulfillmentOperatorMutationPort, FulfillmentOperatorMutationResult } from '../contracts/operator.js';
+import { type PgExecutor } from '../postgresDispatchStore.js';
+type ShipmentCommandPort = {
+    [K in 'recordCommerceFulfillmentLabel' | 'handOffCommerceFulfillmentOrder' | 'recordCommerceFulfillmentTrackingEvent']: (request: Parameters<FulfillmentOperatorMutationPort[K]>[0]) => Promise<FulfillmentOperatorMutationResult>;
+};
+/** Operator evidence transactions. The host authenticates actors and owns connection lifetime.
+ * Compose the invoicing handoff wrapper outside this committed database command. */
+export declare function createPostgresFulfillmentShipmentCommandPort(db: PgExecutor): ShipmentCommandPort;
 export {};
 ```
 ## dist/fulfillment/postgresDispatchStore.d.ts

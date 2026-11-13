@@ -82,6 +82,22 @@ export function createPostgresSandboxPaymentSimulator(db: Executor, options: San
   return {
     ingress,
     async beginAttempt(input) {
+      if (input.inlineRetry) {
+        return attemptTimes(await call(`SELECT public.commerce_checkout_inline_retry_begin($1,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6,
+          CASE WHEN jsonb_typeof($7::jsonb#>'{methodFacts,unattendedChargeAuthorizedAt}')='string'
+            THEN jsonb_set($7::jsonb,'{methodFacts,unattendedChargeAuthorizedAt}',to_jsonb(($7::jsonb#>>'{methodFacts,unattendedChargeAuthorizedAt}')::timestamptz))
+            ELSE $7::jsonb END,$8::timestamptz) AS response`,
+          [input.idempotencyKey,input.inlineRetry.orderId,input.inlineRetry.clientId,input.settlementIntentId,input.inlineRetry.expectedAttemptId,
+            input.requestFingerprint,JSON.stringify({...input.inlineRetry.context,methodFacts:input.methodFacts??{}}),input.at]) as SandboxPaymentAttempt & {replayed:boolean});
+      }
+      if (input.checkoutRecovery) {
+        return attemptTimes(await call(`SELECT public.commerce_checkout_recovery_attempt_begin($1,$2::uuid,$3::uuid,$4::uuid,$5,
+          CASE WHEN jsonb_typeof($6::jsonb#>'{methodFacts,unattendedChargeAuthorizedAt}')='string'
+            THEN jsonb_set($6::jsonb,'{methodFacts,unattendedChargeAuthorizedAt}',to_jsonb(($6::jsonb#>>'{methodFacts,unattendedChargeAuthorizedAt}')::timestamptz))
+            ELSE $6::jsonb END,$7::timestamptz) AS response`,
+          [input.idempotencyKey, input.checkoutRecovery.orderId, input.checkoutRecovery.clientId, input.settlementIntentId,
+            input.requestFingerprint, JSON.stringify({ recoveryTokenId: input.checkoutRecovery.recoveryTokenId, methodFacts: input.methodFacts ?? {} }), input.at]) as SandboxPaymentAttempt & { replayed: boolean });
+      }
       return attemptTimes(await call(`SELECT public.payment_simulator_begin_attempt($1,$2::uuid,$3,
         CASE WHEN jsonb_typeof($4::jsonb->'unattendedChargeAuthorizedAt')='string'
           THEN jsonb_set($4::jsonb,'{unattendedChargeAuthorizedAt}',to_jsonb(($4::jsonb->>'unattendedChargeAuthorizedAt')::timestamptz))

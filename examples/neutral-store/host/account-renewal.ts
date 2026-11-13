@@ -63,6 +63,7 @@ export async function readAccountRenewal(executor: Executor, scope: { principalI
     [ids, clientId, scope.principalId]),
   ]);
   return { subscriptions: rows.map(row => ({ subscriptionId: row.id, status: row.status,
+    shippingSavedAddressId: row.shipping_saved_address_id ?? null,
     nextCycleAt: nextCycles.get(String(row.id)) ?? null, editCutoffAt: editCutoff(nextCycles.get(String(row.id)) ?? null, typeof row.edit_window_hours === 'number' ? row.edit_window_hours : null),
     blocker: blockers.get(String(row.id)) ?? null, pause: pauses.get(String(row.id)) ?? null,
     winback: winback.rows.find(intent => intent.subscription_id === row.id) ?? null,

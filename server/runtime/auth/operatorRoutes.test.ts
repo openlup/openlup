@@ -164,6 +164,7 @@ it('direct privacy routes precede managed entries and enforce human admin in the
 
 const privacyContact = '22222222-2222-4222-8222-222222222222';
 async function mountedPrivacyQuery(sql: string) {
+  if (sql.startsWith('SELECT public.customer_billing_export')) return { rows: [{ data: { profiles: [{ client_id: privacyContact, full_name: 'Billing Buyer' }], invoiceBuyers: [{ buyer: { name: 'Frozen Buyer' } }] } }] };
   if (sql.startsWith('SELECT public.fulfillment_export_parcel_contacts')) return { rows: [{ data: [] }] };
   if (sql.startsWith('SELECT public.fulfillment_erase_parcel_contacts')) return { rows: [{ fulfillment_erase_parcel_contacts: { erased: 0 } }] };
   return { rows: sql.startsWith('SELECT c.*') || sql.startsWith('SELECT * FROM public.clients')
@@ -286,8 +287,18 @@ it.each(['export', 'erase'] as const)('adopter policy admits mounted direct %s b
   expect(res.status).toHaveBeenCalledWith(200);
   expect(res.json).toHaveBeenCalledWith({ ok: true, data: expect.objectContaining(operation === 'export'
     ? { missingContributors: [], documents: expect.arrayContaining([expect.objectContaining({ contributorId: 'subscriptions' }),
-      expect.objectContaining({ contributorId: 'fulfillment-parcel-contacts', data: [], coverage: expect.objectContaining({ complete: true }) })]) }
-    : { outcome: 'ERASED' }) });
+      expect.objectContaining({ contributorId: 'fulfillment-parcel-contacts', data: [], coverage: expect.objectContaining({ complete: true }) }),
+      expect.objectContaining({ contributorId: 'customer-billing', data: { profiles: [{ client_id: privacyContact, full_name: 'Billing Buyer' }], invoiceBuyers: [{ buyer: { name: 'Frozen Buyer' } }] },
+        coverage: { complete: true, included: ['customer.billing-profiles', 'invoicing.buyer-snapshots'], unavailable: [] } })]) }
+    : { outcome: 'ERASED', obligations: expect.arrayContaining([
+      { owner: 'customer-billing', resource: 'customer.billing-profiles', disposition: 'erase', reasonCode: 'PRIVATE_BILLING_PROFILE', remote: false },
+      { owner: 'invoicing', resource: 'invoicing.buyer-snapshots', disposition: 'retain', reasonCode: 'INVOICE_DOCUMENT_RETENTION', remote: false },
+    ]) }) });
+  if (operation === 'export') expect(privacy.query).toHaveBeenCalledWith('SELECT public.customer_billing_export($1) AS data', [privacyContact]);
+  if (operation === 'erase') {
+    expect(privacy.query).toHaveBeenCalledWith('SELECT public.customer_billing_prepare_erasure()');
+    expect(privacy.query).toHaveBeenCalledWith('SELECT public.customer_billing_erase($1)', [privacyContact]);
+  }
   expect(privacy.close).toHaveBeenCalledOnce(); expect(managed.from).not.toHaveBeenCalled();
   expect(f.policy).toHaveBeenCalledExactlyOnceWith({ route: req.url, domain: 'auth', surface: 'admin', risk: 'mutation' });
 });
