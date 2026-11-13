@@ -5,30 +5,11 @@ boundary; it is not evidence that every seam is stable, packaged, or activated.
 
 ## Platform and adopter ownership
 
-OpenLup is one platform monorepo containing platform code, official modules, a
-reference application, conformance material, and release tools. An adopter is a
-separate application. It owns its brand, presentation, catalogue, local market
-policy, provider composition, and business-specific integrations.
-
-The reference application demonstrates a neutral platform composition. It is
-not a default adopter application and does not transfer ownership of adopter
-assets or business policy to the platform.
-
-An adopted package owns its engine algorithm and public contract. Consume that
-engine through an exact authenticated `@openlup/*` npm artifact. An application
-agent must not autonomously patch, fork, vendor, monkey-patch, shadow its imports
-or restore a copied implementation as an alternative engine. Use only the
-installed package's declared public exports, not internal source or `dist` paths.
-Dependency identity alone does not establish which engine actually serves work.
-
-Application handlers, policies, ports, composition, host bindings and compatible
-native adapters remain ordinary application code. They need no ownership record
-per function or upstream release. Historical OpenLup origin alone does not freeze
-unpackaged application source. One engine algorithm owner can serve multiple hosts
-under the existing admission, fencing and retirement contract; a second competing
-state writer is not an extension seam.
+Moved to [Architecture and ownership](../../packages/core/docs/guide/concepts/architecture-and-ownership.md#platform-and-application).
 
 ## Runtime boundaries
+
+Moved to [Architecture and ownership](../../packages/core/docs/guide/concepts/architecture-and-ownership.md#runtime-boundaries).
 
 The [unmounted market recipe](../../server/adapters/market-packs/marketRecipe.ts)
 keeps reference identifier/name rules, address schemas, provider selection and
@@ -79,20 +60,17 @@ executor, scheduler or profile is activated by importing the package.
 Partner acquisition is packaged under the existing marketing entries while
 [Partners](../../src/domains/partners/README.md) retains its domain and data
 ownership. Browser schemas and type-only port contracts stay separate from
-`createPostgresPartnerAcquisitionPort` in the PostgreSQL entry. R1 contributes
-the existing normalization and three-routine store unchanged; reference neutral
-contracts/ports and the PostgreSQL factory now delegate through those package
-entries. Rich managed inquiry/list/status contracts remain in source. Hosts retain HTTP
+`createPostgresPartnerAcquisitionPort` in the PostgreSQL entry. Reference
+normalization, neutral contracts/ports and the three-routine PostgreSQL store
+delegate through those package entries. Rich managed inquiry/list/status
+contracts remain in source. Hosts retain HTTP
 method/wire validation, neutral-view selection, authorization before binding,
 drain policy, routing, environment selection, connection caching and disposal.
 No public controller or new entry is needed for this store contribution, and
 an import activates no route. The public catch-all dispatcher currently has an
 empty route table; leaf handlers are source interfaces only.
 
-The [R1 record](plans/oss-m18-r1-partner-acquisition.md) and
-[R2 record](plans/oss-m18-r2-reference-delegation.md) distinguish unchanged
-contribution and reference delegation from separate version preparation. Rich
-managed CRM/UI transitions, customer conversion, marketing opt-in and partner
+Rich managed CRM/UI transitions, customer conversion, marketing opt-in and partner
 privacy export/erasure are outside this port's capabilities. An actor UUID is
 SQL input, not administrator membership. The actual host must establish its
 authority before resolving this port.
@@ -129,8 +107,7 @@ locale, images, routes, document wording and processor disclosures. The type-onl
 `@openlup/platform/marketing/contracts` entry carries the shared organization and
 content-slot shapes without runtime initialization. Neither entry selects a head
 renderer, reads an environment or route manifest, or installs a provider client;
-the host owns document mutation and local content policy. Package browser proofs
-and the cold installed consumer exercise these boundaries.
+the host owns document mutation and local content policy.
 
 The marketing server entry additionally admits the runtime `identity/contracts`
 entry for obligation validation. Its contributor ports and return types are local
@@ -149,16 +126,10 @@ owner ports, and shares one contributor's named methods with composition.
 The reference privacy graph leaves marketing unselected; its marketing privacy
 coverage remains an open gap. This addition introduces no PostgreSQL import.
 
-Both privacy factories preserve structural compatibility with identity's
-`PersonalDataContributor`, checked by the existing marketing compiler witness.
-Strict installed-consumer compilation keeps this server entry independent of
-`pg` and `@types/pg`; only its `/postgres` entry selects that optional peer.
-
 The commerce browser entry contains schemas, pure helpers and port declarations;
 its `/contracts` entry remains type-only. The `/commerce/server` entry
 is the separate Node-only home for handlers, use cases, stores, adapters and
-engine composition. Browser bundle proof checks the complete commerce runtime
-graph. The additive `pricing/browser` entry directly exposes the existing quote
+engine composition. The additive `pricing/browser` entry directly exposes the existing quote
 primitive factory, acquisition capability/expectation/resolved-terms validators
 and shipping-terms validator. Acquisition reuses its pure defining file; shipping
 uses an exact linted edge from `pricing/browser/index.ts` to the existing pure
@@ -166,9 +137,7 @@ uses an exact linted edge from `pricing/browser/index.ts` to the existing pure
 shipping handler/Node HTTP declaration closure. Other internal shipping paths
 remain refused. The complete browser graph imports neither Node
 built-ins nor the Node-only pricing root. Reference quote context binds optional
-shipping/acquisition terms without changing its other fields or strictness. The customer-default consumption guard reads the package implementation
-so its unapplied-evidence and forbidden-payload assertions retain their meaning.
-
+shipping/acquisition terms without changing its other fields or strictness.
 
 OMS host handlers bind generic package factories to the existing responder and
 admin authorization. Read governance remains host-owned, with its gate before
@@ -178,8 +147,7 @@ request and transaction receiver. Creation records no arrival or subscription
 lifecycle transition. The browser-safe `commerce` entry exposes schemas and pure
 models and reuses the existing pricing/contracts version export. Node-only
 `commerce/server` owns handlers, managed stores/adapters and detail composition
-that reuses the shipping runtime. The built browser graph is bundled without
-Node externals in its package boundary test; commerce/contracts stays type-only.
+that reuses the shipping runtime.
 
 Commerce returns and native review handlers/adapters are implemented in the
 Node-only platform commerce/server entry. Reference review runtime composition retains
@@ -194,8 +162,7 @@ The Node-only `@openlup/platform/commerce/server` effect consumers accept the co
 parser, transactional-email scaffold and outcome mapper through typed host
 bindings. The reference binds the existing fulfillment payload parser, transactional scaffold
 and outcome mapper; commerce defines no second implementation. The fulfillment
-parser is exported unchanged and also serves the frozen subset handlers. Reference-only test fixtures exercise recipient, dedupe and
-provider-refusal outcomes. Neither these helpers nor the commerce registry
+parser is exported unchanged and also serves the frozen subset handlers. Neither these helpers nor the commerce registry
 construct a new worker, emitter or runtime schedule. Locale, presentation and
 provider policy remain in the reference composition.
 
@@ -208,7 +175,6 @@ host identity, auth, transport and transaction ownership at the existing seams.
 Native accounting duty collection has an explicit independent runtime binding;
 fulfillment composition no longer constructs or awaits an accounting binding.
 The collector is host-invoked and does not register another executor or scheduler.
-
 
 The host status-map, normalized-fact and current-parcel facades delegate to
 `@openlup/core/fulfillment`, retaining host names and private provider trace
@@ -238,10 +204,8 @@ nominal no-charge retry and release checks.
 
 The shared root [webhook HTTP helper](../../server/_lib/payment/webhookSignature.ts)
 retains raw-body reading, HMAC verification, timing-safe equality and body-size
-limits for existing callers. Its unused provider-specific signature verifier
-has retired; provider verification remains inside the opt-in package adapters.
-The six generic helper cases remain in the root witness.
-
+limits for existing callers. Provider verification stays inside the opt-in
+package adapters.
 
 Payments uses the existing bundle composer’s optional named binder. The host
 injects a scoped truth port and cleanup through `createPaymentServices`; schema
@@ -297,7 +261,7 @@ and is re-exported as types by both communications entries. It adds no runtime
 factory, provider SDK, environment reader, host callback, configuration registry
 or package subpath. The private subject mapper, durable admission/journal,
 account leases and provider payload translation belong inside the selected
-adapter's construction and infrastructure boundary. P2 owns that construction.
+adapter's construction and infrastructure boundary.
 The four public families expose profile sync, consent readback, erasure and
 local-authority consent push; discovery,
 profile reads, history, events and membership remain outside the public surface.
@@ -357,8 +321,6 @@ existing actor-scoped profile reader; direct invite/remove use the existing
 owner-authority lifecycle stores. The public deployment-policy alias remains
 in front of route effects. See [identity composition](IDENTITY.md#responsibility-and-composition).
 
-
-
 The disposable identity reference has a separate browser entry and finite route
 surface. Its server shell awaits the supplied composition's admission before
 listening. A profile-local `#deployment-route-policy` alias grants only declared
@@ -367,7 +329,6 @@ public policy remains the fallback outside that scope. Host, same-origin JSON
 and method checks precede body adaptation. The local mailbox uses the existing
 captured-delivery port and private files, with no network delivery service.
 
-
 The subscription reference uses one `CustomerAuthProvider` across login,
 callback and account routes, and mounts the same query client that the provider
 clears on logout or a principal change. Browser binding loads only the selected
@@ -375,7 +336,6 @@ adapter. Managed callbacks remain SDK-owned, and direct challenges retain their
 opaque token format; pages consume closed outcomes and a linked profile.
 [Reference browser identity](IDENTITY_BROWSER_REFERENCE.md) owns these routes,
 persistence keys and conformance boundaries.
-
 
 Identity privacy uses an explicitly composed contributor registry. The identity
 package owns profile pseudonymization, cleanup and receipts; the reference owns
@@ -392,7 +352,6 @@ contracts subtree. The reference Settings panel imports only browser contracts
 and its BFF client, and keeps personal readback in memory under a subject/session
 key. See [identity privacy](IDENTITY.md#identity-personal-data) for coverage and
 retained domain responsibilities.
-
 
 Direct human operator authentication uses a capability-local PostgreSQL store
 and the existing invitation activation in one redemption transaction. ES256
@@ -426,7 +385,6 @@ existing-identity lookup by email and returns a non-fatal refusal without creati
 an identity or link when trust cannot be established. Matching existing links
 retain their replay path. Provider SDK construction remains in host adapters.
 
-
 Identity invitation DTOs stay in the browser contracts subtree. The server entry
 owns direct pending/accepted transitions through an injected invitation store; the host
 parses its TTL environment value before effects and supplies the parsed number.
@@ -439,19 +397,7 @@ PostgreSQL transaction lane; the machine token never accepts human invitations.
 See [the identity lifecycle](IDENTITY.md#operator-invitation-lifecycle) for expiry,
 cancellation, retained identity and managed concurrency limits.
 
-
-
-Browser-facing modules own portable types, validation, clients, and pure logic.
-Server modules own HTTP composition, use cases, authorization decisions, and
-persistence ports. Infrastructure modules translate provider protocols and
-payloads. Adapters implement ports for a selected provider or runtime.
-
-Dependencies point inward: domain policy depends on ports and contracts, never
-on a provider SDK or provider environment shape. Provider-specific payloads and
-raw status values end at the adapter boundary. Durable state belongs to the data
-contract, not to a browser client or provider response.
-
-`npm run lint` enforces the import side of this in
+`npm run lint` enforces the import boundaries in
 [eslint.config.js](../../eslint.config.js). A package under `packages/` imports
 nothing outside its own directory, except `@openlup/outbox` and
 `@openlup/platform` may import the exact public exports of their declared
@@ -482,20 +428,6 @@ extension-data forwarding remain available to adopters. The rule has no claim
 of semantic or dataflow analysis; see the precise scope and exceptions in
 [contribution checks](../../CONTRIBUTING.md#development-preview-checks).
 
-
-
-The runnable server substrate lives in the development-preview `@openlup/platform`
-package: the Node HTTP runtime and its fixed request order, BFF dispatch,
-scheduling with job leases, blob and data adapters, the node-postgres migration
-runner and bundle composition. Every deployment value reaches it as an option or
-injected function, including the environment, route table, header policy,
-entrypoints, job configuration and migration catalogue. The reference
-application keeps its former module paths as thin bindings that pass its own
-values. The BFF envelope, observed request context, health route and managed
-job-run ledger are package code too; the application binds its request-reference
-policy, health payload and contract, and ledger messages, and keeps its route
-observability and browser contracts as its own source.
-
 Identity's server logic now lives in the [identity module](IDENTITY.md), with
 flat internal files and a separate browser contracts subtree. Reference routes
 supply admission flags, redirect policy, schemas, provider clients, mail and copy.
@@ -503,13 +435,50 @@ The module uses the foundation responder with an injected observed request-ID
 reader. Managed preflight also imports the characterized machine-write fence;
 its application-owned allowlist does not extend the direct operator-token lane.
 
-The reference outbox worker delegates to `@openlup/outbox`; application handlers and the explicit known event vocabulary remain in composition. Shared envelope, execution-context, descriptor and readiness contracts live in `@openlup/core`. The rail provides one bare worker for immediate work and lease-bound schedules for dispatched work. Its PostgreSQL executor commits each claim or settlement before resolving, with no encompassing transaction across effects.
-
 The reference invoice panel reads the authenticated host summary route through
 `referenceInvoicingClient`. It retains session gating and query/retry behavior,
 while displaying closed diagnostic codes without raw provider text or URLs. The
 browser does not import the invoicing server entry at runtime; runbooks and
 mutation routes remain host-owned.
+
+The reference application's former runtime module paths remain thin bindings.
+The BFF envelope, observed request context, health route and managed job-run
+ledger are package code; reference bindings retain request-reference policy,
+health payload/contract and ledger messages, route observability and browser
+contracts.
+
+The reference outbox worker delegates to `@openlup/outbox`; application handlers
+and the explicit known event vocabulary stay in composition. Its PostgreSQL
+executor must commit each claim or settlement before resolving, with no
+encompassing transaction across effects.
+
+Evidence (historical record, 2026-11-13):
+
+The [R1 record](plans/oss-m18-r1-partner-acquisition.md) and
+[R2 record](plans/oss-m18-r2-reference-delegation.md) distinguish unchanged
+contribution and reference delegation from separate version preparation.
+
+Package browser proofs
+and the cold installed consumer exercise these boundaries.
+
+Both privacy factories preserve structural compatibility with identity's
+`PersonalDataContributor`, checked by the existing marketing compiler witness.
+Strict installed-consumer compilation keeps this server entry independent of
+`pg` and `@types/pg`; only its `/postgres` entry selects that optional peer.
+
+Browser bundle proof checks the complete commerce runtime
+graph.
+
+The customer-default consumption guard reads the package implementation
+so its unapplied-evidence and forbidden-payload assertions retain their meaning.
+
+The built browser graph is bundled without
+Node externals in its package boundary test; commerce/contracts stays type-only.
+
+Reference-only test fixtures exercise recipient, dedupe and
+provider-refusal outcomes.
+
+The six generic helper cases remain in the root witness.
 
 ## Extension seams
 
@@ -754,42 +723,27 @@ describe the remaining limits.
 
 ### Package kinds and dependency direction
 
-Today each package declares one `kind` in `release-gates.json` and the readiness
-manifest. The same responsibility rules must hold between logical modules
-inside a distribution:
+Moved to [Architecture and ownership](../../packages/core/docs/guide/concepts/architecture-and-ownership.md#packages-and-dependencies).
 
-| Kind | Holds | May depend on |
-| --- | --- | --- |
-| `kernel` | I/O-free contracts and logic shared by modules or read by application composition; its only runtime dependency is `zod` | nothing else in `@openlup/*` |
-| `rail` | runtime infrastructure capabilities emit into or record through | the kernel |
-| `capability` | a complete capability, including its processes, schema and local contracts | the kernel and rails |
-| `implementation` | one port bound to one provider or runtime | the kernel, rails and the responsibility it implements |
+Declare each package's `kind` in `release-gates.json` and the readiness manifest.
+Apply the [canonical placement decision](#package-placement-decision-canonical)
+to packages and logical modules inside a distribution. The platform foundation
+declares `rail`; its publishable catalogue entry joins the preview release set
+without establishing that a registry release occurred.
 
-The runnable foundation in `@openlup/platform` declares `rail`: its HTTP,
-scheduling, storage and data facilities supply runtime infrastructure over core
-ports. Its publishable catalogue entry joins the same preview release set as
-outbox; it does not establish that a registry release has occurred.
+- Cross-capability flows use declared ports, contracts, rails and maintained
+  orchestration. No capability may depend on another capability's implementation
+  or use cases; a public index does not legalize a forbidden dependency.
+- Grow the kernel only for shared contracts. A single-module contract stays
+  there unless application composition needs the shared seam.
+- Default stores use a structural SQL executor; provider-specific stores stay
+  behind explicit adapter boundaries.
+- New kernel validation contracts use `StandardSchemaV1`; existing kernel
+  exports are `zod` schemas.
 
-- **No I/O in the kernel.** It imports no database driver, provider SDK or
-  `node:` module, and is no HTTP or scheduled-job entrypoint.
-- **No capability depends on another capability's implementation or use cases.**
-  Cross-capability flows use declared ports, contracts, rails and maintained
-  orchestration in the appropriate layer. An allowed public index alone does
-  not legalize a forbidden dependency.
-- **The kernel grows only for shared contracts.** A contract used by one module
-  stays there unless application composition genuinely needs the shared seam.
-- **Default stores need no driver.** They use a structural SQL executor;
-  provider-specific stores stay behind explicit adapter boundaries.
-- **New kernel validation contracts use `StandardSchemaV1`.** Existing kernel
-  exports are `zod` schemas today.
-- **Host composition stays in the application.** Environment selection, routing,
-  bindings, handler manifests, readiness wiring and host entrypoints belong to
-  the application. A package may supply a generic composer over public ports
-  and factories; the host chooses its concrete runtime and provider bindings.
-
-Module grouping must not rewrite historical kind metadata or bypass current
-validators. Separating artifact identity from module responsibility requires
-its own reviewed compatibility change before a second capability is admitted.
+Module grouping must not rewrite historical kind metadata or bypass validators.
+Separating artifact identity from module responsibility requires its own reviewed
+compatibility change before a second capability is admitted.
 
 ### Internal boundaries and adapter isolation
 
@@ -1053,10 +1007,12 @@ UI admission still needs its own artifact role and consumer proof.
 
 ## Compatibility posture
 
-Development-preview seams may change. The stable-framework requirements are the later gate for stable
-extension contracts, a versioned release/BOM, a thin adopter app, conformance
-coverage, and upgrade tooling. Until that gate is complete, this document is a
-boundary contract for preview work rather than a support promise.
+Moved to [Versioning and stability](../../packages/core/docs/guide/reference/stability.md#version-numbers).
+
+Stable-framework admission requires stable extension contracts, a versioned
+release/BOM, a thin adopter app, conformance coverage and upgrade tooling. Until
+that gate is complete, this document governs preview boundaries and grants no
+support promise.
 
 ## Communications capability import
 

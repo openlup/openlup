@@ -5,6 +5,8 @@ it does not certify a migration path or an upgrade service.
 
 ## Data ownership
 
+Moved to [Architecture and ownership](../../packages/core/docs/guide/concepts/architecture-and-ownership.md#data-ownership).
+
 Native terminal replay replaces only `subscription_claim_due_renewal` while
 retaining its header, ACL, frozen-input comparison and subscription-first lock
 order. Terminal history precedes due eligibility; cancelled new work refuses.
@@ -30,25 +32,19 @@ activation helper retains its ACL. Method transitions compare expected health an
 rewriting subscription service state. Sandbox observation uses invoker rights
 and the existing operation/outcome capabilities, without another attempt table.
 The [subscription owner](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
-describes the codec and retry duties. The forward's approval inventory is
-admitted with it under ordinary review;
-local PostgreSQL proof does not establish that admission or a published chain.
+describes the codec and retry duties.
 
 See [retained renewal storage](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#retained-renewal-storage).
-
-The platform owns its schema, migration history, and documented data contracts.
-An adopter owns tables and migrations for its own extensions in the `app` schema.
-The platform never writes there; the adopter owns extension compatibility and
-migration ordering. Extension data must live beside platform data through explicit foreign keys, ports, or events rather
-than by editing platform rows with undocumented assumptions.
-
-The published platform shape must expose a reproducible baseline and ordered
-forward migrations. Development convenience at process startup is not a
-coordination mechanism for a multi-instance deployment.
 
 The preview source release deliberately ships an unbound database-type seam at
 `src/integrations/supabase/types.ts`; replace it with adopter-generated types
 before enabling database adapters. It is not evidence of schema compatibility.
+
+Evidence (historical record, 2026-11-13):
+
+The forward's approval inventory is
+admitted with it under ordinary review;
+local PostgreSQL proof does not establish that admission or a published chain.
 
 ## Retained renewal storage
 
@@ -592,29 +588,7 @@ complete catalogue, preserve the full installed prefix and verify its live
 object inventory; the sparse projections are not an install chain. Existing
 native and managed migration bytes remain unchanged.
 
-For a fresh native install, the invariant "a late delivery extends the next cycle"
-is enforced automatically only when delivery-alignment control mode is
-`auto_align`. `public.subscription_delivery_alignment_control.mode` defaults to
-`off` for rollout safety, so installation alone does not enforce the invariant.
-The complete mode set is `off`, `shadow`, `protect` and `auto_align`, selected
-through `public.subscription_delivery_alignment_set_mode`. Existing cases retain
-their captured mode and protection after a control change.
-
-Enforcing modes (`protect`, `auto_align`) require the host's renewal path to call
-`subscription_delivery_alignment_admit_renewal` before inserting the cycle.
-The [native renewal store](../../server/adapters/postgres/subscription/automaticRenewal.ts)
-retains its static terms gate. A host that composes the native automatic-renewal
-runner must wrap its store port with the
-[admission decorator](../../server/runtime/subscription/deliveryAlignmentRenewalStore.ts)
-before selecting an enforcing mode; an uncomposed
-new-cycle insertion refuses with `subscription_delivery_alignment_admission_required`.
-Until the host wraps that port, native delivery-alignment mode stays `off` or
-`shadow`. The supplied boundary stops at the decorator, with no runner composer,
-factory or production entrypoint. Captured protection survives rollback to `off`.
-
-In enforcing modes, a subscription whose paid history has no activation or
-renewal link, such as imported data, holds every due renewal for manual review.
-Operators should check for such cycles before switching modes.
+Moved to [Subscriptions](../../packages/core/docs/guide/concepts/subscriptions.md#subscription-delivery-alignment).
 
 The command forward adds durable dispatch/attempt/paid-handoff and observation
 receipts. Atomic ACK records the native `dispatch` external reference: the `3pl`
