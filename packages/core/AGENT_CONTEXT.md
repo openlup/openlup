@@ -7,15 +7,15 @@ Shipped package-local sources are relative to this package. Other sources link t
 Repository paths, imports and relative links inside verbatim excerpts describe that source checkout, not files to find or create in your application.
 Consult installed declarations and README for the installed version.
 
-<!-- openlup-context-inventory [{"id":"extend-platform","source":"https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md","heading":"Extension seams","startLine":483,"endLine":504,"sha256":"e19b10b92b357c2630911d7239ae234bd556e20a413a6d0228203966bf27656a"},{"id":"canonical-status","source":"docs/guide/concepts/payments.md","heading":"Canonical status","startLine":7,"endLine":60,"sha256":"e3b56cbcc4fc4b619fd8c6e73b574563eea8b54fe5863d24afe124de1dd17df1"},{"id":"late-payment-cycle","source":"docs/guide/concepts/subscription-engine.md","heading":"A late payment shifts the cycle; it never compresses it","startLine":65,"endLine":85,"sha256":"df3a8e0f35ffa6a62b4758f2c58f2abffe4137c3f80e20c6fadf72b9f2bf4ad3"},{"id":"subscription-layer-delivery","source":"docs/guide/concepts/subscriptions.md","heading":"Installed subscription boundary","startLine":8,"endLine":27,"sha256":"d93ab6ab2337641da4d2d38279f6b5a1afc96a61577a3765f5399ea04de31c80"}] -->
+<!-- openlup-context-inventory [{"id":"extend-platform","source":"https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md","heading":"Extension seams","startLine":558,"endLine":579,"sha256":"e19b10b92b357c2630911d7239ae234bd556e20a413a6d0228203966bf27656a"},{"id":"canonical-status","source":"docs/guide/concepts/payments.md","heading":"Canonical status","startLine":7,"endLine":60,"sha256":"e3b56cbcc4fc4b619fd8c6e73b574563eea8b54fe5863d24afe124de1dd17df1"},{"id":"late-payment-cycle","source":"docs/guide/concepts/subscription-engine.md","heading":"A late payment shifts the cycle; it never compresses it","startLine":65,"endLine":85,"sha256":"df3a8e0f35ffa6a62b4758f2c58f2abffe4137c3f80e20c6fadf72b9f2bf4ad3"},{"id":"subscription-layer-delivery","source":"docs/guide/concepts/subscriptions.md","heading":"Installed subscription boundary","startLine":8,"endLine":27,"sha256":"d93ab6ab2337641da4d2d38279f6b5a1afc96a61577a3765f5399ea04de31c80"}] -->
 
 ## extend-platform: Choose an extension seam
 
-Source: [OpenLup source repository at openlup-core-v0.39.0](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#L483-L504).
+Source: [OpenLup source repository at openlup-core-v0.39.0](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#L558-L579).
 
 The paths `src/lib/coreDomains.ts`, `src/domains`, `server/domains` and the `#application-domains` import below belong to the OpenLup source repository. They are not required application files or aliases; use your application's own composition.
 
-<!-- openlup-context {"id":"extend-platform","source":"https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md","heading":"Extension seams","startLine":483,"endLine":504,"sha256":"e19b10b92b357c2630911d7239ae234bd556e20a413a6d0228203966bf27656a"} -->
+<!-- openlup-context {"id":"extend-platform","source":"https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md","heading":"Extension seams","startLine":558,"endLine":579,"sha256":"e19b10b92b357c2630911d7239ae234bd556e20a413a6d0228203966bf27656a"} -->
 ## Extension seams
 
 Extensions belong at explicit seams:

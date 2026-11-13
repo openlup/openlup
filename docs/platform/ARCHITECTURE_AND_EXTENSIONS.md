@@ -7,6 +7,29 @@ boundary; it is not evidence that every seam is stable, packaged, or activated.
 
 Moved to [Architecture and ownership](../../packages/core/docs/guide/concepts/architecture-and-ownership.md#platform-and-application).
 
+OpenLup is one platform monorepo containing platform code, official modules, a
+reference application, conformance material, and release tools. An adopter is a
+separate application. It owns its brand, presentation, catalogue, local market
+policy, provider composition, and business-specific integrations.
+
+The reference application demonstrates a neutral platform composition. It is
+not a default adopter application and does not transfer ownership of adopter
+assets or business policy to the platform.
+
+An adopted package owns its engine algorithm and public contract. Consume that
+engine through an exact authenticated `@openlup/*` npm artifact. An application
+agent must not autonomously patch, fork, vendor, monkey-patch, shadow its imports
+or restore a copied implementation as an alternative engine. Use only the
+installed package's declared public exports, not internal source or `dist` paths.
+Dependency identity alone does not establish which engine actually serves work.
+
+Application handlers, policies, ports, composition, host bindings and compatible
+native adapters remain ordinary application code. They need no ownership record
+per function or upstream release. Historical OpenLup origin alone does not freeze
+unpackaged application source. One engine algorithm owner can serve multiple hosts
+under the existing admission, fencing and retirement contract; a second competing
+state writer is not an extension seam.
+
 ## Runtime boundaries
 
 Moved to [Architecture and ownership](../../packages/core/docs/guide/concepts/architecture-and-ownership.md#runtime-boundaries).
@@ -452,13 +475,38 @@ and the explicit known event vocabulary stay in composition. Its PostgreSQL
 executor must commit each claim or settlement before resolving, with no
 encompassing transaction across effects.
 
+The runnable server substrate lives in the development-preview `@openlup/platform`
+package: the Node HTTP runtime and its fixed request order, BFF dispatch,
+scheduling with job leases, blob and data adapters, the node-postgres migration
+runner and bundle composition. Every deployment value reaches it as an option or
+injected function, including the environment, route table, header policy,
+entrypoints, job configuration and migration catalogue. The reference
+application keeps its former module paths as thin bindings that pass its own
+values. The BFF envelope, observed request context, health route and managed
+job-run ledger are package code too; the application binds its request-reference
+policy, health payload and contract, and ledger messages, and keeps its route
+observability and browser contracts as its own source.
+
+The reference outbox worker delegates to `@openlup/outbox`; application handlers and the explicit known event vocabulary remain in composition. Shared envelope, execution-context, descriptor and readiness contracts live in `@openlup/core`. The rail provides one bare worker for immediate work and lease-bound schedules for dispatched work. Its PostgreSQL executor commits each claim or settlement before resolving, with no encompassing transaction across effects.
+
 Evidence (historical record, 2026-11-13):
 
 The [R1 record](plans/oss-m18-r1-partner-acquisition.md) and
 [R2 record](plans/oss-m18-r2-reference-delegation.md) distinguish unchanged
-contribution and reference delegation from separate version preparation.
+contribution and reference delegation from separate version preparation. Rich
+managed CRM/UI transitions, customer conversion, marketing opt-in and partner
+privacy export/erasure are outside this port's capabilities. An actor UUID is
+SQL input, not administrator membership. The actual host must establish its
+authority before resolving this port.
 
-Package browser proofs
+The browser-safe `@openlup/platform/marketing` entry also owns JSON-LD
+serialization and graph construction, URL/hreflang derivation, ordered head data
+and plain contact/legal projections. Applications supply identity, origin,
+locale, images, routes, document wording and processor disclosures. The type-only
+`@openlup/platform/marketing/contracts` entry carries the shared organization and
+content-slot shapes without runtime initialization. Neither entry selects a head
+renderer, reads an environment or route manifest, or installs a provider client;
+the host owns document mutation and local content policy. Package browser proofs
 and the cold installed consumer exercise these boundaries.
 
 Both privacy factories preserve structural compatibility with identity's
@@ -466,18 +514,45 @@ Both privacy factories preserve structural compatibility with identity's
 Strict installed-consumer compilation keeps this server entry independent of
 `pg` and `@types/pg`; only its `/postgres` entry selects that optional peer.
 
-Browser bundle proof checks the complete commerce runtime
-graph.
-
-The customer-default consumption guard reads the package implementation
+The commerce browser entry contains schemas, pure helpers and port declarations;
+its `/contracts` entry remains type-only. The `/commerce/server` entry
+is the separate Node-only home for handlers, use cases, stores, adapters and
+engine composition. Browser bundle proof checks the complete commerce runtime
+graph. The additive `pricing/browser` entry directly exposes the existing quote
+primitive factory, acquisition capability/expectation/resolved-terms validators
+and shipping-terms validator. Acquisition reuses its pure defining file; shipping
+uses an exact linted edge from `pricing/browser/index.ts` to the existing pure
+`shipping/thresholdPolicy.ts` owner, preserving validator identity without the
+shipping handler/Node HTTP declaration closure. Other internal shipping paths
+remain refused. The complete browser graph imports neither Node
+built-ins nor the Node-only pricing root. Reference quote context binds optional
+shipping/acquisition terms without changing its other fields or strictness. The customer-default consumption guard reads the package implementation
 so its unapplied-evidence and forbidden-payload assertions retain their meaning.
 
-The built browser graph is bundled without
+OMS host handlers bind generic package factories to the existing responder and
+admin authorization. Read governance remains host-owned, with its gate before
+reads and audit before masking. The replacement facade delegates to the existing
+fulfillment handler through a nominal-conflict bridge that retains the original
+request and transaction receiver. Creation records no arrival or subscription
+lifecycle transition. The browser-safe `commerce` entry exposes schemas and pure
+models and reuses the existing pricing/contracts version export. Node-only
+`commerce/server` owns handlers, managed stores/adapters and detail composition
+that reuses the shipping runtime. The built browser graph is bundled without
 Node externals in its package boundary test; commerce/contracts stays type-only.
 
-Reference-only test fixtures exercise recipient, dedupe and
-provider-refusal outcomes.
+The Node-only `@openlup/platform/commerce/server` effect consumers accept the communications owner's existing payload
+parser, transactional-email scaffold and outcome mapper through typed host
+bindings. The reference binds the existing fulfillment payload parser, transactional scaffold
+and outcome mapper; commerce defines no second implementation. The fulfillment
+parser is exported unchanged and also serves the frozen subset handlers. Reference-only test fixtures exercise recipient, dedupe and
+provider-refusal outcomes. Neither these helpers nor the commerce registry
+construct a new worker, emitter or runtime schedule. Locale, presentation and
+provider policy remain in the reference composition.
 
+The shared root [webhook HTTP helper](../../server/_lib/payment/webhookSignature.ts)
+retains raw-body reading, HMAC verification, timing-safe equality and body-size
+limits for existing callers. Its unused provider-specific signature verifier
+has retired; provider verification remains inside the opt-in package adapters.
 The six generic helper cases remain in the root witness.
 
 ## Extension seams
@@ -744,6 +819,21 @@ without establishing that a registry release occurred.
 Module grouping must not rewrite historical kind metadata or bypass validators.
 Separating artifact identity from module responsibility requires its own reviewed
 compatibility change before a second capability is admitted.
+
+| Kind | Holds | May depend on |
+| --- | --- | --- |
+| `kernel` | I/O-free contracts and logic shared by modules or read by application composition; its only runtime dependency is `zod` | nothing else in `@openlup/*` |
+| `rail` | runtime infrastructure capabilities emit into or record through | the kernel |
+| `capability` | a complete capability, including its processes, schema and local contracts | the kernel and rails |
+| `implementation` | one port bound to one provider or runtime | the kernel, rails and the responsibility it implements |
+
+- **No I/O in the kernel.** It imports no database driver, provider SDK or
+  `node:` module, and is no HTTP or scheduled-job entrypoint.
+
+- **Host composition stays in the application.** Environment selection, routing,
+  bindings, handler manifests, readiness wiring and host entrypoints belong to
+  the application. A package may supply a generic composer over public ports
+  and factories; the host chooses its concrete runtime and provider bindings.
 
 ### Internal boundaries and adapter isolation
 

@@ -13,6 +13,11 @@ profile and [canonical contracts](CANONICAL_CONTRACTS.md) for public invariants.
 
 Moved to [Subscriptions](../../packages/core/docs/guide/concepts/subscriptions.md#installed-subscription-boundary).
 
+The experimental
+`@openlup/platform/subscriptions` entry supplies native renewal mechanisms and
+ports; it does not mount a runner or choose a provider. The application must
+compose its own authorization, durable store, scheduler and provider bindings.
+
 ## Choose the right layer
 
 Moved to [Subscriptions](../../packages/core/docs/guide/concepts/subscriptions.md#choose-the-right-layer).
@@ -45,6 +50,35 @@ Moved to [Subscriptions](../../packages/core/docs/guide/concepts/subscriptions.m
 [Purity tests](../../packages/core/test/subscriptionPurity.test.ts) challenge the
 package boundary. See [evidence and limits](#evidence-and-limits) before choosing
 a runnable test scope.
+
+`createPostgresSubscriptionAutoResume` in `@openlup/platform/subscriptions`
+exposes `run(limit, now)` for a host-owned scheduled job. It selects due finite
+pause windows with row-skip-locked admission. Missing healthy stored-method
+state, next date or lines, open recovery, any uncollected cycle, a paid cycle
+on the next date, or an order in the existing `paid` / `fulfillment_pending` /
+`fulfilled` allowlist whose cycle is scheduled at `next_cycle_at` causes a
+graceful skip. An associated order without a cycle blocks only while its renewal
+operation is `claimed`, `reserved` or `attempt_prepared`, or its activation is
+`provisional`. Completed (`succeeded` / `refused`) operations and completed
+(`active` / `compensated`) activations do not keep an unlinked order in flight.
+Cancelled orders left by pause closure do not block. Native delivery records
+shipment state without advancing the order past `paid`, so paid orders of past
+cycles and completed activations do not prevent timed resume.
+The window stays open for the next tick; skips leave `ok` true. Indefinite
+windows remain paused. A timed pause shifts the stored next-cycle date by the
+actual window length (`ends_at - starts_at`) and never brings it earlier.
+Auto-resume uses the later of that shifted date and its execution time, closes
+the window and writes one `subscription.system.auto_resume` event under
+`subscription_auto_resume:<window>`, including the resulting date and eligibility
+policy. The pause reminder computes `nextDeliveryAt` and `resumeAt` from the same
+duration shift, clamped to the window end: the date a punctual auto-resume will execute.
+Retained ledger reminders read the same SQL facts as newly produced reminders.
+Manual customer resume keeps its
+existing cadence policy.
+The lifecycle dispatcher sends that event with the existing resumed confirmation.
+Scheduling, enablement and job-ledger composition belong to the host.
+Resume creates no delivery arrival or replacement confirmation; paid cycles and
+parcels retain their existing lifecycle.
 
 ## Renew one cycle
 

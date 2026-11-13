@@ -40,9 +40,33 @@ The preview source release deliberately ships an unbound database-type seam at
 `src/integrations/supabase/types.ts`; replace it with adopter-generated types
 before enabling database adapters. It is not evidence of schema compatibility.
 
+The published platform shape must expose a reproducible baseline and ordered
+forward migrations. Development convenience at process startup is not a
+coordination mechanism for a multi-instance deployment.
+
 Evidence (historical record, 2026-11-13):
 
-The forward's approval inventory is
+The native `20261101223000_subscription_purchase_renewal.sql` forward records
+purchase facts and renewal-attachment duties beside the existing activation
+spine. Activation commits service plus the duty; renewal header/lines/method
+materialization is a separate atomic transaction. An incomplete duty remains
+enumerable and does not pause service. Bounded definer writers avoid granting
+runtime INSERT on renewal headers or method states. The new fact/event tables
+explicitly revoke all table access from PUBLIC, anon, authenticated and
+service_role, including access inherited from installer default grants. No table
+grant or row-level-security change is added. Fixed
+definer readers expose only a bounded pending-duty list and three completed
+snapshot fields; the runtime never reads the method-event ledger. Their search
+path is `pg_catalog, pg_temp`, and
+the original activation RPC signature and commit-helper attributes are retained.
+The incumbent term-line collection INSERT/DELETE grants remain unchanged.
+Created functions revoke PUBLIC individually before conditional constant-string
+function ACL blocks for anon, authenticated and service_role. The replaced
+activation helper retains its ACL. Method transitions compare expected health and persist event evidence without
+rewriting subscription service state. Sandbox observation uses invoker rights
+and the existing operation/outcome capabilities, without another attempt table.
+The [subscription owner](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
+describes the codec and retry duties. The forward's approval inventory is
 admitted with it under ordinary review;
 local PostgreSQL proof does not establish that admission or a published chain.
 
@@ -568,6 +592,26 @@ records the intentional differences preserved by the contribution.
 Existing native and managed migration bytes remain unchanged.
 
 Moved to [Subscriptions](../../packages/core/docs/guide/concepts/subscriptions.md#subscription-delivery-alignment).
+
+For a fresh native install, the invariant "a late delivery extends the next cycle"
+is enforced automatically only when delivery-alignment control mode is
+`auto_align`. `public.subscription_delivery_alignment_control.mode` defaults to
+`off` for rollout safety, so installation alone does not enforce the invariant.
+The complete mode set is `off`, `shadow`, `protect` and `auto_align`, selected
+through `public.subscription_delivery_alignment_set_mode`. Existing cases retain
+their captured mode and protection after a control change.
+
+Enforcing modes (`protect`, `auto_align`) require the host's renewal path to call
+`subscription_delivery_alignment_admit_renewal` before inserting the cycle.
+The [native renewal store](../../server/adapters/postgres/subscription/automaticRenewal.ts)
+retains its static terms gate. A host that composes the native automatic-renewal
+runner must wrap its store port with the
+[admission decorator](../../server/runtime/subscription/deliveryAlignmentRenewalStore.ts)
+before selecting an enforcing mode; an uncomposed
+new-cycle insertion refuses with `subscription_delivery_alignment_admission_required`.
+Until the host wraps that port, native delivery-alignment mode stays `off` or
+`shadow`. The supplied boundary stops at the decorator, with no runner composer,
+factory or production entrypoint. Captured protection survives rollback to `off`.
 
 The command forward adds durable dispatch/attempt/paid-handoff and observation
 receipts. Atomic ACK records the native `dispatch` external reference: the `3pl`

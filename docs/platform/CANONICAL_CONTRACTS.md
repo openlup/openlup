@@ -239,6 +239,11 @@ Keep each domain's status vocabulary separate. Adding a status or transition
 requires explicit mapping, persistence compatibility, and tests for refusal,
 replay and ordering.
 
+Do not compare provider strings throughout application code or treat a browser
+return value as settlement truth. Preserve the raw evidence needed for diagnosis
+in a bounded form, map it once, and refuse impossible transitions. Late,
+duplicate, or out-of-order evidence must not regress a terminal canonical fact.
+
 ## Idempotency
 
 Moved to [Idempotency](../../packages/core/docs/guide/concepts/idempotency.md#idempotency-contract).
@@ -247,6 +252,12 @@ Preserve each incumbent replay protocol when moving adapters. Bundle key
 recognition must not become a fingerprint guarantee through documentation or a
 refactor. Changes to concurrent key collision or rollback behavior need dedicated
 database regression coverage.
+
+Idempotency keys are opaque values with documented derivation and scope. An
+operation, a provider attempt, a customer journey, and an inbound event may
+require different keys; do not collapse them into one user-controlled value.
+Persist the ledger before reporting success, and make concurrent repeats resolve
+to one canonical effect.
 
 Evidence (historical record, 2026-11-13):
 
@@ -459,6 +470,33 @@ The failure handler has no exhaustion-rung fence: preserve the distinction
 between a class-terminated retry and `isDunningLadderExhausted` when changing
 that call path.
 
+The
+managed SQL guard `public.subscription_guard_status_transition` fires before
+every status update.
+
+After exhaustion the same case remains repairable; on the portable
+chain `dunning_lifecycle_record_recovery` closes it when the money moves.
+Subscriptions already paused and cases already expired under the earlier rule
+keep their separate resume behaviour. A plain resume must not be used for such a
+subscription, because it neither skips the uncollected cycle nor moves a stale
+`next_cycle_at`; the managed `subscription_resume_after_expired_dunning` and the
+engine's `resumeSubscriptionFromExpiredDunning` handle it.
+
+It can send a win-back message to a
+cancelled subscriber. With the lifecycle-closure forward, its trusted command
+port also reactivates a cancelled subscription after charge-timing confirmation,
+using healthy method and renewal-term evidence and leaving old unpaid cycles terminal.
+Its dunning rail, `dunning_lifecycle_handle_failure`, keeps active subscriptions
+active on dunning exhaustion (invariant repair). A NULL next retry leaves the
+case open and repairable through `dunning_lifecycle_record_recovery`, queues the
+final notice and records the exhaustion event, and returns `paused=false`,
+`pauseWindowId=null`, `terminal=true` without creating a pause window or changing
+subscription or cycle dates.
+
+A future caller must not call it with NULL unless
+`isDunningLadderExhausted` holds for the refused cycle. A case cut short earlier
+must stay open without that call.
+
 Evidence (historical record, 2026-11-13):
 
 Managed M1 makes refunds independent of subscription lifecycle: neither a first
@@ -486,6 +524,13 @@ state and the payments lifecycle is unchanged. Automatic alignment still require
 actual arrival; missing correlation remains manual review. Native invoker
 privileges and complete catalogue installation are described in
 [Data and migrations](DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories).
+
+A replacement parcel does not erase the obligation merely because it was
+created or dispatched. Once a row names an earlier parcel through
+`replaces_fulfillment_order_id`, that superseded predecessor is no longer an
+outstanding obligation; the latest unsuperseded replacement remains outstanding
+until it reaches the customer. Its arrival may settle the predecessor's case as
+`aligned` without fabricating `delivered_at` for the parcel that never arrived.
 
 ## Compatibility posture
 
@@ -728,7 +773,6 @@ the unchanged aggregate donor and releases purchase holds atomically; it adds
 neither withdrawal markers nor raw runtime ledger grants. Source admission
 separately checks the closed native class and co-located whole-forward/function
 pins. The data owner records the accepted ownership shape and donor limits.
-
 The native destination suffix adds two private address/binding relations and
 four bounded routines without replacing an existing function. Native operator
 results add applied_from_next_parcel; callers must name that partial applicability
@@ -1075,7 +1119,6 @@ and the invoicing payment-terminal accounting block.
 Managed correction recovery, lock coupling, trigger admission, seller eligibility and migration ordering are owned by [M09 forward design](DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval).
 Self-check and release share the admission checker and the canonical
 [co-located SQL/pin rule](DATA_AND_MIGRATIONS.md#co-located-sql-and-approval-pins).
-
 The `managedCommerceForwards` registry binds the managed commerce SQL to the
 matching files under `scripts/fixtures/reviewed-m11/` and `supabase/migrations/`.
 The registry and real migration rails are authoritative. Each pin requires all
@@ -1158,9 +1201,38 @@ existing marketing imports, ports and observations, including
 `NewsletterSyncProviderPort`. Result unions remain closed; new adapters must
 retain authority checks without silently widening existing ports.
 
+The development-preview communications entries expose the same 17 type-only
+marketing-sync declarations in
+[`marketingSync.ts`](../../packages/platform/src/communications/contracts/marketingSync.ts).
+The four families have five operations: `profile.sync`, `consent.read`,
+`erasure.request`, `erasure.read` and additive `consent.push`. Capabilities bind an account, environment,
+namespace, mapping version and audience. Unsupported scope refuses honestly;
+verification remains pending until the applicable account evidence is admitted.
+This contract supplies no provider implementation or activation.
+
+The private construction mapper resolves opaque subjects and owned targets.
+Brands supplement schema, binding, audience, subject, case and journal checks;
+a cast or deserialized receipt grants no authority. Admission saves validated,
+immutable effect evidence before dispatch and rechecks generation and tombstones
+after awaits. Profile sync changes owned scalar data only. Current-state consent
+readback has bounded coverage and source-bound negative facts; account-wide
+facts retain that scope and audience denials cannot become global. Remote
+subscribed state never grants local consent. The `NegativeFeedback` discriminant
+union is readonly, matching its other fields.
+
 Evidence (historical record, 2026-11-13):
 
-The [A1 ledger](plans/oss-a1-communications-adapters.md)
+Each operation has a closed result union. Mutation accepted means admitted
+intent; acknowledged means provider acceptance. Neither means erasure completed.
+Only fresh, authorized `erasure.read` with authenticated provider-read evidence
+can complete the original bounded deletion. Ordinary 404, empty search, elapsed
+time and receipt replay cannot. Completion never removes the subject tombstone.
+Existing marketing ports and their observations and the existing
+`NewsletterSyncProviderPort` remain unchanged. The current opt-in adapter
+includes a refusal-only `NewsletterSyncProviderPort`: all capability flags are
+false, and `sync` and `reconcile` return `skipped/unsupported`; it does not
+enable newsletter provider work. This declared bridge is not provider selection
+or activation. The [A1 ledger](plans/oss-a1-communications-adapters.md)
 records the offline synthetic proof and remaining delivery gates.
 
 ### Consent push admission and reconciliation
@@ -1171,6 +1243,48 @@ Keep provider effect mappings and proof requirements with adapter design.
 Implementations must preserve no-trigger admission, suppression safety, safe
 audience withdrawal and all-purpose authority checks without widening the
 original provider ports.
+
+`ConsentPushRequest`, `ConsentPushResult` and `ConsentPushPort` reuse the frozen
+binding, subject, failure and capability types without widening the original
+provider.
+
+The existing capability declaration is intersected with `consent.push` and its
+`grantEffect: "audience" | "account-wide"`. Both directions require support and
+owner TEST evidence; missing evidence remains `verification_pending`. No-trigger
+admission covers every declared effect, including other-audience profile-consent
+flows, segments and backfills for account-wide grant effects. Unaccounted armed
+flows, unsafe DOI mail, suppression-clearing subscribe or unknown suppression
+coverage refuse grants. Historical import is never an admission bypass.
+
+Withdrawals dispatch immediately even when remote consent is unknown or an
+earlier grant is unsettled, subject to local authority, identity, safe scope and
+ordinary admission minus exactly the fence caused by this subject's unresolved
+grants (ambiguous acceptance, failed recording, unresolved dispatch or partial
+persistence). Another subject's grant-caused uncertainty never holds a withdrawal.
+Availability quarantine held exclusively by grant causes is exempt across subjects;
+any non-grant cause keeps it closed. Durable non-grant ledger quarantine, storage
+faults, the single in-flight slot, pacing and the withdrawal's same-key replay
+fence still apply. Account-level provider cooling returns `retryable/cooling`
+with finite positive `afterSeconds` for the host to retry. Non-grant quarantine
+requires explicit host repair. A pending
+or unconfirmed withdrawal blocks grants for that subject/audience; account-wide
+withdrawal covers every audience. Unresolved dispatch still fences duplicate sends.
+
+Accepted means durable intent; acknowledged includes documented asynchronous
+acceptance. Neither completes or proves subscribed/unsubscribed state. Both success
+variants require boolean `reconcileRequired`. A dispatched withdrawal whose own
+recording fails reports accepted/acknowledged with `journal: "unknown"`, never
+confirmed persistence. If an earlier grant is unsettled or
+its settlement cannot be established, withdrawal returns `true`; replay retains
+that unresolved race and remote state counts as UNKNOWN regardless of journal
+confirmation or an early unsubscribed read. Only `consent.read` after all earlier
+grant jobs settle can resolve it. Pending, unknown or insufficient readback leaves
+it unresolved. If that fresh read says subscribed, the HOST reissues withdrawal
+through existing reconciliation with a new request ID. The adapter adds no job API,
+executor, callback or automatic retry. Even `reconcileRequired:false` proves no
+remote effect. Receipt evidence stays the original admitted request while the
+result echoes the current call; replay identity excludes generation and rejects
+changed audience, action or evidence with `invalid_request`.
 
 Evidence (historical record, 2026-11-13):
 
