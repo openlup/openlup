@@ -262,7 +262,7 @@ Connection separation preserves the selected installation's principal/grant
 contract; it grants no runtime DDL or migrator isolation. The current
 qualified-v2 profile still requires its declared privileged migration principal.
 The [production composition witness](../../tests/postgres/m14QualifiedComposition.test.ts)
-installs/replays all 95 selected units through the direct endpoint, then exercises
+installs/replays every selected unit through the direct endpoint, then exercises
 the pooled request and dedicated session-lock recipe through the restricted
 runtime login. Restricted-bootstrap installation is a separate qualification
 and will reuse these connection roles when it lands. Hosted endpoints remain
@@ -2376,7 +2376,7 @@ restricted predecessor. The released legacy history below is unchanged.
 The [released-history witness](../../tests/postgres/m14ReleasedSchemaUpgrade.test.ts)
 selects the nearest published predecessor with an applicable portable data
 backfill: platform 0.23.0, whose 77-unit legacy manifest is an exact prefix of
-the current 91-unit legacy manifest. The invoicing durable-duties forward copies
+the current legacy manifest. The invoicing durable-duties forward copies
 existing settlement and shipment-operation identities into `invoicing_cutover`
 so historical sources do not become new duties. It kills the canonical runner
 while that unit waits inside its transaction and again after the unit commits,
@@ -2417,8 +2417,7 @@ client, but that table had row security and no runtime access at all.
 One shared completion tail closes these gaps. It is the approved seventeenth
 qualified identity. Both qualified plans select it once, after their issued
 tails and at the same position among shared units, so later shared forwards
-still append identically. With the package editor and exact-lever suffixes,
-the qualified plan has 105 units, the restricted plan 104 and legacy 100.
+still append identically.
 The completion tail itself adds no legacy unit.
 
 The tail must follow the delivery destination forward. Its guard refuses the

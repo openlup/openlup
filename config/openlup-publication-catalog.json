@@ -1578,6 +1578,18 @@
       "class": "platform-documentation"
     },
     {
+      "path": "docs/platform/plans/documentation-programme-intent.md",
+      "class": "platform-documentation"
+    },
+    {
+      "path": "docs/platform/plans/documentation-programme-reconnaissance.md",
+      "class": "platform-documentation"
+    },
+    {
+      "path": "docs/platform/plans/documentation-programme.md",
+      "class": "platform-documentation"
+    },
+    {
       "path": "docs/platform/plans/documentation-quality-audit.md",
       "class": "public-output"
     },
@@ -12106,6 +12118,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/preflight.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/preflight.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/prelaunch-acquisition-schema.test.ts",
       "class": "public-output"
     },
@@ -12254,6 +12274,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/sql-admit.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/sql-admit.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/ssg-static-contract.mjs",
       "class": "public-output"
     },
@@ -12275,6 +12303,14 @@
     },
     {
       "path": "scripts/subscriber-retention-authorization-fixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/test-hosted.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/test-hosted.test.ts",
       "class": "public-output"
     },
     {

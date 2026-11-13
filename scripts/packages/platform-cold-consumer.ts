@@ -18,6 +18,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { PLATFORM_MODULE_GRAPH } from "../../eslint.config.js";
 import { assertInstalledPackages, isolatedConsumerEnv, readCurrentPackManifest } from "./pack-manifest-input.ts";
 import { POSTGRES_PROOF_IMAGE } from "./outbox-disposable-postgres.ts";
+import { imageReference, readCiImage } from "../ci-image-pull.mjs";
 import { proveApplicationUpgradePostgres } from "./application-upgrade-proof.ts";
 import { proveDistributionCliConsumer, proveDistributionCliPostgres } from "./distribution-cli-proof.ts";
 
@@ -1875,23 +1876,24 @@ function proveNativeCommunicationsPostgres(consumer: string): void {
   console.log(`Native communications installed proof PASS (PostgreSQL 16, complete canonical catalogue; ${Math.round(performance.now()-started)} ms including setup/cleanup)`);
 }
 
-// Like the outbox proof: the trusted job service when CI supplies its identity, otherwise an owned
+// Like the outbox proof: the explicitly started CI container when CI supplies its identity, otherwise an owned
 // labelled container; a unique database either way, and no skip when neither is available.
 function proveDockerPostgres(consumer: string, environment: NodeJS.ProcessEnv): void {
   const service = environment.OPENLUP_PROOF_SERVICE_CONTAINER, servicePort = environment.OPENLUP_PROOF_SERVICE_PORT;
   if (Boolean(service) !== Boolean(servicePort) || (service && (!/^[a-f0-9]{12,64}$/u.test(service) || !/^\d{1,5}$/u.test(servicePort!) || Number(servicePort) < 1 || Number(servicePort) > 65535))) {
-    throw new Error("Missing or malformed job-service identity");
+    throw new Error("Missing or malformed supplied-container identity");
   }
   const docker = (args: string[]) => command("docker", args, root, isolatedConsumerEnv()).trim();
   const owner = randomUUID(), name = `openlup-platform-proof-${owner}`, database = `openlup_platform_proof_${owner.replaceAll("-", "")}`;
   let container: string | undefined, ownedContainer = false, createdDatabase = false;
   try {
     if (service) {
-      // Identity comes from job.services, not an ambient port or URL. Require the pinned image.
+      // Identity comes from explicit CI service startup, not an ambient port or URL. Require the pinned image.
       const info = JSON.parse(docker(["inspect", service]))[0];
-      if (info?.Id !== service || info?.Config?.Image !== POSTGRES_PROOF_IMAGE || !info?.State?.Running
+      const image = readCiImage("install-proof-postgres");
+      if (info?.Id !== service || ![POSTGRES_PROOF_IMAGE, ...image.sources.map((source: string) => imageReference(image, source))].includes(info?.Config?.Image) || !info?.State?.Running
         || !info?.NetworkSettings?.Ports?.["5432/tcp"]?.some((binding: { HostPort: string }) => binding.HostPort === servicePort)) {
-        throw new Error("Job service is not the exact pinned running container/port");
+        throw new Error("Supplied PostgreSQL container is not the exact pinned running container/port");
       }
       container = service;
     } else {
@@ -1917,7 +1919,7 @@ process.exit(0);
 `, [`postgresql://postgres@127.0.0.1:${port}/${database}`]);
     provePackagedPlatformMigrations(consumer);
     proveNativeCommunicationsPostgres(consumer);
-    console.log(`Platform PostgreSQL SQL conformance PASS (${service ? "job service" : "owned container"}, database ${database})`);
+    console.log(`Platform PostgreSQL SQL conformance PASS (${service ? "CI container" : "owned container"}, database ${database})`);
   } finally {
     if (service && createdDatabase) docker(["exec", service, "psql", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", `DROP DATABASE IF EXISTS ${database} WITH (FORCE)`]);
     if (ownedContainer) docker(["rm", "--force", name]);

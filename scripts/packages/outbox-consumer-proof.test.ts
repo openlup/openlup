@@ -343,7 +343,7 @@ async function exerciseStartupLoss(mode: string, f: { target: string; packs: str
     if (imageRefusal) {
       await fixtureWait(() => launcher!.exitCode !== null || launcher!.signalCode !== null, life.signal, 30_000);
       assert.notEqual(await completion, 0);
-      assert.ok(stderr.includes(mode === "image-reference" ? "Job service is not the exact pinned running container/port" : "pulled image must have the exact pinned RepoDigest"), stderr);
+      assert.ok(stderr.includes(mode === "image-reference" ? "Supplied PostgreSQL container is not the exact pinned running container/port" : "pulled image must have the exact pinned RepoDigest"), stderr);
       assert.equal(existsSync(attempted), false, "Refused service performed SQL");
       assert.equal(JSON.parse(docker(["inspect", service!]).stdout)[0].State.Running, true);
     } else {

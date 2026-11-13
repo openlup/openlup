@@ -8,7 +8,8 @@ import { RECEIPT_MARKER_PREFIX, RERUN_JOB, WORKFLOW_PATH, WRITE_PERMISSIONS, has
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const head = "a".repeat(40);
 const previous = "b".repeat(40);
-const NAMES = ["dco", "typecheck", "install-proof", ...[1, 2, 3, 4, 5, 6].map((shard) => `test-full-shard (${shard}/6)`),
+const NAMES = ["dco", "typecheck", "install-packages", ...["0", "1,6", "2,4", "3,5"].map((groups) => `install-browser (${groups})`),
+  "install-proof", ...[1, 2, 3, 4, 5, 6].map((shard) => `test-full-shard (${shard}/6)`),
   "test", "self-check", "gitleaks", "pgtap", "native-review"];
 const source = { branch: "feature", repositoryId: 77 };
 type Run = { id: number; run_attempt: number; head_sha: string; head_branch: string; head_repository: { id: number } | null;
@@ -391,6 +392,8 @@ describe("native-review aggregation", () => {
     const graph = jobNeeds(ci);
     expect(graph.get(RERUN_JOB)).toEqual(["dco", "typecheck", "install-proof", "test", "self-check", "gitleaks"]);
     expect(graph.get("test")).toEqual(["test-full-shard", "pgtap"]);
+    expect(graph.get("install-proof")).toEqual(["install-packages", "install-browser"]);
+    expect(graph.get("install-browser")).toEqual(["install-packages"]);
     expect(graph.get("dco")).toEqual([]);
     expect(jobNeeds(readFileSync(join(ROOT, ".github/workflows/native-review-receipt-rerun.yml"), "utf8"))).toEqual(new Map([["rerun", []]]));
     expect(workflows().length).toBeGreaterThan(1);
