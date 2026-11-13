@@ -38,6 +38,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
+import { env } from 'node:process';
 import pg from 'pg';
 import { createInitialSubscriptionCheckoutModel, recordPaymentSuccess } from '@openlup/core/subscription';
 import { buildSchemaObjectProbe } from '@openlup/core/readiness';
@@ -66,7 +67,7 @@ const paid = unwrap(recordPaymentSuccess({
 }));
 const event = paid.events.find(event => event.eventType === 'subscription.cycle_paid');
 assert.ok(event);
-const pool = new pg.Pool({ connectionString: process.env.OPENLUP_TUTORIAL_DATABASE_URL,
+const pool = new pg.Pool({ connectionString: env.OPENLUP_TUTORIAL_DATABASE_URL,
   connectionTimeoutMillis: 5000, statement_timeout: 10000 });
 try {
   const client = await pool.connect();

@@ -204,12 +204,14 @@ jobs:
           OPENLUP_PROOF_SERVICE_CONTAINER: ${{ steps.postgres.outputs.container }}
           OPENLUP_PROOF_SERVICE_PORT: ${{ steps.postgres.outputs.port }}
         run: node --experimental-strip-types scripts/packages/required-package-gates.ts --out "$RUNNER_TEMP/package-gates" --expected-commit "$(git rev-parse HEAD)"
-      # Non-blocking until two green merge-group runs on main, then remove continue-on-error (documentation programme D4).
-      - name: Guide tutorial against the packed candidate (non-blocking)
+      # --advisory reports a failed tutorial as a warning and exits 0. Remove it after two green
+      # merge-group runs on main to make the step blocking (documentation programme, decision D4).
+      - name: Guide tutorial against the packed candidate (advisory)
         if: steps.reused.outputs.reuse != 'true'
-        continue-on-error: true
         timeout-minutes: 4
-        run: node --experimental-strip-types scripts/packages/guide-tutorial.ts --page packages/core/docs/guide/start/tutorial.md --packages "$RUNNER_TEMP/package-gates" --database-url "postgresql://postgres@127.0.0.1:${{ steps.postgres.outputs.port }}/postgres"
+        env:
+          OPENLUP_PROOF_SERVICE_PORT: ${{ steps.postgres.outputs.port }}
+        run: node --experimental-strip-types scripts/packages/guide-tutorial.ts --advisory --page packages/core/docs/guide/start/tutorial.md --packages "$RUNNER_TEMP/package-gates" --database-url "postgresql://postgres@127.0.0.1:$OPENLUP_PROOF_SERVICE_PORT/postgres"
       - name: Remove the package-proof PostgreSQL service
         if: always() && steps.postgres.outcome != 'skipped'
         run: docker rm --force install-proof-postgres

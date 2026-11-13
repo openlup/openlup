@@ -7,11 +7,15 @@
  * paths. All other npm arguments and all page bytes remain unchanged. Registry
  * mode has no shim. Neither mode supplies application code or database SQL.
  * Defaults: 120 seconds per step, 210 seconds total (including installation).
+ * `--advisory` reports a failed tutorial as a warning annotation and the step summary and
+ * exits 0, so a hosted step stays non-blocking without `continue-on-error`; invalid
+ * options still exit 1. Removing the flag makes the step blocking.
  */
 import { spawn, execFileSync } from "node:child_process";
 import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join, resolve } from "node:path";
+import { env as processEnvironment } from "node:process";
 import { pathToFileURL } from "node:url";
 import { isolatedConsumerEnv, readPackManifest } from "./pack-manifest-input.ts";
 
@@ -189,7 +193,10 @@ try {
 
 export async function main(args: string[]): Promise<number> {
   const started = performance.now();
-  let count = 0, success = false;
+  let count = 0, success = false, validated = false;
+  const advisory = args.includes("--advisory");
+  // A repeated flag stays in the list and is refused below as an invalid option.
+  if (advisory) args = args.filter((argument, index) => argument !== "--advisory" || index !== args.indexOf("--advisory"));
   try {
     const flags = new Map<string, string>();
     for (let index = 0; index < args.length; index++) {
@@ -200,6 +207,7 @@ export async function main(args: string[]): Promise<number> {
       flags.set(name, value);
     }
     if (!flags.has("--page") || !flags.has("--database-url") || flags.has("--packages") === flags.has("--registry")) throw new Error("Use --page <md> (--packages <dir> | --registry) --database-url <url> [--work <empty-dir>]");
+    validated = true;
     const steps = extractTutorial(readFileSync(resolve(flags.get("--page")!), "utf8"));
     count = steps.length;
     const outputs = await runTutorial({ steps, databaseUrl: flags.get("--database-url")!, packages: flags.get("--packages"), work: flags.get("--work") });
@@ -210,9 +218,15 @@ export async function main(args: string[]): Promise<number> {
     success = true;
     console.log(`Guide tutorial PASS (${count} steps, ${((performance.now() - started) / 1000).toFixed(2)}s)`);
     return 0;
-  } catch (error) { console.error((error as Error).message); return 1; }
+  } catch (error) {
+    console.error((error as Error).message);
+    if (!advisory || !validated) return 1;
+    // A GitHub workflow command: a visible warning on the run without failing the step.
+    console.log(`::warning title=Guide tutorial::${((error as Error).message.split("\n")[0] ?? "failed").replaceAll("%", "%25").replaceAll("\r", "%0D").replaceAll("\n", "%0A")}`);
+    return 0;
+  }
   finally {
-    if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### Guide tutorial: ${success ? "PASS" : "FAIL"}\n\nMode: ${args.includes("--registry") ? "registry" : "packed candidate"}. Steps: ${count}. Wall time: ${((performance.now() - started) / 1000).toFixed(2)}s.\n`);
+    if (processEnvironment.GITHUB_STEP_SUMMARY) appendFileSync(processEnvironment.GITHUB_STEP_SUMMARY, `### Guide tutorial: ${success ? "PASS" : "FAIL"}\n\nMode: ${args.includes("--registry") ? "registry" : "packed candidate"}${advisory ? ", advisory (non-blocking)" : ""}. Steps: ${count}. Wall time: ${((performance.now() - started) / 1000).toFixed(2)}s.\n`);
   }
 }
 

@@ -1,4 +1,5 @@
 // Governing document: docs/platform/DOCUMENTATION.md, "Reader guide contract".
+import { env as processEnvironment } from "node:process";
 import { createHash } from "node:crypto";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -30,7 +31,7 @@ function fakeNpm(): NodeJS.ProcessEnv {
   writeFileSync(join(bin, "npm"), `#!/bin/bash
 if [ "$1" = view ]; then printf 'published-version\\n'; else printf '%s\\n' "$@" > npm-arguments; fi
 `, { mode: 0o755 });
-  return { PATH: `${bin}:${process.env.PATH}` };
+  return { PATH: `${bin}:${processEnvironment.PATH}` };
 }
 
 describe("tutorial fences", () => {
@@ -128,5 +129,20 @@ describe("reader shell semantics and diagnostics", () => {
     expect(error).toHaveBeenCalledWith(expect.stringContaining("step 1 failed"));
     expect(readFileSync(summary, "utf8")).toMatch(/PASS[\s\S]*registry[\s\S]*FAIL/u);
     expect(await main(["--page", file, "--registry", "--packages", path, "--database-url", "unused"])).toBe(1);
+  });
+  it("advisory mode turns a failed tutorial into a warning but keeps invalid options fatal", async () => {
+    const path = directory(), file = join(path, "page.md"), summary = join(path, "summary.md");
+    vi.stubEnv("GITHUB_STEP_SUMMARY", summary);
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    writeFileSync(file, page("echo 50% done; false"));
+    expect(await main(["--advisory", "--page", file, "--registry", "--database-url", "unused"])).toBe(0);
+    expect(log).toHaveBeenCalledWith(expect.stringMatching(/^::warning title=Guide tutorial::tutorial: step 1 failed/u));
+    expect(log.mock.calls.flat().join("\n")).not.toMatch(/::warning[^\n]*\n/u);
+    expect(readFileSync(summary, "utf8")).toMatch(/FAIL[\s\S]*advisory \(non-blocking\)/u);
+    writeFileSync(file, page("true"));
+    expect(await main(["--advisory", "--page", file, "--registry"])).toBe(1);
+    expect(await main(["--advisory", "--page", file, "--registry", "--packages", path, "--database-url", "unused"])).toBe(1);
+    expect(await main(["--advisory", "--advisory", "--page", file, "--registry", "--database-url", "unused"])).toBe(1);
   });
 });
