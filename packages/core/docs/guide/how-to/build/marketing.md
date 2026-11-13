@@ -37,17 +37,8 @@ Your login must be able to select that role and the installation must contain
 the acquisition routines.
 
 Bind a `BffResponder`, `authorize` and `resolveBinding` when constructing the
-direct handlers. Case list/count factories also require `isDirect`. Select the
-factories for the routes you expose:
-
-- `createAcquisitionCaseListDirectHandler` and
-  `createAcquisitionCaseActiveCountDirectHandler` for case reads;
-- `createPrelaunchAcquisitionListHandler` and
-  `createPrelaunchAcquisitionDetailHandler` for prelaunch projections;
-- `createAcquisitionSurveySubmitDirectHandler` and
-  `createAcquisitionSurveyListDirectHandler` for evidence;
-- `createAcquisitionNewsletterConsentDirectHandler` for an already verified
-  consent event.
+direct handlers. Case list/count factories also require `isDirect`. Select only the routes you expose from the
+[API report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/marketing-server.api.md).
 
 The active-count handler and public survey submission do not call `authorize`.
 Apply your route admission policy before invoking them. Survey submission

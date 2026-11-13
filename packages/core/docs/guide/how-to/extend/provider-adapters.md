@@ -29,10 +29,11 @@ contracts as the template for your implementation:
 
 | Class | Contract and construction | Offline check |
 | --- | --- | --- |
-| Email | Return an `EmailTransport` using `createGuardedEmailTransport` from `@openlup/platform/communications`. | `runCommunicationsAdapterConformance` from the same entry. |
-| Marketing | Implement `MarketingSyncProvider` from `@openlup/platform/communications/contracts` for profile sync, consent readback and erasure. Use the separate `ConsentPushPort` for consent changes. | `runCommunicationsAdapterConformance` checks marketing sync; consent push needs separate checks. |
-| Payments | Implement `PaymentAdapter` and declare `PaymentAdapterCapabilities` from `@openlup/platform/payments/contracts`. | `runPaymentAdapterConformance` from `@openlup/platform/payments`, with a `PaymentAdapterConformanceSubject` and verification fixtures. |
-| Fulfillment | Declare `FulfillmentCapabilityDescriptor` and implement `FulfillmentDispatchPort`, `FulfillmentObservationPort` and `FulfillmentReadbackPort` from `@openlup/platform/fulfillment/contracts`. Add label, stock or product sync ports only for the capabilities you expose. | `runFulfillmentAdapterConformance` from `@openlup/platform/fulfillment`, with adapter-owned fixtures. |
+| Email | Bind a guarded email transport; see the [communications API report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/communications.api.md). | Check transport acceptance and refusal behavior with communications conformance. |
+| Marketing | Implement neutral profile, consent-readback and erasure ports from the [communications contracts report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/communications-contracts.api.md). Keep consent push separate. | Communications conformance covers marketing sync; consent push needs separate checks. |
+| Payments | Implement the payment contract and declare capabilities from the [payments contracts report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/payments-contracts.api.md). | Use the conformance runner and fixtures in the [payments API report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/payments.api.md). |
+| Fulfillment | Implement the operations you declare in the [fulfillment contracts report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/fulfillment-contracts.api.md). | Use the conformance runner with adapter-owned fixtures from the [fulfillment API report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/fulfillment.api.md). |
+| Ecommerce events | Implement `EcommerceEventsPort` from the [communications contracts report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/communications-contracts.api.md), independently of profile and consent support. Declare the selected scope and qualification, keep the source, profile and mapping identity on retry, and recheck local authority before each effect. | Communications conformance covers email and marketing sync only; prove event acceptance, refusal without effects, replay and uncertain acceptance with your own offline sink. A passing offline check does not qualify a live account. |
 
 Opt-in templates cover email, marketing, payments and fulfillment. Default
 wiring selects none of them. Find their protocol-specific entries in the
@@ -140,9 +141,10 @@ before selection.
 
 ### Node email protocol template
 
-The experimental Node-only email template offers exactly three runtime
-functions: guarded transport creation, authenticated webhook handling and
-GET-only delivery reconciliation. Types stay on the neutral entries.
+The Node-only email template composes the neutral runtime operations listed in
+the [communications API report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/communications.api.md).
+Select its protocol-specific entry through the installed export map above. Types
+stay on the neutral entries.
 
 Put the outbound request behind `createGuardedEmailTransport`. Supply a host
 egress policy for every send: it selects the credential, effective recipient and
@@ -162,16 +164,43 @@ parsing and exclude explicitly foreign environments before lookup or writes. Use
 reconciliation must not send replacement messages. Your host supplies routing,
 scheduling, storage and credential resolution.
 
+Start host composition with `createInMemoryEmailTransport` and inspect its
+captured envelopes before selecting a network transport. Supply the message
+content, egress policy, credential selection, abort deadline and observation
+store explicitly, bind the webhook to the untouched request bytes and the
+selected environment, and schedule reconciliation only for existing message
+identifiers. Your host owns retry policy: the template forwards an optional
+`AbortSignal`, returns the HTTP status and bounded provider errors, never
+retries a send and exposes no separate retry-after delay. A response without a
+message ID is acceptance, not delivery; do not send a replacement automatically.
+Provider idempotency keys expire after a provider-defined window, so keep your
+local effect ledger independent of it and check the provider's idempotency
+contract before choosing a retry horizon.
+
 For this protocol template, signatures accept bare or `v1,` members and literal
 keys or canonical base64 keys prefixed with `whsec_`. Supply a UTC-seconds
-clock; the timestamp window includes both endpoints at ±300 seconds. This is a
-separate policy from the standard Auth verifier. The receiver defaults to
+clock; the template enforces a bounded timestamp window, including its
+endpoints. Inspect the selected template through the installed export map for
+its verification policy; this policy is separate from the standard Auth verifier. The receiver defaults to
 non-production. Lookup/apply failures return a fixed HTTP 500 response for
 retry; attempt telemetry cannot overturn a successful observation. Unsupported
 event types, missing message IDs and foreign-environment events return only an
 HTTP disposition and do not converge state. Event metadata stays opaque. Webhook
 and poll observations preserve raw `email.*` event types; the webhook inventory
 only gates admission.
+
+### Ecommerce events template
+
+`EcommerceEventsPort` and its closed event and request types live in the
+communications contracts entry; the Node communications entry supplies
+validation and the PostgreSQL source projection and outbox-handler composition.
+The event catalogue covers paid orders, refunded status, checkout eligibility
+without tokens and subscription lifecycle facts. Install the complete migration
+chain, select an account, environment and fixed live cutoff, and keep commerce
+and export claims in separate invocations with disjoint allowlists. Importing
+these entries installs no route, schedule or provider effect and performs no
+historical backfill. Retention, authority and recovery are described in the
+[event source and dispatch contract](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/CANONICAL_CONTRACTS.md#ecommerce-event-export).
 
 ### Singleton marketing template
 

@@ -6,12 +6,10 @@ activation gates.
 
 ## Choose the imports
 
-Import `createPostgresBundleAdminWriteStore`, `createBundleAdminWriteStore`,
-`BundleRpcError`, `DomainRpcError` and the `AdminBundleWritePort` type from
-`@openlup/platform/catalog`. Browser request contracts come from
-`@openlup/platform/catalog/contracts`. Consult the
-[package reference](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/AGENTS.md#subpath-maturity)
-for capability maturity.
+Use `@openlup/platform/catalog` for bundle-write composition and
+`@openlup/platform/catalog/contracts` for browser request contracts. Consult
+the [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/catalog.api.md) and [contracts report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/catalog-contracts.api.md)
+for their inventories.
 
 ## Provide the database and authorization
 

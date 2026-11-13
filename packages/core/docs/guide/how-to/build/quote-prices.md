@@ -29,7 +29,9 @@ policy digests are checked during each resolution.
 The read port exposes `listPriceLists`, `listExactBaseEntries`,
 `listExactLegacySubscriptionEntries` and `listSubscriptionPolicyHistory`.
 The PostgreSQL implementation reads active lists and active entries with an
-exact minimum quantity of one, retaining their validity intervals. Policies
+exact base-quantity constraint, retaining their validity intervals. Consult the
+[API report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/commerce-server-postgres.api.md) and its linked implementation
+for the selection constraint. Policies
 are scoped by list, region, currency and channel.
 
 Resolution requires a unique effective list and a unique gross base entry.

@@ -9,14 +9,14 @@ change reaches its structure or workflow.
 From the root of your extracted application, with dependencies prepared, run:
 
 ```sh
-npm --prefix . run dev
+node --experimental-strip-types dev.mjs
 ```
 
 The local edit loop runs on macOS and Linux. Edit configuration, fragments or
 `client/style.css`, wait for a successful client build or host restart, then
 refresh the browser manually. If the terminal reports an error, resolve it and
-wait for the host to listen before refreshing. With `npm run build` and
-`npm start`, restart the host after a configuration edit and rebuild the client
+wait for the host to listen before refreshing. With the starter's `build` and
+`start` package scripts, restart the host after a configuration edit and rebuild the client
 after a fragment edit. See the
 [starter setup](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/neutral-store/README.md#local-ui-edit-loop)
 for preparing the extracted application.

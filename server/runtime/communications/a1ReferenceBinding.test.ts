@@ -59,6 +59,7 @@ const invocations = (p: A1Ports) => [
   () => p.transport.send(message), () => p.webhook({ rawBody: "{}", headers: {} }), () => p.reconcile(),
   () => p.marketing.profiles.sync(request("profile.sync")), () => p.marketing.consent.read(request("consent.read")),
   () => p.marketing.erasure.request(request("erasure.request")), () => p.marketing.erasure.read(request("erasure.read")),
+  () => p.marketing.events.exportEvent({} as never),
   () => p.marketing.consentPush.push(pushRequest()), () => p.marketing.newsletter.sync({} as never), () => p.marketing.newsletter.reconcile!(),
   () => p.marketing.admit({} as never, {} as never), () => p.marketing.apply({} as never, {} as never), () => p.marketing.observe({} as never, {} as never),
 ];

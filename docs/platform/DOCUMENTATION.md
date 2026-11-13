@@ -485,6 +485,22 @@ the adopter store terms in Markdown as categories `store-0` and `store-1`. Separ
 `npm run oss:published-tree -- --policy` refuses a home-directory path
 (`/Users/…`, `/home/…`, `C:\Users\…`) in any tracked Markdown.
 
+The [tutorial](../../packages/core/docs/guide/start/tutorial.md) marks runnable
+steps with `sh tutorial` fences and ordered stdout expectations with
+`text tutorial-expect` fences.
+[`guide-tutorial.ts`](../../scripts/packages/guide-tutorial.ts) executes those
+commands in one Bash session: `--packages` substitutes the candidate version
+and packed install artifacts, while `--registry` runs the page verbatim against
+the public registry.
+The `install-packages` job runs it after the package proofs and before PostgreSQL
+cleanup with `--advisory`: a failed tutorial becomes a warning annotation and a
+FAIL line in the step summary, and the step still succeeds. The workflow admits no
+`continue-on-error`, so this flag is how the step stays non-blocking; after two
+green merge-group runs on main the flag is removed and the step blocks.
+Push-to-main runs reuse merge-group evidence and skip the tutorial step when
+reuse succeeds.
+A step the product cannot pass is stated as a current limit, not worked around.
+
 ## Impact
 
 Documentation updates and their review follow
@@ -498,12 +514,14 @@ The policy self-check validates owner paths and anchors, ordinary local Markdown
 links and generated navigation/source-map freshness. It checks structure; the
 reviewer checks whether the explanation remains true against source and contracts.
 
-The root [`AGENTS.md`](../../AGENTS.md) is the single source of the
-[public agent guide](AGENT_GUIDE.md). `--docs-update` copies it to
-`docs/platform/AGENT_GUIDE.md`, relocating each relative Markdown link outside
-code for that directory and replacing only the status paragraph that names the
-source. The check refuses a guide that differs from this generated form, so
-edit the root file and regenerate; never edit the guide by hand.
+The root [`AGENTS.md`](../../AGENTS.md) is the single agent guide for this
+repository. The [public agent guide page](AGENT_GUIDE.md) is a stable pointer to
+that file and the reader guide shipped in `@openlup/core`.
+`--docs-update` regenerates this fixed pointer page. The check refuses a page
+that differs from its generated form. Edit repository rules in the root file;
+restore the pointer with `--docs-update` rather than editing it by hand.
+The legacy `#architecture-rules` anchor remains on the pointer page so historical
+links still resolve.
 
 The migration-history and package Migration-block checks use an explicit full
 base SHA or a local merge base with `origin/main`. Hosted checks use validated
@@ -527,8 +545,7 @@ npm run oss:published-tree -- --policy --docs-update
 ```
 
 The routing map selects canonical owners; it is navigation rather than a second
-capability census. Regenerate after adding or moving sources, changing headings
-or editing the root `AGENTS.md`.
+capability census. Regenerate after adding or moving sources or changing headings.
 Generated output does not establish runtime behavior, hosted qualification or
 compatibility with a different installed package version.
 

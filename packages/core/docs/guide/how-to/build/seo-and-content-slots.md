@@ -6,14 +6,13 @@ and page components.
 
 ## Choose the imports
 
-Import runtime helpers from `@openlup/platform/marketing`. Import
-`OrganizationFacts`, `ContactContent`, `LegalDocumentContent` and
-`PrivacyProcessorDisclosure` as types from
-`@openlup/platform/marketing/contracts`; the runtime entry also exports these
-types. These helpers take values, without database or transport ports. Your
-application supplies route lookup, translations, content and document updates.
-See the [package reference](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/AGENTS.md#subpath-maturity)
-for capability maturity.
+Import runtime helpers from `@openlup/platform/marketing` and content types
+from `@openlup/platform/marketing/contracts`. See the
+[runtime API report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/marketing.api.md) and
+[contracts API report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/marketing-contracts.api.md)
+for the available helpers and types. These helpers take values, without
+database or transport ports. Your application supplies route lookup,
+translations, content and document updates.
 
 ## Build the head descriptor
 

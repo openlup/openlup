@@ -115,18 +115,11 @@ Keep earlier unknown duties visible for an admitted adapter or operator.
 
 ## Adapt existing invoice callbacks
 
-For a callback-based invoice host, the invoicing entry also exports these
-helpers:
-
-| Helper | Supply |
-| --- | --- |
-| `mapInvoiceClaimToProviderSnapshot`, `mapCanonicalIssueLines` | Saved facts and your labels/tax defaults |
-| `allocateChargedGrossTotals`, `allocateDiscountedGrossTotals` | Line gross totals and the charged total |
-| `readInvoicePaymentEvidence` | Payment identity and the selected provider reader |
-| `createFulfillmentHandoffInvoiceHandler` | Host descriptor, parser, policy, request and error callbacks |
-| `withAccountingInvoiceShadowTrigger`, `withAutoDispatchAccountingInvoiceTrigger` | Fulfillment/accounting ports, provider selection, exact key functions and optional resolved channel policy |
-| `runInvoiceCorrectionJob` | Create/provider enable flags, claim, immutable projection, recovery-bridge create, fenced finish/fail and a claim-fence predicate |
-| `createInvoiceReversalHandlers` | Enable flag, per-event adapters and the reversal writer; handlers use a 10-second timeout |
+For a callback-based invoice host, select the mapping, allocation, payment-read
+and handler helpers from the [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/invoicing.api.md).
+Supply saved facts, fiscal presentation policy, selected provider readers and
+fenced host callbacks as required by the chosen helper. Reversal handlers use
+a bounded timeout; account for that deadline in your host callbacks.
 
 A correction recovery bridge must prove both the parent document and correction
 reference. Local-only requests preserve provider selection, document ID, invoice
@@ -151,11 +144,13 @@ Callback mode requires claim, validation, download, filename, send and fenced
 finalizers. Bind `terminalFailure` before claiming; its absence skips with
 `host_binding_required`. Retryable pre-send failures use backoff; terminal
 pre-send failures stop reclaiming. Native retryable settlement carries `{ phase:
-"before_send", retrySeconds }`: whole seconds clamp to 60–86400, with 900 for
-absent or invalid values. Terminal settlement carries `{ phase: "before_send",
+"before_send", retrySeconds }`, with bounded whole-second delays and a fallback
+for absent or invalid values. Terminal settlement carries `{ phase: "before_send",
 retryable: false }`, parks availability at infinity and leaves failed status and
-the diagnostic visible. Projection failures and job retries use 300 seconds per
-attempt, capped at 3600. Store mode supplies these finalizers. Once transport
+the diagnostic visible. Projection failures and job retries use bounded
+attempt-based backoff; consult the
+[invoicing API report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/invoicing.api.md)
+and its linked implementation for delay limits. Store mode supplies these finalizers. Once transport
 has been entered, `send` must return `uncertain` for a timeout or lost
 acknowledgement. Throwing is permitted only before transport entry. An uncertain
 send never authorizes a blind repeat send, and provider acceptance does not

@@ -31,7 +31,7 @@ it separate from actor lanes and close it when finished. Missing privileges
 produce `checkout_recovery_service_required`.
 
 Call `issue({ orderId, rawToken, expiresAt })`. This adapter ignores `expiresAt`
-and sets expiry to order creation plus 24 hours, preserving database
+and derives a bounded expiry from order creation, preserving database
 sub-millisecond precision. It locks the order and contact, requiring
 `pending_payment`, a contact and no renewal cycle. Ineligible orders or elapsed
 deadlines produce `checkout_recovery_order_not_recoverable`. The contact need
@@ -75,8 +75,9 @@ durations must be positive integers. Invalid policies produce
 
 Invoke `enqueue(limit, now)` with a UTC timestamp. It queues first and final
 reminders for eligible pending checkouts, excluding recent payment activity and
-known capture. Payload labels `1` and `20` select first/final content; they do
-not change when you change the offsets. Supply localized copy through
+known capture. The payload’s first/final content labels do not change when
+you change the offsets; use the content contract in the
+[API report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/communications-contracts.api.md) rather than inferring labels from timing. Supply localized copy through
 `createCheckoutRecoveryContentFactory` from
 `@openlup/platform/communications/contracts`.
 
@@ -195,7 +196,7 @@ duplicate inserts neither. Later buckets preserve earlier links. `{ sent: true
 insertion. Neither response proves transport delivery. A terminal mint race
 reports `order_not_recoverable`; other mint failures report `mint_failed`.
 
-Route all three reminder producers through
+Route the reminder producers through
 `createOutboxCheckoutRecoveryEmailHandler`, with the appropriate scoped
 `authorize(eventId, claimToken)` gate: waves, operator store or buyer port. Each
 gate checks its own event and authority. The operator gate requires its exact
@@ -307,11 +308,12 @@ changing payment state. A draft receipt and frozen checkout context establish
 one-time provenance; an initial subscription also needs its declaration.
 Renewal-cycle orders are ineligible.
 
-History probes 101 attempts and returns at most 100, newest first. Each attempt
-probes 33 evidence members and admits at most 32. Overflow, contradictory proof
-or an oversized envelope drops that attempt's whole proof set and marks history
-incomplete. Observation records and truth/readback source envelopes are limited
-to 8,192 bytes. Only correlated identity/outcome fields are projected; raw
+History probes a bounded number of attempts and evidence members, returning
+attempts newest first. Overflow, contradictory proof or an oversized envelope
+drops that attempt’s whole proof set and marks history incomplete. Observation
+records and truth/readback source envelopes have bounded sizes; consult the
+[API report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/commerce-server-postgres.api.md) and its linked implementation
+for the limits. Only correlated identity/outcome fields are projected; raw
 source envelopes, request keys, token hashes and opaque authorization/method
 references are excluded. Native states map to the Core attempt vocabulary and
 Core derives the public actions. These observations establish neither

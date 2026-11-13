@@ -1,7 +1,6 @@
 # Canonical Contracts
 
-Status: development-preview contract. These rules define the intended public
-behavioural boundary; they do not assert a stable provider catalogue or release.
+Status: maintainer page: how to change OpenLup. Reader guidance lives in the [OpenLup guide](../../packages/core/docs/guide/README.md); sections marked "Evidence" are frozen historical records.
 
 ## Explicit reference adapter composition
 
@@ -234,20 +233,22 @@ See the [A3 ledger](plans/oss-a3-fulfillment-adapter.md).
 
 ## Canonical status
 
-Each domain owns its canonical status vocabulary, allowed transitions, and
-terminal-state rules. A provider's raw status is evidence at the adapter edge;
-it is mapped into a domain fact before it affects durable platform state.
+Moved to [Payments](../../packages/core/docs/guide/concepts/payments.md#canonical-status).
 
-Do not compare provider strings throughout application code or treat a browser
-return value as settlement truth. Preserve the raw evidence needed for diagnosis
-in a bounded form, map it once, and refuse impossible transitions. Late,
-duplicate, or out-of-order evidence must not regress a terminal canonical fact.
-
-Status vocabularies are not interchangeable between domains. A new status or
-transition requires an explicit mapping, persistence compatibility, and tests
-for refusal, replay, and ordering.
+Adding a status or transition requires explicit mapping, persistence
+compatibility, and regression coverage for refusal, replay and ordering.
 
 ## Idempotency
+
+Moved to [Idempotency](../../packages/core/docs/guide/concepts/idempotency.md#idempotency-contract).
+
+Preserve each incumbent replay protocol when moving adapters. Bundle key
+recognition must not become a fingerprint guarantee through documentation or a
+refactor. Changes to concurrent key collision or rollback behavior need dedicated
+database regression coverage.
+
+Evidence (historical record, 2026-11-13):
+
 The native bundle contention witness characterizes the existing global event
 key, without adding payload/entity binding. Two absent-key transactions on
 disjoint bundles can block at the unique key index: after the first commits,
@@ -257,18 +258,6 @@ key before validating changed payload, entity or routine. This is incumbent
 recognition, not a stronger exactly-once or payload-fingerprint guarantee.
 Catalog draft receipts retain their separate canonical-command fingerprint and
 revision behavior; moving their adapter does not change either protocol.
-
-
-Every externally repeatable write has an idempotency scope, a stable operation
-identity, and a request fingerprint. Replaying the same logical request returns
-the established result without a second durable effect. Reusing a key for a
-different fingerprint is a conflict, not permission to overwrite history.
-
-Idempotency keys are opaque values with documented derivation and scope. An
-operation, a provider attempt, a customer journey, and an inbound event may
-require different keys; do not collapse them into one user-controlled value.
-Persist the ledger before reporting success, and make concurrent repeats resolve
-to one canonical effect.
 
 ## Partner acquisition
 
@@ -337,6 +326,11 @@ This surface activates no provider or reference route.
 
 Moved to [Compose a provider adapter](../../packages/core/docs/guide/how-to/extend/provider-adapters.md#node-email-protocol-template).
 
+The concrete adapter records a 2xx response without an ID as transport
+acceptance with `resendId: null`, and the provider retains idempotency keys for
+a limited window (currently 24 hours); keep the local effect ledger independent
+of that window.
+
 Evidence (historical record, 2026-11-13):
 
 Reconciliation delegates to `runDeliveryReconciliation`, with internal GET reads
@@ -351,6 +345,12 @@ are protocol-only; account verification remains pending.
 ### Opt-in singleton marketing adapter
 
 Moved to [Compose a provider adapter](../../packages/core/docs/guide/how-to/extend/provider-adapters.md#singleton-marketing-template).
+
+The consent-push capability requires `profiles:read`, `profiles:write`,
+`subscriptions:write` and `lists:write`: the read scope admits the preflight,
+while the write scopes cover the subscription job and list effects. Missing
+any required scope refuses locally before provider HTTP. This declaration
+checks host-supplied evidence; it does not independently inspect API-key scopes.
 
 Evidence (historical record, 2026-11-13):
 
@@ -375,52 +375,140 @@ reconciliation and adapter reconstruction restore admission. Default pacing wait
 preflight reads cannot starve the mutation. See the [A1 ledger](plans/oss-a1-communications-adapters.md#p2-opt-in-singleton-marketing-adapter)
 for construction requirements, offline evidence and remaining account gates.
 
+### Reference PostgreSQL marketing host
+
+The source-only [single-process reference host](../../server/runtime/communications/marketingPostgresHost.ts)
+implements the existing private construction storage seam with exact TEXT CAS.
+Its exported setup SQL is an application-owned recipe, never an automatic
+platform migration. The application supplies committed-operation PostgreSQL
+execution, explicit grants, personal-data contributor/retention policy and one
+shared host instance per account/environment. Selecting the profile does not
+establish multi-process exclusion or qualify a deployment.
+
+Construction starts quarantined. An authenticated operator must stop old adapter
+work, inspect the exact recovery snapshot and account for every unresolved entry
+before reconciliation. Recovery changes only slot/quarantine flags and retains
+request/result identities, withdrawals, tombstones and cooling; it does not
+invent provider settlement or reopen an old adapter instance. A stale snapshot,
+incomplete entry list, active work or uncertain repair write keeps admission
+closed. The [real PostgreSQL witness](../../server/runtime/communications/marketingPostgresHost.test.ts)
+uses fake provider HTTP and checks committed reply loss, replay and withdrawal.
+
+Journal v1 retains original requests and targets, including personal data.
+Compaction and erasure of this journal are unsupported in this reference profile;
+the adopter must register its actual retained-data disposition. Deleting entries
+or replacing them with hashes would lose receipt validation/replay evidence.
+The caller supplies a measured finite byte budget; exceeding it follows the
+existing host-storage failure path. Privileged recovery snapshots are not log
+content. This profile provides local persistence evidence, not account TEST proof.
+
+## Ecommerce event export
+
+This experimental communications surface exports retained facts through
+`EcommerceEventsPort`. It is independent of transactional transport, profile
+projection and consent mutation. The browser-shareable contracts contain no
+provider payload or credential. Closed Node validators refuse extra fields,
+invalid source identities and incomplete paid data before provider dispatch.
+
+| Fact | Owning source | Allowed event data |
+| --- | --- | --- |
+| `order.paid` | Required commerce paid fact, with a paid-time metadata snapshot and corroborating succeeded settlement | Order and intent IDs, purchase kind, integer minor amount, currency and frozen SKU/quantity/line amounts |
+| `order.refund_status_changed` | Commerce refunded-status fact or manual order operation, one identity per order | Order ID and `refunded` status; no value, revenue or partial-refund claim |
+| `checkout.recovery_qualified` | Token-free commerce qualification, one identity per order, independent of message waves | Order ID and expiry; no recovery token or address |
+| `subscription.created`, `.paused`, `.resumed`, `.cancelled` | Retained subscription owner events, including automatic resume | Subscription ID; no reconstruction from current status or email retries |
+
+Every fact also has its schema version, source identity, occurrence time and
+subject identity. Paid snapshots distinguish initial subscription acquisition
+from renewal using the owning activation/renewal evidence. Missing or malformed
+evidence records an incomplete disposition; later catalogue/order edits cannot
+repair it into a different purchase. Monetary conversion uses the currency
+owner's exponent and retains its provenance, including zero- and three-decimal
+currencies. The refunded-status metric is deliberately nonfinancial.
+
+The PostgreSQL projection runs after the source transaction through explicit
+host composition. It fixes the account, environment, namespace, mapping and live
+cutoff, and uses per-source receipts instead of a high-water cursor. Enqueue and
+handoff commit together. A failed projection leaves the source available for a
+later bounded pass; it adds no export-store dependency to payment commit.
+The initial native-store profile admits one immutable exporter binding; a second
+account or binding refuses rather than sharing an unscoped claim invocation.
+Existing source consumers retain their payloads. Importing the helpers installs
+no route or schedule, and existing facts are not automatically backfilled.
+
+The existing outbox owns claims and retries. Invoke export and commerce workers
+separately with disjoint event allowlists and lease identities; adding remote
+HTTP to a shared serial commerce batch would not provide that isolation. The
+frozen export request binds the source, existing profile, generation, local
+authority and mapping. Current authority, erasure and checkout eligibility must
+still hold at dispatch. An email change, ambiguous merge, deleted subject or
+mapping change cannot silently redirect an already queued fact.
+
+`createPostgresEcommerceEventProjection` initializes the fixed binding/cutoff and
+projects a bounded batch; `createPostgresEcommerceEventHandler` binds the neutral
+port to the existing worker. Their transaction callback must use one committed
+PostgreSQL connection. The native tables and source view stay private; narrow
+service-only functions mediate source selection, atomic handoff, claim-bound
+receipt changes and privacy. Runtime has no general table-write grant. The
+privacy contributor scrubs recipient projections while retaining source/replay
+fences, and connected-store transfer preserves those fences and unknown duties.
+
+For uncertainty, `reconcilePostgresEcommerceEvent` requires quiesced work, the
+matching request digest, binding and an operator evidence reference. Retrying
+additionally requires the original qualified deduplication semantics and current
+authority. An active claim, mismatched identity or missing evidence refuses.
+Each explicit qualified retry opens a fresh worker budget under the existing
+configured attempt and snooze limits, including after terminal exhaustion.
+Consumed counters accumulate in outbox metadata as `recoveryAttempts` and
+`recoverySnoozes`; the receipt retains the recovery evidence reference.
+Unknown duties retain `retainPayload` even if the worker exhausts its retry
+budget; terminal compaction skips them and continues with unrelated rows.
+Confirmed acceptance/refusal or erasure can release the pin. Reconciliation
+does not change source identity, mapping, profile or currency provenance.
+
+The opt-in `communications/klaviyo` factory exposes `events` separately from its
+profile/consent ports. Mapping `ecommerce-v1` uses one fixed metric per source
+type and the source ID as `unique_id`, with an existing profile ID and no profile
+attributes or upsert. Support requires `events:write` and separate account-effect
+and sole-message-owner qualification. Scopes and qualification are host-supplied
+evidence, not an API-key introspection result. An unqualified selected mapping
+remains `verification_pending`; an unrecognized mapping is `unsupported`.
+Historical requests refuse with zero HTTP.
+
+Events share the account's slot, pacing and durable cooldown with profile/consent
+operations. A single event's uncertain response stays in its own export duty;
+it does not create a new consent-journal quarantine that would prevent
+withdrawal. Uncertainty in the shared storage or slot still closes account
+admission. A bodyless 202 proves acceptance only; response bodies are cancelled
+without exposing customer data. Retry retains the exact profile/metric/source
+tuple and payload. It never inherits consent-mutation retry semantics.
+
+Local offline examples and real PostgreSQL tests establish protocol and retained
+state behavior. Before any account activation, independently prove actual TEST
+ingestion, receiver deduplication, unchanged profile/consent data and disabled
+competing notification flows. The existing checkout sender remains the message
+owner. Production publication, deployment and activation need their own grants;
+an accepted event cannot be undone by a code rollback. Disabling dispatch must
+preserve pending identities and uncertainty for reconciliation.
+
 ## Subscription lifecycle
 
-The subscription status matrix has one meaning and several spellings. The
-managed SQL guard `public.subscription_guard_status_transition` fires before
-every status update. The core engine publishes the same matrix, restricted to
-the four statuses it manages, as `SUBSCRIPTION_STATUS_TRANSITIONS` in
-`@openlup/core/subscription`:
+Moved to [Subscription engine](../../packages/core/docs/guide/concepts/subscription-engine.md#the-status-matrix-and-dunning-continuity), [Subscriptions](../../packages/core/docs/guide/concepts/subscriptions.md#lifecycle-in-durable-storage).
 
-| From | To |
-| --- | --- |
-| `active` | `paused`, `cancelled`, `completed` |
-| `paused` | `active`, `cancelled` |
-| `cancelled` | `active` (the owner's win-back) |
-| `completed` | none; terminal |
+Keep the managed `public.subscription_guard_status_transition`, core
+`SUBSCRIPTION_STATUS_TRANSITIONS`, core contract test, pgTAP guard suite and
+live-body parity test synchronized in the same contribution. Further status
+changes follow the compatibility lifecycle in [Data and migrations](DATA_AND_MIGRATIONS.md).
 
-The guard's other edges belong to the activation flow, which the engine never
-drives: `pending_activation` to `active`, `activation_failed` or `cancelled`,
-and the reopen of an abandoned checkout from `cancelled` to
-`pending_activation`, which the guard admits only with an audited
-`subscription.activation_abandoned` event. `activation_failed` is terminal.
-The core contract test, a pgTAP suite over the guard, and a parity test that
-reads the guard's live body all pin the matrix. A change to one side must
-update the others in the same contribution.
+Managed M2 owns durable exhaustion/recovery continuity; the core compatibility
+helper must remain separate from explicit owner pauses. The native chain in
+`db/platform/migrations` uses lifecycle functions rather than the managed
+status-transition trigger, which fires before every managed status update.
+Native retry-case propagation calls `dunning_lifecycle_handle_failure` from
+[`subscription_retry_open_case`](../../packages/platform/sql/20261109100000_subscription_retry_resume.sql).
+Its failure handler has no exhaustion-rung fence; preserve the distinction
+between class termination and exhaustion when changing that call path.
 
-A matrix edge is not a licence for every operation. Only the owner's pause
-request may move an active subscription to `paused`. Among the engine's
-statuses, only the win-back leaves `cancelled`: it needs a stored payment method
-and restarts the schedule two days out.
-
-**The sanctioned non-payment rule.** A failed payment never suspends, freezes or
-pauses an active subscription. Neither a ladder cut short by a terminating
-refusal class nor exhaustion past the last rung changes its status: the dunning
-case stays open, the unpaid cycle is not moved, and no further automatic charge
-is scheduled. After exhaustion the same case remains repairable; on the portable
-chain `dunning_lifecycle_record_recovery` closes it when the money moves.
-Subscriptions already paused and cases already expired under the earlier rule
-keep their separate resume behaviour. A plain resume must not be used for such a
-subscription, because it neither skips the uncollected cycle nor moves a stale
-`next_cycle_at`; the managed `subscription_resume_after_expired_dunning` and the
-engine's `resumeSubscriptionFromExpiredDunning` handle it.
-
-Managed M2 now keeps exhausted cases open with a NULL retry and a repair token.
-Token redemption, durable method setup and the current cycle/rung must converge
-before recovery is authorized; replay cannot mint a second charge. The core
-compatibility helper `pauseSubscriptionForExpiredDunning` returns unchanged
-state and no pause event. Explicit owner pauses remain separate.
+Evidence (historical record, 2026-11-13):
 
 Managed M1 makes refunds independent of subscription lifecycle: neither a first
 nor renewal refund cancels service, erases cycle payment history or emits
@@ -434,83 +522,217 @@ a one-time allocation cannot spend that demand. Managed stock wait retains activ
 service and the original obligation until later-only settlement/delivery alignment.
 See the [managed prefix and proof limits](DATA_AND_MIGRATIONS.md#managed-stock-wait-atp-and-refund-parity).
 
-The engine models the decision; the host keeps the durable duties the managed
-SQL restarts also perform. Both restarts require the customer's confirmation of
-the charge timing. A win-back also clears `ended_at` and the cancellation
-reason, refuses while a cycle is locked, and bumps the template version. A
-recovery also requires a method that is chargeable unattended, not merely
-present, and skips every uncollected cycle of the subscription, not only the one
-it was given.
-
-The two sides restart the schedule differently. The engine re-arms
-`next_cycle_at` at the later of the stored instant and two days out, so a
-restart never moves it earlier. The managed SQL restarts assign two days out
-unconditionally. For a win-back from a subscription paid through a later date,
-the SQL side therefore charges earlier than the engine would.
-
-**Known limitation: the portable chain.** The portable PostgreSQL chain in
-`db/platform/migrations` does not yet carry this matrix. Its `subscriptions`
-table admits only `active`, `paused` and `cancelled`, so it has no activation
-statuses and no `completed`. It has no status-transition trigger: each lifecycle
-function checks its own source status. It can send a win-back message to a
-cancelled subscriber. With the lifecycle-closure forward, its trusted command
-port also reactivates a cancelled subscription after charge-timing confirmation,
-using healthy method and renewal-term evidence and leaving old unpaid cycles terminal.
-Its dunning rail, `dunning_lifecycle_handle_failure`, keeps active subscriptions
-active on dunning exhaustion (invariant repair). A NULL next retry leaves the
-case open and repairable through `dunning_lifecycle_record_recovery`, queues the
-final notice and records the exhaustion event, and returns `paused=false`,
-`pauseWindowId=null`, `terminal=true` without creating a pause window or changing
-subscription or cycle dates. It still has no rung fence: a class-terminated
-refusal on rung one also has no next retry. No caller in this tree invokes it
-today. A future caller must not call it with NULL unless
-`isDunningLadderExhausted` holds for the refused cycle. A case cut short earlier
-must stay open without that call. An adopter on the portable chain therefore cannot store a
-completed or provisional subscription. The lifecycle command port is described
-by the subscription owner; additional status-matrix changes still follow the compatibility lifecycle in
-[Data and migrations](DATA_AND_MIGRATIONS.md).
-
 ## Subscription delivery alignment
 
-An active subscription must not admit its next renewal while the customer is
-still waiting for the preceding delivery. Renewal admission records durable
-protection for an undelivered obligation; an already-created
-`retry_scheduled` cycle remains existing recovery authority rather than a new
-renewal. A delivery that resolves the delay moves `next_cycle_at` to the
-delivery or confirmation instant plus the stored cadence. The durable update is
-monotonic and uses SQL `GREATEST`, so alignment may extend a cycle but never
-move it earlier or stack deliveries on the customer.
+Moved to [Subscriptions](../../packages/core/docs/guide/concepts/subscriptions.md#subscription-delivery-alignment).
 
-A replacement parcel does not erase the obligation merely because it was
-created or dispatched. Once a row names an earlier parcel through
-`replaces_fulfillment_order_id`, that superseded predecessor is no longer an
-outstanding obligation; the latest unsuperseded replacement remains outstanding
-until it reaches the customer. Its arrival may settle the predecessor's case as
-`aligned` without fabricating `delivered_at` for the parcel that never arrived.
-
-`subscription_delivery_alignment_confirm_replacement` is the service-only path
-for recording that a substitute shipment reached the customer when durable
-delivery evidence cannot do so. Never use it for an in-flight, lost, or otherwise
-undelivered replacement: `aligned` means the delivery happened. Replaying an
-already aligned confirmation returns the stored aligned schedule and must not
-add another cadence. The ordinary operator-resolution path refuses while an
-active subscription still has an unsuperseded undelivered parcel; refusal leaves
-the protected case and schedule unchanged.
-
-These are source and persistence contracts, not evidence that any hosted
-deployment, provider adapter, or public release has activated the rail.
-
-The native fulfillment translation uses `fulfillment_shipments.replaces_shipment_id` and
-order → cycle → subscription correlation, with cycle number on the renewal
-operation. Its admission guard applies only to NEW cycle admission/insert;
-existing-cycle retries in renewal operations and dunning bypass admission and
-neither mint nor consume receipts. The native graph gains no `retry_scheduled`
-state and the payments lifecycle is unchanged. Automatic alignment still requires an
-actual arrival; missing correlation remains manual review. Native invoker
-privileges and complete catalogue installation are described in
+The native fulfillment translation uses `fulfillment_shipments.replaces_shipment_id`
+and order → cycle → subscription correlation, with cycle number on the renewal
+operation. It adds no `retry_scheduled` state or payment lifecycle change.
+Native invoker privileges and catalogue ownership remain in
 [Data and migrations](DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories).
 
 ## Compatibility posture
+
+Moved to [Versioning and stability](../../packages/core/docs/guide/reference/stability.md#version-numbers).
+
+The account-support reference capability manifest declares default-off,
+explicit-host registration and an empty route list. It is descriptive metadata,
+not permission to mount an account API or advertise checkout continuation.
+Commerce recovery and configured purchase are selectable only when the host
+binds their owners; metadata keeps both default-off and mounts nothing.
+Selecting the inert account/support recipe requires the host's verified contexts, complete
+catalogue/schema observation and admission-refusal transport mapping; it changes
+neither the static profile's refusal list nor the subscription serving entry.
+
+The CI-only [image inventory](../../config/ci-images.json) owns logical names,
+upstream repositories, tags, index digests and ordered public-registry sources
+for every mirrored image. It records four PostgreSQL images (the install-proof
+database, also used by raw pgTAP and managed-rail tests, the disposable test
+default, and two attribute-version witness pins) plus the starter browser image. No Supabase CLI, CLI-derived or managed-host image remains in hosted CI. The single mirror
+job reads typed owned pins from its own checkout, validates all of them before
+any exec or registry call, and builds upstream sources and mirror targets itself.
+It runs only pinned first-party actions plus the repository script, re-resolves
+source digests, skips identical targets, refuses moved tags and two pins that
+would write different digests to one target, and verifies every copy.
+The shared reader prepends the single mirror
+registry to inventory sources for consumers; mirror copying still uses only
+upstreams. The reviewed-batch gate and shared disposable PostgreSQL helper use
+these pins, preserving the exact digest on every fallback. In CI and locally,
+source order is mirror, then GHCR/Docker Hub/ECR for managed, or Docker Hub/ECR
+for native. Microsoft registry sources are mirror inputs only: consumers pull
+those images from the organization mirror alone, with no upstream fallback.
+The default helper uses the test pin, resolves once per exact ref per process and
+runs the successful digest-qualified source with `--pull=never`; explicit
+non-inventory overrides keep their existing behavior. Before any shared pull,
+exact local index digests bypass network access; a tag-only input and
+inspection errors refuse. The gate, helper and pgTAP runner share one pull retry
+implementation; long Retry-After hints advance by the remaining per-source
+share, while shorter waits are capped to preserve non-GHCR fallback.
+A Docker-free guard rejects literal digests or registry source lists in the gate test.
+An explicit source tag must match the entry's tag and is preserved during
+resolution. PostgreSQL consumers with upstream sources immediately advance on
+mirror absence/private access and do not depend on organization package access
+or publication. The required `install-packages` PostgreSQL 17 startup step is an
+exception: it selects only the GHCR mirror, has no upstream fallback and requires
+access to that organization package. It uses the same inventory digest and starts
+explicitly after job-token GHCR login.
+It runs with `--pull=never` and is removed after package proof, including failure.
+Other local launchers retain their existing behavior. These changes
+establish no public package visibility or runtime/application default.
+
+The `pgtap` lane is required through the `test` aggregate and runs every shipped SQL test on the
+install-proof `postgres:17` digest without the Supabase CLI or its images. Its
+[package pins](../../config/ci-postgres-packages.json) name the exact pg_cron
+1.6.4, pgTAP 1.3.3 and `pg_prove` 3.36 PGDG builds for Debian trixie, for amd64
+and arm64, at immutable PostgreSQL apt-archive paths. Each file's committed
+SHA-256 is verified before the bytes are cached or installed; an unpinned
+architecture, a path that does not match its version or a checksum mismatch
+refuses, and no apt index is read. The job restores the downloads through a
+SHA-pinned `actions/cache` step keyed by the pin file, so only a cold cache reaches
+the apt archive, and every cached file is re-verified before use. A main push
+may reuse the exact-commit merge-group proof, which includes `pgtap`. The packages install only into the disposable container. [The managed-compatibility adapter](../../tests/postgres/managed-compat/supabase.sql)
+is the only file that creates the managed environment for that lane; the runner
+keeps only the replay identity and grants of the retired CLI lane's replay. It is test
+infrastructure, never a runtime bootstrap or a supported-host claim.
+[The managed-compat test helper](../../tests/helpers/managedCompatPostgres.ts)
+boots the same image, packages, server settings and adapter for every
+managed-rail `tests/postgres` suite, including the reviewed-batch gate. The only addition is a login for the `supabase_admin` placeholder, the
+identity those suites use as their owner session. Each required `test-full-shard`
+restores the same SHA-pinned package cache before its tests; a cold cache downloads
+the pinned files from the PostgreSQL apt archive, and every file is re-verified
+before installation.
+The adapter's selected Storage bucket/object columns support the required
+managed-source capture and refusal suite; their types, defaults and keys are
+copied from the pinned managed schema. They implement no Storage API or
+service access. The opt-in
+[`runM14ManagedSourceWitness.mjs`](../../tests/postgres/runM14ManagedSourceWitness.mjs)
+runs the same assertions and the managed catch-up first-leg suite on fresh
+owned CLI 2.122.0 stacks, then the complete local three-installation journey.
+It requires an already-local immutable Node 24.21.0 image argument for H1/H2.
+[CI image mirror guidance](../../CONTRIBUTING.md#ci-image-mirror) owns retry
+budgets, refusal boundaries, mirror execution and the owner's GHCR setup.
+
+The opt-in OIDC settings registry and reference verifier composition retain the
+[identity owner](IDENTITY.md#opt-in-oidc-access-tokens).
+
+The disposable identity reference's run directory, run id and local mail origin
+are evaluation settings bound to one owned installation. They establish no
+persistent customer identifier, package API version or migration contract. The
+selected browser import inventory is independent of the public default build;
+server credentials do not become browser configuration.
+
+The managed email-trust declaration remains an environment-registry input;
+[identity composition](IDENTITY.md#responsibility-and-composition) owns its
+settings binding and migration-free source change.
+
+The runtime forward registry may pin exactly eight legacy browser-policy
+retirements alongside its fixed function and privilege bindings. Retirement
+checks exact names, tables, preceding statement hashes and ordered DROP
+statements; it does not admit arbitrary RLS changes. Introduction follows the
+[co-located SQL/pin rule](DATA_AND_MIGRATIONS.md#co-located-sql-and-approval-pins).
+Control approval installs no database permission and cannot stand in for the
+corrected forward's actual-role tests.
+
+The optional runtime-forward registry is a finite security admission: it pins
+one or two files with ordered exact grants. The first pins five unchanged
+existing function identities; the checker independently limits its service
+columns and four existing callable functions, plus authenticated profile/membership
+reads and two pure index helpers. The optional second pins the identity
+capabilities file with no functions or policies, only service_role INSERT on
+`clients.email`, `auth_user_id`, `acquisition_source` and `lifecycle_stage`, and
+UPDATE on `auth_user_id`, INSERT on `admin_users.id`, `email`, `role`,
+`membership_state`, `membership_provenance` and `membership_accepted_at` for
+operator activation (`is_machine_actor` keeps its false default), and SELECT on `admin_users.email`
+for invitation eligibility and conflict checks.
+It does not authorize arbitrary runtime grants. Introduction follows the same
+co-located SQL/pin rule; registry installation alone does not change database
+permissions.
+
+Changes must preserve the contracts above and state their preview
+compatibility boundary explicitly.
+
+`release:bump --set` prepares every publishable package's version,
+and every exact internal pin on one, in its manifest and lockfiles.
+`packages:check` and `@openlup/core`'s release check admit only a set version
+below 1.0, `packages:check` refuses publishable packages at different
+versions, and the package release workflow refuses a version that differs from
+the manifest or that npm holds or has passed. `publish-package.yml` with
+`package: all` releases the set under one approval, one tag and immutable
+release per package at the set commit. Dispatching the same set again resumes
+it: a package npm holds with the same tarball is skipped, a package whose
+release exists but npm lacks the version waits for the re-run of its failed
+publication, the rest are released, and any other state stops the set. A patch
+set is refused when a package's API snapshot differs from its previous set's
+release tag. Historical previews retain
+their recorded package versions.
+
+The subscription browser profile's closed import list follows the package
+exports selected by its build. Core entries therefore name built `dist/*.js`
+modules; source paths are not an alternative runtime route. The core workspace
+must be built before checking that profile's import closure.
+
+The repository's
+[`neutrality baseline`](../../config/openlup-neutrality-baseline.json) records
+existing source findings rather than declaring the tree free of them. Its full
+source commit identifies the measured base, scanner blob identities pin the
+counting implementation, and SHA-256 keys identify exact relative paths. Each
+count belongs to one path and category; a reduction elsewhere cannot pay for an
+increase, and a new path has no inherited allowance.
+The check applies its explicit opt-in adapter vocabulary allowances before
+comparing these counts, including the scoped root `ROADMAP.md` addition below.
+
+The [repository check](../../scripts/public-ci-neutrality.mjs) counts text
+regardless of filename extension and inventories binary files. It refuses
+increases against both the comparison tree and the accepted baseline, including
+an increased baseline allowance. Baseline regeneration may lower existing
+allowances. It cannot admit new baseline debt except for the fixed
+diagnostic-fixture introduction
+recorded in the checker. That introduction admits five exact SQL fixture files
+in category `ui-15`, verified by their complete SHA-256 bytes, original counts
+and accepted counts, against one full comparison commit. The explicit baseline
+recalibration is required; the candidate still must fit that baseline. A later
+comparison commit uses the ordinary ratchet, including refusal of regrowth after
+a reduction. Scanner pins and every other path, category and increase remain
+unchanged. These counts reuse the existing scanner semantics and do not expand
+a runtime contract or establish a stable preview channel.
+
+Apart from the scoped root `ROADMAP.md` addition below, the opt-in
+communications adapters have a `ui-12` vocabulary allowance only
+inside their two declared source/test directories, their exact API reports and
+exact cold-consumer proof lines. The exact path-segment tokens
+`communications/resend` and `communications/klaviyo` are additionally allowed in
+the platform manifest, release gates, package boundary test, publication
+catalogue, platform CHANGELOG, its non-packed `CHANGELOG-HISTORY.md` and validated
+platform `changes/*.md` fragments,
+this page, the architecture page and the A1 ledger.
+Those same two subpath tokens are allowed in only the A1 reference binding and
+its adjacent test under `server/runtime/communications`; bare adapter words
+receive no allowance there. A paired out-of-scope token plant must still fail.
+The two snapshot filename tokens are additionally allowed only in the platform
+release-gates file and publication catalogue; the two relative adapter entry
+tokens are allowed only in the package boundary test. The undeclared-subpath
+fixture uses a neutral vendor segment and needs no allowance.
+The ledger additionally allows bare adapter names. The root `ROADMAP.md`
+provider matrix is the one scoped addition to these adapter vocabulary
+allowances, with at most two matches each for categories `ui-12`, `ui-13`,
+`ui-14` and `ui-15` at that exact path. A third match, those terms at other paths
+outside their existing adapter allowances, and every other counted term or
+category remain checked. Neutral communications sources and contracts, other
+root content and other documentation remain checked outside their existing
+allowances. The baseline and scanner pins are unchanged. See the
+[CONTRIBUTING neutrality check guidance](../../CONTRIBUTING.md#package-policy-and-release-checks).
+
+Published Tree CI enforces that ratchet in required `self-check` and exercises
+its CLI refusal tests in required root `test`. Managed pgTAP is also required
+through that aggregate; follow [testing](../../CONTRIBUTING.md#test-scope-and-diagnostics)
+for execution and proof limits. These checks do not grant application privileges
+or declare complete compatibility evidence. Existing release context checks remain unchanged.
+
+The outbox catalogue candidate retains separate core-peer, export-snapshot and
+shipped-baseline pins; those pins do not grant publication eligibility.
+
+Evidence (historical record, 2026-11-13):
 
 The classic package-editor unit appends one native migration to each selected
 source plan while preserving earlier file identities. Its package SQL copy is
@@ -522,7 +744,6 @@ new editor or updated native account reads. The host supplies
 positive integer; absent or malformed configuration refuses quoting and apply.
 The [data owner](DATA_AND_MIGRATIONS.md#retained-renewal-storage) describes the
 ledger, one absorption classification and retained agreement evidence.
-
 
 The channel suffix established the preceding selected-plan prefix of
 91 legacy units, 95 qualified units and 94 restricted units.
@@ -642,15 +863,6 @@ legacy 88-unit identities and inventory remain unchanged. These source bindings
 still require production and installed qualification, as described by the
 migration owner above.
 
-The account-support reference capability manifest declares default-off,
-explicit-host registration and an empty route list. It is descriptive metadata,
-not permission to mount an account API or advertise checkout continuation.
-Commerce recovery and configured purchase are selectable only when the host
-binds their owners; metadata keeps both default-off and mounts nothing.
-Selecting the inert account/support recipe requires the host's verified contexts, complete
-catalogue/schema observation and admission-refusal transport mapping; it changes
-neither the static profile's refusal list nor the subscription serving entry.
-
 M10-9 extends the reviewed forward registry to 18 approval pins, retaining
 exact 14/16-pin release-history reads and every existing binding and position.
 The two managed attempt-replay forwards install the admitted donor-exact
@@ -722,7 +934,6 @@ describes the complete N1+N2 prefix; all preceding file/hash rows stay unchanged
 Install that full prefix before selecting the supported command descriptor.
 Configuration alone does not activate command writers or a runner.
 
-
 The native stock-evidence replay forward `20261022165000` appends a file/hash
 row to the existing platform manifest without changing its immutable prefix or
 format. Its live object-inventory digest changes with the replacement function.
@@ -762,74 +973,6 @@ runtime or establish upgrade compatibility. The
 [reviewed-forward boundary](DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards)
 requires a feature introduction with exact class data and approval pins, plus
 mandatory real-PG/pgTAP catalog evidence.
-
-The CI-only [image inventory](../../config/ci-images.json) owns logical names,
-upstream repositories, tags, index digests and ordered public-registry sources
-for every mirrored image. It records four PostgreSQL images (the install-proof
-database, also used by raw pgTAP and managed-rail tests, the disposable test
-default, and two attribute-version witness pins) plus the starter browser image. No Supabase CLI, CLI-derived or managed-host image remains in hosted CI. The single mirror
-job reads typed owned pins from its own checkout, validates all of them before
-any exec or registry call, and builds upstream sources and mirror targets itself.
-It runs only pinned first-party actions plus the repository script, re-resolves
-source digests, skips identical targets, refuses moved tags and two pins that
-would write different digests to one target, and verifies every copy.
-The shared reader prepends the single mirror
-registry to inventory sources for consumers; mirror copying still uses only
-upstreams. The reviewed-batch gate and shared disposable PostgreSQL helper use
-these pins, preserving the exact digest on every fallback. In CI and locally,
-source order is mirror, then GHCR/Docker Hub/ECR for managed, or Docker Hub/ECR
-for native. Microsoft registry sources are mirror inputs only: consumers pull
-those images from the organization mirror alone, with no upstream fallback.
-The default helper uses the test pin, resolves once per exact ref per process and
-runs the successful digest-qualified source with `--pull=never`; explicit
-non-inventory overrides keep their existing behavior. Before any shared pull,
-exact local index digests bypass network access; a tag-only input and
-inspection errors refuse. The gate, helper and pgTAP runner share one pull retry
-implementation; long Retry-After hints advance by the remaining per-source
-share, while shorter waits are capped to preserve non-GHCR fallback.
-A Docker-free guard rejects literal digests or registry source lists in the gate test.
-An explicit source tag must match the entry's tag and is preserved during
-resolution. PostgreSQL consumers with upstream sources immediately advance on
-mirror absence/private access and do not depend on organization package access
-or publication. The required `install-packages` PostgreSQL 17 startup step is an
-exception: it selects only the GHCR mirror, has no upstream fallback and requires
-access to that organization package. It uses the same inventory digest and starts
-explicitly after job-token GHCR login.
-It runs with `--pull=never` and is removed after package proof, including failure.
-Other local launchers retain their existing behavior. These changes
-establish no public package visibility or runtime/application default.
-
-The `pgtap` lane is required through the `test` aggregate and runs every shipped SQL test on the
-install-proof `postgres:17` digest without the Supabase CLI or its images. Its
-[package pins](../../config/ci-postgres-packages.json) name the exact pg_cron
-1.6.4, pgTAP 1.3.3 and `pg_prove` 3.36 PGDG builds for Debian trixie, for amd64
-and arm64, at immutable PostgreSQL apt-archive paths. Each file's committed
-SHA-256 is verified before the bytes are cached or installed; an unpinned
-architecture, a path that does not match its version or a checksum mismatch
-refuses, and no apt index is read. The job restores the downloads through a
-SHA-pinned `actions/cache` step keyed by the pin file, so only a cold cache reaches
-the apt archive, and every cached file is re-verified before use. A main push
-may reuse the exact-commit merge-group proof, which includes `pgtap`. The packages install only into the disposable container. [The managed-compatibility adapter](../../tests/postgres/managed-compat/supabase.sql)
-is the only file that creates the managed environment for that lane; the runner
-keeps only the replay identity and grants of the retired CLI lane's replay. It is test
-infrastructure, never a runtime bootstrap or a supported-host claim.
-[The managed-compat test helper](../../tests/helpers/managedCompatPostgres.ts)
-boots the same image, packages, server settings and adapter for every
-managed-rail `tests/postgres` suite, including the reviewed-batch gate. The only addition is a login for the `supabase_admin` placeholder, the
-identity those suites use as their owner session. Each required `test-full-shard`
-restores the same SHA-pinned package cache before its tests; a cold cache downloads
-the pinned files from the PostgreSQL apt archive, and every file is re-verified
-before installation.
-The adapter's selected Storage bucket/object columns support the required
-managed-source capture and refusal suite; their types, defaults and keys are
-copied from the pinned managed schema. They implement no Storage API or
-service access. The opt-in
-[`runM14ManagedSourceWitness.mjs`](../../tests/postgres/runM14ManagedSourceWitness.mjs)
-runs the same assertions and the managed catch-up first-leg suite on fresh
-owned CLI 2.122.0 stacks, then the complete local three-installation journey.
-It requires an already-local immutable Node 24.21.0 image argument for H1/H2.
-[CI image mirror guidance](../../CONTRIBUTING.md#ci-image-mirror) owns retry
-budgets, refusal boundaries, mirror execution and the owner's GHCR setup.
 
 The native catalogue now appends the three reviewed M09 duty/effect/payment
 forwards after its preserved prefix. The manifest inventory digest and sparse
@@ -924,18 +1067,6 @@ mutation/webhook admission, deployment routes or default clocks. Native diagnost
 are bounded installation observations, not managed-frequency or full-native-sender
 parity. A built shell does not establish an email destination or T07 action.
 
-The opt-in direct OIDC settings registry declares issuer and separate customer
-and operator API audiences. Selecting them adds no browser provider or default
-login route. Invalid or overlapping audiences refuse composition; managed bundles
-retain native federation sessions. The [identity contract](IDENTITY.md#opt-in-oidc-access-tokens)
-owns the additive verifier API, deterministic principal mapping and refusals.
-
-The disposable identity reference's run directory, run id and local mail origin
-are evaluation settings bound to one owned installation. They establish no
-persistent customer identifier, package API version or migration contract. The
-selected browser import inventory is independent of the public default build;
-server credentials do not become browser configuration.
-
 Identity privacy appends the direct receipt migration at position 69 while
 preserving the preceding manifest entries and SQL projection identities. Erasure
 requires this forward, explicit contributor registration and declared retention
@@ -953,13 +1084,6 @@ constraint refuses ambiguous identities; customer links and machine credentials
 are preserved. [Identity](IDENTITY.md#direct-human-login) owns the authentication
 codes, limits and compatibility requirements; no managed migration is added.
 
-The environment registry declares `IDENTITY_EMAIL_VERIFYING_PROVIDERS` as an
-optional server-only value with an empty default. Managed identity hosts parse
-its comma-separated provider identifiers as explicit assertions of mailbox
-verification; malformed declarations refuse configuration. This setting changes
-email-association admission, without changing stored identities or schema. See
-[identity policy and migration](IDENTITY.md#responsibility-and-composition).
-
 Operator invitations add a bounded TTL for direct hosts that call the parser and
 one append-only direct migration manifest row. Such hosts refuse malformed TTL
 values before writes; the managed reference runner neither calls the parser nor
@@ -970,37 +1094,10 @@ Managed revoked-row reinvitation refuses with `MANAGED_REINVITE_UNSUPPORTED`.
 boundary; [data compatibility](DATA_AND_MIGRATIONS.md#compatibility-lifecycle) owns
 the direct catalogue identity and the managed pending-lifecycle compatibility gap.
 
-The runtime forward registry may pin exactly eight legacy browser-policy
-retirements alongside its fixed function and privilege bindings. Retirement
-checks exact names, tables, preceding statement hashes and ordered DROP
-statements; it does not admit arbitrary RLS changes. Introduction follows the
-[co-located SQL/pin rule](DATA_AND_MIGRATIONS.md#co-located-sql-and-approval-pins).
-Control approval installs no database permission and cannot stand in for the
-corrected forward's actual-role tests.
-
 The publication catalogue now includes the ordered runtime capability forward
 and its actual-role and renewal-lock witnesses. The derived source contract
 binds that inventory and its classifications; it does not grant permissions or
 change package APIs. Runtime authority comes from the separately admitted SQL.
-
-The optional runtime-forward registry is a finite security admission: it pins
-one or two files with ordered exact grants. The first pins five unchanged
-existing function identities; the checker independently limits its service
-columns and four existing callable functions, plus authenticated profile/membership
-reads and two pure index helpers. The optional second pins the identity
-capabilities file with no functions or policies, only service_role INSERT on
-`clients.email`, `auth_user_id`, `acquisition_source` and `lifecycle_stage`, and
-UPDATE on `auth_user_id`, INSERT on `admin_users.id`, `email`, `role`,
-`membership_state`, `membership_provenance` and `membership_accepted_at` for
-operator activation (`is_machine_actor` keeps its false default), and SELECT on `admin_users.email`
-for invitation eligibility and conflict checks.
-It does not authorize arbitrary runtime grants. Introduction follows the same
-co-located SQL/pin rule; registry installation alone does not change database
-permissions.
-
-Stable status, idempotency, and provider-extension commitments wait for the stable-framework requirements.
-Before then, changes must still preserve the contracts above and state their
-preview compatibility boundary explicitly.
 
 The [reviewed function-forward approval data](../../config/reviewed-platform-forwards.json)
 binds exact managed SQL files and old/new function definitions. Its replacement
@@ -1033,90 +1130,9 @@ replay, payment-link audit receipts, acquisition finalize admission and terms
 reading, new-purchase ATP and starter graduation follow the compatibility actions
 in [Data and migrations](DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards).
 
-While `@openlup/core` is below 1.0, every `@openlup/*` package is released in
-one set version `0.N.P` from one commit, each package with its own tag
-`openlup-<package>-v<version>` at that commit, and a source preview carries no
-package. `release:bump --set` prepares every publishable package's version,
-and every exact internal pin on one, in its manifest and lockfiles.
-`packages:check` and `@openlup/core`'s release check admit only a set version
-below 1.0, `packages:check` refuses publishable packages at different
-versions, and the package release workflow refuses a version that differs from
-the manifest or that npm holds or has passed. `publish-package.yml` with
-`package: all` releases the set under one approval, one tag and immutable
-release per package at the set commit. Dispatching the same set again resumes
-it: a package npm holds with the same tarball is skipped, a package whose
-release exists but npm lacks the version waits for the re-run of its failed
-publication, the rest are released, and any other state stops the set. A patch
-set is refused when a package's API snapshot differs from its previous set's
-release tag. Historical previews retain
-their recorded package versions. This is release identity, not a stable
-compatibility promise.
-
-The subscription browser profile's closed import list follows the package
-exports selected by its build. Core entries therefore name built `dist/*.js`
-modules; source paths are not an alternative runtime route. The core workspace
-must be built before checking that profile's import closure.
-
-The repository's
-[`neutrality baseline`](../../config/openlup-neutrality-baseline.json) records
-existing source findings rather than declaring the tree free of them. Its full
-source commit identifies the measured base, scanner blob identities pin the
-counting implementation, and SHA-256 keys identify exact relative paths. Each
-count belongs to one path and category; a reduction elsewhere cannot pay for an
-increase, and a new path has no inherited allowance.
-The check applies its explicit opt-in adapter vocabulary allowances before
-comparing these counts, including the scoped root `ROADMAP.md` addition below.
-
-The [repository check](../../scripts/public-ci-neutrality.mjs) counts text
-regardless of filename extension and inventories binary files. It refuses
-increases against both the comparison tree and the accepted baseline, including
-an increased baseline allowance. Baseline regeneration may lower existing
-allowances. It cannot admit new baseline debt except for the fixed
-diagnostic-fixture introduction
-recorded in the checker. That introduction admits five exact SQL fixture files
-in category `ui-15`, verified by their complete SHA-256 bytes, original counts
-and accepted counts, against one full comparison commit. The explicit baseline
-recalibration is required; the candidate still must fit that baseline. A later
-comparison commit uses the ordinary ratchet, including refusal of regrowth after
-a reduction. Scanner pins and every other path, category and increase remain
-unchanged. These counts reuse the existing scanner semantics and do not expand
-a runtime contract or establish a stable preview channel.
-
-Apart from the scoped root `ROADMAP.md` addition below, the opt-in
-communications adapters have a `ui-12` vocabulary allowance only
-inside their two declared source/test directories, their exact API reports and
-exact cold-consumer proof lines. The exact path-segment tokens
-`communications/resend` and `communications/klaviyo` are additionally allowed in
-the platform manifest, release gates, package boundary test, publication
-catalogue, platform CHANGELOG, its non-packed `CHANGELOG-HISTORY.md` and validated
-platform `changes/*.md` fragments,
-this page, the architecture page and the A1 ledger.
-Those same two subpath tokens are allowed in only the A1 reference binding and
-its adjacent test under `server/runtime/communications`; bare adapter words
-receive no allowance there. A paired out-of-scope token plant must still fail.
-The two snapshot filename tokens are additionally allowed only in the platform
-release-gates file and publication catalogue; the two relative adapter entry
-tokens are allowed only in the package boundary test. The undeclared-subpath
-fixture uses a neutral vendor segment and needs no allowance.
-The ledger additionally allows bare adapter names. The root `ROADMAP.md`
-provider matrix is the one scoped addition to these adapter vocabulary
-allowances, with at most two matches each for categories `ui-12`, `ui-13`,
-`ui-14` and `ui-15` at that exact path. A third match, those terms at other paths
-outside their existing adapter allowances, and every other counted term or
-category remain checked. Neutral communications sources and contracts, other
-root content and other documentation remain checked outside their existing
-allowances. The baseline and scanner pins are unchanged. See the
-[CONTRIBUTING neutrality check guidance](../../CONTRIBUTING.md#package-policy-and-release-checks).
-
-Published Tree CI enforces that ratchet in required `self-check` and exercises
-its CLI refusal tests in required root `test`. Managed pgTAP is also required
-through that aggregate; follow [testing](../../CONTRIBUTING.md#test-scope-and-diagnostics)
-for execution and proof limits. These checks do not grant application privileges
-or declare complete compatibility evidence. Existing release context checks remain unchanged.
-
-The outbox rail is a local experimental package candidate in the package catalogue. Its exact core peer, export snapshots and shipped baseline hash are separate from publication eligibility. Admission compares the complete observed set and selected adapter facts; unknown inventory or probe state cannot activate a candidate.
-
 ### Native communications evidence
+
+Evidence: historical record, 2026-11-13. Not reader guidance.
 
 C-compose adds binding-scoped message lookup and bounded delivery evidence.
 Foreign references produce no unrelated row; ambiguous message identity refuses.
@@ -1154,6 +1170,8 @@ adds the native PG and reference-binding suites while retaining every old select
 
 ## Communications import compatibility
 
+Evidence: historical record, 2026-11-13. Not reader guidance.
+
 M04 P1 preserves the existing public communications contract while moving its
 provider-agnostic algorithms to the platform package. Auth standard-webhook verification
 keeps its stream-only body reader and millisecond clock; the maintained HTTP mail provider keeps its own
@@ -1168,32 +1186,19 @@ Browser-used renderer and preview values remain local. See the
 
 ## Neutral marketing sync
 
-The development-preview communications entries expose the same 17 type-only
-marketing-sync declarations in
-[`marketingSync.ts`](../../packages/platform/src/communications/contracts/marketingSync.ts).
-The four families have five operations: `profile.sync`, `consent.read`,
-`erasure.request`, `erasure.read` and additive `consent.push`. Capabilities bind an account, environment,
-namespace, mapping version and audience. Unsupported scope refuses honestly;
-verification remains pending until the applicable account evidence is admitted.
-This contract supplies no provider implementation or activation.
+Moved to [Marketing sync](../../packages/core/docs/guide/concepts/marketing-sync.md#operations-and-scope).
+
+Keep private mapper and brand construction inside the adapter boundary. Preserve
+existing marketing imports, ports and observations, including
+`NewsletterSyncProviderPort`. Result unions remain closed; new adapters must
+retain authority checks without silently widening existing ports.
 
 The private construction mapper resolves opaque subjects and owned targets.
-Brands supplement schema, binding, audience, subject, case and journal checks;
-a cast or deserialized receipt grants no authority. Admission saves validated,
-immutable effect evidence before dispatch and rechecks generation and tombstones
-after awaits. Profile sync changes owned scalar data only. Current-state consent
-readback has bounded coverage and source-bound negative facts; account-wide
-facts retain that scope and audience denials cannot become global. Remote
-subscribed state never grants local consent. The `NegativeFeedback` discriminant
-union is readonly, matching its other fields.
+Admission stores validated immutable effect evidence before dispatch and
+rechecks generation and tombstones after awaits. The type declarations live in
+[`marketingSync.ts`](../../packages/platform/src/communications/contracts/marketingSync.ts).
 
-Replay identity is `(binding, operation, subjectReference, requestId)` with all
-four binding coordinates. Generation is a separate stale fence. A current
-new-generation call with the same effect replays without dispatch; its wrapper
-echoes the call and its receipt retains the original request. Changed effect
-fields under that key refuse `invalid_request`. Unresolved admission or partial
-persistence fences new keys too. Cooling is durable and a failed cooldown write
-quarantines dispatch; public retry delays are finite positive seconds.
+Evidence (historical record, 2026-11-13):
 
 Each operation has a closed result union. Mutation accepted means admitted
 intent; acknowledged means provider acceptance. Neither means erasure completed.
@@ -1210,23 +1215,14 @@ records the offline synthetic proof and remaining delivery gates.
 
 ### Consent push admission and reconciliation
 
-`ConsentPushRequest`, `ConsentPushResult` and `ConsentPushPort` reuse the frozen
-binding, subject, failure and capability types without widening the original
-provider. A grant is one local subject, purpose and configured audience with its
-local consent evidence reference. Withdrawal carries local withdrawal evidence;
-only explicit withdrawal of every purpose authorizes account-wide scope. Missing
-or blank evidence refuses `invalid_request`; foreign/provider-only/substituted
-evidence refuses `provenance`; revoked, superseded or wrong-direction local
-authority refuses `restricted`. Generation is checked before replay and after
-awaits. No remote state, membership or successful write grants local permission.
+Moved to [Marketing sync](../../packages/core/docs/guide/concepts/marketing-sync.md#consent-push-admission-and-reconciliation).
 
-The existing capability declaration is intersected with `consent.push` and its
-`grantEffect: "audience" | "account-wide"`. Both directions require support and
-owner TEST evidence; missing evidence remains `verification_pending`. No-trigger
-admission covers every declared effect, including other-audience profile-consent
-flows, segments and backfills for account-wide grant effects. Unaccounted armed
-flows, unsafe DOI mail, suppression-clearing subscribe or unknown suppression
-coverage refuse grants. Historical import is never an admission bypass.
+Keep provider effect mappings and proof requirements with adapter design.
+Implementations must preserve no-trigger admission, suppression safety, safe
+audience withdrawal and all-purpose authority checks without widening the
+original provider ports.
+
+Evidence (historical record, 2026-11-13):
 
 Klaviyo email's planned mapping declares account-wide grant effects, while local
 grants stay audience-scoped. Audience withdrawal must have trustworthy list-only
@@ -1237,36 +1233,6 @@ unsupported account-wide withdrawals refuse. Brevo list removal projects members
 only, without claiming global consent. These are partial design mappings, not
 provider certification. No flow management, suppression editing or vendor factory
 is introduced by this contract.
-
-Withdrawals dispatch immediately even when remote consent is unknown or an
-earlier grant is unsettled, subject to local authority, identity, safe scope and
-ordinary admission minus exactly the fence caused by this subject's unresolved
-grants (ambiguous acceptance, failed recording, unresolved dispatch or partial
-persistence). Another subject's grant-caused uncertainty never holds a withdrawal.
-Availability quarantine held exclusively by grant causes is exempt across subjects;
-any non-grant cause keeps it closed. Durable non-grant ledger quarantine, storage
-faults, the single in-flight slot, pacing and the withdrawal's same-key replay
-fence still apply. Account-level provider cooling returns `retryable/cooling`
-with finite positive `afterSeconds` for the host to retry. Non-grant quarantine
-requires explicit host repair. A pending
-or unconfirmed withdrawal blocks grants for that subject/audience; account-wide
-withdrawal covers every audience. Unresolved dispatch still fences duplicate sends.
-
-Accepted means durable intent; acknowledged includes documented asynchronous
-acceptance. Neither completes or proves subscribed/unsubscribed state. Both success
-variants require boolean `reconcileRequired`. A dispatched withdrawal whose own
-recording fails reports accepted/acknowledged with `journal: "unknown"`, never
-confirmed persistence. If an earlier grant is unsettled or
-its settlement cannot be established, withdrawal returns `true`; replay retains
-that unresolved race and remote state counts as UNKNOWN regardless of journal
-confirmation or an early unsubscribed read. Only `consent.read` after all earlier
-grant jobs settle can resolve it. Pending, unknown or insufficient readback leaves
-it unresolved. If that fresh read says subscribed, the HOST reissues withdrawal
-through existing reconciliation with a new request ID. The adapter adds no job API,
-executor, callback or automatic retry. Even `reconcileRequired:false` proves no
-remote effect. Receipt evidence stays the original admitted request while the
-result echoes the current call; replay identity excludes generation and rejects
-changed audience, action or evidence with `invalid_request`.
 
 ## Source release snapshots
 
@@ -1519,27 +1485,21 @@ the unscoped wrapper can run. Managed order-status reversals use the seller
 request wrapper and preserve the incumbent result. SQL replay identity conflicts
 surface as typed conflicts. Native upgrades never freeze a previously claimed duty.
 
-Invoicing keeps issued proof, exact scoped absence, unknown and unsupported
-separate. Unknown never authorizes another create; correction recovery binds
-stable correction identity and parent. Local void cannot erase an issued
-invoice. An owed-duty readback retains unsupported duties and capture faults;
-`accountingRequested=false` does not prove absence. Distinct payout items stay
-distinct, and account projections preserve owner and document lineage. Host
-artifact persistence, clearance observation and M04 acceptance are separate proofs.
-See the [invoicing contract reference](PLATFORM_PACKAGE_REFERENCE.md#invoicing-contracts).
+Reader guidance: [Compose invoicing](../../packages/core/docs/guide/how-to/build/invoicing.md).
+
+Host artifact persistence, clearance observation and M04 acceptance are separate
+proofs. The [invoicing contract reference](PLATFORM_PACKAGE_REFERENCE.md#invoicing-contracts)
+retains source witnesses.
 
 See the [M09 forward owner](DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval) for the registered managed-correction limit and follow-up.
 
-The invoicing refusal factory cannot clear a previously unknown effect: its
-unsupported result describes this call only. Offline conformance checks stable
+Offline conformance checks stable
 identity, recovery without a second write and parent mismatch before another
 write. Adapter-owned fixtures establish this contract boundary; live fiscal
 readiness and inbox delivery require their own evidence. Native P4a fencing is
-covered by the real-Postgres conformance witness, with no provider access. The
-store refuses absent host facts before writes; the duty stays owed. Native
+covered by the real-Postgres conformance witness, with no provider access. Native
 child-document corrections and managed base-row corrections have separate
-migration descriptors. An unknown claim always recovers by exact readback;
-only authoritative scoped absence can authorize a fresh create.
+migration descriptors.
 
 ## Account self-service owner results
 
