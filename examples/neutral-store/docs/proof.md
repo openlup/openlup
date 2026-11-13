@@ -313,6 +313,10 @@ seconds: 70 source and 68 extracted tests passed, strict typecheck and build
 passed, and installation used only locally packed inputs offline. The initial
 13.994-second measurement is retained above. No gate budget or command changed.
 
+Since 2026-11-13 the cold consumer's source run covers only the `sourceOnly`
+tests; copied tests run once, in the extracted application. The extraction test
+still runs the materialized test command.
+
 ## Origin and native read composition follow-up (2026-11-02)
 
 The source and extracted-copy test layout pass 168 source tests, zero skips,
