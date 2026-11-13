@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { Pool, type PoolClient } from "pg";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { qualifiedPostgresStartupOptions, qualifiedAdminPostgresStartupOptions,
@@ -20,6 +21,7 @@ const priorInventories = {
 } as const;
 export async function lifecycleInstallation(profile: LifecycleProfile) {
   const container = await runPostgresContainer({ name: `lifecycle-closure-${profile}-${process.pid}`, password: "synthetic-conformance" });
+  const root = mkdtempSync(join(tmpdir(), `lifecycle-prefix-${profile}-`));
   const pools: Pool[] = [];
   const pool = (connectionString: string, options?: string) => { const p = new Pool({ connectionString, options: `${options ?? ""} -c timezone=${lifecycleTimeZone}` }); pools.push(p); return p; };
   try {
@@ -42,7 +44,6 @@ export async function lifecycleInstallation(profile: LifecycleProfile) {
     prefix.objectInventorySha256 = priorInventories.legacy;
     prefix.qualified.objectInventorySha256.bootstrapMigrator.withRestore = priorInventories["qualified-v2"];
     prefix.qualifiedAdmin.objectInventorySha256.installerManaged = priorInventories["qualified-admin"];
-    const root = resolve(`.context/scratch/c21/prefix-${profile}`);
     for (const plan of [prefix, prefix.qualified, prefix.qualifiedAdmin]) {
       // The frozen prefix ends before this forward; later appended forwards are not part of it.
       const end = plan.forward.findIndex((entry: { file: string }) => entry.file === lifecycleForward);
@@ -75,7 +76,7 @@ export async function lifecycleInstallation(profile: LifecycleProfile) {
     const after = await catalog(), guardAfter = await guard(), bodiesAfter = await bodies();
     const runtime = profile === "legacy" ? owner : pool(login(r), "-c role=service_role");
     return { owner, migration, runtime, before, after, guardBefore, guardAfter, bodiesBefore, bodiesAfter, runner: runner(), profile,
-      close: () => closePostgres(container, pools),
+      close: async () => { try { await closePostgres(container, pools); } finally { rmSync(root, { recursive: true, force: true }); } },
       async actor<T>(principal: string, work: (client: PoolClient) => Promise<T>) {
         // Owner is fixture setup only until SET ROLE; the operation has exactly actor privileges.
         const db = await owner.connect();
@@ -84,7 +85,7 @@ export async function lifecycleInstallation(profile: LifecycleProfile) {
           const value = await work(db); await db.query("COMMIT"); return value;
         } catch (error) { await db.query("ROLLBACK"); throw error; } finally { db.release(); }
       } };
-  } catch (error) { await closePostgres(container, pools); throw error; }
+  } catch (error) { try { await closePostgres(container, pools); } finally { rmSync(root, { recursive: true, force: true }); } throw error; }
 }
 export type LifecycleInstallation = Awaited<ReturnType<typeof lifecycleInstallation>>;
 export async function lifecycleSubject(owner: Pool) {

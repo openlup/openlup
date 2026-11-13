@@ -674,7 +674,9 @@ For a provider subscription-cycle failure with recorded renewal correlation,
 application first calls `subscription_retry_apply_failure` under
 `<apply-key>:truth`. Its immutable failure receipt binds the provider attempt,
 payment, cycle, sequence, classification and observation times to the resulting
-rung and schedule. Truth reuses `<apply-key>:truth:settlement`; it does not open
+rung and schedule. Truth reuses `<apply-key>:truth:settlement`, or the original
+renewal outcome's settlement transition when that same original attempt was
+already refused under another key; it does not open
 the generic dunning case on this path. The cycle remains `payment_pending`, and
 the retry obligation owns scheduling. At this stage no provider dunning case,
 notice or token handoff is composed. Attributed dunning and a real provider
@@ -684,6 +686,15 @@ The service-only `payment_provider_retry_failure_recorded` lookup returns only
 whether the intent, receipt key and exact attempt match that recorded context.
 It keeps invoker truth routes from reading private provider tables directly;
 browser roles retain neither lookup execution nor raw-table access.
+
+If pause wins after local renewal preparation and before provider preparation,
+not-chargeable cleanup uses the renewal outcome owner to release committed
+renewal stock, and the purchase-reservation owner to release order holds.
+Initial payment expiry compensates the provisional activation through checkout
+compensation before expiring the order. An automatic initial-checkout sweep
+that wins cancellation also terminalizes its provider lifecycle and settlement
+intent; waiting preparation refuses before creating an attempt. Preparation
+that wins first fences the sweep through its committed attempt.
 
 | Historical data | Result and manual path |
 | --- | --- |

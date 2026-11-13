@@ -5931,7 +5931,7 @@
     },
     {
       "path": "db/platform/migrations/20261114100000_payment_provider_attempt_store.sql",
-      "sha256": "7245270f012fdd2ac244f9a6a30fb1693c82733d1a996e74e08aa321d075655b",
+      "sha256": "1ec4001938ca9e66b0cb915e6238c9dd8a78b4a665c1cb0fd314376630fdd835",
       "functions": [
         {
           "signature": "public.payment_simulator_begin_attempt(text,uuid,text,jsonb,timestamptz)",
@@ -5951,7 +5951,7 @@
         {
           "signature": "public.payment_truth_apply_terminal(uuid,text,text,timestamptz,text,text,jsonb,text,text,text)",
           "beforeSha256": "de7b4757b57b5469d8dc39abbae13def6f8223d66c4ec08a7cdd484948998744",
-          "afterSha256": "939e94e67dc12f777867271eeec0b0dfd55f2d897c7dcc116521b1b9364b911c"
+          "afterSha256": "5f940847d9d512a375dd872c996f4f639d7b88f6fae32ed9e27494a467c80224"
         },
         {
           "signature": "public.payment_truth_record_reconciliation(uuid,text,text,text,text,timestamptz,text,text,jsonb,text,text,text)",
@@ -5966,7 +5966,7 @@
         {
           "signature": "public.commerce_cancel_abandoned_purchase_checkout(text,uuid,text,timestamptz)",
           "beforeSha256": "778ee6094bc0fd59e3fd73693fd7c2c1f68c07f921ebcd3a89774753cb3c6d44",
-          "afterSha256": "016811c0871778661c99ceac4526e68a10140707b0bbdf8df496853d1224a7d3"
+          "afterSha256": "a29844aa6210281d99a5152eecc407e9c0cae9aefb30311bedf9b8662541cb87"
         },
         {
           "signature": "public.oms_cancel_unpaid_order_owned(text,uuid,text,uuid,jsonb,timestamptz)",
@@ -6026,7 +6026,7 @@
         {
           "signature": "public.payment_provider_attempt_prepare(text,uuid,text,text,text,text,text,jsonb)",
           "beforeSha256": null,
-          "afterSha256": "098a1308f09d9376f104e32691defbea07ad24f64e5db23d1b871523285c1fc0"
+          "afterSha256": "01f6b2fe92f5fc650df607fc5f53de852cdf257cf72c5b3526ff775d856e3822"
         },
         {
           "signature": "public.payment_provider_attempt_record(text,uuid,text,text,text,text,text,jsonb,jsonb)",
@@ -6056,7 +6056,7 @@
         {
           "signature": "public.payment_provider_result_apply(text,uuid,uuid,text,timestamptz,text,text,text,text,text,text)",
           "beforeSha256": null,
-          "afterSha256": "c47c028f64e6278b561b03c6f4729916e65d093ad4c16ebd8ff3214f658164b5"
+          "afterSha256": "1a86d3d7578225d63408ffa3895656552265ae78ef16879d8c6036b0b97c4827"
         }
       ]
     }

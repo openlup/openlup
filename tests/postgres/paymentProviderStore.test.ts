@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { createPostgresProviderPaymentControlPort, createPostgresPaymentWebhookControlPort,
   createPostgresProviderExpiredCheckoutSafety, createPostgresProviderPaymentRecoveryGuidancePort,
@@ -415,7 +416,7 @@ it("completes a refused renewal outcome while due-renewal claim holds the root a
   } finally { await writer.query("ROLLBACK"); await pending; writer.release(); claimant.release(); }
 });
 
-async function providerRenewal() {
+async function localProviderRenewal() {
   const r = await renewal(env.owner, 10, 1, randomUUID(), true);
   await call(env.owner, "fulfillment_reserve_subscription_renewal", [r.operation, r.token, 900, "2026-09-01T12:00:00Z"]);
   const original = await call(env.owner, "commerce_prepare_subscription_renewal", [r.operation, r.token, "2026-09-01T12:00:00Z"]);
@@ -425,10 +426,129 @@ async function providerRenewal() {
     subscriptionId: f.subscription, subscriptionCycleId: cycle, amountMinor: r.snapshot.totalAmountMinor, currency: "XXX", metadata: {}, channelKey: "fixture", at: AT });
   const prepare = { idempotencyKey: `prepare:${f.intent}`, paymentIntentId: f.intent, provider: "card_rail", providerIdempotencyKey: `provider:${f.intent}`,
     providerRequestFingerprint: "f".repeat(64), providerFlow: "off_session_payment", paymentMethodRef: "method-primary", requestPayload: { source: "fixture" } };
-  const a = await prepared({ ...f, prepare });
+  return { ...f, r, prepare };
+}
+async function providerRenewal() {
+  const f = await localProviderRenewal(), { r, prepare } = f;
+  const a = await prepared(f);
   await call(env.owner, "commerce_acknowledge_subscription_renewal_attempt", [r.operation, r.fingerprint, `pi_${a.paymentAttemptId}`, AT]);
   return { ...f, r, prepare, a };
 }
+
+it("releases committed renewal stock when pause wins after local preparation and before provider preparation", async () => {
+  const f = await localProviderRenewal();
+  const reservation = async () => (await env.owner.query("SELECT status,expires_at,terminal_reason FROM public.fulfillment_inventory_reservations WHERE renewal_operation_id=$1", [f.r.operation])).rows;
+  expect(await reservation()).toEqual([{ status: "committed", expires_at: null, terminal_reason: null }]);
+  await env.owner.query("UPDATE public.subscriptions SET status='paused' WHERE id=$1", [f.subscription]);
+  await expect(control().prepareProviderAttempt(f.prepare)).rejects.toThrow("payment_control_subscription_not_chargeable");
+  expect(await reservation()).toEqual([{ status: "released", expires_at: null, terminal_reason: "subscription_not_chargeable" }]);
+  expect((await env.owner.query("SELECT state,terminal_reason FROM public.subscription_renewal_operations WHERE id=$1", [f.r.operation])).rows)
+    .toEqual([{ state: "refused", terminal_reason: "subscription_not_chargeable" }]);
+  expect((await env.owner.query("SELECT reason FROM public.subscription_renewal_outcomes WHERE renewal_operation_id=$1", [f.r.operation])).rows)
+    .toEqual([{ reason: "subscription_not_chargeable" }]);
+  expect((await env.owner.query("SELECT status FROM public.commerce_orders WHERE id=$1", [f.order])).rows).toEqual([{ status: "cancelled" }]);
+  expect((await env.owner.query("SELECT status FROM public.commerce_settlement_intents WHERE id=$1", [f.intent])).rows).toEqual([{ status: "cancelled" }]);
+  expect((await env.owner.query("SELECT status FROM public.subscription_cycles WHERE id=$1", [f.cycle])).rows).toEqual([{ status: "cancelled" }]);
+  expect((await env.owner.query("SELECT count(*)::int AS n FROM public.payment_provider_attempts WHERE settlement_intent_id=$1", [f.intent])).rows[0].n).toBe(0);
+});
+
+it("reuses the settled original renewal refusal under another key with one transition and one rung receipt", async () => {
+  const f = await providerRenewal(), outcomeKey = `early-refusal:${f.intent}`;
+  await call(env.owner, "commerce_record_subscription_renewal_outcome", [f.r.operation, outcomeKey, f.r.fingerprint, "refused", `pi_${f.a.paymentAttemptId}`, "declined", AT]);
+  const original = (await env.owner.query("SELECT id FROM public.commerce_settlement_transitions WHERE intent_id=$1 AND outcome='failed'", [f.intent])).rows;
+  expect(original).toHaveLength(1);
+  await result(f, `provider-refusal:${f.intent}`);
+  expect((await env.owner.query("SELECT id FROM public.commerce_settlement_transitions WHERE intent_id=$1 AND outcome='failed'", [f.intent])).rows).toEqual(original);
+  expect((await env.owner.query("SELECT settlement_transition_id FROM public.payment_truth_events WHERE settlement_intent_id=$1", [f.intent])).rows)
+    .toEqual([{ settlement_transition_id: original[0].id }]);
+  expect((await env.owner.query(`SELECT r.attempt_sequence,r.input->>'paymentAttemptId' AS attempt,r.result->>'retry_attempt' AS rung
+    FROM public.subscription_retry_receipts r JOIN public.subscription_retry_obligations o ON o.id=r.obligation_id WHERE o.cycle_id=$1 AND r.kind='failure'`, [f.cycle])).rows)
+    .toEqual([{ attempt_sequence: 0, attempt: f.a.paymentAttemptId, rung: "1" }]);
+  const before = await business(f);
+  expect(await result(f, `duplicate-refusal:${f.intent}`)).toMatchObject({ kind: "ignored_duplicate_terminal_failure" });
+  expect(await business(f)).toEqual(before);
+});
+
+async function initialCheckout() {
+  const f = await fixture();
+  await call(env.runtime, "subscription_declare_provisional_activation", [`declare:${f.order}`, f.order, 28, AT]);
+  return f;
+}
+
+it("terminalizes provisional initial activation on expiry through checkout compensation", async () => {
+  const f = await initialCheckout(), reservation = await hold(f); await prepared(f);
+  await result(f, `initial-expired:${f.intent}`, "expired");
+  expect((await env.owner.query("SELECT state,compensated_at FROM public.subscription_activations WHERE order_id=$1", [f.order])).rows)
+    .toEqual([{ state: "compensated", compensated_at: new Date(AT) }]);
+  expect((await env.owner.query("SELECT reason FROM public.commerce_checkout_compensations WHERE order_id=$1", [f.order])).rows)
+    .toEqual([{ reason: "subscription_activation_failed" }]);
+  expect((await env.owner.query("SELECT status FROM public.commerce_orders WHERE id=$1", [f.order])).rows).toEqual([{ status: "expired" }]);
+  expect((await env.owner.query("SELECT status FROM public.fulfillment_inventory_reservations WHERE id=$1", [reservation])).rows).toEqual([{ status: "released" }]);
+  expect((await env.owner.query("SELECT count(*)::int AS n FROM public.subscription_retry_obligations WHERE order_id=$1", [f.order])).rows[0].n).toBe(0);
+  const before = await business(f);
+  expect(await result(f, `initial-expired:${f.intent}`, "expired")).toMatchObject({ replayed: true });
+  expect(await result(f, `initial-expired-duplicate:${f.intent}`, "expired")).toMatchObject({ kind: "ignored_duplicate_terminal_failure" });
+  expect(await business(f)).toEqual(before);
+});
+
+// Both sessions execute real transactions. The existing barrier observes the
+// losing backend blocked by the uncommitted winner before allowing its commit.
+async function commitBefore<T>(win: (db: PoolClient) => Promise<T>, lose: (db: PoolClient) => Promise<unknown>) {
+  const winner = await env.runtime.connect(), loser = await env.runtime.connect(); let pending: Promise<unknown> | undefined;
+  try {
+    await winner.query("BEGIN");
+    const won = await win(winner), winnerPid = (await winner.query("SELECT pg_backend_pid() AS pid")).rows[0].pid;
+    const loserPid = (await loser.query("SELECT pg_backend_pid() AS pid")).rows[0].pid;
+    pending = lose(loser).catch(error => error);
+    await blockedBy(loserPid, winnerPid);
+    await winner.query("COMMIT");
+    return { won, lost: await pending };
+  } finally { await winner.query("ROLLBACK"); await pending; winner.release(); loser.release(); }
+}
+
+it("commits cancellation before waiting inline preparation with no additional attempt", async () => {
+  const f = await fixture(), a = await prepared(f); await result(f, `decline:${f.intent}`);
+  const race = await commitBefore(db => call(db, "commerce_cancel_abandoned_purchase_checkout", [`cancel-winner:${f.order}`, f.order, "abandoned", AT]),
+    db => createPostgresProviderPaymentControlPort(db, options).prepareProviderAttempt({ ...f.prepare, idempotencyKey: `inline-loser:${f.order}`,
+      requestPayload: { source: "commerce.checkout-inline-recovery.prepare.v1", expectedPaymentAttemptId: a.paymentAttemptId, retryRequestId: randomUUID(), purchaseContext: "one_time" } }));
+  expect(race.won).toMatchObject({ cancelled: true });
+  expect(race.lost).toMatchObject({ message: "payment_control_inline_retry_order_not_payable" });
+  expect((await env.owner.query("SELECT count(*)::int AS n FROM public.payment_provider_attempts WHERE settlement_intent_id=$1", [f.intent])).rows[0].n).toBe(1);
+  expect((await env.owner.query("SELECT status FROM public.commerce_orders WHERE id=$1", [f.order])).rows).toEqual([{ status: "cancelled" }]);
+  expect((await env.owner.query("SELECT status FROM public.payment_provider_attempts WHERE id=$1", [a.paymentAttemptId])).rows).toEqual([{ status: "failed" }]);
+  expect((await env.owner.query("SELECT status FROM public.payment_provider_states WHERE id=$1", [f.intent])).rows).toEqual([{ status: "cancelled" }]);
+  expect((await env.owner.query("SELECT status FROM public.commerce_settlement_intents WHERE id=$1", [f.intent])).rows).toEqual([{ status: "cancelled" }]);
+});
+
+const sweepInitial = (db: PoolClient | LifecycleInstallation["runtime"]) => call(db, "commerce_sweep_initial_checkouts", [50, "2026-11-14T12:00:00Z", {}, AT]);
+
+it("commits provider preparation before the automatic sweep and retains the provisional aggregate", async () => {
+  const f = await initialCheckout(), winner = await env.runtime.connect();
+  try {
+    await winner.query("BEGIN");
+    const a = await createPostgresProviderPaymentControlPort(winner, options).prepareProviderAttempt(f.prepare);
+    // A NOWAIT refusal proves the native provisional's order root is held.
+    await expect(env.owner.query("SELECT id FROM public.commerce_orders WHERE id=$1 FOR UPDATE NOWAIT", [f.order])).rejects.toMatchObject({ code: "55P03" });
+    expect(await sweepInitial(env.runtime)).toMatchObject({ swept: 0 });
+    await winner.query("COMMIT"); expect(a).toMatchObject({ status: "created", replayed: false });
+    expect(await sweepInitial(env.runtime)).toMatchObject({ swept: 0 });
+    expect((await env.owner.query("SELECT state FROM public.subscription_activations WHERE order_id=$1", [f.order])).rows).toEqual([{ state: "provisional" }]);
+    expect((await env.owner.query("SELECT status FROM public.commerce_orders WHERE id=$1", [f.order])).rows).toEqual([{ status: "pending_payment" }]);
+    expect((await env.owner.query("SELECT count(*)::int AS n FROM public.payment_provider_attempts WHERE settlement_intent_id=$1", [f.intent])).rows[0].n).toBe(1);
+  } finally { await winner.query("ROLLBACK"); winner.release(); }
+});
+
+it("commits the automatic sweep before waiting provider preparation with no attempt", async () => {
+  const f = await initialCheckout();
+  const race = await commitBefore(sweepInitial, db => createPostgresProviderPaymentControlPort(db, options).prepareProviderAttempt(f.prepare));
+  expect(race.won).toMatchObject({ swept: 1 });
+  expect(race.lost).toMatchObject({ message: "payment_control_provider_attempt_prepare_intent_not_retryable" });
+  expect((await env.owner.query("SELECT count(*)::int AS n FROM public.payment_provider_attempts WHERE settlement_intent_id=$1", [f.intent])).rows[0].n).toBe(0);
+  expect((await env.owner.query("SELECT state FROM public.subscription_activations WHERE order_id=$1", [f.order])).rows).toEqual([{ state: "compensated" }]);
+  expect((await env.owner.query("SELECT status FROM public.commerce_orders WHERE id=$1", [f.order])).rows).toEqual([{ status: "cancelled" }]);
+  expect((await env.owner.query("SELECT status FROM public.payment_provider_states WHERE id=$1", [f.intent])).rows).toEqual([{ status: "cancelled" }]);
+  expect((await env.owner.query("SELECT status FROM public.commerce_settlement_intents WHERE id=$1", [f.intent])).rows).toEqual([{ status: "cancelled" }]);
+});
 
 it("records one attributed renewal failure before truth reuses its settlement and creates no generic case", async () => {
   const f = await providerRenewal(), key = `decline:${f.a.paymentAttemptId}`, e = await event(f, f.a.paymentAttemptId);

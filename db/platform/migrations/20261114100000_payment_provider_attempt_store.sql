@@ -380,6 +380,17 @@ BEGIN
     UPDATE public.subscription_cycles SET status='cancelled',updated_at=now() WHERE id=v_intent.subscription_cycle_id
      AND subscription_id=v_intent.subscription_id AND status IN ('planned','payment_pending');
     UPDATE public.subscription_retry_obligations SET next_retry_at=NULL,updated_at=now() WHERE cycle_id=v_intent.subscription_cycle_id AND state='waiting';
+    -- Local renewal preparation commits stock before provider preparation. A
+    -- definite no-dispatch refusal belongs to the renewal outcome owner, which
+    -- releases that committed reservation as well as terminalizing the operation.
+    IF EXISTS(SELECT 1 FROM public.subscription_renewal_operations
+      WHERE id=v_order.renewal_operation_id AND state='attempt_prepared') THEN
+     PERFORM public.commerce_record_subscription_renewal_outcome(
+      v_order.renewal_operation_id,'not-chargeable:'||v_intent.id,
+      v_order.renewal_operation_fingerprint,'refused',NULL,'subscription_not_chargeable',now());
+     UPDATE public.commerce_settlement_intents SET status='cancelled',failure_reason='subscription_not_chargeable',updated_at=now()
+      WHERE id=v_intent.id AND status='failed';
+    END IF;
     UPDATE public.commerce_orders SET status='cancelled',updated_at=now(),metadata=metadata||jsonb_build_object('paymentStatus','cancelled','cancelReason','subscription_not_chargeable','source','payment.control.prepare')
      WHERE id=v_intent.order_id AND status='pending_payment';
     FOR v_hold IN SELECT id FROM public.fulfillment_inventory_reservations
@@ -1326,6 +1337,10 @@ BEGIN
     ON CONFLICT (event_type,idempotency_key) DO NOTHING;
     kind:='recoverable_decline';
    ELSE
+    IF EXISTS(SELECT 1 FROM public.subscription_activations WHERE order_id=o.id AND state='provisional') THEN
+     PERFORM public.commerce_compensate_abandoned_checkout(
+      'payment-expired:'||o.id,o.id,'subscription_activation_failed',p_occurred_at);
+    END IF;
     UPDATE public.commerce_orders SET status='expired',metadata=metadata||jsonb_build_object(
      'paymentStatus','expired','failureReason',COALESCE(p_failure_reason,p_result_status),'source','payment.control.v0'),
      updated_at=now() WHERE id=o.id;
@@ -1607,7 +1622,23 @@ BEGIN
     RETURN;
   END IF;
 
-  v_settlement := public.commerce_record_settlement(
+  -- An original renewal refusal can have committed under another event key
+  -- before its provider result arrives. Its attempt-bound rung receipt admits
+  -- reuse of that exact financial transition; later retry attempts settle their
+  -- own keys below.
+  IF p_outcome='refused' AND public.payment_provider_retry_failure_recorded(
+    v_intent.id,p_idempotency_key,p_source_evidence->>'attemptRef') THEN
+    SELECT transition.id INTO v_transition_id
+    FROM public.subscription_retry_receipts receipt
+    JOIN public.subscription_retry_obligations obligation ON obligation.id=receipt.obligation_id
+    JOIN public.subscription_renewal_outcomes outcome ON outcome.renewal_operation_id=obligation.renewal_operation_id
+    JOIN public.commerce_settlement_transitions transition ON transition.intent_id=v_intent.id
+      AND transition.idempotency_key=outcome.event_key||':settlement' AND transition.outcome='failed'
+    WHERE receipt.receipt_key=p_idempotency_key AND receipt.kind='failure' AND receipt.attempt_sequence=0
+      AND obligation.renewal_operation_id=v_intent.renewal_operation_id AND outcome.outcome='refused';
+  END IF;
+  IF v_transition_id IS NULL THEN
+   v_settlement := public.commerce_record_settlement(
     p_idempotency_key || ':settlement',
     v_event.settlement_intent_id,
     CASE WHEN p_outcome = 'captured' THEN 'succeeded' ELSE 'failed' END,
@@ -1620,7 +1651,8 @@ BEGIN
     ),
     p_occurred_at
   );
-  v_transition_id := (v_settlement->>'transitionId')::uuid;
+   v_transition_id := (v_settlement->>'transitionId')::uuid;
+  END IF;
 
   IF p_outcome = 'captured' THEN
     -- Capture owed work only; no document construction or accounting call here.
@@ -2045,6 +2077,12 @@ BEGIN
     ELSE
       answer:=public.commerce_compensate_abandoned_checkout(donor_key,p_order_id,p_reason,p_now);
       IF answer->>'cancelled'='true' THEN
+        UPDATE public.payment_provider_states provider SET status='cancelled',failure_reason=p_reason,updated_at=p_now
+          FROM public.commerce_settlement_intents intent
+          WHERE provider.id=intent.id AND intent.order_id=p_order_id AND provider.status IN ('created','failed','expired');
+        UPDATE public.commerce_settlement_intents intent SET status='cancelled',failure_reason=p_reason,updated_at=p_now
+          WHERE intent.order_id=p_order_id AND intent.status IN ('created','failed')
+            AND EXISTS(SELECT 1 FROM public.payment_provider_states provider WHERE provider.id=intent.id AND provider.status='cancelled');
         FOR held IN SELECT id FROM public.fulfillment_inventory_reservations
           WHERE purchase_order_id=p_order_id AND status='held' ORDER BY id FOR UPDATE LOOP
           PERFORM public.fulfillment_release_purchase_reservation(
