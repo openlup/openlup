@@ -4,11 +4,12 @@
 //
 // The checks read Git objects only. A throwaway bare repository borrows this repository's objects
 // through `objects/info/alternates` and keeps every object and index entry this command writes: the
-// working-tree commit and the pull-request merge commit. No ref, index, worktree file or object of
-// this repository changes. Every Git call on the throwaway repository runs through the self-check's
+// working-tree commit and the pull-request merge commit. This repository's object content, refs,
+// index and worktree stay unchanged, but Git may refresh existing objects' timestamps.
+// Every Git call on the throwaway repository runs through the self-check's
 // helper, whose closed environment drops inherited repository, index and object redirections.
 
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -129,11 +130,16 @@ async function prepareRange(cwd: string, scratch: string, base: string, options:
     // Untracked files exactly as the developer's own Git lists them, with every ignore source it reads.
     // This read-only listing is the only call outside the closed environment; it never touches the throwaway store.
     const untracked = (await reviewGit(top, "ls-files", "--others", "--exclude-standard", "-z")).split("\0").filter(Boolean);
+    // Disable renames and expose intent-to-add so every index-only destination is included.
+    const stagedPaths = (filter: string) => gitBytes(top, ["diff", "--cached", "--ita-visible-in-index", "--no-renames", "--name-only", "-z", `--diff-filter=${filter}`, parent]).toString("utf8").split("\0").filter(Boolean);
+    const deleted = new Set(stagedPaths("D"));
+    const added = [...stagedPaths("A"), ...untracked].filter((path) => !deleted.has(path) && lstatSync(join(top, path), { throwIfNoEntry: false }) !== undefined);
     // The throwaway repository holds this index and its objects; the worktree is only read.
     const scoped = ["-c", "core.hooksPath=/dev/null", `--git-dir=${root}`, `--work-tree=${top}`];
     git(top, [...scoped, "read-tree", parent]);
     git(top, [...scoped, "add", "--update"]);
-    if (untracked.length > 0) git(top, ["--literal-pathspecs", ...scoped, "add", "--pathspec-from-file=-", "--pathspec-file-nul"], `${untracked.join("\0")}\0`);
+    if (added.length > 0) git(top, ["--literal-pathspecs", ...scoped, "add", "--force", "--pathspec-from-file=-", "--pathspec-file-nul"], `${added.join("\0")}\0`);
+    if (deleted.size > 0) git(top, [...scoped, "update-index", "--force-remove", "-z", "--stdin"], `${[...deleted].join("\0")}\0`);
     const tree = git(top, [...scoped, "write-tree"]);
     head = git(root, [...IDENTITY, "commit-tree", "--no-gpg-sign", tree, "-p", parent, "-m", "sql:admit working tree"]);
   }
@@ -205,7 +211,7 @@ export async function sqlAdmit(cwd: string, argv: readonly string[], log: (line:
       if (verdict.message !== undefined) log(`         capability needed: ${capabilityHint(verdict.message)}`);
     }
     const refused = verdicts.filter((verdict) => verdict.status === "REFUSED").length;
-    log(`sql:admit: ${verdicts.length} checks, ${refused} refused. Not run here: npm run oss:published-tree -- --policy and -- --inventory, the neutrality ratchet, the real-PostgreSQL native catalogue test and pgTAP. Hosted CI and the merge queue remain authoritative.`);
+    log(`sql:admit: ${verdicts.length} checks, ${refused} refused. Not run here: npm run oss:published-tree -- --policy and -- --inventory, the neutrality ratchet, the root test suite (including the real-PostgreSQL native catalogue test) and pgTAP. Hosted CI and the merge queue remain authoritative.`);
     return refused === 0 ? 0 : 1;
   } finally {
     process.removeListener("SIGINT", interrupted).removeListener("SIGTERM", interrupted);

@@ -1,6 +1,6 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { env } from "node:process";
@@ -53,6 +53,26 @@ const verdictLines = (stdout: string) => stdout.split("\n").flatMap((line) => {
   const match = /^(PASS|REFUSED) +(.+?) \[(.+?)\](?:: (.*))?$/u.exec(line);
   return match ? [match[4] === undefined ? [match[1]!] : [match[1]!, match[4]]] : [];
 });
+
+function repositorySnapshot(f: Fixture, files: string[]) {
+  return {
+    refs: f.git("for-each-ref", "--format=%(refname) %(objectname)"), head: f.git("symbolic-ref", "HEAD"), commit: f.git("rev-parse", "HEAD"),
+    index: createHash("sha256").update(readFileSync(join(f.root, ".git/index"))).digest("hex"),
+    status: f.git("--no-optional-locks", "status", "--porcelain=v1", "--untracked-files=all", "--ignored"), objects: f.git("count-objects", "-v"),
+    files: files.map((path) => existsSync(join(f.root, path)) ? readFileSync(join(f.root, path), "utf8") : null),
+  };
+}
+
+function workingTreeCli(f: Fixture, base: string, files: string[]) {
+  const before = repositorySnapshot(f, files);
+  const scratch = mkdtempSync(join(tmpdir(), "openlup-sql-admit-tmp-")); roots.push(scratch);
+  const result = cli(f.root, ["--base", base, STALE], { TMPDIR: scratch });
+  expect(repositorySnapshot(f, files)).toEqual(before);
+  expect(readdirSync(scratch)).toEqual([]);
+  expect(result.stderr).toBe("");
+  expect(result.stdout).toContain("(working tree)");
+  return result;
+}
 
 // The underlying checks, called directly on the same commits: the self-check on main and the PR merge commit,
 // then, when the queue's trigger applies, its guard on the PR's own fork point and on the merge-group head.
@@ -157,29 +177,55 @@ describe("sql:admit", () => {
   }, 21_000);
 
   // Measured 2.7 s on a laptop at load average 5; the bound is four times that.
-  it("checks the working tree and leaves refs, the index, the worktree and the object store unchanged", () => {
+  it("checks the working tree and leaves refs, the index, the worktree and object content unchanged", () => {
     const f = fixture();
     stageNativeForward(f);
     f.git("add", REVIEWED_FORWARD_PATH); // staged registry, unstaged manifest, untracked forward
     f.put("ignored.log", "ignored\n"); f.put(".gitignore", "*.log\n");
-    const files = [REVIEWED_FORWARD_PATH, PLATFORM_MIGRATION_MANIFEST, nativePath];
-    const snapshot = () => ({
-      refs: f.git("for-each-ref", "--format=%(refname) %(objectname)"), head: f.git("symbolic-ref", "HEAD"), commit: f.git("rev-parse", "HEAD"),
-      index: createHash("sha256").update(readFileSync(join(f.root, ".git/index"))).digest("hex"),
-      status: f.git("--no-optional-locks", "status", "--porcelain=v1", "--untracked-files=all", "--ignored"), objects: f.git("count-objects", "-v"),
-      files: files.map((path) => readFileSync(join(f.root, path), "utf8")),
-    });
-    const before = snapshot();
-    const scratch = mkdtempSync(join(tmpdir(), "openlup-sql-admit-tmp-")); roots.push(scratch);
-    const result = cli(f.root, ["--base", f.base, STALE], { TMPDIR: scratch });
-    expect(result.stderr).toBe("");
+    const result = workingTreeCli(f, f.base, [REVIEWED_FORWARD_PATH, PLATFORM_MIGRATION_MANIFEST, nativePath, ".gitignore", "ignored.log"]);
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain("(working tree)");
     expect(result.stdout).toContain(`PASS     ${nativePath} [self-check forward admission]`);
     expect(result.stdout).toContain("PASS     co-located approval [queue pull request, fork..head]");
-    expect(snapshot()).toEqual(before);
-    expect(readdirSync(scratch)).toEqual([]);
   }, 11_000);
+
+  it.each(["add", "intent-to-add", "rename"].flatMap((staging) => [
+    { staging, text: "DROP TABLE public.fixture;\n", exit: 1 },
+    { staging, text: "CREATE TABLE public.fixture (id uuid);\n", exit: 0 },
+  ]))("matches committed and direct verdicts for a new forward via $staging (exit $exit)", ({ staging, text, exit }) => {
+    const f = fixture(), source = "source.sql", path = "supabase/migrations/20271106100000_drop.sql";
+    f.put(source, text); const base = f.commit();
+    if (staging === "rename") f.git("mv", source, path);
+    else {
+      f.put(path, text);
+      f.git("add", ...(staging === "intent-to-add" ? ["-N"] : []), path);
+    }
+    const working = workingTreeCli(f, base, [source, path]);
+    expect(working.status).toBe(exit);
+    const head = f.commit(), committed = cli(f.root, ["--base", base, "--head", head, STALE]);
+    expect(committed.stderr).toBe(""); expect(committed.status).toBe(exit);
+    expect(verdictLines(working.stdout)).toEqual(verdictLines(committed.stdout));
+    expect(verdictLines(working.stdout)).toEqual(directVerdicts(f, base, head).verdicts);
+  }, 20_000);
+
+  it.each(["staged", "index-only", "worktree", "new-then-missing"])("omits a %s deletion from the working-tree snapshot", (deletion) => {
+    const f = fixture(), path = "supabase/migrations/20271106100000_fixture.sql";
+    f.put(path, "CREATE TABLE public.fixture (id uuid);\n");
+    let base = f.base;
+    if (deletion === "new-then-missing") f.git("add", path);
+    else base = f.commit();
+    if (deletion === "staged") f.git("rm", path);
+    else if (deletion === "index-only") f.git("rm", "--cached", path);
+    else rmSync(join(f.root, path));
+    const working = workingTreeCli(f, base, [path]);
+    expect(working.status).toBe(deletion === "new-then-missing" ? 0 : 1);
+    if (deletion !== "index-only") f.git("add", "--all");
+    const head = f.git("commit-tree", f.git("write-tree"), "-p", base, "-m", "Identical deletion tree");
+    const committed = cli(f.root, ["--base", base, "--head", head, STALE]);
+    expect(committed.stderr).toBe(""); expect(committed.status).toBe(working.status);
+    expect(verdictLines(working.stdout)).toEqual(verdictLines(committed.stdout));
+    if (deletion === "index-only") rmSync(join(f.root, path));
+    expect(verdictLines(working.stdout)).toEqual(directVerdicts(f, base, head).verdicts);
+  }, 20_000);
 
   it("refuses usage errors, Git errors and a head that does not merge into the base with exit code 2", () => {
     const f = fixture();
