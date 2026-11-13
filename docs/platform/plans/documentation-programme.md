@@ -68,7 +68,7 @@ criterion names the check that proves it.
 
 | # | Criterion | Proof |
 | --- | --- | --- |
-| A1 | **One guide.** `packages/core/docs/guide/` holds the tutorial, how-to, concepts, reference and glossary. Each reader topic is explained in exactly one page. | W3 exit list: every moved section exists once; the destination map has no open row. |
+| A1 | **One guide.** `packages/core/docs/guide/` has every section of S1: overview and tutorial, how-to (build, extend, operate), upgrade, concepts, reference, troubleshooting and glossary. Each reader topic is explained in exactly one page. | W3 exit list: every moved section exists once; the destination map has no open row; no S1 section is empty. |
 | A2 | **Same bytes everywhere.** The guide in the `@openlup/core` tarball, the file the adopter `AGENTS.md` line points to and openlup.com `/docs/` all come from the same release commit. | `npm pack` listing; the website pin equals the tag; a cold install resolves the template line. |
 | A3 | **Drift fails CI.** `docs:check` runs in required CI for all three packages: TypeScript fences compile, generated regions are fresh, links resolve, no repository-internal language. | Required jobs green; each refusal has a falsifying test. |
 | A4 | **Facts are generated.** Versions, counts, export lists and capability status appear only in generated regions, never in typed prose. | Contract check over the guide. |
@@ -172,13 +172,73 @@ marker.
 
 ```text
 packages/core/docs/guide/
-  README.md            index: reader paths and page list (also the agent index)
-  start/               tutorial: from npm to a running store
-  how-to/              one task per page
-  concepts/            architecture, ownership, invariants
-  reference/           generated tables and closed lists
+  README.md            index: what OpenLup is, status, reader paths, page list,
+                       instructions for agents (also the agent index; size-capped)
+  start/               overview ("is OpenLup for you", limits, maturity table)
+                       and the tutorial: from npm to a running store
+  how-to/              one task per page, in three groups:
+    build/             compose the packages, customize the starter, add to an app
+    extend/            adapters, providers, extension seams
+    operate/           deploy and self-host, production checklist, retention,
+                       shutdown, security hardening
+  upgrade/             the upgrade procedure and one page per release
+  concepts/            architecture and ownership, then one page per commerce
+                       domain (subscriptions, catalogue and prices, checkout,
+                       orders, fulfillment and delivery, payments, identity and
+                       personal data), and the security model
+  reference/           generated: exports, configuration keys, SQL catalogue,
+                       CLI, refusal codes, capability maturity, limits; plus
+                       versioning and stability policy
+  troubleshooting.md   symptom or refusal code → cause → fix
   glossary.md
 ```
+
+**Why this shape.** It was benchmarked on 2026-11-13 against ten projects:
+Medusa, Vendure, Saleor, Stripe, Next.js, Django, Prisma, Temporal, Supabase
+and Astro.
+
+- **Diátaxis page types are kept as the rule for each page.** Every one of
+  the ten also has pages outside the four types, and the shape gives each a
+  fixed home:
+  - upgrade guides (eight of ten);
+  - deployment and production (eight);
+  - troubleshooting (six);
+  - security (six);
+  - an architecture overview (six).
+- **Concepts follow the commerce domains**, as in Saleor, Vendure and
+  Medusa.
+- **The overview page serves the evaluating reader.** It follows the
+  pattern of Vendure's "Evaluate Vendure" and Saleor's "Why Saleor".
+- **What is deliberately left out:**
+  - **A version switcher.** The npm copy is the versioned copy, and the
+    website shows the latest release plus the upgrade pages, as Astro and
+    Next.js do.
+  - **A full-text dump for agents** (`llms-full.txt`). Temporal's index
+    warns agents against loading its own.
+  - **A second docs MCP server.** `openlup-context mcp` already serves the
+    guide.
+  - **A contributor section.** Contributing stays in `CONTRIBUTING.md`, as
+    in Django.
+
+**Page rules:**
+
+- **Index cap.** The index stays under 8 KB. That is the size of the docs
+  index that scored highest in Vercel's agent evaluations.
+- **Instructions for agents.** The index opens with a short block of
+  instructions for agents, following Stripe's and Temporal's `llms.txt`:
+  - read the guide copy that ships with the installed version;
+  - never hardcode a version;
+  - prefer the refusal-code reference to guessing;
+  - report a wrong page through the "documentation problem" issue form.
+- **Upgrade pages.** Each release's upgrade page is assembled from the
+  packages' `changes/*.md` fragments and the API diff during the S6 step.
+  It is never written after the fact.
+- **Refusal-code reference.** It is generated from the string-literal
+  unions in the published API reports. W1 confirms that every refusal code
+  is reachable from those reports. A code that is not becomes an owner
+  finding, not a hand list.
+- **Troubleshooting.** It is keyed by refusal code, so it links to the
+  reference instead of repeating it.
 
 - **No per-page metadata.** Pages carry no version, date or status. The
   release is the version, and the development-preview status is one sentence
@@ -311,7 +371,7 @@ goes into the guide.
 
 | File | Class after the programme | Moves into the guide |
 | --- | --- | --- |
-| `packages/core/docs/SUBSCRIPTION_ENGINE.md` | guide | the whole page (concepts); the old path keeps a one-line stub until W6 because `files` and the agent-context routes name it |
+| `packages/core/docs/SUBSCRIPTION_ENGINE.md` | guide | the whole page (concepts); the old path keeps a one-line stub until W5 because `files` and the agent-context routes name it |
 | `docs/platform/adopter-kit/README.md` | guide | the whole page (start / adopt from npm); `AGENTS.template.md` stays a template linked from it |
 | `examples/neutral-store/docs/customization.md`, `limits.md`, `destinations.md` | guide | whole pages (how-to: customize the starter; reference: limits, routes) |
 | `examples/neutral-store/docs/ownership.md` | guide | the ownership table and page ownership (concepts) |
@@ -333,6 +393,16 @@ goes into the guide.
 | `CONTRIBUTING.md`, `docs/platform/DOCUMENTATION.md`, `docs/platform/README.md`, `docs/platform/SUBSCRIPTION_REFERENCE.md`, `docs/platform/IDENTITY_BROWSER_REFERENCE.md`, `deploy/neutral-store/README.md`, `src/**/README.md`, `server/**/README.md` | maintainer | nothing; `docs/platform/README.md` becomes the maintainer index and points readers to the guide |
 | `docs/platform/plans/**`, `docs/platform/DISTRIBUTION_EVIDENCE.md`, `docs/platform/OUTCOME_PROJECTION.md`, `docs/platform/SOURCE_MAP.md`, `.github/PUBLICATION_COMPLETENESS.md`, `examples/neutral-store/docs/proof.md`, `packages/*/CHANGELOG-HISTORY.md`, `packages/*/api/**` | evidence | nothing; the guide's reference links the API reports at the release tag |
 | `packages/*/CHANGELOG.md` | entry point (release notes) | nothing; linked from the guide's upgrade page |
+
+**Where moved sections land in S1:**
+
+| Destination | Source |
+| --- | --- |
+| `how-to/operate/` | `RUNTIME_AND_SELF_HOSTING.md` |
+| `upgrade/` | the additive forward path in `DATA_AND_MIGRATIONS.md`, and the app-file upgrade recipe |
+| `how-to/build/` and `how-to/extend/` | the composition recipes of `PLATFORM_PACKAGE_REFERENCE.md`, and the extension seams and adapter conformance of `ARCHITECTURE_AND_EXTENSIONS.md` |
+| `concepts/` domain pages | `CANONICAL_CONTRACTS.md`, `SUBSCRIPTION_WORKFLOWS.md`, `SUBSCRIPTION_ENGINE.md` and `IDENTITY.md` |
+| `reference/` | the public part of `VERSIONING_AND_EOL.md` |
 
 **Moving a page safely.** A move PR does four things together:
 
@@ -369,9 +439,9 @@ filesystem paths in tracked Markdown.
 | W0 | Intent, reconnaissance and plan (draft PR; two reviewers because of the catalogue rows). | Owner decisions D1–D7 recorded. |
 | W1 | S2 for all three packages; the guide's implicit catalogue class and review floor of one; `pet`/`donor` in the ratchet; the absolute-path rule; the pack-size measurement; the allow-list seed; the empty guide index with the writing rules. Updates `DOCUMENTATION.md` and the catalogue paragraph in `CONTRIBUTING.md`. | Required jobs green; each new refusal has a falsifying test; two reviewers. |
 | W1b | Immediate corrections outside the move set. | Each defect fixed, or kept with its reason under the audit's rule; smoke matrix green. |
-| W2 | Tutorial, glossary, generated reference, the S4 step (non-blocking). | Contract green; S4 green or each blocked step recorded as an owner finding; owner confirms the prose claims in one batch. |
+| W2 | Overview page, tutorial, glossary, generated reference (refusal codes included), troubleshooting keyed by refusal code, the upgrade procedure page, the S4 step (non-blocking). | Contract green; S4 green or each blocked step recorded as an owner finding; owner confirms the prose claims in one batch. |
 | W3 | Moves per the destination map, in source-group batches, each with slimming, stubs and retargeted routes; entry points slimmed; evidence labelled. | Every moved section exists once; every map row at its class standard; smoke matrix green on the guide; routes and generator fresh. |
-| W4 | S5 for npm and agents: `files`, the template line, `openlup-context` indexing; the root `AGENTS.md` becomes the single agent guide. **In openlup.com, same window:** `/docs/` from the guide; claims and links re-sourced to the guide; a check that every `oss:` link exists at the pin; a failing pin-bump PR notifies the owner; rollback is reverting the pin PR. S6 step added to release preparation. | A cold consumer installs the packed candidate and finds the guide and index; the next release reaches openlup.com with its claims green and no manual step. |
+| W4 | S5 for npm and agents: `files`, the template line, `openlup-context` indexing; the root `AGENTS.md` becomes the single agent guide. **In openlup.com, same window:** `/docs/` from the guide; claims and links re-sourced to the guide; a check that every `oss:` link exists at the pin; a failing pin-bump PR notifies the owner; rollback is reverting the pin PR. S6 step added to release preparation, assembling each release's upgrade page. On openlup.com: an `llms.txt` section for `/docs/`, every page also served as `.md`, and a "documentation problem" issue form linked from each page. | A cold consumer installs the packed candidate and finds the guide and index; the next release reaches openlup.com with its claims green and no manual step. |
 | W5 | Retire stubs, the curated routes table and `AGENT_CONTEXT.md` corpora (once the smoke matrix passes on the guide alone), the bundle exporter and the uninvoked orientation audits. | Nothing references removed files; smoke matrix green. |
 
 **Parallelism.** W1b runs beside W1 and W2. W4's website part starts once W2
@@ -477,5 +547,18 @@ An independent challenge found the following.
 - **Configuration keys** come from the existing `config/environment-variables.json`.
 - **Measurement.** The smoke matrix runs at every wave.
 
-**Added after the challenge:** the goal, the acceptance criteria A1–A10
-with their proofs, the execution conditions and the definition of done.
+**Added after the challenge:**
+
+- The goal, the acceptance criteria A1–A10 with their proofs, the execution
+  conditions and the definition of done.
+- **After a benchmark against ten leading OSS projects (2026-11-13):**
+  - an overview page for evaluating readers;
+  - how-to grouped as build, extend and operate (production checklist and
+    security hardening included);
+  - an upgrade section assembled per release by the S6 step;
+  - concepts by commerce domain plus a security model;
+  - a generated refusal-code reference with troubleshooting keyed to it;
+  - a size-capped index that opens with instructions for agents;
+  - on openlup.com: `llms.txt`, Markdown copies of every page and a
+    "documentation problem" issue form.
+- A stray "W6" corrected to W5.
