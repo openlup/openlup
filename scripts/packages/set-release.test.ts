@@ -1,4 +1,5 @@
 import { createSourceReleaseContract, deriveSourceReleaseContract } from "../oss-source-release-contract.ts";
+import { isGuidePage } from "../oss-publication-policy.ts";
 // Seeded falsifiers for set releases: below 1.0 every publishable package ships at one set
 // version 0.N.P from one commit. Each control is a behaviour of a committed module, checked
 // against real Git fixtures and a recorded GitHub and npm API. Each planted defect edits that
@@ -48,8 +49,8 @@ function snapshotFixture(root: string, write: (path: string, bytes: string) => v
   write("config/openlup-source-release-contract.json", createSourceReleaseContract({ inventoryDigest: zero, classDigest: zero, packageDigest: zero, rootLockDigest: zero, coreLockDigest: zero, migrationManifestDigest: zero, databaseTypesDigest: zero, policyRegistryDigest: zero, publicationCatalogDigest: zero }).contents);
   write("config/openlup-publication-catalog.json", "{}\n");
   const paths = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z"], { cwd: root, encoding: "utf8" }).split("\0").filter(Boolean);
-  write("config/openlup-publication-catalog.json", JSON.stringify({ schemaVersion: 1, publicPaths: [...new Set(paths)].sort().map((path) => ({ path, class: "public-output" })), guardViability: [] }));
-  write("config/openlup-source-release-contract.json", deriveSourceReleaseContract((path) => existsSync(join(root, path)) ? readFileSync(join(root, path)) : undefined).contents);
+  write("config/openlup-publication-catalog.json", JSON.stringify({ schemaVersion: 1, publicPaths: [...new Set(paths)].filter((path) => !isGuidePage(path)).sort().map((path) => ({ path, class: "public-output" })), guardViability: [] }));
+  write("config/openlup-source-release-contract.json", deriveSourceReleaseContract((path) => existsSync(join(root, path)) ? readFileSync(join(root, path)) : undefined, [...new Set(paths)].map((path) => ({ path, mode: "100644" }))).contents);
 }
 
 // --- A repository with two publishable packages and one private package that pins core. ---
@@ -186,7 +187,7 @@ const BEHAVIOUR: Record<string, (m: Modules) => Promise<void>> = {
   },
   "release:bump --set moves every publishable package and every exact pin on one": async (m) => {
     const { root, read } = fixture();
-    expect(m.bump.bumpSet(root, "0.5.0").sort()).toEqual(["package-lock.json", "packages/core/CHANGELOG.md", "packages/core/package-lock.json", "packages/core/package.json", "packages/demo/package.json", "packages/kit/CHANGELOG.md", "packages/kit/package-lock.json", "packages/kit/package.json"]);
+    expect(m.bump.bumpSet(root, "0.5.0").sort()).toEqual(["package-lock.json", "packages/core/CHANGELOG.md", "packages/core/docs/guide/upgrade/v0-5-0.md", "packages/core/package-lock.json", "packages/core/package.json", "packages/demo/package.json", "packages/kit/CHANGELOG.md", "packages/kit/package-lock.json", "packages/kit/package.json"]);
     const manifest = (name: string) => JSON.parse(read(`packages/${name}/package.json`));
     expect([manifest("core").version, manifest("kit").version, manifest("kit").peerDependencies, manifest("demo").version, manifest("demo").dependencies, manifest("demo").optionalDependencies]).toEqual(["0.5.0", "0.5.0", { "@openlup/core": "0.5.0" }, "0.1.0", { "@openlup/core": "0.5.0" }, { "@openlup/kit": "0.5.0" }]);
     expect(JSON.parse(read("package-lock.json")).packages).toMatchObject({ "node_modules/unrelated": { version: "0.4.0" }, "packages/core": { version: "0.5.0" }, "packages/kit": { version: "0.5.0", peerDependencies: { "@openlup/core": "0.5.0" } }, "packages/demo": { version: "0.1.0", dependencies: { "@openlup/core": "0.5.0" }, optionalDependencies: { "@openlup/kit": "0.5.0" } } });

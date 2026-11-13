@@ -180,7 +180,7 @@ export function maskMarkdownCode(markdown: string): string {
   return maskInlineCodeSpans(maskIndentedCode(unfencedMarkdown(markdown)));
 }
 
-function documentationLinkTargets(markdown: string): string[] {
+export function documentationLinkTargets(markdown: string): string[] {
   const withoutIndentedCode = maskIndentedCode(unfencedMarkdown(markdown));
   const visible = maskInlineCodeSpans(withoutIndentedCode).replace(/<!--[\s\S]*?-->/gu, "")
     .replace(/(?<!\\)(?:\\\\)*\\\[/gu, "  ");

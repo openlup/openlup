@@ -16,17 +16,20 @@
  * below a fresh empty Unreleased heading. Every other byte stays, and each
  * rewritten JSON file must parse to its original with only those fields
  * changed. Nothing is written unless every file passes; consumed fragments are deleted
- * only after all planned writes succeed, then only those deletions are staged.
+ * only after all planned writes succeed. Set preparation also plans an upgrade
+ * page from those fragments and the API diff, and refreshes guide links and generated
+ * regions; the guide writes and deletions are staged.
  * The package release workflow refuses a version that differs from the package's manifest.
  */
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, lstatSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { PACKAGES_CONFIG_PATH, RELEASE_VERSION, SET_VERSION, parsePackagesConfig, releaseVersionAbove, type PackageEntry, type PackagesConfig } from "./package-manifest-policy.ts";
 
 import { readChangelogFragments, type ChangelogFragment } from "./changelog-fragments.ts";
 import { documentationGit } from "../documentation-routing.ts";
+import { assembleUpgradePage, planReleaseGuide, previousCoreTag, upgradePagePath } from "./release-docs-pass.ts";
 
 type Json = Record<string, unknown>;
 type Edit = { path: readonly string[]; from: string; to: string };
@@ -78,8 +81,9 @@ const pins = (node: unknown, base: readonly string[], bumped: ReadonlySet<string
   PIN_FIELDS.flatMap((field) => Object.keys((at(node, [field]) ?? {}) as Json).filter((name) => bumped.has(name)).map((name) => ({ path: [...base, field, name], from, to })));
 
 /** The rewritten files that bring `entries` from `from` to `version`, with every internal pin on them. */
-function bumpFiles(root: string, config: PackagesConfig, entries: readonly PackageEntry[], from: string, version: string): { writes: Array<[string, string]>; consumed: string[] } {
+function bumpFiles(root: string, config: PackagesConfig, entries: readonly PackageEntry[], from: string, version: string): { writes: Array<[string, string]>; consumed: string[]; fragments: ChangelogFragment[] } {
   const consumed: string[] = [];
+  const fragments: ChangelogFragment[] = [];
   const read = (file: string) => readFileSync(join(root, file), "utf8");
   const bumped = new Set(entries.map(({ name }) => name));
   const rootLock = JSON.parse(read("package-lock.json")) as Json;
@@ -100,20 +104,22 @@ function bumpFiles(root: string, config: PackagesConfig, entries: readonly Packa
     }
     if (own && entry.publish) {
       const changelog = `${entry.directory}/CHANGELOG.md`;
-      const fragments = readChangelogFragments(root, entry.directory);
-      writes.push([changelog, addReleaseSection(changelog, read(changelog), version, `openlup-${entry.directory.slice("packages/".length)}-v${version}`, fragments)]);
-      consumed.push(...fragments.map(({ path }) => path));
+      const notes = readChangelogFragments(root, entry.directory);
+      writes.push([changelog, addReleaseSection(changelog, read(changelog), version, `openlup-${entry.directory.slice("packages/".length)}-v${version}`, notes)]);
+      fragments.push(...notes);
+      consumed.push(...notes.map(({ path }) => path));
     }
   }
   if (rootLockEdits.length > 0) writes.push(["package-lock.json", setStringFields("package-lock.json", read("package-lock.json"), rootLockEdits)]);
-  return { writes, consumed };
+  return { writes, consumed, fragments };
 }
 
 const manifestVersion = (root: string, entry: PackageEntry): unknown => (JSON.parse(readFileSync(join(root, entry.directory, "package.json"), "utf8")) as Json).version;
-const writeAll = (root: string, { writes, consumed }: { writes: Array<[string, string]>; consumed: string[] }): string[] => {
-  for (const [file, text] of writes) writeFileSync(join(root, file), text);
+const writeAll = (root: string, { writes, consumed, staged = [] }: { writes: Array<[string, string]>; consumed: string[]; staged?: string[] }): string[] => {
+  for (const [file, text] of writes) { mkdirSync(dirname(join(root, file)), { recursive: true }); writeFileSync(join(root, file), text); }
   for (const file of consumed) unlinkSync(join(root, file));
   if (consumed.length > 0) documentationGit(root, ["rm", "--cached", "--quiet", "--ignore-unmatch", "--", ...consumed.map((file) => `:(literal)${file}`)]);
+  if (staged.length > 0) documentationGit(root, ["add", "--", ...staged.map((file) => `:(literal)${file}`)]);
   return [...writes.map(([file]) => file), ...consumed];
 };
 
@@ -142,7 +148,23 @@ export function bumpSet(root: string, version: string): string[] {
   const from = current[0]![1];
   if (current.some(([, other]) => other !== from)) throw new Error(`the publishable packages carry different versions (${current.map(([name, other]) => `${name}@${String(other)}`).join(", ")}); packages:check refuses that`);
   if (typeof from !== "string" || releaseVersionAbove(version, from) !== true) throw new Error(`the set is at ${String(from)}; the next set version must be above it`);
-  return writeAll(root, bumpFiles(root, config, publishable, from, version));
+  const page = upgradePagePath(version);
+  if (lstatSync(join(root, page), { throwIfNoEntry: false })) throw new Error(`${page}: upgrade page already exists`);
+  const planned = bumpFiles(root, config, publishable, from, version);
+  const upgrade = assembleUpgradePage({ root, version, since: previousCoreTag(root), fragments: planned.fragments });
+  for (const violation of upgrade.violations) console.warn(`release:bump: warning: ${violation}`);
+  planned.writes.push([page, upgrade.text]);
+  const repositoryRoot = resolve(root);
+  const guide = planReleaseGuide(repositoryRoot, version, { [join(repositoryRoot, page)]: upgrade.text });
+  for (const violation of guide.violations) console.warn(`release:bump: warning: ${violation}`);
+  const writes = new Map(planned.writes);
+  const staged = new Set([page]);
+  for (const [file, source] of guide.writes) {
+    const path = relative(repositoryRoot, file).split(sep).join("/");
+    writes.set(path, source);
+    staged.add(path);
+  }
+  return writeAll(root, { writes: [...writes], consumed: planned.consumed, staged: [...staged] });
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {

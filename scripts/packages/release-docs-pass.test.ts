@@ -1,0 +1,169 @@
+import { execFileSync, spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import { assembleUpgradePage, formatReleaseDocumentation, listReleaseDocumentation, previousCoreTag, summarizeApiDiff, upgradePagePath } from "./release-docs-pass.ts";
+import { isGuidePage, validateGuidePage } from "../oss-publication-policy.ts";
+
+const roots: string[] = [];
+afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+const api = "packages/core/api/core.api.md", catalog = "config/openlup-publication-catalog.json";
+const guide = "packages/core/docs/guide/how-to/change.md", routed = "packages/core/docs/guide/reference/api.md";
+
+function fixture() {
+  const root = mkdtempSync(join(tmpdir(), "release-docs-pass-")); roots.push(root);
+  const write = (path: string, source: string) => { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), source); };
+  const git = (...args: string[]) => execFileSync("git", ["-c", "core.hooksPath=/dev/null", "-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid", ...args], { cwd: root, encoding: "utf8" }).trim();
+  const commit = () => { git("add", "."); git("commit", "-qm", "fixture"); };
+  write("config/openlup-packages.json", JSON.stringify({ schemaVersion: 2, packages: ["core", "outbox"].map((name) => ({ name: `@openlup/${name}`, directory: `packages/${name}`, publish: true })), unreleased: [] }));
+  write("config/documentation-guide-allowlist.json", JSON.stringify({ schemaVersion: 1, terms: ["B2B"] }));
+  write("config/doc-routing.json", JSON.stringify({ version: 2, surfaces: [
+    { id: "api", when: "API declarations", paths: ["packages/*/api/*.api.md", routed], doc: "docs/platform/API.md", anchor: "#api" },
+    { id: "catalog", when: "Catalogue", paths: [catalog], doc: "docs/platform/DISTRIBUTION.md", anchor: "" },
+    { id: "docs", when: "Other documentation", paths: ["**"], doc: "docs/platform/DOCUMENTATION.md", anchor: "" },
+  ] }));
+  write(api, "// API\nexport declare const oldName: string;\nexport declare const kept: string;\n");
+  write(catalog, "{}\n");
+  write("docs/platform/API.md", "# API\n\n## API\n");
+  write("docs/platform/old.md", "# Previous page\n");
+  write("docs/platform/deleted.md", "# Deleted page\n");
+  write("docs/platform/unchanged.md", "# Unchanged page\n");
+  write("docs/platform/plans/plan.md", "# Historical plan\n");
+  write(guide, `# Change\n\n[API][api]\n\n[api]: https://github.com/openlup/openlup/blob/openlup-core-v0.4.0/${api}\n`);
+  write(routed, "# API\n");
+  git("init", "-q"); commit(); git("tag", "openlup-core-v0.4.0");
+  return { root, write, git, commit };
+}
+
+describe("release documentation listing", () => {
+  it("lists the committed API, catalogue and maintainer diff with owners, linked/routed guide pages and affected website references", () => {
+    const f = fixture();
+    f.write(api, "// API\nexport declare const nextName: string;\nexport declare const kept: string;\n");
+    f.write(catalog, '{"updated":true}\n');
+    f.git("mv", "docs/platform/old.md", "docs/platform/renamed.md");
+    f.git("rm", "docs/platform/deleted.md");
+    f.write("docs/platform/plans/plan.md", "# Changed history\n");
+    f.write(".github/POLICY.md", "# Policy\n"); f.write("packages/outbox/AGENTS.md", "# Agents\n");
+    f.commit();
+    f.write("README.md", "# Uncommitted\n");
+    const website = mkdtempSync(join(tmpdir(), "release-docs-site-")); roots.push(website);
+    const claims = "docs/claims/api.json", content = "src/content/pages/proof.mdx";
+    mkdirSync(dirname(join(website, claims)), { recursive: true }); mkdirSync(dirname(join(website, content)), { recursive: true });
+    const claimText = `{"sources":["oss:${api}:12-14","oss:${catalog}"]}\n`;
+    const contentText = "oss:docs/platform/deleted.md\noss:docs/platform/old.md:L2-L3 oss:docs/platform/renamed.md\noss:docs/platform/unchanged.md\n";
+    writeFileSync(join(website, claims), claimText); writeFileSync(join(website, content), contentText);
+    writeFileSync(join(website, "src/content/binary.bin"), Buffer.from([0, 255]));
+    const listing = listReleaseDocumentation({ root: f.root, website });
+    expect(listing.since).toBe("openlup-core-v0.4.0"); expect(listing.warnings).toEqual([]);
+    expect(listing.changes.find(({ path }) => path === api)).toMatchObject({ status: "M", owner: { doc: "docs/platform/API.md", anchor: "#api" }, guidePages: [guide, routed] });
+    expect(listing.changes.find(({ path }) => path === catalog)?.owner?.doc).toBe("docs/platform/DISTRIBUTION.md");
+    expect(listing.changes.map(({ path }) => path)).toEqual(expect.arrayContaining([".github/POLICY.md", "packages/outbox/AGENTS.md"]));
+    expect(listing.changes.some(({ path }) => path === "README.md" || path.includes("/plans/"))).toBe(false);
+    expect(listing.websiteReferences).toEqual([
+      { file: claims, line: 1, reference: `oss:${api}:12-14`, status: "M" },
+      { file: claims, line: 1, reference: `oss:${catalog}`, status: "M" },
+      { file: content, line: 1, reference: "oss:docs/platform/deleted.md", status: "D" },
+      { file: content, line: 2, reference: "oss:docs/platform/old.md:L2-L3", status: "R100" },
+      { file: content, line: 2, reference: "oss:docs/platform/renamed.md", status: "R100" },
+    ]);
+    expect(formatReleaseDocumentation(listing)).toContain(`${content}:1 oss:docs/platform/deleted.md (D)`);
+    expect(readFileSync(join(website, claims), "utf8")).toBe(claimText); expect(readFileSync(join(website, content), "utf8")).toBe(contentText);
+    expect(f.git("diff", "--cached", "--name-status")).toBe("");
+  });
+
+  it("selects an ancestor tag, ignoring a newer tag on another branch", () => {
+    const f = fixture(), head = f.git("rev-parse", "HEAD");
+    f.git("checkout", "-qb", "other"); f.write("other.txt", "other\n"); f.commit(); f.git("tag", "openlup-core-v9.0.0"); f.git("checkout", "-q", head);
+    expect(previousCoreTag(f.root)).toBe("openlup-core-v0.4.0");
+  });
+
+  it("keeps missing routing and website evidence advisory, and reports usage and git errors", () => {
+    const f = fixture(), script = resolve("scripts/packages/release-docs-pass.ts");
+    f.write(api, "export declare const changed: string;\n"); f.commit(); rmSync(join(f.root, "config/doc-routing.json"));
+    const run = (...args: string[]) => spawnSync(process.execPath, ["--experimental-strip-types", script, ...args], { cwd: f.root, encoding: "utf8" });
+    const plain = run(); expect(plain.status).toBe(0); expect(plain.stdout).toContain("Website claims were not checked."); expect(plain.stdout).toContain("owner: unresolved");
+    const json = run("--since", "openlup-core-v0.4.0", "--website", join(f.root, "missing"), "--json");
+    expect(json.status).toBe(0); expect(JSON.parse(json.stdout)).toMatchObject({ websiteChecked: false, changes: [{ path: api, owner: null }] });
+    expect(run("--json").stderr).toContain("Website claims were not checked.");
+    expect(run("--since").status).toBe(2); expect(run("--wat").status).toBe(2); expect(run("--json", "--json").status).toBe(2);
+    expect(run("--since", "missing-tag").status).toBe(1);
+    f.git("tag", "-d", "openlup-core-v0.4.0");
+    const untagged = run();
+    expect(untagged.status).toBe(0); expect(untagged.stdout).toContain("The previous release could not be determined");
+    expect(JSON.parse(run("--json").stdout)).toMatchObject({ since: null, changes: [] });
+    rmSync(join(f.root, ".git"), { recursive: true }); expect(run().status).toBe(1);
+  });
+
+  it("reports an unknown previous release when every core tag is on another branch", () => {
+    const f = fixture(); f.git("tag", "-d", "openlup-core-v0.4.0");
+    const head = f.git("rev-parse", "HEAD");
+    f.git("checkout", "-qb", "other"); f.write("other.txt", "other\n"); f.commit();
+    f.git("tag", "openlup-core-v9.0.0"); f.git("checkout", "-q", head);
+    expect(previousCoreTag(f.root)).toBeUndefined();
+    const listing = listReleaseDocumentation({ root: f.root });
+    expect(listing.since).toBeNull(); expect(listing.changes).toEqual([]);
+    expect(formatReleaseDocumentation(listing)).toContain("The previous release could not be determined");
+    const page = assembleUpgradePage({ root: f.root, version: "0.5.0", since: previousCoreTag(f.root), fragments: [] });
+    expect(page.text).toContain("## API changes\n\nThe previous release could not be determined");
+    expect(page.text).not.toContain("No API reports changed"); expect(page.violations).toEqual([]);
+  });
+});
+
+describe("upgrade page assembly", () => {
+  it.each(["0.40.0", "0.40.0-rc.1", "0.40.0-rc.1+build.2"])("uses a publication-safe filename and real heading for %s", (version) => {
+    const f = fixture(), path = upgradePagePath(version);
+    expect(path).toBe(`packages/core/docs/guide/upgrade/v${version.replace(/[^A-Za-z0-9]/gu, "-")}.md`);
+    expect(isGuidePage(path)).toBe(true);
+    const result = assembleUpgradePage({ root: f.root, version, since: previousCoreTag(f.root), fragments: [] });
+    expect(result.text).toContain(`# Upgrading to ${version}\n`); expect(result.violations).toEqual([]);
+  });
+  it("uses publishable fragments in bump order, and includes added and removed exports with exempt fences", () => {
+    const f = fixture();
+    f.write("packages/core/docs/guide/upgrade/README.md", "# Upgrade procedure\n");
+    f.write(api, "// Updated comment\nexport declare const nextName: string;\nexport declare const kept: string;\n"); f.commit();
+    const fragments = [
+      { path: "packages/outbox/changes/one.md", contents: "- Outbox body.\n" },
+      { path: "packages/core/changes/z-last.md", contents: "- Last body.\n" },
+      { path: "packages/core/changes/a-first.md", contents: "### Added\n\n- First body.\n" },
+      { path: "packages/private/changes/one.md", contents: "- Private body.\n" },
+    ];
+    const result = assembleUpgradePage({ root: f.root, version: "0.5.0", since: "openlup-core-v0.4.0", fragments });
+    expect(result.violations).toEqual([]);
+    expect(result.text).toContain("# Upgrading to 0.5.0\n"); expect(result.text).toContain("[upgrade procedure](README.md)");
+    expect(result.text.indexOf("## @openlup/core")).toBeLessThan(result.text.indexOf("## @openlup/outbox"));
+    expect(result.text.indexOf("First body.")).toBeLessThan(result.text.indexOf("Last body.")); expect(result.text).not.toContain("Private body.");
+    expect(result.text).toContain("Added declarations:\n\n```ts nocheck\n// API report diff: not compiled.\nexport declare const nextName: string;\n```");
+    expect(result.text).toContain("Removed declarations:\n\n```ts nocheck\n// API report diff: not compiled.\nexport declare const oldName: string;\n```");
+    expect(result.text).not.toContain("export declare const kept"); expect(result.text).not.toContain("Updated comment");
+    expect(validateGuidePage(upgradePagePath("0.5.0"), result.text, "100644")).toBe(result.text);
+    expect(f.git("status", "--porcelain")).toBe("");
+  });
+
+  it("reports reader-language and link violations using the existing contract, and omits a missing procedure link", () => {
+    const f = fixture();
+    const result = assembleUpgradePage({ root: f.root, version: "0.5.0", since: "openlup-core-v0.4.0", fragments: [
+      { path: "packages/core/changes/one.md", contents: "- B2B support.\n- W99 task.\n- [Owner](../../../../../../CONTRIBUTING.md).\n" },
+    ] });
+    expect(result.text).not.toContain("[upgrade procedure]"); expect(result.text).toContain("No API reports changed since the previous release.");
+    expect(result.violations).toEqual([expect.stringContaining("task or milestone ID): W99"), expect.stringContaining("leaves the guide")]);
+  });
+
+  it("reports both deleted and newly added API reports", () => {
+    const f = fixture(); f.git("rm", api); f.write("packages/outbox/api/outbox.api.md", "export declare const send: () => void;\n"); f.commit();
+    const { text } = assembleUpgradePage({ root: f.root, version: "0.5.0", since: "openlup-core-v0.4.0", fragments: [] });
+    expect(text).toContain(`### \`${api}\``); expect(text).toContain("export declare const oldName"); expect(text).toContain("export declare const send");
+  });
+
+  it("extracts only changed top-level export declaration lines", () => {
+    expect(summarizeApiDiff("--- a/report\n+++ b/report\n@@ -1 +1 @@\n-export declare const old: string;  \n+export declare const next: string;\n+// comment\n+    method(): void;\n export declare const kept: string;\n")).toEqual({ added: ["export declare const next: string;"], removed: ["export declare const old: string;"] });
+  });
+
+  it("keeps publication refusals for invalid version paths, modes and upgrade-page contents", () => {
+    for (const path of ["upgrade/0.5.0.md", "upgrade/00.5.0.md", "upgrade/0.5.md", "upgrade/0.5.0-rc.1.md", "reference/0.5.0.md", "Upgrade/0.5.0.md", "upgrade/nested/0.5.0.md"]) {
+      expect(() => validateGuidePage(`packages/core/docs/guide/${path}`, "# Upgrade\n", "100644")).toThrow(/guide pages must/u);
+    }
+    for (const mode of ["100755", "120000"]) expect(() => validateGuidePage(upgradePagePath("0.5.0"), "# Upgrade\n", mode)).toThrow(/guide pages must/u);
+    for (const source of ["", "bad\0bytes", "<<<<<<< conflict\n"]) expect(() => validateGuidePage(upgradePagePath("0.5.0"), source, "100644")).toThrow(/empty or malformed|conflict markers/u);
+  });
+});
