@@ -7,104 +7,73 @@ Shipped package-local sources are relative to this package. Other sources link t
 Repository paths, imports and relative links inside verbatim excerpts describe that source checkout, not files to find or create in your application.
 Consult installed declarations and README for the installed version.
 
-<!-- openlup-context-inventory [{"id":"delivery-alignment","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Subscription delivery alignment","startLine":548,"endLine":577,"sha256":"db7d8be01a72b2ce76d6b4423c30115ac29cd16ffd48bbaf16fbfdd5540f1c5f"},{"id":"migration-data-ownership","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/DATA_AND_MIGRATIONS.md","heading":"Data ownership","startLine":6,"endLine":52,"sha256":"09f9ca46aa24eae3321a5f386f59d6a7f842d0aee5199e056b1e5688e4b521cb"},{"id":"migration-forward-path","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/DATA_AND_MIGRATIONS.md","heading":"Additive forward release path","startLine":496,"endLine":518,"sha256":"3503b3ac6f6da04912e9ecd9a5161d9641e68a21b82beafc31beb8c9dc026b64"},{"id":"checkout-payment-outbox-idempotency","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Idempotency","startLine":250,"endLine":272,"sha256":"2d719cee94edefe6eccf76aa9c34bbf8a40cdb7e478e313b4a939e769c2e4d71"},{"id":"host-provider-adapter-capability-refusal","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Provider adapters","startLine":307,"endLine":319,"sha256":"5e72a74503e7b2a85706abdf06484ffd03f95130e617995b8f649f6bc36cea23"}] -->
+<!-- openlup-context-inventory [{"id":"delivery-alignment","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/packages/core/docs/guide/concepts/subscriptions.md","heading":"Subscription delivery alignment","startLine":132,"endLine":160,"sha256":"1db1618daf24961de8b8e3e7ba1a22d75f4da2dbee0eb6fcef9e8e493ca88acf"},{"id":"migration-data-ownership","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/packages/core/docs/guide/concepts/architecture-and-ownership.md","heading":"Data ownership","startLine":85,"endLine":101,"sha256":"f2ccd2d3f73355fb8a9cb9541f21f64bdc356a4bd27abe1d5adb2d53ae99060f"},{"id":"migration-forward-path","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/DATA_AND_MIGRATIONS.md","heading":"Additive forward release path","startLine":492,"endLine":514,"sha256":"3503b3ac6f6da04912e9ecd9a5161d9641e68a21b82beafc31beb8c9dc026b64"},{"id":"checkout-payment-outbox-idempotency","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/packages/core/docs/guide/concepts/idempotency.md","heading":"Idempotency contract","startLine":7,"endLine":49,"sha256":"baddeb5c1a5c5c06bb717c8a162938d6509ca225caa123aa7ca0c047534fd0a3"},{"id":"host-provider-adapter-capability-refusal","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Provider adapters","startLine":297,"endLine":309,"sha256":"5e72a74503e7b2a85706abdf06484ffd03f95130e617995b8f649f6bc36cea23"}] -->
 
 ## delivery-alignment: Preserve subscription cycle alignment after late delivery
 
-Source: [OpenLup source repository at openlup-platform-v0.39.0](https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/CANONICAL_CONTRACTS.md#L548-L577).
+Source: [OpenLup source repository at openlup-platform-v0.39.0](https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/packages/core/docs/guide/concepts/subscriptions.md#L132-L160).
 
-<!-- openlup-context {"id":"delivery-alignment","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Subscription delivery alignment","startLine":548,"endLine":577,"sha256":"db7d8be01a72b2ce76d6b4423c30115ac29cd16ffd48bbaf16fbfdd5540f1c5f"} -->
+<!-- openlup-context {"id":"delivery-alignment","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/packages/core/docs/guide/concepts/subscriptions.md","heading":"Subscription delivery alignment","startLine":132,"endLine":160,"sha256":"1db1618daf24961de8b8e3e7ba1a22d75f4da2dbee0eb6fcef9e8e493ca88acf"} -->
 ## Subscription delivery alignment
 
-An active subscription must not admit its next renewal while the customer is
-still waiting for the preceding delivery. Renewal admission records durable
-protection for an undelivered obligation; an already-created
-`retry_scheduled` cycle remains existing recovery authority rather than a new
-renewal. A delivery that resolves the delay moves `next_cycle_at` to the
-delivery or confirmation instant plus the stored cadence. The durable update is
-monotonic and uses SQL `GREATEST`, so alignment may extend a cycle but never
-move it earlier or stack deliveries on the customer.
+An active subscription must not start a new renewal while its preceding
+unsuperseded delivery is outstanding. Delivery admission records durable
+protection before cycle, order or payment artifacts. Existing-cycle retries
+retain their recovery authority; they are not new renewals.
 
-A replacement parcel does not erase the obligation merely because it was
-created or dispatched. Once a row names an earlier parcel through
-`replaces_fulfillment_order_id`, that superseded predecessor is no longer an
-outstanding obligation; the latest unsuperseded replacement remains outstanding
-until it reaches the customer. Its arrival may settle the predecessor's case as
-`aligned` without fabricating `delivered_at` for the parcel that never arrived.
+A late arrival can extend the next cycle to the delivery instant plus the
+stored cadence. The persisted date uses `GREATEST` with the existing date, so
+alignment never brings the cycle earlier or stacks deliveries. For split
+shipments, automatic alignment uses the latest durable arrival time after no
+unsuperseded parcel remains outstanding. Payment timestamps and status text
+alone cannot establish arrival.
 
-`subscription_delivery_alignment_confirm_replacement` is the service-only path
-for recording that a substitute shipment reached the customer when durable
-delivery evidence cannot do so. Never use it for an in-flight, lost, or otherwise
-undelivered replacement: `aligned` means the delivery happened. Replaying an
-already aligned confirmation returns the stored aligned schedule and must not
-add another cadence. The ordinary operator-resolution path refuses while an
-active subscription still has an unsuperseded undelivered parcel; refusal leaves
-the protected case and schedule unchanged.
+A replacement stops its predecessor from counting as outstanding through the
+replacement link. It does not invent a delivery timestamp for the lost parcel.
+The latest unsuperseded replacement remains outstanding until it reaches the
+customer, even after dispatch.
 
-These are source and persistence contracts, not evidence that any hosted
-deployment, provider adapter, or public release has activated the rail.
+Use the trusted service operation
+`subscription_delivery_alignment_confirm_replacement` only to attest that a
+substitute actually reached the customer when durable delivery evidence cannot
+record it. `aligned` means arrival happened. Confirmation uses its own instant
+plus cadence under the same later-only clamp. Replaying an aligned case returns
+the stored schedule without adding another cadence. Ordinary case resolution
+returns `subscription_delivery_alignment_release_would_strand` while an active
+subscription still has an unsuperseded, undelivered parcel, leaving protection
+and the schedule unchanged.
 
 <!-- /openlup-context -->
 
 ## migration-data-ownership: Keep adopter data in its owned schema
 
-Source: [OpenLup source repository at openlup-platform-v0.39.0](https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/DATA_AND_MIGRATIONS.md#L6-L52).
+Source: [OpenLup source repository at openlup-platform-v0.39.0](https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/packages/core/docs/guide/concepts/architecture-and-ownership.md#L85-L101).
 
-<!-- openlup-context {"id":"migration-data-ownership","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/DATA_AND_MIGRATIONS.md","heading":"Data ownership","startLine":6,"endLine":52,"sha256":"09f9ca46aa24eae3321a5f386f59d6a7f842d0aee5199e056b1e5688e4b521cb"} -->
+<!-- openlup-context {"id":"migration-data-ownership","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/packages/core/docs/guide/concepts/architecture-and-ownership.md","heading":"Data ownership","startLine":85,"endLine":101,"sha256":"f2ccd2d3f73355fb8a9cb9541f21f64bdc356a4bd27abe1d5adb2d53ae99060f"} -->
 ## Data ownership
 
-Native terminal replay replaces only `subscription_claim_due_renewal` while
-retaining its header, ACL, frozen-input comparison and subscription-first lock
-order. Terminal history precedes due eligibility; cancelled new work refuses.
-The subscription owner below defines the public behavior and proof.
+OpenLup owns its platform objects, migration history and documented data contracts.
+The portable PostgreSQL catalogue places commerce tables, routines and the
+migration ledger in `public`, actor identity helpers in `auth`, and private
+acquisition storage in `acquisition_private`. These are platform objects to manage
+through the packaged migration chain, not places for application extensions.
 
-The native `20261101223000_subscription_purchase_renewal.sql` forward records
-purchase facts and renewal-attachment duties beside the existing activation
-spine. Activation commits service plus the duty; renewal header/lines/method
-materialization is a separate atomic transaction. An incomplete duty remains
-enumerable and does not pause service. Bounded definer writers avoid granting
-runtime INSERT on renewal headers or method states. The new fact/event tables
-explicitly revoke all table access from PUBLIC, anon, authenticated and
-service_role, including access inherited from installer default grants. No table
-grant or row-level-security change is added. Fixed
-definer readers expose only a bounded pending-duty list and three completed
-snapshot fields; the runtime never reads the method-event ledger. Their search
-path is `pg_catalog, pg_temp`, and
-the original activation RPC signature and commit-helper attributes are retained.
-The incumbent term-line collection INSERT/DELETE grants remain unchanged.
-Created functions revoke PUBLIC individually before conditional constant-string
-function ACL blocks for anon, authenticated and service_role. The replaced
-activation helper retains its ACL. Method transitions compare expected health and persist event evidence without
-rewriting subscription service state. Sandbox observation uses invoker rights
-and the existing operation/outcome capabilities, without another attempt table.
-The [subscription owner](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
-describes the codec and retry duties. The forward's approval inventory is
-admitted with it under ordinary review;
-local PostgreSQL proof does not establish that admission or a published chain.
+Keep adopter-specific tables and their migrations in your application's own
+`app` schema. The platform never writes to `app`. Your application owns extension
+compatibility and migration ordering. Connect extension data to platform data
+through explicit foreign keys, ports or events; do not change platform rows based
+on undocumented assumptions.
 
-See [retained renewal storage](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#retained-renewal-storage).
-
-The platform owns its schema, migration history, and documented data contracts.
-An adopter owns tables and migrations for its own extensions in the `app` schema.
-The platform never writes there; the adopter owns extension compatibility and
-migration ordering. Extension data must live beside platform data through explicit foreign keys, ports, or events rather
-than by editing platform rows with undocumented assumptions.
-
-The published platform shape must expose a reproducible baseline and ordered
-forward migrations. Development convenience at process startup is not a
-coordination mechanism for a multi-instance deployment.
-
-The preview source release deliberately ships an unbound database-type seam at
-`src/integrations/supabase/types.ts`; replace it with adopter-generated types
-before enabling database adapters. It is not evidence of schema compatibility.
-
+The platform's migration history and your application's extension history have
+separate owners. Starting an application process is not a substitute for
+coordinating migrations across running instances.
 <!-- /openlup-context -->
 
 ## migration-forward-path: Follow the ordered additive migration path
 
-Source: [OpenLup source repository at openlup-platform-v0.39.0](https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/DATA_AND_MIGRATIONS.md#L496-L518).
+Source: [OpenLup source repository at openlup-platform-v0.39.0](https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/DATA_AND_MIGRATIONS.md#L492-L514).
 
-<!-- openlup-context {"id":"migration-forward-path","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/DATA_AND_MIGRATIONS.md","heading":"Additive forward release path","startLine":496,"endLine":518,"sha256":"3503b3ac6f6da04912e9ecd9a5161d9641e68a21b82beafc31beb8c9dc026b64"} -->
+<!-- openlup-context {"id":"migration-forward-path","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/DATA_AND_MIGRATIONS.md","heading":"Additive forward release path","startLine":492,"endLine":514,"sha256":"3503b3ac6f6da04912e9ecd9a5161d9641e68a21b82beafc31beb8c9dc026b64"} -->
 ## Additive forward release path
 
 A development preview may append expand-only platform forwards to either chain:
@@ -132,39 +101,59 @@ Both gates refuse control characters other than tab and line feed in migration S
 
 ## checkout-payment-outbox-idempotency: Preserve repeatable checkout effects
 
-Source: [OpenLup source repository at openlup-platform-v0.39.0](https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/CANONICAL_CONTRACTS.md#L250-L272).
+Source: [OpenLup source repository at openlup-platform-v0.39.0](https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/packages/core/docs/guide/concepts/idempotency.md#L7-L49).
 
-<!-- openlup-context {"id":"checkout-payment-outbox-idempotency","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Idempotency","startLine":250,"endLine":272,"sha256":"2d719cee94edefe6eccf76aa9c34bbf8a40cdb7e478e313b4a939e769c2e4d71"} -->
-## Idempotency
-The native bundle contention witness characterizes the existing global event
-key, without adding payload/entity binding. Two absent-key transactions on
-disjoint bundles can block at the unique key index: after the first commits,
-the second raises `23505` and its attempted composition is rolled back. If the
-first rolls back, the second can commit. A later same-key call recognizes the
-key before validating changed payload, entity or routine. This is incumbent
-recognition, not a stronger exactly-once or payload-fingerprint guarantee.
-Catalog draft receipts retain their separate canonical-command fingerprint and
-revision behavior; moving their adapter does not change either protocol.
+<!-- openlup-context {"id":"checkout-payment-outbox-idempotency","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/packages/core/docs/guide/concepts/idempotency.md","heading":"Idempotency contract","startLine":7,"endLine":49,"sha256":"baddeb5c1a5c5c06bb717c8a162938d6509ca225caa123aa7ca0c047534fd0a3"} -->
+## Idempotency contract
 
+An idempotency key names a logical operation within a scope. A request fingerprint
+binds that identity to the effect's contents where the operation implements that
+check. Retain the same key and contents across a retry. Do not reuse a key for a
+different request, and do not mint a new key merely because the previous result
+is unknown: the first call may already have acted.
 
-Every externally repeatable write has an idempotency scope, a stable operation
-identity, and a request fingerprint. Replaying the same logical request returns
-the established result without a second durable effect. Reusing a key for a
-different fingerprint is a conflict, not permission to overwrite history.
+Scopes differ. A domain command, a provider attempt and an inbound event need
+separate identities. For example, `buildProviderAttemptIdentity` in
+`@openlup/core/payment` derives the provider key from namespace, provider, payment
+intent and local execution key. Its separate fingerprint includes provider,
+intent, amount, currency, mode and order reference. The adapter passes the host's
+attempt identity, key, fingerprint and configured money through; that contract
+does not replace a durable host ledger or prove provider-side deduplication.
 
-Idempotency keys are opaque values with documented derivation and scope. An
-operation, a provider attempt, a customer journey, and an inbound event may
-require different keys; do not collapse them into one user-controlled value.
-Persist the ledger before reporting success, and make concurrent repeats resolve
-to one canonical effect.
+Replay guarantees are operation-specific:
+
+| Boundary | Identity and behavior |
+| --- | --- |
+| Outbox enqueue | `(event_type, idempotency_key)` keeps the existing event; a repeated insert returns no new row |
+| Catalog draft command | `(draftId, commandKey)` returns the original revision when fingerprint and actor match |
+| Native bundle write | A non-null key is global across bundle write events; a recognized key short-circuits without comparing the new payload |
+| Marketing sync | Binding, operation, subject and request ID identify a request; changed audience or payload refuses `invalid_request` |
+
+For catalog drafts, changed contents under an existing key return
+`conflict/command_key_reused`; a different actor returns
+`unauthorized/operator_mismatch`. A new command against the wrong revision
+returns `conflict/revision_conflict`. The outbox has no equivalent payload check:
+changing its aggregate or payload under the same event type and key does not
+replace the stored event or produce a fingerprint conflict.
+
+Native bundle writes also do not provide a payload-bound replay receipt.
+A later call can recognize a key used by another bundle or routine before
+validating the changed request. Concurrent first uses on different bundles can
+instead collide at the unique index with SQLSTATE `23505`, rolling back the
+losing transaction. Do not interpret key recognition as proof that the new
+payload was accepted. Unkeyed bundle writes have no such deduplication.
+
+The practical guarantee is bounded by the operation's stored identity and
+receipt. It is not a universal exactly-once guarantee. Where a result remains
+uncertain, reconcile its recorded effect before starting a new logical operation.
 
 <!-- /openlup-context -->
 
 ## host-provider-adapter-capability-refusal: Compose declared provider capabilities through ports
 
-Source: [OpenLup source repository at openlup-platform-v0.39.0](https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/CANONICAL_CONTRACTS.md#L307-L319).
+Source: [OpenLup source repository at openlup-platform-v0.39.0](https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/CANONICAL_CONTRACTS.md#L297-L309).
 
-<!-- openlup-context {"id":"host-provider-adapter-capability-refusal","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Provider adapters","startLine":307,"endLine":319,"sha256":"5e72a74503e7b2a85706abdf06484ffd03f95130e617995b8f649f6bc36cea23"} -->
+<!-- openlup-context {"id":"host-provider-adapter-capability-refusal","source":"https://github.com/openlup/openlup/blob/openlup-platform-v0.39.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Provider adapters","startLine":297,"endLine":309,"sha256":"5e72a74503e7b2a85706abdf06484ffd03f95130e617995b8f649f6bc36cea23"} -->
 ## Provider adapters
 
 Domain code depends on a port, not on a provider SDK. An adapter translates the

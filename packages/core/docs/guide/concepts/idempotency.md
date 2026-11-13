@@ -67,6 +67,8 @@ first again. Both effects need replay protection. Respect the handler's abort
 signal: a timeout reports `outbox_handler_timeout`, but cannot roll back a
 request already sent or forcibly stop code that ignores cancellation.
 
+## Related reading
+
 See the [enqueue implementation](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/outbox/src/enqueue.ts),
 [worker](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/outbox/src/worker.ts)
 and [catalog draft command protocol](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/sql/20260908100000_catalog_draft_foundation.sql).

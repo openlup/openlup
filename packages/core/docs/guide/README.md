@@ -29,8 +29,8 @@ hold; a section marked "to be written" has no page yet.
 | How-to: extend | Adapters, providers and extension seams. | to be written |
 | How-to: operate | Deployment and self-hosting, a production checklist, retention, shutdown and security hardening. | to be written |
 | Upgrade | The upgrade procedure and one page per release. | to be written |
-| Concepts | Architecture and ownership, one page per commerce domain, and the security model. | to be written |
-| Reference | Exports, configuration keys, SQL catalogue, command line, refusal codes, capability maturity, limits, versioning and stability policy. | to be written |
+| Concepts | Architecture and ownership, one page per commerce domain, and the security model. | [Architecture and ownership](concepts/architecture-and-ownership.md), [Subscriptions](concepts/subscriptions.md), [Subscription engine](concepts/subscription-engine.md), [Payments](concepts/payments.md), [Idempotency](concepts/idempotency.md), [Identity](concepts/identity.md), [Personal data](concepts/personal-data.md), [Marketing sync](concepts/marketing-sync.md); catalogue and prices, checkout, orders, fulfillment and the security model to be written |
+| Reference | Exports, configuration keys, SQL catalogue, command line, refusal codes, capability maturity, limits, versioning and stability policy. | [Starter limits](reference/limits.md), [Versioning and stability](reference/stability.md); the generated references to be written |
 | Troubleshooting | Symptom or refusal code, its cause and the fix. | to be written |
 | Glossary | The words this guide uses. | to be written |
 

@@ -2,13 +2,14 @@
 
 Compose subscriptions by separating lifecycle calculations from durable
 renewal, recovery and delivery decisions. This page explains which layer owns
-each decision and what your host must bind.
+each decision and what your host must bind. The pure engine's timing, status
+and retry rules are on the [Subscription engine](subscription-engine.md) page.
 
 ## Installed subscription boundary
 
-`@openlup/core/subscription` owns pure cycle and payment-clock decisions. Read
-[Subscription engine](subscription-engine.md) for its timing, status and retry
-rules, and use the declarations shipped with your installed package set.
+`@openlup/core/subscription` owns pure cycle and payment-clock decisions: its
+timing, status and retry rules are described on the subscription engine page.
+Use the declarations shipped with your installed package set.
 
 `@openlup/platform/subscriptions` supplies native renewal mechanisms, ports and
 PostgreSQL bindings. Constructing a binding does not mount a runner or select a
@@ -21,8 +22,8 @@ before selecting a seam.
 The engine returns models and events. Durable admission decides whether a new
 renewal may proceed, using stored delivery facts before renewal artifacts are
 created. A successful payment is not delivery evidence; the
-[delivery-alignment boundary](#subscription-delivery-alignment) owns arrival and
-persisted schedule alignment.
+delivery-alignment boundary, described under "Subscription delivery alignment"
+below, owns arrival and persisted schedule alignment.
 
 ## Choose the right layer
 

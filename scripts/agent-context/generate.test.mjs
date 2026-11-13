@@ -87,7 +87,7 @@ test('unshipped package owners use release links and version changes stale the c
     const manifest = resolve(temporary, 'packages/core/package.json');
     writeFileSync(manifest, JSON.stringify({ version: '0.99.0', files: ['README.md'] }));
     const corpus = generateCorpus(temporary, 'core');
-    assert.match(corpus, /https:\/\/github.com\/openlup\/openlup\/blob\/openlup-core-v0\.99\.0\/packages\/core\/docs\/SUBSCRIPTION_ENGINE\.md/u);
+    assert.match(corpus, /https:\/\/github.com\/openlup\/openlup\/blob\/openlup-core-v0\.99\.0\/packages\/core\/docs\/guide\/concepts\/subscription-engine\.md/u);
     assert.match(corpus, /not required application files or aliases/u);
     writeFileSync(manifest, JSON.stringify({ version: '0.99.1', files: ['README.md'] }));
     assert.notEqual(generateCorpus(temporary, 'core'), corpus);

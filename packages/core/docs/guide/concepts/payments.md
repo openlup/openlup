@@ -51,8 +51,10 @@ positive money and currency before applying a refund result. The normalized
 refund observation carries the original money and a stable operation identity;
 missing evidence must not be guessed into a full refund.
 
-The [payment transition implementation](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/core/src/payment/paymentStateMachine.ts)
-and [verified evidence contracts](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/src/payments/contracts/evidence.ts)
+The payment transitions exported from `@openlup/core/payment`
+(`transitionPaymentIntent`, `transitionPaymentAttempt`,
+`applyProviderPaymentEvent`) and the
+[verified evidence contracts](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/src/payments/contracts/evidence.ts)
 define these separate boundaries. Other commerce domains have their own status
 types; do not substitute payment statuses for them.
 
