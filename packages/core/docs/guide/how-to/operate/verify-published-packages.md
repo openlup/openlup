@@ -87,12 +87,13 @@ assert(statement.subject.some(row =>
   row.name === `pkg:npm/%40openlup/${pkg}@${version}` &&
   row.digest.sha512 === digest.toString('hex')));
 const build = statement.predicate.buildDefinition;
+const repository = 'https://github.com/openlup/openlup';
 assert.deepEqual(build.externalParameters.workflow, {
-  ref: tag, repository: 'https://github.com/openlup/openlup',
+  ref: tag, repository,
   path: '.github/workflows/publish-packages.yml',
 });
 assert(build.resolvedDependencies.some(row =>
-  row.uri === `git+https://github.com/openlup/openlup@${tag}` &&
+  row.uri === `git+${repository}@${tag}` &&
   row.digest.gitCommit === commit));
 console.log('PASS: installation integrity and verified provenance match the selected release');
 JS
