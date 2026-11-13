@@ -1574,6 +1574,18 @@
       "class": "platform-documentation"
     },
     {
+      "path": "docs/platform/plans/documentation-programme-intent.md",
+      "class": "platform-documentation"
+    },
+    {
+      "path": "docs/platform/plans/documentation-programme-reconnaissance.md",
+      "class": "platform-documentation"
+    },
+    {
+      "path": "docs/platform/plans/documentation-programme.md",
+      "class": "platform-documentation"
+    },
+    {
       "path": "docs/platform/plans/documentation-quality-audit.md",
       "class": "public-output"
     },
