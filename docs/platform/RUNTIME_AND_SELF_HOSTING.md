@@ -1,41 +1,13 @@
 # Runtime And Self-Hosting
 
-Status: development-preview contract. No recipe in this document is a supported production deployment or a stable installer promise.
+Status: maintainer page: how to change OpenLup. Reader guidance lives in the [OpenLup guide](../../packages/core/docs/guide/README.md); sections marked "Evidence" are frozen historical records.
 
 ## PostgreSQL connection recipe
 
-For the `qualified-v2` and `qualified-admin` PostgreSQL 16 preview profiles, bind connections by
-their work, even when HTTP and timers share one Node host:
+Moved to [Connect to PostgreSQL](../../packages/core/docs/guide/how-to/operate/connect-postgresql.md#assign-connections-by-work).
 
-| Work | Connection and existing seam |
-| --- | --- |
-| Request/database work | A bounded `pg.Pool` using the restricted runtime login, through `createPostgresDataGateway` or the existing capability-local transaction lanes. A transaction-mode pooler is suitable only for operations whose state is entirely transaction-local. |
-| Migration and privileged administration | The direct database endpoint, bypassing external poolers, with the selected migration/admin principal. Bind the migration runner's explicit `connectionString` independently of runtime `DATABASE_URL`; see the [data owner](DATA_AND_MIGRATIONS.md#connection-roles). |
-| Scheduler/jobs using session advisory locks | One dedicated runtime-login session through a direct endpoint or a session-mode pooler. Pass `createPgAdvisoryLock(client)` as `serveNode({ advisoryLock, ... })`, or inject `createEnvAdvisoryLock({ DATABASE_URL: sessionConnectionString })`. Keep it until host drain and `stop()` complete. Never pass `Pool.query` or a transaction-mode pooler. |
+Evidence (historical record, 2026-11-13):
 
-These are existing composition seams, not new environment-variable conventions.
-`createEnvAdvisoryLock(env)` still uses `env.DATABASE_URL` by default. If that URL
-points to a transaction pooler for requests, explicitly inject the separate
-session lock above; constructing a `pg.Client` against that same pooler does not
-make the transport session-affine. Likewise, bind the direct migration port in
-the composition root: the listening Node host applies that port before serving.
-Neither a different URL nor pool mode grants a different database role.
-
-Before each scheduler grant admits a callback, the adapter observes the backend
-PID and its exact granted advisory key in a separate SQL statement. A changed
-PID, missing ownership or an uncertain acquisition refuses the current job and
-further acquisitions on that adapter with an actionable error. Release checks
-the PID before unlocking and refuses a missing grant.
-`OPENLUP_E_ADVISORY_SESSION_AFFINITY` directs the operator to use direct or
-session-mode transport. Drain the host, close its dedicated connection, and
-retire any lock backend stranded behind a misconfigured pooler before restarting;
-do not force an unlock on an unrelated backend. The refusal does not close the
-session under already-admitted jobs.
-
-A finite observation cannot identify every transaction pooler: an idle pooler
-may reuse one backend throughout a check. Nor does it fence a job after admission
-if a connection subsequently fails. Correct transport configuration, job leases,
-idempotency and external-effect fencing retain their existing duties.
 The [qualified composition witness](../../tests/postgres/m14QualifiedComposition.test.ts)
 uses the real complete selected installation, pooled request work and restricted
 runtime lock sessions. Its deterministic backend-switch/reset cases use real
@@ -283,6 +255,8 @@ This also removes any residual realm state after failed issuer provisioning.
 
 ## Runtime model
 
+Moved to [Run OpenLup on your own host](../../packages/core/docs/guide/how-to/operate/self-host.md#compose-the-host), [Shut down a host cleanly](../../packages/core/docs/guide/how-to/operate/shutdown.md#drain-before-disposal).
+
 For a managed-source acquisition cut-over, configure the reference target's
 `OPENLUP_ACQUISITION_DRAIN_STARTED_AT` as a fixed UTC ISO instant and
 `OPENLUP_ACQUISITION_DRAIN_MAX_SECONDS` as a positive integer no greater than
@@ -302,14 +276,105 @@ source quiescence, consistent rollout and item 8 retention of source history;
 these environment values do not certify any of those facts. See the
 [managed mapping task](plans/oss-m14-managed-identity-mapping.md).
 
-The Node-only [transfer helpers](ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery)
-consume qualified transaction and object capabilities; they create no connection,
-route, worker or provider authority. Restoring local claim tokens or checking a
-generation before dispatch cannot exclude an old runtime paused at actual
-provider I/O. Handover still requires independently enforced egress fencing and
-drain/reconciliation of accepted effects. Unsafe or unavailable enforcement
-cannot activate the target and must not pause active subscription state. The
-local synthetic HTTP probe establishes its fixture semantics only.
+Acquisition and transfer handover composition belongs to the
+[transfer owner](ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery)
+and [managed mapping task](plans/oss-m14-managed-identity-mapping.md).
+Local tokens and pre-dispatch generation checks do not exclude an old runtime
+at provider I/O; host-enforced egress fencing and effect reconciliation remain
+required before target activation.
+
+The reference control-plane binding owns bundle selection, admin authorization,
+client lifetime and the capability-local operator ID; the watchdog delegates to
+the package persisted-job tick. The
+[operations boundary](ARCHITECTURE_AND_EXTENSIONS.md#operations-and-diagnostics)
+owns these composition responsibilities. The captured portable operations
+binding selects evidence, alert/readback, pipeline, authorization and heartbeat
+ports; its local capture mode is not hosted delivery/readback.
+
+Marketing reference routes compose `@openlup/platform/marketing/server` with the
+host BFF responder, authorization and persistence. Keep the existing guard,
+schema, operation and response order, retired route admission, signed newsletter
+ingress and notification presentation at their source owners. Browser validation
+uses the marketing entry; DTO-only imports use its contracts entry. Rich joins
+and historical adapter signatures remain application-owned.
+
+Reference analytics composition owns consent signal/storage names, event prefix,
+container reader, route paths, suppression diagnostics and deployment sink.
+The server-only `createAnalyticsContextHandler` requires explicit enablement,
+persistence, bearer/subject verification, cryptography, cookie and client-ID field
+names, and BFF responder. There is no default persistence, portable context SQL
+or reference context route; context failure never gates commerce.
+
+The accounting HTTP scheduler receives an explicitly composed invoicing service
+after method and bearer checks. The reversal binding retains its event adapters,
+provider selection and business keys; correction execution requires a conforming
+recovery bridge. The local-document adapter supplies a structural executor and
+local provider metadata to `createPostgresInvoiceStore`. Native sweep, prepare
+and finish remain separate autocommit calls.
+
+The reference payment-channel BFF owns feature/mode admission and supplies the
+package HTTP client to the domain handler. Customer setup retains the host SDK
+builder and vendor-subpath mappings.
+
+The [M06 shipping binding](../../server/runtime/public-reference/m06ShippingBinding.ts)
+composes selection, address and flat-rate ports with host schemas and authority.
+Native address writes require a complete selected
+[saved-address port](../../packages/platform/README.md#saved-customer-address-book).
+Native flat-rate save requires the native rate port, a ready Core report and a
+same-database `nativeRateSchema` observation; managed BFFs retain their gates.
+
+The [A1 reference binding](../../server/runtime/communications/a1ReferenceBinding.ts)
+is explicitly opt-in and loads host inputs lazily. Its host owns credentials,
+egress policy, callback/environment selection, marketing verification and account
+state. Install only its returned guarded ports through the existing composition
+seams, selecting routes, schedules and inert descriptors explicitly. The bounded
+delivery callable uses the native direct store, closes it on either outcome and
+adds no executor or recovery send. The
+[canonical composition rules](CANONICAL_CONTRACTS.md#explicit-reference-adapter-composition)
+own its translation and refusal semantics.
+
+The native [communications lifecycle binding](../../server/runtime/communications/communicationsLifecycleBinding.ts)
+is a host-callable `node-postgres` capability. Compose the complete catalogue,
+trusted owner-authority connection and verified human operator for its directory.
+Native membership dispatch needs an explicit provider; native watchdog readback
+needs a selected read function. Each capability closes its pool. The
+[package recipe](PLATFORM_PACKAGE_REFERENCE.md#native-communications-operations-development-preview)
+owns the selected bridges and their limits; no default timer is installed.
+
+Reference identity privacy routes retain human-admin authorization, mutation
+policy admission before body reads or binding construction, no-store responses
+and dispatcher preflight. Direct and managed policy selection remains behind
+`#deployment-route-policy`; the public default refuses with `adopter_policy_required`.
+Managed export reports incomplete coverage and managed erasure refuses before
+mutation. Direct erasure leaves subscriptions unchanged. The admin panel owns
+confirmation and subject/session-bound readback; challenge pruning adds no timer.
+
+Customer reconcile selects the bundle's identity path. Direct requests use only
+the actor's linked contact; managed requests retain email-trust policy and shared
+settings. Direct invite/remove factories compose the invitation directory/store
+behind human-admin authorization and retain invitations when delivery fails.
+Managed invitations still create active membership immediately; native membership
+reads do not activate it. Pending/expiry semantics remain a managed compatibility
+gap. The [identity owner](IDENTITY.md#operator-invitation-lifecycle) owns results,
+retries and the direct pending-invitation lifecycle.
+
+The server health and unsubscribe bindings read `#email-presentation` and expose
+its ID. A changed selection needs runtime module resolution and packaging proof.
+The BFF entrypoints delegate to the package dispatcher through
+`server/runtime/bffDispatch.ts`; shared cron entrypoints use `authorizeCron`.
+Company lookup and hidden address routes keep their environment, gateway,
+availability and handler construction order.
+
+Identity route files supply application schemas, admission, limiter, redirects
+and observed request IDs to [package handler factories](IDENTITY.md). A source
+route does not add itself to the default empty table or closed reference set.
+Magic-link composition uses the [shared strict origin policy](IDENTITY.md#magic-link-redirect-policy):
+customer origins select `APP_BASE_URL` then `CUSTOMER_AUTH_REDIRECT_ORIGIN`, admin
+origins select `APP_BASE_URL` then `SITE_URL`. Invalid or absent origins refuse
+before provider access; request hosts supply no fallback. The Auth mail bridge
+preserves its admitted transport, envelope and verification/render/send/store order.
+
+Evidence (historical record, 2026-11-13):
 
 The [native handover fixture](../../tests/postgres/runM14EffectHandover.ts)
 uses actual restricted-runtime dispatch and review HTTP/storage composition in
@@ -363,45 +428,12 @@ fixture measurements, not an SLO or hosted claim.
 This finite synthetic host profile reports only its selected local readiness: other modules/jobs/webhooks/operators, effective
 adopter ACLs, provider qualification and whole-store RTO remain separate.
 
-For a graceful Node shutdown, await the host's cached `stop()` promise before
-disposing callback dependencies. The scheduler fences its current registrations
-synchronously, stops each supplied timer with its original method receiver and
-drains admitted callbacks through lock release. The host keeps
-the local listener available during that drain, including while an admitted
-callback waits for lock acquisition before its HTTP compatibility request. After
-the drain settles, it attempts listener and dedicated lock-session cleanup even
-if the drain failed; shutdown failures remain aggregated. Direct scheduler
-users must await `stopAll(): Promise<void>`, including when supplying a custom
-implementation. The adapter permits later registrations, so the host remains
-responsible for preventing new work during its own shutdown. See
-[scheduled jobs](../../packages/platform/README.md#scheduled-jobs) for the
-same-session advisory-lock reservation and disposable PostgreSQL witness.
-
-The reference control-plane route composes existing admin authorization with the
-package operations handler. Its host binding still selects the bundle, obtains
-and closes its client, and supplies the capability-local operator ID. The direct
-watchdog invokes the package persisted-job tick; missing configuration and
-transport failures keep their existing safe error responses. Package imports
-install no routes or schedules. See the
-[operations boundary](ARCHITECTURE_AND_EXTENSIONS.md#operations-and-diagnostics).
-
 The [package handler characterization](../../packages/platform/test/operations/controlPlaneHandler.test.ts)
 pins the injected authorization/port boundary used by this reference composition:
 authorization before malformed-body parsing, method/command refusals, replay
 receipts, unchanged heartbeat forwarding and safe invalid-result/upstream errors.
 These synthetic handler cases supply no deployment, session-provider or live-store
 qualification; the host still owns those bindings.
-
-For the captured portable operations default, construct
-[`createM14OperationsReferenceBinding`](../../server/runtime/public-reference/m14OperationsBinding.ts)
-with the selected installation's evidence, alert ledger/readback, pipeline,
-administrator authorization and heartbeat ports. Call `runWatchdog` from the
-host's existing trusted scheduler; bind `alerts` and `pipeline` to the existing
-admin read routes when selected. Construction starts no listener or timer.
-The default delivery mode is local capture, with per-tick observations returned
-in `captured`. It performs no network request, records no notification attempt or
-delivery cadence, and leaves `notified` at zero. It is not hosted delivery/readback.
-`checkOnly` returns evaluation without alert, notification or heartbeat writes.
 
 The [composed witness](../../server/runtime/public-reference/m14OperationsBinding.test.ts)
 executes domain/job evaluation, capture, alert readback, selected-sink backoff,
@@ -412,94 +444,14 @@ unverified; selecting an adapter alone supplies no such evidence. See the
 [operations owner](ARCHITECTURE_AND_EXTENSIONS.md#operations-and-diagnostics)
 and [bounded task](plans/oss-m14-portable-operations-defaults.md).
 
-Marketing reference routes compose `@openlup/platform/marketing/server` factories
-with the host BFF responder, authorization and persistence bindings. Case
-list/count retain their direct-bundle guard; prelaunch/evidence dispatch remains
-with the callers. The reference owns observed wrappers, terminal retired routes,
-raw signed newsletter ingress and notification subject/HTML. Importing
-`@openlup/platform/marketing/server` does not load `pg`; selecting
-`@openlup/platform/marketing/server/postgres` requires the existing optional
-`pg` peer. Neither entry registers a route or scheduler. Each handler retains
-its existing method, auth, schema, binding,
-operation and response order. Case, prelaunch and research handlers validate
-responses; successful acquisition evidence values are forwarded unchanged.
-
-Browser-safe acquisition and evidence validation uses
-`@openlup/platform/marketing`; DTO-only imports use
-`@openlup/platform/marketing/contracts`. Research contracts, ports and kiosk
-submission continue to use the core research compatibility export. Portable
-prelaunch validation uses the marketing package; rich prelaunch joins retain
-application contracts. The case runtime uses the server-only compatibility port
-for historical adapter signatures, while retired admission schemas stay local.
-
-Reference analytics bindings compose one marketing data-layer instance per module
-and retain their consent storage/event and signal names, event prefix, container
-reader and deployment sink. The route binding supplies public/redirect and sensitive paths.
-Purchase projection retains reference suppression diagnostics and rejects unsupported
-checkout kinds at the original check position, while the portable projector also
-accepts renewal facts. Loader readiness and sink admission are local signals,
-never network delivery. Default package composition is inert and stores no
-pre-consent replay queue; consent commands retain default/update ordering and
-push-time advertising consent. Hosts supply `consentSignalNames` with an `analytics`
-name followed by ordered `advertising` names. Omission pushes no consent commands
-and refuses optional event admission even with stored consent and a container;
-deployment sink attempts remain independent. Historical consent-time selection
-changes neither authorization nor the local grant and installs no command worker.
-
-The server-only `createAnalyticsContextHandler` requires host enablement,
-persistence, bearer/subject verification, capability cryptography, cookie name,
-the client-id wire field name through `clientIdField` and BFF responder.
-Method, flag, same-origin and strict schema checks precede
-persistence lookup. A missing store refuses as unavailable; throwing sync or
-enrollment operations map to the same bounded error. Only a token hash is
-persisted, an invalid bearer grant refuses before writes, and only a verified
-subject can enroll subscriptions. A repeated active save keeps its capability;
-only explicit regrant can replace an existing revoked context. The host supplies
-its historical flag and RPC names, gateway, route and observability wrapper.
-There is no default persistence, portable context SQL or reference context route.
-Telemetry context failure never gates commerce, and the response's `active`
-boolean is a local context fact rather than proof of delivery. The
+The
 [package witness](../../packages/platform/test/marketing/analyticsContext.test.ts)
 uses in-memory persistence without a live provider.
 
-The accounting HTTP scheduler accepts an explicitly composed invoicing service
-and passes it to the existing accounting runtime after HTTP method and bearer
-authorization checks. It adds no cron or executor. Runtime enablement and service
-readiness still precede the shared durable job lease.
-
-The accounting reversal host delegates outcome handling to the invoicing helper
-while retaining its three event adapters, provider selection and exact business
-keys. The package helper hardcodes the donor's 10 s timeout. Disabled selection creates no handler. Invalid payloads discard;
-persistence failures retry with the existing bounded reason. A processed reversal
-may mean local pre-issue void, no invoice or a queued correction; it never proves
-remote deletion, money reversal or document delivery. Correction execution needs
-an explicit conforming recovery bridge; the old vendor method alone stays
-unsupported before claim. No new job registration or default activation follows.
-
-The Postgres local-document adapter now consumes `createPostgresInvoiceStore`
-with the caller's structural executor and explicit local provider metadata.
-Its request key, local document reference, status and replay remain intact;
-this path supplies no fiscal facts and registers no invoicing worker.
-For the native store, use separate autocommit sweep, prepare and finish calls.
 The [native conformance witnesses](../../tests/postgres/invoicingNativeConformance.test.ts)
 cover row/lease fences, scope, locked accounting and unchanged renewal state.
 The combined P4 chain also installs the pinned payment-decoupling replacement;
 independent collection never joins a payment or parcel transaction.
-
-The reference payment-channel BFF retains its feature and mode admission gates,
-and now supplies the package HTTP client to the same domain handler. Its local
-simulator branch and disabled empty-channel response remain unchanged. Customer
-setup routes continue through the host SDK builder, whose mappings now come
-from the vendor subpath; this adds no route or browser exposure.
-
-The [M06 shipping binding](../../server/runtime/public-reference/m06ShippingBinding.ts)
-composes selected selection, address and flat-rate ports with host schemas and
-authority. Native address writes require an explicitly selected complete
-[saved-address port](../../packages/platform/README.md#saved-customer-address-book);
-unbound or incomplete native writers remain refused. Native flat-rate save requires a
-selected native rate port, a Core report in state `ready` and a same-database
-`nativeRateSchema` observation of the shipping seed; the managed BFFs retain their flags and
-authorization. Construction mounts nothing.
 
 M04 B2 exposes neutral Polish/EN invoice, role, inquiry and opt-out content through
 `@openlup/platform/communications/contracts`. Reference invoice locale is an
@@ -513,148 +465,9 @@ presentation binding, not a new route/sender. Private-label inquiry and adopter
 legacy copy/locale exceptions remain owned by their current hosts. See the
 [B2 mapping ledger](plans/oss-m04-communications-triggers.md#b2-changed-expectations-and-preservation).
 
-The [A1 reference binding](../../server/runtime/communications/a1ReferenceBinding.ts)
-is separately opt-in: call `createA1ReferenceBinding` with `enabled: true` and a
-lazy `loadHostInputs`. Without that literal opt-in it returns `undefined` before
-loading inputs or runtime modules. The host owns credentials, egress policy,
-callback observation/environment selection, marketing verification and shared
-account state. Construction performs reference readiness admission; every
-exposed effect rechecks that admission before effect work. Install only the
-returned guarded ports through the existing transport and reference composition
-seams. Select routes, schedules and inert handler descriptors explicitly; their
-defaults are empty. Existing default/reference delivery wiring is unchanged.
-
-The bounded delivery callable uses the native direct store with a six-entry
-poll-event translation and closes the store on success or failure. It adds no
-scheduler, executor, claim loop, subscription capability or recovery send. See
-[canonical composition rules](CANONICAL_CONTRACTS.md#explicit-reference-adapter-composition)
-for exact translation and refusal semantics. Synthetic offline fixtures and
+Synthetic offline fixtures and
 locally packed consumers establish composition, not provider-account activation
 or hosted duration evidence.
-
-The native [communications lifecycle binding](../../server/runtime/communications/communicationsLifecycleBinding.ts)
-is an explicit host-callable capability for `node-postgres` with `DATABASE_URL`.
-It registers real network references, reconciles injected neutral observations,
-dispatches injected membership work, exposes authorized recipient operations and
-evaluates durable consent. It closes each capability pool on success or failure.
-The full position-70 catalogue and trusted owner-authority connection are
-prerequisites; verified human operator identity is additionally required for the
-directory. C-compose adds selected native bridges for callbacks, reconciliation,
-recipient operations and signed-token preferences. Native membership dispatch
-requires an explicitly supplied provider and uses the existing job ledger and
-sync worker; a missing provider refuses instead of selecting a silent no-op.
-The native watchdog requires a selected readback function and reports unavailable
-when that function or storage cannot be used. Managed thresholds and branches
-remain unchanged. No default timer or deployment cadence is installed. Consent excludes managed frequency caps and
-legacy contact-touching and is not a send-time fence. See the
-[package recipe](PLATFORM_PACKAGE_REFERENCE.md#native-communications-operations-development-preview).
-
-The reference BFF mounts `POST /api/bff/admin/identity/privacy/export` and
-`POST /api/bff/admin/identity/privacy/erase` in the shipped entrypoint, including
-managed bundles with an empty caller route table. Bundle-aware default entries
-precede supplied entries and the managed route availability fence. Both handlers recheck live admin membership and require
-an explicitly human actor; neither route is machine-write allowlisted. No-store
-responses carry versioned coverage/receipt data or a structured `privacyCode`.
-Both direct and managed routes retain risk `mutation` and the public default refuses them
-with 503 / `adopter_policy_required` before reading request bodies or queries.
-Both mounts also refuse before authentication or privacy bindings are created.
-Direct and managed adopters reach them only through `#deployment-route-policy`, like every
-admin mutation route, including invite, remove and admin `me`. Ordinary admin
-routes reach dispatcher preflight exactly once with the original request, response
-and route arguments. The two exact default privacy mounts run their preflight
-internally after mutation-policy admission. An explicitly admitted identity
-candidate dispatches its own policy-wrapped table and bound preflight without
-substituting default privacy handlers. After policy admission, managed export
-explicitly reports incomplete coverage and erasure refuses with
-`MANAGED_PRIVACY_ERASURE_UNAVAILABLE` before any mutation.
-Admin Settings adds an identity-only export/erase panel with explicit confirmation,
-retained obligations and subject/session-bound in-memory readback. Direct erasure
-uses one local transaction and leaves subscriptions unchanged. The existing `prune-challenges`
-command now returns separate operator/customer counts and deletes at most 500 per
-store whose expiry is strictly older than 24 hours. No scheduler is introduced.
-
-Customer reconcile selects the bundle's identity path. Direct requests read only
-the authenticated actor's existing linked contact and return `created:false` and
-`linked:false`; an absent link is `ACCOUNT_LINK_CONFLICT`. Managed requests retain
-the required email-trust policy, shared settings cache and 403/503 trust refusals.
-Direct operator invite/remove route factories use the direct invitation directory
-and store behind live human-admin authorization. The invite factory accepts a
-notification port; delivery failure retains the invitation. Public policy still
-denies before body reads or binding construction. See the
-[identity composition contract](IDENTITY.md#responsibility-and-composition).
-
-
-Managed operator invitation inserts active membership immediately. Authorization
-and the public admin `me` source only read native membership; they do not activate
-on first entry or compensate writes, and need no service binding for invitation
-state. The admin `me` route retains its `mutation` deployment-risk classification:
-the public default refuses it with 503 `adopter_policy_required` before handler
-execution, even though membership lookup performs no activation. Removal retains
-its actor-authenticated revocation RPC. Magic-link
-eligibility requires active membership with a known role, with the existing
-anonymous envelope, quota and padding. Pending/expiry semantics remain a managed
-compatibility gap requiring a transactional store and a later reviewed managed
-forward. Direct composition gains pending invitations and trusted human acceptance
-with a new canonical SQL forward; direct human login remains unmounted and
-machine authentication is unchanged. [Identity lifecycle](IDENTITY.md#operator-invitation-lifecycle)
-owns the distinct results, retries and compatibility limits.
-
-
-The platform separates browser delivery, a server-side application boundary, background work, durable data, and provider adapters. A host may choose how to run those pieces, but it must preserve the platform contracts: authenticated
-requests reach the server boundary, durable writes use the canonical data
-contract, scheduled work is observable and replay-safe, and provider adapters
-remain explicit selections.
-
-Browser-public configuration is build-time input. Sensitive server configuration
-is runtime-only input and must not be embedded in a browser artifact. Hosts must
-provide their own storage, identity, delivery, and provider configuration where
-the selected capabilities require it.
-
-The server health composition and public unsubscribe route read the root
-manifest's `#email-presentation` selection and report that presentation's id
-(the unsubscribe route uses the `x-email-presentation` response header). The
-public selection is the neutral example. A host selecting another presentation
-must make its import-map target available to its runtime; source-level
-selection alone does not establish function packaging or deployment behavior.
-
-The BFF entrypoints (`api/bff/[...path].ts` and the `api/bff-router.ts` rewrite)
-dispatch through the unreleased `@openlup/platform` dispatcher, bound in
-`server/runtime/bffDispatch.ts` with this application's settlement bootstrap,
-admin preflight, and not-found envelope. Shared cron entrypoints
-use the package's `authorizeCron` guard through `api/_cron/authorizeCron.ts`.
-Company lookup BFF composition still reads the existing mode and provider
-environment at its established construction points, then passes the selected
-ports to the package-backed domain facade. Hidden address routes still read the
-service environment, create the gateway, probe availability and invoke the
-handler in that order; they inject the reference schema bundle without changing
-route admission or success-only availability metadata.
-The package's Node runtime, scheduler and node host are not yet composed by the
-public reference server; the module's composition change does that.
-
-
-Identity route files now compose [package handler factories](IDENTITY.md) with
-this application's schemas, feature admission, limiter, redirect resolver and
-observed request-ID reader. The neutral reconcile-account source has no
-personalization hook. A route source does not add it to the default empty BFF
-route table or the disposable reference profile's closed route set.
-
-Magic-link route composition now passes configured origins to the identity
-module's [shared strict default](IDENTITY.md#magic-link-redirect-policy).
-Customer routes select nonblank `APP_BASE_URL`, otherwise
-`CUSTOMER_AUTH_REDIRECT_ORIGIN`; admin routes select `APP_BASE_URL`, otherwise
-`SITE_URL`. These values must be origins without paths, credentials, query or
-fragment. Missing or invalid configuration returns 503
-(`UPSTREAM_UNAVAILABLE`, reason `magic_link_origin_not_configured`) before
-provider access, including on local and preview runtimes. No request host or
-forwarded header supplies a fallback. Valid configured flows retain quota,
-padding and non-enumerating responses. This source change activates no route.
-
-The Auth mail endpoint passes the already-admitted maintained transport through
-`createAuthEmailTransport` into the package hook. The bridge preserves the
-sender/recipient envelope and legacy identifier projection. Signature verification,
-content rendering, administrative control, send and persistence keep their
-existing order. The endpoint adds no policy fallback or direct-delivery mode.
-
 
 ### Payment repair host bindings
 
@@ -692,29 +505,14 @@ opt-in selector mounts no live route feeding them.
 
 ## Self-host boundary
 
-Application file changes can use the explicit Node
-[lifecycle snapshot primitive](ARCHITECTURE_AND_EXTENSIONS.md#application-file-upgrades)
-under an exclusive maintenance window. Its conflict preflight and exact-byte
-resume are separate from the canonical migration runner and actual runtime
-admission. A caller-supplied schema-range check does not certify database
-compatibility or a completed npm/deployment transition.
+Moved to [Run OpenLup on your own host](../../packages/core/docs/guide/how-to/operate/self-host.md#compose-the-host).
 
-The same entry's `inspectLegacyPostgresInstallRoles` observes only finite
-[legacy fresh-bootstrap role prerequisites](DATA_AND_MIGRATIONS.md#legacy-fresh-bootstrap-role-observation)
-through an injected PostgreSQL query handle. Even `rolePrerequisitesMet: true`
-does not establish install readiness, runtime grants, pooling or host support;
-the helper creates no role or schema and runs no installer.
-
-The platform target is portable PostgreSQL with a reproducible baseline and
-ordered forward migrations. A managed database service and a self-hosted
-database are deployment choices for the same data contract, not two business
-implementations. Reference runtime profiles may be useful evaluation evidence;
-they do not establish a complete provider matrix or general host certification.
-
-A self-hosted evaluation must make its selected configuration, migration state,
-background-work policy, storage boundary, and provider capabilities explicit.
-It must fail safely when a required dependency is absent rather than silently
-substituting a different business behaviour.
+Application-file lifecycle maintenance belongs to the
+[snapshot owner](ARCHITECTURE_AND_EXTENSIONS.md#application-file-upgrades);
+database compatibility and runtime admission remain separate checks. The
+[legacy role-observation owner](DATA_AND_MIGRATIONS.md#legacy-fresh-bootstrap-role-observation)
+defines `inspectLegacyPostgresInstallRoles`: its finite observations create no
+role or schema and do not establish installation readiness or host support.
 
 ## Opt-in disposable subscription reference
 
@@ -1239,95 +1037,18 @@ still use their current source implementations; P7 owns any later route adoption
 
 ## Customer diagnostic history preview
 
-Customer diagnostic history is a development-preview, default-off platform
-module. It records a closed vocabulary of browser-observed transactional,
-sign-in, and account actions. The browser payload accepts no free-form metadata
-or raw form values. After successful authentication, the server may attach
-canonical principal and customer subject identifiers; anonymous observations
-remain anonymous.
+Moved to [Customer diagnostic history and retention](../../packages/core/docs/guide/how-to/operate/diagnostics-and-retention.md#select-the-diagnostic-bindings).
 
-Evaluation requires all of the following configuration:
-
-| Setting | Boundary |
-|---|---|
-| `VITE_COMMERCE_CUSTOMER_DIAGNOSTIC_HISTORY_ENABLED=true` | Build-time browser opt-in. The default is `false`. |
-| `COMMERCE_CUSTOMER_DIAGNOSTIC_HISTORY_ENABLED=true` | Server ingest opt-in. The default is `false`. |
-| `CUSTOMER_DIAGNOSTIC_RETENTION_DAYS` | Required integer from 1 to 90 whenever server ingest is enabled. |
-| `CUSTOMER_DIAGNOSTIC_INGRESS_KEY` | Runtime-only HMAC key of at least 32 characters. It must never enter a browser artifact. |
-| `APP_BASE_URL` | Exact HTTP(S) origin accepted by the ingest boundary; paths, credentials, queries, and fragments are refused. |
-
-The selected runtime must also configure its data lane. Portable PostgreSQL
-uses `DATABASE_URL`; a managed data adapter uses its own server-only
-configuration. Missing retention, ingress key, origin, or data configuration
-fails ingest closed. Retained ingest is additionally refused closed unless
-**both** retention locks below are open — the drain flag and the drain's control
-row: an enabled collection without a proven drain is a configuration error on
-every runtime, and the ingest boundary enforces that rather than documenting it.
-
-The browser keeps the opaque segment credential in `sessionStorage`, with an
-in-memory fallback, so correlation is limited to the current tab. Delivery is
-best-effort: a timeout can follow a committed write and must remain an unknown
-outcome rather than be retried as if persistence were absent. Version 1 and
-version 2 coverage can coexist in one retained history.
-
-Operator reads require an active platform operator and create an access-audit
-event. The additive global diagnostic overview is available only with the explicit
-`customer-diagnostic-history.v2` read contract. It is bounded to seven days,
-groups retained observations by coverage version and action, and returns only
-closed classifications plus up to three opaque segment IDs per bucket. It does
-not turn browser observations into business truth or provide a customer-level
-analytics interface. The support read route is separately default-off through
-`COMMERCE_AGENT_CUSTOMER_READ_ENABLED`; enabling ingest does not grant read
-access. These controls do not replace the host's retention, database access,
-or incident-response policy.
+The diagnostic ingest and read bindings are application source mechanisms;
+they are not automatically registered installed-package exports. Their owners
+are the [history binding](../../server/runtime/observability/customerDiagnosticHistoryBinding.ts)
+and [support read route](../../server/bff/admin/support/customer-diagnostics.ts).
 
 ### Retention drain
 
-Retention is executed by a default-off job, not by a read-side filter. The job
-`customer-diagnostic-prune` deletes expired events, expired access-audit rows,
-aged admission buckets and orphaned segments in bounded batches, under the
-platform job lease, and records each attempt in the job-run ledger.
+Moved to [Customer diagnostic history and retention](../../packages/core/docs/guide/how-to/operate/diagnostics-and-retention.md#retention-drain).
 
-| Setting | Boundary |
-|---|---|
-| `COMMERCE_CUSTOMER_DIAGNOSTIC_PRUNE_ENABLED=true` | Server opt-in for physical deletion. The default is `false`. Deliberately independent of the ingest flag, so a host can drain what it already stored while collection is off. |
-| `platform_job_controls.enabled` for `customer-diagnostic-prune` | The second, separate lock. Both paired migrations seed the row disabled; an absent row would mint its own permission on first claim, which for a deletion job is the difference between a wired rail and an armed one. |
-| `CUSTOMER_DIAGNOSTIC_RETENTION_DAYS` | The same 1–90 value the ingest uses. Expiry is stamped on each row at ingest, so changing it ages future rows only. |
-
-**No hosted scheduler is required, and none is used.** The route
-`/api/cron/customer-diagnostic-prune` is registered in the platform runtime
-configuration but carries `hostedCron: false`, so it is absent from the hosted
-provider's generated cron list and no database-side schedule exists. A host
-points whatever clock it has at the route. Two lanes ship:
-
-- **portable Node.** The in-process scheduler registers a direct handler for the
-  job **only** on bundles whose `data` capability is `postgres`, so there no HTTP
-  hop and no hosted scheduler is involved. On a Node bundle with any other data
-  capability no direct handler registers and the same timer reaches the route
-  over the HTTP compatibility bridge, which sends no identifying header — those
-  runs are recorded as `unattributed_post` in the job-run ledger. The recorded
-  invocation source is evidence of how the request arrived, never proof of which
-  clock fired.
-  ⚠️ **Advisory-lock caveat.** The Node scheduler's cluster lock is a Postgres
-  advisory lock that is only created when `DATABASE_URL` is set; without it the
-  scheduler falls back to a lock that always acquires, so **every instance
-  fires**. On a multi-instance Node host the job's own `platform_job_controls`
-  lease — not the scheduler lock — is what prevents a double run. The lease is
-  sufficient; the point is that the scheduler lock is not what you are relying
-  on.
-- **external poke.** Any external timer may `POST` the route with the shared cron
-  secret. A caller that ticks more often than the retention cadence should send
-  the backstop header (`CUSTOMER_DIAGNOSTIC_PRUNE_BACKSTOP_HEADER` in the prune runtime) set to `freshness`, which makes the route answer
-  `primary_fresh` without claiming when the last success is inside the freshness
-  window. An external caller that does not identify itself still runs the drain;
-  it is simply recorded as `unattributed_post` rather than as a named source.
-  Identification is attribution, never authority.
-
-On the portable lane the claim, each batch and the finish run as separate
-transactions rather than one long-held one. The control-row lease, not a
-transaction, is what excludes a second runner; a crash mid-drain leaves the
-already-committed batches deleted and the remainder to the next run, which is
-safe because deletion is idempotent.
+Evidence (historical record, 2026-11-13):
 
 This remains a portable, default-off preview: the paired PostgreSQL migrations
 describe the data contract, but do not provide an installer, host certification,
@@ -1338,6 +1059,8 @@ falsifiers; follow [testing](../../CONTRIBUTING.md#test-scope-and-diagnostics) f
 execution. Second-runtime and deployed conformance remain separate adoption proof.
 
 ## Provider and host boundaries
+
+Moved to [Run OpenLup on your own host](../../packages/core/docs/guide/how-to/operate/self-host.md#keep-provider-authority-at-the-host).
 
 [ReferenceFulfillmentPage](../../src/pages/ReferenceFulfillmentPage.tsx) is an
 opt-in operator read example with no default runtime importer or route. Mounting
@@ -1358,25 +1081,12 @@ package subject input and translates the outgoing account path/query and
 simulator return path back at its injected transaction client. The fallback
 payer label remains host-owned. Package no-charge errors reach prepared-attempt
 retry/release as the same class; arbitrary transport failures stay ambiguous.
-Default-off construction does no SDK/fetch/certificate work. This rebinding
-adds no route, schedule, activation or environment setting.
-
-Unused root payment webhook verifiers, notification normalization and test-only
-draft mappers have retired after production-importer checks. The shared HTTP
-helpers and unrelated mapper/readiness tests remain. Opt-in package payment
-adapters retain their implementations and witnesses; no host composition or
-provider activation changes. The [retirement ledger](plans/oss-a2-payment-adapters.md#o-p3b-1-unused-root-retirement-2026-10-22)
-records the exact root cases and remaining adopter leg.
-
-
+Default-off construction does no SDK/fetch/certificate work.
 
 Communications server algorithms now delegate through the platform package. The
 reference bindings still own the maintained HTTP mail provider egress/environment selection, origin defaults,
 shared notification-control policy and the Auth renderer/observers. The existing
-receipt transaction lane is passed through unchanged. This relocation adds no
-provider SDK, deployment setting, route, scheduler or second outbox executor;
-managed receipt service-scope and fixture construction remain in the reference
-adapter.
+receipt transaction lane is passed through unchanged.
 
 `createOidcComposition` is an explicit direct-bundle option, supplied with the
 existing environment reader's `IDENTITY_OIDC_ISSUER`, customer audience and
@@ -1425,20 +1135,11 @@ authentication. Failed persistence retains the provider identity and customer
 link for reuse. Managed invitations store native active membership; no Auth
 metadata grants access.
 
-
-Provider SDKs, sensitive material, signatures, and wire formats remain behind
-adapters. The platform stores canonical outcomes and may preserve sanitized
-provider evidence, but a provider response is not itself the platform's durable
-truth. Hosts can add adapters only through the contracts in
-[Architecture and extensions](ARCHITECTURE_AND_EXTENSIONS.md) and
-[Canonical contracts](CANONICAL_CONTRACTS.md).
-
 The transactional commerce and fulfillment renderers use the root
 `#email-presentation` import as their default while retaining an explicit
 presentation argument for callers. A host that changes the selection must
 verify its server module resolution and rendered output. The public source
 does not declare a managed serverless packaging rule for this alias.
-
 
 Canonical production hostnames come from
 `config/site-routes.json.productionHosts`. Configure this list for an adopting
@@ -1449,22 +1150,36 @@ callback and gives the email check no production domains to recognize. See the
 [pending preview upgrade notes](../../.github/VERSIONING_AND_EOL.md#pending-preview-upgrade-notes-public-coordinates)
 for the accompanying `OPENLUP_` configuration rename.
 
-Mail injection requires package-owned admission. New network adapters compose
-`createGuardedEmailTransport` with a fresh explicit host policy and consume the
-admitted recipient, credential and environment tag. Unknown/malformed decisions
-refuse before sender entry. The maintained client already enforces its reference
-sink/drop policy; its factory registers that implementation explicitly without
-rerouting or changing wire/key semantics. Provider tags and arbitrary capture
-claims grant no admission. The [transport contract](../../server/infra/email/README.md#contract)
-explains the host trust boundary and local capture semantics.
+The maintained mail client owns its reference sink/drop policy and explicitly
+registers that implementation. Provider tags and capture claims confer no
+admission. The [transport contract](../../server/infra/email/README.md#contract)
+owns reference wire/key semantics and local capture limits.
+
+Evidence (historical record, 2026-11-13):
+
+This rebinding
+adds no route, schedule, activation or environment setting.
+
+Unused root payment webhook verifiers, notification normalization and test-only
+draft mappers have retired after production-importer checks. The shared HTTP
+helpers and unrelated mapper/readiness tests remain. Opt-in package payment
+adapters retain their implementations and witnesses; no host composition or
+provider activation changes. The [retirement ledger](plans/oss-a2-payment-adapters.md#o-p3b-1-unused-root-retirement-2026-10-22)
+records the exact root cases and remaining adopter leg.
+
+This relocation adds no
+provider SDK, deployment setting, route, scheduler or second outbox executor;
+managed receipt service-scope and fixture construction remain in the reference
+adapter.
 
 ## Preview posture
 
-Development-preview source may be evaluated, but it is not a stable release,
-an upgrade channel, or a supported self-host commitment. The stable-framework requirements must establish
-a versioned release/BOM, a thin adopter application, conformance coverage,
-upgrade tooling, public installation/build/test evidence, and compatibility
-proof before those claims are available.
+Moved to [Run OpenLup on your own host](../../packages/core/docs/guide/how-to/operate/self-host.md#keep-provider-authority-at-the-host).
+
+Before maintainers make stable-framework claims, the release evidence must
+establish a versioned release/BOM, a thin adopter application, conformance
+coverage, upgrade tooling, public installation/build/test evidence and
+compatibility proof.
 
 ## Communications host bindings
 
