@@ -28,11 +28,11 @@ for the loopback runner and shutdown behavior.
 
 ## Prepare an independent application
 
-Use a disposable PostgreSQL database meeting the [sample's prerequisites](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/own-stack/README.md#run-outside-the-platform-checkout), with the complete `qualified-v2` portable
+Use a disposable PostgreSQL 16 database with the complete `qualified-v2` portable
 catalogue installed and a restricted runtime login that can assume
 `service_role`. Do not use the bootstrap or migration login. Follow the
-[connection roles](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/DATA_AND_MIGRATIONS.md#connection-roles)
-and [runtime connection recipe](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/RUNTIME_AND_SELF_HOSTING.md#postgresql-connection-recipe).
+[connection roles](../operate/connect-postgresql.md#assign-connections-by-work)
+and [runtime connection recipe](../operate/connect-postgresql.md#assign-connections-by-work).
 Schema installation is a prerequisite; the example installs no schema. Sparse
 module SQL assets do not form a complete installation chain.
 
@@ -119,7 +119,7 @@ current product registry.
 Missing or invalid bearer credentials return `401/operator_required` before
 database access. A request-supplied `actorId` fails the strict command schema
 with `422/draft_input_invalid`. The HTTP adapter refuses unsupported content
-types with `415/json_required`, bodies beyond the [handler's byte limit](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/own-stack/README.md#run-outside-the-platform-checkout) with
+types with `415/json_required`, bodies beyond 64 KiB with
 `413/body_too_large` and malformed JSON with `400/invalid_json`. An unavailable dependency maps to a
 service-unavailable response; do not interpret it as a successful write.
 

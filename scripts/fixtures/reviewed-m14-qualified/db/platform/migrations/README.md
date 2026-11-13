@@ -46,6 +46,6 @@ column that operator lead absorption counts. Reader support and this approval
 landed separately; both qualified plans now select the byte-identical active
 SQL.
 
-The [migration owner](../../../../../../docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
+The [migration owner](../../../../../../packages/core/docs/guide/upgrade/database-migrations.md#select-the-complete-catalogue)
 explains generation selection and ledger identity. These fixtures do not prove
 installation, runtime completeness, managed-host qualification or activation.

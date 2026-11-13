@@ -8,8 +8,7 @@ across retries. Compose the store, handlers and host entrypoints explicitly.
 Apply the package's [baseline SQL](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/outbox/sql/0001_outbox.sql)
 through your migration chain on a fresh PostgreSQL database. Its
 [manifest](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/outbox/sql/manifest.json)
-binds the bytes to their migration owner. Use a database meeting the
-[SQL prerequisite](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/outbox/README.md#postgresql-installation-and-transactions).
+binds the bytes to their migration owner. Use PostgreSQL 16 or later.
 Importing the package applies no SQL. Assess compatibility before installing
 into an existing managed schema; the fresh-install baseline is not an upgrade
 for it. Supply your own role grants, row-level security and provider recovery.
