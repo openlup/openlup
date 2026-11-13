@@ -960,21 +960,33 @@
       ],
       "entrypoint": "dist/account-support/read-contracts/index.d.ts",
       "snapshot": "api/account-support-read-contracts.api.md"
+    },
+    "./payments/testing": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/payments/scriptedFake.test.ts",
+        "test/payments/stripe/conformance.test.ts",
+        "test/payments/tpay/conformance.test.ts"
+      ],
+      "entrypoint": "dist/payments/testing/index.d.ts",
+      "snapshot": "api/payments-testing.api.md"
     }
   },
   "pack": {
     "code": {
-      "maxPackedBytes": 2513518,
-      "maxFiles": 4301
+      "maxPackedBytes": 2841549,
+      "maxFiles": 4828
     },
     "docs": {
-      "maxPackedBytes": 106496,
-      "maxFiles": 10
+      "maxPackedBytes": 109679,
+      "maxFiles": 8
     },
-    "maxPackedBytes": 3152896,
-    "maxUnpackedBytes": 15105024,
-    "maxFiles": 4435,
-    "capReason": "The owner approved documentation 106496 B after the required main 0.39.0 integration measured 104042 B, reserving about 2.36% headroom. Preserve the previously approved code-file (4301), packed (3152896 B) and unpacked (15105024 B) envelope, main's released 0.38.0 baseline, and every other inherited limit.",
+    "maxPackedBytes": 3491340,
+    "maxUnpackedBytes": 16971313,
+    "maxFiles": 5004,
+    "capReason": "Per-part budget for the portable payments part; rows do not edit caps. Measured before this cap declaration: code 2491197 B packed / 4232 files; total 3110045 B packed / 14878816 B unpacked / 4387 files; docs 104456 B packed / 7 files. Forecast: +215040 B packed code and total; multiply those sums by 1.05 and round up. Derive unpacked and code/total file forecasts proportionally using 215040/2491197, then add 5% and round up. Docs use measured values plus 5%, rounded up. Preserve the released baseline and browser-entry limits.",
     "baseline": {
       "version": "0.39.0",
       "packedBytes": 3073686

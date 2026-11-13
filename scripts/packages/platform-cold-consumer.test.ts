@@ -192,6 +192,7 @@ it("accepts ordinary confined packages and independently verifies absent peers",
     "fulfillment/contracts",
     "payments",
     "payments/contracts",
+    "payments/testing",
     "shipping",
     "shipping/contracts",
   ]));
