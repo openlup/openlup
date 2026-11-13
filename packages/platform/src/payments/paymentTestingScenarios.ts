@@ -21,10 +21,10 @@ export type PaymentTransportFixture = {
  * These offline probes establish no durable-store or provider qualification.
  */
 export interface PaymentAdapterSafetyScenarios {
-  /** Count every provider request through the subject adapter's injected client. */
+  /** Count every injected-client invocation at entry, before parsing or assertions. */
   providerRequests: () => number;
   transport: Record<PaymentTransportScenario, PaymentTransportFixture>;
-  /** One successful execution per declared currency and capture family, plus an
+  /** Successful executions demonstrate every declared currency and capture flow's handoff, plus an
    * unattended attempt (or a refused invocation when unattended is unsupported). */
   capabilityInputs: readonly Parameters<PaymentAttemptPort["execute"]>[0][];
   /** An otherwise valid request with a currency outside the declared set. */

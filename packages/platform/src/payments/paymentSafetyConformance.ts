@@ -14,6 +14,7 @@ export async function runPaymentSafetyConformance(subject: PaymentAdapterTestSub
   };
   const capabilities = adapter.capabilities;
   const executions: PaymentAdapterTestSubject["executionInput"][] = [];
+  const demonstratedFlows = new Set<PaymentAdapterCapabilities["captureFlows"][number]>();
   const execute = async (input: PaymentAdapterTestSubject["executionInput"]) => {
     const owner = subjects.find(row => row.executionInput.intentRef === input.intentRef
       && row.executionInput.attemptRef === input.attemptRef);
@@ -45,10 +46,12 @@ export async function runPaymentSafetyConformance(subject: PaymentAdapterTestSub
     const result = await execute(input);
     requireFact(result.dispatch.kind === "dispatched" && result.outcome.kind === "attempt", "capability execution dispatched");
     if (input.purpose !== "renewal-unattended") {
-      const flow = capabilities.captureFlows.find(row => row.methodFamilies.includes(input.methodSelection!.family));
-      requireFact(flow !== undefined, "capture flow declared");
-      requireFact(flow!.handoff === "customer-authorization" ? Boolean(input.customerAuthorization)
-        : result.handoff?.kind === flow!.handoff, "capture flow handoff");
+      const flows = capabilities.captureFlows.filter(row => row.methodFamilies.includes(input.methodSelection!.family));
+      requireFact(flows.length > 0, "capture flow declared");
+      const matched = flows.filter(flow => flow.handoff === "customer-authorization" ? Boolean(input.customerAuthorization)
+        : result.handoff?.kind === flow.handoff);
+      requireFact(matched.length > 0, "capture flow handoff");
+      matched.forEach(flow => demonstratedFlows.add(flow));
     }
     executions.push(input);
   }
@@ -118,12 +121,11 @@ export async function runPaymentSafetyConformance(subject: PaymentAdapterTestSub
       && capabilities.terminalOutcomeReporting.silenceBecomesSuspectAfterMinutes > 0, "host-consumed declaration:terminalOutcomeReporting well-formedness"),
     mandateUpsertIsSubscriptionScoped: () => requireFact(typeof capabilities.mandateUpsertIsSubscriptionScoped === "boolean", "host-consumed declaration:mandateUpsertIsSubscriptionScoped well-formedness"),
     captureFlows: () => {
-      for (const flow of capabilities.captureFlows) for (const family of flow.methodFamilies) {
-        requireFact(executions.some(input => input.purpose !== "renewal-unattended"
-          && input.methodSelection?.family === family), `capture flow ${flow.kind}:${family}`);
+      for (const flow of capabilities.captureFlows) {
+        requireFact(demonstratedFlows.has(flow), `capture flow ${flow.kind}:${flow.handoff}`);
       }
     },
-    supportedCurrencies: () => {
+    supportedCurrencies: async () => {
       requireFact(capabilities.supportedCurrencies.length > 0, "declared currencies");
       for (const currency of capabilities.supportedCurrencies) {
         requireFact(executions.some(input => input.money.currency === currency), `currency ${currency}`);
@@ -133,6 +135,7 @@ export async function runPaymentSafetyConformance(subject: PaymentAdapterTestSub
       let refused = false;
       try { adapter.attemptPort.validateInput(input); } catch { refused = true; }
       requireFact(refused, "unsupported currency refuses before dispatch");
+      await refuses(input, "unsupported currency refuses execution");
     },
     unattended: () => requireFact(capabilities.unattended === "supported"
       ? executions.some(input => input.purpose === "renewal-unattended")

@@ -21,9 +21,11 @@ export function createStripeConformanceFixture() {
     currency: fixture.currency.toLowerCase(), client_secret: `transient_${fixture.remote}` });
   const unattendedRequests: unknown[] = [];
   const fake = createScriptedPaymentFake<{ create: unknown; read: unknown }>();
+  let providerRequests = 0;
   let failure: ScriptedPaymentOutcome<unknown> | undefined;
   const client: StripePaymentAdapterConfig["client"] = {
     createPaymentIntent: vi.fn(async input => {
+      providerRequests++;
       const fixture = fixtures.find(row => row.intentRef === input.metadata?.paymentIntentId);
       if (!fixture) throw new Error("unexpected execution subject");
       expect(input).toMatchObject({ amount: fixture.amountMinor, currency: fixture.currency.toLowerCase() });
@@ -37,6 +39,7 @@ export function createStripeConformanceFixture() {
       return await fake.invoke("create") as ReturnType<typeof intent>;
     }),
     retrievePaymentIntent: vi.fn(async reference => {
+      providerRequests++;
       const fixture = fixtures.find(row => row.remote === reference);
       if (!fixture) throw new Error("unexpected readback subject");
       fake.enqueue("read", { kind: "success", value: intent(fixture) });
@@ -92,7 +95,8 @@ export function createStripeConformanceFixture() {
       ],
     } satisfies Subject & { verificationFixture: typeof verification };
   });
-  return { subjects, client, fake, unattendedRequests, configureFailure: (step: ScriptedPaymentOutcome<unknown>) => { failure = step; } };
+  return { subjects, client, fake, unattendedRequests, providerRequests: () => providerRequests,
+    configureFailure: (step: ScriptedPaymentOutcome<unknown>) => { failure = step; } };
 }
 
 export function stripeSafetyFixture() {
@@ -116,7 +120,7 @@ export function stripeSafetyFixture() {
       fixture.configureFailure({ kind });
       return subject.adapter.attemptPort.execute(input);
     }
-    return { ...subject, safety: { providerRequests: () => fixture.fake.calls.length, transport, capabilityInputs,
+    return { ...subject, safety: { providerRequests: fixture.providerRequests, transport, capabilityInputs,
       unsupportedCurrencyInput: { ...input, money: { ...input.money, currency: "ZZZ" } },
       partialMoney: { amountMinor: 500, currency: input.money.currency }, webhooks: {
         valid, duplicate: { ...valid, input: { ...valid.input, receivedAt: new Date((timestamp + 60) * 1000).toISOString() } },

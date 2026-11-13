@@ -21,8 +21,10 @@ export function createTpayConformanceFixture() {
   ];
   const unattendedRequests: unknown[] = [];
   const fake = createScriptedPaymentFake<{ http: unknown }>();
+  let providerRequests = 0;
   let failure: { call: string; step: ScriptedPaymentOutcome<unknown> } | undefined;
   const fetch: TpayPaymentAdapterConfig["http"]["fetchImpl"] = vi.fn(async (url, init) => {
+    providerRequests++;
     let data: unknown;
     if (url.endsWith("/oauth/auth")) data = { access_token: "synthetic-token", expires_in: 7200 };
     else if (url.endsWith("/transactions") && init?.method === "POST") {
@@ -105,7 +107,8 @@ export function createTpayConformanceFixture() {
       ],
     } satisfies Subject & { verificationFixture: typeof verification; certificate: typeof certificate; timestamp: number };
   });
-  return { subjects, fake, config, unattendedRequests, configureFailure: (call: string, step: ScriptedPaymentOutcome<unknown>) => { failure = { call, step }; } };
+  return { subjects, fake, config, unattendedRequests, providerRequests: () => providerRequests,
+    configureFailure: (call: string, step: ScriptedPaymentOutcome<unknown>) => { failure = { call, step }; } };
 }
 
 export function tpaySafetyFixture() {
@@ -133,7 +136,7 @@ export function tpaySafetyFixture() {
         response: { ok: false, status, json: async () => ({}), text: async () => JSON.stringify({ errors: [{ errorCode: "general" }] }) } });
       return createTpayPaymentAdapter(fixture.config).attemptPort.execute(input);
     }
-    return { ...subject, safety: { providerRequests: () => fixture.fake.calls.length, transport, capabilityInputs, missingRequiredInput: { ...input, payer: undefined },
+    return { ...subject, safety: { providerRequests: fixture.providerRequests, transport, capabilityInputs, missingRequiredInput: { ...input, payer: undefined },
       unsupportedCurrencyInput: { ...input, money: { ...input.money, currency: "ZZZ" } },
       partialMoney: { amountMinor: 500, currency: "PLN" }, webhooks: {
         valid, duplicate: { ...valid, input: { ...valid.input, receivedAt: new Date((subject.timestamp + 60) * 1000).toISOString() } },

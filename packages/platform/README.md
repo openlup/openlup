@@ -1732,7 +1732,8 @@ transport.assertDrained();
 
 In the author's test, pass `PaymentAdapterTestSubject[]` to
 `runPaymentAdapterConformance`. Supply `safety` on each subject for the named
-offline suite: `capabilityInputs` exercise every declared capture family/currency
+offline suite: `capabilityInputs` demonstrate every declared capture flow's handoff
+with one of its method families, every declared currency,
 and unattended support or refusal; `transport` invokes the real adapter against
 each scripted failure; `webhooks` supplies signed original bytes and independent
 expected evidence for valid/duplicate delivery, signature mismatch, partial/zero/
@@ -1751,9 +1752,12 @@ null, admitted and unsupported model evidence. Required stored evidence and paye
 context must refuse when missing; the payer probe removes `payer` from the
 unattended capability input, checks validation and dispatch when payer is optional,
 and is recorded as not applicable when unattended is unsupported.
-Refusal probes require `providerRequests()` (the count of every provider request
-through the injected client) to stay unchanged whether execution throws or returns;
+Refusal probes require `providerRequests()` (the count of every injected-client
+invocation, recorded at entry before parsing or assertions) to stay unchanged whether execution throws or returns;
 a returned refusal must be an exact `notDispatched` decline before dispatch.
+Unsupported currency must refuse both validation and execution. Each successful
+capture execution must match a declared flow for its family: customer authorization
+must be present in the input, or the returned handoff kind must match the declaration.
 The kit checks the five host-consumed declarations `unattendedChargeFlow`,
 `methodHealth`, `terminalOutcomeReporting`, `mandateUpsertIsSubscriptionScoped`
 and `payerContext.customerRefFallsBackToContactEmail` for shape only, and each

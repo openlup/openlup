@@ -5,6 +5,108 @@ import type { PaymentExecutionEnvelope } from "../../src/payments/contracts/inde
 
 // Plants are scoped to fresh fixture objects. No production adapter is modified.
 export function paymentTestingDefects(provider: string, fixture: () => { subjects: PaymentAdapterTestSubject[] }) {
+  it(`${provider}: detects a refused execution reaching a client payload assertion`, async () => {
+    const subjects = fixture().subjects;
+    const subject = subjects[0];
+    const renewal = subject.safety!.capabilityInputs.find(input => input.purpose === "renewal-unattended")!;
+    const { execute, validateInput } = subject.adapter.attemptPort;
+    const { assessMandate } = subject.adapter.capabilities;
+    let requestsBeforePlant = Infinity;
+    subject.adapter = { ...subject.adapter, capabilities: { ...subject.adapter.capabilities,
+      assessMandate: mandate => mandate.recurringModel === "unsupported" ? { chargeable: false } : assessMandate(mandate) },
+    attemptPort: {
+      validateInput(input) {
+        if (input.storedMethod?.mandate.recurringModel === "unsupported") throw new Error("refused mandate");
+        validateInput(input);
+      },
+      async execute(input) {
+        if (input.storedMethod?.mandate.recurringModel !== "unsupported") return execute(input);
+        requestsBeforePlant = subject.safety!.providerRequests();
+        await execute({ ...renewal, money: { ...renewal.money, amountMinor: 1 } });
+        return exactDecline();
+      },
+    } };
+    await expect(runPaymentAdapterConformance(subjects)).rejects.toThrow("assessed mandate refuses execution no provider requests");
+    expect(subject.safety!.providerRequests()).toBeGreaterThan(requestsBeforePlant);
+  });
+  for (const defect of ["dispatch", "unknown refusal"] as const) {
+    it(`${provider}: detects unsupported currency ${defect} despite correct validation`, async () => {
+      const subjects = fixture().subjects;
+      const subject = subjects[0];
+      const { execute } = subject.adapter.attemptPort;
+      const currency = subject.safety!.unsupportedCurrencyInput.money.currency;
+      subject.adapter = { ...subject.adapter, attemptPort: { ...subject.adapter.attemptPort, execute: async input => {
+        if (input.money.currency !== currency) return execute(input);
+        if (defect === "unknown refusal") return { ...exactDecline(), dispatch: { kind: "unknown" } };
+        await execute({ ...input, money: { ...input.money, currency: subject.executionInput.money.currency } });
+        return exactDecline();
+      } } };
+      await expect(runPaymentAdapterConformance(subjects)).rejects.toThrow(defect === "dispatch"
+        ? "unsupported currency refuses execution no provider requests" : "unsupported currency refuses execution");
+    });
+  }
+  it(`${provider}: detects validation accepting an unsupported currency`, async () => {
+    const subjects = fixture().subjects;
+    const subject = subjects[0];
+    const { validateInput } = subject.adapter.attemptPort;
+    subject.adapter = { ...subject.adapter, attemptPort: { ...subject.adapter.attemptPort,
+      validateInput: input => validateInput({ ...input, money: { ...input.money, currency: subject.executionInput.money.currency } }) } };
+    await expect(runPaymentAdapterConformance(subjects)).rejects.toThrow("unsupported currency refuses before dispatch");
+  });
+  it(`${provider}: detects an additional undemonstrated flow for an exercised family`, async () => {
+    const subjects = fixture().subjects;
+    const subject = subjects[0];
+    const first = subject.adapter.capabilities.captureFlows[0];
+    subject.adapter = { ...subject.adapter, capabilities: { ...subject.adapter.capabilities,
+      captureFlows: [...subject.adapter.capabilities.captureFlows, { kind: "additional-flow",
+        handoff: first.handoff === "redirect" ? "client-confirmed" : "redirect", methodFamilies: [first.methodFamilies[0]] }] } };
+    await expect(runPaymentAdapterConformance(subjects)).rejects.toThrow("capture flow additional-flow:");
+  });
+  it(`${provider}: detects a successful capture with no declared handoff`, async () => {
+    const subjects = fixture().subjects;
+    const subject = subjects[0];
+    const capture = subject.safety!.capabilityInputs.find(input => input.methodSelection && !input.customerAuthorization)!;
+    subject.safety!.capabilityInputs = [...subject.safety!.capabilityInputs, { ...capture }];
+    const { execute } = subject.adapter.attemptPort;
+    subject.adapter = { ...subject.adapter, attemptPort: { ...subject.adapter.attemptPort, execute: async input => {
+      const result = await execute(input);
+      return input === capture ? { ...result, handoff: undefined } : result;
+    } } };
+    await expect(runPaymentAdapterConformance(subjects)).rejects.toThrow("capture flow handoff");
+  });
+  for (const operation of ["close", "absence"] as const) {
+    it(`${provider}: detects a present ${operation} port ignoring its unsupported declaration`, async () => {
+      const subjects = fixture().subjects;
+      const subject = subjects[0];
+      subject.adapter = { ...subject.adapter, capabilities: { ...subject.adapter.capabilities },
+        readbackPort: { ...subject.adapter.readbackPort } };
+      if (operation === "close") subject.adapter.readbackPort.close = async input => ({ ...input, kind: "unknown", reason: "timeout" });
+      else {
+        subject.absenceInput = { identity: subject.readbackInput.identity, expectedMoney: subject.readbackInput.expectedMoney };
+        subject.adapter.absencePort = { proveAbsence: async input => ({ ...input, kind: "unknown", reason: "truncated" }) };
+      }
+      await expect(runPaymentAdapterConformance(subjects)).rejects.toThrow(operation === "close" ? "close refuses" : "absence capability");
+    });
+  }
+  it(`${provider}: detects an unsupported unattended attempt dispatching before its refusal`, async () => {
+    const subjects = fixture().subjects;
+    const subject = subjects[0];
+    const renewal = subject.safety!.capabilityInputs.find(input => input.purpose === "renewal-unattended")!;
+    const { execute, validateInput } = subject.adapter.attemptPort;
+    subject.adapter = { ...subject.adapter, capabilities: { ...subject.adapter.capabilities, unattended: "unsupported" },
+    attemptPort: {
+      validateInput(input) {
+        if (input.purpose === "renewal-unattended") throw new Error("unattended unsupported");
+        validateInput(input);
+      },
+      async execute(input) {
+        if (input.purpose !== "renewal-unattended") return execute(input);
+        await execute(renewal);
+        return exactDecline();
+      },
+    } };
+    await expect(runPaymentAdapterConformance(subjects)).rejects.toThrow("assessed mandate refuses execution no provider requests");
+  });
   for (const failure of ["throw", "exact decline"] as const) {
     it(`${provider}: detects a provider request followed by ${failure} for a refused mandate`, async () => {
       const subjects = fixture().subjects;
@@ -192,7 +294,7 @@ export function paymentTestingDefects(provider: string, fixture: () => { subject
       subject.adapter.capabilities.payerContext = { ...subject.adapter.capabilities.payerContext,
         requiresPayerBlock: !subject.adapter.capabilities.payerContext.requiresPayerBlock };
     }],
-    ["captureFlows", "capture flow", subject => { subject.safety!.capabilityInputs = subject.safety!.capabilityInputs.filter(input => input.methodSelection?.family !== subject.adapter.capabilities.captureFlows[0].methodFamilies[0]); }],
+    ["captureFlows", "capture flow", subject => { subject.safety!.capabilityInputs = subject.safety!.capabilityInputs.filter(input => !subject.adapter.capabilities.captureFlows[0].methodFamilies.some(family => family === input.methodSelection?.family)); }],
     ["supportedCurrencies", "currency ZZZ", subject => { subject.adapter.capabilities.supportedCurrencies = [...subject.adapter.capabilities.supportedCurrencies, "ZZZ"]; }],
     ["unattended", "mandate assessment fixture", subject => { subject.safety!.capabilityInputs = subject.safety!.capabilityInputs.filter(input => input.purpose !== "renewal-unattended"); }],
     ["readback", "readback capability", subject => { subject.adapter.capabilities.readback = "unsupported"; }],
