@@ -9,14 +9,6 @@ import { dispatchAction, pendingBindings, type ActionContext } from '../host/bin
 import { createApplication } from '../host/server.ts';
 
 const dispositions: Array<[Operation, string]> = [
-  ['return.request', 'starter_return_request_unavailable'],
-  ['operator.returnApprove', 'starter_return_decision_unavailable'],
-  ['operator.returnReject', 'starter_return_decision_unavailable'],
-  ['operator.cancelUnpaid', 'starter_order_cancellation_unavailable'],
-  ['operator.externalRefund', 'starter_external_refund_mark_unavailable'],
-  ['operator.label', 'starter_shipment_mutation_unavailable'],
-  ['operator.handoff', 'starter_shipment_mutation_unavailable'],
-  ['operator.delivery', 'starter_shipment_mutation_unavailable'],
   ['tracking.read', 'starter_tracking_access_unavailable'],
   ['research.submit', 'host_binding_required'], ['ingest.submit', 'host_binding_required'],
 ];
@@ -40,8 +32,7 @@ for (const [operation, code] of dispositions) test(`${operation} refuses before 
 
 test('actor admission precedes the named refusal and ignores body identities and receipts', async () => {
   for (const [operation] of dispositions) {
-    const required = operation.startsWith('operator.') || operation === 'ingest.submit' ? 'operator_required'
-      : ['return.request', 'subscription.command'].includes(operation) ? 'customer_session_required' : undefined;
+    const required = operation.startsWith('operator.') || operation === 'ingest.submit' ? 'operator_required' : undefined;
     if (!required) continue;
     assert.deepEqual(await dispatchAction(pendingBindings(), operation, { operatorRef: 'operator', customerRef: 'customer',
       actorUserId: 'operator', principalRef: 'customer', receipt: { admitted: true } },
@@ -51,7 +42,7 @@ test('actor admission precedes the named refusal and ignores body identities and
 
 test('the removed reader retains the HTTP 404 protocol', async () => {
   assert.equal(isOperation('operator.returns'), false);
-  assert.equal(operations.length, 60);
+  assert.equal(operations.length, 70);
   const bindings = pendingBindings();
   bindings.authenticate = async () => { throw new Error('removed_reader_authenticated'); };
   const server = createApplication(bindings).listen(0, '127.0.0.1');

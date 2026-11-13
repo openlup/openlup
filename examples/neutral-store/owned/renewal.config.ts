@@ -22,3 +22,10 @@ export function demoSubscriptionCare(): SubscriptionCareConfig {
       atRiskMaxDaysPerCause: 2, operatorLeaseSeconds: 300, operatorMaxAttempts: 6,
       operatorHorizonSeconds: 82800, operatorTransientBackoffSeconds: 600 } };
 }
+
+
+/** Fictional account choices; a preference does not activate a provider or payment instrument. */
+export const accountPreferencePolicy = {
+  methods: { instant: 'demo-instant', card: 'demo-card', transfer: 'demo-transfer' },
+  providers: { warehouse: 'demo-warehouse', carrier: 'demo-carrier', manual: 'demo-manual', simulator: 'demo-simulator' },
+};

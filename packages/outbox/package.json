@@ -1,6 +1,6 @@
 {
   "name": "@openlup/outbox",
-  "version": "0.38.0",
+  "version": "0.39.0",
   "private": false,
   "description": "Transactional PostgreSQL outbox rail; development preview.",
   "keywords": [
@@ -13,7 +13,7 @@
     "at-least-once",
     "typescript"
   ],
-  "homepage": "https://github.com/openlup/openlup/tree/main/packages/outbox#readme",
+  "homepage": "https://openlup.com",
   "bugs": {
     "url": "https://github.com/openlup/openlup/issues"
   },
@@ -52,7 +52,7 @@
     "test:consumer": "node --experimental-strip-types ./scripts/consumer-proof.ts"
   },
   "peerDependencies": {
-    "@openlup/core": "0.38.0"
+    "@openlup/core": "0.39.0"
   },
   "exports": {
     "./package.json": "./package.json",

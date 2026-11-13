@@ -9,7 +9,7 @@ let pool: Pool | undefined;
 const boundaryFunction = "a".repeat(63);
 beforeAll(async () => {
   if (!await dockerAvailable()) throw new Error("Expand-only expression conformance requires Docker PostgreSQL");
-  container = await runPostgresContainer({ name: `expand-only-expressions-${process.pid}`, password: "synthetic-conformance", image: "postgres:16" });
+  container = await runPostgresContainer({ name: `expand-only-expressions-${process.pid}`, password: "synthetic-conformance" });
   if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("PostgreSQL unavailable");
   pool = new Pool({ connectionString: container.connectionString });
 }, postgresSetupTimeoutMs);
