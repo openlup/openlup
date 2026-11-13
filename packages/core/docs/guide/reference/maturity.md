@@ -1,6 +1,17 @@
 # Maturity
 
-Check a subpath's compatibility policy before using it. `candidate` and `experimental` both use the `internal-candidate` policy: these APIs may change and make no stable compatibility promise. `testing` uses `testing-internal`: test support may change and makes no runtime compatibility promise.
+Check a subpath's compatibility policy before using it. See [stability](stability.md)
+for package policy definitions and release boundaries.
+
+<!-- generated:compatibility-policies -->
+| Maturity | Compatibility policy |
+| --- | --- |
+| `candidate` | `internal-candidate` |
+| `experimental` | `internal-candidate` |
+| `testing` | `testing-internal` |
+
+[Compatibility policy mapping](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/packages/core/scripts/public-api-config.ts)
+<!-- /generated:compatibility-policies -->
 
 ## `@openlup/core`
 

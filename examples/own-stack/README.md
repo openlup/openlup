@@ -1,5 +1,4 @@
 # Add catalog drafts to your own application
-Moved to [Add OpenLup to an existing application](../../packages/core/docs/guide/how-to/build/own-stack.md#add-openlup-to-an-existing-application).
 
 This README retains the sample's implementation constraints and verification record.
 
@@ -13,7 +12,6 @@ It composes `createCatalogDraftHandler`, `createCatalogProductTypeRegistry` and
 the app needs no starter, workspace aliases or private helper.
 
 ## Run outside the platform checkout
-Moved to [Add OpenLup to an existing application](../../packages/core/docs/guide/how-to/build/own-stack.md#prepare-an-independent-application).
 
 `package.template.json` owns the sample's independent registry pins. Its SQL
 prerequisite is PostgreSQL 16 with the complete `qualified-v2` catalogue and a
@@ -26,7 +24,6 @@ port defaults to 3000. `app.mjs` limits request bodies to 64 KiB and binds only
 actor claims are not used as identity.
 
 ## Verify the boundary
-Moved to [Add OpenLup to an existing application](../../packages/core/docs/guide/how-to/build/own-stack.md#verify-durable-replay).
 
 Evidence (historical record, 2026-11-13):
 With `databaseUrl` in that same `app.local.json`, run `node --test verify.test.mjs`

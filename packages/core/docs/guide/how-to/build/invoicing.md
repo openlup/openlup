@@ -147,10 +147,10 @@ pre-send failures stop reclaiming. Native retryable settlement carries `{ phase:
 "before_send", retrySeconds }`, with bounded whole-second delays and a fallback
 for absent or invalid values. Terminal settlement carries `{ phase: "before_send",
 retryable: false }`, parks availability at infinity and leaves failed status and
-the diagnostic visible. Projection failures and job retries use bounded
-attempt-based backoff; consult the
-[maintainer delivery limits](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#invoicing-read-helpers)
-for exact delays and fallback values. Store mode supplies these finalizers. Once transport
+the diagnostic visible. Projection failures and job retries wait 300 seconds per
+attempt, capped at 3600 seconds. Pre-send settlement clamps whole retry seconds
+to 60–86400 and uses 900 for absent or invalid values.
+Store mode supplies these finalizers. Once transport
 has been entered, `send` must return `uncertain` for a timeout or lost
 acknowledgement. Throwing is permitted only before transport entry. An uncertain
 send never authorizes a blind repeat send, and provider acceptance does not

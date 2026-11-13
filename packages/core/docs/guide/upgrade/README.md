@@ -24,7 +24,7 @@ npm install --save-exact "@openlup/core@$OPENLUP_VERSION" "@openlup/outbox@$OPEN
 ```
 
 Include only the packages your application uses, keeping their versions equal.
-See [Keep the packages together](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/docs/platform/adopter-kit/README.md#keep-the-packages-together).
+See [Keep the packages together](../start/adopt-from-npm.md#group-dependency-updates).
 
 ## Apply SQL through your migration chain
 

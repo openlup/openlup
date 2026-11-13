@@ -6,7 +6,7 @@ This index is for maintainers changing OpenLup. For installing, composing, exten
 
 ## Start here
 
-- [Build an application from npm](adopter-kit/README.md) — select versioned packages and keep application-owned policy and composition in your app.
+- [Build an application from npm](../../packages/core/docs/guide/start/adopt-from-npm.md) — select versioned packages and keep application-owned policy and composition in your app.
 - [Development, diagnostics and preview releases](DEVELOPMENT_AND_RELEASE.md) — local checks, PR/queue/main execution, result interpretation and the source/npm release sequence.
 
 - [Testing — run, place, add and keep tests fast](../../CONTRIBUTING.md#test-scope-and-diagnostics).

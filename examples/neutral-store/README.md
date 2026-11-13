@@ -31,14 +31,11 @@ The [execution record](docs/proof.md) retains development evidence.
 The headings below preserve existing links to moved guidance.
 
 ## Local UI edit loop
-Moved to [the reader guide](../../packages/core/docs/guide/how-to/build/customize-the-starter.md#edit-and-refresh).
 
 `dev.mjs` owns the polling watcher, separate client build and Node host restart.
 The database-free preview does not compose native database actions.
 
 ## Current candidate
-
-Moved to [the reader guide](../../packages/core/docs/guide/reference/limits.md).
 
 The installed native catalogue and account stores use the runtime connection.
 The composition root binds guest checkout, sandbox payment and customer
@@ -51,7 +48,6 @@ The unchanged required purchase spec must run against installed PostgreSQL;
 the default database-less UI host cannot satisfy it. See [proof](docs/proof.md).
 
 ## Start from an exact source archive
-Moved to [the reader guide](../../packages/core/docs/guide/how-to/build/customize-the-starter.md#prepare-the-application).
 
 `extract.mjs` requires Node 24 and Git, copies only owned/managed inventory and
 materializes `AGENTS.md` and `README.md` through `sourceMappings`. It creates an
@@ -60,15 +56,12 @@ independent Git repository without ancestor lookup or workspace resolution.
 and SHA-256 identities to the candidate's exact `file:` references.
 
 ## Run the local application
-Moved to [the reader guide](../../packages/core/docs/guide/how-to/build/customize-the-starter.md#run-the-local-demonstration).
 
 `compose.yaml` pins PostgreSQL 16 and publishes the application only at
 `http://127.0.0.1:4319`. The lifecycle starts its one-shot installed migration
 runner and seed before the application container.
 
 ## Host origin and local sessions
-
-Moved to [the reader guide](../../packages/core/docs/guide/how-to/build/customize-the-starter.md#protect-local-sessions-and-messages).
 
 The default Host authorities are `127.0.0.1:<listening-port>` and
 `localhost:<listening-port>`. `StoreConfig.publicOrigin` replaces that selection;
@@ -107,8 +100,6 @@ sends the configured Host; any external health probe must also send that Host.
 
 ## Customize and upgrade
 
-Moved to [the reader guide](../../packages/core/docs/guide/how-to/build/customize-the-starter.md).
-
 `owned/store.config.ts`, `owned/copy.ts` and `owned/fragments.ts` own typed
 configuration, localized general copy and the named presentation fragments.
 
@@ -118,8 +109,6 @@ They do not replace it with an application-owned upgrade engine. A real
 `openlup upgrade apply` preservation witness remains required.
 
 ## Install-only fictional catalogue
-
-Moved to [the reader guide](../../packages/core/docs/guide/concepts/starter-ownership.md#own-configuration-and-data-onboarding).
 
 `./lifecycle up` calls `installation/install.ts` in a one-shot container before
 starting the host. The installed bootstrap obtains a dedicated install connection and
@@ -166,8 +155,6 @@ is not a schema installer, price editor, promotion engine or customer import.
 
 ## Customer subscription editors
 
-Moved to [the reader guide](../../packages/core/docs/guide/how-to/build/customize-the-starter.md#edit-a-customer-subscription).
-
 The host mounts `subscription.preview`, `subscription.command` and
 `subscription.catalog` under the existing customer session. Preview/apply receive
 `{ request: <package request> }`; the session supplies actor/client identity and
@@ -182,7 +169,7 @@ Seven exact commands are API-only: `swap_base_line`, `add_addon`,
 and `update_portion`. There are no portal controls for them. Demand-driven
 plan-length and portion resizing refuse with
 `starter_subscription_resize_unconfigured`; classic plan choices and size-aware
-cadence choices preserve explicit counts. See the [named limits](docs/limits.md).
+cadence choices preserve explicit counts. See the [named limits](../../packages/core/docs/guide/reference/limits.md).
 
 `owned/subscription-editing.ts` builds the typed neutral values carried by
 `StoreConfig.subscriptionEditing`: minimums, bounds, plan choices, sizes,
@@ -212,12 +199,7 @@ Existing subscriptions without that template refuse with
 `starter_subscription_template_unavailable`; there is no fallback read or
 fixture backfill. See [editor proof](docs/proof.md#subscription-editor-proof).
 
-## Reset an interrupted first install
-Moved to [the reader guide](../../packages/core/docs/guide/how-to/build/customize-the-starter.md#reset-an-interrupted-first-install).
-
 ## Neutral inputs and local transport
-
-Moved to [the reader guide](../../packages/core/docs/guide/how-to/build/customize-the-starter.md#run-the-local-demonstration).
 
 Both fictional catalogues use the ISO test currency `XTS`, fictional country
 `ZZ` and timezone `UTC`. Amounts are illustrative test units, with no exchange,
@@ -237,8 +219,6 @@ The documented no-flag `./lifecycle up` remains the one-command target.
 
 ## Operator support roster and catalogue authoring
 
-Moved to [the reader guide](../../packages/core/docs/guide/how-to/build/customize-the-starter.md#provision-operator-rosters).
-
 `host/operator-composition.ts` passes the activated human principal as
 `operatorRef`. Native support additionally checks
 `platform_communication_operators(principal_id, active)`; the database owner
@@ -254,8 +234,6 @@ hides the SQL cause; the UI names the roster prerequisite without asserting that
 every read failure means not provisioned. No second authority is built here.
 
 #### Commerce operator roster for hold and release admission
-
-Moved to [the reader guide](../../packages/core/docs/guide/how-to/build/customize-the-starter.md#provision-operator-rosters).
 
 Require active `admin` membership and no `platform_control_operators` row of any
 state; distributors do not qualify. The resolver never inserts this row. Never
@@ -278,8 +256,6 @@ Catalogue drafts write only isolated authoring tables (packages/platform/sql/202
 
 ## Acquisition and unbound operator actions
 
-Moved to [the reader guide](../../packages/core/docs/guide/how-to/build/customize-the-starter.md#replace-acquisition-location-choices).
-
 With the runtime connection, acquisition.submit is a public durable write through
 the native acquisition case port and an install-seeded fictional location choice.
 Only email, application
@@ -292,7 +268,6 @@ installation, never by the runtime host. Conflicting registry data fails install
 loudly. Replace this fictional registry and its onboarding for a customer environment.
 
 ## Guest purchase and later sign-in
-Moved to [the reader guide](../../packages/core/docs/guide/concepts/starter-ownership.md#checkout-continuation-and-recovery).
 
 The native recovery port issues 256-bit tokens and stores only SHA-256 hashes.
 Initial-checkout, reminder and signed-in recovery continuation expires 24 hours
@@ -307,8 +282,6 @@ without a starter build or browser. A real-browser second-submit check was
 confirmed in a local run that is not part of the committed suite.
 
 ## Native quote and acquisition composition
-
-Moved to [the reader guide](../../packages/core/docs/guide/reference/limits.md#purchase-composition-boundaries).
 
 The native host uses the installed quote engine with current catalogue documents,
 exact price-list entries, a canonical subscription policy and native promotion
@@ -386,8 +359,6 @@ Order UUID matching and the native response spelling remain unchanged.
 
 ## Recovery admission and private capture
 
-Moved to [the reader guide](../../packages/core/docs/guide/concepts/starter-ownership.md#checkout-continuation-and-recovery).
-
 The capture is a developer mailbox with no real recipients. Rendered messages
 stay under the git-ignored `.context/captured-messages` directory. Operator and
 scheduled notices share [NoticeArtifactV1](host/notice-artifact.ts), with one
@@ -400,8 +371,6 @@ regenerate its bearer. Preserve these private files separately when moving a
 store; database transfer alone does not preserve them.
 
 ### Scheduled sandbox renewal checkpoint
-
-Moved to [the reader guide](../../packages/core/docs/guide/how-to/build/customize-the-starter.md#run-a-bounded-background-pass).
 
 The installer and public configuration share [the owned renewal configuration
 object](owned/renewal.config.ts). Structurally unready renewal invocations do not
@@ -432,8 +401,6 @@ handler below does not dispatch subscription notices. Signed opt-out retains its
 
 ### Private paid-order receipts
 
-Moved to [the reader guide](../../packages/core/docs/guide/reference/limits.md#paid-order-message-capture).
-
 The same `./lifecycle renewal` invocation mounts the package's paid-order email
 handler through [the paid-mail host](host/paid-mail.ts). Only
 `commerce.order.paid.email` is claimable. Other known event types stay untouched.
@@ -454,8 +421,6 @@ Both English and Polish copy must be complete and nonempty. All other email
 send methods refuse with `starter_paid_mail_method_not_selected`.
 
 ## Subscription care candidate
-
-Moved to [the reader guide](../../packages/core/docs/guide/reference/limits.md#subscription-care).
 
 The command invokes finite auto-resume, drains the native notice dispatcher and
 runs winback only. It creates no timer or HTTP endpoint. A session lock and the
@@ -495,8 +460,6 @@ fixtures and scope. The candidate changes below retain the local-preview release
 
 ### Checkout and account candidate changes
 
-Moved to [the reader guide](../../packages/core/docs/guide/reference/limits.md#account-and-operator-bindings).
-
 The account now edits first name, last name and phone through the installed
 account mutation port. Email remains read-only. Failed saves keep the draft;
 profile replay returns current state. The demonstration phone policy accepts
@@ -534,8 +497,6 @@ provider or release activation is included.
 
 ## Expired checkout recovery and order holds
 
-Moved to [the reader guide](../../packages/core/docs/guide/reference/limits.md#expired-checkout-recovery-and-order-holds).
-
 Hold and release resolve the human administrator before every command and replay.
 The database owner provisions one `commerce_operators` row per human admin, with
 `id` equal to the native principal ID. Never delete this row: holds retain its
@@ -551,8 +512,6 @@ quota and all runner guards remain unchanged.
 
 ## Unpaid cancellation and manual refund records
 
-Moved to [the reader guide](../../packages/core/docs/guide/reference/limits.md#unpaid-cancellation-and-manual-refund-records).
-
 Each command and replay rechecks the human admin and resolves the existing Commerce
 operator row. Caller identities, missing confirmation, invalid reasons, stale
 order status and conflicting commands refuse. Reasons use the package's trimmed
@@ -562,8 +521,6 @@ listed until their own complete bindings exist.
 
 ## Sandbox token payment and exact continuation
 
-Moved to [the reader guide](../../packages/core/docs/guide/reference/limits.md#sandbox-token-payment-and-exact-continuation).
-
 The continuation codec purpose-derives its signing key from the private
 keyring root supplied by `--quote-acceptance-key-file`. This composition uses
 the native order UUID for the opaque checkout journey. The owned
@@ -572,8 +529,6 @@ presentation hints only.
 
 
 ## Billing profiles and frozen invoice buyers
-
-Moved to [the reader guide](../../packages/core/docs/guide/reference/limits.md#billing-profiles-and-frozen-invoice-buyers).
 
 Install the complete ordered package history through
 `20261110280000_checkout_recovery_buyer_snapshot` before starting this composition.

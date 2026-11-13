@@ -1,12 +1,10 @@
 # Customize the running store
-Moved to [Customize the starter store](../../../packages/core/docs/guide/how-to/build/customize-the-starter.md#edit-and-refresh).
 
-Status: moved to the [OpenLup guide](../../../packages/core/docs/guide/how-to/build/customize-the-starter.md); this page keeps its headings so links resolve. Sections marked "Evidence" are frozen historical records.
+Status: maintainer implementation notes. Reader guidance: [OpenLup guide](../../../packages/core/docs/guide/how-to/build/customize-the-starter.md). Sections marked "Evidence" are frozen historical records.
 
 `dev.mjs` owns the source build/watch and host restart loop.
 
 ## One input and three fragments
-Moved to [Customize the starter store](../../../packages/core/docs/guide/how-to/build/customize-the-starter.md#select-your-configuration).
 
 `owned/store.config.ts` exports `configurations`, `defaultConfigurationId` and
 `selectConfiguration`; each configuration satisfies `StoreConfig` in
@@ -20,7 +18,6 @@ receives `PageContext` from `client/context.ts`; the product method also receive
 its product and the summary receives its quote.
 
 ## Change identity, layout and one commercial rule
-Moved to [Customize the starter store](../../../packages/core/docs/guide/how-to/build/customize-the-starter.md#change-identity-and-an-offer-rule).
 
 The builder and checkout host both call `evaluateOffer` from `shared/offer.ts`.
 The example's minimum is three units; its two-unit refusal is shared by both.
@@ -30,7 +27,6 @@ colors. The source watcher is `dev.mjs`; its host dependencies and client build
 remain separate restart/build operations.
 
 ## Subscription editor values
-Moved to [Customize the starter store](../../../packages/core/docs/guide/how-to/build/customize-the-starter.md#configure-subscription-editing).
 
 Evidence (historical record, 2026-11-13):
 Subscription editing values live in `StoreConfig.subscriptionEditing`, built by
@@ -56,7 +52,6 @@ application must replace these fictional data and resolvers with its own owned
 facts. Neither a product label nor illustrative coverage is usage advice.
 
 ## Support contact
-Moved to [Customize the starter store](../../../packages/core/docs/guide/how-to/build/customize-the-starter.md#set-the-support-contact).
 
 The `supportEmail` validator beside `assertConfig` admits bounded ASCII email
 and refuses whitespace, HTML and URL schemes with `starter_support_email_invalid`.
@@ -64,7 +59,6 @@ and refuses whitespace, HTML and URL schemes with `starter_support_email_invalid
 nodes, without an email link or form, and links the localized account route.
 
 ## Public origin
-Moved to [Customize the starter store](../../../packages/core/docs/guide/how-to/build/customize-the-starter.md#set-the-public-origin).
 
 `assertPublicOrigin` in `shared/config.ts` owns the optional `publicOrigin` and
 `allowInsecurePublicOrigin` inputs. It caps input at 256 characters and normalizes
@@ -78,16 +72,10 @@ validator uses `starter_public_origin_invalid`, `starter_public_origin_not_canon
 HTTP admission uses `starter_local_host_required` and `starter_same_origin_required`.
 Lifecycle validates configuration before Docker work; the host validates at startup.
 
-## Changes that need a page copy
-Moved to [Customize the starter store](../../../packages/core/docs/guide/how-to/build/customize-the-starter.md#change-a-page-or-add-a-route).
-
 ## Preservation proof
 
-Moved to [Customize the starter store](../../../packages/core/docs/guide/how-to/build/customize-the-starter.md#check-preservation-when-upgrading).
-
 The lifecycle wrapper delegates `openlup upgrade plan` and `openlup upgrade apply`
-to the installed CLI. Preservation evidence binds owned-file hashes, old/new
-package and schema identities and actual refusal/purchase browser results.
+to the installed CLI.
 
 Evidence (historical record, 2026-11-13):
 Before upgrading, hash the owned files, add a fictional identity/layout/minimum
@@ -98,7 +86,6 @@ Record the actual old/new package and schema identities and browser results.
 An unchanged file-copy test alone is not upgrade acceptance.
 
 ## Demonstration sessions and mailbox
-Moved to [Customize the starter store](../../../packages/core/docs/guide/how-to/build/customize-the-starter.md#protect-local-sessions-and-messages).
 
 `host/sessions.ts` owns the process-local session store: one-hour expiry,
 capacity 1000 and no restart persistence. Native stores recheck customer ownership
@@ -111,7 +98,6 @@ is separate private `.context` state admitted by the database demonstration
 marker and preserved only across restarts of the same container.
 
 ## Catalogue authoring and storefront
-Moved to [Customize the starter store](../../../packages/core/docs/guide/how-to/build/customize-the-starter.md#separate-catalogue-drafts-from-offers).
 
 `owned/catalogue.ts` supplies the `starter:item@1` registry to
 `host/operator-composition.ts`. The native draft writer owns the command; the
@@ -121,8 +107,6 @@ Evidence (historical record, 2026-11-13):
 Catalogue drafts write only isolated authoring tables (packages/platform/sql/20260908100000_catalog_draft_foundation.sql:1-9); bundle activation sets the native bundle status to active (packages/platform/sql/20260812210000_bundle_operator_write_boundary.sql:493), while this application’s storefront and checkout still use typed configuration through evaluateOffer (examples/neutral-store/shared/offer.ts:40), so neither creates a new purchasable storefront offer.
 
 ## Acquisition location choices
-
-Moved to [Customize the starter store](../../../packages/core/docs/guide/how-to/build/customize-the-starter.md#replace-acquisition-location-choices).
 
 `owned/acquisition-addresses.ts` supplies choice IDs, localized labels and
 opaque source/reference/revision/provenance tuples. The runtime maps the selected

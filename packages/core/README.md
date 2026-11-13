@@ -164,7 +164,6 @@ run migrations, schedule work or activate a module.
 [Compose marketing handlers](docs/guide/how-to/build/marketing.md); inquiry contracts are in the shipped `src/partners/`.
 
 ## Payment contracts
-Moved to [Payments](docs/guide/concepts/payments.md).
 
 The `./payment` export's `withinSchemeRetryCeiling` helper checks only its local
 15-attempt/30-day numeric bound. A passing result does not authorize a retry or

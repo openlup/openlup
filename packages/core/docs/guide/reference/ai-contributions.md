@@ -10,7 +10,7 @@ prepare a contribution, these rules explain what you remain responsible for.
    AI assistance alone does not count against you.
 
 2. **Keep a human accountable.** Each contribution has exactly one accountable human
-   author, as required by the [contribution policy](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/.github/AI_CONTRIBUTION_POLICY.md#the-four-rules). Using an agent does not transfer that
+   author. Using an agent does not transfer that
    responsibility to the tool.
 
 3. **Be able to explain every line.** You must be able to explain why each line

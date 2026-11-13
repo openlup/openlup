@@ -56,8 +56,7 @@ Both qualified selections accept `roleMode: "installer-managed"` or
 The privileged `qualified-v2` selection permits an optional restore login.
 Provision the selected PostgreSQL host profile before invoking the runner: these
 options validate existing roles and session facts; they do not create host
-logins or grant access. The [role provisioning
-boundary](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
+logins or grant access. The [connection role guidance](../how-to/operate/connect-postgresql.md#assign-connections-by-work)
 describes the prerequisites.
 
 The factory also accepts a `poolFactory`, a custom `catalog` reader, its `root`

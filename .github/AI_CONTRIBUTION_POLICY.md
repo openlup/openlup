@@ -12,8 +12,6 @@ The policy is therefore **disclosure and accountability**, not permission.
 
 ## The four rules
 
-Moved to [AI-assisted contributions](../packages/core/docs/guide/reference/ai-contributions.md#contribution-responsibilities).
-
 Sign-off under the Developer Certificate of Origin is the accountable human's;
 the DCO requirement in `CONTRIBUTING.md` applies unchanged to AI-assisted work.
 A tool cannot sign off, and the maintainer's own agents are no exception: when
