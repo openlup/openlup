@@ -24,7 +24,7 @@ export async function runPaymentAdapterConformance(
       handoff?.kind === "client-confirmed" ? handoff.payload : handoff?.url].filter((v): v is NonNullable<typeof v> => v !== undefined && v.length > 0);
     const sensitiveForms = sensitiveValues.flatMap(value => [value, JSON.stringify(value).slice(1, -1)]);
     assertPaymentExecution(subject, executionInput, result);
-    if (adapter.capabilities.payerContext.requiresPayerBlock && !executionInput.payer) {
+    if (executionInput.purpose === "renewal-unattended" && adapter.capabilities.payerContext.requiresPayerBlock && !executionInput.payer) {
       requireFact(result.dispatch.kind === "notDispatched" && result.dispatch.evidence.exact
         && result.dispatch.evidence.phase === "before-dispatch", "missing required input exact notDispatched");
     }

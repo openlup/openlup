@@ -12,7 +12,8 @@ it("passes every named safety case with the extracted scripted client across two
     mandateUpsertIsSubscriptionScoped: false });
   const report = await runPaymentAdapterConformance(fixture.subjects);
   expect(report.subjects.map(row => row.subjectId)).toEqual(["attempt-a", "attempt-b"]);
-  expect(report.cases.filter(row => row.name.includes("capability:"))).toHaveLength(34);
+  expect(report.cases.filter(row => row.name.includes("capability:"))).toHaveLength(26);
+  expect(report.cases.filter(row => row.name.startsWith("host-consumed declaration:"))).toHaveLength(10);
   expect(report.cases.filter(row => row.name.includes("never settles"))).toHaveLength(6);
   expect(report.cases.every(row => row.passed)).toBe(true);
   expect(report.subjects.map(row => row.execution.dispatch)).toEqual([{"kind": "dispatched", "providerPaymentRef": "pi_a"}, {"kind": "dispatched", "providerPaymentRef": "pi_b"}]);

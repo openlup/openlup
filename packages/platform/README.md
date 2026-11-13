@@ -1745,15 +1745,19 @@ must equal that subject's independent readback reference. All returned execution
 including capability and transport probes, share diagnostic redaction validation.
 
 A typed map covers all 17 current `PaymentAdapterCapabilities` keys, including
-inherited descriptor fields; adding a key requires a proof at compile time.
+inherited descriptor fields; adding a key requires an explicit check at compile time.
 Mandate probes compare `assessMandate` with validation and execution for absent,
 null, admitted and unsupported model evidence. Required stored evidence and payer
-context must refuse when missing. The fixtures independently pin inherited
-values and inspect unattended wire requests. Coverage of every key does not mean
-every descriptor has an executable adapter-port behavior: `unattendedChargeFlow`
-has a structural runner check plus those wire witnesses; `methodHealth`, terminal
-reporting policy/threshold, payer customer-reference fallback and
-`mandateUpsertIsSubscriptionScoped` have structural declaration checks only.
+context must refuse when missing; the payer probe removes `payer` from the
+unattended capability input, checks validation and dispatch when payer is optional,
+and is recorded as not applicable when unattended is unsupported.
+Refusal probes require `providerRequests()` (the count of every provider request
+through the injected client) to stay unchanged whether execution throws or returns;
+a returned refusal must be an exact `notDispatched` decline before dispatch.
+The kit checks the five host-consumed declarations `unattendedChargeFlow`,
+`methodHealth`, `terminalOutcomeReporting`, `mandateUpsertIsSubscriptionScoped`
+and `payerContext.customerRefFallsBackToContactEmail` for shape only, and each
+adapter pins their values in its own witnesses.
 The attempt input has no customer-reference, method-kind or subscription-write
 port, so this kit cannot prove host method-health admission or mandate persistence.
 The card fixture dispatches without a customer reference despite the declared

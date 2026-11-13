@@ -23,9 +23,11 @@ export async function runPaymentSafetyConformance(subject: PaymentAdapterTestSub
     return result;
   };
   const refuses = async (input: PaymentAdapterTestSubject["executionInput"], label: string) => {
+    const before = safety.providerRequests();
     let result: PaymentExecutionEnvelope;
     try { result = await adapter.attemptPort.execute(input); }
-    catch { return; } // Existing validation throws remain refusals; no invented dispatch proof.
+    catch { return; }
+    finally { requireFact(safety.providerRequests() === before, `${label} no provider requests`); }
     assertPaymentExecution(subject, input, result);
     requireFact(result.outcome.kind === "decline" && result.dispatch.kind === "notDispatched"
       && result.dispatch.evidence.exact && result.dispatch.evidence.phase === "before-dispatch", label);
@@ -50,9 +52,9 @@ export async function runPaymentSafetyConformance(subject: PaymentAdapterTestSub
     }
     executions.push(input);
   }
-  // Every key, inherited or local, requires an explicit proof when the type grows.
-  // Descriptors owned by host orchestration have structural proofs only, with
-  // independently pinned values in each adapter's witnesses; see README limits.
+  // Every key, inherited or local, requires an explicit check when the type grows.
+  // The five host-consumed declarations get well-formedness checks only;
+  // adapter witnesses pin their values, without demonstrating host behavior.
   const proofs: Record<keyof PaymentAdapterCapabilities, () => void | Promise<void>> = {
     providerKind: async () => {
       const evidence = await adapter.verifyPort.verifyAndNormalize(safety.webhooks.valid.input);
@@ -90,20 +92,31 @@ export async function runPaymentSafetyConformance(subject: PaymentAdapterTestSub
       else if (capabilities.unattended === "supported" && assessment.chargeable) requireFact((await execute(input)).dispatch.kind === "dispatched", "stored mandate evidence unnecessary");
     },
     unattendedChargeFlow: () => requireFact(typeof capabilities.unattendedChargeFlow === "string"
-      && capabilities.unattendedChargeFlow.trim().length > 0, "unattended flow descriptor"),
+      && capabilities.unattendedChargeFlow.trim().length > 0, "host-consumed declaration:unattendedChargeFlow well-formedness"),
     payerContext: async () => {
-      requireFact(typeof capabilities.payerContext.customerRefFallsBackToContactEmail === "boolean", "payer fallback descriptor");
-      const input = { ...subject.executionInput, payer: undefined };
+      await check("host-consumed declaration:payerContext.customerRefFallsBackToContactEmail well-formedness", () => {
+        requireFact(typeof capabilities.payerContext.customerRefFallsBackToContactEmail === "boolean",
+          "host-consumed declaration:payerContext.customerRefFallsBackToContactEmail well-formedness");
+      });
+      if (capabilities.unattended === "unsupported") return;
+      const renewal = safety.capabilityInputs.find(input => input.purpose === "renewal-unattended");
+      requireFact(renewal !== undefined, "payer context unattended fixture");
+      const input = { ...renewal!, payer: undefined };
       if (capabilities.payerContext.requiresPayerBlock) await refuses(input, "payer context required");
-      else requireFact((await execute(input)).dispatch.kind === "dispatched", "payer context optional");
+      else {
+        let validated = true;
+        try { adapter.attemptPort.validateInput(input); } catch { validated = false; }
+        requireFact(validated, "payer context optional validation");
+        requireFact((await execute(input)).dispatch.kind === "dispatched", "payer context optional");
+      }
     },
     methodHealth: () => requireFact(typeof capabilities.methodHealth.requiresCustomerRef === "boolean"
       && typeof capabilities.methodHealth.requiresPayerContact === "boolean"
-      && (capabilities.methodHealth.requiredMethodKind === null || typeof capabilities.methodHealth.requiredMethodKind === "string"), "method health descriptor"),
+      && (capabilities.methodHealth.requiredMethodKind === null || typeof capabilities.methodHealth.requiredMethodKind === "string"), "host-consumed declaration:methodHealth well-formedness"),
     terminalOutcomeReporting: () => requireFact(["status_field", "attempt_records", "inbound_event"].includes(capabilities.terminalOutcomeReporting.kind)
       && Number.isFinite(capabilities.terminalOutcomeReporting.silenceBecomesSuspectAfterMinutes)
-      && capabilities.terminalOutcomeReporting.silenceBecomesSuspectAfterMinutes > 0, "terminal reporting descriptor"),
-    mandateUpsertIsSubscriptionScoped: () => requireFact(typeof capabilities.mandateUpsertIsSubscriptionScoped === "boolean", "mandate scope descriptor only"),
+      && capabilities.terminalOutcomeReporting.silenceBecomesSuspectAfterMinutes > 0, "host-consumed declaration:terminalOutcomeReporting well-formedness"),
+    mandateUpsertIsSubscriptionScoped: () => requireFact(typeof capabilities.mandateUpsertIsSubscriptionScoped === "boolean", "host-consumed declaration:mandateUpsertIsSubscriptionScoped well-formedness"),
     captureFlows: () => {
       for (const flow of capabilities.captureFlows) for (const family of flow.methodFamilies) {
         requireFact(executions.some(input => input.purpose !== "renewal-unattended"
@@ -139,13 +152,17 @@ export async function runPaymentSafetyConformance(subject: PaymentAdapterTestSub
     requireFact(capabilities[name] === "unsupported" && ![adapter, adapter.attemptPort, adapter.readbackPort]
       .some(port => name in port), `${name} structurally unsupported`);
   }
-  for (const [name, proof] of Object.entries(proofs)) await check(`capability:${name}`, proof);
-  if (capabilities.payerContext.requiresPayerBlock) {
+  const hostConsumed = ["unattendedChargeFlow", "methodHealth", "terminalOutcomeReporting", "mandateUpsertIsSubscriptionScoped"];
+  for (const [name, proof] of Object.entries(proofs)) {
+    const label = hostConsumed.includes(name) ? `host-consumed declaration:${name} well-formedness`
+      : name === "payerContext" ? `capability:payerContext.requiresPayerBlock${capabilities.unattended === "unsupported" ? ":not applicable (unattended unsupported)" : ""}`
+        : `capability:${name}`;
+    await check(label, proof);
+  }
+  if (capabilities.unattended === "supported" && capabilities.payerContext.requiresPayerBlock) {
     await check("missing required input exact notDispatched", async () => {
       requireFact(safety.missingRequiredInput !== undefined && !safety.missingRequiredInput.payer, "missing payer fixture");
-      const result = await execute(safety.missingRequiredInput!);
-      requireFact(result.outcome.kind === "decline" && result.dispatch.kind === "notDispatched"
-        && result.dispatch.evidence.exact && result.dispatch.evidence.phase === "before-dispatch", "missing required input exact notDispatched");
+      await refuses(safety.missingRequiredInput!, "missing required input exact notDispatched");
     });
   }
   for (const name of ["timeout-before-dispatch", "provider-5xx-before-dispatch", "timeout-after-dispatch", "redelivery-409"] as const) {

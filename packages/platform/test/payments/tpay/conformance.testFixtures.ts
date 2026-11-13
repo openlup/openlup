@@ -133,7 +133,7 @@ export function tpaySafetyFixture() {
         response: { ok: false, status, json: async () => ({}), text: async () => JSON.stringify({ errors: [{ errorCode: "general" }] }) } });
       return createTpayPaymentAdapter(fixture.config).attemptPort.execute(input);
     }
-    return { ...subject, safety: { transport, capabilityInputs, missingRequiredInput: { ...input, payer: undefined },
+    return { ...subject, safety: { providerRequests: () => fixture.fake.calls.length, transport, capabilityInputs, missingRequiredInput: { ...input, payer: undefined },
       unsupportedCurrencyInput: { ...input, money: { ...input.money, currency: "ZZZ" } },
       partialMoney: { amountMinor: 500, currency: "PLN" }, webhooks: {
         valid, duplicate: { ...valid, input: { ...valid.input, receivedAt: new Date((subject.timestamp + 60) * 1000).toISOString() } },

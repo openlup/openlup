@@ -5,6 +5,75 @@ import type { PaymentExecutionEnvelope } from "../../src/payments/contracts/inde
 
 // Plants are scoped to fresh fixture objects. No production adapter is modified.
 export function paymentTestingDefects(provider: string, fixture: () => { subjects: PaymentAdapterTestSubject[] }) {
+  for (const failure of ["throw", "exact decline"] as const) {
+    it(`${provider}: detects a provider request followed by ${failure} for a refused mandate`, async () => {
+      const subjects = fixture().subjects;
+      const subject = subjects[0];
+      const renewal = subject.safety!.capabilityInputs.find(input => input.purpose === "renewal-unattended")!;
+      const { assessMandate } = subject.adapter.capabilities;
+      const { execute, validateInput } = subject.adapter.attemptPort;
+      const refused = (input: typeof renewal) => input.storedMethod?.mandate.recurringModel === "unsupported";
+      let requestsBeforePlant = Infinity;
+      subject.adapter = { ...subject.adapter, capabilities: { ...subject.adapter.capabilities,
+        assessMandate: mandate => mandate.recurringModel === "unsupported" ? { chargeable: false } : assessMandate(mandate) },
+      attemptPort: {
+        validateInput(input) { if (refused(input)) throw new Error("refused mandate"); validateInput(input); },
+        async execute(input) {
+          if (!refused(input)) return execute(input);
+          requestsBeforePlant = subject.safety!.providerRequests();
+          await execute(renewal);
+          if (failure === "throw") throw new Error("failure after provider request");
+          return exactDecline();
+        },
+      } };
+      await expect(runPaymentAdapterConformance(subjects)).rejects.toThrow("assessed mandate refuses execution no provider requests");
+      expect(subject.safety!.providerRequests()).toBeGreaterThan(requestsBeforePlant);
+    });
+  }
+  it(`${provider}: detects a payer requirement enforced only on initial attempts`, async () => {
+    const subjects = fixture().subjects;
+    const subject = subjects[0];
+    const payer = subject.executionInput.payer ?? { email: "payer@example.test", name: "Fixture Person" };
+    subject.executionInput = { ...subject.executionInput, payer };
+    subject.safety!.capabilityInputs = subject.safety!.capabilityInputs.map(input => ({ ...input, payer: input.payer ?? payer }));
+    const { execute, validateInput } = subject.adapter.attemptPort;
+    subject.safety!.missingRequiredInput = { ...subject.executionInput, payer: undefined };
+    subject.adapter = { ...subject.adapter, capabilities: { ...subject.adapter.capabilities,
+      payerContext: { ...subject.adapter.capabilities.payerContext, requiresPayerBlock: true } },
+    attemptPort: {
+      validateInput(input) {
+        if (!input.payer && input.purpose === "initial") throw new Error("payer required");
+        validateInput({ ...input, payer: input.payer ?? payer });
+      },
+      execute: input => !input.payer && input.purpose === "initial" ? Promise.resolve(exactDecline())
+        : execute({ ...input, payer: input.payer ?? payer }),
+    } };
+    await expect(runPaymentAdapterConformance(subjects)).rejects.toThrow("payer context required no provider requests");
+  });
+  it(`${provider}: records the payer proof as not applicable when unattended is unsupported`, async () => {
+    const subjects = fixture().subjects;
+    const subject = subjects[0];
+    const { execute, validateInput } = subject.adapter.attemptPort;
+    let missingPayerProbes = 0;
+    subject.safety!.capabilityInputs = subject.safety!.capabilityInputs.map(input => input.purpose === "renewal-unattended"
+      ? { ...input, payer: input.payer ?? { email: "payer@example.test" } } : input);
+    subject.adapter = { ...subject.adapter, capabilities: { ...subject.adapter.capabilities, unattended: "unsupported",
+      payerContext: { ...subject.adapter.capabilities.payerContext, requiresPayerBlock: true } },
+    attemptPort: {
+      validateInput(input) {
+        if (input.purpose === "renewal-unattended") throw new Error("unattended unsupported");
+        validateInput(input);
+      },
+      execute(input) {
+        if (input.purpose === "renewal-unattended" && !input.payer) missingPayerProbes++;
+        return input.purpose === "renewal-unattended" ? Promise.resolve(exactDecline()) : execute(input);
+      },
+    } };
+    const report = await runPaymentAdapterConformance(subjects);
+    expect(report.cases.some(row => row.name === "capability:payerContext.requiresPayerBlock:not applicable (unattended unsupported)"
+      && row.passed)).toBe(true);
+    expect(missingPayerProbes).toBe(0);
+  });
   for (const scenario of ["timeout-before-dispatch", "provider-5xx-before-dispatch", "timeout-after-dispatch", "redelivery-409"] as const) {
     it(`${provider}: detects a settling transport result for ${scenario}`, async () => {
       const subjects = fixture().subjects;
@@ -119,16 +188,10 @@ export function paymentTestingDefects(provider: string, fixture: () => { subject
     ["requiresStoredMandateEvidence", "stored mandate evidence declaration", subject => {
       subject.adapter.capabilities.requiresStoredMandateEvidence = !subject.adapter.capabilities.requiresStoredMandateEvidence;
     }],
-    ["unattendedChargeFlow", "unattended flow descriptor", subject => { subject.adapter.capabilities.unattendedChargeFlow = ""; }],
-    ["payerContext", /payer context|missing required input/, subject => {
+    ["payerContext.requiresPayerBlock", /payer context|missing required input/, subject => {
       subject.adapter.capabilities.payerContext = { ...subject.adapter.capabilities.payerContext,
         requiresPayerBlock: !subject.adapter.capabilities.payerContext.requiresPayerBlock };
     }],
-    ["methodHealth", "method health descriptor", subject => { subject.adapter.capabilities.methodHealth = { ...subject.adapter.capabilities.methodHealth, requiresCustomerRef: undefined! }; }],
-    ["terminalOutcomeReporting", "terminal reporting descriptor", subject => {
-      subject.adapter.capabilities.terminalOutcomeReporting = { ...subject.adapter.capabilities.terminalOutcomeReporting, silenceBecomesSuspectAfterMinutes: 0 };
-    }],
-    ["mandateUpsertIsSubscriptionScoped", "mandate scope descriptor only", subject => { subject.adapter.capabilities.mandateUpsertIsSubscriptionScoped = undefined!; }],
     ["captureFlows", "capture flow", subject => { subject.safety!.capabilityInputs = subject.safety!.capabilityInputs.filter(input => input.methodSelection?.family !== subject.adapter.capabilities.captureFlows[0].methodFamilies[0]); }],
     ["supportedCurrencies", "currency ZZZ", subject => { subject.adapter.capabilities.supportedCurrencies = [...subject.adapter.capabilities.supportedCurrencies, "ZZZ"]; }],
     ["unattended", "mandate assessment fixture", subject => { subject.safety!.capabilityInputs = subject.safety!.capabilityInputs.filter(input => input.purpose !== "renewal-unattended"); }],
@@ -146,4 +209,28 @@ export function paymentTestingDefects(provider: string, fixture: () => { subject
     plant(subject);
     await expect(runPaymentAdapterConformance(subjects)).rejects.toThrow(error);
   });
+  const wellFormednessPlants: [string, (subject: PaymentAdapterTestSubject) => void][] = [
+    ["unattendedChargeFlow", subject => { subject.adapter.capabilities.unattendedChargeFlow = ""; }],
+    ["payerContext.customerRefFallsBackToContactEmail", subject => {
+      subject.adapter.capabilities.payerContext = { ...subject.adapter.capabilities.payerContext, customerRefFallsBackToContactEmail: undefined! };
+    }],
+    ["methodHealth", subject => { subject.adapter.capabilities.methodHealth = { ...subject.adapter.capabilities.methodHealth, requiresCustomerRef: undefined! }; }],
+    ["terminalOutcomeReporting", subject => {
+      subject.adapter.capabilities.terminalOutcomeReporting = { ...subject.adapter.capabilities.terminalOutcomeReporting, silenceBecomesSuspectAfterMinutes: 0 };
+    }],
+    ["mandateUpsertIsSubscriptionScoped", subject => { subject.adapter.capabilities.mandateUpsertIsSubscriptionScoped = undefined!; }],
+  ];
+  for (const [declaration, plant] of wellFormednessPlants) it(`${provider}: well-formedness plant for host-consumed declaration ${declaration}`, async () => {
+    const subjects = fixture().subjects;
+    const subject = subjects[0];
+    subject.adapter = { ...subject.adapter, capabilities: { ...subject.adapter.capabilities } };
+    plant(subject);
+    await expect(runPaymentAdapterConformance(subjects)).rejects.toThrow(`host-consumed declaration:${declaration} well-formedness`);
+  });
+}
+
+function exactDecline(): PaymentExecutionEnvelope {
+  const reason = { code: "fix_and_retry_customer_action" as const, hints: ["dataInvalid" as const] };
+  return { outcome: { kind: "decline", refusal: reason },
+    dispatch: { kind: "notDispatched", evidence: { exact: true, phase: "before-dispatch", reason } }, diagnostics: {} };
 }

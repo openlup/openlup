@@ -148,9 +148,12 @@ describe("adapter conformance suites", () => {
     expect(JSON.stringify(stored.mock.calls)).not.toContain("unknown-extra");
     expect(JSON.stringify(stored.mock.calls)).not.toContain("unknown-nested");
   });
-  it("requires exact before-dispatch refusal for missing adapter-required payer input", async () => {
+  it("scopes required payer refusal to unattended attempts and requires exact before-dispatch evidence", async () => {
     const f = subject("provider-a");
     f.adapter.capabilities.payerContext.requiresPayerBlock = true;
+    await expect(runPaymentAdapterConformance([f])).resolves.toBeDefined();
+    f.executionInput.purpose = "renewal-unattended";
+    f.adapter.capabilities.unattended = "supported";
     await expect(runPaymentAdapterConformance([f])).rejects.toThrow("missing required input exact notDispatched");
     const reason = { code: "payment_failed" as const, hints: [] };
     f.adapter.attemptPort.execute = async () => ({ outcome: { kind: "decline", refusal: reason },

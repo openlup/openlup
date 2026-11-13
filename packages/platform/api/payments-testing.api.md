@@ -1143,6 +1143,8 @@ export type PaymentTransportFixture = {
  * These offline probes establish no durable-store or provider qualification.
  */
 export interface PaymentAdapterSafetyScenarios {
+    /** Count every provider request through the subject adapter's injected client. */
+    providerRequests: () => number;
     transport: Record<PaymentTransportScenario, PaymentTransportFixture>;
     /** One successful execution per declared currency and capture family, plus an
      * unattended attempt (or a refused invocation when unattended is unsupported). */

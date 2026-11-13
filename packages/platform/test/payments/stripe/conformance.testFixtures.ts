@@ -116,7 +116,7 @@ export function stripeSafetyFixture() {
       fixture.configureFailure({ kind });
       return subject.adapter.attemptPort.execute(input);
     }
-    return { ...subject, safety: { transport, capabilityInputs,
+    return { ...subject, safety: { providerRequests: () => fixture.fake.calls.length, transport, capabilityInputs,
       unsupportedCurrencyInput: { ...input, money: { ...input.money, currency: "ZZZ" } },
       partialMoney: { amountMinor: 500, currency: input.money.currency }, webhooks: {
         valid, duplicate: { ...valid, input: { ...valid.input, receivedAt: new Date((timestamp + 60) * 1000).toISOString() } },
