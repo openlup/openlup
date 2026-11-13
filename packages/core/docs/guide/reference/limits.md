@@ -1,5 +1,4 @@
 # Starter limits
-Moved to [Current limits](#current-limits).
 
 # Current limits
 

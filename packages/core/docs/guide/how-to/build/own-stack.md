@@ -28,7 +28,9 @@ for the loopback runner and shutdown behavior.
 
 ## Prepare an independent application
 
-Use a disposable PostgreSQL 16 database with the complete `qualified-v2` portable
+Use a disposable database running
+[a supported PostgreSQL version](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/README.md#install-the-portable-postgresql-schema)
+with the complete `qualified-v2` portable
 catalogue installed and a restricted runtime login that can assume
 `service_role`. Do not use the bootstrap or migration login. Follow the
 [connection roles](../operate/connect-postgresql.md#assign-connections-by-work)

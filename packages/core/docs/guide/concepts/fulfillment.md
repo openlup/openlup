@@ -38,7 +38,12 @@ reference in both observation and dispatch refuses with
 `fulfillment_dispatch_acceptance_external_ref_missing` and leaves processing
 unfinished.
 
-Reconciliation skips status and effects for an older known occurrence.
+Reconciliation skips status evidence and progression effects for an observation
+whose known occurrence is older than the latest stored status occurrence.
+For parcels that are neither locally cancelled nor in exception,
+`acknowledgeDispatchAcceptance` runs before the staleness check; a stale
+observation can still invoke `issueAccountingInvoice` when that callback is
+provided and handover is already recorded.
 For locally cancelled or exception parcels, a non-stale recognized observation
 records status evidence without applying progression effects. Receipt storage,
 status evidence and completed effects therefore answer different questions.
