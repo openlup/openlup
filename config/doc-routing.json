@@ -80,13 +80,12 @@
     },
     {
       "id": "agent-context",
-      "when": "Generated offline adopter context, source spans and freshness",
+      "when": "Installed reader guide lookup smoke matrix",
       "paths": [
-        "scripts/agent-context/**",
-        "packages/*/AGENT_CONTEXT.md"
+        "scripts/agent-context/evaluate.mjs"
       ],
       "doc": "docs/platform/DOCUMENTATION.md",
-      "anchor": "#ownership"
+      "anchor": "#reader-guide-contract"
     },
     {
       "id": "browser",

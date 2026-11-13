@@ -125,8 +125,8 @@ boundaries; a fixture does not establish hosted qualification or provider access
 For SQL mechanics and migration witnesses, follow
 [Data and migrations](docs/platform/DATA_AND_MIGRATIONS.md).
 
-The policy self-check validates local Markdown links and fragments, generated
-navigation and agent-context freshness. See
+The policy self-check validates local Markdown links and fragments and generated
+navigation. See
 [Documentation maintenance](docs/platform/DOCUMENTATION.md) for ownership and generation.
 
 ### Local stack bases and heavy verification
@@ -1482,8 +1482,8 @@ rows retain the existing closed registry union.
 Integration proof classifies an exact merge of the reviewed head and a commit
 on `origin/main` as `derived` only for a closed carrier set: migration registry
 unions, the package SQL manifest and selection mirror, publication catalogue,
-generated source map and package agent contexts, and the current installation
-data file. Trusted owner generators run on a temporary prediction, without
+generated source map, and the current installation data file. Trusted owner
+generators run on a temporary prediction, without
 executing candidate tooling or touching the checkout. Output must equal committed
 bytes. Every SQL byte and mode must equal the mechanical merge; other changes
 remain a `resolution` delta with its existing review floor. Size caps and release

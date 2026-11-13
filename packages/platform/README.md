@@ -110,14 +110,13 @@ refuse, while system rows are bypassed without replacement. See the
 
 ## Installed agent context
 
-The tarball includes a small root `AGENT_CONTEXT.md` snapshot of canonical
-platform guidance. Source paths, line ranges and excerpt digests identify its
-provenance. Read the version from the installed `package.json` and check the
-cited source before relying on an excerpt.
-Core's installed `openlup-context` command discovers this snapshot locally and
-returns file-and-line citations offline. Shipping this documentation adds no
-runtime dependency, service or activation, and grants no host policy or execution
-authority. A snapshot does not establish publication, compatibility or support.
+Core's installed `openlup-context` command searches its reader guide under
+`docs/guide/` alongside the installed packages' `AGENTS.md`, `README.md`,
+declarations and exports. Upgrade questions also search `CHANGELOG.md`.
+Results cite local files and line ranges offline. Read the version from the
+installed `package.json` before relying on this guidance. Lookup grants no
+application policy or execution authority and establishes no runtime activation
+or compatibility with another version.
 
 ## Package surface
 

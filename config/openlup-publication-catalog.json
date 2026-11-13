@@ -2830,10 +2830,6 @@
       "class": "public-output"
     },
     {
-      "path": "packages/core/AGENT_CONTEXT.md",
-      "class": "public-output"
-    },
-    {
       "path": "packages/core/CHANGELOG-HISTORY.md",
       "class": "public-output"
     },
@@ -3566,10 +3562,6 @@
       "class": "public-output"
     },
     {
-      "path": "packages/outbox/AGENT_CONTEXT.md",
-      "class": "public-output"
-    },
-    {
       "path": "packages/outbox/CHANGELOG-HISTORY.md",
       "class": "public-output"
     },
@@ -3703,10 +3695,6 @@
     },
     {
       "path": "packages/platform/AGENTS.md",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/AGENT_CONTEXT.md",
       "class": "public-output"
     },
     {
@@ -11147,14 +11135,6 @@
     },
     {
       "path": "scripts/agent-context/evaluate.mjs",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/agent-context/generate.mjs",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/agent-context/generate.test.mjs",
       "class": "public-output"
     },
     {
@@ -30175,7 +30155,7 @@
     },
     {
       "name": "oss:published-tree",
-      "command": "node scripts/agent-context/generate.mjs --check && node --experimental-strip-types scripts/oss-published-tree-check.ts",
+      "command": "node --experimental-strip-types scripts/oss-published-tree-check.ts",
       "publicDocs": [
         "CONTRIBUTING.md",
         "README.md"
@@ -30261,7 +30241,7 @@
     },
     {
       "path": "package.json",
-      "digest": "sha256-0933c941a2365a330414a877f6e2ccb35697ba5a0b243984f4e5812cf635400f"
+      "digest": "sha256-8607dbd14d4b6da615e9fed72af056d17b2096e8ee679e6f1d32c77bba7d19f1"
     },
     {
       "path": "packages/core/package.json",
