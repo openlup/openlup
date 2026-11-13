@@ -4595,6 +4595,10 @@
             "searchPath": "pg_catalog, pg_temp"
           },
           {
+            "signature": "public.payment_provider_retry_failure_recorded(uuid,text,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
             "signature": "public.payment_provider_assert_truth(uuid,text,bigint,text,timestamptz,jsonb)",
             "searchPath": "pg_catalog, pg_temp"
           },
@@ -5927,7 +5931,7 @@
     },
     {
       "path": "db/platform/migrations/20261114100000_payment_provider_attempt_store.sql",
-      "sha256": "52dd5b748a96c4ebdf7ce7ba173e1aa1f6a8b415bf0ac6e6d05ec57f38f71827",
+      "sha256": "7245270f012fdd2ac244f9a6a30fb1693c82733d1a996e74e08aa321d075655b",
       "functions": [
         {
           "signature": "public.payment_simulator_begin_attempt(text,uuid,text,jsonb,timestamptz)",
@@ -5947,7 +5951,7 @@
         {
           "signature": "public.payment_truth_apply_terminal(uuid,text,text,timestamptz,text,text,jsonb,text,text,text)",
           "beforeSha256": "de7b4757b57b5469d8dc39abbae13def6f8223d66c4ec08a7cdd484948998744",
-          "afterSha256": "71d6e4c4f01f6375f1634738b8f9c54d01596e72d750317f8bc03dc7d578bfcc"
+          "afterSha256": "939e94e67dc12f777867271eeec0b0dfd55f2d897c7dcc116521b1b9364b911c"
         },
         {
           "signature": "public.payment_truth_record_reconciliation(uuid,text,text,text,text,timestamptz,text,text,jsonb,text,text,text)",
@@ -6007,7 +6011,7 @@
         {
           "signature": "public.payment_provider_lock_aggregate(uuid)",
           "beforeSha256": null,
-          "afterSha256": "8e9e7bc9f1eec0805a14c57c1ec8c6b2e6b0b9e1054bdc342dffab696feef035"
+          "afterSha256": "9189c25760046f3a8201c03b6a3ed7044dbaf81c9295ec19bf035957a70a4ca0"
         },
         {
           "signature": "public.payment_provider_attempt_read(uuid,uuid)",
@@ -6040,6 +6044,11 @@
           "afterSha256": "d4f13b80b8c114a54062b27941585e8bed31429aa9ed3d728e87783180135e8a"
         },
         {
+          "signature": "public.payment_provider_retry_failure_recorded(uuid,text,text)",
+          "beforeSha256": null,
+          "afterSha256": "44e752f78d8538fbefb4774eb7822c093e8e2165b27359c1f6c4b576a8d5294e"
+        },
+        {
           "signature": "public.payment_provider_assert_truth(uuid,text,bigint,text,timestamptz,jsonb)",
           "beforeSha256": null,
           "afterSha256": "582c9451047f03bc0069cdb5491bf4b8274d84652547bbb624b59ef8bbdc35d2"
@@ -6047,7 +6056,7 @@
         {
           "signature": "public.payment_provider_result_apply(text,uuid,uuid,text,timestamptz,text,text,text,text,text,text)",
           "beforeSha256": null,
-          "afterSha256": "d0d8253c39c2928fa7ff2af3e05593951ff9791d0f4f9dd75955f291c2c44466"
+          "afterSha256": "c47c028f64e6278b561b03c6f4729916e65d093ad4c16ebd8ff3214f658164b5"
         }
       ]
     }

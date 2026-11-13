@@ -670,12 +670,28 @@ All five new tables have RLS and no runtime table privileges; service-role
 execution uses pinned function paths. Capture and restore carry their rows and
 restore the active-attempt pointer after its referenced attempt.
 
+For a provider subscription-cycle failure with recorded renewal correlation,
+application first calls `subscription_retry_apply_failure` under
+`<apply-key>:truth`. Its immutable failure receipt binds the provider attempt,
+payment, cycle, sequence, classification and observation times to the resulting
+rung and schedule. Truth reuses `<apply-key>:truth:settlement`; it does not open
+the generic dunning case on this path. The cycle remains `payment_pending`, and
+the retry obligation owns scheduling. At this stage no provider dunning case,
+notice or token handoff is composed. Attributed dunning and a real provider
+renewal binding require later composition; the starter still binds sandbox
+renewals only. Other truth routes and sandbox failure handoff are unchanged.
+The service-only `payment_provider_retry_failure_recorded` lookup returns only
+whether the intent, receipt key and exact attempt match that recorded context.
+It keeps invoker truth routes from reading private provider tables directly;
+browser roles retain neither lookup execution nor raw-table access.
+
 | Historical data | Result and manual path |
 | --- | --- |
 | Native intent without a recorded provider lifecycle or attempt | No automatic backfill or inferred payment identity. Inspect the provider object and admit complete authority explicitly before preparing a fresh attempt. |
 | Unlinked or superseded event | Ingress remains durable; application returns `payment_control_result_attempt_unresolved` or `payment_control_result_attempt_mismatch`, with no business effects. Resolve attribution through operator recovery. |
 | Prepared attempt with no provider handle | Keep the attempt in flight. Missing local handles do not prove provider absence or authorize redispatch. |
 | Settled intent without provider correlation | Preserve settlement and historical evidence. No synthetic provider history is created. |
+| Recorded provider renewal operation without logical-cycle or exact prepared-attempt correlation | Refuse application without financial or retry effects. Resolve the missing correlation explicitly; native counters and the current active pointer cannot reconstruct it. |
 | Method health without a recorded provider reference | Health supplies no charging authority. Record provider method authority through the selected method store before execution. |
 
 Only `paymentSchemaDescriptor.preparedDurableStore` is enabled by this forward.

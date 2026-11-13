@@ -95,7 +95,7 @@ CREATE FUNCTION public.payment_provider_lock_aggregate(p_intent_id uuid)
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE hint record; locked record;
 BEGIN
- SELECT i.order_id,COALESCE(c.subscription_id,a.subscription_id) AS subscription_id
+ SELECT i.order_id,i.renewal_operation_id,COALESCE(c.subscription_id,a.subscription_id) AS subscription_id
  INTO hint FROM public.commerce_settlement_intents i JOIN public.commerce_orders o ON o.id=i.order_id
  LEFT JOIN public.subscription_cycles c ON c.id=o.subscription_cycle_id
  LEFT JOIN public.subscription_activations a ON a.order_id=o.id WHERE i.id=p_intent_id;
@@ -103,13 +103,14 @@ BEGIN
  IF hint.subscription_id IS NOT NULL THEN
   PERFORM 1 FROM public.subscriptions WHERE id=hint.subscription_id FOR UPDATE;
  END IF;
+ PERFORM 1 FROM public.subscription_renewal_operations WHERE id=hint.renewal_operation_id FOR UPDATE;
  PERFORM 1 FROM public.commerce_orders WHERE id=hint.order_id FOR UPDATE;
  PERFORM 1 FROM public.commerce_settlement_intents WHERE id=p_intent_id FOR UPDATE;
- SELECT i.order_id,COALESCE(c.subscription_id,a.subscription_id) AS subscription_id
+ SELECT i.order_id,i.renewal_operation_id,COALESCE(c.subscription_id,a.subscription_id) AS subscription_id
  INTO locked FROM public.commerce_settlement_intents i JOIN public.commerce_orders o ON o.id=i.order_id
  LEFT JOIN public.subscription_cycles c ON c.id=o.subscription_cycle_id
  LEFT JOIN public.subscription_activations a ON a.order_id=o.id WHERE i.id=p_intent_id;
- IF NOT FOUND OR (locked.order_id,locked.subscription_id) IS DISTINCT FROM (hint.order_id,hint.subscription_id) THEN
+ IF NOT FOUND OR (locked.order_id,locked.subscription_id,locked.renewal_operation_id) IS DISTINCT FROM (hint.order_id,hint.subscription_id,hint.renewal_operation_id) THEN
   RAISE EXCEPTION 'payment_control_intent_aggregate_changed' USING ERRCODE='55000';
  END IF;
 END;
@@ -1146,6 +1147,23 @@ BEGIN
 END;
 $$;
 
+-- This bounded lookup keeps invoker truth routes out of the private provider tables.
+CREATE FUNCTION public.payment_provider_retry_failure_recorded(p_intent_id uuid,p_key text,p_attempt_ref text)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+ SELECT EXISTS (
+  SELECT 1 FROM public.payment_provider_states provider
+  JOIN public.commerce_settlement_intents intent ON intent.id=provider.id
+  JOIN public.subscription_retry_obligations obligation ON obligation.settlement_intent_id=provider.id
+  JOIN public.subscription_retry_receipts receipt ON receipt.obligation_id=obligation.id
+  WHERE provider.id=p_intent_id AND provider.target_kind='subscription_cycle'
+   AND provider.subscription_id=obligation.subscription_id AND provider.subscription_cycle_id=obligation.cycle_id
+   AND obligation.renewal_operation_id=intent.renewal_operation_id
+   AND receipt.kind='failure' AND receipt.receipt_key=p_key
+   AND receipt.input->>'paymentAttemptId'=p_attempt_ref
+   AND receipt.input->>'paymentIntentId'=intent.id::text
+ );
+$$;
+
 CREATE FUNCTION public.payment_provider_assert_truth(p_intent_id uuid,p_outcome text,p_amount bigint,p_currency text,p_at timestamptz,p_evidence jsonb)
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE i public.commerce_settlement_intents%ROWTYPE; s public.payment_provider_states%ROWTYPE;
@@ -1193,6 +1211,8 @@ DECLARE fingerprint text; legacy_fingerprint text; receipt public.payment_provid
  a public.payment_provider_attempts%ROWTYPE; e public.payment_provider_attempt_evidence%ROWTYPE;
  o public.commerce_orders%ROWTYPE; kind text:='state_changed'; answer jsonb; truth jsonb; evidence jsonb;
  outcome text; native_failure text; from_status text; held record;
+ renewal public.subscription_renewal_operations%ROWTYPE; retry_preparation public.subscription_retry_receipts%ROWTYPE;
+ retry_sequence integer; logical_cycle integer; retry_result jsonb;
 BEGIN
  IF p_idempotency_key IS NULL OR btrim(p_idempotency_key)='' OR length(p_idempotency_key)<8
   OR p_payment_intent_id IS NULL OR p_result_status IS NULL OR p_result_status NOT IN ('succeeded','failed','expired','refunded','partially_refunded','disputed')
@@ -1255,6 +1275,36 @@ BEGIN
    ELSE jsonb_build_object('sourceKind','accepted_event','sourceReference',e.id,'attemptRef',a.id,
     'observedStatus',p_result_status,'observedAt',p_occurred_at,'payloadFingerprint',COALESCE(e.event_fingerprint,encode(sha256(convert_to(e.payload::text,'UTF8')),'hex'))) END;
   PERFORM public.payment_provider_assert_truth(i.id,outcome,i.amount_minor,i.currency_code,p_occurred_at,evidence);
+  IF outcome='refused' AND s.target_kind='subscription_cycle' AND i.renewal_operation_id IS NOT NULL THEN
+   SELECT op.* INTO renewal FROM public.subscription_renewal_operations op
+    JOIN public.subscription_cycles c ON c.renewal_operation_id=op.id AND c.id=s.subscription_cycle_id
+    WHERE op.id=i.renewal_operation_id AND op.subscription_id=s.subscription_id
+     AND o.renewal_operation_id=op.id AND o.subscription_cycle_id=c.id
+     AND i.renewal_operation_fingerprint=op.operation_fingerprint FOR UPDATE OF op;
+   IF NOT FOUND OR renewal.cycle_snapshot#>>'{cycle,status}' IS DISTINCT FROM 'correlated' THEN
+    RAISE EXCEPTION 'subscription_renewal_cycle_correlation_required' USING ERRCODE='22023'; END IF;
+   logical_cycle:=(renewal.cycle_snapshot#>>'{cycle,logicalCycleNumber}')::integer;
+   SELECT r.* INTO retry_preparation FROM public.subscription_retry_receipts r
+    JOIN public.subscription_retry_obligations obligation ON obligation.id=r.obligation_id
+    WHERE obligation.renewal_operation_id=renewal.id AND r.kind='prepare'
+     AND r.input->>'paymentIntentId'=i.id::text AND r.input->>'idempotencyKey'=a.idempotency_key
+     AND r.input->>'providerIdempotencyKey'=a.request_payload->>'providerIdempotencyKey'
+     AND r.input->>'providerRequestFingerprint'=a.request_payload->>'providerRequestFingerprint';
+   IF FOUND THEN retry_sequence:=retry_preparation.attempt_sequence;
+   ELSIF renewal.external_attempt_ref IN (a.id::text,a.provider_attempt_id)
+    AND renewal.cycle_snapshot->>'externalAttemptSequence'='0' THEN retry_sequence:=0;
+   ELSE RAISE EXCEPTION 'subscription_retry_not_prepared' USING ERRCODE='22023'; END IF;
+   -- The retry owner records the financial failure first. Truth below reuses
+   -- this exact key's settlement receipt, rather than making a second transition.
+   retry_result:=public.subscription_retry_apply_failure(renewal.id,p_idempotency_key||':truth',
+    jsonb_build_object('attemptSequence',retry_sequence,'logicalCycleNumber',logical_cycle,
+     'paymentIntentId',i.id,'paymentAttemptId',a.id,'paymentId',s.payment_id,'provider',a.provider,
+     'providerAttemptId',a.provider_attempt_id,'subscriptionCycleId',s.subscription_cycle_id,
+     'renewalOperationId',renewal.id,'occurredAt',p_occurred_at,
+     'failureClass',p_failure_class,'reason',COALESCE(p_failure_reason,p_result_status),
+     'externalRef',CASE WHEN retry_sequence=0 THEN renewal.external_attempt_ref ELSE COALESCE(a.provider_attempt_id,a.id::text) END,
+     'evidenceKey',COALESCE(e.id::text,a.id::text),'firstRecordedAt',COALESCE(e.created_at,a.updated_at)));
+  END IF;
   IF NOT (p_result_status='succeeded' AND i.status='settled') THEN
    truth:=public.payment_truth_ingest_event('provider:'||COALESCE(e.id::text,p_idempotency_key),encode(sha256(convert_to(jsonb_build_object('eventId',e.id,'intentId',i.id,'attemptId',a.id,'outcome',outcome)::text,'UTF8')),'hex'),
     p_idempotency_key||':truth',i.id,outcome,i.amount_minor,i.currency_code,p_occurred_at,native_failure,p_failure_reason,evidence,p_dunning_template_slug,p_recovery_url_path,p_recovery_template_slug);
@@ -1295,7 +1345,9 @@ BEGIN
   UPDATE public.payment_provider_attempt_evidence SET processed_at=now(),processing_status=CASE WHEN kind LIKE 'ignored%' THEN 'ignored' ELSE 'processed' END WHERE id=e.id;
  END IF;
  INSERT INTO public.payment_provider_transitions(settlement_intent_id,payment_attempt_id,provider_event_id,transition_kind,from_status,to_status,reason,idempotency_key,occurred_at,payload)
- VALUES(i.id,a.id,p_payment_event_id,'business_result',from_status,p_result_status,kind,p_idempotency_key||':payment_result',p_occurred_at,jsonb_build_object('orderId',o.id,'resultStatus',p_result_status,'source','payment.control.v0'));
+ VALUES(i.id,a.id,p_payment_event_id,'business_result',from_status,p_result_status,kind,p_idempotency_key||':payment_result',p_occurred_at,jsonb_build_object('orderId',o.id,'resultStatus',p_result_status,'source','payment.control.v0')||
+  CASE WHEN retry_result IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('retryObligationId',retry_result->>'id',
+   'retryAttempt',retry_result->'retry_attempt','nextRetryAt',retry_result->'next_retry_at','retryFailureKey',p_idempotency_key||':truth') END);
  answer:=jsonb_build_object('contractVersion','commerce.v0','paymentResult',jsonb_build_object('paymentIntentId',i.id,'paymentAttemptId',a.id,'paymentId',s.payment_id,'orderId',o.id,'status',p_result_status,'kind',kind,'idempotencyKey',p_idempotency_key,'replayed',false));
  INSERT INTO public.payment_provider_receipts(scope,idempotency_key,request_fingerprint,status,response_payload,metadata)
  VALUES('commerce.payment_result.apply',p_idempotency_key,fingerprint,'completed',answer,jsonb_build_object('paymentIntentId',i.id,'paymentAttemptId',a.id));
@@ -1613,7 +1665,9 @@ BEGIN
         AND status IN ('queued','sending');
     END IF;
   ELSE
-    IF v_order.subscription_cycle_id IS NOT NULL THEN
+    IF v_order.subscription_cycle_id IS NOT NULL AND NOT public.payment_provider_retry_failure_recorded(
+      v_intent.id,p_idempotency_key,p_source_evidence->>'attemptRef'
+    ) THEN
       SELECT * INTO v_cycle
         FROM public.subscription_cycles WHERE id = v_order.subscription_cycle_id;
       SELECT * INTO v_subscription
@@ -2586,6 +2640,8 @@ REVOKE ALL ON FUNCTION public.payment_provider_attempt_finalize(text,uuid,uuid,t
 
 REVOKE ALL ON FUNCTION public.payment_provider_event_ingest(text,text,text,text,uuid,uuid,integer,text,boolean,jsonb) FROM PUBLIC;
 
+REVOKE ALL ON FUNCTION public.payment_provider_retry_failure_recorded(uuid,text,text) FROM PUBLIC;
+
 REVOKE ALL ON FUNCTION public.payment_provider_assert_truth(uuid,text,bigint,text,timestamptz,jsonb) FROM PUBLIC;
 
 REVOKE ALL ON FUNCTION public.payment_provider_result_apply(text,uuid,uuid,text,timestamptz,text,text,text,text,text,text) FROM PUBLIC;
@@ -2603,13 +2659,13 @@ DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
 END IF; END; $$;
 
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN
-  EXECUTE 'REVOKE ALL ON FUNCTION public.payment_provider_lock_aggregate(uuid),public.payment_provider_attempt_read(uuid,uuid),public.payment_provider_intent_create(text,text,uuid,uuid,uuid,bigint,text,jsonb,text,timestamptz),public.payment_provider_attempt_prepare(text,uuid,text,text,text,text,text,jsonb),public.payment_provider_attempt_record(text,uuid,text,text,text,text,text,jsonb,jsonb),public.payment_provider_attempt_finalize(text,uuid,uuid,text,text,text,text,text,text,jsonb,jsonb),public.payment_provider_event_ingest(text,text,text,text,uuid,uuid,integer,text,boolean,jsonb),public.payment_provider_assert_truth(uuid,text,bigint,text,timestamptz,jsonb),public.payment_provider_result_apply(text,uuid,uuid,text,timestamptz,text,text,text,text,text,text) FROM anon';
+  EXECUTE 'REVOKE ALL ON FUNCTION public.payment_provider_lock_aggregate(uuid),public.payment_provider_attempt_read(uuid,uuid),public.payment_provider_intent_create(text,text,uuid,uuid,uuid,bigint,text,jsonb,text,timestamptz),public.payment_provider_attempt_prepare(text,uuid,text,text,text,text,text,jsonb),public.payment_provider_attempt_record(text,uuid,text,text,text,text,text,jsonb,jsonb),public.payment_provider_attempt_finalize(text,uuid,uuid,text,text,text,text,text,text,jsonb,jsonb),public.payment_provider_event_ingest(text,text,text,text,uuid,uuid,integer,text,boolean,jsonb),public.payment_provider_retry_failure_recorded(uuid,text,text),public.payment_provider_assert_truth(uuid,text,bigint,text,timestamptz,jsonb),public.payment_provider_result_apply(text,uuid,uuid,text,timestamptz,text,text,text,text,text,text) FROM anon';
 END IF; END; $$;
 
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN
-  EXECUTE 'REVOKE ALL ON FUNCTION public.payment_provider_lock_aggregate(uuid),public.payment_provider_attempt_read(uuid,uuid),public.payment_provider_intent_create(text,text,uuid,uuid,uuid,bigint,text,jsonb,text,timestamptz),public.payment_provider_attempt_prepare(text,uuid,text,text,text,text,text,jsonb),public.payment_provider_attempt_record(text,uuid,text,text,text,text,text,jsonb,jsonb),public.payment_provider_attempt_finalize(text,uuid,uuid,text,text,text,text,text,text,jsonb,jsonb),public.payment_provider_event_ingest(text,text,text,text,uuid,uuid,integer,text,boolean,jsonb),public.payment_provider_assert_truth(uuid,text,bigint,text,timestamptz,jsonb),public.payment_provider_result_apply(text,uuid,uuid,text,timestamptz,text,text,text,text,text,text) FROM authenticated';
+  EXECUTE 'REVOKE ALL ON FUNCTION public.payment_provider_lock_aggregate(uuid),public.payment_provider_attempt_read(uuid,uuid),public.payment_provider_intent_create(text,text,uuid,uuid,uuid,bigint,text,jsonb,text,timestamptz),public.payment_provider_attempt_prepare(text,uuid,text,text,text,text,text,jsonb),public.payment_provider_attempt_record(text,uuid,text,text,text,text,text,jsonb,jsonb),public.payment_provider_attempt_finalize(text,uuid,uuid,text,text,text,text,text,text,jsonb,jsonb),public.payment_provider_event_ingest(text,text,text,text,uuid,uuid,integer,text,boolean,jsonb),public.payment_provider_retry_failure_recorded(uuid,text,text),public.payment_provider_assert_truth(uuid,text,bigint,text,timestamptz,jsonb),public.payment_provider_result_apply(text,uuid,uuid,text,timestamptz,text,text,text,text,text,text) FROM authenticated';
 END IF; END; $$;
 
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
-  EXECUTE 'GRANT EXECUTE ON FUNCTION public.payment_provider_lock_aggregate(uuid),public.payment_provider_attempt_read(uuid,uuid),public.payment_provider_intent_create(text,text,uuid,uuid,uuid,bigint,text,jsonb,text,timestamptz),public.payment_provider_attempt_prepare(text,uuid,text,text,text,text,text,jsonb),public.payment_provider_attempt_record(text,uuid,text,text,text,text,text,jsonb,jsonb),public.payment_provider_attempt_finalize(text,uuid,uuid,text,text,text,text,text,text,jsonb,jsonb),public.payment_provider_event_ingest(text,text,text,text,uuid,uuid,integer,text,boolean,jsonb),public.payment_provider_assert_truth(uuid,text,bigint,text,timestamptz,jsonb),public.payment_provider_result_apply(text,uuid,uuid,text,timestamptz,text,text,text,text,text,text) TO service_role';
+  EXECUTE 'GRANT EXECUTE ON FUNCTION public.payment_provider_lock_aggregate(uuid),public.payment_provider_attempt_read(uuid,uuid),public.payment_provider_intent_create(text,text,uuid,uuid,uuid,bigint,text,jsonb,text,timestamptz),public.payment_provider_attempt_prepare(text,uuid,text,text,text,text,text,jsonb),public.payment_provider_attempt_record(text,uuid,text,text,text,text,text,jsonb,jsonb),public.payment_provider_attempt_finalize(text,uuid,uuid,text,text,text,text,text,text,jsonb,jsonb),public.payment_provider_event_ingest(text,text,text,text,uuid,uuid,integer,text,boolean,jsonb),public.payment_provider_retry_failure_recorded(uuid,text,text),public.payment_provider_assert_truth(uuid,text,bigint,text,timestamptz,jsonb),public.payment_provider_result_apply(text,uuid,uuid,text,timestamptz,text,text,text,text,text,text) TO service_role';
 END IF; END; $$;

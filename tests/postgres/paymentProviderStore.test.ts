@@ -5,7 +5,7 @@ import { createPostgresProviderPaymentControlPort, createPostgresPaymentWebhookC
   createPostgresSandboxPaymentSimulator, executePreparedAttemptMechanism } from "@openlup/platform/payments";
 import type { PreparedAttemptFailurePolicy } from "@openlup/platform/payments/contracts";
 import { lifecycleInstallation, call, type LifecycleInstallation } from "./subscriptionLifecycleClosureFixture.js";
-import { renewal, prepareOriginal, failure } from "./subscriptionNativeFixture.js";
+import { renewal, prepareOriginal } from "./subscriptionNativeFixture.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
 
 const AT = "2026-11-13T12:00:00.000Z";
@@ -36,7 +36,7 @@ async function fixture(channelKey = "card_rail", admitted = true, cycleStatus?: 
     providerRequestFingerprint: "f".repeat(64), providerFlow: "one_time_payment", paymentMethodRef: "method-primary", requestPayload: { source: "fixture" } };
   return { client, order, sku, subscription, cycle, intent, input, prepare };
 }
-async function prepared(f: Awaited<ReturnType<typeof fixture>>, finalized = true) {
+async function prepared(f: Pick<Awaited<ReturnType<typeof fixture>>, "intent" | "prepare">, finalized = true) {
   const a = await control().prepareProviderAttempt(f.prepare);
   if (finalized) await control().finalizeProviderAttempt({ idempotencyKey: `finalize:${a.paymentAttemptId}`, paymentIntentId: f.intent,
     paymentAttemptId: a.paymentAttemptId, providerIdempotencyKey: f.prepare.providerIdempotencyKey,
@@ -62,7 +62,14 @@ async function business(f: { order: string; intent: string; subscription: string
     (SELECT jsonb_agg(to_jsonb(e) ORDER BY id) FROM public.outbox_events e WHERE aggregate_id=ANY(ARRAY[$1::uuid,$2::uuid,$3::uuid])),
     (SELECT jsonb_agg(to_jsonb(r) ORDER BY id) FROM public.subscription_retry_obligations r WHERE cycle_id=$4),
     (SELECT jsonb_agg(to_jsonb(n) ORDER BY id) FROM public.subscription_dunning_notifications n WHERE case_id IN
-      (SELECT id FROM public.subscription_dunning_cases WHERE cycle_id=$4))) AS value`,
+      (SELECT id FROM public.subscription_dunning_cases WHERE cycle_id=$4)),
+    (SELECT jsonb_agg(to_jsonb(r) ORDER BY id) FROM public.subscription_retry_receipts r WHERE obligation_id IN
+      (SELECT id FROM public.subscription_retry_obligations WHERE cycle_id=$4)),
+    (SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM public.commerce_checkout_recovery_tokens t WHERE order_id=$2),
+    (SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM public.commerce_settlement_transitions t WHERE intent_id=$1),
+    (SELECT to_jsonb(op) FROM public.subscription_renewal_operations op WHERE id=
+      (SELECT renewal_operation_id FROM public.commerce_settlement_intents WHERE id=$1)),
+    (SELECT jsonb_agg(to_jsonb(e) ORDER BY id) FROM public.subscription_events e WHERE subscription_id=$3)) AS value`,
   [f.intent, f.order, f.subscription, f.cycle])).rows[0].value;
 }
 
@@ -209,6 +216,11 @@ it("keeps provider tables private and exposes bounded readback through the servi
   for (const table of ["payment_provider_states", "payment_provider_attempts", "payment_provider_attempt_evidence", "payment_provider_receipts", "payment_provider_transitions"]) {
     expect((await env.owner.query("SELECT relrowsecurity AS rls FROM pg_class WHERE oid=$1::regclass", [`public.${table}`])).rows[0].rls).toBe(true);
   }
+  const signature = "public.payment_provider_retry_failure_recorded(uuid,text,text)";
+  for (const role of ["anon", "authenticated", "service_role"]) {
+    expect((await env.owner.query("SELECT has_function_privilege($1,$2,'EXECUTE') AS allowed", [role, signature])).rows[0].allowed).toBe(role === "service_role");
+  }
+  expect(await call(env.runtime, "payment_provider_retry_failure_recorded", [f.intent, "unrecorded", a.paymentAttemptId])).toBe(false);
 });
 
 it("fences compensation, reminders, abandonment and recovery on in-flight or durably successful provider evidence", async () => {
@@ -403,19 +415,148 @@ it("completes a refused renewal outcome while due-renewal claim holds the root a
   } finally { await writer.query("ROLLBACK"); await pending; writer.release(); claimant.release(); }
 });
 
-it("absorbs a duplicate subscription failure without changing a populated retry obligation or dunning ladder", async () => {
-  const r = await renewal(env.owner), original = await prepareOriginal(env.owner, r);
-  await call(env.owner, "subscription_retry_apply_failure", [r.operation, `failure:${r.operation}`, failure()]);
+async function providerRenewal() {
+  const r = await renewal(env.owner, 10, 1, randomUUID(), true);
+  await call(env.owner, "fulfillment_reserve_subscription_renewal", [r.operation, r.token, 900, "2026-09-01T12:00:00Z"]);
+  const original = await call(env.owner, "commerce_prepare_subscription_renewal", [r.operation, r.token, "2026-09-01T12:00:00Z"]);
   const cycle = (await env.owner.query("SELECT subscription_cycle_id FROM public.commerce_orders WHERE id=$1", [original.orderId])).rows[0].subscription_cycle_id;
   const f = { intent: original.settlementIntentId as string, order: original.orderId as string, subscription: r.subscription, cycle };
   await control().createIntent({ idempotencyKey: `provider:${f.intent}`, targetKind: "subscription_cycle", orderId: f.order,
     subscriptionId: f.subscription, subscriptionCycleId: cycle, amountMinor: r.snapshot.totalAmountMinor, currency: "XXX", metadata: {}, channelKey: "fixture", at: AT });
-  const a = await control().recordAttempt({ idempotencyKey: `record:${f.intent}`, paymentIntentId: f.intent, provider: "card_rail",
-    providerAttemptId: `pi_${f.intent}`, providerSessionId: null, attemptStatus: "processing", nextActionKind: null, requestPayload: {}, responsePayload: {} });
-  await result(f, `decline:${a.id}`);
-  expect((await env.owner.query("SELECT retry_attempt FROM public.subscription_retry_obligations WHERE cycle_id=$1", [cycle])).rows[0].retry_attempt).toBeGreaterThan(0);
+  const prepare = { idempotencyKey: `prepare:${f.intent}`, paymentIntentId: f.intent, provider: "card_rail", providerIdempotencyKey: `provider:${f.intent}`,
+    providerRequestFingerprint: "f".repeat(64), providerFlow: "off_session_payment", paymentMethodRef: "method-primary", requestPayload: { source: "fixture" } };
+  const a = await prepared({ ...f, prepare });
+  await call(env.owner, "commerce_acknowledge_subscription_renewal_attempt", [r.operation, r.fingerprint, `pi_${a.paymentAttemptId}`, AT]);
+  return { ...f, r, prepare, a };
+}
+
+it("records one attributed renewal failure before truth reuses its settlement and creates no generic case", async () => {
+  const f = await providerRenewal(), key = `decline:${f.a.paymentAttemptId}`, e = await event(f, f.a.paymentAttemptId);
+  await control().applyPaymentResult({ idempotencyKey: key, paymentIntentId: f.intent, paymentEventId: e.paymentEventId,
+    resultStatus: "failed", occurredAt: AT, failureReason: "declined", failureClass: "soft_retryable" });
+  const receipt = (await env.owner.query(`SELECT r.* FROM public.subscription_retry_receipts r JOIN public.subscription_retry_obligations o
+    ON o.id=r.obligation_id WHERE o.cycle_id=$1 AND r.kind='failure'`, [f.cycle])).rows;
+  expect(receipt).toHaveLength(1);
+  expect(receipt[0]).toMatchObject({ receipt_key: `${key}:truth`, attempt_sequence: 0,
+    input: { attemptSequence: 0, logicalCycleNumber: 3, paymentIntentId: f.intent, paymentAttemptId: f.a.paymentAttemptId,
+      provider: "card_rail", providerAttemptId: `pi_${f.a.paymentAttemptId}`, subscriptionCycleId: f.cycle,
+      renewalOperationId: f.r.operation, failureClass: "soft_retryable", reason: "declined", evidenceKey: e.paymentEventId },
+    result: { retry_attempt: 1, next_retry_at: "2026-11-14T12:00:00+00:00", case_id: null } });
+  expect(Date.parse(receipt[0].input.occurredAt)).toBe(Date.parse(AT));
+  expect(receipt[0].input.firstRecordedAt).toBeTruthy();
+  expect(await call(env.runtime, "payment_provider_retry_failure_recorded", [f.intent, `${key}:truth`, f.a.paymentAttemptId])).toBe(true);
+  for (const [intent, receiptKey, attempt] of [[randomUUID(), `${key}:truth`, f.a.paymentAttemptId],
+    [f.intent, "other-key", f.a.paymentAttemptId], [f.intent, `${key}:truth`, randomUUID()]]) {
+    expect(await call(env.runtime, "payment_provider_retry_failure_recorded", [intent, receiptKey, attempt])).toBe(false);
+  }
+  const transitions = (await env.owner.query("SELECT id,idempotency_key,payload FROM public.commerce_settlement_transitions WHERE intent_id=$1 AND outcome<>'opened'", [f.intent])).rows;
+  expect(transitions).toHaveLength(1);
+  expect(transitions[0]).toMatchObject({ idempotency_key: `${key}:truth:settlement`, payload: { renewalOperationId: f.r.operation } });
+  expect((await env.owner.query("SELECT settlement_transition_id,dunning_case_id FROM public.payment_truth_events WHERE settlement_intent_id=$1", [f.intent])).rows)
+    .toEqual([{ settlement_transition_id: transitions[0].id, dunning_case_id: null }]);
+  expect((await env.owner.query("SELECT payload FROM public.payment_provider_transitions WHERE idempotency_key=$1", [`${key}:payment_result`])).rows[0].payload)
+    .toMatchObject({ retryObligationId: receipt[0].obligation_id, retryAttempt: 1, nextRetryAt: receipt[0].result.next_retry_at });
+  expect((await env.owner.query("SELECT status FROM public.subscription_cycles WHERE id=$1", [f.cycle])).rows[0].status).toBe("payment_pending");
+  expect((await env.owner.query("SELECT count(*)::int AS n FROM public.subscription_dunning_cases WHERE cycle_id=$1", [f.cycle])).rows[0].n).toBe(0);
+  expect((await env.owner.query("SELECT count(*)::int AS n FROM public.commerce_checkout_recovery_tokens WHERE order_id=$1", [f.order])).rows[0].n).toBe(0);
   const before = await business(f);
-  expect(await control().applyPaymentResult({ idempotencyKey: `duplicate:${a.id}`, paymentIntentId: f.intent, paymentEventId: null,
+  expect(await control().applyPaymentResult({ idempotencyKey: key, paymentIntentId: f.intent, paymentEventId: e.paymentEventId,
+    resultStatus: "failed", occurredAt: AT, failureReason: "declined", failureClass: "soft_retryable" })).toMatchObject({ replayed: true });
+  expect(await control().applyPaymentResult({ idempotencyKey: `duplicate:${f.a.paymentAttemptId}`, paymentIntentId: f.intent, paymentEventId: null,
     resultStatus: "failed", occurredAt: "2026-11-14T12:00:00Z", failureReason: "another_writer" })).toMatchObject({ kind: "ignored_duplicate_terminal_failure" });
   expect(await business(f)).toEqual(before);
+  expect(await call(env.owner, "subscription_retry_apply_failure", [f.r.operation, receipt[0].receipt_key, receipt[0].input])).toEqual(receipt[0].result);
+  expect(await business(f)).toEqual(before);
+});
+
+it("retains the 24/72/168/exhausted failure ladder and cross-writer duplicate absorption on immutable attempt receipts", async () => {
+  const f = await providerRenewal(); let a = f.a;
+  const times = [AT, "2026-11-14T12:00:00Z", "2026-11-17T12:00:00Z", "2026-11-24T12:00:00Z"];
+  const next = ["2026-11-14T12:00:00Z", "2026-11-17T12:00:00Z", "2026-11-24T12:00:00Z", null];
+  for (let sequence = 0; sequence < 4; sequence++) {
+    if (sequence > 0) {
+      const prepare = { ...f.prepare, idempotencyKey: `prepare:${f.intent}:${sequence}`, providerIdempotencyKey: `provider:${f.intent}:${sequence}` };
+      await call(env.owner, "subscription_retry_prepare", [f.r.operation, `retry:${f.intent}:${sequence}`,
+        { ...prepare, orderRef: f.order, amountMinor: f.r.snapshot.totalAmountMinor, currency: "XXX" }, times[sequence]]);
+      a = await prepared({ ...f, prepare });
+    }
+    const key = `failure:${a.paymentAttemptId}`;
+    expect(await control().applyPaymentResult({ idempotencyKey: key, paymentIntentId: f.intent, paymentEventId: null,
+      resultStatus: "failed", occurredAt: times[sequence], failureReason: "declined" })).toMatchObject({ kind: "state_changed" });
+    const receipt = (await env.owner.query("SELECT input,result FROM public.subscription_retry_receipts WHERE receipt_key=$1", [`${key}:truth`])).rows[0];
+    expect(receipt.input).toMatchObject({ paymentAttemptId: a.paymentAttemptId, attemptSequence: sequence, logicalCycleNumber: 3 });
+    expect(receipt.result.retry_attempt).toBe(sequence + 1);
+    expect(receipt.result.next_retry_at == null ? null : Date.parse(receipt.result.next_retry_at)).toBe(next[sequence] == null ? null : Date.parse(next[sequence]!));
+    expect((await env.owner.query("SELECT status FROM public.subscription_cycles WHERE id=$1", [f.cycle])).rows[0].status).toBe("payment_pending");
+  }
+  const before = await business(f);
+  for (const reason of ["declined", "provider_failed"]) {
+    const key = `duplicate:${reason}:${f.intent}`;
+    expect(await control().applyPaymentResult({ idempotencyKey: key, paymentIntentId: f.intent, paymentEventId: null,
+      resultStatus: "failed", occurredAt: "2026-11-25T12:00:00Z", failureReason: reason })).toMatchObject({ kind: "ignored_duplicate_terminal_failure" });
+    expect((await env.owner.query("SELECT reason FROM public.payment_provider_transitions WHERE idempotency_key=$1", [`${key}:payment_result`])).rows[0].reason)
+      .toBe("ignored_duplicate_terminal_failure");
+    expect(await business(f)).toEqual(before);
+  }
+  expect((await env.owner.query("SELECT count(*)::int AS n FROM public.subscription_retry_receipts WHERE kind='failure' AND obligation_id IN (SELECT id FROM public.subscription_retry_obligations WHERE cycle_id=$1)", [f.cycle])).rows[0].n).toBe(4);
+  const first = (await env.owner.query("SELECT input,result FROM public.subscription_retry_receipts WHERE receipt_key=$1", [`failure:${f.a.paymentAttemptId}:truth`])).rows[0];
+  expect(first.result).toMatchObject({ retry_attempt: 1, next_retry_at: "2026-11-14T12:00:00+00:00" });
+  expect(await call(env.owner, "subscription_retry_apply_failure", [f.r.operation, `failure:${f.a.paymentAttemptId}:truth`, first.input])).toEqual(first.result);
+  expect(await business(f)).toEqual(before);
+});
+
+it("stops a terminating provider failure without creating dunning authority", async () => {
+  const f = await providerRenewal();
+  await control().applyPaymentResult({ idempotencyKey: `hard:${f.intent}`, paymentIntentId: f.intent, paymentEventId: null,
+    resultStatus: "failed", occurredAt: AT, failureReason: "declined", failureClass: "hard_do_not_retry" });
+  expect((await env.owner.query("SELECT result FROM public.subscription_retry_receipts WHERE receipt_key=$1", [`hard:${f.intent}:truth`])).rows[0].result)
+    .toMatchObject({ retry_attempt: 1, next_retry_at: null, case_id: null });
+});
+
+it("keeps generic truth dunning for a subscription failure without recorded renewal context", async () => {
+  const f = await fixture("card_rail", true, "planned"); await prepared(f);
+  await result(f, `generic:${f.intent}`);
+  expect((await env.owner.query("SELECT idempotency_key,retry_attempt FROM public.subscription_dunning_cases WHERE cycle_id=$1", [f.cycle])).rows)
+    .toEqual([{ idempotency_key: `payment-truth:dunning:${f.cycle}`, retry_attempt: 1 }]);
+  expect((await env.owner.query("SELECT count(*)::int AS n FROM public.subscription_retry_obligations WHERE cycle_id=$1", [f.cycle])).rows[0].n).toBe(0);
+});
+
+it.each(["logical cycle", "attempt"] as const)("refuses missing recorded renewal %s correlation without financial or retry effects", async missing => {
+  const f = await providerRenewal();
+  if (missing === "logical cycle") await env.owner.query("UPDATE public.subscription_renewal_operations SET cycle_snapshot=cycle_snapshot-'cycle' WHERE id=$1", [f.r.operation]);
+  else await env.owner.query("UPDATE public.subscription_renewal_operations SET external_attempt_ref='unrelated-attempt' WHERE id=$1", [f.r.operation]);
+  const before = await business(f);
+  await expect(result(f, `uncorrelated:${f.intent}`)).rejects.toThrow(missing === "logical cycle" ? "subscription_renewal_cycle_correlation_required" : "subscription_retry_not_prepared");
+  expect(await business(f)).toEqual(before);
+});
+
+it.each(["cancelled", "skipped"] as const)("preserves the recorded renewal rung after %s cycle finality and replay", async terminal => {
+  const f = await providerRenewal(); await result(f, `original:${f.intent}`);
+  await env.owner.query("UPDATE public.subscription_cycles SET status=$2 WHERE id=$1", [f.cycle, terminal]);
+  await env.owner.query("UPDATE public.commerce_orders SET status='cancelled' WHERE id=$1", [f.order]);
+  await env.owner.query("UPDATE public.commerce_settlement_intents SET status='cancelled' WHERE id=$1", [f.intent]);
+  await env.owner.query("UPDATE public.payment_provider_states SET status='cancelled' WHERE id=$1", [f.intent]);
+  const before = await business(f);
+  for (const status of ["failed", "expired"] as const) {
+    const key = `terminal:${status}:${f.intent}`, e = await event(f, f.a.paymentAttemptId);
+    expect(await result(f, key, status, e.paymentEventId)).toMatchObject({ kind: "ignored_failure_terminalized_cycle", replayed: false });
+    expect(await result(f, key, status, e.paymentEventId)).toMatchObject({ kind: "ignored_failure_terminalized_cycle", replayed: true });
+    expect(await business(f)).toEqual(before);
+  }
+});
+
+it("locks the recorded renewal operation before payment children when applying a provider failure", async () => {
+  const f = await providerRenewal(), blocker = await env.owner.connect(), writer = await env.runtime.connect(); let pending: Promise<unknown> | undefined;
+  try {
+    await blocker.query("BEGIN");
+    await blocker.query("SELECT id FROM public.subscription_renewal_operations WHERE id=$1 FOR UPDATE", [f.r.operation]);
+    const pid = (await writer.query("SELECT pg_backend_pid() AS pid")).rows[0].pid;
+    pending = createPostgresProviderPaymentControlPort(writer, options).applyPaymentResult({ idempotencyKey: `locked:${f.intent}`,
+      paymentIntentId: f.intent, paymentEventId: null, resultStatus: "failed", occurredAt: AT, failureReason: "declined" }).catch(error => error);
+    await blockedBy(pid);
+    await env.owner.query("SELECT id FROM public.commerce_orders WHERE id=$1 FOR UPDATE NOWAIT", [f.order]);
+    await env.owner.query("SELECT id FROM public.commerce_settlement_intents WHERE id=$1 FOR UPDATE NOWAIT", [f.intent]);
+    await env.owner.query("SELECT id FROM public.payment_provider_attempts WHERE id=$1 FOR UPDATE NOWAIT", [f.a.paymentAttemptId]);
+    await blocker.query("COMMIT"); expect(await pending).toMatchObject({ kind: "state_changed" });
+  } finally { await blocker.query("ROLLBACK"); await pending; blocker.release(); writer.release(); }
 });

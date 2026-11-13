@@ -1484,7 +1484,11 @@ and apply are separate transactions; apply commits terms, event and receipt
 atomically. Private introductory cadence and acquisition policy remain host-owned.
 Multi-cycle prepaid retains its named unsupported capability. The dedicated
 native payment store supports durable preparation, immutable ingress and exact
-attempt correlation; the subscription descriptor retains its separate composition
+attempt correlation. Correlated provider renewal failures record one immutable
+attempt-bound retry receipt before truth reuses the financial transition. The
+receipt owns the rung and schedule; the cycle stays `payment_pending`. Provider
+dunning case, notice and token handoff await attributed composition, and a real
+provider renewal binding is not yet supplied. The subscription descriptor retains its separate composition
 limits. N1 retry recovery is selected while stock recovery remains
 unavailable. One executor stays default off with mandatory delivery admission.
 Host-selected M04 descriptors carry recorded

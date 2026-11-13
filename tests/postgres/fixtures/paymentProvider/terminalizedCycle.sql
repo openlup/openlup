@@ -10,7 +10,10 @@ CREATE FUNCTION pg_temp.finality_snapshot(s uuid) RETURNS jsonb LANGUAGE sql AS 
   (SELECT jsonb_agg(to_jsonb(x) ORDER BY id) FROM public.commerce_orders x WHERE subscription_cycle_id IN (SELECT id FROM public.subscription_cycles WHERE subscription_id=s)),
   (SELECT jsonb_agg(to_jsonb(x) ORDER BY id) FROM public.subscription_events x WHERE subscription_id=s),
   (SELECT jsonb_agg(to_jsonb(x) ORDER BY id) FROM public.subscription_dunning_cases x WHERE subscription_id=s),
-  (SELECT jsonb_agg(to_jsonb(x) ORDER BY id) FROM public.subscription_dunning_notifications x WHERE subscription_id=s)
+  (SELECT jsonb_agg(to_jsonb(x) ORDER BY id) FROM public.subscription_dunning_notifications x WHERE subscription_id=s),
+  (SELECT jsonb_agg(to_jsonb(x) ORDER BY id) FROM public.subscription_retry_obligations x WHERE subscription_id=s),
+  (SELECT jsonb_agg(to_jsonb(x) ORDER BY id) FROM public.subscription_retry_receipts x WHERE obligation_id IN
+    (SELECT id FROM public.subscription_retry_obligations WHERE subscription_id=s))
  );
 $$;
 CREATE FUNCTION pg_temp.check_provider_finality(terminal text) RETURNS SETOF text LANGUAGE plpgsql AS $$

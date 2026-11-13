@@ -1653,6 +1653,14 @@ application, which refuses unresolved or stale attempt attribution before effect
 `paymentSchemaDescriptor.preparedDurableStore` is now `supported`; method setup,
 absence reopening and cumulative refund remain `unsupported`.
 
+Correlated provider renewal failures record an immutable native retry failure
+receipt with the exact provider attempt, sequence, cycle and observation facts.
+The retry owner records settlement first; truth reuses its settlement key and
+omits generic dunning-case creation for that receipt. Rung and schedule come from
+the receipt, with `payment_pending` retained on the cycle. Provider dunning case,
+notice and token handoff await attributed composition. A real provider renewal
+binding is not supplied at this stage; the starter still binds sandbox renewal.
+
 The additive provider recovery factories read bounded evidence and use the existing
 checkout admission owners: `createPostgresProviderPaymentRecoveryGuidancePort`,
 `createPostgresProviderExpiredCheckoutSafety`,
