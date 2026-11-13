@@ -55,9 +55,10 @@ export const PUBLIC_PACKAGE_COMMANDS: PublicPackageCommand[] = [
   publicCommand("lint", "node scripts/ast-grep/check-filewide-ignore.mjs && ast-grep scan --error=no-suppress-all --error=unused-suppression && ast-grep test --skip-snapshot-tests && eslint ."),
   publicCommand("preflight", "node --experimental-strip-types scripts/preflight.ts"),
   publicCommand("prelint", "npm --workspace @openlup/core run build && npm --workspace @openlup/outbox run build && npm --workspace @openlup/platform run build"),
-  publicCommand("oss:published-tree", "node scripts/agent-context/generate.mjs --check && node --experimental-strip-types scripts/oss-published-tree-check.ts"),
+  publicCommand("oss:published-tree", "node --experimental-strip-types scripts/oss-published-tree-check.ts"),
   publicCommand("packages:check", "node --experimental-strip-types scripts/packages/packages-check.ts"),
   publicCommand("release:bump", "node --experimental-strip-types scripts/packages/release-bump.ts"),
+  publicCommand("release:docs-pass", "node --experimental-strip-types scripts/packages/release-docs-pass.ts"),
   publicCommand("sql:admit", "node --experimental-strip-types scripts/sql-admit.ts"),
   publicCommand("pretest", "npm --workspace @openlup/core run build && npm --workspace @openlup/outbox run build && npm --workspace @openlup/platform run build"),
   publicCommand("test", PUBLIC_TEST_COMMAND),
@@ -122,7 +123,7 @@ export function publicPublicationCatalogDigests(source: string) { const catalog 
 /** The reader guide: Markdown pages under `packages/core/docs/guide/`, admitted by pattern like fragments. */
 export const isGuidePageArea = (path: string): boolean => /^packages\/core\/docs\/guide(?:\/|$)/u.test(path);
 export const isGuidePage = (path: string): boolean => /^packages\/core\/docs\/guide\/(?:[a-z0-9][a-z0-9-]*\/)*[A-Za-z0-9][A-Za-z0-9_-]*\.md$/u.test(path);
-/** Regular, non-executable, readable Markdown only; anything else under the guide needs a reviewed catalogue row. */
+/** Regular, non-executable, readable Markdown only; other guide paths and catalogue rows under the guide are refused. */
 export function validateGuidePage(path: string, bytes: string | Buffer, mode: string): string {
   if (!isGuidePage(path) || mode !== "100644") throw new Error(`${path}: guide pages must be docs/guide/**/*.md with lowercase directories, regular and non-executable`);
   let contents: string;

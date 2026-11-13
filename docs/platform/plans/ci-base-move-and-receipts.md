@@ -1,5 +1,7 @@
 # Plan: checks that survive a moving `main`, and pull-request receipts without a race
 
+Status: historical record, 2026-11-06.
+
 Status: executed on 2026-10-03 (W0 #112, W2 #113, W1 #114, W3 #115, W4 #121, W5 #122; local steps 0b and 4 applied; the maintainer-local copy reinstalled with W5).
 Audience: the agents executing it, their reviewers and the maintainer.
 

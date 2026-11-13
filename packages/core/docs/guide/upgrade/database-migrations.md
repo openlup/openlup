@@ -49,13 +49,41 @@ refuses with `platform migration installation is required`. Keep the
 generation that owns your installed history; selecting another generation
 does not convert it. Provision the matching host roles and use a direct
 PostgreSQL connection that retains one session for the migration operation.
-See the [installation recipe](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/README.md#install-the-portable-postgresql-schema)
-for the bindings.
+Both qualified selections accept `roleMode: "installer-managed"` or
+`"operator-provisioned"`, with `migrationLogin`, `bootstrapLogin` and
+`runtimeLogin`. The restricted `qualified-admin` selection also requires
+`restoreLogin` and, in operator-provisioned mode, a distinct `operatorLogin`.
+The privileged `qualified-v2` selection permits an optional restore login.
+Provision the selected PostgreSQL host profile before invoking the runner: these
+options validate existing roles and session facts; they do not create host
+logins or grant access. The [connection role guidance](../how-to/operate/connect-postgresql.md#assign-connections-by-work)
+describes the prerequisites.
+
+The factory also accepts a `poolFactory`, a custom `catalog` reader, its `root`
+and a `catalogProjectionPayload` callback. These are trusted host inputs. A
+custom pool factory owns startup options and pool lifetime; a custom catalogue
+does not bypass manifest or history checks. Use the lower-level
+`createPostgresMigrationRunner` when supplying the complete source/options API.
+Imports perform no installation; call the returned methods explicitly.
+
+Before a fresh `legacy` installation, `inspectLegacyPostgresInstallRoles` from
+`@openlup/platform/lifecycle` reads the legacy bootstrap's role prerequisites
+through a query handle you supply and reports blockers such as
+`legacy_bootstrap_requires_superuser`. Even `rolePrerequisitesMet: true` does not establish
+install readiness, runtime grants, pooling or host support; the helper only
+reads, creates no role or schema and runs no installer.
 
 Module migration descriptors are sparse projections of the catalogue. They
 identify their modules' SQL assets; they are not independent installation
 chains. Install the complete selected catalogue, including its dependencies,
 and preserve its full prefix.
+
+The job-run ledger has an additional install-path constraint. Its
+`JOB_RUN_LEDGER_MIGRATIONS` descriptor lists the base ledger and the subsequent
+replacement definitions for the claim/finish routines. Use either those assets
+in your own complete chain or the catalogue that already defines the routines.
+Applying both paths fails when the latter attempts to create existing functions.
+Importing `@openlup/platform/job-ledger` applies no SQL.
 
 ## Inspect and apply
 
@@ -106,7 +134,7 @@ the selected object inventory, not old/new application compatibility, data
 backfill completion or a safe rollback. Reverting application files does not
 undo committed SQL or durable effects.
 
-The development preview provides no general upgrade guarantee. Verify the
+This migration recipe provides no general upgrade guarantee. Verify the
 selected chain and application combination, including replay and refusal
 behavior. [Application file upgrades](./application-files.md) are a separate
 operation and execute no database work.

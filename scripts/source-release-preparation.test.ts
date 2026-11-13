@@ -48,7 +48,7 @@ function fixture() {
 }
 
 describe("release-only source snapshots", () => {
-  it("bump stages only consumed fragment deletions, then preparation write and check succeed", () => {
+  it("bump stages consumed fragment deletions and the upgrade page, then preparation write and check succeed", () => {
     const f = fixture(), fragments = ["packages/core/changes/a-one.md", "packages/core/changes/z-two.md"];
     f.write("package-lock.json", JSON.stringify({ packages: { "packages/core": { version: "0.17.0" } } }, null, 2));
     f.write("packages/core/package-lock.json", JSON.stringify({ version: "0.17.0", packages: { "": { version: "0.17.0" } } }, null, 2));
@@ -63,7 +63,7 @@ describe("release-only source snapshots", () => {
     expect(f.git("diff", "--cached", "--binary")).toBe(staged);
     f.write(fragments[0]!, "- A change.\n");
     bumpSet(f.root, "0.18.0");
-    expect(f.git("diff", "--cached", "--name-status").split("\n")).toEqual([...fragments.map((path) => `D\t${path}`), "A\tpackages/platform/changes/not-consumed.md"]);
+    expect(f.git("diff", "--cached", "--name-status").split("\n")).toEqual([...fragments.map((path) => `D\t${path}`), "A\tpackages/core/docs/guide/upgrade/v0-18-0.md", "A\tpackages/platform/changes/not-consumed.md"]);
     for (const path of fragments) expect(f.git("ls-files", "--", path)).toBe("");
     expect(f.git("diff", "--cached", "--binary", "--", "packages/platform")).toBe(staged);
     expect(prepareSourceRelease(f.root, "--write", () => {})).toBe(true);
@@ -77,7 +77,7 @@ describe("release-only source snapshots", () => {
     f.commit();
     rmSync(join(f.root, sibling));
     bumpSet(f.root, "0.18.0");
-    expect(f.git("diff", "--cached", "--name-status").split("\n")).toEqual([`D\t${consumed}`]);
+    expect(f.git("diff", "--cached", "--name-status").split("\n")).toEqual([`D\t${consumed}`, "A\tpackages/core/docs/guide/upgrade/v0-18-0.md"]);
     expect(f.git("ls-files", "--", sibling)).toContain(sibling);
   });
   it("PR policy/inventory recompute stale bindings; write is idempotent; check is strict and read-only", () => {

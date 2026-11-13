@@ -1,5 +1,7 @@
 # M14 Node runtime drain task
 
+Status: historical record, 2026-10-29.
+
 ## Independent runtime and handler-witness delivery, 2026-10-28
 
 Outcome: keep the local listener usable by already admitted scheduler callbacks

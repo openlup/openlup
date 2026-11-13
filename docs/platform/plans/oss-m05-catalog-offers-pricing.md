@@ -1,5 +1,7 @@
 # M05 catalog, offers and pricing import
 
+Status: historical record, 2026-10-29.
+
 Status: development-preview plan; no stable-framework, release or activation claim.
 
 ## Outcome and authority

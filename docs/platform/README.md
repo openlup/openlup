@@ -2,11 +2,11 @@
 
 Status: development-preview documentation. The platform is not yet a stable framework release or a supported adopter distribution.
 
-This is the public documentation set for the OpenLup platform. It describes the portable platform boundary and the limits of the current preview. It does not grant release, hosting, upgrade, or support commitments.
+This index is for maintainers changing OpenLup. For installing, composing, extending, operating or upgrading an application, read the [OpenLup reader guide](../../packages/core/docs/guide/README.md).
 
 ## Start here
 
-- [Build an application from npm](adopter-kit/README.md) — select versioned packages and keep application-owned policy and composition in your app.
+- [Build an application from npm](../../packages/core/docs/guide/start/adopt-from-npm.md) — select versioned packages and keep application-owned policy and composition in your app.
 - [Development, diagnostics and preview releases](DEVELOPMENT_AND_RELEASE.md) — local checks, PR/queue/main execution, result interpretation and the source/npm release sequence.
 
 - [Testing — run, place, add and keep tests fast](../../CONTRIBUTING.md#test-scope-and-diagnostics).
@@ -14,7 +14,7 @@ This is the public documentation set for the OpenLup platform. It describes the 
 - [Distribution evidence](DISTRIBUTION_EVIDENCE.md) — generated partial outcome projection, package-set BOM and current neutrality limits.
 - [Source map](SOURCE_MAP.md) — every platform domain and source responsibility, with canonical owners and source links.
 - [Subscription workflows](SUBSCRIPTION_WORKFLOWS.md) — meaningful internal steps, refusal boundaries and the tests to inspect.
-- [Documentation maintenance](DOCUMENTATION.md) — authoring, same-change impact, generated navigation and checked bundle export.
+- [Documentation maintenance](DOCUMENTATION.md) — authoring, same-change impact and generated navigation.
 - [Agent guide](AGENT_GUIDE.md) — a stable pointer to the root [`AGENTS.md`](../../AGENTS.md) and the reader guide shipped in `@openlup/core`.
 - [Architecture and extensions](ARCHITECTURE_AND_EXTENSIONS.md) — module ownership, extension seams, and source-ejection consequences.
 - [Data and migrations](DATA_AND_MIGRATIONS.md) — compatibility-first schema evolution and adopter-owned data.
@@ -36,9 +36,10 @@ Plans and task records are plain Markdown under `plans/`. There is no plan templ
 - [Partner acquisition R1](plans/oss-m18-r1-partner-acquisition.md) — unchanged contribution, frozen witnesses, explicit privacy and later-phase limits.
 - [Partner reference delegation R2](plans/oss-m18-r2-reference-delegation.md) — thin source bindings, installed-artifact proof and preserved host behavior.
 - [Partner package set S1](plans/oss-m18-s1-0-36-0.md) — coherent 0.36.0 source preparation and publication boundary.
-- [Native commerce package set preparation](../../packages/platform/CHANGELOG.md#0370) — coherent 0.37.0 notes; published to npm.
+- [Native commerce package set preparation](../../packages/platform/CHANGELOG-HISTORY.md#0370) — coherent 0.37.0 notes; published to npm.
 - [Subscription care package set preparation](../../packages/platform/CHANGELOG.md#0380) — coherent 0.38.0 notes; published to npm.
 - [Checkout recovery and order operations package set preparation](../../packages/platform/CHANGELOG.md#0390) — coherent 0.39.0 notes; published to npm.
+- [Reader guide and ecommerce events package set preparation](../../packages/platform/CHANGELOG.md#0400) — coherent 0.40.0 notes; publication remains a separate owner action.
 
 - [Subscription renewal and dunning](plans/oss-m10-subscriptions-renewal-dunning.md) — frozen obligation ports, graph transaction units, continuity and explicit capability limits.
 
@@ -67,8 +68,8 @@ procedure must not look executable today. Name the available development-preview
 profile and its support limits without implying a stable install.
 
 Use the [ownership and maintenance route](DOCUMENTATION.md#ownership) before
-creating a page. The [generated source map](SOURCE_MAP.md) and its bundle are
-projections of existing public inputs. Regenerate them with the same change;
+creating a page. The [generated source map](SOURCE_MAP.md) is a
+projection of existing public inputs. Regenerate it with the same change;
 review the authored explanation at the affected owner section.
 
 For a new task-oriented page, copy only the fields that serve its readers:

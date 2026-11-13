@@ -98,6 +98,10 @@
       "class": "public-output"
     },
     {
+      "path": ".github/workflows/registry-tutorial.yml",
+      "class": "public-output"
+    },
+    {
       "path": ".gitignore",
       "class": "public-output"
     },
@@ -2066,6 +2070,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/README.template.md",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/artifacts/README.md",
       "class": "public-output"
     },
@@ -2830,10 +2838,6 @@
       "class": "public-output"
     },
     {
-      "path": "packages/core/AGENT_CONTEXT.md",
-      "class": "public-output"
-    },
-    {
       "path": "packages/core/CHANGELOG-HISTORY.md",
       "class": "public-output"
     },
@@ -3566,10 +3570,6 @@
       "class": "public-output"
     },
     {
-      "path": "packages/outbox/AGENT_CONTEXT.md",
-      "class": "public-output"
-    },
-    {
       "path": "packages/outbox/CHANGELOG-HISTORY.md",
       "class": "public-output"
     },
@@ -3703,10 +3703,6 @@
     },
     {
       "path": "packages/platform/AGENTS.md",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/AGENT_CONTEXT.md",
       "class": "public-output"
     },
     {
@@ -11186,14 +11182,6 @@
       "class": "public-output"
     },
     {
-      "path": "scripts/agent-context/generate.mjs",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/agent-context/generate.test.mjs",
-      "class": "public-output"
-    },
-    {
       "path": "scripts/agent-review-decide.mjs",
       "class": "public-output"
     },
@@ -11303,18 +11291,6 @@
     },
     {
       "path": "scripts/ast-grep/rules/portable-no-industry-contracts.yml",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/audit-orientation-docs.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/audit-orientation-headers.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/audit-orientation-size.ts",
       "class": "public-output"
     },
     {
@@ -11467,18 +11443,6 @@
     },
     {
       "path": "scripts/disposable-run-lifecycle.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/documentation-bundle-io.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/documentation-bundle.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/documentation-bundle.ts",
       "class": "public-output"
     },
     {
@@ -12098,11 +12062,23 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/packages/registry-tutorial-workflow.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/packages/release-bump.test.ts",
       "class": "public-output"
     },
     {
       "path": "scripts/packages/release-bump.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/release-docs-pass.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/release-docs-pass.ts",
       "class": "public-output"
     },
     {
@@ -30235,7 +30211,7 @@
     },
     {
       "name": "oss:published-tree",
-      "command": "node scripts/agent-context/generate.mjs --check && node --experimental-strip-types scripts/oss-published-tree-check.ts",
+      "command": "node --experimental-strip-types scripts/oss-published-tree-check.ts",
       "publicDocs": [
         "CONTRIBUTING.md",
         "README.md"
@@ -30256,6 +30232,16 @@
     {
       "name": "release:bump",
       "command": "node --experimental-strip-types scripts/packages/release-bump.ts",
+      "publicDocs": [
+        "CONTRIBUTING.md",
+        "README.md"
+      ],
+      "publicCiEntrypoint": ".github/workflows/published-tree-ci.yml",
+      "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
+    },
+    {
+      "name": "release:docs-pass",
+      "command": "node --experimental-strip-types scripts/packages/release-docs-pass.ts",
       "publicDocs": [
         "CONTRIBUTING.md",
         "README.md"
@@ -30321,7 +30307,7 @@
     },
     {
       "path": "package.json",
-      "digest": "sha256-0933c941a2365a330414a877f6e2ccb35697ba5a0b243984f4e5812cf635400f"
+      "digest": "sha256-2031519770f977de75b1836c28d953fc6cea9544ffa4dd1f4d994c463d14d6a2"
     },
     {
       "path": "packages/core/package.json",

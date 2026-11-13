@@ -15,8 +15,6 @@ import { documentationGit, resolveDocumentationBase } from "./documentation-git.
 import { evaluatePlatformMigrationManifest, evaluatePlatformMigrationManifestHistory, isQualifiedPlatformMigrationPath, type PlatformMigrationManifest } from "./platform-migration-manifest.ts";
 import { assertAdmittedPlatformForward, deriveSourceReleaseContract } from "./oss-source-release-contract.ts";
 import { AGENT_GUIDE_PATH, renderAgentGuide, renderDocumentationSourceMap, SOURCE_MAP_PATH } from "./documentation-navigation.ts";
-import { createDocumentationBundle } from "./documentation-bundle.ts";
-import { validateDocumentationBundle, writeDocumentationBundle } from "./documentation-bundle-io.ts";
 import { assertMaterializedOutputInventory } from "./oss-published-tree-output.ts";
 import { assertMigrationBlocks } from "./packages/packages-check.ts";
 export { assertMaterializedOutputInventory, materializedOutputPaths } from "./oss-published-tree-output.ts";
@@ -120,7 +118,7 @@ export function assertAgentGuidancePlacement(root: string, paths: Iterable<strin
 }
 
 // A maintainer's home directory or a Windows drive path names one machine, never the published tree.
-const ABSOLUTE_FILESYSTEM_PATH = /(?<![\w.~:/-])\/(?:Users|home)\/[A-Za-z0-9._-]+|(?<![\w\\])[A-Za-z]:\\Users\\[A-Za-z0-9._-]+/gu;
+const ABSOLUTE_FILESYSTEM_PATH = /(?<![\w.~:/-])(?:file:\/\/)?\/(?:Users|home)\/[A-Za-z0-9._-]+|(?<![\w\\])[A-Za-z]:[\\/]Users[\\/][A-Za-z0-9._-]+/gu;
 
 /** Repository-wide: tracked Markdown carries no absolute filesystem path. */
 export function assertNoAbsoluteFilesystemPaths(root: string, paths: Iterable<string>): void {
@@ -360,8 +358,8 @@ function main(root: string, argv: string[]): number {
 }
 
 export function documentationPolicyCommand(root: string, argv: string[], log: (line: string) => void): number {
-  const valued = new Set(["--docs-base", "--docs-export", "--docs-check-bundle", "--docs-source", "--docs-digest"]);
-  const flags = new Set(["--policy", "--docs-update", "--docs-local"]);
+  const valued = new Set(["--docs-base"]);
+  const flags = new Set(["--policy", "--docs-update"]);
   const options = new Map<string, string>();
   for (let index = 0; index < argv.length; index++) {
     const arg = argv[index];
@@ -370,16 +368,6 @@ export function documentationPolicyCommand(root: string, argv: string[], log: (l
     if (!value || value.startsWith("--")) throw new Error(`missing value for ${arg}`);
     options.set(arg, value);
   }
-  if (options.has("--docs-local") && !options.has("--docs-export")) throw new Error("--docs-local requires --docs-export");
-  const bundleInput = options.get("--docs-check-bundle");
-  if (bundleInput) {
-    if (["--docs-export", "--docs-update", "--docs-base", "--docs-local"].some((arg) => options.has(arg))) throw new Error("bundle validation cannot be combined with source operations");
-    const manifest = validateDocumentationBundle(join(root, bundleInput), { sourceCommit: options.get("--docs-source"), bundleDigest: options.get("--docs-digest") });
-    log(`documentation bundle integrity valid: ${manifest.bundleDigest}; ${manifest.provenance.kind}; publishable=${manifest.provenance.publishable}`);
-    log("This validates the selected bundle, not the current source tree or behavioral meaning.");
-    return 0;
-  }
-  if (options.has("--docs-source") || options.has("--docs-digest")) throw new Error("consumer pins require --docs-check-bundle");
   let state = readDocumentationState(root);
   const agentGuide = renderAgentGuide();
   if (options.has("--docs-update")) {
@@ -400,12 +388,6 @@ export function documentationPolicyCommand(root: string, argv: string[], log: (l
     log(`- append-only migration history: ${base.base}..${head}`);
     assertMigrationBlocks(root, base.base, head);
     log(`- package API changes carry Migration blocks: ${base.base}..${head}`);
-  }
-  const output = options.get("--docs-export");
-  if (output) {
-    const bundle = createDocumentationBundle(root, state, options.has("--docs-local"));
-    writeDocumentationBundle(root, output, bundle);
-    log(`- documentation bundle: ${output}; ${bundle.manifest.bundleDigest}; ${bundle.manifest.provenance.kind}; publishable=${bundle.manifest.provenance.publishable}`);
   }
   log("the tree satisfies its public policy catalogue and documentation navigation checks.");
   return 0;

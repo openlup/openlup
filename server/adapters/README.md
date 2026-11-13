@@ -605,7 +605,7 @@ models the ledger read separately from each migration transaction. Legacy
 bootstrap ownership remains accepted; qualified selection retains its stricter
 session-owner and role-graph admission. In the runner, qualified inventory
 shares the validated ledger observation. The
-[migration owner](../../docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
+[migration owner](../../packages/core/docs/guide/upgrade/database-migrations.md#select-the-complete-catalogue)
 defines the shared behavior.
 
 The [native fulfillment observation lifecycle](postgres/fulfillmentObservationLifecycle.ts)
@@ -615,7 +615,7 @@ provider, rechecks current state and preserves retained acceptance on replay.
 Caller-owned verification and transaction/login authority remain prerequisites;
 this adapter opens no connection, issues no provider request and adds no SQL or
 grant. Its [architecture owner](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery)
-and [restricted-login proof](../../docs/platform/DATA_AND_MIGRATIONS.md#compatibility-lifecycle)
+and [restricted-login proof](../../packages/core/docs/guide/upgrade/database-migrations.md#check-application-compatibility)
 define the scope.
 
 Commerce returns and native review lifecycle/media adapters delegate to
@@ -839,7 +839,7 @@ bindings, startup transport and [read-only session admission](postgres/qualified
 Its explicit qualified source selection currently contains 95 units; the
 legacy selection remains the default at 91 units. Neither source plan is
 installed or hosted qualification. The
-[migration owner](../../docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
+[migration owner](../../packages/core/docs/guide/upgrade/database-migrations.md#select-the-complete-catalogue)
 records its binding shapes and outstanding production proof.
 
 Use [Architecture and extension boundaries](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md)

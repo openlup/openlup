@@ -20,11 +20,11 @@ export const SHARED_INPUTS = ['scripts/', 'tests/setup/', 'src/test/',
 // for their repository-wide policy/inventory or removal-marker scans.
 // Review each row against every actual repository read in its import closure;
 // see CONTRIBUTING.md#extend-tooling-selection-conservatively.
+// Keep scripts/packages/platform-agent-guide.test.ts unlisted: it always runs outbox/platform docs:check.
 export const TOOLING_INPUTS = {
   'scripts/agent-review-queue.test.ts': [], // Synthetic Git repositories and recorded transport.
   'scripts/agent-review-gate.test.ts': [], // Real-Git witnesses of the session CLI and hosted admission.
   'scripts/public-ci-reuse.test.ts': [], // Recorded workflow/job responses.
-  'scripts/documentation-bundle.test.ts': [], // Synthetic bundle and source fixtures.
   'scripts/documentation-cli.test.ts': ['packages/'], // Copies CLI closure and package manifests.
   'scripts/ast-grep/check-filewide-ignore.test.ts': [], // Fixture source; actual rules under scripts/.
   'scripts/ast-grep/rule-tests/portable-no-industry-contracts.test.ts': [], // Fixture source and rules.

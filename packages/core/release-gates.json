@@ -278,7 +278,7 @@
       "maxPackedBytes": 206848,
       "maxFiles": 70
     },
-    "maxPackedBytes": 327680,
+    "maxPackedBytes": 412672,
     "maxUnpackedBytes": 1392640,
     "maxFiles": 420,
     "requiredFiles": [
@@ -294,8 +294,8 @@
       "release-gates.json"
     ],
     "baseline": {
-      "version": "0.38.0",
-      "packedBytes": 211229
+      "version": "0.39.0",
+      "packedBytes": 211242
     },
     "browserEntries": {}
   },

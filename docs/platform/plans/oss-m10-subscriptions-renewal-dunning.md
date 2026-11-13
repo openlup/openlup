@@ -1,5 +1,7 @@
 # Subscription renewal and dunning design
 
+Status: historical record, 2026-10-29.
+
 Status: development-preview design. This page grants no activation or release authority.
 
 ## Contract and placement

@@ -1,5 +1,7 @@
 # Reference market composition
 
+Status: historical record, 2026-11-06.
+
 Delivery-control notes below are historical, including maintainer read packets,
 repair budgets and self-retros. Current delivery follows
 [Deliver a change](../../../CONTRIBUTING.md#deliver-a-change).
@@ -757,7 +759,7 @@ R2 advanced to `c346f015a2e06a3c685ca838e4ba1063b6e9ca5f` (tree
 package version 0.32.0. Sign-off merge `89ec702f` resolved the sole conflict
 in this record by retaining the predecessor text verbatim and appending R3.
 The publication catalog and architecture guide merged automatically. The
-source-span generator refreshed `packages/core/AGENT_CONTEXT.md` after a line
+source-span generator refreshed [retired core agent context](https://github.com/openlup/openlup/blob/5acb11d04b9a0db2fc73417b24d518ac257731d8/packages/core/AGENT_CONTEXT.md) after a line
 shift in the merged architecture guide; no excerpt text changed. No R2 source
 or witness changed, and no PG-relevant file moved.
 

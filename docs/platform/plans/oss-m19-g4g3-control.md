@@ -1,5 +1,7 @@
 # Purchase reservation and destination forward slots
 
+Status: historical record, 2026-11-02.
+
 Status: landed in two changes. The reader, the literal list pin, the fixtures, the tests
 and the prose landed in openlup/openlup#503 (merge
 `a7ce403cef3b790c28418d786f153e50ac595084`); the list itself reaches the registry in the
@@ -257,7 +259,7 @@ zero failures or skips. No test assertion was edited for the run.
 | `scripts/agent-review-session.test.ts` | 98 | PASS |
 | `scripts/check-publishable-gap-enumeration.test.ts` | 5 | PASS |
 | `scripts/ci-test-scope.test.ts` | 58 | PASS |
-| `scripts/documentation-bundle.test.ts` | 20 | PASS |
+| [retired `documentation-bundle.test.ts`](https://github.com/openlup/openlup/blob/5acb11d04b9a0db2fc73417b24d518ac257731d8/scripts/documentation-bundle.test.ts) | 20 | PASS |
 | `scripts/documentation-cli.test.ts` | 3 | PASS |
 | `scripts/oss-published-tree-check.test.ts` | 74 | PASS |
 | `scripts/packages/package-release.test.ts` | 18 | PASS |

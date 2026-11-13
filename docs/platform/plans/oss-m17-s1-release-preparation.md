@@ -1,5 +1,7 @@
 # M17 set preparation 0.35.0
 
+Status: historical record, 2026-11-01.
+
 Status: unreleased development-preview preparation. A merged preparation does not publish packages or qualify a hosted provider.
 
 ## Outcome and authority

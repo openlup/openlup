@@ -1,7 +1,6 @@
 # Identity import
 
-Status: development preview. These entries ship in the published `@openlup/platform`
-package as an experimental capability, not a stable adopter contract.
+Status: maintainer page: how to change OpenLup. Reader guidance lives in the [OpenLup guide](../../packages/core/docs/guide/README.md); sections marked "Evidence" are frozen historical records.
 Audience: contributors reviewing the identity boundary and applications composing
 its factories. The owner is the identity module within `@openlup/platform`.
 
@@ -14,6 +13,8 @@ The inventory also admits the four-file `pricing/browser` runtime closure:
 profile builds explicitly refuse the pricing root and commerce server entry.
 
 ## Responsibility and composition
+
+Reader guidance: [Identity](../../packages/core/docs/guide/concepts/identity.md).
 
 Reference hosts can pass a candidate from
 [`createReferenceIdentity`](../../server/runtime/auth/referenceIdentity.ts) to
@@ -67,175 +68,57 @@ objects, including the managed runtime's externally owned Auth schema.
 `POST /api/bff/customers/reconcile-account` selects direct linked-profile readback
 on the direct bundle. It authenticates the customer and reads through that
 principal's actor-scoped profile port, returning `{ accountId, created: false,
-linked: false }`. Request or token email never creates or associates a contact.
-Missing links return `CONFLICT` with `ACCOUNT_LINK_CONFLICT`; missing or invalid
-sessions return 401. The direct route reads no managed provider settings.
+linked: false }`. Missing or invalid sessions return 401. The direct route reads no managed provider settings.
 For `node-supabase` and `vercel-supabase`, the route reads managed settings and
 applies the email-trust policy before any email-based association.
 
 **Migration:** the mounted route previously applied managed policy even when
 `PLATFORM_BUNDLE=node-postgres`. That selection now uses direct linked-profile
-readback; the route's managed policy applies only to managed bundles. Existing
-direct sessions must already have a linked contact; reconciliation cannot create
-or repair that link by email.
+readback; the route’s managed policy applies only to managed bundles.
 
 Invite and remove route factories select the direct directory and invitation
 store on the direct bundle, reusing the existing invitation/removal use cases.
-Live human-admin authorization and store checks remain required. The invite
-factory accepts a role-notification port; without delivery, a persisted invitation
-returns `INVITATION_NOTIFICATION_FAILED` and preserves the pending invitation.
-Retrying an existing pending invitation returns `ALREADY_INVITED` without retrying
-notification delivery.
-Managed routes retain immediate active membership. All routes remain behind
+All routes remain behind
 `#deployment-route-policy`; public default denial precedes input or binding
 construction. This startup seam adds no disposable profile, browser mount or
 mailbox. Mounted fresh-install acceptance still requires application composition.
 
-
-Direct PostgreSQL human operators use the dedicated operator challenge store,
-not customer recovery. The browser-safe identity contracts export strict challenge
-and session schemas plus `OperatorBrowserAuthPort`; the server entry exports the
-operator store, session service, verifier, authorizer and HTTP handler factories.
-
-Creating a client/contact records commerce contact data. Creating an auth user
-provisions an authentication principal. Neither a typed address nor the soft-account
-link proves mailbox ownership. Reconcile may mint a contact for an existing
-authenticated principal; it does not mint that auth user.
-
-Managed verification requires `Boolean(user.email_confirmed_at)` from the
-provider-authenticated `getUser` result. Editable `user_metadata.email_verified`
-does not qualify.
 Existing confirmations are not rewritten; their historical provenance is unknown.
 
-`reconcileAccountForPrincipal(store, input, emailTrustPolicy)` and
-`createReconcileAccountHandler({ verifier, store, emailTrustPolicy })` require an
-explicit policy. Matching existing principal links return before assessment.
-Every email lookup, conditional link, new contact and create-conflict retry is
-inside the assessed operation. Missing, malformed or throwing bindings fail
-closed. Reserved principals, unverified email and mismatched existing links
-retain their earlier refusals.
+Implementation pins for managed email trust remain 60 seconds for valid safe or
+unsafe settings and 5 seconds for unavailable or malformed settings. The
+transport deadline is 3 seconds including body consumption, limited to 64 KiB.
+Configuration changes can take up to 60 seconds to affect an already serving
+process. The browser-safe email-trust constants/types live in `identity/contracts`;
+runtime schemas remain in the reference boundary.
 
-The managed default uses `createManagedEmailTrustPolicy` with the verifier's
-configured origin and public key. It reads `/auth/v1/settings`, refuses redirects,
-requires boolean `mailer_autoconfirm` and a boolean `external` map, and trusts
-only disabled automatic confirmation and explicitly declared enabled non-email
-providers. Unknown enabled providers also require declaration. The server-only
-`IDENTITY_EMAIL_VERIFYING_PROVIDERS` is comma-separated, trimmed and lowercased;
-unset/blank means an empty allowlist. Wildcards, empty entries and malformed
-identifiers refuse configuration. A declaration is the adopter's assertion that
-the provider verifies email, not a certification by the platform.
-
-Valid safe or unsafe settings cache for 60 seconds; unavailable or malformed
-settings cache for 5 seconds. Each immutable policy instance coalesces concurrent
-requests. The deadline is 3 seconds including body consumption, limited to 64 KiB.
-Every completed assessment aborts outstanding transport, including an unread
-error response body.
-A failed refresh never reuses expired trust. Configuration changes can therefore
-take up to 60 seconds to affect admission in an already serving process.
-
-`EMAIL_TRUST_ENVELOPE_REFUSED` maps to HTTP 403 / `FORBIDDEN`;
-`EMAIL_TRUST_SETTINGS_UNAVAILABLE` maps to HTTP 503 / `UPSTREAM_UNAVAILABLE`.
-The two browser-safe constants/types are exported by `identity/contracts`;
-runtime schemas remain in the reference boundary. Responses expose
-neutral codes, not settings bodies, tokens or another principal's identifier.
-
-**Migration:** adopters retaining today's verifier-result rule explicitly bind
-`createVerifierResultOnlyEmailTrustPolicy()`. It disables settings assessment
-but still requires the verifier's `emailVerified` result. Managed reference
-bindings use the stricter default. The direct bundle retains its existing
-mailbox challenge and signed-session verifier (`email:null`, unverified), without
-direct email reconcile or JWT email claim consumption.
-
-
-The server entry is `@openlup/platform/identity`; its source is
+The server entry's source is
 [`packages/platform/src/identity`](../../packages/platform/src/identity/index.ts).
-The separate `identity/contracts` entry contains browser value types, the customer
-auth port and provider-list parser. Browser hooks, pages, environment readers,
-redirect configuration or an explicit resolver override, feature flags, rate
-limiting, mail transport and route observation remain application composition. The send-email hook remains in the reference
-application for the communications boundary.
-
 The module imports foundation modules only through `bff`, `data`, `http` and
 `kernel` entries. Its source layout is flat except for the isolated contracts
-subtree. Managed adapters accept structural clients; token adapters accept a JWT
-library loader. Loading the server entry reads no environment, initializes no SDK
-and executes no SQL. A host selects the adapter and supplies its configuration.
+subtree. Loading the server entry reads no environment, initializes no SDK and
+executes no SQL. The send-email hook remains in the reference application for
+the communications boundary.
 
-Customer reconciliation refuses a principal its verifier reports as unverified,
-reserved machine principals, conflicting links and a principal/account email
-mismatch. Verification is the composed verifier's decision. The managed verifier
-requires `email_confirmed_at` and ignores editable `user_metadata.email_verified`.
-The reference source `server/bff/customers/reconcile-account.ts` selects
-actor-scoped linked-profile readback for `node-postgres`. Its managed branch
-composes the managed email-trust policy; the direct branch never constructs the
-managed verifier, clients or email association.
-A host mounting managed reconciliation
-must inject a policy as described above; confirmation alone does not establish
-the installation's email-trust envelope. The token verifier reports every
-principal as unverified. The engine retries the email
-branch once after a concurrent create failure. The new
+The token verifier reports every principal as unverified. The engine retries
+the email branch once after a concurrent create failure. The
 [`createReconcileAccountHandler`](../../packages/platform/src/identity/reconcileAccountHandler.ts)
-returns those refusals as 400, 403, 409 or 503 and has no personalization hook.
+returns domain refusals as 400, 403, 409 or 503 and has no personalization hook.
+The direct bundle retains its mailbox challenge and signed-session verifier
+(`email:null`, unverified), without direct email reconcile or JWT email claim
+consumption.
 
-Customer soft accounts provision new auth users with `email_confirm:false`.
-The commerce contact and soft-account link are not mailbox proof.
-`createSupabaseClientAuthLinkStore(client, emailTrustPolicy)` requires the injected
-policy on `ClientAuthLinkStore`. The linker assesses it before create-first
-provisioning or existing-identity lookup by email. An unsafe envelope returns
-`{ ok:false, code: "EMAIL_TRUST_ENVELOPE_REFUSED", message }`; unavailable,
-missing, malformed or throwing policies return `EMAIL_TRUST_SETTINGS_UNAVAILABLE`.
-These are non-fatal soft-account outcomes: callers can complete commerce without
-an identity link. No identity or link is created on refusal. Matching existing
-links return before assessment, preserving replay without a new association.
-The reference managed adapter always binds the settings-reading policy, even
-when the bundle environment selects direct storage.
-Customer magic links retain `shouldCreateUser:false`: first-login mailbox proof
-confirms the already provisioned principal. Unknown-address login creates no user.
-Neither a failed conditional link nor a failed write deletes the created identity;
-a retry recovers it through the existing duplicate lookup. Existing links and
-subscription references remain unchanged.
+**Migration:** with automatic confirmation on, anonymous signup can confirm an
+existing unconfirmed user and obtain its session without mailbox proof. Run the
+joint Auth/mail conformance command below before adopting the changed trust
+boundary. Existing users are not rewritten or retroactively unconfirmed; no SQL
+projection, migration or ledger changes.
 
-**Migration:** soft-account provisioning requires a trusted envelope: automatic
-email confirmation off and all enabled non-email providers explicitly declared
-email-verifying. With automatic confirmation on, anonymous signup can confirm an
-existing unconfirmed user and obtain its session without mailbox proof. Bind the
-policy in the managed store and expose it on custom `ClientAuthLinkStore`
-implementations; an adopter may explicitly select verifier-result-only policy
-when its own trust boundary supplies that guarantee. The selected Auth installation must deliver and verify first-login
-mail for an existing unconfirmed user. Run the joint Auth/mail conformance command
-below before adopting this behaviour. Existing users are not rewritten or
-retroactively unconfirmed; no SQL projection, migration or ledger changes.
-
-The soft-account linker attempts identity creation first, then scans the existing
-directory only after an already-registered response. Both directory adapters
-follow `nextPage`, compare trimmed lowercase addresses, propagate lookup failures
-and refuse after 5000 scanned users. The invite use case and HTTP authorizer require active human membership. Only stored `admin` and
-`distributor` roles authorize. Null and unknown roles return
-`FORBIDDEN` (HTTP 403), with or without a route-specific role restriction.
-The reference profile adapter returns `{ isAdmin: false, role: null }` for these
-rows, and its magic-link eligibility refuses them. The magic-link handler still
-records quota before eligibility and returns the padded, non-enumerating
-`{ accepted: true }` response without sending. Adopters wanting legacy mapping
-must perform it in their own adapter before the package receives the role;
-identity exposes no fallback setting.
-Invitation lookup and new identity creation use trimmed lowercase addresses;
-existing durable principal, membership and customer addresses remain untouched.
-Issuance requires an active human administrator. The direct lifecycle store also checks this authority inside its transaction.
-
-Both managed contact stores find mixed-case stored addresses using the
-normalized input. Literal matching means an anchored, escaped `imatch` database
-prefilter followed by exact equality of `email.trim().toLowerCase()` with that
-input. Escaping keeps `_`, `%`, backslash and `*` literal; the exact comparison
-rejects Unicode lookalikes widened by the database's case-insensitive regex.
-Each store has one private helper that selects email and fetches at most ten candidates.
-Soft linking preserves ascending creation order and chooses the oldest accepted
-row. Reconciliation accepts a single exact row and throws the existing
-`PGRST116` multiple-row error when more than one is accepted, before any link or
-create. Missing email is never accepted. A match outside the candidate bound is
-not selected: soft linking can return `CLIENT_NOT_FOUND`, while reconciliation
-can attempt creation and retain its existing create-failure retry/error path.
-Structural clients must implement `filter(column, "imatch", value)` and bounded
-array results for both lookups. Both managed bundles share these stores.
+The directory lookup cap is 5000 scanned users. Managed contact helpers each
+select email and fetch at most ten candidates. Reconciliation throws the existing
+`PGRST116` multiple-row error before any link or create. A match outside the bound
+can produce `CLIENT_NOT_FOUND` in soft linking or the existing create-failure
+retry/error path in reconciliation. Both managed bundles share these stores.
 The direct challenge adapter calls `customer_identity_challenge_issue`;
 its existing portable SQL already normalizes the input at line 105 and compares
 `lower(email) = v_email` at line 113 of
@@ -248,53 +131,21 @@ refuses non-GET/HEAD methods unless the host's explicit write-route list permits
 them. A missing method is a write. The direct bundle keeps its operator-token
 exemption. The reference application supplies the characterized write-route list.
 
-Handler factories construct the foundation BFF responder themselves. The customer
-profile factory requires the host response schema, retaining its selected currency
-policy without putting that policy in identity. Applications
-may supply the observed request-ID reader; they do not replace the responder.
-Invite/remove use cases return stable error codes. Invitation bindings expose typed conflict reasons and preserve the selected bundle result: direct pending invitations carry their deadline, while managed invitations return active membership. Receipt field mapping stays in reference composition. Mail sender and origin remain inputs to the application's mail
-adapter; the package has no default sender or deployment URL.
+Receipt field mapping stays in reference composition.
 
 ## Magic-link redirect policy
 
-Both `createCustomerMagicLinkHandler` and `createAdminMagicLinkHandler` default to
-[`createMagicLinkOriginResolver`](../../packages/platform/src/identity/authVerifyUrl.ts).
-`redirectOrigins` is an ordered allowlist of HTTP(S) scheme, host and port origins.
-The first entry builds the link; subsequent entries never act as fallback for an
-invalid primary. Every entry must parse as an origin without credentials, path,
-query, fragment or backslash. Surrounding whitespace and a root trailing slash
-are normalized. An empty list or any invalid entry refuses with
-`UPSTREAM_UNAVAILABLE` / HTTP 503 and details reason
-`magic_link_origin_not_configured`. This is a server configuration error, checked
-after request validation and before client construction, quota calls, eligibility
-lookups, OTP sending or a direct session challenge. The refusal receives the
-existing 400 ms padding floor and does not depend on the requested identity.
-
-The default resolver never reads Host, X-Forwarded-Host, Origin, Referer or
-forwarded scheme headers. The reference customer binding supplies a one-origin
-allowlist from nonblank `APP_BASE_URL`, falling back only when absent or blank to
+The reference customer binding supplies a one-origin allowlist from nonblank
+`APP_BASE_URL`, falling back only when absent or blank to
 `CUSTOMER_AUTH_REDIRECT_ORIGIN`. The admin binding uses `APP_BASE_URL` with
-`SITE_URL` as that compatibility fallback. No new environment variable is added.
-Configured origins containing a path, credentials, query or fragment must be
-replaced with origins. Invalid primary values never fall through to compatibility
-configuration. Local, development, preview, staging and production all require
-an explicit origin; configure a loopback HTTP origin explicitly for local work.
-In particular, a customer request in a labelled non-production environment with
-no origin now refuses instead of mailing a forwarded-host link. Admin requests
-lose the same fallback, including the implicit local-host fallback. Cases that
-previously skipped sending and returned accepted for bad or missing origins now
-return the configuration error before consuming quota. The direct customer
-session branch also requires origin configuration before issuing a challenge.
-Default static/reference route admission remains unchanged.
+`SITE_URL` as its compatibility fallback. Invalid primary values never fall
+through to compatibility configuration. Default static/reference route admission
+is unchanged.
 
-Customer return paths pass through
-`normalizeMagicLinkReturnPath` before being put in the callback query. It accepts
-root-relative same-origin paths, normalizes URL dot segments and preserves safe
-query/fragment data. Absolute, protocol-relative, backslash, control-character,
-encoded separator/control and nested-percent escape forms are omitted, so the
-callback uses its default landing page. A normalization that produces a leading
-`//` is also omitted. Application request schemas may impose narrower path rules
-and still return 400 before this step. Callback paths remain host-supplied.
+The refusal receives the existing 400 ms padding floor and does not depend on
+the requested identity.
+
+Evidence (historical record, 2026-11-13):
 
 `resolveOrigin(req)` remains the existing explicit override: adopters can keep
 passing their current resolver, and its origin policy remains theirs. Valid
@@ -304,93 +155,43 @@ non-enumerating accepted response and padding. The neutral conformance witness i
 the reference route tests pin configuration precedence and the new refusal.
 
 ## Email-trust schema readiness
-`emailTrustPolicy` is a required port. `identityEmailTrustReadiness`
-returns core readiness issues with `module: "identity"`, subject
-`emailTrustPolicy`, existing code `OPENLUP_E_PORT_MISSING`, and the precise
-refusal in `observation`. The host helper `assessIdentityReadiness` maps safe
-settings to `ready`, unsafe settings to `unsatisfied`, unavailable settings to
-`unknown`, and configuration errors to `OPENLUP_E_ENV_MISSING`. These helpers
-are available for host composition; `startPublicReferenceServer({ identity })`
-invokes `assessIdentityReadiness` during candidate admission before listening.
 
+The reference host helper `assessIdentityReadiness` composes email-trust
+readiness during `startPublicReferenceServer({ identity })` candidate admission,
+before listening.
 
 ## Operator invitation lifecycle
 
-The direct bundle stores pending invitations; the managed bundle activates
-membership immediately. These are distinct public contracts.
-
-Direct issue returns HTTP 200 with `INVITATION_CREATED`, `ALREADY_INVITED` or
-`INVITATION_REISSUED`, principal ID, invitation ID, `membershipState: "invited"`,
-role, issue time and deadline. A repeat retains its attempt and sends no mail.
-Different pending roles, active membership and inconsistent identities return
-409 with `INVITATION_ROLE_CONFLICT`, `MEMBERSHIP_ALREADY_ACTIVE` or
-`IDENTITY_CONFLICT`. Expired and cancelled attempts can be reissued with a new
-notification ID. Notification failure returns 503 with the persisted invitation
-ID; retry returns `ALREADY_INVITED` without another notification.
-
-`OperatorInvitationStore` owns direct issue, read, acceptance and removal.
-`acceptOperatorInvitation(principalId)` is a trusted server command: its principal
-must come from verified sign-in, never a browser target or requested role. It
-is not connected to direct machine authentication; direct human login remains
-unmounted. Pending invitations confer no access. Active membership takes
-precedence over expiry; an old accepted attempt cannot restore revoked access.
-The direct TTL defaults to 604800 seconds, with integer bounds 60..2592000.
-Direct hosts must invoke `readOperatorInvitationTtl` (or the pure
-`parseOperatorInvitationTtl`) before effects and pass its result into identity;
-the reference managed invite runner does not enforce this direct-only setting. Lazy expiry uses the serialized
-database clock, includes equality with the deadline and records one system audit
-event. No expiry job or notification retry command is added.
-
 Direct storage uses the two additive tables in forward
 `20261018120000_identity_operator_invitations`, canonical catalogue position 67.
-Each command runs in one existing owner-authority PostgreSQL transaction and
-serializes by normalized email. Actor and target memberships lock in principal
-order before authorization, preventing reciprocal lock upgrades. Membership,
-acceptance and audit commit together. Reactivation uses the existing local guard
-setting, lifecycle update and separate role update. Revocation retains
-`platform_revoke_human_membership` and its last-administrator guard. Principal
-creation/reuse commits separately before issuance; failures retain the identity
-and customer link. The forward changes no grants or policies.
+Commands use the existing owner-authority PostgreSQL transaction lane,
+serialize normalized email and lock actor/target memberships in principal order.
+Membership, acceptance and audit share a commit. Reactivation uses the existing
+local guard, lifecycle update and separate role update; revocation retains
+`platform_revoke_human_membership`. Principal creation commits separately.
+The forward changes no grants or policies.
 
-Managed issue inserts an active `admin_users` membership immediately with
-invitation provenance and the current acceptance timestamp. It omits
-`is_machine_actor`, relying on the database's `NOT NULL DEFAULT false`.
-HTTP 200 returns principal ID, role, `membershipState: "active"` and
-`MEMBERSHIP_CREATED` or `ALREADY_ACTIVE`, without invitation ID or expiry fields.
-An identical repeat returns existing membership without updating its role,
-provenance or acceptance time and sends no second notification. A unique-key
-insert race re-reads the winner instead of failing; role differences return
-`INVITATION_ROLE_CONFLICT`, inconsistent identities or machine targets return
-`IDENTITY_CONFLICT`, and revoked membership returns
-`MANAGED_REINVITE_UNSUPPORTED` (HTTP 409).
+The reference browser validates active managed and complete direct pending
+results. Managed role mail uses `admin-membership:<principalId>:<role>` as its
+delivery/timeline key; direct mail retains its invitation-attempt key.
 
-Managed invitations store no pending, accepted, expired or cancelled attempt in
-Auth metadata. Authorization and the public admin `me` route only read active
-native membership; neither activates on first entry nor runs compensation.
-The admin `me` route retains the `mutation` deployment-risk classification and
-is refused by the default public deployment policy before membership lookup.
-Neither authorization nor membership lookup requires a service key for invitation state. Managed removal retains
-its actor-authenticated revocation RPC and self/machine-target and
-last-administrator refusals. Magic-link eligibility requires active native
-membership with a stored `admin` or `distributor` role; metadata never qualifies
-an invitee. Quota, padding and the non-enumerating accepted response remain.
+Managed pending/expiry needs a separate transactional store and reviewed forward.
+The managed identity-capabilities forward
+`20261018160000_identity_service_role_capabilities.sql` grants `service_role`
+SELECT(email) and INSERT(id, email, role, membership_state, membership_provenance,
+membership_accepted_at) on `admin_users`; insertion relies on the false
+`is_machine_actor` default. No pending attempt is stored in Auth metadata.
+The reference managed invite runner does not enforce the direct-only TTL setting.
 
-Failed insertion retains any provisioned identity for retry. A provider duplicate
-race reuses the existing principal. When the provider rejects an already-registered
-address before sending mail, the concurrent loser sends no provider invitation
-mail; only the membership-insert winner sends the role notification.
-Notification failure returns 503 with BFF code `UPSTREAM_UNAVAILABLE` and
-`error.details` containing `identityCode: "INVITATION_NOTIFICATION_FAILED"`,
-`membershipState: "active"`, `principalId` and `role`; retry
-returns `ALREADY_ACTIVE` without resending. No failure deletes an auth identity,
-principal or customer link. Managed operators appear in the active settings list
-as soon as insertion succeeds.
+See [data compatibility](../../packages/core/docs/guide/upgrade/database-migrations.md#check-application-compatibility) and the
+[package invocation](../../packages/core/docs/guide/concepts/identity.md#operator-invitations).
 
-The reference browser validates both active managed results and complete direct
-pending results, including their distinct outcome codes. Managed role mail
-describes active membership without a deadline or first-entry activation copy.
-Its delivery and timeline key is `admin-membership:<principalId>:<role>`;
-direct mail retains its invitation-attempt key and pending deadline.
+The direct TTL defaults to 604800 seconds, with integer bounds 60..2592000.
+
+Lazy expiry uses the serialized database clock, includes equality with the
+deadline and records one system audit event.
+
+Evidence (historical record, 2026-11-13):
 
 **Migration:** direct hosts adopting pending invitations apply the new direct
 forward and compose trusted human acceptance and TTL parsing. Existing
@@ -435,6 +236,7 @@ contribution through `createIdentityContribution` with the bundle-specific
 It uses the readiness module field (`PackageManifest.module`) directly.
 
 ## Conformance and outstanding evidence
+Evidence: historical record, 2026-11-13. Not reader guidance.
 
 Native privacy and operator-upgrade fixtures select the unchanged legacy plan
 through the canonical manifest reader before constructing their upgrade
@@ -523,6 +325,7 @@ choice. Reference identity candidates select a concrete managed or direct schema
 inventory through `identityRequiredSchema` and check it during startup admission.
 
 ## Source move map
+Evidence: historical record, 2026-11-13. Not reader guidance.
 
 Paths below the package column are relative to `packages/platform/src/identity/`.
 The table records where each source came from. A former server path that only
@@ -558,6 +361,7 @@ application composition stays at the original route/runtime paths.
 | Existing identity unit tests | `packages/platform/test/identity/*.test.ts`; mixed application-composition tests remain by their bindings |
 
 ## Observable reference differences
+Evidence: historical record, 2026-11-13. Not reader guidance.
 Managed verification requires confirmation, adds managed settings reads
 with bounded latency and process caching, and introduces the two 403/503
 association refusals and browser error codes. The managed Node subscription
@@ -614,73 +418,33 @@ These endpoint-source outcomes do not activate a route.
 
 ## Direct human login
 
-Select `PLATFORM_BUNDLE=node-postgres` on the server and
-`VITE_OPERATOR_AUTH_PROVIDER_KIND=direct` in the application browser build. Its
-composition root passes that configured value to `AuthProvider` as `providerKind`.
-Absence preserves managed authentication; other nonempty values refuse.
-The reference dispatcher mounts `POST /api/bff/admin/platform/magic-link`,
-`POST /api/bff/admin/platform/verify-otp` and `GET /api/bff/admin/platform/me` for
-the direct bundle. Every mounted operator handler passes through the observed
-route boundary and the deployment route policy: challenge issuance, redemption
-and `me` all use the admin mutation risk classification. The public default refuses
-all three with HTTP 503 and `adopter_policy_required` before parsing input or
-creating authentication bindings. A direct-bundle adopter must supply its
-`#deployment-route-policy` implementation to enable login and operator
-authorization, using the same policy mechanism as other admin mutation routes. Bundle selection alone does not enable authentication writes.
-The default static reference mounts none of these routes. The bounded static and
-subscription evaluation builds do not mount the admin shell; adopters must supply
-that application composition.
-When an application mounts the supplied admin shell, its login page offers email
-links and a pasted token instead of a password or numeric code. Managed login and password callbacks keep their existing flow.
+The reference composition selects `PLATFORM_BUNDLE=node-postgres` and browser
+`VITE_OPERATOR_AUTH_PROVIDER_KIND=direct`, passing `providerKind` to `AuthProvider`.
+The dispatcher mounts the direct magic-link, verify-otp and `me` handlers through
+the observed admin-mutation deployment-policy wrapper before input parsing or
+binding creation. The default static reference mounts none of them; the bounded
+static and subscription builds omit the admin shell.
 
 ### Challenge delivery and redemption
 
-An existing principal is eligible with an active `admin` or `distributor`
-membership, or a live pending invitation with one of those roles. A challenge
-creates no principal, customer or membership. Unknown, revoked, disallowed and
-limited requests return the same `{ accepted: true }` response with a 400 ms
-floor. The handler sends acceptance before invoking mailbox transport, so slow
-or failed delivery cannot lengthen the observable response for eligible addresses.
-The request still awaits delivery after sending the response; it does not launch
-an untracked background task. `createOperatorSessionService.requestChallenge`
-accepts an optional asynchronous acceptance callback, called after issuance for
-every eligibility result and before delivery. Custom HTTP hosts must use it to
-send their padded generic response before transport. Delivery errors retain that
-accepted response and log only the neutral
-`operator_challenge_delivery_failed` code. Database or configuration failures
-return `UPSTREAM_UNAVAILABLE` (503).
+The reference dispatcher receives its separate operator delivery binding through
+`createReferenceBffDispatch(env => createOperatorSessionBinding(env, delivery))`.
+Caller-supplied canonical handlers retain the deployment-policy wrapper and are
+not shadowed by the discard binding. Route-table bindings retain host lifetime;
+factory-created bindings close after each request. The request awaits delivery
+after sending acceptance instead of launching an untracked task.
 
-Each challenge uses 32 random bytes encoded as 43 base64url characters. Only the
-SHA-256 hash and normalized-email fingerprint persist. The database serializes
-issuance per principal: one per rolling minute, five per rolling hour, including
-consumed challenges. Tokens expire after ten minutes; requesting another leaves
-other unexpired tokens valid. Redemption rechecks current email and eligibility,
-activates a pending invitation using the existing trusted lifecycle command, and
-consumes the challenge in that same transaction. Exactly one redemption succeeds.
-Already-active operators can request and redeem new challenges without a pending
-invitation. Repeat login preserves membership role, provenance and acceptance
-time, and does not create or accept another invitation.
-Expiry equality, replay, changed email or lost eligibility returns generic
-`UNAUTHORIZED` (401). Invalid envelopes return `BAD_REQUEST` (400).
+The injected delivery builds `/admin/auth/callback#operator_token=…` using the
+strict `APP_BASE_URL` / `SITE_URL` origin resolver.
 
-Authentication writes require same-origin JSON. Origins come only from the
-strict configured `APP_BASE_URL` / `SITE_URL` resolver, never request headers.
-Compose a separate `CustomerChallengeDeliveryPort` instance for operators via
-`createOperatorSessionBinding`; its default discards without logging tokens.
-For the reference dispatcher, use
-`createReferenceBffDispatch(env => createOperatorSessionBinding(env, delivery))`
-and mount that returned dispatch function. A caller-supplied canonical operator
-route handler is preserved under the same deployment policy boundary; it is
-never shadowed by the default discard binding. The host owns the lifetime of
-bindings supplied through its route table; factory-created bindings close after
-each request.
-Injected delivery builds `/admin/auth/callback#operator_token=…` using the
-configured application origin. Interactive sign-in needs injected delivery;
-there is no default mailbox or mail transport.
+Unknown, revoked, disallowed and limited requests retain the 400 ms response
+floor. Each challenge uses 32 random bytes encoded as 43 base64url characters.
+Issuance per principal is one per rolling minute, five per rolling hour, including
+consumed challenges. Tokens expire after ten minutes.
 
 ### First-administrator bootstrap
 
-With trusted database credentials and the complete migrated catalogue, run:
+The repository's trusted database maintenance entrypoint is:
 
 ```sh
 PLATFORM_BUNDLE=node-postgres node --experimental-strip-types \
@@ -688,90 +452,43 @@ PLATFORM_BUNDLE=node-postgres node --experimental-strip-types \
   bootstrap-first-administrator --email admin@example.invalid
 ```
 
-The command locks the membership and invitation tables, refuses any existing
-human membership or invitation with `OPERATOR_BOOTSTRAP_ALREADY_INITIALIZED`,
-and creates an `admin` invitation. It may reuse one unambiguous principal without
-changing its ID or email. The invitation records the principal as `invited_by`
-and the bootstrap audit records a system actor. It authenticates nobody and
-issues no token. First sign-in follows normal invitation activation. No startup
-or HTTP bootstrap exists; revoked authority is never resurrected by this command.
+Its implementation locks membership and invitation tables and records the new
+principal as `invited_by`, with a system actor in the bootstrap audit.
 
-The bootstrap invitation lasts seven days. An expired invitation cannot redeem a
-challenge, and rerunning bootstrap still refuses with
-`OPERATOR_BOOTSTRAP_ALREADY_INITIALIZED`, even when no administrator has signed
-in. If another active human administrator exists, use the normal direct invitation
-issue operation to reissue the expired attempt for the same principal. If none
-exists, there is no shipped bootstrap reset or unauthenticated recovery command:
-the database owner must follow the deployment's audited recovery procedure before
-login can resume. Preserve principal IDs, customer links and invitation/audit
-history; deleting rows to rerun bootstrap or extending a deadline by hand is not
-a supported recovery route. Challenge pruning cannot renew an invitation.
+The bootstrap invitation lasts seven days.
 
 ### Sessions and authorization
 
-Configure nonempty, distinct `OPERATOR_IDENTITY_AUDIENCE` and
-`CUSTOMER_IDENTITY_AUDIENCE`. Operator sessions reuse the existing ES256 issuer,
-key ID, private JWK and public JWKS settings, with an exact scalar operator
-audience and a fixed 900-second lifetime. Verification requires integer `iat`
-and `exp`, no future issuance and a positive lifetime of at most 900 seconds.
-Customer and dual-audience tokens cannot authenticate an operator. JWT role
-claims grant no authority: each protected request requires a live active
-membership and an allowed role (`admin` or `distributor`), then the route's role
-allowlist. Human authorization returns the verified human principal and
-`isMachineActor: false`. Authority-read failure refuses; it never becomes machine
-authority. Exact configured machine credentials retain their existing authorizer.
-Human login needs no machine credential and does not enable otherwise machine-only
-capabilities. Customer identity and subscription ownership do not change.
+The reference shell maps `accessToken` to its neutral `access_token` session
+subset. Managed SDK initialization remains behind managed selection.
 
-The shell maps `accessToken` to its neutral `access_token` session subset.
-The direct adapter stores the session in `sessionStorage`, with document memory
-fallback when storage is denied. There is no refresh token. Restoration and
-window focus recheck `/me`; expiry and sign-out clear authentication and its query
-cache. A focus check clears the session on an authorization refusal (HTTP 401/403
-or a profile without an allowed operator role). A network failure or upstream
-outage retains the current tab session until a later check or its existing expiry;
-protected server requests still require live authorization. Restoration and focus
-reads never cancel a redemption in progress,
-including when the provider and callback mount together under StrictMode.
-Explicit sign-out or another successful redemption still supersedes the old attempt.
-The hook consumes the port's guarded state notifications and waits for its
-session and admin state check before reporting successful code verification.
-Both pasted-token login and the callback link therefore enter the protected
-admin shell after authorization completes, including when `/me` is delayed.
-It never signs out on a stale authorization response.
-An older check cannot clear an established newer session or cancel its pending
-redemption, regardless of which response completes first.
-A copied bearer remains usable until expiry or membership revocation.
-The callback removes its token fragment before asynchronous work and redeems once
-under StrictMode. Managed SDK initialization stays behind managed selection.
+Operator sessions have a fixed 900-second lifetime. Verification requires a
+positive lifetime of at most 900 seconds.
 
 ### Retention and recovery
 
-With the same direct environment, run:
+The repository's direct maintenance entrypoint is:
 
 ```sh
 node --experimental-strip-types server/runtime/auth/operatorIdentityCommand.ts prune-challenges
 ```
 
-Each invocation deletes at
-most 500 challenges whose expiry is more than 24 hours old, ordered by expiry
-and ID with locked-row skipping. Repeat bounded invocations as needed; there is
-no new scheduler. Live challenges and recent rate-limit history are retained.
-Signing failure after redemption leaves the challenge consumed and activation
-committed. Request another challenge; never delete an identity, relink a customer
-or reverse activation as compensation.
+Its bounded database batches use expiry/ID ordering with locked-row skipping.
+
+Each invocation deletes at most 500 challenges whose expiry is more than
+24 hours old.
 
 ### Installation and verification limits
 
-Apply the complete selected catalogue including
-`20261018180000_identity_operator_challenges`, at position 68. Its package SQL
-projection is byte-identical, not a second install chain. The new normalized-email
-unique index refuses duplicate principal emails; diagnose and resolve the conflict
-without silently merging identities. The forward creates only a table and indexes,
-with no privilege grants. Runtime issuance, redemption and authority reads refuse
-unexpected browser-role or PUBLIC table/column privileges, including inherited
-grants. Verify the runtime credentials and actor-role denial against the actual
-installation. No managed migration is required.
+The operator challenge forward is
+`20261018180000_identity_operator_challenges`, at catalogue position 68. Its
+package SQL projection is byte-identical. The normalized-email unique index
+refuses duplicate principal emails. The forward adds only a table and indexes,
+without privilege grants or a managed migration.
+
+Fixture timestamps respect the same ten-minute constraint as issued challenges.
+
+Evidence (historical record, 2026-11-13):
 
 Fresh installation, exact predecessor-ledger upgrade, replay, transaction races,
 retained links and live object inventory require real PostgreSQL proof. Source
@@ -788,174 +505,50 @@ respect the same ten-minute constraint as issued challenges.
 
 ## Identity personal data
 
-Hosts selecting customer account mutations must register the
-[account-event contributor](../../packages/platform/README.md#customer-account-events-and-mutations)
-and require contributor ID `account-support`. Its explicit reader exports owned
-ledger payloads; unavailable access is reported. An absent retention declaration
-is unresolved and refuses erasure. Explicit retention is recorded in the receipt
-and preserves the payloads. Clearing client profile fields or the client FK's
-cascade does not erase this ledger: identity keeps the client row. This factory
-adds no default reference registration, deletion policy or retention period.
+The reference composition registers identity and a subscriptions veto on one
+direct executor, holding a `SHARE` relation lock on subscriptions through commit.
+Its opaque contact retention declares only `lifecycle_stage` and
+`acquisition_source`. The Node host also registers `customer-billing` and
+`fulfillment-parcel-contacts`; account-event registration remains host composition.
+The native-store transfer carries parcel snapshots and erasure markers.
 
-Native first-duty capture also creates frozen buyer components for payment and
-handoff duties, including the marked shipping fallback when no billing profile exists. Hosts must
-register `createCustomerBillingPrivacyContributor`
-and require ID `customer-billing`, even without selecting the billing invoice
-store. The Node reference host registers it alongside the parcel-contact
-contributor. It exports exact editable profiles and frozen invoice buyers, erases only the subject's profiles, and retains the invoice
-components under the invoicing owner's existing document-retention boundary.
-Account-event payloads keep their separate contributor and retention declaration;
-client-field clearing does not cover either new table. See the
-[billing data owner](DATA_AND_MIGRATIONS.md#customer-billing-profile-and-invoice-buyer-data)
-for finite native capture/qualified restore and explicit managed-source refusals.
+The direct forward `20261018190000_identity_privacy_erasures` adds the retained
+receipt table. Relation locks precede contact/member locks with bounded lock
+and statement timeouts. The package customer challenge adapter holds an
+`EXCLUSIVE` challenge-table lock before receipt checks through commit, conflicting
+with erasure's lock. Receipt `ACCESS SHARE` stays compatible with erasure's
+`SHARE ROW EXCLUSIVE` lock. Redacting a revoked membership reason uses the
+existing lifecycle guard without a state/role change or another revoke event.
 
-`@openlup/platform/identity/contracts` exports strict contact/principal subject
-references, versioned contributor documents, erasure receipts and named privacy
-refusals. Each contributor declares `ownedResources` alongside its ID and version. `createPersonalDataContributorRegistry` registers explicit owners and
-versions at composition; duplicate IDs refuse, missing required contributors
-remain visible on export and refuse erasure. Every assessment completes before
-any contributor mutates data. An assessment failure rolls the transaction back.
-Identity never discovers another domain by email or cancels a subscription.
-
-`exportPersonalData` and `erasePersonalData` accept an authorized human
-administrator and an injected unit of work, registry, store, clock and ID source.
-The reference composition registers identity and a subscriptions veto in the same
-direct transaction. A `SHARE` relation lock on subscriptions holds the assessment
-through commit, including protection against concurrent insertion or activation.
-`active` refuses with `PRIVACY_ACTIVE_SUBSCRIPTION`; `paused` refuses with
-`PRIVACY_RESUMABLE_SUBSCRIPTION`. Unknown states and failed reads refuse with
-`PRIVACY_ASSESSMENT_UNAVAILABLE`. Subscriptions are read only.
-
-Resolve a subject through `clients.principal_id` on direct, or the persisted
-`auth_user_id` on managed. Equal email addresses do not join customer and operator
-principals. Direct erasure preserves `clients.id`, never writes `auth_user_id`,
-and deletes neither contact nor principal rows. It replaces email with a unique
-reserved `erased+<id>@identity.invalid` address, clears first/last name, phone and
-country, and clears the direct customer principal link. All customer challenges,
-including consumed rows, and the linked operator challenges are deleted. Pending,
-expired and cancelled invitations are deleted; accepted invitation email snapshots
-and identity-owned audit free text are redacted. Active membership is revoked
-through `platform_revoke_human_membership`; self-revocation, machine-principal and
-last-human-admin protections remain binding. Redaction of an already revoked
-membership reason uses the existing lifecycle guard without changing state or
-role or creating another revoke event. An erased principal cannot receive
-or accept another invitation. A new unrelated principal is never matched by an
-old email through this privacy operation.
-
-The identity contributor owns these profile fields and lifecycle/audit records.
-It treats other populated contact columns as opaque. `IdentityPrivacyPolicy`
-requires an explicit owner/resource/retain declaration for each such field;
-otherwise erasure returns `PRIVACY_OWNERSHIP_UNDECLARED`. The reference declares
-retention only for `lifecycle_stage` and `acquisition_source`. Nonempty metadata,
-external references and future undeclared fields therefore refuse. Export omits
-opaque payloads and reports those fields as unavailable; it excludes challenge
-hashes, provider metadata, credentials and provider tokens. Each contributor
-reports its own coverage rather than claiming a complete platform export.
-
-Native parcel preparation captures minimal recipient and delivery-selection data
-in the private `fulfillment_parcel_contacts` relation. The Node reference
-registers `createFulfillmentParcelContactPrivacyContributor` from
-`@openlup/platform/identity` in this same transaction and requires
-contributor ID `fulfillment-parcel-contacts`. Other hosts must register it when
-using native parcel preparation. It exports only that subject's parcel contacts
-and erases the payload, retaining a payload-free erasure marker. Export includes
-that marker and its explicit pseudonymous retention disposition. Preparation and
-legacy inference cannot recreate an erased contact. Replacement resolution then
-refuses the erased contact as an invalid frozen contact. Existing subscription
-vetoes and other contributors remain binding; this is not a complete platform
-erasure claim. The finite native-store transfer carries both live snapshots and
-erasure markers with their parcels. Public commerce reads and dispatch evidence
-never expose these private snapshots.
-
-Hosts may register `createRiskPrivacyContributor` from `risk/server` in this
-existing registry and require contributor ID `risk`. The bounded contributor
-declares assessment/evidence/hash, blocklist, review/hold-link, case-event and
-replay obligations through injected read and policy ports. Missing ownership or
-policy remains unresolved and blocks identity erasure. Explicit retention keeps
-the risk facts; identity's `ERASED` receipt therefore does not mean all risk data
-was deleted. Export names unavailable resources and refuses credentials. No
-retention period, managed erasure capability or provider operation is added.
-The [risk contract](ARCHITECTURE_AND_EXTENSIONS.md#risk-contracts) owns the exact
-coverage and deferred host portability boundary; reference mounting is unchanged.
-
-The direct forward `20261018190000_identity_privacy_erasures` adds a single retained
-pseudonymous receipt table. The same transaction performs identity cleanup and
-inserts the receipt with contributor versions and dispositions, without storing
-a personal export. Subject UUIDs and idempotency keys normalize hexadecimal case. A lost-response
-retry returns the original receipt and
-`ALREADY_ERASED`; a key bound to a different subject refuses with
-`PRIVACY_IDEMPOTENCY_CONFLICT`. Browser/PUBLIC effective table or column access
-to the receipt store refuses erasure with `PRIVACY_STORE_PRIVILEGES_UNSAFE`.
-Relation locks precede contact/member locks; bounded lock and statement timeouts
-roll back failed writes. The package customer challenge adapter holds an `EXCLUSIVE` lock on
-`customer_identity_challenges` from before its receipt check through issue/redeem
-and transaction commit. This conflicts with erasure's `EXCLUSIVE` challenge lock;
-a waiting operation reads the committed receipt before calling the SQL function.
-It refuses receipts for either the contact or principal, including challenges
-inserted by a stale issuer after cleanup. Receipt reads take `ACCESS SHARE`, which
-is compatible with erasure's receipt-table `SHARE ROW EXCLUSIVE` lock, avoiding a
-reverse lock-order wait. The erasure re-link guarantee applies to the package
-adapters. Hosts must not call raw `customer_identity_challenge_issue` or
-`customer_identity_challenge_redeem` SQL functions directly: those retained
-functions do not fence erasure receipts.
-
-Managed export selects only granted contact/membership columns and provider-admin
-identity fields. Country, audit/invitation history and receipts are unavailable;
-missing subscriptions coverage is explicit. Managed erasure refuses with
-`MANAGED_PRIVACY_ERASURE_UNAVAILABLE` before local or provider mutation. A managed
-adopter must provide its own erasure path until reviewed permissions and atomic
-persistence exist. No provider deletion is composed. The provider erasure port
-supports disabling an identity after committed local success; managed erasure
-does not reach that port.
+See the [billing data owner](DATA_AND_MIGRATIONS.md#customer-billing-profile-and-invoice-buyer-data)
+and [risk contract](ARCHITECTURE_AND_EXTENSIONS.md#risk-contracts) for source
+capture, restore and portability boundaries. Managed erasure needs reviewed
+permissions and atomic persistence; no managed forward or provider deletion is
+composed here.
 
 ### Admin operations and token limits
 
-Both `POST /api/bff/admin/identity/privacy/export` and
-`POST /api/bff/admin/identity/privacy/erase` require live admin membership and an
-explicitly human actor, including in the handler for the direct bundle. Both
-routes retain deployment-policy risk `mutation`. Like invite, remove and admin
-`me`, direct and managed routes return 503 with reason `adopter_policy_required` under the
-public default before reading the request body or query. Direct and managed adopters reach
-these routes only through their `#deployment-route-policy` binding, the same
-policy mechanism used by every admin mutation route. Once that policy admits
-them, managed export reports incomplete coverage and erasure refuses with
-`MANAGED_PRIVACY_ERASURE_UNAVAILABLE` before any local or provider mutation.
-The shipped reference dispatcher mounts both privacy routes for direct and managed
-bundles without caller-supplied route entries, with the observed mutation policy enforced before
-authentication or privacy bindings are created. Supplied route entries cannot
-bypass this boundary. Admin preflight runs after policy admission, and the
-handler rechecks human-admin authority. After admission, missing
-sessions return 401; distributor or machine actors return 403; missing subjects
-return 404; live-subscription, protected-operator and idempotency conflicts return
-409. Capability, ownership, contributor and assessment refusals return 503.
-The existing BFF error details carry `privacyCode`; no adapter diagnostics or
-partial exports are returned on failure. Responses use `Cache-Control: no-store`.
+The reference dispatcher mounts direct and managed privacy routes without
+caller-supplied entries. Its observed mutation policy precedes body/query reads
+and binding construction; supplied entries retain that wrapper. Admin preflight
+follows policy admission, with a handler-level human-admin recheck.
 
-Admin Settings mounts an identity privacy panel accepting a contact/principal
-UUID. It displays coverage, obligations, named refusals and the committed receipt.
-Erasure requires confirmation. Documents, confirmation and the retry key live in
-component memory and clear when the subject or session changes, including when
-an older request completes later. No export is stored in browser storage.
+The Settings panel keeps documents, confirmation and retry keys in component
+memory keyed by subject/session, guarding late responses. The repository
+`prune-challenges` command processes separate operator and customer batches.
 
-Already-issued tokens can remain cryptographically valid until expiry. Direct
-operator tokens last at most 900 seconds; customer TTL remains configured
-(default 3600 seconds, permitted range 300–86400 seconds). Revoked membership
-fails live operator authorization. The unlinked direct customer `me` returns
-403 / `FORBIDDEN`, “No customer account linked to this session.” This is not a
-claim of immediate cryptographic token revocation.
-
-`prune-challenges` now processes at most 500 operator and 500 customer challenges
-per invocation, only when expiry is strictly older than 24 hours. It preserves
-recent rate-limit history and introduces no scheduler.
+Operator tokens last at most 900 seconds; customer TTL remains configured
+(default 3600 seconds, permitted range 300–86400 seconds). `prune-challenges`
+processes at most 500 operator and 500 customer challenges per invocation, only
+when expiry is strictly older than 24 hours.
 
 ### Retained responsibilities
 
-| Owner | Current identity-erasure boundary |
-| --- | --- |
-| Consent and marketing | History, suppression and remote audiences remain with their owner; no reset or remote deletion is inferred. |
-| Invoices | Retained outside identity; their owner supplies document export, retention and processor handling. |
-| Subscriptions | Read-only veto and status export only; full export and lifecycle/provider retention require their owner. |
-| Orders | Retained outside identity; snapshots and remote fulfilment/payment obligations require their owner. |
+See [data compatibility](../../packages/core/docs/guide/upgrade/database-migrations.md#check-application-compatibility) for
+installation ownership and [the package reference](../../packages/core/docs/guide/concepts/personal-data.md#personal-data-coverage)
+for source composition.
+
+Evidence (historical record, 2026-11-13):
 
 These are visible outstanding obligations, not successful erasure contributors.
 Identity completion never means all platform data was erased. See
@@ -968,7 +561,6 @@ managed migration chain through the shared loader and omits only psql's pg_dump
 `\restrict` and `\unrestrict` guard lines for node-postgres replay. Its database
 URL must use the database owner (`supabase_admin`) connection; see the package
 guide for the three local disposable-stack settings and invocation.
-
 
 ## Disposable identity reference
 
@@ -1134,111 +726,47 @@ This service-free proof is outside Vitest and the required test selectors.
 
 ## Guest checkout contact resolution
 
-`createPostgresContactClientRegistrar({ connectionString })` is an opt-in,
-server-only factory in `@openlup/platform/identity`. Its
-`ensureContactClient({ email, acquisitionSource, lifecycleStage, profileDefaults?, journey? })` returns
-`{ ok: true, clientId, created, linked }` or `{ ok: false, code }`; `close()`
-releases its pool. It finds or inserts a contact, without creating a session,
-assigning a principal or updating any linked row. Concurrent requests for the
-same canonical email share one client and exactly one reports `created: true`.
-The existing native challenge can subsequently prove the mailbox and link that
-contact to a principal; owned account reads then follow the same client.
+The registrar uses the existing restricted native client INSERT/SELECT, bounded
+profile/metadata UPDATE and receipt SELECT capabilities. Profile initialization
+inserts permitted columns then uses a guarded UPDATE in the same transaction.
+`INSERT ... ON CONFLICT (lower(email)) DO NOTHING` precedes a fresh lookup, with
+5-second lock and 15-second statement timeouts. Receipt-before-contact SHARE
+locking matches the account-link boundary. No SQL, grants or challenge-function
+change is introduced. Exact shapes remain in the
+[identity API reference](../../packages/platform/api/identity.api.md).
 
-The host must never expose `linked` or `created` to a browser: these fields
-would reveal account existence. Keep `clientId` internal to the admitted new
-purchase. Resolving an existing linked contact is not authentication and grants
-no access to its profile, previous orders, subscriptions, addresses or invoices.
-An unverified buyer can enter another person's email; returning that contact
-allows the new purchase to belong to that email's client, without modifying a
-linked account. A signed-in buyer instead uses the verified session's owned client.
-
-Optional `profileDefaults` contains `firstName`, `lastName`, `phone` and `country`
-(each optional or null). On a new unlinked contact these initialize the profile;
-on an existing unlinked contact a nonempty value replaces its prior default,
-while an empty string, null or absent input never erases a stored value. This
-matches the reference adopter's guest-default refresh, rather than treating a
-guest's previous default as a protected account profile. Names are bounded to
-80 characters, phone to 64 and country to 2; the host supplies only values already
-admitted through its own field validation. The factory does not normalize these
-profile values or make them an order's immutable delivery contact.
-
-Optional `journey` contains `idempotencyKey` (8–160 characters), `locale` (1–35)
-and `mode` (`one_time` or `subscription`). It replaces the `metadata.checkout`
-object with `lastIntentIdempotencyKey`, `locale`, `mode` and `clientMatchReason`
-(`client_created` or `client_match_exact_email`), preserving other metadata keys.
-Absent journey input preserves existing metadata. Existing unlinked contacts
-refresh `updated_at` on each call, including calls without optional inputs.
-The UPDATE itself requires `principal_id IS NULL`; a concurrent sign-in that
-links the row prevents any later refresh of it. Linked rows preserve every
-column and row version, including timestamps and metadata. Creation provenance
-and lifecycle stage are not rewritten on an existing contact.
-
-Input email is trimmed and lowercased, with no dot or plus-tag folding. A
-canonical input must be a valid email; raw email is limited to 320 characters.
-The server chooses acquisition source (1–100 characters after trimming, raw
-limit 100) and lifecycle stage (`lead`, `customer` or `inactive`). Extra fields,
-including a principal ID or arbitrary metadata patch, refuse. Malformed email returns
-`contact_client_email_invalid`; malformed shape/provenance/stage returns
-`contact_client_input_invalid`. Lookup compares the exact `lower(email)` namespace
-of the unique index and challenge: a space-padded legacy row is not the canonical
-email. An existing canonical peer wins; otherwise a new canonical client is
-inserted. The factory does not repair legacy identity data. The separate native
-account-link lookup trims stored email and can report
-`account_normalized_email_ambiguous` when both rows exist; the existing email
-challenge matches exactly and can sign in the canonical contact in that state.
-
-A matching retained client or principal with an erasure receipt returns
-`account_erased_refused`. Erasure fencing uses the same receipt-before-contact
-SHARE lock as account linking. Erasure pseudonymizes the old contact and frees
-its original email: a later purchase with that address creates a fresh client,
-with no access to the erased shell or its history. Receipts contain no original
-email lookup, so this is subject-level refusal, not original-email suppression.
-
-Bind the factory to the restricted runtime connection with the existing native
-client INSERT/SELECT, bounded profile/metadata UPDATE and receipt SELECT capabilities.
-The profile initialization uses the existing permitted INSERT columns followed
-by the guarded UPDATE in the same transaction. One transaction uses
-`INSERT ... ON CONFLICT (lower(email)) DO NOTHING` and a fresh lookup, with
-5-second lock and 15-second statement timeouts. Operational errors reject and
-roll back; they are not successful typed refusals. There is no SQL/grant change,
-account-link interface change or modification of challenge issue/redeem.
-
-The existing privacy contributor treats populated `clients.metadata` as opaque
-host-owned data. A host that supplies journey facts must declare its disposition
-in the existing privacy policy; the factory installs no retention exemption.
-Missing ownership continues to refuse erasure. Retaining journey provenance
-under that explicit policy does not reconnect a fresh contact to the erased
-client or its orders.
-
-Before calling, the host admits checkout, applies requester quotas and bounded
-request size/concurrency, and records its applicable terms decision. Call at
-purchase submission, not each configurator render. The host owns retention and
-cleanup of unpurchased unlinked contacts; no TTL, marketing consent or automatic
-challenge delivery is inferred. Contact creation and order creation are separate
-transactions: a failed order may leave an unlinked contact. Downstream writers
-must recheck their own authority, including erasure races after this transaction.
-No requester limiter or public HTTP endpoint is installed by this factory.
+Names are bounded to 80 characters, phone to 64 and country to 2. Optional
+`journey` contains `idempotencyKey` (8–160 characters) and `locale` (1–35). Raw
+email is limited to 320 characters. Acquisition source is 1–100 characters after
+trimming, with raw limit 100.
 
 ## Opt-in OIDC access tokens
 
-`createOidcIdentityVerifier` is separate from the existing static customer and
-operator session verifiers. Compose `createOidcComposition(env)` explicitly in
-a direct `node-postgres` host, retaining one binding for its lifetime. Supply
-`IDENTITY_OIDC_ISSUER`, `IDENTITY_OIDC_CUSTOMER_AUDIENCE` and a distinct
-`IDENTITY_OIDC_OPERATOR_AUDIENCE` through the host's existing environment reader.
-The host loads its installed JWT library lazily; the package has no JWT-library
-runtime dependency. Construction and import perform no network access.
+The reference `createOidcComposition(env)` recipe explicitly selects the direct
+`node-postgres` bundle and reads issuer/customer/operator audiences through the
+existing environment reader. Its host lazily loads the installed JWT library.
+Reference ports register `binding.oidcVerifiers` for startup admission; customer
+routes retain the observed mutation wrapper and actor-scoped profile reads.
+Existing randomly identified operators need an explicit administrative migration.
+Default launch, passwordless routes, browser choices and managed login are unchanged.
+Exact types remain in the [identity API reference](../../packages/platform/api/identity.api.md).
 
-Discovery pins the exact issuer and a same-origin JWKS URL. HTTPS is required;
-only an explicit test option permits literal loopback HTTP. The verifier accepts
-RS256 or ES256 JWT access tokens with a bounded nonempty `kid`, a valid signature,
-exact issuer and configured API audience. Configure API audiences independently
-of RP client identifiers so ID tokens cannot serve as API credentials. Customer
-lifetimes are at most 3,600 seconds; operator tokens require one scalar audience
-and at most 900 seconds. Integer `iat` and `exp` are required, `nbf` is enforced,
-clock tolerance is zero and equality at expiry refuses. Only signed top-level
-`email` and literal boolean `email_verified: true` supply identity email.
-Roles, groups and editable metadata convey no authority.
+Customer lifetimes are at most 3,600 seconds; operator tokens require one scalar
+audience and at most 900 seconds. Clock tolerance is zero and equality at expiry
+refuses.
+
+Discovery expires within one hour and JWKS within five minutes. `max-age` and
+`Age` can shorten these bounds; `no-store` prevents reuse. `no-cache` instead
+limits reuse to 30 seconds, matching the minimum JWKS refresh interval; shorter
+explicit freshness bounds still apply. Each fetch rejects redirects and has a
+three-second deadline including its streamed body, capped at 64 KiB. Every JWKS
+attempt, successful or unsuccessful and including initial loading, starts a
+30-second refresh window. Unknown kids inside it refuse without another fetch.
+
+The JWKS set must contain at least one usable signing key, with key IDs unique
+among usable keys.
+
+Evidence (historical record, 2026-11-13):
 
 Direct principals use SHA-256 over UTF-8 `openlup:oidc-principal:v1` followed by a
 NUL byte and `JSON.stringify([issuer, subject])`. The first 16 digest bytes receive
@@ -1250,68 +778,6 @@ issuer verifies email. Ambiguous normalized email matches refuse. Existing links
 are never replaced, and erased principals cannot be recreated or relinked;
 receipt-before-contact locking serializes writes with privacy erasure. No auth
 user, mapping table, subscription mutation or migration is introduced.
-
-Operator authentication uses the separate audience-bound verifier and the
-existing direct membership store on every request. Only active human `admin`
-or `distributor` members authorize, subject to route roles; pending, absent,
-revoked and machine identities refuse. Trusted setup provisions the derived
-principal ID, then the existing invitation/acceptance lifecycle supplies
-membership. Login never links by email or creates membership. Existing randomly
-identified operators require explicit administrative migration outside this
-composition. Managed bundles refuse raw upstream composition with
-`OIDC_NATIVE_SESSION_REQUIRED`; retain native federation, native auth IDs,
-email-trust policy, actor tokens and native membership there.
-
-JWKS selection accepts RSA/RS256 and P-256/ES256 public signing keys within the
-configured algorithm allowlist. `use` may be `sig` or absent; absent `alg` is
-inferred from the key type and curve. Encryption keys, unsupported algorithms
-and incompatible key types/curves are ignored. Certificate metadata such as
-`x5c`, `x5t` and `x5t#S256` does not change selection. The set must contain at
-least one usable signing key, with bounded key IDs unique among usable keys.
-Malformed sets, private key material and invalid signing key parameters refuse.
-Before discovery or key lookup, bounded compact JWS parsing requires JSON-object
-headers and payloads, refuses algorithms outside the configured allowlist and
-returns `OIDC_ISSUER_MISMATCH` for an unverified issuer that is not the exact
-configured string; these checks only refuse, and signature verification and all
-verified claim checks still determine admission.
-
-Discovery expires within one hour and JWKS within five minutes. `max-age` and
-`Age` can shorten these bounds; `no-store` prevents reuse. `no-cache` instead
-limits reuse to 30 seconds, matching the minimum JWKS refresh interval; shorter
-explicit freshness bounds still apply. Readiness and verification can use that
-freshly fetched set, then must revalidate it at expiry. Each
-fetch rejects redirects and has a three-second deadline including its streamed
-body, capped at 64 KiB. Concurrent loads coalesce. Every JWKS attempt, successful
-or unsuccessful and including initial loading, starts a 30-second refresh
-window. Unknown kids inside it refuse without another fetch. A successful refresh
-replaces the set atomically. A removed key is refused once the cached set expires
-or a successful refresh replaces it; a failed forced refresh before expiry leaves
-the previous unexpired set usable until its existing expiry. Expired cached sets
-are never used after a failed refresh. Known-key signature failure does not
-trigger another fetch. Token `jku`/`x5u` values never choose a transport destination.
-
-`verifyToken` returns a detailed `OIDC_*` refusal from `OIDC_FAILURE_CODES`.
-Hosts import this constant and `OidcFailureCode` from
-`@openlup/platform/identity`; the browser-shared
-`@openlup/platform/identity/contracts` entry excludes OIDC refusals.
-Configuration, discovery and JWKS validity have
-separate codes from transport/library unavailability, unknown/rate-limited kids,
-issuer/audience mismatch, invalid signature, expiry/activation/lifetime and
-subject/email refusals. The `IdentityVerifierPort` facade returns null for
-credential refusals and throws a sanitized availability error for unavailable
-dependencies. Existing handlers retain 401 `UNAUTHORIZED` and 503
-`UPSTREAM_UNAVAILABLE` envelopes. Reconciliation and membership keep their
-existing conflict and `FORBIDDEN` outcomes.
-
-Readiness reports discovery reachability/validity and fresh loaded keys with
-check/expiry timestamps, distinguishing `ready`, transport `unknown` and invalid
-`unsatisfied`. Register `binding.oidcVerifiers` on the existing reference
-identity ports so startup admission includes these observations. The binding's
-customer routes use the observed deployment-policy wrapper with risk `mutation`;
-profile reads use authenticated actor scope containing only the verified UUID.
-Default launch, passwordless routes, browser provider choices and managed login
-remain unchanged. Only the explicitly composed OIDC recipe gains external-token
-reconcile/profile access, readiness, bounded rotation and live membership auth.
 
 ## Real-issuer OIDC recipe
 

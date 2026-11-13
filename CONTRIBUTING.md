@@ -24,7 +24,7 @@ npm 11.19.0: `npm install --save-exact @openlup/core@<version>`, where `<version
 is the current set on npm (`npm view @openlup/core version`); install every
 `@openlup/*` package you use at that same version. Read the installed
 `AGENTS.md` and its [typed wiring example](packages/core/AGENTS.md#wiring-example),
-then use the [adopter route](docs/platform/adopter-kit/README.md). No OpenLup
+then use the [adopter route](packages/core/docs/guide/start/adopt-from-npm.md). No OpenLup
 clone or contributor check is needed to compose an installed package. Your
 application's instructions and task authority govern that work.
 
@@ -125,8 +125,8 @@ boundaries; a fixture does not establish hosted qualification or provider access
 For SQL mechanics and migration witnesses, follow
 [Data and migrations](docs/platform/DATA_AND_MIGRATIONS.md).
 
-The policy self-check validates local Markdown links and fragments, generated
-navigation and agent-context freshness. See
+The policy self-check validates local Markdown links and fragments and generated
+navigation. See
 [Documentation maintenance](docs/platform/DOCUMENTATION.md) for ownership and generation.
 
 ### Local stack bases and heavy verification
@@ -487,7 +487,7 @@ acceptance even when unit tests pass. This specifies later foundation/module
 proof, not a claim that today's core/outbox gate already tests platform.
 Only schema-owning modules need database proof, including deterministic fresh
 and upgrade/replay boundaries under the
-[migration contract](docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories).
+[migration contract](packages/core/docs/guide/upgrade/database-migrations.md#select-the-complete-catalogue).
 
 Core's required batch retains coverage, standalone types, documentation, release checks and its supplied-artifact consumer. Outbox's batch owns schema/SQL/replay against its installed tarball; its unit/factory/admission tests run once through the protected root selectors. The outbox workspace builds after core for root lint and test entrypoints. Package-local import checks still reject private subpaths, cross-directory escapes, aliases and other workspace dependencies; portable outbox production source also rejects provider SDKs. Missing artifacts or a required runtime refuse; there is no workspace fallback or DB skip. Only modules with SQL obligations need a database. Outbox's pinned job-owned PostgreSQL service is separate from raw pgTAP; see [the rail guide](packages/outbox/README.md) for ownership and proof limits.
 
@@ -626,7 +626,7 @@ The complete projected root command inventory is `build`,
 `build:public-reference:prerender`, `build:public-reference:ssr`,
 `check:dco-signoff`, `guard:client-secret-boundary`,
 `guard:public-reference-site-routes`, `inventory:refresh`, `landing:merge`, `lint`, `preflight`, `prelint`,
-`oss:published-tree`, `packages:check`, `release:bump`, `sql:admit`, `pretest`, `test`, `test:hosted`, and `test:scoped`.
+`oss:published-tree`, `packages:check`, `release:bump`, `release:docs-pass`, `sql:admit`, `pretest`, `test`, `test:hosted`, and `test:scoped`.
 This reclassifies the complete current root script inventory; all commands are
 public, with `test:scoped` as the local wrapper around the unchanged `test` command.
 `npm run build` is the public build truth; its public-reference subcommands and
@@ -1045,7 +1045,7 @@ the host-local broker helper is absent, with the same arguments, environment
 and coverage-summary handling as an already admitted run. A focused subset still
 uses root percentage thresholds; it does not establish full-suite coverage.
 
-Keep documentation falsifiers independently discoverable for routing, navigation, bare-runtime CLI and bundle corruption; never import one test file from another. Disposable fixtures prove those refusals, not arbitrary prose meaning. Follow [lint rules](#commands-and-lint-rules), including valid/invalid cases for new ast-grep rules, and [documentation navigation](docs/platform/DOCUMENTATION.md#navigation-and-source-map). Fixtures still obey neutrality and secret-handling policy.
+Keep documentation falsifiers independently discoverable for routing, navigation, bare-runtime CLI; never import one test file from another. Disposable fixtures prove those refusals, not arbitrary prose meaning. Follow [lint rules](#commands-and-lint-rules), including valid/invalid cases for new ast-grep rules, and [documentation navigation](docs/platform/DOCUMENTATION.md#navigation-and-source-map). Fixtures still obey neutrality and secret-handling policy.
 
 ### Package, policy and release checks
 
@@ -1227,7 +1227,7 @@ red root suite or `pgtap` run now refuses release through `test`.
 
 For independently discovered documentation falsifiers and their proof limits,
 follow [Test scope and diagnostics](#test-scope-and-diagnostics). Documentation
-regeneration and export remain owned by [Documentation maintenance](docs/platform/DOCUMENTATION.md).
+regeneration remains owned by [Documentation maintenance](docs/platform/DOCUMENTATION.md).
 
 A change can be released as the next source preview when the required checks of
 Published Tree CI pass and its tree describes itself: the publication catalogue
@@ -1237,7 +1237,7 @@ or a dependency, is releasable on those terms. Before it tags, the release
 workflow checks the target against the previous preview with
 `assertDescendantSourceRelease` (`scripts/oss-source-release-contract.ts`). That
 check admits additive forwards and the separate exact reviewed function class under
-[Data and migrations](docs/platform/DATA_AND_MIGRATIONS.md#additive-forward-release-path).
+[Data and migrations](packages/core/docs/guide/upgrade/database-migrations.md#follow-the-additive-forward-path).
 Reviewed function forwards use the same checker in required self-check and release
 prepare. Their whole-file bytes, signatures, old/new definitions and runtime
 privileges are pinned in `config/reviewed-platform-forwards.json`. The runtime
@@ -1299,9 +1299,15 @@ of path. It also moves each package's growth baseline (`pack.baseline` in
 that version's published registry tarball, so release preparation needs registry
 access; see [Package artifact limits](.github/VERSIONING_AND_EOL.md#package-artifact-limits).
 All packages are validated and planned before writes, and only
-consumed fragments are deleted after successful writes, then exactly those
-deletions are staged so source preparation sees the updated Git inventory;
-no other changes are staged. Historical sections
+consumed fragments are deleted after successful writes. The set bump also plans
+an `upgrade/v<major>-<minor>-<patch>.md` guide page from those fragments and
+the API diff before any writes, refusing an existing page. Guide-contract violations
+print warnings for correction in the same PR. It also refreshes the guide's
+repository-link pins and generated regions.
+The guide writes and consumed deletions are staged so source preparation
+sees the updated Git inventory; no other changes are staged. Follow the
+[release preparation sequence](docs/platform/DEVELOPMENT_AND_RELEASE.md#releasing-a-package)
+for the read-only documentation listing and guide edits. Historical sections
 remain byte-identical. Merging it authorizes no release.
 A release is then dispatched with `publish-package.yml` and package `all` for the
 reviewed commit, and one maintainer approval of the protected `release`
@@ -1486,8 +1492,8 @@ rows retain the existing closed registry union.
 Integration proof classifies an exact merge of the reviewed head and a commit
 on `origin/main` as `derived` only for a closed carrier set: migration registry
 unions, the package SQL manifest and selection mirror, publication catalogue,
-generated source map and package agent contexts, and the current installation
-data file. Trusted owner generators run on a temporary prediction, without
+generated source map, and the current installation data file. Trusted owner
+generators run on a temporary prediction, without
 executing candidate tooling or touching the checkout. Output must equal committed
 bytes. Every SQL byte and mode must equal the mechanical merge; other changes
 remain a `resolution` delta with its existing review floor. Size caps and release

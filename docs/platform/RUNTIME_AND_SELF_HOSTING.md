@@ -4,8 +4,6 @@ Status: maintainer page: how to change OpenLup. Reader guidance lives in the [Op
 
 ## PostgreSQL connection recipe
 
-Moved to [Connect to PostgreSQL](../../packages/core/docs/guide/how-to/operate/connect-postgresql.md#assign-connections-by-work).
-
 Evidence (historical record, 2026-11-13):
 
 The [qualified composition witness](../../tests/postgres/m14QualifiedComposition.test.ts)
@@ -255,8 +253,6 @@ This also removes any residual realm state after failed issuer provisioning.
 
 ## Runtime model
 
-Moved to [Run OpenLup on your own host](../../packages/core/docs/guide/how-to/operate/self-host.md#compose-the-host), [Shut down a host cleanly](../../packages/core/docs/guide/how-to/operate/shutdown.md#drain-before-disposal).
-
 For a managed-source acquisition cut-over, configure the reference target's
 `OPENLUP_ACQUISITION_DRAIN_STARTED_AT` as a fixed UTC ISO instant and
 `OPENLUP_ACQUISITION_DRAIN_MAX_SECONDS` as a positive integer no greater than
@@ -306,7 +302,7 @@ names, and BFF responder. There is no default persistence, portable context SQL
 or reference context route; context failure never gates commerce.
 
 The accounting HTTP scheduler receives an explicitly composed invoicing service
-after method and bearer checks. The reversal binding retains its event adapters,
+after method and bearer checks. The reversal binding retains its three event adapters,
 provider selection and business keys; correction execution requires a conforming
 recovery bridge. The local-document adapter supplies a structural executor and
 local provider metadata to `createPostgresInvoiceStore`. Native sweep, prepare
@@ -355,7 +351,7 @@ settings. Direct invite/remove factories compose the invitation directory/store
 behind human-admin authorization and retain invitations when delivery fails.
 Managed invitations still create active membership immediately; native membership
 reads do not activate it. Pending/expiry semantics remain a managed compatibility
-gap. The [identity owner](IDENTITY.md#operator-invitation-lifecycle) owns results,
+gap. The [identity owner](../../packages/core/docs/guide/concepts/identity.md#operator-invitations) owns results,
 retries and the direct pending-invitation lifecycle.
 
 The server health and unsubscribe bindings read `#email-presentation` and expose
@@ -368,11 +364,17 @@ availability and handler construction order.
 Identity route files supply application schemas, admission, limiter, redirects
 and observed request IDs to [package handler factories](IDENTITY.md). A source
 route does not add itself to the default empty table or closed reference set.
-Magic-link composition uses the [shared strict origin policy](IDENTITY.md#magic-link-redirect-policy):
+Magic-link composition uses the [shared strict origin policy](../../packages/core/docs/guide/concepts/identity.md#magic-link-destinations):
 customer origins select `APP_BASE_URL` then `CUSTOMER_AUTH_REDIRECT_ORIGIN`, admin
 origins select `APP_BASE_URL` then `SITE_URL`. Invalid or absent origins refuse
 before provider access; request hosts supply no fallback. The Auth mail bridge
 preserves its admitted transport, envelope and verification/render/send/store order.
+
+The accounting reversal helper retains its existing 10 s timeout. The A1 bounded
+delivery callable uses a six-entry poll-event translation. Native communications lifecycle
+composition requires the full position-70 catalogue. Challenge pruning deletes
+at most 500 per operator/customer store whose expiry is strictly older than
+24 hours.
 
 Evidence (historical record, 2026-11-13):
 
@@ -505,8 +507,6 @@ opt-in selector mounts no live route feeding them.
 
 ## Self-host boundary
 
-Moved to [Run OpenLup on your own host](../../packages/core/docs/guide/how-to/operate/self-host.md#compose-the-host).
-
 Application-file lifecycle maintenance belongs to the
 [snapshot owner](ARCHITECTURE_AND_EXTENSIONS.md#application-file-upgrades);
 database compatibility and runtime admission remain separate checks. The
@@ -605,7 +605,7 @@ readback through its typed handler.
 It refuses combination with another reference profile or identity admission.
 The watchdog remains a trusted scheduler callable and gets no public cron route.
 Omitting the selection preserves the static reference's existing route surface.
-See the [captured operations recipe](#runtime-model) for ports and proof limits.
+See the [captured operations recipe](../../packages/core/docs/guide/how-to/operate/self-host.md#compose-the-host) for ports and proof limits.
 
 The unmounted [SEO head adapter](../../src/public-reference/seoHead.tsx) renders
 `@openlup/platform/marketing` head descriptors through the host's
@@ -1037,16 +1037,23 @@ still use their current source implementations; P7 owns any later route adoption
 
 ## Customer diagnostic history preview
 
-Moved to [Customer diagnostic history and retention](../../packages/core/docs/guide/how-to/operate/diagnostics-and-retention.md#select-the-diagnostic-bindings).
-
 The diagnostic ingest and read bindings are application source mechanisms;
 they are not automatically registered installed-package exports. Their owners
 are the [history binding](../../server/runtime/observability/customerDiagnosticHistoryBinding.ts)
 and [support read route](../../server/bff/admin/support/customer-diagnostics.ts).
 
+`CUSTOMER_DIAGNOSTIC_RETENTION_DAYS` is a required integer from 1 to 90 whenever
+server ingest is enabled. `CUSTOMER_DIAGNOSTIC_INGRESS_KEY` is a runtime-only HMAC
+key of at least 32 characters. The `customer-diagnostic-history.v2` overview is
+bounded to seven days and returns up to three opaque segment IDs per bucket.
+Version 1 and version 2 coverage can coexist in one retained history.
+
 ### Retention drain
 
-Moved to [Customer diagnostic history and retention](../../packages/core/docs/guide/how-to/operate/diagnostics-and-retention.md#retention-drain).
+`CUSTOMER_DIAGNOSTIC_RETENTION_DAYS` uses the same 1–90 value as ingest; expiry
+is stamped on each row at ingest, so changing it ages future rows only.
+
+Two lanes ship: a selected PostgreSQL direct job and a routed HTTP fallback.
 
 Evidence (historical record, 2026-11-13):
 
@@ -1059,8 +1066,6 @@ falsifiers; follow [testing](../../CONTRIBUTING.md#test-scope-and-diagnostics) f
 execution. Second-runtime and deployed conformance remain separate adoption proof.
 
 ## Provider and host boundaries
-
-Moved to [Run OpenLup on your own host](../../packages/core/docs/guide/how-to/operate/self-host.md#keep-provider-authority-at-the-host).
 
 [ReferenceFulfillmentPage](../../src/pages/ReferenceFulfillmentPage.tsx) is an
 opt-in operator read example with no default runtime importer or route. Mounting
@@ -1121,10 +1126,10 @@ still refuses once any invitation exists. An active human administrator can
 reissue an expired invitation. Without one, recovery requires the database
 owner's audited deployment procedure; no bootstrap-reset command is supplied.
 Preserve identity and audit history; see
-[bootstrap recovery](IDENTITY.md#first-administrator-bootstrap).
+[bootstrap recovery](../../packages/core/docs/guide/concepts/identity.md#first-administrator-bootstrap).
 Operator delivery defaults to discard; compose a separate delivery port
 and use only the strict configured application origin for callback links.
-The [identity guide](IDENTITY.md#direct-human-login) documents commands, tab-session
+The [identity guide](../../packages/core/docs/guide/concepts/identity.md#direct-human-login) documents commands, tab-session
 limits and required database acceptance. Existing machine credentials remain
 separate and human login needs none. The bounded public-reference builds do not
 mount the admin shell or provide a direct operator browser journey.
@@ -1182,8 +1187,6 @@ managed receipt service-scope and fixture construction remain in the reference
 adapter.
 
 ## Preview posture
-
-Moved to [Run OpenLup on your own host](../../packages/core/docs/guide/how-to/operate/self-host.md#keep-provider-authority-at-the-host).
 
 Before maintainers make stable-framework claims, the release evidence must
 establish a versioned release/BOM, a thin adopter application, conformance
