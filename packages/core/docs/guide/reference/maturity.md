@@ -103,6 +103,7 @@ for package policy definitions and release boundaries.
 | `./operations/server` | capability | experimental |
 | `./payments` | capability | experimental |
 | `./payments/contracts` | capability | experimental |
+| `./payments/testing` | capability | experimental |
 | `./portability` | rail | experimental |
 | `./pricing` | capability | experimental |
 | `./pricing/browser` | capability | experimental |

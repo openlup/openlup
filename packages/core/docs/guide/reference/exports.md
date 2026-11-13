@@ -92,6 +92,7 @@ Find an import subpath and its API report. API reports list every exported symbo
 | `./operations/server` | capability | experimental | [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/packages/platform/api/operations-server.api.md) |
 | `./payments` | capability | experimental | [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/packages/platform/api/payments.api.md) |
 | `./payments/contracts` | capability | experimental | [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/packages/platform/api/payments-contracts.api.md) |
+| `./payments/testing` | capability | experimental | [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/packages/platform/api/payments-testing.api.md) |
 | `./portability` | rail | experimental | [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/packages/platform/api/portability.api.md) |
 | `./pricing` | capability | experimental | [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/packages/platform/api/pricing.api.md) |
 | `./pricing/browser` | capability | experimental | [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/packages/platform/api/pricing-browser.api.md) |
