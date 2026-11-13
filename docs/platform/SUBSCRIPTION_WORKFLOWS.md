@@ -46,6 +46,9 @@ Moved to [Subscriptions](../../packages/core/docs/guide/concepts/subscriptions.m
 package boundary. See [evidence and limits](#evidence-and-limits) before choosing
 a runnable test scope.
 
+Native retry defaults remain 24, 72 and 168 hours from each failure: three retry
+slots and no next retry after failure four. The array length is the retry budget.
+A timing override cannot change the `hard_do_not_retry` stop.
 
 ## Renew one cycle
 

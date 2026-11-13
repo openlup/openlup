@@ -86,7 +86,7 @@ preserve earlier links. Expiry-notice links use a longer bounded lifetime and
 refer to the terminal source. Operator issuance revokes earlier order links and
 caps expiry by both issuance time and the order’s recovery window.
 Payment prevents further payment through every link. Payment-case links rotate
-separately with one live link per case.
+separately, keeping the live link unique within its case.
 
 Completion removes the URL token before fetching configuration or rendering.
 Requests carry it in the body; tab memory and session storage support reloads
@@ -136,15 +136,14 @@ fails closed; denied attempts add no quota count. Both quota and identity
 records reset on process restart. Unpurchased-contact retention remains the
 application owner's duty.
 
-Purchase and sign-in use the same configured email bound, at most 160 characters.
-Phone and postal-code fields share the native destination bounds. Cadences and
-the default are whole days from 1 through 120; checkout bounds line count and
-units per line within the configured total. Consult the
-[starter configuration](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/neutral-store/shared/config.ts)
-for checkout limits. Stock and unit prices fit
-PostgreSQL integers, with positive prices for every offered mode. Tax legal-basis
-text is at most 200 characters; the legal revision is trimmed, nonempty and at
-most 64. Configuration outside these bounds refuses before startup.
+Purchase and sign-in share the configured email bound. Phone and postal-code
+fields share the native destination bounds. Cadences and the default use whole
+days within the accepted range; checkout bounds line count and units per line
+within the configured total. Stock and unit prices fit PostgreSQL integers, with
+positive prices for every offered mode. Tax legal-basis text and the trimmed,
+nonempty legal revision have bounded lengths. Consult the
+[maintainer configuration limits](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/neutral-store/docs/limits.md#interim-subscription-mode-price)
+for exact values. Configuration outside these bounds refuses before startup.
 
 ## Paid-order message capture
 
@@ -153,7 +152,7 @@ most 64. Configuration outside these bounds refuses before startup.
 | Deliver paid-order receipts to real recipients | Messages are captured privately on the local filesystem. A captured receipt does not establish email delivery. Subscription notices use their own local capture. | —; no real email transport |
 | Use paid-order mail capture as a general event dispatcher | That dispatcher selects paid-order mail only. A settlement event can remain pending independently. | —; other events are not dispatched by this worker |
 
-A paid order with an emitted paid-mail event and contact produces one private
+A paid order with an emitted paid-mail event and contact produces a deduplicated private
 message record; unpaid and cancelled orders emit no such event. Reclaimed sends
 deduplicate. Running the one-shot renewal command also drains paid mail when
 renewal execution is disabled. A pending settlement event neither creates a
@@ -205,8 +204,8 @@ duty, retry and delivery evidence, including for guest orders.
 | Place or release an order hold without human-admin authority and a provisioned commerce operator | Both checks repeat for every command, including replay. | `operator_required` |
 | Select a saved subscription address while the upcoming cycle is locked | A fresh selection refuses; existing order and parcel destinations stay unchanged. | `starter_payment_blocked` |
 
-Eligible expired orders retain one Pay action. Draft, lineage and attempt
-receipts keep replay on one replacement and attempt. Reloading a dispatched
+Eligible expired orders retain a shared Pay action. Draft, lineage and attempt
+receipts keep replay on the unique replacement and its attempt. Reloading a dispatched
 replacement reads that attempt independently of the source link's continuation
 lifetime. Simulator controls require the inspected bearer/lineage/receipt and
 disappear after capture.
@@ -249,7 +248,7 @@ conflicting commands refuse; native receipts retain replay identity.
 
 A customer requests configured reason codes and positive item quantities from
 their own paid or fulfilled order and keeps the returned reference. Full, partial
-(including zero) and no-refund decisions record intent; partial requires an
+and no-refund decisions record intent; partial requires an explicit nonnegative
 amount. A repeated decision retains its original note. Every decision and replay
 rechecks the Commerce operator after fresh membership admission. No decision
 changes a subscription.
@@ -305,7 +304,7 @@ payloads stay private; customer/account/public-tracking views do not expose them
 
 The account page can read, create, edit and delete owned saved addresses.
 Address command replay returns the current book without another write. Deleting
-a missing or foreign row acknowledges zero deletion and returns only the caller's
+a missing or foreign row acknowledges absence without deletion and returns only the caller's
 book; editing a foreign row refuses.
 
 An active or paused subscription can select an owned shipping/both address.
@@ -321,7 +320,7 @@ but are skipped during renewal delivery selection.
 
 Billing profile create/read/edit/delete includes company identity fields and
 owned tax normalization/checksum validation. Foreign edits refuse; deleting a
-foreign or missing profile acknowledges zero deletion. Address-book responses
+foreign or missing profile acknowledges absence without deletion. Address-book responses
 include owned billing profiles. Default snapshots are redacted, unapplied hints:
 they install no instrument or profile on an existing order.
 

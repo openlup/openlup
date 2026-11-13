@@ -47,7 +47,8 @@ failures throw `CommerceOmsPersistenceError`.
 
 For managed rich reads, `createManagedCommerceOmsPort` takes a structural
 `CommerceOmsRpcClient` plus a separate `queries` capability and optional
-`projections`. Preserve one executor per logical order operation. Bind identity
+`projections`. Preserve exclusive executor ownership for each logical order
+operation. Bind identity
 extensions, provider evidence and presentation in your host projections. Read
 operations without `queries` throw `CommerceOmsPersistenceError`. Supply
 `respond` and `authorizeAdmin` to the admin handlers, and preserve final

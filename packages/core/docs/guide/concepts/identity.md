@@ -162,9 +162,10 @@ pending repeat preserves its attempt and sends no notification. A different
 pending role returns `INVITATION_ROLE_CONFLICT`; an already active target returns
 `MEMBERSHIP_ALREADY_ACTIVE`; inconsistent or erased identities return
 `IDENTITY_CONFLICT`. Expired or cancelled attempts can be reissued. Direct
-hosts parse the invitation lifetime before effects, requiring an integer
-from 60 to 2592000 seconds; invalid values throw
-`operator_invitation_ttl_invalid`.
+hosts parse the invitation lifetime before effects, requiring an integer within
+the configured range; invalid values throw `operator_invitation_ttl_invalid`.
+See the [maintainer invitation limits](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/IDENTITY.md#operator-invitation-lifecycle)
+for the default and accepted range.
 
 `acceptOperatorInvitation(principalId)` is a trusted server operation whose
 principal must come from verified sign-in. A browser-supplied target or requested
@@ -205,7 +206,7 @@ Notification failure preserves the direct invitation ID or active managed
 principal/role; the BFF envelope reports `UPSTREAM_UNAVAILABLE` with identity
 code `INVITATION_NOTIFICATION_FAILED`. There is no notification-retry command
 or expiry worker. Direct expiry is evaluated lazily using the database clock
-and records one system audit event. Managed removal keeps self, machine-target
+and records its system audit event atomically. Managed removal keeps self, machine-target
 and last-administrator refusals; magic links require an active known role.
 
 ## Direct human login
@@ -241,10 +242,12 @@ bounded rolling quotas per principal, including consumed challenges. Challenges
 have a bounded lifetime; a new request does not
 invalidate other live challenges. Redemption rechecks current email and
 eligibility, activates a pending invitation and consumes the challenge in one
-transaction. Exactly one redemption succeeds. Active operators can sign in
+transaction. Redemption is exclusive; replay refuses. Active operators can sign in
 again without creating another invitation or changing membership history.
 Expiry, replay, changed email or lost eligibility return `UNAUTHORIZED`;
 malformed request envelopes return `BAD_REQUEST`.
+The [maintainer challenge limits](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/IDENTITY.md#challenge-delivery-and-redemption)
+retain exact token sizes, rolling quotas and lifetimes.
 
 The browser callback consumes `/admin/auth/callback#operator_token=…`, removes
 the token fragment before asynchronous work and redeems once, including repeated
@@ -310,8 +313,9 @@ subsequent operator authorization.
 
 The operator and customer stores expose bounded `pruneChallenges` operations:
 each deletes a bounded number of rows beyond the retained expiry-history window.
-See the [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/identity.api.md) and its linked implementation
-for quotas, lifetimes, padding and pruning limits.
+See the [maintainer pruning limits](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/IDENTITY.md#admin-operations-and-token-limits)
+and [challenge limits](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/IDENTITY.md#challenge-delivery-and-redemption)
+for exact batch sizes, retained windows, quotas, lifetimes and padding.
 Recent expiry and rate-limit history remain. The application schedules cleanup;
 pruning does not renew invitations.
 
@@ -382,8 +386,10 @@ delivery contact. `journey` requires bounded idempotency and locale values and
 a supported purchase mode. Its checkout metadata preserves the last intent key,
 locale, mode and match reason; absent journey preserves metadata. Raw email and
 acquisition source are bounded, and lifecycle stage must be supported. Use the
-registrar input contracts in the [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/identity.api.md)
-and its linked validation source for the exact bounds and accepted values.
+[maintainer registrar limits](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/IDENTITY.md#guest-checkout-contact-resolution)
+for exact bounds, and the input contracts in the
+[API report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/identity.api.md)
+for accepted shapes.
 
 The separate account-link lookup trims stored email and can return
 `account_normalized_email_ambiguous` for a space-padded legacy row beside its
@@ -409,8 +415,10 @@ signature, the exact issuer and the configured API audience. Configure API
 audiences separately from relying-party client identifiers so ID tokens cannot
 serve as API credentials. Customer lifetime is bounded; the reference operator
 verifier requires a scalar audience and a shorter lifetime bound.
-Integer `iat` and `exp`, no future issuance, `nbf` enforcement and zero clock
+Integer `iat` and `exp`, no future issuance, `nbf` enforcement and no clock
 tolerance apply; equality at expiry refuses.
+See the [maintainer OIDC bounds](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/IDENTITY.md#opt-in-oidc-access-tokens)
+for exact token lifetimes, cache ceilings, refresh windows and fetch limits.
 
 Only signed top-level `email` and literal boolean `email_verified: true` supply
 verified email. Roles, groups and editable metadata grant no membership.

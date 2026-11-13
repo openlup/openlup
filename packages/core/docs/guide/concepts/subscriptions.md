@@ -240,23 +240,8 @@ reconciliation keeps them unapplied; readback exposes the marker. Recovery-notic
 contention can still roll capture back; redelivery converges after contention
 clears, without an automatic retry dispatcher.
 
-To discover review-marked events, use an authorized native PostgreSQL session:
-
-```sql
-SELECT e.id AS payment_truth_event_id,
-       i.order_id,
-       o.status AS order_status,
-       e.amount_minor,
-       e.currency_code,
-       e.source_event_id,
-       e.review_required_at
-FROM public.payment_truth_events AS e
-JOIN public.commerce_settlement_intents AS i ON i.id = e.settlement_intent_id
-JOIN public.commerce_orders AS o ON o.id = i.order_id
-WHERE e.review_required_at IS NOT NULL
-ORDER BY e.review_required_at, e.id;
-```
-
-Amounts are minor currency units. Pass the returned event ID to the truth
-port's `readEvent` for details. This read-only query excludes ordinary open
-events and records no review decision or money/order transition.
+Operators find review-marked events with the read-only query on the
+[data and migrations page](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories),
+run through an authorized native PostgreSQL session; pass a returned event ID to
+the truth port's `readEvent` for details. The query records no review decision
+and no money or order transition.

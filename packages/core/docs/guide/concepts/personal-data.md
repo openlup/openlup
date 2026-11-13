@@ -108,7 +108,9 @@ and remote processors retain their own export, retention and deletion duties.
 An `ERASED` identity receipt does not mean all platform data has been deleted.
 
 Already-issued customer tokens can remain cryptographically valid until expiry.
-The direct session binding allows a configured lifetime from 300–86400 seconds.
+The direct session binding allows a lifetime within its configured range; see
+the [maintainer token limits](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/IDENTITY.md#admin-operations-and-token-limits)
+for the default and accepted range.
 After its link is cleared, customer `me` returns HTTP 403 /
 `FORBIDDEN` with “No customer account linked to this session.” Operator
 membership revocation likewise denies authorization without claiming immediate

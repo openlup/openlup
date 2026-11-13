@@ -191,6 +191,13 @@ context, health route and job ledger, retaining reference policy/copy/contracts.
 The reference outbox delegates to the rail; event vocabulary and effect handlers
 remain in composition.
 
+The four public marketing-sync families expose profile sync, consent readback,
+erasure and local-authority consent push. The reference payment webhook’s
+`readRawBody` binding retains the package function object; the other four
+generic names are re-exports.
+
+There is one executor per runtime unit; the host supplies scheduling explicitly.
+
 Evidence (historical record, 2026-11-13):
 
 The [R1 record](plans/oss-m18-r1-partner-acquisition.md) and
@@ -276,6 +283,10 @@ Moved to [Run an adapter conformance check](../../packages/core/docs/guide/how-t
 
 Keep the existing owner suites for exhaustive conformance, consent push,
 durable-store atomicity and host wiring.
+
+Marketing sync requires all four operations, an explicit refusal and successful
+replay for each supported mutation. The corrected adapter passes all three
+email fixtures.
 
 Evidence (historical record, 2026-11-13):
 

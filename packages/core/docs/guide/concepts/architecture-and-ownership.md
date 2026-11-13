@@ -164,7 +164,8 @@ identity, authorization, transport and transaction boundaries.
 Compose payments through the bundle's optional named binder and
 `createPaymentServices`, supplying a scoped truth port and cleanup. Missing schema
 or capability refuses selection. No package discovers environment or drivers;
-retain one executor per runtime unit and supply scheduling explicitly.
+retain exclusive executor ownership for each runtime unit and supply scheduling
+explicitly.
 Status verification requests readback rather than marking payment paid. The
 status reader checks stored ownership/current attempt and a second canonical
 read. Supply rail handoff capabilities, callbacks, token handling and customer/
