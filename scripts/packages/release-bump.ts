@@ -25,7 +25,7 @@
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { PACKAGES_CONFIG_PATH, RELEASE_VERSION, SET_VERSION, parsePackagesConfig, releaseVersionAbove, type PackageEntry, type PackagesConfig } from "./package-manifest-policy.ts";
@@ -80,12 +80,19 @@ export function addReleaseSection(file: string, text: string, version: string, t
   return `${text.slice(0, end)}## [${version}]\n\n- Publishable on the npm \`latest\` dist-tag as \`${version}\`, from tag\n  \`${tag}\`.\n\n${notes}${text.slice(history)}`;
 }
 
+/** npm's own CLI, as `npm run` names it, run by this Node binary rather than found through PATH. */
+function npmCli(args: string[]): string {
+  const cli = process.env.npm_execpath;
+  if (!cli || !isAbsolute(cli)) throw new Error("release:bump reads the registry through npm: run it as npm run release:bump");
+  return execFileSync(process.execPath, [cli, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024 });
+}
+
 /**
  * The registry's integrity for `name@version`, then that tarball read without
  * saving it: its `size` is the byte length, and its integrity must match the
  * registry's. Undefined only when the registry answers E404 for the version.
  */
-export function npmPublishedPackedBytes(name: string, version: string, npm = (args: string[]) => execFileSync("npm", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] })): number | undefined {
+export function npmPublishedPackedBytes(name: string, version: string, npm = npmCli): number | undefined {
   const spec = `${name}@${version}`;
   let integrity: unknown;
   try {

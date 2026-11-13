@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { bumpRelease, npmPublishedPackedBytes, setVersionFields } from "./release-bump.ts";
 
 const roots: string[] = [];
-afterEach(() => { vi.restoreAllMocks(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 
 const lock = (packages: Record<string, unknown>) => `${JSON.stringify({ name: "fixture", version: "0.0.0", lockfileVersion: 3, requires: true, packages }, null, 2)}\n`;
 const changelog = "# Changelog\n\n## [Unreleased]\n\n- Publishable on the npm `preview` dist-tag as `0.7.0`, for source preview\n  `openlup-source-preview/7`.\n- Publishable on the npm `preview` dist-tag as `0.6.0`, for source preview\n  `openlup-source-preview/6`.\n";
@@ -96,6 +96,13 @@ describe("release:bump", () => {
     expect(bumpRelease(root, "core", "0.9.0", (name, version) => { asked.push(`${name}@${version}`); return 12345; })).toContain(path);
     expect(asked).toEqual(["@openlup/core@0.7.0"]);
     expect(readFileSync(join(root, path), "utf8")).toBe(moved);
+  });
+
+  it("reads the registry only through the npm that runs release:bump", () => {
+    vi.stubEnv("npm_execpath", "");
+    expect(() => npmPublishedPackedBytes("@openlup/core", "0.7.0")).toThrow("release:bump reads the registry through npm: run it as npm run release:bump");
+    vi.stubEnv("npm_execpath", "npm-cli.js");
+    expect(() => npmPublishedPackedBytes("@openlup/core", "0.7.0")).toThrow("run it as npm run release:bump");
   });
 
   it("takes the packed bytes of exactly one published tarball with the registry's integrity", () => {
