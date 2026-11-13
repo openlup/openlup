@@ -103,6 +103,13 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 function command(name: string, args: string[], cwd: string, env: NodeJS.ProcessEnv = {}): string {
   return execFileSync(name, args, { cwd, env, encoding: "utf8", timeout: 120_000, maxBuffer: 8 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
 }
+let testPostgresImage: string | undefined;
+function pinnedTestPostgresImage(): string {
+  return testPostgresImage ??= command(process.execPath, ["--import", import.meta.resolve("tsx"), "--input-type=module", "-e", `
+    import { readCiImage, pullWithRetry } from ${JSON.stringify(pathToFileURL(join(root, "scripts/ci-image-pull.mjs")).href)};
+    process.stdout.write(await pullWithRetry(readCiImage("test-postgres")));
+  `], root, isolatedConsumerEnv()).trim();
+}
 export function consumerNode(consumer: string, source: string, args: string[] = []): string {
   // The file (rather than --eval in the checkout) anchors both ESM and CJS resolution.
   const script = join(consumer, "proof.mjs");
@@ -1817,7 +1824,7 @@ export function provePackagedPlatformMigrations(consumer: string): void {
     const name = `openlup-packaged-migrations-${randomUUID()}`;
     const docker = (args: string[]) => command("docker", args, root, isolatedConsumerEnv()).trim();
     try {
-      docker(["run", ...disposableLabelArgs(), "--detach", "--rm", "--name", name, "--cpus=1", "--memory=512m", "--pids-limit=128", "--tmpfs", "/var/lib/postgresql/data", "--publish", "127.0.0.1::5432", "--env", "POSTGRES_HOST_AUTH_METHOD=trust", "postgres:16"]);
+      docker(["run", ...disposableLabelArgs(), "--detach", "--rm", "--name", name, "--cpus=1", "--memory=512m", "--pids-limit=128", "--tmpfs", "/var/lib/postgresql/data", "--publish", "127.0.0.1::5432", "--env", "POSTGRES_HOST_AUTH_METHOD=trust", pinnedTestPostgresImage()]);
       const port = docker(["port", name, "5432/tcp"]).split(":").at(-1)!;
       const url = `postgresql://postgres@127.0.0.1:${port}/postgres`;
       command(process.execPath, ["--import", import.meta.resolve("tsx"), "--input-type=module", "-e", `
@@ -1836,7 +1843,7 @@ function proveNativeCommunicationsPostgres(consumer: string): void {
   const docker = (args: string[]) => command("docker", args, root, isolatedConsumerEnv()).trim();
   try {
     // Complete catalogue fingerprints use the repository harness's PostgreSQL 16 profile.
-    docker(["run",...disposableLabelArgs(),"--detach","--rm","--name",name,"--cpus=1","--memory=512m","--pids-limit=128","--tmpfs","/var/lib/postgresql/data","--publish","127.0.0.1::5432","--env","POSTGRES_HOST_AUTH_METHOD=trust","postgres:16"]);
+    docker(["run",...disposableLabelArgs(),"--detach","--rm","--name",name,"--cpus=1","--memory=512m","--pids-limit=128","--tmpfs","/var/lib/postgresql/data","--publish","127.0.0.1::5432","--env","POSTGRES_HOST_AUTH_METHOD=trust",pinnedTestPostgresImage()]);
     const port = docker(["port",name,"5432/tcp"]).split(":").at(-1)!;
     const connectionString = `postgresql://postgres@127.0.0.1:${port}/postgres`;
     // Host TCP readiness, through the same repository harness as the real-PG witness.

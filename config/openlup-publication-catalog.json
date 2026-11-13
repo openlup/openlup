@@ -29526,6 +29526,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/migrationLedgerAttributeVersion.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/nativeAccountReads.test.ts",
       "class": "public-output"
     },

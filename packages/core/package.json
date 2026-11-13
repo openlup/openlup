@@ -1,6 +1,6 @@
 {
   "name": "@openlup/core",
-  "version": "0.38.0",
+  "version": "0.39.0",
   "description": "Neutral D2C subscription and bundle commerce kernels; a development preview with no stable API.",
   "keywords": [
     "openlup",
@@ -12,7 +12,7 @@
     "commerce",
     "typescript"
   ],
-  "homepage": "https://github.com/openlup/openlup/tree/main/packages/core#readme",
+  "homepage": "https://openlup.com",
   "bugs": {
     "url": "https://github.com/openlup/openlup/issues"
   },

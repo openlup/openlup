@@ -36,3 +36,22 @@ export const checkoutLinkPolicy = { operatorLifetimeMs: 86400000, recoveryWindow
 export const checkoutWavePolicy = { profile: 'starter_capture', firstOffsetSeconds: 3600, finalOffsetSeconds: 72000,
   checkoutSeconds: 86400, recoverySeconds: 2592000, activitySeconds: 900 };
 export const checkoutRecoverySchedule = { enabled: true, leaseSeconds: 120, batchSize: 100, initialTimeoutSeconds: 7200, softBudgetMs: 15000 };
+
+
+/** Fictional demonstration address formats, including a numeric checksum mechanism. */
+export function savedAddressValidation(country: string) {
+  return { country, countryAliases: ['example'], phonePrefix: customerAccountPolicy.phone.callingCode,
+    normalizeTaxId: (value: string | null) => (value ?? '').replace(/\D/g, '') || null,
+    isValidTaxId: (value: string) => /^\d{10}$/.test(value)
+      && [6,5,7,2,3,4,5,6,7].reduce((sum, weight, index) => sum + weight * Number(value[index]), 0) % 11 === Number(value[9]),
+    messages: { name: 'Invalid recipient', country: 'Invalid country', phone: 'Invalid phone', postalCode: 'Invalid postal code', taxId: 'Invalid demonstration tax identifier' } };
+}
+
+/** Owned demonstration tax policy; the native schema also enforces its fixed checksum. */
+export const billingTaxPolicy = { normalizeTaxId: (value: string) => value.replace(/\D/g, '') || null,
+  isValidTaxId: (value: string) => savedAddressValidation('ZZ').isValidTaxId(value) };
+
+
+/** Explicit synthetic identities only; no real instrument or provider taxonomy. */
+export const sandboxRecoveryPolicy = { cookieName: '__Host-openlup_checkout_continuation', rails: ['sandbox','external'] as const,
+  methodKeys: ['primary','secondary'] as const, buyerLifetimeMs: 86400000, buyerSendBucketMs: 600000 };

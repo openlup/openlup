@@ -1,3 +1,0 @@
-- Fix expired checkout recreation creating an empty invoice buyer snapshot when the source has none. Preparation now preserves absence so first-duty capture selects the owned billing profile/address, then the marked shipping fallback. Recorded snapshots, including explicit empty objects, remain unchanged; capture replay and later profile edits preserve frozen buyer facts.
-
-Migration: Apply the complete native catalogue through `20261110280000_checkout_recovery_buyer_snapshot.sql`. The forward replaces only the preparation function; it adds no backfill and changes no buyer selector, lineage, payment authority or grants.

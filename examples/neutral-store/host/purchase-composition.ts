@@ -1,10 +1,11 @@
+import { mintSandboxContinuation } from './checkout-recovery.ts';
 import { isInitialCheckoutOrder, sameUuid } from './recurring-fence.ts';
 import { createHash } from 'node:crypto';
 import type { Pool } from 'pg';
 import { setTimeout } from 'node:timers/promises';
 import type { PostgresContactClientRegistrar } from '@openlup/platform/identity';
 import { createInterimCheckoutLimiter, createCheckoutAttemptBindings, admitCheckoutAttempt, type CheckoutRateLimit } from './checkout-attempts.ts';
-import { installedAcquisitionPredecessors, createAcquisitionRenewalBinding, type AcquisitionPredecessors, type AcquisitionRenewalBinding } from './acquisition-predecessors.ts';
+import { installedAcquisitionPredecessors, createInitialPurchaseActivation, createAcquisitionRenewalBinding, type AcquisitionPredecessors, type AcquisitionRenewalBinding } from './acquisition-predecessors.ts';
 import { createNativeQuoteService, quoteFailure } from './quote-composition.ts';
 import { createAcquisitionFinancialPolicy } from '../owned/acquisition-policy.ts';
 import type { PromotionAcceptanceKeyring } from '@openlup/platform/promotions';
@@ -12,12 +13,11 @@ import { createPostgresDestinationPort } from '@openlup/platform/commerce/server
 import { createPostgresPurchaseReservationPort, createPostgresAbandonedCheckoutCompensationPort } from '@openlup/platform/inventory';
 import { createPostgresFulfillmentStockSyncPort } from '@openlup/platform/fulfillment';
 import { createPostgresSandboxPaymentSimulator } from '@openlup/platform/payments';
-import { activateNativePurchaseWithRenewal } from '@openlup/platform/subscriptions';
 import { ACQUISITION_TERMS_CAPABILITY, type CreateQuoteResponse } from '@openlup/platform/pricing';
-import type { NativeRenewalPurchaseFacts } from '@openlup/platform/subscriptions';
 import type { ApplicationBindings, ActionContext } from './bindings.ts';
 import { validateCart, isRecord } from '../shared/offer.ts';
 import { generateCheckoutRecoveryToken } from '@openlup/platform/commerce/server';
+import { readCheckoutGuidance } from './checkout-recovery.ts';
 import type { PurchaseRecovery } from './checkout-recovery.ts';
 
 const refused = (code: string) => ({ ok: false as const, code });
@@ -38,6 +38,7 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
   let attemptBindings: ReturnType<typeof createCheckoutAttemptBindings> | undefined;
   const predecessors = quoteOptions.predecessors ?? installedAcquisitionPredecessors();
   const renewal = quoteOptions.renewal ?? createAcquisitionRenewalBinding(db);
+  const activation = createInitialPurchaseActivation(db, renewal);
   const quotes = createNativeQuoteService(db, predecessors, quoteOptions.keyring);
   const destinations = createPostgresDestinationPort(db);
   const reservations = createPostgresPurchaseReservationPort(db);
@@ -193,7 +194,10 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
     if (inspected.status === 'expired' && inspected.tokenState !== 'revoked') return success({ status: 'expired', orderRef: inspected.orderId });
     if (inspected.tokenState !== 'active' || inspected.status !== 'pending_payment') return refused('starter_recovery_unavailable');
     const order = await authorizedOrder(payload, context);
-    return order ? success({ ...present(order), mode: inspected.mode, cadenceDays: inspected.cadenceDays }) : refused('starter_recovery_unavailable');
+    if (!order) return refused('starter_recovery_unavailable');
+    const recoveryGuidance = await readCheckoutGuidance(db, recovery.tokens, payload.token, order);
+    return success({ ...present(order), mode: inspected.mode, cadenceDays: inspected.cadenceDays,
+      ...(recoveryGuidance ? { recoveryGuidance } : {}) });
   };
   actions['payment.simulate'] = async (payload, context) => {
     if (!only(payload, ['orderRef', 'token', 'outcome']) || !['captured', 'refused', 'expired', 'indeterminate'].includes(String(payload.outcome))) return refused('starter_input_invalid');
@@ -206,10 +210,12 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
     try {
       const key = command(context, 'payment');
       const storedQuote = order.metadata.quoteSnapshot as CreateQuoteResponse;
-      if (payload.outcome === 'captured' && (storedQuote.quote.context as { acquisitionTerms?: unknown })?.acquisitionTerms) renewal.assertAvailable(storedQuote);
+      if (payload.outcome === 'captured') activation.assertCaptureAvailable(storedQuote);
       const simulator = createPostgresSandboxPaymentSimulator(db, context.config.purchase.sandbox);
       const attempt = await simulator.beginAttempt({ settlementIntentId: intent.id, idempotencyKey: key,
         requestFingerprint: hash([order.id, payload.outcome]), at: new Date().toISOString() });
+      mintSandboxContinuation(context,quoteOptions.keyring,{orderId:attempt.orderId,clientId:order.client_id,
+        paymentIntentId:attempt.settlementIntentId,paymentAttemptId:attempt.id,replayed:attempt.replayed});
       const observation = await simulator.recordObservation({ attemptId: attempt.id, idempotencyKey: `${key}:observation`,
         outcome: payload.outcome as 'captured' | 'refused' | 'expired' | 'indeterminate', occurredAt: attempt.dispatchedAt });
       const accepted = await simulator.ingress.receive({ rawBody: new TextEncoder().encode(JSON.stringify({
@@ -218,26 +224,9 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
       let renewalAttachment: string | undefined;
       if (payload.outcome === 'captured') {
         if (!await isInitialCheckoutOrder(db, order.id)) return refused('starter_order_not_found');
-        const declaration = (await db.query('SELECT cadence_days FROM public.subscription_activations WHERE order_id=$1', [order.id])).rows[0];
-        if (declaration) {
-          const acceptedQuote = order.metadata.quoteSnapshot as CreateQuoteResponse;
-          const acquisitionTerms = (acceptedQuote.quote.context as { acquisitionTerms?: unknown }).acquisitionTerms;
-          if (acquisitionTerms) {
-            renewalAttachment = await renewal.activate({ orderId: order.id, acceptedQuote,
-              capturedReference: intent.external_ref ?? intent.id, methodFacts: attempt.methodFacts,
-              stockSourceKey: source(context), templateId: `starter:${context.config.id}` });
-          } else {
-          const lines = acceptedQuote.quote.lines;
-          const shippingTerms = (acceptedQuote.quote.context as { shippingTerms?: import('@openlup/platform/shipping').ShippingTerms } | undefined)?.shippingTerms;
-          const facts: NativeRenewalPurchaseFacts = { settlementChannelKey: 'sandbox', ...attempt.methodFacts,
-            stockSourceKey: source(context), templateId: `starter:${context.config.id}`, cadenceDays: declaration.cadence_days,
-            currency: order.currency_code, shippingAmountMinor: (acceptedQuote.quote.shippingGross?.amountMinor ?? 0) - (acceptedQuote.quote.shippingDiscountGross?.amountMinor ?? 0), acquisitionRef: null,
-            renewalTerms: { version: 'native.renewal-terms.v1', ...(shippingTerms === undefined ? {} : { shippingTerms }) },
-            lines: lines.map((line, index) => ({ lineOrdinal: index + 1, sku: line.sku, quantity: line.quantity, unitAmountMinor: line.unitPriceGross.amountMinor })) };
-          renewalAttachment = (await activateNativePurchaseWithRenewal(db, { orderId: order.id,
-            idempotencyKey: `activate:${order.id}`, capturedReference: intent.external_ref ?? intent.id, facts })).renewalAttachment;
-          }
-        }
+        renewalAttachment = await activation.activate({ orderId: order.id, acceptedQuote: storedQuote,
+          currency: order.currency_code, capturedReference: intent.external_ref ?? intent.id, methodFacts: attempt.methodFacts,
+          stockSourceKey: source(context), templateId: `starter:${context.config.id}` });
       }
       const updated = await readOrder(order.id);
       return { ...success({ ...present(updated!), ...(renewalAttachment ? { renewalAttachment } : {}) }), replayed: attempt.replayed };

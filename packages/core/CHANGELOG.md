@@ -10,6 +10,14 @@ in the source repository.
 
 ## [Unreleased]
 
+## [0.39.0]
+
+- Publishable on the npm `latest` dist-tag as `0.39.0`, from tag
+  `openlup-core-v0.39.0`.
+
+- Republish unchanged Core runtime, exports and SQL with the complete `0.39.0`
+  package set.
+
 ## [0.38.0]
 
 - Publishable on the npm `latest` dist-tag as `0.38.0`, from tag
@@ -48,8 +56,3 @@ Migration: JSON consumers may receive an additive top-level `scans` array. Its c
 Migration:
 
 Hosts using the complete vocabulary for readiness must supply an explicit owned `ignored` or `dormant` exemption for this type when they select no consumer. The claim allowlist still derives from handlers; readiness refusal for an unhandled, unexempted type is unchanged. No schema, grant or package-version change is needed in this source fix.
-
-## [0.36.0]
-
-- Publishable on the npm `latest` dist-tag as `0.36.0`, from tag
-  `openlup-core-v0.36.0`.

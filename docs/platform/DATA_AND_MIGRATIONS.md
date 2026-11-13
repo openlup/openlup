@@ -559,6 +559,7 @@ The package runner admits the migration ledger only when its system-catalog
 shape matches the canonical baseline ledger: a permanent heap table with the
 expected owner, columns, defaults, constraints and indexes, without partition
 or inheritance links, triggers, rules, row policies or extended statistics.
+The fingerprint stays exact except for numeric `pg_attver` column version markers in a nonempty, one-dimensional array starting at index 1; every other attribute option refuses admission.
 The ledger catalog shape is qualified on PostgreSQL 16 and 17; a different
 major with different catalog expression trees is refused until separately qualified.
 It checks this before reading applied rows, keeps the admitted relation stable
@@ -1637,6 +1638,8 @@ array, including unissued reservations, must remain a canonical content-equal
 prefix of every later array. Only appends are allowed; editing, deleting or
 inserting among those slots refuses. Issued bindings and their slots retain their content and array positions, even
 while the class is unsealed. There is no slot-count maximum or second class key.
+The production class is sealed from the 0.39.0 set preparation; later slots only
+append after its existing slots.
 Slot timestamps come from their paths and strictly increase in array order. A
 new slot's time must exceed every dated migration in its introduction base,
 including qualified identities; later migrations do not invalidate issued slots.
