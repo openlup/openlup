@@ -697,6 +697,39 @@ browser roles retain neither lookup execution nor raw-table access.
 Only `paymentSchemaDescriptor.preparedDurableStore` is enabled by this forward.
 Method setup, absence reopening and cumulative refund remain separate capabilities;
 absence auto-reopen stays off. A refund never pauses or cancels a subscription.
+
+The following `20261114110000_payment_method_refs.sql` adds the reusable-method
+ledger, immutable method-write receipts and recovery authority history. Installing
+that forward enables `paymentSchemaDescriptor.methodSetup`. Setup collection
+requires a host-authenticated principal and an explicitly injected method port;
+its handoff remains transient. Registration, lifecycle delivery and retry
+scheduling finish before a setup receipt is closed. None of those operations
+settles money or changes subscription service.
+
+The raw reference, receipt and recovery-authority tables have no runtime table
+privileges. Client-bearing relations retain only their admitted `client_id`
+census grant for absorption refusal. Bounded service-only definer readers and
+writers bridge existing invoker routines without changing their headers or ACLs.
+The authority writers record token context, record the method binding and freeze
+that binding at dispatch; they accept stored identifiers and facts, not SQL or
+object names. Store transfer must retain all three row-holding relations.
+
+| Historical method state | Named result and manual path |
+| --- | --- |
+| Healthy label or mirror string with no reusable row | `method_ref_not_recorded` from the recorded-method reader; `subscription_missing_payment_method_ref` or `no_matching_method_ref` from scope repair. Obtain verified method evidence; no synthetic reference or automatic backfill is created. |
+| One usable same-client account method matching a mirror | Scope repair returns `repaired`; an already scoped method returns `no_op/already_subscription_scoped`. Batch repair defaults to dry-run and accepts 1–500 subscriptions. |
+| Cross-client, other-subscription, expired, revoked or ambiguous evidence | Scope repair returns `cross_client_candidate`, `wrong_subscription_owner`, `unusable_candidate` or `ambiguous_candidate`, without rebinding. Resolve the evidence manually. |
+| Unmatched or already processed setup delivery | Setup close returns `updated=false`; no payment effect is inferred. |
+| Existing checkout token without recorded recovery context | `recovery_not_ready`; record a new authorized recovery token instead of inferring purpose or redemption from revocation. |
+| No matching case or retry obligation | `case_not_found` or `recovery_not_ready`; a method update never reconstructs failed work. |
+| Previously dispatched authority | Preserve the recorded method and dispatch fence. Reconcile that attempt before a later rung can use another method. |
+
+Health is evaluated from recorded evidence on reads. `method_expiring` can still
+be chargeable until expiry; model-less cards and declared unattended methods
+retain separate chargeability rules. Sandbox labels remain sandbox evidence.
+The provider-specific pending-activation shape is outside this collection lane.
+These are offline PostgreSQL and fake-client witnesses, not provider activation
+or hosted renewal qualification.
 The [native witnesses](../../tests/postgres/paymentProviderStore.test.ts) and
 [pgTAP twins](../../tests/postgres/paymentProviderStorePgtap.test.ts) exercise the
 installed store without contacting a payment provider.
@@ -1379,15 +1412,22 @@ mirror each pin `ui-13` 0→4 and `ui-14` 0→3. Its unchanged characterization 
 `ui-14` 0→1 with its own whole-file digest and baseline key. This fixture keeps
 the same names until the provider-profile refactor removes them together with
 the predicates; a third provider needs that refactor. Every other test or
-fixture path remains refused by this extension. No other native
+fixture path remains refused by this extension, except the three method-ledger
+characterization fixtures listed below. No other native
 or package SQL path is admitted beyond these six paths and the existing
 operations compatibility carrier; TypeScript and documentation remain outside
 this allowance. This is vocabulary debt, not provider activation or portable-contract parity;
 future neutral replacements must lower it. The [neutrality owner](../../CONTRIBUTING.md#package-policy-and-release-checks)
 owns the ratchet. Its `reviewedPinnedIntroductions` allowance is a closed list of
-17 paths and 22 tuples: six managed fixture/rail pairs and the registry
+20 paths and 26 tuples: six managed fixture/rail pairs and the registry
 (13 paths/15 tuples), the operations package SQL carrier (one path/tuple), and
-R1's native slot, mirror and characterization witness (three paths/six tuples).
+the attempt-store slot, mirror and characterization witness (three paths/six tuples),
+and method-ledger characterization fixtures (three paths/four tuples).
+`tests/postgres/fixtures/paymentMethods/replayed.sql` pins `ui-14` 0→6;
+`subscription_switch.sql` pins `ui-13` 0→3; `scope_repair.sql` pins `ui-13`
+0→10 and `ui-14` 0→1. Each exact file has its own whole-file digest and
+baseline key, retained until the same provider-profile refactor. The method
+SQL itself introduces no counted provider vocabulary.
 Each SQL pin requires the complete file's SHA-256
 and exact category and before/after counts, on any base. The registry instead
 pins the exact refund COMMENT text because later approvals edit unrelated

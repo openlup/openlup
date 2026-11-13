@@ -116,6 +116,14 @@ export function createStripePaymentAdapter(config: StripePaymentAdapterConfig): 
         };
       },
     },
+    methodPort: {
+      async setupMethod(input) {
+        if (!config.client.createSetupIntent) return { kind: "unsupported" };
+        const setup = await config.client.createSetupIntent({ customer: input.customer, metadata: input.metadata, usage: "off_session" }, { idempotencyKey: input.idempotencyKey });
+        if (!setup.client_secret) throw new Error("Method setup handoff unavailable");
+        return { kind: "ready", setupRef: setup.id, handoff: { kind: "client-confirmed", payload: setup.client_secret as TransientSecret }, replayed: false };
+      },
+    },
     verifyPort: {
       async verifyAndNormalize(input) {
         const header = Object.entries(input.headers).find(([key]) => key.toLowerCase() === "stripe-signature")?.[1];
@@ -208,6 +216,7 @@ function mapVerifiedStripeEvent(raw: Record<string, unknown>): VerificationResul
     const outcome = outcomes[lifecycle?.kind ?? normalized.eventType];
     if (!outcome) return refusal("unsupported-event");
     result = { ...identity, kind: "method", outcome, methodRef: method,
+      ...(normalized.reusableMethod ? { reusableMethod: registrationFacts(normalized.reusableMethod) } : {}),
       setupRef: typeof raw.type === "string" && raw.type.startsWith("setup_intent.") ? normalized.providerPaymentId : null, intentRef,
       // Missing provider time must not turn the donor's epoch fallback into a lifecycle fact.
       ...(lifecycle && occurred !== null ? { methodLifecycle: lifecycle } : {}) };
@@ -218,7 +227,7 @@ function mapVerifiedStripeEvent(raw: Record<string, unknown>): VerificationResul
       ? { amountMinor: normalized.amountMinor!, currency: normalized.currency } : null;
     const snapshot = normalized.rawPayload.stripeRefundSnapshot as { chargeId: string; amountRefundedMinor: number } | undefined;
     if (outcome === "refunded" && (!snapshot || !money)) return refusal("malformed");
-    result = { ...identity, kind: "money", providerPaymentRef: normalized.providerPaymentId, intentRef, attemptRef: null, outcome, money,
+    result = { ...identity, ...(normalized.reusableMethod ? { reusableMethod: registrationFacts(normalized.reusableMethod) } : {}), kind: "money", providerPaymentRef: normalized.providerPaymentId, intentRef, attemptRef: null, outcome, money,
       ...(snapshot && money ? { refund: { kind: "cumulative-snapshot" as const, operationId: snapshot.chargeId,
         originalPaymentMoney: money, refundedMoney: { amountMinor: snapshot.amountRefundedMinor, currency: money.currency } } } : {}),
       ...(outcome === "failed" && object.last_payment_error && typeof object.last_payment_error === "object"
@@ -263,3 +272,8 @@ export { mapSetupIntent } from "./intentMapper.js";
  * Reference consumer: `server/adapters/paymentRecoveryGuidance.ts`.
  */
 export { normalizeStripeFailureEvidence } from "./stripeFailureEvidence.js";
+
+function registrationFacts(method: NonNullable<ReturnType<typeof normalizeStripeWebhookEvent>["reusableMethod"]>) {
+  return { providerCustomerRef: method.providerCustomerRef, providerMethodRef: method.providerMethodRef,
+    providerMandateRef: method.providerMandateRef, methodKind: method.methodKind, status: method.status, consentSnapshot: method.consentSnapshot };
+}

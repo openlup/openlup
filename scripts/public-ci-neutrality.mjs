@@ -226,11 +226,15 @@ export function neutralityIncreases(baseline, current) {
 // unchanged package SQL carrier. N6 R1 adds its native payment slot and mirror
 // and unchanged durability witness (three paths/six tuples), preserving the two
 // reference payment adapters' names until the provider-profile refactor. Only
-// slots 42–44, their package mirrors and the exact R1 witness may join this
-// path class; each row adds its own pins.
+// slots 42–44, their package mirrors and the exact payment witnesses below may join this
+// path class; each row adds its own pins. Method-ledger witnesses add three paths
+// and four tuples under the same bounded debt.
 // Exact category/before/after tuples and whole-file pins apply on any base.
 // Adding an entry requires the control review and coordinator read in CONTRIBUTING.md.
 export const reviewedPinnedIntroductions = [
+  ["tests/postgres/fixtures/paymentMethods/replayed.sql","039b65952dfacf1810f60e327dcab41b2d5df858a74d4b0ec76e03562e2dc41e",[["ui-14",0,6]]],
+  ["tests/postgres/fixtures/paymentMethods/subscription_switch.sql","cf453ffcae8f3a61375595e9241b0a430d43c6208f4d9b2585627c8f6e12c55e",[["ui-13",0,3]]],
+  ["tests/postgres/fixtures/paymentMethods/scope_repair.sql","e2dcc12ff8f76ec519bdb5444c83fb1e748b341c135cff1f3b92de1ea33cacc2",[["ui-13",0,10],["ui-14",0,1]]],
   ["db/platform/migrations/20261114100000_payment_provider_attempt_store.sql", "7245270f012fdd2ac244f9a6a30fb1693c82733d1a996e74e08aa321d075655b", [["ui-13", 0, 4], ["ui-14", 0, 3]]],
   ["packages/platform/sql/20261114100000_payment_provider_attempt_store.sql", "7245270f012fdd2ac244f9a6a30fb1693c82733d1a996e74e08aa321d075655b", [["ui-13", 0, 4], ["ui-14", 0, 3]]],
   ["tests/postgres/fixtures/paymentProvider/durability.sql", "362072b2c6edc0ade23b102e69c31ad871dda7f5dfa87b06a6cd2813fe50343d", [["ui-13", 0, 6], ["ui-14", 0, 5]]],
@@ -266,6 +270,9 @@ export function validateReviewedPinnedIntroductions(entries) {
     if (path !== "config/reviewed-platform-forwards.json"
       && path !== "packages/platform/sql/20260814010000_platform_control_plane.sql"
       && path !== "tests/postgres/fixtures/paymentProvider/durability.sql"
+      && path !== "tests/postgres/fixtures/paymentMethods/replayed.sql"
+      && path !== "tests/postgres/fixtures/paymentMethods/subscription_switch.sql"
+      && path !== "tests/postgres/fixtures/paymentMethods/scope_repair.sql"
       && !nativePaymentIntroductionPaths.has(path)
       && !/^(?:scripts\/fixtures\/reviewed-m10\/supabase\/migrations\/|supabase\/migrations\/)[^/]+\.sql$/.test(path)) {
       throw new Error(`unsupported pinned introduction path: ${label(path)}`);

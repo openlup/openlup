@@ -1386,6 +1386,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261114110000_payment_method_refs.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4551,6 +4555,10 @@
     },
     {
       "path": "packages/platform/sql/20261114100000_payment_provider_attempt_store.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261114110000_payment_method_refs.sql",
       "class": "public-output"
     },
     {
@@ -7886,6 +7894,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/payments/postgresMethodSetup.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/postgresPaymentMethods.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/payments/postgresPaymentTruth.ts",
       "class": "public-output"
     },
@@ -7903,6 +7919,10 @@
     },
     {
       "path": "packages/platform/src/payments/postgresSandboxPaymentSimulator.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/postgresSubscriptionMethod.ts",
       "class": "public-output"
     },
     {
@@ -29354,6 +29374,26 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/fixtures/paymentMethods/consent_snapshot_merge.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/paymentMethods/health.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/paymentMethods/replayed.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/paymentMethods/scope_repair.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/paymentMethods/subscription_switch.sql",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/fixtures/paymentProvider/blockedPreflight.sql",
       "class": "public-output"
     },
@@ -29767,6 +29807,10 @@
     },
     {
       "path": "tests/postgres/partnerAcquisition.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/paymentMethodRefsPgtap.test.ts",
       "class": "public-output"
     },
     {

@@ -2019,7 +2019,9 @@ observations in the existing outcome ledger; no additional attempt store is
 created. ACK loss or ambiguity never permits redispatch. A trusted sandbox
 `observe()` call can supply a matching late terminal observation before the
 incumbent renewal transaction applies it. This is no PSP or real-mandate
-qualification, and real-provider method setup remains unavailable. Initial
+qualification. The separate native method-reference forward supplies explicit
+provider collection and recorded health; the sandbox rail itself supplies no
+provider method evidence. Initial
 method health is healthy only with the registered sandbox method evidence;
 `writer.transitionMethod()` records later missing, pending, unchargeable or
 healthy states with immutable event identity and expected-state comparison.

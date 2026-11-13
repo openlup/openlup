@@ -93,9 +93,12 @@ export function createNativeRetryDriver(options: NativeRetryDriverOptions) {
           const supplied = options.retryInput(snapshot, row);
           const paymentIntentId = canonicalUuid(supplied.paymentIntentId), orderRef = canonicalUuid(supplied.orderRef);
           const input = { ...supplied, paymentIntentId: paymentIntentId ?? supplied.paymentIntentId, orderRef: orderRef ?? supplied.orderRef };
-          const authorizations = (await options.executor.query(`SELECT a.method_ref FROM public.subscription_retry_recovery_authorizations a
-            JOIN public.subscription_retry_obligations o ON o.id=a.obligation_id
-            WHERE o.renewal_operation_id=$1::uuid AND a.retry_attempt=o.retry_attempt AND a.consumed_at IS NULL`, [operationId])).rows;
+          const authorizations = (await options.executor.query(`SELECT CASE WHEN public.subscription_method_uses_recorded_refs(o.subscription_id)
+            THEN public.payment_method_recovery_authority_read(o.method_recovery_authority_id)->>'method_ref'
+            ELSE a.method_ref END AS method_ref FROM public.subscription_retry_obligations o
+            LEFT JOIN public.subscription_retry_recovery_authorizations a ON a.obligation_id=o.id
+              AND a.retry_attempt=o.retry_attempt AND a.consumed_at IS NULL
+            WHERE o.renewal_operation_id=$1::uuid`, [operationId])).rows;
           const method = authorizations[0]?.method_ref ?? mandate.paymentMethodRef;
           if (!mandate.authorized || mandate.authorizationRef !== snapshot.authorizationRef || input.paymentMethodRef !== method
             || paymentIntentId !== row.settlementIntentId || orderRef !== row.orderId

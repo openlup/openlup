@@ -35,3 +35,8 @@ export { normalizeSandboxPaymentRecoveryEvidence } from './sandboxRecoveryGuidan
 export { createPostgresSandboxCheckoutRecoveryAttemptPort } from './sandboxCheckoutRecoveryPay.js';
 
 export { createPostgresSandboxInlineRecoveryAttemptPort } from "./sandboxInlineRecovery.js";
+
+export { createPostgresPaymentMethodStore, createPostgresPaymentWebhookMethodRefPort, applyPostgresPaymentMethodLifecycleEvent,
+  schedulePostgresRetryOnDurableMethodUpdate, consumePostgresPaymentMethodDelivery } from "./postgresPaymentMethods.js";
+export { createPostgresPaymentMethodSetup } from "./postgresMethodSetup.js";
+export { createPostgresRecordedSubscriptionMethodReader } from "./postgresSubscriptionMethod.js";

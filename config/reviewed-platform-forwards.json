@@ -4609,6 +4609,185 @@
         ],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "n6-method-refs",
+        "path": "db/platform/migrations/20261114110000_payment_method_refs.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.subscription_command_preview(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
+            "beforeSha256": "532bf628b3d59feb9a2154153519877faedfc6e38b5cea114992a8ed8e6b7aa9",
+            "searchPath": "pg_catalog"
+          },
+          {
+            "signature": "public.subscription_command_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz,jsonb)",
+            "beforeSha256": "759206c10b90521bbf09f64e782c2b4ad451ca2ece82e5b01f9b1ea2169a6b07",
+            "searchPath": "pg_catalog"
+          },
+          {
+            "signature": "public.subscription_auto_resume_due(integer,timestamptz)",
+            "beforeSha256": "2001699383117534d6b7d6f2f7aada4f55fc84650b5e9f4d17bc3b2e9ce81b6d",
+            "searchPath": "public, pg_catalog"
+          },
+          {
+            "signature": "public.subscription_package_edit_apply(uuid,uuid,text,uuid,jsonb,timestamptz)",
+            "beforeSha256": "f8670ff888e3a47573f2c3ff1fca8669d267bc9fc37664f6ada067103e982f7f",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_line_edit_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
+            "beforeSha256": "4b0f10f37fb4a3ffa715c440898de8285a695b4544bd2b2770a2e9fcdff2b389",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_sized_edit_apply(uuid,uuid,text,uuid,jsonb,timestamptz)",
+            "beforeSha256": "215849e52f090c6cca9bb8c8213338a655d8b5ffb939f59b94327cecb817b075",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.dunning_lifecycle_scan_at_risk(integer,integer,integer)",
+            "beforeSha256": "e4653e04e36f0e01cbff94e3c3237110302ddbc3d2501dbf86858a9e6f565a49",
+            "searchPath": "public, pg_catalog"
+          },
+          {
+            "signature": "public.dunning_lifecycle_renewal_reminder_enqueue(integer,integer,integer,integer,integer)",
+            "beforeSha256": "6ad044408c80e48e40b2299963d2989d9c87b5a08ba82c7b33b89a0222a13365",
+            "searchPath": "pg_catalog"
+          },
+          {
+            "signature": "public.subscription_register_renewal_purchase(uuid,jsonb)",
+            "beforeSha256": "9c60953242b08b30fa5d6dad459f76b3505cd18d77c7296fdf635f20c7050a2c",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_register_renewal_purchase_with_shipping(uuid,jsonb)",
+            "beforeSha256": "0c92fd7addec82dbe6792b712eb6285f0a6ea6153c970a4831e3eff5e4e4d5c0",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_complete_renewal_attachment(uuid)",
+            "beforeSha256": "ee8eb04eaaf581c0ecc96faac03d16ffa7753b3f7229bc9546d4a7ac4bb609cb",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.dunning_lifecycle_issue_recovery_token(uuid,text,timestamptz)",
+            "beforeSha256": "a66f3724b3493d2abd1cf37d9bd3c9edff507233e0b15559ab6f57a371fc7b66",
+            "searchPath": "public, pg_catalog"
+          },
+          {
+            "signature": "public.subscription_retry_authorize_recovery(uuid,uuid,text,text,timestamptz)",
+            "beforeSha256": "e38b079af57f5b94cd63d94969fc72d09a4865913e4cabdf67ec7f50bd50a3a4",
+            "searchPath": "pg_catalog"
+          },
+          {
+            "signature": "public.subscription_retry_schedule_recovery(uuid,text,uuid,timestamptz)",
+            "beforeSha256": "845ef925291947967b26afec985ae05a5fcd0002b35f1f7f4de5afbc0825f533",
+            "searchPath": "pg_catalog"
+          },
+          {
+            "signature": "public.subscription_retry_prepare(uuid,text,jsonb,timestamptz)",
+            "beforeSha256": "fba98bb98e04b4b91fac8ab23fd84bf0edfe92f01b5c28fcf44b28ed4ac5801e",
+            "searchPath": "pg_catalog"
+          },
+          {
+            "signature": "public.subscription_retry_candidates(integer,timestamptz)",
+            "beforeSha256": "8d9d231eee35343c7b0cd391b5dbf83259b07d4094492437cc6badb6fb8fe8e6",
+            "searchPath": "pg_catalog"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.payment_method_ref_upsert(text,uuid,uuid,text,text,text,text,text,text,boolean,timestamptz,jsonb,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.payment_method_ref_deactivate(text,uuid,text,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.payment_method_ref_switch_active(text,uuid,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.payment_method_ref_link_subscription_mirror(text,uuid,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_method_chargeable_unattended(uuid,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_method_health_read(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.payment_method_ref_read(text,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.payment_method_setup_resolve_owner(uuid,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.payment_control_mark_setup_event_processed(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.payment_method_ref_repair_subscription_scope(text,uuid,timestamptz,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.payment_method_ref_repair_subscription_scope_batch(integer,boolean,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_try_schedule_recovery_retry(uuid,text,timestamptz,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_method_uses_recorded_refs(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.payment_method_ref_for_subscription_read(uuid,text,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.payment_method_recovery_authority_read(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.payment_method_recovery_authority_bind(uuid,uuid,text,text,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.payment_method_recovery_authority_record(uuid,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.payment_method_recovery_authority_freeze(uuid,uuid,text,text,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [
+          "INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('payment_method_refs', 'block', 'Saved payment references remain bound to their client and prevent lead absorption.');",
+          "INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('payment_method_recovery_authorities', 'block', 'Payment repair authority remains bound to its original client.');"
+        ],
+        "existingTableStatements": [
+          "ALTER TABLE public.subscription_method_states ADD COLUMN method_kind text, ADD COLUMN provider_kind text;",
+          "ALTER TABLE public.subscription_retry_obligations ADD COLUMN method_recovery_authority_id uuid REFERENCES public.payment_method_recovery_authorities(id), ADD COLUMN renewal_quarantined_until timestamptz, ADD COLUMN renewal_row_error_key text, ADD COLUMN renewal_row_error_count integer NOT NULL DEFAULT 0;"
+        ],
+        "absorptionCensusTables": [
+          "public.payment_method_refs",
+          "public.payment_method_recovery_authorities"
+        ],
+        "createdViews": [
+          {
+            "name": "public.subscription_method_health",
+            "sha256": "b7038cb7e21191e328e1dad90052bd56a304d21307d0dc66af9bfaceceb5446b"
+          }
+        ]
       }
     ]
   },
@@ -6057,6 +6236,182 @@
           "signature": "public.payment_provider_result_apply(text,uuid,uuid,text,timestamptz,text,text,text,text,text,text)",
           "beforeSha256": null,
           "afterSha256": "c47c028f64e6278b561b03c6f4729916e65d093ad4c16ebd8ff3214f658164b5"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261114110000_payment_method_refs.sql",
+      "sha256": "84b58878f774db13a1612ab5d74094b94f25d89f5db75bd6b7461e84655112b8",
+      "functions": [
+        {
+          "signature": "public.subscription_command_preview(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
+          "beforeSha256": "532bf628b3d59feb9a2154153519877faedfc6e38b5cea114992a8ed8e6b7aa9",
+          "afterSha256": "4fecbcac3f60d0c4edf525bbdad73644bdf2bbaaa6b116b2c5d283d830cb2655"
+        },
+        {
+          "signature": "public.subscription_command_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz,jsonb)",
+          "beforeSha256": "759206c10b90521bbf09f64e782c2b4ad451ca2ece82e5b01f9b1ea2169a6b07",
+          "afterSha256": "896f548512e48c9c7f933cb3aa885f9359df18f0d6a74c1ce58d78ac24972e35"
+        },
+        {
+          "signature": "public.subscription_auto_resume_due(integer,timestamptz)",
+          "beforeSha256": "2001699383117534d6b7d6f2f7aada4f55fc84650b5e9f4d17bc3b2e9ce81b6d",
+          "afterSha256": "3035ccee2edd47f5cee5e3d2b99cd6ae081b18ad55527ffdd5652485080e7b35"
+        },
+        {
+          "signature": "public.subscription_package_edit_apply(uuid,uuid,text,uuid,jsonb,timestamptz)",
+          "beforeSha256": "f8670ff888e3a47573f2c3ff1fca8669d267bc9fc37664f6ada067103e982f7f",
+          "afterSha256": "1b51c9acbab109f700ebf47bcc0e6feae1ab4b7b92dc73191d87eb74216e220b"
+        },
+        {
+          "signature": "public.subscription_line_edit_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
+          "beforeSha256": "4b0f10f37fb4a3ffa715c440898de8285a695b4544bd2b2770a2e9fcdff2b389",
+          "afterSha256": "dec08b8b37dfcc2768473651a9f97c71b47e6a197e341c435d68c836f8b5dc47"
+        },
+        {
+          "signature": "public.subscription_sized_edit_apply(uuid,uuid,text,uuid,jsonb,timestamptz)",
+          "beforeSha256": "215849e52f090c6cca9bb8c8213338a655d8b5ffb939f59b94327cecb817b075",
+          "afterSha256": "ab9b88623f7f2c742ed70cc06a3664952bba444148404fa645b00d6b1f904837"
+        },
+        {
+          "signature": "public.dunning_lifecycle_scan_at_risk(integer,integer,integer)",
+          "beforeSha256": "e4653e04e36f0e01cbff94e3c3237110302ddbc3d2501dbf86858a9e6f565a49",
+          "afterSha256": "807c3f411e1dd64cb425975067c83d8bb0252c462a5a023ee305e883660e3cf6"
+        },
+        {
+          "signature": "public.dunning_lifecycle_renewal_reminder_enqueue(integer,integer,integer,integer,integer)",
+          "beforeSha256": "6ad044408c80e48e40b2299963d2989d9c87b5a08ba82c7b33b89a0222a13365",
+          "afterSha256": "10dbf563a674897be93f266fb79aba0f1dadaf9587061e3af9ffdca4cf1eaa7c"
+        },
+        {
+          "signature": "public.subscription_register_renewal_purchase(uuid,jsonb)",
+          "beforeSha256": "9c60953242b08b30fa5d6dad459f76b3505cd18d77c7296fdf635f20c7050a2c",
+          "afterSha256": "dc4d85237e2d1cf9b04613467d9e43be9f96dbdde2114e7e58fa9ce9ba4931cf"
+        },
+        {
+          "signature": "public.subscription_register_renewal_purchase_with_shipping(uuid,jsonb)",
+          "beforeSha256": "0c92fd7addec82dbe6792b712eb6285f0a6ea6153c970a4831e3eff5e4e4d5c0",
+          "afterSha256": "cf4fadda3f1ac30c463b69fcc892a4d7ec8f726d461aacbf6f6f640d5f4b0008"
+        },
+        {
+          "signature": "public.subscription_complete_renewal_attachment(uuid)",
+          "beforeSha256": "ee8eb04eaaf581c0ecc96faac03d16ffa7753b3f7229bc9546d4a7ac4bb609cb",
+          "afterSha256": "61550482c4a29de324fc80877eb7c0e2e8becc55a6e51ee12df6723db24b2b26"
+        },
+        {
+          "signature": "public.dunning_lifecycle_issue_recovery_token(uuid,text,timestamptz)",
+          "beforeSha256": "a66f3724b3493d2abd1cf37d9bd3c9edff507233e0b15559ab6f57a371fc7b66",
+          "afterSha256": "f05d82b5f5e11f9940937a615ec41a82a6aea91bf7ea64a0838160a189251dce"
+        },
+        {
+          "signature": "public.subscription_retry_authorize_recovery(uuid,uuid,text,text,timestamptz)",
+          "beforeSha256": "e38b079af57f5b94cd63d94969fc72d09a4865913e4cabdf67ec7f50bd50a3a4",
+          "afterSha256": "abb89e8475b2cd03177bd498a1994bd0ce6682ee4a1279d635cc2e2df253dd11"
+        },
+        {
+          "signature": "public.subscription_retry_schedule_recovery(uuid,text,uuid,timestamptz)",
+          "beforeSha256": "845ef925291947967b26afec985ae05a5fcd0002b35f1f7f4de5afbc0825f533",
+          "afterSha256": "7920d85a66afa4792a249d7afa94e293c00999f2d39e6fdf7373569c650fc5f7"
+        },
+        {
+          "signature": "public.subscription_retry_prepare(uuid,text,jsonb,timestamptz)",
+          "beforeSha256": "fba98bb98e04b4b91fac8ab23fd84bf0edfe92f01b5c28fcf44b28ed4ac5801e",
+          "afterSha256": "b90e8c1a0c999d649ac884272cd16c83d7eddfcc6fa6019fa623b1b715466091"
+        },
+        {
+          "signature": "public.subscription_retry_candidates(integer,timestamptz)",
+          "beforeSha256": "8d9d231eee35343c7b0cd391b5dbf83259b07d4094492437cc6badb6fb8fe8e6",
+          "afterSha256": "22e5c7c34f4baa2ccfb3fb3fd9245da7ac44bb6edf4198cc252eadcc2d4acbf1"
+        },
+        {
+          "signature": "public.payment_method_ref_upsert(text,uuid,uuid,text,text,text,text,text,text,boolean,timestamptz,jsonb,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "838b2132c04e565d5950128242651114174f9e231481be782828e2d922665022"
+        },
+        {
+          "signature": "public.payment_method_ref_deactivate(text,uuid,text,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "55429742d4d9652fefcf3e1e1fcfab99f928fb943f746cd6b55e3e75ed56d0e6"
+        },
+        {
+          "signature": "public.payment_method_ref_switch_active(text,uuid,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "c43e61e409303863e3e4879ae0bde655688e09d0cc88552a1caec720a3116a44"
+        },
+        {
+          "signature": "public.payment_method_ref_link_subscription_mirror(text,uuid,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "3515f1a4181fba886793585487fcae49553f336fcf0c8f75311d96b551baaf0c"
+        },
+        {
+          "signature": "public.subscription_method_chargeable_unattended(uuid,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "ec0343650b43cbf3e57970e3ac9a002c314c9e5bc84de778da2df241bc48e639"
+        },
+        {
+          "signature": "public.subscription_method_health_read(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "e2e13ca569d59b8d6a44c2cfd1e25c249da618b4b2d7c9f0a3d93ddc2318eef3"
+        },
+        {
+          "signature": "public.payment_method_ref_read(text,text)",
+          "beforeSha256": null,
+          "afterSha256": "54726f774092b3506ccd18d001fc24b92ab291b28b2fece1aa9f3bd7bcad9ae3"
+        },
+        {
+          "signature": "public.payment_method_setup_resolve_owner(uuid,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "5f7df0f0800c7a65eb88b8973aa3f23d341863ca8be61578b6c4f6dbb9d19997"
+        },
+        {
+          "signature": "public.payment_control_mark_setup_event_processed(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "9fb82cd8b66ea21b9016f3dddd423e4bd37789778729d3ff7d074d43aaff8182"
+        },
+        {
+          "signature": "public.payment_method_ref_repair_subscription_scope(text,uuid,timestamptz,text)",
+          "beforeSha256": null,
+          "afterSha256": "f5a32e6bb2fc3f2951f209888f0d4657cf9535907b784f30b8f4a79ddc621eef"
+        },
+        {
+          "signature": "public.payment_method_ref_repair_subscription_scope_batch(integer,boolean,text)",
+          "beforeSha256": null,
+          "afterSha256": "4e9d4050c6a502dc1c246f1fdab67ea1c7ff794fa33fe9e7ec028dc1310239ce"
+        },
+        {
+          "signature": "public.subscription_try_schedule_recovery_retry(uuid,text,timestamptz,text)",
+          "beforeSha256": null,
+          "afterSha256": "c841f07c69aa646f4735dc035d2642ba39cdc1429cde0b4d12352281f763b562"
+        },
+        {
+          "signature": "public.subscription_method_uses_recorded_refs(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "35c469dcc7bdc7ebf8060d4714e959c7bd9905be9b4c56be88f002e05419beb8"
+        },
+        {
+          "signature": "public.payment_method_ref_for_subscription_read(uuid,text,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "3a981d2cca6f6bb392bffc5dc51bf2e6344409079a0b2290d3abdbab63988076"
+        },
+        {
+          "signature": "public.payment_method_recovery_authority_read(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "0ce6d5d691ba01794dfbbd9cfd934efe18608aca6d075cf46ee61a7324e531ea"
+        },
+        {
+          "signature": "public.payment_method_recovery_authority_bind(uuid,uuid,text,text,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "3be8d4f1bfba6612367824afb8c7ac0bb1548d93274f6261e9643dbecc3eb8ff"
+        },
+        {
+          "signature": "public.payment_method_recovery_authority_record(uuid,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "a7ea0aac3c0b0a3a1307c3d7a227163ce8b4832fac11abc11e5718df9f0107f8"
+        },
+        {
+          "signature": "public.payment_method_recovery_authority_freeze(uuid,uuid,text,text,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "b981f1f0581623615d726f6db5c72a58269db0d5346f23ae2edbb0876af6fb29"
         }
       ]
     }

@@ -22,6 +22,7 @@ export type {
   RefundEvidencePolicy,
   VerifiedPaymentEvidence,
   VerifiedMethodEvidence,
+  VerifiedReusableMethod,
   PaymentVerifyNormalizePort,
   ProviderReadPurpose,
   PaymentAbsenceEnvelope,

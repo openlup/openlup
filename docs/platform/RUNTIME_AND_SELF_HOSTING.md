@@ -485,10 +485,20 @@ or hosted duration evidence.
 | Reference repair view | `ReferenceStorePage` mounts `ReferencePaymentRepairPage` after checkout; `PaymentRepairStatus` reuses the injected customer status poller. Exact file/specifier guardrail exemptions admit only the status-only `commerce/paymentStatusClient`, customer `commerce/paymentVerifyClient` and injected `payment/components/PaymentStatusPoller` modules; the broader `commerceClient` stays refused. Redirect handoff links render only for HTTPS URLs. Verify responses never prove payment; only stored paid status does. Native method setup is visibly unsupported without host collection/confirmation. The store is opt-in: a source-import scan proves no module outside its own test imports it, so no shipped default route mounts it. |
 
 Method evidence registration data contains neutral provider references, method
-kind and status. The host's `resolveMethodOwner` supplies the client and optional
+kind, status, consent and expiry. The host's `resolveMethodOwner` supplies the client and optional
 subscription identity before projection; untrusted adapter ownership fields are
 ignored. Without that resolver no reusable registration carrier is produced.
-The native schema descriptor still refuses method setup. The direct truth
+With the method-reference forward installed, the native schema descriptor admits
+method setup. `createPostgresPaymentMethodSetup` checks ownership before customer
+or setup calls and preserves the customer/setup idempotency keys. Inject the
+selected adapter's `methodPort` and host-owned customer creation; clients without
+collection capability still return `unsupported`. `createPostgresPaymentWebhookMethodRefPort`
+and `consumePostgresPaymentMethodDelivery` register and consume recorded facts
+before `payment_control_mark_setup_event_processed` closes the setup receipt.
+Saved-method money events use the optional `resolveSavedMethodOwner` resolver;
+method events retain `resolveMethodOwner`. Both resolve host-owned identity.
+Consent and expiry survive projection; absent ownership resolution supplies no
+registration carrier. The direct truth
 binding now supplies its host executor to `createPaymentServices`; each runtime
 unit closes its scope after either result. `bindM07Payments` refuses unknown or
 unavailable selections. The existing bundle composer has one optional payments
@@ -733,7 +743,10 @@ Every output lane stays callable when unselected and returns a named
 `{ supported: false, refusalCode }` after the principal guard. PaymentMethod returns
 the host paymentMethodSetup refusal by identity, commerce returns commerceRecovery,
 and other lanes return a frozen host_binding_required refusal. Supported
-paymentMethodSetup requires paymentMethod; supported commerceRecovery/configuredPurchase
+paymentMethodSetup requires paymentMethod. The selected native lane can be
+`createPostgresPaymentMethodSetup`; its principal and subscription checks run
+before provider I/O, and the facade retains its principal guard. Installation
+alone selects no account lane; supported commerceRecovery/configuredPurchase
 require commerce. Supported subscriptions.genericBundleCommands/commandBoundReceipts
 require at least one selected managed/native legacy/raw/typed command lane. The factory
 returns the SelfServiceCommandFacade envelope. Its trailing defaulted

@@ -112,7 +112,8 @@ export function createPostgresAccountReadSources<Extension, ChargeEvidence = Acc
         pauseStartedAt: text(row.starts_at), pauseEndsAt: nullableText(row.ends_at) }]));
     },
     async readPaymentEvidence(ids) {
-      const result = await rows(`SELECT s.id,method.health_state,terms.unattended_charge_authorized_at,
+      const result = await rows(`SELECT s.id,CASE WHEN method.provider_kind IS NOT NULL OR terms.settlement_channel_key<>'sandbox'
+        THEN public.subscription_method_health_read(s.id)->>'health_state' ELSE method.health_state END AS health_state,terms.unattended_charge_authorized_at,
         (SELECT wait.state FROM public.subscription_stock_wait_cases wait WHERE wait.subscription_id=s.id
           AND wait.scheduled_at=s.next_cycle_at AND wait.state IN('waiting','stock_secured')
           ORDER BY wait.opened_at DESC,wait.id DESC LIMIT 1) AS stock_wait_state
