@@ -507,12 +507,14 @@ commands in one Bash session: `--packages` substitutes the candidate version
 and packed install artifacts, while `--registry` runs the page verbatim against
 the public registry.
 The `install-packages` job runs it after the package proofs and before PostgreSQL
-cleanup with `--advisory`: a failed tutorial becomes a warning annotation and a
-FAIL line in the step summary, and the step still succeeds. The workflow admits no
-`continue-on-error`, so this flag is how the step stays non-blocking; after two
-green merge-group runs on main the flag is removed and the step blocks.
+cleanup as a blocking step: the condition of two green merge-group runs on main
+has been met. It runs without `--advisory`, so a failed tutorial fails the step.
+The workflow admits no `continue-on-error`.
 Push-to-main runs reuse merge-group evidence and skip the tutorial step when
 reuse succeeds.
+The separate registry tutorial remains advisory until its second green run:
+`--advisory` reports a failure as a warning annotation and a FAIL line in the
+step summary while the step still succeeds.
 A step the product cannot pass is stated as a current limit, not worked around.
 
 ## Impact

@@ -936,10 +936,14 @@ reads the release tag's tutorial page after checking that tag's commit against
 the completed publication run. It accepts only a release event with an `openlup-core-v<version>` tag,
 then waits up to ten minutes for the matching package set and core's `latest`
 value on npm before running the guide tutorial against the registry and a
-disposable pinned PostgreSQL database. The tutorial is advisory: a failure
-produces a warning annotation and a step summary. A propagation timeout also
-warns and defers the tutorial. This workflow is not a required check and does not
-hold the publication run open or delay the next release dispatch.
+disposable pinned PostgreSQL database. The registry tutorial remains advisory
+until its second green run: a failure produces a warning annotation and a step
+summary. A propagation timeout also warns and defers the tutorial. This workflow
+is not a required check and does not hold the publication run open or delay the
+next release dispatch.
+
+The packed-candidate tutorial in `install-packages` is blocking because its
+condition of two green merge-group runs on main has been met.
 
 Every package release moves the npm `latest` dist-tag, which is why its version
 must be above every version npm holds. A package's `publishConfig.tag` stays

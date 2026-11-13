@@ -392,6 +392,10 @@ dependency jobs for the aggregate. The six required context names and native-rev
 `install-packages` runs the shared package gate after both reference-profile builds,
 independently of the required `test` job in a separate checkout and installation. It discovers every publishable package from `config/openlup-packages.json` and its actual npm workspace, and refuses missing `api:check`, `ci:required` or `test:consumer` scripts before packing. The existing cold producer emits one current-set manifest. All API checks run before any package's `ci:required`, which receives the same verified manifest and exact checkout commit through `OPENLUP_PACK_MANIFEST` and `OPENLUP_PACK_COMMIT`. Cold preparation clears each workspace per target, so the API phase restores each package's built declarations and prerequisites through the existing build helper; it leaves the retained tarballs untouched and includes that cost in its timing. There is no missing-script skip or package-name routing table. A new module must supply installed-artifact consumer coverage, meaningful failure cases and its owning required batch; script declarations alone do not prove that those assertions are sound. Review checks that the batch actually invokes its consumer and preserves its required tests. Keep API checks out of that batch because the shared phase already runs them.
 
+The packed-candidate guide tutorial runs after the package gates as a blocking
+step: its condition of two green merge-group runs on main has been met.
+The separate registry tutorial remains advisory until its second green run.
+
 After package proof succeeds, `install-browser` runs the starter's installed
 PostgreSQL browser journeys in four parallel shards through
 [`starter-browser-ci.mjs`](scripts/starter-browser-ci.mjs). Pinned official artifact
