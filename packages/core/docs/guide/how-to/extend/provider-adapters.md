@@ -1,0 +1,102 @@
+# Compose a provider adapter
+
+Connect an external service by implementing its neutral OpenLup port and
+selecting the implementation in your application's server composition.
+
+## Provider adapters
+
+An adapter translates service requests, verification evidence and failures into
+the port's contract. Domain policy uses declared capabilities; it must not infer
+behaviour from a provider name. Preserve the contract's identity, money, scope
+and replay fields when translating requests and results.
+
+Declare only capabilities the adapter can perform. An unavailable operation
+must return the port's explicit refusal before effects, rather than report
+success. Marketing-sync operations use `kind: "refused"` with reason
+`unsupported` or `verification_pending` for the corresponding capability state.
+Payment readback uses `kind: "unsupported"` when unavailable. Fulfillment ports
+use their operation-specific result with refusal reason `unsupported`.
+
+Construct and inject the adapter explicitly. Importing a contract or an opt-in
+adapter does not install application routes, schedules or workers. Supply
+credentials from the host when needed; keep secrets out of source, fixtures,
+persisted diagnostics and logs.
+
+## Adapter classes and templates
+
+Choose the class matching the service's responsibility. Use these neutral
+contracts as the template for your implementation:
+
+| Class | Contract and construction | Offline check |
+| --- | --- | --- |
+| Email | Return an `EmailTransport` using `createGuardedEmailTransport` from `@openlup/platform/communications`. | `runCommunicationsAdapterConformance` from the same entry. |
+| Marketing | Implement `MarketingSyncProvider` from `@openlup/platform/communications/contracts` for profile sync, consent readback and erasure. Use the separate `ConsentPushPort` for consent changes. | `runCommunicationsAdapterConformance` checks marketing sync; consent push needs separate checks. |
+| Payments | Implement `PaymentAdapter` and declare `PaymentAdapterCapabilities` from `@openlup/platform/payments/contracts`. | `runPaymentAdapterConformance` from `@openlup/platform/payments`, with a `PaymentAdapterConformanceSubject` and verification fixtures. |
+| Fulfillment | Declare `FulfillmentCapabilityDescriptor` and implement `FulfillmentDispatchPort`, `FulfillmentObservationPort` and `FulfillmentReadbackPort` from `@openlup/platform/fulfillment/contracts`. Add label, stock or product sync ports only for the capabilities you expose. | `runFulfillmentAdapterConformance` from `@openlup/platform/fulfillment`, with adapter-owned fixtures. |
+
+Find protocol-specific opt-in entries in the installed package's export map.
+Keep their imports in your server composition. The neutral communications and
+browser contracts entries do not export provider factories. Consult the
+[package capability reference](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/AGENTS.md#subpath-maturity)
+for maturity.
+
+### Node email protocol template
+
+Put the outbound request behind `createGuardedEmailTransport`. Supply a host
+egress policy for every send: it selects the credential, effective recipient and
+environment. A throwing policy returns `email_egress_policy_unavailable`, an
+invalid decision returns `email_egress_policy_invalid`, and a blocked decision
+returns `email_egress_blocked`, all before the sender runs. A `drop` decision
+returns a suppressed result without sending. A raw transport passed to
+`guardEmailTransport` returns `email_egress_unadmitted`.
+
+Preserve optional message fields, the exact idempotency key and cancellation
+signal. A successful send response means acceptance, not confirmed delivery.
+For delivery observations, authenticate the original webhook bytes before JSON
+parsing and exclude explicitly foreign environments before lookup or writes.
+Use `processEmailObservation` with your lookup and atomic writer. Use
+`runDeliveryReconciliation` to read existing message IDs and apply observations;
+reconciliation must not send replacement messages. Your host supplies routing,
+scheduling, storage and credential resolution.
+
+### Singleton marketing template
+
+Use an account-scoped adapter when the external service shares profile and
+consent state across audiences. For this singleton template, supply private
+subject mappings, current authorization and local evidence, a credential
+resolver and atomic account storage. Keep account operations at
+`verification_pending` until account-specific
+test readback establishes the required scopes, mappings and absence of unwanted
+automation triggers.
+
+The existing marketing bridge uses `MarketingAutomationProviderPort`. Its
+`NewsletterSyncProviderPort` exposes no newsletter capabilities and returns
+`status: "skipped"` with reason `unsupported` for sync and reconciliation.
+
+Write only owned profile fields. Preserve the audience on negative feedback;
+remote subscribed state never grants local permission. Report incomplete
+readback as partial coverage. An audience-scoped erasure request cannot become
+account-wide deletion, and acknowledgement cannot prove completed erasure.
+If deletion readback is unavailable, refuse it with `unsupported`.
+
+Declare whether a consent grant affects an audience or the whole account. For
+account-wide effects, check every affected consent flow and prove that the
+operation cannot clear suppression. Keep audience-only withdrawal separate from
+explicit all-purpose withdrawal. Send one subject per request and treat an
+asynchronous job response as acceptance only.
+
+Allow withdrawal despite an earlier unsettled grant, retaining
+`reconcileRequired`. Restrict new grants until fresh, complete readback after
+authenticated settlement resolves the race; if the subject is still subscribed,
+issue a fresh withdrawal request ID. Do not automatically retry an uncertain
+mutation. Share the atomic journal and mutable availability record across all
+adapter instances for the account and environment. After restart, keep admission
+quarantined until explicit host reconciliation and adapter reconstruction.
+
+## Verify before connecting
+
+Cover success, refusal, malformed or missing evidence, duplicates, out-of-order
+observations and retry or replay with offline fixtures. A passing fixture check
+does not prove account readiness, durable storage atomicity or authorization to
+perform live operations. Follow [adapter conformance](adapter-conformance.md) to
+run the communications example and check your implementation.

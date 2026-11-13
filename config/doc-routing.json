@@ -7,8 +7,8 @@
       "paths": [
         "examples/own-stack/**"
       ],
-      "doc": "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
-      "anchor": "#own-stack-integration-sample"
+      "doc": "packages/core/docs/guide/how-to/build/own-stack.md",
+      "anchor": "#choose-the-imports-and-ports"
     },
     {
       "id": "repository",

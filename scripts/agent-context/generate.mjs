@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 // These canonical owner sections also appear in the public documentation routes.
 export const routes = {
   core: [
-    ['extend-platform', 'Choose an extension seam', 'docs/platform/ARCHITECTURE_AND_EXTENSIONS.md', 'Extension seams'],
+    ['extend-platform', 'Choose an extension seam', 'packages/core/docs/guide/how-to/extend/choose-an-extension-seam.md', 'Extension seams'],
     ['canonical-status', 'Map provider status safely', 'docs/platform/CANONICAL_CONTRACTS.md', 'Canonical status'],
     ['late-payment-cycle', 'Handle late payment without compressing the cycle', 'packages/core/docs/SUBSCRIPTION_ENGINE.md', 'A late payment shifts the cycle; it never compresses it'],
     ['subscription-layer-delivery', 'Locate pure engine and durable delivery boundaries', 'docs/platform/SUBSCRIPTION_WORKFLOWS.md', 'Installed subscription boundary'],
@@ -22,7 +22,7 @@ export const routes = {
     ['migration-data-ownership', 'Keep adopter data in its owned schema', 'docs/platform/DATA_AND_MIGRATIONS.md', 'Data ownership'],
     ['migration-forward-path', 'Follow the ordered additive migration path', 'docs/platform/DATA_AND_MIGRATIONS.md', 'Additive forward release path', 'The release producer refuses'],
     ['checkout-payment-outbox-idempotency', 'Preserve repeatable checkout effects', 'docs/platform/CANONICAL_CONTRACTS.md', 'Idempotency'],
-    ['host-provider-adapter-capability-refusal', 'Compose declared provider capabilities through ports', 'docs/platform/CANONICAL_CONTRACTS.md', 'Provider adapters', '### Adapter classes and example templates'],
+    ['host-provider-adapter-capability-refusal', 'Compose declared provider capabilities through ports', 'packages/core/docs/guide/how-to/extend/provider-adapters.md', 'Provider adapters'],
   ],
 };
 
@@ -79,10 +79,8 @@ export function generateCorpus(root, packageName) {
     const citation = shipped ? localPath : `https://github.com/openlup/openlup/blob/${releaseTag}/${source}`;
     const metadata = { id, source: citation, heading, startLine, endLine, sha256 };
     inventory.push(metadata);
-    const repositoryNote = id === 'extend-platform'
-      ? 'The paths `src/lib/coreDomains.ts`, `src/domains`, `server/domains` and the `#application-domains` import below belong to the OpenLup source repository. They are not required application files or aliases; use your application\'s own composition.\n\n' : '';
     const target = shipped ? citation : `${citation}#L${startLine}-L${endLine}`;
-    sections += `## ${id}: ${title}\n\nSource: [${shipped ? localPath : 'OpenLup source repository at ' + releaseTag}](${target}).\n\n${repositoryNote}<!-- openlup-context ${JSON.stringify(metadata)} -->\n${excerpt}` +
+    sections += `## ${id}: ${title}\n\nSource: [${shipped ? localPath : 'OpenLup repository at ' + releaseTag}](${target}).\n\n<!-- openlup-context ${JSON.stringify(metadata)} -->\n${excerpt}` +
       '<!-- /openlup-context -->\n\n';
   }
   output += `<!-- openlup-context-inventory ${JSON.stringify(inventory)} -->\n\n${sections}`;

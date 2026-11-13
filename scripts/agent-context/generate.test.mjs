@@ -36,9 +36,11 @@ test('all checked-in corpora are current and every citation binds exact source b
       const metadata = JSON.parse(json);
       const originalSource = routes[packageName].find((route) => route[0] === metadata.id)[2];
       const localPrefix = `packages/${packageName}/`;
-      const version = JSON.parse(readFileSync(resolve(root, `packages/${packageName}/package.json`), 'utf8')).version;
-      const expected = originalSource.startsWith(localPrefix) ? originalSource.slice(localPrefix.length)
-        : `https://github.com/openlup/openlup/blob/openlup-${packageName}-v${version}/${originalSource}`;
+      const manifest = JSON.parse(readFileSync(resolve(root, `packages/${packageName}/package.json`), 'utf8'));
+      const localPath = originalSource.startsWith(localPrefix) ? originalSource.slice(localPrefix.length) : undefined;
+      const shipped = localPath && manifest.files.some(pattern => pattern === localPath || (pattern.endsWith('/**') && localPath.startsWith(pattern.slice(0, -2))));
+      const expected = shipped ? localPath
+        : `https://github.com/openlup/openlup/blob/openlup-${packageName}-v${manifest.version}/${originalSource}`;
       assert.equal(metadata.source, expected);
       const target = expected.startsWith('https:') ? `${expected}#L${metadata.startLine}-L${metadata.endLine}` : expected;
       assert.ok(corpus.includes(`](${target})`));
@@ -88,7 +90,8 @@ test('unshipped package owners use release links and version changes stale the c
     writeFileSync(manifest, JSON.stringify({ version: '0.99.0', files: ['README.md'] }));
     const corpus = generateCorpus(temporary, 'core');
     assert.match(corpus, /https:\/\/github.com\/openlup\/openlup\/blob\/openlup-core-v0\.99\.0\/packages\/core\/docs\/SUBSCRIPTION_ENGINE\.md/u);
-    assert.match(corpus, /not required application files or aliases/u);
+    assert.match(corpus, /https:\/\/github.com\/openlup\/openlup\/blob\/openlup-core-v0\.99\.0\/packages\/core\/docs\/guide\/how-to\/extend\/choose-an-extension-seam\.md/u);
+    assert.doesNotMatch(corpus, /not required application files or aliases/u);
     writeFileSync(manifest, JSON.stringify({ version: '0.99.1', files: ['README.md'] }));
     assert.notEqual(generateCorpus(temporary, 'core'), corpus);
   } finally { rmSync(temporary, { recursive: true, force: true }); }

@@ -52,7 +52,7 @@ Prune defaults to 30 days for processed and 90 for discarded, in batches of 500.
 
 ## outbox-retry-dispatch-handler-idempotency: Keep handler effects idempotent across retries
 
-Source: [OpenLup source repository at openlup-outbox-v0.39.0](https://github.com/openlup/openlup/blob/openlup-outbox-v0.39.0/docs/platform/CANONICAL_CONTRACTS.md#L250-L272).
+Source: [OpenLup repository at openlup-outbox-v0.39.0](https://github.com/openlup/openlup/blob/openlup-outbox-v0.39.0/docs/platform/CANONICAL_CONTRACTS.md#L250-L272).
 
 <!-- openlup-context {"id":"outbox-retry-dispatch-handler-idempotency","source":"https://github.com/openlup/openlup/blob/openlup-outbox-v0.39.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Idempotency","startLine":250,"endLine":272,"sha256":"2d719cee94edefe6eccf76aa9c34bbf8a40cdb7e478e313b4a939e769c2e4d71"} -->
 ## Idempotency

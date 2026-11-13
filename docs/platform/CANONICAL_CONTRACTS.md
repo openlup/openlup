@@ -306,52 +306,21 @@ freezes these behaviors using the existing three routines.
 
 ## Provider adapters
 
-Domain code depends on a port, not on a provider SDK. An adapter translates the
-provider protocol, verification evidence, and failure facts into the port's
-neutral contract. It must carry the platform's identity fields without changing
-their meaning and expose declared capabilities rather than relying on provider
-name checks in domain policy.
+Moved to [Compose a provider adapter](../../packages/core/docs/guide/how-to/extend/provider-adapters.md#provider-adapters).
 
-An adapter needs conformance coverage for success, refusal, malformed or missing
-evidence, duplicate delivery, out-of-order delivery, and retry/replay. Reference
-fixtures demonstrate these behaviours without live provider access; they do not
-prove a provider integration, release, or support tier.
+Domain code depends on a port, not on a provider SDK. Keep provider protocol
+translation inside adapters. Preserve the meaning of neutral identity fields
+and select domain behavior by declared capabilities rather than provider names.
 
 ### Adapter classes and example templates
 
-An adapter belongs to one class and implements that class's neutral ports. Each
-shipped example below is the template for an adapter for another vendor in the
-same class; the rules above apply to every class.
+Moved to [Compose a provider adapter](../../packages/core/docs/guide/how-to/extend/provider-adapters.md#adapter-classes-and-templates).
 
-A communications (M04) mail adapter returns an `EmailTransport` from
-`@openlup/platform/communications`, built with `createGuardedEmailTransport`.
-Marketing types come from `./communications/contracts`: `MarketingSyncProvider`
-covers profile sync, consent readback and erasure, and `ConsentPushPort` covers
-consent push. The marketing example also implements
-`MarketingAutomationProviderPort` and a refusal-only `NewsletterSyncProviderPort`.
-See the [communications import](PLATFORM_PACKAGE_REFERENCE.md#communications-import)
+Concrete adapter examples remain contributor discovery material. The marketing
+example also implements `MarketingAutomationProviderPort` and a refusal-only
+`NewsletterSyncProviderPort`; see the
+[communications import](PLATFORM_PACKAGE_REFERENCE.md#communications-import)
 and the [marketing adapter](#opt-in-singleton-marketing-adapter).
-
-A payments (M07) adapter implements `PaymentAdapter` and declares
-`PaymentAdapterCapabilities` from `./payments/contracts`. Prove it with
-`runPaymentAdapterConformance` from `@openlup/platform/payments`, using
-`PaymentAdapterConformanceSubject` from `./payments/contracts` and verification
-fixtures. See the [opt-in payment example](#opt-in-payment-example).
-
-A fulfillment (M08) adapter declares `FulfillmentCapabilityDescriptor` and
-implements the experimental dispatch, label, observation, readback and sync ports
-from `@openlup/platform/fulfillment/contracts` (`FulfillmentDispatchPort`,
-`FulfillmentObservationPort`, `FulfillmentReadbackPort`; optional
-`FulfillmentStockSyncProvider` and `FulfillmentProductSyncProvider`). See the
-[fulfillment owner](ARCHITECTURE_AND_EXTENSIONS.md#fulfillment-contracts) for
-command preparation, host keys, replay, paid handoff and proof/storage boundaries.
-The offline `runFulfillmentAdapterConformance` checks adapter-owned fixtures and
-returns sanitized evidence. Native stores and real PostgreSQL conformance cover
-durable storage and arrival alignment. The [opt-in fulfillment example](#opt-in-fulfillment-example)
-is the template for another warehouse, marketplace fulfillment service or parcel
-adapter and passes M08's offline runner with adapter-owned fixtures.
-Provider-account proof remains separate; account readbacks remain owner acts.
-This surface activates no provider or reference route.
 
 | Class | Shipped example subpaths |
 | --- | --- |
@@ -359,31 +328,27 @@ This surface activates no provider or reference route.
 | Payments | `@openlup/platform/payments/stripe`, `@openlup/platform/payments/tpay` |
 | Fulfillment | `@openlup/platform/fulfillment/omnipack` |
 
-The examples are default-off and opt-in: the host selects an adapter for each
-port it needs, and default wiring includes none. To write another vendor's
-adapter, implement the class port and declare capabilities honestly: an
-unsupported capability is an explicit refusal, never a silent no-op. Pass the
-payments conformance runner or, for communications, extend the class's
-[tests](../../packages/platform/test/communications/), including refusal
-behaviour, without live provider access. Keep secrets transient and
-host-supplied at call time, never in source, fixtures or logs. Keep the adapter
-in your own source or propose it upstream through
-[contribute existing adopter code, then refactor](../../CONTRIBUTING.md#contribute-existing-adopter-code-then-refactor).
+Keep the concrete [communications tests](../../packages/platform/test/communications/)
+with their adapter owner. Payment and fulfillment source examples remain at the
+[opt-in payment example](#opt-in-payment-example) and
+[opt-in fulfillment example](#opt-in-fulfillment-example). Upstream contributions
+follow [contribute existing adopter code, then refactor](../../CONTRIBUTING.md#contribute-existing-adopter-code-then-refactor).
+
+Evidence (historical record, 2026-11-13):
+
+The [opt-in fulfillment example](#opt-in-fulfillment-example)
+is the template for another warehouse, marketplace fulfillment service or parcel
+adapter and passes M08's offline runner with adapter-owned fixtures.
+Provider-account proof remains separate; account readbacks remain owner acts.
+This surface activates no provider or reference route.
 
 ### Opt-in Node protocol adapter
 
-`communications/resend` is an experimental Node-only subpath.
-It exports exactly three functions: guarded transport creation, authenticated
-webhook handling and GET-only delivery reconciliation. Types remain on the existing neutral entries.
-The neutral communications and browser contracts entries expose no vendor factory.
+Moved to [Compose a provider adapter](../../packages/core/docs/guide/how-to/extend/provider-adapters.md#node-email-protocol-template).
 
-Every `.send` enters `createGuardedEmailTransport` before the internal POST.
-The host supplies the policy and environment tag name; only the validated
-credential, effective recipient and environment tag reach the provider. Missing,
-throwing, malformed or blocked policy causes zero POST; drop is terminal
-`ok + suppressed` with zero POST. Optional payload keys, exact idempotency-key
-bytes (including empty), abort and 2xx acceptance without an ID retain the
-reference transport shapes. Acceptance is not delivery.
+`communications/resend` remains the experimental Node-only concrete adapter.
+Its webhook signature dialect and event admission inventory belong to this
+adapter:
 
 The webhook authenticates the original string/UTF-8 bytes before JSON parsing,
 using the provider bare or `v1,` signature-member dialect, literal or canonical
@@ -398,44 +363,23 @@ the webhook event inventory is an admission gate only.
 The webhook returns a fixed 500 body on processing failure and only an HTTP
 disposition for unsupported, missing-ID or foreign events.
 
-Reconciliation delegates to `runDeliveryReconciliation`, with internal GET reads
-of host-selected existing IDs. Only failed 404 reads contribute to the existing
-three-consecutive-404 abandonment rule. Auth/network/provider errors remain
-separate; sent and unknown snapshots stay pending. Polls feed the host's existing
-atomic writer and never recovery-send. No route, schedule, store, credential
-reader or reference binding is installed. Fetch is injectable; no SDK or new
-dependency is required. [A1 evidence and limits](plans/oss-a1-communications-adapters.md)
+Only failed 404 reads contribute to the existing three-consecutive-404
+abandonment rule. Auth/network/provider errors remain separate; sent and unknown
+snapshots stay pending.
+
+Evidence (historical record, 2026-11-13):
+
+[A1 evidence and limits](plans/oss-a1-communications-adapters.md)
 are protocol-only; account verification remains pending.
 
 ### Opt-in singleton marketing adapter
 
-`communications/klaviyo` exposes one Node factory implementing the neutral
-profile, negative-consent, erasure and consent-push ports, plus the existing
-marketing bridge and refusal-only newsletter port. Construction supplies private
-host identity/authority registries, a credential resolver and atomic account
-storage; fetch and clock are injectable. Nothing installs a route or worker.
+Moved to [Compose a provider adapter](../../packages/core/docs/guide/how-to/extend/provider-adapters.md#singleton-marketing-template).
 
-Account-dependent operations remain `verification_pending` until owner TEST
-readback binds scopes, mappings and operation-specific no-trigger evidence.
-Deletion read is unsupported; audience-only deletion cannot become account-wide.
-Profile writes change owned fields only and verify the private projection.
-Negative readback preserves each fact's scope; scoped remote consent is unknown,
-missing sources mean partial coverage, and remote subscribed never grants locally.
+Keep the `communications/klaviyo` result-recording and account-slot algorithm
+with its concrete adapter owner:
 
-The push capability declares account-wide grant effects while each local grant
-remains audience-scoped. Grant admission must account for all profile-consent
-flows, segments, backfills and DOI, and prove suppression cannot be cleared at
-effect time. List-only withdrawal requires proven-safe scope; explicit all-purpose
-withdrawal is separate. Every request encodes one subject. Asynchronous job
-acknowledgement proves acceptance only, with no import flag or job-control API.
-
-An earlier unsettled grant never delays withdrawal. Its receipt/result retains
-`reconcileRequired`, grants stay restricted during unconfirmed withdrawal, and
-only fresh complete readback after authenticated settlement of all earlier grants
-can resolve the race. The host reissues a withdrawal with a new requestId when
-that read shows subscribed. Replay, generation fences, cooling, mapping writes
-and quarantine share the host's atomic journal; uncertain mutation dispatch is
-never automatically retried. Non-grant results are recorded under durable
+Non-grant results are recorded under durable
 quarantine until the stored bytes are verified; a grant's result relies on its
 durable per-subject dispatch fence and its recorded grant cause instead of
 setting the account bit. A withdrawal under grant-only availability quarantine
@@ -445,9 +389,12 @@ recording or release preserves completed facts with an unknown journal and
 quarantines the account for repair. The private storage seam also supplies one
 shared mutable availability record per account/environment, independent of
 storage failures. It holds admission through result release and remains closed
-on uncertainty. A host restart begins quarantined; only explicit host journal
-reconciliation and adapter reconstruction restore admission. Default pacing waits within the deadline so
-preflight reads cannot starve the mutation. See the [A1 ledger](plans/oss-a1-communications-adapters.md#p2-opt-in-singleton-marketing-adapter)
+on uncertainty. Default pacing waits within the deadline so
+preflight reads cannot starve the mutation.
+
+Evidence (historical record, 2026-11-13):
+
+See the [A1 ledger](plans/oss-a1-communications-adapters.md#p2-opt-in-singleton-marketing-adapter)
 for construction requirements, offline evidence and remaining account gates.
 
 ## Subscription lifecycle

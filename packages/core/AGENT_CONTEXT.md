@@ -7,42 +7,34 @@ Shipped package-local sources are relative to this package. Other sources link t
 Repository paths, imports and relative links inside verbatim excerpts describe that source checkout, not files to find or create in your application.
 Consult installed declarations and README for the installed version.
 
-<!-- openlup-context-inventory [{"id":"extend-platform","source":"https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md","heading":"Extension seams","startLine":514,"endLine":535,"sha256":"e19b10b92b357c2630911d7239ae234bd556e20a413a6d0228203966bf27656a"},{"id":"canonical-status","source":"https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Canonical status","startLine":235,"endLine":249,"sha256":"3e8eacd8144a6856235738448cf0cbb310e75f7eff676a08b69277b5eb84156b"},{"id":"late-payment-cycle","source":"docs/SUBSCRIPTION_ENGINE.md","heading":"A late payment shifts the cycle; it never compresses it","startLine":103,"endLine":132,"sha256":"e57a69b406ed770b4da857883d2dc99bca556125ea7e4c50cb3c0837707ed810"},{"id":"subscription-layer-delivery","source":"https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/SUBSCRIPTION_WORKFLOWS.md","heading":"Installed subscription boundary","startLine":12,"endLine":25,"sha256":"914c5b59307c7b969bdea216df9a5c57c924d95bdfe73c6ad1647de645a01698"}] -->
+<!-- openlup-context-inventory [{"id":"extend-platform","source":"https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/core/docs/guide/how-to/extend/choose-an-extension-seam.md","heading":"Extension seams","startLine":7,"endLine":22,"sha256":"e47333e4c82309d656bd8d3934a97ee9aa5d0966fa8e82ae99367ad7f516d274"},{"id":"canonical-status","source":"https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Canonical status","startLine":235,"endLine":249,"sha256":"3e8eacd8144a6856235738448cf0cbb310e75f7eff676a08b69277b5eb84156b"},{"id":"late-payment-cycle","source":"docs/SUBSCRIPTION_ENGINE.md","heading":"A late payment shifts the cycle; it never compresses it","startLine":103,"endLine":132,"sha256":"e57a69b406ed770b4da857883d2dc99bca556125ea7e4c50cb3c0837707ed810"},{"id":"subscription-layer-delivery","source":"https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/SUBSCRIPTION_WORKFLOWS.md","heading":"Installed subscription boundary","startLine":12,"endLine":25,"sha256":"914c5b59307c7b969bdea216df9a5c57c924d95bdfe73c6ad1647de645a01698"}] -->
 
 ## extend-platform: Choose an extension seam
 
-Source: [OpenLup source repository at openlup-core-v0.39.0](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#L514-L535).
+Source: [OpenLup repository at openlup-core-v0.39.0](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/core/docs/guide/how-to/extend/choose-an-extension-seam.md#L7-L22).
 
-The paths `src/lib/coreDomains.ts`, `src/domains`, `server/domains` and the `#application-domains` import below belong to the OpenLup source repository. They are not required application files or aliases; use your application's own composition.
-
-<!-- openlup-context {"id":"extend-platform","source":"https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md","heading":"Extension seams","startLine":514,"endLine":535,"sha256":"e19b10b92b357c2630911d7239ae234bd556e20a413a6d0228203966bf27656a"} -->
+<!-- openlup-context {"id":"extend-platform","source":"https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/core/docs/guide/how-to/extend/choose-an-extension-seam.md","heading":"Extension seams","startLine":7,"endLine":22,"sha256":"e47333e4c82309d656bd8d3934a97ee9aa5d0966fa8e82ae99367ad7f516d274"} -->
 ## Extension seams
 
-Extensions belong at explicit seams:
+| Your goal | Seam | How to compose your code |
+| --- | --- | --- |
+| Connect an external service | Provider adapter | Implement the domain's neutral port, declare capabilities and inject the adapter into the consuming service. Keep protocol translation and service clients inside the adapter. |
+| Select infrastructure or application behaviour | Configuration and composition | Supply the documented configuration, policy callbacks and port bindings from your application's composition root. Preserve the domain contract. |
+| React to a recorded domain fact | Event subscriber | Bind a handler for the documented event in your application's event registry. Keep the subscriber's work separate from ownership of the originating transaction. |
+| Change presentation or commercial inputs | Theme, copy, catalogue and local policy | Keep these inputs in your application and pass them through the relevant configuration or rendering boundary. |
+| Add a responsibility unique to your application | Application domain | Keep its browser-safe contracts and server implementation in your own source, then connect its handlers and ports in your composition root. |
+| Add a reusable platform capability | Upstream contribution | Propose a generic contract with an explicit compatibility and maintenance owner and conformance evidence. Follow the [contribution rules](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/CONTRIBUTING.md#contribute-existing-adopter-code-then-refactor). |
 
-- provider adapters implement a platform-owned port and capability contract;
-- configuration selects an adopter-owned composition without changing domain
-  semantics;
-- event subscribers react to documented facts without taking hidden ownership of
-  the originating transaction;
-- themes, copy, catalogue data, and local policy remain adopter-owned inputs;
-- an adopter's own domains sit beside the platform's under `src/domains` or
-  `server/domains` and are registered as application domains through the
-  `#application-domains` import (`src/lib/coreDomains.ts` names the platform's
-  core domains; the public binding registers none);
-- a new generic capability is proposed upstream with a compatibility owner and
-  conformance evidence.
-
-Do not turn a local adapter or a one-business rule into a required platform
-dependency. Likewise, do not remove a platform capability merely because one
-adopter customizes it: the platform remains responsible for a complete useful
-module at its own boundary.
+For an application domain, use your application's own module layout and
+registration mechanism. The platform checkout's domain registry and import
+aliases are not an installed domain-registration API. Keep your modules beside
+your package imports; do not edit a platform domain list to add them.
 
 <!-- /openlup-context -->
 
 ## canonical-status: Map provider status safely
 
-Source: [OpenLup source repository at openlup-core-v0.39.0](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/CANONICAL_CONTRACTS.md#L235-L249).
+Source: [OpenLup repository at openlup-core-v0.39.0](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/CANONICAL_CONTRACTS.md#L235-L249).
 
 <!-- openlup-context {"id":"canonical-status","source":"https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Canonical status","startLine":235,"endLine":249,"sha256":"3e8eacd8144a6856235738448cf0cbb310e75f7eff676a08b69277b5eb84156b"} -->
 ## Canonical status
@@ -101,7 +93,7 @@ A shift that pushes the instant past the representable timestamp range answers
 
 ## subscription-layer-delivery: Locate pure engine and durable delivery boundaries
 
-Source: [OpenLup source repository at openlup-core-v0.39.0](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/SUBSCRIPTION_WORKFLOWS.md#L12-L25).
+Source: [OpenLup repository at openlup-core-v0.39.0](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/SUBSCRIPTION_WORKFLOWS.md#L12-L25).
 
 <!-- openlup-context {"id":"subscription-layer-delivery","source":"https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/SUBSCRIPTION_WORKFLOWS.md","heading":"Installed subscription boundary","startLine":12,"endLine":25,"sha256":"914c5b59307c7b969bdea216df9a5c57c924d95bdfe73c6ad1647de645a01698"} -->
 ## Installed subscription boundary

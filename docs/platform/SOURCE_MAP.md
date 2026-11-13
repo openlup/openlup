@@ -48,7 +48,7 @@ use one canonical domain owner unless a narrower workflow route applies.
 
 | Surface | Purpose | Canonical owner | Selectors |
 | --- | --- | --- | --- |
-| own-stack-example | Application-owned routing and authentication using released public catalog ports | [docs/platform/ARCHITECTURE_AND_EXTENSIONS.md](ARCHITECTURE_AND_EXTENSIONS.md#own-stack-integration-sample) | `examples/own-stack/**` |
+| own-stack-example | Application-owned routing and authentication using released public catalog ports | [packages/core/docs/guide/how-to/build/own-stack.md](../../packages/core/docs/guide/how-to/build/own-stack.md#choose-the-imports-and-ports) | `examples/own-stack/**` |
 | repository | Repository entrypoints, build configuration and contributor setup | [CONTRIBUTING.md](../../CONTRIBUTING.md#development-preview-checks) | `*` |
 | public-policy | Public contribution policy and community governance | [CONTRIBUTING.md](../../CONTRIBUTING.md#pull-requests) | `.github/**` |
 | public-checks | Hosted execution ownership and the checks contributors must run | [CONTRIBUTING.md](../../CONTRIBUTING.md#development-preview-checks) | `.github/workflows/**` |

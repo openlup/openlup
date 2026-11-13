@@ -1,7 +1,6 @@
 # Architecture And Extension Boundaries
 
-Status: development-preview contract. This defines the intended public
-boundary; it is not evidence that every seam is stable, packaged, or activated.
+Status: maintainer page: how to change OpenLup. Reader guidance lives in the [OpenLup guide](../../packages/core/docs/guide/README.md); sections marked "Evidence" are frozen historical records.
 
 ## Platform and adopter ownership
 
@@ -513,65 +512,32 @@ mutation routes remain host-owned.
 
 ## Extension seams
 
-Extensions belong at explicit seams:
-
-- provider adapters implement a platform-owned port and capability contract;
-- configuration selects an adopter-owned composition without changing domain
-  semantics;
-- event subscribers react to documented facts without taking hidden ownership of
-  the originating transaction;
-- themes, copy, catalogue data, and local policy remain adopter-owned inputs;
-- an adopter's own domains sit beside the platform's under `src/domains` or
-  `server/domains` and are registered as application domains through the
-  `#application-domains` import (`src/lib/coreDomains.ts` names the platform's
-  core domains; the public binding registers none);
-- a new generic capability is proposed upstream with a compatibility owner and
-  conformance evidence.
+Moved to [Choose an extension seam](../../packages/core/docs/guide/how-to/extend/choose-an-extension-seam.md#extension-seams).
 
 Do not turn a local adapter or a one-business rule into a required platform
-dependency. Likewise, do not remove a platform capability merely because one
-adopter customizes it: the platform remains responsible for a complete useful
-module at its own boundary.
+dependency. Do not remove a platform capability merely because one adopter
+customizes it: the platform remains responsible for a complete useful module at
+its own boundary.
+
+In the reference source, application domains under `src/domains` or
+`server/domains` bind through `#application-domains`; `src/lib/coreDomains.ts`
+names the platform's core domains, and the public binding registers none.
 
 ## Run an adapter conformance check
 
-The Node-only `@openlup/platform/communications` entry exports
-`runCommunicationsAdapterConformance`, following the existing payment, invoice
-and fulfillment runner naming. Its subject union accepts email transports or
-marketing-sync providers, adapter-owned fixtures and a fresh offline factory
-with an external mutation counter for each fixture. The factory receives the
-fixture input and may asynchronously seed its offline state before measurement.
-Fixtures supply exact
-expected results and effect counts. Email requires accepted, failed and
-suppressed cases; suppression must perform no external mutation. Marketing sync
-requires all four operations, an explicit refusal and successful replay for each
-supported mutation. Refusals and read operations must perform no mutation.
-Each supported read operation also requires a completed fixture.
-Result identity, declared scope/capability, negative feedback and evidence-bound
-erasure completion are checked independently of fixture expectations. Raw
-adapter exceptions are replaced with a bounded finding and recheck instruction.
-Use opaque, non-sensitive subject labels: evidence returns those labels and
-passed case names, never provider payloads.
+Moved to [Run an adapter conformance check](../../packages/core/docs/guide/how-to/extend/adapter-conformance.md#run-the-example).
 
-Copy the complete [red-to-green Node example](communications-conformance.mjs)
-into a consumer with a version of `@openlup/platform` exporting the helper, then
-run `node communications-conformance.mjs`. It first constructs a deliberately
-bad offline adapter that reports a failed send as accepted. The runner refuses
-it with `COMMUNICATIONS_CONFORMANCE:email_fixture`, asks the implementer to match
-the expected outcome and provider response, and names the recheck function.
-The corrected adapter retains the failure and passes all three email fixtures.
+Keep the existing owner suites for consent push, durable-store atomicity and
+host wiring.
+
+Evidence (historical record, 2026-11-13):
+
 The same executable file runs inside the isolated packed consumer; the
 [focused witness](../../packages/platform/test/communications/adapterConformance.test.ts)
 also applies defects from the existing marketing-sync conformance helper.
 
-This is supplied-fixture proof, not exhaustive conformance, consent-push
-qualification, durable-store atomicity, host wiring, provider-account readiness
-or permission to send real messages. Keep the existing owner suites for those
-boundaries. The runner itself adds no network client, provider, registry, CLI
-command or automatic fixture discovery. Adapter factories must inject offline
-transports; the helper cannot sandbox an arbitrary factory's I/O.
-
 ## Find consumer evidence for an export
+Evidence: historical record, 2026-11-13. Not reader guidance.
 
 Every code export's existing `packageSurface[export].packageSmokeEvidence` in its
 installed `release-gates.json` remains the evidence source. The
@@ -608,23 +574,7 @@ current core, outbox and platform code exports and refuse missing evidence.
 
 ## Source ejection
 
-An adopter can copy a component or page into its own source. This is source
-ejection, not an extension point. From that point the adopter owns the copied
-surface, including security fixes, tests, compatibility, and manual upgrades.
-The platform will not modify or promise compatibility for an ejected copy.
-
-Use a documented extension seam when updates must continue to flow. A source
-ejection should be a deliberate, reviewable ownership transfer.
-
-This component/page route does not authorize ejection of an adopted package
-engine. For a missing engine seam or defect, use a supported wrapper or native
-adapter only if it preserves the installed contract. Otherwise retain compatible
-serving behavior, record a local reproducer, and hold the dependent change for
-authorized upstream work or an available compatible rollback. Rollback must fit
-the current durable state; it never means rewriting published SQL or discarding
-pending work. Unrelated application development continues. The
-[adopter recipe](adopter-kit/README.md#adopt-or-upgrade-a-package) owns the comparison
-and extension-disposition steps.
+Moved to [Take ownership of a copied component or page](../../packages/core/docs/guide/how-to/extend/eject-source.md#check-for-a-seam-first).
 
 ## Package architecture
 
@@ -1446,6 +1396,7 @@ eligibility function remains injected, and the host explicitly maps captured
 order-mode values instead of the reader choosing application policy.
 
 ### Native parity boundaries
+Evidence: historical record, 2026-11-13. Not reader guidance.
 
 | Capability | Native installation boundary | Required host binding |
 | --- | --- | --- |
@@ -2358,6 +2309,7 @@ source installation and offline adapter tests alone leave stock recovery unavail
 P8 owns serving composition and G23. No executor or schedule is installed here.
 
 ### Managed stock wait and ATP
+Evidence: historical record, 2026-11-13. Not reader guidance.
 
 The managed rail installs the service-role stock-wait SQL functions and shared
 provider ATP seam. A managed `NewPurchaseStockReadPort` adapter is available
@@ -3306,6 +3258,7 @@ The fixture harness prepares dependencies; the upgrade command never installs
 them. Registry unavailability or an integrity mismatch fails the proof.
 
 ## Existing-store transfer and recovery
+Evidence: historical record, 2026-11-13. Not reader guidance.
 
 The connected native profile retains both open and accepted package quote
 previews, with their original acceptance key and event reference. Restore places
@@ -3591,17 +3544,14 @@ job, simulator or provider.
 
 ## Own-stack integration sample
 
-The [own-stack catalog example](../../examples/own-stack/README.md) adds draft
-authoring to a small application with its own Node HTTP routes and local
-operator-session verifier. It composes the released catalog handler/store and
-PostgreSQL data gateway through public exports; no starter is involved. The
-application supplies its verified operator ID without email inference. Copy the
-private, non-workspace example outside the monorepo and install its pinned
-registry packages. Its HTTP/real-PostgreSQL witness checks a durable write,
-conflict refusal and receipt replay. Runtime credentials and the local token stay
-in a gitignored JSON configuration file outside the platform checkout, without
-being passed as command-line values. The runner consumes that file on standard
-input; the witness reads it from the application directory. A complete portable
+Moved to [Add OpenLup to an existing application](../../packages/core/docs/guide/how-to/build/own-stack.md#choose-the-imports-and-ports).
+
+Evidence (historical record, 2026-11-13):
+
+Its HTTP/real-PostgreSQL witness checks a durable write,
+conflict refusal and receipt replay.
+
+A complete portable
 catalogue and restricted
 runtime login are explicit prerequisites; the local session and witness establish
 no hosted-authentication or production qualification.
