@@ -15,14 +15,20 @@
  * under a new `## [<version>]` heading that opens with the "Publishable" line,
  * below a fresh empty Unreleased heading. Every other byte stays, and each
  * rewritten JSON file must parse to its original with only those fields
- * changed. Nothing is written unless every file passes; consumed fragments are deleted
+ * changed. For a publishable package it also moves `pack.baseline` in its
+ * `release-gates.json` to the version being replaced, with the packed bytes of
+ * that version's published registry tarball (so preparation needs registry
+ * access); when that version was never published, the baseline stays.
+ * Nothing is written unless every file passes; consumed fragments are deleted
  * only after all planned writes succeed. Set preparation also plans an upgrade
  * page from those fragments and the API diff, and refreshes guide links and generated
  * regions; the guide writes and deletions are staged.
  * The package release workflow refuses a version that differs from the package's manifest.
  */
+import { execFileSync } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { env as processEnvironment } from "node:process";
 import { pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { PACKAGES_CONFIG_PATH, RELEASE_VERSION, SET_VERSION, parsePackagesConfig, releaseVersionAbove, type PackageEntry, type PackagesConfig } from "./package-manifest-policy.ts";
@@ -32,13 +38,15 @@ import { documentationGit } from "../documentation-routing.ts";
 import { assembleUpgradePage, planReleaseGuide, previousCoreTag, upgradePagePath } from "./release-docs-pass.ts";
 
 type Json = Record<string, unknown>;
-type Edit = { path: readonly string[]; from: string; to: string };
+type Edit = { path: readonly string[]; from: string | number; to: string | number };
+/** The packed bytes of a published version's registry tarball; undefined when that version is not published. */
+export type PublishedPackedBytes = (name: string, version: string) => number | undefined;
 const PACKAGE = /^[a-z0-9][a-z0-9-]*$/u;
 const UNRELEASED = /^## \[Unreleased\]\n\n/mu;
 const PIN_FIELDS = ["dependencies", "peerDependencies", "optionalDependencies"] as const;
 const at = (value: unknown, path: readonly string[]): unknown => path.reduce<unknown>((node, key) => (node !== null && typeof node === "object" ? (node as Json)[key] : undefined), value);
 
-/** `text` with each edit's `"<key>": "<from>"` member set to `<to>` at exactly its key path, and nowhere else. */
+/** `text` with each edit's `"<key>": <from>` member set to `<to>` at exactly its key path, and nowhere else. */
 export function setStringFields(file: string, text: string, edits: readonly Edit[]): string {
   const expected = JSON.parse(text) as Json;
   for (const { path, from, to } of edits) {
@@ -47,9 +55,9 @@ export function setStringFields(file: string, text: string, edits: readonly Edit
   }
   let result = text;
   for (const { path, from, to } of edits) {
-    const key = JSON.stringify(path.at(-1)), needle = `${key}: "${from}"`;
+    const key = JSON.stringify(path.at(-1)), needle = `${key}: ${JSON.stringify(from)}`;
     for (let index = result.indexOf(needle); index !== -1; index = result.indexOf(needle, index + 1)) {
-      const candidate = `${result.slice(0, index)}${key}: "${to}"${result.slice(index + needle.length)}`;
+      const candidate = `${result.slice(0, index)}${key}: ${JSON.stringify(to)}${result.slice(index + needle.length)}`;
       if (at(JSON.parse(candidate), path) === to) { result = candidate; break; }
     }
     if (at(JSON.parse(result), path) !== to) throw new Error(`${file}: ${path.join(" > ")} is not written as ${needle}`);
@@ -76,12 +84,41 @@ export function addReleaseSection(file: string, text: string, version: string, t
   return `${text.slice(0, end)}## [${version}]\n\n- Publishable on the npm \`latest\` dist-tag as \`${version}\`, from tag\n  \`${tag}\`.\n\n${notes}${text.slice(history)}`;
 }
 
+/** npm's own CLI, as `npm run` names it, run by this Node binary rather than found through PATH. */
+function npmCli(args: string[]): string {
+  const cli = processEnvironment.npm_execpath;
+  if (!cli || !isAbsolute(cli)) throw new Error("release:bump reads the registry through npm: run it as npm run release:bump");
+  return execFileSync(process.execPath, [cli, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024 });
+}
+
+/**
+ * The registry's integrity for `name@version`, then that tarball read without
+ * saving it: its `size` is the byte length, and its integrity must match the
+ * registry's. Undefined only when the registry answers E404 for the version.
+ */
+export function npmPublishedPackedBytes(name: string, version: string, npm = npmCli): number | undefined {
+  const spec = `${name}@${version}`;
+  let integrity: unknown;
+  try {
+    integrity = JSON.parse(npm(["view", spec, "dist.integrity", "--json"]));
+  } catch (error) {
+    let code: unknown;
+    try { code = (JSON.parse(String((error as { stdout?: unknown }).stdout)) as { error?: { code?: unknown } }).error?.code; } catch { code = undefined; }
+    if (code === "E404") return undefined;
+    throw new Error(`${spec}: the registry could not be read: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  const packed = JSON.parse(npm(["pack", spec, "--dry-run", "--json", "--ignore-scripts"])) as Array<{ name?: unknown; version?: unknown; size?: unknown; integrity?: unknown }>;
+  const [row] = Array.isArray(packed) && packed.length === 1 ? packed : [];
+  if (typeof integrity !== "string" || row?.name !== name || row.version !== version || row.integrity !== integrity || !Number.isSafeInteger(row.size) || (row.size as number) <= 0) throw new Error(`${spec}: npm reported no single published tarball with the registry's integrity`);
+  return row.size as number;
+}
+
 /** Every exact pin on a bumped package in the dependency fields of `node`, at `base`. */
 const pins = (node: unknown, base: readonly string[], bumped: ReadonlySet<string>, from: string, to: string): Edit[] =>
   PIN_FIELDS.flatMap((field) => Object.keys((at(node, [field]) ?? {}) as Json).filter((name) => bumped.has(name)).map((name) => ({ path: [...base, field, name], from, to })));
 
 /** The rewritten files that bring `entries` from `from` to `version`, with every internal pin on them. */
-function bumpFiles(root: string, config: PackagesConfig, entries: readonly PackageEntry[], from: string, version: string): { writes: Array<[string, string]>; consumed: string[]; fragments: ChangelogFragment[] } {
+function bumpFiles(root: string, config: PackagesConfig, entries: readonly PackageEntry[], from: string, version: string, packed: PublishedPackedBytes): { writes: Array<[string, string]>; consumed: string[]; fragments: ChangelogFragment[] } {
   const consumed: string[] = [];
   const fragments: ChangelogFragment[] = [];
   const read = (file: string) => readFileSync(join(root, file), "utf8");
@@ -108,6 +145,16 @@ function bumpFiles(root: string, config: PackagesConfig, entries: readonly Packa
       writes.push([changelog, addReleaseSection(changelog, read(changelog), version, `openlup-${entry.directory.slice("packages/".length)}-v${version}`, notes)]);
       fragments.push(...notes);
       consumed.push(...notes.map(({ path }) => path));
+      // The growth baseline is the version this one replaces, as published.
+      const gates = `${entry.directory}/release-gates.json`;
+      const baseline = existsSync(join(root, gates)) ? at(JSON.parse(read(gates)), ["pack", "baseline"]) : undefined;
+      if (baseline !== undefined) {
+        const { version: was, packedBytes } = (baseline ?? {}) as Json;
+        if (typeof was !== "string" || !Number.isSafeInteger(packedBytes)) throw new Error(`${gates}: pack.baseline needs a version string and an integer packedBytes`);
+        const bytes = packed(entry.name, from);
+        if (bytes === undefined) console.warn(`release:bump: kept ${gates}: ${entry.name}@${from} is not published, so its baseline stays`);
+        else writes.push([gates, setStringFields(gates, read(gates), [{ path: ["pack", "baseline", "version"], from: was, to: from }, { path: ["pack", "baseline", "packedBytes"], from: packedBytes as number, to: bytes }])]);
+      }
     }
   }
   if (rootLockEdits.length > 0) writes.push(["package-lock.json", setStringFields("package-lock.json", read("package-lock.json"), rootLockEdits)]);
@@ -124,7 +171,7 @@ const writeAll = (root: string, { writes, consumed, staged = [] }: { writes: Arr
 };
 
 /** Sets `packages/<name>` to `version` and returns the rewritten files. */
-export function bumpRelease(root: string, name: string, version: string): string[] {
+export function bumpRelease(root: string, name: string, version: string, packed: PublishedPackedBytes = npmPublishedPackedBytes): string[] {
   if (!PACKAGE.test(name)) throw new Error(`${name} is not a package directory name under packages/`);
   if (!RELEASE_VERSION.test(version)) throw new Error(`${version} is not a MAJOR.MINOR.PATCH release version`);
   const directory = `packages/${name}`;
@@ -135,11 +182,11 @@ export function bumpRelease(root: string, name: string, version: string): string
   if (typeof from !== "string" || releaseVersionAbove(version, from) !== true) throw new Error(`${entry.name} is at ${String(from)}; the next version must be a release version above it`);
   if (entry.publish && !SET_VERSION.test(version)) throw new Error(`${entry.name} is publishable, so its next version is a set version 0.N.P below 1.0, not ${version}`);
   if (entry.publish && config.packages.some((row) => row.publish && row !== entry)) throw new Error(`${entry.name} moves with its set: npm run release:bump -- --set <version>`);
-  return writeAll(root, bumpFiles(root, config, [entry], from, version));
+  return writeAll(root, bumpFiles(root, config, [entry], from, version, packed));
 }
 
 /** Sets every publishable package to the set version `version` and returns the rewritten files. */
-export function bumpSet(root: string, version: string): string[] {
+export function bumpSet(root: string, version: string, packed: PublishedPackedBytes = npmPublishedPackedBytes): string[] {
   if (!SET_VERSION.test(version)) throw new Error(`${version} is not a set version 0.N.P below 1.0`);
   const config = parsePackagesConfig(readFileSync(join(root, PACKAGES_CONFIG_PATH), "utf8"));
   const publishable = config.packages.filter(({ publish }) => publish);
@@ -150,7 +197,7 @@ export function bumpSet(root: string, version: string): string[] {
   if (typeof from !== "string" || releaseVersionAbove(version, from) !== true) throw new Error(`the set is at ${String(from)}; the next set version must be above it`);
   const page = upgradePagePath(version);
   if (lstatSync(join(root, page), { throwIfNoEntry: false })) throw new Error(`${page}: upgrade page already exists`);
-  const planned = bumpFiles(root, config, publishable, from, version);
+  const planned = bumpFiles(root, config, publishable, from, version, packed);
   const upgrade = assembleUpgradePage({ root, version, since: previousCoreTag(root), fragments: planned.fragments });
   for (const violation of upgrade.violations) console.warn(`release:bump: warning: ${violation}`);
   planned.writes.push([page, upgrade.text]);

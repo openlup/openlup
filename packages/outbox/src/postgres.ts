@@ -59,7 +59,7 @@ export function createPostgresOutboxCompactor(executor: SqlExecutor): Compaction
   return { async compact(input) {
     const { rows } = await executor.query(`with targets as (
   select id from public.outbox_events
-  where metadata->>'retentionCompactedAt' is null and (
+  where metadata->>'retentionCompactedAt' is null and metadata->>'retainPayload' is distinct from 'true' and (
     (status = 'processed' and coalesce(processed_at, created_at) < now() - make_interval(days => $1::integer))
     or (status = 'discarded' and case when pg_catalog.pg_input_is_valid(metadata->>'discardedAt', 'timestamp with time zone')
       then (metadata->>'discardedAt')::timestamptz else null end < now() - make_interval(days => $2::integer)))

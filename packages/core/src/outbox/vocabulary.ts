@@ -23,6 +23,8 @@ export const PLATFORM_EVENT_VOCABULARY: readonly EventVocabularyEntry[] = [
   { eventType: "commerce.order_draft.abandoned.72h", owner: "@openlup/core" },
   { eventType: "commerce.order.reorder_reminder", owner: "@openlup/core" },
   { eventType: "commerce.checkout_recovery", owner: "@openlup/core" },
+  { eventType: "commerce.checkout.recovery_qualified.v1", owner: "@openlup/platform/communications" },
+  { eventType: "communication.ecommerce.export.v1", owner: "@openlup/platform/communications" },
   { eventType: "subscription.cancelled", owner: "@openlup/core" },
   { eventType: "subscription.created", owner: "@openlup/core" },
   { eventType: "subscription.activation_action_required", owner: "@openlup/core" },

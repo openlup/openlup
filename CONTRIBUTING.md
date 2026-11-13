@@ -1294,7 +1294,11 @@ bounded implementation-and-set-bump contribution, runs
 which updates every publishable package's version carriers and every exact
 internal pin on one, and assembles each changelog's version section below a fresh
 Unreleased heading: legacy Unreleased body first, then fragments in byte order
-of path. All packages are validated and planned before writes, and only
+of path. It also moves each package's growth baseline (`pack.baseline` in
+`release-gates.json`) to the version being replaced, with the packed bytes of
+that version's published registry tarball, so release preparation needs registry
+access; see [Package artifact limits](.github/VERSIONING_AND_EOL.md#package-artifact-limits).
+All packages are validated and planned before writes, and only
 consumed fragments are deleted after successful writes. The set bump also plans
 an `upgrade/v<major>-<minor>-<patch>.md` guide page from those fragments and
 the API diff before any writes, refusing an existing page. Guide-contract violations

@@ -24,15 +24,15 @@ hold; a section marked "to be written" has no page yet.
 
 | Section | What it holds | State |
 | --- | --- | --- |
-| Start | Whether OpenLup fits, its limits and maturity, and a tutorial from installing the packages to a running store. | to be written |
+| [Start](start/README.md) | Whether OpenLup fits, its limits and maturity, and a [tutorial](start/tutorial.md) from installing the packages to a documented result. | written |
 | How-to: build | Composing the packages, customizing the starter, adding OpenLup to an existing application. | to be written |
 | How-to: extend | Adapters, providers and extension seams. | to be written |
 | How-to: operate | Deployment and self-hosting, a production checklist, retention, shutdown and security hardening. | [Connect to PostgreSQL](how-to/operate/connect-postgresql.md), [Run OpenLup on your own host](how-to/operate/self-host.md), [Shut down a host cleanly](how-to/operate/shutdown.md), [Customer diagnostic history and retention](how-to/operate/diagnostics-and-retention.md); production checklist and security hardening to be written |
-| Upgrade | The upgrade procedure and one page per release. | [Upgrade the database](upgrade/database-migrations.md), [Upgrade application files](upgrade/application-files.md); procedure and release pages to be written |
+| [Upgrade](upgrade/README.md) | The upgrade procedure and one page per release. | [Upgrade an application](upgrade/README.md), [Upgrade the database](upgrade/database-migrations.md), [Upgrade application files](upgrade/application-files.md); release pages to be written |
 | Concepts | Architecture and ownership, one page per commerce domain, and the security model. | to be written |
 | Reference | Exports, configuration keys, SQL catalogue, command line, refusal codes, capability maturity, limits, versioning and stability policy. | to be written |
 | Troubleshooting | Symptom or refusal code, its cause and the fix. | to be written |
-| Glossary | The words this guide uses. | to be written |
+| [Glossary](glossary.md) | The words this guide uses. | written |
 
 Until a section exists, the repository
 [README](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/README.md)

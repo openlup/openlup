@@ -323,6 +323,8 @@ it("projects typed managed obligations and leaves source history in the operator
     "SELECT tableoid::text,ctid::text,xmin::text FROM acquisition_private.installation_key")).rows;
   expect(await restoreConnectedNativeStore({ owner: targetOwner!, installation: selection,
     packet: mapped.packet, freshTarget: fresh })).toMatchObject({ replayed: false });
+  expect((await targetOwner!.query('SELECT communication_subject_id FROM public.subscription_events')).rows)
+    .toEqual([expect.objectContaining({ communication_subject_id: null })]);
   expect((await targetOwner!.query("SELECT id,status,total_amount_minor::text FROM public.commerce_orders")).rows)
     .toEqual(expect.arrayContaining([{ id: orderId, status: "pending_payment", total_amount_minor: "900" },
       { id: paidOrderId, status: "paid", total_amount_minor: "900" }]));
