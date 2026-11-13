@@ -489,14 +489,13 @@ function assertGuideLinks(guideRoot: string, file: string, label: string, raw: s
   const targets = markdownLinkTargets(source, (reason) => violations.push(`${label}: ${reason}`));
   // Browsers normalise a destination before following it (percent-encoded or mixed-case hosts,
   // tabs and newlines, backslashes, default ports, user info). Parse each destination as a browser
-  // does; one that reaches the repository must already be written in the parser's own canonical
-  // spelling and in an admitted shape, so no spelling can reach an unchecked repository URL.
-  const reachesRepository = (spelling: string): boolean => {
+  // does; one that reaches GitHub must already be written in the parser's own canonical
+  // spelling and in an admitted shape, so no spelling can reach an unchecked GitHub URL.
+  const reachesGitHub = (spelling: string): boolean => {
     let url: URL;
     try { url = new URL(spelling, "https://guide.invalid/guide/"); } catch { return false; }
     const host = url.hostname.replace(/\.+$/, "").toLowerCase();
-    const repositoryPath = safeDecode(url.pathname).replace(/\\/g, "/").toLowerCase();
-    return /^(?:www\.)?github\.com$|^raw\.githubusercontent\.com$/.test(host) && /^\/+openlup\/+openlup(?:[/?#.]|$)/.test(repositoryPath);
+    return /^(?:www\.)?github\.com$|^raw\.githubusercontent\.com$/.test(host);
   };
   // Candidates are not only parsed link destinations: every attribute value of every HTML tag
   // (split on HTML whitespace, so no parser disagreement can choose a different value) and every
@@ -524,7 +523,7 @@ function assertGuideLinks(guideRoot: string, file: string, label: string, raw: s
     const unescaped = target.replace(/\\([!-/:-@[-`{-~])/g, "$1");
     const spellings = [target, unescaped, target.replace(/[\t\n\r]/g, "")]
       .flatMap((spelling) => /^www\./i.test(spelling) ? [spelling, `http://${spelling}`] : [spelling]);
-    if (!spellings.some(reachesRepository)) continue;
+    if (!spellings.some(reachesGitHub)) continue;
     let canonical: string | undefined;
     try { canonical = new URL(target).href; } catch { canonical = undefined; }
     if (canonical !== target || !canonicalRepositoryLink.test(target)) {

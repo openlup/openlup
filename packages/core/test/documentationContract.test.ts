@@ -555,6 +555,18 @@ describe("reader guide contract", { timeout: 60_000 }, () => {
     }
   });
 
+  it.each(["github.com", "www.github.com", "raw.githubusercontent.com"].flatMap((host) =>
+    ["a-fork/openlup", "openlup/openlup-core"].map((repository) => `https://${host}/${repository}/blob/${tag}/README.md`),
+  ))("refuses another GitHub repository %s in every link form without rewriting it", (url) => {
+    for (const link of [`[README](${url})`, `<${url}>`, `Read ${url}.`, `<a href="${url}">README</a>`]) {
+      const roots = guideFixture(`# Guide\n\n${link}\n`);
+      for (const write of [false, true]) {
+        expect(() => checkGuide(roots, write)).toThrow(`non-canonical repository link ${url}; use https://github.com/openlup/openlup/blob/${tag}/<path>`);
+      }
+      expect(readFileSync(join(roots.core, "docs/guide/README.md"), "utf8")).toContain(url);
+    }
+  });
+
   it.each([
     ["an HTML decimal reference", '<a href="https://github.com/openlup/openlup&#47;blob/main/README.md">Read</a>'],
     ["an HTML hexadecimal reference", '<a href="https://github.com/openlup/openlup&#x2F;raw/main/README.md">Read</a>'],
@@ -598,6 +610,15 @@ describe("reader guide contract", { timeout: 60_000 }, () => {
     expect(() => checkGuide(pinned)).not.toThrow();
     const missing = guideFixture(`# Guide\n\n<${repositoryLink("MISSING.md")}>\n`);
     expect(() => checkGuide(missing)).toThrow("targets a path missing from the repository");
+  });
+
+  it.each([
+    `[Read](${repositoryLink("README.md")}#overview)`,
+    `<${repositoryLink("README.md")}#overview>`,
+    `Read ${repositoryLink("README.md")}#overview.`,
+    `<a href="${repositoryLink("README.md")}#overview">Read</a>`,
+  ])("admits a canonical repository link with an anchor: %s", (link) => {
+    expect(() => checkGuide(guideFixture(`# Guide\n\n${link}\n`))).not.toThrow();
   });
 
   it.each([

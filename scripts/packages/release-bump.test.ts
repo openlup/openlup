@@ -5,10 +5,22 @@ import { dirname, join, resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { bumpRelease, bumpSet, npmPublishedPackedBytes, setVersionFields } from "./release-bump.ts";
 import * as docs from "./release-docs-pass.ts";
-import { renderGeneratedRegion } from "../../packages/core/scripts/documentation-contract.ts";
 
 
 const checkGuide = (root: string): string => execFileSync(process.execPath, ["--experimental-strip-types", resolve("packages/core/scripts/documentation-contract.ts"), "--check-guide", join(root, "packages/core")], { cwd: root, encoding: "utf8", stdio: "pipe" }).trim();
+function expectedConfigurationRegion(root: string): string {
+  // Plan a separate empty page so the expected body does not depend on the page under test.
+  const pending = "docs/guide/reference/configuration-expected.md";
+  const output = execFileSync(process.execPath, ["--experimental-strip-types", resolve("packages/core/scripts/documentation-contract.ts"), "--plan-guide", "0.9.0", root], {
+    cwd: root, encoding: "utf8", stdio: "pipe",
+    input: JSON.stringify({ [pending]: "# Configuration\n\n<!-- generated:configuration-keys -->\n<!-- /generated:configuration-keys -->\n" }),
+  });
+  const plan = JSON.parse(output) as { writes: Array<[string, string]> };
+  const source = plan.writes.find(([file]) => file === join(root, "packages/core", pending))?.[1];
+  const region = source?.match(/<!-- generated:configuration-keys -->\n([\s\S]*?)<!-- \/generated:configuration-keys -->/u)?.[1];
+  if (region === undefined) throw new Error("Expected a planned configuration-keys region for the empty pending page");
+  return region;
+}
 const roots: string[] = [];
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 
@@ -245,7 +257,7 @@ describe("release:bump", () => {
     addConfigurationInputs(root, files);
     git(root, "add", "."); git(root, "commit", "-qm", "guide fixture");
     // The region the generator owns, at the target version; it must list the key the package reads.
-    const fresh = renderGeneratedRegion("configuration-keys", root, "0.9.0")!;
+    const fresh = expectedConfigurationRegion(root);
     expect(fresh).toContain("| `APP_BASE_URL` | platform | server-runtime | production | no |\n");
     const planned = docs.planReleaseGuide(root, "0.9.0");
     expect(planned.violations).toEqual([]);
@@ -268,7 +280,7 @@ describe("release:bump", () => {
   it("does not plan or stage another write for a guide already current at the target version", () => {
     const { root } = setFixture(), guide = "packages/core/docs/guide/README.md";
     addConfigurationInputs(root, { "config/environment-variables.json": '{"variables":[]}\n' });
-    const source = `# Guide\n\n[Changelog](https://github.com/openlup/openlup/blob/openlup-core-v0.9.0/packages/core/CHANGELOG.md)\n\n<!-- generated:configuration-keys -->\n${renderGeneratedRegion("configuration-keys", root, "0.9.0")}<!-- /generated:configuration-keys -->\n`;
+    const source = `# Guide\n\n[Changelog](https://github.com/openlup/openlup/blob/openlup-core-v0.9.0/packages/core/CHANGELOG.md)\n\n<!-- generated:configuration-keys -->\n${expectedConfigurationRegion(root)}<!-- /generated:configuration-keys -->\n`;
     mkdirSync(dirname(join(root, guide)), { recursive: true }); writeFileSync(join(root, guide), source);
     git(root, "add", "."); git(root, "commit", "-qm", "current guide fixture");
     expect(docs.planReleaseGuide(root, "0.9.0")).toEqual({ writes: [], violations: [], pageViolations: {} });
@@ -301,12 +313,17 @@ describe("release:bump", () => {
     // reports (exports, refusal codes), SQL manifests, the platform manifest and the neutrality scanner.
     const regionInputs = ["core", "outbox", "platform"].flatMap((name) => ["release-gates.json", "src", "api", "sql"].map((part) => `packages/${name}/${part}`))
       .filter((path) => existsSync(resolve(path)));
-    for (const path of ["packages/core/docs/guide", "config/documentation-guide-allowlist.json", "config/environment-variables.json", "packages/platform/package.json", "packages/ui/smoke/neutrality.ts", ...regionInputs, ...linked]) {
+    for (const path of ["packages/core/docs/guide", "config/documentation-guide-allowlist.json", "config/environment-variables.json", "packages/core/package.json", "packages/outbox/package.json", "packages/platform/package.json", "packages/ui/smoke/neutrality.ts", ...regionInputs, ...linked]) {
       mkdirSync(dirname(join(root, path)), { recursive: true }); cpSync(resolve(path), join(root, path), { recursive: true });
     }
+    const manifest = JSON.parse(readFileSync(join(core, "package.json"), "utf8"));
+    manifest.version = "0.7.0";
+    writeFileSync(join(core, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`);
     const index = join(core, "docs/guide/README.md"), original = readFileSync(index, "utf8");
     const planned = docs.planReleaseGuide(root, "0.9.0");
     expect(planned.violations).toEqual([]); expect(planned.writes.map(([file]) => file)).toContain(index);
+    const coreExports = planned.writes.map(([, source]) => source.match(/<!-- generated:exports:core -->\n([\s\S]*?)<!-- \/generated:exports:core -->/u)?.[1]).find((body) => body !== undefined);
+    expect(coreExports).toMatch(/\n\| `[^`]+` \|/u);
     expect(readFileSync(index, "utf8")).toBe(original);
     for (const [file, source] of planned.writes) writeFileSync(file, source);
     writeFileSync(join(core, "package.json"), readFileSync(join(core, "package.json"), "utf8").replace('"version": "0.7.0"', '"version": "0.9.0"'));

@@ -476,7 +476,7 @@ in `scripts/ci-test-scope.mjs`: unlisted tests always run. The contract refuses:
   gates, `configuration-keys` from `config/environment-variables.json`, and
   `refusal-codes` and `refusal-codes-open` from exported API report aliases and
   the lifecycle command's CLI codes;
-- in the guide, a relative link that leaves the guide, a repository link that
+- in the guide, a relative link that leaves the guide, any GitHub link that
   is not `https://github.com/openlup/openlup/blob/openlup-core-v<version>/<path>`
   at the core version or whose path is missing, and repository-internal
   language: task and milestone IDs, plan names, paths into tests, plans or agent
