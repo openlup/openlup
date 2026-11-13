@@ -4,7 +4,7 @@ Keep a retry from creating another business effect when a response is lost or
 an event is delivered again. Choose the key and replay rules of the particular
 operation before calling it.
 
-## Idempotency
+## Idempotency contract
 
 An idempotency key names a logical operation within a scope. A request fingerprint
 binds that identity to the effect's contents where the operation implements that

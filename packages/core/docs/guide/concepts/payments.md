@@ -70,4 +70,4 @@ interaction, not whether money settled. Client-confirmation payloads and custome
 authorization are transient secrets: do not persist, log or fingerprint them.
 Keep only explicitly redacted diagnostics. See the
 [execution contract](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/src/payments/contracts/adapter.ts)
-and [idempotency](idempotency.md#idempotency) before retrying an attempt.
+and [idempotency](idempotency.md#idempotency-contract) before retrying an attempt.

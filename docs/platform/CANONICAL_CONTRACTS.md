@@ -241,7 +241,7 @@ replay and ordering.
 
 ## Idempotency
 
-Moved to [Idempotency](../../packages/core/docs/guide/concepts/idempotency.md#idempotency).
+Moved to [Idempotency](../../packages/core/docs/guide/concepts/idempotency.md#idempotency-contract).
 
 Preserve each incumbent replay protocol when moving adapters. Bundle key
 recognition must not become a fingerprint guarantee through documentation or a
