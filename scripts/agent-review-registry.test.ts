@@ -526,11 +526,9 @@ describe('real Git coverage histories', () => {
 });
 
 describe('coverage preconditions in real histories', () => {
-  it.each(['incomplete'])('does not inherit %s first coverage across a main merge', async reason => {
+  it('does not inherit incomplete first coverage across a main merge', async () => {
     const f = await fixture(); await f.cli('prepare', f.request); await f.report();
-    if (reason === 'expired') await f.report(); const original = await f.state();
     const main = await f.mainMove(() => f.write('other.ts', 'main\n')); f.git('merge', '--no-ff', '-qm', 'integrate', main);
-    if (reason === 'expired') vi.spyOn(Date, 'now').mockReturnValue(coverageState(original).expires);
     await f.cli('prepare', f.request); expect((await f.state()).candidate.coverage).toBeUndefined();
     await expect(f.cli('verify')).rejects.toThrow('PASS');
   });
