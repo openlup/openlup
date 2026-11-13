@@ -375,6 +375,30 @@ export function assertAgentsFileSize(root: string, file: string, violations: str
 }
 
 /**
+ * Plans guide regeneration and release-link pins without writing. Paths are absolute;
+ * pending files overlay the checkout so callers can include pages not yet written.
+ * Only files whose contents change are returned, alongside malformed-region violations.
+ */
+export function planGuideUpdates(repositoryRoot: string, packageRoot: string, version: string, pendingFiles: ReadonlyMap<string, string> = new Map()): { writes: Array<[string, string]>; violations: string[] } {
+  repositoryRoot = resolve(repositoryRoot);
+  packageRoot = resolve(packageRoot);
+  const guideRoot = join(packageRoot, guideDirectory);
+  const sources = new Map(existsSync(guideRoot) ? markdownFiles(guideRoot).map((file) => [file, readFileSync(file, "utf8")] as const) : []);
+  for (const [file, source] of pendingFiles) {
+    if (file.startsWith(`${guideRoot}${sep}`) && file.endsWith(".md")) sources.set(file, source);
+  }
+  const writes: Array<[string, string]> = [], violations: string[] = [];
+  for (const file of [...sources.keys()].sort()) {
+    const original = sources.get(file)!;
+    const label = relative(packageRoot, file).split(sep).join("/");
+    const source = syncGeneratedRegions(original, label, repositoryRoot, true, violations)
+      .replace(/(https:\/\/github\.com\/openlup\/openlup\/(?:blob|tree)\/)openlup-core-v[0-9A-Za-z.+-]+\//g, `$1openlup-core-v${version}/`);
+    if (source !== original) writes.push([file, source]);
+  }
+  return { writes, violations };
+}
+
+/**
  * Checks (and with `write`, regenerates) the guide under `docs/guide/`. Returns its Markdown files
  * so the package-wide rules and the fence compiler read the same pages.
  */
@@ -389,11 +413,13 @@ export function assertGuideContract(packageRoot: string, repositoryRoot: string 
   const version = (JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8")) as { version?: string }).version;
   const tag = `openlup-core-v${version ?? ""}`;
   const allowed = readGuideAllowList(repositoryRoot, violations);
+  const planned = write ? planGuideUpdates(repositoryRoot, packageRoot, version ?? "") : { writes: [], violations: [] };
+  violations.push(...planned.violations);
+  const updates = new Map(planned.writes);
   for (const file of files) {
     const label = relative(packageRoot, file).split(sep).join("/");
     const original = readFileSync(file, "utf8");
-    let source = syncGeneratedRegions(original, label, repositoryRoot, write, violations);
-    if (write) source = source.replace(/(https:\/\/github\.com\/openlup\/openlup\/(?:blob|tree)\/)openlup-core-v[0-9A-Za-z.+-]+\//g, `$1${tag}/`);
+    const source = write ? updates.get(resolve(file)) ?? original : syncGeneratedRegions(original, label, repositoryRoot, false, violations);
     if (write && source !== original) writeFileSync(file, source);
     assertGuideLinks(guideRoot, file, label, source, repositoryRoot, tag, violations);
     assertReaderLanguage(label, source, allowed, violations);
@@ -587,6 +613,36 @@ if (invokedPath === import.meta.url) {
   if (args.length === 0) assertDocumentationContract();
   else if (args.length === 1 && args[0] === "--write") {
     assertDocumentationContract(defaultPackageRoot, undefined, { repositoryRoot: detectRepositoryRoot(defaultPackageRoot), write: true });
+  } else if ((args.length === 2 || args.length === 3) && args[0] === "--plan-guide") {
+    // The root release tools run this helper from the candidate repository root.
+    const repositoryRoot = resolve(args[2] ?? process.cwd()), packageRoot = join(repositoryRoot, "packages/core");
+    const guideRoot = join(packageRoot, guideDirectory), version = args[1]!;
+    const input: unknown = JSON.parse(readFileSync(0, "utf8"));
+    assert(input !== null && typeof input === "object" && !Array.isArray(input), "pending guide files must be a JSON object of paths and contents");
+    const pending = new Map<string, string>();
+    for (const [path, source] of Object.entries(input)) {
+      const file = resolve(packageRoot, path);
+      assert(file.startsWith(`${guideRoot}${sep}`) && file.endsWith(".md") && typeof source === "string", `invalid pending guide file ${path}`);
+      pending.set(file, source);
+    }
+    const planned = planGuideUpdates(repositoryRoot, packageRoot, version, pending);
+    const updates = new Map(planned.writes), pageViolations: Record<string, string[]> = {};
+    if (pending.size > 0) {
+      const allowed = readGuideAllowList(repositoryRoot, planned.violations);
+      for (const [file, original] of pending) {
+        const source = updates.get(file) ?? original, violations: string[] = [];
+        const label = relative(packageRoot, file).split(sep).join("/");
+        assertReaderLanguage(label, source, allowed, violations);
+        assertGuideLinks(guideRoot, file, label, source, repositoryRoot, `openlup-core-v${version}`, violations);
+        pageViolations[file] = violations;
+      }
+    }
+    console.log(JSON.stringify({ ...planned, pageViolations }));
+  } else if (args.length === 2 && args[0] === "--check-guide") {
+    const packageRoot = resolve(args[1]!), violations: string[] = [];
+    assertGuideContract(packageRoot, resolve(packageRoot, "../.."), false, violations);
+    assert(violations.length === 0, `guide contract violations:\n${violations.join("\n")}`);
+    console.log("guide contract ok");
   } else if ((args.length === 2 || args.length === 3) && args[0] === "--package") assertPackageDocumentation(resolve(args[1]), args[2] ?? null);
   else if (args.length === 3 && args[0] === "--agent-guide") {
     // Root source tooling can check another package without importing its helpers.
@@ -597,5 +653,5 @@ if (invokedPath === import.meta.url) {
     const violations: string[] = [];
     assertAgentGuide(packageRoot, gates.kind, codeExports(manifest.exports), gates.packageSurface, packed, violations, args[2]);
     assert(violations.length === 0, `agent guide contract violations:\n${violations.join("\n")}`);
-  } else throw new Error("Usage: documentation-contract.ts [--write | --agent-guide <package-root> <example-source> | --package <package-root> [<example-source>]]");
+  } else throw new Error("Usage: documentation-contract.ts [--write | --plan-guide <version> [<repository-root>] | --check-guide <package-root> | --agent-guide <package-root> <example-source> | --package <package-root> [<example-source>]]");
 }

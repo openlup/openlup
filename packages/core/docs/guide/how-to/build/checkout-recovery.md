@@ -125,8 +125,9 @@ Bind `createAdminCheckoutPaymentLinkHandler` to `authorizeAdmin`, `respond`,
 `orderPort`, `tokenStore`, `policy` and commercial `validateRecreate`. Use
 `createPostgresOperatorCheckoutLinkStore` with a restricted service executor
 whose calls commit separately, preserving admission and completed effects after
-failure. Do not wrap the entire command in one transaction. Example policy
-values are `operatorLifetimeMs: 3600000` and `recoveryWindowMs: 86400000`.
+failure. Do not wrap the entire command in one transaction. Choose explicit
+policy lifetimes; the [maintainer operator-link recipe](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#operator-order-payment-links)
+retains example values for `operatorLifetimeMs` and `recoveryWindowMs`.
 Construction installs no feature flag, scheduler or operator UI.
 
 Authorize an active human administrator through your operator session; machine
@@ -172,8 +173,9 @@ eligible declaration order. An initial declaration or persisted subscription
 checkout context selects subscription presentation without admitting renewals.
 Flag and session checks precede port construction.
 
-Set `lifetimeMs` explicitly, up to 24 hours (for example, `86400000`). The
-deadline is order creation plus that lifetime, and the database rechecks it
+Set `lifetimeMs` explicitly within the accepted bound in the
+[maintainer customer-link recipe](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#customer-checkout-recovery-entry-points).
+The deadline is order creation plus that lifetime, and the database rechecks it
 after blocking writes, rolling them back if the deadline elapsed. A successful
 start returns a fresh raw token for navigation and sends no mail. An elapsed
 deadline or terminal checkout returns `recoverable: false` with `fresh_checkout`
@@ -188,8 +190,9 @@ expired cookies produce `continuation_missing` before persistence is
 constructed; body identifiers and recipient addresses supply no authority.
 
 The service issuer locks the order and admits pending non-renewal checkout only.
-Configure the buyer port's `lifetimeMs` and positive `sendBucketMs` (for
-example, `86400000` and `600000`). Each bucket admits one
+Configure the buyer port's `lifetimeMs` and positive `sendBucketMs` using the
+[maintainer customer-link recipe](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#customer-checkout-recovery-entry-points).
+Bucket admission deduplicates the
 `checkout_recovery:buyer:<order>:<bucket>` event and token atomically; a
 duplicate inserts neither. Later buckets preserve earlier links. `{ sent: true
 }` means queued or deduplicated; only the port's `queued` identifies a new
@@ -263,7 +266,7 @@ retained.
 Wrap draft persistence with `createPostgresExpiredCheckoutDraftPort`; use
 `createPostgresExpiredCheckoutRecoveryPort` for lineage. The stable key is
 `checkout-recovery-recreate:<sourceOrderId>`. Replay preserves the accepted
-draft when only quote identity changed. Preparation allows one immediate
+draft when only quote identity changed. Preparation allows a unique immediate
 replacement, including replay after compensation, and never reparents it.
 Preparation locks source and replacement, checking payment evidence and the
 recovery deadline after waiting for locks. Exact linked replay precedes fresh

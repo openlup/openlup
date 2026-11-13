@@ -19,6 +19,9 @@ repository facade defaults to legacy. No checkout is required.
 
 Moved to [Read prices for a quote](../../packages/core/docs/guide/how-to/build/quote-prices.md#compose-a-request-scope).
 
+The four reads preserve complete list, exact base, exact legacy subscription and
+policy histories.
+
 Evidence (historical record, 2026-11-13):
 
 The existing `createPostgresCommercePromoDataPort(runtimeExecutor)` from
@@ -33,6 +36,12 @@ capabilities from the factory's presence. See
 ## Application file upgrade
 
 Moved to [Upgrade application files](../../packages/core/docs/guide/upgrade/application-files.md#prepare-snapshots).
+
+The disposable example uses Node 24, predecessor/candidate schema ranges
+`{ min: 1, max: 2 }` and caller-supplied `schemaVersion: 2`. Its managed
+`generated/entry.mjs` changes from `export const revision = 1;` to
+`export const revision = 2;`, each followed by a newline. These ordinals are
+example evidence, not database observations or OpenLup schema versions.
 
 ## Legacy PostgreSQL role prerequisites
 
@@ -66,6 +75,9 @@ lazily after bundle and connection guards. The reference host owns observed-rout
 wrappers and admin auth binding. The manifest depends on identity's
 `./identity/contracts` runtime obligation schema. The reference privacy graph
 leaves marketing unselected; its marketing privacy coverage remains an open gap.
+
+`createMarketingPrivacyBindings` selects three callables with complete enabled
+owner ports; otherwise all three are null.
 
 Evidence (historical record, 2026-11-13):
 
@@ -105,6 +117,8 @@ owns invocation and teardown. The repository's
 Callable inventories remain in the
 [server API reference](../../packages/platform/api/identity.api.md) and
 [browser API reference](../../packages/platform/api/identity-contracts.api.md).
+
+Both managed contact lookups select email and fetch at most ten candidates.
 
 Evidence (historical record, 2026-11-13):
 
@@ -547,6 +561,10 @@ Moved to [Compose invoicing](../../packages/core/docs/guide/how-to/build/invoici
 
 This extraction adds no npm package or dependency.
 
+Eleven compatibility helpers serve host facades. `createInvoiceReversalHandlers`
+retains the donor’s 10 s timeout. Native pre-send retry seconds are clamped to
+60..86400, otherwise 900; `retryable:false` parks at infinity.
+
 Evidence (historical record, 2026-11-13):
 
 The seller read takes an order ID or null for an unscoped claim, including
@@ -623,6 +641,10 @@ managed facade retains its existing key and diagnostic bytes. The reference
 history shim translates legacy columns without changing its public DTO.
 Reference operator HTTP/UI diagnostics use closed codes and omit provider free
 text; runbook URLs remain host inputs.
+
+Pre-send settlement validates whole-number retry seconds clamped to 60..86400;
+absent/invalid seconds use 900. Projection or document-read exceptions use the
+same generation-based backoff as the job: 300 seconds per attempt, capped at 3600.
 
 Evidence (historical record, 2026-11-13):
 
@@ -722,6 +744,10 @@ Moved to [Compose account and support services](../../packages/core/docs/guide/h
 
 Current-parcel and commerce recovery rules retain their existing owners.
 M09 owns signed correction totals, document/parent lineage and PDF access.
+
+`readAccountSnapshot` requests 50 subscription rows before visibility filtering
+and exactly 20 recent orders at the store. `projectCustomer360Snapshot` keeps
+the newest 80 audit events in chronological order.
 
 Evidence (historical record, 2026-11-13):
 
@@ -844,6 +870,10 @@ Install the complete selected catalogue through
 
 Moved to [Recover abandoned checkouts and payments](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#issue-a-recovery-token-for-an-admitted-checkout).
 
+PostgreSQL computes and stores exactly `order.created_at + 24 hours`, retaining
+sub-millisecond precision and refusing an elapsed deadline. Only the SHA-256
+hash reaches storage.
+
 ## Checkout recovery waves and expiry
 
 Moved to [Recover abandoned checkouts and payments](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#schedule-reminders-and-expire-abandoned-checkouts).
@@ -858,6 +888,9 @@ execution; only selected entry points grant service-role execution. The scoped
 `commerce_checkout_recovery_wave_delivery_authorize` wrapper preserves the
 automatic-reminder ACL without admitting operator/buyer flows. No raw table grant
 is added.
+
+Existing payload wave labels `1` and `20` identify first/final content; offsets
+remain separate scheduling inputs.
 
 Evidence (historical record, 2026-11-13):
 
@@ -875,6 +908,9 @@ Moved to [Recover abandoned checkouts and payments](../../packages/core/docs/gui
 Use the complete native migration chain, including
 [`20261110110000_operator_checkout_links.sql`](../../db/platform/migrations/20261110110000_operator_checkout_links.sql).
 
+For a neutral demonstration use `operatorLifetimeMs: 3600000` and
+`recoveryWindowMs: 86400000`; bind the same recovery window at redemption.
+
 Evidence (historical record, 2026-11-13):
 
 The [PostgreSQL witnesses](../../tests/postgres/operatorCheckoutPaymentLink.test.ts)
@@ -888,6 +924,11 @@ Moved to [Recover abandoned checkouts and payments](../../packages/core/docs/gui
 
 Apply the complete native chain through
 [`20261110115000_customer_checkout_links.sql`](../../db/platform/migrations/20261110115000_customer_checkout_links.sql).
+
+Supply `lifetimeMs` explicitly (a neutral example is `86400000`, the maximum).
+Expiry is order creation plus that lifetime. Configure the buyer port’s
+`lifetimeMs` and `sendBucketMs` with neutral examples `86400000` and `600000`.
+Within a bucket, outbox uniqueness admits one event and its token atomically.
 
 Evidence (historical record, 2026-11-13):
 
@@ -940,6 +981,10 @@ cover legacy and both qualified runtimes.
 ## Atomic checkout payment guidance
 
 Moved to [Recover abandoned checkouts and payments](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#show-payment-recovery-guidance-from-one-snapshot).
+
+The read probes 101 attempts and returns at most 100. It probes 33
+evidence members per attempt and admits at most 32. Native observation records
+and truth/readback source envelopes have an 8,192-byte bound.
 
 Evidence (historical record, 2026-11-13):
 

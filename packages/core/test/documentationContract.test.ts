@@ -2,6 +2,7 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } f
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { spawnSync } from "node:child_process";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { agentsFileCap, assertDocumentationContract, assertPackageDocumentation } from "../scripts/documentation-contract.ts";
@@ -445,6 +446,41 @@ const coreRegion = (body: string) => `<!-- generated:maturity:outbox -->\n${body
 const freshMaturity = "| Export | Role | Maturity |\n| --- | --- | --- |\n| `.` | rail | experimental |\n";
 
 describe("reader guide contract", { timeout: 60_000 }, () => {
+  it("plans pending absolute and package-relative pages through the CLI without writing", () => {
+    const roots = guideFixture(`# Guide\n\n[README](${repositoryLink("README.md", "openlup-core-v1.0.0")})\n`);
+    const file = join(roots.core, "docs/guide/upgrade/v1-2-3.md");
+    const pending = `# Upgrading to 1.2.3\n\n[README](${repositoryLink("README.md", "openlup-core-v1.0.0")})\n\n${coreRegion("old body\n")}`;
+    const original = readFileSync(join(roots.core, "docs/guide/README.md"), "utf8");
+    const run = (files: Record<string, string>) => spawnSync(process.execPath, ["--experimental-strip-types", join(packageRoot, "scripts/documentation-contract.ts"), "--plan-guide", "1.2.3", roots.repository], { cwd: roots.repository, input: JSON.stringify(files), encoding: "utf8" });
+    const absolute = run({ [file]: pending }), relative = run({ "docs/guide/upgrade/v1-2-3.md": pending });
+    expect(absolute.status, absolute.stderr).toBe(0); expect(relative.status, relative.stderr).toBe(0);
+    const planned = JSON.parse(absolute.stdout);
+    expect(JSON.parse(relative.stdout)).toEqual(planned);
+    expect(planned.violations).toEqual([]); expect(planned.pageViolations).toEqual({ [file]: [] });
+    const updates = new Map<string, string>(planned.writes);
+    expect(updates.get(file)).toContain(repositoryLink("README.md"));
+    expect(updates.get(file)).toContain(coreRegion(freshMaturity));
+    expect(readFileSync(join(roots.core, "docs/guide/README.md"), "utf8")).toBe(original);
+    expect(() => readFileSync(file)).toThrow(/ENOENT/);
+    for (const [path, source] of updates) { mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, source); }
+    expect(() => checkGuide(roots)).not.toThrow();
+    const current = run({ [file]: updates.get(file)! });
+    expect(current.status).toBe(0);
+    expect(JSON.parse(current.stdout)).toEqual({ writes: [], violations: [], pageViolations: { [file]: [] } });
+  });
+
+  it("reports pending-page reader and link violations as JSON, and refuses invalid pending input", () => {
+    const roots = guideFixture("# Guide\n"), file = join(roots.core, "docs/guide/upgrade/v1-2-3.md");
+    const run = (input: unknown) => spawnSync(process.execPath, ["--experimental-strip-types", join(packageRoot, "scripts/documentation-contract.ts"), "--plan-guide", "1.2.3", roots.repository], { cwd: roots.repository, input: JSON.stringify(input), encoding: "utf8" });
+    const result = run({ [file]: "# Upgrade\n\nM19 [Changelog](../../../CHANGELOG.md)\n" });
+    expect(result.status, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({ writes: [], violations: [], pageViolations: { [file]: [expect.stringContaining("task or milestone ID): M19"), expect.stringContaining("leaves the guide")] } });
+    for (const input of [[], { "../../outside.md": "# Outside\n" }, { [file]: 1 }]) {
+      const refused = run(input); expect(refused.status).not.toBe(0); expect(refused.stdout).toBe("");
+    }
+    expect(() => readFileSync(file)).toThrow(/ENOENT/);
+  });
+
   it("accepts relative links, pinned repository links, fresh regions, allowed terms and compiled fences", () => {
     const roots = guideFixture(
       `# Guide\n\n[Start](start/tutorial.md) and [the README](${repositoryLink("README.md")}) store files in S3.\n\n${coreRegion(freshMaturity)}\n\`\`\`ts\nconst total: number = 1 + 1;\nexport const doubled = total * 2;\n\`\`\`\n`,

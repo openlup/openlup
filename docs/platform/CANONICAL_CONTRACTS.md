@@ -331,6 +331,9 @@ acceptance with `resendId: null`, and the provider retains idempotency keys for
 a limited window (currently 24 hours); keep the local effect ledger independent
 of that window.
 
+The webhook uses a UTC-seconds clock and an inclusive ±300-second timestamp
+window.
+
 Evidence (historical record, 2026-11-13):
 
 Reconciliation delegates to `runDeliveryReconciliation`, with internal GET reads
@@ -507,6 +510,10 @@ Native retry-case propagation calls `dunning_lifecycle_handle_failure` from
 [`subscription_retry_open_case`](../../packages/platform/sql/20261109100000_subscription_retry_resume.sql).
 Its failure handler has no exhaustion-rung fence; preserve the distinction
 between class termination and exhaustion when changing that call path.
+
+The core matrix covers four statuses. The engine re-arms `next_cycle_at` at the
+later of the stored instant and two days out; managed SQL restarts assign two
+days out unconditionally.
 
 Evidence (historical record, 2026-11-13):
 
@@ -731,6 +738,9 @@ or declare complete compatibility evidence. Existing release context checks rema
 
 The outbox catalogue candidate retains separate core-peer, export-snapshot and
 shipped-baseline pins; those pins do not grant publication eligibility.
+
+While `@openlup/core` is below 1.0, the publishable packages share a `0.N.P`
+set version from one commit; package checks admit only a set version below 1.0.
 
 Evidence (historical record, 2026-11-13):
 
@@ -1197,6 +1207,10 @@ The private construction mapper resolves opaque subjects and owned targets.
 Admission stores validated immutable effect evidence before dispatch and
 rechecks generation and tombstones after awaits. The type declarations live in
 [`marketingSync.ts`](../../packages/platform/src/communications/contracts/marketingSync.ts).
+
+The communications entries expose the same 17 type-only marketing-sync
+declarations. The four families have five operations; replay identity includes
+all four binding coordinates.
 
 Evidence (historical record, 2026-11-13):
 

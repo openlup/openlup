@@ -37,6 +37,8 @@ Source inventory under `src/subscription/`:
 carry the shapes; `subscriptionEngineUtils.ts` carries the shared pure helpers.
 When changing refusals, add a `SubscriptionEngineErrorCode` rather than an exception.
 
+Eight files under `src/subscription/`, one barrel (`index.ts`), four groups of
+exports. `SubscriptionEngineErrorCode` is a closed union of eleven neutral codes.
 
 ## No I/O, and no ambient clock
 
@@ -46,9 +48,15 @@ The only import leaving `src/subscription/` is the sibling
 `paymentFailureTaxonomyContracts` module. Keep the source scan
 `rg 'Date.now|new Date\(\)' src/subscription` empty.
 
+Two rules govern these eight files: no I/O and no ambient clock. Functions that
+need the current instant take it as an ISO-8601 string parameter.
+
 ## The deterministic-clock contract on `recordPaymentSuccess`
 
 Moved to [Subscription engine](guide/concepts/subscription-engine.md#the-deterministic-clock-on-recordpaymentsuccess).
+
+`recordPaymentSuccess` takes two required instants, `paidAt` and `recordedAt`;
+lateness is measured to the earlier of the two.
 
 ## A late payment shifts the cycle; it never compresses it
 
@@ -57,12 +65,18 @@ Moved to [Subscription engine](guide/concepts/subscription-engine.md#a-late-paym
 Keep the TypeScript monotonic clamp and its SQL `GREATEST` spelling synchronized
 when changing implementations that enforce the same rule.
 
+The late shift is `max(0, floor((min(paidAt, recordedAt) - cycle.scheduledAt) / 1 day))`.
+
 ## The retry ladder terminates; it does not cap
 
 Moved to [Subscription engine](guide/concepts/subscription-engine.md#the-retry-ladder-terminates).
 
 Keep the SQL retry rail's terminating-class singleton synchronized with
 `cycleHardening.ts`; the parity test fails if the spellings drift.
+
+`DEFAULT_CYCLE_RETRY_CADENCE` ships `backoffHours: [24, 72, 168]` — one day,
+three days, seven days — frozen in place and injectable for host composition.
+Its `terminatingFailureClasses` has exactly one member: `["hard_do_not_retry"]`.
 
 ## The status matrix and dunning continuity
 
@@ -74,6 +88,10 @@ belong to activation.
 
 Managed SQL hard-codes exhaustion at rung 4 in its dunning, recovery and
 due-list guards.
+
+Both restarts put `nextCycleAt` `RESTART_LEAD_DAYS` (two) days out, but never
+earlier than the instant already stored. Managed SQL restarts assign
+`now + 2 days` without the clamp.
 
 ## Consuming it from a host application
 

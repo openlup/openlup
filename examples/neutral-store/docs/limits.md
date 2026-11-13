@@ -113,6 +113,10 @@ and normalized-ingest composition remain unbound. Catalogue drafts use isolated
 authoring tables; bundle activation writes native status, while storefront and
 checkout read typed configuration through `evaluateOffer`.
 
+The application declares 70 operations (66 bound with a runtime connection).
+Partner intake permits five requester attempts and three email attempts per
+60-minute window.
+
 Evidence (historical record, 2026-11-13):
 
 Review read and submit require an accepted, unexpired native order review grant.
@@ -145,6 +149,15 @@ separate native owners. Hash lookup uses an index without a constant-time claim.
 The customer address action maps the native next-parcel result; it mounts no
 current-parcel operator correction.
 
+An admitted new checkout issues a 256-bit recovery token. Checkout creation,
+reminder waves and signed-in recovery issue links ending 24 hours after order
+creation; operator links end at the earlier of issuance plus 24 hours or order
+creation plus 30 days. Renewal payment-case links expire 30 days after order
+creation. Expired-policy inspection can offer recreation until 30 days after
+order creation.
+
+Payment-case links rotate separately, leaving one live link per case.
+
 Evidence (historical record, 2026-11-13):
 
 Shipping is charged below the configured threshold on products after discounts;
@@ -176,6 +189,13 @@ store's capacity and retention bounds independently of a replaced callback.
 Input configuration is checked against native destination, integer-money,
 cadence and tax-text constraints before composition.
 
+Purchase and sign-in share `purchase.inputLimits.email`, capped at 160 characters;
+both demonstrations use 160. Configured subscription cadences and their default
+are whole days from 1 through 120. Checkout admits at most 50 selected lines and
+99 units per line within the configured total. Tax legal-basis text is at most
+200 characters; the shared legal revision is trimmed, nonempty and at most
+64 characters.
+
 ## Paid-order message capture
 
 Moved to [Starter limits](../../../packages/core/docs/guide/reference/limits.md#paid-order-message-capture).
@@ -184,6 +204,9 @@ The lifecycle entry composes the paid-mail event filter and processor through
 `host/paid-mail.ts`. Deduplication belongs to the filesystem-artifact and outbox
 owners. The composition adds no transport, SQL or grants; subscription notices
 retain their native owner.
+
+A paid order with an emitted paid-mail event and contact produces one private
+message record; reclaimed sends deduplicate.
 
 ## Subscription care
 
@@ -232,6 +255,9 @@ storage retains its own source owner. The owner provisions
 `commerce_operators.id` from the human principal and preserves the row for audit
 attribution, revoking access through identity membership rather than deletion.
 
+Eligible expired orders retain a single Pay action; lineage and receipt replay
+keep the unique replacement and attempt.
+
 Evidence (historical record, 2026-11-13):
 
 The additional real-PostgreSQL journeys run in the `recovery extension ` group
@@ -247,6 +273,8 @@ The two command bindings re-resolve human membership and the existing Commerce
 operator row on replay. Native durable receipts own command identity; genuine
 provider-refund duties retain their existing owners.
 
+Optional reasons retain the 1–2,000 character contract.
+
 ## Return requests and decisions
 
 Moved to [Starter limits](../../../packages/core/docs/guide/reference/limits.md#return-requests-and-decisions).
@@ -254,6 +282,9 @@ Moved to [Starter limits](../../../packages/core/docs/guide/reference/limits.md#
 The host resolves the existing Commerce operator after fresh membership
 admission for every decision and replay. Native ownership, quantity and command
 receipts remain the return admission owners.
+
+Full, partial (including zero) and no-refund modes record intent; partial
+requires an amount.
 
 ## Optional payment guidance
 
@@ -281,6 +312,9 @@ Native saved-address, billing-profile and scoped-preference handlers bind the
 signed-in session. The host supplies fictional country, phone-prefix and tax
 checksum validation.
 
+Deleting a missing or foreign saved address or billing profile acknowledges
+a zero-row deletion.
+
 ## Sandbox token payment and exact continuation
 
 Moved to [Starter limits](../../../packages/core/docs/guide/reference/limits.md#sandbox-token-payment-and-exact-continuation).
@@ -291,6 +325,9 @@ provides the opaque checkout journey. Registered demonstration references supply
 synthetic method identity. The payment hold wrapper receives an explicitly
 unconfigured policy. Buyer-link delivery rechecks native authorization and
 captures through the private mailbox; its source marker distinguishes landing.
+
+Dedicated token pay offers two explicit synthetic demo choices. Buyer-link sends
+deduplicate in the unchanged ten-minute bucket.
 
 ## Billing profiles and frozen invoice buyers
 
@@ -307,3 +344,5 @@ recording capture; successful ingress selects acquisition or classic activation.
 The Node host registers billing, address, preference and parcel-contact privacy
 contributors. Identity/subscription coverage and account-event retention remain
 application composition.
+
+Slot 28 preserves absence of explicit buyer facts during recreation.

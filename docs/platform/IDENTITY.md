@@ -144,6 +144,9 @@ The reference customer binding supplies a one-origin allowlist from nonblank
 through to compatibility configuration. Default static/reference route admission
 is unchanged.
 
+The refusal receives the existing 400 ms padding floor and does not depend on
+the requested identity.
+
 Evidence (historical record, 2026-11-13):
 
 `resolveOrigin(req)` remains the existing explicit override: adopters can keep
@@ -188,6 +191,11 @@ The reference managed invite runner does not enforce the direct-only TTL setting
 
 See [data compatibility](DATA_AND_MIGRATIONS.md#compatibility-lifecycle) and the
 [package invocation](PLATFORM_PACKAGE_REFERENCE.md#operator-invitations).
+
+The direct TTL defaults to 604800 seconds, with integer bounds 60..2592000.
+
+Lazy expiry uses the serialized database clock, includes equality with the
+deadline and records one system audit event.
 
 Evidence (historical record, 2026-11-13):
 
@@ -439,6 +447,11 @@ after sending acceptance instead of launching an untracked task.
 The injected delivery builds `/admin/auth/callback#operator_token=…` using the
 strict `APP_BASE_URL` / `SITE_URL` origin resolver.
 
+Unknown, revoked, disallowed and limited requests retain the 400 ms response
+floor. Each challenge uses 32 random bytes encoded as 43 base64url characters.
+Issuance per principal is one per rolling minute, five per rolling hour, including
+consumed challenges. Tokens expire after ten minutes.
+
 ### First-administrator bootstrap
 
 Moved to [Identity](../../packages/core/docs/guide/concepts/identity.md#first-administrator-bootstrap).
@@ -454,12 +467,17 @@ PLATFORM_BUNDLE=node-postgres node --experimental-strip-types \
 Its implementation locks membership and invitation tables and records the new
 principal as `invited_by`, with a system actor in the bootstrap audit.
 
+The bootstrap invitation lasts seven days.
+
 ### Sessions and authorization
 
 Moved to [Identity](../../packages/core/docs/guide/concepts/identity.md#sessions-and-authorization).
 
 The reference shell maps `accessToken` to its neutral `access_token` session
 subset. Managed SDK initialization remains behind managed selection.
+
+Operator sessions have a fixed 900-second lifetime. Verification requires a
+positive lifetime of at most 900 seconds.
 
 ### Retention and recovery
 
@@ -473,6 +491,9 @@ node --experimental-strip-types server/runtime/auth/operatorIdentityCommand.ts p
 
 Its bounded database batches use expiry/ID ordering with locked-row skipping.
 
+Each invocation deletes at most 500 challenges whose expiry is more than
+24 hours old.
+
 ### Installation and verification limits
 
 Moved to [Identity](../../packages/core/docs/guide/concepts/identity.md#installation-and-verification-limits).
@@ -482,6 +503,8 @@ The operator challenge forward is
 package SQL projection is byte-identical. The normalized-email unique index
 refuses duplicate principal emails. The forward adds only a table and indexes,
 without privilege grants or a managed migration.
+
+Fixture timestamps respect the same ten-minute constraint as issued challenges.
 
 Evidence (historical record, 2026-11-13):
 
@@ -535,6 +558,11 @@ follows policy admission, with a handler-level human-admin recheck.
 The Settings panel keeps documents, confirmation and retry keys in component
 memory keyed by subject/session, guarding late responses. The repository
 `prune-challenges` command processes separate operator and customer batches.
+
+Operator tokens last at most 900 seconds; customer TTL remains configured
+(default 3600 seconds, permitted range 300–86400 seconds). `prune-challenges`
+processes at most 500 operator and 500 customer challenges per invocation, only
+when expiry is strictly older than 24 hours.
 
 ### Retained responsibilities
 
@@ -733,6 +761,11 @@ locking matches the account-link boundary. No SQL, grants or challenge-function
 change is introduced. Exact shapes remain in the
 [identity API reference](../../packages/platform/api/identity.api.md).
 
+Names are bounded to 80 characters, phone to 64 and country to 2. Optional
+`journey` contains `idempotencyKey` (8–160 characters) and `locale` (1–35). Raw
+email is limited to 320 characters. Acquisition source is 1–100 characters after
+trimming, with raw limit 100.
+
 ## Opt-in OIDC access tokens
 
 Moved to [Identity](../../packages/core/docs/guide/concepts/identity.md#opt-in-oidc-access-tokens).
@@ -745,6 +778,21 @@ routes retain the observed mutation wrapper and actor-scoped profile reads.
 Existing randomly identified operators need an explicit administrative migration.
 Default launch, passwordless routes, browser choices and managed login are unchanged.
 Exact types remain in the [identity API reference](../../packages/platform/api/identity.api.md).
+
+Customer lifetimes are at most 3,600 seconds; operator tokens require one scalar
+audience and at most 900 seconds. Clock tolerance is zero and equality at expiry
+refuses.
+
+Discovery expires within one hour and JWKS within five minutes. `max-age` and
+`Age` can shorten these bounds; `no-store` prevents reuse. `no-cache` instead
+limits reuse to 30 seconds, matching the minimum JWKS refresh interval; shorter
+explicit freshness bounds still apply. Each fetch rejects redirects and has a
+three-second deadline including its streamed body, capped at 64 KiB. Every JWKS
+attempt, successful or unsuccessful and including initial loading, starts a
+30-second refresh window. Unknown kids inside it refuse without another fetch.
+
+The JWKS set must contain at least one usable signing key, with key IDs unique
+among usable keys.
 
 Evidence (historical record, 2026-11-13):
 

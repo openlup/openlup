@@ -86,7 +86,7 @@ missing evidence remains `verification_pending`. No-trigger admission includes
 other-audience consent automation, segments and backfills affected by an
 account-wide grant. A withdrawal exempts only grant-caused uncertainty, including
 grant-only account quarantine across subjects; another subject's grant does not
-hold it. Non-grant durable quarantine and the single in-flight slot still apply.
+hold it. Non-grant durable quarantine and exclusive in-flight admission still apply.
 The adapter supplies no job API, executor or callback for settling that race.
 
 ## Replay and uncertainty

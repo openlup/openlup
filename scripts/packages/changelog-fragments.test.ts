@@ -17,6 +17,7 @@ function fixture(legacy = "") {
   const write = (path: string, text: string) => { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), text); };
   const read = (path: string) => readFileSync(join(root, path), "utf8");
   write("config/openlup-packages.json", JSON.stringify({ schemaVersion: 2, packages: [{ name: "@openlup/core", directory: "packages/core", publish: true }], unreleased: [] }));
+  write("config/documentation-guide-allowlist.json", JSON.stringify({ schemaVersion: 1, terms: [] }));
   write("package-lock.json", JSON.stringify({ packages: { "packages/core": { version: "0.4.0" } } }, null, 2));
   write("packages/core/package.json", JSON.stringify({ name: "@openlup/core", version: "0.4.0" }, null, 2));
   write("packages/core/CHANGELOG.md", `# Changelog\n\n## [Unreleased]\n\n${legacy}${history}`);
@@ -31,6 +32,7 @@ function fixture(legacy = "") {
 describe("changelog fragment preparation", () => {
   it.each(["legacy", "fragments", "mixed"])("assembles %s in byte path order and preserves history byte-for-byte", (kind) => {
     const f = fixture(kind === "fragments" ? "" : "- Legacy first.\n\n");
+    f.commit();
     if (kind !== "legacy") {
       f.write("packages/core/changes/z-last.md", "- Last.\n"); f.write(fragment, "### Added\n\n- First.\n");
     }

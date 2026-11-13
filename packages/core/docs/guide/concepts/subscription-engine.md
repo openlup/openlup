@@ -54,10 +54,11 @@ replace its payment time with the observation time. The recorded cycle keeps
 
 A successful payment calculates the next cycle from the paid cycle's own
 `scheduledAt` and snapshot cadence, then adds the whole days it was late.
-In this formula, `elapsedDay` is the duration of an elapsed day:
+In this formula, `nonnegativeWholeDays` rounds elapsed days down and excludes
+negative lateness:
 
 ```text
-shiftedByDays = max(0, floor((min(paidAt, recordedAt) - scheduledAt) / elapsedDay))
+shiftedByDays = nonnegativeWholeDays(min(paidAt, recordedAt) - scheduledAt)
 onTimeNextCycleAt = scheduledAt + cycle.templateSnapshot.cadence_days days
 nextCycleAt = max(subscription.nextCycleAt, onTimeNextCycleAt + shiftedByDays days)
 ```

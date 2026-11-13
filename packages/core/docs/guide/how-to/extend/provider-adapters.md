@@ -180,8 +180,8 @@ contract before choosing a retry horizon.
 For this protocol template, signatures accept bare or `v1,` members and literal
 keys or canonical base64 keys prefixed with `whsec_`. Supply a UTC-seconds
 clock; the template enforces a bounded timestamp window, including its
-endpoints. Inspect the selected template through the installed export map for
-its verification policy; this policy is separate from the standard Auth verifier. The receiver defaults to
+endpoints. See the [maintainer protocol limits](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/CANONICAL_CONTRACTS.md#opt-in-node-protocol-adapter)
+for the exact window. This policy is separate from the standard Auth verifier. The receiver defaults to
 non-production. Lookup/apply failures return a fixed HTTP 500 response for
 retry; attempt telemetry cannot overturn a successful observation. Unsupported
 event types, missing message IDs and foreign-environment events return only an
@@ -236,7 +236,7 @@ or job-control API.
 Declare whether a consent grant affects an audience or the whole account. For
 account-wide effects, check every affected consent flow and prove that the
 operation cannot clear suppression. Keep audience-only withdrawal separate from
-explicit all-purpose withdrawal. Send one subject per request and treat an
+explicit all-purpose withdrawal. Submit subjects separately and treat an
 asynchronous job response as acceptance only.
 
 Allow withdrawal despite an earlier unsettled grant, retaining

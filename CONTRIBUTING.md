@@ -1299,9 +1299,15 @@ of path. It also moves each package's growth baseline (`pack.baseline` in
 that version's published registry tarball, so release preparation needs registry
 access; see [Package artifact limits](.github/VERSIONING_AND_EOL.md#package-artifact-limits).
 All packages are validated and planned before writes, and only
-consumed fragments are deleted after successful writes, then exactly those
-deletions are staged so source preparation sees the updated Git inventory;
-no other changes are staged. Historical sections
+consumed fragments are deleted after successful writes. The set bump also plans
+an `upgrade/v<major>-<minor>-<patch>.md` guide page from those fragments and
+the API diff before any writes, refusing an existing page. Guide-contract violations
+print warnings for correction in the same PR. It also refreshes the guide's
+repository-link pins and generated regions.
+The guide writes and consumed deletions are staged so source preparation
+sees the updated Git inventory; no other changes are staged. Follow the
+[release preparation sequence](docs/platform/DEVELOPMENT_AND_RELEASE.md#releasing-a-package)
+for the read-only documentation listing and guide edits. Historical sections
 remain byte-identical. Merging it authorizes no release.
 A release is then dispatched with `publish-package.yml` and package `all` for the
 reviewed commit, and one maintainer approval of the protected `release`

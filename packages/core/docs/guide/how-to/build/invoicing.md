@@ -43,7 +43,7 @@ not fill missing tax or money with invented values. The provider owns fiscal
 numbering; local invoice references and nullable external document numbers are
 distinct. Keep ordered canonical line amounts, explicit delivery and discount
 components, dates and references. These contracts supply no currency conversion,
-catalogue reread or zero-tax substitute. Identifier, tax and rounding policy
+catalogue reread or assumed tax substitute. Identifier, tax and rounding policy
 references select your fiscal policy; there is no built-in country rule.
 
 Registry evidence carries the identifier scheme, legal name, optional
@@ -97,7 +97,7 @@ Issue and full-reversal recovery must use the full immutable identity, including
 revision, operation and parent document. Preserve unknown remote outcomes.
 Only exact, complete absence for that scope can authorize another create;
 failed, ambiguous or unsupported lookup cannot. A full reversal carries
-immutable before facts and explicit zero after totals. Remote void is unsupported
+immutable before facts and explicitly cleared after totals. Remote void is unsupported
 and must not be substituted with local pre-issue void.
 
 Keep unsupported duties visible. `unsupported_recorded` means reversal intent
@@ -125,7 +125,7 @@ A correction recovery bridge must prove both the parent document and correction
 reference. Local-only requests preserve provider selection, document ID, invoice
 reference, status and replay. If a reversal was requested while the remote issue
 outcome was unknown, late acceptance retains its external identity and
-atomically creates one compensation duty at finalization.
+atomically creates its deduplicated compensation duty at finalization.
 
 ## Deliver documents
 
@@ -149,8 +149,8 @@ for absent or invalid values. Terminal settlement carries `{ phase: "before_send
 retryable: false }`, parks availability at infinity and leaves failed status and
 the diagnostic visible. Projection failures and job retries use bounded
 attempt-based backoff; consult the
-[invoicing API report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/invoicing.api.md)
-and its linked implementation for delay limits. Store mode supplies these finalizers. Once transport
+[maintainer delivery limits](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#invoicing-read-helpers)
+for exact delays and fallback values. Store mode supplies these finalizers. Once transport
 has been entered, `send` must return `uncertain` for a timeout or lost
 acknowledgement. Throwing is permitted only before transport entry. An uncertain
 send never authorizes a blind repeat send, and provider acceptance does not
