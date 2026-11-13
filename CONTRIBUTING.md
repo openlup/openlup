@@ -378,7 +378,13 @@ It reuses the verified candidate manifest and acquires an isolated disposable
 PostgreSQL 16 per configuration through the shared test helper and `test-postgres`
 inventory pin. The job's PostgreSQL 17 service retains its existing package proofs. The runner
 installs and seeds both demonstration configurations, verifies migration replay
-and the restricted runtime identity, and starts two loopback hosts. An authenticated
+and the restricted runtime identity, and starts two loopback hosts per group.
+The seven shared selections are subscription care; portal; recovery extension;
+combined operator operations, returns portal and shipment operations; combined
+payment guidance, account preferences, embedded browser and billing profiles;
+payment retry; and the remainder. Setup failures stop before another group is
+acquired and report the group and phase; Playwright failures allow later groups
+to retain their diagnostics. An authenticated
 GHCR pull selects the pinned `starter-browser` image through the shared reader
 and pull loop; mirror failure refuses without a vendor fallback or browser
 download. Playwright runs the database config with one worker, traces, video and
@@ -389,8 +395,8 @@ runs with the host user identity to preserve private capture permissions.
 The script captures output privately, scans it for credentials, removes its
 hosts, containers, databases, roles and scratch files on success or failure, and
 prints the public image identity, counts, timings and bounded failure diagnostics. It uploads no artifacts.
-The job has a 35-minute deadline, at least 1.3 times the estimated slowest hosted
-run of its sequential browser groups, and keeps its existing required-check dependencies. See the
+The job retains its 35-minute deadline pending a hosted measurement of the seven
+sequential groups, and keeps its existing required-check dependencies. See the
 [starter proof recipe](examples/neutral-store/docs/proof.md#database-backed-purchase-acceptance-recipe)
 for the selected journeys and the separate local proofs.
 

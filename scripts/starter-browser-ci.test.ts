@@ -6,13 +6,41 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { spawn, spawnSync } from 'node:child_process';
 import { EventEmitter, once } from 'node:events';
 import pg from 'pg';
-import { acquireStarterPostgres, browserArguments, capturePrivateValues, parseArguments, resolveBrowserImage, scanPrivateOutput, withCleanup, withConnectionCleanup, writeBrowserFixtures, watchStarterHost } from './starter-browser-ci.mjs';
+import { acquireStarterPostgres, browserArguments, capturePrivateValues, parseArguments, resolveBrowserImage, runBrowserGroups, scanPrivateOutput, withCleanup, withConnectionCleanup, writeBrowserFixtures, watchStarterHost } from './starter-browser-ci.mjs';
 import { imageReference, readCiImage } from './ci-image-pull.mjs';
 
 const args = ['--manifest', '/tmp/packs/packages-manifest.json', '--expected-commit', 'a'.repeat(40)];
 
 describe('installed starter browser CI', () => {
   afterEach(() => vi.unstubAllEnvs());
+  it.each(['postgres_supplements', 'install_coffee', 'seed_supplements', 'runtime', 'host_coffee', 'cancelled'])('stops after an early group fails during %s', async phase => {
+    const started: number[] = [], released: number[] = [];
+    const report = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const failure = new Error('infrastructure failed');
+    try {
+      await expect(runBrowserGroups(async index => withCleanup(async defer => {
+        started.push(index);
+        defer(() => { released.push(index); });
+        throw failure;
+      }), () => phase)).rejects.toBe(failure);
+      expect(started).toEqual([0]);
+      expect(released).toEqual([0]);
+      expect(report).toHaveBeenCalledWith(`Starter browser group 1 failed during ${phase}`);
+    } finally { report.mockRestore(); }
+  });
+  it('runs later groups after a Playwright failure and still reports the failed run', async () => {
+    const started: number[] = [];
+    const report = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const failure = new Error('test failed');
+    try {
+      await expect(runBrowserGroups(async index => {
+        started.push(index);
+        if (index === 0) throw failure;
+      }, () => 'journeys')).rejects.toBe(failure);
+      expect(started).toEqual([0, 1, 2, 3, 4, 5, 6]);
+      expect(report).toHaveBeenCalledWith('Starter browser group 1 failed during journeys');
+    } finally { report.mockRestore(); }
+  });
   it('accepts only the explicit candidate manifest', () => {
     expect(parseArguments(args)).toEqual({ manifest: args[1], commit: args[3] });
     expect(parseArguments([...args.slice(2), ...args.slice(0, 2)])).toEqual(parseArguments(args));
