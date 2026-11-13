@@ -1382,6 +1382,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261114100000_payment_provider_attempt_store.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4543,6 +4547,10 @@
     },
     {
       "path": "packages/platform/sql/20261111120000_communication_ecommerce_sources.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261114100000_payment_provider_attempt_store.sql",
       "class": "public-output"
     },
     {
@@ -7882,6 +7890,18 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/payments/postgresPreparedAttempt.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/postgresProviderControl.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/postgresProviderWebhook.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/payments/postgresSandboxPaymentSimulator.ts",
       "class": "public-output"
     },
@@ -7891,6 +7911,14 @@
     },
     {
       "path": "packages/platform/src/payments/preparedAttemptFinalization.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/providerRecoveryAttempts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/providerRecoveryReaders.ts",
       "class": "public-output"
     },
     {
@@ -29326,6 +29354,42 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/fixtures/paymentProvider/blockedPreflight.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/paymentProvider/duplicateFailure.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/paymentProvider/durability.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/paymentProvider/eventFingerprint.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/paymentProvider/intentReplay.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/paymentProvider/notChargeableCleanup.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/paymentProvider/setup.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/paymentProvider/terminalizedCycle.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/paymentProvider/zeroAmountAndAttribution.sql",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/fulfillmentCommerceReads.test.ts",
       "class": "public-output"
     },
@@ -29703,6 +29767,18 @@
     },
     {
       "path": "tests/postgres/partnerAcquisition.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/paymentProviderStore.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/paymentProviderStorePgtap.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/paymentProviderTransfer.test.ts",
       "class": "public-output"
     },
     {
