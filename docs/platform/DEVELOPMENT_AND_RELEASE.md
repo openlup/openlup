@@ -330,8 +330,14 @@ The source-preview descendant check retains its strict snapshot equality.
 
 ### Verify the published npm artifact
 
-After a core publication, the publish workflow waits for the matching package set on npm and runs the guide tutorial against the registry, advisory until two green runs on main per decision D4.
-A tutorial failure appears as a warning annotation and in the step summary.
+After a successful core publication, the separate
+[Guide tutorial against the npm registry](../../.github/workflows/registry-tutorial.yml)
+workflow waits for the matching package set and core's `latest` value on npm,
+then runs the guide tutorial against the registry. It uses the default-branch
+workflow and checks out the completed publication's commit. It does not hold the
+publication run open or delay the next release dispatch, and is not a required
+check. The tutorial remains advisory until two green merge-group runs on main:
+a tutorial failure appears as a warning annotation and in the step summary.
 
 Use a disposable directory outside any checkout, Node 24, npm 11.19.0 and an
 authenticated `gh`. Select the package/version and full commit from the reviewed

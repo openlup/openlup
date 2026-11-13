@@ -98,6 +98,10 @@
       "class": "public-output"
     },
     {
+      "path": ".github/workflows/registry-tutorial.yml",
+      "class": "public-output"
+    },
+    {
       "path": ".gitignore",
       "class": "public-output"
     },
@@ -12015,6 +12019,10 @@
     },
     {
       "path": "scripts/packages/reference-delegation-consumer.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/registry-tutorial-workflow.test.ts",
       "class": "public-output"
     },
     {

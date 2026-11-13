@@ -681,7 +681,7 @@ describe("the workflow stays in step with what it claims to run", () => {
   });
 
   it("pins CI and release runtimes while relaying the exact pack runtime to publication", () => {
-    for (const name of ["published-tree-ci", "publish-package", "publish-packages", "publish-source-preview"]) {
+    for (const name of ["published-tree-ci", "publish-package", "publish-packages", "publish-source-preview", "registry-tutorial"]) {
       const source = readFileSync(join(ROOT, `.github/workflows/${name}.yml`), "utf8");
       const setups = source.split(/^ {6}- uses: actions\/setup-node@/mu).slice(1);
       expect(setups.length, name).toBeGreaterThan(0);
@@ -696,8 +696,11 @@ describe("the workflow stays in step with what it claims to run", () => {
     expect(packages).toContain("node-version: ${{ steps.node.outputs.version }}");
     expect(workflowJob("pack", packages)).toContain('echo "version=$(node -p \'process.versions.node\')" >> "$GITHUB_OUTPUT"');
     expect(workflowJob("publish", packages)).toContain("node-version: ${{ needs.pack.outputs.node-version }}");
-    expect(workflowJob("registry-tutorial", packages)).toContain("node-version: 24.21.0");
+    const tutorial = readFileSync(join(ROOT, ".github/workflows/registry-tutorial.yml"), "utf8");
+    expect(workflowJob("registry-tutorial", tutorial)).toContain("node-version: 24.21.0");
+    expect(packages).not.toContain("registry-tutorial");
     expect(REQUIRED_CONTEXTS).not.toContain("registry-tutorial");
+    expect(REQUIRED_CONTEXTS).not.toContain("Guide tutorial against the npm registry");
     expect(REQUIRED_CONTEXTS).not.toContain("Guide tutorial against the npm registry (advisory)");
   });
 
