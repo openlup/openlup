@@ -11918,6 +11918,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/packages/guide-tutorial.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/guide-tutorial.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/packages/market-descriptor-consumer-proof.ts",
       "class": "public-output"
     },
