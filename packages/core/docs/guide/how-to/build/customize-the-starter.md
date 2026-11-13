@@ -4,6 +4,82 @@ Change the starter's identity, presentation and offer rules in your application.
 Start with owned configuration and fragments; take ownership of a page when the
 change reaches its structure or workflow.
 
+## Prepare the application
+
+The starter is separate application source. Choose an immutable source archive
+and extract it before running the following command from that archive's root.
+Use Node.js 24, npm 11.19.0 and Git; the destination must be empty.
+
+```sh
+node examples/neutral-store/extract.mjs ../my-store
+cd ../my-store
+```
+
+The extractor copies the owned and managed inventory, creates an independent Git
+repository and materializes its application agent guide. It refuses a nonempty
+destination with `starter_extract_directory_not_empty`.
+
+The application manifest expects local package archives. Set `CORE_ARCHIVE`,
+`OUTBOX_ARCHIVE` and `PLATFORM_ARCHIVE` to the full paths of your selected package
+archives, then import them in this order:
+
+```sh
+./lifecycle candidate "$CORE_ARCHIVE" "$OUTBOX_ARCHIVE" "$PLATFORM_ARCHIVE"
+npm ci
+```
+
+Import checks package names and equal versions, records SHA-256 identities and
+generates the lockfile. These are local candidate inputs, not registry pins.
+For an application consuming npm packages directly, use
+[Adopt OpenLup from npm](../../start/adopt-from-npm.md) instead.
+
+## Run the local demonstration
+
+For a database-backed demonstration, install Docker with Compose and run from
+the prepared application directory:
+
+```sh
+./lifecycle up
+```
+
+This builds the image, starts PostgreSQL, applies the packaged migration history
+and fictional seed, then serves the application at `http://127.0.0.1:4319`.
+Pass `--configuration <id>` to select another owned configuration.
+`./lifecycle down` stops the project while preserving its data. Keep the
+passwordless demonstration network and its database isolated; do not reuse this
+Compose file or its database authentication rules for a deployed application.
+Use fictional contacts and `.test` addresses. A healthy configuration response
+does not establish a completed purchase; read the [starter limits](../../reference/limits.md).
+
+For a database-free presentation preview, run:
+
+```sh
+npm run build
+node --experimental-strip-types host/server.ts
+```
+
+This host does not compose the database-backed actions. Its default port is
+4319; pass `--configuration <id> --port 4320` to select another configuration
+and port. Stop with Ctrl-C before reusing the port. Use the
+[edit loop](#edit-and-refresh) while changing the presentation.
+
+## Reset an interrupted first install
+
+An interruption after database creation but before its demonstration marker is
+written leaves an unmarked database. Startup refuses with
+`starter_seed_demonstration_database_required` rather than adopting it.
+To discard only that local demonstration, use its application directory and the
+same Compose project selection:
+
+```sh
+./lifecycle down
+docker compose down --volumes
+./lifecycle up
+```
+
+The volume removal destroys all data in that demonstration project. A fresh
+startup creates and marks a new demonstration database.
+
 ## Edit and refresh
 
 From the root of your extracted application, with dependencies prepared, run:
@@ -17,9 +93,9 @@ The local edit loop runs on macOS and Linux. Edit configuration, fragments or
 refresh the browser manually. If the terminal reports an error, resolve it and
 wait for the host to listen before refreshing. With the starter's `build` and
 `start` package scripts, restart the host after a configuration edit and rebuild the client
-after a fragment edit. See the
-[starter setup](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/neutral-store/README.md#local-ui-edit-loop)
-for preparing the extracted application.
+after a fragment edit. Changes to public media need a manual refresh; they are
+not watched. The watcher polls even while idle. A restart loses process-local
+sessions, and client and configuration changes do not reload atomically.
 
 ## Select your configuration
 
@@ -197,8 +273,9 @@ is one hour and capacity is 1000 entries; a full store refuses with
 native stores. Replace this session storage for a production application.
 
 The demonstration captures sign-in messages privately rather than sending mail.
-Read `identity.jsonl` as the container's `node` user using the
-[local mailbox recipe](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/neutral-store/README.md#host-origin-and-local-sessions).
+Read `identity.jsonl` through the application container's filesystem as its
+`node` user; the [capture binding](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/neutral-store/host/native-composition.ts)
+defines its private location.
 The file is created with mode `0600`. Access exposes sign-in tokens; keep it
 private. HTTP serves only built assets, not the mailbox.
 
@@ -221,8 +298,7 @@ Replace the fictional `starter:item@1` registry and content validator in
 `owned/catalogue.ts` for your application. Draft payloads cannot install
 executable validators. The operator can create, revise, abandon, list and read
 drafts; the host supplies the actor and command key. Provision and deactivate
-support access through the
-[operator roster recipe](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/neutral-store/README.md#operator-support-roster-and-catalogue-authoring).
+support access through the [operator roster](#provision-operator-rosters).
 
 ## Replace acquisition location choices
 
@@ -238,3 +314,93 @@ database. An identical tuple can be installed again; changed provenance or an
 inactive row refuses with `starter_acquisition_seed_conflict` and rolls back
 the transaction. Editing the list grants no runtime registry writer or delivery
 qualification.
+
+## Provision operator rosters
+
+Activate an invited native human administrator through the operator sign-in
+page first. Request a challenge with the invited email, read its token privately
+from the demonstration mailbox, then redeem it in the operator token form.
+The host provides no public operator bootstrap or roster writer.
+
+From the extracted demonstration application, open the database owner connection;
+never provision rosters through the runtime login:
+
+```sh
+docker compose exec -T database psql -U starter_install -d neutral_store
+```
+
+Find the activated administrator by the normalized invitation email:
+
+```sql
+SELECT p.principal_id, p.email, m.role, m.membership_state
+FROM public.platform_human_principals p
+JOIN public.platform_human_memberships m USING (principal_id)
+WHERE lower(btrim(p.email)) = lower(btrim('operator@example.test'))
+  AND m.membership_state = 'active' AND m.role = 'admin'
+  AND NOT EXISTS (SELECT 1 FROM public.platform_control_operators o
+                  WHERE o.principal_id = p.principal_id);
+```
+
+Require exactly one row and substitute its unchanged principal UUID below.
+Support reads require the additional communications roster entry:
+
+```sql
+INSERT INTO public.platform_communication_operators (principal_id, active)
+VALUES ('<activated-principal-id>'::uuid, true)
+ON CONFLICT (principal_id) DO UPDATE SET active = true, updated_at = now();
+```
+
+Withdraw that support access through the same owner connection:
+
+```sql
+UPDATE public.platform_communication_operators
+SET active = false, updated_at = now()
+WHERE principal_id = '<activated-principal-id>'::uuid;
+```
+
+This roster does not grant membership or sign-in authority. The host rechecks
+human membership before support access; `customer_support_read_failed` does not
+identify every failure as a missing roster entry.
+
+Hold, release and the other Commerce operator commands also require a Commerce
+row for that same active human administrator:
+
+```sql
+INSERT INTO public.commerce_operators (id, label)
+VALUES ('<activated-principal-id>'::uuid, 'Human administrator')
+ON CONFLICT (id) DO NOTHING;
+```
+
+Never delete this row. Withdraw command authority by revoking the human
+membership through the identity owner. Existing holds retain attribution to the
+Commerce row; deleting it clears that attribution and can make a human
+`fulfillment_exception` hold eligible for automatic release. Each command and
+replay rechecks authority. A distributor or a roster row alone cannot authorize
+these administrator commands.
+
+## Run a bounded background pass
+
+After installation, set `CONFIGURATION` to the selected owned configuration ID
+and `RUNTIME_URL` to its reachable restricted runtime connection. From the
+application directory, choose the pass you need:
+
+| Command | Work selected |
+| --- | --- |
+| `./lifecycle renewal --configuration "$CONFIGURATION" --database-url "$RUNTIME_URL"` | Drain paid-order mail, then attempt a bounded sandbox renewal pass when enabled. |
+| `./lifecycle care --configuration "$CONFIGURATION" --database-url "$RUNTIME_URL"` | Run auto-resume, subscription notices and winback when care is enabled. |
+| `./lifecycle checkout-recovery --configuration "$CONFIGURATION" --database-url "$RUNTIME_URL"` | Reconcile reminders, enqueue eligible waves, expire checkouts and process recovery mail. |
+
+These commands change the demonstration database and private message captures;
+they install no timer or HTTP endpoint. An existing scheduler may invoke them.
+Messages are captured locally, which does not establish delivery to recipients.
+
+`owned/renewal.config.ts` controls renewal enablement, population, retry timing,
+batch limits and leases. Renewal is disabled by default; paid-order mail still
+runs in that case. Keep renewal and care lease durations within the validator's
+bounds. The native job ledger and session exclusion prevent overlapping renewal
+or care invocations for the same selection.
+
+For recovery links, pass `--port` when the host uses a nondefault port;
+a configured `publicOrigin` takes precedence. Care links also use that configured
+origin when present. Keep the [retention and consent limits](../../reference/limits.md#subscription-care)
+in view when selecting care behavior.

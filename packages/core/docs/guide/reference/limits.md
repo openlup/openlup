@@ -1,7 +1,53 @@
-# Starter limits
+# Current limits
 
-Use this reference to decide whether the `examples/neutral-store` starter meets your needs and to recognize its refusals while running it.
-It uses a local demonstration database, sandbox payments and private message capture.
+Compare package composition, source references and the application starter before
+choosing an evaluation path. Use the starter tables below to recognize its
+refusals while running it.
+
+## Evaluation boundaries
+
+| Path | What you can evaluate | Boundary |
+| --- | --- | --- |
+| npm packages | Selected engines and server services in your application | Pin matching exact versions; supply adapters and host composition. Follow [installation](../start/README.md#install-the-packages). |
+| Portable PostgreSQL primitives | Database ports, migrations and recovery operations | Supply application composition; see the payment boundaries below and the [database recipe](../how-to/operate/connect-postgresql.md). |
+| Default source reference | Static catalogue and item pages, plus health | GET/HEAD only; checkout, subscriptions, admin, API/BFF, cron and mutations are refused. |
+| Opt-in subscription reference | One recurring item, captured payment, confirmed email sign-in, owned order/subscription reads and renewal-date changes | Owned disposable local database/authentication services and Node host; synthetic data and a captured mailbox, with no external provider calls. |
+| Application starter | Native actions bound to a local demonstration database | Sandbox payments and private message capture; no hosted-database installation recipe. |
+
+The opt-in subscription reference does not demonstrate automatic renewals,
+fulfillment, failed-renewal recovery or the complete late-delivery journey.
+A renewal date is a planned charge date, not a delivery promise. Follow its
+[local evaluation recipe](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/SUBSCRIPTION_REFERENCE.md)
+for setup and buyer/account verification.
+
+To evaluate a source reference, choose an immutable release tag and follow that
+revision's README and release notes, including its toolchain and test
+prerequisites. A source build does not start a complete commerce application.
+See the [install support policy](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/.github/INSTALL_SUPPORT_POLICY.md)
+for the installation boundary.
+
+## Store composition
+
+Starting the starter host without a runtime database connection leaves its
+native actions unbound. Its lifecycle supplies that connection for the local
+demonstration database; configuration health alone does not establish live
+operations. The [local image quickstart](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/deploy/neutral-store/README.md)
+does not establish rollback after a schema or package upgrade. Follow the
+[database upgrade procedure](../upgrade/database-migrations.md) for that boundary.
+
+Portable payment execution is sandbox-only; real-money execution uses the
+managed rail. Provider-neutral contracts do not supply every payment rail.
+Self-hosting and provider integrations require application composition:
+[compose the host](../how-to/operate/self-host.md) and
+[bind a provider adapter](../how-to/extend/provider-adapters.md).
+Adapter source does not activate an integration or certify a live provider account.
+
+Native account reads need explicit host sources. See
+[account composition](../how-to/build/account-and-support.md#bind-reads-to-the-customer)
+for missing-section refusals, newsletter consent, historical order money and
+paid orders awaiting subscription activation.
+
+## Starter refusal responses
 
 The app’s `/limits` and `/ograniczenia` pages and unavailable-action buttons use the
 [canonical limits table](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/neutral-store/shared/limits.ts).
