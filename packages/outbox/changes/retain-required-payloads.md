@@ -1,0 +1,1 @@
+Skip payload compaction while an owner pins `metadata.retainPayload=true`, retaining unresolved downstream evidence without blocking unrelated terminal pruning. Removing the pin remains the obligation owner's responsibility.

@@ -148,8 +148,12 @@ export async function preparePlants(names: string[]) {
   temporary = mkdtempSync(join(tmpdir(), "openlup-offline-protocol-"));
   const source = readFileSync(new URL("../../../src/communications/klaviyo/index.ts", import.meta.url), "utf8");
   const command = readFileSync(new URL("../../../src/communications/klaviyo/consentPush.ts", import.meta.url), "utf8");
+  const events = readFileSync(new URL("../../../src/communications/klaviyo/events.ts", import.meta.url), "utf8");
+  const schema = readFileSync(new URL("../../../src/communications/ecommerceEvents.ts", import.meta.url), "utf8");
   const compile = (s: string) => ts.transpileModule(s, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } }).outputText;
   writeFileSync(join(temporary, "consentPush.mjs"), compile(command));
+  writeFileSync(join(temporary, "events.mjs"), compile(events));
+  writeFileSync(join(temporary, "ecommerceEvents.mjs"), compile(schema.replace(/from ["']zod["']/, `from ${JSON.stringify(import.meta.resolve("zod"))}`)));
   for (const name of names) {
     let changed = source;
     for (const [before, after] of mutations[name] ?? []) { expect(changed, `${name} source plant target exists`).toContain(before); changed = changed.replaceAll(before, after); }
@@ -160,6 +164,7 @@ export async function preparePlants(names: string[]) {
       changed = changed.replace('"./consentPush.js"', `"./${name}-command.mjs"`);
     }
     changed = changed.replace('"./consentPush.js"', '"./consentPush.mjs"');
+    changed = changed.replace('"./events.js"', '"./events.mjs"').replace('"../ecommerceEvents.js"', '"./ecommerceEvents.mjs"');
     const file = join(temporary, `${name}.mjs`); writeFileSync(file, compile(changed));
     const module = await import(/* @vite-ignore */ pathToFileURL(file).href);
     modules.set(name, module.createKlaviyoMarketingAdapter); surfaces.set(name, Object.keys(module));

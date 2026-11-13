@@ -728,7 +728,7 @@ export async function mapManagedRetainedBusiness(input: {
   for (const row of subscriptionEvents) {
     if (!subscriptionById.has(row.subscription_id) || typeof row.idempotency_key !== "string" || !row.idempotency_key)
       fail("target_conflict", "public.subscription_events");
-    projected.subscription_events!.push(project("subscription_events", row));
+    projected.subscription_events!.push(project("subscription_events", row, { communication_subject_id: null }));
   }
   const contactById = byId(contacts), consentKeys = new Set<string>();
   for (const row of permissions) {

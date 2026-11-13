@@ -131,6 +131,14 @@ row("CP02", ["unverified", "no-trigger", "suppression-present", "suppression-unk
     const f = fixture(h.factory, { pending: true });
     expect(f.provider.consentPush.capabilities.operations["consent.push"].state, "CP02/unverified").toBe("verification_pending");
     expect(await f.provider.consentPush.push(pushRequest())).toMatchObject({ kind: "refused", reason: "verification_pending" }); expect(f.state.calls).toEqual([]);
+    for (const missingScope of ["profiles:read", "profiles:write", "subscriptions:write", "lists:write"]) {
+      const scoped = fixture(h.factory, { verification: {
+        scopes: ["profiles:read", "profiles:write", "subscriptions:write", "lists:write"].filter(scope => scope !== missingScope),
+      } });
+      expect(scoped.provider.consentPush.capabilities.operations["consent.push"].state, `CP02/missing ${missingScope}`).toBe("verification_pending");
+      expect(await scoped.provider.consentPush.push(pushRequest()), `CP02/missing ${missingScope} refuses locally`).toMatchObject({ kind: "refused", reason: "verification_pending" });
+      expect(scoped.state.calls, `CP02/missing ${missingScope} zero HTTP`).toEqual([]);
+    }
   } else if (plant === "no-trigger") {
     for (const armed of ["Added-to-list", "backfill", "consent-flow", "other-audience-profile-flow", "other-audience-segment", "other-audience-backfill"]) {
       const f = fixture(h.factory, { verification: { noTrigger: { profile: true, accountWideGrant: false, doi: true } } });

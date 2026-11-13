@@ -1,0 +1,1 @@
+Require the complete declared scope set for the opt-in marketing adapter's consent-push capability, including profile write permission. Missing evidence remains verification-pending before provider HTTP. Preserve the existing transport outcome contract and clarify host retry, delivery and adapter-selection responsibilities.
