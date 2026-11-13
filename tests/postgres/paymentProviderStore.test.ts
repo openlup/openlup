@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { createPostgresProviderPaymentControlPort, createPostgresPaymentWebhookControlPort,
   createPostgresProviderExpiredCheckoutSafety, createPostgresProviderPaymentRecoveryGuidancePort,
-  createPostgresSandboxPaymentSimulator, executePreparedAttemptMechanism } from "@openlup/platform/payments";
+  createPostgresSandboxPaymentSimulator, createPostgresPaymentMethodStore, executePreparedAttemptMechanism } from "@openlup/platform/payments";
 import type { PreparedAttemptFailurePolicy } from "@openlup/platform/payments/contracts";
 import { lifecycleInstallation, call, type LifecycleInstallation } from "./subscriptionLifecycleClosureFixture.js";
 import { renewal, prepareOriginal } from "./subscriptionNativeFixture.js";
@@ -471,6 +471,9 @@ it("records one attributed renewal failure before truth reuses its settlement an
 
 it("retains the 24/72/168/exhausted failure ladder and cross-writer duplicate absorption on immutable attempt receipts", async () => {
   const f = await providerRenewal(); let a = f.a;
+  await createPostgresPaymentMethodStore(env.runtime).upsert({ key: `ladder-method:${f.intent}`, clientId: f.r.client,
+    subscriptionId: f.subscription, provider: f.prepare.provider, methodKind: "card", customer: null,
+    reference: f.prepare.paymentMethodRef, mandate: null, status: "active", active: true, expiresAt: null, consent: {}, payload: {} });
   const times = [AT, "2026-11-14T12:00:00Z", "2026-11-17T12:00:00Z", "2026-11-24T12:00:00Z"];
   const next = ["2026-11-14T12:00:00Z", "2026-11-17T12:00:00Z", "2026-11-24T12:00:00Z", null];
   for (let sequence = 0; sequence < 4; sequence++) {
