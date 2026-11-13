@@ -387,6 +387,7 @@ describe("complete public CI", () => {
   });
   it("transfers only public verified packs with pinned official artifact actions", () => {
     const packages = workflowJob("install-packages"), browser = workflowJob("install-browser");
+    expect(browser).toContain("run: npm ci --ignore-scripts --prefer-offline --no-audit --fund=false");
     const upload = packages.split("      - name: Share verified candidate packages\n")[1]!;
     expect(upload).toContain("if: steps.reused.outputs.reuse != 'true'");
     expect(upload).toContain("uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a");
