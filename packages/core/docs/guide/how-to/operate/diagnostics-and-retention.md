@@ -54,8 +54,8 @@ machine authorization by itself.
 
 For the global overview, set `x-contract-version` to
 `customer-diagnostic-history.v2` and request `mode=overview`. Its time window is
-bounded; a wider window is refused with
-`customer_diagnostic_overview_invalid`. It groups retained observations by coverage
+bounded: the support route refuses a wider window with HTTP 400
+`BAD_REQUEST` before reading storage. It groups retained observations by coverage
 version and action, returning closed classifications and a small, bounded number
 of opaque example segment IDs per bucket. The explicit read contract can include both coverage versions;
 the default older read contract retains its older views. Treat observation gaps
