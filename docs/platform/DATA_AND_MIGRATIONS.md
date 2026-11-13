@@ -585,29 +585,17 @@ Existing native and managed migration bytes remain unchanged.
 
 Reader guidance: [Subscription delivery alignment](../../packages/core/docs/guide/concepts/subscriptions.md#subscription-delivery-alignment).
 
-For a fresh native install, the invariant "a late delivery extends the next cycle"
-is enforced automatically only when delivery-alignment control mode is
-`auto_align`. `public.subscription_delivery_alignment_control.mode` defaults to
-`off` for rollout safety, so installation alone does not enforce the invariant.
+`public.subscription_delivery_alignment_control.mode` defaults to `off`.
 The complete mode set is `off`, `shadow`, `protect` and `auto_align`, selected
-through `public.subscription_delivery_alignment_set_mode`. Existing cases retain
-their captured mode and protection after a control change.
+through `public.subscription_delivery_alignment_set_mode`.
 
-Enforcing modes (`protect`, `auto_align`) require the host's renewal path to call
-`subscription_delivery_alignment_admit_renewal` before inserting the cycle.
+The SQL admission control is `subscription_delivery_alignment_admit_renewal`;
+the new-cycle insertion guard uses `subscription_delivery_alignment_admission_required`.
 The [native renewal store](../../server/adapters/postgres/subscription/automaticRenewal.ts)
-retains its static terms gate. A host that composes the native automatic-renewal
-runner must wrap its store port with the
+owns the static terms gate; the
 [admission decorator](../../server/runtime/subscription/deliveryAlignmentRenewalStore.ts)
-before selecting an enforcing mode; an uncomposed
-new-cycle insertion refuses with `subscription_delivery_alignment_admission_required`.
-Until the host wraps that port, native delivery-alignment mode stays `off` or
-`shadow`. The supplied boundary stops at the decorator, with no runner composer,
-factory or production entrypoint. Captured protection survives rollback to `off`.
-
-In enforcing modes, a subscription whose paid history has no activation or
-renewal link, such as imported data, holds every due renewal for manual review.
-Operators should check for such cycles before switching modes.
+owns delivery admission. The supplied boundary stops at the decorator, with no
+runner composer, factory or production entrypoint.
 
 The command forward adds durable dispatch/attempt/paid-handoff and observation
 receipts. Atomic ACK records the native `dispatch` external reference: the `3pl`
@@ -635,21 +623,9 @@ receipt; other unordered cycles prevent automatic arrival alignment regardless
 of scheduled date. They neither outrank known predecessors nor silently permit
 an autonomous renewal. Shadow mode observes this ambiguity without blocking.
 
-Local pre-dispatch cancellation changes only the shipment locally: alignment
-creates no hold or shipment-exception event and does not block other shipments
-of the order. An undelivered, unsuperseded cancelled parcel still counts as
-outstanding at renewal admission in `protect` and `auto_align`. An explicit
-provider exception uses the existing fulfillment-exception hold and notification
-rules; alignment observes that active hold to open a case only when control is not
-`off`, the order belongs to a paid subscription cycle and the subscription is
-active. One-time orders do not open alignment cases. Exception cases never
-pause subscriptions.
+Provider-exception notification rules remain with fulfillment.
 
-Existing-cycle renewal and dunning
-retries bypass new-cycle admission and receipts. The new-cycle INSERT guard
-retains exact schedule-bound, one-use receipt consumption. Default-off control
-does not erase captured protected cases. Only durable arrival can settle the
-automatic route, using the latest arrival plus cadence with the outer maximum.
+The new-cycle INSERT guard owns admission receipt consumption.
 
 All new routines are invokers with PUBLIC/anon/authenticated access revoked,
 including helpers and trigger routines. The initial native executor is the
@@ -662,12 +638,8 @@ attestation with no automatic caller or new arrival predicate. The
 [arrival-only discipline](plans/oss-m08-fulfillment-physical-delivery.md#native-admission-and-delivery-alignment)
 remains binding.
 
-`paymentSchemaDescriptor`
-declares direct truth, settlement and later-only alignment supported; durable
-prepared attempts, method setup, absence reopen and cumulative refund unsupported.
-Refunds are purely financial and do not cancel subscriptions. The direct truth
-store retains its invoker SQL and requires the host's existing executor and
-privileges; descriptor presence alone does not prove installed schema readiness.
+The direct truth store behind `paymentSchemaDescriptor` retains its invoker SQL
+and requires the host's existing executor and privileges.
 
 The source preview's additive sandbox-attempt forward
 `20261101222000_sandbox_payment_attempts.sql` adds two private tables and four
@@ -676,22 +648,15 @@ replay/fingerprint and synthetic method facts; `payment_simulator_observations`
 owns immutable simulated outcomes. The runtime has function execution only,
 with no direct access to either table. The forward explicitly revokes all table
 privileges from PUBLIC, anon, authenticated and service_role, removing
-creation-time default grants to those recipients; it does not enable RLS. This is a sandbox-specific store; generic
-prepared durable storage and real PSP support remain unavailable. Install the
+creation-time default grants to those recipients; it does not enable RLS.
+Real PSP support remains unavailable. Install the
 complete selected chain, including its exact inventory; this forward alone is
 not an installer. Earlier migration bytes and approvals stay unchanged.
 
 The same forward adds `payment_truth_events.review_required_at` and a new
 consistency CHECK, preserving every existing CHECK and the `open|settled` state
-vocabulary. Cancelled capture has outcome `captured`, state `open`, a review
-marker and no settlement transition. Its application disposition is terminal
-`review_required`: sweep excludes it, reconciliation retains it without applying
-settlement, and readback exposes its marker/status. Existing OMS captured-truth
-visibility is preserved. Neither an order reopen nor a refund/fiscal writer is
-introduced; `commerce_record_settlement` and its later-only schedule rule remain
-unchanged. Ordinary recovery-notice contention still rolls capture back; same-event
-redelivery converges after contention clears. This forward does not isolate that
-existing coupling or add a retry dispatcher.
+vocabulary. Existing OMS captured-truth visibility is preserved.
+`commerce_record_settlement` and its later-only schedule rule remain unchanged.
 
 List payments awaiting operator review:
 

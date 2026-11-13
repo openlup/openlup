@@ -565,10 +565,6 @@ Eleven compatibility helpers serve host facades. `createInvoiceReversalHandlers`
 retains the donor’s 10 s timeout. Native pre-send retry seconds are clamped to
 60..86400, otherwise 900; `retryable:false` parks at infinity.
 
-No zero-tax substitute is supplied. Full reversal has explicit zero AFTER totals;
-late issue acceptance after an uncertain reversal atomically creates one
-compensation duty at finalization.
-
 Evidence (historical record, 2026-11-13):
 
 The seller read takes an order ID or null for an unscoped claim, including
@@ -682,8 +678,6 @@ not live-provider or hosted qualification.
 ## OMS composition
 
 Moved to [Compose order management stores](../../packages/core/docs/guide/how-to/build/oms-stores.md#choose-the-imports).
-
-Preserve one executor per logical order operation.
 
 ### Native OMS and support stores
 
@@ -969,9 +963,6 @@ The buyer-snapshot preparation change is carried by
 `20261110280000_checkout_recovery_buyer_snapshot.sql`. It backfills no existing
 order.
 
-Preparation allows one immediate replacement, including replay after
-compensation, and never reparents it.
-
 Evidence (historical record, 2026-11-13):
 
 On a downstream failure the service attempts abandoned-checkout cancellation,
@@ -991,11 +982,9 @@ cover legacy and both qualified runtimes.
 
 Moved to [Recover abandoned checkouts and payments](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#show-payment-recovery-guidance-from-one-snapshot).
 
-The read probes 101 attempts and returns at most 100, newest first. It probes 33
-evidence members per attempt and admits at most 32; overflow or a contradictory
-or oversized envelope drops that attempt’s whole proof set and marks history
-incomplete. Native observation records and truth/readback source envelopes have
-an 8,192-byte bound.
+The read probes 101 attempts and returns at most 100. It probes 33
+evidence members per attempt and admits at most 32. Native observation records
+and truth/readback source envelopes have an 8,192-byte bound.
 
 Evidence (historical record, 2026-11-13):
 
