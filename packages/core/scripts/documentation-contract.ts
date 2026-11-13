@@ -460,6 +460,8 @@ function assertReaderLanguage(label: string, source: string, allowed: ReadonlySe
   }
 }
 
+const canonicalRepositoryLink = /^https:\/\/github\.com\/openlup\/openlup(?:\/?(?:[?#].*)?|\/blob\/[^\s]+|\/issues(?:[/?#].*)?)$/;
+
 // Markdown and HTML decode character references in destinations, so `&#47;` (or HTML's
 // semicolonless `&#47`) would hide a path separator from the link rules. The rules read the
 // decoded text, and a destination may carry no `&` except `&amp;`: anything else is refused
@@ -481,7 +483,29 @@ function assertGuideLinks(guideRoot: string, file: string, label: string, raw: s
     }
   }
   const source = decodeCharacterReferences(raw);
-  for (const target of markdownLinkTargets(source, (reason) => violations.push(`${label}: ${reason}`))) {
+  const targets = markdownLinkTargets(source, (reason) => violations.push(`${label}: ${reason}`));
+  // Browsers normalise a destination before following it (percent-encoded or mixed-case hosts,
+  // tabs and newlines, backslashes, default ports, user info). Parse each destination as a browser
+  // does; one that reaches the repository must already be written in the parser's own canonical
+  // spelling and in an admitted shape, so no spelling can reach an unchecked repository URL.
+  const reachesRepository = (spelling: string): boolean => {
+    let url: URL;
+    try { url = new URL(spelling, "https://guide.invalid/guide/"); } catch { return false; }
+    const host = url.hostname.replace(/\.+$/, "").toLowerCase();
+    const repositoryPath = safeDecode(url.pathname).replace(/\\/g, "/").toLowerCase();
+    return /^(?:www\.)?github\.com$|^raw\.githubusercontent\.com$/.test(host) && /^\/+openlup\/+openlup(?:[/?#.]|$)/.test(repositoryPath);
+  };
+  for (const target of targets) {
+    // An HTML attribute is followed as written; Markdown first removes backslash escapes.
+    const spellings = [target, target.replace(/\\([!-/:-@[-`{-~])/g, "$1")];
+    if (!spellings.some(reachesRepository)) continue;
+    let canonical: string | undefined;
+    try { canonical = new URL(target).href; } catch { canonical = undefined; }
+    if (canonical !== target || !canonicalRepositoryLink.test(target)) {
+      violations.push(`${label}: non-canonical repository link ${target}; use ${repositoryUrl}/blob/${tag}/<path>`);
+    }
+  }
+  for (const target of targets) {
     if (isExternalOrAnchor(target)) continue;
     const local = resolve(dirname(file), safeDecode(target.split(/[?#]/, 1)[0] ?? ""));
     if (local !== guideRoot && !local.startsWith(`${guideRoot}${sep}`)) {

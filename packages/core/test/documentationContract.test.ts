@@ -564,6 +564,19 @@ describe("reader guide contract", { timeout: 60_000 }, () => {
     ["a semicolonless hexadecimal reference", '<a href="https://github.com/openlup/openlup&#x2fraw/main/README.md">Read</a>'],
     ["a semicolonless protocol-relative reference", '<a href="//github.com/openlup/openlup&#47raw/main/README.md">Read</a>'],
     ["a bare ampersand", "[Read](https://github.com/openlup/openlup/issues?q=a&b)"],
+    ["a percent-encoded host", '<a href="https://%67ithub.com/openlup/openlup/blob/main/README.md">Read</a>'],
+    ["a tab inside the host", '<a href="https://git\thub.com/openlup/openlup/blob/main/README.md">Read</a>'],
+    ["a newline inside the host", '<a href="https://git\nhub.com/openlup/openlup/blob/main/README.md">Read</a>'],
+    ["backslashes", '<a href="https:\\\\github.com\\openlup\\openlup\\blob\\main\\README.md">Read</a>'],
+    ["an upper-case host", "[Read](https://GitHub.com/openlup/openlup/blob/main/README.md)"],
+    ["a mixed-case repository path", "[Read](https://github.com/OpenLup/openlup/blob/main/README.md)"],
+    ["an encoded repository segment", "[Read](https://github.com/openlup/open%6Cup/blob/main/README.md)"],
+    // Assembled at runtime so the source holds no address-shaped literal.
+    ["user info", `[Read](${["https://reader", "github.com/openlup/openlup/blob/main/README.md"].join("@")})`],
+    ["a default port", "[Read](https://github.com:443/openlup/openlup/blob/main/README.md)"],
+    ["a trailing-dot host", "[Read](https://github.com./openlup/openlup/blob/main/README.md)"],
+    ["a Markdown escape in the host", "[Read](https://github\\.com/openlup/openlup/blob/main/README.md)"],
+    ["a Markdown escape in the path", "[Read](https://github.com/openlup\\/openlup/blob/main/README.md)"],
   ])("refuses a repository link hidden by %s", (_name, link) => {
     const roots = guideFixture(`# Guide\n\n${link}\n`);
     expect(() => checkGuide(roots)).toThrow(/character reference or a bare &|non-canonical repository link|must pin/);
