@@ -577,9 +577,20 @@ describe("reader guide contract", { timeout: 60_000 }, () => {
     ["a trailing-dot host", "[Read](https://github.com./openlup/openlup/blob/main/README.md)"],
     ["a Markdown escape in the host", "[Read](https://github\\.com/openlup/openlup/blob/main/README.md)"],
     ["a Markdown escape in the path", "[Read](https://github.com/openlup\\/openlup/blob/main/README.md)"],
+    ["an autolink with an encoded host", "<https://%67ithub.com/openlup/openlup/blob/main/README.md>"],
+    ["an autolink to a branch", "<https://github.com/openlup/openlup/blob/main/README.md>"],
+    ["an autolink to raw content", "<https://github.com/openlup/openlup/raw/main/README.md>"],
+    ["a bare www text link", "See www.github.com/openlup/openlup/blob/main/README.md for details."],
   ])("refuses a repository link hidden by %s", (_name, link) => {
     const roots = guideFixture(`# Guide\n\n${link}\n`);
     expect(() => checkGuide(roots)).toThrow(/character reference or a bare &|non-canonical repository link|must pin/);
+  });
+
+  it("checks a canonical autolink like any other repository link", () => {
+    const pinned = guideFixture(`# Guide\n\n<${repositoryLink("README.md")}>\n`);
+    expect(() => checkGuide(pinned)).not.toThrow();
+    const missing = guideFixture(`# Guide\n\n<${repositoryLink("MISSING.md")}>\n`);
+    expect(() => checkGuide(missing)).toThrow("targets a path missing from the repository");
   });
 
   it("admits &amp; in an issue-tracker link", () => {

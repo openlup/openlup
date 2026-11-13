@@ -312,7 +312,9 @@ function markdownLinkTargets(source: string, refuse: (reason: string) => void): 
     }
     return [];
   });
-  return [...inline, ...references, ...html].filter((target): target is string => target !== undefined);
+  // CommonMark autolinks: `<scheme:...>` with no spaces, controls or angle brackets.
+  const autolinks = [...source.matchAll(/<([A-Za-z][A-Za-z0-9+.-]{1,31}:[^<>\s]*)>/g)].map((match) => match[1]!);
+  return [...inline, ...references, ...html, ...autolinks].filter((target): target is string => target !== undefined);
 }
 
 function linkDestination(source: string, refuse: (reason: string) => void): string | undefined {
@@ -516,7 +518,8 @@ function assertGuideLinks(guideRoot: string, file: string, label: string, raw: s
   // Every link into the repository, with or without a scheme, is either a file at the release tag
   // (checked below), the repository itself or its issue tracker; raw, blame, tree, branch and
   // protocol-relative forms would bypass the release-tag and path checks.
-  for (const [url] of source.matchAll(/(?:https?:)?\/\/(?:www\.github\.com|raw\.githubusercontent\.com|github\.com)\/openlup\/openlup(?=\/|$|[\s)>"'`?#])[^\s)>"'`]*/gi)) {
+  // GitHub also links bare `www.` text, so that form counts as a repository link too.
+  for (const [url] of source.matchAll(/(?:(?:https?:)?\/\/(?:www\.github\.com|raw\.githubusercontent\.com|github\.com)|(?<![\w./-])www\.github\.com)\/openlup\/openlup(?=\/|$|[\s)>"'`?#])[^\s)>"'`]*/gi)) {
     const rest = url.startsWith(repositoryUrl) ? url.slice(repositoryUrl.length) : undefined;
     if (rest === undefined || !/^(?:\/?(?:[?#].*)?|\/blob\/.*|\/issues(?:[/?#].*)?)$/.test(rest)) {
       violations.push(`${label}: non-canonical repository link ${url}; use ${canonical}`);
