@@ -279,8 +279,9 @@
       "maxFiles": 70
     },
     "maxPackedBytes": 412672,
-    "maxUnpackedBytes": 1392640,
+    "maxUnpackedBytes": 1463927,
     "maxFiles": 420,
+    "capReason": "The owner approved unpacked 1463927 B, ceil(measured x 1.05), after the 0.41.0 set preparation measured 1394216 B against the 1392640 B cap; the 0.41.0 upgrade page adds the growth. Preserve the packed (412672 B), file (420), code, docs and guide caps, the released 0.40.0 baseline and every other inherited limit.",
     "requiredFiles": [
       "AGENTS.md",
       "CHANGELOG.md",
