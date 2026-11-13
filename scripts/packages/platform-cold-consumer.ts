@@ -18,6 +18,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { PLATFORM_MODULE_GRAPH } from "../../eslint.config.js";
 import { assertInstalledPackages, isolatedConsumerEnv, readCurrentPackManifest } from "./pack-manifest-input.ts";
 import { POSTGRES_PROOF_IMAGE } from "./outbox-disposable-postgres.ts";
+import { imageReference, readCiImage } from "../ci-image-pull.mjs";
 import { proveApplicationUpgradePostgres } from "./application-upgrade-proof.ts";
 import { proveDistributionCliConsumer, proveDistributionCliPostgres } from "./distribution-cli-proof.ts";
 
@@ -1887,9 +1888,10 @@ function proveDockerPostgres(consumer: string, environment: NodeJS.ProcessEnv): 
   let container: string | undefined, ownedContainer = false, createdDatabase = false;
   try {
     if (service) {
-      // Identity comes from job.services, not an ambient port or URL. Require the pinned image.
+      // Identity comes from explicit CI service startup, not an ambient port or URL. Require the pinned image.
       const info = JSON.parse(docker(["inspect", service]))[0];
-      if (info?.Id !== service || info?.Config?.Image !== POSTGRES_PROOF_IMAGE || !info?.State?.Running
+      const image = readCiImage("install-proof-postgres");
+      if (info?.Id !== service || ![POSTGRES_PROOF_IMAGE, ...image.sources.map((source: string) => imageReference(image, source))].includes(info?.Config?.Image) || !info?.State?.Running
         || !info?.NetworkSettings?.Ports?.["5432/tcp"]?.some((binding: { HostPort: string }) => binding.HostPort === servicePort)) {
         throw new Error("Job service is not the exact pinned running container/port");
       }

@@ -8,6 +8,7 @@ import { EventEmitter, once } from 'node:events';
 import pg from 'pg';
 import { acquireStarterPostgres, browserArguments, capturePrivateValues, parseArguments, resolveBrowserImage, runBrowserGroups, scanPrivateOutput, withCleanup, withConnectionCleanup, writeBrowserFixtures, watchStarterHost } from './starter-browser-ci.mjs';
 import { imageReference, readCiImage } from './ci-image-pull.mjs';
+import { browserJourneyGroups } from '../examples/neutral-store/browser-groups.mjs';
 
 const args = ['--manifest', '/tmp/packs/packages-manifest.json', '--expected-commit', 'a'.repeat(40)];
 
@@ -44,6 +45,28 @@ describe('installed starter browser CI', () => {
   it('accepts only the explicit candidate manifest', () => {
     expect(parseArguments(args)).toEqual({ manifest: args[1], commit: args[3] });
     expect(parseArguments([...args.slice(2), ...args.slice(0, 2)])).toEqual(parseArguments(args));
+  });
+  it('selects only the requested groups, preserving original selections and group numbers', async () => {
+    const options = parseArguments([...args, '--groups', '3,0']);
+    expect(options.groups).toEqual([3, 0]);
+    const run = vi.fn(async () => {});
+    await runBrowserGroups(run, () => 'journeys', options.groups);
+    expect(run.mock.calls).toEqual([[3, browserJourneyGroups[3]], [0, browserJourneyGroups[0]]]);
+    const released: number[] = [];
+    const report = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      await expect(runBrowserGroups(async index => withCleanup(async defer => {
+        defer(() => { released.push(index); });
+        throw new Error('setup failed');
+      }), () => 'seed_coffee', options.groups)).rejects.toThrow('setup failed');
+      expect(released).toEqual([3]);
+      expect(report).toHaveBeenCalledWith('Starter browser group 4 failed during seed_coffee');
+    } finally { report.mockRestore(); }
+    const source = readFileSync('scripts/starter-browser-ci.mjs', 'utf8');
+    expect(source).toContain("phase, options.groups)");
+  });
+  it.each(['', '0,0', '-1', '7', '1,7', '1.5', '01', '0,', ',0', '0, 1', '1e0', 'NaN'])('refuses an invalid group subset: %s', groups => {
+    expect(() => parseArguments([...args, '--groups', groups])).toThrow('starter_browser_arguments_invalid');
   });
   it.each([[], args.slice(0, -1), [...args, '--preview', 'true'], [...args, '--manifest', 'duplicate.json'],
     [...args, '--service-port', '5432'], ['--manifest', '--expected-commit', 'a'.repeat(40)],
@@ -117,6 +140,7 @@ describe('installed starter browser CI', () => {
     expect(command).toContain('type=bind,src=/tmp/starter/.context/care-browser,dst=/app/.context/care-browser');
     expect(command[command.indexOf('--user') + 1]).toBe(`${process.getuid!()}:${process.getgid!()}`);
     expect(command).toContain('--workers=1');
+    expect(command).toContain('--retries=0');
     expect(command).toContain('--output=/tmp/test-results');
     expect(command).not.toContain('install');
     expect(() => browserArguments('/tmp/starter', 'mcr.microsoft.com/playwright:latest', 'proof')).toThrow('starter_browser_mirror_required');
@@ -181,13 +205,18 @@ describe('installed starter browser CI', () => {
   it('permits counts and safe host diagnostics', () => {
     expect(() => scanPrivateOutput('102 passed (20s)\nNeutral store local candidate: http://127.0.0.1:4319\n' + 'safe_identifier_'.repeat(5))).not.toThrow();
   });
-  it('keeps the journeys inside the existing authenticated required job', () => {
+  it('keeps every journey under the authenticated required install-proof context', () => {
     const workflow = readFileSync('.github/workflows/published-tree-ci.yml', 'utf8');
-    const install = workflow.split('  install-proof:')[1]!.split('  test-full-shard:')[0]!;
+    const install = workflow.split('  install-browser:')[1]!.split('  install-proof:')[0]!;
     expect(install).toContain('packages: read');
-    expect(install).toContain('timeout-minutes: 35');
+    expect(install).toContain('timeout-minutes: 8');
     expect(install).toContain('docker login ghcr.io');
-    expect(install).toContain('scripts/starter-browser-ci.mjs --manifest "$RUNNER_TEMP/package-gates/packages-manifest.json"');
+    expect(install.indexOf('docker login')).toBeLessThan(install.indexOf('scripts/starter-browser-ci.mjs'));
+    expect(install).toContain('scripts/starter-browser-ci.mjs --manifest "$RUNNER_TEMP/package-gates/packages-manifest.json" --expected-commit "$(git rev-parse HEAD)" --groups "$BROWSER_GROUPS"');
+    expect(install).toContain('needs: [install-packages]');
+    expect(workflow).toContain('needs: [install-packages, install-browser]');
+    const groups = install.match(/groups: \[(.*)\]/u)![1]!.replaceAll("'", '').split(', ').flatMap(shard => shard.split(',').map(Number));
+    expect(groups.sort()).toEqual(browserJourneyGroups.map((_, index) => index));
     expect(workflow).toContain('needs: [dco, typecheck, install-proof, test, self-check, gitleaks]');
   });
 });

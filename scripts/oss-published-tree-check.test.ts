@@ -168,7 +168,7 @@ describe("CI image mirror workflow controls", () => {
 
 // The workflow uses the same inventory-driven route for future packages.
 function assertPublishedPackageRoutes(inventory: string, source = workflow): void {
-  const commands = workflowCommands(workflowJob("install-proof", source));
+  const commands = workflowCommands(workflowJob("install-packages", source));
   expect(commands).toContain('node --experimental-strip-types scripts/packages/required-package-gates.ts --out "$RUNNER_TEMP/package-gates" --expected-commit "$(git rev-parse HEAD)"');
   for (const { directory } of parsePackagesConfig(inventory).packages.filter(({ publish }) => publish)) {
     const manifest = JSON.parse(readFileSync(join(ROOT, directory, "package.json"), "utf8"));
@@ -290,18 +290,22 @@ describe("complete public CI", () => {
   });
   it("limits registry authentication to non-reused image-pull jobs with read permissions", () => {
     expect(workflow.split("\njobs:\n")[0]).toContain("permissions:\n  contents: read\n  actions: read\n");
-    expect(workflow.match(/packages: read/gu)).toHaveLength(3);
-    expect(workflow.match(/docker login/gu)).toHaveLength(3);
-    for (const [name, command] of [["test-full-shard", "npm test --"], ["pgtap", "node scripts/public-ci-pgtap.mjs"], ["install-proof", "node --experimental-strip-types scripts/starter-browser-ci.mjs"]]) {
+    expect(workflow.match(/packages: read/gu)).toHaveLength(4);
+    expect(workflow.match(/docker login/gu)).toHaveLength(4);
+    for (const [name, command] of [["test-full-shard", "npm test --"], ["pgtap", "node scripts/public-ci-pgtap.mjs"], ["install-packages", "node --experimental-strip-types scripts/packages/required-package-gates.ts"], ["install-browser", "node --experimental-strip-types scripts/starter-browser-ci.mjs"]]) {
       const job = workflowJob(name);
       expect(job).toContain("    permissions:\n      contents: read\n      actions: read\n      packages: read\n");
       const login = job.split("      - name: Authenticate GitHub Container Registry pulls\n")[1]?.split(/(?=^ {6}- )/mu)[0];
-      expect(login).toContain("        if: steps.reused.outputs.reuse != 'true'\n");
+      const reuse = name === "install-browser" ? "needs.install-packages" : "steps.reused";
+      expect(login).toContain(`        if: ${reuse}.outputs.reuse != 'true'\n`);
       expect(login).toContain("        env:\n          GH_TOKEN: ${{ github.token }}\n          GH_ACTOR: ${{ github.actor }}\n");
       expect(login.split("run:")[1]).not.toContain("${{");
       expect(login).toContain('run: echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin');
       expect(job.indexOf("docker login")).toBeLessThan(job.indexOf(`run: ${command}`));
+      expect(job).not.toContain("    services:");
     }
+    const packages = workflowJob("install-packages");
+    expect(packages.indexOf("docker login")).toBeLessThan(packages.indexOf('image="$(node --input-type=module'));
   });
   it("installs no Supabase CLI and checks neutrality against the event base", () => {
     expect(workflow).not.toMatch(/supabase\/setup-cli|install-supabase-cli|supabase start|supabase test/u);
@@ -315,15 +319,15 @@ describe("complete public CI", () => {
     expect(manifest.scripts.test).toBe(PUBLIC_TEST_COMMAND);
     expect(manifest.scripts).not.toHaveProperty("test:required");
     expect(manifest.scripts).not.toHaveProperty("pretest:required");
-    expect(workflowCommands(workflowJob("install-proof"))).toEqual([
+    expect(workflowCommands(workflowJob("install-packages"))).toEqual([
       "node scripts/public-ci-reuse.mjs",
       "node scripts/public-ci-dependencies.mjs",
       "npm ci --prefer-offline --no-audit --fund=false",
       "npm run build",
       "npm run build:public-reference",
-      'node --experimental-strip-types scripts/packages/required-package-gates.ts --out "$RUNNER_TEMP/package-gates" --expected-commit "$(git rev-parse HEAD)"',
       'echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin',
-      'node --experimental-strip-types scripts/starter-browser-ci.mjs --manifest "$RUNNER_TEMP/package-gates/packages-manifest.json" --expected-commit "$(git rev-parse HEAD)"',
+      'node --experimental-strip-types scripts/packages/required-package-gates.ts --out "$RUNNER_TEMP/package-gates" --expected-commit "$(git rev-parse HEAD)"',
+      "docker rm --force install-proof-postgres",
     ]);
   });
   it("partitions complete root discovery across exactly six independent runners and fails closed", () => {
@@ -358,32 +362,63 @@ describe("complete public CI", () => {
       expect(check.status, `${result}/${pgtap}`).toBe(result === "success" && pgtap === "success" ? 0 : 1);
     }
   });
+  it("requires package proof and all browser shards, including on main-push reuse", () => {
+    const browser = workflowJob("install-browser"), aggregate = workflowJob("install-proof");
+    expect(browser).toContain("needs: [install-packages]");
+    expect(workflowJob("install-packages")).toContain("outputs:\n      reuse: ${{ steps.reused.outputs.reuse }}");
+    expect(browser).toContain("if: needs.install-packages.outputs.reuse != 'true'");
+    expect(browser).not.toContain("scripts/public-ci-reuse.mjs");
+    expect(browser).toContain("fail-fast: false\n      max-parallel: 4");
+    expect(browser).toContain("groups: ['0', '1,6', '2,4', '3,5']");
+    expect(aggregate).toContain("name: install-proof\n");
+    expect(aggregate).toContain("always() && github.event.repository.private == false");
+    expect(aggregate).toContain("needs: [install-packages, install-browser]");
+    expect(aggregate).toContain("timeout-minutes: 2");
+    expect(aggregate).toContain("PACKAGE_RESULT: ${{ needs.install-packages.result }}");
+    expect(aggregate).toContain("BROWSER_RESULT: ${{ needs.install-browser.result }}");
+    const commands = workflowCommands(aggregate);
+    expect(commands).toEqual(['test "$PACKAGE_RESULT" = "success" && test "$BROWSER_RESULT" = "success"']);
+    for (const packages of ["success", "failure", "cancelled", "skipped", "", "unknown"]) {
+      for (const browser of ["success", "failure", "cancelled", "skipped", "", "unknown"]) {
+        const result = spawnSync("bash", ["-e", "-c", commands[0]!], { env: { PACKAGE_RESULT: packages, BROWSER_RESULT: browser } });
+        expect(result.status, `${packages}/${browser}`).toBe(packages === "success" && browser === "success" ? 0 : 1);
+      }
+    }
+  });
+  it("transfers only public verified packs with pinned official artifact actions", () => {
+    const packages = workflowJob("install-packages"), browser = workflowJob("install-browser");
+    const upload = packages.split("      - name: Share verified candidate packages\n")[1]!;
+    expect(upload).toContain("if: steps.reused.outputs.reuse != 'true'");
+    expect(upload).toContain("uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a");
+    expect(upload).toContain("name: install-packages\n");
+    expect(upload).toContain("path: |\n            ${{ runner.temp }}/package-gates/packages-manifest.json\n            ${{ runner.temp }}/package-gates/*.tgz\n");
+    expect(upload).toContain("if-no-files-found: error\n          retention-days: 1");
+    expect(browser).toContain("uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c");
+    expect(browser).toContain("name: install-packages\n          path: ${{ runner.temp }}/package-gates");
+    expect(browser).not.toMatch(/packages:check|required-package-gates|upload-artifact/u);
+    expect(browser).toContain('--manifest "$RUNNER_TEMP/package-gates/packages-manifest.json" --expected-commit "$(git rev-parse HEAD)" --groups "$BROWSER_GROUPS"');
+  });
   it("runs package proof, root shards and database diagnostics independently", () => {
-    for (const name of ["install-proof", "test-full-shard", "pgtap"]) expect(workflowJob(name)).not.toMatch(/^ {4}needs:/mu);
-    for (const [name, timeoutMinutes] of [["install-proof", 35], ["test-full-shard", 20]] as const) {
+    for (const name of ["install-packages", "test-full-shard", "pgtap"]) expect(workflowJob(name)).not.toMatch(/^ {4}needs:/mu);
+    for (const [name, timeoutMinutes] of [["install-packages", 12], ["install-browser", 8], ["test-full-shard", 20]] as const) {
       const job = workflowJob(name);
       expect(job).toContain(`    runs-on: ubuntu-latest\n    timeout-minutes: ${timeoutMinutes}\n`);
       expect(job).toContain("      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7\n        with:\n          persist-credentials: false\n");
       expect(job).toContain("      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6\n        with:\n          node-version: 24.21.0\n          cache: npm\n");
-      const unconditionalPrGroup = job.replace(/^ {8}if: (?:github\.event_name == 'push'|steps\.reused\.outputs\.reuse != 'true')\n/gmu, "");
+      const unconditionalPrGroup = job.replace(/^ {8}if: (?:github\.event_name == 'push'|steps\.reused\.outputs\.reuse != 'true'|needs\.install-packages\.outputs\.reuse != 'true'|always\(\) && steps\.postgres\.outcome != 'skipped')\n/gmu, "");
       expect(unconditionalPrGroup).not.toMatch(/^ {6}(?:- | {2})if:|^ {10}ref:|continue-on-error/mu);
       expect(job.indexOf("      - name: Assert Node and npm contract\n")).toBeGreaterThan(0);
       expect(job.indexOf("      - run: npm ci")).toBeGreaterThan(job.indexOf("      - name: Assert Node and npm contract\n"));
     }
     expect(workflowJob("test-full-shard")).toContain("          fetch-depth: 0\n");
-    const installProof = workflowJob("install-proof");
-    expect(installProof).toContain(`    services:
-      postgres:
-        image: postgres:17@sha256:ae69c452f483507a6b99fb654cf93aad7fe156ffd2c56247707eef4e36d3c12b
-        env:
-          POSTGRES_HOST_AUTH_METHOD: trust
-        ports:
-          - 5432/tcp
-        options: >-
-          --health-cmd "pg_isready -U postgres -t 1"
-          --health-interval 1s --health-timeout 5s --health-retries 30
-`);
-    expect(installProof).toContain("          OPENLUP_PROOF_SERVICE_CONTAINER: ${{ job.services.postgres.id }}\n          OPENLUP_PROOF_SERVICE_PORT: ${{ job.services.postgres.ports[5432] }}\n");
+    const packages = workflowJob("install-packages");
+    expect(packages).not.toMatch(/services:|job\.services/u);
+    expect(packages).toContain('image.sources = image.sources.slice(0, 1); console.log(await pullWithRetry(image))');
+    expect(packages).toContain('docker run --pull=never --detach --name install-proof-postgres');
+    expect(packages).toContain("OPENLUP_PROOF_SERVICE_CONTAINER: ${{ steps.postgres.outputs.container }}");
+    expect(packages).toContain("OPENLUP_PROOF_SERVICE_PORT: ${{ steps.postgres.outputs.port }}");
+    expect(packages).toContain("if: always() && steps.postgres.outcome != 'skipped'");
+    expect(packages).toContain("run: docker rm --force install-proof-postgres");
     expect(workflowJob("test")).not.toMatch(/services:|OPENLUP_PROOF_SERVICE_/u);
     // Stock PostgreSQL with the managed-compat adapter needs no CLI and no npm dependencies.
     expect(workflowCommands(workflowJob("pgtap"))).toEqual(["node scripts/public-ci-reuse.mjs", 'echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin', "node scripts/public-ci-pgtap.mjs"]);
@@ -499,17 +534,21 @@ describe("what the workflow may not contain", () => {
 
 describe("the workflow stays in step with what it claims to run", () => {
   it("allows only expensive main-push work to reuse exact-commit group proof", () => {
-    for (const name of ["typecheck", "install-proof", "test-full-shard", "pgtap"]) {
+    for (const name of ["typecheck", "install-packages", "test-full-shard", "pgtap"]) {
       const job = workflowJob(name);
       expect(job).toContain("id: reused\n        if: github.event_name == 'push'");
       const steps = job.split(/(?=^ {6}- )/mu).filter(step => step.startsWith("      - "));
       let probeSeen = false;
       for (const step of steps) {
         if (step.includes("id: reused")) { probeSeen = true; continue; }
-        if (probeSeen && !step.startsWith("      - name: Assert Node and npm contract")) expect(step).toContain("if: steps.reused.outputs.reuse != 'true'");
+        if (probeSeen && !step.startsWith("      - name: Assert Node and npm contract") && !step.startsWith("      - name: Remove the package-proof PostgreSQL service")) expect(step).toContain("if: steps.reused.outputs.reuse != 'true'");
       }
       expect(probeSeen).toBe(true);
     }
+    const browser = workflowJob("install-browser");
+    const expensive = browser.split(/(?=^ {6}- )/mu).filter(step => /npm ci|download-artifact|docker login|starter-browser-ci\.mjs/u.test(step));
+    expect(expensive).toHaveLength(4);
+    for (const step of expensive) expect(step).toContain("if: needs.install-packages.outputs.reuse != 'true'");
     for (const name of ["dco", "self-check", "gitleaks", "native-review"]) expect(workflowJob(name)).not.toContain("steps.reused");
   });
 
@@ -524,11 +563,11 @@ describe("the workflow stays in step with what it claims to run", () => {
   });
   it("exposes six required contexts, one raw diagnostic and optional native admission with trusted event fences", () => {
     const jobs = [...(workflow.split("\njobs:\n")[1] ?? "").matchAll(/^ {2}([a-z][a-z-]*):$/gm)].map((match) => match[1]);
-    expect(jobs).toEqual(["dco", "typecheck", "install-proof", "test-full-shard", "test", "self-check", "gitleaks", "pgtap", "native-review"]);
+    expect(jobs).toEqual(["dco", "typecheck", "install-packages", "install-browser", "install-proof", "test-full-shard", "test", "self-check", "gitleaks", "pgtap", "native-review"]);
     expect(workflow).not.toContain("needs: applies");
     const predicate = "    if: ${{ github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}";
-    expect(workflow.split("\n").filter((line) => line === predicate)).toHaveLength(7);
-    for (const job of jobs.filter((name) => !["native-review", "test", "test-full-shard"].includes(name))) expect(workflow).toContain(`  ${job}:\n    name: ${job}\n${predicate}\n`);
+    expect(workflow.split("\n").filter((line) => line === predicate)).toHaveLength(8);
+    for (const job of jobs.filter((name) => !["native-review", "test", "test-full-shard", "install-browser", "install-proof"].includes(name))) expect(workflow).toContain(`  ${job}:\n    name: ${job}\n${predicate}\n`);
     expect(workflow.replace("    name: dco", "    name: dco-renamed")).not.toContain(`  dco:\n    name: dco\n${predicate}\n`);
     expect(workflow.replace(predicate, `${predicate.slice(0, -3)} && false }}`)).not.toContain(`  dco:\n    name: dco\n${predicate}\n`);
   });
@@ -659,7 +698,7 @@ describe("the workflow stays in step with what it claims to run", () => {
     expect(uses.length).toBeGreaterThan(0);
     expect(uses.every((sha) => /^[a-f0-9]{40}$/u.test(sha))).toBe(true);
     expect(readFileSync(join(ROOT, ".nvmrc"), "utf8").trim()).toBe("24.21.0");
-    for (const name of ["typecheck", "install-proof", "test-full-shard", "pgtap"]) {
+    for (const name of ["typecheck", "install-packages", "install-browser", "test-full-shard", "pgtap"]) {
       const job = workflowJob(name);
       expect(job).toContain('test "$(node -p \'process.versions.node.split(".")[0]\')" = "24"');
       expect(job).toContain('test "$(npm --version)" = "11.19.0"');

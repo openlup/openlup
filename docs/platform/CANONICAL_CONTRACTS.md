@@ -866,8 +866,9 @@ A Docker-free guard rejects literal digests or registry source lists in the gate
 An explicit source tag must match the entry's tag and is preserved during
 resolution. Mirror absence/private access immediately advances to upstream;
 these consumers do not depend on organization package access or publication.
-The install-proof service retains its unchanged Docker Hub PostgreSQL 17 digest
-and needs no organization package before steps run.
+The `install-packages` PostgreSQL 17 service uses the same inventory digest
+from the organization mirror and starts explicitly after job-token GHCR login.
+It runs with `--pull=never` and is removed after package proof, including failure.
 Other local launchers retain their existing behavior. These changes
 establish no public package visibility or runtime/application default.
 

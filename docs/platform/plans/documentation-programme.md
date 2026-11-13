@@ -153,8 +153,8 @@ contract in CI, with no programme work left.
   (`CONTRIBUTING.md` "Deliver a change" catalogue paragraph).
 - **Review floors.** Markdown outside rule files has a floor of zero; config,
   manifests and package scripts have two. These were set on 2026-11-06.
-- **`install-proof` already has PostgreSQL**, the packed-tarball manifest and
-  starter journeys.
+- **Required `install-proof` already covers PostgreSQL**, the packed-tarball
+  manifest and starter journeys through its package and browser jobs.
 - **A closed list of configuration keys exists:** `config/environment-variables.json`.
 - **openlup.com depends on OSS files by path and line.** About 100 claims in
   its registry cite `oss:<path>:<lines>`, including the README, the
@@ -267,7 +267,7 @@ and Astro.
 
 W1 extends `packages/core/scripts/documentation-contract.ts` and gives
 `platform` and `outbox` the same `docs:check` in their `ci:required`, inside
-the existing required `install-proof` job. W1 also gives
+the package job under the existing required `install-proof` context. W1 also gives
 `packages/core/docs/guide/**/*.md` an implicit catalogue class, mirroring the
 changes-fragment rule, so a new guide page needs no catalogue row. Guide pages
 get a review floor of one. The contract gains:
@@ -313,14 +313,14 @@ No `Docs-impact` line in the PR record; the owner removed that obligation on
 ### S4 — the tutorial runs inside `install-proof`
 
 `guide/start/` marks runnable steps as `sh tutorial` fences. A step in the
-existing `install-proof` job runs them in order against its PostgreSQL. It
+existing `install-packages` job under required `install-proof` runs them in order against its PostgreSQL. It
 installs from the packed tarballs, then asserts the documented observable
 result.
 
 - **Non-blocking first.** It is `continue-on-error` at first, then blocking
   (D4). No new context or branch-protection change is needed.
-- **Time budget.** It stays inside the job's existing timeout (35 minutes
-  at the base commit).
+- **Time budget.** It stays inside the package job's timeout; the current layout
+  and deadline policy are owned by [required checks](../../../CONTRIBUTING.md#required-and-raw-checks).
 - **From npm too.** a new post-publish step in `publish-packages.yml` runs
   the same steps against the registry; the workflow has no post-publish
   registry check today, only the pre-publish refusal of an existing version. A failure fails that
@@ -542,7 +542,7 @@ An independent challenge found the following.
 
 **Simplifications and corrections:**
 
-- **The tutorial.** It is now a step in `install-proof`, not a new required
+- **The tutorial.** It is now a step under `install-proof`, not a new required
   job.
 - **Store terms.** The neutrality ratchet covers them instead of a second
   list.
