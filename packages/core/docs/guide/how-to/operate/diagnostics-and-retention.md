@@ -53,10 +53,11 @@ transaction. An audit failure returns `UPSTREAM_UNAVAILABLE`, with reason
 machine authorization by itself.
 
 For the global overview, set `x-contract-version` to
-`customer-diagnostic-history.v2` and request `mode=overview`. Its window is limited to
-seven days. It groups retained observations by coverage version and action,
-returning closed classifications and at most three opaque example segment IDs
-per bucket. The explicit read contract can include both coverage versions;
+`customer-diagnostic-history.v2` and request `mode=overview`. Its time window is
+bounded; a wider window is refused with
+`customer_diagnostic_overview_invalid`. It groups retained observations by coverage
+version and action, returning closed classifications and a small, bounded number
+of opaque example segment IDs per bucket. The explicit read contract can include both coverage versions;
 the default older read contract retains its older views. Treat observation gaps
 and unavailable history as unknown, and keep database access and incident policy
 under host control.

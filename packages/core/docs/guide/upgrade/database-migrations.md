@@ -38,8 +38,10 @@ The runner refuses a mismatched ledger; it does not convert another history.
 Use `createPlatformPostgresMigrationRunner` from
 `@openlup/platform/migrations` for the complete catalogue shipped with the
 installed package. SQL assets resolve relative to that package, so no source
-checkout is needed. Install its optional `pg` peer alongside the package;
-absence is reported as `OPENLUP_E_PEER_MISSING`.
+checkout is needed. Install its optional `pg` peer alongside the package.
+With the `legacy` installation its absence is reported as
+`OPENLUP_E_PEER_MISSING`; with `qualified-v2` or `qualified-admin` the runner
+fails with the module-loading error instead.
 
 Supply an explicit `installation` selection: `legacy`, `qualified-v2` or
 `qualified-admin`, with the selected profile's role bindings. Omitting it
