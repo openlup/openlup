@@ -445,6 +445,41 @@ route to the [package channel contract](../../packages/platform/README.md#channe
 The data guide owns paired SQL, selected inventories and trusted-owner differences;
 architecture owns explicit owner composition and provider readiness boundaries.
 
+## Reader guide contract
+
+The reader guide lives in
+[`packages/core/docs/guide/`](../../packages/core/docs/guide/README.md); its index
+holds the writing rules. The `docs:check` script of each publishable package runs the
+[documentation contract](../../packages/core/scripts/documentation-contract.ts).
+Core runs it inside its `ci:required`; the root test suite runs it for outbox and
+platform, so a required check covers all three. The contract refuses:
+
+- a `ts` fence in the guide or a package `README.md` or `AGENTS.md` that does not
+  type-check against the built packages; a fence identical to the package's
+  type-checked smoke example is already compiled, and a fence that must not
+  compile is marked `ts nocheck` and opens with a `//` reason line;
+- a stale or unknown `<!-- generated:<name> -->` region. The generators are
+  `maturity:<core|outbox|platform>` from that package's `release-gates.json`
+  and `configuration-keys` from `config/environment-variables.json`;
+- in the guide, a relative link that leaves the guide, a repository link that
+  is not `https://github.com/openlup/openlup/blob/openlup-core-v<version>/<path>`
+  at the core version or whose path is missing, and repository-internal
+  language: task and milestone IDs, plan names, paths into tests, plans or agent
+  scratch, delivery-process vocabulary and absolute filesystem paths. Exact
+  terms such as product and algorithm names are admitted by
+  [`config/documentation-guide-allowlist.json`](../../config/documentation-guide-allowlist.json);
+- an `AGENTS.md` at a package root or the repository root above 200 lines or
+  10240 bytes.
+
+`npm --workspace @openlup/core run docs:check -- --write` regenerates the regions and
+rewrites the release tag of every repository link in the guide. Guide pages
+need no publication catalogue row; see
+[the catalogue rule](../../CONTRIBUTING.md#package-policy-and-release-checks). Store vocabulary
+stays out of the guide through the tree-wide neutrality ratchet, which counts
+the adopter store terms in Markdown as categories `store-0` and `store-1`. Separately,
+`npm run oss:published-tree -- --policy` refuses a home-directory path
+(`/Users/…`, `/home/…`, `C:\Users\…`) in any tracked Markdown.
+
 ## Impact
 
 Documentation updates and their review follow

@@ -295,6 +295,10 @@ Ambiguous destinations refuse explicitly: use literal punctuation or
 percent-encoded filenames, with ASCII whitespace before an optional title.
 Raw ampersands, angle characters and Unicode whitespace in local destinations
 require a canonical rewrite rather than passing an incomplete link check.
+It also type-checks TypeScript examples in `README.md` and `AGENTS.md` against
+the built package, holds `AGENTS.md` to a size cap, and checks the reader guide
+under `docs/guide/` when the package sits in its source repository;
+`npm run docs:check -- --write` refreshes the guide's generated sections.
 
 The [repository neutrality checks](https://github.com/openlup/openlup/blob/openlup-core-v0.12.0/CONTRIBUTING.md#development-preview-checks)
 reuse the source scanner through `./scripts/neutrality-tree-counts.ts` relative

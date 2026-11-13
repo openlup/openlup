@@ -21,7 +21,28 @@ const initialAdapters = {
   "packages/core/scripts/neutrality-tree-counts.ts": "2999eae190b237ababb4ab75a82e9288c58c4b3c",
   "packages/ui/smoke/neutrality.ts": "18a59f35931a273537d02a460e9b0b4b69c02c1f",
 };
-const categoryPattern = /^(?:brand|legacy-env|ui-(?:[0-9]|1[0-7]))$/;
+const categoryPattern = /^(?:brand|legacy-env|ui-(?:[0-9]|1[0-7])|store-[01])$/;
+// Store vocabulary of one adopter's domain (store-0, store-1) in Markdown, counted outside the pinned
+// scanners, so reader documentation starts and stays at zero. Fragments keep this file free of the
+// counted words. Singular and plural count; longer words and identifiers do not.
+const storeTerms = [["store-0", "p" + "et"], ["store-1", "do" + "nor"]];
+export const storeCategories = storeTerms.map(([category]) => category);
+export function storeTermCounts(contents) {
+  return Object.fromEntries(storeTerms.flatMap(([category, term]) => {
+    const count = [...contents.matchAll(new RegExp(`\\b${term}s?\\b`, "gi"))].length;
+    return count ? [[category, count]] : [];
+  }));
+}
+/**
+ * A store category that no accepted baseline row carries yet is being introduced: its baseline may be
+ * seeded up to the measured base tree, never above it and never from the candidate. Once any row
+ * carries the category, it ratchets like every other category.
+ */
+export function seededIntroductions(increases, parentCounts, measuredBaseRows) {
+  const established = new Set(Object.values(parentCounts).flatMap((counts) => Object.keys(counts)));
+  return increases.filter((row) => !(storeCategories.includes(row.category) && !established.has(row.category)
+    && row.after <= (measuredBaseRows[row.path]?.[row.category] ?? 0)));
+}
 const record = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 const label = (path) => JSON.stringify(path);
 
@@ -431,6 +452,11 @@ export function scanSnapshots(snapshots) {
     }
     if (Object.keys(row.counts).length) rows[hash(row.path)] = { ...rows[hash(row.path)], ...row.counts };
   }
+  for (const { path, contents } of sources) {
+    if (!path.endsWith(".md")) continue;
+    const counts = storeTermCounts(contents);
+    if (Object.keys(counts).length) rows[hash(path)] = { ...rows[hash(path)], ...counts };
+  }
   return { rows: Object.fromEntries(Object.entries(rows).sort()), paths, textFiles: sources.length, binaryFiles: binary.length, binary };
 }
 export function scanTree(ref) { return scanSnapshots(ref ? treeBytes(ref) : workingBytes()); }
@@ -470,7 +496,7 @@ function main() {
   const baseIncreases = unreviewedPinnedIntroductionIncreases(neutralityIncreases(measuredBase.rows, current.rows), currentBytes);
   if (options[0] === "--write-baseline") {
     const counts = parent ? current.rows : measuredBase.rows;
-    const raised = parent ? unreviewedPinnedIntroductionIncreases(neutralityIncreases(parent.counts, counts), currentBytes) : [];
+    const raised = parent ? unreviewedPinnedIntroductionIncreases(seededIntroductions(neutralityIncreases(parent.counts, counts), parent.counts, measuredBase.rows), currentBytes) : [];
     if (baseIncreases.length || raised.length) {
       report([...baseIncreases, ...raised], { ...measuredBase.paths, ...current.paths });
       throw new Error("baseline regeneration would increase accepted debt");
@@ -485,7 +511,7 @@ function main() {
     const baseline = parseBaseline(currentBytes.get(baselinePath));
     for (const path of scannerPaths) if (baseline.scannerPins[path] !== scannerPins[path]) throw new Error(`baseline scanner pin drift: ${label(path)}`);
     if (!parent && (baseline.sourceCommit !== base || JSON.stringify(baseline.counts) !== JSON.stringify(measuredBase.rows))) throw new Error("initial neutrality baseline must equal the measured base tree");
-    const raised = parent ? unreviewedPinnedIntroductionIncreases(neutralityIncreases(parent.counts, baseline.counts), currentBytes) : [];
+    const raised = parent ? unreviewedPinnedIntroductionIncreases(seededIntroductions(neutralityIncreases(parent.counts, baseline.counts), parent.counts, measuredBase.rows), currentBytes) : [];
     // The candidate must fit the explicitly recalibrated baseline, even at introduction.
     const increases = neutralityIncreases(baseline.counts, current.rows);
     report([...baseIncreases, ...raised, ...increases], { ...measuredBase.paths, ...current.paths });
