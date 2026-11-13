@@ -47,12 +47,81 @@ Audience: the maintainer and the agents implementing the programme.
   - Any wave touching `config/**`, `package.json`, `packages/*/scripts/**` or
     `scripts/agent-context/**` takes two reviewers. That includes this W0
     branch, which adds catalogue rows.
-- **Evidence for completion.**
-  - Every wave's exit below.
-  - A release cut after W4 whose guide, npm package and openlup.com pages come
-    from one commit with the contract green.
-  - The tutorial step green on that commit.
-  - The agent-context smoke matrix green on the guide.
+- **Evidence for completion.** The acceptance criteria and the definition of
+  done in the next section.
+
+## Goal, acceptance and execution conditions
+
+### Goal
+
+OpenLup has one documentation set for readers. A human, a coding agent in
+an adopter application and openlup.com read it from the same bytes at the
+same release. Checks keep it true to the code: a change that would make a
+page wrong fails CI instead of landing. Agents write and maintain it under
+the existing review rules. The owner decides once and confirms prose claims
+in batches, but does not maintain anything by hand.
+
+### Acceptance criteria
+
+The programme is accepted when all of these hold on one release tag. Each
+criterion names the check that proves it.
+
+| # | Criterion | Proof |
+| --- | --- | --- |
+| A1 | **One guide.** `packages/core/docs/guide/` holds the tutorial, how-to, concepts, reference and glossary. Each reader topic is explained in exactly one page. | W3 exit list: every moved section exists once; the destination map has no open row. |
+| A2 | **Same bytes everywhere.** The guide in the `@openlup/core` tarball, the file the adopter `AGENTS.md` line points to and openlup.com `/docs/` all come from the same release commit. | `npm pack` listing; the website pin equals the tag; a cold install resolves the template line. |
+| A3 | **Drift fails CI.** `docs:check` runs in required CI for all three packages: TypeScript fences compile, generated regions are fresh, links resolve, no repository-internal language. | Required jobs green; each refusal has a falsifying test. |
+| A4 | **Facts are generated.** Versions, counts, export lists and capability status appear only in generated regions, never in typed prose. | Contract check over the guide. |
+| A5 | **The tutorial works.** It runs from installing the packages to the documented result. | S4 step green on main and against the published npm version; blocking per D4. |
+| A6 | **Agents find the right page.** Queries route to the guide without the retired corpora. | `evaluate.mjs` smoke matrix green on the guide alone. |
+| A7 | **Existing documentation is aligned.** Every file has one class and meets its standard; evidence is labelled; no stub remains. | Destination map complete; nothing references a removed file. |
+| A8 | **openlup.com follows by itself.** A release reaches the site with its claims green and no manual step. | Pin-bump PR green and deployed; `oss:` link check green; a failing bump notifies the owner. |
+| A9 | **It stays true.** The release after W5 goes through routine release preparation, with the S6 step run, and needs no documentation repair outside it. | A1–A8 still green on that release. |
+| A10 | **Within the boundaries.** No new required CI context, service, secret, linter or scheduled agent. No public API changed for documentation. Review floors as in `scripts/agent-review-decide.mjs` plus D7. | Diff of the programme's PRs; branch protection unchanged. |
+
+### Execution conditions
+
+**Before any wave:**
+- The owner has recorded D1–D7.
+- W0 has merged.
+- The owner has given an explicit delivery grant for that wave.
+
+**Every PR:**
+- DCO sign-off, required jobs green, and a native review receipt at the floor
+  for the paths it touches.
+- The policy and catalogue check passes.
+- Documentation moves with the change.
+- The smoke matrix has been run and its result is in the PR body.
+- A PR that moves a page also leaves a stub, retargets the agent-context
+  generator and the routing, and updates the destination map.
+
+**Order:**
+- W1 lands before W2 and W3.
+- W1b runs alongside them.
+- W4's website part lands before the first release that contains W3 moves.
+- W5 starts only after the smoke matrix is green on the guide alone.
+
+**Stop and report to the owner, never work around**, if a wave would need
+any of:
+- a public API change;
+- a new required context;
+- a loosened check;
+- a change under `infra/` or in AWS for the website.
+
+The same applies to a tutorial step that the product cannot yet pass. That
+becomes an owner finding.
+
+**Owner involvement:**
+- D1–D7, once.
+- One batch confirmation of prose claims per W2 and W3 batch.
+- Notifications on a failing pin bump.
+
+### Definition of done
+
+The programme is done when A1–A10 hold on a release cut after W5, and on
+the routine release that follows it (A9). This plan then becomes a record.
+From that point maintenance is the S6 step in release preparation and the
+contract in CI, with no programme work left.
 
 ## Current state (2026-11-12, tag `openlup-core-v0.38.0`, main `821cfae16`)
 
@@ -407,3 +476,6 @@ An independent challenge found the following.
   risk table is resolved as D7.
 - **Configuration keys** come from the existing `config/environment-variables.json`.
 - **Measurement.** The smoke matrix runs at every wave.
+
+**Added after the challenge:** the goal, the acceptance criteria A1–A10
+with their proofs, the execution conditions and the definition of done.
