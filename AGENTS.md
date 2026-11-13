@@ -1,15 +1,19 @@
 # OpenLup Public Agent Guide
 
 Status: development-preview guidance.
-This root file is the single source of the public agent guide; edit it here.
-`npm run oss:published-tree -- --policy --docs-update` generates
-`docs/platform/AGENT_GUIDE.md` from it with location-adjusted links.
+This root file is the single agent guide for this repository; edit it here.
+`docs/platform/AGENT_GUIDE.md` is a generated pointer to this file and the reader guide.
 
 OpenLup is a subscription-commerce platform. The platform's public tree is a platform monorepo; an adopter owns its own application, brand, content, local policy, and integrations.
 This guide governs work in that public tree only. It does not authorize releases, external mutations, or stable-framework claims.
 An application that installs `@openlup/*` from npm follows its own `AGENTS.md`, started from the [adopter kit](docs/platform/adopter-kit/README.md).
 
 ## Orientation
+
+Reader documentation for installing, composing, extending, operating and upgrading
+lives in the [reader guide](packages/core/docs/guide/README.md).
+Change rules and contributor process stay in `AGENTS.md` and `CONTRIBUTING.md`;
+do not duplicate reader guide content here.
 
 Read these documents before changing a related boundary:
 
