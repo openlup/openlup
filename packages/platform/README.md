@@ -181,6 +181,7 @@ bearer; its local fixture establishes no hosted revocation guarantee.
 | `./payments/stripe` | Opt-in Node payment example with an injected structural client, verified observations and purpose-sensitive readback; no SDK dependency or default activation. |
 | `./payments/tpay` | Opt-in Node payment example with injected HTTP/certificate I/O, Model O aliases and verified observations; no default activation. |
 | `./fulfillment/omnipack` | Opt-in Node fulfillment example with injected I/O; default-off. |
+| `./payments/testing` | Experimental offline adapter conformance runner and scripted transport fake; development preview. |
 | `./payments` | Experimental prepared-attempt ordering with injected persistence, execution and failure policy; contracts at `./payments/contracts`. |
 | `./fulfillment`, `./fulfillment/contracts` | [Experimental fulfillment services, contracts and status canon](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#fulfillment-contracts). |
 | `./fulfillment/native` | Experimental `createNativeFulfillmentBinding` locked dispatch-preparation binding; the host supplies authoritative facts, a capability-local transaction lane and contribution composition. |
@@ -1741,6 +1742,90 @@ registration is not projected. Lifecycle carriers copy typed facts only.
 The existing refusal handoff accepts a failure-reason string, not a typed
 adapter refusal envelope; envelope forwarding remains unsupported.
 
+### Test a payment adapter offline
+
+`@openlup/platform/payments/testing` is an experimental development-preview kit
+for adapter authors. It re-exports `runPaymentAdapterConformance`; the existing
+`./payments` export remains available. `createScriptedPaymentFake` supplies a
+separate FIFO queue per injected transport call, with success, provider 5xx,
+timeout before/after dispatch and redelivery 409 outcomes. It performs no I/O,
+waits or retries and records call names/outcome kinds only. HTTP bindings can
+provide a synthetic response for 5xx/409; SDK bindings receive a synthetic error.
+
+```ts
+import { createScriptedPaymentFake } from "@openlup/platform/payments/testing";
+
+const transport = createScriptedPaymentFake<{ create: { id: string } }>();
+transport.enqueue("create", { kind: "success", value: { id: "remote-fixture" } });
+const client = { create: () => transport.invoke("create") };
+await client.create(); // Inject this binding into the adapter under test.
+transport.assertDrained();
+```
+
+In the author's test, pass `PaymentAdapterTestSubject[]` to
+`runPaymentAdapterConformance`. Supply `safety` on each subject for the named
+offline suite: `capabilityInputs` demonstrate every declared family of every
+capture flow with that flow's handoff, every declared currency,
+and unattended support or refusal; `transport` invokes the real adapter against
+each scripted failure; `webhooks` supplies signed original bytes and independent
+expected evidence for valid/duplicate delivery, signature mismatch, partial/zero/
+missing amount, missing currency and chargeback. `partialMoney` pins exact minor
+units. Optional close/absence ports are exercised when present; refund creation
+and split authorization/capture are structurally absent. Baseline subjects
+without `safety` retain the existing, narrower checks. Each capability input must
+identify a supplied subject by its intent/attempt pair; dispatched remote references
+must equal that subject's independent readback reference. All returned executions,
+including capability and transport probes, share diagnostic redaction validation.
+
+A typed map covers all 17 current `PaymentAdapterCapabilities` keys, including
+inherited descriptor fields; adding a key requires an explicit check at compile time.
+Mandate probes compare `assessMandate` with validation and execution for absent,
+null, admitted and unsupported model evidence. Required stored evidence and payer
+context must refuse when missing; the payer probe removes `payer` from the
+unattended capability input, checks validation and dispatch when payer is optional,
+and is recorded as not applicable when unattended is unsupported.
+Refusal probes require `providerRequests()` (the count of every injected-client
+invocation, recorded at entry before parsing or assertions) to stay unchanged whether execution throws or returns;
+a returned refusal must be an exact `notDispatched` decline before dispatch.
+This includes the first unsupported unattended invocation, which must return that
+typed decline; a throw does not satisfy it.
+Unsupported currency must refuse both validation and execution. Each successful
+capture execution must match a declared flow for its family: customer authorization
+must be present in the input, or the returned handoff kind must match the declaration.
+The kit checks the five host-consumed declarations `unattendedChargeFlow`,
+`methodHealth`, `terminalOutcomeReporting`, `mandateUpsertIsSubscriptionScoped`
+and `payerContext.customerRefFallsBackToContactEmail` for shape only, and each
+adapter pins their values in its own witnesses.
+The attempt input has no customer-reference, method-kind or subscription-write
+port, so this kit cannot prove host method-health admission or mandate persistence.
+The card fixture dispatches without a customer reference despite the declared
+method-health prerequisite; the bank/code fixture reads a terminal status while
+its descriptor names attempt records. These are observed boundary limits, not
+host-policy parity or adapter repairs.
+
+The runner checks replay identity and ingress calls with an in-memory host;
+it does not establish durable-store idempotency. Signature refusal and unusable
+settling money must reach no persistence call. A currencyless notification may
+bind to an adapter's single declared currency; several currencies cannot supply
+an invented choice. Network errors may propagate to the host, so failure probes
+assert no success without inventing proof of non-dispatch. Returned after-dispatch
+timeout and 409 envelopes must also retain dispatched/unknown evidence; exact
+`notDispatched`/`before-dispatch` would erase uncertainty and fails the suite. A 409 remains a
+conflict response; later redelivery of the original event retains replay identity.
+Partial paid amounts and cumulative partial refunds retain their witnessed
+classifications. Chargebacks may be `refunded` or `disputed`.
+
+From the repository root, run the existing adapter witnesses with:
+
+```sh
+npm --prefix . run test:hosted -- packages/platform/test/payments/stripe/conformance.test.ts packages/platform/test/payments/tpay/conformance.test.ts
+```
+
+The fixtures in those tests show the client bindings, the card adapter's inclusive
+300-second signature window, JWS verification, cumulative refund snapshots and
+full-reversal chargebacks. This proves offline contract behavior only; provider
+account readiness and real-store durability need their own evidence.
+
 ### Payment service composition
 
 `createPaymentServices` accepts `PaymentServicesOptions` and returns
@@ -2494,14 +2579,13 @@ Invoicing exports explicit `createInvoiceServices`, `InvoiceServices` and inert
 SQL wrappers persist it for eligible obligations. `InvoiceSellerRevision` is also
 available from the type-only contracts entry. Legacy obligations keep fallback.
 
-For the prepared `0.40.0` set, read the [adjacent-release migration and known
-limitations](CHANGELOG.md#0400) before selecting optional services. This set
-adds experimental neutral ecommerce-event contracts, retained paid-time source
-snapshots and an explicit PostgreSQL projection through the existing outbox;
-separately qualified events for the opt-in `./communications/klaviyo` adapter,
-whose consent-push capability now requires the complete declared scope set; and
-offline wiring recipes for transactional delivery, marketing refusals and frozen
-event replay. The package no longer ships `AGENT_CONTEXT.md`.
+For the prepared `0.41.0` set, read the [adjacent-release migration and known
+limitations](CHANGELOG.md#0410) before selecting optional services. This set
+adds the experimental `./payments/testing` subpath for payment adapter authors:
+the existing conformance runner, a provider-neutral scripted transport fake and
+optional offline safety scenarios. `runPaymentAdapterConformance` now takes the
+named `PaymentAdapterTestSubject[]`, so existing callers compile and run
+unchanged. The set adds no schema migration.
 Apply the complete selected migration catalogue before composing the new native
 bindings. Experimental
 marketing uses browser-safe `./marketing`, type-only browser-safe
@@ -2548,7 +2632,7 @@ Adopters must not activate unselected or unready invoicing; installation and
 inert contributions register no runner, worker, route or schedule.
 M06 managed-host proof classes remain pending in the
 [M06 parity ledger](https://github.com/openlup/openlup/blob/main/docs/platform/plans/oss-m06-stock-reservations-delivery.md#parity-pending-rows).
-Size comparison uses the published `0.39.0` tarball. Preparation and offline
+Size comparison uses the published `0.40.0` tarball. Preparation and offline
 adapter evidence grant no publication or provider-account certification.
 
 The set requires Zod `^4.6.6` for GHSA-mrhx-c7xc-m3w5.

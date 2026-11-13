@@ -164,7 +164,7 @@ pending role returns `INVITATION_ROLE_CONFLICT`; an already active target return
 `IDENTITY_CONFLICT`. Expired or cancelled attempts can be reissued. Direct
 hosts parse the invitation lifetime before effects, requiring an integer within
 the configured range; invalid values throw `operator_invitation_ttl_invalid`.
-See the [maintainer invitation limits](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/docs/platform/IDENTITY.md#operator-invitation-lifecycle)
+See the [maintainer invitation limits](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/docs/platform/IDENTITY.md#operator-invitation-lifecycle)
 for the default and accepted range.
 
 `acceptOperatorInvitation(principalId)` is a trusted server operation whose
@@ -246,7 +246,7 @@ transaction. Redemption is exclusive; replay refuses. Active operators can sign 
 again without creating another invitation or changing membership history.
 Expiry, replay, changed email or lost eligibility return `UNAUTHORIZED`;
 malformed request envelopes return `BAD_REQUEST`.
-The [maintainer challenge limits](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/docs/platform/IDENTITY.md#challenge-delivery-and-redemption)
+The [maintainer challenge limits](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/docs/platform/IDENTITY.md#challenge-delivery-and-redemption)
 retain exact token sizes, rolling quotas and lifetimes.
 
 The browser callback consumes `/admin/auth/callback#operator_token=…`, removes
@@ -313,8 +313,8 @@ subsequent operator authorization.
 
 The operator and customer stores expose bounded `pruneChallenges` operations:
 each deletes a bounded number of rows beyond the retained expiry-history window.
-See the [maintainer pruning limits](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/docs/platform/IDENTITY.md#admin-operations-and-token-limits)
-and [challenge limits](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/docs/platform/IDENTITY.md#challenge-delivery-and-redemption)
+See the [maintainer pruning limits](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/docs/platform/IDENTITY.md#admin-operations-and-token-limits)
+and [challenge limits](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/docs/platform/IDENTITY.md#challenge-delivery-and-redemption)
 for exact batch sizes, retained windows, quotas, lifetimes and padding.
 Recent expiry and rate-limit history remain. The application schedules cleanup;
 pruning does not renew invitations.
@@ -386,9 +386,9 @@ delivery contact. `journey` requires bounded idempotency and locale values and
 a supported purchase mode. Its checkout metadata preserves the last intent key,
 locale, mode and match reason; absent journey preserves metadata. Raw email and
 acquisition source are bounded, and lifecycle stage must be supported. Use the
-[maintainer registrar limits](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/docs/platform/IDENTITY.md#guest-checkout-contact-resolution)
+[maintainer registrar limits](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/docs/platform/IDENTITY.md#guest-checkout-contact-resolution)
 for exact bounds, and the input contracts in the
-[API report](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/packages/platform/api/identity.api.md)
+[API report](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/api/identity.api.md)
 for accepted shapes.
 
 The separate account-link lookup trims stored email and can return
@@ -417,7 +417,7 @@ serve as API credentials. Customer lifetime is bounded; the reference operator
 verifier requires a scalar audience and a shorter lifetime bound.
 Integer `iat` and `exp`, no future issuance, `nbf` enforcement and no clock
 tolerance apply; equality at expiry refuses.
-See the [maintainer OIDC bounds](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/docs/platform/IDENTITY.md#opt-in-oidc-access-tokens)
+See the [maintainer OIDC bounds](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/docs/platform/IDENTITY.md#opt-in-oidc-access-tokens)
 for exact token lifetimes, cache ceilings, refresh windows and fetch limits.
 
 Only signed top-level `email` and literal boolean `email_verified: true` supply
@@ -456,10 +456,10 @@ envelopes. Readiness separately observes valid discovery and fresh loaded keys;
 it does not certify an issuer's operation or the application's login flow.
 
 For the exact callable contracts, see the
-[identity API reference](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/packages/platform/api/identity.api.md)
-and [browser contracts](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/packages/platform/api/identity-contracts.api.md).
+[identity API reference](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/api/identity.api.md)
+and [browser contracts](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/api/identity-contracts.api.md).
 The server report links the implementation that owns verifier and transport limits.
-The [package surface reference](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/packages/platform/README.md#package-surface)
+The [package surface reference](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/README.md#package-surface)
 owns capability maturity.
 
 Configure `IDENTITY_OIDC_ISSUER`, `IDENTITY_OIDC_CUSTOMER_AUDIENCE` and

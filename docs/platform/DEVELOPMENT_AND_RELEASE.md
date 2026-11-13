@@ -262,12 +262,15 @@ owns release permissions, setup, detailed refusals and recovery. The sequence is
    changelog's version section below a fresh Unreleased heading. It assembles the
    legacy body first, then validated package fragments in byte order of path,
    and deletes only consumed fragments after successful planning and writes,
-   then stages those deletions and guide writes so preparation can read
-   the Git inventory; historical sections stay byte-identical. The bump assembles
+   then stages those deletions and the documentation writes described below so
+   preparation can read the Git inventory. It stages no other changes;
+   historical sections stay byte-identical. The bump assembles
    `packages/core/docs/guide/upgrade/v<major>-<minor>-<patch>.md` from the consumed
-   fragments and API diff; the maintainer's agent edits that page and the listed guide pages in
+   fragments and API diff, listing added, removed and changed declarations;
+   the maintainer's agent edits that page and the listed guide pages in
    the same PR. The bump also re-pins the guide's repository links and refreshes
-   its generated regions. If no core release tag is an ancestor of HEAD, the listing
+   its generated regions, and re-pins released repository links in each publishable
+   package's `AGENTS.md` and `README.md`. If no core release tag is an ancestor of HEAD, the listing
    and page say that the previous release could not be determined. Each packed package
    CHANGELOG keeps the current release and the two previous ones; older sections
    move verbatim to its non-packed `CHANGELOG-HISTORY.md`. Add notable-change notes under
@@ -320,8 +323,10 @@ then runs the guide tutorial against the registry. It runs trusted default-branc
 code and reads only the release tag's tutorial page, after checking the tag's
 commit against the completed publication run. It does not hold the
 publication run open or delay the next release dispatch, and is not a required
-check. The tutorial remains advisory until two green merge-group runs on main:
+check. The registry tutorial remains advisory until its second green run:
 a tutorial failure appears as a warning annotation and in the step summary.
+The packed-candidate tutorial in `install-packages` is blocking because its
+condition of two green merge-group runs on main has been met.
 
 On partial release or package failure, stop for maintainer recovery. Do not
 retag, rewrite an immutable release or republish a version. A failed publish job
@@ -340,12 +345,11 @@ The source-preview descendant check retains its strict snapshot equality.
 
 ### Core release preparation
 
-The prepared `0.40.0` set ships the reader guide in Core under `docs/guide/`,
-and `openlup-context` searches it instead of the retired `AGENT_CONTEXT.md`
-corpus. Core also registers the event vocabulary for Platform's new experimental
-ecommerce-event export. Upgrade all packages together and read
-[the set notes](../../packages/core/CHANGELOG.md#0400); Core introduces no schema migration.
-Size comparison uses the published `0.39.0` tarball; releases before `0.38.0`
+The prepared `0.41.0` set republishes Core with unchanged runtime, exports and
+SQL; its reader guide lists Platform's new experimental `./payments/testing`
+subpath. Upgrade all packages together and read
+[the set notes](../../packages/core/CHANGELOG.md#0410); Core introduces no schema migration.
+Size comparison uses the published `0.40.0` tarball; releases before `0.39.0`
 remain in the source-only `CHANGELOG-HISTORY.md`. Preparation establishes no
 npm publication.
 
@@ -359,12 +363,11 @@ types for Zod's standard `URL` declaration; Core adds no runtime Node import.
 
 The reviewed release workflow owns provenance-backed publication; direct directory publishing refuses. New API and shipped SQL require the next minor set.
 
-The prepared `0.40.0` set skips payload compaction while an owner pins
-`metadata.retainPayload=true`, stops shipping `AGENT_CONTEXT.md`, and has an
-exact `@openlup/core@0.40.0` peer. Upgrade the complete set together;
-no Outbox schema migration is introduced. Read [0.40.0 notes](../../packages/outbox/CHANGELOG.md#0400).
-Releases before `0.38.0` are retained in the source-only `CHANGELOG-HISTORY.md`.
-Size comparison uses the published `0.39.0` tarball; preparation grants no
+The prepared `0.41.0` set republishes Outbox with unchanged runtime, exports and
+SQL, and an exact `@openlup/core@0.41.0` peer. Upgrade the complete set together;
+no Outbox schema migration is introduced. Read [0.41.0 notes](../../packages/outbox/CHANGELOG.md#0410).
+Releases before `0.39.0` are retained in the source-only `CHANGELOG-HISTORY.md`.
+Size comparison uses the published `0.40.0` tarball; preparation grants no
 publication or installation proof.
 
 ## Cutting an optional source preview

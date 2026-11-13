@@ -90,6 +90,7 @@ or external-write authority. The application's own instructions govern.
 | `./payments` | capability | experimental |
 | `./payments/contracts` | capability | experimental |
 | `./payments/stripe` | capability | experimental |
+| `./payments/testing` | capability | experimental |
 | `./payments/tpay` | capability | experimental |
 | `./portability` | rail | experimental |
 | `./pricing` | capability | experimental |

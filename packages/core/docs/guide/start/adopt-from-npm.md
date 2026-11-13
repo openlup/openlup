@@ -6,7 +6,7 @@ for a first runnable example, or [add OpenLup to an existing application](../how
 
 ## Select the packages
 
-Use the toolchain declared in the [source manifest](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/package.json). From your application's root, set
+Use the toolchain declared in the [source manifest](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/package.json). From your application's root, set
 `OPENLUP_VERSION` to the exact release you selected and install only the packages
 you use. For the core package alone:
 
@@ -39,7 +39,7 @@ Use the [extension seams](../how-to/extend/choose-an-extension-seam.md) for ordi
 application handlers, policies and compatible adapters. They need no upstream
 nomination or release. For a service adapter, follow
 [provider adapters](../how-to/extend/provider-adapters.md).
-The source [market composition example](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/server/adapters/market-packs/marketRecipe.ts)
+The source [market composition example](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/server/adapters/market-packs/marketRecipe.ts)
 keeps language, settlement, company rules and optional directory inputs explicit;
 importing it mounts no runtime or UI. Your host supplies provider configuration
 and missing-input policy; keep manual address entry useful without lookup.
@@ -130,10 +130,10 @@ guidance. A template change does not change an already published package.
 
 | Source file | Application destination | Purpose |
 | --- | --- | --- |
-| [Agent rules](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/docs/platform/adopter-kit/AGENTS.template.md) | `AGENTS.md` | Application instructions with an OpenLup managed block |
-| [Agent import](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/docs/platform/adopter-kit/CLAUDE.template.md) | `CLAUDE.md` | Imports `AGENTS.md` |
-| [Editor permissions](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/docs/platform/adopter-kit/claude-settings.template.json) | `.claude/settings.json` | Denies the named `Edit` tool under `node_modules/` |
-| [Dependency updates](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/docs/platform/adopter-kit/dependabot.template.yml) | `.github/dependabot.yml` | Groups ordinary package updates |
+| [Agent rules](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/docs/platform/adopter-kit/AGENTS.template.md) | `AGENTS.md` | Application instructions with an OpenLup managed block |
+| [Agent import](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/docs/platform/adopter-kit/CLAUDE.template.md) | `CLAUDE.md` | Imports `AGENTS.md` |
+| [Editor permissions](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/docs/platform/adopter-kit/claude-settings.template.json) | `.claude/settings.json` | Denies the named `Edit` tool under `node_modules/` |
+| [Dependency updates](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/docs/platform/adopter-kit/dependabot.template.yml) | `.github/dependabot.yml` | Groups ordinary package updates |
 
 Merge with existing files. Keep local rules outside the managed block, preserve
 the `@AGENTS.md` import and retain existing permission rules when adding deny
@@ -145,7 +145,7 @@ A later template update may replace the block between
 ## Group dependency updates
 
 Keep all `@openlup/*` updates together, including security-driven pin changes.
-The [versioning policy](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/.github/VERSIONING_AND_EOL.md#package-releases)
+The [versioning policy](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/.github/VERSIONING_AND_EOL.md#package-releases)
 permits breaking minor updates in the current channel; do not filter the update group
 to patch releases alone. The supplied template groups all ordinary updates with
 no update-type filter. For another dependency-update service, use an equivalent

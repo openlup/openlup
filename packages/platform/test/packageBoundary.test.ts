@@ -225,7 +225,7 @@ describe("package source boundary", () => {
       "invoicing/index.ts", "invoicing/contracts/index.ts",
       "subscriptions/index.ts", "subscriptions/contracts/index.ts",
       "fulfillment/index.ts", "fulfillment/contracts/index.ts", "fulfillment/omnipack/index.ts", "fulfillment/bindings.ts", "fulfillment/contracts/bindings.ts", "composition/fulfillmentContribution.ts",
-      "payments/index.ts", "payments/contracts/index.ts", "payments/stripe/index.ts", "payments/tpay/index.ts",
+      "payments/index.ts", "payments/contracts/index.ts", "payments/stripe/index.ts", "payments/tpay/index.ts", "payments/testing/index.ts",
       "shipping/index.ts", "shipping/contracts/index.ts",
       "catalog/index.ts", "catalog/contracts/index.ts",
       "catalog/catalogSkuEnvelope.ts", "catalog/catalogSkuEnvelopeMapper.ts", "catalog/catalogDraftStore.ts", "composition/catalogContribution.ts",
@@ -291,7 +291,7 @@ describe("package source boundary", () => {
       exports: Record<string, unknown>;
     };
     expect(manifest.exports["./package.json"]).toBe("./package.json");
-    assertModuleExports(modules, graph, manifest.exports, (path) => existsSync(join(SOURCE_ROOT, path)), ["account-support/read-contracts", "account-support/postgres", "commerce/server/postgres", "channels/server", "risk/server", "company-identity/server", "operations/server", "marketing/server", "marketing/server/postgres", "commerce/server", "commerce/server/destinations", "commerce/server/native-checkout", "invoicing/postgres", "pricing/browser", "communications/resend", "communications/klaviyo", "payments/stripe", "payments/tpay", "fulfillment/omnipack", "fulfillment/native"]);
+    assertModuleExports(modules, graph, manifest.exports, (path) => existsSync(join(SOURCE_ROOT, path)), ["account-support/read-contracts", "account-support/postgres", "commerce/server/postgres", "channels/server", "risk/server", "company-identity/server", "operations/server", "marketing/server", "marketing/server/postgres", "commerce/server", "commerce/server/destinations", "commerce/server/native-checkout", "invoicing/postgres", "pricing/browser", "communications/resend", "communications/klaviyo", "payments/stripe", "payments/tpay", "payments/testing", "fulfillment/omnipack", "fulfillment/native"]);
   });
 
   it("bundles the marketing server entry without PostgreSQL adapters or the optional pg peer", async () => {

@@ -3934,6 +3934,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/payments-testing.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/api/payments-tpay.api.md",
       "class": "public-output"
     },
@@ -7866,6 +7870,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/payments/paymentSafetyConformance.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/paymentTestingScenarios.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/payments/paymentTruth.ts",
       "class": "public-output"
     },
@@ -7995,6 +8007,14 @@
     },
     {
       "path": "packages/platform/src/payments/stripe/webhookSignature.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/testing/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/testing/scriptedFake.ts",
       "class": "public-output"
     },
     {
@@ -10514,6 +10534,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/payments/scriptedFake.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/payments/stripe/a2StripeKeysAndDeclinesCharacterization.test.ts",
       "class": "public-output"
     },
@@ -10535,6 +10559,10 @@
     },
     {
       "path": "packages/platform/test/payments/stripe/conformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/stripe/conformance.testFixtures.ts",
       "class": "public-output"
     },
     {
@@ -10594,7 +10622,15 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/payments/testingDefects.testFixtures.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/payments/tpay/conformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/tpay/conformance.testFixtures.ts",
       "class": "public-output"
     },
     {

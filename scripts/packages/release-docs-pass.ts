@@ -132,13 +132,53 @@ export function listReleaseDocumentation({ root, since = previousCoreTag(root), 
   return { since: since ?? null, changes: listed, websiteReferences, websiteChecked, warnings: [...new Set(warnings)] };
 }
 
-export function summarizeApiDiff(diff: string): { added: string[]; removed: string[] } {
-  const added: string[] = [], removed: string[] = [];
-  for (const line of diff.split("\n")) {
-    if (line.startsWith("+export ")) added.push(line.slice(1).trim());
-    if (line.startsWith("-export ")) removed.push(line.slice(1).trim());
+/** Compare complete top-level declaration blocks inside a report's TypeScript fences. */
+export function summarizeApiDiff(before: string, after: string): { added: string[]; removed: string[]; changed: string[] } {
+  const declarations = (source: string) => {
+    const blocks = new Map<string, Array<{ first: string; text: string }>>();
+    let fence = false, typescript = false, block: string[] = [], leading: string[] = [], first = "", key = "";
+    const finish = () => {
+      if (!block.length) return;
+      const text = block.map((line) => line.trimEnd()).join("\n").trimEnd();
+      const existing = blocks.get(key) ?? [];
+      if (!existing.some((entry) => entry.text === text)) blocks.set(key, [...existing, { first, text }]);
+      block = [];
+    };
+    for (const line of source.split(/\r?\n/u)) {
+      if (line.startsWith("```")) {
+        finish();
+        leading = [];
+        typescript = !fence && /^```ts(?:\s.*)?$/u.test(line);
+        fence = !fence;
+      } else if (typescript) {
+        const declaration = /^(?:export\s+)?(?:declare\s+)?(?:default\s+)?(?:abstract\s+|async\s+)?(?:const\s+(?=enum\s))?(const|let|var|function|class|interface|type|enum|namespace|module)\b(?:\s+([\w$]+|"[^"]+"|'[^']+'))?/u.exec(line);
+        if (declaration || /^export\s+(?:\*|\{|type\s+\*)/u.test(line)) {
+          finish();
+          first = line.trimEnd();
+          key = declaration?.[2] ? `${declaration[1]} ${declaration[2]}` : first;
+          block = [...leading, line];
+          leading = [];
+        } else if (/^(?:\/\/|\/\*\*| \*)/u.test(line)) leading.push(line);
+        else if (/^import\b/u.test(line)) leading = [];
+        else {
+          if (block.length) block.push(...leading, line);
+          leading = [];
+        }
+      }
+    }
+    finish();
+    return blocks;
+  };
+  const oldBlocks = declarations(before), newBlocks = declarations(after);
+  const firstLines = (blocks: Array<{ first: string }>) => blocks.map(({ first }) => first);
+  const added: string[] = [], removed: string[] = [], changed: string[] = [];
+  for (const [key, blocks] of newBlocks) {
+    const old = oldBlocks.get(key);
+    if (!old) added.push(...firstLines(blocks));
+    else if (JSON.stringify(old.map(({ text }) => text).sort()) !== JSON.stringify(blocks.map(({ text }) => text).sort())) changed.push(...firstLines(blocks));
   }
-  return { added, removed };
+  for (const [key, blocks] of oldBlocks) if (!newBlocks.has(key)) removed.push(...firstLines(blocks));
+  return { added: [...new Set(added)], removed: [...new Set(removed)], changed: [...new Set(changed)] };
 }
 
 /** Assemble from the caller's exact consumed fragments, without reading or deleting fragment files. */
@@ -155,11 +195,12 @@ export function assembleUpgradePage({ root, version, since, fragments }: { root:
   sections.push("## API changes");
   const changes = since ? releaseChanges(root, since).filter((change) => changedPaths(change).some((path) => API_REPORT.test(path))) : [];
   for (const change of changes) {
-    const diff = documentationGit(root, ["diff", "--no-ext-diff", "--no-textconv", "--no-color", "--unified=0", since!, "HEAD", "--", ...changedPaths(change).map((path) => `:(literal)${path}`)]).toString("utf8");
-    const { added, removed } = summarizeApiDiff(diff);
+    const before = change.status === "A" ? "" : documentationGit(root, ["show", `${since}:${change.previousPath ?? change.path}`]).toString("utf8");
+    const after = change.status === "D" ? "" : documentationGit(root, ["show", `HEAD:${change.path}`]).toString("utf8");
+    const { added, removed, changed } = summarizeApiDiff(before, after);
     sections.push(`### \`${change.path}\``);
-    for (const [label, lines] of [["Added declarations", added], ["Removed declarations", removed]] as const) if (lines.length) sections.push(`${label}:`, ["```ts nocheck", "// API report diff: not compiled.", ...lines, "```"].join("\n"));
-    if (!added.length && !removed.length) sections.push("No exported declaration lines changed.");
+    for (const [label, lines] of [["Added declarations", added], ["Removed declarations", removed], ["Changed declarations", changed]] as const) if (lines.length) sections.push(`${label}:`, ["```ts nocheck", "// API report diff: not compiled.", ...lines, "```"].join("\n"));
+    if (!added.length && !removed.length && !changed.length) sections.push("No top-level declarations changed.");
   }
   if (!since) sections.push("The previous release could not be determined: no core release tag is an ancestor of HEAD.");
   else if (!changes.length) sections.push("No API reports changed since the previous release.");

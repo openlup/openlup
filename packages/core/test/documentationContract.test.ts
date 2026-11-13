@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { agentsFileCap, assertCompiledFences, assertDocumentationContract, assertGuideContract, assertPackageDocumentation, assertRefusalCodeReachability, listOpenRefusalTypes, providerSpecificKeys, refusalTypeSuffixes, renderGeneratedRegion, syncGeneratedRegions } from "../scripts/documentation-contract.ts";
+import { agentsFileCap, assertCompiledFences, assertDocumentationContract, assertGuideContract, assertPackageDocumentation, assertRefusalCodeReachability, listOpenRefusalTypes, planPackageDocumentationUpdates, providerSpecificKeys, refusalTypeSuffixes, renderGeneratedRegion, syncGeneratedRegions } from "../scripts/documentation-contract.ts";
 
 const roots: string[] = [];
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -414,7 +414,7 @@ function guideFixture(index: string, pages: Record<string, string> = {}) {
     mkdirSync(dirname(join(repository, path)), { recursive: true });
     writeFileSync(join(repository, path), contents);
   };
-  write("config/openlup-packages.json", "{}\n");
+  write("config/openlup-packages.json", '{"packages":[]}\n');
   write("README.md", "# Repository\n");
   write("AGENTS.md", "# Agents\n");
   write("config/documentation-guide-allowlist.json", '{"schemaVersion":1,"terms":["S3"]}\n');
@@ -442,6 +442,26 @@ function guideFixture(index: string, pages: Record<string, string> = {}) {
 
 const cpDir = (from: string, to: string) => cpSync(from, to, { recursive: true });
 
+describe("package release-link planning", () => {
+  it("preserves package tag names and URL forms, changes only publishable entry points, and omits current files", () => {
+    const { repository } = guideFixture("# Guide\n");
+    writeFileSync(join(repository, "config/openlup-packages.json"), JSON.stringify({ packages: [
+      { directory: "packages/core", publish: true }, { directory: "packages/outbox", publish: false },
+    ] }));
+    const source = "[Core](https://github.com/openlup/openlup/blob/openlup-core-v1.2.2/README.md)\n" +
+      '<a href="https://github.com/openlup/openlup/tree/openlup-platform-v1.2.2/packages/platform#read">Platform</a>\n' +
+      "[Branch](https://github.com/openlup/openlup/blob/main/README.md)\n";
+    const files = ["packages/core/AGENTS.md", "packages/core/README.md", "packages/outbox/AGENTS.md"];
+    for (const file of files) writeFileSync(join(repository, file), source);
+    const planned = planPackageDocumentationUpdates(repository, "1.2.3");
+    const expected = source.replaceAll("-v1.2.2/", "-v1.2.3/");
+    expect(planned).toEqual(files.slice(0, 2).map((file) => [join(repository, file), expected]));
+    for (const file of files) expect(readFileSync(join(repository, file), "utf8")).toBe(source);
+    for (const [file, contents] of planned) writeFileSync(file, contents);
+    expect(planPackageDocumentationUpdates(repository, "1.2.3")).toEqual([]);
+  });
+});
+
 function checkGuide(fixtureRoots: { repository: string; core: string }, write = false): void {
   assertDocumentationContract(fixtureRoots.core, () => ["AGENTS.md", "README.md", "package.json", "docs/guide.md"], { repositoryRoot: fixtureRoots.repository, write });
 }
@@ -450,6 +470,29 @@ const coreRegion = (body: string) => `<!-- generated:maturity:outbox -->\n${body
 const freshMaturity = "| Export | Role | Maturity |\n| --- | --- | --- |\n| `.` | rail | experimental |\n";
 
 describe("reader guide contract", { timeout: 60_000 }, () => {
+  it.each([
+    [2, "# Title\n\n# Another title\n"],
+    [2, "# Title\n\n # Other\n"],
+    [2, "# Title\n\n#\tOther\n"],
+    [2, "# Title\n\n#\n"],
+    [0, "## Section\n\nA page without a title.\n"],
+  ])("refuses a guide page with %i level-one headings", (count, source) => {
+    const roots = guideFixture("# Guide\n", { "reference/page.md": source });
+    expect(() => checkGuide(roots)).toThrow(`docs/guide/reference/page.md: a guide page has exactly one level-one heading, its title (found ${count})`);
+  });
+
+  it("does not count #hashtag text as a level-one heading", () => {
+    const roots = guideFixture("# Guide\n", { "reference/page.md": "# Title\n\n#hashtag\n" });
+    expect(() => checkGuide(roots)).not.toThrow();
+  });
+
+  it.each(["```", "~~~", "````", "~~~~"])("ignores level-one headings inside a %s fence", (marker) => {
+    const roots = guideFixture("# Guide\n", {
+      "reference/page.md": `# Title\n\n${marker}text\n# Example heading\n${marker}\n\n## Section\n`,
+    });
+    expect(() => checkGuide(roots)).not.toThrow();
+  });
+
   it("plans pending absolute and package-relative pages through the CLI without writing", () => {
     const roots = guideFixture(`# Guide\n\n[README](${repositoryLink("README.md", "openlup-core-v1.0.0")})\n`);
     const file = join(roots.core, "docs/guide/upgrade/v1-2-3.md");
