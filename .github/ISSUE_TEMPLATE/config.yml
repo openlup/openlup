@@ -4,7 +4,8 @@
 # triage than it costs to file, and that asymmetry is what buries a small
 # maintainer team. Bug reports ask for a version and a reproduction; feature
 # requests ask for the problem, the current workaround, and why it belongs in
-# core. Each form collects the details for its report type.
+# core. Documentation problems ask for the page and its version. Each form
+# collects the details for its report type.
 #
 # GitHub surfaces `.github/SUPPORT.md` in this chooser on its own. Read it
 # before filing: it states what is supported, and states plainly that there is

@@ -28,11 +28,13 @@ continuously on call.
 | a defect in a bounded preview check/reference, or later a supported stable artifact | a bug report issue |
 | something the core should do and does not | a feature request issue |
 | a suspected security vulnerability | the private route in `SECURITY.md` - never a public issue |
+| a wrong, unclear or missing page of the guide | a documentation problem issue |
 | a question about running the platform | read the documentation first; then a feature request describing what the documentation failed to answer |
 
 Blank issues are disabled. Bug reports ask for a version and a reproduction;
 feature requests ask for the problem, the current workaround, and why it belongs
-in core. Each form collects the details for its report type.
+in core; documentation problems ask for the page and the version it was read
+at. Each form collects the details for its report type.
 
 ## Release channel decides the promise
 

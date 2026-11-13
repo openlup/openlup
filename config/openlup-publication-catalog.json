@@ -26,6 +26,10 @@
       "class": "public-output"
     },
     {
+      "path": ".github/ISSUE_TEMPLATE/documentation_problem.yml",
+      "class": "contributor-interface"
+    },
+    {
       "path": ".github/ISSUE_TEMPLATE/feature_request.yml",
       "class": "public-output"
     },
@@ -2787,6 +2791,10 @@
     },
     {
       "path": "packages/core/.github/ISSUE_TEMPLATE/config.yml",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/.github/ISSUE_TEMPLATE/documentation_problem.yml",
       "class": "public-output"
     },
     {

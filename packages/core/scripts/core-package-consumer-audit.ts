@@ -96,6 +96,7 @@ function assertPacklist(packageJson: CorePackageJson, packFiles: string[]): void
     "package.json",
     "release-gates.json",
     "docs/SUBSCRIPTION_ENGINE.md",
+    "docs/guide/README.md",
   ]);
 
   for (const [subpath, entry] of Object.entries(packageJson.exports)) {
@@ -115,7 +116,8 @@ function assertPacklist(packageJson: CorePackageJson, packFiles: string[]): void
   const forbiddenFiles = packFiles.filter(
     (path) =>
       path.startsWith("smoke/") ||
-      (path.startsWith("docs/") && path !== "docs/SUBSCRIPTION_ENGINE.md") ||
+      // The reader guide ships as Markdown only, at any depth under docs/guide/.
+      (path.startsWith("docs/") && path !== "docs/SUBSCRIPTION_ENGINE.md" && !/^docs\/guide\/(?:[\w-][\w.-]*\/)*[\w-][\w.-]*\.md$/u.test(path)) ||
       path.startsWith(".context/") ||
       path === "vitest.config.ts" ||
       path.startsWith("tsconfig."),
