@@ -42,8 +42,9 @@ Observed defects in reader-facing pages at 0.38.0:
   0.37.0.
 - **Contradictory snapshot counts.** Selected-plan units read 91, 92, 94, 95,
   96, 103 or 105 across `CANONICAL_CONTRACTS.md` and `DATA_AND_MIGRATIONS.md`.
-- **Adopter-specific detail in generic pages.** `petId`, `petName`, a `pets`
-  table, live provider settlement, "donor adopter", and a Polish e-invoicing key.
+- **Adopter-specific detail in generic pages.** Adopter domain identifiers and
+  tables, live provider settlement, the term for the originating adopter, and a
+  Polish e-invoicing key.
 - **A maintainer's absolute local path.** `plans/oss-m19-g18.md:120`.
 - **Repository-only references.**
   - About 436 links into source and tests from reader-facing pages.
@@ -57,7 +58,7 @@ Observed defects in reader-facing pages at 0.38.0:
   - The route-host composition shown uses reference-app factories that npm
     does not ship.
 - **Missing reference material.**
-  - No glossary for native/managed/portable rail, qualified, donor, readiness
+  - No glossary for native/managed/portable rail, qualified, originating adopter, readiness
     codes.
   - No consolidated configuration keys page.
 
@@ -73,7 +74,7 @@ Observed defects in reader-facing pages at 0.38.0:
 | Core `docs:check` | README and AGENTS examples compile; maturity tables match exports; forbidden terms at package root | required `install-proof` | `outbox`, `platform`, `ui`; `docs/platform/**` |
 | Agent context (`generate.mjs`, `openlup-context` CLI/MCP, 10-query smoke) | installed corpus is a byte-fresh copy of 12 owner sections | required `typecheck`, `self-check`; smoke manual | correctness of the owner; coverage of new exports |
 | Native review | reviewer report must carry a `documentation` field | `native-review` when enabled | field accepts any string; Markdown-only PRs need zero reviewers |
-| Neutrality ratchet | brand, locale and vendor counts may only shrink | required `self-check` | existing hits grandfathered; `pet*`, "donor" not listed |
+| Neutrality ratchet | brand, locale and vendor counts may only shrink | required `self-check` | existing hits grandfathered; adopter domain nouns not listed |
 | Orientation audits (`Verified against <sha>`, size caps) | — | not invoked; their truths configuration file does not exist | — |
 
 No style or prose tooling exists: no markdownlint, Vale, cspell, lychee,

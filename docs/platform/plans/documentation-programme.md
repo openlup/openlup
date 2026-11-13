@@ -292,8 +292,8 @@ get a review floor of one. The contract gains:
    - links into `tests/`, `docs/platform/plans/` or `.context/`.
 
    Store terms are left to the existing neutrality ratchet. A new file starts
-   at zero, so the guide stays neutral with no second list; W1 adds `pet` and
-   `donor` to the ratchet's counted vocabulary.
+   at zero, so the guide stays neutral with no second list; W1 adds the adopter
+   domain nouns to the ratchet's counted vocabulary.
 4. **Instruction-file size.** A line cap for every `AGENTS.md`, set above the
    six sections core already requires (core's file is 177 lines today).
 5. **Pack size.** W1 measures core's pack against `release-gates.json`
@@ -443,7 +443,7 @@ filesystem paths in tracked Markdown.
 | Wave | Delivers | Exit |
 | --- | --- | --- |
 | W0 | Intent, reconnaissance and plan, with the owner's decisions recorded (two reviewers because of the catalogue rows). | Owner decisions D1–D7 recorded. |
-| W1 | S2 for all three packages; the guide's implicit catalogue class and review floor of one; `pet`/`donor` in the ratchet; the absolute-path rule; the pack-size measurement; the allow-list seed; the empty guide index with the writing rules. Updates `DOCUMENTATION.md` and the catalogue paragraph in `CONTRIBUTING.md`. | Required jobs green; each new refusal has a falsifying test; two reviewers. |
+| W1 | S2 for all three packages; the guide's implicit catalogue class and review floor of one; adopter domain nouns in the ratchet; the absolute-path rule; the pack-size measurement; the allow-list seed; the empty guide index with the writing rules. Updates `DOCUMENTATION.md` and the catalogue paragraph in `CONTRIBUTING.md`. | Required jobs green; each new refusal has a falsifying test; two reviewers. |
 | W1b | Immediate corrections outside the move set. | Each defect fixed, or kept with its reason under the audit's rule; smoke matrix green. |
 | W2 | Overview page, tutorial, glossary, generated reference (refusal codes included), troubleshooting keyed by refusal code, the upgrade procedure page, the S4 step (non-blocking). | Contract green; S4 green or each blocked step recorded as an owner finding; owner confirms the prose claims in one batch. |
 | W3 | Moves per the destination map, in source-group batches, each with slimming, stubs and retargeted routes; entry points slimmed; evidence labelled. | Every moved section exists once; every map row at its class standard; smoke matrix green on the guide; routes and generator fresh. |
