@@ -274,6 +274,10 @@
       "maxPackedBytes": 49152,
       "maxFiles": 20
     },
+    "guide": {
+      "maxPackedBytes": 206848,
+      "maxFiles": 70
+    },
     "maxPackedBytes": 327680,
     "maxUnpackedBytes": 1392640,
     "maxFiles": 420,

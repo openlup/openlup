@@ -2,11 +2,11 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { git } from './agent-review-session.mjs';
 import { REGISTRY_PATHS, registryUnion } from './agent-review-registry.mjs';
 import { INVENTORY_PATH, MIGRATION_REGISTRIES, inventoryEnvelope, migrationRegistryUnion } from './agent-review-derived.mjs';
-import { generatedCarrier, runLandingGenerators } from './agent-review-generators.mjs';
+import { generatedCarrier } from './agent-review-generators.mjs';
 
 export async function landingMerge(cwd = process.cwd()) {
   if ((await git(cwd, 'status', '--porcelain=v1', '--untracked-files=all')).trim()) throw new Error('landing: clean committed checkout required');
@@ -47,14 +47,19 @@ export async function landingMerge(cwd = process.cwd()) {
     if (!REGISTRY_PATHS.includes(path)) await git(cwd, 'checkout', '--ours', '--', path);
   }
   const run = (command, args) => execFileSync(command, args, { cwd, stdio: 'inherit', timeout: 900000 });
-  run(process.execPath, ['--import', 'tsx', resolve(fileURLToPath(new URL('./installation-inventory-refresh.ts', import.meta.url)))]);
+  // Owners load from the merged tree; this process still holds pre-merge modules.
+  run(process.execPath, ['--import', 'tsx', resolve(cwd, 'scripts/installation-inventory-refresh.ts')]);
   const inventory = readFileSync(resolve(cwd, INVENTORY_PATH), 'utf8');
   for (const path of MIGRATION_REGISTRIES) {
     const inputs = await Promise.all([base, head, main].map(revision => read(revision, path)));
     writeFileSync(resolve(cwd, path), migrationRegistryUnion(path, ...inputs, inventory));
   }
   const paths = (await git(cwd, 'ls-files', '-z')).split('\0').filter(Boolean);
-  runLandingGenerators(cwd, paths);
+  const generators = JSON.stringify(pathToFileURL(resolve(cwd, 'scripts/agent-review-generators.mjs')).href);
+  execFileSync(process.execPath, ['--input-type=module', '-e', `import { readFileSync } from 'node:fs';
+    const { runLandingGenerators } = await import(${generators});
+    runLandingGenerators(process.cwd(), readFileSync(0, 'utf8').split('\\0').filter(Boolean));`],
+  { cwd, input: paths.join('\0'), stdio: ['pipe', 'inherit', 'inherit'], timeout: 900000 });
   const staged = [...new Set([...MIGRATION_REGISTRIES, INVENTORY_PATH, ...paths.filter(generatedCarrier)])];
   await git(cwd, 'add', '--', ...staged);
   if ((await git(cwd, 'diff', '--name-only', '--diff-filter=U')).trim()) throw new Error('landing: unresolved conflicts remain');

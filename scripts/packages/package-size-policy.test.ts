@@ -1,10 +1,11 @@
 import { buildSync } from "esbuild";
 import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { builtinModules } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { gzipSync } from "node:zlib";
 import { afterEach, describe, expect, it } from "vitest";
 import { PLATFORM_MODULE_GRAPH } from "../../eslint.config.js";
 import { parsePackagesConfig } from "./package-manifest-policy.ts";
@@ -13,7 +14,7 @@ import { browserEntryBytes, checkBrowserEntry, checkPackBudget, measurePack, rea
 
 const entry = { name: "@openlup/example", directory: "packages/example", publish: true };
 const budget: PackBudget = { code: { maxPackedBytes: 1000, maxFiles: 10 }, docs: { maxPackedBytes: 1000, maxFiles: 10 }, maxPackedBytes: 2000, maxUnpackedBytes: 4000, maxFiles: 20, baseline: { version: "0.16.0", packedBytes: 1000 }, browserEntries: {} };
-const measurement = { packedBytes: 1000, unpackedBytes: 2000, files: 10, code: { packedBytes: 500, files: 8 }, docs: { packedBytes: 300, files: 2 } };
+const measurement = { packedBytes: 1000, unpackedBytes: 2000, files: 10, code: { packedBytes: 500, files: 8 }, docs: { packedBytes: 300, files: 2 }, guide: { packedBytes: 20, files: 0 } };
 const roots: string[] = [];
 const root = process.cwd();
 const publishedPackages = parsePackagesConfig(readFileSync(join(root, "config/openlup-packages.json"), "utf8")).packages.filter(({ publish }) => publish);
@@ -42,6 +43,42 @@ describe("package artifact limits", () => {
       const limit = field === "packedBytes" ? budget[kind].maxPackedBytes : budget[kind].maxFiles;
       expect(check({ ...measurement, [kind]: { ...measurement[kind], [field]: limit + 1 } })).toContainEqual({ subject: entry.name, rule: "package-size-cap", detail: expect.stringContaining(`${kind} ${field === "files" ? "files" : "packed bytes"} ${limit + 1} exceeds cap ${limit}`) });
     }
+  });
+  it("measures guide files in path order separately from code, root docs and other files", () => {
+    const entries = [
+      { path: "docs/guide/nested/page.md", bytes: Buffer.from("nested") },
+      { path: "README.md", bytes: Buffer.from("root") },
+      { path: "docs/guide/README.md", bytes: Buffer.from("guide") },
+      { path: "docs/SUBSCRIPTION_ENGINE.md", bytes: Buffer.from("engine") },
+      { path: "dist/index.js", bytes: Buffer.from("code") },
+    ];
+    const measured = measurePack(entries, 500);
+    expect(measured.guide).toEqual({ files: 2, packedBytes: gzipSync(Buffer.from("guidenested")).length });
+    expect(measured.code).toEqual({ files: 1, packedBytes: gzipSync(Buffer.from("code")).length });
+    expect(measured.docs).toEqual({ files: 1, packedBytes: gzipSync(Buffer.from("root")).length });
+    expect(measured.files).toBe(5);
+  });
+  it("refuses guide file and byte overflows and guide files without a budget", () => {
+    const guide = { maxPackedBytes: 100, maxFiles: 2 };
+    const measured = { ...measurement, guide: { files: 2, packedBytes: 100 } };
+    expect(checkPackBudget(entry, { ...budget, guide }, measured)).toEqual([]);
+    for (const [field, value, label] of [["files", 3, "guide files 3 exceeds cap 2"], ["packedBytes", 101, "guide packed bytes 101 exceeds cap 100"]] as const) {
+      expect(checkPackBudget(entry, { ...budget, guide }, { ...measured, guide: { ...measured.guide, [field]: value } })).toContainEqual(expect.objectContaining({ rule: "package-size-cap", detail: expect.stringContaining(label) }));
+    }
+    expect(checkPackBudget(entry, budget, measured)).toContainEqual(expect.objectContaining({ rule: "package-size-cap", detail: expect.stringContaining("pack.guide is missing") }));
+  });
+  it("validates optional guide caps and accepts an outbox-style budget without guide", () => {
+    const directory = mkdtempSync(join(tmpdir(), "openlup-pack-budget-")); roots.push(directory);
+    mkdirSync(join(directory, entry.directory), { recursive: true });
+    const file = join(directory, entry.directory, "release-gates.json");
+    const read = (pack: unknown) => { writeFileSync(file, JSON.stringify({ pack })); return () => readPackBudget(directory, entry); };
+    expect(read(budget)()).toEqual(budget);
+    expect(read({ ...budget, guide: { maxPackedBytes: 100, maxFiles: 2 } })().guide).toEqual({ maxPackedBytes: 100, maxFiles: 2 });
+    for (const guide of [null, {}, { maxPackedBytes: 0, maxFiles: 2 }, { maxPackedBytes: 100, maxFiles: -1 }, { maxPackedBytes: 1.5, maxFiles: 2 }]) {
+      expect(read({ ...budget, guide })).toThrow(/positive integer caps/);
+    }
+    const outbox = publishedPackages.find(({ name }) => name === "@openlup/outbox")!;
+    expect(readPackBudget(root, outbox).guide).toBeUndefined();
   });
   it("passes PR-mode growth above 30% without release notes", () => {
     expect(check({ ...measurement, packedBytes: 1301 })).toEqual([]);

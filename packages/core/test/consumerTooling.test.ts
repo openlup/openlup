@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { assertCorePackagePortabilityProof } from "../scripts/core-package-consumer-audit.ts";
-import { resolveDependencyRoots } from "../scripts/core-package-consumer-smoke.ts";
+import { assertInstalledGuide, resolveDependencyRoots } from "../scripts/core-package-consumer-smoke.ts";
 
 const requiredPackFiles = [
   "CHANGELOG.md",
@@ -18,6 +18,7 @@ const requiredPackFiles = [
   "package.json",
   "release-gates.json",
   "docs/SUBSCRIPTION_ENGINE.md",
+  "docs/guide/README.md",
   "dist/index.js",
 ];
 
@@ -37,7 +38,7 @@ function auditPackedFixture(path: string, source: string, manifest: Record<strin
   const sourceRoot = join(temporaryRoot, "source", "package");
   const extractedRoot = join(temporaryRoot, "extracted");
   try {
-    for (const file of requiredPackFiles) {
+    for (const file of new Set([...requiredPackFiles, ...packFiles.filter(file => !file.split("/").includes(".."))])) {
       const absolute = join(sourceRoot, file);
       mkdirSync(dirname(absolute), { recursive: true });
       const content = file === path
@@ -84,6 +85,20 @@ function auditPackedFixture(path: string, source: string, manifest: Record<strin
 }
 
 describe("packed consumer dependency roots", () => {
+  it("requires the installed guide index", () => {
+    const root = mkdtempSync(join(tmpdir(), "core-installed-guide-"));
+    try {
+      expect(() => assertInstalledGuide(root)).toThrow(/missing docs\/guide\/README.md/);
+      mkdirSync(join(root, "docs/guide"), { recursive: true });
+      writeFileSync(join(root, "docs/guide/README.md"), "# Wrong heading\n");
+      expect(() => assertInstalledGuide(root)).toThrow(/must start with # OpenLup guide/);
+      writeFileSync(join(root, "docs/guide/README.md"), "# OpenLup guide\n");
+      expect(() => assertInstalledGuide(root)).not.toThrow();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("accepts the package and its npm workspace root but rejects unrelated trees", () => {
     expect(resolveDependencyRoots("/repo/packages/core", {
       dependencyRoot: "/repo",
@@ -154,7 +169,16 @@ describe("packed consumer dependency roots", () => {
       requiredPackFiles.filter(path => path !== "docs/SUBSCRIPTION_ENGINE.md"));
   });
 
-  it.each(["docs/development.md", "smoke/fixture.ts", ".context/scratch/proof.md"])("keeps unapproved packed files refused: %s", path => {
+  it("requires the shipped guide index", () => {
+    auditPackedFixture("none", "", {}, /missing required files: docs\/guide\/README\.md/,
+      requiredPackFiles.filter(path => path !== "docs/guide/README.md"));
+  });
+
+  it("accepts nested guide pages", () => {
+    auditPackedFixture("none", "", {}, undefined, [...requiredPackFiles, "docs/guide/how-to/build/compose.md"]);
+  });
+
+  it.each(["docs/development.md", "docs/guide/image.png", "docs/guide/../secret.md", "smoke/fixture.ts", ".context/scratch/proof.md"])("keeps unapproved packed files refused: %s", path => {
     auditPackedFixture("none", "", {}, /contains non-runtime files/, [...requiredPackFiles, path]);
   });
 

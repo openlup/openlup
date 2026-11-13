@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import { env as processEnvironment } from "node:process";
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -2175,7 +2175,12 @@ export function proveNeutralStarterConsumer(checkout: string, packs: ReadonlyMap
   delete environment.NODE_TEST_CONTEXT;
   const run = (name: string, args: string[], cwd = extracted) => process.stdout.write(command(name, args, cwd, environment));
   try {
-    run(process.execPath, ["--experimental-strip-types", "--test"], starter);
+    // Copied tests run once, in the extracted application below; the source run keeps the rest.
+    const ownership = JSON.parse(readFileSync(join(starter, "ownership.json"), "utf8")) as { owned: string[]; managed: string[] };
+    const copied = new Set([...ownership.owned, ...ownership.managed]);
+    const sourceTests = readdirSync(join(starter, "test")).map(name => "test/" + name).filter(path => !copied.has(path)).sort();
+    assert(sourceTests.length > 0, "Starter source-only tests are missing");
+    run(process.execPath, ["--experimental-strip-types", "--test", ...sourceTests], starter);
     run(process.execPath, [join(starter, "extract.mjs"), extracted]);
     assert.equal(command("git", ["rev-parse", "--show-toplevel"], extracted, environment).trim(), realpathSync(extracted));
     for (let parent = dirname(extracted); ; parent = dirname(parent)) {

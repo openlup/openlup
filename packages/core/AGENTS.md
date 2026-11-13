@@ -30,9 +30,10 @@ callers and tests until each required contract has a witness. A ranked hit is a
 starting point, not proof that all related constraints were found.
 
 The Node-only, tool-only executable reads the installed packages' local context
-snapshots when invoked. It is not imported by any kernel export and adds no
-runtime dependency. Results locate source evidence; they grant no application
-policy, tool permission or external-write authority. The application's own
+snapshots and core's reader guide under `docs/guide/` when invoked. It is not
+imported by any kernel export and adds no runtime dependency. Results locate
+source evidence; they grant no application policy, tool permission or
+external-write authority. The application's own
 instructions govern.
 
 ## Agent context over MCP

@@ -48,44 +48,7 @@ capabilities from the factory's presence. See
 
 ## Application file upgrade
 
-This development-preview recipe uses the experimental `@openlup/platform/lifecycle`
-export from the selected candidate or release that actually contains it. Work
-in an existing disposable application outside the platform checkout, with Node
-24 and that application's own exact package pins and authority. Keep real
-brand, content, policy and provider composition outside the managed inventory.
-
-For an app whose existing `generated/entry.mjs` contains exactly
-`export const revision = 1;` followed by a newline, run from the app root:
-
-```js
-import { realpath } from "node:fs/promises";
-import { planAppUpgrade, applyAppUpgrade } from "@openlup/platform/lifecycle";
-
-const from = {
-  version: "example-N-1",
-  schema: { min: 1, max: 2 },
-  files: { "generated/entry.mjs": "export const revision = 1;\n" },
-};
-const to = {
-  version: "example-N",
-  schema: { min: 1, max: 2 },
-  files: { "generated/entry.mjs": "export const revision = 2;\n" },
-};
-const input = { root: await realpath(process.cwd()), from, to, schemaVersion: 2 };
-console.log(await planAppUpgrade(input)); // Read-only: inspect actions/conflicts.
-// State-changing: hold the app's exclusive maintenance window before applying.
-await applyAppUpgrade(input);
-```
-
-The ordinal `2` is caller-supplied example evidence, not a database probe or an
-OpenLup schema version. Observe the actual database and compatibility policy
-separately. Keep immutable predecessor/candidate snapshots for interrupted
-resume; repeat apply with those same snapshots. A divergent managed edit refuses
-before writes and requires reconciliation; upstream-unchanged and unlisted files
-remain application-owned. Do not infer dependency, migration/backfill or
-deployment completion from file apply. Read the
-[ownership and recovery limits](ARCHITECTURE_AND_EXTENSIONS.md#application-file-upgrades)
-before using the primitive beyond this disposable app.
+Moved to [Upgrade application files](../../packages/core/docs/guide/upgrade/application-files.md#prepare-snapshots).
 
 ## Legacy PostgreSQL role prerequisites
 

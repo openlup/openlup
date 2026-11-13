@@ -50,6 +50,88 @@ describe("installed agent context", () => {
     }
   });
 
+  it("finds installed guide headings recursively without changing the result shape", () => {
+    const root = fixture();
+    const guide = join(root, "node_modules/@openlup/core/docs/guide");
+    mkdirSync(join(guide, "nested"), { recursive: true });
+    writeFileSync(join(guide, "README.md"), "# OpenLup guide\n\n## Guide discovery\nGuide discovery starts here.\n");
+    writeFileSync(join(guide, "nested/page.md"), "# Guide discovery\nGuide discovery continues here.\n");
+    const result = JSON.parse(JSON.stringify(searchContext(root, "reader discovery")));
+    expect(Object.keys(result).sort()).toEqual(["hits", "packages", "scans", "version"]);
+    expect(result.scans).toEqual([]);
+    expect(result.hits).toHaveLength(2);
+    expect(result.hits.map((hit: { reason: string }) => hit.reason).sort()).toEqual(["installed docs/guide/README.md", "installed docs/guide/nested/page.md"]);
+    for (const hit of result.hits) {
+      expect(Object.keys(hit).sort()).toEqual(["end", "file", "packageName", "reason", "score", "start", "title"]);
+      expect(hit).toMatchObject({ title: "Guide discovery", packageName: "@openlup/core", score: expect.any(Number) });
+      expect(readFileSync(hit.file, "utf8").split("\n").slice(hit.start - 1, hit.end).join("\n")).toContain("Guide discovery");
+    }
+  });
+
+  it("accepts older installs without a guide and indexes guide pages only in core", () => {
+    const root = fixture();
+    expect(searchContext(root, "discovery").hits).toEqual([]);
+    const other = install(root, "outbox");
+    mkdirSync(join(other, "docs/guide"), { recursive: true });
+    writeFileSync(join(other, "docs/guide/README.md"), "# Guide discovery\n");
+    expect(searchContext(root, "discovery").hits).toEqual([]);
+  });
+
+  it.each(["docs", "docs/guide", "docs/guide/nested", "docs/guide/page.md"])("does not follow the guide symlink %s", (link) => {
+    const root = fixture();
+    const directory = join(root, "node_modules/@openlup/core");
+    const target = join(root, "outside");
+    mkdirSync(target);
+    writeFileSync(join(target, "page.md"), "# Escaped guide needle\n");
+    const path = join(directory, link);
+    mkdirSync(join(path, ".."), { recursive: true });
+    symlinkSync(link.endsWith(".md") ? join(target, "page.md") : target, path);
+    expect(searchContext(root, "escaped guide needle").hits).toEqual([]);
+  });
+
+  it("refuses guide traversal separators in directory entries", () => {
+    const root = fixture();
+    const guide = join(root, "node_modules/@openlup/core/docs/guide");
+    mkdirSync(guide, { recursive: true });
+    writeFileSync(join(guide, "..\\escape.md"), "# Traversal needle\n");
+    expect(() => searchContext(root, "traversal needle")).toThrow(/Invalid installed guide path/);
+  });
+
+  it("walks guide files in sorted order, skips oversized pages and caps visited files", () => {
+    const root = fixture();
+    const guide = join(root, "node_modules/@openlup/core/docs/guide");
+    mkdirSync(guide, { recursive: true });
+    writeFileSync(join(guide, "0000.md"), "# Oversizedmarker\n" + "x".repeat(200_000));
+    writeFileSync(join(guide, "0001.md"), "# Boundarymarker\n".padEnd(200_000, " "));
+    for (let index = 2; index < 400; index++) writeFileSync(join(guide, `${String(index).padStart(4, "0")}.md`), "# Unrelated\n");
+    writeFileSync(join(guide, "0400.md"), "# Beyondboundmarker\n");
+    expect(searchContext(root, "oversizedmarker").hits).toEqual([]);
+    expect(searchContext(root, "boundarymarker").hits).toHaveLength(1);
+    expect(searchContext(root, "beyondboundmarker").hits).toEqual([]);
+  });
+
+  it("counts directories toward the guide walk bound", () => {
+    const root = fixture();
+    const guide = join(root, "node_modules/@openlup/core/docs/guide");
+    mkdirSync(guide, { recursive: true });
+    writeFileSync(join(guide, "0000.md"), "# Earlywalkmarker\n");
+    for (let index = 1; index < 450; index++) mkdirSync(join(guide, `d${String(index).padStart(4, "0")}`));
+    writeFileSync(join(guide, "zzzz.md"), "# Latewalkmarker\n");
+    expect(searchContext(root, "earlywalkmarker").hits).toHaveLength(1);
+    expect(searchContext(root, "latewalkmarker").hits).toEqual([]);
+  });
+
+  it("returns a matching guide page once when it is also a canonical excerpt owner", () => {
+    const root = fixture();
+    const directory = join(root, "node_modules/@openlup/core");
+    mkdirSync(join(directory, "docs/guide"), { recursive: true });
+    writeFileSync(join(directory, "docs/guide/retry.md"), "## Retry policy\nUse nextRetryAttemptAt for the retry schedule.\n");
+    setSource(directory, "docs/guide/retry.md");
+    const hits = searchContext(root, "retry schedule").hits;
+    expect(hits).toHaveLength(1);
+    expect(hits[0]).toMatchObject({ reason: "installed docs/guide/retry.md", file: join(directory, "docs/guide/retry.md") });
+  });
+
   it("refuses mixed installed package versions before returning sources", () => {
     const root = fixture();
     install(root, "platform", "0.30.0");
