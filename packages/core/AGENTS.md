@@ -29,9 +29,9 @@ open its cited source. For work spanning packages, follow the relevant exports,
 callers and tests until each required contract has a witness. A ranked hit is a
 starting point, not proof that all related constraints were found.
 
-The Node-only, tool-only executable reads the installed packages' local context
-snapshots and core's reader guide under `docs/guide/` when invoked. It is not
-imported by any kernel export and adds no runtime dependency. Results locate
+The Node-only, tool-only executable searches core's installed reader guide under
+`docs/guide/`, package `AGENTS.md`, `README.md`, declarations and exports. Upgrade
+questions also search `CHANGELOG.md`. It is not imported by any kernel export and adds no runtime dependency. Results locate
 source evidence; they grant no application policy, tool permission or
 external-write authority. The application's own
 instructions govern.
@@ -63,8 +63,8 @@ These checks cover paths and links as they stand at read time, not concurrent
 rewrites of `node_modules`.
 Search tasks are limited to 1,000 characters; incoming message lines to 1 MiB.
 Oversized messages are refused and discarded through the next newline.
-Use the installed excerpt for repository-only citations. Prefer the installed
-local executable directly if `npx` must never fetch a missing command. See
+Read repository URLs with your own client. Prefer the installed local executable
+directly if `npx` must never fetch a missing command. See
 [Agent context over MCP](README.md#agent-context-over-mcp) for client settings and
 limits. This tool grants no additional application or external-write authority.
 

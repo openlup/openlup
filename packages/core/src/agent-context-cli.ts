@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 // Opt-in development tool. Kernel exports never import this file.
-import { createHash } from "node:crypto";
 import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,7 +12,6 @@ type Hit = { title: string; file: string; start: number; end: number; owner?: st
 
 const ignoredWords = new Set(["a", "an", "and", "are", "by", "do", "for", "from", "how", "in", "is", "of", "on", "or", "the", "to", "with", "czy", "dla", "gdzie", "i", "jak", "jest", "na", "oraz", "po", "przez", "się", "w", "z"]);
 const codeExtensions = new Set([".ts", ".tsx", ".js", ".jsx", ".mts", ".cts", ".mjs", ".cjs"]);
-const corpusPackages = new Set(["@openlup/core", "@openlup/outbox", "@openlup/platform"]);
 const skippedDirectories = new Set(["node_modules", ".git", ".next", ".turbo", "coverage", "dist", "build", ".cache"]);
 const guideEntryLimit = 400;
 const guideFileBytes = 200_000;
@@ -78,49 +76,6 @@ function lineNumber(text: string, offset: number): number {
   let count = 1;
   for (let index = 0; index < offset; index++) if (text[index] === "\n") count++;
   return count;
-}
-
-function corpusSourcePath(item: InstalledPackage, source: string): string {
-  if (typeof source !== "string") return "";
-  const prefix = `https://github.com/openlup/openlup/blob/openlup-${item.name.slice("@openlup/".length)}-v${item.version}/`;
-  return source.startsWith(prefix) ? source.slice(prefix.length) : source;
-}
-
-function corpusHits(item: InstalledPackage, query: string, terms: string[]): Hit[] {
-  const file = join(item.root, "AGENT_CONTEXT.md");
-  const content = readText(file);
-  if (!content) {
-    if (corpusPackages.has(item.name)) throw new Error(`Missing installed agent corpus: ${item.name}`);
-    return [];
-  }
-  const hits: Hit[] = [];
-  const inventories = [...content.matchAll(/<!-- openlup-context-inventory (\[[^\n]*\]) -->\n/gu)];
-  if (inventories.length !== 1) throw new Error(`Invalid corpus inventory in ${file}`);
-  const inventory: unknown = JSON.parse(inventories[0][1]);
-  if (!Array.isArray(inventory) || !inventory.length) throw new Error(`Invalid corpus inventory in ${file}`);
-  const sections: unknown[] = [];
-  const pattern = /<!-- openlup-context (\{[^\n]*\}) -->\n/g;
-  for (const match of content.matchAll(pattern)) {
-    const metadata = JSON.parse(match[1]) as { id: string; source: string; heading: string; sha256: string };
-    const source = corpusSourcePath(item, metadata.source);
-    if (!/^[a-z0-9-]+$/u.test(metadata.id) || !/^[\w./-]+\.md$/u.test(source) || source.startsWith("/") || source.split("/").includes("..")) throw new Error(`Invalid corpus source in ${file}`);
-    sections.push(metadata);
-    const start = match.index + match[0].length;
-    const end = content.indexOf("<!-- /openlup-context -->", start);
-    if (end < 0) throw new Error(`Unclosed agent context section in ${file}`);
-    const excerpt = content.slice(start, end);
-    if (createHash("sha256").update(excerpt).digest("hex") !== metadata.sha256) throw new Error(`Agent context digest mismatch in ${file}: ${metadata.id}`);
-    const title = metadata.heading;
-    const score = relevance(`${metadata.id} ${title}`, excerpt, query, terms);
-    if (score > 0) hits.push({ title, file, start: lineNumber(content, start), end: lineNumber(content, end - 1), owner: metadata.source, packageName: item.name, score, reason: "canonical owner excerpt" });
-  }
-  if ((content.match(/^<!-- openlup-context(?=\s)/gmu) ?? []).length !== sections.length ||
-      (content.match(/^<!-- \/openlup-context(?=\s)/gmu) ?? []).length !== sections.length ||
-      JSON.stringify(sections) !== JSON.stringify(inventory) ||
-      new Set(sections.map((section) => (section as { id: string }).id)).size !== sections.length) {
-    throw new Error(`Invalid corpus inventory or markers in ${file}`);
-  }
-  return hits;
 }
 
 function markdownHits(item: InstalledPackage, fileName: string, query: string, terms: string[]): Hit[] {
@@ -294,7 +249,6 @@ export function searchContext(cwd: string, task: string, includeCode = false, in
   const scans: ScanSummary[] = [];
   const hits = packages.flatMap((item) => {
     const packageHits = [
-      ...corpusHits(item, query, terms),
       ...markdownHits(item, "AGENTS.md", query, terms),
       ...markdownHits(item, "README.md", query, terms),
       ...(item.name === "@openlup/core" ? [
@@ -320,19 +274,10 @@ export function searchContext(cwd: string, task: string, includeCode = false, in
       if (result.summary) scans.push(result.summary);
     }
   }
-  const installedDocs = new Set(hits.filter((hit) => hit.reason.startsWith("installed ") && hit.file.endsWith(".md"))
-    .map((hit) => hit.file));
-  const selectedHits = hits.filter((hit) => {
-    if (hit.reason !== "canonical owner excerpt" || !hit.owner) return true;
-    const item = packages.find((candidate) => candidate.name === hit.packageName)!;
-    return !installedDocs.has(join(item.root, hit.owner));
-  });
-  selectedHits.sort((left, right) => right.score - left.score || left.file.localeCompare(right.file) || left.start - right.start);
+  hits.sort((left, right) => right.score - left.score || left.file.localeCompare(right.file) || left.start - right.start);
   const unique = new Set<string>();
-  const selected = selectedHits.filter((hit) => {
-    const item = packages.find((candidate) => candidate.name === hit.packageName);
-    const key = hit.reason === "canonical owner excerpt" && hit.owner
-      ? `owner:${corpusSourcePath(item!, hit.owner)}:${hit.title}` : `${hit.file}:${hit.start}:${hit.end}`;
+  const selected = hits.filter((hit) => {
+    const key = `${hit.file}:${hit.start}:${hit.end}`;
     if (unique.has(key)) return false;
     unique.add(key);
     return true;

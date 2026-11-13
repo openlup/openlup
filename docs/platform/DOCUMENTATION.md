@@ -89,42 +89,6 @@ owner defines prefix selection and opt-in single-current-version admission;
 default history refusal remains unchanged. Generated navigation grants no
 hosted qualification.
 
-The small installed `AGENT_CONTEXT.md` corpora in core, outbox and platform are
-generated from selected canonical owner sections by
-[`scripts/agent-context/generate.mjs`](../../scripts/agent-context/generate.mjs).
-Run `node scripts/agent-context/generate.mjs` after changing a selected owner
-or a package version;
-`node scripts/agent-context/generate.mjs --check` refuses stale or missing
-snapshots without writing; `npm run oss:published-tree -- --policy` runs this
-freshness check before the publication and documentation policy. Packaging consumes the checked-in Markdown and never
-generates context during prepack. The generator's focused witness runs with
-`node --test scripts/agent-context/generate.test.mjs`.
-Each excerpt retains its original Markdown bytes, source path, one-based
-inclusive line span and SHA-256. Shipped package-local owner paths are relative
-to the installed package; all other owners link to the source repository at
-`openlup-<package>-v<version>`, read from the package manifest. Relative links and
-repository-internal paths or aliases inside verbatim excerpts describe that
-checkout, not required application files. The corpus cap is 14,000 bytes
-(previously 12,000) to retain the existing routes plus explicit release citations. These small task routes support offline reading; they do
-not certify an installed runtime, hosted qualification or compatibility with
-another revision. Canonical owners remain authoritative and the source map
-continues to own broad source navigation.
-The cycle task routes retain the core engine's late-payment clamp and the
-canonical late-delivery/replacement alignment boundary as separate owner
-excerpts; retrieval must not conflate payment timing with delivery confirmation.
-The delivery excerpt stops before the native translation paragraph; its cited
-line span and hash describe only the retained verbatim guidance.
-Additional small routes cover adopter data ownership, the first ordered-forward
-rules, cross-domain idempotency, provider-adapter capabilities and subscription
-layer/delivery navigation. The idempotency owner is reachable from the platform
-and outbox corpora; retrieval returns one canonical-source result for the same
-section.
-An excerpt from an installed README or engine page is not returned alongside
-that page's matching section. The CLI separates nested headings into disjoint
-spans and offers `--package-code` only when an agent explicitly needs installed
-`src/` evidence; these are bounded source leads, not proof of application
-composition or installed database state.
-
 The exact-shipment native G17 host binding and its local unit/native witnesses
 route to the [transfer architecture owner](ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery).
 The [data owner](DATA_AND_MIGRATIONS.md#compatibility-lifecycle) defines its
@@ -450,8 +414,14 @@ architecture owns explicit owner composition and provider readiness boundaries.
 The reader guide lives in
 [`packages/core/docs/guide/`](../../packages/core/docs/guide/README.md); its index
 holds the writing rules. It ships in the `@openlup/core` npm tarball under
-`docs/guide/`, and installed context lookup indexes its Markdown pages. Both
-pack checkers enforce a separate `guide` sub-budget from core's
+`docs/guide/`. The installed `openlup-context` command and its MCP tools index
+these Markdown pages alongside package `AGENTS.md`, `README.md`, declarations
+and exports, with `CHANGELOG.md` included for upgrade questions. Nested headings
+produce disjoint spans. The optional `--package-code` scan provides bounded
+installed `src/` leads; results never prove application composition or database
+state. The unchanged [lookup smoke matrix](../../scripts/agent-context/evaluate.mjs)
+checks static query targets in installed core, outbox and platform artifacts.
+Both pack checkers enforce a separate `guide` sub-budget from core's
 `release-gates.json` (`pack.guide`), measured like the code and docs classes;
 the total tarball limits also apply.
 The `docs:check` script of each publishable package runs the

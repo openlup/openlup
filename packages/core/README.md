@@ -180,9 +180,11 @@ This MVP indexes English documentation. Translate Polish or other natural-langua
 tasks into concise English domain terms, or search an exact public symbol;
 freeform Polish queries may miss relevant guidance.
 
-The command searches documentation in the installed OpenLup packages offline,
-including core's reader guide under `docs/guide/`, and returns file-and-line
-citations. Add `--code` for a bounded local application source scan, or
+The command searches the installed reader guide under core's `docs/guide/`,
+`AGENTS.md`, `README.md`, declarations and public exports offline, and includes
+`CHANGELOG.md` for upgrade, migration and release questions. It returns
+file-and-line citations. Add `--code` for a bounded local application source
+scan, or
 `--package-code` to inspect the installed packages' `src/` files.
 Both scans are opt-in and may be incomplete; use direct `rg` when a path or
 symbol is known. Add `--json` for structured results, including a `scans` array
@@ -201,20 +203,6 @@ Read a known path or symbol directly. Use the lookup to locate an unfamiliar
 package seam, then inspect the cited owner and follow its exports, callers and
 tests for cross-package work. A ranked result does not establish complete
 contract coverage.
-
-Nested Markdown headings return separate spans; copied excerpts of an already
-indexed installed page do not take another result slot. Each package's root
-`AGENT_CONTEXT.md` contains small excerpts of canonical
-repository guidance, with shipped local sources or repository links at
-`openlup-core-v<version>`, line ranges and excerpt digests. Repository paths and
-aliases inside excerpts belong to that checkout, not the application.
-Repository citations must name that package's own release tag at its installed
-version; another package, version, branch or host is refused. The same canonical
-owner and heading take one result slot across package release tags. No link is
-fetched. Read the package version from its installed `package.json` and check the cited source
-before changing a contract; a result locates
-evidence, and does not grant application policy or execution authority. The
-snapshot and command do not establish a registry release or stable support.
 
 ## Agent context over MCP
 
@@ -248,9 +236,9 @@ are supported; file realpaths must stay inside the resolved package root. Read
 refuses traversal and never fetches release-tag source URLs. These checks guard
 against wrong paths and links present when the file is read; they do not defend
 against a process that rewrites `node_modules` during the read, which can already
-change the code the application runs. For a repository-only
-source, read its installed context excerpt; application source hits require your
-client's own file tool. Search tasks are limited to 1,000 characters, and each
+change the code the application runs. Read repository URLs with your own client;
+application source hits also require your client's own file tool. Search tasks
+are limited to 1,000 characters, and each
 incoming message line to 1 MiB. Oversized messages receive one error and are
 discarded through the next newline; the server continues serving. End stdin to
 stop the process.

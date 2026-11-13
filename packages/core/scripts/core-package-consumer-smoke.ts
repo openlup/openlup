@@ -299,7 +299,7 @@ function assertInstalledContextMcp(executable: string, consumerDir: string, vers
     { jsonrpc: "2.0", method: "notifications/initialized" },
     { jsonrpc: "2.0", id: 2, method: "tools/list" },
     { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "search_openlup_context", arguments: { task: "extension seam" } } },
-    { jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "read_openlup_file", arguments: { path: "node_modules/@openlup/core/AGENT_CONTEXT.md", startLine: 1, endLine: 3 } } },
+    { jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "read_openlup_file", arguments: { path: "node_modules/@openlup/core/docs/guide/README.md", startLine: 1, endLine: 3 } } },
   ];
   const stdout = execFileSync(executable, ["mcp"], {
     cwd: consumerDir, encoding: "utf8", env: consumerEnvironment(), timeout: 10_000,
@@ -313,9 +313,9 @@ function assertInstalledContextMcp(executable: string, consumerDir: string, vers
   assert(JSON.stringify(replies[0].result.capabilities) === '{"tools":{}}', "installed MCP capabilities differ");
   assert(replies[1].result.tools.map((tool: { name: string }) => tool.name).join(",") === "search_openlup_context,read_openlup_file", "installed MCP tools differ");
   const search = replies[2].result;
-  assert(search.structuredContent.version === version && search.structuredContent.hits.some((hit: { owner?: string; file: string }) => hit.owner?.includes(`openlup-core-v${version}/`) && hit.file === "node_modules/@openlup/core/AGENT_CONTEXT.md"), "installed MCP search did not return relative installed context and release source");
+  assert(search.structuredContent.version === version && search.structuredContent.hits.some((hit: { file: string }) => hit.file.startsWith("node_modules/@openlup/core/docs/guide/")), "installed MCP search did not return an application-relative guide path");
   assert(search.content[0].text.includes("node_modules/@openlup/core/"), "installed MCP search did not format citations");
-  assert(replies[3].result.content[0].text.includes("1: # @openlup/core agent context"), "installed MCP file range did not contain numbered installed lines");
+  assert(replies[3].result.content[0].text.includes("1: # OpenLup guide"), "installed MCP file range did not contain numbered installed lines");
   console.log("core installed context MCP smoke ok (initialize, tools/list, search, read, EOF)");
 }
 
@@ -407,14 +407,13 @@ export function runCorePackageConsumerSmoke(options: CorePackageConsumerSmokeOpt
     assertInstalled(consumerDir, [packageName, "zod"]);
     const installedCoreRoot = join(consumerDir, "node_modules", packageName);
     assertInstalledGuide(installedCoreRoot);
-    assert(existsSync(join(installedCoreRoot, "AGENT_CONTEXT.md")), "installed core is missing its context snapshot");
     const installedMetadata = JSON.parse(readFileSync(join(installedCoreRoot, "package.json"), "utf8"));
     assert(installedMetadata.bin?.["openlup-context"] === "./src/openlup-context.js", "installed context executable target differs");
     const contextExecutable = join(consumerDir, "node_modules", ".bin", "openlup-context");
     assert(existsSync(contextExecutable), "offline installation did not link the local context executable");
     assert(run(contextExecutable, ["--help"], consumerDir).includes("Usage: openlup-context"), "installed context executable did not print usage");
     const context = JSON.parse(run(contextExecutable, ["search", "extension seam", "--json"], consumerDir));
-    assert(context.hits.some((hit: { owner?: string }) => hit.owner === `https://github.com/openlup/openlup/blob/openlup-core-v${packageJson.version}/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md`), "installed context search did not retain its release-tagged source");
+    assert(context.hits.some((hit: { file: string }) => hit.file.startsWith(join(realpathSync(installedCoreRoot), "docs/guide") + sep)), "installed context search did not return a guide page");
     const sourceContext = JSON.parse(run(contextExecutable, ["search", "nextRetryAttemptAt", "--package-code", "--json"], consumerDir));
     for (const scope of ["declarations", "package-source"]) {
       assert(sourceContext.scans.some((scan: { scope: string; packageName?: string; scannedFiles: number }) => scan.scope === scope && scan.packageName === packageName && scan.scannedFiles > 0), `installed context did not report a nonempty ${scope} scan`);

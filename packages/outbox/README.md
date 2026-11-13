@@ -24,15 +24,13 @@ shipped `src/`; JavaScript source maps are not shipped.
 
 ## Installed agent context
 
-The tarball includes a small root `AGENT_CONTEXT.md` snapshot of canonical outbox
-guidance. Its metadata records shipped local sources or repository links at the
-package release tag, line ranges and excerpt digests. Repository paths inside
-verbatim excerpts describe the OpenLup checkout, not the application.
-Read the version from the installed `package.json` and check the cited source
-before relying on an excerpt. Core's installed
-`openlup-context` command discovers this local snapshot and returns source
-citations offline. The snapshot adds no dependency, worker or runtime activation,
-and grants no application policy, publication or execution authority.
+Core's installed `openlup-context` command searches its reader guide under
+`docs/guide/` alongside the installed packages' `AGENTS.md`, `README.md`,
+declarations and exports. Upgrade questions also search `CHANGELOG.md`.
+Results cite local files and line ranges offline. Read the version from the
+installed `package.json` before relying on this guidance. Lookup grants no
+application policy or execution authority and establishes no runtime activation
+or compatibility with another version.
 
 ## Package Surface Maturity
 
