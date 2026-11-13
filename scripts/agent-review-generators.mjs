@@ -1,8 +1,7 @@
 // Import the trusted owners here, never the predicted tree's executable files.
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import { checkPlatformMigrationProjection } from './packages/platform-migration-projection.ts';
 import { readDocumentationState } from './documentation-routing.ts';
 import { renderDocumentationSourceMap } from './documentation-navigation.ts';
@@ -24,9 +23,6 @@ export function runLandingGenerators(root, paths) {
   writeFileSync(join(root, 'docs/platform/SOURCE_MAP.md'), renderDocumentationSourceMap(readDocumentationState(root, paths)));
   generateContext(root);
 }
-// Landing runs this file from the merged checkout in a new process, so the
-// merged tree's owners, not the pre-merge modules, write its carriers.
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) runLandingGenerators(process.cwd(), readFileSync(0, 'utf8').split('\0').filter(Boolean));
 export function withPredictedTree(cwd, tree, action) {
   const git = args => execFileSync('/usr/bin/git', ['--no-replace-objects', '-C', cwd, '-c', 'core.hooksPath=/dev/null', ...args],
     { encoding: 'utf8', timeout: 30000, maxBuffer: 128 * 1024 * 1024, env: { PATH: '/usr/bin:/bin' } });

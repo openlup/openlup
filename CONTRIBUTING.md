@@ -1464,9 +1464,9 @@ rebases or pushes. Configure your Git `user.name` and `user.email` before runnin
 it: the merge uses that identity and `-s` for your personal
 [DCO certification](#developer-certificate-of-origin).
 It stops on an authored conflict, leaving the merge for a
-human or worker. It runs the inventory refresh and carrier generators from the
-merged tree in new processes, so a generator change from either side reaches its
-carrier. Append-only migration entries are unioned in slot order;
+human or worker. It refreshes its carrier set with the merged tree's own
+inventory refresh and generators, run in new processes, not the code it loaded
+before the merge. Append-only migration entries are unioned in slot order;
 existing entries cannot be edited and new duplicate slots refuse. Issued
 prefixes retain their original order. The publication catalogue's authored path
 rows retain the existing closed registry union.

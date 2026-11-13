@@ -2,7 +2,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { git } from './agent-review-session.mjs';
 import { REGISTRY_PATHS, registryUnion } from './agent-review-registry.mjs';
 import { INVENTORY_PATH, MIGRATION_REGISTRIES, inventoryEnvelope, migrationRegistryUnion } from './agent-review-derived.mjs';
@@ -55,7 +55,11 @@ export async function landingMerge(cwd = process.cwd()) {
     writeFileSync(resolve(cwd, path), migrationRegistryUnion(path, ...inputs, inventory));
   }
   const paths = (await git(cwd, 'ls-files', '-z')).split('\0').filter(Boolean);
-  execFileSync(process.execPath, [resolve(cwd, 'scripts/agent-review-generators.mjs')], { cwd, input: paths.join('\0'), stdio: ['pipe', 'inherit', 'inherit'], timeout: 900000 });
+  const generators = JSON.stringify(pathToFileURL(resolve(cwd, 'scripts/agent-review-generators.mjs')).href);
+  execFileSync(process.execPath, ['--input-type=module', '-e', `import { readFileSync } from 'node:fs';
+    const { runLandingGenerators } = await import(${generators});
+    runLandingGenerators(process.cwd(), readFileSync(0, 'utf8').split('\\0').filter(Boolean));`],
+  { cwd, input: paths.join('\0'), stdio: ['pipe', 'inherit', 'inherit'], timeout: 900000 });
   const staged = [...new Set([...MIGRATION_REGISTRIES, INVENTORY_PATH, ...paths.filter(generatedCarrier)])];
   await git(cwd, 'add', '--', ...staged);
   if ((await git(cwd, 'diff', '--name-only', '--diff-filter=U')).trim()) throw new Error('landing: unresolved conflicts remain');
