@@ -22,7 +22,7 @@ CREATE TEMP TABLE _not_chargeable_result AS
 SELECT public.payment_provider_attempt_prepare(
   'not-chargeable-prepare',
   (SELECT intent_id FROM _not_chargeable_intent),
-  'stripe',
+  'card_rail',
   'not-chargeable-provider-key',
   'not-chargeable-fingerprint',
   'off_session_payment',
@@ -79,7 +79,7 @@ SELECT (pg_temp.provider_intent(
 SELECT public.payment_provider_attempt_prepare(
   'not-chargeable-history-first-attempt',
   (SELECT intent_id FROM _not_chargeable_history_intent),
-  'stripe',
+  'card_rail',
   'not-chargeable-history-provider-key',
   'not-chargeable-history-fingerprint',
   'off_session_payment',
@@ -105,7 +105,7 @@ UPDATE public.subscriptions
    SET status = 'paused', updated_at = now()
  WHERE id = 'ac200000-0000-4000-8000-000000000002';
 SELECT public.payment_provider_event_ingest(
-  'stripe',
+  'card_rail',
   'evt_not_chargeable_observed_success',
   'payment.succeeded',
   'pi_not_chargeable_observed_success',
@@ -128,7 +128,7 @@ CREATE TEMP TABLE _not_chargeable_observed_success_result AS
 SELECT public.payment_provider_attempt_prepare(
   'not-chargeable-observed-success-next-attempt',
   (SELECT intent_id FROM _not_chargeable_history_intent),
-  'stripe',
+  'card_rail',
   'not-chargeable-observed-success-provider-key-next',
   'not-chargeable-observed-success-fingerprint-next',
   'off_session_payment',
@@ -171,7 +171,7 @@ CREATE TEMP TABLE _not_chargeable_history_result AS
 SELECT public.payment_provider_attempt_prepare(
   'not-chargeable-history-next-attempt',
   (SELECT intent_id FROM _not_chargeable_history_intent),
-  'stripe',
+  'card_rail',
   'not-chargeable-history-provider-key-next',
   'not-chargeable-history-fingerprint-next',
   'off_session_payment',

@@ -12,7 +12,7 @@ SELECT (pg_temp.provider_intent(
 ) -> 'paymentIntent' ->> 'id')::uuid AS intent_id;
 
 SELECT public.payment_provider_attempt_record(
-  'dz-attempt-key-0001', (SELECT intent_id FROM _dz), 'stripe', 'pi_declined', 'ps_dz',
+  'dz-attempt-key-0001', (SELECT intent_id FROM _dz), 'card_rail', 'pi_declined', 'ps_dz',
   'processing', NULL, '{}'::jsonb, '{}'::jsonb);
 INSERT INTO public.fulfillment_inventory_reservations(purchase_order_id,operation_fingerprint,source_key,status,expires_at)
 SELECT 'd0000000-0000-0000-0000-000000000d01',repeat('a',64),'fixture','held','2032-01-01T00:00:00Z'::timestamptz FROM generate_series(1,2);
@@ -22,9 +22,9 @@ SELECT
   (e -> 'paymentEvent' ->> 'paymentIntentId')::uuid AS event_intent_id
 FROM (
   SELECT public.payment_provider_event_ingest(
-    'stripe', 'evt_dz_failed_0001', 'payment.failed', 'pi_declined',
+    'card_rail', 'evt_dz_failed_0001', 'payment.failed', 'pi_declined',
     NULL, NULL, 0, 'XXX', true,
-    '{"provider":"stripe","amountMinor":0}'::jsonb
+    '{"provider":"card_rail","amountMinor":0}'::jsonb
   ) AS e
 ) s;
 
@@ -70,7 +70,7 @@ SELECT is((SELECT active_attempt_id FROM public.payment_provider_states WHERE id
   'the apply above was an event naming the ACTIVE attempt, and it applied');
 CREATE TEMP TABLE _dz_attempt_b AS
 SELECT (public.payment_provider_attempt_record(
-  'dz-attempt-key-0002', (SELECT intent_id FROM _dz), 'stripe', 'pi_attempt_b', 'ps_dz_b',
+  'dz-attempt-key-0002', (SELECT intent_id FROM _dz), 'card_rail', 'pi_attempt_b', 'ps_dz_b',
   'processing', NULL, '{}'::jsonb, '{}'::jsonb) -> 'paymentAttempt' ->> 'id')::uuid AS attempt_id;
 
 SELECT isnt((SELECT attempt_id FROM _dz_attempt_b), (SELECT attempt_id FROM _dz_attempt_a),
@@ -85,9 +85,9 @@ SELECT
   NULLIF(e -> 'paymentEvent' ->> 'paymentAttemptId', '')::uuid AS event_attempt_id
 FROM (
   SELECT public.payment_provider_event_ingest(
-    'tpay', 'evt_dz_unresolved_failed', 'payment.failed', 'unmatched_failed_tx',
+    'transfer_rail', 'evt_dz_unresolved_failed', 'payment.failed', 'unmatched_failed_tx',
     (SELECT intent_id FROM _dz), NULL, 0, NULL, true,
-    '{"provider":"tpay","eventKind":"transaction"}'::jsonb
+    '{"provider":"transfer_rail","eventKind":"transaction"}'::jsonb
   ) AS e
 ) s;
 
@@ -123,9 +123,9 @@ SELECT
   NULLIF(e -> 'paymentEvent' ->> 'paymentAttemptId', '')::uuid AS event_attempt_id
 FROM (
   SELECT public.payment_provider_event_ingest(
-    'tpay', 'evt_dz_unresolved_succeeded', 'payment.succeeded', 'unmatched_success_tx',
+    'transfer_rail', 'evt_dz_unresolved_succeeded', 'payment.succeeded', 'unmatched_success_tx',
     (SELECT intent_id FROM _dz), NULL, 33972, NULL, true,
-    '{"provider":"tpay","eventKind":"transaction"}'::jsonb
+    '{"provider":"transfer_rail","eventKind":"transaction"}'::jsonb
   ) AS e
 ) s;
 
@@ -178,7 +178,7 @@ SELECT is((SELECT status FROM public.payment_provider_states WHERE id=(SELECT in
   'failed', 'the event-less reconciliation result settles the active attempt');
 CREATE TEMP TABLE _dz_attempt_c AS
 SELECT (public.payment_provider_attempt_record(
-  'dz-attempt-key-0003', (SELECT intent_id FROM _dz), 'stripe', 'pi_attempt_c', 'ps_dz_c',
+  'dz-attempt-key-0003', (SELECT intent_id FROM _dz), 'card_rail', 'pi_attempt_c', 'ps_dz_c',
   'processing', NULL, '{}'::jsonb, '{}'::jsonb) -> 'paymentAttempt' ->> 'id')::uuid AS attempt_id;
 
 SELECT is((SELECT active_attempt_id FROM public.payment_provider_states WHERE id=(SELECT intent_id FROM _dz)),
@@ -191,11 +191,11 @@ SELECT
   NULLIF(e -> 'paymentEvent' ->> 'paymentAttemptId', '')::uuid AS event_attempt_id
 FROM (
   SELECT public.payment_provider_event_ingest(
-    'stripe', 'evt_dz_succeeded_0001', 'payment.succeeded', 'pi_attempt_c',
+    'card_rail', 'evt_dz_succeeded_0001', 'payment.succeeded', 'pi_attempt_c',
     NULL, NULL, 33972,
     (SELECT currency_code FROM public.commerce_settlement_intents WHERE id = (SELECT intent_id FROM _dz)),
     true,
-    '{"provider":"stripe","amountMinor":33972}'::jsonb
+    '{"provider":"card_rail","amountMinor":33972}'::jsonb
   ) AS e
 ) s;
 

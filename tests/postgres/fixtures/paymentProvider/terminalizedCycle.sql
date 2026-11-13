@@ -22,7 +22,7 @@ BEGIN
  INSERT INTO public.clients(id,email) VALUES(c,c||'@example.invalid');
  PERFORM pg_temp.provider_subscription_order(s,cy,o,c,'active');
  i:=(pg_temp.provider_intent(k||':intent','subscription_cycle',o,s,cy,12999,'XXX','{}')#>>'{paymentIntent,id}')::uuid;
- a:=(public.payment_provider_attempt_record(k||':attempt',i,'stripe','pi_'||s,NULL,'processing',NULL,'{}','{}')#>>'{paymentAttempt,id}')::uuid;
+ a:=(public.payment_provider_attempt_record(k||':attempt',i,'card_rail','pi_'||s,NULL,'processing',NULL,'{}','{}')#>>'{paymentAttempt,id}')::uuid;
  PERFORM pg_temp.provider_apply(k||':first',i,NULL,'failed',t,'declined','hard_do_not_retry','fixture');
  SELECT payment_id INTO pay FROM public.payment_provider_states WHERE id=i;
  UPDATE public.subscription_cycles SET status=terminal WHERE id=cy;
@@ -30,7 +30,7 @@ BEGIN
  UPDATE public.commerce_settlement_intents SET status='cancelled' WHERE id=i;
  UPDATE public.payment_provider_states SET status='cancelled' WHERE id=i;
  before_state:=pg_temp.finality_snapshot(s);
- success:=(public.payment_provider_event_ingest('stripe',k||':success','payment.succeeded','pi_'||s,i,a,12999,'XXX',true,'{}')#>>'{paymentEvent,id}')::uuid;
+ success:=(public.payment_provider_event_ingest('card_rail',k||':success','payment.succeeded','pi_'||s,i,a,12999,'XXX',true,'{}')#>>'{paymentEvent,id}')::uuid;
  RETURN NEXT throws_ok(format('SELECT pg_temp.provider_apply(%L,%L,%L,%L,%L,NULL)',k||':late-success',i,success,'succeeded',t),
    '22023','payment_control_result_terminal_intent',terminal||': success rejection unchanged');
  RETURN NEXT is(pg_temp.finality_snapshot(s),before_state,terminal||': rejected success leaves business untouched');
@@ -38,7 +38,7 @@ BEGIN
   FOREACH writer IN ARRAY ARRAY['renewal','webhook'] LOOP
    key:=k||':'||st||':'||writer;label:=terminal||'/'||st||'/'||writer;e:=NULL;
    IF writer='webhook' THEN
-    e:=(public.payment_provider_event_ingest('stripe',key,'payment.failed','pi_'||s,i,a,12999,'XXX',true,'{}')#>>'{paymentEvent,id}')::uuid;
+    e:=(public.payment_provider_event_ingest('card_rail',key,'payment.failed','pi_'||s,i,a,12999,'XXX',true,'{}')#>>'{paymentEvent,id}')::uuid;
    END IF;
    r:=pg_temp.provider_apply(key,i,e,st,t,'late_decline','hard_do_not_retry','fixture');
    RETURN NEXT is(r#>>'{paymentResult,kind}','ignored_failure_terminalized_cycle',label||': ignored business outcome');

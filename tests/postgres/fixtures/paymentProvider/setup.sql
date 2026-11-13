@@ -7,7 +7,7 @@ BEGIN
  INSERT INTO public.commerce_order_items(order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor) VALUES(p_order,sku,1,1,p_amount,p_amount);
 END; $$;
 CREATE FUNCTION pg_temp.provider_intent(k text,t text,o uuid,s uuid,c uuid,a integer,cur text,m jsonb) RETURNS jsonb LANGUAGE sql AS $$
- SELECT public.payment_provider_intent_create(k,t,o,s,c,a,cur,m,'stripe','2026-11-13T12:00:00Z');
+ SELECT public.payment_provider_intent_create(k,t,o,s,c,a,cur,m,'card_rail','2026-11-13T12:00:00Z');
 $$;
 CREATE FUNCTION pg_temp.provider_apply(k text,i uuid,e uuid,s text,at timestamptz,r text,fc text DEFAULT NULL,by text DEFAULT NULL) RETURNS jsonb LANGUAGE sql AS $$
  SELECT public.payment_provider_result_apply(k,i,e,s,at,r,fc,by,'dunning','/recover','recovered');

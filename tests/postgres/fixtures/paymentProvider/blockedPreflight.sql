@@ -24,7 +24,7 @@ CREATE TEMP TABLE _attempt AS
 SELECT public.payment_provider_attempt_record(
   'blocked-preflight-attempt-0001',
   (SELECT intent_id FROM _intent),
-  'stripe',
+  'card_rail',
   NULL,
   NULL,
   'blocked_preflight',
@@ -66,7 +66,7 @@ CREATE TEMP TABLE _attempt_replay AS
 SELECT public.payment_provider_attempt_record(
   'blocked-preflight-attempt-0001',
   (SELECT intent_id FROM _intent),
-  'stripe',
+  'card_rail',
   NULL,
   NULL,
   'blocked_preflight',

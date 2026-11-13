@@ -15,7 +15,7 @@ afterAll(async () => { await env?.close(); }, postgresTeardownTimeoutMs);
 const control = () => createPostgresProviderPaymentControlPort(env.runtime, options);
 const webhook = () => createPostgresPaymentWebhookControlPort(env.runtime, options);
 
-async function fixture(channelKey = "stripe", admitted = true, cycleStatus?: "planned" | "cancelled" | "skipped") {
+async function fixture(channelKey = "card_rail", admitted = true, cycleStatus?: "planned" | "cancelled" | "skipped") {
   const client = randomUUID(), order = randomUUID(), sku = randomUUID(), subscription = cycleStatus ? randomUUID() : null, cycle = cycleStatus ? randomUUID() : null;
   await env.owner.query("INSERT INTO public.clients(id,email) VALUES($1,$2)", [client, `${client}@example.invalid`]);
   await env.owner.query("INSERT INTO public.catalog_products(id,slug,name) VALUES($1,$2,'Example')", [sku, sku]);
@@ -31,7 +31,7 @@ async function fixture(channelKey = "stripe", admitted = true, cycleStatus?: "pl
     orderId: order, subscriptionId: subscription, subscriptionCycleId: cycle, amountMinor: 100, currency: "XXX", metadata: {}, channelKey, at: AT };
   const intent = admitted ? (await control().createIntent(input)).id
     : String((await call(env.runtime, "commerce_open_settlement_intent", [input.idempotencyKey, order, channelKey, 100, "XXX", {}, AT])).settlement.id);
-  const prepare = { idempotencyKey: `prepare:${order}`, paymentIntentId: intent, provider: "stripe", providerIdempotencyKey: `provider:${order}`,
+  const prepare = { idempotencyKey: `prepare:${order}`, paymentIntentId: intent, provider: "card_rail", providerIdempotencyKey: `provider:${order}`,
     providerRequestFingerprint: "f".repeat(64), providerFlow: "one_time_payment", paymentMethodRef: "method-primary", requestPayload: { source: "fixture" } };
   return { client, order, sku, subscription, cycle, intent, input, prepare };
 }
@@ -47,7 +47,7 @@ async function prepared(f: Awaited<ReturnType<typeof fixture>>, finalized = true
 const result = (f: { intent: string }, key: string, status: "failed" | "expired" | "succeeded" = "failed", event: string | null = null) => control().applyPaymentResult({
   idempotencyKey: key, paymentIntentId: f.intent, paymentEventId: event, resultStatus: status, occurredAt: AT, failureReason: status === "succeeded" ? null : "declined" });
 async function event(f: { intent: string }, a: string | null, type: "payment.failed" | "payment.succeeded" = "payment.failed", amount: number | null = 0) {
-  return webhook().ingestPaymentEvent({ provider: "stripe", providerEventId: `event:${randomUUID()}`, providerPaymentId: a ? `pi_${a}` : "unmatched",
+  return webhook().ingestPaymentEvent({ provider: "card_rail", providerEventId: `event:${randomUUID()}`, providerPaymentId: a ? `pi_${a}` : "unmatched",
     eventType: type, paymentIntentId: f.intent, amountMinor: amount, currency: "XXX", occurredAt: AT, rawPayload: { kind: type } });
 }
 async function business(f: { order: string; intent: string; subscription: string | null; cycle: string | null }) {
@@ -90,7 +90,7 @@ it("executes validate, committed prepare, provider, then same-row finalize and r
     logRetry: () => {}, exhaustedError: e => e, executionError: () => new Error("provider_execution_failed"), finalizationError: e => e instanceof Error ? e : new Error("finalization"),
   };
   let calls = 0, loseReply = true;
-  const input = { paymentPort: control(), provider: "stripe", paymentIntentId: f.intent,
+  const input = { paymentPort: control(), provider: "card_rail", paymentIntentId: f.intent,
     executionPort: { validateInput() { trace.push("validate"); }, async execute() {
       calls++; trace.push("provider");
       // An independent session sees the prepared row while the provider call is running.
@@ -98,7 +98,7 @@ it("executes validate, committed prepare, provider, then same-row finalize and r
         .toEqual([{ status: "created", provider_attempt_id: null }]);
       expect((await env.owner.query("SELECT count(*)::int AS n FROM public.outbox_events WHERE event_type='commerce.payment_attempt.requested' AND aggregate_id=$1", [f.intent])).rows[0].n).toBe(0);
       if (loseReply) throw new Error("reply_lost_after_acceptance");
-      return { provider: "stripe", providerAttemptId: `pi_${f.intent}`, providerSessionId: null, attemptStatus: "processing" as const, nextActionKind: null, requestPayload: {}, responsePayload: {} };
+      return { provider: "card_rail", providerAttemptId: `pi_${f.intent}`, providerSessionId: null, attemptStatus: "processing" as const, nextActionKind: null, requestPayload: {}, responsePayload: {} };
     } },
     executionInput: { idempotencyKey: `execute:${f.intent}`, providerIdempotencyKey: f.prepare.providerIdempotencyKey,
       providerRequestFingerprint: f.prepare.providerRequestFingerprint, paymentIntentId: f.intent, amountMinor: 100, currency: "XXX", mode: "one_time" as const, orderRef: f.order },
@@ -112,7 +112,7 @@ it("executes validate, committed prepare, provider, then same-row finalize and r
   const next = await fixture();
   const clean = { ...input, paymentIntentId: next.intent, prepareIdempotencyKey: next.prepare.idempotencyKey,
     finalizeIdempotencyKey: `finalize:${next.intent}`, executionPort: { async execute() {
-      return { provider: "stripe", providerAttemptId: `pi_${next.intent}`, providerSessionId: null, attemptStatus: "processing" as const, nextActionKind: null, requestPayload: {}, responsePayload: {} };
+      return { provider: "card_rail", providerAttemptId: `pi_${next.intent}`, providerSessionId: null, attemptStatus: "processing" as const, nextActionKind: null, requestPayload: {}, responsePayload: {} };
     } } };
   expect(await executePreparedAttemptMechanism(clean, policy)).toMatchObject({ attempt: { status: "processing" } });
   expect((await env.owner.query("SELECT count(*)::int AS n FROM public.payment_provider_attempts WHERE settlement_intent_id=$1", [next.intent])).rows[0].n).toBe(1);
@@ -143,7 +143,7 @@ it("absorbs duplicate failure under a new key without a second settlement, retry
 });
 
 it.each(["cancelled", "skipped"] as const)("retains %s cycle finality for late success, failure and replay", async terminal => {
-  const f = await fixture("stripe", true, "planned"), a = await prepared(f);
+  const f = await fixture("card_rail", true, "planned"), a = await prepared(f);
   await result(f, `original:${f.intent}`);
   await env.owner.query("UPDATE public.subscription_cycles SET status=$2 WHERE id=$1", [f.cycle, terminal]);
   await env.owner.query("UPDATE public.commerce_orders SET status='cancelled' WHERE id=$1", [f.order]);
@@ -163,7 +163,7 @@ it.each(["cancelled", "skipped"] as const)("retains %s cycle finality for late s
 });
 
 it("keeps legacy intents and settled history without fabricating provider attempts or payment identities", async () => {
-  const f = await fixture("stripe", false), before = await business(f);
+  const f = await fixture("card_rail", false), before = await business(f);
   await expect(result(f, `legacy:${f.intent}`)).rejects.toThrow("payment_control_result_active_attempt_not_found");
   await expect(control().prepareProviderAttempt(f.prepare)).rejects.toThrow("payment_control_provider_attempt_prepare_intent_not_found");
   expect(await business(f)).toEqual(before);
@@ -228,10 +228,10 @@ it("fences compensation, reminders, abandonment and recovery on in-flight or dur
 });
 
 it.each(["prepare", "finalize", "apply", "settlement", "reconciliation"] as const)("takes the subscription root before native payment children for %s", async operation => {
-  const f = await fixture("stripe", true, "planned"), a = operation === "prepare" ? null : await prepared(f, operation !== "finalize");
+  const f = await fixture("card_rail", true, "planned"), a = operation === "prepare" ? null : await prepared(f, operation !== "finalize");
   let truth: string | null = null;
   if (operation === "reconciliation") {
-    const e = await webhook().ingestPaymentEvent({ provider: "stripe", providerEventId: `pending:${f.intent}`, providerPaymentId: `pi_${a!.paymentAttemptId}`,
+    const e = await webhook().ingestPaymentEvent({ provider: "card_rail", providerEventId: `pending:${f.intent}`, providerPaymentId: `pi_${a!.paymentAttemptId}`,
       eventType: "payment.requires_action", paymentIntentId: f.intent, amountMinor: 100, currency: "XXX", occurredAt: AT, rawPayload: {} });
     const fingerprint = (await env.owner.query("SELECT event_fingerprint FROM public.payment_provider_attempt_evidence WHERE id=$1", [e.paymentEventId])).rows[0].event_fingerprint;
     const read = await call(env.owner, "payment_truth_ingest_event", [`unknown:${f.intent}`, "a".repeat(64), `unknown-key:${f.intent}`,

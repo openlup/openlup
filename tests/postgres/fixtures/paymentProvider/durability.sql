@@ -24,9 +24,9 @@ CREATE TEMP TABLE _prepared AS
 SELECT public.payment_provider_attempt_prepare(
   'provider-attempt-prepare-0001',
   (SELECT intent_id FROM _intent),
-  'stripe',
-  'openlup:stripe:intent:attempt:1',
-  'stripe|intent|2599|PLN|one_time|order_1',
+  'card_rail',
+  'openlup:card_rail:intent:attempt:1',
+  'card_rail|intent|2599|XXX|one_time|order_1',
   'off_session_payment',
   'pm_card_123',
   '{"source":"pgTAP"}'::jsonb
@@ -55,16 +55,16 @@ SELECT is(
   (SELECT request_payload ->> 'providerIdempotencyKey'
      FROM public.payment_provider_attempts
     WHERE id = (SELECT attempt_id FROM _attempt)),
-  'openlup:stripe:intent:attempt:1',
+  'openlup:card_rail:intent:attempt:1',
   'prepared attempt stores provider idempotency evidence');
 
 CREATE TEMP TABLE _prepared_replay AS
 SELECT public.payment_provider_attempt_prepare(
   'provider-attempt-prepare-0001',
   (SELECT intent_id FROM _intent),
-  'stripe',
-  'openlup:stripe:intent:attempt:1',
-  'stripe|intent|2599|PLN|one_time|order_1',
+  'card_rail',
+  'openlup:card_rail:intent:attempt:1',
+  'card_rail|intent|2599|XXX|one_time|order_1',
   'off_session_payment',
   'pm_card_123',
   '{"source":"pgTAP"}'::jsonb
@@ -79,9 +79,9 @@ SELECT throws_like(
   $$ SELECT public.payment_provider_attempt_prepare(
        'provider-attempt-prepare-0001',
        (SELECT intent_id FROM _intent),
-       'stripe',
-       'openlup:stripe:intent:attempt:1',
-       'stripe|intent|2599|PLN|one_time|order_1',
+       'card_rail',
+       'openlup:card_rail:intent:attempt:1',
+       'card_rail|intent|2599|XXX|one_time|order_1',
        'off_session_payment',
        'pm_card_changed',
        '{"source":"pgTAP"}'::jsonb
@@ -93,9 +93,9 @@ CREATE TEMP TABLE _in_flight_prepare AS
 SELECT public.payment_provider_attempt_prepare(
   'provider-attempt-prepare-in-flight-0002',
   (SELECT intent_id FROM _intent),
-  'stripe',
-  'openlup:stripe:intent:attempt:2',
-  'stripe|intent|2599|PLN|one_time|order_1|attempt_2',
+  'card_rail',
+  'openlup:card_rail:intent:attempt:2',
+  'card_rail|intent|2599|XXX|one_time|order_1|attempt_2',
   'off_session_payment',
   'pm_card_456',
   '{"source":"pgTAP"}'::jsonb
@@ -123,8 +123,8 @@ SELECT public.payment_provider_attempt_finalize(
   'provider-attempt-finalize-0001',
   (SELECT intent_id FROM _intent),
   (SELECT attempt_id FROM _attempt),
-  'openlup:stripe:intent:attempt:1',
-  'stripe|intent|2599|PLN|one_time|order_1',
+  'openlup:card_rail:intent:attempt:1',
+  'card_rail|intent|2599|XXX|one_time|order_1',
   'pi_provider_123',
   'pi_provider_123',
   'processing',
@@ -160,8 +160,8 @@ SELECT public.payment_provider_attempt_finalize(
   'provider-attempt-finalize-0001',
   (SELECT intent_id FROM _intent),
   (SELECT attempt_id FROM _attempt),
-  'openlup:stripe:intent:attempt:1',
-  'stripe|intent|2599|PLN|one_time|order_1',
+  'openlup:card_rail:intent:attempt:1',
+  'card_rail|intent|2599|XXX|one_time|order_1',
   'pi_provider_123',
   'pi_provider_123',
   'processing',
@@ -188,9 +188,9 @@ CREATE TEMP TABLE _retry_prepare AS
 SELECT public.payment_provider_attempt_prepare(
   'provider-attempt-prepare-retry-0002',
   (SELECT intent_id FROM _intent),
-  'stripe',
-  'openlup:stripe:intent:attempt:2',
-  'stripe|intent|2599|PLN|one_time|order_1|attempt_2',
+  'card_rail',
+  'openlup:card_rail:intent:attempt:2',
+  'card_rail|intent|2599|XXX|one_time|order_1|attempt_2',
   'off_session_payment',
   'pm_card_456',
   '{"source":"pgTAP"}'::jsonb
@@ -217,9 +217,9 @@ CREATE TEMP TABLE _retry_in_flight_prepare AS
 SELECT public.payment_provider_attempt_prepare(
   'provider-attempt-prepare-in-flight-0003',
   (SELECT intent_id FROM _intent),
-  'stripe',
-  'openlup:stripe:intent:attempt:3',
-  'stripe|intent|2599|PLN|one_time|order_1|attempt_3',
+  'card_rail',
+  'openlup:card_rail:intent:attempt:3',
+  'card_rail|intent|2599|XXX|one_time|order_1|attempt_3',
   'off_session_payment',
   'pm_card_789',
   '{"source":"pgTAP"}'::jsonb
@@ -269,7 +269,7 @@ BEGIN
     v_response := public.payment_provider_attempt_prepare(
       v_state.prepare_key,
       v_intent_id,
-      'stripe',
+      'card_rail',
       'fence-provider-key-' || v_state.position::text,
       'fence-request-fingerprint-' || v_state.position::text,
       'off_session_payment',
@@ -327,7 +327,7 @@ CREATE TEMP TABLE _cancelled_retry AS
 SELECT public.payment_provider_attempt_prepare(
   'provider-attempt-fence-cancelled',
   (SELECT intent_id FROM _intent),
-  'stripe',
+  'card_rail',
   'fence-provider-key-cancelled',
   'fence-request-fingerprint-cancelled',
   'off_session_payment',
@@ -356,7 +356,7 @@ CREATE TEMP TABLE _expired_retry AS
 SELECT public.payment_provider_attempt_prepare(
   'provider-attempt-fence-expired',
   (SELECT intent_id FROM _intent),
-  'stripe',
+  'card_rail',
   'fence-provider-key-expired',
   'fence-request-fingerprint-expired',
   'off_session_payment',
@@ -385,7 +385,7 @@ UPDATE public.payment_provider_attempts
 DO $$
 BEGIN
   PERFORM public.payment_provider_event_ingest(
-    'stripe',
+    'card_rail',
     'evt_observed_success_wrong_handle',
     'payment.succeeded',
     'pi_event_other',
@@ -409,7 +409,7 @@ CREATE TEMP TABLE _wrong_event_handle_retry AS
 SELECT public.payment_provider_attempt_prepare(
   'provider-attempt-event-wrong-handle',
   (SELECT intent_id FROM _intent),
-  'stripe',
+  'card_rail',
   'event-wrong-handle-provider-key',
   'event-wrong-handle-fingerprint',
   'off_session_payment',
@@ -437,7 +437,7 @@ UPDATE public.payment_provider_attempts
 DO $$
 BEGIN
   PERFORM public.payment_provider_event_ingest(
-    'stripe',
+    'card_rail',
     'evt_observed_success_exact',
     'payment.succeeded',
     'pi_event_exact',
@@ -460,7 +460,7 @@ CREATE TEMP TABLE _exact_event_success_retry AS
 SELECT public.payment_provider_attempt_prepare(
   'provider-attempt-event-exact-success',
   (SELECT intent_id FROM _intent),
-  'stripe',
+  'card_rail',
   'event-exact-success-provider-key',
   'event-exact-success-fingerprint',
   'off_session_payment',
