@@ -456,7 +456,7 @@ function assertGuideTitle(label: string, source: string, violations: string[]): 
       closingFence = new RegExp(`^ {0,3}${marker[0]}{${marker.length},}[ \\t]*$`);
       continue;
     }
-    if (line.startsWith("# ")) headings++;
+    if (/^ {0,3}#(?:[ \t]|$)/.test(line)) headings++;
   }
   if (headings !== 1) violations.push(`${label}: a guide page has exactly one level-one heading, its title (found ${headings})`);
 }
