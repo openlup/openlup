@@ -1,10 +1,10 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { assertDocumentationContract } from "../scripts/documentation-contract.ts";
+import { agentsFileCap, assertDocumentationContract, assertPackageDocumentation } from "../scripts/documentation-contract.ts";
 
 const roots: string[] = [];
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -162,7 +162,7 @@ describe("extracted-root documentation contract", () => {
   });
 
   it.each(["```", "~~~"])("does not read index signatures as link definitions inside %s fences", (fence) => {
-    const root = fixture(`${fence}ts\nexport type Data = {\n    [key: string]: MissingType;\n};\n${fence}\n[Guide][target]\n\n> [target]: docs/guide.md\n`);
+    const root = fixture(`${fence}ts nocheck\n// A declaration excerpt; MissingType is not declared.\nexport type Data = {\n    [key: string]: MissingType;\n};\n${fence}\n[Guide][target]\n\n> [target]: docs/guide.md\n`);
     expect(() => check(root)).not.toThrow();
     expect(() => check(root, ["AGENTS.md", "README.md", "package.json"])).toThrow(
       "README.md: local link docs/guide.md targets a file missing from npm pack",
@@ -397,5 +397,174 @@ describe("extracted-root documentation contract", () => {
       "# Changelog\n\n## Unreleased — one topic\n\n- A.\n\n## [Unreleased]\n\n- B.\n",
     );
     expect(() => check(root)).toThrow("CHANGELOG.md: 2 Unreleased sections; keep one");
+  });
+});
+
+// The reader guide: a package fixture inside a repository fixture, so links and regions resolve.
+const tag = "openlup-core-v1.2.3";
+const repositoryLink = (path: string, ref = tag) => `https://github.com/openlup/openlup/blob/${ref}/${path}`;
+const surface = '{"kind":"rail","packageSurface":{".":{"role":"rail","maturity":"experimental"}}}\n';
+
+function guideFixture(index: string, pages: Record<string, string> = {}) {
+  const repository = mkdtempSync(join(tmpdir(), "core-guide-contract-"));
+  roots.push(repository);
+  const write = (path: string, contents: string) => {
+    mkdirSync(dirname(join(repository, path)), { recursive: true });
+    writeFileSync(join(repository, path), contents);
+  };
+  write("README.md", "# Repository\n");
+  write("AGENTS.md", "# Agents\n");
+  write("config/documentation-guide-allowlist.json", '{"schemaVersion":1,"terms":["S3"]}\n');
+  write("config/environment-variables.json", JSON.stringify({ schemaVersion: 1, variables: [
+    { name: "APP_BASE_URL", owner: "platform", category: "server-runtime", requiredIn: ["production"], secret: false },
+    { name: "SESSION_KEY", owner: "platform", category: "server-runtime", requiredIn: [], secret: true },
+  ] }));
+  for (const name of ["outbox", "platform"]) write(`packages/${name}/release-gates.json`, surface);
+  const packageRoot = fixture("# Fixture\n");
+  const core = join(repository, "packages", "core");
+  // Copy the package fixture into the repository fixture.
+  mkdirSync(core, { recursive: true });
+  for (const entry of ["package.json", "release-gates.json", "smoke", "AGENTS.md", "CHANGELOG.md", ".gitignore", "README.md", "MAINTAINERS.md", "docs"]) {
+    cpSync(join(packageRoot, entry), join(core, entry), { recursive: true });
+  }
+  const manifest = JSON.parse(readFileSync(join(core, "package.json"), "utf8"));
+  writeFileSync(join(core, "package.json"), JSON.stringify({ ...manifest, version: "1.2.3" }));
+  write("packages/core/docs/guide/README.md", index);
+  for (const [path, contents] of Object.entries(pages)) write(`packages/core/docs/guide/${path}`, contents);
+  return { repository, core };
+}
+
+const cpDir = (from: string, to: string) => cpSync(from, to, { recursive: true });
+
+function checkGuide(fixtureRoots: { repository: string; core: string }, write = false): void {
+  assertDocumentationContract(fixtureRoots.core, () => ["AGENTS.md", "README.md", "package.json", "docs/guide.md"], { repositoryRoot: fixtureRoots.repository, write });
+}
+
+const coreRegion = (body: string) => `<!-- generated:maturity:outbox -->\n${body}<!-- /generated:maturity:outbox -->\n`;
+const freshMaturity = "| Export | Role | Maturity |\n| --- | --- | --- |\n| `.` | rail | experimental |\n";
+
+describe("reader guide contract", () => {
+  it("accepts relative links, pinned repository links, fresh regions, allowed terms and compiled fences", () => {
+    const roots = guideFixture(
+      `# Guide\n\n[Start](start/tutorial.md) and [the README](${repositoryLink("README.md")}) store files in S3.\n\n${coreRegion(freshMaturity)}\n\`\`\`ts\nconst total: number = 1 + 1;\nexport const doubled = total * 2;\n\`\`\`\n`,
+      { "start/tutorial.md": "# Tutorial\n\n[Back](../README.md)\n" },
+    );
+    expect(() => checkGuide(roots)).not.toThrow();
+  });
+
+  it("refuses a relative link that leaves the guide", () => {
+    const roots = guideFixture("# Guide\n\n[Changelog](../../CHANGELOG.md)\n");
+    expect(() => checkGuide(roots)).toThrow(`docs/guide/README.md: link ../../CHANGELOG.md leaves the guide; use https://github.com/openlup/openlup/blob/${tag}/<path>`);
+  });
+
+  it("refuses a repository link off the release tag, and --write pins it", () => {
+    const roots = guideFixture(`# Guide\n\n[README](${repositoryLink("README.md", "openlup-core-v1.0.0")})\n`);
+    expect(() => checkGuide(roots)).toThrow("must pin openlup-core-v1.2.3");
+    expect(() => checkGuide(roots, true)).not.toThrow();
+    expect(readFileSync(join(roots.core, "docs/guide/README.md"), "utf8")).toContain(repositoryLink("README.md"));
+  });
+
+  it("refuses a repository link at a branch", () => {
+    const roots = guideFixture(`# Guide\n\n[README](${repositoryLink("README.md", "main")})\n`);
+    expect(() => checkGuide(roots)).toThrow("must pin openlup-core-v1.2.3");
+    expect(() => checkGuide(roots, true)).toThrow("must pin openlup-core-v1.2.3");
+  });
+
+  it("refuses a repository link to a missing path or back into the guide", () => {
+    const missing = guideFixture(`# Guide\n\n[Gone](${repositoryLink("docs/missing.md")})\n`);
+    expect(() => checkGuide(missing)).toThrow("targets a path missing from the repository");
+    const inward = guideFixture(`# Guide\n\n[Self](${repositoryLink("packages/core/docs/guide/README.md")})\n`);
+    expect(() => checkGuide(inward)).toThrow("points into the guide; use a relative link");
+  });
+
+  it("refuses a stale generated region and --write regenerates it from release gates", () => {
+    const roots = guideFixture(`# Guide\n\n${coreRegion("| Export | Role | Maturity |\n| --- | --- | --- |\n| `.` | rail | stable |\n")}`);
+    expect(() => checkGuide(roots)).toThrow("generated region maturity:outbox is stale");
+    expect(() => checkGuide(roots, true)).not.toThrow();
+    expect(readFileSync(join(roots.core, "docs/guide/README.md"), "utf8")).toContain(coreRegion(freshMaturity));
+  });
+
+  it("generates configuration keys from the environment-variable catalogue", () => {
+    const roots = guideFixture("# Guide\n\n<!-- generated:configuration-keys -->\n<!-- /generated:configuration-keys -->\n");
+    expect(() => checkGuide(roots)).toThrow("generated region configuration-keys is stale");
+    checkGuide(roots, true);
+    expect(readFileSync(join(roots.core, "docs/guide/README.md"), "utf8")).toContain(
+      "| `APP_BASE_URL` | platform | server-runtime | production | no |\n| `SESSION_KEY` | platform | server-runtime | none | yes |\n",
+    );
+  });
+
+  it.each([
+    ["<!-- generated:exports-count -->\n<!-- /generated:exports-count -->\n", "unknown generated region exports-count"],
+    ["<!-- generated:maturity:ui -->\n<!-- /generated:maturity:ui -->\n", "unknown generated region maturity:ui"],
+    ["<!-- generated:configuration-keys -->\nno end marker\n", "a generated region is not closed"],
+  ])("refuses the malformed region %#", (region, message) => {
+    expect(() => checkGuide(guideFixture(`# Guide\n\n${region}`))).toThrow(message);
+  });
+
+  it.each([
+    ["Delivered in M19 with G18.", "task or milestone ID): M19, G18"],
+    ["See oss-m19-g18 for the reasons.", "plan name): oss-m19-g18"],
+    ["The proof is in tests/postgres/ today.", "path into tests, plans or agent scratch): tests/"],
+    ["Wait for the merge queue and install-proof.", "CI or delivery-process vocabulary): merge queue, install-proof"],
+    ["Open /Users/someone/store first.", "absolute filesystem path): /Users/someone"],
+  ])("refuses repository-internal language: %s", (line, message) => {
+    expect(() => checkGuide(guideFixture(`# Guide\n\n${line}\n`))).toThrow(`docs/guide/README.md: repository-internal language (${message}`);
+  });
+
+  it("refuses a guide without its allow-list or outside a repository", () => {
+    const roots = guideFixture("# Guide\n");
+    rmSync(join(roots.repository, "config/documentation-guide-allowlist.json"));
+    expect(() => checkGuide(roots)).toThrow("missing reader-language allow-list");
+    expect(() => assertDocumentationContract(roots.core, () => ["AGENTS.md", "README.md", "package.json"], {})).toThrow("no repository root was found");
+  });
+
+  it("refuses a TypeScript fence that does not compile and a nocheck fence without a reason", () => {
+    const broken = guideFixture("# Guide\n\n```ts\nconst total: number = \"two\";\n```\n");
+    expect(() => checkGuide(broken)).toThrow(/docs\/guide\/README\.md:4: TypeScript fence does not compile: Type 'string' is not assignable to type 'number'/);
+    const unexplained = guideFixture("# Guide\n\n```ts nocheck\nconst total: number = \"two\";\n```\n");
+    expect(() => checkGuide(unexplained)).toThrow("docs/guide/README.md:4: a ts nocheck fence must open with a // reason line");
+    const explained = guideFixture("# Guide\n\n```ts nocheck\n// Fragment: the host supplies the total.\nconst total: number = \"two\";\n```\n");
+    expect(() => checkGuide(explained)).not.toThrow();
+  });
+
+  it("refuses a README fence that does not compile, beyond the smoke example", () => {
+    const roots = guideFixture("# Guide\n");
+    const readme = readFileSync(join(roots.core, "README.md"), "utf8");
+    writeFileSync(join(roots.core, "README.md"), `${readme}\n\`\`\`ts\nundeclaredName();\n\`\`\`\n`);
+    expect(() => checkGuide(roots)).toThrow("README.md:");
+    expect(() => checkGuide(roots)).toThrow("Cannot find name 'undeclaredName'");
+  });
+
+  it("caps package and repository AGENTS.md by lines and bytes", () => {
+    const roots = guideFixture("# Guide\n");
+    const guide = readFileSync(join(roots.core, "AGENTS.md"), "utf8");
+    writeFileSync(join(roots.core, "AGENTS.md"), guide + "line\n".repeat(agentsFileCap.lines));
+    expect(() => checkGuide(roots)).toThrow(/AGENTS\.md: \d+ lines and \d+ bytes exceed the cap of 200 lines and 10240 bytes/);
+    writeFileSync(join(roots.core, "AGENTS.md"), guide);
+    writeFileSync(join(roots.repository, "AGENTS.md"), `# Agents\n\n${"x".repeat(agentsFileCap.bytes)}\n`);
+    expect(() => checkGuide(roots)).toThrow("repository AGENTS.md: 3 lines");
+  });
+
+  it("checks another package's guide, size and fences without a separate example file", () => {
+    const roots = guideFixture("# Guide\n");
+    const outbox = join(roots.repository, "packages", "outbox");
+    for (const file of ["AGENTS.md", "README.md", "package.json"]) cpDir(join(roots.core, file), join(outbox, file));
+    writeFileSync(join(outbox, "release-gates.json"), '{"kind":"kernel","packageSurface":{"./subscription":{"role":"kernel","maturity":"candidate"}}}\n');
+    const packed = () => ["AGENTS.md", "README.md", "package.json"];
+    // The fixture's example imports a placeholder package, so without an example file it must compile and fails.
+    expect(() => assertPackageDocumentation(outbox, null, packed)).toThrow("Cannot find module '@scope/package'");
+    mkdirSync(join(outbox, "smoke"));
+    cpDir(join(roots.core, "smoke/agentsWiringExample.ts"), join(outbox, "smoke/agentsWiringExample.ts"));
+    cpDir(join(roots.core, "smoke/readmeExample.ts"), join(outbox, "smoke/readmeExample.ts"));
+    expect(() => assertPackageDocumentation(outbox, "smoke/agentsWiringExample.ts", packed)).toThrow("README.md:2: TypeScript fence does not compile");
+  });
+
+  it("refuses an agent guide whose wiring example has no ts fence when no example file backs it", () => {
+    const roots = guideFixture("# Guide\n");
+    const outbox = join(roots.repository, "packages", "outbox");
+    cpDir(join(roots.core, "package.json"), join(outbox, "package.json"));
+    writeFileSync(join(outbox, "release-gates.json"), '{"kind":"kernel","packageSurface":{"./subscription":{"role":"kernel","maturity":"candidate"}}}\n');
+    writeFileSync(join(outbox, "AGENTS.md"), readFileSync(join(roots.core, "AGENTS.md"), "utf8").replace(/```ts\n[\s\S]*?```\n/, "Wire the kernel.\n"));
+    expect(() => assertPackageDocumentation(outbox, null, () => ["AGENTS.md", "package.json"])).toThrow("AGENTS.md: wiring example has no ts fence");
   });
 });

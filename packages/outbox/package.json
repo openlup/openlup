@@ -47,8 +47,9 @@
     "prepublishOnly": "node -e \"throw new Error('OUTBOX_DIRECTORY_PUBLISH_REFUSED')\"",
     "api:check": "node --experimental-strip-types ./scripts/api-contract.ts",
     "api:update": "npm run build && node --experimental-strip-types ./scripts/api-contract.ts --update",
-    "ci": "npm run build && npm run test && npm run api:check",
-    "ci:required": "npm run test:consumer",
+    "ci": "npm run build && npm run test && npm run api:check && npm run docs:check",
+    "docs:check": "node --experimental-strip-types ../core/scripts/documentation-contract.ts --package .",
+    "ci:required": "npm run docs:check && npm run test:consumer",
     "test:consumer": "node --experimental-strip-types ./scripts/consumer-proof.ts"
   },
   "peerDependencies": {

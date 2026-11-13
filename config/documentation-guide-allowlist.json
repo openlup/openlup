@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "description": "Exact terms the reader guide may use although they match a repository-internal language pattern of packages/core/scripts/documentation-contract.ts: product, protocol and algorithm names, never task IDs.",
+  "terms": [
+    "ES2022",
+    "ES256",
+    "HS256",
+    "P0",
+    "PG16",
+    "PG17",
+    "RS256",
+    "S256",
+    "S3"
+  ]
+}

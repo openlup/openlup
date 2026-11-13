@@ -22,6 +22,7 @@ import {
 import {
   assertAgentGuidancePlacement,
   assertMaterializedOutputInventory,
+  assertNoAbsoluteFilesystemPaths,
   assertMaterializedPublicationCatalog,
   materializedOutputPaths,
   policyVerdict,
@@ -403,7 +404,7 @@ describe("complete public CI", () => {
     expect(core.scripts["ci:required"].split(" && ")).toEqual(core.scripts.ci.split(" && ")
       .filter((command: string) => command !== "npm run api:check")
       .map((command: string) => command === "npm run release:check" ? "npm run release:admission" : command));
-    expect(JSON.parse(readFileSync(join(ROOT, "packages/outbox/package.json"), "utf8")).scripts["ci:required"]).toBe("npm run test:consumer");
+    for (const directory of ["packages/outbox", "packages/platform"]) expect(JSON.parse(readFileSync(join(ROOT, directory, "package.json"), "utf8")).scripts["ci:required"]).toBe("npm run docs:check && npm run test:consumer");
     const { createVitest } = await import("vitest/node");
     const root = await createVitest("test", { root: ROOT, watch: false });
     try {
@@ -1091,6 +1092,43 @@ describe("agent guidance placement", () => {
   });
 });
 
+
+describe("absolute filesystem paths in tracked Markdown", () => {
+  function tree(files: Record<string, string>): string {
+    const root = mkdtempSync(join(tmpdir(), "openlup-absolute-paths-"));
+    for (const [path, contents] of Object.entries(files)) {
+      mkdirSync(dirname(join(root, path)), { recursive: true });
+      writeFileSync(join(root, path), contents);
+    }
+    return root;
+  }
+
+  it("accepts this repository's tracked Markdown", () => {
+    const tracked = execFileSync("git", ["ls-files", "-z"], { cwd: ROOT, encoding: "utf8" }).split("\0").filter(Boolean);
+    expect(() => assertNoAbsoluteFilesystemPaths(ROOT, tracked)).not.toThrow();
+  });
+
+  it.each([
+    ["a macOS home", "Remove `/Users/someone/scratch` later.", "/Users/someone"],
+    ["a Linux home", "Logs live in /home/runner/work.", "/home/runner"],
+    ["a Windows home", "Open C:\\Users\\someone\\openlup first.", "C:\\Users\\someone"],
+  ])("refuses %s in Markdown", (_name, line, found) => {
+    const root = tree({ "docs/page.md": `# Page\n\n${line}\n` });
+    try {
+      expect(() => assertNoAbsoluteFilesystemPaths(root, ["docs/page.md"])).toThrow(`docs/page.md: absolute filesystem path ${found}`);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it("ignores URLs, relative paths and non-Markdown files", () => {
+    const root = tree({
+      "docs/page.md": "See https://example.invalid/Users/someone and ./home/readme and ~/home/x.\nScratch in /tmp/proof and /private/tmp/proof, and D:\\data stay evidence.\n",
+      "scripts/tool.ts": "const path = \"/Users/someone/project\";\n",
+    });
+    try {
+      expect(() => assertNoAbsoluteFilesystemPaths(root, ["docs/page.md", "scripts/tool.ts"])).not.toThrow();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+});
 
 describe("operator invitation expand-only admission", () => {
   it("admits the complete direct invitation forward through the existing predicate", () => {

@@ -65,8 +65,8 @@ export const PUBLIC_PACKAGE_EXECUTION_SURFACES: PublicPackageExecutionSurface[] 
   { path: "examples/neutral-store/package.json", digest: "sha256-2596e792092af299bdbb6b988b847a29caaa49aaec5d82954a9a6cb47e788d7b" },
   { path: "package.json", digest: packageExecutionDigest({ scripts: Object.fromEntries(PUBLIC_PACKAGE_COMMANDS.map(({ name, command }) => [name, command])) }) },
   { path: "packages/core/package.json", digest: "sha256-45f672a598c2c3f1d90c2a84fe2ddda11fb54315e2c52462691d2b22ca8dc7a6" },
-  { path: "packages/outbox/package.json", digest: "sha256-60beaa6303f13fa5c3568e227d571f1b6013260dd260578670896eaf0d613319" },
-  { path: "packages/platform/package.json", digest: "sha256-996ffd9d83a8604e189709a43367a3a31b1a89efbc0bd92444e4b8c47ed78ffe" },
+  { path: "packages/outbox/package.json", digest: "sha256-9959d50dca55d3a2a6f963dee7d1f1f22bd68aa5d5758812fc3a1472ede961a7" },
+  { path: "packages/platform/package.json", digest: "sha256-211a307bdd0b76e98dd3c1cb0356a8875e932907877596807f1076e3395a5d01" },
   { path: "packages/ui/package.json", digest: "sha256-e57b14ab2c433bd03ae8e71aebf8c3b4eedafcc3177bf373230d45f84bccdb0b" },
 ];
 
@@ -116,7 +116,20 @@ export function parsePublicPublicationCatalog(source: string): PublicPublication
 export function createPublicPublicationCatalog(publicPaths: PublicCatalogPath[], guardViability: PublicGuardViability[]) { const contents = `${JSON.stringify({ schemaVersion: 3, publicPaths, packageCommands: PUBLIC_PACKAGE_COMMANDS, packageExecutionSurfaces: PUBLIC_PACKAGE_EXECUTION_SURFACES, guardViability }, null, 2)}\n`; parsePublicPublicationCatalog(contents); return { contents, digest: digest(contents) }; }
 export function publicPublicationCatalogDigests(source: string) { const catalog = parsePublicPublicationCatalog(source); return { inventoryDigest: digest(JSON.stringify(catalog.publicPaths.map(({ path }) => path))), classDigest: digest(JSON.stringify(catalog.publicPaths)) }; }
 
-/** Exact authored rows, plus the single content-validated fragment admission pattern. */
+/** The reader guide: Markdown pages under `packages/core/docs/guide/`, admitted by pattern like fragments. */
+export const isGuidePageArea = (path: string): boolean => /^packages\/core\/docs\/guide(?:\/|$)/u.test(path);
+export const isGuidePage = (path: string): boolean => /^packages\/core\/docs\/guide\/(?:[a-z0-9][a-z0-9-]*\/)*[A-Za-z0-9][A-Za-z0-9_-]*\.md$/u.test(path);
+/** Regular, non-executable, readable Markdown only; anything else under the guide needs a reviewed catalogue row. */
+export function validateGuidePage(path: string, bytes: string | Buffer, mode: string): string {
+  if (!isGuidePage(path) || mode !== "100644") throw new Error(`${path}: guide pages must be docs/guide/**/*.md with lowercase directories, regular and non-executable`);
+  let contents: string;
+  try { contents = typeof bytes === "string" ? bytes : new TextDecoder("utf-8", { fatal: true }).decode(bytes); } catch { throw new Error(`${path}: guide page is not UTF-8`); }
+  if (!contents.trim() || Buffer.from(contents).some((byte) => (byte < 0x20 && byte !== 9 && byte !== 10 && byte !== 13) || byte === 0x7f)) throw new Error(`${path}: empty or malformed guide page`);
+  if (/^[\t ]*(?:<{7}|={7}|>{7}|\|{7})/mu.test(contents)) throw new Error(`${path}: guide page refuses conflict markers`);
+  return contents;
+}
+
+/** Exact authored rows, plus the two content-validated pattern admissions: changelog fragments and guide pages. */
 export function effectivePublicCatalogPaths(source: string, entries: readonly { path: string; mode: string }[], read: (path: string) => string | Buffer | undefined): PublicCatalogPath[] {
   const rows = parsePublicPublicationCatalog(source).publicPaths;
   const fragments = entries.filter(({ path }) => isChangelogFragmentArea(path));
@@ -126,5 +139,12 @@ export function effectivePublicCatalogPaths(source: string, entries: readonly { 
     validateChangelogFragment(path, bytes, mode);
     if (rows.some((row) => row.path === path)) throw new Error(`${path}: fragments use pattern admission, not per-file catalog rows`);
   }
-  return [...rows, ...fragments.map(({ path }) => ({ path, class: "public-output" }))].sort((a, b) => Buffer.compare(Buffer.from(a.path), Buffer.from(b.path)));
+  const guide = entries.filter(({ path }) => isGuidePageArea(path));
+  for (const { path, mode } of guide) {
+    const bytes = read(path);
+    if (bytes === undefined) throw new Error(`${path}: guide page is absent`);
+    validateGuidePage(path, bytes, mode);
+  }
+  for (const row of rows) if (isGuidePageArea(row.path)) throw new Error(`${row.path}: guide pages use pattern admission, not per-file catalog rows`);
+  return [...rows, ...[...fragments, ...guide].map(({ path }) => ({ path, class: "public-output" }))].sort((a, b) => Buffer.compare(Buffer.from(a.path), Buffer.from(b.path)));
 }
