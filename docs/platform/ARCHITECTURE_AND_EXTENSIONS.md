@@ -527,11 +527,22 @@ names the platform's core domains, and the public binding registers none.
 
 Moved to [Run an adapter conformance check](../../packages/core/docs/guide/how-to/extend/adapter-conformance.md#run-the-example).
 
-Keep the existing owner suites for consent push, durable-store atomicity and
-host wiring.
+This is supplied-fixture proof, not exhaustive conformance, consent-push
+qualification, durable-store atomicity, host wiring, provider-account readiness
+or permission to send real messages. Keep the existing owner suites for those
+boundaries. The runner itself adds no network client, provider, registry, CLI
+command or automatic fixture discovery. Adapter factories must inject offline
+transports; the helper cannot sandbox an arbitrary factory's I/O.
 
 Evidence (historical record, 2026-11-13):
 
+Copy the complete [red-to-green Node example](communications-conformance.mjs)
+into a consumer with a version of `@openlup/platform` exporting the helper, then
+run `node communications-conformance.mjs`. It first constructs a deliberately
+bad offline adapter that reports a failed send as accepted. The runner refuses
+it with `COMMUNICATIONS_CONFORMANCE:email_fixture`, asks the implementer to match
+the expected outcome and provider response, and names the recheck function.
+The corrected adapter retains the failure and passes all three email fixtures.
 The same executable file runs inside the isolated packed consumer; the
 [focused witness](../../packages/platform/test/communications/adapterConformance.test.ts)
 also applies defects from the existing marketing-sync conformance helper.
@@ -575,6 +586,10 @@ current core, outbox and platform code exports and refuse missing evidence.
 ## Source ejection
 
 Moved to [Take ownership of a copied component or page](../../packages/core/docs/guide/how-to/extend/eject-source.md#check-for-a-seam-first).
+
+The
+[adopter recipe](adopter-kit/README.md#adopt-or-upgrade-a-package) owns the comparison
+and extension-disposition steps.
 
 ## Package architecture
 
@@ -3515,10 +3530,17 @@ Moved to [Add OpenLup to an existing application](../../packages/core/docs/guide
 
 Evidence (historical record, 2026-11-13):
 
-Its HTTP/real-PostgreSQL witness checks a durable write,
-conflict refusal and receipt replay.
-
-A complete portable
+The [own-stack catalog example](../../examples/own-stack/README.md) adds draft
+authoring to a small application with its own Node HTTP routes and local
+operator-session verifier. It composes the released catalog handler/store and
+PostgreSQL data gateway through public exports; no starter is involved. The
+application supplies its verified operator ID without email inference. Copy the
+private, non-workspace example outside the monorepo and install its pinned
+registry packages. Its HTTP/real-PostgreSQL witness checks a durable write,
+conflict refusal and receipt replay. Runtime credentials and the local token stay
+in a gitignored JSON configuration file outside the platform checkout, without
+being passed as command-line values. The runner consumes that file on standard
+input; the witness reads it from the application directory. A complete portable
 catalogue and restricted
 runtime login are explicit prerequisites; the local session and witness establish
 no hosted-authentication or production qualification.
