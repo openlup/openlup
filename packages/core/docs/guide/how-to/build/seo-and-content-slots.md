@@ -8,8 +8,8 @@ and page components.
 
 Import runtime helpers from `@openlup/platform/marketing` and content types
 from `@openlup/platform/marketing/contracts`. See the
-[runtime API report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/marketing.api.md) and
-[contracts API report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/marketing-contracts.api.md)
+[runtime API report](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/packages/platform/api/marketing.api.md) and
+[contracts API report](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/packages/platform/api/marketing-contracts.api.md)
 for the available helpers and types. These helpers take values, without
 database or transport ports. Your application supplies route lookup,
 translations, content and document updates.

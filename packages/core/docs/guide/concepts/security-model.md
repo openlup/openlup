@@ -52,7 +52,7 @@ across all platform data or remote processors.
 
 ## Vulnerability reports
 
-Use the repository [security policy](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/SECURITY.md)
-to report privately. The [security response posture](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/.github/SECURITY_RESPONSE_POSTURE.md)
+Use the repository [security policy](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/SECURITY.md)
+to report privately. The [security response posture](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/.github/SECURITY_RESPONSE_POSTURE.md)
 defines maintenance eligibility; it provides neither a bug bounty nor a
 guaranteed response timeline.

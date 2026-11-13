@@ -62,8 +62,7 @@ versions and upgrade all `@openlup/*` packages together.
 - [Upgrade an application](upgrade/README.md)
 - [Upgrade the database](upgrade/database-migrations.md)
 - [Upgrade application files](upgrade/application-files.md)
-
-Per-release upgrade pages are not yet written.
+- [Upgrading to 0.40.0](upgrade/v0-40-0.md)
 
 ### Concepts
 
@@ -122,4 +121,4 @@ Per-release upgrade pages are not yet written.
   rewrites on a version change.
 
 How to change OpenLup itself is in
-[CONTRIBUTING.md](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/CONTRIBUTING.md).
+[CONTRIBUTING.md](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/CONTRIBUTING.md).

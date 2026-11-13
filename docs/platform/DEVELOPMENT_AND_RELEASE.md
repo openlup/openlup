@@ -340,11 +340,12 @@ The source-preview descendant check retains its strict snapshot equality.
 
 ### Core release preparation
 
-The prepared `0.39.0` set adds Platform's checkout recovery, customer account,
-operator order and parcel surfaces. Core runtime, exports and SQL are unchanged
-since `0.38.0`. Upgrade all packages together and read
-[the set notes](../../packages/core/CHANGELOG.md#0390); Core introduces no schema migration.
-Size comparison uses the published `0.38.0` tarball; releases before `0.37.0`
+The prepared `0.40.0` set ships the reader guide in Core under `docs/guide/`,
+and `openlup-context` searches it instead of the retired `AGENT_CONTEXT.md`
+corpus. Core also registers the event vocabulary for Platform's new experimental
+ecommerce-event export. Upgrade all packages together and read
+[the set notes](../../packages/core/CHANGELOG.md#0400); Core introduces no schema migration.
+Size comparison uses the published `0.39.0` tarball; releases before `0.38.0`
 remain in the source-only `CHANGELOG-HISTORY.md`. Preparation establishes no
 npm publication.
 
@@ -358,11 +359,12 @@ types for Zod's standard `URL` declaration; Core adds no runtime Node import.
 
 The reviewed release workflow owns provenance-backed publication; direct directory publishing refuses. New API and shipped SQL require the next minor set.
 
-The prepared `0.39.0` set republishes Outbox with unchanged runtime, exports and
-SQL, and an exact `@openlup/core@0.39.0` peer. Upgrade the complete set together;
-no Outbox schema migration is introduced. Read [0.39.0 notes](../../packages/outbox/CHANGELOG.md#0390).
-Releases before `0.37.0` are retained in the source-only `CHANGELOG-HISTORY.md`.
-Size comparison uses the published `0.38.0` tarball; preparation grants no
+The prepared `0.40.0` set skips payload compaction while an owner pins
+`metadata.retainPayload=true`, stops shipping `AGENT_CONTEXT.md`, and has an
+exact `@openlup/core@0.40.0` peer. Upgrade the complete set together;
+no Outbox schema migration is introduced. Read [0.40.0 notes](../../packages/outbox/CHANGELOG.md#0400).
+Releases before `0.38.0` are retained in the source-only `CHANGELOG-HISTORY.md`.
+Size comparison uses the published `0.39.0` tarball; preparation grants no
 publication or installation proof.
 
 ## Cutting an optional source preview

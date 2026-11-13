@@ -2461,19 +2461,14 @@ Invoicing exports explicit `createInvoiceServices`, `InvoiceServices` and inert
 SQL wrappers persist it for eligible obligations. `InvoiceSellerRevision` is also
 available from the type-only contracts entry. Legacy obligations keep fallback.
 
-For the prepared `0.39.0` set, read the [adjacent-release migration and known
-limitations](CHANGELOG.md#0390) before selecting optional services. This set
-adds checkout recovery inspection, expired initial-checkout recreation, reminder
-waves with reservation-backed expiry, checkout payment guidance, sandbox token
-payment and inline retry, and customer and operator payment-link entry points;
-customer account history, profile edits, billing profiles, invoice buyer inputs
-frozen on first native duty capture, a saved address book with future-delivery
-selection and scoped preferences; native operator parcel replacement and
-cancellation with private parcel contacts and a parcel status fence, and
-operator shipment commands; human operator admission, unpaid cancellation
-commands and owned return requests and decisions; and an opt-in sized
-future-plan editor. A timed pause now shifts the next cycle by its length, and
-timed auto-resume no longer stays paused after a delivered paid first order.
+For the prepared `0.40.0` set, read the [adjacent-release migration and known
+limitations](CHANGELOG.md#0400) before selecting optional services. This set
+adds experimental neutral ecommerce-event contracts, retained paid-time source
+snapshots and an explicit PostgreSQL projection through the existing outbox;
+separately qualified events for the opt-in `./communications/klaviyo` adapter,
+whose consent-push capability now requires the complete declared scope set; and
+offline wiring recipes for transactional delivery, marketing refusals and frozen
+event replay. The package no longer ships `AGENT_CONTEXT.md`.
 Apply the complete selected migration catalogue before composing the new native
 bindings. Experimental
 marketing uses browser-safe `./marketing`, type-only browser-safe
@@ -2518,7 +2513,7 @@ Adopters must not activate unselected or unready invoicing; installation and
 inert contributions register no runner, worker, route or schedule.
 M06 managed-host proof classes remain pending in the
 [M06 parity ledger](https://github.com/openlup/openlup/blob/main/docs/platform/plans/oss-m06-stock-reservations-delivery.md#parity-pending-rows).
-Size comparison uses the published `0.38.0` tarball. Preparation and offline
+Size comparison uses the published `0.39.0` tarball. Preparation and offline
 adapter evidence grant no publication or provider-account certification.
 
 The set requires Zod `^4.6.6` for GHSA-mrhx-c7xc-m3w5.

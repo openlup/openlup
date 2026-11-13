@@ -75,8 +75,8 @@ request already sent or forcibly stop code that ignores cancellation.
 
 ## Related reading
 
-See the [enqueue implementation](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/outbox/src/enqueue.ts),
-[worker](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/outbox/src/worker.ts)
-and [catalog draft command protocol](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/sql/20260908100000_catalog_draft_foundation.sql).
+See the [enqueue implementation](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/packages/outbox/src/enqueue.ts),
+[worker](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/packages/outbox/src/worker.ts)
+and [catalog draft command protocol](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/packages/platform/sql/20260908100000_catalog_draft_foundation.sql).
 [Marketing sync](marketing-sync.md#replay-and-uncertainty) explains its generation
 fence and unresolved dispatch behavior.
