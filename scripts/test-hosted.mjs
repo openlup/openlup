@@ -16,26 +16,30 @@ export const HOSTED_VITEST_WORKERS = "3";
 // GIT_CONFIG_GLOBAL hides the contributor's identity and defaults, and
 // user.useConfigOnly stops Git from guessing an identity from the login and host
 // name instead: a hosted runner cannot guess one, so a fixture commit without
-// explicit identity fails there. TZ and LANG are the hosted Ubuntu runner's
-// values, so local clock and collation settings do not leak in either.
+// explicit identity fails there. GIT_CONFIG_NOSYSTEM hides a local system
+// gitconfig the same way. TZ and LANG are the hosted Ubuntu runner's values, and
+// local LC_* overrides are removed, so local clock and collation settings do not
+// leak in either.
 const HOSTED_ENVIRONMENT = {
   CI: "true",
   TZ: "UTC",
   LANG: "C.UTF-8",
   GIT_CONFIG_GLOBAL: devNull,
+  GIT_CONFIG_NOSYSTEM: "1",
   GIT_CONFIG_COUNT: "1",
   GIT_CONFIG_KEY_0: "user.useConfigOnly",
   GIT_CONFIG_VALUE_0: "true",
   VITEST_MAX_WORKERS: HOSTED_VITEST_WORKERS,
 };
 
-// Hosted shards supply none of these: identity, ad hoc Git config, coverage,
-// external duration pins, exact exclusions or local worker pins.
-const REMOVED_PREFIXES = ["GIT_AUTHOR_", "GIT_COMMITTER_", "GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_",
+// Hosted shards supply none of these: identity, ad hoc Git config, locale
+// overrides, coverage, external duration pins, exact exclusions, local worker
+// pins or a stacked review base.
+const REMOVED_PREFIXES = ["GIT_AUTHOR_", "GIT_COMMITTER_", "GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_", "LC_",
   "VITEST_COVERAGE_", "OPENLUP_COVERAGE_", "OPENLUP_VITEST_COVERAGE_"];
 const REMOVED_NAMES = new Set(["GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT", "NODE_V8_COVERAGE",
   "COVERAGE_STAGE_PROOF_BINDING_PATH", "OPENLUP_VITEST_DURATIONS_FILE", "OPENLUP_VITEST_EXCLUDE_FILE",
-  "OPENLUP_VITEST_MAX_WORKERS"]);
+  "OPENLUP_VITEST_MAX_WORKERS", "OPENLUP_STACK_BASE"]);
 
 const isCoverageArgument = (arg) => arg === "--coverage" || arg.startsWith("--coverage=") || arg.startsWith("--coverage.");
 

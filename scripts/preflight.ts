@@ -248,8 +248,7 @@ function rootVitestFiles(candidates: readonly string[]): string[] {
     // `--json` takes an optional path, so it goes after the files.
     const result = execute("npx", ["--no", "--", "vitest", "list", ...candidates, "--filesOnly", `--json=${listing}`], { env });
     if (result.code !== 0) throw new Error(`vitest list failed: ${lastLine(result.output)}`);
-    let listed: Array<{ file: string }> = [];
-    try { listed = JSON.parse(readFileSync(listing, "utf8")) as Array<{ file: string }>; } catch { listed = []; }
+    const listed = JSON.parse(readFileSync(listing, "utf8")) as Array<{ file: string }>;
     const discovered = new Set(listed.map(({ file }) => relative(process.cwd(), file).split("\\").join("/")));
     return candidates.filter((path) => discovered.has(path));
   } finally {

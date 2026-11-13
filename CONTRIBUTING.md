@@ -591,8 +591,8 @@ The complete projected root command inventory is `build`,
 `build:public-reference`, `build:public-reference:client`,
 `build:public-reference:prerender`, `build:public-reference:ssr`,
 `check:dco-signoff`, `guard:client-secret-boundary`,
-`guard:public-reference-site-routes`, `inventory:refresh`, `landing:merge`, `lint`, `prelint`,
-`oss:published-tree`, `packages:check`, `release:bump`, `pretest`, `test`, and `test:scoped`.
+`guard:public-reference-site-routes`, `inventory:refresh`, `landing:merge`, `lint`, `preflight`, `prelint`,
+`oss:published-tree`, `packages:check`, `release:bump`, `pretest`, `test`, `test:hosted`, and `test:scoped`.
 This reclassifies the complete current root script inventory; all commands are
 public, with `test:scoped` as the local wrapper around the unchanged `test` command.
 `npm run build` is the public build truth; its public-reference subcommands and
@@ -767,7 +767,8 @@ runner's `TZ=UTC` and `LANG=C.UTF-8`. Git sees `GIT_CONFIG_GLOBAL=/dev/null`, no
 fixture commit without explicit identity fails locally as it does on a runner,
 instead of using an identity guessed from the host name. It does not reproduce
 the hosted runner's CPU speed; size bounds for hosted runners as described below.
-Other local environment variables, such as `LC_ALL`, pass through unchanged.
+Locale overrides (`LC_*`), a system gitconfig and `OPENLUP_STACK_BASE` are also
+removed; other local environment variables pass through unchanged.
 
 `preflight` is advisory: no CI job or review step runs it, and it exits non-zero
 only when a check reports `FAIL`. It reads the change since
