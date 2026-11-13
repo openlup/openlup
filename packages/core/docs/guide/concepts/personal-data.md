@@ -35,6 +35,24 @@ exports declared resources and retains facts only under an explicit policy;
 missing policy or ownership blocks erasure. These obligations do not disappear
 when identity erasure succeeds.
 
+Compose `createPostgresPrivacyUnitOfWork`, `createPostgresPrivacyStore` and
+`createIdentityPersonalDataContributor` on the same executor as domain vetoes;
+`createPrivacyOperations` assembles the operations. Managed export uses
+`createManagedPrivacyStore` with the application's structural service client.
+Browser request, contributor-document and receipt shapes come from
+`@openlup/platform/identity/contracts`.
+
+Require `customer-billing` even when no invoice reader is selected: native
+first-duty capture can freeze buyer components, including shipping fallback.
+Account-event exports include owned ledger payloads and report unavailable
+access; an absent retention decision refuses erasure. Parcel-contact export
+includes erasure markers and their pseudonymous retention disposition. Erased
+parcel contacts cannot be reconstructed by preparation or legacy inference;
+replacement resolution refuses them as invalid frozen contacts. Public commerce
+reads and dispatch evidence do not expose those private snapshots. A risk contributor declares assessment/evidence/hash, blocklist, review/hold,
+case-event and replay obligations through supplied read/policy ports; it adds
+no retention period or remote-provider operation.
+
 ## Export and erasure
 
 The reference host exposes `POST /api/bff/admin/identity/privacy/export` and
@@ -95,4 +113,23 @@ The direct session binding defaults to 3600 seconds, with an allowed range of
 `FORBIDDEN` with “No customer account linked to this session.” Operator
 membership revocation likewise denies authorization without claiming immediate
 cryptographic token revocation.
+
+The host also injects the clock and ID source. Subject UUIDs and idempotency keys
+normalize hexadecimal case. Erasure never rediscovers an unrelated principal
+through the erased email. Redacting an already revoked membership reason does
+not create another revocation or change its role/state.
+
+After policy admission, HTTP refusals use 401 for missing sessions, 403 for
+distributor/machine actors, 404 for missing subjects, 409 for subscription,
+protected-operator or replay conflicts, and 503 for missing capability,
+ownership, contributor or assessment. Failures return neither partial exports
+nor adapter diagnostics. `createPrivacyExportHandler` and
+`createPrivacyEraseHandler` preserve these envelopes. Any future authentication
+provider erasure must disable the identity only after local cleanup commits.
+
+The reference Settings privacy panel accepts a contact/principal UUID, shows
+coverage, obligations, refusals and receipts, and requires erasure confirmation.
+Documents, confirmation and retry keys stay in component memory and clear on
+subject/session change, including late responses. Exports never enter browser
+storage.
 

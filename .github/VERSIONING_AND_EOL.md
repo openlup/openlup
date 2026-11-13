@@ -36,8 +36,7 @@ archival may follow as soon as the condition is recorded.
 If maintenance ends before an advertised stable support window is complete,
 correct the support claim in that record. This is the fail-honest path for the
 bus-factor-one project described in [governance](GOVERNANCE.md); it does not
-permit casually shortening a support window. The reader's licence and fork
-rights remain as stated in the guide.
+permit casually shortening a support window.
 
 ## Before stable
 

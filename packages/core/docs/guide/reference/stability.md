@@ -41,6 +41,10 @@ one supported stable minor; removal can happen no earlier than the next major,
 with explicit upgrade notes. Stable status, idempotency and adapter-extension
 commitments depend on completion of the stable-framework requirements.
 
+During preview, all `@openlup/*` packages share one `0.N.P` set version from one
+commit. Each package has a tag `openlup-<package>-v<version>` at that commit.
+A source preview contains no npm package.
+
 ## Support window
 
 Once stable releases exist, the latest minor of the current stable major

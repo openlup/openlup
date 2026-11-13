@@ -23,6 +23,11 @@ membership. Stale subject generation refuses `stale`; an erased subject or
 durable erasure tombstone blocks profile writes and consent grants with
 `restricted`.
 
+These entries provide type contracts without activating a provider implementation.
+`NegativeFeedback` and its discriminant are readonly. `ConsentPushRequest`,
+`ConsentPushResult` and `ConsentPushPort` reuse the binding, subject, failure and
+capability contracts.
+
 ## Consent readback
 
 `consent.read` reports current remote state with `complete`, `partial` or
@@ -75,6 +80,14 @@ pending state or unknown state cannot resolve the race. If that read still says
 subscribed, the host reissues withdrawal with a new request ID through its
 reconciliation path. The adapter does not automatically retry the write.
 `reconcileRequired: false` is also not proof of the remote effect.
+
+Declare support and admitted test-account evidence for grants and withdrawals;
+missing evidence remains `verification_pending`. No-trigger admission includes
+other-audience consent automation, segments and backfills affected by an
+account-wide grant. A withdrawal exempts only grant-caused uncertainty, including
+grant-only account quarantine across subjects; another subject's grant does not
+hold it. Non-grant durable quarantine and the single in-flight slot still apply.
+The adapter supplies no job API, executor or callback for settling that race.
 
 ## Replay and uncertainty
 

@@ -87,6 +87,14 @@ reservations and the rolling 14-day soft protection remain in place, so a
 one-time allocation cannot consume that protected demand. Stock waiting retains
 active service and the original obligation.
 
+Native reactivation requires trusted charge-timing confirmation, healthy method
+and renewal-term evidence; old unpaid cycles stay terminal. The native failure
+handler leaves service active, keeps a null-retry case repairable, queues the
+final notice and records exhaustion without a pause window or date change. Its
+result has `paused: false`, `pauseWindowId: null` and `terminal: true`. Call that
+terminal branch only when `isDunningLadderExhausted` holds; early class
+termination must leave the case open without invoking it.
+
 ## Durable retry timing
 
 For the [retry ladder](subscription-engine.md#the-retry-ladder-terminates), the
@@ -101,6 +109,12 @@ Native case opening locks the subscription and requires it to be active with
 a `payment_pending` cycle before case or notice writes. A terminalized unpaid
 cycle stays fenced after resume or reactivation. The refusal is
 `subscription_dunning_subscription_cancelled`.
+
+The renewal admission hook accepts the runner's `occurredAt`; a direct caller
+that omits it uses the decorator's clock. Only native delivery-admission denials
+return `deferred` before reservation/preparation, without a terminal refusal
+write. The operation stays claimed until lease expiry before the same schedule
+is offered again. Static terms refusals remain terminal.
 
 ## Timed pauses
 
@@ -128,6 +142,12 @@ ledger. The lifecycle dispatcher uses the resumed confirmation. The host owns
 scheduling, enablement and job execution records. Manual resume has its own
 cadence policy; neither path records delivery arrival or replacement
 confirmation.
+
+Unlinked orders count as unfinished while renewal is `claimed`, `reserved` or
+`attempt_prepared`, or activation is `provisional`. Completed renewal
+(`succeeded`/`refused`) and activation (`active`/`compensated`) no longer block.
+Native shipment updates do not advance the order past `paid`, so past paid
+cycles alone cannot prevent timed resume.
 
 ## Subscription delivery alignment
 
@@ -192,3 +212,49 @@ such as imported cycles, holds due renewals for manual review. Inspect that
 history before changing modes. These controls require the complete installed
 database catalogue and host bindings; exporting a function does not activate
 them.
+
+A locally cancelled, undelivered and unsuperseded parcel still blocks new renewal
+in enforcing modes. Local cancellation creates no alignment hold or exception
+event and does not block the order's other parcels. An existing fulfillment
+exception hold can open an alignment case only for an active subscription's
+paid cycle while control is enabled. One-time orders open no case, and an
+exception case never pauses service. Existing-cycle retries bypass new-cycle
+admission and neither mint nor consume its schedule-bound, single-use receipt.
+Unordered paid history needs manual review; other uncorrelated cycles also
+prevent automatic arrival alignment regardless of scheduled date.
+
+## Native payment truth and review
+
+The native payment descriptor supports truth, settlement and later-only cycle
+alignment. Generic durable prepared-attempt storage, method setup, absence
+reopening and cumulative refunds remain unsupported; sandbox-attempt storage
+is a separate capability. Refunds settle money without cancelling service.
+A descriptor alone does not establish installed schema readiness.
+
+Capture against a cancelled order remains `captured` and `open` with
+`review_required` application status. It does not settle the order, reopen it
+or create a refund/fiscal reversal. Sweep skips review-marked events and
+reconciliation keeps them unapplied; readback exposes the marker. Recovery-notice
+contention can still roll capture back; redelivery converges after contention
+clears, without an automatic retry dispatcher.
+
+To discover review-marked events, use an authorized native PostgreSQL session:
+
+```sql
+SELECT e.id AS payment_truth_event_id,
+       i.order_id,
+       o.status AS order_status,
+       e.amount_minor,
+       e.currency_code,
+       e.source_event_id,
+       e.review_required_at
+FROM public.payment_truth_events AS e
+JOIN public.commerce_settlement_intents AS i ON i.id = e.settlement_intent_id
+JOIN public.commerce_orders AS o ON o.id = i.order_id
+WHERE e.review_required_at IS NOT NULL
+ORDER BY e.review_required_at, e.id;
+```
+
+Amounts are minor currency units. Pass the returned event ID to the truth
+port's `readEvent` for details. This read-only query excludes ordinary open
+events and records no review decision or money/order transition.

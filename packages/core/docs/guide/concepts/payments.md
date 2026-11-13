@@ -58,6 +58,10 @@ The payment transitions exported from `@openlup/core/payment`
 define these separate boundaries. Other commerce domains have their own status
 types; do not substitute payment statuses for them.
 
+Retain bounded diagnostic evidence inside the adapter and map provider facts
+once; diagnosis must not weaken transition refusals or allow late evidence to
+regress a terminal canonical fact.
+
 ## Dispatch and settlement
 
 `PaymentExecutionEnvelope` separates an attempt outcome from dispatch evidence.

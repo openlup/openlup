@@ -20,6 +20,12 @@ intent, amount, currency, mode and order reference. The adapter passes the host'
 attempt identity, key, fingerprint and configured money through; that contract
 does not replace a durable host ledger or prove provider-side deduplication.
 
+Treat keys as opaque identities within their documented scope. A customer
+journey can need its own identity alongside command, attempt and inbound-event
+keys; do not collapse them into one user-controlled value. Commit the durable
+ledger before reporting success, using the operation's concurrency protocol to
+converge repeats on its canonical effect.
+
 Replay guarantees are operation-specific:
 
 | Boundary | Identity and behavior |

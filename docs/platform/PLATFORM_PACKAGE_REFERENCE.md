@@ -148,123 +148,22 @@ optional `pg` peer. Identity's public surface is unchanged.
 
 Moved to [Identity](../../packages/core/docs/guide/concepts/identity.md#contacts-principals-and-authority).
 
-The `./identity` server entry composes identity use cases, authorization, profile
-readers, session adapters and BFF factories. Callable inventories remain in the
-[server API reference](../../packages/platform/api/identity.api.md) and
-[browser API reference](../../packages/platform/api/identity-contracts.api.md).
-
-Application composition supplies SDK clients/loaders, feature admission, redirect
-policy, rate limiting, messages, sender and deployment URLs. Factories use the
-foundation BFF envelope and accept the application's observed request-ID reader.
-The module depends only on the declared foundation entries, without changing the
-artifact's rail kind. Its schema contribution requires a host-selected inventory;
-its seven SQL files are verbatim projections at canonical positions 11, 12, 29,
-60, 67, 68 and 69, not an independent migration chain.
-
-The existing `IdentityJwtLibrary.jwtVerify` contract widens with optional
-`currentDate?: Date` and `clockTolerance?: number` verify options and now returns
-`{ payload: IdentityJwtClaims }`, whose claims interface includes a string index
-signature. **Migration:** hosts implementing or typing their own
-`IdentityJwtLibrary` or `IdentityJwtLibraryLoader` must accept the optional verify
-options and return claims as `IdentityJwtClaims`.
-
-Apply the complete direct catalogue through position 68 before enabling human
-login; `sql/20261018180000_identity_operator_challenges.sql` is its exact
-projection. The reference dispatcher accepts a session-binding factory through
-`createReferenceBffDispatch` for separate operator delivery; caller-supplied
-handlers retain the same deployment-policy boundary. The bounded reference
-browser builds do not mount the admin shell. Use the repository
-[bootstrap/prune commands](IDENTITY.md#direct-human-login).
-
-Pass the managed policy to
-`createSupabaseClientAuthLinkStore(client, emailTrustPolicy)`; custom
-`ClientAuthLinkStore` implementations must expose `emailTrustPolicy`.
-The reference adapter binds managed settings assessment regardless of the selected
-bundle. See the [identity composition owner](IDENTITY.md#responsibility-and-composition)
-for policy wiring and local conformance prerequisites.
-
-Injected managed structural query clients must implement
-`filter(column, "imatch", value)` and the bounded array query. The prefilter is
-anchored and escaped, followed by exact normalized comparison; lookups select
-email and fetch at most ten candidates. Soft linking selects the oldest accepted
-contact; reconciliation requires a single accepted contact. Legacy role mapping
-belongs in the application's adapter before passing a role to the package.
+Identity depends on the declared foundation entries without changing the
+artifact's rail kind. Its seven SQL files are verbatim projections at canonical
+positions 11, 12, 29, 60, 67, 68 and 69. The reference dispatcher accepts a
+session-binding factory for separate operator delivery; bounded browser builds
+omit the admin shell. Its managed soft-account adapter binds settings assessment
+regardless of bundle selection. Runtime-schema extraction retains the boundary
+choice described in the [identity owner](IDENTITY.md).
 
 For the repository OIDC recipe, run
-`node tests/postgres/runOidcIdentityConformance.mjs` with its cached pinned issuer
+`node tests/postgres/runOidcIdentityConformance.mjs` with the cached pinned issuer
 and local prerequisites. The [recipe owner](IDENTITY.md#real-issuer-oidc-recipe)
-owns invocation and teardown limits.
-
-`createPostgresContactClientRegistrar` adds host-only guest contact resolution
-through the existing identity entry. It inserts only unlinked contacts and
-refreshes optional defaults and journey facts only while a contact is unlinked;
-linked rows remain byte-identical. See
-[guest contact resolution](IDENTITY.md#guest-checkout-contact-resolution)
-for typed refusals, exact email matching and subject-level erasure behaviour.
-
-The OIDC API adds `createOidcIdentityVerifier`,
-`deriveOidcPrincipalId`, `createPostgresAccountLinkStore` and
-`identityOidcReadiness` from `@openlup/platform/identity`, which also exports
-`OIDC_FAILURE_CODES` and `OidcFailureCode` for hosts. The browser-shared
-`@openlup/platform/identity/contracts` entry excludes OIDC refusals.
-Inject the host's selected JWT library through `IdentityJwtLibraryLoader`.
-Discovery and rotating keys load only on verification or readiness. The opt-in
-direct composition uses normal reconcile with an explicit email-trust policy,
-authenticated actor reads and live operator membership. Managed storage requires
-native federation sessions and refuses raw upstream-token composition. Run
-`node tests/postgres/runOidcIdentityConformance.mjs` from the repository root with
-its cached pinned issuer and local prerequisites; the [OIDC recipe](IDENTITY.md#real-issuer-oidc-recipe)
-owns timing, refusal, session and certification boundaries. There is no schema or
-default login flow change; existing static session verification and default
-reference/browser flows retain their runtime behaviour.
-
-The direct operator API adds `createPostgresOperatorIdentityStore`,
-`createOperatorSessionService`, `createOperatorIdentityVerifier`,
-`createOperatorAdminAuth` and `createOperatorAuthHandlers` to `./identity`.
-`./identity/contracts` exposes strict operator challenge/session schemas and
-`OperatorBrowserAuthPort` without a server or provider import. Challenge delivery
-and session signing use the existing structural ports. Operator handlers send
-the padded generic acceptance before awaiting mailbox delivery, keeping delivery
-latency out of the response. Custom HTTP composition uses the session service's
-optional acceptance callback for the same ordering. Restoration reads preserve
-in-flight browser redemption; explicit sign-out still cancels it. Active operator
-login needs no pending invitation and preserves membership and invitation history. The new store's public
-signature exposes no driver types and loads its optional driver only on use.
-
-Customer soft-account provisioning now creates unconfirmed auth users
-(`email_confirm:false`). The soft-account linker retains create-first lookup,
-normalized duplicate recovery and conditional linking. Checkout and paid-order
-retry are adopter composition that must call the linker. Failed links retain
-the provisioned identity for retry. Customer magic links keep
-`shouldCreateUser:false`: captured mailbox proof confirms that existing user;
-unknown addresses cannot sign themselves up through this path.
-
-The `./identity` server entry imports the existing identity engine, authorization,
-profile readers, session adapters and BFF factories into one capability. Its
-`./identity/contracts` entry is declared browser-safe and currently exposes the
-customer auth port, value types and provider parser. Runtime-schema extraction
-is pending the contracts-boundary choice described in the
-[identity owner page](IDENTITY.md). Both entries ship in the published package
-as an experimental development-preview capability.
-
-Identity authorizes stored operator roles only when they are `admin` or
-`distributor`; null and unknown values return `FORBIDDEN` (HTTP 403). The reference
-admin-profile reader reports those rows as non-admin, and admin magic links do
-not send for them while retaining the generic accepted response, padding and
-quota. Adopters needing legacy role mapping must do it in their own adapter
-before passing the role to the package; there is no package fallback option.
-
-Both managed contact stores match normalized addresses case-insensitively,
-including mixed-case stored contacts. Literal matching uses an anchored, escaped
-`imatch` database prefilter plus an exact `email.trim().toLowerCase()` comparison
-with the normalized input. Unicode regex folding alone cannot establish identity.
-Both lookups select email and fetch at most ten candidates. Soft linking selects
-the oldest accepted contact; reconciliation requires a single accepted contact
-and throws the existing multiple-row error if several remain. A match beyond the
-candidate bound is not selected. Injected structural query clients must implement
-`filter(column, "imatch", value)` and the bounded array query. The direct customer
-challenge already compares `lower(email)` to normalized input; no migration is
-needed.
+owns invocation and teardown. The repository's
+[bootstrap/prune commands](IDENTITY.md#direct-human-login) own maintenance wiring.
+Callable inventories remain in the
+[server API reference](../../packages/platform/api/identity.api.md) and
+[browser API reference](../../packages/platform/api/identity-contracts.api.md).
 
 Evidence (historical record, 2026-11-13):
 
@@ -323,83 +222,32 @@ witnesses and records the remaining evidence.
 
 Moved to [Identity](../../packages/core/docs/guide/concepts/identity.md#operator-invitations).
 
-The pending-invitation store uses the trusted PostgreSQL transaction lane,
-ordered membership locks and atomic membership/audit writes. Inject the store
-and parsed TTL; `createDirectOperatorIdentityDirectory` commits principal
-creation/reuse separately. Apply the complete direct catalogue through position
-67; its byte-identical package projection is not a standalone fresh chain.
-Human acceptance is separate from machine authentication.
+The direct pending-invitation store retains the trusted PostgreSQL transaction
+lane, ordered membership locks and atomic membership/audit writes. Principal
+creation commits separately. Its package projection remains at canonical
+position 67. The managed gateway's insert relies on the false `is_machine_actor`
+default; managed pending/expiry requires a separate store and reviewed forward.
 
-Managed composition uses `createInviteAdminUserGateway().activateMembership` in
-`runInviteAdminUserUseCase`. Its insert omits `is_machine_actor` and relies on
-the database default false. Consumers must parse the structured active result
-and `MEMBERSHIP_CREATED`/`ALREADY_ACTIVE` codes instead of message-only success.
-Managed pending/expiry needs a separate transactional store and reviewed forward;
-this lifecycle change adds no managed SQL, RPC or SDK dependency. See the
-[identity lifecycle owner](IDENTITY.md#operator-invitation-lifecycle).
-
-The managed chain's identity capabilities forward
+The managed identity-capabilities forward
 `20261018160000_identity_service_role_capabilities.sql` grants `service_role`
 SELECT(email) and INSERT(id, email, role, membership_state, membership_provenance,
-membership_accepted_at) on `admin_users`.
-The opt-in managed conformance replays the complete committed chain with ambient
-default ACLs removed and adds no grant. It proves immediate activation,
-repeat/concurrent recovery and revoked-member refusal under the shipped grants.
+membership_accepted_at) on `admin_users`. The opt-in conformance replays the
+complete chain with ambient default ACLs removed and adds no fixture grant.
 It does not establish managed/direct lifecycle parity.
 
-With a fresh local managed stack running, export its API URL, service key and
-PostgreSQL owner (`supabase_admin`) connection URL as `OPENLUP_MANAGED_CONFORMANCE_URL`,
-`OPENLUP_MANAGED_CONFORMANCE_SERVICE_KEY` and
-`OPENLUP_MANAGED_CONFORMANCE_DATABASE_URL`, then run from the repository root:
+With a fresh disposable local managed stack, set
+`OPENLUP_MANAGED_CONFORMANCE_URL`, `OPENLUP_MANAGED_CONFORMANCE_SERVICE_KEY` and
+`OPENLUP_MANAGED_CONFORMANCE_DATABASE_URL` (owner `supabase_admin`), then run:
 
 ```sh
 npm --workspace @openlup/platform run build
 node --import tsx tests/postgres/operatorInvitationManaged.conformance.ts
 ```
 
-The module refuses non-loopback endpoints, an already-installed public schema,
-and existing synthetic fixture identities. It retains synthetic identities;
-discard the disposable stack after the run. Its database owner connection must
-be able to replay the committed prerequisites, baseline and ordered forwards.
-
-`identity/contracts` exposes distinct direct pending-invitation and managed
-active-membership results. Matching runtime schemas remain in the server entry.
-The admin-action port returns `OperatorInviteResult`, a union of those results.
-
-`createDirectOperatorInvitationStore` provides the new pending, active, expired and
-revoked lifecycle in its trusted PostgreSQL transaction lane, including ordered
-membership locks and atomic membership/audit writes. Direct callers inject the
-store and a parsed TTL. `createDirectOperatorIdentityDirectory` commits principal
-creation/reuse separately. Apply the complete direct catalogue through position
-67; the byte-identical package projection is for inspection and composition, not
-a standalone fresh chain. Direct human acceptance is a trusted command,
-unmounted from machine authentication.
-
-Managed hosts use `createInviteAdminUserGateway().activateMembership` in
-`runInviteAdminUserUseCase`. Insertion immediately creates active `admin_users`
-membership with invitation provenance; it omits `is_machine_actor` and relies on
-the database default false. The result carries principal ID, role, active state
-and `MEMBERSHIP_CREATED` or `ALREADY_ACTIVE`, without pending timestamps or an
-invitation ID. Identical repeats and concurrent insert losers return the existing
-membership without a second notification. Role differences conflict; revoked
-members refuse with `MANAGED_REINVITE_UNSUPPORTED`. Failures retain identities
-for retry, including after notification failure. No Auth metadata store,
-first-entry acceptance, expiry or compensation is used. Magic-link eligibility
-requires active membership and a known role. Authorization, removal and admin
-`me` retain their actor bindings without a service key for lifecycle state.
-
-**Migration:** direct hosts can adopt the new pending lifecycle by applying
-`20261018120000_identity_operator_invitations` after the existing direct catalogue
-and composing the store, trusted human acceptance and parsed TTL. Existing
-memberships are preserved. Managed immediate activation is retained; managed
-consumers must now parse the structured active result and its
-`MEMBERSHIP_CREATED`/`ALREADY_ACTIVE` codes instead of message-only success.
-Duplicates return existing membership rather than `ALREADY_ADDED`, and
-notification failure returns 503 `INVITATION_NOTIFICATION_FAILED` while keeping
-membership active. Managed pending/expiry remains a compatibility gap requiring
-a separate transactional store and reviewed forward. No managed SQL, RPC or SDK
-dependency is added. See the
-[identity lifecycle owner](IDENTITY.md#operator-invitation-lifecycle).
+The runner refuses non-loopback endpoints, installed public schemas and existing
+synthetic fixture identities. It retains fixtures; discard the stack afterwards.
+Its owner connection must replay prerequisites, baseline and ordered forwards.
+See the [identity lifecycle owner](IDENTITY.md#operator-invitation-lifecycle).
 
 Evidence (historical record, 2026-11-13):
 
@@ -416,69 +264,23 @@ It does not establish managed/direct lifecycle parity.
 
 Moved to [Personal data](../../packages/core/docs/guide/concepts/personal-data.md#personal-data-coverage).
 
-Compose the direct privacy unit of work and store with the identity contributor
-and domain vetoes using the same executor. The reference subscriptions
-contributor holds a relation lock through commit. Reference retention declares
-`lifecycle_stage` and `acquisition_source`; nonempty metadata or external
-references need their own declared disposition.
+Reference identity and subscription-veto composition shares one direct executor
+and a relation lock held through commit. Opaque retention declares lifecycle and
+acquisition fields. The direct privacy receipt projection is at catalogue
+position 69; it adds no grants or functions. Challenge and erasure adapters share
+the transaction-held challenge relation lock. The managed capability forward
+supplies existing client-link and operator permissions; conformance adds no
+fixture grant or managed erasure forward.
 
-Apply the complete direct catalogue including
-`20261018190000_identity_privacy_erasures` before privacy or the updated customer
-challenge store. Its receipt table is at position 69; it adds no grants or stored
-functions. The challenge adapter and erasure share a transaction-held challenge
-relation lock. Managed export uses the structural service client; this change
-adds no managed forward or erasure grants. Exact callables and contracts remain
-in the [identity API reference](../../packages/platform/api/identity.api.md).
-
-The reference dispatcher mounts both privacy routes for managed bundles even
-without caller-supplied routes. Policy admission precedes body/query reads and,
-for direct mounts, authentication and privacy binding construction. The Admin
-Settings panel keeps exports and receipts in memory. The repository maintenance
-command prunes separate operator/customer batches. See
-[identity privacy](IDENTITY.md#identity-personal-data) for implementation wiring.
-
-Reference startup can compose identity through `createReferenceIdentity` and
-`startPublicReferenceServer({ identity })`, with explicit route functions,
-selected adapters, trusted schema/migration observation and the bundle-specific
-inventory. It consumes email-trust readiness before listening, and rejects
-unknown or unsatisfied candidates. Direct reconcile reads the existing actor
-link; direct invite/remove select the pending-invitation stores. The default
-static reference and browser page sets remain unchanged. See the
-[composition contract](IDENTITY.md#responsibility-and-composition).
-
-Both identity entries belong to the public export map and build output; artifact
-availability does not imply registry publication or release activation. Managed
-factories consume structural clients.
-
-The managed identity service-role capabilities forward in the committed chain
-supplies client link writes and operator membership insert/email-read
-permissions; the local conformance runners add no fixture grant. No migration is
-added by reference composition.
-
-The experimental identity entry exposes `createPersonalDataContributorRegistry`,
-`createIdentityPersonalDataContributor`, `createPrivacyOperations`,
-`exportPersonalData`, `erasePersonalData`, `createPrivacyExportHandler` and
-`createPrivacyEraseHandler`. Browser requests, versioned contributor documents and
-receipts come from `@openlup/platform/identity/contracts`.
-
-Managed hosts compose `createManagedPrivacyStore` with their structural service
-client for export. Coverage explicitly excludes inaccessible country and
-identity history/receipt fields. Managed erasure refuses with
-`MANAGED_PRIVACY_ERASURE_UNAVAILABLE`: a managed adopter must provide its own
-erasure path. The committed grants and structural client cannot provide the
-required mutations and atomic receipt. This change adds no managed forward or
-erasure grants. Provider identity is never deleted; any future composed provider
-erasure must disable it after committed local success. The managed refusal here
-occurs before reaching any provider mutation.
-
-Direct hosts compose `createPostgresPrivacyUnitOfWork` and
-`createPostgresPrivacyStore` with the identity contributor and their domain vetoes
-using the same executor. The reference subscriptions contributor holds a relation
-lock through commit, refusing active and paused subscriptions without changing
-them. `IdentityPrivacyPolicy.retainedContactFields` names explicit retention
-owners for populated opaque columns; unknown ownership refuses. The reference
-retains lifecycle/acquisition fields, and refuses nonempty metadata or external
-references until an owner declares their disposition.
+The reference dispatcher wraps default and supplied privacy routes before
+input reads and binding creation. Settings keeps exports and receipts in memory;
+maintenance prunes separate operator/customer batches. Reference startup uses
+`createReferenceIdentity` and `startPublicReferenceServer({ identity })` for
+bundle-specific inventory and email-trust admission before listening. Direct
+reconcile reads actor links; invite/remove select pending-invitation stores.
+Default static/browser page sets are unchanged. See
+[identity composition](IDENTITY.md#responsibility-and-composition) and
+[privacy wiring](IDENTITY.md#identity-personal-data).
 
 Evidence (historical record, 2026-11-13):
 

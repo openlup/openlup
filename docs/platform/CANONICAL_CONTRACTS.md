@@ -235,13 +235,8 @@ See the [A3 ledger](plans/oss-a3-fulfillment-adapter.md).
 
 Moved to [Payments](../../packages/core/docs/guide/concepts/payments.md#canonical-status).
 
-Keep each domain's status vocabulary separate. Adding a status or transition
-requires explicit mapping, persistence compatibility, and tests for refusal,
-replay and ordering.
-
-Preserve the raw evidence needed for diagnosis in a bounded form, map it once,
-and refuse impossible transitions. Late,
-duplicate, or out-of-order evidence must not regress a terminal canonical fact.
+Adding a status or transition requires explicit mapping, persistence
+compatibility, and regression coverage for refusal, replay and ordering.
 
 ## Idempotency
 
@@ -251,12 +246,6 @@ Preserve each incumbent replay protocol when moving adapters. Bundle key
 recognition must not become a fingerprint guarantee through documentation or a
 refactor. Changes to concurrent key collision or rollback behavior need dedicated
 database regression coverage.
-
-Idempotency keys are opaque values with documented derivation and scope. An
-operation, a provider attempt, a customer journey, and an inbound event may
-require different keys; do not collapse them into one user-controlled value.
-Persist the ledger before reporting success, and make concurrent repeats resolve
-to one canonical effect.
 
 Evidence (historical record, 2026-11-13):
 
@@ -462,39 +451,11 @@ changes follow the compatibility lifecycle in [Data and migrations](DATA_AND_MIG
 Managed M2 owns durable exhaustion/recovery continuity; the core compatibility
 helper must remain separate from explicit owner pauses. The native chain in
 `db/platform/migrations` uses lifecycle functions rather than the managed
-status-transition trigger. Its retry-case propagation calls
-`dunning_lifecycle_handle_failure` from
+status-transition trigger, which fires before every managed status update.
+Native retry-case propagation calls `dunning_lifecycle_handle_failure` from
 [`subscription_retry_open_case`](../../packages/platform/sql/20261109100000_subscription_retry_resume.sql).
-The failure handler has no exhaustion-rung fence: preserve the distinction
-between a class-terminated retry and `isDunningLadderExhausted` when changing
-that call path.
-
-The
-managed SQL guard `public.subscription_guard_status_transition` fires before
-every status update.
-
-After exhaustion the same case remains repairable; on the portable
-chain `dunning_lifecycle_record_recovery` closes it when the money moves.
-Subscriptions already paused and cases already expired under the earlier rule
-keep their separate resume behaviour. A plain resume must not be used for such a
-subscription, because it neither skips the uncollected cycle nor moves a stale
-`next_cycle_at`; the managed `subscription_resume_after_expired_dunning` and the
-engine's `resumeSubscriptionFromExpiredDunning` handle it.
-
-It can send a win-back message to a
-cancelled subscriber. With the lifecycle-closure forward, its trusted command
-port also reactivates a cancelled subscription after charge-timing confirmation,
-using healthy method and renewal-term evidence and leaving old unpaid cycles terminal.
-Its dunning rail, `dunning_lifecycle_handle_failure`, keeps active subscriptions
-active on dunning exhaustion (invariant repair). A NULL next retry leaves the
-case open and repairable through `dunning_lifecycle_record_recovery`, queues the
-final notice and records the exhaustion event, and returns `paused=false`,
-`pauseWindowId=null`, `terminal=true` without creating a pause window or changing
-subscription or cycle dates.
-
-A future caller must not call it with NULL unless
-`isDunningLadderExhausted` holds for the refused cycle. A case cut short earlier
-must stay open without that call.
+Its failure handler has no exhaustion-rung fence; preserve the distinction
+between class termination and exhaustion when changing that call path.
 
 Evidence (historical record, 2026-11-13):
 
@@ -514,21 +475,11 @@ See the [managed prefix and proof limits](DATA_AND_MIGRATIONS.md#managed-stock-w
 
 Moved to [Subscriptions](../../packages/core/docs/guide/concepts/subscriptions.md#subscription-delivery-alignment).
 
-The native fulfillment translation uses `fulfillment_shipments.replaces_shipment_id` and
-order → cycle → subscription correlation, with cycle number on the renewal
-operation. Its admission guard applies only to NEW cycle admission/insert;
-existing-cycle retries in renewal operations and dunning bypass admission and
-neither mint nor consume receipts. The native graph gains no `retry_scheduled`
-state and the payments lifecycle is unchanged. Automatic alignment still requires an
-actual arrival; missing correlation remains manual review. Native invoker
-privileges and complete catalogue installation are described in
+The native fulfillment translation uses `fulfillment_shipments.replaces_shipment_id`
+and order → cycle → subscription correlation, with cycle number on the renewal
+operation. It adds no `retry_scheduled` state or payment lifecycle change.
+Native invoker privileges and catalogue ownership remain in
 [Data and migrations](DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories).
-
-Once a row names an earlier parcel through
-`replaces_fulfillment_order_id`, that superseded predecessor is no longer an
-outstanding obligation; the latest unsuperseded replacement remains outstanding
-until it reaches the customer. Its arrival may settle the predecessor's case as
-`aligned` without fabricating `delivered_at` for the parcel that never arrived.
 
 ## Compatibility posture
 
@@ -611,11 +562,8 @@ It requires an already-local immutable Node 24.21.0 image argument for H1/H2.
 [CI image mirror guidance](../../CONTRIBUTING.md#ci-image-mirror) owns retry
 budgets, refusal boundaries, mirror execution and the owner's GHCR setup.
 
-The opt-in direct OIDC settings registry declares issuer and separate customer
-and operator API audiences. Selecting them adds no browser provider or default
-login route. Invalid or overlapping audiences refuse composition; managed bundles
-retain native federation sessions. The [identity contract](IDENTITY.md#opt-in-oidc-access-tokens)
-owns the additive verifier API, deterministic principal mapping and refusals.
+The opt-in OIDC settings registry and reference verifier composition retain the
+[identity owner](IDENTITY.md#opt-in-oidc-access-tokens).
 
 The disposable identity reference's run directory, run id and local mail origin
 are evaluation settings bound to one owned installation. They establish no
@@ -623,12 +571,9 @@ persistent customer identifier, package API version or migration contract. The
 selected browser import inventory is independent of the public default build;
 server credentials do not become browser configuration.
 
-The environment registry declares `IDENTITY_EMAIL_VERIFYING_PROVIDERS` as an
-optional server-only value with an empty default. Managed identity hosts parse
-its comma-separated provider identifiers as explicit assertions of mailbox
-verification; malformed declarations refuse configuration. This setting changes
-email-association admission, without changing stored identities or schema. See
-[identity policy and migration](IDENTITY.md#responsibility-and-composition).
+The managed email-trust declaration remains an environment-registry input;
+[identity composition](IDENTITY.md#responsibility-and-composition) owns its
+settings binding and migration-free source change.
 
 The runtime forward registry may pin exactly eight legacy browser-policy
 retirements alongside its fixed function and privilege bindings. Retirement
@@ -656,10 +601,7 @@ permissions.
 Changes must preserve the contracts above and state their preview
 compatibility boundary explicitly.
 
-While `@openlup/core` is below 1.0, every `@openlup/*` package is released in
-one set version `0.N.P` from one commit, each package with its own tag
-`openlup-<package>-v<version>` at that commit, and a source preview carries no
-package. `release:bump --set` prepares every publishable package's version,
+`release:bump --set` prepares every publishable package's version,
 and every exact internal pin on one, in its manifest and lockfiles.
 `packages:check` and `@openlup/core`'s release check admit only a set version
 below 1.0, `packages:check` refuses publishable packages at different
@@ -736,7 +678,8 @@ through that aggregate; follow [testing](../../CONTRIBUTING.md#test-scope-and-di
 for execution and proof limits. These checks do not grant application privileges
 or declare complete compatibility evidence. Existing release context checks remain unchanged.
 
-The outbox rail is a local experimental package candidate in the package catalogue. Its exact core peer, export snapshots and shipped baseline hash are separate from publication eligibility. Admission compares the complete observed set and selected adapter facts; unknown inventory or probe state cannot activate a candidate.
+The outbox catalogue candidate retains separate core-peer, export-snapshot and
+shipped-baseline pins; those pins do not grant publication eligibility.
 
 Evidence (historical record, 2026-11-13):
 
@@ -1199,20 +1142,10 @@ existing marketing imports, ports and observations, including
 `NewsletterSyncProviderPort`. Result unions remain closed; new adapters must
 retain authority checks without silently widening existing ports.
 
-The development-preview communications entries expose the same 17 type-only
-marketing-sync declarations in
-[`marketingSync.ts`](../../packages/platform/src/communications/contracts/marketingSync.ts).
-The four families have five operations: `profile.sync`, `consent.read`,
-`erasure.request`, `erasure.read` and additive `consent.push`. This contract
-supplies no provider implementation or activation.
-
 The private construction mapper resolves opaque subjects and owned targets.
-Brands supplement schema, binding, audience, subject, case and journal checks;
-a cast or deserialized receipt grants no authority. Admission saves validated,
-immutable effect evidence before dispatch and rechecks generation and tombstones
-after awaits. Remote subscribed state never grants local consent.
-The `NegativeFeedback` discriminant
-union is readonly, matching its other fields.
+Admission stores validated immutable effect evidence before dispatch and
+rechecks generation and tombstones after awaits. The type declarations live in
+[`marketingSync.ts`](../../packages/platform/src/communications/contracts/marketingSync.ts).
 
 Evidence (historical record, 2026-11-13):
 
@@ -1237,46 +1170,6 @@ Keep provider effect mappings and proof requirements with adapter design.
 Implementations must preserve no-trigger admission, suppression safety, safe
 audience withdrawal and all-purpose authority checks without widening the
 original provider ports.
-
-`ConsentPushRequest`, `ConsentPushResult` and `ConsentPushPort` reuse the frozen
-binding, subject, failure and capability types without widening the original
-provider.
-
-The existing capability declaration is intersected with `consent.push` and its
-`grantEffect: "audience" | "account-wide"`. Both directions require support and
-owner TEST evidence; missing evidence remains `verification_pending`. No-trigger
-admission covers every declared effect, including other-audience profile-consent
-flows, segments and backfills for account-wide grant effects. Unaccounted armed
-flows, unsafe DOI mail, suppression-clearing subscribe or unknown suppression
-coverage refuse grants. Historical import is never an admission bypass.
-
-Withdrawals dispatch immediately even when remote consent is unknown or an
-earlier grant is unsettled, subject to local authority, identity, safe scope and
-ordinary admission minus exactly the fence caused by this subject's unresolved
-grants (ambiguous acceptance, failed recording, unresolved dispatch or partial
-persistence). Another subject's grant-caused uncertainty never holds a withdrawal.
-Availability quarantine held exclusively by grant causes is exempt across subjects;
-any non-grant cause keeps it closed. Durable non-grant ledger quarantine, storage
-faults, the single in-flight slot, pacing and the withdrawal's same-key replay
-fence still apply. Account-level provider cooling returns `retryable/cooling`
-with finite positive `afterSeconds` for the host to retry. Non-grant quarantine
-requires explicit host repair. A pending
-or unconfirmed withdrawal blocks grants for that subject/audience; account-wide
-withdrawal covers every audience. Unresolved dispatch still fences duplicate sends.
-
-Accepted means durable intent; acknowledged includes documented asynchronous
-acceptance. Neither completes or proves subscribed/unsubscribed state. Both success
-variants require boolean `reconcileRequired`. A dispatched withdrawal whose own
-recording fails reports accepted/acknowledged with `journal: "unknown"`, never
-confirmed persistence. If an earlier grant is unsettled or
-its settlement cannot be established, withdrawal returns `true`; replay retains
-that unresolved race and remote state counts as UNKNOWN regardless of journal
-confirmation or an early unsubscribed read. Only `consent.read` after all earlier
-grant jobs settle can resolve it. Pending, unknown or insufficient readback leaves
-it unresolved. The adapter adds no job API, executor, callback or automatic retry.
-Receipt evidence stays the original admitted request while the
-result echoes the current call; replay identity excludes generation and rejects
-changed audience, action or evidence with `invalid_request`.
 
 Evidence (historical record, 2026-11-13):
 

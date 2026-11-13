@@ -37,11 +37,6 @@ Source inventory under `src/subscription/`:
 carry the shapes; `subscriptionEngineUtils.ts` carries the shared pure helpers.
 When changing refusals, add a `SubscriptionEngineErrorCode` rather than an exception.
 
-`subscriptionEngineTypes.ts` and `types.ts` carry the shapes
-(`EngineSubscription`, `EngineCycle`, `EngineEvent`, the status unions, the
-template snapshot) and `subscriptionEngineUtils.ts` the small pure helpers the
-groups above share (`addCadenceDays`, `parseIso`, `validateTemplate`,
-`isTerminalCycle`, `touchSubscription`, `makeEvent`, `success`, `failure`, …).
 
 ## No I/O, and no ambient clock
 
@@ -69,12 +64,6 @@ Moved to [Subscription engine](guide/concepts/subscription-engine.md#the-retry-l
 Keep the SQL retry rail's terminating-class singleton synchronized with
 `cycleHardening.ts`; the parity test fails if the spellings drift.
 
-`terminatingFailureClasses` lets a refusal's *class*, rather than the rung it
-reached, end the ladder. `DEFAULT_CYCLE_RETRY_CADENCE` ships exactly one member:
-`["hard_do_not_retry"]`. That class says the issuer refused the instrument, not
-only this charge, so no retry rung can change the answer; every other shipped
-failure class keeps the full ladder.
-
 ## The status matrix and dunning continuity
 
 Moved to [Subscription engine](guide/concepts/subscription-engine.md#the-status-matrix-and-dunning-continuity), [Subscriptions](guide/concepts/subscriptions.md#lifecycle-in-durable-storage).
@@ -83,9 +72,8 @@ Keep the engine's four-status matrix synchronized with the managed SQL guard
 `public.subscription_guard_status_transition`; the guard's remaining edges
 belong to activation.
 
-Managed SQL still
-hard-codes exhaustion at rung 4 in its dunning, recovery and due-list guards;
-a custom core cadence does not configure those durable boundaries.
+Managed SQL hard-codes exhaustion at rung 4 in its dunning, recovery and
+due-list guards.
 
 ## Consuming it from a host application
 

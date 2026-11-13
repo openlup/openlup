@@ -7,15 +7,15 @@ Shipped package-local sources are relative to this package. Other sources link t
 Repository paths, imports and relative links inside verbatim excerpts describe that source checkout, not files to find or create in your application.
 Consult installed declarations and README for the installed version.
 
-<!-- openlup-context-inventory [{"id":"extend-platform","source":"https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md","heading":"Extension seams","startLine":551,"endLine":572,"sha256":"e19b10b92b357c2630911d7239ae234bd556e20a413a6d0228203966bf27656a"},{"id":"canonical-status","source":"docs/guide/concepts/payments.md","heading":"Canonical status","startLine":7,"endLine":60,"sha256":"e3b56cbcc4fc4b619fd8c6e73b574563eea8b54fe5863d24afe124de1dd17df1"},{"id":"late-payment-cycle","source":"docs/guide/concepts/subscription-engine.md","heading":"A late payment shifts the cycle; it never compresses it","startLine":65,"endLine":85,"sha256":"df3a8e0f35ffa6a62b4758f2c58f2abffe4137c3f80e20c6fadf72b9f2bf4ad3"},{"id":"subscription-layer-delivery","source":"docs/guide/concepts/subscriptions.md","heading":"Installed subscription boundary","startLine":8,"endLine":27,"sha256":"d93ab6ab2337641da4d2d38279f6b5a1afc96a61577a3765f5399ea04de31c80"}] -->
+<!-- openlup-context-inventory [{"id":"extend-platform","source":"https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md","heading":"Extension seams","startLine":261,"endLine":282,"sha256":"e19b10b92b357c2630911d7239ae234bd556e20a413a6d0228203966bf27656a"},{"id":"canonical-status","source":"docs/guide/concepts/payments.md","heading":"Canonical status","startLine":7,"endLine":64,"sha256":"02e09ec849dd134c9f6aa2f88d278e2744e3459e330d2e21aea8065003944af9"},{"id":"late-payment-cycle","source":"docs/guide/concepts/subscription-engine.md","heading":"A late payment shifts the cycle; it never compresses it","startLine":65,"endLine":85,"sha256":"df3a8e0f35ffa6a62b4758f2c58f2abffe4137c3f80e20c6fadf72b9f2bf4ad3"},{"id":"subscription-layer-delivery","source":"docs/guide/concepts/subscriptions.md","heading":"Installed subscription boundary","startLine":8,"endLine":27,"sha256":"d93ab6ab2337641da4d2d38279f6b5a1afc96a61577a3765f5399ea04de31c80"}] -->
 
 ## extend-platform: Choose an extension seam
 
-Source: [OpenLup source repository at openlup-core-v0.39.0](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#L551-L572).
+Source: [OpenLup source repository at openlup-core-v0.39.0](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#L261-L282).
 
 The paths `src/lib/coreDomains.ts`, `src/domains`, `server/domains` and the `#application-domains` import below belong to the OpenLup source repository. They are not required application files or aliases; use your application's own composition.
 
-<!-- openlup-context {"id":"extend-platform","source":"https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md","heading":"Extension seams","startLine":551,"endLine":572,"sha256":"e19b10b92b357c2630911d7239ae234bd556e20a413a6d0228203966bf27656a"} -->
+<!-- openlup-context {"id":"extend-platform","source":"https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md","heading":"Extension seams","startLine":261,"endLine":282,"sha256":"e19b10b92b357c2630911d7239ae234bd556e20a413a6d0228203966bf27656a"} -->
 ## Extension seams
 
 Extensions belong at explicit seams:
@@ -44,7 +44,7 @@ module at its own boundary.
 
 Source: [docs/guide/concepts/payments.md](docs/guide/concepts/payments.md).
 
-<!-- openlup-context {"id":"canonical-status","source":"docs/guide/concepts/payments.md","heading":"Canonical status","startLine":7,"endLine":60,"sha256":"e3b56cbcc4fc4b619fd8c6e73b574563eea8b54fe5863d24afe124de1dd17df1"} -->
+<!-- openlup-context {"id":"canonical-status","source":"docs/guide/concepts/payments.md","heading":"Canonical status","startLine":7,"endLine":64,"sha256":"02e09ec849dd134c9f6aa2f88d278e2744e3459e330d2e21aea8065003944af9"} -->
 ## Canonical status
 
 A payment intent records the local payment obligation and its money; an attempt
@@ -98,6 +98,10 @@ The payment transitions exported from `@openlup/core/payment`
 [verified evidence contracts](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/src/payments/contracts/evidence.ts)
 define these separate boundaries. Other commerce domains have their own status
 types; do not substitute payment statuses for them.
+
+Retain bounded diagnostic evidence inside the adapter and map provider facts
+once; diagnosis must not weaken transition refusals or allow late evidence to
+regress a terminal canonical fact.
 
 <!-- /openlup-context -->
 

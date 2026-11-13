@@ -110,6 +110,9 @@ is not exhaustion.
 failure and dunning operations. Configuring core alone does not configure a
 host's durable retry or recovery guards.
 
+`hard_do_not_retry` identifies refusal of the instrument, so another retry rung
+cannot make that instrument eligible.
+
 ## The status matrix and dunning continuity
 
 `SUBSCRIPTION_STATUS_TRANSITIONS` is frozen; `canTransitionSubscriptionStatus`

@@ -27,6 +27,23 @@ deployment route policy: their `mutation` classification returns HTTP 503 with
 reason `adopter_policy_required` under the public default, including for operator
 `me`.
 
+Supply SDK clients or loaders, feature admission, request-ID observation, rate
+limits, message text, sender and deployment URLs in server composition. Factories
+use the foundation BFF envelope. `IdentityJwtLibrary.jwtVerify` implementations
+must accept optional `currentDate?: Date` and `clockTolerance?: number` options
+and return `{ payload: IdentityJwtClaims }`; the claims shape permits additional
+string-keyed claims. The package loads the injected JWT library on use.
+
+Managed contact lookup uses an anchored, escaped `imatch` prefilter followed by
+exact `email.trim().toLowerCase()` comparison, with at most ten candidates.
+Soft linking selects the oldest accepted contact; reconciliation requires one
+accepted contact and rejects multiple matches. A match beyond the bound is not
+selected. Injected query clients must implement `filter(column, "imatch", value)`
+and bounded array queries. Supply `emailTrustPolicy` on custom
+`ClientAuthLinkStore` implementations. Legacy operator-role mapping belongs in
+your adapter before passing the role to identity; null or unknown roles return
+HTTP 403 / `FORBIDDEN` without a fallback.
+
 ## Customer sign-in and email trust
 
 Direct customer sign-in issues an opaque challenge for an existing contact.
@@ -64,8 +81,8 @@ The managed policy caches valid safe or unsafe settings for 60 seconds and
 unavailable settings for five seconds. A failed refresh never reuses expired
 trust. Configuration changes can therefore take time to affect a serving
 process. `identityEmailTrustReadiness` reports a refused policy as
-`OPENLUP_E_PORT_MISSING`, subject `emailTrustPolicy`, with the precise email-trust
-code in `observation`. The reference admission helper distinguishes unsafe
+`OPENLUP_E_PORT_MISSING`, module `identity`, subject `emailTrustPolicy`, with the
+precise email-trust code in `observation`. The reference admission helper distinguishes unsafe
 settings (`unsatisfied`), unavailable settings (`unknown`) and configuration
 errors (`OPENLUP_E_ENV_MISSING`).
 
@@ -76,6 +93,13 @@ Reconciliation refuses unverified email with `NO_VERIFIED_EMAIL`, reserved
 principals with `RESERVED_PRINCIPAL_REFUSED`, mismatched linked email with
 `PRINCIPAL_EMAIL_MISMATCH`, and competing links with
 `EMAIL_OWNED_BY_OTHER_PRINCIPAL` or `ACCOUNT_LINK_CONFLICT`.
+
+Checkout and paid-order retry must explicitly call the soft-account linker if
+they need provisioning. It attempts creation first, recovers normalized duplicate
+identities and writes the link conditionally. Existing-link replay precedes
+policy assessment; failed linking retains the provisioned identity. For managed settings assessment,
+`IDENTITY_EMAIL_VERIFYING_PROVIDERS` is a server-only, comma-separated declaration
+with an empty default. Malformed declarations refuse configuration.
 
 ## Magic-link destinations
 
@@ -99,6 +123,10 @@ Customer `returnTo` accepts only a same-origin root-relative path.
 and fragment data. It omits absolute or protocol-relative destinations,
 backslashes, controls, encoded separators and nested escapes, leaving the
 callback's default landing page. Application request validation can be narrower.
+
+Origin-configuration refusal retains the 400 ms padding floor independently
+of the requested identity. The host supplies callback paths. A return-path
+normalization that would produce a leading `//` is omitted as unsafe.
 
 ## Operator invitations
 
@@ -139,7 +167,35 @@ after persistence. The direct invitation stays pending; managed membership stays
 active. Retrying returns `ALREADY_INVITED` or `ALREADY_ACTIVE` without resending.
 Treat the failure as a delivery problem, not as proof that membership was undone.
 
+Compose `createDirectOperatorInvitationStore` with a parsed lifetime from
+`readOperatorInvitationTtl` or `parseOperatorInvitationTtl`, and
+`createDirectOperatorIdentityDirectory` for separate principal creation.
+`OperatorInvitationStore` owns issue, read, acceptance and removal.
+`OperatorInviteResult` distinguishes pending direct results from active managed
+results; matching runtime schemas are in the server entry and browser result
+types are in `identity/contracts`. Managed callers use
+`createInviteAdminUserGateway().activateMembership` through
+`runInviteAdminUserUseCase` and must parse structured results rather than
+message-only success. Managed pending invitations and expiry are not supplied.
+
+Successful issue returns HTTP 200 with principal ID and role; pending results
+also include issue time and deadline. Role/identity conflicts, already-active
+direct membership and unsupported managed reinvitation return HTTP 409.
+Notification failure preserves the direct invitation ID or active managed
+principal/role; the BFF envelope reports `UPSTREAM_UNAVAILABLE` with identity
+code `INVITATION_NOTIFICATION_FAILED`. There is no notification-retry command
+or expiry worker. Direct expiry is evaluated lazily using the database clock
+and records one system audit event. Managed removal keeps self, machine-target
+and last-administrator refusals; magic links require an active known role.
+
 ## Direct human login
+
+The reference browser selects direct operator auth through
+`VITE_OPERATOR_AUTH_PROVIDER_KIND=direct`; the server uses
+`PLATFORM_BUNDLE=node-postgres`. An absent browser choice preserves managed auth;
+other nonempty values refuse. Bundle selection alone does not enable login.
+When composed, the operator login page offers an email link or pasted token;
+bounded evaluation builds do not supply the admin shell.
 
 ### Challenge delivery and redemption
 
@@ -169,6 +225,12 @@ transaction. Exactly one redemption succeeds. Active operators can sign in
 again without creating another invitation or changing membership history.
 Expiry, replay, changed email or lost eligibility return `UNAUTHORIZED`;
 malformed request envelopes return `BAD_REQUEST`.
+
+The browser callback consumes `/admin/auth/callback#operator_token=…`, removes
+the token fragment before asynchronous work and redeems once, including repeated
+component mounting. The token is 43 base64url characters. Challenge delivery and
+session signing use injected structural ports; `OperatorBrowserAuthPort` and
+strict challenge/session schemas are available from `identity/contracts`.
 
 ### First-administrator bootstrap
 
@@ -208,6 +270,15 @@ available if storage fails. It has no refresh token. It rechecks operator `me`
 when restoring a session and clears a current session on authorization denial,
 expiry or sign-out. A transport outage can retain the current tab's session;
 protected server requests still need live authorization.
+
+Window focus also rechecks `me`. A denial (HTTP 401/403 or an unsupported role)
+clears the current tab session; a network or upstream failure preserves it until
+another check or expiry. Restoration and focus checks cannot cancel an in-flight
+redemption or clear a newer session. Sign-out or a newer successful redemption
+supersedes the old attempt. Pasted-token and callback login report success only
+after the session and live admin-state checks finish. The browser clears its
+query cache on expiry or sign-out. Customer identity and exact machine
+credentials retain separate authorization.
 
 ### Retention and recovery
 
@@ -274,6 +345,32 @@ transactions, so a failed order can leave an unlinked contact. The registrar
 installs no public endpoint, automatic challenge delivery or marketing consent;
 downstream writers still need their own authority and erasure checks.
 
+Construct the server-only registrar with `{ connectionString }` and close its
+pool with `close()`. `ensureContactClient` returns
+`{ ok: true, clientId, created, linked }` or `{ ok: false, code }`; operational
+errors reject and roll back. Call it at purchase submission after checkout
+admission, terms, quotas and bounded request/concurrency checks, rather than
+on each configurator render. An unverified buyer can enter another person's
+email: the new purchase can belong to that contact without granting existing
+account access.
+
+`profileDefaults` accepts optional nullable `firstName` and `lastName` (at most
+80 characters each), `phone` (64) and `country` (2). The registrar does not
+normalize these values or freeze them as an order's delivery contact.
+`journey` requires an `idempotencyKey` of 8–160 characters, `locale` of 1–35
+and mode `one_time` or `subscription`. Its checkout metadata contains
+`lastIntentIdempotencyKey`, locale, mode and `clientMatchReason` of
+`client_created` or `client_match_exact_email`; absent journey preserves metadata.
+Raw email is bounded to 320 characters; acquisition source is nonempty trimmed
+text with a raw limit of 100; lifecycle stage is `lead`, `customer` or `inactive`.
+
+The separate account-link lookup trims stored email and can return
+`account_normalized_email_ambiguous` for a space-padded legacy row beside its
+canonical peer. The email challenge can still sign in the canonical contact.
+The registrar does not repair those legacy identities. Retaining journey facts
+under an explicit privacy policy never reconnects a fresh contact to erased
+history.
+
 ## Opt-in OIDC access tokens
 
 `createOidcIdentityVerifier` explicitly verifies access tokens from an OpenID
@@ -335,3 +432,22 @@ For the exact callable contracts, see the
 and [browser contracts](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/identity-contracts.api.md).
 The [package surface reference](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/README.md#package-surface)
 owns capability maturity.
+
+Configure `IDENTITY_OIDC_ISSUER`, `IDENTITY_OIDC_CUSTOMER_AUDIENCE` and
+`IDENTITY_OIDC_OPERATOR_AUDIENCE` in the direct host. Principal derivation hashes
+UTF-8 `openlup:oidc-principal:v1`, a NUL byte and `JSON.stringify([issuer, subject])`
+with SHA-256, then takes 16 bytes and sets UUID version 8 and RFC variant bits.
+Preserve that mapping when provisioning operator principals; existing random
+operator IDs are not migrated automatically.
+
+A signing key may omit `use` or use `sig`; an absent `alg` is inferred from key
+type and curve. Certificate metadata does not affect key selection. Compact-JWS
+headers and payloads must be bounded JSON objects before discovery; preliminary
+algorithm/issuer rejection grants no authority before signature and claim checks.
+Readiness reports discovery validity and loaded keys with check/expiry timestamps:
+`ready`, transport `unknown` or invalid `unsatisfied`. Import `OIDC_FAILURE_CODES`
+and `OidcFailureCode` from the server identity entry; browser contracts exclude
+OIDC refusals. Detailed codes distinguish configuration, discovery and key
+validity from unavailable transport/library dependencies, unknown or rate-limited
+keys, issuer/audience mismatch, invalid signatures, time/lifetime and subject/email
+refusals. Register verifier observations in the host's readiness composition.

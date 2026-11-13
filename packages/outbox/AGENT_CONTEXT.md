@@ -7,7 +7,7 @@ Shipped package-local sources are relative to this package. Other sources link t
 Repository paths, imports and relative links inside verbatim excerpts describe that source checkout, not files to find or create in your application.
 Consult installed declarations and README for the installed version.
 
-<!-- openlup-context-inventory [{"id":"configure-dispatch","source":"README.md","heading":"Dispatch configuration and optional diagnostics","startLine":49,"endLine":65,"sha256":"e7a3e7c564b70a20f0ab73d6d1df54a03f44540c10d5615e57371942ec6d71da"},{"id":"install-outbox","source":"README.md","heading":"PostgreSQL installation and transactions","startLine":66,"endLine":75,"sha256":"7b0ce57ce577ee91f317b0b766d3a15d3a3c6eee54849241c307b58bfd44070c"},{"id":"outbox-retry-dispatch-handler-idempotency","source":"https://github.com/openlup/openlup/blob/openlup-outbox-v0.39.0/packages/core/docs/guide/concepts/idempotency.md","heading":"Idempotency contract","startLine":7,"endLine":69,"sha256":"a3d54b09cfa67c5e3c7cf98b12442fcda5047bd41c3a83f3fea5983c301a2de6"}] -->
+<!-- openlup-context-inventory [{"id":"configure-dispatch","source":"README.md","heading":"Dispatch configuration and optional diagnostics","startLine":49,"endLine":65,"sha256":"e7a3e7c564b70a20f0ab73d6d1df54a03f44540c10d5615e57371942ec6d71da"},{"id":"install-outbox","source":"README.md","heading":"PostgreSQL installation and transactions","startLine":66,"endLine":75,"sha256":"7b0ce57ce577ee91f317b0b766d3a15d3a3c6eee54849241c307b58bfd44070c"},{"id":"outbox-retry-dispatch-handler-idempotency","source":"https://github.com/openlup/openlup/blob/openlup-outbox-v0.39.0/packages/core/docs/guide/concepts/idempotency.md","heading":"Idempotency contract","startLine":7,"endLine":75,"sha256":"c22db737e286cd19ef4d00f7df13c6f4d40e0e3b0869c57bf7fb116bc351796e"}] -->
 
 ## configure-dispatch: Configure dispatch and diagnostics
 
@@ -52,9 +52,9 @@ Prune defaults to 30 days for processed and 90 for discarded, in batches of 500.
 
 ## outbox-retry-dispatch-handler-idempotency: Keep handler effects idempotent across retries
 
-Source: [OpenLup source repository at openlup-outbox-v0.39.0](https://github.com/openlup/openlup/blob/openlup-outbox-v0.39.0/packages/core/docs/guide/concepts/idempotency.md#L7-L69).
+Source: [OpenLup source repository at openlup-outbox-v0.39.0](https://github.com/openlup/openlup/blob/openlup-outbox-v0.39.0/packages/core/docs/guide/concepts/idempotency.md#L7-L75).
 
-<!-- openlup-context {"id":"outbox-retry-dispatch-handler-idempotency","source":"https://github.com/openlup/openlup/blob/openlup-outbox-v0.39.0/packages/core/docs/guide/concepts/idempotency.md","heading":"Idempotency contract","startLine":7,"endLine":69,"sha256":"a3d54b09cfa67c5e3c7cf98b12442fcda5047bd41c3a83f3fea5983c301a2de6"} -->
+<!-- openlup-context {"id":"outbox-retry-dispatch-handler-idempotency","source":"https://github.com/openlup/openlup/blob/openlup-outbox-v0.39.0/packages/core/docs/guide/concepts/idempotency.md","heading":"Idempotency contract","startLine":7,"endLine":75,"sha256":"c22db737e286cd19ef4d00f7df13c6f4d40e0e3b0869c57bf7fb116bc351796e"} -->
 ## Idempotency contract
 
 An idempotency key names a logical operation within a scope. A request fingerprint
@@ -70,6 +70,12 @@ intent and local execution key. Its separate fingerprint includes provider,
 intent, amount, currency, mode and order reference. The adapter passes the host's
 attempt identity, key, fingerprint and configured money through; that contract
 does not replace a durable host ledger or prove provider-side deduplication.
+
+Treat keys as opaque identities within their documented scope. A customer
+journey can need its own identity alongside command, attempt and inbound-event
+keys; do not collapse them into one user-controlled value. Commit the durable
+ledger before reporting success, using the operation's concurrency protocol to
+converge repeats on its canonical effect.
 
 Replay guarantees are operation-specific:
 

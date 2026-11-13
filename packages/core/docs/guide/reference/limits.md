@@ -39,6 +39,10 @@ In the tables, “—” means the boundary has no dedicated refusal code.
 | Edit a subscription without base lines or a price context | The editor reports a blocked template; it does not invent a fallback. | `starter_subscription_template_unavailable` |
 | Opt in to sized servicing during a fixed introductory phase | The edit is rejected until the introductory restrictions allow it. | `subscription_edit_invalid_intro_fixed` |
 
+Captured sized-renewal receipts include a parcel note only when frozen
+quantities, physical sizes and cadence are provable and the subscription is
+still sized when sent. Classic, acquisition and unprovable parcels omit it.
+
 ## Partner intake and reviews
 
 | Action | What happens | Refusal code |
@@ -51,6 +55,21 @@ In the tables, “—” means the boundary has no dedicated refusal code.
 | Treat partner inquiry as consent, conversion or a privacy workflow | Inquiry submission does not grant marketing consent or convert a customer. Partner privacy export/erasure is not supplied. | —; intake only |
 | Run risk screening | Risk is disabled; the visible action refuses. | `starter_risk_disabled` |
 
+Configured support appears as plain text with an account link; missing contact
+configuration is stated explicitly. Partner submission, operator list/transition
+and review read/submit/list/moderation need the runtime database connection.
+
+Intake allows five requester attempts and three email attempts per 60 minutes.
+Replay is checked before quotas. Repeated contact submissions conflict without
+a time-based deduplication expiry. Public success exposes only a case reference;
+contact details require the authorized operator view.
+
+The tester application is a durable public submission of an address choice,
+email, explicit consent and locale. It accepts no name or raw source/reference/
+revision/provenance fields, and exposes only a case reference. There is no
+operator acquisition endpoint. Reinstalling a changed or inactive demonstration
+address tuple returns `starter_acquisition_seed_conflict` and rolls back.
+
 ## Purchase composition boundaries
 
 | Action | What happens | Refusal code |
@@ -58,6 +77,35 @@ In the tables, “—” means the boundary has no dedicated refusal code.
 | Take real payments, set up a payment method, replace a card or use cumulative refunds or absence reopening | Only sandbox payment attempts are available. These actions do not pause or freeze an existing subscription. | `native_prepared_attempt_store_unsupported` |
 | Use an email address alone to access an existing purchase | Guest checkout is available, but existing-order access needs an owned customer session or an admitted recovery link. A recovery link grants no account or subscription-command access. | `customer_session_required` for account actions; `starter_recovery_unavailable` for unavailable recovery authority |
 | Change the address of a parcel already in flight through the customer action | The destination change applies from the next parcel; the parcel in flight keeps its address. | —; result `applied_from_next_parcel` |
+
+A new checkout issues a random 256-bit recovery token; only its SHA-256 hash
+is stored in the database. The creating response and private recovery message
+carry it, never an authentication challenge or event. Creation, reminder-wave
+and signed-in recovery links end 24 hours after order creation and preserve
+earlier links. Expiry-notice links instead last 30 days from order creation and
+refer to the terminal source. Operator issuance revokes earlier order links and
+expires at the earlier of issuance plus 24 hours or order creation plus 30 days.
+Payment prevents further payment through every link. Payment-case links rotate
+separately with one live link per case.
+
+Completion removes the URL token before fetching configuration or rendering.
+Requests carry it in the body; tab memory and session storage support reloads
+without granting authority. An unchanged repeated submit keeps its token when
+the response omits it. A different order never inherits it. Saving a new token
+in a tab does not revoke other links.
+
+A live pending-order link can continue sandbox payment after a decline.
+Eligible expired initial checkouts, including system-abandoned ones, can create
+a fresh order within 30 days after the source was created. Frozen re-quoting,
+unchanged supported content, stock and proven prior non-settlement are required.
+The terminal source is never paid. Token pay or exact-cookie retry can act on
+the same pending replacement; the ordinary simulator cannot start an attempt
+on that replacement. Paid presentation takes priority over any stored attempt.
+
+Guest purchase needs no account. Checkout retains the email contact; sign in
+with that email to view the purchase through an owned session. A customer
+address result of `applied` confirms an update; `applied_from_next_parcel`
+means an in-flight parcel keeps its current destination.
 
 ## Subscription mode price
 
@@ -70,6 +118,32 @@ In the tables, “—” means the boundary has no dedicated refusal code.
 | Submit an invalid or overlong purchase email | The configured input bound is checked before contact resolution. | `starter_email_invalid` |
 | Treat demonstration market inputs as real tax or compliance certification | The starter uses fictional market and test-currency inputs. Subscription quotes use the installed pricing and acquisition rules; demonstration prices are not a real-market certification. | —; demonstration inputs only |
 
+Catalogue estimates apply the configured subscription rate and rounding quantum
+to each unit before quantity. `mode_discount` explains an included benefit;
+it is not another order-level deduction. Installed quote and acquisition rules
+own checkout totals and first-subscription terms. The first-subscription offer
+is available through that quote/acceptance flow.
+
+An identical price seed adds no entries; customer environments need their own
+onboarding and acceptance keyring. Recreating the demonstration container rotates
+its key, so unsubmitted subscription quotes must refresh. Restarting the same
+container preserves the key.
+
+Exact checkout replay keeps the command key, normalized email and requester and
+uses no further quota. Changed identity under a retained key refuses before
+contact resolution, even with a replaced quota callback. Capacity exhaustion
+fails closed; denied attempts add no quota count. Both quota and identity
+records reset on process restart. Unpurchased-contact retention remains the
+application owner's duty.
+
+Purchase and sign-in use the same configured email bound, at most 160 characters.
+Phone and postal-code fields share the native destination bounds. Cadences and
+the default are whole days from 1 through 120; checkout accepts at most 50 lines
+and 99 units per line within the configured total. Stock and unit prices fit
+PostgreSQL integers, with positive prices for every offered mode. Tax legal-basis
+text is at most 200 characters; the legal revision is trimmed, nonempty and at
+most 64. Configuration outside these bounds refuses before startup.
+
 ## Paid-order message capture
 
 | Action | What happens | Refusal code |
@@ -77,12 +151,26 @@ In the tables, “—” means the boundary has no dedicated refusal code.
 | Deliver paid-order receipts to real recipients | Messages are captured privately on the local filesystem. A captured receipt does not establish email delivery. Subscription notices use their own local capture. | —; no real email transport |
 | Use paid-order mail capture as a general event dispatcher | That dispatcher selects paid-order mail only. A settlement event can remain pending independently. | —; other events are not dispatched by this worker |
 
+A paid order with an emitted paid-mail event and contact produces one private
+message record; unpaid and cancelled orders emit no such event. Reclaimed sends
+deduplicate. Running the one-shot renewal command also drains paid mail when
+renewal execution is disabled. A pending settlement event neither creates a
+message record nor blocks the paid receipt.
+
 ## Subscription care
 
 | Action | What happens | Refusal code |
 | --- | --- | --- |
 | Collect retention consent in the portal | No retention-consent capture is provided. Newsletter preferences do not grant retention consent; scheduled winback uses the native retention gate. | —; no consent capture control |
 | Use signed unsubscribe or a legacy participant unsubscribe source | Signed unsubscribe is unbound. The legacy action has no participant source and refuses locally. | `host_binding_required` for signed unsubscribe; `native_legacy_tester_source_unavailable` for the legacy action |
+
+Skip, slide, pause, resume, cancellation/save offers, order-now and reactivation
+use trusted host timing. Browser data cannot establish charge eligibility.
+Pause and cancel remain available with an open payment case, subject to the
+in-flight fence. Winback retains the native default-on retention gate.
+The portal shows native refusals and recorded delivery outcomes;
+no generic edit verbs are mounted. A trusted host can record retention consent
+through the native routine, while the portal supplies no consent-capture control.
 
 ## Account and operator bindings
 
@@ -98,6 +186,10 @@ In the tables, “—” means the boundary has no dedicated refusal code.
 | Grant newsletter consent or manage another consent purpose through account preferences | The account endpoint allows newsletter read/withdraw only. | `host_binding_required` |
 | Request an invoice correction | This appends a request, without a fiscal correction, refund, notification or operator case workflow. Repeated keys are not deduplicated. | —; request recording only |
 
+Replacement creation, complete fulfillment cancellation and customer name/phone
+editing are available through native bindings. Account-event history excludes
+private payloads. Creating a replacement supplies no arrival confirmation.
+
 ## Expired checkout recovery and order holds
 
 | Action | What happens | Refusal code |
@@ -108,12 +200,36 @@ In the tables, “—” means the boundary has no dedicated refusal code.
 | Place or release an order hold without human-admin authority and a provisioned commerce operator | Both checks repeat for every command, including replay. | `operator_required` |
 | Select a saved subscription address while the upcoming cycle is locked | A fresh selection refuses; existing order and parcel destinations stay unchanged. | `starter_payment_blocked` |
 
+Eligible expired orders retain one Pay action. Draft, lineage and attempt
+receipts keep replay on one replacement and attempt. Reloading a dispatched
+replacement reads that attempt independently of the source link's continuation
+lifetime. Simulator controls require the inspected bearer/lineage/receipt and
+disappear after capture.
+
+Recovery uses the email from the original immutable private checkout capture,
+not a current account email or later profile edit. Deleting that capture makes
+recreation refuse; later notices cannot reconstruct it. Captures are personal
+data. The application owner must provide mailbox access, retention and deletion;
+the starter supplies no mailbox export/erasure procedure. Private captures stay
+outside served assets, logs, traces and public reports.
+
+Distributors and administrators without the provisioned Commerce row cannot
+issue or replay holds. A locked upcoming cycle returns `starter_payment_blocked` for
+address changes; existing order and parcel destinations remain unchanged.
+
 ## Unpaid cancellation and manual refund records
 
 | Action | What happens | Refusal code |
 | --- | --- | --- |
 | Cancel an unpaid order without confirmation or with incompatible payment/order state | Confirmation and a valid reason are required. Payment uncertainty or a conflicting state can refuse cancellation. This does not cancel a subscription or dispatched parcel. | `starter_input_invalid` or `starter_order_transition_conflict` |
 | Use manual refund marking to move money | The operator records a refund already completed outside the app. This does not send money, issue a fiscal reversal, send a refund email or change a subscription. | —; external refund record only |
+
+Read the exact order, enter a trimmed reason of 1–2,000 characters and confirm
+the shown consequence. Unpaid cancellation releases only held purchase
+reservations; dispatched, indeterminate or captured payment evidence can refuse
+it. Each command and replay rechecks human-admin authority and its Commerce
+operator. Caller identity, missing confirmation, invalid reason, stale state and
+conflicting commands refuse; native receipts retain replay identity.
 
 ## Return requests and decisions
 
@@ -125,11 +241,26 @@ In the tables, “—” means the boundary has no dedicated refusal code.
 | Restock a return | The visible action refuses; a return decision does not restock. | `starter_return_restock_unavailable` |
 | Execute a monetary return refund | The visible action refuses; full, partial and no-refund decisions record intent only. | `starter_monetary_refund_unavailable` |
 
+A customer requests configured reason codes and positive item quantities from
+their own paid or fulfilled order and keeps the returned reference. Full, partial
+(including zero) and no-refund decisions record intent; partial requires an
+amount. A repeated decision retains its original note. Every decision and replay
+rechecks the Commerce operator after fresh membership admission. No decision
+changes a subscription.
+
 ## Optional payment guidance
 
 | Action | What happens | Refusal code |
 | --- | --- | --- |
 | Infer a real method, instrument or provider advice from a sandbox decline | Guidance can identify a verified generic decline only. Missing or unusable guidance leaves the existing completion presentation unchanged; this read creates no payment or credential. | —; optional guidance may be absent |
+
+The atomic guidance snapshot binds the exact order bearer, client, intent and
+current attempt. Sandbox evidence does not identify an instrument, operation or
+consecutive same-method refusal count. Synthetic choices use the explicit
+sandbox registry. Missing or unsupported evidence, ineligible orders,
+indeterminate attempts, observed success and read failures preserve the existing
+presentation. No raw evidence or attempt history reaches the browser; this read
+creates no notification or mutation.
 
 ## Operator shipment evidence
 
@@ -140,6 +271,23 @@ In the tables, “—” means the boundary has no dedicated refusal code.
 | Hand off a historical parcel without recorded reservation associations | No current stock is acquired as a substitute; inspect the handoff result. | —; result `reservationDisposition: "reservations_not_recorded"` |
 | Automatically purge stored label URLs and raw shipment payloads | No automatic retention cleanup is supplied. The application owner must control retention and authorized cleanup, including copies and backups. URL expiry does not delete stored evidence. | —; owner-managed cleanup |
 
+Read the exact parcel and confirm each label, handoff or tracking action.
+Every command and replay requires a fresh active human administrator; body-supplied
+identities and command keys refuse. Labels require a provider namespace and
+tracking number. Reusing a tracking identity across orders in the same namespace
+or encountering unattributed conflicting history refuses. Same-order reassignment
+and raw label-key replay keep their native receipt behavior.
+
+Handoff consumes the recorded parcel reservations once. Before a fresh
+nonterminal tracking event, parcel state and any supplied same-order reference
+must be admitted. Terminal replay and earlier chronology repair keep their
+native rules. Delivered evidence records actual arrival; explicit-zone occurrence
+times can repair it earlier. Later inputs cannot postpone arrival, replace the
+original receipt or move the next subscription cycle earlier.
+
+Authorized operator detail can show label URLs. Full label requests and tracking
+payloads stay private; customer/account/public-tracking views do not expose them.
+
 ## Saved addresses and scoped preferences
 
 | Action | What happens | Refusal code |
@@ -149,6 +297,28 @@ In the tables, “—” means the boundary has no dedicated refusal code.
 | Use a saved preference as a payment instrument or provider activation | Payment and delivery selections are scoped preferences only. They do not install an instrument, activate a provider or charge. | —; preference storage only |
 | Export or erase all customer data through the starter | There is no HTTP export/erasure workflow. Application owners must complete privacy coverage and own access, retention and cleanup of saved data and private captures. | —; no export/erasure endpoint |
 
+The account page can read, create, edit and delete owned saved addresses.
+Address command replay returns the current book without another write. Deleting
+a missing or foreign row acknowledges zero deletion and returns only the caller's
+book; editing a foreign row refuses.
+
+An active or paused subscription can select an owned shipping/both address.
+An admitted key replays before saved-ID parsing and returns the current pointer.
+Null recipients stay null. Editing the saved row affects future materialization;
+retained renewal operations and existing parcels keep immutable destinations.
+The selection changes neither cadence, commercial terms nor billing.
+
+Payment/delivery preferences use one-time, subscription or any scope. They append
+no account events. Renewal chooses subscription scope before any scope and keeps
+an explicit delivery choice. Incomplete locker pickup addresses can be saved
+but are skipped during renewal delivery selection.
+
+Billing profile create/read/edit/delete includes company identity fields and
+owned tax normalization/checksum validation. Foreign edits refuse; deleting a
+foreign or missing profile acknowledges zero deletion. Address-book responses
+include owned billing profiles. Default snapshots are redacted, unapplied hints:
+they install no instrument or profile on an existing order.
+
 ## Sandbox token payment and exact continuation
 
 | Action | What happens | Refusal code |
@@ -157,9 +327,48 @@ In the tables, “—” means the boundary has no dedicated refusal code.
 | Keep cookie-authorized controls after signing-key loss or rotation | Missing signing material leaves those controls unavailable; rotation invalidates old cookies. Keep the private acceptance-key root stable across restarts. | `starter_continuation_required` for inline retry without valid claims |
 | Treat the embedded-browser send-link confirmation as delivery or payment | The cookie-authorized control captures a link in the private mailbox. Sending/enqueueing, local capture and payment are separate outcomes. | —; local capture only |
 
+Dedicated token pay accepts the two registered synthetic choices on a live
+checkout continuation. Admission reuses the latest owned descendant, intent and
+reservation and refuses expired/revoked authority, renewals, terminal orders and
+unresolved attempts. A later explicit retry can dispatch on that same replacement.
+
+Only a fresh dispatched sandbox attempt mints continuation; checkout creation
+does not. Private claims bind the real order, client, intent, attempt and rail.
+The cookie is Secure, HttpOnly, SameSite=Strict with Path=/ and its bounded native
+lifetime. Keep raw cookies, tokens and keys out of logs and public reports.
+An exact failed predecessor and admitted guidance require a stable retry nonce.
+Competing nonces, current-attempt checks and replay use atomic admission.
+Response-loss replay returns the one dispatched replacement without another
+dispatch and rotates its cookie. Captured, terminal, expired or stale targets
+refuse before simulator effects. A still-live token can use dedicated pay when
+an unregistered attempt cannot authorize inline retry. No method-hold policy is
+configured; real execution, method setup and card replacement remain unavailable.
+
+The send/send-again buyer control appears only in detected embedded browsers
+after continuation exists. Detection grants no authority. Verified cookie claims
+select order/client and the saved checkout recipient; sends deduplicate within
+ten minutes. Sent confirmation survives remounting, sending again stays reachable
+and failures offer retry. Sending, private capture and payment remain separate.
+
 ## Billing profiles and frozen invoice buyers
 
 | Action | What happens | Refusal code |
 | --- | --- | --- |
 | Use captured invoices as fiscal documents | Invoice history and downloads are sandbox artifacts. | —; non-fiscal documents |
 | Change an already captured invoice buyer by editing a profile/address | Buyer facts are frozen when the first invoice obligation is created. Later profile/address changes do not rewrite them; historical obligations are not backfilled. | —; immutable captured buyer |
+
+On first invoice duty, explicit order buyer facts take precedence. Otherwise
+the default or latest owned profile and billing/both address are selected
+independently, with recorded shipping as the address fallback. Without either,
+the buyer uses a marked shipping fallback. The snapshot keeps line2 and source
+provenance. Recreation copies explicit buyer facts only when present; absent
+facts stay absent for first-duty selection. Later edits or deletion cannot
+change captured buyers, installed invoice facts or issued bytes.
+Customer invoice history checks ownership; operator summary requires a current
+human administrator.
+
+Capture and subscription activation commit separately. An outage between them
+is not an atomic purchase/activation guarantee. Privacy contributors cover
+billing, addresses, preferences and parcel contacts; application owners still
+supply identity/subscription coverage, account-event retention and authorized
+private-capture cleanup.
