@@ -183,13 +183,24 @@ $$;
 CREATE FUNCTION public.subscription_method_uses_recorded_refs(p_subscription_id uuid)
 RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM public.payment_method_refs WHERE subscription_id=p_subscription_id)
-  OR EXISTS(SELECT 1 FROM public.subscription_method_states WHERE subscription_id=p_subscription_id AND provider_kind IS NOT NULL);
+  OR EXISTS(SELECT 1 FROM public.subscription_method_states WHERE subscription_id=p_subscription_id AND provider_kind IS NOT NULL)
+  OR EXISTS(SELECT 1 FROM public.payment_provider_states WHERE subscription_id=p_subscription_id)
+  OR EXISTS(SELECT 1 FROM public.subscription_retry_obligations o JOIN public.subscription_retry_receipts r ON r.obligation_id=o.id
+   WHERE o.subscription_id=p_subscription_id AND r.kind='failure' AND r.input->>'provider' IS NOT NULL AND r.input->>'paymentAttemptId' IS NOT NULL);
 $$;
 CREATE FUNCTION public.payment_method_ref_for_subscription_read(p_subscription_id uuid,p_method_ref text,p_as_of timestamptz)
-RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
- SELECT to_jsonb(m) FROM public.payment_method_refs m JOIN public.subscriptions s ON s.id=m.subscription_id AND s.client_id=m.client_id
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE method public.payment_method_refs; result jsonb;
+BEGIN
+ SELECT m.* INTO method FROM public.payment_method_refs m JOIN public.subscriptions s ON s.id=m.subscription_id AND s.client_id=m.client_id
  WHERE m.subscription_id=p_subscription_id AND m.provider_method_ref=p_method_ref AND m.active AND m.status='active'
+  AND (m.expires_at IS NULL OR m.expires_at>p_as_of) FOR SHARE OF m;
+ -- Rotation does not take the subscription lock. Re-read eligibility after acquiring the method lock.
+ SELECT to_jsonb(m) INTO result FROM public.payment_method_refs m JOIN public.subscriptions s ON s.id=m.subscription_id AND s.client_id=m.client_id
+ WHERE m.id=method.id AND m.subscription_id=p_subscription_id AND m.provider_method_ref=p_method_ref AND m.active AND m.status='active'
   AND (m.expires_at IS NULL OR m.expires_at>p_as_of);
+ RETURN result;
+END;
 $$;
 CREATE FUNCTION public.payment_method_recovery_authority_read(p_authority_id uuid)
 RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
@@ -343,8 +354,10 @@ BEGIN
  IF case_row.status<>'open' OR subscription.status<>'active' THEN RETURN jsonb_build_object('scheduled',false,'reason','recovery_not_ready'); END IF;
  SELECT * INTO cycle FROM public.subscription_cycles WHERE id=case_row.cycle_id AND subscription_id=subscription.id FOR UPDATE;
  SELECT * INTO obligation FROM public.subscription_retry_obligations WHERE cycle_id=cycle.id AND case_id=case_row.id FOR UPDATE;
+ IF cycle.id IS NULL OR cycle.status<>'payment_pending' THEN RETURN jsonb_build_object('scheduled',false,'reason','cycle_not_retryable'); END IF;
+ IF obligation.id IS NULL THEN RETURN jsonb_build_object('scheduled',false,'reason','recovery_not_ready'); END IF;
  -- Native unpaid retries retain payment_pending; the waiting obligation owns the ladder.
- IF cycle.id IS NULL OR cycle.status<>'payment_pending' OR obligation.id IS NULL OR obligation.state<>'waiting' THEN
+ IF obligation.state<>'waiting' THEN
   RETURN jsonb_build_object('scheduled',false,'reason','cycle_not_retryable'); END IF;
  SELECT * INTO method FROM public.payment_method_refs WHERE subscription_id=subscription.id AND client_id=subscription.client_id
   AND provider_method_ref=btrim(p_payment_method_ref) AND active AND status='active' AND (expires_at IS NULL OR expires_at>now()) ORDER BY updated_at DESC LIMIT 1;
@@ -1401,7 +1414,9 @@ BEGIN
       AND s.next_cycle_at>=now()+make_interval(secs=>p_renewal_min_seconds)
       AND s.next_cycle_at<=now()+make_interval(secs=>p_renewal_max_seconds)
       -- Active-method eligibility is intentionally distinct from unattended chargeability.
-      AND (CASE WHEN public.subscription_method_uses_recorded_refs(s.id) THEN public.subscription_method_health_read(s.id) ELSE (SELECT to_jsonb(legacy) FROM public.subscription_method_states legacy WHERE legacy.subscription_id=s.id) END)->>'health_state' IN ('healthy','mandate_not_chargeable_unattended')
+      AND CASE WHEN public.subscription_method_uses_recorded_refs(s.id) THEN
+        EXISTS(SELECT 1 FROM public.payment_method_refs m WHERE m.subscription_id=s.id AND m.active AND m.status='active')
+        ELSE EXISTS(SELECT 1 FROM public.subscription_method_states legacy WHERE legacy.subscription_id=s.id AND legacy.health_state IN ('healthy','mandate_not_chargeable_unattended')) END
       AND NOT EXISTS(SELECT 1 FROM public.subscription_cycles c WHERE c.subscription_id=s.id AND c.status IN ('payment_pending','retry_scheduled'))
       AND s.updated_at<now()-make_interval(secs=>CASE WHEN
         jsonb_typeof(public.subscription_renewal_purchase_terms(s.id)#>'{renewalTerms,starterPack}')='object'
@@ -1817,10 +1832,13 @@ BEGIN
   RAISE EXCEPTION 'subscription_retry_not_due_or_ambiguous' USING ERRCODE='22023'; END IF;
  real_method:=public.subscription_method_uses_recorded_refs(o.subscription_id);
  IF real_method THEN
-  SELECT * INTO real_authority FROM jsonb_populate_record(NULL::public.payment_method_recovery_authorities,public.payment_method_recovery_authority_read(o.method_recovery_authority_id));
+  SELECT recorded.* INTO real_authority FROM jsonb_populate_record(NULL::public.payment_method_recovery_authorities,public.payment_method_recovery_authority_read(o.method_recovery_authority_id)) recorded
+   WHERE recorded.retry_attempt=o.retry_attempt;
   IF (o.retry_attempt>=4 OR o.failure_class='hard_do_not_retry') AND (real_authority.id IS NULL OR real_authority.retry_attempt<>o.retry_attempt OR real_authority.dispatch_key IS NOT NULL) THEN
    RAISE EXCEPTION 'subscription_retry_recovery_not_authorized' USING ERRCODE='22023'; END IF;
-  IF NOT public.subscription_method_chargeable_unattended(o.subscription_id,p_now) OR public.payment_method_ref_for_subscription_read(o.subscription_id,p_input->>'paymentMethodRef',p_now) IS NULL OR
+  IF public.payment_method_ref_for_subscription_read(o.subscription_id,p_input->>'paymentMethodRef',p_now) IS NULL THEN
+   RAISE EXCEPTION 'subscription_missing_payment_method_ref' USING ERRCODE='22023'; END IF;
+  IF NOT public.subscription_method_chargeable_unattended(o.subscription_id,p_now) OR
    (real_authority.id IS NOT NULL AND (real_authority.retry_attempt<>o.retry_attempt OR real_authority.dispatch_key IS NOT NULL OR real_authority.method_ref IS DISTINCT FROM p_input->>'paymentMethodRef' OR NOT EXISTS(SELECT 1 FROM public.commerce_checkout_recovery_tokens t WHERE t.id=real_authority.token_id AND t.revoked_at IS NULL AND t.expires_at>p_now) OR real_authority.revoked_at IS NOT NULL)) THEN
    RAISE EXCEPTION 'subscription_retry_method_mismatch'; END IF;
  ELSE

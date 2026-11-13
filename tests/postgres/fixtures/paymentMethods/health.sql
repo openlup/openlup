@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(15);
+SELECT plan(16);
 INSERT INTO public.clients (id, email, first_name, last_name) VALUES
   ('b1000000-0000-0000-0000-000000000011', 'mh-healthy@example.invalid', 'Hana', 'Healthy'),
   ('b1000000-0000-0000-0000-000000000012', 'mh-model-m@example.invalid', 'Mona', 'Mandate'),
@@ -39,6 +39,11 @@ INSERT INTO public.payment_method_refs (
   ('b1000000-0000-0000-0000-000000000016', 'b3000000-0000-0000-0000-000000000016', 'simulator', 'card', 'mh_expiring', 'active', true, now() + interval '10 days', '{}'::jsonb),
   ('b1000000-0000-0000-0000-000000000017', 'b3000000-0000-0000-0000-000000000017', 'simulator', 'card', 'mh_far_expiry', 'active', true, now() + interval '90 days', '{}'::jsonb),
   ('b1000000-0000-0000-0000-00000000001a', 'b3000000-0000-0000-0000-00000000001a', 'simulator', 'card', 'mh_inactive', 'active', false, NULL, '{}'::jsonb);
+
+INSERT INTO public.subscriptions(id,client_id,cadence_days,status,next_cycle_at)
+VALUES('b2000000-0000-0000-0000-000000000006','b1000000-0000-0000-0000-000000000015',28,'active','2026-09-01T00:00:00Z');
+INSERT INTO public.payment_method_refs(client_id,subscription_id,provider_kind,method_kind,provider_method_ref,status,active)
+VALUES('b1000000-0000-0000-0000-000000000011','b2000000-0000-0000-0000-000000000006','simulator','card','foreign-client-method','active',true);
 
 SELECT has_view(
   'public', 'subscription_method_health',
@@ -149,6 +154,12 @@ SELECT ok(
       AND acl.grantee = 0 AND acl.privilege_type = 'EXECUTE'
   ),
   'the internal arbiter is owner-callable and browser/PUBLIC closed');
+
+SELECT is(
+  (SELECT health_state FROM public.subscription_method_health
+    WHERE subscription_id = 'b2000000-0000-0000-0000-000000000006'),
+  'method_missing',
+  'W2: a cross-client method ref reads as no method, matching the charge path');
 
 SELECT * FROM finish();
 ROLLBACK;

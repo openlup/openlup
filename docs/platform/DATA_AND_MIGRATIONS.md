@@ -714,6 +714,13 @@ The authority writers record token context, record the method binding and freeze
 that binding at dispatch; they accept stored identifiers and facts, not SQL or
 object names. Store transfer must retain all three row-holding relations.
 
+Repair authority applies only to its recorded retry rung. After that attempt
+fails, later automatic rungs use the current usable method and preserve the spent
+authority's dispatch history. Admission holds a shared lock on the exact method
+through commit and rechecks usability after acquiring that lock. Recorded provider
+or renewal-attempt context selects this path even when historical method refs are
+absent; a healthy legacy label cannot select sandbox compatibility for that work.
+
 The retry driver consumes a recorded provider failure through its original
 immutable receipt key and input. It validates the operation, sequence, logical
 cycle and attempt evidence before replay, so another caller key cannot advance

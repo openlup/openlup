@@ -3,6 +3,7 @@ import { createPostgresProviderPaymentControlPort, createPostgresPaymentMethodSt
   createPostgresPaymentWebhookMethodRefPort, createVerifiedPaymentIngress, consumePostgresPaymentMethodDelivery,
   applyPostgresPaymentMethodLifecycleEvent, schedulePostgresRetryOnDurableMethodUpdate, createPostgresRecordedSubscriptionMethodReader } from "@openlup/platform/payments";
 import type { VerifiedMethodEvidence } from "@openlup/platform/payments/contracts";
+import type { RenewalFrozenSnapshot } from "@openlup/platform/subscriptions/contracts";
 import { createSelfServiceCommandFacade } from "@openlup/platform/account-support";
 import { createNativeRetryDriver, createPostgresRetryStore, NATIVE_SUBSCRIPTION_CAPABILITIES } from "@openlup/platform/subscriptions";
 import type { PaymentMethodLifecycleEvent, PaymentMethodReplacementFacts } from "@openlup/core/payment";
@@ -40,7 +41,7 @@ it("preserves every replaced function's signature, security, configuration and A
   expect(originalHeaders).toHaveLength(16);
   expect(await headers()).toEqual(originalHeaders);
 });
-it.each([["replayed", 7], ["subscription_switch", 4], ["consent_snapshot_merge", 8], ["scope_repair", 24], ["health", 15]] as const)("retains %s assertions on native PostgreSQL", async (file, count) => {
+it.each([["replayed", 7], ["subscription_switch", 4], ["consent_snapshot_merge", 8], ["scope_repair", 24], ["health", 16]] as const)("retains %s assertions on native PostgreSQL", async (file, count) => {
   try {
     const response = await db.query(readFileSync(`tests/postgres/fixtures/paymentMethods/${file}.sql`, "utf8"));
     const results = Array.isArray(response) ? response : [response];
@@ -152,9 +153,16 @@ it("keeps setup ingress retryable after a concrete method write failure and clos
 });
 
 it("retains safe historical refusals, dry-run bounds, fingerprint exclusions and direct switch semantics", async () => {
-  const f = await subject(), m = await method(f, "historical-mirror", { recurringModel: "O", source: "first" }, false);
-  await db.query("INSERT INTO public.subscription_method_states(subscription_id,health_state,method_ref,method_kind) VALUES($1,'healthy',$2,'card')", [f.subscription, m.reference]);
+  const f = await subject(), reference = "historical-mirror";
+  await db.query("INSERT INTO public.subscription_method_states(subscription_id,health_state,method_ref,method_kind) VALUES($1,'healthy',$2,'card')", [f.subscription, reference]);
+  expect((await db.query("SELECT count(*)::int AS n FROM public.payment_method_refs WHERE provider_method_ref=$1", [reference])).rows[0].n).toBe(0);
+  const missingBefore = await methodRows();
   expect(await createPostgresRecordedSubscriptionMethodReader(db).read(f.subscription)).toEqual({ kind: "unavailable", reason: "method_ref_not_recorded" });
+  expect(await call(db, "payment_method_ref_repair_subscription_scope", ["missing-historical", f.subscription, AT, "native-test"]))
+    .toMatchObject({ paymentMethodRefScopeRepair: { status: "skipped", reason: "no_matching_method_ref" } });
+  // Scope-repair refusal records its receipt, but never manufactures a reusable method.
+  expect((await methodRows()).payment_method_refs).toEqual(missingBefore.payment_method_refs);
+  const m = await method(f, reference, { recurringModel: "O", source: "first" }, false);
   const before = (await db.query("SELECT to_jsonb(m) AS row FROM public.payment_method_refs m WHERE id=$1", [m.id])).rows;
   expect(await call(db, "payment_method_ref_repair_subscription_scope_batch", [100, false, "native-test"])).toMatchObject({ paymentMethodRefScopeRepairBatch: { apply: false, repairableCount: 1, repairedCount: 0 } });
   expect((await db.query("SELECT to_jsonb(m) AS row FROM public.payment_method_refs m WHERE id=$1", [m.id])).rows).toEqual(before);
@@ -227,39 +235,6 @@ it("rebinds undispatched authority, clears quarantine, preserves rung/counters a
   expect(await call(db, "subscription_try_schedule_recovery_retry", [f.caseId, c.reference, AT, "method_ref_webhook"])).toMatchObject({ scheduled: false, reason: "cycle_not_retryable" });
 });
 
-it("keeps authority writes behind bounded service helpers and preserves the raw-table fence", async () => {
-  const f = await declined(), m = await method(f, randomUUID(), { recoveryCaseId: f.caseId });
-  const hash = randomUUID().replaceAll("-", "").repeat(2);
-  // The host supplies its existing invoker grants. No new private table is among them.
-  await db.query(`GRANT SELECT,INSERT,UPDATE ON public.subscriptions,public.subscription_renewal_operations,
-    public.subscription_retry_obligations,public.commerce_checkout_recovery_tokens,public.subscription_dunning_cases,
-    public.subscription_retry_recovery_authorizations,public.subscription_method_states,public.subscription_retry_receipts,
-    public.subscription_cycles,public.commerce_settlement_intents,public.fulfillment_inventory_reservations,
-    public.fulfillment_stock_current,public.fulfillment_inventory_reservation_lines,public.commerce_orders TO service_role;
-    GRANT EXECUTE ON FUNCTION public.dunning_lifecycle_issue_recovery_token(uuid,text,timestamptz),
-    public.subscription_retry_authorize_recovery(uuid,uuid,text,text,timestamptz),public.subscription_retry_schedule_recovery(uuid,text,uuid,timestamptz),
-    public.subscription_retry_prepare(uuid,text,jsonb,timestamptz) TO service_role`);
-  await db.query("SET ROLE service_role");
-  try {
-    for (const table of ["payment_method_refs", "payment_method_ref_receipts", "payment_method_recovery_authorities"]) {
-      await expect(db.query(`SELECT * FROM public.${table}`)).rejects.toMatchObject({ code: "42501" });
-      await expect(db.query(`DELETE FROM public.${table}`)).rejects.toMatchObject({ code: "42501" });
-      await expect(db.query(`INSERT INTO public.${table} DEFAULT VALUES`)).rejects.toMatchObject({ code: "42501" });
-    }
-    await expect(call(db, "payment_method_recovery_authority_record", [randomUUID(), f.caseId])).rejects.toThrow("payment_method_recovery_authority_context_mismatch");
-    await expect(call(db, "payment_method_recovery_authority_bind", [f.operation, randomUUID(), m.reference, m.id, AT])).rejects.toThrow("subscription_retry_recovery_not_authorized");
-    await expect(call(db, "payment_method_recovery_authority_freeze", [randomUUID(), f.operation, "unauthorized", m.reference, AT])).rejects.toThrow("payment_method_recovery_authority_dispatch_mismatch");
-    expect(await call(db, "dunning_lifecycle_issue_recovery_token", [f.caseId, hash, "2027-11-13T00:00:00Z"])).toMatchObject({ issued: true });
-    const token = (await db.query("SELECT id FROM public.commerce_checkout_recovery_tokens WHERE token_hash=$1", [hash])).rows[0].id;
-    const authority = await call(db, "subscription_retry_authorize_recovery", [f.operation, token, m.reference, m.id, AT]);
-    expect(await call(db, "subscription_retry_schedule_recovery", [f.operation, "runtime-schedule", authority.id, AT])).toMatchObject({ scheduled: true });
-    await expect(call(db, "payment_method_recovery_authority_freeze", [authority.id, f.operation, "too-early", m.reference, AT])).rejects.toThrow("payment_method_recovery_authority_dispatch_mismatch");
-    expect(await call(db, "subscription_retry_prepare", [f.operation, "runtime-dispatch", { ...request(f), paymentMethodRef: m.reference }, "2026-11-14T12:00:00Z"])).toMatchObject({ execute: true });
-    expect(await call(db, "payment_method_recovery_authority_read", [authority.id])).toMatchObject({ dispatch_key: "runtime-dispatch" });
-    await expect(call(db, "payment_method_recovery_authority_freeze", [authority.id, f.operation, "another-key", m.reference, AT])).rejects.toThrow("payment_method_recovery_authority_dispatch_mismatch");
-  } finally { await db.query("RESET ROLE"); }
-});
-
 it("allows an exhausted rung only through recorded token authority without replenishing its budget", async () => {
   const f = await declined(), m = await method(f, randomUUID(), { recoveryCaseId: f.caseId });
   await db.query("UPDATE public.subscription_retry_obligations SET retry_attempt=4,next_retry_at=NULL WHERE id=$1", [f.obligation]);
@@ -322,4 +297,125 @@ it("consumes the provider owner's canonical failure once and replays its origina
   expect(before[0].retry_attempt).toBe(1);
   expect(before[1].filter((row: { outcome: string }) => row.outcome !== "opened")).toHaveLength(1);
   expect(before[2]).toHaveLength(1); expect(before[3]).toBeNull();
+});
+
+
+async function methodRows() {
+  const rows: Record<string, unknown> = {};
+  for (const table of ["subscriptions", "subscription_cycles", "subscription_renewal_operations", "subscription_retry_obligations",
+    "subscription_retry_receipts", "subscription_retry_recovery_authorizations", "subscription_dunning_cases", "subscription_events",
+    "subscription_method_states", "payment_method_refs", "payment_method_ref_receipts", "payment_method_recovery_authorities", "commerce_checkout_recovery_tokens",
+    "commerce_orders", "commerce_settlement_intents", "fulfillment_inventory_reservations"]) {
+    rows[table] = (await db.query(`SELECT to_jsonb(t) AS row,xmin::text AS version FROM public.${table} t ORDER BY to_jsonb(t)::text`)).rows;
+  }
+  return rows;
+}
+
+it("refuses historical provider work without reusable refs or recorded recovery context with zero state change", async () => {
+  const f = await declined();
+  // Provider/renewal context remains recorded even when the method mirror predates reusable refs.
+  await createPostgresProviderPaymentControlPort(db, { dunningTemplateSlug: "failed", recoveryUrlPath: "/recover", recoveryTemplateSlug: "recovered" })
+    .createIntent({ idempotencyKey: `historical:${f.operation}`, targetKind: "subscription_cycle", orderId: f.original.orderId,
+      subscriptionId: f.subscription, subscriptionCycleId: (await db.query("SELECT cycle_id FROM public.subscription_retry_obligations WHERE id=$1", [f.obligation])).rows[0].cycle_id,
+      amountMinor: f.snapshot.totalAmountMinor, currency: "XXX", metadata: {}, channelKey: "fixture", at: AT });
+  await db.query("INSERT INTO public.subscription_method_states(subscription_id,health_state,method_ref,method_kind) VALUES($1,'healthy','legacy-ref','card')", [f.subscription]);
+  const token = randomUUID();
+  await db.query("INSERT INTO public.commerce_checkout_recovery_tokens(id,token_hash,order_id,client_id,expires_at) VALUES($1,$2,$3,$4,'2027-11-13')",
+    [token, randomUUID().replaceAll("-", "").repeat(2), f.original.orderId, f.client]);
+  const before = await methodRows();
+  expect(await call(db, "subscription_method_uses_recorded_refs", [f.subscription])).toBe(true);
+  expect(await createPostgresRecordedSubscriptionMethodReader(db).read(f.subscription)).toEqual({ kind: "unavailable", reason: "method_ref_not_recorded" });
+  await expect(call(db, "subscription_retry_prepare", [f.operation, "historical-no-ref", { ...request(f), paymentMethodRef: "legacy-ref" }, AT]))
+    .rejects.toThrow("subscription_missing_payment_method_ref");
+  await expect(call(db, "subscription_retry_authorize_recovery", [f.operation, token, "legacy-ref", "legacy-evidence", AT]))
+    .rejects.toThrow("subscription_retry_recovery_not_authorized");
+  expect(await methodRows()).toEqual(before);
+  const m = await method(f, "recorded-after-history", { recoveryCaseId: f.caseId }), recordedBefore = await methodRows();
+  await expect(call(db, "subscription_retry_authorize_recovery", [f.operation, token, m.reference, m.id, AT]))
+    .rejects.toThrow("subscription_retry_recovery_not_authorized");
+  expect(await methodRows()).toEqual(recordedBefore);
+});
+
+it("returns recovery_not_ready for an open payment_pending case without reconstructing an obligation", async () => {
+  const f = await subject(), cycle = randomUUID(), caseId = randomUUID(), m = await method(f);
+  await db.query("INSERT INTO public.subscription_cycles(id,subscription_id,scheduled_at,status) VALUES($1,$2,$3,'payment_pending')", [cycle, f.subscription, AT]);
+  await db.query("INSERT INTO public.subscription_dunning_cases(id,subscription_id,cycle_id,client_id,idempotency_key) VALUES($1::uuid,$2,$3,$4,$1::uuid::text)", [caseId, f.subscription, cycle, f.client]);
+  const before = await methodRows();
+  for (const entry of ["method_ref_webhook", "recovery_redeem"]) expect(await call(db, "subscription_try_schedule_recovery_retry", [caseId, m.reference, AT, entry]))
+    .toEqual({ scheduled: false, reason: "recovery_not_ready" });
+  expect(await methodRows()).toEqual(before);
+});
+
+it("enqueues a renewal reminder for an active card expiring in ten days", async () => {
+  const f = await subject();
+  await store().upsert({ key: randomUUID(), clientId: f.client, subscriptionId: f.subscription, provider: "card_rail", methodKind: "card",
+    customer: null, reference: randomUUID(), mandate: null, status: "active", active: true,
+    expiresAt: (await db.query("SELECT now()+interval '10 days' AS at")).rows[0].at.toISOString(), consent: {}, payload: {} });
+  await db.query("UPDATE public.subscriptions SET next_cycle_at=now()+interval '4 days',updated_at=now()-interval '6 days' WHERE id=$1", [f.subscription]);
+  expect(await call(db, "subscription_method_health_read", [f.subscription])).toMatchObject({ health_state: "method_expiring" });
+  await call(db, "dunning_lifecycle_renewal_reminder_enqueue", [100]);
+  expect((await db.query("SELECT reminder_kind FROM public.subscription_reminder_ledger WHERE subscription_id=$1", [f.subscription])).rows)
+    .toEqual([{ reminder_kind: "renewal_due_soon" }]);
+});
+
+it("uses the current recorded method after a repaired attempt soft-fails and the next scheduled rung proceeds", async () => {
+  const f = await declined(), repaired = await method(f, randomUUID(), { recoveryCaseId: f.caseId });
+  const authority = await authorize(f, repaired);
+  await call(db, "subscription_retry_schedule_recovery", [f.operation, "repair:soft-failure", authority.id, AT]);
+  const first = { ...request(f), paymentMethodRef: repaired.reference };
+  await call(db, "subscription_retry_prepare", [f.operation, "repair:dispatch", first, "2026-11-14T12:00:00Z"]);
+  await call(db, "subscription_retry_apply_failure", [f.operation, "repair:declined", failure(1, "2026-11-14T12:00:00Z", "soft_retryable")]);
+  await call(db, "subscription_retry_open_case", [f.operation, "failed", "/recover"]);
+  const current = await method(f);
+  const snapshot = { cycle: { status: "correlated", logicalCycleNumber: 3, nativeRenewalCounter: 2 },
+    authorizationRef: "frozen-mandate", pricingSnapshot: { totalAmountMinor: f.snapshot.totalAmountMinor, currency: "XXX" } } as RenewalFrozenSnapshot;
+  const executed: string[] = [];
+  const driver = createNativeRetryDriver({ executor: db, withTransaction: async work => {
+    await db.query("BEGIN");
+    try { const result = await work(db); await db.query("COMMIT"); return result; } catch (error) { await db.query("ROLLBACK"); throw error; }
+  }, decode: () => snapshot, readFrozenMandate: async () => ({ authorized: true, authorizationRef: snapshot.authorizationRef, paymentMethodRef: "original-frozen-method" }),
+  retryInput: () => ({ paymentIntentId: f.original.settlementIntentId, orderRef: f.original.orderId,
+    amountMinor: f.snapshot.totalAmountMinor, currency: "XXX", paymentMethodRef: current.reference,
+    mode: "recurring", orderId: f.original.orderId, flow: "off_session_payment", customerRef: null,
+    recurringModel: null, clientId: f.client, payer: null, cycleIdempotencyKey: f.identity,
+    executionIdempotencyKey: `later:${f.operation}`, externalIdempotencyKey: `provider:later:${f.operation}`, requestFingerprint: "f".repeat(64) }),
+  validateInput: () => {}, payments: { async execute(input) { executed.push(input.paymentMethodRef); return { status: "pending", externalAttemptRef: "later-attempt" }; },
+    async readOutcome() { return { operationId: f.operation, requestFingerprint: "f".repeat(64), status: "processing", disposition: "ambiguous" } as never; } },
+  classifyFailure: () => "soft_retryable", failureTemplate: "failed", recoveredTemplate: "recovered", recoveryPath: "/recover" });
+  const due = (await db.query("SELECT next_retry_at FROM public.subscription_retry_obligations WHERE id=$1", [f.obligation])).rows[0].next_retry_at.toISOString();
+  expect(await driver.run(due, 500)).toContainEqual({ operationId: f.operation, status: "awaiting_provider" });
+  expect(executed).toContain(current.reference);
+  expect(await call(db, "payment_method_recovery_authority_read", [authority.id])).toMatchObject({ dispatch_key: "repair:dispatch", retry_attempt: 1, method_ref: repaired.reference });
+  expect((await db.query("SELECT retry_attempt,attempt_sequence,state FROM public.subscription_retry_obligations WHERE id=$1", [f.obligation])).rows[0])
+    .toEqual({ retry_attempt: 2, attempt_sequence: 2, state: "prepared" });
+});
+
+it("holds the exact authorized method through admission and re-reads rotation after the method lock", async () => {
+  const f = await declined(), m = await method(f, randomUUID(), { recoveryCaseId: f.caseId });
+  const authority = await authorize(f, m);
+  await call(db, "subscription_retry_schedule_recovery", [f.operation, "lock:schedule", authority.id, AT]);
+  const admission = await pool.connect(), rotation = await pool.connect(); let pending: Promise<unknown> | undefined;
+  const pids = (await db.query("SELECT $1::int AS admission,$2::int AS rotation", [
+    (await admission.query("SELECT pg_backend_pid() AS pid")).rows[0].pid, (await rotation.query("SELECT pg_backend_pid() AS pid")).rows[0].pid])).rows[0];
+  const input = { ...request(f), paymentMethodRef: m.reference };
+  try {
+    await admission.query("BEGIN");
+    expect(await call(admission, "subscription_retry_prepare", [f.operation, "lock:dispatch", input, "2026-11-14T12:00:00Z"])).toMatchObject({ execute: true });
+    await rotation.query("BEGIN");
+    pending = call(rotation, "payment_method_ref_deactivate", ["rotate:blocked", m.id, "revoked", {}]).catch(error => error);
+    let blockers: number[] = [];
+    for (let n = 0; n < 300 && !blockers.length; n++) blockers = (await db.query("SELECT pg_blocking_pids($1) AS pids", [pids.rotation])).rows[0].pids;
+    expect(blockers).toContain(pids.admission);
+    await admission.query("ROLLBACK");
+    expect(await pending).not.toBeInstanceOf(Error);
+    // Rotation now holds the method row; admission must block there and reject its post-rotation state.
+    pending = call(admission, "subscription_retry_prepare", [f.operation, "lock:after-rotation", input, "2026-11-14T12:00:00Z"]).catch(error => error);
+    blockers = [];
+    for (let n = 0; n < 300 && !blockers.length; n++) blockers = (await db.query("SELECT pg_blocking_pids($1) AS pids", [pids.admission])).rows[0].pids;
+    expect(blockers).toContain(pids.rotation);
+    await rotation.query("COMMIT");
+    expect(await pending).toMatchObject({ message: "subscription_missing_payment_method_ref" });
+    expect((await db.query("SELECT state,attempt_sequence FROM public.subscription_retry_obligations WHERE id=$1", [f.obligation])).rows[0]).toEqual({ state: "waiting", attempt_sequence: 0 });
+    expect(await call(db, "payment_method_recovery_authority_read", [authority.id])).toMatchObject({ dispatch_key: null });
+  } finally { await Promise.all([admission.query("ROLLBACK"), rotation.query("ROLLBACK")]); await pending; admission.release(); rotation.release(); }
 });

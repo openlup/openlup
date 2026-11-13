@@ -29814,6 +29814,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/paymentMethodRuntime.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/paymentProviderStore.test.ts",
       "class": "public-output"
     },

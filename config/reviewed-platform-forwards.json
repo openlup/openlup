@@ -6241,7 +6241,7 @@
     },
     {
       "path": "db/platform/migrations/20261114110000_payment_method_refs.sql",
-      "sha256": "34a00582a20c851cba1e039e5f159e19655a54bb8fbbc3146d96e9ac9b7f6530",
+      "sha256": "68926c2adf3216cb705570118abb373a9c185f70ecbcfde531cea053bd200fc9",
       "functions": [
         {
           "signature": "public.subscription_command_preview(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
@@ -6281,7 +6281,7 @@
         {
           "signature": "public.dunning_lifecycle_renewal_reminder_enqueue(integer,integer,integer,integer,integer)",
           "beforeSha256": "6ad044408c80e48e40b2299963d2989d9c87b5a08ba82c7b33b89a0222a13365",
-          "afterSha256": "10dbf563a674897be93f266fb79aba0f1dadaf9587061e3af9ffdca4cf1eaa7c"
+          "afterSha256": "554952d66781fe94ba3263a7561344e2ae12e60374ba28b608145a0848dd57da"
         },
         {
           "signature": "public.subscription_register_renewal_purchase(uuid,jsonb)",
@@ -6316,7 +6316,7 @@
         {
           "signature": "public.subscription_retry_prepare(uuid,text,jsonb,timestamptz)",
           "beforeSha256": "fba98bb98e04b4b91fac8ab23fd84bf0edfe92f01b5c28fcf44b28ed4ac5801e",
-          "afterSha256": "b90e8c1a0c999d649ac884272cd16c83d7eddfcc6fa6019fa623b1b715466091"
+          "afterSha256": "9ef6834017b39bfebd273c65861a4959f49e13814c7f71a661dd894787502b81"
         },
         {
           "signature": "public.subscription_retry_candidates(integer,timestamptz)",
@@ -6381,17 +6381,17 @@
         {
           "signature": "public.subscription_try_schedule_recovery_retry(uuid,text,timestamptz,text)",
           "beforeSha256": null,
-          "afterSha256": "c841f07c69aa646f4735dc035d2642ba39cdc1429cde0b4d12352281f763b562"
+          "afterSha256": "6b9ffce2f596f0adbb95a1770cae34f67bee23ef0d8973479d91b6ead54e32d3"
         },
         {
           "signature": "public.subscription_method_uses_recorded_refs(uuid)",
           "beforeSha256": null,
-          "afterSha256": "35c469dcc7bdc7ebf8060d4714e959c7bd9905be9b4c56be88f002e05419beb8"
+          "afterSha256": "ce725943b26613d19e29e8bfb9456c28394b0f36a83e7163d9f449b9bb10eefa"
         },
         {
           "signature": "public.payment_method_ref_for_subscription_read(uuid,text,timestamptz)",
           "beforeSha256": null,
-          "afterSha256": "3a981d2cca6f6bb392bffc5dc51bf2e6344409079a0b2290d3abdbab63988076"
+          "afterSha256": "ef75d3c864f2685de07a7ef1ab6eec807b94421a23289728c66f0054644546a8"
         },
         {
           "signature": "public.payment_method_recovery_authority_read(uuid)",

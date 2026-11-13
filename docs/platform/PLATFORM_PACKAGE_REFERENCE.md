@@ -770,8 +770,9 @@ entry; the trusted actor supplies `operatorId`. No journey scope is required.
 from M07 setupMethod to paymentMethod.execute(userId, request); its principal guard
 is supplied by the facade. Ready/unsupported/replayed values remain unchanged.
 Collection never redeems or charges. A45/A46 token handlers remain in reference
-source. Native repair authorization/scheduling is a
-[registered follow-up](plans/oss-m12-account-support.md#follow-up-register).
+source. Native repair authorization and scheduling use recorded token context,
+the authorized retry rung and the dispatch fence; later automatic rungs read the
+current usable method. Historical tokens without recorded recovery context are refused.
 The [default-off recipe](RUNTIME_AND_SELF_HOSTING.md#opt-in-disposable-subscription-reference)
 selects no browser route; native start and browser key retention remain
 R5 limits.

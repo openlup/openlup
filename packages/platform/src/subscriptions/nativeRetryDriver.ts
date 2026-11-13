@@ -109,7 +109,9 @@ export function createNativeRetryDriver(options: NativeRetryDriverOptions) {
           const paymentIntentId = canonicalUuid(supplied.paymentIntentId), orderRef = canonicalUuid(supplied.orderRef);
           const input = { ...supplied, paymentIntentId: paymentIntentId ?? supplied.paymentIntentId, orderRef: orderRef ?? supplied.orderRef };
           const authorizations = (await options.executor.query(`SELECT CASE WHEN public.subscription_method_uses_recorded_refs(o.subscription_id)
-            THEN public.payment_method_recovery_authority_read(o.method_recovery_authority_id)->>'method_ref'
+            THEN COALESCE((SELECT authority.method_ref FROM jsonb_to_record(public.payment_method_recovery_authority_read(o.method_recovery_authority_id))
+              authority(method_ref text,retry_attempt integer,dispatch_key text) WHERE authority.retry_attempt=o.retry_attempt AND authority.dispatch_key IS NULL),
+              public.subscription_method_health_read(o.subscription_id)->>'provider_method_ref')
             ELSE a.method_ref END AS method_ref FROM public.subscription_retry_obligations o
             LEFT JOIN public.subscription_retry_recovery_authorizations a ON a.obligation_id=o.id
               AND a.retry_attempt=o.retry_attempt AND a.consumed_at IS NULL
