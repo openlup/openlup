@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { createRequire } from "node:module";
@@ -57,7 +58,7 @@ const agentGuideSections = [
 const wiringExamplePath = "smoke/agentsWiringExample.ts";
 const readmeExamplePath = "smoke/readmeExample.ts";
 
-type SurfaceContract = { role?: unknown; maturity?: unknown; packageSmokeEvidence?: unknown };
+type SurfaceContract = { role?: unknown; maturity?: unknown; packageSmokeEvidence?: unknown; snapshot?: string };
 
 export function assertDocumentationContract(
   packageRoot = defaultPackageRoot,
@@ -391,7 +392,7 @@ export function assertGuideContract(packageRoot: string, repositoryRoot: string 
   for (const file of files) {
     const label = relative(packageRoot, file).split(sep).join("/");
     const original = readFileSync(file, "utf8");
-    let source = syncGeneratedRegions(original, label, repositoryRoot, write, violations);
+    let source = syncGeneratedRegions(original, label, repositoryRoot, write, violations, version);
     if (write) source = source.replace(/(https:\/\/github\.com\/openlup\/openlup\/(?:blob|tree)\/)openlup-core-v[0-9A-Za-z.+-]+\//g, `$1${tag}/`);
     if (write && source !== original) writeFileSync(file, source);
     assertGuideLinks(guideRoot, file, label, source, repositoryRoot, tag, violations);
@@ -451,15 +452,20 @@ function safeDecode(value: string): string {
 }
 
 /** Replaces each `<!-- generated:<name> -->` region with its generator's output, or reports a stale one. */
-export function syncGeneratedRegions(source: string, label: string, repositoryRoot: string, write: boolean, violations: string[]): string {
+export function syncGeneratedRegions(source: string, label: string, repositoryRoot: string, write: boolean, violations: string[], coreVersion?: string): string {
   const opened = [...source.matchAll(/<!-- generated:([a-z0-9:-]+) -->/g)].length;
   let closed = 0;
   const result = source.replace(/<!-- generated:([a-z0-9:-]+) -->\n([\s\S]*?)<!-- \/generated:\1 -->/g, (region, name: string, body: string) => {
     closed++;
-    const expected = renderGeneratedRegion(name, repositoryRoot);
+    const expected = renderGeneratedRegion(name, repositoryRoot, coreVersion);
     if (expected === undefined) {
       violations.push(`${label}: unknown generated region ${name}`);
       return region;
+    }
+    if (name === "refusal-codes") {
+      // Check the renderer independently of byte freshness, including during --write.
+      assertRefusalCodeReachability(expected, repositoryRoot, violations, label);
+      if (!write && body !== expected) assertRefusalCodeReachability(body, repositoryRoot, violations, label);
     }
     if (body === expected) return region;
     if (!write) violations.push(`${label}: generated region ${name} is stale; run docs:check -- --write`);
@@ -470,7 +476,73 @@ export function syncGeneratedRegions(source: string, label: string, repositoryRo
 }
 
 /** The generators. Each reads the file that already owns the fact; none keeps a second copy. */
-export function renderGeneratedRegion(name: string, repositoryRoot: string): string | undefined {
+export function renderGeneratedRegion(name: string, repositoryRoot: string, coreVersion = readCoreVersion(repositoryRoot)): string | undefined {
+  const link = (path: string, label = path) => `[${label}](${repositoryUrl}/blob/openlup-core-v${coreVersion}/${path})`;
+  const selected = /^(exports|sql):([a-z]+)$/.exec(name);
+  if (selected) {
+    const [, kind, pkg] = selected;
+    if (!(publishedPackages as readonly string[]).includes(pkg!) || (kind === "sql" && pkg === "core")) return undefined;
+    const base = `packages/${pkg}`;
+    if (kind === "sql") {
+      const manifest = readJson<{ migrations: Array<{ file: string }> }>(repositoryRoot, `${base}/sql/manifest.json`);
+      // The shipped migrations array owns apply order; the source catalogue and hashes do not.
+      return markdownTable(["File"], manifest.migrations.map(({ file }) => [link(`${base}/sql/${file}`, `\`${file}\``)]));
+    }
+    const manifest = readJson<{ exports: Record<string, unknown> }>(repositoryRoot, `${base}/package.json`);
+    const gates = readJson<{ packageSurface: Record<string, SurfaceContract> }>(repositoryRoot, `${base}/release-gates.json`);
+    return markdownTable(["Export", "Role", "Maturity", "API report"], Object.keys(codeExports(manifest.exports)).sort().map((subpath) => {
+      const contract = gates.packageSurface[subpath];
+      // public-api-config and api-contract use packageSurface.snapshot, including nested subpaths.
+      const report = contract?.snapshot;
+      return [`\`${subpath}\``, String(contract?.role), String(contract?.maturity), report && existsSync(join(repositoryRoot, base, report)) ? link(`${base}/${report}`, "API report") : "none"];
+    }));
+  }
+  if (name === "cli:openlup" || name === "cli:openlup-context") {
+    // Read static help via the compiler API: no build prerequisite, imports, application loading or
+    // child startup. The context bin delegates to agent-context-cli, whose usage constant owns help.
+    const path = name === "cli:openlup" ? "packages/platform/src/lifecycle/openlup.mjs" : "packages/core/src/agent-context-cli.ts";
+    const constant = name === "cli:openlup" ? "help" : "usage";
+    const source = ts.createSourceFile(path, readFileSync(join(repositoryRoot, path), "utf8"), ts.ScriptTarget.Latest, true);
+    for (const statement of source.statements) {
+      if (!ts.isVariableStatement(statement)) continue;
+      for (const declaration of statement.declarationList.declarations) {
+        if (ts.isIdentifier(declaration.name) && declaration.name.text === constant && declaration.initializer && ts.isStringLiteralLike(declaration.initializer)) {
+          return `\`\`\`text\n${declaration.initializer.text.trimEnd()}\n\`\`\`\n`;
+        }
+      }
+    }
+    throw new Error(`${path}: expected a static ${constant} constant`);
+  }
+  if (name === "versioning") {
+    const rows = publishedPackages.flatMap((pkg) => {
+      const gates = readJson<{ packageRelease?: Record<string, string>; compatibilityPolicies?: Record<string, string> }>(repositoryRoot, `packages/${pkg}/release-gates.json`);
+      return (["packageRelease", "compatibilityPolicies"] as const).flatMap((section) => {
+        const fields = Object.entries(gates[section] ?? {}).sort(([left], [right]) => left.localeCompare(right));
+        return fields.length ? fields.map(([key, value]) => [`\`@openlup/${pkg}\``, section, key, value]) : [[`\`@openlup/${pkg}\``, section, "none", "not declared"]];
+      });
+    });
+    return `${markdownTable(["Package", "Section", "Field", "Value"], rows)}\n${link(".github/VERSIONING_AND_EOL.md", "Versioning and end-of-life policy")}\n`;
+  }
+  if (name === "refusal-codes" || name === "refusal-codes-open") {
+    const types = collectRefusalTypes(repositoryRoot);
+    if (name === "refusal-codes-open") {
+      return markdownTable(["Package", "Type", "Report", "Open because"], types.filter((type) => type.reason !== undefined)
+        .map((type) => [`\`@openlup/${type.packageName}\``, `\`${type.typeName}\``, link(type.report, reportLabel(repositoryRoot, type.packageName, type.report)), type.reason!]));
+    }
+    const groups = new Map<string, { type: RefusalType; reports: string[] }>();
+    for (const type of types.filter((type) => type.codes !== undefined)) {
+      const key = JSON.stringify([type.packageName, type.typeName, type.codes]);
+      const group = groups.get(key);
+      if (group) group.reports.push(type.report);
+      else groups.set(key, { type, reports: [type.report] });
+    }
+    const rows = [...groups.values()].map(({ type, reports }) => [`\`@openlup/${type.packageName}\``, `\`${type.typeName}\``,
+      [...new Set(reports)].sort().map((report) => link(report, reportLabel(repositoryRoot, type.packageName, report))).join(", "), type.codes!.map(codeLiteral).join(", ")]);
+    const cliPath = "packages/platform/src/lifecycle/openlup.mjs";
+    const cliCodes = readCliCodes(repositoryRoot);
+    if (cliCodes.length) rows.push(["`@openlup/platform`", "`openlup`", link(cliPath, "command line"), cliCodes.map(codeLiteral).join(", ")]);
+    return markdownTable(["Package", "Type", "Reports", "Codes"], rows.sort((left, right) => left[0]!.localeCompare(right[0]!) || left[1]!.localeCompare(right[1]!) || left[3]!.localeCompare(right[3]!)));
+  }
   const maturity = /^maturity:([a-z]+)$/.exec(name)?.[1];
   if (maturity) {
     if (!(publishedPackages as readonly string[]).includes(maturity)) return undefined;
@@ -480,14 +552,177 @@ export function renderGeneratedRegion(name: string, repositoryRoot: string): str
     return ["| Export | Role | Maturity |", "| --- | --- | --- |", ...rows, ""].join("\n");
   }
   if (name === "configuration-keys") {
-    const config = JSON.parse(readFileSync(join(repositoryRoot, "config", "environment-variables.json"), "utf8")) as {
-      variables?: Array<{ name: string; owner: string; category: string; requiredIn: string[]; secret: boolean }>;
-    };
-    const rows = (config.variables ?? []).map((variable) =>
-      `| \`${variable.name}\` | ${variable.owner} | ${variable.category} | ${variable.requiredIn.join(", ") || "none"} | ${variable.secret ? "yes" : "no"} |`);
-    return ["| Name | Owner | Category | Required in | Secret |", "| --- | --- | --- | --- | --- |", ...rows, ""].join("\n");
+    const config = readJson<{ variables: Array<{ name: string; owner: string; category: string; requiredIn: string[]; secret: boolean }> }>(repositoryRoot, "config/environment-variables.json");
+    const words = new Set(readdirSync(join(repositoryRoot, "packages")).flatMap((pkg) => sourceFiles(join(repositoryRoot, "packages", pkg, "src")))
+      .flatMap((path) => readFileSync(path, "utf8").match(/\b[A-Za-z_][A-Za-z0-9_]*\b/g) ?? []));
+    const read = config.variables.filter((variable) => words.has(variable.name));
+    const omitted = providerSpecificKeys(repositoryRoot, read.map((variable) => variable.name));
+    const rows = read.filter((variable) => !omitted.has(variable.name)).sort((left, right) => left.name.localeCompare(right.name)).map((variable) =>
+      [`\`${variable.name}\``, variable.owner, variable.category, [...variable.requiredIn].sort().join(", ") || "none", variable.secret ? "yes" : "no"]);
+    return `${markdownTable(["Name", "Owner", "Category", "Required in", "Secret"], rows)}\n${omitted.size} package-read keys omitted because their names are provider-specific. Complete list: ${link("config/environment-variables.json", "configuration keys")} and ${link("packages/platform/api/", "platform API reports")}.\n`;
   }
   return undefined;
+}
+
+function readJson<T>(root: string, path: string): T {
+  return JSON.parse(readFileSync(join(root, path), "utf8")) as T;
+}
+
+function readCoreVersion(repositoryRoot: string): string {
+  return readJson<{ version: string }>(repositoryRoot, "packages/core/package.json").version;
+}
+
+function markdownTable(headings: string[], rows: string[][]): string {
+  const cell = (value: string) => value.replaceAll("|", "&#124;").replace(/\r?\n/g, "<br>");
+  return [headings, headings.map(() => "---"), ...rows].map((row) => `| ${row.map(cell).join(" | ")} |\n`).join("");
+}
+
+function sourceFiles(root: string): string[] {
+  if (!existsSync(root)) return [];
+  return readdirSync(root, { withFileTypes: true }).sort((left, right) => left.name.localeCompare(right.name)).flatMap((entry) => {
+    const path = join(root, entry.name);
+    return entry.isDirectory() ? sourceFiles(path) : /\.[cm]?[jt]sx?$/.test(entry.name) ? [path] : [];
+  });
+}
+
+/** Uses the repository scanner's vendor rules, including its scoped-package pattern, on key components. */
+export function providerSpecificKeys(repositoryRoot: string, names: string[]): Set<string> {
+  const path = join(repositoryRoot, "packages/ui/smoke/neutrality.ts");
+  const source = ts.createSourceFile(path, readFileSync(path, "utf8"), ts.ScriptTarget.Latest, true);
+  const categories = new Set<string>();
+  for (const statement of source.statements) {
+    if (!ts.isVariableStatement(statement)) continue;
+    for (const declaration of statement.declarationList.declarations) {
+      if (!ts.isIdentifier(declaration.name) || declaration.name.text !== "forbiddenPatterns" || !declaration.initializer || !ts.isArrayLiteralExpression(declaration.initializer)) continue;
+      declaration.initializer.elements.forEach((element, index) => {
+        if (!ts.isObjectLiteralExpression(element)) return;
+        const label = element.properties.find((property) => ts.isPropertyAssignment(property) && property.name.getText(source) === "label");
+        if (label && ts.isPropertyAssignment(label) && ts.isStringLiteral(label.initializer) && label.initializer.text.startsWith("vendor:")) categories.add(`ui-${index}`);
+      });
+    }
+  }
+  assert(categories.size > 0, `${path}: missing vendor vocabulary in neutrality scanner`);
+  // scanSnapshots uses this same --counts-json interface. Underscores separate environment-key
+  // components; probe each as a word and a scoped package so neither scanner pattern is bypassed.
+  const sources = names.map((name) => ({ path: name, contents: `${name} ${name.split("_").map((part) => `@${part}/ ${part}`).join(" ")}` }));
+  const result = JSON.parse(execFileSync(process.execPath, ["--experimental-strip-types", path, "--counts-json"], {
+    input: JSON.stringify(sources), encoding: "utf8", timeout: 10_000, maxBuffer: 4 * 1024 * 1024,
+  })) as { counts: Array<{ path: string; counts: Record<string, number> }> };
+  return new Set(result.counts.filter(({ counts }) => [...categories].some((category) => (counts[category] ?? 0) > 0)).map(({ path }) => path));
+}
+
+/** Selection rule A, shared by the inventory and its reachability check. */
+export const refusalTypeSuffixes = ["Refusal", "RefusalCode", "RejectionReason", "FailureReason", "BlockReason", "ErrorCode", "ReasonCode", "Code"] as const;
+
+type RefusalType = { packageName: string; typeName: string; report: string; codes?: string[]; reason?: string };
+
+function unparenthesized(type: ts.TypeNode): ts.TypeNode {
+  return ts.isParenthesizedTypeNode(type) ? unparenthesized(type.type) : type;
+}
+
+function literalCodes(nodes: readonly ts.TypeNode[], allowNull: boolean): string[] | undefined {
+  const codes: string[] = [];
+  const visit = (node: ts.TypeNode): boolean => {
+    const type = unparenthesized(node);
+    if (allowNull && ts.isUnionTypeNode(type)) return type.types.every(visit);
+    if (ts.isLiteralTypeNode(type) && ts.isStringLiteral(type.literal)) { codes.push(type.literal.text); return true; }
+    return allowNull && ts.isLiteralTypeNode(type) && type.literal.kind === ts.SyntaxKind.NullKeyword;
+  };
+  return nodes.every(visit) && codes.length ? [...new Set(codes)].sort() : undefined;
+}
+
+// Ordinary codes stay readable in Markdown source; unusual string literals remain lossless and
+// cannot split a table or end a code span. Reachability decodes the same HTML character references.
+const codeCharacters: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", "|": "&#124;", "\n": "&#10;", "\r": "&#13;", "`": "&#96;" };
+function codeLiteral(value: string): string {
+  return value && !/[`|\r\n]/.test(value) ? `\`${value}\`` : `<code>${value.replace(/[&<>|\r\n`]/g, (character) => codeCharacters[character]!)}</code>`;
+}
+
+function exported(node: ts.Node): boolean {
+  return ts.canHaveModifiers(node) && ts.getModifiers(node)?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword) === true;
+}
+
+function classifyRefusal(type: ts.TypeNode, constants: Map<string, ts.TypeNode[]>): Pick<RefusalType, "codes" | "reason"> {
+  type = unparenthesized(type);
+  const codes = literalCodes(ts.isUnionTypeNode(type) ? type.types : [type], true);
+  if (codes) return { codes };
+  if (ts.isIndexedAccessTypeNode(type) && type.indexType.kind === ts.SyntaxKind.NumberKeyword) {
+    const object = unparenthesized(type.objectType);
+    if (ts.isTypeQueryNode(object) && ts.isIdentifier(object.exprName)) {
+      const name = object.exprName.text;
+      const declarations = constants.get(name) ?? [];
+      const resolved = declarations.map((declaration) => {
+        const tuple = unparenthesized(declaration);
+        return ts.isTypeOperatorNode(tuple) && tuple.operator === ts.SyntaxKind.ReadonlyKeyword && ts.isTupleTypeNode(tuple.type)
+          ? literalCodes(tuple.type.elements, false) : undefined;
+      });
+      if (resolved.length && resolved.every((value) => value !== undefined && JSON.stringify(value) === JSON.stringify(resolved[0]))) return { codes: resolved[0] };
+      return { reason: `unresolved string-literal tuple ${name}` };
+    }
+  }
+  const members = ts.isUnionTypeNode(type) ? type.types.map(unparenthesized) : [type];
+  if (members.some(ts.isTypeLiteralNode)) return { reason: "object type" };
+  if (members.some(ts.isIntersectionTypeNode)) return { reason: "intersection type permits values beyond string literals" };
+  if (members.some(ts.isTypeReferenceNode)) return { reason: "reference to another type" };
+  return { reason: "definition is not a closed set of string literals" };
+}
+
+function collectRefusalTypes(repositoryRoot: string): RefusalType[] {
+  const found: RefusalType[] = [];
+  for (const packageName of publishedPackages) {
+    const directory = join(repositoryRoot, "packages", packageName, "api");
+    if (!existsSync(directory)) continue;
+    for (const file of readdirSync(directory).filter((file) => file.endsWith(".api.md")).sort()) {
+      const report = `packages/${packageName}/api/${file}`;
+      const statements = typeScriptFences(readFileSync(join(repositoryRoot, report), "utf8"))
+        .flatMap((fence, index) => [...ts.createSourceFile(`${report}.${index}.ts`, fence.code, ts.ScriptTarget.Latest, true).statements]);
+      const constants = new Map<string, ts.TypeNode[]>();
+      for (const statement of statements) {
+        if (!ts.isVariableStatement(statement) || !exported(statement) || !(statement.declarationList.flags & ts.NodeFlags.Const)) continue;
+        for (const declaration of statement.declarationList.declarations) {
+          if (ts.isIdentifier(declaration.name) && declaration.type) {
+            constants.set(declaration.name.text, [...constants.get(declaration.name.text) ?? [], declaration.type]);
+          }
+        }
+      }
+      for (const statement of statements) {
+        if (!ts.isTypeAliasDeclaration(statement) || !exported(statement) || !refusalTypeSuffixes.some((suffix) => statement.name.text.endsWith(suffix))) continue;
+        found.push({ packageName, typeName: statement.name.text, report, ...classifyRefusal(statement.type, constants) });
+      }
+    }
+  }
+  return [...new Map(found.map((type) => [JSON.stringify(type), type])).values()]
+    .sort((left, right) => left.packageName.localeCompare(right.packageName) || left.typeName.localeCompare(right.typeName) || left.report.localeCompare(right.report) || JSON.stringify(left).localeCompare(JSON.stringify(right)));
+}
+
+/** Selected aliases whose reports do not establish a closed code set; never silently discarded. */
+export function listOpenRefusalTypes(repositoryRoot: string): RefusalType[] {
+  return collectRefusalTypes(repositoryRoot).filter((type) => type.reason !== undefined);
+}
+
+function reportLabel(repositoryRoot: string, packageName: string, report: string): string {
+  const gates = readJson<{ packageSurface: Record<string, SurfaceContract> }>(repositoryRoot, `packages/${packageName}/release-gates.json`);
+  const subpaths = Object.entries(gates.packageSurface).filter(([, contract]) => `packages/${packageName}/${contract.snapshot}` === report)
+    .map(([subpath]) => `\`${subpath}\``).sort();
+  return subpaths.length ? subpaths.join(", ") : report.split("/").at(-1)!;
+}
+
+function readCliCodes(repositoryRoot: string): string[] {
+  const path = join(repositoryRoot, "packages/platform/src/lifecycle/openlup.mjs");
+  if (!existsSync(path)) return [];
+  return [...new Set(readFileSync(path, "utf8").match(/\bOPENLUP_E_[A-Z_]+\b/g) ?? [])].filter((code) => code.startsWith("OPENLUP_E_CLI_")).sort();
+}
+
+/** Independent inventory-to-render check: byte freshness alone cannot catch a lossy renderer. */
+export function assertRefusalCodeReachability(rendered: string, repositoryRoot: string, violations: string[], label = "refusal-codes"): void {
+  const codes = new Set([...collectRefusalTypes(repositoryRoot).flatMap((type) => type.codes ?? []), ...readCliCodes(repositoryRoot)]);
+  // Codes must be table cell contents, not an incidental mention in a link or explanatory prose.
+  const decoded = Object.fromEntries(Object.entries(codeCharacters).map(([character, entity]) => [entity, character]));
+  const visible = new Set(rendered.split("\n").filter((line) => line.startsWith("|"))
+    .flatMap((line) => [...line.slice(line.lastIndexOf("|", line.length - 2) + 1, line.lastIndexOf("|")).matchAll(/`([^`]+)`|<code>(.*?)<\/code>/g)]
+      .map((match) => match[1] ?? match[2]!.replace(/&(?:amp|lt|gt|#124|#10|#13|#96);/g, (entity) => decoded[entity]!))));
+  const missing = [...codes].filter((code) => !visible.has(code)).sort();
+  if (missing.length) violations.push(`${label}: refusal-codes is missing reachable codes: ${missing.join(", ")}`);
 }
 
 type Fence = { code: string; line: number; nocheck: boolean };
