@@ -1,6 +1,6 @@
 # SQL catalogue
 
-Find the SQL files shipped by each package, in manifest order. Apply them through your application's migration chain; see [Upgrade](../upgrade/README.md).
+Find the SQL files each package ships, listed by file name. This is an inventory, not an installation sequence: which files your installation applies, and in which order, depends on the catalogue it selects. Apply SQL through your application's migration chain as described in [Upgrade the database](../upgrade/database-migrations.md).
 
 ## `@openlup/outbox`
 

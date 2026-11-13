@@ -460,7 +460,26 @@ function assertReaderLanguage(label: string, source: string, allowed: ReadonlySe
   }
 }
 
-function assertGuideLinks(guideRoot: string, file: string, label: string, source: string, repositoryRoot: string, tag: string, violations: string[]): void {
+// Markdown and HTML decode character references in destinations, so `&#47;` would hide a path
+// separator from the link rules. The rules read the decoded text; a destination may carry only
+// `&amp;`, and any other reference is refused rather than interpreted.
+const characterReference = /&(?:#(\d+)|#[xX]([0-9A-Fa-f]+)|([A-Za-z][A-Za-z0-9]*));/g;
+const namedReferences: Record<string, string> = { amp: "&", sol: "/", colon: ":", period: ".", num: "#", quest: "?", percnt: "%", lt: "<", gt: ">", quot: '"', apos: "'", equals: "=" };
+function decodeCharacterReferences(source: string): string {
+  return source.replace(characterReference, (reference, decimal?: string, hex?: string, name?: string) => {
+    const code = decimal !== undefined ? Number(decimal) : hex !== undefined ? Number.parseInt(hex, 16) : undefined;
+    if (code !== undefined) return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : reference;
+    return namedReferences[name!] ?? reference;
+  });
+}
+
+function assertGuideLinks(guideRoot: string, file: string, label: string, raw: string, repositoryRoot: string, tag: string, violations: string[]): void {
+  for (const target of markdownLinkTargets(raw, () => undefined)) {
+    if (/&(?!amp;)(?:#\d+|#[xX][0-9A-Fa-f]+|[A-Za-z][A-Za-z0-9]*);/.test(target)) {
+      violations.push(`${label}: link destination ${target} uses a character reference; write the characters literally`);
+    }
+  }
+  const source = decodeCharacterReferences(raw);
   for (const target of markdownLinkTargets(source, (reason) => violations.push(`${label}: ${reason}`))) {
     if (isExternalOrAnchor(target)) continue;
     const local = resolve(dirname(file), safeDecode(target.split(/[?#]/, 1)[0] ?? ""));
@@ -532,8 +551,9 @@ export function renderGeneratedRegion(name: string, repositoryRoot: string, core
     const base = `packages/${pkg}`;
     if (kind === "sql") {
       const manifest = readJson<{ migrations: Array<{ file: string }> }>(repositoryRoot, `${base}/sql/manifest.json`);
-      // The shipped migrations array owns apply order; the source catalogue and hashes do not.
-      return markdownTable(["File"], manifest.migrations.map(({ file }) => [link(`${base}/sql/${file}`, `\`${file}\``)]));
+      // An inventory of the shipped files by name, not an installation sequence: which files apply,
+      // and in which order, depends on the catalogue an installation selects.
+      return markdownTable(["File"], [...manifest.migrations].sort((left, right) => left.file.localeCompare(right.file)).map(({ file }) => [link(`${base}/sql/${file}`, `\`${file}\``)]));
     }
     const manifest = readJson<{ exports: Record<string, unknown> }>(repositoryRoot, `${base}/package.json`);
     const gates = readJson<{ packageSurface: Record<string, SurfaceContract> }>(repositoryRoot, `${base}/release-gates.json`);

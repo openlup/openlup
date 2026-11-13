@@ -556,6 +556,21 @@ describe("reader guide contract", { timeout: 60_000 }, () => {
   });
 
   it.each([
+    ["an HTML decimal reference", '<a href="https://github.com/openlup/openlup&#47;blob/main/README.md">Read</a>'],
+    ["an HTML hexadecimal reference", '<a href="https://github.com/openlup/openlup&#x2F;raw/main/README.md">Read</a>'],
+    ["a protocol-relative HTML reference", '<a href="&#47;&#47;github.com/openlup/openlup/raw/main/README.md">Read</a>'],
+    ["a named reference in Markdown", "[Read](https://github.com/openlup/openlup&sol;blob/main/README.md)"],
+  ])("refuses a repository link hidden by %s", (_name, link) => {
+    const roots = guideFixture(`# Guide\n\n${link}\n`);
+    expect(() => checkGuide(roots)).toThrow(/character reference|non-canonical repository link|must pin/);
+  });
+
+  it("admits &amp; in an issue-tracker link", () => {
+    const roots = guideFixture('# Guide\n\n<a href="https://github.com/openlup/openlup/issues/new?template=a.yml&amp;labels=docs">Report</a>\n');
+    expect(() => checkGuide(roots)).not.toThrow();
+  });
+
+  it.each([
     "https://github.com/openlup/openlup",
     "https://github.com/openlup/openlup/issues",
     "https://github.com/openlup/openlup/issues/new?template=documentation_problem.yml",
@@ -841,9 +856,9 @@ describe("generated reference regions", () => {
     expect(renderGeneratedRegion(`${kind}:core`, fixture.repository)).not.toContain("subpaths omitted");
   });
 
-  it.each(["outbox", "platform"])("preserves %s shipped SQL apply order and omits source paths and hashes", (pkg) => {
+  it.each(["outbox", "platform"])("lists %s shipped SQL as an inventory by file name and omits source paths and hashes", (pkg) => {
     const { repository } = referenceFixture();
-    expect(renderGeneratedRegion(`sql:${pkg}`, repository)).toBe(`| File |\n| --- |\n| [\`z.sql\`](${repositoryLink(`packages/${pkg}/sql/z.sql`)}) |\n| [\`a.sql\`](${repositoryLink(`packages/${pkg}/sql/a.sql`)}) |\n`);
+    expect(renderGeneratedRegion(`sql:${pkg}`, repository)).toBe(`| File |\n| --- |\n| [\`a.sql\`](${repositoryLink(`packages/${pkg}/sql/a.sql`)}) |\n| [\`z.sql\`](${repositoryLink(`packages/${pkg}/sql/z.sql`)}) |\n`);
   });
 
   it("reads CLI string and template constants without executing either bin", () => {
