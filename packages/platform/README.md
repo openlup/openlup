@@ -409,86 +409,9 @@ with these offline examples from the application root. Save each complete
 TypeScript block as a separate `.mts` file and run it with Node 24. The examples
 use the installed package exports, synthetic data and injected HTTP only.
 
-### Captured delivery and protocol observations
-
-The capture records the envelope locally. The selected protocol adapter uses a
-fake HTTP endpoint so the same example can check egress routing, signed callbacks
-and read-only reconciliation without sending a real message.
-
-```ts
-import assert from "node:assert/strict";
-import { createHmac } from "node:crypto";
-import { createInMemoryEmailTransport, guardEmailTransport } from "@openlup/platform/communications";
-import { createResendTransport, createResendWebhookHandler, runResendDeliveryReconciliation } from "@openlup/platform/communications/resend";
-
-const message = { from: "sender@example.invalid", to: "reader@example.invalid",
-  subject: "Local notice", html: "<p>Local notice</p>", idempotencyKey: "notice:1" };
-const capture = createInMemoryEmailTransport();
-assert.equal((await guardEmailTransport(capture).send(message)).outcome.ok, true);
-assert.deepEqual(capture.sent, [message]);
-
-const methods: string[] = [];
-const fakeHttp: typeof fetch = async (_url, init) => {
-  methods.push(init?.method ?? "GET");
-  return Response.json({ id: "message-1", last_event: "delivered", to: ["sink@example.invalid"] });
-};
-const sender = createResendTransport({
-  environmentTagName: "host_env", fetch: fakeHttp,
-  policy: intendedRecipient => ({ mode: "sandbox_sink", reason: "local_example",
-    intendedRecipient, recipient: "sink@example.invalid",
-    credential: "synthetic-not-a-real-key", environmentTag: "non_production" }),
-});
-assert.equal((await sender.send(message)).outcome.resendId, "message-1");
-
-const observations: string[] = [];
-const webhookSecret = "synthetic-not-an-endpoint-secret";
-const webhook = createResendWebhookHandler({
-  webhookSecret, environmentTagName: "host_env", now: () => 1000,
-  port: { findSend: async () => ({ id: "send-1" }),
-    applyObservation: async value => { observations.push(value.eventType); },
-    recordAttempt: async () => {} },
-});
-const rawBody = JSON.stringify({ type: "email.delivered",
-  data: { email_id: "message-1", tags: { host_env: "non_production" } } });
-const signature = createHmac("sha256", webhookSecret)
-  .update("hook-1.1000." + rawBody).digest("base64");
-assert.equal((await webhook({ rawBody, headers: { webhookId: "hook-1",
-  timestamp: "1000", signature: "v1," + signature } })).status, 200);
-assert.equal((await webhook({ rawBody, headers: {} })).status, 401);
-
-const result = await runResendDeliveryReconciliation({
-  apiKey: "synthetic-not-a-real-key", fetch: fakeHttp,
-  now: new Date(1000000).toISOString(), graceMinutes: 1, limit: 1,
-  port: { findFrozenSends: async () => [{ id: "send-1", messageId: "message-1" }],
-    recordPollAttempt: async () => {}, recordSendNotFound: async () => ({ abandoned: false }),
-    applyPolledEvent: async value => { observations.push(value.eventType); } },
-});
-assert.equal(result.reconciled, 1);
-assert.deepEqual(methods, ["POST", "GET"]);
-assert.deepEqual(observations, ["email.delivered", "email.delivered"]);
-console.log({ envelope: capture.sent[0], methods, observations });
-```
-
-For a real host, replace the fake endpoint with the selected transport, inject
-the actual credential/routing policy and deadline, and bind the callback's
-original bytes and headers. Supply a durable observation store and schedule the
-GET-only reconciler. Its atomic writer must converge replayed observations.
-Transport acceptance, capture and the synthetic delivered event above are
-different facts; this example does not qualify a provider account.
-
-For native PostgreSQL storage, the public communications entry exposes
-`createPostgresDeliveryReconciliationPort`. Install the complete SQL chain,
-construct it with the selected connection and binding, and call
-`registerNetworkTarget` only after observed network acceptance with a real
-message ID. Capture is not network evidence. Its `findByMessageId` and atomic
-`applyObservation` compose the callback; its reconciliation methods retain
-poll attempts and not-found state. Translate the closed protocol event names
-(`email.sent`, `email.delivery_delayed`, `email.delivered`, `email.failed`,
-`email.bounced`, `email.complained`) to native observation kinds (`sent`,
-`delayed`, `delivered`, `failed`, `bounced`, `complained`) explicitly. Keep
-callback observation keys stable, supply the host's attempt-observation policy,
-and close the store when the owning host shuts down. Both paths write the same
-observation ledger; neither initiates a replacement send.
+The captured delivery and protocol observation recipe is in
+[Architecture and extensions](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#captured-delivery-and-protocol-observations);
+it is not shipped in this package.
 
 ### Unqualified marketing integration
 

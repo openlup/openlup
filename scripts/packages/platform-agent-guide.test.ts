@@ -23,10 +23,17 @@ it("ships a guide with the exact release-gate maturity table and compiled wiring
   expect(result.status, result.stderr).toBe(0);
   const example = readFileSync(join(root, "test/agentsWiringExample.ts"), "utf8");
   expect(readFileSync(join(root, "README.md"), "utf8")).toContain("```ts\n" + example + "```");
-  // The size-capped guide links to the recipes; the README carries them.
-  expect(readFileSync(join(root, "AGENTS.md"), "utf8")).toContain("(README.md#provider-wiring-recipes)");
+  // The size-capped guide links to the recipes: the README carries the marketing and event
+  // recipes, and the architecture guide (not shipped) carries the captured delivery recipe.
+  const delivery = "ARCHITECTURE_AND_EXTENSIONS.md#captured-delivery-and-protocol-observations";
+  const agents = readFileSync(join(root, "AGENTS.md"), "utf8");
+  expect(agents).toContain("(README.md#provider-wiring-recipes)");
+  expect(agents).toContain(delivery);
   const readme = readFileSync(join(root, "README.md"), "utf8");
-  const recipes = readme.split("## Provider wiring recipes\n")[1]?.split("\n## ")[0];
+  expect(readme).toContain(delivery);
+  const architecture = readFileSync(join(root, "../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md"), "utf8");
+  const recipes = [readme.split("## Provider wiring recipes\n")[1]?.split("\n## ")[0],
+    architecture.split("### Captured delivery and protocol observations\n")[1]?.split(/\n##+ /)[0]].join("\n");
   const snippets = [...(recipes ?? "").matchAll(/```ts\n([\s\S]*?)```/g)].map(match => match[1]);
   expect(snippets).toHaveLength(3);
   const virtualFiles = new Map(snippets.map((source, index) => [join(root, `test/providerRecipe${index + 1}.mts`), source]));
