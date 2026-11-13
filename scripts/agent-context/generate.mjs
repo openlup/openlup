@@ -20,7 +20,7 @@ export const routes = {
   platform: [
     ['delivery-alignment', 'Preserve subscription cycle alignment after late delivery', 'docs/platform/CANONICAL_CONTRACTS.md', 'Subscription delivery alignment', 'The native fulfillment translation uses'],
     ['migration-data-ownership', 'Keep adopter data in its owned schema', 'docs/platform/DATA_AND_MIGRATIONS.md', 'Data ownership'],
-    ['migration-forward-path', 'Follow the ordered additive migration path', 'docs/platform/DATA_AND_MIGRATIONS.md', 'Additive forward release path', 'The release producer refuses'],
+    ['migration-forward-path', 'Follow the ordered additive migration path', 'packages/core/docs/guide/upgrade/database-migrations.md', 'Follow the additive forward path'],
     ['checkout-payment-outbox-idempotency', 'Preserve repeatable checkout effects', 'docs/platform/CANONICAL_CONTRACTS.md', 'Idempotency'],
     ['host-provider-adapter-capability-refusal', 'Compose declared provider capabilities through ports', 'docs/platform/CANONICAL_CONTRACTS.md', 'Provider adapters', '### Adapter classes and example templates'],
   ],
