@@ -15,7 +15,7 @@ This is the public documentation set for the OpenLup platform. It describes the 
 - [Source map](SOURCE_MAP.md) — every platform domain and source responsibility, with canonical owners and source links.
 - [Subscription workflows](SUBSCRIPTION_WORKFLOWS.md) — meaningful internal steps, refusal boundaries and the tests to inspect.
 - [Documentation maintenance](DOCUMENTATION.md) — authoring, same-change impact, generated navigation and checked bundle export.
-- [Agent guide](AGENT_GUIDE.md) — the public guide for coding agents; the root `AGENTS.md` is its location-adjusted copy.
+- [Agent guide](AGENT_GUIDE.md) — the public guide for coding agents, generated from the root [`AGENTS.md`](../../AGENTS.md) with location-adjusted links.
 - [Architecture and extensions](ARCHITECTURE_AND_EXTENSIONS.md) — module ownership, extension seams, and source-ejection consequences.
 - [Data and migrations](DATA_AND_MIGRATIONS.md) — compatibility-first schema evolution and adopter-owned data.
 - [Runtime and self-hosting](RUNTIME_AND_SELF_HOSTING.md) — runtime boundaries and the limits of preview self-hosting.
@@ -31,6 +31,7 @@ partner privacy export/erasure and hosted qualification are not supplied.
 
 Plans and task records are plain Markdown under `plans/`. There is no plan template, generator or Plan Protocol validator; reviewing the record is its acceptance, and limits a plan states are enforced only where a named check runs them.
 
+- [Documentation programme](plans/documentation-programme.md) — one reader guide that stays true for readers and coding agents ([intent](plans/documentation-programme-intent.md), [reconnaissance](plans/documentation-programme-reconnaissance.md)); accepted 2026-11-13, delivered in waves W0–W5.
 - [Public delivery workflow](plans/delivery-workflow.md) — shared local obligations, read-only explanation and early neutrality checks; later proof reuse and delivery improvements remain pending.
 - [Partner acquisition R1](plans/oss-m18-r1-partner-acquisition.md) — unchanged contribution, frozen witnesses, explicit privacy and later-phase limits.
 - [Partner reference delegation R2](plans/oss-m18-r2-reference-delegation.md) — thin source bindings, installed-artifact proof and preserved host behavior.

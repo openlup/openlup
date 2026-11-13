@@ -175,6 +175,11 @@ function maskIndentedCode(markdown: string): string {
   return withoutIndentedCode;
 }
 
+/** A same-length copy with fenced, indented and inline code blanked, so offsets still index the source. */
+export function maskMarkdownCode(markdown: string): string {
+  return maskInlineCodeSpans(maskIndentedCode(unfencedMarkdown(markdown)));
+}
+
 function documentationLinkTargets(markdown: string): string[] {
   const withoutIndentedCode = maskIndentedCode(unfencedMarkdown(markdown));
   const visible = maskInlineCodeSpans(withoutIndentedCode).replace(/<!--[\s\S]*?-->/gu, "")

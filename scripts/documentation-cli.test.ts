@@ -9,7 +9,7 @@ import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { PUBLIC_EXECUTION_ENTRYPOINTS } from "./oss-publication-contract.ts";
 import { PUBLIC_PACKAGE_COMMANDS, PUBLIC_PACKAGE_EXECUTION_SURFACES, createPublicPublicationCatalog } from "./oss-publication-policy.ts";
 import { readDocumentationState, type DocumentationSurface } from "./documentation-routing.ts";
-import { renderDocumentationSourceMap } from "./documentation-navigation.ts";
+import { AGENT_GUIDE_PATH, AGENT_GUIDE_SOURCE_STATUS, renderAgentGuide, renderDocumentationSourceMap } from "./documentation-navigation.ts";
 import { resolveDocumentationBase } from "./documentation-git.ts";
 
 const fetchMock = vi.hoisted(() => ({ source: "", calls: [] as { args: string[]; options: ExecFileSyncOptions }[] }));
@@ -46,6 +46,8 @@ function copyRuntimeClosure(root: string, path: string, seen = new Set<string>()
   }
 }
 
+const agentsFixture = `# Fixture agent guide\n\n${AGENT_GUIDE_SOURCE_STATUS}\n\nRead [the overview](README.md) and [documentation](docs/platform/DOCUMENTATION.md).\n`;
+
 /** Deliberately has neither an install nor the application's files. */
 function seed(root: string): string {
   git(root, ["init", "-q", "-b", "main"]);
@@ -57,6 +59,8 @@ function seed(root: string): string {
   write(root, "README.md", "# Fixture\n\n## Contract\n\nThe demo preserves replay safety.\n\n## Other\n\nSeparate guidance.\n");
   write(root, "docs/platform/DOCUMENTATION.md", "# Documentation\n");
   write(root, "docs/platform/SUBSCRIPTION_WORKFLOWS.md", "# Workflows\n");
+  write(root, "AGENTS.md", agentsFixture);
+  write(root, AGENT_GUIDE_PATH, renderAgentGuide(agentsFixture));
   write(root, "docs/platform/adopter-kit/dependabot.template.yml", 'groups:\n  openlup:\n    patterns:\n      - "@openlup/*"\n');
   write(root, "src/lib/coreDomains.ts", 'export const CORE_DOMAINS = Object.freeze(["communications", "demo"] as const);\n');
   write(root, "src/domains/demo/main.ts", "export const value = 1;\n");
@@ -205,6 +209,58 @@ describe("documentation CLI on the bare public runtime", () => {
       expect(execute(["--docs-update"], env).status).toBe(0);
       const mismatch = execute([], { ...env, GITHUB_SHA: base });
       expect(mismatch.status).toBe(1); expect(mismatch.stderr).toContain("checkout identity");
+    } finally { rmSync(temporary, { recursive: true, force: true }); }
+  }, 30_000);
+});
+
+describe("public agent guide generated from AGENTS.md", () => {
+  it("relocates relative links outside code and swaps only the status paragraph", () => {
+    const body = (status: string[], links: string[]) => ["# Guide", "", ...status, "", ...links, "- Code stays verbatim: `[code](CONTRIBUTING.md)`", "",
+      "```md", "[fenced](CONTRIBUTING.md)", "```", "", "[Reference][policy] and a footnote.[^note]", ""].join("\n");
+    const source = `${body([AGENT_GUIDE_SOURCE_STATUS], [
+      "- [Contributing](CONTRIBUTING.md#deliver-a-change) and [security](./SECURITY.md)",
+      "- [Index](docs/platform/README.md#write-or-update-a-page), [kit](docs/platform/adopter-kit/README.md), [scripts](scripts/) and ![logo](docs/platform/assets/logo.png)",
+      "- [Section](#architecture-rules), [site](https://example.org/AGENTS.md) and [root](/README.md)",
+    ])}\n[policy]: .github/AI_CONTRIBUTION_POLICY.md\n[^note]: CONTRIBUTING.md stays prose.\n`;
+    expect(renderAgentGuide(source)).toBe(`${body([
+      "Status: development-preview guidance.",
+      "This page is generated from the root [AGENTS.md](../../AGENTS.md) with links",
+      "adjusted for this location. Edit that file, then run",
+      "`npm run oss:published-tree -- --policy --docs-update`.",
+    ], [
+      "- [Contributing](../../CONTRIBUTING.md#deliver-a-change) and [security](../../SECURITY.md)",
+      "- [Index](README.md#write-or-update-a-page), [kit](adopter-kit/README.md), [scripts](../../scripts/) and ![logo](assets/logo.png)",
+      "- [Section](#architecture-rules), [site](https://example.org/AGENTS.md) and [root](/README.md)",
+    ])}\n[policy]: ../../.github/AI_CONTRIBUTION_POLICY.md\n[^note]: CONTRIBUTING.md stays prose.\n`);
+  });
+  it.each([
+    ["a changed status paragraph", "# Guide\n\nStatus: edited.\n", /single-source status paragraph exactly once/],
+    ["a repeated status paragraph", `${AGENT_GUIDE_SOURCE_STATUS}\n\n${AGENT_GUIDE_SOURCE_STATUS}\n`, /exactly once/],
+    ["a link escaping the repository", `${AGENT_GUIDE_SOURCE_STATUS}\n\n[outside](../other/README.md)\n`, /link escapes the repository/],
+    ["an angle-bracket destination", `${AGENT_GUIDE_SOURCE_STATUS}\n\n[spaced](<docs/a b.md>)\n`, /angle-bracket link destinations/],
+  ])("refuses %s", (_name, source, error) => {
+    expect(() => renderAgentGuide(source)).toThrow(error);
+  });
+  it("refuses a hand edit in check mode and regenerates the guide on update", () => {
+    const temporary = mkdtempSync(join(tmpdir(), "documentation-agent-guide-cli-"));
+    try {
+      const base = seed(temporary);
+      const execute = (args: string[] = []) => spawnSync(process.execPath, ["--experimental-strip-types", ENTRYPOINT, "--policy", "--docs-base", base, ...args], {
+        cwd: temporary, encoding: "utf8", env: localEnvironment, timeout: 30_000,
+      });
+      const guide = () => readFileSync(join(temporary, AGENT_GUIDE_PATH), "utf8");
+      const generated = guide();
+      expect(generated).toContain("[the overview](../../README.md)");
+      write(temporary, AGENT_GUIDE_PATH, `${generated}\nA rule added only to the guide.\n`);
+      const refused = execute();
+      expect(refused.status).toBe(1);
+      expect(refused.stderr).toContain(`${AGENT_GUIDE_PATH} differs from its generated form; edit AGENTS.md, then run --policy --docs-update`);
+      const restored = execute(["--docs-update"]);
+      expect(restored.stderr).toBe(""); expect(restored.status).toBe(0); expect(guide()).toBe(generated);
+      write(temporary, "AGENTS.md", agentsFixture.replace("[documentation]", "[maintenance]"));
+      expect(execute().stderr).toContain(`${AGENT_GUIDE_PATH} differs from its generated form`);
+      expect(execute(["--docs-update"]).status).toBe(0);
+      expect(guide()).toContain("[maintenance](DOCUMENTATION.md)");
     } finally { rmSync(temporary, { recursive: true, force: true }); }
   }, 30_000);
 });
