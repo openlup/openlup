@@ -763,7 +763,7 @@ exclusion retain their existing contract.
 | Settled intent with only an external reference | Preserve settlement; no inferred attempt, method or refund evidence. |
 | Method state without a provider reference | No method mutation or charging authority. Independently attributed money evidence does not require an invented method. |
 | Thin cumulative refund payload or missing currency | `payment_control_result_refund_snapshot_unproven`; no amount inferred from the order. |
-| Late fresh dunning handoff | Advance the attributed case and revoke earlier tokens; always mint a recovery token with expiry at issue time plus 14 days, or 30 days for an exhausted ladder. Prompt and late handoff use the same issue-time window. Case, rung, customer/operator notice identities and canonical replay are preserved; no historical backfill. |
+| Late fresh dunning handoff | A late dunning handoff issues a recovery link valid from issue. Advance the attributed case and revoke earlier tokens; mint a recovery token with expiry at issue time plus 14 days, or 30 days for an exhausted ladder. Prompt and late handoff use the same issue-time window. Redemption requires an open case; fresh advancement revokes the earlier link. Case, rung, customer/operator notice identities and canonical replay are preserved; no historical backfill. |
 | Historical unattributed dunning case | `subscription_dunning_case_unattributed`; preserve applied money and refusal evidence. No adoption by cycle. |
 | Cancelled or refunded historical service | No resurrection, rewritten receipts or automatic repair. |
 | Equal or older cumulative refund observation | Durable ignored observation; no repeated financial, reservation or notice effect. |

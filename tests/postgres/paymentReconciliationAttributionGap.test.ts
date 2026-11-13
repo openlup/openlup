@@ -199,8 +199,10 @@ it.each([
   const first = await reconciliation().applyTerminalResult({ ...input(f), occurredAt: firstAt, checkedAt: firstAt });
   const caseId = first.subscriptionWebhookDunning!.caseId;
   expect((await env.owner.query("SELECT revoked_at IS NOT NULL revoked FROM public.commerce_checkout_recovery_tokens WHERE id=$1", [prior])).rows[0].revoked).toBe(true);
-  expect((await env.owner.query("SELECT recovery_url_path FROM public.subscription_dunning_notifications WHERE case_id=$1 AND recipient_kind='customer' AND retry_attempt=1", [caseId])).rows[0].recovery_url_path)
-    .toEqual(expect.stringMatching(/^\/recover\?token=rcv_/u));
+  const firstPath = (await env.owner.query("SELECT recovery_url_path FROM public.subscription_dunning_notifications WHERE case_id=$1 AND recipient_kind='customer' AND retry_attempt=1", [caseId])).rows[0].recovery_url_path as string;
+  expect(firstPath).toEqual(expect.stringMatching(/^\/recover\?token=rcv_/u));
+  const firstHash = createHash("sha256").update(new URL(firstPath, "https://example.invalid").searchParams.get("token")!).digest("hex");
+  const firstToken = (await env.owner.query("SELECT id FROM public.commerce_checkout_recovery_tokens WHERE token_hash=$1", [firstHash])).rows[0].id;
   await env.owner.query("UPDATE public.fulfillment_stock_current SET stale_after='2033-01-01T00:00Z' WHERE source_key=$1", [f.source]);
   const prepare = { ...f.prepare, idempotencyKey: `window-next:${f.intent}`, providerIdempotencyKey: `window-provider:${f.intent}` };
   await call(env.owner, "subscription_retry_prepare", [f.operation, `window-retry:${f.intent}`, { ...prepare, orderRef: f.order, amountMinor: 200, currency: "XXX" }, nextAt]);
@@ -224,4 +226,31 @@ it.each([
   expect(await observe(f, `window-stale:${f.intent}`, f.a.paymentAttemptId, firstAt)).toMatchObject({ subscriptionWebhookDunning: { retryAttempt: 2, replayed: true } });
   expect(await snapshot(f)).toEqual(before);
   expect((await env.owner.query("SELECT id,retry_attempt,recovery_url_path FROM public.subscription_dunning_notifications WHERE case_id=$1 AND recipient_kind='customer' ORDER BY retry_attempt", [caseId])).rows).toEqual(notices);
+  await env.owner.query("INSERT INTO public.subscription_method_states(subscription_id,health_state) VALUES($1,'healthy')", [f.subscription]);
+  const current = (await env.owner.query("SELECT id,created_at+interval '1 second' redeem_at FROM public.commerce_checkout_recovery_tokens WHERE order_id=$1 AND revoked_at IS NULL", [f.order])).rows[0];
+  expect((await env.owner.query("SELECT revoked_at IS NOT NULL revoked FROM public.commerce_checkout_recovery_tokens WHERE id=$1", [firstToken])).rows[0].revoked).toBe(true);
+  await expect(call(env.runtime, "subscription_retry_authorize_recovery", [f.operation, firstToken, "method-primary", "usable-method-evidence", current.redeem_at]))
+    .rejects.toMatchObject({ code: "22023", message: "subscription_retry_recovery_not_authorized" });
+  expect(await call(env.runtime, "subscription_retry_authorize_recovery", [f.operation, current.id, "method-primary", "usable-method-evidence", current.redeem_at]))
+    .toMatchObject({ token_id: current.id, retry_attempt: 2 });
+});
+
+it.each(["recovered", "cancelled", "paused", "expired"])("refuses late-link redemption when its case is %s despite live token and usable method", async status => {
+  const f = await fixture();
+  const first = await reconciliation().applyTerminalResult({ ...input(f), occurredAt: preparedAt, checkedAt: preparedAt });
+  const caseId = first.subscriptionWebhookDunning!.caseId;
+  await env.owner.query("INSERT INTO public.subscription_method_states(subscription_id,health_state) VALUES($1,'healthy')", [f.subscription]);
+  const token = (await env.owner.query("SELECT id,created_at+interval '1 second' redeem_at,expires_at>created_at+interval '1 second' live FROM public.commerce_checkout_recovery_tokens WHERE order_id=$1 AND revoked_at IS NULL", [f.order])).rows[0];
+  expect(token.live).toBe(true);
+  await env.owner.query(`UPDATE public.subscription_dunning_cases SET status=$2,
+    recovered_at=CASE WHEN $2='recovered' THEN $3::timestamptz END,
+    expired_at=CASE WHEN $2='expired' THEN $3::timestamptz END WHERE id=$1`, [caseId, status, token.redeem_at]);
+  const before = await snapshot(f);
+  await expect(call(env.runtime, "subscription_retry_authorize_recovery", [f.operation, token.id, "method-primary", "usable-method-evidence", token.redeem_at]))
+    .rejects.toMatchObject({ code: "22023", message: "subscription_retry_recovery_not_authorized" });
+  expect(await snapshot(f)).toEqual(before);
+  expect((await env.owner.query("SELECT count(*)::integer n FROM public.subscription_retry_recovery_authorizations WHERE token_id=$1", [token.id])).rows[0].n).toBe(0);
+  await env.owner.query("UPDATE public.subscription_dunning_cases SET status='open',recovered_at=NULL,expired_at=NULL WHERE id=$1", [caseId]);
+  expect(await call(env.runtime, "subscription_retry_authorize_recovery", [f.operation, token.id, "method-primary", "usable-method-evidence", token.redeem_at]))
+    .toMatchObject({ token_id: token.id, retry_attempt: 1 });
 });
