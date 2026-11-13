@@ -435,10 +435,30 @@ export function assertGuideContract(packageRoot: string, repositoryRoot: string 
     const original = readFileSync(file, "utf8");
     const source = write ? updates.get(resolve(file)) ?? original : syncGeneratedRegions(original, label, repositoryRoot, false, violations, version);
     if (write && source !== original) writeFileSync(file, source);
+    assertGuideTitle(label, source, violations);
     assertGuideLinks(guideRoot, file, label, source, repositoryRoot, tag, violations);
     assertReaderLanguage(label, source, allowed, violations);
   }
   return files;
+}
+
+function assertGuideTitle(label: string, source: string, violations: string[]): void {
+  let headings = 0;
+  let closingFence: RegExp | undefined;
+  for (const line of source.split(/\r?\n/)) {
+    if (closingFence) {
+      if (closingFence.test(line)) closingFence = undefined;
+      continue;
+    }
+    const fence = /^ {0,3}(`{3,})([^`]*$)|^ {0,3}(~{3,})/.exec(line);
+    if (fence) {
+      const marker = fence[1] ?? fence[3]!;
+      closingFence = new RegExp(`^ {0,3}${marker[0]}{${marker.length},}[ \\t]*$`);
+      continue;
+    }
+    if (line.startsWith("# ")) headings++;
+  }
+  if (headings !== 1) violations.push(`${label}: a guide page has exactly one level-one heading, its title (found ${headings})`);
 }
 
 function readGuideAllowList(repositoryRoot: string, violations: string[]): Set<string> {

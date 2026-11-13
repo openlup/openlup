@@ -1,7 +1,5 @@
 # Starter limits
 
-# Current limits
-
 Compare package composition, source references and the application starter before
 choosing an evaluation path. Use the starter tables below to recognize its
 refusals while running it.

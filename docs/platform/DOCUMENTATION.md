@@ -432,6 +432,9 @@ outbox and platform `docs:check` depends on
 `scripts/packages/platform-agent-guide.test.ts` staying out of `TOOLING_INPUTS`
 in `scripts/ci-test-scope.mjs`: unlisted tests always run. The contract refuses:
 
+- a guide Markdown page with zero or multiple level-one ATX headings (`# ` at
+  line start); every page has exactly one title, ignoring backtick and tilde
+  fenced code blocks;
 - a TypeScript fence (`ts`, `typescript`, `tsx`, `mts` or `cts`, case-insensitive,
   with optional trailing attributes) in the guide or a package `README.md` or `AGENTS.md` that does not
   type-check against the built packages; a fence identical to the package's
