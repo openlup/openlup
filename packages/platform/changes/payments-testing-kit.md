@@ -1,3 +1,0 @@
-- Add the experimental `payments/testing` subpath with the existing conformance runner and a provider-neutral scripted transport fake. Optional safety fixtures exercise capability/refusal parity, network ambiguity, signed webhook replay, invalid money, partial amounts and chargebacks without live access. Existing adapter behavior and imports remain unchanged.
-- Reserve the measured platform artifact budget for the next payments implementation part; individual feature rows share these caps.
-Migration: `runPaymentAdapterConformance` now takes `readonly PaymentAdapterTestSubject[]`. That named type is the previous subject with its `verification` fixtures plus an optional `safety` member, so existing callers compile and run unchanged and need no action.

@@ -12,7 +12,7 @@ are about to inspect. The package tag is `openlup-<package>-v<version>`, where
 `<package>` is the suffix after `@openlup/`.
 
 Use the Node.js and npm toolchain specified in the
-[publishing workflow](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/.github/workflows/publish-packages.yml),
+[publishing workflow](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/.github/workflows/publish-packages.yml),
 and an authenticated `gh` that supports `gh release verify`. Your npm must
 support `npm audit signatures --json --include-attestations`; this option
 returns the verified attestation bundles used below. An unrecognized option

@@ -10,7 +10,7 @@ Import `createCatalogDraftHandler`, `createCatalogProductTypeRegistry` and
 `createPostgresCatalogDraftStore` from `@openlup/platform/catalog`.
 Import `createPostgresDataGateway` from `@openlup/platform/data`.
 Browser command types come from `@openlup/platform/catalog/contracts`.
-Use the [package reference](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/packages/platform/AGENTS.md#subpath-maturity)
+Use the [package reference](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/AGENTS.md#subpath-maturity)
 for the declared capability boundary.
 
 Your composition provides a database pool, a `CatalogDraftStorePort`, product
@@ -21,15 +21,15 @@ PostgreSQL store inside each service transaction. Its application-owned
 Draft authoring does not publish products, change prices, take payments or
 change subscriptions.
 
-Read [app.mjs](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/examples/own-stack/app.mjs)
+Read [app.mjs](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/examples/own-stack/app.mjs)
 for the composition and
-[run.mjs](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/examples/own-stack/run.mjs)
+[run.mjs](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/examples/own-stack/run.mjs)
 for the loopback runner and shutdown behavior.
 
 ## Prepare an independent application
 
 Use a disposable database running
-[a supported PostgreSQL version](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/packages/platform/README.md#install-the-portable-postgresql-schema)
+[a supported PostgreSQL version](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/README.md#install-the-portable-postgresql-schema)
 with the complete `qualified-v2` portable
 catalogue installed and a restricted runtime login that can assume
 `service_role`. Do not use the bootstrap or migration login. Follow the
@@ -50,7 +50,7 @@ npm install --ignore-scripts --omit=optional
 ```
 
 Use the runtime requirements and matching package pins in
-[package.template.json](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/examples/own-stack/package.template.json).
+[package.template.json](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/examples/own-stack/package.template.json).
 The sample's pins are independent of the surrounding checkout. Keep the
 generated lockfile in your application; use public imports rather than source
 directory links or private build paths.
@@ -61,7 +61,7 @@ Create the gitignored `app.local.json` in the copied application with owner-only
 read/write permissions. Set `databaseUrl` to the restricted runtime connection
 string. Generate a cryptographically random lowercase hexadecimal
 `operatorToken` matching the configuration constraint in
-[app.mjs](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/examples/own-stack/app.mjs). Keep both values out of Git, logs and command-line arguments.
+[app.mjs](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/examples/own-stack/app.mjs). Keep both values out of Git, logs and command-line arguments.
 
 ```json
 {
@@ -71,7 +71,7 @@ string. Generate a cryptographically random lowercase hexadecimal
 }
 ```
 
-The `port` field is optional; [the runner](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/examples/own-stack/run.mjs) owns its default. Feed the configuration on
+The `port` field is optional; [the runner](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/examples/own-stack/run.mjs) owns its default. Feed the configuration on
 standard input:
 
 ```sh

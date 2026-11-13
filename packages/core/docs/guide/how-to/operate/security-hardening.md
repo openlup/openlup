@@ -14,7 +14,7 @@ runtime credentials on request and scheduler-lock connections, following
 Do not substitute an owner login for missing runtime grants.
 
 Supply verified actor claims to the gateway's actor lane and use its service
-lane for service work; the [gateway](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/packages/platform/src/data/postgresGateway.ts)
+lane for service work; the [gateway](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/src/data/postgresGateway.ts)
 sets claims and selected roles transaction-locally. Keep role-free lanes scoped
 to their named capability rather than using them for generic service work.
 
@@ -31,7 +31,7 @@ server settings.
 
 Put each new mail network sender behind `createGuardedEmailTransport` with an
 explicit host policy selecting credential, effective recipient and environment.
-The [email admission implementation](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/packages/platform/src/communications/emailEgress.ts)
+The [email admission implementation](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/src/communications/emailEgress.ts)
 refuses unavailable, invalid or blocked decisions before sender entry; raw
 transports passed through the guard return `email_egress_unadmitted`.
 Follow [provider adapter composition](../extend/provider-adapters.md#node-email-protocol-template)
@@ -41,7 +41,7 @@ for suppression and refusal handling.
 
 Bind callback routes to the selected adapter's signature verifier and preserve
 the original request bytes, following [provider verification](../extend/provider-adapters.md).
-Do not verify a reserialized parsed object: the [raw-body helper](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/packages/platform/src/http/webhookSignature.ts)
+Do not verify a reserialized parsed object: the [raw-body helper](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/src/http/webhookSignature.ts)
 cannot reconstruct the wire bytes from it. Bind the receiver environment and
 apply the selected protocol's signature and timestamp policy before lookup or
 writes. Keep explicit body and deadline policies for stream-first handlers;
@@ -52,7 +52,7 @@ writes. Keep explicit body and deadline policies for stream-first handlers;
 Supply the Node host's security-header policy, content security policy and route
 authorization through [HTTP composition](self-host.md#declare-http-admission).
 Configure magic-link origins explicitly and retain same-origin JSON admission
-on direct operator challenge requests and redemption. The [operator handlers](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/packages/platform/src/identity/operatorAuthHandlers.ts)
+on direct operator challenge requests and redemption. The [operator handlers](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/src/identity/operatorAuthHandlers.ts)
 reject a mismatched Origin or content type with `FORBIDDEN`.
 Use [Identity](../../concepts/identity.md#magic-link-destinations) for redirect
 policy and live authorization rather than trusting browser-supplied roles.
@@ -72,5 +72,5 @@ and its retention policy; identity erasure does not delete every retained resour
   the shipped managed store supplies export only, as [Personal data](../../concepts/personal-data.md#export-and-erasure)
   explains.
 - There is no bug bounty or guaranteed security-response timeline; consult the
-  [response posture](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/.github/SECURITY_RESPONSE_POSTURE.md)
-  and use the private [reporting route](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/SECURITY.md).
+  [response posture](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/.github/SECURITY_RESPONSE_POSTURE.md)
+  and use the private [reporting route](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/SECURITY.md).
