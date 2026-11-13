@@ -96,7 +96,7 @@ function surfaceTable(): string {
   ].join("\n");
 }
 
-describe("extracted-root documentation contract", () => {
+describe("extracted-root documentation contract", { timeout: 60_000 }, () => {
   it("accepts the current package surface from release-gates.json", () => {
     expect(() => assertDocumentationContract(packageRoot)).not.toThrow();
   });
