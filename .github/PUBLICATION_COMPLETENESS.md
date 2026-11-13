@@ -1,5 +1,7 @@
 # Publication completeness
 
+Status: historical record, 2026-09-18.
+
 ## The one-time root claim
 
 **The first public OpenLup root is a mechanically derived, fresh-history subset

@@ -11,7 +11,7 @@ Import `createCatalogDraftHandler`, `createCatalogProductTypeRegistry` and
 Import `createPostgresDataGateway` from `@openlup/platform/data`.
 Browser command types come from `@openlup/platform/catalog/contracts`.
 Use the [package reference](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/AGENTS.md#subpath-maturity)
-for capability maturity.
+for the declared capability boundary.
 
 Your composition provides a database pool, a `CatalogDraftStorePort`, product
 type definitions with `validateContent`, and `authorizeOperator`. The example
@@ -28,15 +28,16 @@ for the loopback runner and shutdown behavior.
 
 ## Prepare an independent application
 
-Use a disposable PostgreSQL database with the complete selected portable
+Use a disposable PostgreSQL database meeting the [sample's prerequisites](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/own-stack/README.md#run-outside-the-platform-checkout), with the complete `qualified-v2` portable
 catalogue installed and a restricted runtime login that can assume
 `service_role`. Do not use the bootstrap or migration login. Follow the
 [connection roles](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/DATA_AND_MIGRATIONS.md#connection-roles)
 and [runtime connection recipe](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/RUNTIME_AND_SELF_HOSTING.md#postgresql-connection-recipe).
-Schema installation is a prerequisite; the example installs no schema.
+Schema installation is a prerequisite; the example installs no schema. Sparse
+module SQL assets do not form a complete installation chain.
 
 From a checkout containing the example, copy it to a fresh directory outside
-the checkout and install its pinned registry dependencies:
+every OpenLup checkout and install its pinned registry dependencies:
 
 ```sh
 app_dir=$(mktemp -d)
@@ -68,7 +69,8 @@ string. Generate a cryptographically random lowercase hexadecimal
 }
 ```
 
-The `port` field is optional. Feed the configuration on standard input:
+The `port` field is optional; [the runner](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/own-stack/run.mjs) owns its default. Feed the configuration on
+standard input:
 
 ```sh
 chmod 600 app.local.json
@@ -79,7 +81,8 @@ The runner listens on loopback. Its local bearer-token verifier maps the token
 to `app:catalog-editor`; a caller-supplied actor or email does not decide identity.
 Replace that verifier with your application's existing verified sessions before
 exposing the service. The example supplies no login, token issuance, revocation
-or operator directory. A database service role is not HTTP authorization.
+or operator directory. Keep the database login on the server. A database service
+role is not HTTP authorization.
 
 ## Send a draft command
 
@@ -116,8 +119,8 @@ current product registry.
 Missing or invalid bearer credentials return `401/operator_required` before
 database access. A request-supplied `actorId` fails the strict command schema
 with `422/draft_input_invalid`. The HTTP adapter refuses unsupported content
-types with `415/json_required`, oversized bodies with `413/body_too_large` and
-malformed JSON with `400/invalid_json`. An unavailable dependency maps to a
+types with `415/json_required`, bodies beyond the [handler's byte limit](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/own-stack/README.md#run-outside-the-platform-checkout) with
+`413/body_too_large` and malformed JSON with `400/invalid_json`. An unavailable dependency maps to a
 service-unavailable response; do not interpret it as a successful write.
 
 ## Verify durable replay
@@ -129,8 +132,11 @@ node --test verify.test.mjs
 ```
 
 The verification reads `databaseUrl` from the local configuration and creates its
-own temporary operator token and fresh identifiers. It checks HTTP admission,
-durable creation, changed-key-payload refusal and exact replay after rebuilding
-the application instance. Missing PostgreSQL fails verification. Each run retains
-its generated draft; discard the disposable database when finished. Local
+own temporary operator token, independently of your configured `operatorToken`,
+and fresh identifiers. It checks HTTP admission, invalid credentials, refusal of
+a caller-supplied actor ID, durable creation, changed-key-payload refusal and
+exact replay after rebuilding the application instance. It inspects database rows
+through the restricted service role and checks that replay adds no revision or
+command receipt. Missing PostgreSQL fails verification. Each run
+retains its generated draft; discard the disposable database when finished. Local
 verification establishes neither hosted authentication nor production readiness.

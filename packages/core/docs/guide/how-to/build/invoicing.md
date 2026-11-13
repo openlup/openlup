@@ -17,7 +17,7 @@ the matching capability descriptor. It returns `disabled` unless enabled is
 exactly true, and `selection_required` for missing or mismatched selection.
 These refusals precede host calls. A ready result describes declared operations;
 your host still owns fiscal validation. Consult the
-[invoicing reference](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/README.md#invoicing-contracts)
+[package selection reference](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/AGENTS.md#subpath-maturity)
 for the capability boundary.
 
 Bind an `InvoiceProviderPort`, an `InvoiceStorePort` and `InvoiceHostPorts`.
@@ -67,6 +67,13 @@ Use `captureDuty` for retained paid or handoff evidence and `installFacts` for
 the duty's frozen `InvoiceFacts`. The collector can recover retained sources,
 but missing facts remain owed until your application installs their revision.
 
+Install the [complete selected catalogue](../../upgrade/database-migrations.md),
+not the module's sparse `INVOICING_MIGRATIONS` assets. Native child-document and
+managed base-row correction storage are distinct. Collection uses separately
+committed store phases, outside payment and fulfillment execution. A collection
+failure must leave the original service outcome intact and the document duty
+observable for retry.
+
 Use `runNativeInvoiceIssueJob` with the store, provider, selected `providerRef`,
 host `money` port and `readLocalPayment`. Supply claim scope through `orderId`,
 `limit` and `visibilitySeconds` as needed. For an existing callback-based host,
@@ -79,6 +86,12 @@ explicit jobs or factories. It checks activation, provider selection and
 readiness before invoking them. It creates no scheduler or invocation lease.
 Invoke `createIndependentInvoiceDutyBinding` separately from payment and
 fulfillment execution so a collection failure remains retryable independently.
+
+`createInvoiceContribution`, exported from the same invoicing entry, describes
+your selected operations and registrations without mounting them.
+`claimInvoiceSellerRevision` reads an injected seller selection before leasing;
+unknown or unsupported selection consumes no claim. Persistence of that first
+revision belongs to the selected store, not an in-memory cache.
 
 Issue and full-reversal recovery must use the full immutable identity, including
 revision, operation and parent document. Preserve unknown remote outcomes.
@@ -228,3 +241,44 @@ Cover supported writes and replay, unknown recovery without writes, exact
 scoped absence, correction parent mismatch and unsupported operations. The
 checks validate those assertions; they do not establish fiscal certification
 or live provider behavior.
+
+## Freeze the invoice buyer
+
+Install the complete catalogue including first-duty buyer capture before
+composing native invoicing. The first original owed duty freezes an immutable
+buyer component atomically, including when payment truth captures the duty.
+No opt-in callback is needed. Selection preserves order buyer facts first,
+then the owned default/latest billing profile and billing-or-both address,
+then the marked shipping fallback. Paid sources read the order destination;
+handoff sources read the order-owned parcel destination. Replays never backfill
+an earlier duty or document, even if full fiscal facts are still absent.
+
+Select `createPostgresBillingInvoiceStore` for fiscal composition and call
+`readCapturedBuyer(orderId)` for that component. Its fact installer rejects a
+buyer that contradicts the captured component. Installing full fiscal facts
+is a later operation, not the buyer-freeze point. Retained-source collection
+uses the same capture boundary.
+
+Capture refuses a missing recorded destination with
+`commerce_destination_unavailable`; record that owned destination before retry.
+A handoff naming a foreign shipment refuses with
+`customer_billing_shipment_mismatch`. Correct source faults while retryable.
+After the sweep's attempt ceiling marks a source `faulted`, no supported
+operator reset/requeue command exists; seek an invoicing-owned recovery
+procedure without editing ledger rows. Capture does not fabricate an address.
+
+`InvoiceBuyer` permits optional second address line, raw identifier and
+provenance fields. Provider projection preserves those fields and profile/address
+references when present; older input gains no fabricated fields. Your host still
+owns identifier normalization, fiscal kind, clearance, money, lines and seller
+policy. A full fact revision is immutable. Editing a profile cannot change an
+existing request, issued bytes or replay; later requests can use the edited
+profile. Existing duties and facts without a buyer component remain unchanged.
+This path installs no provider executor or scheduler and applies no checkout
+defaults.
+
+Compose the billing privacy contributor described under
+[billing profiles](account-and-support.md#manage-billing-profiles). Frozen buyers
+remain retained invoice data; identity erasure does not erase invoices or supply
+their retention/processor policy. Finite native transfer preserves components
+exactly after their duties; it does not activate the target.

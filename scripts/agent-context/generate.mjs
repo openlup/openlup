@@ -13,8 +13,8 @@ export const routes = {
     ['subscription-layer-delivery', 'Locate pure engine and durable delivery boundaries', 'packages/core/docs/guide/concepts/subscriptions.md', 'Installed subscription boundary'],
   ],
   outbox: [
-    ['configure-dispatch', 'Configure dispatch and diagnostics', 'packages/outbox/README.md', 'Dispatch configuration and optional diagnostics'],
-    ['install-outbox', 'Install SQL and enqueue transactionally', 'packages/outbox/README.md', 'PostgreSQL installation and transactions'],
+    ['configure-dispatch', 'Configure dispatch and diagnostics', 'packages/core/docs/guide/how-to/build/outbox.md', 'Dispatch configuration and optional diagnostics', 'For handler replay,'],
+    ['install-outbox', 'Install SQL and enqueue transactionally', 'packages/core/docs/guide/how-to/build/outbox.md', 'PostgreSQL installation and transactions', 'For a runnable example,'],
     ['outbox-retry-dispatch-handler-idempotency', 'Keep handler effects idempotent across retries', 'packages/core/docs/guide/concepts/idempotency.md', 'Idempotency contract'],
   ],
   platform: [

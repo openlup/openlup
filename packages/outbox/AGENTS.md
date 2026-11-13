@@ -4,43 +4,32 @@
 
 Kind: `rail`.
 
-The package owns neutral dispatch, registry composition, lease-bound schedules and the default PostgreSQL store. Drivers, application handlers, credentials, producer transactions, host guards and trigger bindings stay in the application. Inside the OpenLup monorepo the root `AGENTS.md` governs.
+The package owns neutral dispatch, registry composition, lease-bound schedules and the default PostgreSQL store. Drivers, application handlers, credentials, producer transactions, host guards and trigger bindings stay in the application.
 
 ## Installed context lookup
 
-From the application root, invoke the installed local executable:
+From the application root, run:
 
 ```sh
 ./node_modules/.bin/openlup-context search "subscription renewal"
 ```
 
-This MVP indexes English documentation. Translate Polish or other natural-language
-tasks into concise English domain terms, or search an exact public symbol;
-freeform Polish queries may miss relevant guidance. `--code` scans a bounded
-set of application source paths; `--package-code` scans installed package `src/`
-files. Both are opt-in and may be incomplete; direct `rg` remains available.
-
-Choose the next lookup from the evidence needed: read a known path or symbol
-directly; use `openlup-context` when the package owner or seam is unclear; then
-open its cited source. For work spanning packages, follow the relevant exports,
-callers and tests until each required contract has a witness. A ranked hit is a
-starting point, not proof that all related constraints were found.
-
-Core supplies this Node-only executable. It reads installed local snapshots on
-invocation and grants no application policy, tool permission or external-write
-authority. The application's own instructions govern.
+Use concise English terms or an exact symbol, then read the cited owner. Source
+scans are opt-in and bounded. Read known paths directly; ranked hits do not
+establish complete coverage. Core supplies the executable. See
+[lookup and MCP settings](https://github.com/openlup/openlup/blob/main/packages/core/README.md#agent-context-lookup).
 
 ## Subpath maturity
 
+<!-- generated:maturity:outbox -->
 | Export | Role | Maturity |
 | --- | --- | --- |
 | `.` | rail | experimental |
 | `./postgres` | rail | experimental |
 | `./testing` | testing | testing |
+<!-- /generated:maturity:outbox -->
 
 ## Wiring example
-
-The compiled npm-only reference proof uses the same factories at scheduled and immediate entries. A minimal store binding is:
 
 ```ts
 import { createPostgresOutboxStore } from "@openlup/outbox/postgres";
@@ -48,7 +37,9 @@ import type { SqlExecutor } from "@openlup/core/readiness";
 export const bindStore = (executor: SqlExecutor) => createPostgresOutboxStore(executor);
 ```
 
-The executor must commit every operation before resolving. Apply shipped SQL through the application's migration chain and admit the candidate with the core checker before effects. The README explains full schedule, transaction and failure ownership.
+The executor must commit each operation before resolving. Follow
+[installation and transaction ownership](README.md#postgresql-installation-and-transactions)
+and [deliver events with the outbox](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/outbox.md).
 
 ## Sources and declarations
 
@@ -60,30 +51,29 @@ Composition can report `OPENLUP_E_PORT_MISSING`, `OPENLUP_E_EVENT_UNHANDLED`, `O
 
 ## Using this package in an application
 
-Keep the dispatch engine in its authentic npm package. Do not edit
-`node_modules/@openlup/**`, autonomously patch/fork/vendor/monkey-patch/shadow the
-package or restore a copied engine. Use declared public exports. Drivers,
-handlers, policies, host bindings and compatible native stores remain ordinary
-application code; they need no record per function or upstream release.
+Read [application ownership](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/core/docs/guide/start/adopt-from-npm.md#keep-application-ownership)
+and [extension seams](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/core/docs/guide/how-to/extend/choose-an-extension-seam.md).
 
-The public `withPayloadSchema`, `composeHandlers` and `uniqueRegistry` seams keep
-handler policy and effects in the application. The [README](README.md) explains
-retry, transaction, fence and admission obligations; `./testing` supplies the
-store-fence check, not complete adapter or absorption proof. A missing seam needs
-a local reproducer and authorized upstream proposal. Use a supported compatible
-wrapper/adapter, or hold the dependent change while retaining compatible serving
-work or an available compatible rollback. Do not rewrite published SQL or lose
-pending obligations.
+Public handlers, policies, ports and compatible adapters need no per-function
+record or upstream release. A missing seam needs a local reproducer and actual
+submission authority; retain compatible serving work or a rollback compatible
+with durable state while holding the dependent change. Preserve pending work and
+published SQL. A guide or review receipt grants no tool or external-write rights.
 
-Upgrade every `@openlup/*` together after reading all `Migration:` blocks. Compare
-current producer/schema/policy/bindings with the actual target at first adoption
-and upgrade. Settle affected nominations as full, partial, retained or hold using
-capability and durable-effect evidence, including dormant branches and retry;
-keep distinct same-event effects. Move or settle open markers when native code is
-refactored even without pin changes. A merged contribution is not adoption proof.
+First adoption and upgrade compare the actual artifact with current producer
+payloads, schema, policy and bindings, including disabled branches and drift
+outside extracted files. Preserve transactional enqueue, claim/acknowledgement
+fences, distinct same-event effects and durable recovery. Settle nominated overlap
+as `full`, `partial`, `retained` or `hold` in existing adoption evidence; move or
+settle same-ID markers during ordinary refactors too. Matching APIs or a merged
+contribution do not establish absorption. Read all `Migration:` blocks and keep
+the exact `@openlup/*` set together.
 
-This guide describes the installed contract; it grants no host/tool/external-write
-authority and installs no controls. The monorepo's contributor process does not
-govern your application. Your application owns admission, delivery and production
-authority. The [README's adoption route](README.md#adoption-and-native-extensions)
-links optional source guidance; later instructions do not change this version.
+The application owns its instructions and execution authority. Inside the
+OpenLup monorepo, root `AGENTS.md` governs.
+
+The implementation seams are `withPayloadSchema`, `composeHandlers` and
+`uniqueRegistry`; `./testing` checks store fencing, without replacing complete
+adapter or absorption proof. Installed bytes under `node_modules/@openlup/**`
+remain the dispatch engine: do not autonomously patch, fork, vendor, monkey-patch,
+shadow resolution or restore a copied engine. Import only declared exports.

@@ -1,5 +1,7 @@
 # A1 communications adapters
 
+Status: historical record, 2026-10-29.
+
 Status: development-preview implementation ledger; opened 2026-10-20.
 Audience and purpose: platform contributors maintaining the neutral marketing-sync
 contract and opt-in Node communications adapters. Protocol and synthetic

@@ -1,5 +1,7 @@
 # Agent-first documentation routing in the repository
 
+Status: historical record, 2026-11-06.
+
 Status: repository routing and installed-context P0/P1/P2 delivered through PR #450. Development preview; package release and adopter activation remain separate.
 
 Delivery-control notes below are historical, including blanket maintainer reads

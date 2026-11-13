@@ -1,5 +1,7 @@
 # Native order, subscription and parcel destinations
 
+Status: historical record, 2026-11-06.
+
 Current status: G3 is combined with G4 in the assigned bundle worktree. The
 cycle-3 SQL repair has its accepted read and DCO commit. The current comparison
 and review base is the frozen G3x head

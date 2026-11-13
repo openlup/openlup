@@ -43,7 +43,93 @@ Keep their imports in your server composition. The neutral communications and
 browser contracts entries do not export provider factories. Consult the [package
 capability
 reference](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/AGENTS.md#subpath-maturity)
-for maturity.
+for the declared selection boundary.
+
+### Card and wallet payment template
+
+Construct `createStripePaymentAdapter` from the card/wallet protocol entry listed
+in the installed export map. Its [configuration and capability declarations](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/README.md#opt-in-payment-example)
+own the exact public surface. Inject a structural client, `webhookSigningSecrets`,
+explicit `mode` and a nonempty `supportedCurrencies` array of canonical currency
+codes. The [card adapter configuration](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/README.md#opt-in-payment-example)
+owns the currency shape and `toleranceSeconds` default; `clock` returns UTC seconds. Your host constructs the SDK, associates stored methods with
+customers and confirms unattended requests. Interactive offers use the declared
+card/wallet flow. Construction performs no provider I/O.
+
+The adapter copies and freezes your currency list; the exported descriptor's
+list is empty. Cancellation is available only when your client implements it.
+Exact absence, refund creation and separate authorization/capture are
+unavailable. Establish account-specific readiness before live use.
+
+Verified dispute events keep a distinct money outcome and original payment
+identity. Audit projection includes filtered event, refund-snapshot and
+failure-provenance facts, excluding raw bodies, handoffs and authorization.
+Audit fields do not alter event identity or fingerprints. Method outcomes keep
+replacement/lifecycle evidence only with provider time; missing time never
+becomes an invented lifecycle timestamp.
+
+### Bank redirect and code payment template
+
+Construct `createTpayPaymentAdapter` from the bank/code protocol entry in that
+map; consult its [configuration and capability declarations](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/README.md#opt-in-bank-and-code-payment-example)
+for the public surface. Supply
+`http: { baseUrl, clientId, clientSecret, fetchImpl, timeoutMs? }`,
+`urls: { notificationUrl, successUrl, errorUrl }`, `modelOActivationEnabled`,
+`mode` and optionally a UTC-seconds `clock`. The notification binding requires
+`rootCertificatePem`, an HTTPS `allowedCertificateUrlPrefix` directory ending
+in `/`, and `resolveCertificate`. Your resolver enforces redirect and outbound
+access policy. Both root and resolved certificates must be valid at verification.
+
+Verify notifications over original bytes. Only signed protected-header `iat`
+supplies provider time; absent time stays null. Notification age and clock skew
+use the defaults in the [bank/code adapter contract](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/README.md#opt-in-bank-and-code-payment-example).
+The age allowance is an assumption, not a verified provider schedule. Both
+limits must be finite and nonnegative and apply only with a signed issue time; a time outside
+the window refuses as `stale`. Receipt time checks freshness without inventing
+occurrence time. Dedupe by exact event identity and stable fingerprint when
+time is absent. Money identity includes outcome; method identity also retains
+event/alias outcome.
+
+Every attempt, including renewal, needs transient `payer: { email, name? }`.
+A blank or omitted name becomes `Customer`. For a bank redirect select
+`methodSelection: { family: "bank-redirect", channelRef }`; for a code select
+`{ family: "one-time-code" }` and pass `customerAuthorization` as a
+`TransientSecret`. Unattended renewal requires `storedMethod.reference` and
+its `O` recurring mandate. Other or unknown mandate models, missing payer,
+channel or code refuse before dispatch with exact `notDispatched` evidence.
+Keep payer and authorization out of persisted diagnostics, audits and return
+payloads. Readback uses the API transaction ID, not the notification title.
+
+Host mode, purpose and currency mismatch throws before I/O. Trusted document
+refusals require customer data correction; authenticated-request setup,
+encoding and exhausted pre-send deadlines retain transient retry advice when
+no dispatch is proved. Other execution errors remain ambiguous. Customer-data
+correction does not itself pause a subscription or terminate its retry schedule;
+your subscription failure policy decides retry termination.
+
+The descriptor and nested records are frozen. Currencyless money notifications
+bind to the descriptor currency; an ambiguous currency set refuses as
+`malformed`. Alias lifecycle evidence needs signed provider time. The factory
+offers no alias registration or recurring-card flow. Refund creation, close,
+exact absence and split authorization/capture are unavailable.
+
+Refunded/chargeback readback stays unknown for manual review, in either
+readback purpose. Pending/refused observations use validated configured money,
+including zero/absent paid amount. A refusal with different nonzero paid money,
+or success with underpayment/overpayment, remains unknown. Chargeback evidence
+keeps full reversal, original money and stable operation identity. Audit data
+contains only filtered transaction/alias facts, excluding payer, authorization,
+certificates and raw bodies. Missing failure provenance stays absent.
+
+### Reuse existing payment bindings
+
+For an existing binding, inspect the [reference-support inventory](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/README.md#reference-support-surface)
+and its linked API reports before selecting a helper. Infer types from the
+functions where no separate type is exported. Reuse the same
+`ProviderAttemptPreDispatchError` constructor across wrappers so `instanceof`
+retains its no-charge trust boundary. Your host still supplies SDK construction,
+flags, callback/return UI, account readiness and simulator composition. Selecting
+these helpers does not widen the neutral adapter's capabilities or activate a provider.
 
 ### Node email protocol template
 
@@ -94,6 +180,19 @@ event types, missing message IDs and foreign-environment events return only an
 HTTP disposition and do not converge state. Event metadata stays opaque. Webhook
 and poll observations preserve raw `email.*` event types; the webhook inventory
 only gates admission.
+
+### Ecommerce events template
+
+`EcommerceEventsPort` and its closed event and request types live in the
+communications contracts entry; the Node communications entry supplies
+validation and the PostgreSQL source projection and outbox-handler composition.
+The event catalogue covers paid orders, refunded status, checkout eligibility
+without tokens and subscription lifecycle facts. Install the complete migration
+chain, select an account, environment and fixed live cutoff, and keep commerce
+and export claims in separate invocations with disjoint allowlists. Importing
+these entries installs no route, schedule or provider effect and performs no
+historical backfill. Retention, authority and recovery are described in the
+[event source and dispatch contract](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/CANONICAL_CONTRACTS.md#ecommerce-event-export).
 
 ### Singleton marketing template
 

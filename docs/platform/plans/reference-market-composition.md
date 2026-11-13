@@ -1,5 +1,7 @@
 # Reference market composition
 
+Status: historical record, 2026-11-06.
+
 Delivery-control notes below are historical, including maintainer read packets,
 repair budgets and self-retros. Current delivery follows
 [Deliver a change](../../../CONTRIBUTING.md#deliver-a-change).

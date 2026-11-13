@@ -1,5 +1,7 @@
 # Review coverage after a passing candidate
 
+Status: historical record, 2026-11-06.
+
 Status: development-preview control task. This record owns the finite outcome,
 accepted scope, authority and sufficient proof for independent review. Its
 disjoint-integration, ordinary-repair, renewal and expiry rules were superseded

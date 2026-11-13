@@ -5,6 +5,23 @@ quote amounts from stored price and subscription-policy histories. Supply the
 installation's restricted runtime executor; the reader does not choose prices,
 discounts or rounding policy for you.
 
+## Resolve prices and adjustments
+
+Core's `PricingResolverPort` from `@openlup/core/pricing` resolves price-list
+entries asynchronously. Your adapter owns fallback choices; a missing entry
+returns `null`, which your caller must report rather than silently quoting free
+products. The pure breakdown builders turn supplied resolved prices, discounts
+and shipping into line and order components whose sums reconcile to the totals.
+They do not read prices or persist an order.
+
+For promotion candidates, `evaluatePromos` from `@openlup/core/promo` checks
+active time windows, region and cart eligibility, including coupon codes and
+stacking rules. Order discounts and free shipping use separate lanes.
+`evaluatePromotionAdjustmentsV2` selects product and shipping adjustments and
+returns payable amounts and rejected-code facts. These pure evaluators supply
+no persistence or checkout activation. Use the database ports below when your
+quote needs stored prices and promotion facts.
+
 ## Compose a request scope
 
 Import `createPostgresCommercePriceAuthorityReadPort` from
