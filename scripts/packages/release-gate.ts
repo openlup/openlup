@@ -40,6 +40,9 @@ const FRESH_MAIN = "refs/openlup-release/main";
 const COMMIT = /^[a-f0-9]{40}$/u;
 type Json = Record<string, unknown>;
 
+// The release gate runs the runner's system Git, never a PATH lookup.
+const git = (root: string, ...args: string[]) => execFileSync("/usr/bin/git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+
 function record(value: unknown, what: string): Json {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${what} is malformed`);
   return value as Json;
@@ -62,9 +65,8 @@ async function github(path: string, token: string | undefined, fetcher: GateFetc
  */
 export function assertOnFreshMain(root: string, commit: string): string {
   if (!COMMIT.test(commit)) throw new Error("release gate: the commit must be a full lowercase SHA");
-  const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
-  git("fetch", "--no-tags", "--quiet", "origin", `+refs/heads/main:${FRESH_MAIN}`);
-  const mainTip = git("rev-parse", "--verify", `${FRESH_MAIN}^{commit}`);
+  git(root, "fetch", "--no-tags", "--quiet", "origin", `+refs/heads/main:${FRESH_MAIN}`);
+  const mainTip = git(root, "rev-parse", "--verify", `${FRESH_MAIN}^{commit}`);
   return assertAtMainTip(root, commit, mainTip, "fresh main");
 }
 
@@ -72,23 +74,21 @@ export function assertOnFreshMain(root: string, commit: string): string {
 export function assertOnRecordedMain(root: string, commit: string, mainTip: string): string {
   if (!COMMIT.test(commit)) throw new Error("release gate: the commit must be a full lowercase SHA");
   if (!COMMIT.test(mainTip)) throw new Error("release gate: the recorded main tip must be a full lowercase SHA");
-  const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
-  try { git("cat-file", "-e", mainTip); }
-  catch { git("fetch", "--no-tags", "--quiet", "origin", mainTip); }
-  if (git("cat-file", "-t", mainTip) !== "commit") throw new Error("release gate: the recorded main tip must name a commit");
+  try { git(root, "cat-file", "-e", mainTip); }
+  catch { git(root, "fetch", "--no-tags", "--quiet", "origin", mainTip); }
+  if (git(root, "cat-file", "-t", mainTip) !== "commit") throw new Error("release gate: the recorded main tip must name a commit");
   return assertAtMainTip(root, commit, mainTip, "recorded main");
 }
 
 /** Shared first-parent and publication-audit proof for a fetched or recorded main tip. */
 function assertAtMainTip(root: string, commit: string, mainTip: string, source: string): string {
-  const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
-  if (!git("rev-list", "--first-parent", mainTip).split("\n").includes(commit)) throw new Error(`release gate: ${commit} is not on main, whose tip is ${mainTip}`);
+  if (!git(root, "rev-list", "--first-parent", mainTip).split("\n").includes(commit)) throw new Error(`release gate: ${commit} is not on main, whose tip is ${mainTip}`);
   for (const path of [
     "scripts/packages/packages-check.ts",
     "packages/core/scripts/release-npm-checks.ts",
     ".github/workflows/publish-packages.yml",
   ]) {
-    const blob = (revision: string) => /^[0-7]{6} blob ([a-f0-9]{40})\t/u.exec(git("ls-tree", revision, "--", path))?.[1];
+    const blob = (revision: string) => /^[0-7]{6} blob ([a-f0-9]{40})\t/u.exec(git(root, "ls-tree", revision, "--", path))?.[1];
     const mainBlob = blob(mainTip);
     if (!mainBlob || blob(commit) !== mainBlob) throw new Error(`release gate: ${path} at ${commit} does not match the publication audit on ${source} ${mainTip}; choose a reviewed forward candidate`);
   }
