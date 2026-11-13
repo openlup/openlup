@@ -1040,8 +1040,8 @@ UI admission still needs its own artifact role and consumer proof.
 
 ### Agent guidance for applications
 
-- **This repository's guides are for contributors.** The root `AGENTS.md` and
-  [the agent guide](AGENT_GUIDE.md) govern work on this monorepo only.
+- **This repository's agent guide is for contributors.** The root
+  [`AGENTS.md`](../../AGENTS.md) governs work on this monorepo only.
 - **Each package carries its own `AGENTS.md`.** It states the package's kind, the maturity of each
   subpath, one wiring example and the rules for using it from an application.
   It describes that installed version's contract, not host policy, tool permissions
@@ -1766,7 +1766,7 @@ outstanding, but an in-flight or undelivered replacement still is. Never call
 not arrive: it records the customer-facing fact "Parcel delivered" and shifts the
 cycle later. The note-only operator attestation has no machine arrival predicate
 and no production caller in this surface; the
-[agent arrival-only rule](AGENT_GUIDE.md#architecture-rules) remains binding.
+[agent arrival-only rule](../../AGENTS.md#architecture-rules) remains binding.
 
 The invariant "a late delivery extends the next cycle" is enforced automatically
 only when native delivery-alignment control mode is set to `auto_align`.
