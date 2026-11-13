@@ -870,7 +870,9 @@ lane. Host senders, ACL composition, invitation copy/dedupe/expiry and the share
 communications control-plane adapter stay at their current owners. No provider
 SDK or platform-to-outbox package dependency is added. The mail-provider
 reference adapters, timeline and send-ledger helpers retain their original
-implementation and imports; no vendor adapter is published in the package.
+implementation and imports. The package also supplies explicitly selected
+[protocol adapter subpaths](../../docs/platform/CANONICAL_CONTRACTS.md#opt-in-node-protocol-adapter);
+those imports do not replace or activate the reference bindings.
 
 B1 routes every supported injected mail sender through package admission before
 its effect. The four reference mail-port changes are guard insertions only;

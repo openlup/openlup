@@ -1378,6 +1378,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261111120000_communication_ecommerce_sources.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4538,6 +4542,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261111120000_communication_ecommerce_sources.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -5978,6 +5986,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/communications/contracts/ecommerceEvents.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/communications/contracts/email.ts",
       "class": "public-output"
     },
@@ -6162,6 +6174,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/communications/ecommerceEventPrivacy.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/ecommerceEvents.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/communications/emailEgress.ts",
       "class": "public-output"
     },
@@ -6202,6 +6222,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/communications/klaviyo/events.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/communications/klaviyo/index.ts",
       "class": "public-output"
     },
@@ -6239,6 +6263,10 @@
     },
     {
       "path": "packages/platform/src/communications/postgresDeliveryReconciliation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/postgresEcommerceEvents.ts",
       "class": "public-output"
     },
     {
@@ -9614,6 +9642,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/communications/klaviyo/events.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/klaviyo/eventsHarness.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/communications/klaviyo/harness.ts",
       "class": "public-output"
     },
@@ -11918,6 +11954,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/packages/guide-tutorial.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/guide-tutorial.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/packages/market-descriptor-consumer-proof.ts",
       "class": "public-output"
     },
@@ -12023,6 +12067,14 @@
     },
     {
       "path": "scripts/packages/release-bump.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/release-docs-pass.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/release-docs-pass.ts",
       "class": "public-output"
     },
     {
@@ -20559,6 +20611,14 @@
     },
     {
       "path": "server/runtime/communications/controlPlaneBinding.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/communications/marketingPostgresHost.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/communications/marketingPostgresHost.ts",
       "class": "public-output"
     },
     {
@@ -29134,6 +29194,22 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/communicationEcommerceEvents.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/communicationEcommerceFixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/communicationEcommerceProvider.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/communicationEcommerceTransfer.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/communicationsNative.test.ts",
       "class": "public-output"
     },
@@ -30160,6 +30236,16 @@
       "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
     },
     {
+      "name": "release:docs-pass",
+      "command": "node --experimental-strip-types scripts/packages/release-docs-pass.ts",
+      "publicDocs": [
+        "CONTRIBUTING.md",
+        "README.md"
+      ],
+      "publicCiEntrypoint": ".github/workflows/published-tree-ci.yml",
+      "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
+    },
+    {
       "name": "sql:admit",
       "command": "node --experimental-strip-types scripts/sql-admit.ts",
       "publicDocs": [
@@ -30217,7 +30303,7 @@
     },
     {
       "path": "package.json",
-      "digest": "sha256-0933c941a2365a330414a877f6e2ccb35697ba5a0b243984f4e5812cf635400f"
+      "digest": "sha256-ea9de32d075be1c395786cae8b1d7574924da60d130dbe8fed2406341b93ef62"
     },
     {
       "path": "packages/core/package.json",

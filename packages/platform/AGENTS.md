@@ -124,6 +124,15 @@ export const jobs = createScheduledJobRegistry([
 The application binds a scheduler, implements effects and supplies leases where
 required; see [scheduled jobs](README.md#scheduled-jobs).
 
+## Provider wiring recipes
+
+For transactional email, email provider setup, marketing automation and ecommerce
+events, start with the offline examples: the README's
+[provider wiring recipes](README.md#provider-wiring-recipes) for marketing and
+ecommerce events, and the
+[captured delivery recipe](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#captured-delivery-and-protocol-observations)
+for transactional email.
+
 ## Sources and declarations
 
 Read the installed `src/`, exported `dist/` declarations and their declaration

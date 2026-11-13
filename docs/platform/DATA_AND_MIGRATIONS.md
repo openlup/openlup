@@ -3308,6 +3308,65 @@ executes this exact statement and exercises the real actor setter and evaluator
 across the selected legacy, qualified and restricted installation shapes.
 
 
+### Ecommerce source and projection retention
+
+The optional native exporter requires the complete canonical chain through
+`20261111120000_communication_ecommerce_sources.sql`. The sparse
+`COMMUNICATIONS_MIGRATIONS` list is not an install chain. One native database
+admits one immutable exporter binding: account, environment, namespace, mapping
+version and live event-time cutoff. A second binding or changed cutoff refuses;
+multi-account native dispatch is outside this profile.
+
+The existing mandatory paid source INSERT retains its payload shape and adds
+`metadata.commercePaidFactV1`. A complete snapshot captures the paid order's
+integer money, currency, effective item amounts, original SKU identity and
+settled-intent identity. Discount splits retain ordered quantities; shipping
+adjustments participate in total validation. Native renewal binds its operation
+fingerprint and cycle snapshot; initial subscription purchase binds its draft
+and provisional activation. An initial acquisition's subsequently attached cycle
+is not renewal evidence. Unsupported or incomplete evidence records a reason
+without undoing payment, and is never reconstructed from later catalogue data.
+The postcommit projector checks the bound succeeded settlement transition.
+
+Refund status unions the existing provider-status source and manual OMS operation
+with one per-order status identity, without refund value. Selected lifecycle events
+and refunded manual operations capture their subject at insertion. Other event
+and operation types retain their existing insertion permissions without new
+reads of subscription or order owners. Managed historical subscription events
+map the absent captured subject to `null`; current ownership cannot reconstruct
+that historical association. Checkout qualification
+is one processed, token-free source fact per order, using pending-checkout age,
+activation and payment-activity eligibility; email waves remain separate. Current
+checkout eligibility is checked again before export. Source event times are
+preserved; late commits are found by receipt anti-join, while facts before the
+immutable cutoff are refused. This is not a strict remote arrival-order guarantee.
+
+`communication_event_receipts` atomically records handoff with the new export
+outbox row. The existing outbox owns claims, retries and leases; a separately
+invoked export allowlist isolates provider waits from commerce. Frozen requests
+and `metadata.retainPayload=true` survive uncertain effects and terminal discard.
+Both compactors skip pinned payloads and retain unique keys. A dispatching or
+unknown receipt requires explicit quiesced reconciliation with its exact request
+digest, scope and evidence reference; identical retry additionally requires
+qualified deduplication semantics and current authority. No background retry is
+inferred from a lost response. Currency exponent and resolver provenance are
+frozen once from the qualified host currency, never replaced during retry.
+Explicit qualified retry resets the active attempt/snooze counters for one new
+configured worker budget and preserves their cumulative consumed values in
+`recoveryAttempts`/`recoverySnoozes`, alongside the receipt's recovery reference.
+
+The communications privacy contributor erases frozen recipient projections and
+records a subject erasure fence. It retains pseudonymous source/deduplication
+identities and commercial facts; remote provider history needs its separate
+owner. The reference native privacy registry includes this contributor and does
+not claim full commerce or remote erasure. Connected native capture/restore
+registers the binding, receipts and erasure fences, retains exact captured subject
+columns through its locked owner path, and preserves pending/unknown duties.
+Ordinary source edits and deletion before required handoff refuse. Restricted
+runtime ACLs deny TRUNCATE (42501); migration/restore owners remain trusted and
+can administer the schema. No owner-proof truncation fence is claimed.
+
+
 ## M09 invoicing forward design and control approval
 
 Status: `20261022193000` and `20261022193100` introduce the two managed

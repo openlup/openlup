@@ -146,6 +146,7 @@ Find the SQL files shipped by each package, in manifest order. Apply them throug
 | [`20261110260000_customer_billing_profiles.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/sql/20261110260000_customer_billing_profiles.sql) |
 | [`20261110270000_invoicing_duty_buyer_capture.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/sql/20261110270000_invoicing_duty_buyer_capture.sql) |
 | [`20261110280000_checkout_recovery_buyer_snapshot.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/sql/20261110280000_checkout_recovery_buyer_snapshot.sql) |
+| [`20261111120000_communication_ecommerce_sources.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/sql/20261111120000_communication_ecommerce_sources.sql) |
 | [`q2_00000000000000_platform_baseline.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/sql/q2_00000000000000_platform_baseline.sql) |
 | [`q2_20260810180001_self_host_actor_auth.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/sql/q2_20260810180001_self_host_actor_auth.sql) |
 | [`q2_20260816140000_acquisition_case_foundation.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/sql/q2_20260816140000_acquisition_case_foundation.sql) |
