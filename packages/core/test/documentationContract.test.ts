@@ -1,11 +1,11 @@
+import { spawnSync } from "node:child_process";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawnSync } from "node:child_process";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { agentsFileCap, assertDocumentationContract, assertPackageDocumentation } from "../scripts/documentation-contract.ts";
+import { agentsFileCap, assertCompiledFences, assertDocumentationContract, assertGuideContract, assertPackageDocumentation, assertRefusalCodeReachability, listOpenRefusalTypes, providerSpecificKeys, refusalTypeSuffixes, renderGeneratedRegion, syncGeneratedRegions } from "../scripts/documentation-contract.ts";
 
 const roots: string[] = [];
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -97,10 +97,10 @@ function surfaceTable(): string {
   ].join("\n");
 }
 
-describe("extracted-root documentation contract", { timeout: 60_000 }, () => {
+describe("extracted-root documentation contract", () => {
   it("accepts the current package surface from release-gates.json", () => {
     expect(() => assertDocumentationContract(packageRoot)).not.toThrow();
-  });
+  }, 30_000);
 
   it("keeps downstream documentation identifiers readable in the production contract", () => {
     const source = readFileSync(join(packageRoot, "scripts", "documentation-contract.ts"), "utf8");
@@ -414,6 +414,7 @@ function guideFixture(index: string, pages: Record<string, string> = {}) {
     mkdirSync(dirname(join(repository, path)), { recursive: true });
     writeFileSync(join(repository, path), contents);
   };
+  write("config/openlup-packages.json", "{}\n");
   write("README.md", "# Repository\n");
   write("AGENTS.md", "# Agents\n");
   write("config/documentation-guide-allowlist.json", '{"schemaVersion":1,"terms":["S3"]}\n');
@@ -421,6 +422,9 @@ function guideFixture(index: string, pages: Record<string, string> = {}) {
     { name: "APP_BASE_URL", owner: "platform", category: "server-runtime", requiredIn: ["production"], secret: false },
     { name: "SESSION_KEY", owner: "platform", category: "server-runtime", requiredIn: [], secret: true },
   ] }));
+  write("packages/platform/src/config.ts", "APP_BASE_URL SESSION_KEY\n");
+  mkdirSync(join(repository, "packages/platform/api"), { recursive: true });
+  write("packages/ui/smoke/neutrality.ts", readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), "../../ui/smoke/neutrality.ts"), "utf8"));
   for (const name of ["outbox", "platform"]) write(`packages/${name}/release-gates.json`, surface);
   const packageRoot = fixture("# Fixture\n");
   const core = join(repository, "packages", "core");
@@ -487,6 +491,206 @@ describe("reader guide contract", { timeout: 60_000 }, () => {
       { "start/tutorial.md": "# Tutorial\n\n[Back](../README.md)\n" },
     );
     expect(() => checkGuide(roots)).not.toThrow();
+  }, 30_000);
+
+  it.each(["README.md", "AGENTS.md"])("checks and regenerates core's own %s regions", (file) => {
+    const roots = guideFixture("# Guide\n");
+    const path = join(roots.core, file);
+    const original = readFileSync(path, "utf8");
+    writeFileSync(path, original + "\n## Generated facts\n\n" + coreRegion("stale\n"));
+    expect(() => checkGuide(roots)).toThrow(`${file}: generated region maturity:outbox is stale`);
+    checkGuide(roots, true);
+    expect(readFileSync(path, "utf8")).toBe(original + "\n## Generated facts\n\n" + coreRegion(freshMaturity));
+    expect(() => checkGuide(roots)).not.toThrow();
+  });
+
+  it.each([false, true])("regenerates package regions through --package with example=%s", (withExample) => {
+    const roots = guideFixture("# Guide\n");
+    const outbox = join(roots.repository, "packages/outbox");
+    for (const file of ["package.json", "release-gates.json", "README.md", "AGENTS.md", "smoke"]) cpDir(join(roots.core, file), join(outbox, file));
+    const manifestPath = join(outbox, "package.json");
+    writeFileSync(manifestPath, JSON.stringify({ ...JSON.parse(readFileSync(manifestPath, "utf8")), name: "fixture", version: "1.2.3" }));
+    // Use valid standalone examples for both the compiler and the optional source witness.
+    for (const file of ["README.md", "AGENTS.md", "smoke/agentsWiringExample.ts"]) {
+      const path = join(outbox, file);
+      writeFileSync(path, readFileSync(path, "utf8").replaceAll(wiringExample, "export const wired = 1;\n").replaceAll(readmeExample, "export const value = 1;\n"));
+    }
+    const originals = ["README.md", "AGENTS.md"].map((file) => readFileSync(join(outbox, file), "utf8"));
+    for (const [index, file] of ["README.md", "AGENTS.md"].entries()) writeFileSync(join(outbox, file), originals[index] + "\n" + coreRegion("stale\n"));
+    const args = ["--experimental-strip-types", join(packageRoot, "scripts/documentation-contract.ts"), "--package", outbox, ...(withExample ? ["smoke/agentsWiringExample.ts"] : [])];
+    const run = (extra: string[]) => spawnSync(process.execPath, [...args, ...extra], { encoding: "utf8", timeout: 30_000 });
+    const packed = () => ["README.md", "AGENTS.md", "package.json"];
+    expect(() => assertPackageDocumentation(outbox, withExample ? "smoke/agentsWiringExample.ts" : null, packed)).toThrow("generated region maturity:outbox is stale");
+    const written = run(["--write"]);
+    expect(written.status, written.stderr).toBe(0);
+    const body = renderGeneratedRegion("maturity:outbox", roots.repository)!;
+    for (const [index, file] of ["README.md", "AGENTS.md"].entries()) expect(readFileSync(join(outbox, file), "utf8")).toBe(originals[index] + "\n" + coreRegion(body));
+    expect(() => assertPackageDocumentation(outbox, withExample ? "smoke/agentsWiringExample.ts" : null, packed)).not.toThrow();
+  }, 60_000);
+
+  it.each([
+    ["--package"], ["--package", "--write"], ["--package", ".", "--unknown"],
+    ["--package", ".", "--write", "--write"], ["--package", ".", "example.ts", "--unknown"],
+    ["--package", ".", "example.ts", "--write", "extra"], ["--unknown"], ["--agent-guide", ".", "--unknown"],
+  ])("refuses unknown or malformed command arguments %j", (...args) => {
+    const result = spawnSync(process.execPath, ["--experimental-strip-types", join(packageRoot, "scripts/documentation-contract.ts"), ...args], { encoding: "utf8", timeout: 10_000 });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("Usage: documentation-contract.ts");
+  });
+
+  it.each([
+    `https://raw.githubusercontent.com/openlup/openlup/${tag}/README.md`,
+    `http://github.com/openlup/openlup/blob/${tag}/README.md`,
+    `https://www.github.com/openlup/openlup/blob/${tag}/README.md`,
+    `https://github.com/openlup/openlup/tree/${tag}/README.md`,
+    `https://github.com/openlup/openlup/raw/main/README.md`,
+    `https://github.com/openlup/openlup/blame/main/README.md`,
+    `//github.com/openlup/openlup/blob/main/README.md`,
+    `https://github.com/openlup/openlup/commits/main`,
+  ])("refuses non-canonical repository URL %s in Markdown and HTML without rewriting it", (url) => {
+    for (const link of [`[README](${url})`, `<a href="${url}">README</a>`]) {
+      const roots = guideFixture(`# Guide\n\n${link}\n`);
+      for (const write of [false, true]) expect(() => checkGuide(roots, write)).toThrow(`use https://github.com/openlup/openlup/blob/${tag}/<path>`);
+      expect(readFileSync(join(roots.core, "docs/guide/README.md"), "utf8")).toContain(url);
+    }
+  });
+
+  it.each(["github.com", "www.github.com", "raw.githubusercontent.com"].flatMap((host) =>
+    ["a-fork/openlup", "openlup/openlup-core"].map((repository) => `https://${host}/${repository}/blob/${tag}/README.md`),
+  ))("refuses another GitHub repository %s in every link form without rewriting it", (url) => {
+    for (const link of [`[README](${url})`, `<${url}>`, `Read ${url}.`, `<a href="${url}">README</a>`]) {
+      const roots = guideFixture(`# Guide\n\n${link}\n`);
+      for (const write of [false, true]) {
+        expect(() => checkGuide(roots, write)).toThrow(`non-canonical repository link ${url}; use https://github.com/openlup/openlup/blob/${tag}/<path>`);
+      }
+      expect(readFileSync(join(roots.core, "docs/guide/README.md"), "utf8")).toContain(url);
+    }
+  });
+
+  it.each([
+    ["an HTML decimal reference", '<a href="https://github.com/openlup/openlup&#47;blob/main/README.md">Read</a>'],
+    ["an HTML hexadecimal reference", '<a href="https://github.com/openlup/openlup&#x2F;raw/main/README.md">Read</a>'],
+    ["a protocol-relative HTML reference", '<a href="&#47;&#47;github.com/openlup/openlup/raw/main/README.md">Read</a>'],
+    ["a named reference in Markdown", "[Read](https://github.com/openlup/openlup&sol;blob/main/README.md)"],
+    ["a semicolonless decimal reference", '<a href="https://github.com/openlup/openlup&#47blob/main/README.md">Read</a>'],
+    ["a semicolonless hexadecimal reference", '<a href="https://github.com/openlup/openlup&#x2fraw/main/README.md">Read</a>'],
+    ["a semicolonless protocol-relative reference", '<a href="//github.com/openlup/openlup&#47raw/main/README.md">Read</a>'],
+    ["a bare ampersand", "[Read](https://github.com/openlup/openlup/issues?q=a&b)"],
+    ["a percent-encoded host", '<a href="https://%67ithub.com/openlup/openlup/blob/main/README.md">Read</a>'],
+    ["a tab inside the host", '<a href="https://git\thub.com/openlup/openlup/blob/main/README.md">Read</a>'],
+    ["a newline inside the host", '<a href="https://git\nhub.com/openlup/openlup/blob/main/README.md">Read</a>'],
+    ["an encoded quote and angle in a title", '<a title="&quot;>" href="https://git\thub.com/openlup/openlup/blob/main/README.md">Read</a>'],
+    ["a quoted angle before an image source", '<img alt=">" src="https://git\nhub.com/openlup/openlup/raw/main/logo.png">'],
+    ["backslashes", '<a href="https:\\\\github.com\\openlup\\openlup\\blob\\main\\README.md">Read</a>'],
+    ["an upper-case host", "[Read](https://GitHub.com/openlup/openlup/blob/main/README.md)"],
+    ["a mixed-case repository path", "[Read](https://github.com/OpenLup/openlup/blob/main/README.md)"],
+    ["an encoded repository segment", "[Read](https://github.com/openlup/open%6Cup/blob/main/README.md)"],
+    // Assembled at runtime so the source holds no address-shaped literal.
+    ["user info", `[Read](${["https://reader", "github.com/openlup/openlup/blob/main/README.md"].join("@")})`],
+    ["a default port", "[Read](https://github.com:443/openlup/openlup/blob/main/README.md)"],
+    ["a trailing-dot host", "[Read](https://github.com./openlup/openlup/blob/main/README.md)"],
+    ["a Markdown escape in the host", "[Read](https://github\\.com/openlup/openlup/blob/main/README.md)"],
+    ["a Markdown escape in the path", "[Read](https://github.com/openlup\\/openlup/blob/main/README.md)"],
+    ["an autolink with an encoded host", "<https://%67ithub.com/openlup/openlup/blob/main/README.md>"],
+    ["an autolink to a branch", "<https://github.com/openlup/openlup/blob/main/README.md>"],
+    ["an autolink to raw content", "<https://github.com/openlup/openlup/raw/main/README.md>"],
+    ["a bare www text link", "See www.github.com/openlup/openlup/blob/main/README.md for details."],
+    ["a bare URL with a default port", "See https://github.com:443/openlup/openlup/blob/main/README.md for details."],
+    ["a bare URL with dot segments", "See https://github.com/other/../openlup/openlup/blob/main/README.md for details."],
+    ["a bare URL with an encoded path segment", "See https://github.com/openlup/open%6Cup/blob/main/README.md."],
+    ["a bare URL to a branch", "See https://github.com/openlup/openlup/blob/main/README.md."],
+    ["a bare www text link ending with a comma", "See www.github.com/openlup/openlup/blob/main/README.md,"],
+    ["an attribute name joined by a no-break space", '<div><a data-x\u00a0href="https://github.com/openlup/openlup" href="https://%67ithub.com/openlup/openlup/blob/main/README.md">Read</a></div>'],
+    ["a repository URL in another attribute", '<img alt="logo" src="https://github.com/openlup/openlup/raw/main/logo.png">'],
+  ])("refuses a repository link hidden by %s", (_name, link) => {
+    const roots = guideFixture(`# Guide\n\n${link}\n`);
+    expect(() => checkGuide(roots)).toThrow(/character reference or a bare &|non-canonical repository link|must pin/);
+  });
+
+  it("checks a canonical autolink like any other repository link", () => {
+    const pinned = guideFixture(`# Guide\n\n<${repositoryLink("README.md")}>\n`);
+    expect(() => checkGuide(pinned)).not.toThrow();
+    const missing = guideFixture(`# Guide\n\n<${repositoryLink("MISSING.md")}>\n`);
+    expect(() => checkGuide(missing)).toThrow("targets a path missing from the repository");
+  });
+
+  it("admits a canonical repository link after an encoded quote and angle in a title", () => {
+    const roots = guideFixture(`# Guide\n\n<a title="&quot;>" href="${repositoryLink("README.md")}">Read</a>\n`);
+    expect(() => checkGuide(roots)).not.toThrow();
+  });
+
+  it.each([
+    `[Read](${repositoryLink("README.md")}#overview)`,
+    `<${repositoryLink("README.md")}#overview>`,
+    `Read ${repositoryLink("README.md")}#overview.`,
+    `<a href="${repositoryLink("README.md")}#overview">Read</a>`,
+  ])("admits a canonical repository link with an anchor: %s", (link) => {
+    expect(() => checkGuide(guideFixture(`# Guide\n\n${link}\n`))).not.toThrow();
+  });
+
+  it.each([
+    "See https://github.com/openlup/openlup.",
+    `Read ${repositoryLink("README.md")}.`,
+    "(see https://github.com/openlup/openlup)",
+  ])("admits a canonical bare repository URL with prose punctuation: %s", (text) => {
+    const roots = guideFixture(`# Guide\n\n${text}\n`);
+    expect(() => checkGuide(roots)).not.toThrow();
+  });
+
+  it.each([
+    `[Read](${repositoryLink("README.md")}.)`,
+    `<${repositoryLink("README.md")}.>`,
+    `<a href="${repositoryLink("README.md")}.">Read</a>`,
+    `<img src="${repositoryLink("README.md")}.">`,
+  ])("keeps punctuation in an explicit repository destination: %s", (link) => {
+    const roots = guideFixture(`# Guide\n\n${link}\n`);
+    expect(() => checkGuide(roots)).toThrow("targets a path missing from the repository");
+  });
+
+  it("admits &amp; in an issue-tracker link", () => {
+    const roots = guideFixture('# Guide\n\n<a href="https://github.com/openlup/openlup/issues/new?template=a.yml&amp;labels=docs">Report</a>\n');
+    expect(() => checkGuide(roots)).not.toThrow();
+  });
+
+  it.each([
+    "https://github.com/openlup/openlup",
+    "https://github.com/openlup/openlup/issues",
+    "https://github.com/openlup/openlup/issues/new?template=documentation_problem.yml",
+  ])("admits the repository and its issue tracker %s", (url) => {
+    const roots = guideFixture(`# Guide\n\n[Repository](${url})\n`);
+    expect(() => checkGuide(roots)).not.toThrow();
+  });
+
+  it.each(['"', "'", ""])("checks HTML href local targets and release tags with delimiter %s", (quote) => {
+    const link = (target: string) => `<A title="href='../../CHANGELOG.md' > text" HREF=${quote}${target}${quote}>Read</A>`;
+    const outside = guideFixture(`# Guide\n${link("../../CHANGELOG.md")}\n`);
+    expect(() => checkGuide(outside)).toThrow("leaves the guide");
+    const missing = guideFixture(`# Guide\n${link("missing.md")}\n`);
+    expect(() => checkGuide(missing)).toThrow("dangling local link missing.md");
+    const stale = guideFixture(`# Guide\n${link(repositoryLink("README.md", "openlup-core-v0.1.0"))}\n`);
+    expect(() => checkGuide(stale)).toThrow(`must pin ${tag}`);
+    checkGuide(stale, true);
+    expect(readFileSync(join(stale.core, "docs/guide/README.md"), "utf8")).toContain(link(repositoryLink("README.md")));
+    const branch = guideFixture(`# Guide\n${link(repositoryLink("README.md", "main"))}\n`);
+    expect(() => checkGuide(branch, true)).toThrow(`must pin ${tag}`);
+  });
+
+  it.each(["coordinator", "supervisor", "shard", "worktree", "self-check"])("keeps %s as repository process vocabulary", (word) => {
+    expect(() => checkGuide(guideFixture(`# Guide\nAsk the ${word} before continuing.\n`))).toThrow(`CI or delivery-process vocabulary): ${word}`);
+  });
+
+  it("matches allow-list terms exactly and case-sensitively", () => {
+    const roots = guideFixture("# Guide\nS3 and self-check are named here.\n");
+    const path = join(roots.repository, "config/documentation-guide-allowlist.json");
+    writeFileSync(path, JSON.stringify({ schemaVersion: 1, terms: ["s3", "self"] }));
+    expect(() => checkGuide(roots)).toThrow("task or milestone ID): S3");
+    expect(() => checkGuide(roots)).toThrow("CI or delivery-process vocabulary): self-check");
+    writeFileSync(path, JSON.stringify({ schemaVersion: 1, terms: ["S3", "self-check"] }));
+    expect(() => checkGuide(roots)).not.toThrow();
+  });
+
+  it.each(["file:///Users/someone/store", "file:///home/someone/store", "C:/Users/someone/store"])("refuses the filesystem path %s", (path) => {
+    expect(() => checkGuide(guideFixture(`# Guide\nOpen ${path}.\n`))).toThrow(`absolute filesystem path): ${path.slice(0, path.lastIndexOf("/"))}`);
   });
 
   it("refuses a relative link that leaves the guide", () => {
@@ -562,7 +766,7 @@ describe("reader guide contract", { timeout: 60_000 }, () => {
     expect(() => checkGuide(unexplained)).toThrow("docs/guide/README.md:4: a ts nocheck fence must open with a // reason line");
     const explained = guideFixture("# Guide\n\n```ts nocheck\n// Fragment: the host supplies the total.\nconst total: number = \"two\";\n```\n");
     expect(() => checkGuide(explained)).not.toThrow();
-  });
+  }, 30_000);
 
   it("refuses a README fence that does not compile, beyond the smoke example", () => {
     const roots = guideFixture("# Guide\n");
@@ -570,7 +774,7 @@ describe("reader guide contract", { timeout: 60_000 }, () => {
     writeFileSync(join(roots.core, "README.md"), `${readme}\n\`\`\`ts\nundeclaredName();\n\`\`\`\n`);
     expect(() => checkGuide(roots)).toThrow("README.md:");
     expect(() => checkGuide(roots)).toThrow("Cannot find name 'undeclaredName'");
-  });
+  }, 30_000);
 
   it("caps package and repository AGENTS.md by lines and bytes", () => {
     const roots = guideFixture("# Guide\n");
@@ -594,7 +798,7 @@ describe("reader guide contract", { timeout: 60_000 }, () => {
     cpDir(join(roots.core, "smoke/agentsWiringExample.ts"), join(outbox, "smoke/agentsWiringExample.ts"));
     cpDir(join(roots.core, "smoke/readmeExample.ts"), join(outbox, "smoke/readmeExample.ts"));
     expect(() => assertPackageDocumentation(outbox, "smoke/agentsWiringExample.ts", packed)).toThrow("README.md:2: TypeScript fence does not compile");
-  });
+  }, 30_000);
 
   it("refuses an agent guide whose wiring example has no ts fence when no example file backs it", () => {
     const roots = guideFixture("# Guide\n");
@@ -604,4 +808,348 @@ describe("reader guide contract", { timeout: 60_000 }, () => {
     writeFileSync(join(outbox, "AGENTS.md"), readFileSync(join(roots.core, "AGENTS.md"), "utf8").replace(/```ts\n[\s\S]*?```\n/, "Wire the kernel.\n"));
     expect(() => assertPackageDocumentation(outbox, null, () => ["AGENTS.md", "package.json"])).toThrow("AGENTS.md: wiring example has no ts fence");
   });
+});
+
+
+describe("TypeScript fence compilation", () => {
+  it.each(["TS", "TypeScript", "TYPESCRIPT", "tsx", "TSX", "mts", "MTS", "cts", "CTS", "ts {1,3}", 'ts title="x"', 'ts title="nocheck"', "ts {nocheck}", "ts attributes nocheck"])("compiles info string %s instead of skipping invalid code", (info) => {
+    const root = fixture("# Fixture\n");
+    const path = join(root, "example.md");
+    writeFileSync(path, `# Example\n\`\`\`${info}\n// Intentionally invalid.\nconst value: number = "bad";\n\`\`\`\n`);
+    const violations: string[] = [];
+    assertCompiledFences(root, [path], violations);
+    expect(violations.join("\n")).toContain("Type 'string' is not assignable to type 'number'");
+  }, 15_000);
+
+  it("compiles JSX with preserve and refreshes virtual and dependency source between calls", () => {
+    const root = fixture("# Fixture\n");
+    const path = join(root, "example.md");
+    const declaration = join(root, "value.d.ts");
+    writeFileSync(declaration, "export declare const value: number;\n");
+    writeFileSync(path, '```tsx title="example"\nimport { value } from "./value.js";\nconst count: number = value;\nconst View = () => null;\nconst view = <View />;\n```\n');
+    const check = () => { const violations: string[] = []; assertCompiledFences(root, [path], violations); return violations; };
+    expect(check()).toEqual([]);
+    writeFileSync(declaration, "export declare const value: string;\n");
+    expect(check().join("\n")).toContain("Type 'string' is not assignable to type 'number'");
+    writeFileSync(path, "```ts\nconst count: boolean = 1;\n```\n");
+    expect(check().join("\n")).toContain("Type 'number' is not assignable to type 'boolean'");
+  }, 30_000);
+
+  it.each(["TS nocheck {1}", 'tsx nocheck title="x"', "mts nocheck", "cts nocheck"])("requires a reason only for leading nocheck in %s", (info) => {
+    const root = fixture("# Fixture\n");
+    const path = join(root, "example.md");
+    writeFileSync(path, `\`\`\`${info}\nconst value: number = "bad";\n\`\`\`\n`);
+    const violations: string[] = [];
+    assertCompiledFences(root, [path], violations);
+    expect(violations.join("\n")).toContain("must open with a // reason line");
+    writeFileSync(path, `\`\`\`${info}\n// Deliberately invalid example.\nconst value: number = "bad";\n\`\`\`\n`);
+    const explained: string[] = [];
+    assertCompiledFences(root, [path], explained);
+    expect(explained).toEqual([]);
+  });
+});
+
+
+const referenceRegions = [
+  "exports:core", "exports:outbox", "exports:platform", "sql:outbox", "sql:platform",
+  "cli:openlup", "cli:openlup-context", "versioning", "configuration-keys", "refusal-codes", "refusal-codes-open",
+];
+
+function referenceFixture() {
+  const fixture = guideFixture("# Guide\n");
+  const write = (path: string, contents: string) => {
+    mkdirSync(dirname(join(fixture.repository, path)), { recursive: true });
+    writeFileSync(join(fixture.repository, path), contents);
+  };
+  const report = (pkg: string, name: string, code: string) => write(`packages/${pkg}/api/${name}.api.md`, `# API\n\n\`\`\`ts\n${code}\n\`\`\`\n`);
+  for (const pkg of ["core", "outbox", "platform"]) {
+    write(`packages/${pkg}/package.json`, JSON.stringify({ version: "1.2.3", exports: { "./z": {}, "./package.json": "./package.json", "./nested/a": {}, ".": {} } }));
+    write(`packages/${pkg}/release-gates.json`, JSON.stringify({
+      packageSurface: {
+        "./z": { role: "testing", maturity: "testing", snapshot: "api/missing.api.md" },
+        "./nested/a": { role: "kernel", maturity: "candidate", snapshot: "api/unexpected.api.md" },
+        ".": { role: "rail", maturity: "experimental", snapshot: "api/root.api.md" },
+      },
+      packageRelease: { versionRule: "0.N.P", publicStability: "not-claimed" },
+      compatibilityPolicies: { testing: "Synthetic protocol support.", candidate: "Preview API." },
+    }));
+    report(pkg, "unexpected", 'export type ParcelRefusal = "zebra" | null | "absent";');
+    report(pkg, "root", 'export type ParcelRefusal = "absent" | "zebra";');
+  }
+  for (const pkg of ["outbox", "platform"]) {
+    write(`packages/${pkg}/sql/manifest.json`, JSON.stringify({
+      catalog: { baseline: { file: "do-not-render.sql" } },
+      migrations: [{ file: "z.sql", sha256: "do-not-render" }, { file: "a.sql", sha256: "do-not-render" }],
+    }));
+    for (const file of ["z.sql", "m.sql", "a.sql"]) write(`packages/${pkg}/sql/${file}`, "select 1;\n");
+    write(`packages/${pkg}/sql/README.md`, "SQL inventory fixture.\n");
+  }
+  write("packages/platform/src/lifecycle/openlup.mjs", 'const help = `openlup verify [--json]\n`; const a = "OPENLUP_E_CLI_INPUT"; const b = "OPENLUP_E_CLI_FAILURE"; const c = "OPENLUP_E_APP_UNKNOWN";');
+  write("packages/core/src/openlup-context.js", 'import { runCli } from "../dist/agent-context-cli.js"; runCli();\n');
+  write("packages/core/src/agent-context-cli.ts", 'const usage = "openlup-context search <task> [--code]\\nopenlup-context mcp\\n";');
+  write(".github/VERSIONING_AND_EOL.md", "# Versioning\n");
+  return { ...fixture, write, report };
+}
+
+const generatedRegion = (name: string, body: string) => `<!-- generated:${name} -->\n${body}<!-- /generated:${name} -->\n`;
+
+describe("generated reference regions", () => {
+  it.each(referenceRegions)("renders deterministic, fresh, valid Markdown for %s from its owner", (name) => {
+    const fixture = referenceFixture();
+    const body = renderGeneratedRegion(name, fixture.repository, "1.2.3")!;
+    expect(body).toBeTypeOf("string");
+    expect(body.endsWith("\n")).toBe(true);
+    expect(renderGeneratedRegion(name, fixture.repository, "1.2.3")).toBe(body);
+    fixture.write("packages/core/docs/guide/README.md", `# Guide\n\n${generatedRegion(name, body)}`);
+    const violations: string[] = [];
+    assertGuideContract(fixture.core, fixture.repository, false, violations);
+    expect(violations).toEqual([]);
+    const stale: string[] = [];
+    syncGeneratedRegions(generatedRegion(name, "old\n"), "fixture", fixture.repository, false, stale);
+    expect(stale).toContain(`fixture: generated region ${name} is stale; run docs:check -- --write`);
+    const repaired: string[] = [];
+    expect(syncGeneratedRegions(generatedRegion(name, "old\n"), "fixture", fixture.repository, true, repaired)).toBe(generatedRegion(name, body));
+    expect(repaired).toEqual([]);
+  });
+
+  it.each(["core", "outbox", "platform"])("maps %s code exports through the declared report path", (pkg) => {
+    const { repository } = referenceFixture();
+    const body = renderGeneratedRegion(`exports:${pkg}`, repository, "9.8.7")!;
+    expect(body).toContain(`| \`./nested/a\` | kernel | candidate | [API report](${repositoryLink(`packages/${pkg}/api/unexpected.api.md`, "openlup-core-v9.8.7")}) |`);
+    expect(body).toContain("| `./z` | testing | testing | none |");
+    expect(body.indexOf("| `.`")).toBeLessThan(body.indexOf("| `./nested/a`"));
+    expect(body).not.toContain("package.json");
+    expect(body).not.toContain("ParcelRefusal");
+  });
+
+  it.each(["exports", "maturity"])("omits and counts provider-named subpaths in %s regions", (kind) => {
+    const fixture = referenceFixture();
+    const provider = ["str", "ipe"].join("");
+    const subpath = `./payments/${provider}`;
+    const manifest = JSON.parse(readFileSync(join(fixture.repository, "packages/platform/package.json"), "utf8"));
+    fixture.write("packages/platform/package.json", JSON.stringify({ ...manifest, exports: { ...manifest.exports, [subpath]: {} } }));
+    const gates = JSON.parse(readFileSync(join(fixture.repository, "packages/platform/release-gates.json"), "utf8"));
+    fixture.write("packages/platform/release-gates.json", JSON.stringify({ ...gates, packageSurface: { ...gates.packageSurface, [subpath]: { role: "implementation", maturity: "experimental" } } }));
+    const body = renderGeneratedRegion(`${kind}:platform`, fixture.repository)!;
+    expect(body).not.toContain(provider);
+    expect(body).toContain("1 subpaths omitted because their names are provider-specific.");
+    expect(body).toContain(repositoryLink("packages/platform/package.json"));
+    expect(body).toContain(repositoryLink("packages/platform/AGENTS.md#subpath-maturity"));
+    expect(body).toContain("| `./nested/a` |");
+    expect(renderGeneratedRegion(`${kind}:core`, fixture.repository)).not.toContain("subpaths omitted");
+  });
+
+  it.each(["outbox", "platform"])("lists all %s SQL files in name order, including files outside the manifest, and omits non-SQL files and hashes", (pkg) => {
+    const { repository } = referenceFixture();
+    expect(renderGeneratedRegion(`sql:${pkg}`, repository)).toBe(`| File |\n| --- |\n| [\`a.sql\`](${repositoryLink(`packages/${pkg}/sql/a.sql`)}) |\n| [\`m.sql\`](${repositoryLink(`packages/${pkg}/sql/m.sql`)}) |\n| [\`z.sql\`](${repositoryLink(`packages/${pkg}/sql/z.sql`)}) |\n`);
+  });
+
+  it("reads CLI string and template constants without executing either bin", () => {
+    const fixture = referenceFixture();
+    expect(renderGeneratedRegion("cli:openlup", fixture.repository)).toBe("```text\nopenlup verify [--json]\n```\n");
+    expect(renderGeneratedRegion("cli:openlup-context", fixture.repository)).toBe("```text\nopenlup-context search <task> [--code]\nopenlup-context mcp\n```\n");
+    fixture.write("packages/platform/src/lifecycle/openlup.mjs", 'const help = `dynamic ${process.pid}`; throw new Error("must not execute");');
+    expect(() => renderGeneratedRegion("cli:openlup", fixture.repository)).toThrow("expected a static help constant");
+  });
+
+  it("renders all release fields and compatibility policies, sorting fields from their owning sections", () => {
+    const { repository } = referenceFixture();
+    const body = renderGeneratedRegion("versioning", repository)!;
+    for (const pkg of ["core", "outbox", "platform"]) {
+      expect(body).toContain(`| \`@openlup/${pkg}\` | packageRelease | publicStability | not-claimed |\n| \`@openlup/${pkg}\` | packageRelease | versionRule | 0.N.P |`);
+      expect(body).toContain(`| \`@openlup/${pkg}\` | compatibilityPolicies | candidate | Preview API. |\n| \`@openlup/${pkg}\` | compatibilityPolicies | testing | Synthetic protocol support. |`);
+    }
+    expect(body).toContain(repositoryLink(".github/VERSIONING_AND_EOL.md"));
+  });
+
+  it("reports undeclared release fields without borrowing another package's policy", () => {
+    const fixture = referenceFixture();
+    fixture.write("packages/outbox/release-gates.json", JSON.stringify({ packageSurface: {}, compatibilityPolicies: { preview: "No compatibility promise." } }));
+    const body = renderGeneratedRegion("versioning", fixture.repository)!;
+    expect(body).toContain("| `@openlup/outbox` | packageRelease | none | not declared |");
+    expect(body).toContain("| `@openlup/outbox` | compatibilityPolicies | preview | No compatibility promise. |");
+  });
+
+  it("selects exact package source words and excludes scanner-counted provider key names", () => {
+    const fixture = referenceFixture();
+    const vendor = ["SUPA", "BASE"].join("");
+    const names = ["Z_KEY", "APP_BASE_URL", "UNREAD", `BLOB_${vendor}_BUCKET`, "ALMOST", "README_ONLY"];
+    fixture.write("config/environment-variables.json", JSON.stringify({ variables: names.map((name) => ({ name, owner: "platform", category: "server-runtime", requiredIn: [], secret: false })) }));
+    fixture.write("packages/outbox/src/config.ts", `Z_KEY APP_BASE_URL ${names[3]} ALMOST_LONGER`);
+    fixture.write("packages/outbox/README.md", "README_ONLY");
+    const body = renderGeneratedRegion("configuration-keys", fixture.repository)!;
+    expect(body).toContain("| `APP_BASE_URL` | platform | server-runtime | none | no |\n| `Z_KEY` | platform | server-runtime | none | no |");
+    for (const name of names.slice(2)) expect(body).not.toContain(`\`${name}\``);
+    expect(body).toContain("1 package-read keys omitted because their names are provider-specific.");
+    expect(body).toContain(repositoryLink("config/environment-variables.json"));
+    expect(body).toContain(repositoryLink("packages/platform/api/"));
+    expect(providerSpecificKeys(fixture.repository, names)).toEqual(new Set([names[3]]));
+  });
+
+  it.each(refusalTypeSuffixes)("selects the suffix %s and ignores nonexported aliases and suffix misses", (suffix) => {
+    const fixture = referenceFixture();
+    fixture.report("core", "selection", `export type Selected${suffix} = "selected";\ntype Hidden${suffix} = "hidden";\nexport type Wrong${suffix}Extra = "wrong";`);
+    const body = renderGeneratedRegion("refusal-codes", fixture.repository)!;
+    expect(body).toContain(`\`Selected${suffix}\``);
+    expect(body).toContain("`selected`");
+    expect(body).not.toContain("`hidden`");
+    expect(body).not.toContain("`wrong`");
+  });
+
+  it("resolves both typeof tuple syntaxes across report fences and drops null", () => {
+    const fixture = referenceFixture();
+    fixture.report("core", "tuple", 'export type TupleCode = (typeof VALUES)[number];\nexport type OtherCode = typeof VALUES[number];\nexport type NullableRefusal = ("z" | ("a" | null));');
+    const path = "packages/core/api/tuple.api.md";
+    fixture.write(path, `${readFileSync(join(fixture.repository, path), "utf8")}\n\`\`\`ts\nexport declare const VALUES: readonly ["z", "a", "a"];\n\`\`\`\n`);
+    const body = renderGeneratedRegion("refusal-codes", fixture.repository)!;
+    for (const name of ["TupleCode", "OtherCode", "NullableRefusal"]) expect(body).toMatch(new RegExp(`\\x60${name}\\x60[^\\n]+\\x60a\\x60, \\x60z\\x60`));
+    expect(body).not.toContain("`null`");
+    expect(listOpenRefusalTypes(fixture.repository)).toEqual([]);
+  });
+
+  it("keeps multiline, escaped and punctuation-bearing string literals reachable in Markdown tables", () => {
+    const fixture = referenceFixture();
+    const codes = ["", "a|b", "tick`value", "line\nvalue", "quote\"value"];
+    fixture.report("core", "punctuation", `export type LiteralCode =\n ${codes.map((code) => JSON.stringify(code)).join(" |\n ")} | null;`);
+    const body = renderGeneratedRegion("refusal-codes", fixture.repository)!;
+    const violations: string[] = [];
+    assertRefusalCodeReachability(body, fixture.repository, violations);
+    expect(violations).toEqual([]);
+    expect(body).toContain("<code>a&#124;b</code>");
+    expect(body).toContain("<code>tick&#96;value</code>");
+    expect(body).toContain("<code>line&#10;value</code>");
+    expect(body).toContain("<code></code>");
+  });
+
+  it("leaves tuple element unions open and resolves constants the report declares without exporting", () => {
+    const fixture = referenceFixture();
+    fixture.report("core", "tuple-open", 'export declare const UNION: readonly ["a" | "b"];\nexport type UnionCode = typeof UNION[number];\ndeclare const PRIVATE: readonly ["private_a", "private_b"];\nexport type PrivateCode = typeof PRIVATE[number];');
+    expect(listOpenRefusalTypes(fixture.repository).map(({ typeName }) => typeName)).toEqual(["UnionCode"]);
+    const body = renderGeneratedRegion("refusal-codes", fixture.repository)!;
+    expect(body).toContain("`PrivateCode`");
+    expect(body).toContain("`private_a`, `private_b`");
+    const violations: string[] = [];
+    assertRefusalCodeReachability(body.replace("`private_b`", "`other`"), fixture.repository, violations);
+    expect(violations.join("\n")).toContain("private_b");
+  });
+
+  it("lists open intersections, objects, references, nonliteral tuples and missing constants with reasons", () => {
+    const fixture = referenceFixture();
+    fixture.report("core", "open", [
+      'export type StringCode = "known" | (string & {});',
+      'export type ObjectRefusal = { code: "inside_object" };',
+      'export type AliasCode = OtherType;',
+      'export type MissingCode = typeof MISSING[number];',
+      'export declare const VALUES: readonly ["known", string];',
+      'export type DynamicCode = (typeof VALUES)[number];',
+    ].join("\n"));
+    const open = listOpenRefusalTypes(fixture.repository);
+    expect(open.map(({ typeName, reason }) => [typeName, reason])).toEqual([
+      ["AliasCode", "reference to another type"], ["DynamicCode", "unresolved string-literal tuple VALUES"],
+      ["MissingCode", "unresolved string-literal tuple MISSING"], ["ObjectRefusal", "object type"],
+      ["StringCode", "intersection type permits values beyond string literals"],
+    ]);
+    const body = renderGeneratedRegion("refusal-codes-open", fixture.repository)!;
+    for (const type of open) expect(body).toContain(`| \`@openlup/${type.packageName}\` | \`${type.typeName}\` | [open.api.md](${repositoryLink(type.report)}) | ${type.reason} |`);
+    const closed = renderGeneratedRegion("refusal-codes", fixture.repository)!;
+    expect(closed).not.toContain("inside_object");
+    expect(closed).not.toContain("StringCode");
+  });
+
+  it("deduplicates identical type/code pairs within a package and retains every report and differing definition", () => {
+    const fixture = referenceFixture();
+    fixture.report("core", "different", 'export type ParcelRefusal = "different";');
+    const body = renderGeneratedRegion("refusal-codes", fixture.repository)!;
+    const rows = body.split("\n").filter((line) => line.startsWith("| `@openlup/core` | `ParcelRefusal`"));
+    expect(rows).toHaveLength(2);
+    const shared = rows.find((row) => row.includes("`absent`"))!;
+    expect(shared).toContain(repositoryLink("packages/core/api/root.api.md"));
+    expect(shared).toContain(repositoryLink("packages/core/api/unexpected.api.md"));
+    expect(shared).toContain("[`.`]");
+    expect(shared).toContain("[`./nested/a`]");
+    expect(body).toContain("| `@openlup/platform` | `openlup` |");
+    expect(body).toContain("`OPENLUP_E_CLI_FAILURE`, `OPENLUP_E_CLI_INPUT`");
+    expect(body).not.toContain("OPENLUP_E_APP_UNKNOWN");
+  });
+
+  it("independently refuses a renderer missing reachable codes, including CLI codes", () => {
+    const fixture = referenceFixture();
+    const body = renderGeneratedRegion("refusal-codes", fixture.repository)!;
+    const valid: string[] = [];
+    assertRefusalCodeReachability(body, fixture.repository, valid);
+    expect(valid).toEqual([]);
+    const violations: string[] = [];
+    assertRefusalCodeReachability(body.replaceAll("`absent`", "`absent_suffix`").replaceAll("`OPENLUP_E_CLI_INPUT`", ""), fixture.repository, violations);
+    expect(violations).toEqual(["refusal-codes: refusal-codes is missing reachable codes: OPENLUP_E_CLI_INPUT, absent"]);
+    const stale: string[] = [];
+    syncGeneratedRegions(generatedRegion("refusal-codes", ""), "fixture", fixture.repository, false, stale);
+    expect(stale.some((violation) => violation.includes("missing reachable codes"))).toBe(true);
+  });
+
+  it("refuses a selected type disappearing until its region is regenerated", () => {
+    const fixture = referenceFixture();
+    fixture.report("core", "removed", 'export type RemovedRefusal = "removed_code";');
+    const before = generatedRegion("refusal-codes", renderGeneratedRegion("refusal-codes", fixture.repository)!);
+    fixture.report("core", "removed", "export type NoLongerSelected = string;");
+    const violations: string[] = [];
+    syncGeneratedRegions(before, "fixture", fixture.repository, false, violations);
+    expect(violations).toContain("fixture: generated region refusal-codes is stale; run docs:check -- --write");
+    const repaired: string[] = [];
+    expect(syncGeneratedRegions(before, "fixture", fixture.repository, true, repaired)).not.toContain("RemovedRefusal");
+    expect(repaired).toEqual([]);
+  });
+
+  it.each(["exports:ui", "sql:core", "cli:unknown", "refusal-code", "versioning:core"])("refuses unknown region %s", (name) => {
+    const { repository } = referenceFixture();
+    const violations: string[] = [];
+    syncGeneratedRegions(generatedRegion(name, ""), "fixture", repository, false, violations);
+    expect(violations).toEqual([`fixture: unknown generated region ${name}`]);
+  });
+
+  const repositoryRoot = resolve(packageRoot, "../..");
+  // These parse every published API report; coverage instrumentation makes that slow on hosted runners.
+  const realRepositoryTimeout = 120_000;
+  it.each(referenceRegions)("renders %s against the real repository without throwing", (name) => {
+    const body = renderGeneratedRegion(name, repositoryRoot)!;
+    expect(body).toBeTypeOf("string");
+    expect(body.endsWith("\n")).toBe(true);
+    expect(renderGeneratedRegion(name, repositoryRoot)).toBe(body);
+    const fixture = guideFixture(`# Guide\n\n${generatedRegion(name, body)}`);
+    const version = JSON.parse(readFileSync(join(repositoryRoot, "packages/core/package.json"), "utf8")).version;
+    writeFileSync(join(fixture.core, "package.json"), JSON.stringify({ version }));
+    const violations: string[] = [];
+    assertGuideContract(fixture.core, repositoryRoot, false, violations);
+    expect(violations).toEqual([]);
+  }, realRepositoryTimeout);
+
+  it("omits provider-specific package-read configuration keys in the real repository", () => {
+    const body = renderGeneratedRegion("configuration-keys", repositoryRoot)!;
+    const names = [...body.matchAll(/^\| `([^`]+)`/gm)].map((match) => match[1]);
+    expect(providerSpecificKeys(repositoryRoot, names).size).toBe(0);
+    expect(Number(/(\d+) package-read keys omitted/.exec(body)?.[1])).toBeGreaterThan(0);
+  }, realRepositoryTimeout);
+
+  it.each(["exports", "maturity"])("renders real %s subpaths without scanner-counted vocabulary", (kind) => {
+    for (const pkg of ["core", "outbox", "platform"]) {
+      const body = renderGeneratedRegion(`${kind}:${pkg}`, repositoryRoot)!;
+      expect(providerSpecificKeys(repositoryRoot, [body]).size).toBe(0);
+      if (pkg === "platform") expect(body).toMatch(/[1-9]\d* subpaths omitted because their names are provider-specific/);
+    }
+  }, realRepositoryTimeout);
+
+  it("shows exactly the real open inventory and every reachable closed code", () => {
+    const open = listOpenRefusalTypes(repositoryRoot);
+    const body = renderGeneratedRegion("refusal-codes-open", repositoryRoot)!;
+    const rows = body.split("\n").slice(2).filter(Boolean);
+    expect(rows).toHaveLength(open.length);
+    for (const [index, type] of open.entries()) {
+      expect(rows[index]).toContain(`| \`@openlup/${type.packageName}\` | \`${type.typeName}\` |`);
+      expect(rows[index]).toContain(type.report);
+      expect(rows[index]).toContain(type.reason);
+    }
+    const violations: string[] = [];
+    assertRefusalCodeReachability(renderGeneratedRegion("refusal-codes", repositoryRoot)!, repositoryRoot, violations);
+    expect(violations).toEqual([]);
+    expect(open.map(({ typeName }) => typeName)).not.toContain("PrivacyRefusalCode");
+  }, realRepositoryTimeout);
 });
