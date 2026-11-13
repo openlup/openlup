@@ -1,0 +1,2 @@
+- Add the experimental `payments/testing` subpath with the existing conformance runner and a provider-neutral scripted transport fake. Optional safety fixtures exercise capability/refusal parity, network ambiguity, signed webhook replay, invalid money, partial amounts and chargebacks without live access. Existing adapter behavior and imports remain unchanged.
+- Reserve the measured platform artifact budget for the next payments implementation part; individual feature rows share these caps.

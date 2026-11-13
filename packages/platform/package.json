@@ -409,6 +409,11 @@
       "types": "./dist/account-support/read-contracts/index.d.ts",
       "import": "./dist/account-support/read-contracts/index.js",
       "default": "./dist/account-support/read-contracts/index.js"
+    },
+    "./payments/testing": {
+      "types": "./dist/payments/testing/index.d.ts",
+      "import": "./dist/payments/testing/index.js",
+      "default": "./dist/payments/testing/index.js"
     }
   },
   "repository": {

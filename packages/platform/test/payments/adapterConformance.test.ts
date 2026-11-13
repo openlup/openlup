@@ -1,3 +1,4 @@
+import { createScriptedPaymentFake } from "../../src/payments/testing/index.js";
 import { describe, expect, it, vi } from "vitest";
 import { runPaymentAdapterConformance, runExecutionConformance, runDurableEventConformance,
   executePreparedAttemptMechanism, createVerifiedPaymentIngress, paymentPayloadFingerprint } from "@openlup/platform/payments";
@@ -24,10 +25,12 @@ function subject(provider: string): PaymentAdapterConformanceSubject & { verific
     { input: { ...input, rawBody: new TextEncoder().encode('{ "outcome" : "failed" }') }, expected: failed },
     { input: { ...input, rawBody: new TextEncoder().encode('{ "outcome" : "refusal" }') }, expected: { kind: "refusal", reason: "signature" } },
   ];
+  const fake = createScriptedPaymentFake<{ verify: Awaited<ReturnType<PaymentVerifyNormalizePort["verifyAndNormalize"]>> }>();
   const verifyAndNormalize: PaymentVerifyNormalizePort["verifyAndNormalize"] = vi.fn(async value => {
     const fixture = verification.find(row => row.input.rawBody === value.rawBody && row.input.receivedAt === value.receivedAt);
     if (!fixture || fixture.input.headers !== value.headers) throw new Error("raw_bytes_changed");
-    return fixture.expected;
+    fake.enqueue("verify", { kind: "success", value: fixture.expected });
+    return fake.invoke("verify");
   });
   return { subjectId: provider, executionInput: { ...identity, fingerprint: "attempt-fingerprint", providerIdempotencyKey: "provider-key", money,
     mode: "test", purpose: "initial" }, readbackInput: { identity, expectedMoney: money, purpose: "active_checkout" },

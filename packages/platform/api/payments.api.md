@@ -452,14 +452,10 @@ export declare function timingSafeStringEqual(left: string, right: string): bool
 ## dist/payments/adapterConformance.d.ts
 
 ```ts
-import type { PaymentAdapterConformanceEvidence, PaymentAdapterConformanceSubject, PaymentVerifyNormalizePort } from "./contracts/index.js";
+import type { PaymentAdapterConformanceEvidence } from "./contracts/index.js";
+import type { PaymentAdapterTestSubject } from "./paymentTestingScenarios.js";
 /** Runner-independent adapter proof. Verification fixtures are owned by each adapter. */
-export declare function runPaymentAdapterConformance(subjects: readonly (PaymentAdapterConformanceSubject & {
-    verification: readonly {
-        input: Parameters<PaymentVerifyNormalizePort["verifyAndNormalize"]>[0];
-        expected: Awaited<ReturnType<PaymentVerifyNormalizePort["verifyAndNormalize"]>>;
-    }[];
-})[]): Promise<PaymentAdapterConformanceEvidence>;
+export declare function runPaymentAdapterConformance(subjects: readonly PaymentAdapterTestSubject[]): Promise<PaymentAdapterConformanceEvidence>;
 ```
 ## dist/payments/bindings.d.ts
 
@@ -1681,6 +1677,47 @@ export type { ClaimedPaymentAttempt, PaymentProviderReconciliationPort, PaymentP
 export declare const DEFAULT_STALE_AFTER_SECONDS: number;
 export declare function runPaymentProviderReconciliationWorker(input: PaymentProviderReconciliationWorkerInput): Promise<PaymentProviderReconciliationWorkerResult>;
 ```
+## dist/payments/paymentTestingScenarios.d.ts
+
+```ts
+import type { PaymentAdapterConformanceSubject } from "./contracts/conformance.js";
+import type { PaymentAttemptPort, PaymentExecutionEnvelope } from "./contracts/adapter.js";
+import type { ScriptedPaymentOutcome } from "./testing/index.js";
+import type { PaymentMoney, PaymentVerifyNormalizePort } from "./contracts/evidence.js";
+export type PaymentWebhookFixture = {
+    input: Parameters<PaymentVerifyNormalizePort["verifyAndNormalize"]>[0];
+    expected: Awaited<ReturnType<PaymentVerifyNormalizePort["verifyAndNormalize"]>>;
+};
+export type PaymentTransportScenario = "timeout-before-dispatch" | "provider-5xx-before-dispatch" | "timeout-after-dispatch" | "redelivery-409";
+export type PaymentTransportFixture = {
+    execute: () => Promise<PaymentExecutionEnvelope>;
+    /** The injected scripted fake's log: the runner checks the intended fault ran. */
+    calls: readonly {
+        kind: ScriptedPaymentOutcome<unknown>["kind"];
+    }[];
+};
+/** Adapter authors supply signed original bytes and bind the shared scripted fake
+ * to their injected client. Each transport callback must execute the real adapter.
+ * These offline probes establish no durable-store or provider qualification.
+ */
+export interface PaymentAdapterSafetyScenarios {
+    transport: Record<PaymentTransportScenario, PaymentTransportFixture>;
+    /** One successful execution per declared currency and capture family, plus an
+     * unattended attempt (or a refused invocation when unattended is unsupported). */
+    capabilityInputs: readonly Parameters<PaymentAttemptPort["execute"]>[0][];
+    /** An otherwise valid request with a currency outside the declared set. */
+    unsupportedCurrencyInput: Parameters<PaymentAttemptPort["execute"]>[0];
+    /** Omit required payer/method context; adapters with required context must supply it. */
+    missingRequiredInput?: Parameters<PaymentAttemptPort["execute"]>[0];
+    webhooks: Record<"valid" | "duplicate" | "signatureMismatch" | "partialAmount" | "zeroAmount" | "missingAmount" | "missingCurrency" | "chargeback", PaymentWebhookFixture>;
+    partialMoney: PaymentMoney;
+}
+/** Existing baseline callers remain valid; supply safety for the complete kit. */
+export type PaymentAdapterTestSubject = PaymentAdapterConformanceSubject & {
+    verification: readonly PaymentWebhookFixture[];
+    safety?: PaymentAdapterSafetyScenarios;
+};
+```
 ## dist/payments/paymentTruth.d.ts
 
 ```ts
@@ -1949,6 +1986,53 @@ export declare const PAYMENT_MIGRATIONS: readonly [{
     readonly sha256: "992540b0f49713d604859926624b3bef09d5075b68b604f069dcbd688328e452";
     readonly url: URL;
 }];
+```
+## dist/payments/testing/index.d.ts
+
+```ts
+/** @experimental Development-preview, offline payment adapter test kit. */
+export { runPaymentAdapterConformance } from "../adapterConformance.js";
+export { createScriptedPaymentFake, ScriptedPaymentTransportError } from "./scriptedFake.js";
+export type { ScriptedPaymentOutcome } from "./scriptedFake.js";
+export type { PaymentAdapterSafetyScenarios, PaymentAdapterTestSubject, PaymentTransportScenario, PaymentTransportFixture, PaymentWebhookFixture } from "../paymentTestingScenarios.js";
+```
+## dist/payments/testing/scriptedFake.d.ts
+
+```ts
+/** Synthetic transport outcomes; no provider SDK, network, timer or retry. */
+export type ScriptedPaymentOutcome<T> = {
+    kind: "success";
+    value: T;
+} | {
+    kind: "provider-5xx";
+    response?: T;
+} | {
+    kind: "timeout-before-dispatch";
+} | {
+    kind: "timeout-after-dispatch";
+} | {
+    kind: "redelivery-409";
+    response?: T;
+};
+export declare class ScriptedPaymentTransportError extends Error {
+    readonly kind: Exclude<ScriptedPaymentOutcome<never>["kind"], "success">;
+    readonly status: number | undefined;
+    readonly dispatched: boolean;
+    constructor(kind: Exclude<ScriptedPaymentOutcome<never>["kind"], "success">);
+}
+/** Per-call FIFO extracted from adapter test clients. Arguments/secrets are never recorded.
+ * HTTP bindings may supply a response for 5xx/409; SDK bindings receive an error.
+ * Dispatch observations describe the script only, never production no-charge evidence.
+ */
+export declare function createScriptedPaymentFake<Calls extends Record<string, unknown>>(): {
+    calls: readonly {
+        call: keyof Calls;
+        kind: ScriptedPaymentOutcome<unknown>["kind"];
+    }[];
+    enqueue<K extends keyof Calls>(call: K, ...outcomes: ScriptedPaymentOutcome<Calls[K]>[]): void;
+    invoke<K extends keyof Calls>(call: K): Promise<Calls[K]>;
+    assertDrained(): void;
+};
 ```
 ## dist/payments/verifiedIngress.d.ts
 

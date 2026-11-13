@@ -175,6 +175,7 @@ bearer; its local fixture establishes no hosted revocation guarantee.
 | `./payments/stripe` | Opt-in Node payment example with an injected structural client, verified observations and purpose-sensitive readback; no SDK dependency or default activation. |
 | `./payments/tpay` | Opt-in Node payment example with injected HTTP/certificate I/O, Model O aliases and verified observations; no default activation. |
 | `./fulfillment/omnipack` | Opt-in Node fulfillment example with injected I/O; default-off. |
+| `./payments/testing` | Experimental offline adapter conformance runner and scripted transport fake; development preview. |
 | `./payments` | Experimental prepared-attempt ordering with injected persistence, execution and failure policy; contracts at `./payments/contracts`. |
 | `./fulfillment`, `./fulfillment/contracts` | [Experimental fulfillment services, contracts and status canon](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#fulfillment-contracts). |
 | `./fulfillment/native` | Experimental `createNativeFulfillmentBinding` locked dispatch-preparation binding; the host supplies authoritative facts, a capability-local transaction lane and contribution composition. |
@@ -1708,6 +1709,58 @@ subscription fields never confer ownership. Without host ownership resolution,
 registration is not projected. Lifecycle carriers copy typed facts only.
 The existing refusal handoff accepts a failure-reason string, not a typed
 adapter refusal envelope; envelope forwarding remains unsupported.
+
+### Test a payment adapter offline
+
+`@openlup/platform/payments/testing` is an experimental development-preview kit
+for adapter authors. It re-exports `runPaymentAdapterConformance`; the existing
+`./payments` export remains available. `createScriptedPaymentFake` supplies a
+separate FIFO queue per injected transport call, with success, provider 5xx,
+timeout before/after dispatch and redelivery 409 outcomes. It performs no I/O,
+waits or retries and records call names/outcome kinds only. HTTP bindings can
+provide a synthetic response for 5xx/409; SDK bindings receive a synthetic error.
+
+```ts
+import { createScriptedPaymentFake } from "@openlup/platform/payments/testing";
+
+const transport = createScriptedPaymentFake<{ create: { id: string } }>();
+transport.enqueue("create", { kind: "success", value: { id: "remote-fixture" } });
+const client = { create: () => transport.invoke("create") };
+await client.create(); // Inject this binding into the adapter under test.
+transport.assertDrained();
+```
+
+In the author's test, pass `PaymentAdapterTestSubject[]` to
+`runPaymentAdapterConformance`. Supply `safety` on each subject for the complete
+named suite: `capabilityInputs` exercise every declared capture family/currency
+and unattended support or refusal; `transport` invokes the real adapter against
+each scripted failure; `webhooks` supplies signed original bytes and independent
+expected evidence for valid/duplicate delivery, signature mismatch, partial/zero/
+missing amount, missing currency and chargeback. `partialMoney` pins exact minor
+units. Optional close/absence ports are exercised when present; refund creation
+and split authorization/capture are structurally absent. Baseline subjects
+without `safety` retain the existing, narrower checks.
+
+The runner checks replay identity and ingress calls with an in-memory host;
+it does not establish durable-store idempotency. Signature refusal and unusable
+settling money must reach no persistence call. A currencyless notification may
+bind to an adapter's single declared currency; several currencies cannot supply
+an invented choice. Network errors may propagate to the host, so failure probes
+assert no success without inventing proof of non-dispatch. A 409 remains a
+conflict response; later redelivery of the original event retains replay identity.
+Partial paid amounts and cumulative partial refunds retain their witnessed
+classifications. Chargebacks may be `refunded` or `disputed`.
+
+From the repository root, run the existing adapter witnesses with:
+
+```sh
+npm run test:hosted -- packages/platform/test/payments/stripe/conformance.test.ts packages/platform/test/payments/tpay/conformance.test.ts
+```
+
+The fixtures in those tests show the client bindings, the card adapter's inclusive
+300-second signature window, JWS verification, cumulative refund snapshots and
+full-reversal chargebacks. This proves offline contract behavior only; provider
+account readiness and real-store durability need their own evidence.
 
 ### Payment service composition
 
