@@ -931,8 +931,9 @@ jobs:
 
 The separate [Guide tutorial against the npm registry](workflows/registry-tutorial.yml)
 workflow runs after a successful core publication. It uses the default-branch
-workflow, with only `contents: read`, and checks out the completed publication's
-commit. It accepts only a release event with an `openlup-core-v<version>` tag,
+workflow, with only `contents: read`, and runs the default-branch checkout and
+reads the release tag's tutorial page after checking that tag's commit against
+the completed publication run. It accepts only a release event with an `openlup-core-v<version>` tag,
 then waits up to ten minutes for the matching package set and core's `latest`
 value on npm before running the guide tutorial against the registry and a
 disposable pinned PostgreSQL database. The tutorial is advisory: a failure
