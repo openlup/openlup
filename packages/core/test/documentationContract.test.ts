@@ -450,6 +450,29 @@ const coreRegion = (body: string) => `<!-- generated:maturity:outbox -->\n${body
 const freshMaturity = "| Export | Role | Maturity |\n| --- | --- | --- |\n| `.` | rail | experimental |\n";
 
 describe("reader guide contract", { timeout: 60_000 }, () => {
+  it.each([
+    [2, "# Title\n\n# Another title\n"],
+    [2, "# Title\n\n # Other\n"],
+    [2, "# Title\n\n#\tOther\n"],
+    [2, "# Title\n\n#\n"],
+    [0, "## Section\n\nA page without a title.\n"],
+  ])("refuses a guide page with %i level-one headings", (count, source) => {
+    const roots = guideFixture("# Guide\n", { "reference/page.md": source });
+    expect(() => checkGuide(roots)).toThrow(`docs/guide/reference/page.md: a guide page has exactly one level-one heading, its title (found ${count})`);
+  });
+
+  it("does not count #hashtag text as a level-one heading", () => {
+    const roots = guideFixture("# Guide\n", { "reference/page.md": "# Title\n\n#hashtag\n" });
+    expect(() => checkGuide(roots)).not.toThrow();
+  });
+
+  it.each(["```", "~~~", "````", "~~~~"])("ignores level-one headings inside a %s fence", (marker) => {
+    const roots = guideFixture("# Guide\n", {
+      "reference/page.md": `# Title\n\n${marker}text\n# Example heading\n${marker}\n\n## Section\n`,
+    });
+    expect(() => checkGuide(roots)).not.toThrow();
+  });
+
   it("plans pending absolute and package-relative pages through the CLI without writing", () => {
     const roots = guideFixture(`# Guide\n\n[README](${repositoryLink("README.md", "openlup-core-v1.0.0")})\n`);
     const file = join(roots.core, "docs/guide/upgrade/v1-2-3.md");
