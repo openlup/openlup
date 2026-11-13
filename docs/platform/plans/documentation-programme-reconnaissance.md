@@ -43,7 +43,7 @@ Observed defects in reader-facing pages at 0.38.0:
 - **Contradictory snapshot counts.** Selected-plan units read 91, 92, 94, 95,
   96, 103 or 105 across `CANONICAL_CONTRACTS.md` and `DATA_AND_MIGRATIONS.md`.
 - **Adopter-specific detail in generic pages.** `petId`, `petName`, a `pets`
-  table, live Tpay settlement, "donor adopter", and a Polish e-invoicing key.
+  table, live provider settlement, "donor adopter", and a Polish e-invoicing key.
 - **A maintainer's absolute local path.** `plans/oss-m19-g18.md:120`.
 - **Repository-only references.**
   - About 436 links into source and tests from reader-facing pages.
@@ -230,7 +230,7 @@ Keep nothing that needs a human to update metadata by hand.
 | S3 | ~~Docs-impact line on surface changes.~~ **Withdrawn**: the owner removed this obligation on 2026-11-06 (`9a94ffe7b`). Compiled examples and generated regions (S2) give the same protection by construction, and the per-release pass (S6) covers prose. | M2 | — |
 | S4 | **Executable tutorial.** The npm-to-store tutorial's commands run in CI against a fresh PostgreSQL: advisory at first, required once green twice. | M9 (agent eval suite) as the first measure | Deterministic and cheap. It proves the path every human and every agent takes first. An agent eval is added only if this proves insufficient. |
 | S5 | **One corpus, three outputs from the same files.** <br>• openlup.com reads the reader directory at the pinned commit through Git: the commit hash is the provenance. <br>• The npm packages ship the same directory. <br>• `openlup-context init` writes a managed block with a compact index of it into the adopter's `AGENTS.md`. | M7, M10, the hand-curated `AGENT_CONTEXT.md` routes over time | Removes the per-release bundle step and, later, the excerpt corpus with its route table. The pattern measured best for agents is a compact pointer to version-matched docs in `AGENTS.md`. |
-| S6 | **Docs are written in the same PR as the code, plus one agent pass per release.** <br>• The authoring agent updates the reader page with the code, as S3 asks. <br>• Before each release, one agent compares the API-report diff since the last release with the reader set and opens one PR. <br>• Review floors stay as set on 2026-11-06 (zero for Markdown outside rule files). | M8 | One scheduled run per release instead of a run per merge. All agent output passes S2–S4, which it cannot fake. |
+| S6 | **Docs are written in the same PR as the code, plus one agent pass per release.** <br>• The authoring agent updates the reader page with the code, as "Deliver a change" step 2 asks. <br>• Before each release, one agent compares the API-report diff since the last release with the reader set and opens one PR. <br>• Review floors stay as set on 2026-11-06 (zero for Markdown outside rule files). | M8 | One scheduled run per release instead of a run per merge. All agent output passes S2–S4, which it cannot fake. |
 
 ### Drop or defer
 

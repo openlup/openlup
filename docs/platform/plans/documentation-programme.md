@@ -136,7 +136,9 @@ contract in CI, with no programme work left.
     (`packages/core/scripts/documentation-contract.ts`):
     - runs in required `install-proof` through core's `ci:required`;
     - compiles the README and AGENTS examples against smoke files;
-    - generates the maturity tables;
+    - checks the README and AGENTS maturity tables against
+      `release-gates.json` (it has no write mode; generated regions and
+      `--write` are new work in W1);
     - refuses links that escape the package;
     - requires six `AGENTS.md` sections.
   - `platform` and `outbox` have no `docs:check`; their `ci:required` is only
@@ -195,7 +197,7 @@ packages/core/docs/guide/
 ```
 
 **Why this shape.** It was benchmarked on 2026-11-13 against ten projects:
-Medusa, Vendure, Saleor, Stripe, Next.js, Django, Prisma, Temporal, Supabase
+Medusa, Vendure, Saleor, a payments platform's developer docs, Next.js, Django, Prisma, Temporal, Supabase
 and Astro.
 
 - **Diátaxis page types are kept as the rule for each page.** Every one of
@@ -226,7 +228,7 @@ and Astro.
 - **Index cap.** The index stays under 8 KB. That is the size of the docs
   index that scored highest in Vercel's agent evaluations.
 - **Instructions for agents.** The index opens with a short block of
-  instructions for agents, following Stripe's and Temporal's `llms.txt`:
+  instructions for agents, following the agent instructions in leading projects' `llms.txt` files:
   - read the guide copy that ships with the installed version;
   - never hardcode a version;
   - prefer the refusal-code reference to guessing;
@@ -294,8 +296,9 @@ get a review floor of one. The contract gains:
    `donor` to the ratchet's counted vocabulary.
 4. **Instruction-file size.** A line cap for every `AGENTS.md`, set above the
    six sections core already requires (core's file is 177 lines today).
-5. **Pack size.** W1 measures core's pack against `maxFiles` (420) in
-   `release-gates.json` before the guide grows.
+5. **Pack size.** W1 measures core's pack against `release-gates.json`
+   before the guide grows: the overall `maxFiles` (420) and the tighter docs
+   sub-budget (20 files, 49152 packed bytes).
 
 ### No impact gate
 
@@ -316,9 +319,11 @@ result.
 
 - **Non-blocking first.** It is `continue-on-error` at first, then blocking
   (D4). No new context or branch-protection change is needed.
-- **Time budget.** It stays inside the job's 20-minute timeout.
-- **From npm too.** `publish-packages.yml` runs the same steps against the
-  registry after its existing registry verification. A failure fails that
+- **Time budget.** It stays inside the job's existing timeout (35 minutes
+  at the base commit).
+- **From npm too.** a new post-publish step in `publish-packages.yml` runs
+  the same steps against the registry; the workflow has no post-publish
+  registry check today, only the pre-publish refusal of an existing version. A failure fails that
   run, which GitHub reports to the maintainer. No issue or bot is added.
 - **Gaps are findings.** A step that needs a source checkout or owner SQL is
   an owner finding, stated in the tutorial as a limit.
@@ -445,7 +450,7 @@ filesystem paths in tracked Markdown.
 | W4 | S5 for npm and agents: `files`, the template line, `openlup-context` indexing; the root `AGENTS.md` becomes the single agent guide. **In openlup.com, same window:** `/docs/` from the guide; claims and links re-sourced to the guide; a check that every `oss:` link exists at the pin; a failing pin-bump PR notifies the owner; rollback is reverting the pin PR. S6 step added to release preparation, assembling each release's upgrade page. On openlup.com: an `llms.txt` section for `/docs/`, every page also served as `.md`, and a "documentation problem" issue form linked from each page. | A cold consumer installs the packed candidate and finds the guide and index; the next release reaches openlup.com with its claims green and no manual step. |
 | W5 | Retire stubs, the curated routes table and `AGENT_CONTEXT.md` corpora (once the smoke matrix passes on the guide alone), the bundle exporter and the uninvoked orientation audits. | Nothing references removed files; smoke matrix green. |
 
-**Parallelism.** W1b runs beside W1 and W2. W4's website part starts once W2
+**Parallelism.** W1b runs beside W1, W2 and W3. W4's website part starts once W2
 has landed, and must land before the first release that contains W3 moves.
 Otherwise that release's pin bump turns red on the website's claims.
 
@@ -468,7 +473,7 @@ Otherwise that release's pin bump turns red on the website's claims.
 | A move breaks inbound anchors or the agent-context generator. | Stubs until W5; generator and routing retargeted in the move PR. |
 | The pattern list rejects legitimate text. | Seeded allow-list; anything not a clean pattern stays with review. |
 | Agent-drafted prose states untrue capability. | Capability facts only in generated regions; review floor of one on the guide; owner batch confirmation in W2/W3. |
-| Core's pack exceeds its file budget. | Measured in W1 before the guide grows. |
+| Core's pack exceeds its budget: the docs sub-budget in `release-gates.json` (20 files, 49152 packed bytes) binds before the overall 420 files. | Measured in W1 before the guide grows; raising the sub-budget is a reviewed change in W4 with the measured guide size. |
 
 ## Cost and budget
 

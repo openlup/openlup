@@ -27,9 +27,10 @@ implementing it.
    keep only how to change OpenLup, and evidence is frozen and labelled.
 3. **No silent drift.** A change to a public surface (exports, API reports,
    SQL catalogue, configuration keys, CLI, refusal codes, status of a
-   capability) cannot land without the affected reader pages being updated or
-   explicitly declared unaffected. Examples in reader pages compile or run
-   against the code of the same revision. Facts that code can produce
+   capability) that would make a reader page wrong fails a check: compiled
+   examples, generated regions or links. The per-release pass catches what
+   checks cannot. Examples in reader pages compile or run against the code of
+   the same revision. Facts that code can produce
    (versions, counts, export lists, maturity) are generated, not typed.
 4. **Kept current by agents under the existing review rules.** Agents write
    and update documentation in the same pull request as the code, and one
@@ -49,7 +50,7 @@ reader-relevant explanation is a minority of the platform pages (roughly
 - contradictory snapshot counts across pages;
 - adopter-specific terms in generic platform pages;
 - a maintainer's local filesystem path in a plan;
-- hundreds of task IDs, and about 890 links into source and tests.
+- hundreds of task IDs, and about 436 links into source and tests from reader-facing pages.
 
 There is no end-to-end path from npm to a running store. Agents read the same
 files and inherit the same confusion. The website (openlup.com) can publish
