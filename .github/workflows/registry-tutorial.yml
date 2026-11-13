@@ -3,8 +3,8 @@
 # uses the completed publication's commit instead of the default branch's commit.
 # Publish Packages handles release: published. For a release run, head_branch is the
 # release tag and head_sha is its commit; refuse other events and malformed tags.
-# Only this repository's own release runs qualify: a release has no pull-request
-# context, and no fork ref is ever checked out.
+# Only this repository's own release runs qualify: the head repository must be
+# this repository. A release has no pull-request context; no fork ref is checked out.
 # https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#release
 # https://docs.github.com/en/webhooks/webhook-events-and-payloads#workflow_run
 name: Guide tutorial against the npm registry
@@ -23,7 +23,7 @@ concurrency:
 jobs:
   registry-tutorial:
     name: Guide tutorial against the npm registry (advisory)
-    if: ${{ github.repository == 'openlup/openlup' && github.event.workflow_run.repository.full_name == 'openlup/openlup' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'release' && startsWith(github.event.workflow_run.head_branch, 'openlup-core-v') }}
+    if: ${{ github.repository == 'openlup/openlup' && github.event.workflow_run.repository.full_name == 'openlup/openlup' && github.event.workflow_run.head_repository.full_name == 'openlup/openlup' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'release' && startsWith(github.event.workflow_run.head_branch, 'openlup-core-v') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:

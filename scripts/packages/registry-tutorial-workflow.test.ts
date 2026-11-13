@@ -18,9 +18,9 @@ const permissionBlocks = (source: string) => [...source.matchAll(/^( *)permissio
 const conditions = (source: string) => [...source.matchAll(/^ *if:.*$/gmu)].map((match) => match[0]);
 const CHECKOUT = "uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7\n        with:\n          ref: ${{ github.event.workflow_run.head_sha }}\n          persist-credentials: false\n";
 const SETUP_NODE = "uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6\n        with:\n          node-version: 24.21.0\n          package-manager-cache: false\n";
-// Only this repository's successful release runs: a release has no pull-request context, and the
-// checkout is the completed run's own head_sha, never a fork ref.
-const REGISTRY_GATE = "if: ${{ github.repository == 'openlup/openlup' && github.event.workflow_run.repository.full_name == 'openlup/openlup' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'release' && startsWith(github.event.workflow_run.head_branch, 'openlup-core-v') }}";
+// Only this repository's successful release runs, with this repository as the head repository.
+// A release has no pull-request context; checkout uses the completed run's own head_sha.
+const REGISTRY_GATE = "if: ${{ github.repository == 'openlup/openlup' && github.event.workflow_run.repository.full_name == 'openlup/openlup' && github.event.workflow_run.head_repository.full_name == 'openlup/openlup' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'release' && startsWith(github.event.workflow_run.head_branch, 'openlup-core-v') }}";
 const REGISTRY_READY = "        if: steps.registry.outputs.ready == 'true'";
 const REGISTRY_CLEANUP = "        if: always() && steps.postgres.outcome != 'skipped'";
 const REGISTRY_STEP = "Guide tutorial against the npm registry (advisory)";
@@ -53,7 +53,8 @@ describe("the advisory registry tutorial after publication", () => {
   });
 
   it("never checks out a fork or pull-request ref", () => {
-    expect(workflow).not.toMatch(/pull_request|head_repository|head\.ref|github\.head_ref/u);
+    expect(conditions(tutorial)[0]).toContain("github.event.workflow_run.head_repository.full_name == 'openlup/openlup'");
+    expect(workflow).not.toMatch(/pull_request|head_ref|head\.ref/u);
     expect([...workflow.matchAll(/^ {10}ref: (.+)$/gmu)].map(match => match[1])).toEqual(["${{ github.event.workflow_run.head_sha }}"]);
   });
 
