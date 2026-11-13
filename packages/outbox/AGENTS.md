@@ -51,8 +51,8 @@ Composition can report `OPENLUP_E_PORT_MISSING`, `OPENLUP_E_EVENT_UNHANDLED`, `O
 
 ## Using this package in an application
 
-Read [application ownership](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/core/docs/guide/start/adopt-from-npm.md#keep-application-ownership)
-and [extension seams](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/core/docs/guide/how-to/extend/choose-an-extension-seam.md).
+Read [application ownership](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/packages/core/docs/guide/start/adopt-from-npm.md#keep-application-ownership)
+and [extension seams](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/packages/core/docs/guide/how-to/extend/choose-an-extension-seam.md).
 
 Public handlers, policies, ports and compatible adapters need no per-function
 record or upstream release. A missing seam needs a local reproducer and actual
