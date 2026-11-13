@@ -491,7 +491,7 @@ Each package's `docs:check -- --write` regenerates regions in its `README.md`
 and `AGENTS.md`; core also regenerates guide regions and rewrites release tags
 only in canonical repository URLs in the guide. HTML anchor `href` targets
 participate in local-link and release-tag checks. Link rules read destinations with character references
-decoded, and a destination carrying any reference other than `&amp;` is refused. Export and maturity regions
+decoded, and a destination carrying any `&` other than `&amp;` is refused. Export and maturity regions
 omit provider-specific subpath names using the neutrality scanner and, when any
 are omitted, give the count and link to the complete manifest and package
 `AGENTS.md` maturity section at the release tag. Guide pages

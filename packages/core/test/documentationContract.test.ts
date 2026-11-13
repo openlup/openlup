@@ -560,9 +560,13 @@ describe("reader guide contract", { timeout: 60_000 }, () => {
     ["an HTML hexadecimal reference", '<a href="https://github.com/openlup/openlup&#x2F;raw/main/README.md">Read</a>'],
     ["a protocol-relative HTML reference", '<a href="&#47;&#47;github.com/openlup/openlup/raw/main/README.md">Read</a>'],
     ["a named reference in Markdown", "[Read](https://github.com/openlup/openlup&sol;blob/main/README.md)"],
+    ["a semicolonless decimal reference", '<a href="https://github.com/openlup/openlup&#47blob/main/README.md">Read</a>'],
+    ["a semicolonless hexadecimal reference", '<a href="https://github.com/openlup/openlup&#x2fraw/main/README.md">Read</a>'],
+    ["a semicolonless protocol-relative reference", '<a href="//github.com/openlup/openlup&#47raw/main/README.md">Read</a>'],
+    ["a bare ampersand", "[Read](https://github.com/openlup/openlup/issues?q=a&b)"],
   ])("refuses a repository link hidden by %s", (_name, link) => {
     const roots = guideFixture(`# Guide\n\n${link}\n`);
-    expect(() => checkGuide(roots)).toThrow(/character reference|non-canonical repository link|must pin/);
+    expect(() => checkGuide(roots)).toThrow(/character reference or a bare &|non-canonical repository link|must pin/);
   });
 
   it("admits &amp; in an issue-tracker link", () => {

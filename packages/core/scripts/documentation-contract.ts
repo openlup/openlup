@@ -460,10 +460,11 @@ function assertReaderLanguage(label: string, source: string, allowed: ReadonlySe
   }
 }
 
-// Markdown and HTML decode character references in destinations, so `&#47;` would hide a path
-// separator from the link rules. The rules read the decoded text; a destination may carry only
-// `&amp;`, and any other reference is refused rather than interpreted.
-const characterReference = /&(?:#(\d+)|#[xX]([0-9A-Fa-f]+)|([A-Za-z][A-Za-z0-9]*));/g;
+// Markdown and HTML decode character references in destinations, so `&#47;` (or HTML's
+// semicolonless `&#47`) would hide a path separator from the link rules. The rules read the
+// decoded text, and a destination may carry no `&` except `&amp;`: anything else is refused
+// rather than interpreted.
+const characterReference = /&(?:#(\d+);?|#[xX]([0-9A-Fa-f]+);?|([A-Za-z][A-Za-z0-9]*);)/g;
 const namedReferences: Record<string, string> = { amp: "&", sol: "/", colon: ":", period: ".", num: "#", quest: "?", percnt: "%", lt: "<", gt: ">", quot: '"', apos: "'", equals: "=" };
 function decodeCharacterReferences(source: string): string {
   return source.replace(characterReference, (reference, decimal?: string, hex?: string, name?: string) => {
@@ -475,8 +476,8 @@ function decodeCharacterReferences(source: string): string {
 
 function assertGuideLinks(guideRoot: string, file: string, label: string, raw: string, repositoryRoot: string, tag: string, violations: string[]): void {
   for (const target of markdownLinkTargets(raw, () => undefined)) {
-    if (/&(?!amp;)(?:#\d+|#[xX][0-9A-Fa-f]+|[A-Za-z][A-Za-z0-9]*);/.test(target)) {
-      violations.push(`${label}: link destination ${target} uses a character reference; write the characters literally`);
+    if (/&(?!amp;)/.test(target)) {
+      violations.push(`${label}: link destination ${target} uses a character reference or a bare &; write the characters literally and an ampersand as &amp;`);
     }
   }
   const source = decodeCharacterReferences(raw);
