@@ -364,10 +364,6 @@ Releases before `0.37.0` are retained in the source-only `CHANGELOG-HISTORY.md`.
 Size comparison uses the published `0.38.0` tarball; preparation grants no
 publication or installation proof.
 
-### Verify the published npm artifact
-
-Moved to [Verify the published packages](../../packages/core/docs/guide/how-to/operate/verify-published-packages.md#verify-the-published-packages).
-
 ## Cutting an optional source preview
 
 After preview 11, a source preview is an optional source snapshot with no package. The

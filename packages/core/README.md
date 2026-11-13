@@ -136,9 +136,6 @@ measured budget decision. Passing a local pack does not authorize publication.
 [the tutorial](docs/guide/start/tutorial.md) and [upgrade an application](docs/guide/upgrade/README.md).
 Use the [glossary](docs/guide/glossary.md) for shared terms.
 
-## Kernel Documentation
-Moved to [Subscription engine](docs/guide/concepts/subscription-engine.md).
-
 ### Module readiness
 
 Selected `./readiness` modules retain independent schema requirements.
@@ -162,45 +159,9 @@ The grouped query builder and result decoder perform no I/O. The application
 retains database access, transaction and admission policy; these helpers do not
 run migrations, schedule work or activate a module.
 
-## Bundle contracts
-Moved to [Compose native bundle writes](docs/guide/how-to/build/bundles.md).
-
-## Commerce data contracts
-Moved to [Read prices for a quote](docs/guide/how-to/build/quote-prices.md) and [add OpenLup to an existing application](docs/guide/how-to/build/own-stack.md).
-
-### Catalog identifiers
-Moved to [Pure contract limits](docs/guide/reference/limits.md#pure-contract-limits).
-
-### Inventory availability
-Moved to [Pure contract limits](docs/guide/reference/limits.md#pure-contract-limits).
-
-### Price resolution and breakdown
-Moved to [Read prices for a quote](docs/guide/how-to/build/quote-prices.md).
-
-### Promotion evaluation and adjustments
-Moved to [Read prices for a quote](docs/guide/how-to/build/quote-prices.md).
-
-## Delivery contracts
-Moved to [Compose native fulfillment](docs/guide/how-to/build/fulfillment.md).
-
-### Fulfillment fact and status contracts
-Moved to [Canonical status](docs/guide/concepts/payments.md#canonical-status) and [compose native fulfillment](docs/guide/how-to/build/fulfillment.md).
-
-### Shipping rule resolution
-Moved to [Select shipping rules](docs/guide/how-to/build/fulfillment.md#select-shipping-rules).
-
-## Partner and risk contracts
-Moved to [Architecture and ownership](docs/guide/concepts/architecture-and-ownership.md).
-
-### Company identity lookup contracts
-Moved to [Pure contract limits](docs/guide/reference/limits.md#pure-contract-limits).
-
 ### Partner lifecycle contracts
 
 [Compose marketing handlers](docs/guide/how-to/build/marketing.md); inquiry contracts are in the shipped `src/partners/`.
-
-### Risk evaluation contracts
-Moved to [Pure contract limits](docs/guide/reference/limits.md#pure-contract-limits).
 
 ## Payment contracts
 Moved to [Payments](docs/guide/concepts/payments.md).
@@ -209,18 +170,6 @@ The `./payment` export's `withinSchemeRetryCeiling` helper checks only its local
 15-attempt/30-day numeric bound. A passing result does not authorize a retry or
 certify compliance; the host/provider must apply actual decline advice and
 current applicable rules, including any narrower limits.
-
-## Marketing contracts
-Moved to [Marketing sync](docs/guide/concepts/marketing-sync.md) and [compose marketing handlers](docs/guide/how-to/build/marketing.md).
-
-## Outbox contracts
-Moved to [Deliver events with the outbox](docs/guide/how-to/build/outbox.md).
-
-## Platform runtime contracts
-Moved to [Run OpenLup on your own host](docs/guide/how-to/operate/self-host.md).
-
-## Standard schema contracts
-Moved to [Pure contract limits](docs/guide/reference/limits.md#pure-contract-limits).
 
 ## Agent context lookup
 

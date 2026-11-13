@@ -675,10 +675,6 @@ The [installed/native witness](../../tests/postgres/invoicingCaptured.test.ts)
 exercises the packed entry through a restricted login; it is local sandbox proof,
 not live-provider or hosted qualification.
 
-## OMS composition
-
-Moved to [Compose order management stores](../../packages/core/docs/guide/how-to/build/oms-stores.md#choose-the-imports).
-
 ### Native OMS and support stores
 
 Moved to [Compose order management stores](../../packages/core/docs/guide/how-to/build/oms-stores.md#choose-the-imports).
