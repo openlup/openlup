@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { bumpRelease, setVersionFields } from "./release-bump.ts";
+import { bumpRelease, npmPublishedPackedBytes, setVersionFields } from "./release-bump.ts";
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -71,6 +71,30 @@ describe("release:bump", () => {
     writeFileSync(join(root, "packages/core/CHANGELOG.md"), "# Changelog\n");
     expect(() => bumpRelease(root, "core", "0.9.0")).toThrow(/CHANGELOG\.md: has no "## \[Unreleased\]" heading followed by a blank line/u);
     expect(read(root, files)).toEqual({ ...files, "packages/core/CHANGELOG.md": "# Changelog\n" });
+  });
+
+  it("moves the growth baseline to the published version it replaces, or writes nothing", () => {
+    const gates = '{\n  "pack": {\n    "maxFiles": 10,\n    "baseline": {\n      "version": "0.6.0",\n      "packedBytes": 100\n    }\n  }\n}\n';
+    const moved = '{\n  "pack": {\n    "maxFiles": 10,\n    "baseline": {\n      "version": "0.7.0",\n      "packedBytes": 12345\n    }\n  }\n}\n';
+    const { root, files } = fixture(), path = "packages/core/release-gates.json";
+    writeFileSync(join(root, path), gates);
+    expect(() => bumpRelease(root, "core", "0.9.0", () => { throw new Error("@openlup/core@0.7.0 is not published"); })).toThrow("@openlup/core@0.7.0 is not published");
+    expect({ ...read(root, files), [path]: readFileSync(join(root, path), "utf8") }).toEqual({ ...files, [path]: gates });
+    const asked: string[] = [];
+    expect(bumpRelease(root, "core", "0.9.0", (name, version) => { asked.push(`${name}@${version}`); return 12345; })).toContain(path);
+    expect(asked).toEqual(["@openlup/core@0.7.0"]);
+    expect(readFileSync(join(root, path), "utf8")).toBe(moved);
+  });
+
+  it("takes the packed bytes of exactly one published registry tarball", () => {
+    const row = { name: "@openlup/core", version: "0.7.0", size: 12345, integrity: "sha512-fixture" };
+    const calls: string[][] = [];
+    const npm = (rows: unknown) => (args: string[]) => { calls.push(args); return JSON.stringify(rows); };
+    expect(npmPublishedPackedBytes("@openlup/core", "0.7.0", npm([row]))).toBe(12345);
+    expect(calls).toEqual([["pack", "@openlup/core@0.7.0", "--dry-run", "--json", "--ignore-scripts"]]);
+    for (const rows of [[], [row, row], [{ ...row, version: "0.6.0" }], [{ ...row, name: "@openlup/kit" }], [{ ...row, size: 0 }], [{ ...row, size: "12345" }], [{ ...row, integrity: undefined }], { 0: row }]) {
+      expect(() => npmPublishedPackedBytes("@openlup/core", "0.7.0", npm(rows)), JSON.stringify(rows)).toThrow("@openlup/core@0.7.0: npm reported no single verified published tarball");
+    }
   });
 
   it("refuses a version field that is not a plain version member", () => {

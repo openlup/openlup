@@ -1294,7 +1294,10 @@ bounded implementation-and-set-bump contribution, runs
 which updates every publishable package's version carriers and every exact
 internal pin on one, and assembles each changelog's version section below a fresh
 Unreleased heading: legacy Unreleased body first, then fragments in byte order
-of path. All packages are validated and planned before writes, and only
+of path. It also moves each package's growth baseline (`pack.baseline` in
+`release-gates.json`) to the version being replaced, with the packed bytes of
+that version's published registry tarball as `npm pack --dry-run` reports them
+after npm verifies its integrity; an unpublished predecessor refuses the bump. All packages are validated and planned before writes, and only
 consumed fragments are deleted after successful writes, then exactly those
 deletions are staged so source preparation sees the updated Git inventory;
 no other changes are staged. Historical sections
