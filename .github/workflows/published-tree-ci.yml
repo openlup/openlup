@@ -134,25 +134,17 @@ jobs:
       - run: npm run oss:published-tree -- --typecheck
         if: steps.reused.outputs.reuse != 'true'
 
-  install-proof:
-    name: install-proof
+  install-packages:
+    name: install-packages
     if: ${{ github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 12
     permissions:
       contents: read
       actions: read
       packages: read
-    services:
-      postgres:
-        image: postgres:17@sha256:ae69c452f483507a6b99fb654cf93aad7fe156ffd2c56247707eef4e36d3c12b
-        env:
-          POSTGRES_HOST_AUTH_METHOD: trust
-        ports:
-          - 5432/tcp
-        options: >-
-          --health-cmd "pg_isready -U postgres -t 1"
-          --health-interval 1s --health-timeout 5s --health-retries 30
+    outputs:
+      reuse: ${{ steps.reused.outputs.reuse }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -191,22 +183,106 @@ jobs:
           OPENLUP_BUILD_OUT_DIR: dist-subscription
           OPENLUP_SSR_OUT_DIR: dist-subscription-ssr
         run: npm run build:public-reference
-      - name: Every publishable package API and installed-artifact proof
-        if: steps.reused.outputs.reuse != 'true'
-        env:
-          OPENLUP_PROOF_SERVICE_CONTAINER: ${{ job.services.postgres.id }}
-          OPENLUP_PROOF_SERVICE_PORT: ${{ job.services.postgres.ports[5432] }}
-        run: node --experimental-strip-types scripts/packages/required-package-gates.ts --out "$RUNNER_TEMP/package-gates" --expected-commit "$(git rev-parse HEAD)"
-
       - name: Authenticate GitHub Container Registry pulls
         if: steps.reused.outputs.reuse != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_ACTOR: ${{ github.actor }}
         run: echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
-      - name: Starter database browser journeys
+      # An explicit service starts after login; workflow services pull before any step.
+      - name: Start the pinned package-proof PostgreSQL service
+        id: postgres
         if: steps.reused.outputs.reuse != 'true'
-        run: node --experimental-strip-types scripts/starter-browser-ci.mjs --manifest "$RUNNER_TEMP/package-gates/packages-manifest.json" --expected-commit "$(git rev-parse HEAD)"
+        run: |
+          image="$(node --input-type=module -e 'import { readCiImage, pullWithRetry } from "./scripts/ci-image-pull.mjs"; const image = readCiImage("install-proof-postgres"); image.sources = image.sources.slice(0, 1); console.log(await pullWithRetry(image));')"
+          container="$(docker run --pull=never --detach --name install-proof-postgres --env POSTGRES_HOST_AUTH_METHOD=trust --publish 127.0.0.1::5432 "$image")"
+          echo "container=$container" >> "$GITHUB_OUTPUT"
+          echo "port=$(docker port "$container" 5432/tcp | cut -d: -f2)" >> "$GITHUB_OUTPUT"
+      - name: Every publishable package API and installed-artifact proof
+        if: steps.reused.outputs.reuse != 'true'
+        env:
+          OPENLUP_PROOF_SERVICE_CONTAINER: ${{ steps.postgres.outputs.container }}
+          OPENLUP_PROOF_SERVICE_PORT: ${{ steps.postgres.outputs.port }}
+        run: node --experimental-strip-types scripts/packages/required-package-gates.ts --out "$RUNNER_TEMP/package-gates" --expected-commit "$(git rev-parse HEAD)"
+      - name: Remove the package-proof PostgreSQL service
+        if: always() && steps.postgres.outcome != 'skipped'
+        run: docker rm --force install-proof-postgres
+      # Transfer only the verified public set once, rather than cold-packing in each browser shard.
+      - name: Share verified candidate packages
+        if: steps.reused.outputs.reuse != 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: install-packages
+          path: |
+            ${{ runner.temp }}/package-gates/packages-manifest.json
+            ${{ runner.temp }}/package-gates/*.tgz
+          if-no-files-found: error
+          retention-days: 1
+
+  install-browser:
+    name: install-browser (${{ matrix.groups }})
+    if: ${{ github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
+    needs: [install-packages]
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+      actions: read
+      packages: read
+    # Four balanced shards avoid three duplicate installs, builds and image pulls compared with one job per group.
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        groups: ['0', '1,6', '2,4', '3,5']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24.21.0
+          cache: npm
+      - name: Assert Node and npm contract
+        run: |
+          test "$(node -p 'process.versions.node.split(".")[0]')" = "24"
+          test "$(npm --version)" = "11.19.0"
+          test "$(node -p 'require("./package.json").engines.node')" = "24.x"
+          test "$(node -p 'require("./package.json").packageManager')" = "npm@11.19.0"
+      # Share the producer's reuse decision so a reused producer never leaves a consumer without packs.
+      - run: npm ci --ignore-scripts --prefer-offline --no-audit --fund=false
+        if: needs.install-packages.outputs.reuse != 'true'
+      - name: Download verified candidate packages
+        if: needs.install-packages.outputs.reuse != 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: install-packages
+          path: ${{ runner.temp }}/package-gates
+      - name: Authenticate GitHub Container Registry pulls
+        if: needs.install-packages.outputs.reuse != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_ACTOR: ${{ github.actor }}
+        run: echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
+      - name: Starter database browser journeys
+        if: needs.install-packages.outputs.reuse != 'true'
+        env:
+          BROWSER_GROUPS: ${{ matrix.groups }}
+        run: node --experimental-strip-types scripts/starter-browser-ci.mjs --manifest "$RUNNER_TEMP/package-gates/packages-manifest.json" --expected-commit "$(git rev-parse HEAD)" --groups "$BROWSER_GROUPS"
+
+  install-proof:
+    name: install-proof
+    if: ${{ always() && github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
+    needs: [install-packages, install-browser]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      # Reuse skips expensive steps inside successful jobs, never the dependency jobs themselves.
+      - name: Require package proof and every browser shard to succeed
+        env:
+          PACKAGE_RESULT: ${{ needs.install-packages.result }}
+          BROWSER_RESULT: ${{ needs.install-browser.result }}
+        run: test "$PACKAGE_RESULT" = "success" && test "$BROWSER_RESULT" = "success"
 
   test-full-shard:
     name: test-full-shard (${{ matrix.shard }}/6)

@@ -208,7 +208,9 @@ imports the JSON module directly so the same pins load in plain Node and both
 Vitest projects, including jsdom. In CI and locally they try the organization
 mirror first, then the upstream order with the same digest: Docker Hub, then
 ECR, for all four library PostgreSQL pins. Private or absent organization
-packages do not remove these public upstream fallbacks. Microsoft registry
+packages do not remove these public upstream fallbacks. The required
+`install-packages` PostgreSQL startup step is an exception: it selects only the
+GHCR mirror and requires access to that organization package. Microsoft registry
 sources, such as the starter browser image's, are mirror inputs only: that image
 is pulled from the organization mirror alone, with no upstream fallback.
 Disposable PostgreSQL suites use `postgresSetupTimeoutMs` (600 seconds), including
@@ -261,9 +263,13 @@ expiry prevents another pull. Backoff adds at most 10 seconds per failed source
 image.
 The shared loop retries transport, context-deadline, killed process timeout,
 registry 5xx and 429 failures. Mirror not-found,
-denied or unauthorized errors immediately fall through without retry. Library
-PostgreSQL pins retain Docker Hub/ECR fallback in CI and locally. An empty or private organization mirror therefore
-does not by itself fail these consumers.
+denied or unauthorized errors immediately fall through without retry when an
+upstream source is selected. Library PostgreSQL consumers retain Docker Hub/ECR
+fallback in CI and locally, except the required `install-packages` PostgreSQL
+startup step, which selects only the GHCR mirror. An empty or inaccessible private
+organization mirror does not by itself fail the other PostgreSQL consumers;
+that required startup step has no upstream fallback and requires organization
+package access.
 Local daemon/disk/malformed failures, upstream non-transient errors and pinned
 RepoDigest mismatches refuse rather than silently selecting another image.
 The gate's offline guard rejects literal digest pins or registry source lists.
@@ -273,9 +279,9 @@ through the same loop and starts it with `--pull=never`. Every pull and local
 reuse requires the exact pinned index digest; the loop refuses a tag-only input.
 No upstream push or registry
 write occurs. Other launchers retain their existing acquisition behavior. The
-install-proof service retains its digest-pinned Docker Hub PostgreSQL 17 image,
-which is pulled before workflow steps run and does not require an organization
-package.
+package-proof PostgreSQL 17 service is started explicitly after GHCR login,
+using the exact inventory digest from the organization mirror with `--pull=never`.
+It is removed even when package proof fails.
 An upstream source may retain an explicit tag only when it matches its JSON tag;
 resolution preserves that spelling and always verifies the pinned digest.
 The script resolves upstream tags to digests, copies complete indexes to
@@ -299,9 +305,12 @@ GHCR creates packages private). After the first authorized run, for each package
 under **openlup → Packages**, use **Connect repository → openlup/openlup**; in
 **Package settings → Manage Actions access**, add that repository with **Write**
 access if inheritance does not already grant it. Under **Danger Zone → Change
-visibility**, select **Public** and confirm. Check anonymous mirror pulls after making packages public; consumers already
-fall back while packages are absent or private. `GITHUB_TOKEN` cannot make a package public; linking a public
-repository does not change package visibility. See GitHub's
+visibility**, select **Public** and confirm. Check anonymous mirror pulls after
+making packages public. PostgreSQL consumers with upstream sources fall back
+while packages are absent or private. The required `install-packages` PostgreSQL
+startup step and the starter browser image are mirror-only exceptions: an absent
+or inaccessible organization package fails `install-proof`. `GITHUB_TOKEN` cannot
+make a package public; linking a public repository does not change package visibility. See GitHub's
 [package access and visibility procedure](https://docs.github.com/en/packages/learn-github-packages/configuring-a-packages-access-control-and-visibility)
 and [repository linking procedure](https://docs.github.com/en/packages/learn-github-packages/connecting-a-repository-to-a-package).
 
@@ -346,7 +355,9 @@ complete successful exact-commit merge-group run, including raw pgTAP.
 The `test-full-shard` and `pgtap` jobs authenticate ghcr.io pulls with the
 job's `GITHUB_TOKEN` and `packages: read` before non-reused tests; login failure
 fails the job.
-`install-proof` retains its Docker Hub service, which is pulled before steps run.
+`install-packages` and every `install-browser` shard also authenticate before
+their first image pull. The package job starts its PostgreSQL service in a step
+after login, using the organization mirror only.
 
 The raw `pgtap` job, which the required `test` aggregate also requires, follows the
 [managed pgTAP on plain PostgreSQL plan](docs/platform/plans/neutral-postgres-pgtap.md).
@@ -370,13 +381,28 @@ each of which must fail. It is not a required context of its own; the required
 See [Test scope and diagnostics](#test-scope-and-diagnostics) for selection,
 sharding, discovery and test-author guidance.
 
-The required `install-proof` job runs the shared package gate after both reference-profile builds, independently of the required `test` job in a separate checkout and installation. It discovers every publishable package from `config/openlup-packages.json` and its actual npm workspace, and refuses missing `api:check`, `ci:required` or `test:consumer` scripts before packing. The existing cold producer emits one current-set manifest. All API checks run before any package's `ci:required`, which receives the same verified manifest and exact checkout commit through `OPENLUP_PACK_MANIFEST` and `OPENLUP_PACK_COMMIT`. Cold preparation clears each workspace per target, so the API phase restores each package's built declarations and prerequisites through the existing build helper; it leaves the retained tarballs untouched and includes that cost in its timing. There is no missing-script skip or package-name routing table. A new module must supply installed-artifact consumer coverage, meaningful failure cases and its owning required batch; script declarations alone do not prove that those assertions are sound. Review checks that the batch actually invokes its consumer and preserves its required tests. Keep API checks out of that batch because the shared phase already runs them.
+The required `install-proof` context aggregates `install-packages` and all four
+`install-browser` shards. It requires actual success from both dependencies; failed,
+cancelled or skipped jobs refuse admission. On main pushes, `install-packages`
+checks `scripts/public-ci-reuse.mjs`; browser shards share its decision so a
+reused producer never leaves a consumer without artifacts. Expensive steps skip
+only with successful exact-commit merge-group evidence, leaving successful
+dependency jobs for the aggregate. The six required context names and native-review dependencies stay fixed.
 
-The same required job then runs the starter's installed PostgreSQL browser
-journeys through [`starter-browser-ci.mjs`](scripts/starter-browser-ci.mjs).
-It reuses the verified candidate manifest and acquires an isolated disposable
+`install-packages` runs the shared package gate after both reference-profile builds,
+independently of the required `test` job in a separate checkout and installation. It discovers every publishable package from `config/openlup-packages.json` and its actual npm workspace, and refuses missing `api:check`, `ci:required` or `test:consumer` scripts before packing. The existing cold producer emits one current-set manifest. All API checks run before any package's `ci:required`, which receives the same verified manifest and exact checkout commit through `OPENLUP_PACK_MANIFEST` and `OPENLUP_PACK_COMMIT`. Cold preparation clears each workspace per target, so the API phase restores each package's built declarations and prerequisites through the existing build helper; it leaves the retained tarballs untouched and includes that cost in its timing. There is no missing-script skip or package-name routing table. A new module must supply installed-artifact consumer coverage, meaningful failure cases and its owning required batch; script declarations alone do not prove that those assertions are sound. Review checks that the batch actually invokes its consumer and preserves its required tests. Keep API checks out of that batch because the shared phase already runs them.
+
+After package proof succeeds, `install-browser` runs the starter's installed
+PostgreSQL browser journeys in four parallel shards through
+[`starter-browser-ci.mjs`](scripts/starter-browser-ci.mjs). Pinned official artifact
+actions transfer only the verified manifest and public tarballs from the package
+job, retained for one day; private browser output is never uploaded. Each shard
+verifies all manifest hashes, the package inventory and the exact checkout commit
+before installing, then checks installed-package confinement. The zero-based
+`--groups` selections are `0`, `1,6`, `2,4` and `3,5`, covering every group once.
+Each shard acquires an isolated disposable
 PostgreSQL 16 per configuration through the shared test helper and `test-postgres`
-inventory pin. The job's PostgreSQL 17 service retains its existing package proofs. The runner
+inventory pin. The package job's PostgreSQL 17 service retains its package proofs. The runner
 installs and seeds both demonstration configurations, verifies migration replay
 and the restricted runtime identity, and starts two loopback hosts per group.
 The seven shared selections are subscription care; portal; recovery extension;
@@ -384,7 +410,7 @@ combined operator operations, returns portal and shipment operations; combined
 payment guidance, account preferences, embedded browser and billing profiles;
 payment retry; and the remainder. Setup failures stop before another group is
 acquired and report the group and phase; Playwright failures allow later groups
-to retain their diagnostics. An authenticated
+in that shard to retain their diagnostics. An authenticated
 GHCR pull selects the pinned `starter-browser` image through the shared reader
 and pull loop; mirror failure refuses without a vendor fallback or browser
 download. Playwright runs the database config with one worker, traces, video and
@@ -395,8 +421,10 @@ runs with the host user identity to preserve private capture permissions.
 The script captures output privately, scans it for credentials, removes its
 hosts, containers, databases, roles and scratch files on success or failure, and
 prints the public image identity, counts, timings and bounded failure diagnostics. It uploads no artifacts.
-The job retains its 35-minute deadline pending a hosted measurement of the seven
-sequential groups, and keeps its existing required-check dependencies. See the
+Current deadlines are 12 minutes for packages, 8 per browser shard and 2 for
+the aggregate. Set each job deadline to at least 1.3 times its slowest observed
+hosted run.
+Browser journeys retain zero retries. See the
 [starter proof recipe](examples/neutral-store/docs/proof.md#database-backed-purchase-acceptance-recipe)
 for the selected journeys and the separate local proofs.
 
@@ -533,14 +561,14 @@ npm ci
 # typecheck
 npm run lint
 npm run oss:published-tree -- --typecheck
-# install-proof (CI installs with: npm ci --prefer-offline --no-audit --fund=false)
+# install-packages, under install-proof (CI installs with: npm ci --prefer-offline --no-audit --fund=false)
 npm run build
 OPENLUP_REFERENCE_PROFILE=subscription OPENLUP_BUILD_OUT_DIR=dist-subscription \
   OPENLUP_SSR_OUT_DIR=dist-subscription-ssr npm run build:public-reference
-# install-proof: package gates after both builds on a clean signed candidate
+# install-packages: package gates after both builds on a clean signed candidate
 # Keep package gates before root tests locally: one checkout shares build outputs.
 GATE_PACKS="$(mktemp -d)"
-# Local SQL proof owns one ephemeral PostgreSQL container; CI passes its job service identity/port.
+# Local SQL proof owns one ephemeral PostgreSQL container; CI passes the explicitly started container identity/port.
 node --experimental-strip-types scripts/packages/required-package-gates.ts \
   --out "$GATE_PACKS" --expected-commit "$(git rev-parse HEAD)"
 # test: omit bounded tooling fixtures whose inputs are untouched, including dirty files.
@@ -1004,7 +1032,7 @@ Unknown events, malformed metadata or unavailable Git history exclude nothing. S
 
 #### Separate DB, package and coverage proof
 
-[Required checks](#required-and-raw-checks) owns the full command sequence. `install-proof` builds both profiles and runs [shared package gates](scripts/packages/required-package-gates.ts): cold-pack the publishable inventory once, all API checks first, then each `ci:required` with verified manifest/commit. Keep local package preparation before root tests because generated outputs are shared. New modules extend the owning package's consumer and required batch; do not add a workspace or job without a separate need.
+[Required checks](#required-and-raw-checks) owns the full command sequence. `install-packages`, under the required `install-proof` aggregate, builds both profiles and runs [shared package gates](scripts/packages/required-package-gates.ts): cold-pack the publishable inventory once, all API checks first, then each `ci:required` with verified manifest/commit. Keep local package preparation before root tests because generated outputs are shared. New modules extend the owning package's consumer and required batch; do not add a workspace or job without a separate need.
 
 Core required coverage is V8: statements/lines 80%, branches 65%, functions 75%, plus no nonempty production file with zero covered lines. Root config has percentage thresholds when explicitly running coverage; public CI does not run root coverage or its separate no-zero helper. Outbox/Platform have no separate percentage gate. Keep installed-artifact and meaningful failure assertions; percentages do not replace them.
 

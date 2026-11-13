@@ -19,13 +19,18 @@ const execute = promisify(execFile);
 
 export function parseArguments(args) {
   const result = {};
-  const names = new Map([['--manifest', 'manifest'], ['--expected-commit', 'commit'], ['--local-image', 'localImage']]);
+  const names = new Map([['--manifest', 'manifest'], ['--expected-commit', 'commit'], ['--local-image', 'localImage'], ['--groups', 'groups']]);
   for (let index = 0; index < args.length; index += 2) {
     const name = names.get(args[index]), value = args[index + 1];
     if (!name || !value || value.startsWith('--') || result[name] !== undefined) throw new Error('starter_browser_arguments_invalid');
     result[name] = value;
   }
   if (!result.manifest || !/^[a-f0-9]{40}$/u.test(result.commit ?? '')) throw new Error('starter_browser_arguments_invalid');
+  if (result.groups !== undefined) {
+    if (!/^(?:0|[1-9]\d*)(?:,(?:0|[1-9]\d*))*$/u.test(result.groups)) throw new Error('starter_browser_arguments_invalid');
+    result.groups = result.groups.split(',').map(Number);
+    if (new Set(result.groups).size !== result.groups.length || result.groups.some(index => index >= browserJourneyGroups.length)) throw new Error('starter_browser_arguments_invalid');
+  }
   if (result.localImage && (processEnvironment.CI || result.localImage !== localBrowserReference())) throw new Error('starter_browser_local_image_forbidden');
   return result;
 }
@@ -161,9 +166,10 @@ async function freePort() {
 }
 
 // Preserve later test diagnostics, but do not repeat a failed infrastructure setup.
-export async function runBrowserGroups(runGroup, currentPhase) {
+export async function runBrowserGroups(runGroup, currentPhase, groups = browserJourneyGroups.map((_, index) => index)) {
   let failure;
-  for (const [index, selection] of browserJourneyGroups.entries()) {
+  for (const index of groups) {
+    const selection = browserJourneyGroups[index];
     try { await runGroup(index, selection); }
     catch (error) {
       const phase = currentPhase();
@@ -338,7 +344,7 @@ export async function runStarterBrowser(options) {
             const counts = output.match(/\b\d+ (?:passed|skipped|failed|did not run)\b/gu) ?? [];
             if (!counts.some(count => count.endsWith(' passed'))) throw new Error('starter_browser_results_missing');
             console.log(`Starter database journeys: ${counts.join(', ')}; group ${groupIndex + 1}`);
-          }), () => cancellation.signal.aborted ? 'cancelled' : phase);
+          }), () => cancellation.signal.aborted ? 'cancelled' : phase, options.groups);
 
     });
   } catch (error) {

@@ -59,13 +59,15 @@ describe('local obligation contract', () => {
     for (const context of ['dco', 'gitleaks', 'install-proof', 'self-check', 'test', 'typecheck']) expect(job(context)).not.toBe('');
     for (const name of ['policy', 'inventory', 'lint', 'typecheck', 'build', 'subscription']) {
       const phase = phases.find(step => step.name === name)!;
-      expect(job(phase.context)).toContain(`run: ${phase.command.join(' ')}`);
+      const worker = phase.context === 'install-proof' ? 'install-packages' : phase.context;
+      expect(job(worker)).toContain(`run: ${phase.command.join(' ')}`);
       expect(phase.owner).not.toBe(''); expect(phase.reason).not.toBe('');
     }
     expect(job('self-check')).toContain('run: node --experimental-strip-types packages/ui/smoke/neutrality.ts');
     expect(job('self-check')).toContain('github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before');
     expect(job('self-check')).toContain('run: node scripts/public-ci-neutrality.mjs --base-commit "$NEUTRALITY_BASE_COMMIT"');
-    expect(job('install-proof')).toContain('scripts/packages/required-package-gates.ts --out "$RUNNER_TEMP/package-gates" --expected-commit "$(git rev-parse HEAD)"');
+    expect(job('install-packages')).toContain('scripts/packages/required-package-gates.ts --out "$RUNNER_TEMP/package-gates" --expected-commit "$(git rev-parse HEAD)"');
+    expect(job('install-proof')).toContain('needs: [install-packages, install-browser]');
     expect(job('test-full-shard')).toContain('npm test -- --shard=${{ matrix.shard }}/6');
     expect(job('test')).toContain('test "$SHARD_RESULT" = "success"');
     expect(plan().hostedOnly.map(item => item.context)).toEqual(['test', 'install-proof', 'native-review']);

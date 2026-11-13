@@ -611,11 +611,12 @@ for installed PostgreSQL. The required purchase file receives no sign-in step
 or other edit. Later sign-in uses the checkout e-mail and private captured native
 challenge token, never a seeded customer row.
 
-The required `install-proof` job now runs `journey.spec.ts` and
-`acquisition.spec.ts` in both configurations through
+Four parallel `install-browser` shards under the required `install-proof`
+aggregate run `journey.spec.ts` and `acquisition.spec.ts` in both configurations through
 [`starter-browser-ci.mjs`](../../../scripts/starter-browser-ci.mjs), after the
-package gates. It extracts the starter, installs the verified candidate tarballs,
-runs the selections in `browser-groups.mjs`, giving each group a fresh pair of
+shared `install-packages` gate. Official artifact actions transfer only its
+verified public tarballs and manifest. Each shard extracts the starter, verifies
+the manifest and expected commit, installs those tarballs, and runs its selections in `browser-groups.mjs`, giving each group a fresh pair of
 configuration installations. The local `./lifecycle browser` recipe reads the same
 module. Later, more specific patterns take precedence; the remainder covers all
 other journeys, so a new group needs one additional pattern. This keeps the
@@ -624,8 +625,8 @@ starts an isolated disposable PostgreSQL 16 per configuration and group through 
 test helper and pinned `test-postgres` image. Each receives the complete selected
 history, repeated installation and its own repeated seed; two loopback hosts use
 the restricted runtime login. Separate installations preserve a unique active
-price list for each demonstration market. The job's existing PostgreSQL 17 service
-is unchanged.
+price list for each demonstration market. The separate package job starts its
+PostgreSQL 17 service after GHCR login.
 The browser image comes only from authenticated, digest-pinned
 `ghcr.io/openlup/playwright` through the shared image reader and pull loop.
 Mirror failure refuses; CI never downloads browsers or pulls a vendor image.
@@ -634,10 +635,12 @@ The runner writes the same private care fixture as `./lifecycle browser` and
 starts each host in its own care state directory. Application inputs are mounted
 read-only; the care directory alone is writable, with the browser running under
 the host user identity to preserve private capture permissions. Cleanup removes temporary results,
-captured messages and private keys; the captured output is scanned in memory. No artifacts are uploaded.
+captured messages and private keys; the captured output is scanned in memory. No browser output is uploaded.
 
 From the source root after the package gates, run the same script with
 `--manifest <package-gates/packages-manifest.json> --expected-commit <full-sha>`.
+Add `--groups 0,3` to select zero-based groups; omitting it runs all groups.
+The CI shards select `0`, `1,6`, `2,4` and `3,5`.
 Docker supplies the disposable PostgreSQL 16 installation; the shared helper
 preserves its existing mirror/upstream pull rules and cleanup. The runner removes
 its database containers on success and failure. Local development may first pull
@@ -1141,8 +1144,8 @@ The required runner retains complete migrations and replay, repeated seed,
 restricted runtime-role checks and both hosts per group. A setup failure stops
 before acquiring another group and reports its group number and phase. A failure
 after Playwright starts retains later groups' diagnostics. Cleanup and the private
-output scan still run on either path. The job deadline remains 35 minutes pending
-a new hosted measurement.
+output scan still run on either path. [Required checks](../../../CONTRIBUTING.md#required-and-raw-checks)
+owns the job layout and deadline policy.
 
 Local Docker verification of the two combined selections passed 40/40 and 52/52
 cases in both configurations, with one worker, zero retries and no quota refusal.

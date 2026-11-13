@@ -81,8 +81,8 @@ describe("dependency admission", () => {
   });
 });
 
-it("keeps dependency admission inside install-proof before builds and preserves source/group/push execution", () => {
-  const workflow = readFileSync(".github/workflows/published-tree-ci.yml", "utf8").split("\n  install-proof:\n")[1]!.split("\n  test-full-shard:\n")[0]!;
+it("keeps dependency admission under install-proof before builds and preserves source/group/push execution", () => {
+  const workflow = readFileSync(".github/workflows/published-tree-ci.yml", "utf8").split("\n  install-packages:\n")[1]!.split("\n  install-browser:\n")[0]!;
   expect(workflow.indexOf("run: node scripts/public-ci-dependencies.mjs")).toBeLessThan(workflow.indexOf("run: npm run build"));
   expect(workflow).toContain("GH_TOKEN: ${{ github.token }}");
   const step = workflow.split("      - name: Refuse newly introduced vulnerable dependencies\n")[1]!.split("      - ")[0]!;
