@@ -49,7 +49,7 @@ export function createPostgresProviderInlineRecoveryAttemptPort(db: PaymentProvi
         [`checkout-inline-recovery:${r.expectedPaymentAttemptId}:payment-execution:prepare-attempt`, r.orderId, r.clientId,
           r.paymentIntentId, r.expectedPaymentAttemptId, m.providerRequestFingerprint,
           JSON.stringify({ ...input.admission, ...m, executionRail: r.executionRail, retryRequestId: r.retryRequestId,
-            requestedMethodKey: r.methodKey, resolvedMethodKey: methodKeyFor(m.requestPayload) }), now().toISOString()],
+            requestedMethodKey: r.methodKey, resolvedMethodKey: input.admission.replayOnly ? null : methodKeyFor(m.requestPayload) }), now().toISOString()],
       )).rows[0]?.response);
       return { orderId: r.orderId, paymentIntentId: r.paymentIntentId, clientId: r.clientId, executionRail: r.executionRail,
         ...attempt, status: continuationStatus(attempt.status), failureReason: null };

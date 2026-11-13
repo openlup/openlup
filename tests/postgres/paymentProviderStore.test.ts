@@ -4,6 +4,8 @@ import { afterAll, beforeAll, expect, it } from "vitest";
 import { createPostgresProviderPaymentControlPort, createPostgresPaymentWebhookControlPort,
   createPostgresProviderExpiredCheckoutSafety, createPostgresProviderPaymentRecoveryGuidancePort,
   createPostgresSandboxPaymentSimulator, executePreparedAttemptMechanism } from "@openlup/platform/payments";
+import { createOutboxPaymentFailedEmailHandler } from "@openlup/platform/commerce/server";
+import type { OutboxEventRow, PaymentFailedEmailInput, TransactionalEmailPort } from "@openlup/platform/commerce";
 import type { PreparedAttemptFailurePolicy } from "@openlup/platform/payments/contracts";
 import { lifecycleInstallation, call, type LifecycleInstallation } from "./subscriptionLifecycleClosureFixture.js";
 import { renewal, prepareOriginal } from "./subscriptionNativeFixture.js";
@@ -316,7 +318,8 @@ it.each(["failed", "expired"] as const)("preserves the distinct %s one-time orde
   expect((await env.owner.query("SELECT status,terminal_reason FROM public.fulfillment_inventory_reservations WHERE id=$1", [reservation])).rows[0])
     .toEqual({ status: status === "failed" ? "held" : "released", terminal_reason: status === "failed" ? null : "payment_expired" });
   expect((await env.owner.query("SELECT payload FROM public.outbox_events WHERE event_type='commerce.payment.failed' AND aggregate_id=$1", [f.order])).rows)
-    .toEqual(status === "failed" ? [{ payload: { orderId: `order_${f.order}`, orderUuid: f.order, totalCents: 100, currency: "XXX", occurredAt: "2026-11-13T12:00:00+00:00" } }] : []);
+    .toEqual(status === "failed" ? [{ payload: expect.objectContaining({ orderId: `order_${f.order}`, orderUuid: f.order, totalCents: 100, currency: "XXX",
+      recoveryToken: expect.stringMatching(/^rcv_[0-9a-f]{64}$/u), mode: "one_time", failureReason: "declined", hasSubscriptionContext: false }) }] : []);
   expect((await env.owner.query("SELECT count(*)::int AS n FROM public.fulfillment_purchase_reservation_receipts WHERE command->>'reservationId'=$1", [reservation])).rows[0].n)
     .toBe(status === "expired" ? 1 : 0);
 });
@@ -721,4 +724,51 @@ it("locks the recorded renewal operation before payment children when applying a
     await env.owner.query("SELECT id FROM public.payment_provider_attempts WHERE id=$1 FOR UPDATE NOWAIT", [f.a.paymentAttemptId]);
     await blocker.query("COMMIT"); expect(await pending).toMatchObject({ kind: "state_changed" });
   } finally { await blocker.query("ROLLBACK"); await pending; blocker.release(); writer.release(); }
+});
+
+
+it.each(["pristine", "declined"] as const)("terminalizes a %s provider intent on unpaid-order cancellation and refuses fresh preparation", async state => {
+  const f = await fixture();
+  if (state === "declined") { await prepared(f); await result(f, `decline:${f.intent}`); }
+  const before = (await env.owner.query("SELECT count(*)::int AS n FROM public.payment_provider_attempts WHERE settlement_intent_id=$1", [f.intent])).rows[0].n;
+  expect(await call(env.runtime, "oms_cancel_unpaid_order_owned", [`cancel:${f.order}`, f.order, "buyer_cancelled", null, {}, AT]))
+    .toMatchObject({ status: "cancelled", replayed: false });
+  await expect(control().prepareProviderAttempt({ ...f.prepare, idempotencyKey: `after-cancel:${f.order}` }))
+    .rejects.toThrow("payment_control_provider_attempt_prepare_intent_not_retryable");
+  expect((await env.owner.query("SELECT status,payment_status,failure_reason FROM public.payment_provider_states WHERE id=$1", [f.intent])).rows)
+    .toEqual([{ status: "cancelled", payment_status: "cancelled", failure_reason: "admin_oms_cancelled_unpaid_order" }]);
+  expect((await env.owner.query("SELECT status FROM public.commerce_settlement_intents WHERE id=$1", [f.intent])).rows).toEqual([{ status: "cancelled" }]);
+  expect((await env.owner.query("SELECT count(*)::int AS n FROM public.payment_provider_attempts WHERE settlement_intent_id=$1", [f.intent])).rows[0].n).toBe(before);
+});
+
+it.each([false, true])("processes the first recoverable decline notice through the existing handler (initial subscription: %s)", async initial => {
+  const f = initial ? await initialCheckout() : await fixture(); await prepared(f);
+  await result(f, `notice-decline:${f.intent}`);
+  const notices = (await env.owner.query("SELECT * FROM public.outbox_events WHERE aggregate_id=$1 AND event_type='commerce.payment.failed'", [f.order])).rows;
+  expect(notices).toHaveLength(1);
+  const row = notices[0] as OutboxEventRow, payload = row.payload as Record<string, unknown>;
+  const sends: PaymentFailedEmailInput[] = [];
+  const handler = createOutboxPaymentFailedEmailHandler({
+    runtime: { parseOutboxPayload(schema, value) { const parsed = schema.safeParse(value); return parsed.success
+      ? { ok: true as const, data: parsed.data } : { ok: false as const, outcome: { kind: "discard" as const, reason: "invalid_payload" } }; },
+      formatMoney: () => "1.00 XXX", resolveLocale: () => "en", mapSendOutcome: () => ({ kind: "processed" }) },
+    recipientPort: { async resolve() { const c = (await env.owner.query("SELECT email FROM public.clients WHERE id=$1", [f.client])).rows[0]; return { email: c.email, firstName: null }; } },
+    lifecyclePort: { async read() { const o = (await env.owner.query("SELECT status,metadata FROM public.commerce_orders WHERE id=$1", [f.order])).rows[0];
+      return { orderStatus: o.status, paymentStatus: o.metadata.paymentStatus, hasPayment: true }; } },
+    emailPort: { async findExistingSend() { return false; }, async sendPaymentFailedNotice(input: PaymentFailedEmailInput) {
+      sends.push(input); return { ok: true, messageId: "synthetic-message", httpStatus: 200, providerError: null, aborted: false };
+    } } as unknown as TransactionalEmailPort,
+  });
+  expect(await handler.handle(row, new AbortController().signal)).toMatchObject({ kind: "processed" });
+  expect(sends).toHaveLength(1); expect(sends[0]).toMatchObject({ recoveryToken: payload.recoveryToken, mode: payload.mode, outboxEventId: row.id });
+  expect(payload).toMatchObject({ recoveryToken: expect.stringMatching(/^rcv_[0-9a-f]{64}$/u), mode: initial ? "subscription_cycle" : "one_time",
+    failureReason: "declined", hasSubscriptionContext: initial });
+  const authority = (await env.runtime.query("SELECT public.customer_checkout_recovery_token_inspect(encode(sha256(convert_to($1,'UTF8')),'hex'),clock_timestamp()) AS value", [payload.recoveryToken])).rows[0].value;
+  expect(authority).toMatchObject({ orderId: f.order, clientId: f.client, tokenState: "active" });
+  expect((await env.owner.query(`SELECT expires_at-created_at AS lifetime FROM public.commerce_checkout_recovery_tokens
+    WHERE order_id=$1 AND token_hash=encode(sha256(convert_to($2,'UTF8')),'hex')`, [f.order, payload.recoveryToken])).rows[0].lifetime).toMatchObject({ days: 1 });
+  expect(new Date(row.available_at).getTime() - new Date(row.created_at).getTime()).toBe(180_000);
+  const before = await business(f);
+  expect(await result(f, `notice-duplicate:${f.intent}`)).toMatchObject({ kind: "ignored_duplicate_terminal_failure" });
+  expect(await business(f)).toEqual(before);
 });

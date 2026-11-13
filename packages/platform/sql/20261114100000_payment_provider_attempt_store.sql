@@ -1221,7 +1221,7 @@ DECLARE fingerprint text; legacy_fingerprint text; receipt public.payment_provid
  i public.commerce_settlement_intents%ROWTYPE; s public.payment_provider_states%ROWTYPE;
  a public.payment_provider_attempts%ROWTYPE; e public.payment_provider_attempt_evidence%ROWTYPE;
  o public.commerce_orders%ROWTYPE; kind text:='state_changed'; answer jsonb; truth jsonb; evidence jsonb;
- outcome text; native_failure text; from_status text; held record;
+ outcome text; native_failure text; from_status text; held record; recovery_token text; recovery_expires_at timestamptz;
  renewal public.subscription_renewal_operations%ROWTYPE; retry_preparation public.subscription_retry_receipts%ROWTYPE;
  retry_sequence integer; logical_cycle integer; retry_result jsonb; expiry_escalation boolean:=false;
 BEGIN
@@ -1338,12 +1338,29 @@ BEGIN
     UPDATE public.commerce_orders SET metadata=metadata||jsonb_build_object(
      'paymentStatus','declined','failureReason',COALESCE(p_failure_reason,p_result_status),
      'lastDeclineAt',p_occurred_at,'recoverable',true,'source','payment.control.v0'),updated_at=now() WHERE id=o.id;
-    INSERT INTO public.outbox_events(aggregate_type,aggregate_id,event_type,idempotency_key,payload,metadata)
-    VALUES('commerce_order',o.id,'commerce.payment.failed','payment_failed:'||o.id,
-     jsonb_build_object('orderId','order_'||o.id,'orderUuid',o.id,'totalCents',o.total_amount_minor,
-      'currency',o.currency_code,'occurredAt',p_occurred_at),
-     jsonb_build_object('source','payment_provider_result_apply_recoverable_decline'))
-    ON CONFLICT (event_type,idempotency_key) DO NOTHING;
+    -- The first recoverable-decline metadata transition owns the delayed notice
+    -- and its authority in the native checkout recovery token ledger.
+    IF o.client_id IS NOT NULL AND (o.metadata->>'paymentStatus' IS DISTINCT FROM 'declined'
+     OR COALESCE((o.metadata->>'recoverable')::boolean,false) IS DISTINCT FROM true) THEN
+     recovery_token:='rcv_'||replace(gen_random_uuid()::text,'-','')||replace(gen_random_uuid()::text,'-','');
+     recovery_expires_at:=now()+interval '24 hours';
+     INSERT INTO public.commerce_checkout_recovery_tokens(order_id,client_id,token_hash,expires_at)
+     VALUES(o.id,o.client_id,encode(sha256(convert_to(recovery_token,'UTF8')),'hex'),recovery_expires_at)
+     ON CONFLICT (token_hash) DO NOTHING;
+     INSERT INTO public.outbox_events(aggregate_type,aggregate_id,event_type,idempotency_key,available_at,payload,metadata)
+     VALUES('commerce_order',o.id,'commerce.payment.failed','payment_failed:'||o.id,now()+interval '3 minutes',
+      jsonb_build_object('orderId','order_'||o.id,'orderUuid',o.id,'totalCents',o.total_amount_minor,
+       'currency',o.currency_code,'recoveryToken',recovery_token,
+       'mode',CASE WHEN EXISTS(SELECT 1 FROM public.subscription_activations WHERE order_id=o.id)
+        OR COALESCE(o.metadata#>>'{orderDraftSnapshot,context,mode}',o.metadata#>>'{quoteSnapshot,quote,context,mode}')='subscription'
+        THEN 'subscription_cycle' ELSE 'one_time' END,
+       'failureReason',COALESCE(p_failure_reason,p_result_status),'hasSubscriptionContext',EXISTS(
+        SELECT 1 FROM public.subscription_activations WHERE order_id=o.id) OR COALESCE(
+        o.metadata#>>'{orderDraftSnapshot,context,mode}',o.metadata#>>'{quoteSnapshot,quote,context,mode}','one_time')='subscription',
+       'expiresAt',recovery_expires_at,'occurredAt',now()),
+      jsonb_build_object('source','payment_provider_result_apply_recoverable_decline'))
+     ON CONFLICT (event_type,idempotency_key) DO NOTHING;
+    END IF;
     kind:='recoverable_decline';
    ELSE
     IF EXISTS(SELECT 1 FROM public.subscription_activations WHERE order_id=o.id AND state='provisional') THEN
@@ -2191,10 +2208,20 @@ BEGIN
   IF p_actor IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.commerce_operators WHERE id=p_actor) THEN
     RAISE EXCEPTION 'oms_cancel_unpaid_order_actor_unknown' USING ERRCODE='23503';
   END IF;
-  -- Native settlement intents represent cancelled unpaid work as failed. The
-  -- cancelled order fences future attempts; late captures keep their review path.
-  UPDATE public.commerce_settlement_intents SET status='failed',failure_reason='admin_oms_cancelled_unpaid_order',updated_at=p_at
+  -- Provider lifecycle terminalization fences fresh preparation keys as well
+  -- as inline retries. Preserve the existing non-provider settlement mapping.
+  UPDATE public.commerce_settlement_intents i SET status=CASE WHEN EXISTS(
+    SELECT 1 FROM public.payment_provider_states WHERE id=i.id) THEN 'cancelled' ELSE 'failed' END,
+    failure_reason='admin_oms_cancelled_unpaid_order',updated_at=p_at
     WHERE order_id=p_order AND status<>'settled';
+  UPDATE public.payment_provider_states SET status='cancelled',payment_status='cancelled',
+    failure_reason='admin_oms_cancelled_unpaid_order',metadata=metadata||jsonb_build_object(
+      'paymentStatus','cancelled','source','commerce.oms.v0'),updated_at=p_at
+    WHERE id IN (SELECT id FROM public.commerce_settlement_intents WHERE order_id=p_order)
+      AND status NOT IN ('succeeded','cancelled','refunded','partially_refunded','disputed');
+  UPDATE public.payment_provider_attempts SET status='cancelled',failure_reason='admin_oms_cancelled_unpaid_order',updated_at=p_at
+    WHERE settlement_intent_id IN (SELECT id FROM public.commerce_settlement_intents WHERE order_id=p_order)
+      AND status NOT IN ('succeeded','cancelled','failed','expired');
   UPDATE public.commerce_orders SET status='cancelled',cancelled_at=p_at,updated_at=p_at,
     metadata=metadata||jsonb_build_object('cancellation',jsonb_build_object(
       'reason',p_reason,'actorId',p_actor,'request',COALESCE(p_metadata,'{}'::jsonb))) WHERE id=p_order;
@@ -2333,7 +2360,7 @@ $$;
 CREATE OR REPLACE FUNCTION public.commerce_checkout_inline_retry_begin(p_request_key text,p_order_id uuid,p_client_id uuid,p_intent_id uuid,p_expected_attempt_id uuid,p_fingerprint text,p_context jsonb,p_at timestamptz)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE o public.commerce_orders%ROWTYPE; i public.commerce_settlement_intents%ROWTYPE;
- a public.payment_simulator_attempts%ROWTYPE; result jsonb; initial_purchase boolean;
+ a public.payment_simulator_attempts%ROWTYPE; result jsonb; initial_purchase boolean; provider_attempt public.payment_provider_attempts%ROWTYPE;
 BEGIN
  IF p_at IS NULL OR NOT isfinite(p_at) OR p_expected_attempt_id IS NULL
   OR p_request_key IS DISTINCT FROM 'checkout-inline-recovery:'||p_expected_attempt_id::text||':payment-execution:prepare-attempt'
@@ -2351,6 +2378,25 @@ BEGIN
   IF p_context->>'executionRail' IS DISTINCT FROM i.channel_key OR o.status<>'pending_payment'
    OR o.metadata->>'paymentStatus'='expired' OR i.status='settled' THEN
    RAISE EXCEPTION 'checkout_inline_retry_refused' USING ERRCODE='22023'; END IF;
+  IF p_context->>'replayOnly'='true' THEN
+   -- A lost response replays only the durable transition, nonce and rail.
+   -- Transient method input and fresh purchase context grant no replay authority.
+   SELECT pa.* INTO provider_attempt FROM public.payment_provider_states ps
+    JOIN public.payment_provider_attempts pa ON pa.id=ps.active_attempt_id AND pa.settlement_intent_id=ps.id
+    JOIN public.payment_provider_receipts r ON r.scope='commerce.payment_attempt.prepare_provider'
+     AND r.idempotency_key=p_request_key AND r.status='completed'
+     AND r.response_payload#>>'{paymentAttempt,id}'=pa.id::text
+    WHERE ps.id=i.id AND pa.id<>p_expected_attempt_id AND pa.idempotency_key=p_request_key
+     AND pa.provider=p_context->>'executionRail'
+     AND pa.request_payload->>'source'='commerce.checkout-inline-recovery.prepare.v1'
+     AND pa.request_payload->>'expectedPaymentAttemptId'=p_expected_attempt_id::text
+     AND pa.request_payload->>'retryRequestId'=p_context->>'retryRequestId'
+     AND ((pa.status='failed' AND ps.status='failed') OR
+      (pa.status IN ('created','sent_to_provider','requires_action','processing') AND ps.status IN ('created','processing','requires_action')))
+    FOR UPDATE OF ps,pa;
+   IF NOT FOUND THEN RAISE EXCEPTION 'checkout_inline_retry_refused' USING ERRCODE='22023'; END IF;
+   RETURN jsonb_set(public.payment_provider_attempt_read(i.id,provider_attempt.id),'{paymentAttempt,replayed}','true'::jsonb,false);
+  END IF;
   RETURN public.payment_provider_attempt_prepare(p_request_key,i.id,p_context->>'provider',p_context->>'providerIdempotencyKey',
    p_fingerprint,p_context->>'providerFlow',p_context->>'paymentMethodRef',COALESCE(p_context->'requestPayload','{}'::jsonb)||jsonb_build_object(
    'source','commerce.checkout-inline-recovery.prepare.v1','expectedPaymentAttemptId',p_expected_attempt_id,'retryRequestId',p_context->>'retryRequestId','purchaseContext',p_context->>'purchaseContext'));

@@ -942,11 +942,11 @@ it("keeps the managed, operations and R1 pins closed at exactly 17 paths and 22 
   const paymentPins = reviewedPinnedIntroductions.filter(([path]) => paymentPaths.includes(path));
   expect(paymentPins.map(([path]) => path)).toEqual(paymentPaths);
   for (const [, digest, counts] of paymentPins) {
-    expect(digest).toBe("d819a957961e3c2b6ff381b3efb47698a2e5f1b946c283c275b7305304b61f5d");
+    expect(digest).toBe("5dca653dbb0f341723822dbb1be55263cf30375cb49410205dcc735a516b75ed");
     expect(counts).toEqual([["ui-13", 0, 4], ["ui-14", 0, 3]]);
   }
   expect(reviewedPinnedIntroductions.filter(([path]) => path === paymentAttemptFixture)).toEqual([
-    [paymentAttemptFixture, "362072b2c6edc0ade23b102e69c31ad871dda7f5dfa87b06a6cd2813fe50343d", [["ui-13", 0, 6], ["ui-14", 0, 5]]],
+    [paymentAttemptFixture, "968618b954dd39f33034076633daa618ca81208ac27b7bc039e5a7988661da59", [["ui-13", 0, 6], ["ui-14", 0, 5]]],
   ]);
 });
 

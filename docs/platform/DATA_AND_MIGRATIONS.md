@@ -695,6 +695,12 @@ compensation before expiring the order. An automatic initial-checkout sweep
 that wins cancellation also terminalizes its provider lifecycle and settlement
 intent; waiting preparation refuses before creating an attempt. Preparation
 that wins first fences the sweep through its committed attempt.
+Manual unpaid-order cancellation terminalizes both provider intent and payment
+lifecycle, refusing later preparation under fresh keys. The first recoverable
+one-time or initial-subscription decline mints a native checkout recovery token
+and queues its payment-failed notice with a three-minute claim delay. A lost
+inline-recovery response replays its durable attempt using the recorded
+transition, nonce and rail without requiring fresh purchase or method context.
 
 | Historical data | Result and manual path |
 | --- | --- |
@@ -1388,7 +1394,7 @@ routing and a refund-amount rule. Each row adds only its own whole-file SHA-256
 pins, exact counts and baseline keys with its files. R1's attempt-store slot and
 mirror each pin `ui-13` 0→4 and `ui-14` 0→3. Its unchanged characterization fixture,
 `tests/postgres/fixtures/paymentProvider/durability.sql`, pins `ui-13` 0→6 and
-`ui-14` 0→1 with its own whole-file digest and baseline key. This fixture keeps
+`ui-14` 0→5 with its own whole-file digest and baseline key. This fixture keeps
 the same names until the provider-profile refactor removes them together with
 the predicates; a third provider needs that refactor. Every other test or
 fixture path remains refused by this extension. No other native
