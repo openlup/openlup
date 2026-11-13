@@ -8,6 +8,19 @@ import * as docs from "./release-docs-pass.ts";
 
 
 const checkGuide = (root: string): string => execFileSync(process.execPath, ["--experimental-strip-types", resolve("packages/core/scripts/documentation-contract.ts"), "--check-guide", join(root, "packages/core")], { cwd: root, encoding: "utf8", stdio: "pipe" }).trim();
+function expectedConfigurationRegion(root: string): string {
+  // Plan a separate empty page so the expected body does not depend on the page under test.
+  const pending = "docs/guide/reference/configuration-expected.md";
+  const output = execFileSync(process.execPath, ["--experimental-strip-types", resolve("packages/core/scripts/documentation-contract.ts"), "--plan-guide", "0.9.0", root], {
+    cwd: root, encoding: "utf8", stdio: "pipe",
+    input: JSON.stringify({ [pending]: "# Configuration\n\n<!-- generated:configuration-keys -->\n<!-- /generated:configuration-keys -->\n" }),
+  });
+  const plan = JSON.parse(output) as { writes: Array<[string, string]> };
+  const source = plan.writes.find(([file]) => file === join(root, "packages/core", pending))?.[1];
+  const region = source?.match(/<!-- generated:configuration-keys -->\n([\s\S]*?)<!-- \/generated:configuration-keys -->/u)?.[1];
+  if (region === undefined) throw new Error("Expected a planned configuration-keys region for the empty pending page");
+  return region;
+}
 const roots: string[] = [];
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 
@@ -36,6 +49,16 @@ const read = (root: string, files: Record<string, string>) => Object.fromEntries
 const changedLines = (before: string, after: string) => before.split("\n").map((text, index) => [text, after.split("\n")[index]]).filter(([was, now]) => was !== now);
 const git = (root: string, ...args: string[]) => execFileSync("git", ["-c", "core.hooksPath=/dev/null", "-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid", ...args], { cwd: root, encoding: "utf8" }).trim();
 const page = "packages/core/docs/guide/upgrade/v0-9-0.md";
+// The configuration-keys generator reads package sources, links the platform API reports and
+// omits provider-specific names through the repository neutrality scanner (stdin mode only).
+function addConfigurationInputs(root: string, files: Record<string, string>): void {
+  Object.assign(files, {
+    "packages/core/src/settings.ts": 'export const baseUrlKey = "APP_BASE_URL";\n',
+    "packages/platform/api/index.api.md": "# API report\n",
+    "packages/ui/smoke/neutrality.ts": readFileSync(resolve("packages/ui/smoke/neutrality.ts"), "utf8"),
+  });
+  for (const [path, source] of Object.entries(files)) { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), source); }
+}
 function setFixture() {
   const f = fixture();
   Object.assign(f.files, {
@@ -226,14 +249,16 @@ describe("release:bump", () => {
     const guide = "packages/core/docs/guide/reference/configuration.md";
     const link = (version: string) => `https://github.com/openlup/openlup/blob/openlup-core-v${version}/packages/core/CHANGELOG.md`;
     const stale = `# Configuration\n\n[Changelog](${link("0.7.0")})\n\n<!-- generated:configuration-keys -->\nold body\n<!-- /generated:configuration-keys -->\n`;
-    const fresh = "| Name | Owner | Category | Required in | Secret |\n| --- | --- | --- | --- | --- |\n| `APP_BASE_URL` | platform | server-runtime | production | no |\n";
     Object.assign(files, {
       [guide]: stale,
       "config/environment-variables.json": JSON.stringify({ variables: [{ name: "APP_BASE_URL", owner: "platform", category: "server-runtime", requiredIn: ["production"], secret: false }] }),
       "packages/core/changes/a-first.md": stale.replace("# Configuration", "### Configuration"),
     });
-    for (const [path, source] of Object.entries(files)) { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), source); }
+    addConfigurationInputs(root, files);
     git(root, "add", "."); git(root, "commit", "-qm", "guide fixture");
+    // The region the generator owns, at the target version; it must list the key the package reads.
+    const fresh = expectedConfigurationRegion(root);
+    expect(fresh).toContain("| `APP_BASE_URL` | platform | server-runtime | production | no |\n");
     const planned = docs.planReleaseGuide(root, "0.9.0");
     expect(planned.violations).toEqual([]);
     expect(planned.writes).toEqual([[join(root, guide), stale.replace(link("0.7.0"), link("0.9.0")).replace("old body\n", fresh)]]);
@@ -254,9 +279,9 @@ describe("release:bump", () => {
 
   it("does not plan or stage another write for a guide already current at the target version", () => {
     const { root } = setFixture(), guide = "packages/core/docs/guide/README.md";
-    const source = "# Guide\n\n[Changelog](https://github.com/openlup/openlup/blob/openlup-core-v0.9.0/packages/core/CHANGELOG.md)\n\n<!-- generated:configuration-keys -->\n| Name | Owner | Category | Required in | Secret |\n| --- | --- | --- | --- | --- |\n<!-- /generated:configuration-keys -->\n";
+    addConfigurationInputs(root, { "config/environment-variables.json": '{"variables":[]}\n' });
+    const source = `# Guide\n\n[Changelog](https://github.com/openlup/openlup/blob/openlup-core-v0.9.0/packages/core/CHANGELOG.md)\n\n<!-- generated:configuration-keys -->\n${expectedConfigurationRegion(root)}<!-- /generated:configuration-keys -->\n`;
     mkdirSync(dirname(join(root, guide)), { recursive: true }); writeFileSync(join(root, guide), source);
-    writeFileSync(join(root, "config/environment-variables.json"), '{"variables":[]}\n');
     git(root, "add", "."); git(root, "commit", "-qm", "current guide fixture");
     expect(docs.planReleaseGuide(root, "0.9.0")).toEqual({ writes: [], violations: [], pageViolations: {} });
     expect(bumpSet(root, "0.9.0")).not.toContain(guide);
@@ -284,12 +309,21 @@ describe("release:bump", () => {
     const linked = new Set(guidePages(resolve("packages/core/docs/guide")).flatMap((page) =>
       [...readFileSync(page, "utf8").matchAll(/https:\/\/github\.com\/openlup\/openlup\/(?:blob|tree)\/openlup-core-v[0-9A-Za-z.+-]+\/([^\s)>"'`#?]+)/gu)].map((match) => decodeURIComponent(match[1]!).replace(/\/$/u, ""))));
     expect(linked.size).toBeGreaterThan(0);
-    for (const path of ["packages/core/docs/guide", "config/documentation-guide-allowlist.json", "config/environment-variables.json", ...["core", "outbox", "platform"].map((name) => `packages/${name}/release-gates.json`), ...linked]) {
+    // Region inputs: release gates, package sources (configuration keys, command-line help), API
+    // reports (exports, refusal codes), SQL manifests, the platform manifest and the neutrality scanner.
+    const regionInputs = ["core", "outbox", "platform"].flatMap((name) => ["release-gates.json", "src", "api", "sql"].map((part) => `packages/${name}/${part}`))
+      .filter((path) => existsSync(resolve(path)));
+    for (const path of ["packages/core/docs/guide", "config/documentation-guide-allowlist.json", "config/environment-variables.json", "packages/core/package.json", "packages/outbox/package.json", "packages/platform/package.json", "packages/ui/smoke/neutrality.ts", ...regionInputs, ...linked]) {
       mkdirSync(dirname(join(root, path)), { recursive: true }); cpSync(resolve(path), join(root, path), { recursive: true });
     }
+    const manifest = JSON.parse(readFileSync(join(core, "package.json"), "utf8"));
+    manifest.version = "0.7.0";
+    writeFileSync(join(core, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`);
     const index = join(core, "docs/guide/README.md"), original = readFileSync(index, "utf8");
     const planned = docs.planReleaseGuide(root, "0.9.0");
     expect(planned.violations).toEqual([]); expect(planned.writes.map(([file]) => file)).toContain(index);
+    const coreExports = planned.writes.map(([, source]) => source.match(/<!-- generated:exports:core -->\n([\s\S]*?)<!-- \/generated:exports:core -->/u)?.[1]).find((body) => body !== undefined);
+    expect(coreExports).toMatch(/\n\| `[^`]+` \|/u);
     expect(readFileSync(index, "utf8")).toBe(original);
     for (const [file, source] of planned.writes) writeFileSync(file, source);
     writeFileSync(join(core, "package.json"), readFileSync(join(core, "package.json"), "utf8").replace('"version": "0.7.0"', '"version": "0.9.0"'));
