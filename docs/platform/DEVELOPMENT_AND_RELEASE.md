@@ -279,8 +279,8 @@ owns release permissions, setup, detailed refusals and recovery. The sequence is
 3. With explicit authority, dispatch `publish-package.yml` from main with package
    `all`, the set version, the exact SHA and reviewed note bytes. Its unprivileged
    preflight refuses while any package release or publication is in flight, checks
-   ancestry, contexts, a byte-identical fresh source snapshot at the exact Git
-   target, the set version of every publishable package and, for a
+   ancestry against freshly fetched main (recording its tip), contexts, a
+   byte-identical fresh source snapshot at the exact Git target, the set version of every publishable package and, for a
    patch set, each unchanged API snapshot. It cold-packs every package through
    the shared inventory-based prerequisite route and scans every tarball, then
    decides each package by its tag, release and npm state, before protected
@@ -289,9 +289,13 @@ owns release permissions, setup, detailed refusals and recovery. The sequence is
    main commit, never as the target's copy. A single package name still releases
    that one package, from nothing only.
 4. After one owner approval, the release job runs once per package to release:
-   it repeats those checks without installing or packing, then the release App
-   creates the annotated tag `openlup-<package>-v<version>` and draft, validates
-   the same draft ID and publishes the immutable release. Verify each completed
+   it checks exactly the reviewed target against the main tip recorded by this
+   run's preflight, repeating first-parent ancestry, audit-blob equality and the
+   same required contexts, plus the remaining checks without installing or packing.
+   Main may keep landing during the approval wait; the next cut re-audits against
+   its own preflight tip. The tag step retains its fresh-main check and can refuse
+   changed publication controls. If it passes, the release App creates the
+   annotated tag `openlup-<package>-v<version>` and draft, validates the same draft ID and publishes the immutable release. Verify each completed
    release's exact note bytes, identity and GitHub attestation.
 5. The App event starts package packing and independent release/tag checks.
    The same `packages:check --cold` route prepares the selected package's exact

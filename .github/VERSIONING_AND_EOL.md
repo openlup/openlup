@@ -821,7 +821,7 @@ establish publication readiness. Release-tag/set packing in both the dispatch
 preflight and publication workflow runs a fresh absolute audit of the selected
 committed workspace graph, internal prerequisites and their standalone locks,
 with the existing zero-vulnerability budget. Before target code runs, the
-existing fresh-main gate requires the target's pack checker, audit helper and
+preflight fresh-main gate requires the target's pack checker, audit helper and
 publisher workflow to match those on fetched main. Older source targets remain
 eligible when these controls are unchanged; otherwise prepare a reviewed forward
 candidate with the current publication controls. This does not rewrite already
@@ -909,9 +909,10 @@ A release takes three steps:
    and the tag's commit are decided by
    [`release-gate.ts`](../scripts/packages/release-gate.ts) as it is at the
    dispatched `main` commit, never by the target's own copy: `in-flight` and
-   `commit` run in place in each job's checkout of that commit, before the target
-   is checked out, and only the tag step runs a fresh copy of it. A dispatch naming one package checks that package the same
-   way and releases it only when its tag and release are absent and npm never
+   `commit` run in preflight's checkout of that commit, and `commit-at` runs in
+   the release job's checkout against the tip exported by this run's preflight,
+   before the target is checked out, and only the tag step runs a fresh copy of
+   it. A dispatch naming one package checks that package the same way and releases it only when its tag and release are absent and npm never
    held its version.
 3. **Approval.** The `release` job runs once per package to release in full.
    Those runs wait for the protected `release` environment together, so one
@@ -920,15 +921,20 @@ A release takes three steps:
    target in `target/`. A re-run of a failed run skips the preflight's in-flight
    refusal, so re-run one only after any pending publication of its package has
    completed; this window is a known limitation. Before the release App token exists, each run
-   re-verifies the target's main ancestry and required contexts, the manifest
+   checks exactly the reviewed target against the main tip recorded at preflight:
+   first-parent ancestry and the same publication-audit blobs, with the same
+   required contexts checked again at the target. The tip comes only from
+   `needs.preflight.outputs.main_tip`, never a dispatch input. Main may keep
+   landing during the approval wait; the next cut re-audits against its own
+   preflight tip. Each run also re-verifies the manifest
    policy and version with `packages:check --release-tag` (no install, build or
    pack), the patch-set check, the absent tag and npm. It installs nothing and runs no package code:
    the pack and the gitleaks scan run only in the unprivileged `preflight`, and
    `publish-packages.yml` packs and scans the published tag again. A fresh copy
    of main's release gate, taken from the dispatched commit in the tag step
-   itself as defence in depth, then re-checks the target's main ancestry, has the
-   App create the
-   annotated tag on the target commit itself with exactly
+   itself as defence in depth, retains the fresh-main ancestry and audit-blob
+   check, so changed publication controls can still refuse tagging. It has the
+   App create the annotated tag on the target commit itself with exactly
    `OpenLup package @openlup/<package> <version>.`, and refuses unless GitHub
    answers with that tag object, that message byte for byte, and its reference.
    The App then creates a draft release with the exact note bytes and no asset.

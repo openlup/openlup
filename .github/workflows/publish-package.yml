@@ -31,7 +31,8 @@
 # re-run of a failed leg skips the preflight and its in-flight refusal: re-run legs only after any
 # pending publication of their package has completed.
 # The pack and the scan run only here. Before the release App token exists, the release job
-# re-verifies the main ancestry and contexts, the manifest policy and version
+# re-verifies ancestry and audit blobs against the main tip recorded by preflight, and the
+# same required contexts, the manifest policy and version
 # (`packages:check --release-tag`, with no install, build or pack), the patch-set check, the
 # absent tag and npm; it installs nothing and runs no package code. A fresh copy of main's release
 # gate, taken from the dispatched commit in the tag step itself, then creates the tag on the target.
@@ -73,6 +74,7 @@ jobs:
     # The packages the plan step releases in full, as a JSON array of directory names.
     outputs:
       packages: ${{ steps.plan.outputs.packages }}
+      main_tip: ${{ steps.main-gate.outputs.main_tip }}
     timeout-minutes: 20
     permissions:
       contents: read
@@ -113,6 +115,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: node --experimental-strip-types scripts/packages/release-gate.ts in-flight "$GITHUB_RUN_ID"
       - name: Check main ancestry and required contexts before running target code
+        id: main-gate
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: node --experimental-strip-types scripts/packages/release-gate.ts commit "$TARGET_COMMIT"
@@ -227,11 +230,12 @@ jobs:
           test "$(npm --version)" = "11.19.0"
           test "$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).engines.node')" = "24.x"
           test "$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).packageManager')" = "npm@11.19.0"
-      # The same release gate as the preflight and publish-packages.yml.
-      - name: The target commit is on main and passed the required contexts
+      # Recheck against this run's preflight tip; main may advance during approval.
+      - name: The target commit is on recorded main and passed the required contexts
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: node --experimental-strip-types scripts/packages/release-gate.ts commit "$TARGET_COMMIT"
+          MAIN_TIP: ${{ needs.preflight.outputs.main_tip }}
+        run: node --experimental-strip-types scripts/packages/release-gate.ts commit-at "$TARGET_COMMIT" "$MAIN_TIP"
       # After the gate the target is reviewed main code, checked out into its own directory.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:

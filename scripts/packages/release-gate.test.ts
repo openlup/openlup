@@ -114,6 +114,40 @@ const BEHAVIOUR: Record<string, (gate: Gate) => Promise<void>> = {
     } finally { git(fixture.origin, ["update-ref", "refs/heads/main", fixture.mainTip]); git(fixture.clone, ["fetch", "--quiet", "origin", "+refs/heads/main:refs/openlup-release/main"]); }
     for (const ref of ["refs/openlup-release/main", "refs/remotes/origin/main", "refs/heads/main"]) git(fixture.clone, ["update-ref", ref, fixture.mainTip]);
   },
+  "recorded tip binds first-parent and audit proof without fetching main": async (gate) => {
+    const f = createFixture();
+    try {
+      // The recorded merge is absent from the checkout. Main has since changed an audit owner.
+      const recorded = git(f.origin, ["commit-tree", `${f.mainTip}^{tree}`, "-p", f.mainTip, "-p", f.side, "-m", "recorded merge"]);
+      const changed = git(f.origin, ["hash-object", "-w", "--stdin"], "later audit\n");
+      for (const path of AUDIT_OWNERS) git(f.origin, ["update-index", "--cacheinfo", `100644,${changed},${path}`]);
+      const later = git(f.origin, ["commit-tree", git(f.origin, ["write-tree"]), "-p", recorded, "-m", "later audit"]);
+      git(f.origin, ["update-ref", "refs/heads/main", later]);
+      expect(() => git(f.clone, ["cat-file", "-e", recorded])).toThrow();
+      expect(gate.assertOnRecordedMain(f.clone, f.base, recorded)).toBe(recorded);
+      // Exactly the recorded SHA was fetched, not the moved main tip.
+      expect(git(f.clone, ["rev-parse", "FETCH_HEAD"])).toBe(recorded);
+      expect(git(f.clone, ["rev-parse", "refs/remotes/origin/main"])).toBe(f.mainTip);
+      expect(gate.assertOnRecordedMain(f.clone, recorded, recorded)).toBe(recorded);
+      expect(() => gate.assertOnRecordedMain(f.clone, f.side, recorded), "merged PR interior").toThrow(/is not on main/u);
+      git(f.clone, ["fetch", "--quiet", "origin", later]);
+      expect(() => gate.assertOnRecordedMain(f.clone, later, recorded), "not reachable from recorded tip").toThrow(/is not on main/u);
+      for (const path of AUDIT_OWNERS) {
+        git(f.origin, ["read-tree", f.mainTip]);
+        git(f.origin, ["update-index", "--cacheinfo", `100644,${changed},${path}`]);
+        const mismatch = git(f.origin, ["commit-tree", git(f.origin, ["write-tree"]), "-p", recorded, "-m", `changed ${path}`]);
+        expect(() => gate.assertOnRecordedMain(f.clone, f.base, mismatch), path).toThrow(`${path} at ${f.base} does not match the publication audit on recorded main ${mismatch}`);
+      }
+      for (const tip of ["", "main", "a".repeat(39), "A".repeat(40), `${recorded}\n`, "--all"]) {
+        expect(() => gate.assertOnRecordedMain(f.clone, f.base, tip), tip).toThrow(/recorded main tip must be a full lowercase SHA/u);
+      }
+      expect(() => gate.assertOnRecordedMain(f.clone, "main", recorded)).toThrow(/commit must be a full lowercase SHA/u);
+      expect(() => gate.assertOnRecordedMain(f.clone, f.base, changed), "blob SHA is not a commit").toThrow(/must name a commit/u);
+      // With the recorded commit present, no remote access is needed at all.
+      git(f.clone, ["remote", "set-url", "origin", join(f.scratch, "missing-origin")]);
+      expect(gate.assertOnRecordedMain(f.clone, f.base, recorded)).toBe(recorded);
+    } finally { rmSync(f.scratch, { recursive: true, force: true }); }
+  },
   "publication audit owners match fresh main before a tag can be written": async (gate) => {
     // Build the nine real histories in one Git process and transfer their objects once.
     // Each assertion below still fetches the remote's changing main ref itself.
@@ -224,6 +258,10 @@ const STRUCTURE: Record<string, (source: string) => boolean> = {
 type Defect = { control: string; plant: string; from: string; to: string };
 /** One or more planted defects per control. Each replaces committed text, so a stale anchor fails too. */
 const DEFECTS: Defect[] = [
+  { control: "recorded tip binds first-parent and audit proof without fetching main", plant: "recorded gate fetches current main", from: 'return assertAtMainTip(root, commit, mainTip, "recorded main");', to: 'return assertOnFreshMain(root, commit);' },
+  { control: "recorded tip binds first-parent and audit proof without fetching main", plant: "recorded tip accepts refs", from: 'if (!COMMIT.test(mainTip))', to: 'if (false)' },
+  { control: "recorded tip binds first-parent and audit proof without fetching main", plant: "merged PR interiors pass", from: 'git("rev-list", "--first-parent", mainTip)', to: 'git("rev-list", mainTip)' },
+  { control: "recorded tip binds first-parent and audit proof without fetching main", plant: "recorded audit proof skipped", from: 'return assertAtMainTip(root, commit, mainTip, "recorded main");', to: 'return mainTip;' },
   ...AUDIT_OWNERS.map((path) => ({ control: "publication audit owners match fresh main before a tag can be written", plant: `${path} is unchecked`, from: `    "${path}",\n`, to: "" })),
   { control: "publication audit owners match fresh main before a tag can be written", plant: "audit equality is skipped", from: "if (!mainBlob || blob(commit) !== mainBlob)", to: "if (false)" },
   { control: "publication audit owners match fresh main before a tag can be written", plant: "missing owners on both sides pass", from: "if (!mainBlob || blob(commit) !== mainBlob)", to: "if (blob(commit) !== mainBlob)" },
@@ -370,7 +408,7 @@ describe("the release gate as one file outside the checkout", () => {
     for (const args of [[], ["publish"], ["commit"], ["commit", COMMIT, "extra"], ["in-flight"], ["tag", COMMIT, "core"]]) {
       const result = gate(args);
       expect(result.status, args.join(" ")).toBe(1);
-      expect(result.stderr.trim()).toBe("expected in-flight <own run ID>, commit <sha>, or tag <sha> <package> <version>");
+      expect(result.stderr.trim()).toBe("expected in-flight <own run ID>, commit <sha>, commit-at <sha> <tip>, or tag <sha> <package> <version>");
     }
   });
 });
@@ -395,6 +433,8 @@ describe("the release gate's commands, as the workflows run them", () => {
     const file = join(directory, "release-gate.mts"), log = join(directory, "requests.jsonl"), stub = join(directory, "fetch-stub.mjs");
     writeFileSync(file, source);
     writeFileSync(log, "");
+    const output = join(directory, "output");
+    writeFileSync(output, "");
     writeFileSync(stub, [
       'import { appendFileSync } from "node:fs";',
       `const answers = ${JSON.stringify(answers)};`,
@@ -408,9 +448,9 @@ describe("the release gate's commands, as the workflows run them", () => {
       "};",
       "",
     ].join("\n"));
-    const result = spawnSync(process.execPath, ["--experimental-strip-types", "--no-warnings", "--import", pathToFileURL(stub).href, file, ...args], { cwd: cli.clone, encoding: "utf8", timeout: 30_000, env: { ...inherited, GITHUB_TOKEN: "token" } });
+    const result = spawnSync(process.execPath, ["--experimental-strip-types", "--no-warnings", "--import", pathToFileURL(stub).href, file, ...args], { cwd: cli.clone, encoding: "utf8", timeout: 30_000, env: { ...inherited, GITHUB_TOKEN: "token", GITHUB_OUTPUT: output } });
     const requests = readFileSync(log, "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line) as Request);
-    return { status: result.status, stdout: result.stdout.trim(), stderr: result.stderr.trim(), requests };
+    return { status: result.status, stdout: result.stdout.trim(), stderr: result.stderr.trim(), requests, output: readFileSync(output, "utf8") };
   }
   /** The six contexts' latest check runs at `commit`: each passed unless `failing` names it. */
   const contexts = (commit: string, failing: readonly string[] = []) => Object.fromEntries(SIX.map((context) => [
@@ -429,11 +469,25 @@ describe("the release gate's commands, as the workflows run them", () => {
       const { base, mainTip, side } = cli;
       const passed = command(source, ["commit", base], { ...contexts(base), ...contexts(mainTip, ["test"]) });
       expect([passed.status, passed.stdout], "the target passed, main's tip did not").toEqual([0, `${base} is on main at ${mainTip} and passed ${SIX.join(", ")}`]);
+      expect(passed.output).toBe(`main_tip=${mainTip}\n`);
       expect(passed.requests.map(({ url }) => url), "only the target's contexts are read").toEqual(SIX.map((context) => `${API}/commits/${base}/check-runs?check_name=${context}&filter=latest&per_page=100`));
       const failed = command(source, ["commit", base], { ...contexts(base, ["test"]), ...contexts(mainTip) });
       expect([failed.status, failed.stderr], "the target failed, main's tip passed").toEqual([1, `release gate: test has not passed at ${base}`]);
+      expect(failed.output).toBe("");
       const off = command(source, ["commit", side], contexts(side));
       expect([off.status, off.stderr, off.requests], "a commit off main, its contexts passed").toEqual([1, `release gate: ${side} is not on main, whose tip is ${mainTip}`, []]);
+    },
+    "commit-at: recorded main and the target's required contexts": (source) => {
+      const { base, mainTip, side } = cli;
+      const passed = command(source, ["commit-at", base, mainTip], { ...contexts(base), ...contexts(mainTip, ["test"]) });
+      expect([passed.status, passed.stdout]).toEqual([0, `${base} is on recorded main at ${mainTip} and passed ${SIX.join(", ")}`]);
+      expect(passed.requests.map(({ url }) => url)).toEqual(SIX.map((context) => `${API}/commits/${base}/check-runs?check_name=${context}&filter=latest&per_page=100`));
+      const failed = command(source, ["commit-at", base, mainTip], { ...contexts(base, ["test"]), ...contexts(mainTip) });
+      expect([failed.status, failed.stderr]).toEqual([1, `release gate: test has not passed at ${base}`]);
+      for (const args of [["commit-at", side, mainTip], ["commit-at", base, "main"], ["commit-at", base], ["commit-at", base, mainTip, "extra"]]) {
+        const refused = command(source, args, contexts(side));
+        expect([refused.status, refused.requests], args.join(" ")).toEqual([1, []]);
+      }
     },
     "in-flight: refuses while another release or publication run has not completed": (source) => {
       const alone = command(source, ["in-flight", "1001"], workflowRuns({ "publish-package.yml": { in_progress: [OWN] } }));
@@ -459,8 +513,11 @@ describe("the release gate's commands, as the workflows run them", () => {
 
   type CommandDefect = { control: string; plant: string; from: string; to: string };
   const COMMAND_DEFECTS: CommandDefect[] = [
-    { control: "commit: the target on main, with every required context passed at the target", plant: "commit skips the required contexts", from: "    await assertRequiredChecks(commit, token);\n    console.log(", to: "    console.log(" },
-    { control: "commit: the target on main, with every required context passed at the target", plant: "commit checks main's tip instead of the target", from: "await assertRequiredChecks(commit, token);", to: "await assertRequiredChecks(mainTip, token);" },
+    { control: "commit-at: recorded main and the target's required contexts", plant: "post-approval contexts skipped", from: '    await assertRequiredChecks(commit, token);\n    console.log(`${commit} is on recorded main', to: '    console.log(`${commit} is on recorded main' },
+    { control: "commit-at: recorded main and the target's required contexts", plant: "post-approval checks tip contexts", from: '    await assertRequiredChecks(commit, token);\n    console.log(`${commit} is on recorded main', to: '    await assertRequiredChecks(mainTip, token);\n    console.log(`${commit} is on recorded main' },
+    { control: "commit-at: recorded main and the target's required contexts", plant: "post-approval ignores recorded tip", from: 'const mainTip = assertOnRecordedMain(root, commit, args[1]!);', to: 'const mainTip = assertOnFreshMain(root, commit);' },
+    { control: "commit: the target on main, with every required context passed at the target", plant: "commit skips the required contexts", from: "    await assertRequiredChecks(commit, token);\n    if (env.GITHUB_OUTPUT)", to: "    if (env.GITHUB_OUTPUT)" },
+    { control: "commit: the target on main, with every required context passed at the target", plant: "commit checks main's tip instead of the target", from: "await assertRequiredChecks(commit, token);\n    if (env.GITHUB_OUTPUT)", to: "await assertRequiredChecks(mainTip, token);\n    if (env.GITHUB_OUTPUT)" },
     { control: "commit: the target on main, with every required context passed at the target", plant: "commit without the main ancestry", from: "const mainTip = assertOnFreshMain(root, commit);\n    await assertRequiredChecks", to: "const mainTip = commit;\n    await assertRequiredChecks" },
     { control: "in-flight: refuses while another release or publication run has not completed", plant: "in-flight does nothing", from: "    await assertNoReleaseInFlight(args[0]!, token);\n", to: "" },
     { control: "in-flight: refuses while another release or publication run has not completed", plant: "in-flight for another run ID than this one", from: "assertNoReleaseInFlight(args[0]!, token)", to: 'assertNoReleaseInFlight("1", token)' },

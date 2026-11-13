@@ -9,6 +9,8 @@
  * - `commit <sha>` refuses unless `<sha>` is on the first-parent line of `main` as fetched from origin now, and
  *   each required context passed there: GitHub Actions ran it at `<sha>` and every latest run of it
  *   succeeded. Its publication audit owners must match that fresh main. The target need not be checked out.
+ * - `commit-at <sha> <tip>` repeats the ancestry, audit and context checks against the main tip
+ *   recorded by this run's preflight, fetching only that SHA if missing, never main.
  * - `tag <sha> <package> <version>` repeats that main check, then creates the annotated tag
  *   `openlup-<package>-v<version>` on `<sha>` itself, never on another commit, and refuses unless
  *   GitHub answers with a tag object of that name and exact message on that commit and a
@@ -22,7 +24,7 @@
  * detected as its entry module, it refuses rather than exit 0.
  */
 import { execFileSync } from "node:child_process";
-import { realpathSync } from "node:fs";
+import { appendFileSync, realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 export type GateFetch = (input: string, init?: RequestInit) => Promise<Response>;
@@ -63,6 +65,23 @@ export function assertOnFreshMain(root: string, commit: string): string {
   const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
   git("fetch", "--no-tags", "--quiet", "origin", `+refs/heads/main:${FRESH_MAIN}`);
   const mainTip = git("rev-parse", "--verify", `${FRESH_MAIN}^{commit}`);
+  return assertAtMainTip(root, commit, mainTip, "fresh main");
+}
+
+/** Check the preflight's recorded main tip without consulting the current main ref. */
+export function assertOnRecordedMain(root: string, commit: string, mainTip: string): string {
+  if (!COMMIT.test(commit)) throw new Error("release gate: the commit must be a full lowercase SHA");
+  if (!COMMIT.test(mainTip)) throw new Error("release gate: the recorded main tip must be a full lowercase SHA");
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+  try { git("cat-file", "-e", mainTip); }
+  catch { git("fetch", "--no-tags", "--quiet", "origin", mainTip); }
+  if (git("cat-file", "-t", mainTip) !== "commit") throw new Error("release gate: the recorded main tip must name a commit");
+  return assertAtMainTip(root, commit, mainTip, "recorded main");
+}
+
+/** Shared first-parent and publication-audit proof for a fetched or recorded main tip. */
+function assertAtMainTip(root: string, commit: string, mainTip: string, source: string): string {
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
   if (!git("rev-list", "--first-parent", mainTip).split("\n").includes(commit)) throw new Error(`release gate: ${commit} is not on main, whose tip is ${mainTip}`);
   for (const path of [
     "scripts/packages/packages-check.ts",
@@ -71,7 +90,7 @@ export function assertOnFreshMain(root: string, commit: string): string {
   ]) {
     const blob = (revision: string) => /^[0-7]{6} blob ([a-f0-9]{40})\t/u.exec(git("ls-tree", revision, "--", path))?.[1];
     const mainBlob = blob(mainTip);
-    if (!mainBlob || blob(commit) !== mainBlob) throw new Error(`release gate: ${path} at ${commit} does not match the publication audit on fresh main ${mainTip}; choose a reviewed forward candidate`);
+    if (!mainBlob || blob(commit) !== mainBlob) throw new Error(`release gate: ${path} at ${commit} does not match the publication audit on ${source} ${mainTip}; choose a reviewed forward candidate`);
   }
   return mainTip;
 }
@@ -133,7 +152,7 @@ export async function createReleaseTag(root: string, commit: string, directoryNa
   return { tag, tagObject, mainTip };
 }
 
-const USAGE = "expected in-flight <own run ID>, commit <sha>, or tag <sha> <package> <version>";
+const USAGE = "expected in-flight <own run ID>, commit <sha>, commit-at <sha> <tip>, or tag <sha> <package> <version>";
 
 async function main(): Promise<void> {
   const { env, argv } = process;
@@ -149,7 +168,15 @@ async function main(): Promise<void> {
     const commit = args[0]!;
     const mainTip = assertOnFreshMain(root, commit);
     await assertRequiredChecks(commit, token);
+    if (env.GITHUB_OUTPUT) appendFileSync(env.GITHUB_OUTPUT, `main_tip=${mainTip}\n`);
     console.log(`${commit} is on main at ${mainTip} and passed ${REQUIRED_CONTEXTS.join(", ")}`);
+    return;
+  }
+  if (phase === "commit-at" && args.length === 2) {
+    const commit = args[0]!;
+    const mainTip = assertOnRecordedMain(root, commit, args[1]!);
+    await assertRequiredChecks(commit, token);
+    console.log(`${commit} is on recorded main at ${mainTip} and passed ${REQUIRED_CONTEXTS.join(", ")}`);
     return;
   }
   if (phase === "tag" && args.length === 3) {

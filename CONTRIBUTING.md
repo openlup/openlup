@@ -447,9 +447,14 @@ shared dependencies also used by development tooling; optional peers absent
 from the lock are not newly resolved. An audit failure retains no publication
 artifacts. Manifest-only checks remain installation-free and do not audit.
 The existing release gate also refuses a target with different pack/audit/publisher
-control blobs from fetched main, before target code runs; older source is allowed
-when these controls are unchanged. Historical release workflow definitions remain
-pinned to their own commits.
+control blobs from fetched main at preflight, before target code runs; older
+source is allowed when these controls are unchanged. The post-approval gate checks
+exactly the reviewed target against the main tip recorded by that run's preflight,
+including first-parent ancestry and those same blobs, and repeats the required
+contexts. Main may keep landing during the approval wait; the next cut re-audits
+against its own preflight tip. The tag step retains its fresh-main check and can
+still refuse a target whose publication controls no longer match main. Historical
+release workflow definitions remain pinned to their own commits.
 The publishing workflow requires packing/audit from its current attempt; retry
 all jobs after publication failure so the full audit runs again. Existing release
 approvals, immutable version rules and protected credentials remain unchanged.
