@@ -559,6 +559,7 @@ The package runner admits the migration ledger only when its system-catalog
 shape matches the canonical baseline ledger: a permanent heap table with the
 expected owner, columns, defaults, constraints and indexes, without partition
 or inheritance links, triggers, rules, row policies or extended statistics.
+The fingerprint stays exact except for numeric `pg_attver` column version markers in a nonempty, one-dimensional array starting at index 1; every other attribute option refuses admission.
 The ledger catalog shape is qualified on PostgreSQL 16 and 17; a different
 major with different catalog expression trees is refused until separately qualified.
 It checks this before reading applied rows, keeps the admitted relation stable
@@ -1637,6 +1638,8 @@ array, including unissued reservations, must remain a canonical content-equal
 prefix of every later array. Only appends are allowed; editing, deleting or
 inserting among those slots refuses. Issued bindings and their slots retain their content and array positions, even
 while the class is unsealed. There is no slot-count maximum or second class key.
+The production class is sealed from the 0.39.0 set preparation; later slots only
+append after its existing slots.
 Slot timestamps come from their paths and strictly increase in array order. A
 new slot's time must exceed every dated migration in its introduction base,
 including qualified identities; later migrations do not invalidate issued slots.
@@ -2259,8 +2262,9 @@ The destination forward adds immutable address documents and scoped order,
 subscription and shipment bindings. Both relations revoke PUBLIC, browser and
 runtime table privileges and enable RLS; trusted runtime uses four bounded
 definer routines with pinned search paths. Parent/client consistency is checked,
-but host authorization of each parent read remains necessary. There is no saved
-address book or arbitrary destination-ID reader. Subscription defaults read
+but host authorization of each parent read remains necessary. The separate saved
+address book owns mutable customer rows; there is no arbitrary destination-ID
+reader. Subscription defaults read
 through an active purchase; renewal orders resolve their own frozen operation
 reference, never the subscription's later future address. Shipment preparation
 pins its first document under the native dispatch lock. Hosts compose this reader
@@ -3337,9 +3341,13 @@ The fourth native pin is the single exact replacement of
 `payment_truth_apply_terminal(uuid,text,text,timestamptz,text,text,jsonb,text,text,text)`.
 Its declaration/settings and every statement outside the former accounting block
 remain unchanged. That block captures an `invoicing_duties` obligation and exact
-source/key receipts in the money transaction without consulting accounting
-objects. Captured settlement and dunning recovery therefore survive accounting
-failure. Capture uses a nonblocking advisory lock and a 100 ms lock timeout;
+source/key receipts in the money transaction. First-duty buyer capture now reads
+accounting documents and customer, profile and destination rows inside that
+absorbed subtransaction, bounded by its 100 ms lock timeout; it performs no
+accounting document construction or provider work there. Captured settlement
+and dunning recovery therefore survive capture failure. Accounting, customer and
+profile lookups are plain reads; destination resolution uses its existing owner.
+Capture uses a nonblocking advisory lock and a 100 ms lock timeout;
 its subtransaction catches conflicts, permission failures and cancellation without
 rolling back settlement or dunning. An append-only capture-fault marker is visible
 in readback. If the payment principal lacks marker privileges, the retained paid
@@ -3724,3 +3732,219 @@ materializing reader nor treats observed capture as completed settlement.
 Current complete-installation inventories include the new function; historical
 prefixes are unchanged. The [composition recipe](PLATFORM_PACKAGE_REFERENCE.md#atomic-checkout-payment-guidance)
 owns capability opt-in, neutral normalization and the sandbox profile limits.
+
+### Operator shipment evidence
+
+The native `20261110230000_operator_shipment_commands.sql` forward adds three
+bounded owned shipment commands and reuses the private operator receipt table.
+It widens its kind CHECK, adds nullable provider identity to tracking references,
+and expands reference uniqueness by provider while preserving duplicate-null
+behavior. Explicit same-order reattribution retains displaced reference rows in
+the private receipt; it performs no historical backfill. Existing runtime table
+privileges and receipt privacy remain unchanged.
+
+A fresh nullable operation actor column references the human principal with
+`ON DELETE SET NULL`; historical actors stay null. The arrival recorder retains
+its INVOKER header, owner, ACL and subscription-before-parcel lock order.
+Ordinary arrival keys retain strict timestamp replay. The operator chronology
+namespace permits earlier-only repair and retains the original arrival receipt.
+No decision or status evidence alone calls replacement confirmation. See the
+[shipment composition and limits](PLATFORM_PACKAGE_REFERENCE.md#native-operator-shipment-commands).
+
+### Saved subscription destination selection
+
+`20261110240000_subscription_saved_address_selection.sql` creates the owned
+`subscription_select_saved_shipping_address` wrapper and replaces the existing
+subscription destination reader, typed-address command and parcel-contact resolver
+without changing their
+headers, owners or ACLs. The wrapper retains principal/client ownership,
+subscription-event replay precedence, shipping/both-kind validation and the
+existing lifecycle/locked-cycle refusals. It persists the existing saved pointer;
+a successful typed command clears it. This selection adds no column or raw DML grant;
+the same forward also creates the private preference tables described below.
+Only `service_role` receives EXECUTE on the new closed definer routines.
+
+New subscription reads create an immutable snapshot of the selected saved row,
+including its explicit ID and nullable recipient. Prior destination rows and
+retained claims are unchanged; a future unclaimed renewal sees saved-row edits.
+The public `read()` contract remains `Promise<DestinationDocument>`; the additive
+`readWithSaved()` carries nullable saved snapshots. Typed address input still
+requires a recipient. First parcel-contact capture preserves a null saved recipient
+even with a nonempty label or current customer name; typed/legacy fallback remains
+unchanged. Existing parcel contact ownership
+and carrier-completeness checks remain decisive; frozen nulls are preserved.
+Saved snapshots use the existing destination personal-data and finite-transfer
+boundary. No new destination export/erasure path or blanket erasure coverage is
+claimed. See [the package composition](../../packages/platform/README.md#saved-subscription-shipping-selection).
+
+
+### Scoped customer preference data
+
+The saved-selection forward also creates `customer_payment_preferences` and
+`customer_delivery_preferences`, with client cascade, one row per client/scope,
+recent-selection indexes, enabled RLS and owner-only raw access. Both are `block`
+classified with the admitted service-role client-ID census grant and SELECT policy.
+Owned definer routines provide principal/client-checked read/upsert, redacted
+checkout hints, private renewal selection and explicit subject export/erasure.
+PUBLIC and browser roles receive no routine or raw table access; only
+`service_role` receives routine EXECUTE. Payment values and provider families are
+closed, with a bijective adopter policy for public values; delivery stores the
+configured provider reference separately. No account-event append, instrument or
+provider action is performed by a preference save.
+
+`commerce_prepare_subscription_renewal` is the only native fresh cycle-order
+writer. Its listed replacement retains its header, ACL and complete body except
+for passing new order metadata through the selector. Explicit selections are
+preserved; complete subscription/any preferences precede the earliest anchor
+order. No trigger is added. Claims, replay, payment selection, delivery alignment
+and the monotonic schedule clamp retain their existing owners and behavior.
+
+All preference columns, scope history and pickup/address JSON are personal data.
+The required `customer-preferences` identity contributor exports exact rows and
+erases by subject client, without relying on client clearing or cascade. Its
+preparation lock precedes identity locks; waiting saves recheck ownership.
+Other privacy vetoes and retained account events stay separately owned. No
+retention period is supplied. Finite native capture/qualified restore carries exact
+rows after clients, with unchanged replay. Legacy installations are capture
+sources; the compatible-row copier is unchanged. Managed-source nonempty
+preferences have no typed projection and explicitly refuse. See the
+[composition recipe](../../packages/platform/README.md#customer-delivery-and-payment-preferences)
+for the trusted checkout-client boundary, required billing-hint reader and
+redacted `applied:false` defaults. No defaults are applied during import.
+
+### Checkout attempt admission
+
+`20261110250000_checkout_recovery_attempt.sql` creates the service-only
+`commerce_checkout_recovery_attempt_begin(text,uuid,uuid,uuid,text,jsonb,timestamptz)`
+and `commerce_checkout_inline_retry_begin(text,uuid,uuid,uuid,uuid,text,jsonb,timestamptz)`
+entry points. Both fixed-path procedural definers lock the existing order and
+intent, check checkout provenance and delegate to `payment_simulator_begin_attempt`.
+Token payment rechecks its token identity; inline retry locks the exact active
+attempt and compares its predecessor or durable transition replay. The latter
+uses the existing request key/fingerprint for nonce/rail binding, without new
+storage. Captured observations and renewal cycles refuse both mutations.
+
+Only service EXECUTE is granted, after all PUBLIC revokes and grouped role
+revokes. No existing function, table, trigger, column or historical row is
+changed. The ordered plans append one unit containing both entry points;
+current complete inventories advance while issued and released prefixes remain
+fixed. See [token payment](PLATFORM_PACKAGE_REFERENCE.md#checkout-token-payment)
+and [exact inline retry](PLATFORM_PACKAGE_REFERENCE.md#exact-inline-checkout-retry).
+
+### Customer billing profile and invoice buyer data
+
+`20261110260000_customer_billing_profiles.sql` adds private
+`customer_orderer_profiles`: client cascade, contact/company/tax fields,
+verification provenance, source, timestamps, length/enum checks, client/update
+index and one-default-per-client partial uniqueness. It is `block` classified
+with the exact service-role client-ID census exception. Customer CRUD/default
+routines recheck the native principal/client pair. No raw profile grant exists.
+Defaults, writes and account-event appends retain separate-commit failures and
+stored-but-not-deduplicated request identifiers.
+
+The simplicity pre-check rejects reusing the existing full-facts installer as
+the request freeze point: request and installation are separate native calls.
+The selected billing invoice-store factory uses the owned
+`customer_billing_capture_invoice` transaction to delegate invoice request
+ownership. Capture itself now freezes one `invoicing_buyer_snapshots` row for
+every new original duty, including direct, payment-truth and sweep paths.
+Selection is order facts, then default/latest profile and billing/both address,
+then marked shipping fallback. Paid capture uses the order destination; handoff
+capture uses the owned parcel destination. Later full fiscal composition reads
+the component; the selected installer checks its retained fields before calling
+the existing immutable full-facts owner. The later first-duty capture forward
+below also installs this component on the native payment path. The selected
+retained-source sweep calls the same atomic wrapper.
+Creation eligibility is checked under the existing invoice order advisory lock;
+a prior duty or document never acquires a component on replay, including an owed
+duty without installed facts. Historical obligations receive no component backfill. The public
+buyer contract adds optional fields only, and provider projection carries line2
+and provenance without flattening or fabrication. This profile-storage forward
+replaces no existing function, trigger, grant or fiscal policy.
+
+Contact/tax/company/verification/source values, linked events and frozen buyers
+are personal data. The explicit `customer-billing` contributor exports both
+new tables, erases subject profiles through an owned routine after preparing
+relation locks, and retains frozen buyers under the existing rule:
+[Invoices are retained outside identity](IDENTITY.md#identity-personal-data),
+with document export, retention and processor handling supplied by invoicing.
+There is no default statutory duration or new erasure claim for financial facts.
+Identity field clearing and client cascade are insufficient coverage; account
+event retention remains separately owned. Other subjects remain unchanged.
+
+Finite native capture classifies both new tables as owned rows, outside the
+smaller compatible-row utility. Qualified restore inserts profiles after clients
+and components after invoice duties, with exact row/replay witnesses. Legacy
+is capture-only. Unsupported nonempty managed-source profile relations refuse
+rather than disappear. No restore applies profile defaults, rewrites invoices,
+performs fiscal/provider work or activates a target. See the
+[package recipe](../../packages/platform/README.md#customer-billing-profiles-and-frozen-invoice-buyers)
+for explicit ports, handler binding and the required privacy contributor.
+
+### First-duty invoice buyer capture
+
+`20261110270000_invoicing_duty_buyer_capture.sql` replaces only
+`invoicing_capture_duty(text,text,uuid,uuid,jsonb,timestamptz)`, retaining its
+installed header, owner, search path and ACL. It delegates to the new closed
+`invoicing_capture_duty_with_buyer` routine. The latter preserves capture
+validation, the order advisory lock and source/key receipts, and freezes the
+existing buyer component only for its own fresh original-duty insertion.
+An existing original document suppresses selection too. No duty or invoice is
+backfilled, even if an older owed duty has no full facts yet.
+
+The selection is the existing lossless billing rule: order buyer facts, then
+the owned default/latest profile and billing-or-both address, then the marked
+shipping fallback. The second address line and selection provenance remain in
+`invoicing_buyer_snapshots`. The component and duty commit atomically; a failed
+component insert rolls both back. Payment truth passes exactly its existing
+inputs and keeps its existing bounded capture-fault/retry behavior. Payments
+receives no account-data reader, callback or grant. There is no opt-in: first
+native capture uses this rule, including the fallback when no profile exists.
+
+Only `service_role` receives EXECUTE on the new definer routine. Its direct call
+has the same fresh-insert guard, so it cannot be used to backfill a duty. Browser
+roles remain denied; no raw table grant, table, trigger, status or public type
+is added. The selected billing store reads the frozen component and validates
+later host fiscal facts; it never rereads a mutable profile for that duty.
+Edits affect later captures and cannot rewrite requested facts or issued bytes.
+The existing billing privacy contributor, invoice-document retention owner and
+exact finite transfer/qualified restore coverage continue to cover these rows.
+
+A new source whose destination was never recorded refuses with the existing
+`commerce_destination_unavailable` result and leaves no duty, buyer component
+or source receipt. Record the owned order destination before retrying retained
+capture; no address is inferred from another customer or field. Payment truth
+continues to commit money and record its bounded capture fault independently.
+
+Handoff capture must name a shipment owned by the order; otherwise it refuses
+with `customer_billing_shipment_mismatch`. Destination reads use the existing
+owner's locks; other buyer-selection lookups are plain reads. These reads remain
+inside the payment owner's bounded, absorbed capture subtransaction when called
+from payment truth.
+
+Correct missing destination or shipment data while the capture fault remains
+retryable. The sweep stops rediscovering a source after its eight-attempt ceiling
+marks it `faulted`. There is no supported operator reset/requeue command: merely
+recording a destination after that point does not resume the source. Escalate for
+an invoicing-owned recovery procedure; do not edit or delete ledger rows to reset
+it. Settled money and historical documents remain unchanged.
+
+### Checkout recreation buyer snapshot repair (slot 28)
+
+`20261110280000_checkout_recovery_buyer_snapshot.sql` replaces only
+`commerce_prepare_expired_checkout_recovery(text,uuid,uuid,bigint,timestamptz)`.
+Its installed header, owner, `pg_catalog, pg_temp` search path and ACL remain
+unchanged. The forward adds no table, grant, trigger or backfill.
+
+Fresh preparation copies a recorded source `invoiceBuyerSnapshot`, preserving
+its JSON value exactly. A nonempty `runtimeFinalize.invoiceBuyerSnapshot` keeps
+its existing precedence over the top-level snapshot; recorded empty objects
+remain explicit. When neither source contains a snapshot, preparation adds no
+snapshot key. Runtime metadata and lineage fields retain their existing behavior.
+
+The first-duty buyer rule remains unchanged: an explicit object, then the owned
+billing profile/address, then the marked shipping fallback. A recreated order
+without explicit buyer facts can now reach those existing fallback branches.
+Preparation replay never rewrites its linked replacement, and later profile or
+address edits cannot change the buyer frozen by first capture. Historical orders
+and previously captured duties are not repaired or reselected.

@@ -6,7 +6,7 @@ import type { AcquisitionFinancialPolicy, CommerceQuoteDiscount, CreateQuoteResp
 import type { PromotionRow } from '@openlup/core/promo';
 import { activateNativePurchaseWithRenewal, type NativeRenewalPurchaseFacts } from '@openlup/platform/subscriptions';
 import type { RenewalRetainedTerms } from '@openlup/platform/subscriptions/contracts';
-import { parseShippingTerms, resolveThresholdShipping } from '@openlup/platform/shipping';
+import { parseShippingTerms, resolveThresholdShipping, type ShippingTerms } from '@openlup/platform/shipping';
 import { canonicalCatalogDraftJson } from '@openlup/platform/catalog';
 
 /** Local integration seam until the installed predecessor's API is frozen. */
@@ -54,6 +54,35 @@ export function createAcquisitionRenewalBinding(db: Pool): AcquisitionRenewalBin
         acquisitionRef: (quote.context as NonNullable<typeof quote.context> & { acquisitionTerms: { sourcePromotionId: string } }).acquisitionTerms.sourcePromotionId,
         lines: quote.lines.map((line, index) => ({ lineOrdinal: index + 1, sku: line.sku,
           quantity: line.quantity, unitAmountMinor: line.unitPriceGross.amountMinor })), renewalTerms };
+      return (await activateNativePurchaseWithRenewal(db, { orderId: input.orderId,
+        idempotencyKey: `activate:${input.orderId}`, capturedReference: input.capturedReference, facts })).renewalAttachment;
+    },
+  };
+}
+
+const hasAcquisitionTerms = (snapshot: CreateQuoteResponse) =>
+  (snapshot.quote.context as { acquisitionTerms?: unknown })?.acquisitionTerms;
+
+/** Shared by sandbox capture actions. Validation precedes observation; activation follows ingress. */
+export function createInitialPurchaseActivation(db: Pool, renewal: AcquisitionRenewalBinding = createAcquisitionRenewalBinding(db)) {
+  return {
+    assertCaptureAvailable(snapshot: CreateQuoteResponse) {
+      if (hasAcquisitionTerms(snapshot)) renewal.assertAvailable(snapshot);
+    },
+    async activate(input: Parameters<AcquisitionRenewalBinding['activate']>[0] & { currency: string }): Promise<string | undefined> {
+      const declaration = (await db.query('SELECT cadence_days FROM public.subscription_activations WHERE order_id=$1', [input.orderId])).rows[0];
+      if (!declaration) return undefined;
+      if (hasAcquisitionTerms(input.acceptedQuote)) {
+        const { currency: _currency, ...acquisitionInput } = input;
+        return renewal.activate(acquisitionInput);
+      }
+      const quote = input.acceptedQuote.quote;
+      const shippingTerms = (quote.context as { shippingTerms?: ShippingTerms } | undefined)?.shippingTerms;
+      const facts: NativeRenewalPurchaseFacts = { settlementChannelKey: 'sandbox', ...input.methodFacts,
+        stockSourceKey: input.stockSourceKey, templateId: input.templateId, cadenceDays: declaration.cadence_days,
+        currency: input.currency, shippingAmountMinor: (quote.shippingGross?.amountMinor ?? 0) - (quote.shippingDiscountGross?.amountMinor ?? 0), acquisitionRef: null,
+        renewalTerms: { version: 'native.renewal-terms.v1', ...(shippingTerms === undefined ? {} : { shippingTerms }) },
+        lines: quote.lines.map((line, index) => ({ lineOrdinal: index + 1, sku: line.sku, quantity: line.quantity, unitAmountMinor: line.unitPriceGross.amountMinor })) };
       return (await activateNativePurchaseWithRenewal(db, { orderId: input.orderId,
         idempotencyKey: `activate:${input.orderId}`, capturedReference: input.capturedReference, facts })).renewalAttachment;
     },

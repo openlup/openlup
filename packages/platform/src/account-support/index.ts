@@ -86,3 +86,6 @@ export { createCustomerAccountMutationHandlers } from "./customerAccount/account
 export type { CustomerAccountMutationHandlerDependencies, CustomerAccountMutationHandlerRequest, CustomerAccountMutationHandlerResponder } from "./customerAccount/accountMutationHandlers.js";
 export { createAccountEventPrivacyContributor } from "./customerAccount/accountEventPrivacy.js";
 export type { AccountEventPrivacyJson, AccountEventPrivacyObligation, AccountEventPrivacyDocument, AccountEventPrivacySubject, AccountEventPrivacyAssessment, AccountEventPrivacyContributor, AccountEventPrivacyDependencies } from "./customerAccount/accountEventPrivacy.js";
+
+export { createPostgresCustomerBillingProfilePort, createCustomerBillingProfileSchemas, createCustomerBillingProfilesHandler } from "./customerAccount/billingProfiles.js";
+export type { BillingProfileTaxPolicy } from "./customerAccount/billingProfiles.js";

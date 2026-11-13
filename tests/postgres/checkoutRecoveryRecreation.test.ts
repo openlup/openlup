@@ -6,6 +6,7 @@ import { createExpiredCheckoutRecoveryService, createPostgresCheckoutRecoveryOrd
 import { createPostgresNativeCheckoutPersistence } from '@openlup/platform/commerce/server/native-checkout';
 import { createPostgresSandboxExpiredCheckoutSafety, createPostgresSandboxPaymentSimulator } from '@openlup/platform/payments';
 import { createPostgresPurchaseReservationPort } from '@openlup/platform/inventory';
+import { createPostgresBillingInvoiceStore } from '@openlup/platform/invoicing';
 import { lifecycleInstallation, lifecycleProfiles, call, lifecycleSubject, type LifecycleInstallation } from './subscriptionLifecycleClosureFixture.js';
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from '../helpers/postgresContainer.js';
 
@@ -82,6 +83,62 @@ describe.each(lifecycleProfiles)('expired checkout recreation on %s',profile=>{
   const activation=(await env.owner.query('SELECT state,subscription_id FROM public.subscription_activations WHERE order_id=$1',[child.id])).rows;
   expect(activation).toEqual(mode==='subscription'?[{state:'provisional',subscription_id:null}]:[]);
   expect((await env.owner.query('SELECT status FROM public.fulfillment_inventory_reservations WHERE purchase_order_id=$1',[child.id])).rows).toEqual([{status:'held'}]);
+ });
+ it.each(['profile','fallback'] as const)('keeps absent recreation buyer facts absent and freezes the %s selection',async source=>{
+  const f=await subject('one_time'),profileId=randomUUID(),addressId=randomUUID();
+  if(source==='profile'){
+   await env.owner.query("INSERT INTO public.customer_orderer_profiles(id,client_id,full_name,email,is_default) VALUES($1,$2,'Saved Buyer','billing@example.invalid',true)",[profileId,f.client]);
+   await env.owner.query("INSERT INTO public.customer_saved_addresses(id,client_id,kind,line1,line2,city,postal_code,country,is_default) VALUES($1,$2,'billing','Billing 1','Billing unit','Example','00000','ZZ',true)",[addressId,f.client]);
+  }
+  const predecessor=await sourceRows(f),attempt=await recreate(f),[child]=await children(f.id);
+  const childRows=()=>env.owner.query('SELECT to_jsonb(o) AS row,o.xmin::text FROM public.commerce_orders o WHERE id=$1',[child.id]);
+  const prepared=(await childRows()).rows;
+  expect(prepared[0].row.metadata).not.toHaveProperty('invoiceBuyerSnapshot');
+  expect(await recreate(f)).toMatchObject({id:attempt.id,replayed:true});
+  expect((await childRows()).rows).toEqual(prepared);
+  const intentId=(await env.owner.query('SELECT id FROM public.commerce_settlement_intents WHERE order_id=$1',[child.id])).rows[0].id;
+  const observation=await simulator().recordObservation({attemptId:attempt.id,idempotencyKey:`capture:${child.id}`,outcome:'captured',occurredAt:at()});
+  await simulator().ingress.receive({rawBody:new TextEncoder().encode(JSON.stringify({settlementIntentId:intentId,attemptId:attempt.id,observationId:observation.id})),headers:{},receivedAt:at()});
+  const store=createPostgresBillingInvoiceStore(env.runtime),buyer=await store.readCapturedBuyer(child.id);
+  expect(buyer).toMatchObject(source==='profile'
+   ?{name:'Saved Buyer',source:'customer_orderer_profile',ordererProfileId:profileId,billingAddressId:addressId,legacyFallback:false,address:{line1:'Billing 1',line2:'Billing unit'}}
+   :{name:'Example Buyer',source:'legacy_shipping_address_fallback',ordererProfileId:null,billingAddressId:null,legacyFallback:true,address:{line1:'Example 1'}});
+  const capture={requestKey:`capture-replay:${child.id}`,sourceKind:'paid' as const,sourceId:randomUUID(),orderId:child.id,
+   evidence:{settlementIntentId:intentId,amountMinor:100,currency:'XXX'},occurredAt:at()};
+  const duty=await store.captureDuty(capture);
+  if('kind' in duty)throw Error('replacement capture refused');
+  const frozenRows=async()=>({
+   duty:(await env.owner.query('SELECT to_jsonb(d) AS row,d.xmin::text FROM public.invoicing_duties d WHERE id=$1',[duty.dutyId])).rows,
+   buyer:(await env.owner.query('SELECT to_jsonb(b) AS row,b.xmin::text FROM public.invoicing_buyer_snapshots b WHERE duty_id=$1',[duty.dutyId])).rows,
+   receipts:(await env.owner.query('SELECT to_jsonb(r) AS row,r.xmin::text FROM public.invoicing_effect_receipts r WHERE duty_id=$1 ORDER BY receipt_key',[duty.dutyId])).rows,
+  });
+  const frozen=await frozenRows();
+  await env.owner.query("UPDATE public.clients SET first_name='Changed',last_name='Buyer' WHERE id=$1",[f.client]);
+  if(source==='profile'){
+   await env.owner.query("UPDATE public.customer_orderer_profiles SET full_name='Changed Buyer' WHERE id=$1",[profileId]);
+   await env.owner.query("UPDATE public.customer_saved_addresses SET line2='Changed unit' WHERE id=$1",[addressId]);
+  }
+  expect(await store.captureDuty(capture)).toEqual(duty);
+  expect(await store.readCapturedBuyer(child.id)).toEqual(buyer);
+  expect(await frozenRows()).toEqual(frozen);
+  expect((await childRows()).rows[0].row.metadata).not.toHaveProperty('invoiceBuyerSnapshot');
+  expect(await sourceRows(f)).toEqual(predecessor);
+ });
+ it.each(['top-level','runtime','empty','runtime-empty'] as const)('preserves a recorded %s buyer snapshot exactly without rewriting replay',async location=>{
+  const f=await subject('one_time'),snapshot=location==='empty'||location==='runtime-empty'?{}:{name:'Recorded Buyer',email:'recorded@example.invalid',source:'recorded_order',
+   address:{line1:'Recorded 1',line2:null,country:'ZZ'},opaque:{values:[null,false,7,'value']}};
+  const metadata=location==='runtime'?{runtimeFinalize:{invoiceBuyerSnapshot:snapshot,other:'unchanged'},invoiceBuyerSnapshot:{name:'Older Buyer'}}
+   :location==='runtime-empty'?{runtimeFinalize:{invoiceBuyerSnapshot:snapshot}}:{invoiceBuyerSnapshot:snapshot};
+  await env.owner.query('UPDATE public.commerce_orders SET metadata=metadata||$2::jsonb WHERE id=$1',[f.id,metadata]);
+  f.order=await read(f.id);
+  const predecessor=await sourceRows(f),attempt=await recreate(f),[child]=await children(f.id);
+  const rows=()=>env.owner.query('SELECT to_jsonb(o) AS row,o.xmin::text FROM public.commerce_orders o WHERE id=$1',[child.id]);
+  const before=(await rows()).rows;
+  expect(before[0].row.metadata.invoiceBuyerSnapshot).toEqual(snapshot);
+  expect(before[0].row).toMatchObject({recovery_root_order_id:f.id,recreated_from_order_id:f.id});
+  expect(await recreate(f)).toMatchObject({id:attempt.id,replayed:true});
+  expect((await rows()).rows).toEqual(before);
+  expect(await sourceRows(f)).toEqual(predecessor);
  });
  it('retains linked replay before fresh checks and never admits a sibling after compensation',async()=>{
   const f=await subject(),id=await replacement(f),key=`checkout-recovery-recreate:${f.id}`;

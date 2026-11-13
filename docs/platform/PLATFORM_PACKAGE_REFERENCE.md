@@ -1179,6 +1179,16 @@ view. Complete consent grants/choices await their separate change; a saved flag
 is not effective consent. See the [bounded task record](plans/oss-m19-g11.md)
 for proof and the remaining delivery boundary.
 
+For billing profiles, the existing `account-support` entry adds the owned
+PostgreSQL port, strict schema factory and GET/POST/PATCH/DELETE handler factory.
+Browser-shareable request/response/port types remain in `account-support/contracts`.
+The host binds authentication, a principal/client pair, clock, tax policy and
+messages; there is no automatic route or checkout application. Default clearing,
+writing and event append keep their separate failure boundaries, and repeated
+request identifiers execute again. The
+[billing recipe](../../packages/platform/README.md#customer-billing-profiles-and-frozen-invoice-buyers)
+also names the selected invoice freeze point and privacy contributor.
+
 Import types from `@openlup/platform/account-support/contracts`. The five envelopes
 are `AccountReadPort`, `Customer360ReadPort`, `SelfServiceCommandFacade`,
 `OperatorRecoveryCommandEnvelope` and `InvoiceAccessPort`.
@@ -1327,7 +1337,11 @@ host authorization and the complete native catalogue installed; construction
 mounts no route. The command checks its idempotency key and expected version,
 updates the future destination and records its audit and confirmation effects
 atomically. That destination command provides no saved address book; the separate
-[`shipping` port](../../packages/platform/README.md#saved-customer-address-book) supplies owned address-book storage.
+[`shipping` port](../../packages/platform/README.md#saved-customer-address-book) supplies owned address-book storage. Its saved IDs can be selected for future
+subscription delivery through `createPostgresDestinationPort(...).selectSavedShippingAddress`.
+That owned selection retains subscription-event replay precedence; new typed
+commands retain their existing fingerprint rule and clear a saved selection on
+success. See [saved subscription selection](../../packages/platform/README.md#saved-subscription-shipping-selection).
 
 If dispatch owns the current parcel, the result is `applied_from_next_parcel`,
 with `appliesFrom: "next_parcel"`, `futureDestinationId` and `replayed`. Tell the
@@ -1454,6 +1468,58 @@ these declared capabilities using host-owned offline fixtures. Restricted-role
 PostgreSQL evidence is separate from offline conformance and installed-tarball
 proof. Native list/detail reads still return `host_binding_required`; they wait
 for destination and reservation facts in a separate change.
+
+## Native operator shipment commands
+
+The experimental `createPostgresFulfillmentShipmentCommandPort` from
+`@openlup/platform/fulfillment/native` takes a structural SQL executor. Install
+the complete selected catalogue through `20261110230000_operator_shipment_commands.sql`.
+Bind its three methods to the existing authenticated admin label, handoff and
+tracking handlers. The handlers derive `actorUserId` on the server. Construction
+mounts no route or operator UI and makes no carrier call. These commands require
+READ COMMITTED transactions; stronger isolation levels refuse before writing.
+The shared `fulfillment_record_evidence` writer requires an explicit
+`metadata.providerKind` for tracking references and applies the same correlation
+lock and cross-order refusals. Missing provider identity refuses with
+`fulfillment_record_evidence_provider_kind_required`; non-tracking evidence keeps
+its existing behavior.
+
+Label recording commits a succeeded evidence snapshot, provider/tracking
+correlation, actor and operation together. Same-key replay returns the original
+parcel's current status. A provider/number pair on another order conflicts;
+same-order reuse attributes it to the selected parcel. The first accepted label
+and tracking writes retain full requests, including label URLs, raw provider
+payloads and raw tracking events, in the private operator receipt. Runtime roles
+cannot select that receipt table; owner routines use it for replay. The label URL
+also remains in the operation payload returned to authorized operator/service
+readers. Treat it as potentially sensitive or expiring access information, not a
+public tracking URL. The read store does not authenticate and must not be bound
+to customer routes; customer order history omits operation payloads. No automatic
+TTL or purge removes this evidence. Hosts own authorized retention and cleanup,
+including backup and transfer copies; replay preserves the original receipt.
+
+Handoff accepts packed or labelled parcels, consumes only the frozen purchase
+or renewal reservation IDs and commits the stock effect with its audit. Terminal
+handoff is inert replay. An exact recorded command also replays after an
+exception and relabel, without changing status, timestamps or audit. The result includes `reservationDisposition` and
+`consumedReservationCount`. See the [historical stock and tracking limits](ARCHITECTURE_AND_EXTENSIONS.md#native-parity-boundaries)
+for manual resolution when facts were never recorded.
+
+Compose `withAccountingInvoiceShadowTrigger` from `@openlup/platform/invoicing`
+around a command port whose executor commits before returning (for example an
+autocommit pool). With an outer transaction lane, commit that lane before
+returning its handoff method to the wrapper. Supply the host's provider, duty keys and
+channel policy reader. Leave `failOnAccountingError` false for fail-soft document
+handling: document failure does not undo a successful handoff.
+
+Tracking requires the corresponding label/handoff state and a same-order
+reference when one is supplied. Delivered parcels refuse regression. An explicit
+zone in `rawEvent.occurredAt` supplies provider chronology; unusable chronology
+falls back to receipt time on the first delivery. Delivered replay may repair
+arrival earlier through the arrival recorder, never later, without rewriting the
+original operation or repeating delivery alignment. A late actual arrival may
+extend the next cycle; evidence that a parcel has only been labelled or is in
+transit never confirms arrival of a replacement.
 
 ## PostgreSQL checkout recovery tokens
 
@@ -1788,7 +1854,14 @@ The preparation writer locks the source and replacement, checks current payment
 evidence and the current recovery deadline after blocking locks, and admits one
 immediate replacement. Exact linked replay precedes fresh admission checks,
 including after compensation. A linked replacement can never be reparented to
-another source. An initial subscription gets a new provisional
+another source. With the complete catalogue through
+`20261110280000_checkout_recovery_buyer_snapshot.sql`, preparation copies recorded
+buyer snapshots without creating an absent `invoiceBuyerSnapshot` key. A nonempty
+runtime snapshot retains precedence; recorded empty objects stay explicit.
+First-duty capture can therefore select the owned billing profile/address and
+then the marked shipping fallback when the source has no snapshot. Captured buyer
+facts remain immutable after later profile edits. No existing order is backfilled.
+An initial subscription gets a new provisional
 declaration; the terminal predecessor stays compensated. Recreation creates no
 cycle, never mutates an active/paused subscription, and refuses every non-null
 source subscription cycle. Existing captured-payment activation creates a live
@@ -1861,3 +1934,110 @@ mandate-wait display. Guidance is inspection only and authorizes no new payment.
 The host owns rendering and route mounting. See the
 [PostgreSQL witnesses](../../tests/postgres/checkoutPaymentGuidance.test.ts) and
 [package characterizations](../../packages/platform/test/commerce/paymentRecoveryGuidance.test.ts).
+
+## Checkout token payment
+
+The native sandbox preview provides `createCheckoutRecoveryPayService` and
+`createCheckoutRecoveryTokenPay` from `@openlup/platform/commerce/server`.
+Bind the neutral `CheckoutRecoveryAttemptPort` to
+`createPostgresSandboxCheckoutRecoveryAttemptPort` from
+`@openlup/platform/payments`. The executor is structural; importing or composing
+these factories requires no `pg` types. Keep the executor at READ COMMITTED.
+The host owns transport, request validation, feature availability and rendering.
+
+The token composition derives the order and client from validated authority.
+An explicit `followLatest` follows the root's latest recovery order only after
+inspection proves continuation authority and original ownership. Expired
+inspection alone never pays an order. Expired recreation remains the separate
+[recreation service](#expired-checkout-recreation).
+
+The service starts another attempt on the existing intent and leaves the order
+and inventory reservation in place. The existing native reader's `pending`
+projection means a created intent; unresolved dispatch is fenced by the attempt
+owner under locks. Order/client/intent, token expiry/revocation, initial checkout
+provenance, money and observed capture are rechecked by the service-only
+`commerce_checkout_recovery_attempt_begin` function under order/intent locks.
+Non-null renewal cycles are refused; a provisional initial declaration remains
+eligible. Captured observations prevent another dispatch even before settlement
+converges. A repeated request key and fingerprint returns its original attempt;
+changing method facts under that key refuses. Use a fresh per-click key after a
+terminal failure to choose another synthetic method on the same intent.
+
+`CheckoutRecoveryPayError.kind` distinguishes `upstream_unavailable` for in-flight
+or uncertain execution from `conflict` for dead checkout authority. A known
+refusal stays a recoverable `failed` result. Invalid local method facts roll back
+before dispatch and permit a corrected retry. The sandbox owner records dispatch
+atomically when it creates an attempt: it has no external preparation or
+finalization phase. Observations and verified ingress retain ownership of money
+results; the pay service never settles from a browser result or a rehearsal
+shortcut. Other channels retain `native_prepared_attempt_store_unsupported` and
+the existing [payment-owner limit](#expired-checkout-recreation).
+
+Wrap the service with `withCheckoutRecoveryPaymentHold` before binding token pay.
+Inject the host's method classification, offered methods, active-hold read and
+first-purchase lookup. Only a first purchase created strictly after its method's
+hold can be withheld. Recreated orders, foreign-root chains and renewal cycles
+bypass the wrapper; unknown first-purchase evidence or a failed hold read permits
+payment. Subscription evidence must establish that the subscription was never
+live. Holding every offered method ignores the hold for that checkout kind.
+Control keys, offered-method policy and the hold trigger belong to the adopter.
+The exact inline consumer reuses this service wrapper.
+
+The [PostgreSQL witnesses](../../tests/postgres/checkoutRecoveryPay.test.ts)
+exercise replay, retries, method binding, terminal races, renewal/token refusals,
+verified settlement and hold composition on legacy and both qualified runtimes.
+[Package characterizations](../../packages/platform/test/commerce/checkoutRecoveryPay.test.ts)
+cover the neutral port and injected hold rules.
+
+## Exact inline checkout retry
+
+The native sandbox preview provides `createCheckoutInlineRecovery` and
+`createPostgresSandboxInlineRecoveryAttemptPort` through the existing
+`commerce/server` and `payments` entries. Bind the existing continuation codec
+with the host's exact cookie name. The request's journey, order, client, intent
+and expected attempt must match the signed cookie before any durable read.
+Bearer headers never authorize this path.
+
+Bind the existing atomic guidance port and order reader, the sandbox attempt
+port, an explicit registry mapping synthetic method facts to method keys, and
+an `executionAllowed` policy for offered methods and purchase contexts. Unknown
+method identities refuse. Opaque method references never imply a method or
+refusal taxonomy; native generic refusal evidence remains generic. The host
+owns that registry and eligibility policy. No real-provider capability is added;
+other rails retain `native_prepared_attempt_store_unsupported` and the existing
+[payment-owner limit](#expired-checkout-recreation).
+
+A fresh transition requires the exact failed predecessor and failed intent, a
+payable checkout and an admitted one-time or provisional initial declaration.
+Renewal cycles and previously live subscriptions refuse. The same method needs
+`change_instrument` or `correct_data` without a method-wide prohibition; another
+method needs `change_method`. `authenticate` alone never authorizes a fresh
+attempt. The token-pay hold wrapper also gates fresh inline attempts, using the
+same injected hold/read policy. Replay bypasses new-payment policy.
+
+`checkoutInlineRecoveryTransitionKey(expectedAttemptId)` preserves
+`checkout-inline-recovery:<expectedAttemptId>`. The native prepare key appends
+`:payment-execution:prepare-attempt`. The existing sandbox request key and a
+server-computed fingerprint bind the transition, retry nonce and selected rail;
+there is no nonce ledger. The same order/intent/attempt locks protect the exact
+predecessor CAS, cancellation and captured-observation fence before the attempt
+owner runs. No order, intent or reservation is created by retry.
+
+Response-loss replay requires the current replacement to belong to that key,
+nonce and rail. Method input and transient codes add no replay comparisons.
+The native owner returns the existing attempt without redispatching. A failed
+replacement returns its failed result; a live replacement permits action
+readback or safe polling when readback is null or lagging. Native financial
+intent status may still describe the preceding refusal while its replacement
+attempt is dispatched; that durable attempt supplies the processing result.
+Every successful response returns `setCookie` for the exact replacement attempt
+and selected rail. The host writes it as the response's Set-Cookie header and
+exposes only the result body. Reusing the old predecessor with that new cookie
+refuses; a later failed replacement can become the next exact transition.
+
+The [inline PostgreSQL witnesses](../../tests/postgres/checkoutInlineRecovery.test.ts)
+cover competing tabs/nonces, CAS and terminal races, fresh-process replay,
+replacement cookies, method actions, holds and renewal refusal on all three
+runtimes. [Package characterizations](../../packages/platform/test/commerce/checkoutInlineRecovery.test.ts)
+cover authority-first behavior, result validation and polling fallback. Host
+route mounting, starter UI and browser journeys remain separate.

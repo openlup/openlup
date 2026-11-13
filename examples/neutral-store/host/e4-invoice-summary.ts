@@ -1,7 +1,7 @@
-import { createPostgresInvoiceStore } from '@openlup/platform/invoicing';
+import { createPostgresBillingInvoiceStore } from '@openlup/platform/invoicing';
 import type { InvoicePostgresExecutor } from '@openlup/platform/invoicing/postgres';
 
-/** Selected local evidence only. No buyer payload, artifact bytes, provider URL
+/** Authorized local evidence only. No artifact bytes, provider URL
  * or unfiltered error is returned to the operator. Caller owns authorization. */
 export async function readOperatorInvoiceSummary(db: InvoicePostgresExecutor, orderId: string) {
   const order = await db.query(`SELECT c.principal_id FROM public.commerce_orders o
@@ -31,7 +31,7 @@ export async function readOperatorInvoiceSummary(db: InvoicePostgresExecutor, or
       AND observation.observation->>'format'='openlup.captured-invoice.v1'
       AND observation.observation->'identity'->>'providerCreateIdentity'='invoicing:'||d.id::text
     WHERE a.order_id=$1::uuid ORDER BY a.created_at,a.id`, [orderId]);
-  const duties = await createPostgresInvoiceStore(db).readDuties(orderId);
+  const duties = await createPostgresBillingInvoiceStore(db).readDuties(orderId);
   if ('kind' in duties) return { kind: 'unknown' as const };
   const documents = result.rows.map(row => {
     const totalGrossMinor = Number(row.total);
@@ -57,6 +57,6 @@ export async function readOperatorInvoiceSummary(db: InvoicePostgresExecutor, or
     recoveryGuidance: failed ? 'review_and_retry'
       : invoice?.request && ['pending', 'processing'].includes(String(invoice.request.status)) ? 'wait_for_retry'
         : invoice && ['issued', 'accepted', 'corrected', 'voided'].includes(invoice.status) ? 'none' : 'not_requested',
-    duties,
+    duties, buyerSnapshot: await createPostgresBillingInvoiceStore(db).readCapturedBuyer(orderId),
   } };
 }

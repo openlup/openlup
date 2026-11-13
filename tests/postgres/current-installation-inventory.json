@@ -2,10 +2,34 @@
   "current": {
     "profiles": {
       "legacy": {
-        "count": 125,
-        "exactTailCount": 15,
-        "objectInventorySha256": "869909ea65ea24f01b7397719c9bf7232b77c1d352f876a6308b0f174ea60cc3",
+        "count": 131,
+        "exactTailCount": 21,
+        "objectInventorySha256": "87b9a7fb53f6ee1818a5a7f52e30d91c78979673bd0a8499bfc4635c877fed5a",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261110280000_checkout_recovery_buyer_snapshot.sql",
+            "sha256": "8a61a4927412194b6c398694e835381e91718ddddb3fa501194b3eb71f69212c"
+          },
+          {
+            "file": "db/platform/migrations/20261110270000_invoicing_duty_buyer_capture.sql",
+            "sha256": "2f0e989e57705d35efc1c8d40017337875bf840263fa74acfa9cd6c5db77768f"
+          },
+          {
+            "file": "db/platform/migrations/20261110260000_customer_billing_profiles.sql",
+            "sha256": "2e79d84391f30ef629b40bb9e306308242b228a3a3c5e36ae2839cbcad6abf6e"
+          },
+          {
+            "file": "db/platform/migrations/20261110250000_checkout_recovery_attempt.sql",
+            "sha256": "92fe4559bba5e75df1bb05ee52cdb21a62282f593d52e4027aae212c56e23d87"
+          },
+          {
+            "file": "db/platform/migrations/20261110240000_subscription_saved_address_selection.sql",
+            "sha256": "281a43d4139811ec04d920d1c7b336140710af4153c67e6983fd82ad41a55c23"
+          },
+          {
+            "file": "db/platform/migrations/20261110230000_operator_shipment_commands.sql",
+            "sha256": "4bb26623ecd9a9eaa1662dab1a3900b501a11323f45032153a640b639caa88ed"
+          },
           {
             "file": "db/platform/migrations/20261110220000_checkout_payment_guidance.sql",
             "sha256": "7b6d46e974b3b2cbd1153d5cd4cc5858bff5da3156d72722e7318d1acae22bd3"
@@ -509,10 +533,34 @@
         ]
       },
       "bootstrap": {
-        "count": 130,
-        "exactTailCount": 15,
-        "objectInventorySha256": "132f8930929168a38d03b419b26162444c2a440f2d3f5137f5043b5bbff34ea6",
+        "count": 136,
+        "exactTailCount": 21,
+        "objectInventorySha256": "15f0961897a8b37985123b6fa3d4601601474a5d7dd63730eeaa6f23462472be",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261110280000_checkout_recovery_buyer_snapshot.sql",
+            "sha256": "8a61a4927412194b6c398694e835381e91718ddddb3fa501194b3eb71f69212c"
+          },
+          {
+            "file": "db/platform/migrations/20261110270000_invoicing_duty_buyer_capture.sql",
+            "sha256": "2f0e989e57705d35efc1c8d40017337875bf840263fa74acfa9cd6c5db77768f"
+          },
+          {
+            "file": "db/platform/migrations/20261110260000_customer_billing_profiles.sql",
+            "sha256": "2e79d84391f30ef629b40bb9e306308242b228a3a3c5e36ae2839cbcad6abf6e"
+          },
+          {
+            "file": "db/platform/migrations/20261110250000_checkout_recovery_attempt.sql",
+            "sha256": "92fe4559bba5e75df1bb05ee52cdb21a62282f593d52e4027aae212c56e23d87"
+          },
+          {
+            "file": "db/platform/migrations/20261110240000_subscription_saved_address_selection.sql",
+            "sha256": "281a43d4139811ec04d920d1c7b336140710af4153c67e6983fd82ad41a55c23"
+          },
+          {
+            "file": "db/platform/migrations/20261110230000_operator_shipment_commands.sql",
+            "sha256": "4bb26623ecd9a9eaa1662dab1a3900b501a11323f45032153a640b639caa88ed"
+          },
           {
             "file": "db/platform/migrations/20261110220000_checkout_payment_guidance.sql",
             "sha256": "7b6d46e974b3b2cbd1153d5cd4cc5858bff5da3156d72722e7318d1acae22bd3"
@@ -1036,10 +1084,34 @@
         ]
       },
       "separate": {
-        "count": 130,
-        "exactTailCount": 15,
-        "objectInventorySha256": "8ca5c51c0d5ee005c3f9033496ce303f1f2cc2006ce48d4a3f614fa0f488c36f",
+        "count": 136,
+        "exactTailCount": 21,
+        "objectInventorySha256": "915bb3e8ba798352a8a6e364820c3f8201c583770febe92a86925bf9f89d5d42",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261110280000_checkout_recovery_buyer_snapshot.sql",
+            "sha256": "8a61a4927412194b6c398694e835381e91718ddddb3fa501194b3eb71f69212c"
+          },
+          {
+            "file": "db/platform/migrations/20261110270000_invoicing_duty_buyer_capture.sql",
+            "sha256": "2f0e989e57705d35efc1c8d40017337875bf840263fa74acfa9cd6c5db77768f"
+          },
+          {
+            "file": "db/platform/migrations/20261110260000_customer_billing_profiles.sql",
+            "sha256": "2e79d84391f30ef629b40bb9e306308242b228a3a3c5e36ae2839cbcad6abf6e"
+          },
+          {
+            "file": "db/platform/migrations/20261110250000_checkout_recovery_attempt.sql",
+            "sha256": "92fe4559bba5e75df1bb05ee52cdb21a62282f593d52e4027aae212c56e23d87"
+          },
+          {
+            "file": "db/platform/migrations/20261110240000_subscription_saved_address_selection.sql",
+            "sha256": "281a43d4139811ec04d920d1c7b336140710af4153c67e6983fd82ad41a55c23"
+          },
+          {
+            "file": "db/platform/migrations/20261110230000_operator_shipment_commands.sql",
+            "sha256": "4bb26623ecd9a9eaa1662dab1a3900b501a11323f45032153a640b639caa88ed"
+          },
           {
             "file": "db/platform/migrations/20261110220000_checkout_payment_guidance.sql",
             "sha256": "7b6d46e974b3b2cbd1153d5cd4cc5858bff5da3156d72722e7318d1acae22bd3"
@@ -1563,10 +1635,34 @@
         ]
       },
       "admin-managed": {
-        "count": 129,
-        "exactTailCount": 15,
-        "objectInventorySha256": "0ee89cb42ccbc2679aa48fb1dea0d95f4dea0540d840e634405e25e082c36fe2",
+        "count": 135,
+        "exactTailCount": 21,
+        "objectInventorySha256": "46057c3cd3d3cf6d03a0defd1a4d96bc7fc67748c75162c7eb31401a4dbe1c9a",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261110280000_checkout_recovery_buyer_snapshot.sql",
+            "sha256": "8a61a4927412194b6c398694e835381e91718ddddb3fa501194b3eb71f69212c"
+          },
+          {
+            "file": "db/platform/migrations/20261110270000_invoicing_duty_buyer_capture.sql",
+            "sha256": "2f0e989e57705d35efc1c8d40017337875bf840263fa74acfa9cd6c5db77768f"
+          },
+          {
+            "file": "db/platform/migrations/20261110260000_customer_billing_profiles.sql",
+            "sha256": "2e79d84391f30ef629b40bb9e306308242b228a3a3c5e36ae2839cbcad6abf6e"
+          },
+          {
+            "file": "db/platform/migrations/20261110250000_checkout_recovery_attempt.sql",
+            "sha256": "92fe4559bba5e75df1bb05ee52cdb21a62282f593d52e4027aae212c56e23d87"
+          },
+          {
+            "file": "db/platform/migrations/20261110240000_subscription_saved_address_selection.sql",
+            "sha256": "281a43d4139811ec04d920d1c7b336140710af4153c67e6983fd82ad41a55c23"
+          },
+          {
+            "file": "db/platform/migrations/20261110230000_operator_shipment_commands.sql",
+            "sha256": "4bb26623ecd9a9eaa1662dab1a3900b501a11323f45032153a640b639caa88ed"
+          },
           {
             "file": "db/platform/migrations/20261110220000_checkout_payment_guidance.sql",
             "sha256": "7b6d46e974b3b2cbd1153d5cd4cc5858bff5da3156d72722e7318d1acae22bd3"
@@ -2086,10 +2182,34 @@
         ]
       },
       "admin-operator": {
-        "count": 129,
-        "exactTailCount": 15,
-        "objectInventorySha256": "75a64d589d97259758511dd2d1be2e1eba928efb1144e120478ff0109f7ffbd2",
+        "count": 135,
+        "exactTailCount": 21,
+        "objectInventorySha256": "a6e6da2ed915ce0643bb6e1e0f7a46236b078f5cefdd8972fd62c293afe0b179",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261110280000_checkout_recovery_buyer_snapshot.sql",
+            "sha256": "8a61a4927412194b6c398694e835381e91718ddddb3fa501194b3eb71f69212c"
+          },
+          {
+            "file": "db/platform/migrations/20261110270000_invoicing_duty_buyer_capture.sql",
+            "sha256": "2f0e989e57705d35efc1c8d40017337875bf840263fa74acfa9cd6c5db77768f"
+          },
+          {
+            "file": "db/platform/migrations/20261110260000_customer_billing_profiles.sql",
+            "sha256": "2e79d84391f30ef629b40bb9e306308242b228a3a3c5e36ae2839cbcad6abf6e"
+          },
+          {
+            "file": "db/platform/migrations/20261110250000_checkout_recovery_attempt.sql",
+            "sha256": "92fe4559bba5e75df1bb05ee52cdb21a62282f593d52e4027aae212c56e23d87"
+          },
+          {
+            "file": "db/platform/migrations/20261110240000_subscription_saved_address_selection.sql",
+            "sha256": "281a43d4139811ec04d920d1c7b336140710af4153c67e6983fd82ad41a55c23"
+          },
+          {
+            "file": "db/platform/migrations/20261110230000_operator_shipment_commands.sql",
+            "sha256": "4bb26623ecd9a9eaa1662dab1a3900b501a11323f45032153a640b639caa88ed"
+          },
           {
             "file": "db/platform/migrations/20261110220000_checkout_payment_guidance.sql",
             "sha256": "7b6d46e974b3b2cbd1153d5cd4cc5858bff5da3156d72722e7318d1acae22bd3"
@@ -2609,7 +2729,7 @@
         ]
       }
     },
-    "connectedTableCount": 128
+    "connectedTableCount": 132
   },
   "historical": {}
 }

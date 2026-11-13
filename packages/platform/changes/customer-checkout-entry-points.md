@@ -1,4 +1,0 @@
-- Add signed-in checkout recovery start and continuation-cookie buyer payment links. Customer issuance preserves earlier links; buyer mail atomically queues one token and event per configured order bucket. Renewal-cycle orders retain separate recovery.
-- Elapsed deadlines return the existing refusal or account/checkout fallback without a dead link. Apply the complete native migration chain before selecting these ports.
-- Account navigation, HTTP registration, transactional transport and the embedded-browser control remain host bindings.
-- Package inventory grows by nine files for the customer entry points and SQL projection; inherited package caps are retained.

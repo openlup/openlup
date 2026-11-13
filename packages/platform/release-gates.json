@@ -124,7 +124,9 @@
         "test/packageBoundary.test.ts",
         "test/commerce/browserBoundary.test.ts",
         "test/commerce/browserSafety.test.ts",
-        "test/commerce/paymentRecoveryGuidance.test.ts"
+        "test/commerce/paymentRecoveryGuidance.test.ts",
+        "test/commerce/checkoutRecoveryPay.test.ts",
+        "test/commerce/checkoutInlineRecovery.test.ts"
       ],
       "entrypoint": "dist/commerce/server/index.d.ts",
       "snapshot": "api/commerce-server.api.md"
@@ -457,7 +459,9 @@
         "test/payments/reconciliation.test.ts",
         "test/payments/adapterConformance.test.ts",
         "test/payments/postgresPaymentTruth.test.ts",
-        "test/commerce/paymentRecoveryGuidance.test.ts"
+        "test/commerce/paymentRecoveryGuidance.test.ts",
+        "test/commerce/checkoutRecoveryPay.test.ts",
+        "test/commerce/checkoutInlineRecovery.test.ts"
       ],
       "entrypoint": "dist/payments/index.d.ts",
       "snapshot": "api/payments.api.md"
@@ -960,20 +964,20 @@
   },
   "pack": {
     "code": {
-      "maxPackedBytes": 2459923,
+      "maxPackedBytes": 2513518,
       "maxFiles": 4211
     },
     "docs": {
-      "maxPackedBytes": 86252,
+      "maxPackedBytes": 99222,
       "maxFiles": 10
     },
-    "maxPackedBytes": 3023741,
-    "maxUnpackedBytes": 14432601,
-    "maxFiles": 4339,
-    "capReason": "Retain the higher approved parent byte budgets; 4,128 measured code files receive 2% headroom (4,211).",
+    "maxPackedBytes": 3089709,
+    "maxUnpackedBytes": 14804413,
+    "maxFiles": 4435,
+    "capReason": "Measured before the billing cap adjustment: code 2,464,233 B, documentation 90,592 B and 4,348 files; crossed caps use 2% headroom. Packed/unpacked caps and the released baseline are retained. The docs class measured 97,276 gzip bytes on the 0.39.0 set tree (release notes and package guides); its cap is measured times 1.02, rounded up.",
     "baseline": {
-      "version": "0.37.0",
-      "packedBytes": 2791358
+      "version": "0.38.0",
+      "packedBytes": 2862024
     },
     "browserEntries": {
       "./catalog/contracts": 4096,
