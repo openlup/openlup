@@ -160,7 +160,7 @@ transport envelopes and private ownership fields stay in your application.
 For a browser data layer, supply `createAnalyticsDataLayer` with browser/storage
 access, the consent key and change event, event prefix, container reader and
 deployment callback. Each instance owns its loader readiness. Configure
-`consentSignalNames` with one analytics wire name and ordered advertising wire
+`consentSignalNames` with the analytics wire name and ordered advertising wire
 names. Without signals, no consent command or optional event is admitted;
 deployment attempts remain independent. Optional events also require a browser
 and a configured container.
@@ -185,8 +185,9 @@ local synchronous acceptance, never delivery or attribution.
 
 `createAnalyticsRoutePolicy` needs public paths, redirect sources and all
 sensitive-path sets. Optional-route eligibility excludes the sensitive paths;
-deployment URL sanitization additionally requires an exact public path and
-retains only safe campaign values. `projectPaidPurchase` projects structural
+deployment URL sanitization additionally checks the declared public paths,
+redirect sources or supplied additional public paths and retains only safe
+campaign values. `projectPaidPurchase` projects structural
 paid recap facts with ordered suppression reasons, item limits and money
 allocation, using the recap's currency. Authorize historical-consent processing
 before `selectMarketingHistoricalConsentTime`; it selects chronology without

@@ -119,7 +119,7 @@ secret. Ensure that entrypoint is mounted and reachable. Without `cron`, this
 host registers no timers.
 
 For transport-neutral jobs, pass `{ id, schedule, lease?, run }` values to
-`createScheduledJobRegistry` from `@openlup/platform/scheduler`. It starts empty
+`createScheduledJobRegistry` from `@openlup/platform/scheduler`. Without contributions it returns an empty registry
 and refuses duplicate IDs with `scheduled_job_duplicate:<id>`. Bind the
 registry to the Node host to invoke `run` directly without an HTTP secret, or
 use `createScheduledJobHttpEntry` behind the cron guard. A declared lease

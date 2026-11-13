@@ -103,20 +103,27 @@ observations; a report does not prove ACL, function bodies or recovery.
 
 ## Using this package in an application
 
-Do not edit installed package files. Import declared public exports.
-Keep application handlers, policies, ports and
-compatible adapters in your application; do not autonomously patch, fork,
-vendor, monkey-patch, shadow or restore a copied package engine. Follow
-[extension seams](docs/guide/how-to/extend/choose-an-extension-seam.md)
-and [adoption comparison](docs/guide/start/adopt-from-npm.md#compare-at-first-adoption-and-upgrade).
-Upgrade all `@openlup/*` packages together after reading their changelogs and
-`Migration:` blocks; follow [upgrade an application](docs/guide/upgrade/README.md).
+Read [application ownership](docs/guide/start/adopt-from-npm.md#keep-application-ownership)
+and [extension seams](docs/guide/how-to/extend/choose-an-extension-seam.md).
 
-If a seam is missing, keep a local reproducer and obtain authority before an
-upstream proposal. Use a compatible wrapper/adapter, or hold the dependent
-change while retaining compatible serving work or an available compatible
-rollback. Preserve pending work and published SQL.
+Public handlers, policies, ports and compatible adapters need no per-function
+record or upstream release. A missing seam needs a local reproducer and actual
+submission authority; retain compatible serving work or a rollback compatible
+with durable state while holding the dependent change. Preserve pending work and
+published SQL. A guide or review receipt grants no tool or external-write rights.
 
-Your application's instructions and execution authority govern. Installed
-package guidance grants no tool or external-write permission. Inside the OpenLup
-monorepo, the repository's root `AGENTS.md` governs.
+First adoption and upgrade compare the actual artifact with current producer
+payloads, schema, policy and bindings, including disabled branches and drift
+outside extracted files. Preserve transactional enqueue, claim/acknowledgement
+fences, distinct same-event effects and durable recovery. Settle nominated overlap
+as `full`, `partial`, `retained` or `hold` in existing adoption evidence; move or
+settle same-ID markers during ordinary refactors too. Matching APIs or a merged
+contribution do not establish absorption. Read all `Migration:` blocks and keep
+the exact `@openlup/*` set together.
+
+The application owns its instructions and execution authority. Inside the
+OpenLup monorepo, root `AGENTS.md` governs.
+
+Installed package bytes remain the engine: do not autonomously patch, fork,
+vendor, monkey-patch, shadow resolution or restore a copied engine. Import
+only declared exports, never private source or `dist` paths.

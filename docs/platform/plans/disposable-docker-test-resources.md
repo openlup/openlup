@@ -2,7 +2,7 @@
 
 Status: historical record, 2026-10-29.
 
-Recorded status: approved 2026-10-29 (owner decisions D1–D7 below); merge cut-line
+Status: approved 2026-10-29 (owner decisions D1–D7 below); merge cut-line
 landed in #432. Activation (D2) landed in #435 and is recorded under
 "Activation evidence"; the worker-cap measurement and decision (D3) are under
 "Worker-cap evidence (D3)". No start limiter ships.

@@ -6,7 +6,7 @@ for a first runnable example, or [add OpenLup to an existing application](../how
 
 ## Select the packages
 
-Use Node.js 24 and npm 11.19.0. From your application's root, set
+Use the toolchain declared in the [adopter source recipe](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/adopter-kit/README.md#start-with-npm). From your application's root, set
 `OPENLUP_VERSION` to the exact release you selected and install only the packages
 you use. For the core package alone:
 
@@ -142,7 +142,8 @@ A later template update may replace the block between
 ## Group dependency updates
 
 Keep all `@openlup/*` updates together, including security-driven pin changes.
-A minor release before 1.0 can break compatibility; do not filter the update group
+The [versioning policy](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/.github/VERSIONING_AND_EOL.md#package-releases)
+permits breaking minor updates in the current channel; do not filter the update group
 to patch releases alone. The supplied template groups all ordinary updates with
 no update-type filter. For another dependency-update service, use an equivalent
 package rule:

@@ -6,19 +6,81 @@ Status: moved to the [OpenLup guide](../../../packages/core/docs/guide/how-to/bu
 `dev.mjs` owns the source build/watch and host restart loop.
 
 ## One input and three fragments
+
 Moved to [Customize the starter store](../../../packages/core/docs/guide/how-to/build/customize-the-starter.md#select-your-configuration).
 
-`shared/config.ts` owns starter configuration validation; `owned/fragments.ts` is the presentation implementation.
+`owned/store.config.ts` exports the typed configuration. It contains brand
+identity, theme tokens, localized copy, media paths, products and offer rules,
+subscription cadences and market inputs. Both example configurations satisfy
+`StoreConfig` in `shared/config.ts`. No theme framework, configuration service,
+generated client or additional theme runtime is involved.
+
+Every owned configuration also supplies `documents.sandbox` (`enabled` and
+`providerRef`), `returns.reasons` (nonempty, uniquely coded choices with English and Polish
+labels), and `orderControls.holdReasons` (nonempty native reason codes with
+English and Polish labels). These required document/return/hold settings are checked by
+`assertConfig`; missing document, return or hold configuration blocks startup
+with `starter_order_controls_configuration_invalid`. Keep them when adding
+or replacing a configuration, even while the related mutation is unavailable.
+
+The application owns `configurations`, `defaultConfigurationId` and
+`selectConfiguration` in `owned/store.config.ts`. Add another typed configuration
+there and select its ID as the default; no managed file needs a vertical name.
+IDs are lowercase alphanumeric slugs with single hyphens, at most 80 characters.
+The host and lifecycle use that owned default when `--configuration` is absent.
+Pass `--configuration <id>` to select another registered ID. Unknown IDs refuse.
+The registry and default are owned upgrade inputs; the slug validator and shared
+offer rules remain managed. This bounded preview contract promises no wider API
+stability or automatic upgrade preservation.
+
+`owned/fragments.ts` contains three ordinary functions:
+
+| Function | Intended presentation replacement |
+| --- | --- |
+| `offerIntro` | The offer introduction and its call to action |
+| `productCard` | One card or row in the product listing |
+| `checkoutSummary` | The estimated-money summary beside the form |
 
 ## Change identity, layout and one commercial rule
+
 Moved to [Customize the starter store](../../../packages/core/docs/guide/how-to/build/customize-the-starter.md#change-identity-and-an-offer-rule).
 
-`shared/offer.ts` owns shared cart admission; `host/quote-composition.ts` composes installed money authority.
+`brand.name`, localized `brand.strapline`, `offer.layout` (`list` or `cards`)
+and `offer.minUnits` are owned fields. `dev.mjs` restarts the host for imported
+configuration edits and rebuilds client fragments; one-shot `build`/`start`
+requires the corresponding rebuild or restart.
+
+The builder and checkout host both call `evaluateOffer` from `shared/offer.ts`.
+A two-unit box with the example minimum of three must be refused by both. Do
+not put the minimum separately in a click handler or server binding. The host
+revalidates SKU, quantity, mode, cadence and terms before calling a checkout
+binding. Package engines remain responsible for durable order, reservation,
+payment and subscription truth. UI estimates never settle money.
+
+Change product media by adding an owned SVG or image below `public/media/` and
+updating the typed configuration. Add that file to the ownership inventory.
+Product media paths must remain local; remote tracking images are not part of
+this demo. Theme tokens are six-digit hex colors, and system fonts are used.
 
 ## Subscription editor values
+
 Moved to [Customize the starter store](../../../packages/core/docs/guide/how-to/build/customize-the-starter.md#configure-subscription-editing).
 
-`host/editor-ports.ts` owns the synthetic subject resolver and apply-time row lock.
+Subscription editing values live in `StoreConfig.subscriptionEditing`, built by
+`owned/subscription-editing.ts`. Set classic minimum base units, plan choices and
+quantity/line bounds there. Size-aware values include core minimum, cadence set,
+group/line limits, preferred and nominal physical sizes, portion modes/factors,
+and the synthetic need/exclusion fixture. The extra catalogue is install-only;
+it does not add a size-aware acquisition flow to checkout.
+
+Installation writes `subscription_minimum_base_units` as text in
+`commerce_settings`; the package's TypeScript and SQL minimum checks read that
+same value. It also writes the matching introductory phase policy and the
+synthetic subject fixture. Each owned demonstration customer uses that fixture
+with its own authenticated subject reference. Explicit current exclusions take
+precedence over inherited exclusions, including an empty array. The host locks
+the installed fixture row during apply; do not replace it with browser facts.
+There is no need-entry form or demand-driven plan/portion resize policy.
 
 Evidence (historical record, 2026-11-13):
 Subscription editing values live in `StoreConfig.subscriptionEditing`, built by
@@ -44,24 +106,76 @@ application must replace these fictional data and resolvers with its own owned
 facts. Neither a product label nor illustrative coverage is usage advice.
 
 ## Support contact
+
 Moved to [Customize the starter store](../../../packages/core/docs/guide/how-to/build/customize-the-starter.md#set-the-support-contact).
 
-`client/pages/destinations.ts` owns managed support rendering.
+The `supportEmail` validator beside `assertConfig` admits bounded ASCII email
+and refuses whitespace, HTML and URL schemes with `starter_support_email_invalid`.
+`client/pages/destinations.ts` renders the optional owned value through text
+nodes, without an email link or form, and links the localized account route.
 
 ## Public origin
+
 Moved to [Customize the starter store](../../../packages/core/docs/guide/how-to/build/customize-the-starter.md#set-the-public-origin).
 
-`host/origin-policy.ts` owns request admission; `shared/config.ts` owns origin parsing.
+`publicOrigin?: string` and `allowInsecurePublicOrigin?: boolean` are optional
+fields of the owned `StoreConfig` in `owned/store.config.ts`. Existing registries
+need no new export or field. Owned upgrade preservation includes these inputs.
+For a host behind your own TLS terminator, set, for example,
+`publicOrigin: 'https://store.example.test'`. The terminator must preserve the
+original Host; X-Forwarded-Host, X-Forwarded-Proto, Forwarded and similar headers
+are never authority. Validate the selected config before Docker work and again
+at host startup; restart after an edit. No network publication changes follow.
+
+Supply canonical lowercase ASCII (or already encoded punycode) host input, at
+most 256 characters. A root slash and an explicit default port normalize to the
+stored URL origin. Other parser repairs, uppercase/Unicode host input, trailing
+dots, userinfo, whitespace, wildcard, path, query, fragment and non-HTTP(S)
+schemes refuse. A non-loopback HTTP origin needs the explicit
+`allowInsecurePublicOrigin: true` opt-in; use HTTPS for a TLS terminator.
+The HTTP loopback exemptions are exactly `localhost`, `127.0.0.1` and `[::1]`;
+no DNS lookup establishes an exemption. Exact IP literals and loopback origins
+on a different port are permitted:
+the operator still selects one complete origin, including the externally mapped
+port. This does not supply a browser-trusted certificate or validate DNS/TLS
+ownership. Host matching stays exact, including IPv6 brackets and nondefault
+ports. For default ports browsers send no port in Host. Writes must send the
+canonical origin exactly, without a slash or explicit default port.
+
+The validator names `starter_public_origin_invalid`,
+`starter_public_origin_not_canonical`, `starter_public_origin_flag_invalid` and
+`starter_public_origin_tls_required`. HTTP admission retains
+`starter_local_host_required` and `starter_same_origin_required`.
+The latter covers missing/null/mismatched Origin, duplicate/multi-valued Origin,
+missing request marker and a non-JSON write. Every non-GET/HEAD method receives
+the check, including routes outside `/api/actions`.
 
 ## Changes that need a page copy
+
 Moved to [Customize the starter store](../../../packages/core/docs/guide/how-to/build/customize-the-starter.md#change-a-page-or-add-a-route).
 
-The reference host serves extensionless paths through the built shell; shell dispatch remains in `client/main.ts`.
+Page ejection changes the import and the exact `managed`/`owned` paths in
+`ownership.json`. A new route also ejects `client/main.ts` and `shared/routes.ts`;
+the host already serves extensionless application paths.
+
+For a **new** `/about` route there is no existing page to copy:
+
+1. Create `owned/about.ts` exporting a page function that accepts `PageContext`.
+2. Take ownership of `client/main.ts` and `shared/routes.ts`: move those exact
+   paths from `managed` to `owned` in `ownership.json`, and add `owned/about.ts`.
+3. Add localized paths (for example `/about` and `/o-nas`) to the route map;
+   import the page in the shell, add its dispatch case and navigation link.
+4. Extend the route and browser tests for both paths. The host already serves
+   extensionless application paths. This is an owned routing change, with manual
+   porting of future shell/router fixes; it is different from copying an existing page.
 
 ## Preservation proof
+
 Moved to [Customize the starter store](../../../packages/core/docs/guide/how-to/build/customize-the-starter.md#check-preservation-when-upgrading).
 
-The preservation recipe below records the earlier qualification procedure, not an executed upgrade result.
+The lifecycle wrapper delegates `openlup upgrade plan` and `openlup upgrade apply`
+to the installed CLI. Preservation evidence binds owned-file hashes, old/new
+package and schema identities and actual refusal/purchase browser results.
 
 Evidence (historical record, 2026-11-13):
 Before upgrading, hash the owned files, add a fictional identity/layout/minimum
@@ -72,22 +186,70 @@ Record the actual old/new package and schema identities and browser results.
 An unchanged file-copy test alone is not upgrade acceptance.
 
 ## Demonstration sessions and mailbox
+
 Moved to [Customize the starter store](../../../packages/core/docs/guide/how-to/build/customize-the-starter.md#protect-local-sessions-and-messages).
 
-`host/sessions.ts`, `host/native-composition.ts` and `installation/install.ts` own the reference session, capture and demonstration-key composition.
+Sessions live in a single process, expire after one hour, have capacity 1000 and
+are lost on restart. This is not a production session store. Customer ownership
+and operator membership are rechecked by the native stores on requests.
+The demonstration mailbox is not a real mailbox. Its captured messages are
+written to a 0600 file by the container's `node` user under `/application`.
+From the extracted application directory, read it with:
+
+```sh
+docker compose exec -T --user node application cat /application/.context/captured-messages/identity.jsonl
+```
+
+Filesystem access to this demonstration mailbox exposes sign-in tokens. Keep it
+private; the host does not publish it through HTTP.
+The demonstration quote-acceptance keyring is separate private `.context` state,
+generated only after checking the database demonstration marker. A restart of
+the same container preserves it; container recreation requires fresh quotes.
+Customer environments must supply their own keyring with the host's
+`--quote-acceptance-key-file` option, outside served assets and browser config.
 
 ## Catalogue authoring and storefront
+
 Moved to [Customize the starter store](../../../packages/core/docs/guide/how-to/build/customize-the-starter.md#separate-catalogue-drafts-from-offers).
 
-`host/operator-composition.ts` binds native authoring; storefront selection remains in the shared offer validator.
+`owned/catalogue.ts` installs the fictional `starter:item@1` authoring type for
+both configurations; replace its content validator and type definitions in your
+application. Draft payloads cannot install executable validators. The operator
+page accepts create/revise/abandon and detail/list requests. The host supplies the
+command key and session actor; neither comes from the JSON editor.
+
+Catalogue drafts write only isolated authoring tables (packages/platform/sql/20260908100000_catalog_draft_foundation.sql:1-9); bundle activation sets the native bundle status to active (packages/platform/sql/20260812210000_bundle_operator_write_boundary.sql:493), while this application’s storefront and checkout still use typed configuration through evaluateOffer (examples/neutral-store/shared/offer.ts:40), so neither creates a new purchasable storefront offer.
 
 Evidence (historical record, 2026-11-13):
 Catalogue drafts write only isolated authoring tables (packages/platform/sql/20260908100000_catalog_draft_foundation.sql:1-9); bundle activation sets the native bundle status to active (packages/platform/sql/20260812210000_bundle_operator_write_boundary.sql:493), while this application’s storefront and checkout still use typed configuration through evaluateOffer (examples/neutral-store/shared/offer.ts:40), so neither creates a new purchasable storefront offer.
 
 ## Acquisition location choices
+
 Moved to [Customize the starter store](../../../packages/core/docs/guide/how-to/build/customize-the-starter.md#replace-acquisition-location-choices).
 
-`installation/install.ts` owns the demonstration registry load transaction.
+`owned/acquisition-addresses.ts` owns the fictional choice IDs, localized labels
+and opaque source/reference/revision/provenance tuples. Keep IDs unique and
+stable, and follow the native registry constraints. This list is demonstration
+data, not a real address directory. Acquisition submission is a public durable
+write through the native case port. The client submits only the selected ID;
+the host rejects extra fields and selects its tuple from this list. Email and
+explicit application consent are stored natively; applicant names are not collected.
+
+The existing install-only seed uses the acquisition foundation migration header
+contract (lines 16-17) to load the adopter-owned registry through the owner connection
+behind the same identity and demonstration-marker checks as the catalogue.
+Repeating an identical tuple is safe. A different provenance or inactive row
+fails the entire transaction rather than overwriting it. A customer environment
+needs its own owner-loaded registry and onboarding. Editing this list never
+grants runtime registry writes or customer delivery qualification.
+
+Configured subscription cadences and their default are whole days from 1 through
+120, matching the native checkout. Checkout admits at most 50 selected lines and
+99 units per line within the configured total. Stock and seeded unit prices fit
+PostgreSQL integers; each offered mode must have a positive seeded unit price.
+Tax legal-basis text is at most 200 characters and the shared legal revision is
+trimmed, nonempty text of at most 64 characters. Configuration rejects values
+outside these native boundaries before composition.
 
 Evidence (historical record, 2026-11-13):
 The existing install-only seed uses the acquisition foundation migration header

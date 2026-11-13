@@ -27,7 +27,7 @@ Compare the [evaluation boundaries](packages/core/docs/guide/reference/limits.md
 
 ### Use OpenLup in your application
 
-From your application's root, look up the published package-set version:
+From your application's root, using Node 24 and npm 11.19.0, look up the published package-set version:
 
 ```sh
 npm view @openlup/core version
@@ -72,13 +72,71 @@ and the [database tutorial](packages/core/docs/guide/start/tutorial.md).
 Read [architecture and ownership](packages/core/docs/guide/concepts/architecture-and-ownership.md)
 for package composition and application boundaries.
 
+The reference UI uses React, Vite and Tailwind CSS; Core does not require that
+frontend stack. Browser-shareable contracts stay separate from server execution.
+Provider SDKs, environment readers and payload translation belong behind adapters.
+Portable PostgreSQL and managed Supabase retain distinct installation histories.
+
 ## Current limits and direction
+
+The `P1-SF` gate requires a versioned release and bill of materials, a thin
+adopter application, public extension/conformance contracts, upgrade tools and
+installation, compatibility, provenance and independent-adopter evidence.
+
+Native account snapshot composition requires explicit saved-address, billing,
+preference, event and private-profile sources. Missing sections and newsletter
+grants without evaluator evidence refuse `host_binding_required`. Historical
+order detail without captured money refuses `native_account_order_money_unavailable`;
+summary and line readers retain recorded money. Paid activation gaps are keyed
+by order, without inventing a subscription association.
+
+Root `ui-*` neutrality counts remain shrink-only reference-source debt; copying
+root pages takes on that debt. Neutral starter and deployment examples are
+constrained to system fonts only.
 
 Read [current limits](packages/core/docs/guide/reference/limits.md) and [versioning and stability](packages/core/docs/guide/reference/stability.md).
 
 ## Designed for development with AI agents
 
 Start with your application's instructions and the [installed-version guide](packages/core/docs/guide/README.md#instructions-for-agents); platform contributors start with [AGENTS.md](AGENTS.md).
+
+## Source checkout verification
+
+From the selected immutable checkout, use its recorded Node/npm toolchain:
+
+```sh
+npm ci
+npm run pretest
+npm run oss:published-tree -- --policy
+npm run oss:published-tree -- --inventory
+npm run oss:published-tree -- --typecheck
+npm test
+npm run build
+```
+
+These commands build the default static reference. The default source reference admits GET/HEAD catalogue/item and health reads;
+checkout, subscriptions, admin, API/BFF, cron and mutations refuse. The opt-in
+subscription reference covers one recurring product with captured payment,
+confirmed email sign-in, owned order/subscription reads and renewal-date change.
+Automatic renewal, fulfillment, failed-renewal recovery and the complete
+late-delivery journey remain outside that profile.
+Database tests require Docker
+and owned disposable services; the opt-in subscription reference additionally
+requires the Supabase CLI. Follow [test scope and diagnostics](CONTRIBUTING.md#test-scope-and-diagnostics)
+for execution and interpretation, and the [guide's evaluation boundaries](packages/core/docs/guide/reference/limits.md#evaluation-boundaries)
+for reader setup.
+
+## Source preview integrity
+
+The public tree exposes its [policy registry](config/openlup-policy-registry.json),
+[publication catalogue](config/openlup-publication-catalog.json) and
+[source-release contract](config/openlup-source-release-contract.json).
+These machine-readable inputs let a checkout validate its declared source and
+policy boundaries. They are not a release receipt or a support promise.
+The [publication completeness policy](.github/PUBLICATION_COMPLETENESS.md)
+explains their evidence boundary; the source checks above validate the selected
+revision without copying moving gap counts into this page.
+
 
 ## Documentation and contribution
 

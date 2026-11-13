@@ -2,7 +2,7 @@
 
 Status: historical record, 2026-11-06.
 
-Recorded status: development-preview control task. This record owns the finite outcome,
+Status: development-preview control task. This record owns the finite outcome,
 accepted scope, authority and sufficient proof for independent review. Its
 disjoint-integration, ordinary-repair, renewal and expiry rules were superseded
 on 2026-11-05 by

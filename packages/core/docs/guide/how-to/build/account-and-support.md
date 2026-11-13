@@ -14,7 +14,7 @@ for their inventories. Contribution descriptors come from
 `@openlup/platform/composition`. Owner DTOs retain generic frozen money and
 private extensions.
 
-For capability maturity, consult the
+For the declared selection boundary, consult the
 [package reference](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/AGENTS.md#subpath-maturity).
 
 ## Bind reads to the customer
@@ -169,14 +169,14 @@ profile does not select it for checkout.
 
 Select the mutation port as the self-service facade's `profile` lane. It also
 supplies `requestInvoiceCorrection` and metadata-only `readEvents` for the
-latest 20 events. Profile names collapse whitespace; empty or null clears a
+recent events within the [mutation port's read bound](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/README.md#customer-account-events-and-mutations). Profile names collapse whitespace; empty or null clears a
 field, and omission preserves it. Email is not an editable field. Your phone
-policy supplies a calling prefix with nine local digits.
+policy supplies the calling prefix and must preserve the native phone shape.
 
-The schema policy may narrow, but cannot widen, these limits: command keys
-8–180 characters, nonempty names 2–80, correction reasons 8–500, at most 20
-requested fields of 1–80 characters, and nonempty notes up to 500 characters.
-Invalid policy construction throws `customer_account_policy_invalid`.
+The schema policy may narrow the native text and collection limits, but cannot
+widen them. Consult the [mutation schema contract](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/README.md#customer-account-events-and-mutations)
+for the exact bounds and phone shape. Invalid policy construction throws
+`customer_account_policy_invalid`.
 
 A recorded profile-event key returns the current profile without another write.
 If the event append fails after the profile write, the write remains committed;
@@ -201,7 +201,8 @@ client-column census grant is not payload-read authority.
 The billing-profile handler supports GET/POST/PATCH/DELETE with authenticated
 identity, strict requests/responses and your responder/messages. Consumer
 signatures require no driver types. Tax policy cannot widen the fixed limits
-or bypass the ten-digit weighted checksum. Customer-supplied verification level,
+or bypass the native weighted checksum. Exact validation belongs to the
+[billing schema contract](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/README.md#customer-billing-profiles-and-frozen-invoice-buyers). Customer-supplied verification level,
 source and evidence are stored facts, not a registry verification workflow.
 
 Updating a missing or foreign profile refuses with

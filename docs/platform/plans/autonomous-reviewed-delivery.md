@@ -2,7 +2,7 @@
 
 Status: historical record, 2026-11-06.
 
-Recorded status: historical design record; current delivery and review rules are in [Deliver a change](../../../CONTRIBUTING.md#deliver-a-change).
+Status: historical design record; current delivery and review rules are in [Deliver a change](../../../CONTRIBUTING.md#deliver-a-change).
 
 ## Historical implementation boundary
 

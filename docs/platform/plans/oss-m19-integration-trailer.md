@@ -2,7 +2,7 @@
 
 Status: historical record, 2026-11-06.
 
-Recorded status: development-preview control task. This record contains neutral outcome,
+Status: development-preview control task. This record contains neutral outcome,
 scope and proof criteria for independent review. Its fresh-reviewer and expiry
 conditions were superseded on 2026-11-05 by
 [Native review](../../../CONTRIBUTING.md#native-review-and-accountability); the

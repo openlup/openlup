@@ -2,7 +2,7 @@
 
 Status: historical record, 2026-11-06.
 
-Recorded status: historical intent; current delivery and review rules are in [Deliver a change](../../../CONTRIBUTING.md#deliver-a-change).
+Status: historical intent; current delivery and review rules are in [Deliver a change](../../../CONTRIBUTING.md#deliver-a-change).
 
 The intent was to let authorized contributors complete bounded changes with
 independent review under existing subscriptions, while retaining human

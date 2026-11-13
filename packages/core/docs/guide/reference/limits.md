@@ -11,7 +11,7 @@ refusals while running it.
 | npm packages | Selected engines and server services in your application | Pin matching exact versions; supply adapters and host composition. Follow [installation](../start/README.md#install-the-packages). |
 | Portable PostgreSQL primitives | Database ports, migrations and recovery operations | Supply application composition; see the payment boundaries below and the [database recipe](../how-to/operate/connect-postgresql.md). |
 | Default source reference | Static catalogue and item pages, plus health | GET/HEAD only; checkout, subscriptions, admin, API/BFF, cron and mutations are refused. |
-| Opt-in subscription reference | One recurring item, captured payment, confirmed email sign-in, owned order/subscription reads and renewal-date changes | Owned disposable local database/authentication services and Node host; synthetic data and a captured mailbox, with no external provider calls. |
+| Opt-in subscription reference | Recurring-item purchase, captured payment, confirmed email sign-in, owned order/subscription reads and renewal-date changes | Owned disposable local database/authentication services and Node host; synthetic data and a captured mailbox, with no external provider calls. |
 | Application starter | Native actions bound to a local demonstration database | Sandbox payments and private message capture; no hosted-database installation recipe. |
 
 The opt-in subscription reference does not demonstrate automatic renewals,

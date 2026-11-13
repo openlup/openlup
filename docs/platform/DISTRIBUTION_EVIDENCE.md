@@ -2,7 +2,7 @@
 
 Status: historical record, 2026-11-09.
 
-Recorded status: development-preview source tooling. No complete release outcome or
+Status: development-preview source tooling. No complete release outcome or
 supported installation is claimed.
 
 ## Public outcome projection

@@ -2,7 +2,7 @@
 
 Status: historical record, 2026-11-01.
 
-Recorded status: unreleased development-preview preparation. A merged preparation does not publish packages or qualify a hosted provider.
+Status: unreleased development-preview preparation. A merged preparation does not publish packages or qualify a hosted provider.
 
 ## Outcome and authority
 

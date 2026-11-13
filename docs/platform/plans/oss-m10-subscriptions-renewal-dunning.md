@@ -2,7 +2,7 @@
 
 Status: historical record, 2026-10-29.
 
-Recorded status: development-preview design. This page grants no activation or release authority.
+Status: development-preview design. This page grants no activation or release authority.
 
 ## Contract and placement
 

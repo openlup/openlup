@@ -2,7 +2,7 @@
 
 Status: historical record, 2026-10-29.
 
-Recorded status: development-preview design. The contract and offline conformance surface,
+Status: development-preview design. The contract and offline conformance surface,
 the issue, correction and reversal helpers, the managed correction forwards, and
 the native store with its SQL projections are available for explicit host composition.
 Explicit service composition is available; reference route selection and release

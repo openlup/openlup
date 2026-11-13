@@ -2,7 +2,7 @@
 
 Status: historical record, 2026-10-29.
 
-Recorded status: development-preview plan; no stable-framework, release or activation claim.
+Status: development-preview plan; no stable-framework, release or activation claim.
 
 ## Outcome and authority
 

@@ -2,7 +2,7 @@
 
 Status: historical record, 2026-10-29.
 
-Recorded status: development-preview implementation ledger, 2026-10-21. O-P1 and O-P2 supply
+Status: development-preview implementation ledger, 2026-10-21. O-P1 and O-P2 supply
 opt-in Node examples behind M07's neutral payment ports. It makes no stable
 framework, account activation or release claim.
 

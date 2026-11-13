@@ -2,7 +2,7 @@
 
 Status: historical record, 2026-11-06.
 
-Recorded status: repository routing and installed-context P0/P1/P2 delivered through PR #450. Development preview; package release and adopter activation remain separate.
+Status: repository routing and installed-context P0/P1/P2 delivered through PR #450. Development preview; package release and adopter activation remain separate.
 
 Delivery-control notes below are historical, including blanket maintainer reads
 before DCO sign-off and repair budgets. Current delivery and approval authority

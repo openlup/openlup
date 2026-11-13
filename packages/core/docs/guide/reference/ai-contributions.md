@@ -3,14 +3,14 @@
 You can use AI assistance when contributing to OpenLup. If you use a tool to
 prepare a contribution, these rules explain what you remain responsible for.
 
-## The four rules
+## Contribution responsibilities
 
 1. **Disclose AI assistance.** Say in the pull request or issue if a tool wrote,
    drafted or materially shaped your contribution. A checkbox is enough;
    AI assistance alone does not count against you.
 
-2. **Keep a human accountable.** Each contribution must have exactly one human
-   author who answers for it. Using an agent does not transfer that
+2. **Keep a human accountable.** Each contribution needs an accountable human
+   author, as required by the [contribution policy](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/.github/AI_CONTRIBUTION_POLICY.md#the-four-rules). Using an agent does not transfer that
    responsibility to the tool.
 
 3. **Be able to explain every line.** You must be able to explain why each line

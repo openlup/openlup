@@ -2,7 +2,7 @@
 
 Status: historical record, 2026-11-02.
 
-Recorded status: landed in two changes. The reader, the literal list pin, the fixtures, the tests
+Status: landed in two changes. The reader, the literal list pin, the fixtures, the tests
 and the prose landed in openlup/openlup#503 (merge
 `a7ce403cef3b790c28418d786f153e50ac595084`); the list itself reaches the registry in the
 pin-only change that follows it. The sections below are the history of the work as it

@@ -17,7 +17,7 @@ the matching capability descriptor. It returns `disabled` unless enabled is
 exactly true, and `selection_required` for missing or mismatched selection.
 These refusals precede host calls. A ready result describes declared operations;
 your host still owns fiscal validation. Consult the
-[package maturity table](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/AGENTS.md#subpath-maturity)
+[package selection reference](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/AGENTS.md#subpath-maturity)
 for the capability boundary.
 
 Bind an `InvoiceProviderPort`, an `InvoiceStorePort` and `InvoiceHostPorts`.
@@ -245,7 +245,7 @@ or live provider behavior.
 ## Freeze the invoice buyer
 
 Install the complete catalogue including first-duty buyer capture before
-composing native invoicing. The first original owed duty freezes one immutable
+composing native invoicing. The first original owed duty freezes an immutable
 buyer component atomically, including when payment truth captures the duty.
 No opt-in callback is needed. Selection preserves order buyer facts first,
 then the owned default/latest billing profile and billing-or-both address,

@@ -54,7 +54,7 @@ Both qualified selections accept `roleMode: "installer-managed"` or
 `runtimeLogin`. The restricted `qualified-admin` selection also requires
 `restoreLogin` and, in operator-provisioned mode, a distinct `operatorLogin`.
 The privileged `qualified-v2` selection permits an optional restore login.
-Provision the selected PostgreSQL 16 profile before invoking the runner: these
+Provision the selected PostgreSQL host profile before invoking the runner: these
 options validate existing roles and session facts; they do not create host
 logins or grant access. The [role provisioning
 boundary](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)

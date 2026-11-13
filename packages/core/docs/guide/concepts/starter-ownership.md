@@ -93,8 +93,8 @@ Checkout does not require sign-in. A typed email alone cannot obtain a link to
 an existing order. Signed-in recovery rechecks order ownership; a recovery link
 grants neither account access nor subscription-command authority.
 
-New checkout issues a 256-bit random recovery token through the native token
-store, which persists only its SHA-256 hash. The creating response and separate private
+New checkout issues a cryptographically random recovery token through the native
+store, which persists only its hash. The creating response and separate private
 checkout message carry the token. Authentication messages and account events do
 not. Completion removes a URL token from history synchronously before loading
 configuration. Memory and session storage allow reloads; native inspection
@@ -107,14 +107,10 @@ order's configured checkout deadline. Expiry-notice links retain the terminal
 source for the longer recovery window. An operator-issued link revokes earlier
 links for that order and expires at the earlier of its own lifetime or the
 order's recovery deadline. Payment prevents further payment through a link;
-other links still obey their expiry and revocation. Payment-case links rotate
-separately with only one live link per case.
+other links still obey their expiry and revocation. Payment-case links rotate separately, invalidating their predecessor.
 
-| Starter link | Deadline |
-| --- | --- |
-| Checkout, reminder or signed-in recovery continuation | Order creation plus 24 hours |
-| Expiry-notice recovery | Order creation plus 30 days |
-| Operator-issued checkout link | Earlier of issuance plus 24 hours or order creation plus 30 days |
+Use the [recovery issuer contract](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/neutral-store/docs/ownership.md#application-ownership)
+for token construction and exact continuation, recovery and operator-link deadlines.
 
 A pending order can continue sandbox payment and retry a decline. Expired orders,
 including system-abandoned initial checkouts, can offer a replacement within the
@@ -149,11 +145,12 @@ identity under a retained key refuses even with a replacement quota callback.
 Capacity failure closes admission; denied quota attempts add no quota count.
 Your host owns retention of unpurchased contacts.
 
-Purchase and sign-in use `purchase.inputLimits.email`, capped at 160 characters;
+Purchase and sign-in share the bounded `purchase.inputLimits.email` setting;
 overlong purchase email
 refuses with `starter_email_invalid` before contact resolution. Checkout and
 subscription-address fields use the configured phone and postal limits within
-native destination bounds. Browser field limits do not replace host validation.
+native destination bounds. The [configuration validator](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/neutral-store/docs/ownership.md#application-ownership)
+owns the exact limits. Browser field limits do not replace host validation.
 
 ## Paid-order messages and shipping
 
@@ -213,7 +210,7 @@ marking records an externally completed refund; it moves no money, sends no
 refund mail, creates no fiscal reversal and changes no subscription. Execute
 real refunds through their own owner. Invalid reasons, missing confirmation,
 stale status and conflicting commands refuse; native receipts own replay. Reasons
-use the native trimmed 1–2000 character boundary.
+use the native trimmed-text boundary in the [order control schemas](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/README.md#commerce-contracts).
 
 Signed-in customers request returns for positive quantities from their own paid
 or fulfilled orders using configured reason codes. Keep the returned request
@@ -259,7 +256,9 @@ its cookie. The starter selects no payment-method hold policy.
 Detected embedded browsers show send and send-again controls only after verified
 continuation exists. Detection changes display, not authority. The cookie-only
 handler derives identity from claims, uses the saved checkout recipient and
-deduplicates sends within the configured ten-minute bucket. Confirmation survives panel
+deduplicates sends within the configured time bucket. The
+[continuation composition](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/neutral-store/docs/ownership.md#sandbox-token-payment-and-exact-continuation)
+owns its duration. Confirmation survives panel
 remounts; failures offer retry. Delivery rechecks buyer authorization and captures
 the marked buyer link privately. Enqueue, capture and payment are separate facts.
 

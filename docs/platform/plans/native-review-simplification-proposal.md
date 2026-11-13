@@ -2,7 +2,7 @@
 
 Status: historical record, 2026-11-06.
 
-Recorded status: approved by the owner 2026-10-19; implemented in this change. Its
+Status: approved by the owner 2026-10-19; implemented in this change. Its
 carry-over, integration and expiry rules were superseded on 2026-11-05 by
 [Native review](../../../CONTRIBUTING.md#native-review-and-accountability):
 review binds to the change and does not expire.

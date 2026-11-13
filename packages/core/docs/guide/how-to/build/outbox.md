@@ -104,18 +104,9 @@ ordinals and inconsistent shapes throw `Invalid grouped PostgreSQL schema rows`
 without catalog bodies. Extra row columns are ignored. Parsed property and
 nested array order remain intact; inputs are not mutated.
 
-| Object | Shape fields |
-| --- | --- |
-| Function | `definition`, `owner`, `acl`, `config`, `securityDefiner`, `volatility` |
-| Table | `kind`, `owner`, `acl`, `rls`, `forceRls`, `constraints`, `indexes`, `triggers`, `policies` |
-| Column | `type`, `notNull`, `identity`, `generated`, `default`, `acl` |
-
-Shapes retain catalog nulls and PostgreSQL's parsed JSON ordering. Constraint,
-index and noninternal-trigger arrays contain definition strings ordered by
-constraint name, index relation text and trigger name respectively. Policies
-are ordered by name, with `name`, raw role OIDs in `roles`, command code `cmd`,
-`permissive`, and expression strings or nulls in `qual` and `check`. Empty
-aggregates remain null. The host owns its driver, connection role, snapshot,
+Shapes retain catalog nulls and PostgreSQL's parsed JSON ordering. Use the
+[grouped-probe source contract](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/core/README.md#channel-and-stability)
+for exact shape fields and aggregate ordering. The host owns its driver, connection role, snapshot,
 independently observed database and migration identity, digest policy and
 invalidation. Catalog shapes establish neither SQL behavior nor effective
 authorization or recovery. Map driver and decoder failures to an unknown

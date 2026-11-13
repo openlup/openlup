@@ -43,16 +43,16 @@ Keep their imports in your server composition. The neutral communications and
 browser contracts entries do not export provider factories. Consult the [package
 capability
 reference](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/AGENTS.md#subpath-maturity)
-for maturity.
+for the declared selection boundary.
 
 ### Card and wallet payment template
 
-Use `createStripePaymentAdapter`, `StripePaymentAdapterConfig` and
-`stripePaymentCapabilities` from the card/wallet protocol entry listed in the
-installed export map, using a type import for the config. Inject a structural client, `webhookSigningSecrets`,
-explicit `mode` and a nonempty `supportedCurrencies` array of uppercase
-three-letter codes. Optional `toleranceSeconds` defaults to 300; `clock` returns
-UTC seconds. Your host constructs the SDK, associates stored methods with
+Construct `createStripePaymentAdapter` from the card/wallet protocol entry listed
+in the installed export map. Its [configuration and capability declarations](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/README.md#opt-in-payment-example)
+own the exact public surface. Inject a structural client, `webhookSigningSecrets`,
+explicit `mode` and a nonempty `supportedCurrencies` array of canonical currency
+codes. The [card adapter configuration](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/README.md#opt-in-payment-example)
+owns the currency shape and `toleranceSeconds` default; `clock` returns UTC seconds. Your host constructs the SDK, associates stored methods with
 customers and confirms unattended requests. Interactive offers use the declared
 card/wallet flow. Construction performs no provider I/O.
 
@@ -70,8 +70,9 @@ becomes an invented lifecycle timestamp.
 
 ### Bank redirect and code payment template
 
-Use `createTpayPaymentAdapter`, `TpayPaymentAdapterConfig` and
-`tpayPaymentCapabilities` from the bank/code protocol entry in that map. Supply
+Construct `createTpayPaymentAdapter` from the bank/code protocol entry in that
+map; consult its [configuration and capability declarations](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/README.md#opt-in-bank-and-code-payment-example)
+for the public surface. Supply
 `http: { baseUrl, clientId, clientSecret, fetchImpl, timeoutMs? }`,
 `urls: { notificationUrl, successUrl, errorUrl }`, `modelOActivationEnabled`,
 `mode` and optionally a UTC-seconds `clock`. The notification binding requires
@@ -80,10 +81,10 @@ in `/`, and `resolveCertificate`. Your resolver enforces redirect and outbound
 access policy. Both root and resolved certificates must be valid at verification.
 
 Verify notifications over original bytes. Only signed protected-header `iat`
-supplies provider time; absent time stays null. `maxNotificationAgeSeconds`
-defaults to seven days, an assumed retry allowance rather than a verified
-provider schedule. `maxClockSkewSeconds` defaults to 300. Both limits must be
-finite and nonnegative and apply only with a signed issue time; a time outside
+supplies provider time; absent time stays null. Notification age and clock skew
+use the defaults in the [bank/code adapter contract](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/README.md#opt-in-bank-and-code-payment-example).
+The age allowance is an assumption, not a verified provider schedule. Both
+limits must be finite and nonnegative and apply only with a signed issue time; a time outside
 the window refuses as `stale`. Receipt time checks freshness without inventing
 occurrence time. Dedupe by exact event identity and stable fingerprint when
 time is absent. Money identity includes outcome; method identity also retains
@@ -107,7 +108,7 @@ correction does not itself pause a subscription or terminate its retry schedule;
 your subscription failure policy decides retry termination.
 
 The descriptor and nested records are frozen. Currencyless money notifications
-bind to its single declared currency; multiple declared currencies refuse as
+bind to the descriptor currency; an ambiguous currency set refuses as
 `malformed`. Alias lifecycle evidence needs signed provider time. The factory
 offers no alias registration or recurring-card flow. Refund creation, close,
 exact absence and split authorization/capture are unavailable.
@@ -122,22 +123,13 @@ certificates and raw bodies. Missing failure provenance stays absent.
 
 ### Reuse existing payment bindings
 
-The protocol entries also expose helpers for applications carrying existing
-bindings. Consult the [declarations](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api)
-before depending on their exact signatures:
-
-| Protocol entry | Helpers |
-| --- | --- |
-| Card/wallet | `createStripeSandboxPaymentExecutionAdapter`, `createStripePaymentReconciliationProvider`, `mapStripeIntent`, `mapSetupIntent`, `normalizeStripeFailureEvidence` |
-| Bank/code | `createTpayPaymentExecutionAdapter`, `createTpayPaymentReconciliationProvider`, `createTpayHttpClient`, `normalizeTpayFailureEvidence`, `aliasValue`, `ProviderAttemptPreDispatchError` |
-
-Infer types from the functions where no separate type is exported. Reuse the
-same `ProviderAttemptPreDispatchError` constructor across wrappers so
-`instanceof` retains its no-charge trust boundary. Your host still supplies SDK
-construction, flags, callback/return UI, account readiness and simulator
-composition. These helpers do not widen the neutral adapter's capabilities or
-activate a provider. Check their [maturity](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/AGENTS.md#subpath-maturity)
-before selection.
+For an existing binding, inspect the [reference-support inventory](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/README.md#reference-support-surface)
+and its linked API reports before selecting a helper. Infer types from the
+functions where no separate type is exported. Reuse the same
+`ProviderAttemptPreDispatchError` constructor across wrappers so `instanceof`
+retains its no-charge trust boundary. Your host still supplies SDK construction,
+flags, callback/return UI, account readiness and simulator composition. Selecting
+these helpers does not widen the neutral adapter's capabilities or activate a provider.
 
 ### Node email protocol template
 

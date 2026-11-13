@@ -11,7 +11,7 @@ Import `createCatalogDraftHandler`, `createCatalogProductTypeRegistry` and
 Import `createPostgresDataGateway` from `@openlup/platform/data`.
 Browser command types come from `@openlup/platform/catalog/contracts`.
 Use the [package reference](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/AGENTS.md#subpath-maturity)
-for capability maturity.
+for the declared capability boundary.
 
 Your composition provides a database pool, a `CatalogDraftStorePort`, product
 type definitions with `validateContent`, and `authorizeOperator`. The example
@@ -28,7 +28,7 @@ for the loopback runner and shutdown behavior.
 
 ## Prepare an independent application
 
-Use a disposable PostgreSQL 16 database with the complete `qualified-v2` portable
+Use a disposable PostgreSQL database meeting the [sample's prerequisites](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/own-stack/README.md#run-outside-the-platform-checkout), with the complete `qualified-v2` portable
 catalogue installed and a restricted runtime login that can assume
 `service_role`. Do not use the bootstrap or migration login. Follow the
 [connection roles](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/DATA_AND_MIGRATIONS.md#connection-roles)
@@ -69,7 +69,7 @@ string. Generate a cryptographically random lowercase hexadecimal
 }
 ```
 
-The `port` field is optional and defaults to 3000. Feed the configuration on
+The `port` field is optional; [the runner](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/own-stack/run.mjs) owns its default. Feed the configuration on
 standard input:
 
 ```sh
@@ -119,7 +119,7 @@ current product registry.
 Missing or invalid bearer credentials return `401/operator_required` before
 database access. A request-supplied `actorId` fails the strict command schema
 with `422/draft_input_invalid`. The HTTP adapter refuses unsupported content
-types with `415/json_required`, bodies larger than 64 KiB with
+types with `415/json_required`, bodies beyond the [handler's byte limit](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/own-stack/README.md#run-outside-the-platform-checkout) with
 `413/body_too_large` and malformed JSON with `400/invalid_json`. An unavailable dependency maps to a
 service-unavailable response; do not interpret it as a successful write.
 
@@ -136,7 +136,7 @@ own temporary operator token, independently of your configured `operatorToken`,
 and fresh identifiers. It checks HTTP admission, invalid credentials, refusal of
 a caller-supplied actor ID, durable creation, changed-key-payload refusal and
 exact replay after rebuilding the application instance. It inspects database rows
-through the restricted service role and checks that one revision and one command
-receipt remain after replay. Missing PostgreSQL fails verification. Each run
+through the restricted service role and checks that replay adds no revision or
+command receipt. Missing PostgreSQL fails verification. Each run
 retains its generated draft; discard the disposable database when finished. Local
 verification establishes neither hosted authentication nor production readiness.

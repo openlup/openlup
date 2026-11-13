@@ -3,11 +3,11 @@
 Use the release policy to understand which application dependencies OpenLup
 promises to preserve and how to plan an upgrade. Consult the
 [versioning policy](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/.github/VERSIONING_AND_EOL.md)
-for channel maturity, version format and support-window durations.
+for channel commitments, version format and support-window durations.
 
 ## Release evidence
 
-Before relying on stable-framework commitments, require a versioned release
+Before relying on release commitments, require a versioned release
 and bill of materials, an adopter application, public extension and adapter
 conformance contracts, upgrade tools, and installation, compatibility,
 provenance and independent-adopter evidence. A package's `latest` tag or a
