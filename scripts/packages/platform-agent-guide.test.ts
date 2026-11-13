@@ -23,8 +23,10 @@ it("ships a guide with the exact release-gate maturity table and compiled wiring
   expect(result.status, result.stderr).toBe(0);
   const example = readFileSync(join(root, "test/agentsWiringExample.ts"), "utf8");
   expect(readFileSync(join(root, "README.md"), "utf8")).toContain("```ts\n" + example + "```");
-  const guide = readFileSync(join(root, "AGENTS.md"), "utf8");
-  const recipes = guide.split("## Provider wiring recipes\n")[1]?.split("\n## ")[0];
+  // The size-capped guide links to the recipes; the README carries them.
+  expect(readFileSync(join(root, "AGENTS.md"), "utf8")).toContain("(README.md#provider-wiring-recipes)");
+  const readme = readFileSync(join(root, "README.md"), "utf8");
+  const recipes = readme.split("## Provider wiring recipes\n")[1]?.split("\n## ")[0];
   const snippets = [...(recipes ?? "").matchAll(/```ts\n([\s\S]*?)```/g)].map(match => match[1]);
   expect(snippets).toHaveLength(3);
   const virtualFiles = new Map(snippets.map((source, index) => [join(root, `test/providerRecipe${index + 1}.mts`), source]));
