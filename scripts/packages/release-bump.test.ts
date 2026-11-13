@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -228,7 +228,13 @@ describe("release:bump", () => {
 
   it("re-pins the real guide in a minimal temporary repository and passes the owning guide check", () => {
     const { root } = setFixture(), core = join(root, "packages/core");
-    for (const path of ["packages/core/docs/guide", "config/documentation-guide-allowlist.json", "config/environment-variables.json", "README.md", "CONTRIBUTING.md", ...["core", "outbox", "platform"].map((name) => `packages/${name}/release-gates.json`)]) {
+    // Every repository path the real guide links to at a release tag, derived from its pages, plus the region inputs.
+    const guidePages = (directory: string): string[] => readdirSync(directory, { withFileTypes: true }).flatMap((entry) =>
+      entry.isDirectory() ? guidePages(join(directory, entry.name)) : entry.name.endsWith(".md") ? [join(directory, entry.name)] : []);
+    const linked = new Set(guidePages(resolve("packages/core/docs/guide")).flatMap((page) =>
+      [...readFileSync(page, "utf8").matchAll(/https:\/\/github\.com\/openlup\/openlup\/(?:blob|tree)\/openlup-core-v[0-9A-Za-z.+-]+\/([^\s)>"'`#?]+)/gu)].map((match) => decodeURIComponent(match[1]!).replace(/\/$/u, ""))));
+    expect(linked.size).toBeGreaterThan(0);
+    for (const path of ["packages/core/docs/guide", "config/documentation-guide-allowlist.json", "config/environment-variables.json", ...["core", "outbox", "platform"].map((name) => `packages/${name}/release-gates.json`), ...linked]) {
       mkdirSync(dirname(join(root, path)), { recursive: true }); cpSync(resolve(path), join(root, path), { recursive: true });
     }
     const index = join(core, "docs/guide/README.md"), original = readFileSync(index, "utf8");
