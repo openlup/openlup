@@ -54,6 +54,7 @@
     "inventory:refresh": "node --import tsx scripts/installation-inventory-refresh.ts",
     "landing:merge": "node scripts/agent-review-landing.mjs",
     "preflight": "node --experimental-strip-types scripts/preflight.ts",
+    "sql:admit": "node --experimental-strip-types scripts/sql-admit.ts",
     "test:hosted": "node scripts/test-hosted.mjs"
   },
   "dependencies": {
