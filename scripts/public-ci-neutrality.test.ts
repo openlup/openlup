@@ -91,6 +91,8 @@ function validBaseline() {
 }
 const registryPath = "config/reviewed-platform-forwards.json";
 const operationsSql = "packages/platform/sql/20260814010000_platform_control_plane.sql";
+const paymentAttemptSql = "db/platform/migrations/20261114100000_payment_provider_attempt_store.sql";
+const paymentAttemptMirror = "packages/platform/sql/20261114100000_payment_provider_attempt_store.sql";
 const refundRail = "supabase/migrations/20261024185000_provider_refund_evidence.sql";
 const refundFixture = `scripts/fixtures/reviewed-m10/${refundRail}`;
 function managedPinnedSources() {
@@ -169,11 +171,57 @@ describe("tree-wide neutrality ratchet", () => {
   it.each([
     "db/platform/migrations/20261024185000_provider_refund_evidence.sql",
     "packages/platform/sql/20261024185000_provider_refund_evidence.sql",
+    "db/platform/migrations/20261114100001_payment_provider_attempt_store.sql",
+    "packages/platform/sql/20261114120001_payment_reconciliation_refund_evidence.sql",
     "scripts/fixtures/reviewed-m10/db/platform/migrations/example.sql",
     "supabase/migrations/example.ts", "scripts/example.ts", "package.json", "docs/example.md",
     "config/another-registry.json", "supabase/migrations/../example.sql",
-  ])("refuses adding a C94 entry outside the managed SQL/registry path classes: %s", path => {
+  ])("refuses adding a C94 entry outside the exact reviewed path classes: %s", path => {
     expect(() => validateReviewedPinnedIntroductions([[path, "a".repeat(64), [["ui-13", 0, 7]]]])).toThrow(/unsupported .*path/);
+  });
+
+  it.each([
+    "20261114100000_payment_provider_attempt_store.sql",
+    "20261114110000_payment_method_refs.sql",
+    "20261114120000_payment_reconciliation_refund_evidence.sql",
+  ])("admits the N6 native and package path class for %s without granting an unpinned introduction", name => {
+    for (const prefix of ["db/platform/migrations/", "packages/platform/sql/"]) {
+      const path = `${prefix}${name}`;
+      expect(() => validateReviewedPinnedIntroductions([[path, "a".repeat(64), [["ui-13", 0, 4]]]])).not.toThrow();
+      if (path === paymentAttemptSql || path === paymentAttemptMirror) continue;
+      const row = { path: hash(path), category: "ui-13", before: 0, after: 4 };
+      expect(unreviewedPinnedIntroductionIncreases([row], new Map([[path, Buffer.from("unreviewed")]]))).toEqual([row]);
+    }
+  });
+
+  it("pins both R1 SQL files to unchanged bytes, measured tuples and exact baseline keys", () => {
+    const approved = JSON.parse(readFileSync(join(sourceRoot, baselinePath), "utf8")).counts;
+    const paths = [paymentAttemptSql, paymentAttemptMirror];
+    const sources = new Map(paths.map(path => [path, readFileSync(join(sourceRoot, path))]));
+    expect(sources.get(paymentAttemptSql)).toEqual(sources.get(paymentAttemptMirror));
+    const measured = scanSnapshots(sources);
+    expect(measured.rows).toEqual(Object.fromEntries(paths.map(path => [hash(path), { "ui-13": 4, "ui-14": 3 }])));
+    const introductions = neutralityIncreases({}, measured.rows);
+    expect(introductions).toHaveLength(4);
+    expect(unreviewedPinnedIntroductionIncreases(introductions, sources)).toEqual([]);
+    for (const path of paths) {
+      const counts = measured.rows[hash(path)];
+      expect(approved[hash(path)]).toEqual(counts);
+      const candidate = { ...validBaseline(), counts: { [hash(path)]: counts } };
+      expect(() => validateBaseline(candidate)).not.toThrow();
+      for (const [category, count] of Object.entries(counts)) {
+        for (const wrong of [count - 1, count + 1]) {
+          expect(() => validateBaseline({ ...candidate, counts: { [hash(path)]: { ...counts, [category]: wrong } } })).toThrow(/pinned introduction baseline count mismatch/);
+        }
+        const missing = { ...counts };
+        delete missing[category];
+        expect(() => validateBaseline({ ...candidate, counts: { [hash(path)]: missing } })).toThrow(/pinned introduction baseline count mismatch/);
+      }
+      const changed = new Map(sources);
+      changed.set(path, Buffer.concat([sources.get(path)!, Buffer.from("\n")]));
+      expect(scanSnapshots(changed).rows).toEqual(measured.rows);
+      expect(unreviewedPinnedIntroductionIncreases(introductions, changed)).toEqual(introductions.filter(row => row.path === hash(path)));
+    }
   });
 
   it("binds the operations compatibility carrier to unchanged canonical bytes, one exact count and its baseline key", () => {
@@ -873,13 +921,20 @@ describe("neutrality scan reuse", () => {
 
 });
 
-it("keeps 13 C94 paths/15 tuples and one M14 path/tuple closed at exactly 14 paths and 16 tuples", () => {
-  expect(reviewedPinnedIntroductions).toHaveLength(14);
-  expect(new Set(reviewedPinnedIntroductions.map(([path]) => path)).size).toBe(14);
-  expect(reviewedPinnedIntroductions.flatMap(([, , counts]) => counts)).toHaveLength(16);
-  const c94 = reviewedPinnedIntroductions.filter(([path]) => path !== operationsSql);
+it("keeps the managed, operations and R1 pins closed at exactly 16 paths and 20 tuples", () => {
+  expect(reviewedPinnedIntroductions).toHaveLength(16);
+  expect(new Set(reviewedPinnedIntroductions.map(([path]) => path)).size).toBe(16);
+  expect(reviewedPinnedIntroductions.flatMap(([, , counts]) => counts)).toHaveLength(20);
+  const paymentPaths = [paymentAttemptSql, paymentAttemptMirror];
+  const c94 = reviewedPinnedIntroductions.filter(([path]) => path !== operationsSql && !paymentPaths.includes(path));
   expect(c94).toHaveLength(13);
   expect(c94.flatMap(([, , counts]) => counts)).toHaveLength(15);
+  const paymentPins = reviewedPinnedIntroductions.filter(([path]) => paymentPaths.includes(path));
+  expect(paymentPins.map(([path]) => path)).toEqual(paymentPaths);
+  for (const [, digest, counts] of paymentPins) {
+    expect(digest).toBe("3d0e3c5696e417f47a30c0581915df86c5386d4bcec9b0715c9f561fd7b6c291");
+    expect(counts).toEqual([["ui-13", 0, 4], ["ui-14", 0, 3]]);
+  }
 });
 
 it("refuses regenerated C94 counts below their pin without writing the baseline", () => {

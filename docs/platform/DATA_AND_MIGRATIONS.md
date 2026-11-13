@@ -1344,7 +1344,7 @@ graduates only unedited starter terms, is not contributed. It belongs to the
 subscription domain (M10 area) and is unreachable from M11 code; the adopter
 keeps its own managed SQL.
 
-**Named bounded debt C94 — M10 reviewed packet vocabulary.** The frozen managed
+**Named bounded debt C94 — reviewed SQL vocabulary.** The frozen managed
 SQL retains provider nouns inherited from that rail. The neutrality baseline
 records the scanner's exact counts for the six existing managed fixtures and the
 registry's pinned refund COMMENT: dunning continuity (`ui-13`: 2, `ui-14`: 3),
@@ -1353,20 +1353,29 @@ and refund parity (each `ui-13`: 7), and the registry (`ui-13`: 1).
 Each landing PR (P3b, P5, F17) adds only its own rail keys together with the files,
 using these exact pinned counts per category. Any present baseline key for an
 allowance path must contain exactly its pinned category counts, including during
-regeneration; adding a key without the file refuses. No native,
-TypeScript, package or documentation allowance is added. This is vocabulary
-debt for the frozen packet, not provider activation or portable-contract parity;
+regeneration; adding a key without the file refuses. The N6 native payment
+slots 42–44 and their package mirrors retain the two reference payment adapters'
+names in three ported predicates: inline-flow admission, historical channel
+routing and a refund-amount rule. Each row adds only its own whole-file SHA-256
+pins, exact counts and baseline keys with its files. R1's attempt-store slot and
+mirror each pin `ui-13` 0→4 and `ui-14` 0→3. A later provider-profile refactor
+must remove these literals; a third provider needs that refactor. The separate
+provider characterization fixture admission remains pending. No other native
+or package SQL path is admitted beyond these six paths and the existing
+operations compatibility carrier; TypeScript and documentation remain outside
+this allowance. This is vocabulary debt, not provider activation or portable-contract parity;
 future neutral replacements must lower it. The [neutrality owner](../../CONTRIBUTING.md#package-policy-and-release-checks)
 owns the ratchet. Its `reviewedPinnedIntroductions` allowance is a closed list of
-exactly 13 paths (six fixture/rail pairs and the registry), grouping the two
-dunning categories per path. Each SQL pin requires the complete file's SHA-256
+16 paths and 20 tuples: six managed fixture/rail pairs and the registry
+(13 paths/15 tuples), the operations package SQL carrier (one path/tuple), and
+R1's native slot and mirror (two paths/four tuples). Each SQL pin requires the complete file's SHA-256
 and exact category and before/after counts, on any base. The registry instead
 pins the exact refund COMMENT text because later approvals edit unrelated
 registry data; extra counted vocabulary still refuses. The allowance filters
 measured-base increases and parent-baseline raises, including regeneration;
 candidate counts must still fit the baseline. Changed bytes, another path even
 with the same digest, another category or count, and unrelated increases refuse.
-No native rail, TypeScript, package or documentation path can enter this list.
+Other native or package SQL paths, TypeScript and documentation cannot enter this list.
 Adding any further entry is a control change reviewed under the
 [native review floors](../../CONTRIBUTING.md#native-review-and-accountability). The six rail-path entries can be retired after
 the F17 PR lands and the base carries the counts.
