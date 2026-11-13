@@ -765,9 +765,10 @@ From this application directory, with the selected package set installed, run
 `./lifecycle browser`. It reads the selections from `browser-groups.mjs`. Each
 group gets a fresh pair of throwaway PostgreSQL 16 databases with the public
 qualified installation and owned demo catalogue, plus two restricted hosts.
-The eleven named groups are subscription care, portal, recovery extension, operator
-operations, returns portal, payment guidance, shipment operations, account
-preferences, payment retry, embedded browser and billing profiles, followed by the remainder. They run every test selected by `playwright.database.config.ts` once,
+The seven groups are subscription care; portal; recovery extension; combined
+operator operations, returns portal and shipment operations; combined payment
+guidance, account preferences, embedded browser and billing profiles; payment
+retry; and the remainder. They run every test selected by `playwright.database.config.ts` once,
 with one worker. The command
 creates both the UI-origin file and the private
 `.context/care-browser/fixtures.json` required only by the database subscription
@@ -862,8 +863,8 @@ browser/acquisition.spec.ts --grep 'portal '`, or include them in the complete
 PostgreSQL with one worker and traces, screenshots and video off. No production,
 provider or release activation is included.
 
-The complete browser recipe uses separate throwaway installations for subscription
-care, the account/checkout/parcel portal and the purchase baseline. Each selected
+The complete browser recipe uses separate throwaway installations for each of the
+seven shared selections described above. Each selected
 journey runs once with one worker. This keeps each group within the unchanged
 per-process checkout quotas; it neither increases limits nor bypasses admission.
 Policy values live beside the existing owned acquisition policy, so replacing the

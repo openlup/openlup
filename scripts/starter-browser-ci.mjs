@@ -160,6 +160,21 @@ async function freePort() {
   return port;
 }
 
+// Preserve later test diagnostics, but do not repeat a failed infrastructure setup.
+export async function runBrowserGroups(runGroup, currentPhase) {
+  let failure;
+  for (const [index, selection] of browserJourneyGroups.entries()) {
+    try { await runGroup(index, selection); }
+    catch (error) {
+      const phase = currentPhase();
+      console.error(`Starter browser group ${index + 1} failed during ${phase}`);
+      if (phase !== 'journeys') throw error;
+      failure ??= error;
+    }
+  }
+  if (failure) throw failure;
+}
+
 export async function runStarterBrowser(options) {
   const started = performance.now(), outputs = [], privateValues = [];
   let phase = 'inputs';
@@ -232,10 +247,8 @@ export async function runStarterBrowser(options) {
       const { applyDemoSeed, demonstrationMarker } = await import(pathToFileURL(join(app, 'installation/install.ts')).href);
       const { selectConfiguration } = await import(pathToFileURL(join(app, 'owned/store.config.ts')).href);
       await mkdir(join(app, '.context'), { mode: 0o700 });
-      const groupFailures = [];
-      for (const [groupIndex, selection] of browserJourneyGroups.entries()) {
-        try {
-          await withCleanup(async defer => {
+      await runBrowserGroups((groupIndex, selection) =>
+          withCleanup(async defer => {
             const suffix = randomBytes(6).toString('hex'), hosts = [];
             for (const configuration of ['supplements', 'coffee']) {
               phase = `postgres_${configuration}`;
@@ -325,13 +338,7 @@ export async function runStarterBrowser(options) {
             const counts = output.match(/\b\d+ (?:passed|skipped|failed|did not run)\b/gu) ?? [];
             if (!counts.some(count => count.endsWith(' passed'))) throw new Error('starter_browser_results_missing');
             console.log(`Starter database journeys: ${counts.join(', ')}; group ${groupIndex + 1}`);
-          });
-        } catch (error) {
-          if (cancellation.signal.aborted) throw error;
-          groupFailures.push(error);
-        }
-      }
-      if (groupFailures.length) throw groupFailures[0];
+          }), () => cancellation.signal.aborted ? 'cancelled' : phase);
 
     });
   } catch (error) {

@@ -785,10 +785,11 @@ provider access, publication or deployment qualification.
 ## Account, checkout and parcel candidate
 
 Run `./lifecycle browser` from the application directory for the complete database
-configuration. It creates a fresh installation pair for each of the eleven named groups
-in `browser-groups.mjs`: subscription care, portal, recovery extension, operator
-operations, returns portal, payment guidance, shipment operations, account
-preferences, payment retry, embedded browser and billing profiles, followed by the remainder. Tests use
+configuration. It creates a fresh installation pair for each of the seven groups
+in `browser-groups.mjs`: subscription care; portal; recovery extension; combined
+operator operations, returns portal and shipment operations; combined payment
+guidance, account preferences, embedded browser and billing profiles; payment
+retry; and the remainder. Tests use
 one worker and tracing, screenshots and video off. Independent processes and
 installations keep each group inside the normal checkout quota; production quota
 values and admission paths are unchanged. Focus the portal with `./lifecycle
@@ -1085,7 +1086,7 @@ and the then-current 68 declared / 64 bound operation census.
 
 ## Billing and shared capture activation
 
-The billing group covers browser profile creation, editing and deletion; owned
+The billing journeys cover browser profile creation, editing and deletion; owned
 redacted default hints; invalid and forged input; foreign update refusal and
 zero-row delete acknowledgement; separate default/write/event commits and repeated
 keys without deduplication. Sandbox payment creates the first owed duty with an
@@ -1102,8 +1103,51 @@ order and an active subscription with attached renewal terms; damaged acquisitio
 terms refuse before any capture observation. The browser-safe owned display module
 contains the three measured embedded-browser hints, which confer no authority.
 
-The final shared selection inventory contains 408 cases partitioned as
-62/56/52/12/12/12/16/16/44/8/16/102, including billing profiles before the
-remainder. Playwright listing confirms every case is selected exactly once and
-there are no duplicates. Each group still receives a fresh installation pair,
+The shared selection inventory contains 408 cases partitioned as
+62/56/52/40/52/44/102 across the seven groups. Playwright listing confirms every
+case is selected exactly once and there are no duplicates. Each group still receives a fresh installation pair,
 one worker, zero retries and captures off.
+
+Counts below include both languages. Cases include both configurations; checkout
+counts are per configuration, whose hosts have independent requester counters.
+Original and replacement checkouts together bound even a run that completes
+entirely within the unchanged 180-second window, at most 36 per requester.
+Replayed commands and payment attempts do not create another checkout.
+
+| Selection, in execution order | Cases | Original checkouts per configuration | Replacement checkouts per configuration | Total checkouts per configuration |
+| --- | ---: | ---: | ---: | ---: |
+| Subscription care | 62 | 34 | 0 | 34 |
+| Portal | 56 | 36 | 0 | 36 |
+| Recovery extension | 52 | 26 | 10 | 36 |
+| Operator operations, returns portal, shipment operations | 40 | 30 | 0 | 30 |
+| Payment guidance, account preferences, embedded browser, billing profiles | 52 | 28 | 4 | 32 |
+| Payment retry | 44 | 30 | 6 | 36 |
+| Remainder | 102 | 2 | 0 | 2 |
+
+The combined counts follow the definitions in
+[`acquisition.spec.ts`](../browser/acquisition.spec.ts), in source order within
+each named family. Per language, operator operations creates 1/3/1 originals,
+returns portal 2/1/1, and shipment operations 2/2/1/1: twice (5 + 4 + 6) gives
+30 per configuration. Payment guidance creates 1/2/2 originals, account
+preferences 0/1/1/1, embedded browser 1/1, and billing profiles 1/2/0/1 plus
+1/1/0/0 replacements: twice (5 + 3 + 2 + 4 + 2) gives 32. Billing CRUD
+creates accounts without checkouts. The payment-retry total conservatively
+includes the two originals created on its separate restart-proof hosts.
+
+Later patterns still take precedence: the combined operations selection follows
+`portal ` so its `returns portal ` titles are excluded from the broader group.
+The generated full-title Playwright inventory selects all 408 identities once.
+The required runner retains complete migrations and replay, repeated seed,
+restricted runtime-role checks and both hosts per group. A setup failure stops
+before acquiring another group and reports its group number and phase. A failure
+after Playwright starts retains later groups' diagnostics. Cleanup and the private
+output scan still run on either path. The job deadline remains 35 minutes pending
+a new hosted measurement.
+
+Local Docker verification of the two combined selections passed 40/40 and 52/52
+cases in both configurations, with one worker, zero retries and no quota refusal.
+Including setup and cleanup, the selections took 80.240 and 75.471 seconds,
+respectively. Both outputs passed the unchanged private-output scan. Starter
+units passed 336/336; the required-runner witnesses passed 43/43 with CI enabled
+and global Git configuration disabled. These local timings do not measure the
+hosted job's total duration.

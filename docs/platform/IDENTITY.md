@@ -1,7 +1,7 @@
 # Identity import
 
-Status: development preview, local import candidate. These entries have not been
-published or activated as an adopter contract.
+Status: development preview. These entries ship in the published `@openlup/platform`
+package as an experimental capability, not a stable adopter contract.
 Audience: contributors reviewing the identity boundary and applications composing
 its factories. The owner is the identity module within `@openlup/platform`.
 
