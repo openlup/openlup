@@ -145,4 +145,15 @@ describe("reader shell semantics and diagnostics", () => {
     expect(await main(["--advisory", "--page", file, "--registry", "--packages", path, "--database-url", "unused"])).toBe(1);
     expect(await main(["--advisory", "--advisory", "--page", file, "--registry", "--database-url", "unused"])).toBe(1);
   });
+  it("keeps the exit code when the step summary cannot be written", async () => {
+    const path = directory(), file = join(path, "page.md");
+    vi.stubEnv("GITHUB_STEP_SUMMARY", join(path, "missing", "summary.md"));
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    writeFileSync(file, page("false"));
+    expect(await main(["--advisory", "--page", file, "--registry", "--database-url", "unused"])).toBe(0);
+    writeFileSync(file, page("true"));
+    expect(await main(["--page", file, "--registry", "--database-url", "unused"])).toBe(0);
+    expect(error).toHaveBeenCalledWith(expect.stringContaining("step summary not written"));
+  });
 });

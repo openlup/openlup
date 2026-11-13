@@ -20,6 +20,8 @@ import { pathToFileURL } from "node:url";
 import { isolatedConsumerEnv, readPackManifest } from "./pack-manifest-input.ts";
 
 export const DATABASE_VARIABLE = "OPENLUP_TUTORIAL_DATABASE_URL";
+// A fixed interpreter: the reader's PATH is passed to the steps, never used to find the shell.
+const BASH = "/bin/bash";
 export type TutorialStep = { command: string; expected: string[] };
 export type Candidate = { version: string; tarballs: Record<string, string> };
 
@@ -101,7 +103,7 @@ export async function runTutorial(options: TutorialOptions): Promise<StepOutput[
     if (readdirSync(work).length) throw new Error("tutorial: --work must be an empty directory");
     if (options.packages) {
       const candidate = readCandidate(options.packages);
-      const realNpm = execFileSync("bash", ["-c", "command -v npm"], { env: environment, encoding: "utf8" }).trim();
+      const realNpm = execFileSync(BASH, ["-c", "command -v npm"], { env: environment, encoding: "utf8" }).trim();
       const config = join(temporary, "candidate.json");
       writeFileSync(config, JSON.stringify({ candidate, realNpm }));
       const shim = join(temporary, "npm.mjs");
@@ -132,7 +134,7 @@ try {
       return `printf 'start ${index}\\n' >&3\n{\n${step.command}\n} >${quote(join(temporary, `${index}.stdout`))} 2>${quote(join(temporary, `${index}.stderr`))}\nprintf 'done ${index}\\n' >&3\n`;
     });
     await new Promise<void>((fulfill, reject) => {
-      const child = spawn("bash", ["-euo", "pipefail"], { cwd: work, env: environment, detached: true, stdio: ["pipe", "ignore", "pipe", "pipe"] });
+      const child = spawn(BASH, ["-euo", "pipefail"], { cwd: work, env: environment, detached: true, stdio: ["pipe", "ignore", "pipe", "pipe"] });
       const input = child.stdin!;
       let active = 0, completed = 0, control = "", shellError = "", failure: string | undefined;
       let stepTimer: ReturnType<typeof setTimeout> | undefined;
@@ -226,7 +228,10 @@ export async function main(args: string[]): Promise<number> {
     return 0;
   }
   finally {
-    if (processEnvironment.GITHUB_STEP_SUMMARY) appendFileSync(processEnvironment.GITHUB_STEP_SUMMARY, `### Guide tutorial: ${success ? "PASS" : "FAIL"}\n\nMode: ${args.includes("--registry") ? "registry" : "packed candidate"}${advisory ? ", advisory (non-blocking)" : ""}. Steps: ${count}. Wall time: ${((performance.now() - started) / 1000).toFixed(2)}s.\n`);
+    // The summary is a diagnostic; failing to write it never changes the exit code.
+    try {
+      if (processEnvironment.GITHUB_STEP_SUMMARY) appendFileSync(processEnvironment.GITHUB_STEP_SUMMARY, `### Guide tutorial: ${success ? "PASS" : "FAIL"}\n\nMode: ${args.includes("--registry") ? "registry" : "packed candidate"}${advisory ? ", advisory (non-blocking)" : ""}. Steps: ${count}. Wall time: ${((performance.now() - started) / 1000).toFixed(2)}s.\n`);
+    } catch (error) { console.error(`tutorial: step summary not written: ${(error as Error).message}`); }
   }
 }
 
