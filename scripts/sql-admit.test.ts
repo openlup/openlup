@@ -63,17 +63,6 @@ function repositorySnapshot(f: Fixture, files: string[]) {
   };
 }
 
-function workingTreeCli(f: Fixture, base: string, files: string[]) {
-  const before = repositorySnapshot(f, files);
-  const scratch = mkdtempSync(join(tmpdir(), "openlup-sql-admit-tmp-")); roots.push(scratch);
-  const result = cli(f.root, ["--base", base, STALE], { TMPDIR: scratch });
-  expect(repositorySnapshot(f, files)).toEqual(before);
-  expect(readdirSync(scratch)).toEqual([]);
-  expect(result.stderr).toBe("");
-  expect(result.stdout).toContain("(working tree)");
-  return result;
-}
-
 // The underlying checks, called directly on the same commits: the self-check on main and the PR merge commit,
 // then, when the queue's trigger applies, its guard on the PR's own fork point and on the merge-group head.
 function directVerdicts(f: Fixture, base: string, head: string) {
@@ -176,55 +165,35 @@ describe("sql:admit", () => {
     expect(allowed.stdout).toContain(`WARNING  admission code differs from ${moved} in scripts/platform-migration-manifest.ts;`);
   }, 21_000);
 
-  // Measured 2.7 s on a laptop at load average 5; the bound is four times that.
-  it("checks the working tree and leaves refs, the index, the worktree and object content unchanged", () => {
-    const f = fixture();
-    stageNativeForward(f);
-    f.git("add", REVIEWED_FORWARD_PATH); // staged registry, unstaged manifest, untracked forward
-    f.put("ignored.log", "ignored\n"); f.put(".gitignore", "*.log\n");
-    const result = workingTreeCli(f, f.base, [REVIEWED_FORWARD_PATH, PLATFORM_MIGRATION_MANIFEST, nativePath, ".gitignore", "ignored.log"]);
-    expect(result.status).toBe(0);
-    expect(result.stdout).toContain(`PASS     ${nativePath} [self-check forward admission]`);
-    expect(result.stdout).toContain("PASS     co-located approval [queue pull request, fork..head]");
-  }, 11_000);
-
-  it.each(["add", "intent-to-add", "rename"].flatMap((staging) => [
-    { staging, text: "DROP TABLE public.fixture;\n", exit: 1 },
-    { staging, text: "CREATE TABLE public.fixture (id uuid);\n", exit: 0 },
-  ]))("matches committed and direct verdicts for a new forward via $staging (exit $exit)", ({ staging, text, exit }) => {
-    const f = fixture(), source = "source.sql", path = "supabase/migrations/20271106100000_drop.sql";
-    f.put(source, text); const base = f.commit();
-    if (staging === "rename") f.git("mv", source, path);
-    else {
-      f.put(path, text);
-      f.git("add", ...(staging === "intent-to-add" ? ["-N"] : []), path);
+  it("refuses uncommitted new forwards until committed, unless --head is explicit", () => {
+    const f = fixture(), path = "supabase/migrations/20271106100000_drop.sql";
+    const scratch = mkdtempSync(join(tmpdir(), "openlup-sql-admit-tmp-")); roots.push(scratch);
+    f.put(path, "DROP TABLE public.fixture;\n");
+    for (const state of ["untracked", "staged"]) {
+      if (state === "staged") f.git("add", path);
+      const before = repositorySnapshot(f, [path]);
+      const result = cli(f.root, ["--base", f.base], { TMPDIR: scratch });
+      expect(result.status, state).toBe(2);
+      expect(result.stderr).toBe("not checked: uncommitted changes; commit first (a local commit can be amended), or pass --head <rev>\n");
+      expect(result.stdout).toBe("");
+      expect(repositorySnapshot(f, [path])).toEqual(before);
+      expect(readdirSync(scratch)).toEqual([]);
     }
-    const working = workingTreeCli(f, base, [source, path]);
-    expect(working.status).toBe(exit);
-    const head = f.commit(), committed = cli(f.root, ["--base", base, "--head", head, STALE]);
-    expect(committed.stderr).toBe(""); expect(committed.status).toBe(exit);
-    expect(verdictLines(working.stdout)).toEqual(verdictLines(committed.stdout));
-    expect(verdictLines(working.stdout)).toEqual(directVerdicts(f, base, head).verdicts);
-  }, 20_000);
-
-  it.each(["staged", "index-only", "worktree", "new-then-missing"])("omits a %s deletion from the working-tree snapshot", (deletion) => {
-    const f = fixture(), path = "supabase/migrations/20271106100000_fixture.sql";
-    f.put(path, "CREATE TABLE public.fixture (id uuid);\n");
-    let base = f.base;
-    if (deletion === "new-then-missing") f.git("add", path);
-    else base = f.commit();
-    if (deletion === "staged") f.git("rm", path);
-    else if (deletion === "index-only") f.git("rm", "--cached", path);
-    else rmSync(join(f.root, path));
-    const working = workingTreeCli(f, base, [path]);
-    expect(working.status).toBe(deletion === "new-then-missing" ? 0 : 1);
-    if (deletion !== "index-only") f.git("add", "--all");
-    const head = f.git("commit-tree", f.git("write-tree"), "-p", base, "-m", "Identical deletion tree");
-    const committed = cli(f.root, ["--base", base, "--head", head, STALE]);
-    expect(committed.stderr).toBe(""); expect(committed.status).toBe(working.status);
-    expect(verdictLines(working.stdout)).toEqual(verdictLines(committed.stdout));
-    if (deletion === "index-only") rmSync(join(f.root, path));
-    expect(verdictLines(working.stdout)).toEqual(directVerdicts(f, base, head).verdicts);
+    // An explicit revision also works from the Git directory, where status would fail.
+    const beforeExplicit = repositorySnapshot(f, [path]);
+    const explicit = cli(join(f.root, ".git"), ["--base", f.base, "--head", f.base, STALE], { TMPDIR: scratch });
+    expect(explicit.stderr).toBe(""); expect(explicit.status).toBe(0);
+    expect(explicit.stdout).toContain("PASS");
+    expect(repositorySnapshot(f, [path])).toEqual(beforeExplicit);
+    expect(readdirSync(scratch)).toEqual([]);
+    const head = f.commit(), beforeCommitted = repositorySnapshot(f, [path]);
+    const committed = cli(f.root, ["--base", f.base, STALE], { TMPDIR: scratch });
+    expect(committed.stderr).toBe(""); expect(committed.status).toBe(1);
+    expect(committed.stdout).toContain(`head ${head} (HEAD)`);
+    expect(committed.stdout).toContain(`REFUSED  ${path} [self-check forward admission]`);
+    expect(repositorySnapshot(f, [path])).toEqual(beforeCommitted);
+    expect(readdirSync(scratch)).toEqual([]);
+    expect(verdictLines(committed.stdout)).toEqual(directVerdicts(f, f.base, head).verdicts);
   }, 20_000);
 
   it("refuses usage errors, Git errors and a head that does not merge into the base with exit code 2", () => {

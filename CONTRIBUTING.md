@@ -1088,18 +1088,19 @@ Before pushing a SQL, migration or registry change, run `npm run sql:admit` afte
 `git fetch origin`. It dry-runs the hosted admission locally: the self-check's
 forward admission and append-only history on `origin/main` and a temporary pull-request
 merge, and the queue's co-located approval guard on the fork point and on that merge.
-It checks the working tree, or `--head <rev>` against `--base <rev>`, and prints PASS or
-REFUSED per added forward and check with a capability hint. Object content, refs, index
-and worktree stay unchanged, but Git may refresh existing objects' timestamps.
-Working-tree mode uses a closed Git environment, so local autocrlf, fileMode, filters
-or sparse settings can cause a false REFUSED, never a false PASS; if in doubt, commit
-and use `--head`. Hosted CI judges with the merge commit's admission code and the queue
+It checks committed revisions only: `--head <rev>` defaults to `HEAD`, against
+`--base <rev>` (default `origin/main`). Commit first; a local commit can be amended.
+Without an explicit `--head`, any uncommitted change exits 2 with a "not checked"
+message and no PASS. With explicit `--head`, only that commit is checked.
+The command prints PASS or REFUSED per added forward and check with a capability
+hint. Object content, refs, index and worktree stay unchanged, but Git may refresh
+existing objects' timestamps. Every Git call uses a closed environment.
+Hosted CI judges with the merge commit's admission code and the queue
 with main's, so the command exits 2 when the code it loads differs from the base; merge
 `origin/main` first, or pass `--allow-stale-rules` to run it with a warning. A PASS does
 not cover `npm run oss:published-tree -- --policy` and `-- --inventory`, the neutrality
 ratchet, the root test suite (including the real-PostgreSQL native catalogue test) or
-pgTAP. Hosted CI and the merge queue
-remain authoritative.
+pgTAP. Hosted CI and the merge queue remain authoritative.
 
 Against the same base, `--policy` refuses a change that removes or changes a
 line of a publishable package's API snapshot (`release-gates.json`

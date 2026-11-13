@@ -3,26 +3,27 @@
 // queue remain authoritative; this command only shows a refusal before a push.
 //
 // The checks read Git objects only. A throwaway bare repository borrows this repository's objects
-// through `objects/info/alternates` and keeps every object and index entry this command writes: the
-// working-tree commit and the pull-request merge commit. This repository's object content, refs,
+// through `objects/info/alternates` and holds the pull-request merge objects this command writes.
+// This repository's object content, refs,
 // index and worktree stay unchanged, but Git may refresh existing objects' timestamps.
-// Every Git call on the throwaway repository runs through the self-check's
+// Every Git call runs through the self-check's
 // helper, whose closed environment drops inherited repository, index and object redirections.
 
-import { existsSync, lstatSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { needsForwardApproval } from "./agent-review-queue.mjs";
-import { captureCommittedReviewCandidate, git as reviewGit } from "./agent-review-session.mjs";
+import { captureCommittedReviewCandidate } from "./agent-review-session.mjs";
 import { documentationGit } from "./documentation-git.ts";
 import { assertAppendOnlyMigrationHistory } from "./oss-published-tree-check.ts";
 import { assertAdmittedPlatformForward } from "./oss-source-release-contract.ts";
 import { assertCoLocatedForwardApproval } from "./reviewed-platform-forward.ts";
 
 export const SQL_ADMIT_USAGE = "usage: npm run sql:admit -- [--base <rev>] [--head <rev>] [--allow-stale-rules]\n"
+  + "Checks committed revisions only; commit first; a local commit can be amended.\n"
   + "  --base               comparison base; default: the fetched origin/main (run git fetch origin first)\n"
-  + "  --head               candidate commit; default: the working tree, including untracked files that are not ignored\n"
+  + "  --head               candidate commit; default: HEAD (refuses uncommitted changes unless --head is explicit)\n"
   + "  --allow-stale-rules  run even when this checkout's admission code differs from the base; prints a warning";
 const RAILS = ["db/platform/migrations/", "supabase/migrations/"];
 const DOCS = "docs/platform/DATA_AND_MIGRATIONS.md";
@@ -116,33 +117,12 @@ function parseArguments(argv: readonly string[]): Options | "help" {
   return { base: options.get("--base") ?? "origin/main", head: options.get("--head"), allowStaleRules: options.has("--allow-stale-rules") };
 }
 
-/** Builds the head and the pull-request merge commit in a throwaway object store, as hosted CI checks out the merge. */
-async function prepareRange(cwd: string, scratch: string, base: string, options: Options): Promise<Range & { headLabel: string }> {
+/** Builds the pull-request merge commit in a throwaway object store, as hosted CI checks out the merge. */
+function prepareRange(cwd: string, scratch: string, base: string, head: string): Range {
   const objects = resolve(cwd, git(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]), "objects");
   const root = join(scratch, "repository.git");
   git(scratch, ["init", "--bare", "--quiet", root]);
   writeFileSync(join(root, "objects", "info", "alternates"), `${objects}\n`);
-  let head: string;
-  if (options.head !== undefined) head = commit(cwd, options.head);
-  else {
-    if (git(cwd, ["rev-parse", "--is-inside-work-tree"]) !== "true") throw new GitFailure("the working-tree mode needs a worktree; pass --head <rev>");
-    const top = git(cwd, ["rev-parse", "--show-toplevel"]), parent = commit(cwd, "HEAD");
-    // Untracked files exactly as the developer's own Git lists them, with every ignore source it reads.
-    // This read-only listing is the only call outside the closed environment; it never touches the throwaway store.
-    const untracked = (await reviewGit(top, "ls-files", "--others", "--exclude-standard", "-z")).split("\0").filter(Boolean);
-    // Disable renames and expose intent-to-add so every index-only destination is included.
-    const stagedPaths = (filter: string) => gitBytes(top, ["diff", "--cached", "--ita-visible-in-index", "--no-renames", "--name-only", "-z", `--diff-filter=${filter}`, parent]).toString("utf8").split("\0").filter(Boolean);
-    const deleted = new Set(stagedPaths("D"));
-    const added = [...stagedPaths("A"), ...untracked].filter((path) => !deleted.has(path) && lstatSync(join(top, path), { throwIfNoEntry: false }) !== undefined);
-    // The throwaway repository holds this index and its objects; the worktree is only read.
-    const scoped = ["-c", "core.hooksPath=/dev/null", `--git-dir=${root}`, `--work-tree=${top}`];
-    git(top, [...scoped, "read-tree", parent]);
-    git(top, [...scoped, "add", "--update"]);
-    if (added.length > 0) git(top, ["--literal-pathspecs", ...scoped, "add", "--force", "--pathspec-from-file=-", "--pathspec-file-nul"], `${added.join("\0")}\0`);
-    if (deleted.size > 0) git(top, [...scoped, "update-index", "--force-remove", "-z", "--stdin"], `${[...deleted].join("\0")}\0`);
-    const tree = git(top, [...scoped, "write-tree"]);
-    head = git(root, [...IDENTITY, "commit-tree", "--no-gpg-sign", tree, "-p", parent, "-m", "sql:admit working tree"]);
-  }
   const forks = git(root, ["merge-base", "--all", base, head]).split("\n").filter(Boolean);
   if (forks.length !== 1) throw new GitFailure("head must have a single fork point with base");
   let tree: string;
@@ -155,7 +135,7 @@ async function prepareRange(cwd: string, scratch: string, base: string, options:
   const merge = git(root, [...IDENTITY, "commit-tree", "--no-gpg-sign", tree, "-p", base, "-p", head, "-m", "sql:admit pull-request merge"]);
   // The self-check reads its head from the checkout; only the throwaway repository's HEAD moves.
   git(root, ["update-ref", "--no-deref", "HEAD", merge]);
-  return { root, base, head, fork: forks[0]!, merge, headLabel: options.head ?? "working tree" };
+  return { root, base, head, fork: forks[0]!, merge };
 }
 
 /** Runs each hosted check in the mode the self-check and the queue use for a pull request. */
@@ -188,8 +168,14 @@ export async function sqlAdmit(cwd: string, argv: readonly string[], log: (line:
   try { options = parseArguments(argv); }
   catch (error) { fail(`sql:admit: ${(error as Error).message}\n${SQL_ADMIT_USAGE}`); return 2; }
   if (options === "help") { log(SQL_ADMIT_USAGE); return 0; }
-  let base: string, stale: string[];
-  try { base = commit(cwd, options.base); stale = staleRuleFiles(cwd, base); }
+  let base: string, head: string, stale: string[];
+  try {
+    if (options.head === undefined && git(cwd, ["status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignore-submodules=none"]) !== "") {
+      fail("not checked: uncommitted changes; commit first (a local commit can be amended), or pass --head <rev>");
+      return 2;
+    }
+    base = commit(cwd, options.base); head = commit(cwd, options.head ?? "HEAD"); stale = staleRuleFiles(cwd, base);
+  }
   catch (error) { fail(`sql:admit: ${(error as Error).message}`); return 2; }
   if (stale.length > 0 && !options.allowStaleRules) {
     fail(`sql:admit: the admission code this checkout runs differs from ${options.base} in ${stale.join(", ")}; hosted CI and the queue would judge with the base's code. Merge ${options.base} first, or pass --allow-stale-rules to run anyway.`);
@@ -200,10 +186,10 @@ export async function sqlAdmit(cwd: string, argv: readonly string[], log: (line:
   const interrupted = (signal: NodeJS.Signals) => { cleanup(); process.exit(signal === "SIGINT" ? 130 : 143); };
   process.once("SIGINT", interrupted).once("SIGTERM", interrupted);
   try {
-    let range: Awaited<ReturnType<typeof prepareRange>>;
-    try { range = await prepareRange(cwd, scratch, base, options); }
+    let range: Range;
+    try { range = prepareRange(cwd, scratch, base, head); }
     catch (error) { fail(`sql:admit: ${(error as Error).message}`); return 2; }
-    log(`sql:admit: base ${range.base} (${options.base}), head ${range.head} (${range.headLabel}), fork point ${range.fork}`);
+    log(`sql:admit: base ${range.base} (${options.base}), head ${range.head} (${options.head ?? "HEAD"}), fork point ${range.fork}`);
     if (stale.length > 0) log(`WARNING  admission code differs from ${options.base} in ${stale.join(", ")}; hosted CI and the queue may judge differently`);
     const verdicts = await admitSqlRange(range);
     for (const verdict of verdicts) {
