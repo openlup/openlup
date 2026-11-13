@@ -750,7 +750,8 @@ or a newly publishable package), the existing baseline stays and the command
 says so. Never baseline the unreleased candidate itself: that would erase the
 comparison. Otherwise `release:bump` changes only versions, internal pins and
 changelog sections, and removes consumed fragments, staging exactly those
-deletions.
+deletions; a set bump also writes and stages the guide's upgrade page and its
+refreshed guide pages.
 
 **Packed content allowlist.** Legitimate current artifacts include root Markdown,
 `LICENSE`, `package.json`, `release-gates.json`, Markdown under `docs/` and `api/`,
@@ -807,8 +808,9 @@ A release takes three steps:
    path under a new `## [<version>]` heading and its "Publishable" line. It leaves
    an empty Unreleased, preserves history byte-for-byte, validates and plans all
    packages before writes, and deletes only consumed fragments after successful
-   writes, then stages exactly those fragment deletions before source preparation
-   reads the Git inventory. It stages no other changes. Nonempty ordinary
+   writes, then stages exactly those fragment deletions, the guide's assembled
+   upgrade page and the guide pages it re-pins before source preparation reads
+   the Git inventory. It stages no other changes. Nonempty ordinary
    Markdown, optional `###` headings, `Migration:` and
    size-growth lines are accepted; `#`/`##` headings, conflict markers, nested
    directories, links and executable modes refuse. Fragments are excluded from
