@@ -543,12 +543,25 @@ describe("reader guide contract", { timeout: 60_000 }, () => {
     `http://github.com/openlup/openlup/blob/${tag}/README.md`,
     `https://www.github.com/openlup/openlup/blob/${tag}/README.md`,
     `https://github.com/openlup/openlup/tree/${tag}/README.md`,
+    `https://github.com/openlup/openlup/raw/main/README.md`,
+    `https://github.com/openlup/openlup/blame/main/README.md`,
+    `//github.com/openlup/openlup/blob/main/README.md`,
+    `https://github.com/openlup/openlup/commits/main`,
   ])("refuses non-canonical repository URL %s in Markdown and HTML without rewriting it", (url) => {
     for (const link of [`[README](${url})`, `<a href="${url}">README</a>`]) {
       const roots = guideFixture(`# Guide\n\n${link}\n`);
       for (const write of [false, true]) expect(() => checkGuide(roots, write)).toThrow(`use https://github.com/openlup/openlup/blob/${tag}/<path>`);
       expect(readFileSync(join(roots.core, "docs/guide/README.md"), "utf8")).toContain(url);
     }
+  });
+
+  it.each([
+    "https://github.com/openlup/openlup",
+    "https://github.com/openlup/openlup/issues",
+    "https://github.com/openlup/openlup/issues/new?template=documentation_problem.yml",
+  ])("admits the repository and its issue tracker %s", (url) => {
+    const roots = guideFixture(`# Guide\n\n[Repository](${url})\n`);
+    expect(() => checkGuide(roots)).not.toThrow();
   });
 
   it.each(['"', "'", ""])("checks HTML href local targets and release tags with delimiter %s", (quote) => {
@@ -910,10 +923,16 @@ describe("generated reference regions", () => {
     expect(body).toContain("<code></code>");
   });
 
-  it("leaves tuple element unions and unexported constants open", () => {
+  it("leaves tuple element unions open and resolves constants the report declares without exporting", () => {
     const fixture = referenceFixture();
-    fixture.report("core", "tuple-open", 'export declare const UNION: readonly ["a" | "b"];\nexport type UnionCode = typeof UNION[number];\ndeclare const PRIVATE: readonly ["a"];\nexport type PrivateCode = typeof PRIVATE[number];');
-    expect(listOpenRefusalTypes(fixture.repository).map(({ typeName }) => typeName)).toEqual(["PrivateCode", "UnionCode"]);
+    fixture.report("core", "tuple-open", 'export declare const UNION: readonly ["a" | "b"];\nexport type UnionCode = typeof UNION[number];\ndeclare const PRIVATE: readonly ["private_a", "private_b"];\nexport type PrivateCode = typeof PRIVATE[number];');
+    expect(listOpenRefusalTypes(fixture.repository).map(({ typeName }) => typeName)).toEqual(["UnionCode"]);
+    const body = renderGeneratedRegion("refusal-codes", fixture.repository)!;
+    expect(body).toContain("`PrivateCode`");
+    expect(body).toContain("`private_a`, `private_b`");
+    const violations: string[] = [];
+    assertRefusalCodeReachability(body.replace("`private_b`", "`other`"), fixture.repository, violations);
+    expect(violations.join("\n")).toContain("private_b");
   });
 
   it("lists open intersections, objects, references, nonliteral tuples and missing constants with reasons", () => {
@@ -990,6 +1009,8 @@ describe("generated reference regions", () => {
   });
 
   const repositoryRoot = resolve(packageRoot, "../..");
+  // These parse every published API report; coverage instrumentation makes that slow on hosted runners.
+  const realRepositoryTimeout = 120_000;
   it.each(referenceRegions)("renders %s against the real repository without throwing", (name) => {
     const body = renderGeneratedRegion(name, repositoryRoot)!;
     expect(body).toBeTypeOf("string");
@@ -1001,14 +1022,14 @@ describe("generated reference regions", () => {
     const violations: string[] = [];
     assertGuideContract(fixture.core, repositoryRoot, false, violations);
     expect(violations).toEqual([]);
-  });
+  }, realRepositoryTimeout);
 
   it("omits provider-specific package-read configuration keys in the real repository", () => {
     const body = renderGeneratedRegion("configuration-keys", repositoryRoot)!;
     const names = [...body.matchAll(/^\| `([^`]+)`/gm)].map((match) => match[1]);
     expect(providerSpecificKeys(repositoryRoot, names).size).toBe(0);
     expect(Number(/(\d+) package-read keys omitted/.exec(body)?.[1])).toBeGreaterThan(0);
-  });
+  }, realRepositoryTimeout);
 
   it.each(["exports", "maturity"])("renders real %s subpaths without scanner-counted vocabulary", (kind) => {
     for (const pkg of ["core", "outbox", "platform"]) {
@@ -1016,7 +1037,7 @@ describe("generated reference regions", () => {
       expect(providerSpecificKeys(repositoryRoot, [body]).size).toBe(0);
       if (pkg === "platform") expect(body).toMatch(/[1-9]\d* subpaths omitted because their names are provider-specific/);
     }
-  });
+  }, realRepositoryTimeout);
 
   it("shows exactly the real open inventory and every reachable closed code", () => {
     const open = listOpenRefusalTypes(repositoryRoot);
@@ -1031,5 +1052,6 @@ describe("generated reference regions", () => {
     const violations: string[] = [];
     assertRefusalCodeReachability(renderGeneratedRegion("refusal-codes", repositoryRoot)!, repositoryRoot, violations);
     expect(violations).toEqual([]);
-  });
+    expect(open.map(({ typeName }) => typeName)).not.toContain("PrivacyRefusalCode");
+  }, realRepositoryTimeout);
 });

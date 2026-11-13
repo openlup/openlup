@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { createRequire } from "node:module";
@@ -468,8 +469,12 @@ function assertGuideLinks(guideRoot: string, file: string, label: string, source
     }
   }
   const canonical = `${repositoryUrl}/blob/${tag}/<path>`;
-  for (const [url] of source.matchAll(/https?:\/\/(?:www\.github\.com|raw\.githubusercontent\.com|github\.com)\/openlup\/openlup(?=\/|$|[\s)>"'`])[^\s)>"'`]*/gi)) {
-    if (!url.startsWith(`${repositoryUrl}/`) || url.startsWith(`${repositoryUrl}/tree/`)) {
+  // Every link into the repository, with or without a scheme, is either a file at the release tag
+  // (checked below), the repository itself or its issue tracker; raw, blame, tree, branch and
+  // protocol-relative forms would bypass the release-tag and path checks.
+  for (const [url] of source.matchAll(/(?:https?:)?\/\/(?:www\.github\.com|raw\.githubusercontent\.com|github\.com)\/openlup\/openlup(?=\/|$|[\s)>"'`?#])[^\s)>"'`]*/gi)) {
+    const rest = url.startsWith(repositoryUrl) ? url.slice(repositoryUrl.length) : undefined;
+    if (rest === undefined || !/^(?:\/?(?:[?#].*)?|\/blob\/.*|\/issues(?:[/?#].*)?)$/.test(rest)) {
       violations.push(`${label}: non-canonical repository link ${url}; use ${canonical}`);
     }
   }
@@ -716,7 +721,28 @@ function classifyRefusal(type: ts.TypeNode, constants: Map<string, ts.TypeNode[]
   return { reason: "definition is not a closed set of string literals" };
 }
 
+// Parsing every API report is the slowest generator; the region, the open list and the
+// reachability check share one parse per unchanged set of report files.
+const refusalTypeCache = new Map<string, RefusalType[]>();
 function collectRefusalTypes(repositoryRoot: string): RefusalType[] {
+  // Keyed by the exact report bytes: reading is cheap next to parsing, and no stale entry survives an edit.
+  const hash = createHash("sha256");
+  for (const packageName of publishedPackages) {
+    const directory = join(repositoryRoot, "packages", packageName, "api");
+    if (!existsSync(directory)) continue;
+    for (const file of readdirSync(directory).filter((file) => file.endsWith(".api.md")).sort()) {
+      hash.update(`${packageName}/${file}\0`).update(readFileSync(join(directory, file))).update("\0");
+    }
+  }
+  const key = hash.digest("hex");
+  const cached = refusalTypeCache.get(key);
+  if (cached) return cached;
+  const result = collectRefusalTypesUncached(repositoryRoot);
+  refusalTypeCache.set(key, result);
+  return result;
+}
+
+function collectRefusalTypesUncached(repositoryRoot: string): RefusalType[] {
   const found: RefusalType[] = [];
   for (const packageName of publishedPackages) {
     const directory = join(repositoryRoot, "packages", packageName, "api");
@@ -727,7 +753,8 @@ function collectRefusalTypes(repositoryRoot: string): RefusalType[] {
         .flatMap((fence, index) => [...ts.createSourceFile(`${report}.${index}.ts`, fence.code, ts.ScriptTarget.Latest, true).statements]);
       const constants = new Map<string, ts.TypeNode[]>();
       for (const statement of statements) {
-        if (!ts.isVariableStatement(statement) || !exported(statement) || !(statement.declarationList.flags & ts.NodeFlags.Const)) continue;
+        // A selected exported alias may index a constant the report declares without exporting it.
+        if (!ts.isVariableStatement(statement) || !(statement.declarationList.flags & ts.NodeFlags.Const)) continue;
         for (const declaration of statement.declarationList.declarations) {
           if (ts.isIdentifier(declaration.name) && declaration.type) {
             constants.set(declaration.name.text, [...constants.get(declaration.name.text) ?? [], declaration.type]);
