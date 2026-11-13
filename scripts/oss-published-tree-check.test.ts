@@ -328,6 +328,7 @@ describe("complete public CI", () => {
       "npm run build:public-reference",
       'echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin',
       'node --experimental-strip-types scripts/packages/required-package-gates.ts --out "$RUNNER_TEMP/package-gates" --expected-commit "$(git rev-parse HEAD)"',
+      'node --experimental-strip-types scripts/packages/guide-tutorial.ts --advisory --page packages/core/docs/guide/start/tutorial.md --packages "$RUNNER_TEMP/package-gates" --database-url "postgresql://postgres@127.0.0.1:$OPENLUP_PROOF_SERVICE_PORT/postgres"',
       "docker rm --force install-proof-postgres",
     ]);
   });
