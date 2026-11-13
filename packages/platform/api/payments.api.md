@@ -1664,6 +1664,7 @@ export type { ExpiredPaymentSafetyOrder } from './expiredCheckoutSafety.js';
 export { normalizeSandboxPaymentRecoveryEvidence } from './sandboxRecoveryGuidance.js';
 export { createPostgresSandboxCheckoutRecoveryAttemptPort } from './sandboxCheckoutRecoveryPay.js';
 export { createPostgresSandboxInlineRecoveryAttemptPort } from "./sandboxInlineRecovery.js";
+export { createPostgresPaymentProviderReconciliationPort } from "./postgresPaymentProviderReconciliation.js";
 ```
 ## dist/payments/paymentMethodLifecycle.d.ts
 
@@ -1783,6 +1784,15 @@ export interface PaymentFailureDunningPort {
  * silence, timeout and every other non-terminal answer are deliberate no-ops.
  */
 export declare function handoffExplicitPaymentRefusal(input: PaymentRefusalHandoff, port: PaymentFailureDunningPort): Promise<void>;
+```
+## dist/payments/postgresPaymentProviderReconciliation.d.ts
+
+```ts
+import type { PaymentProviderExecutor } from "./postgresPreparedAttempt.js";
+import type { InteractivePreparedAttemptManualReconciliationPort } from "./contracts/reconciliation.js";
+import type { PostgresPaymentTruthOptions } from "./contracts/truth.js";
+/** Provider reads run outside SQL; application and evidence commit atomically. */
+export declare function createPostgresPaymentProviderReconciliationPort(db: PaymentProviderExecutor, options: PostgresPaymentTruthOptions): InteractivePreparedAttemptManualReconciliationPort;
 ```
 ## dist/payments/postgresPaymentTruth.d.ts
 
@@ -2156,8 +2166,8 @@ export declare const paymentSchemaDescriptor: {
     readonly laterOnlyCycle: "supported";
     readonly preparedDurableStore: "supported";
     readonly methodSetup: "unsupported";
-    readonly absenceReopen: "unsupported";
-    readonly cumulativeRefund: "unsupported";
+    readonly absenceReopen: "supported";
+    readonly cumulativeRefund: "supported";
 };
 ```
 ## dist/payments/sql.d.ts

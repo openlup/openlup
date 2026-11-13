@@ -1386,6 +1386,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261114120000_payment_reconciliation_refund_evidence.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4551,6 +4555,10 @@
     },
     {
       "path": "packages/platform/sql/20261114100000_payment_provider_attempt_store.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261114120000_payment_reconciliation_refund_evidence.sql",
       "class": "public-output"
     },
     {
@@ -7883,6 +7891,10 @@
     },
     {
       "path": "packages/platform/src/payments/paymentWebhookPostProcessing.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/postgresPaymentProviderReconciliation.ts",
       "class": "public-output"
     },
     {
@@ -29390,6 +29402,14 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/fixtures/paymentReconciliation/evidence.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/paymentReconciliation/setup.sql",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/fulfillmentCommerceReads.test.ts",
       "class": "public-output"
     },
@@ -29779,6 +29799,18 @@
     },
     {
       "path": "tests/postgres/paymentProviderTransfer.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/paymentReconciliationAttributionGap.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/paymentReconciliationPgtap.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/paymentReconciliationStore.test.ts",
       "class": "public-output"
     },
     {

@@ -931,12 +931,15 @@ describe("neutrality scan reuse", () => {
 
 });
 
-it("keeps the managed, operations and R1 pins closed at exactly 17 paths and 22 tuples", () => {
-  expect(reviewedPinnedIntroductions).toHaveLength(17);
-  expect(new Set(reviewedPinnedIntroductions.map(([path]) => path)).size).toBe(17);
-  expect(reviewedPinnedIntroductions.flatMap(([, , counts]) => counts)).toHaveLength(22);
+it("keeps the payment and managed pins closed at exactly 21 paths and 29 tuples", () => {
+  expect(reviewedPinnedIntroductions).toHaveLength(21);
+  expect(new Set(reviewedPinnedIntroductions.map(([path]) => path)).size).toBe(21);
+  expect(reviewedPinnedIntroductions.flatMap(([, , counts]) => counts)).toHaveLength(29);
   const paymentPaths = [paymentAttemptSql, paymentAttemptMirror];
-  const c94 = reviewedPinnedIntroductions.filter(([path]) => path !== operationsSql && !paymentPaths.includes(path) && path !== paymentAttemptFixture);
+  const reconciliationPins = [["db/platform/migrations/20261114120000_payment_reconciliation_refund_evidence.sql","08692c183b1fd078f2334749b2bf766ae6e9e87b3c8a797a83365436610a9347",[["ui-13",0,9],["ui-14",0,5]]],["packages/platform/sql/20261114120000_payment_reconciliation_refund_evidence.sql","08692c183b1fd078f2334749b2bf766ae6e9e87b3c8a797a83365436610a9347",[["ui-13",0,9],["ui-14",0,5]]],["tests/postgres/fixtures/paymentReconciliation/setup.sql","8a17e1de319f07597dc2ca606800c08b9fcf5fba2e7231c06c21fd50ed6bca20",[["ui-13",0,4],["ui-14",0,2]]],["tests/postgres/fixtures/paymentReconciliation/evidence.sql","5a42c9e350204acb86b83ffc2addd577dfa3f5baf03aade5d1c5d22fc1befcd2",[["ui-13",0,1]]]];
+  expect(reviewedPinnedIntroductions.slice(0, 4)).toEqual(reconciliationPins);
+  const reconciliationPaths = reconciliationPins.map(([path]) => path);
+  const c94 = reviewedPinnedIntroductions.filter(([path]) => path !== operationsSql && !paymentPaths.includes(path) && path !== paymentAttemptFixture && !reconciliationPaths.includes(path));
   expect(c94).toHaveLength(13);
   expect(c94.flatMap(([, , counts]) => counts)).toHaveLength(15);
   const paymentPins = reviewedPinnedIntroductions.filter(([path]) => paymentPaths.includes(path));

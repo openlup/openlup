@@ -1487,15 +1487,23 @@ native payment store supports durable preparation, immutable ingress and exact
 attempt correlation. The first failure of each correlated provider renewal
 attempt records one immutable attempt-bound retry receipt before truth reuses
 the financial transition. The receipt owns the rung and schedule; the cycle
-stays `payment_pending`. An expiry
-after that attempt's decline records the escalation without another retry stage.
-Provider dunning case, notice and token handoff await attributed composition,
-and a real provider renewal binding is not yet supplied. The subscription descriptor retains its separate composition
+stays `payment_pending`. An expiry after that attempt's decline records the
+escalation without another retry stage. The reconciliation/refund forward adds
+attributed dunning case handoff, canonical observation replay and named historical
+refusals. A real provider renewal binding is not yet supplied. The subscription descriptor retains its separate composition
 limits. N1 retry recovery is selected while stock recovery remains
 unavailable. One executor stays default off with mandatory delivery admission.
 Host-selected M04 descriptors carry recorded
 lifecycle facts; copy, recipient, consent and delivery remain host/M04-owned.
 See the [architecture boundary](ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts).
+
+On the native rail, `commerce.order.refunded` records the refunded status only;
+it makes no money-moved claim. Customer “refund processed” messaging must use
+the evidence-gated `commerce.order.refund_processed` path. Accepted same-currency
+refund observations also gate `payment_refund_readback`; cumulative charge
+snapshots use their maximum without replacing original settlement money.
+`order.refund_status_changed` remains nonfinancial. Refunds never cancel or
+pause subscriptions. See the [native payment limits](DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories).
 
 ## Invoicing evidence
 
