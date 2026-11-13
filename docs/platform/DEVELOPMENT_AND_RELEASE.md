@@ -262,8 +262,9 @@ owns release permissions, setup, detailed refusals and recovery. The sequence is
    changelog's version section below a fresh Unreleased heading. It assembles the
    legacy body first, then validated package fragments in byte order of path,
    and deletes only consumed fragments after successful planning and writes,
-   then stages those deletions and documentation writes so preparation can read
-   the Git inventory; historical sections stay byte-identical. The bump assembles
+   then stages those deletions and the documentation writes described below so
+   preparation can read the Git inventory. It stages no other changes;
+   historical sections stay byte-identical. The bump assembles
    `packages/core/docs/guide/upgrade/v<major>-<minor>-<patch>.md` from the consumed
    fragments and API diff, listing added, removed and changed declarations;
    the maintainer's agent edits that page and the listed guide pages in

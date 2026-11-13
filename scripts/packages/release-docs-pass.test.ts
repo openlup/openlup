@@ -194,6 +194,57 @@ describe("upgrade page assembly", () => {
     expect(summarizeApiDiff(report("declare const internal: string;\n"), report("declare const internal: number;\n"))).toEqual({ added: [], removed: [], changed: ["declare const internal: number;"] });
   });
 
+  it.each([
+    ["const value: string;", "const value: number;"],
+    ["let value: string;", "let value: number;"],
+    ["var value: string;", "var value: number;"],
+    ["function value(): string;", "function value(): number;"],
+    ["class Value { field: string; }", "class Value { field: number; }"],
+    ["interface Value { field: string; }", "interface Value { field: number; }"],
+    ["type Value = string;", "type Value = number;"],
+    ["enum Value { First }", "enum Value { Second }"],
+    ["const enum Value { First }", "const enum Value { Second }"],
+    ["namespace Value { type Field = string; }", "namespace Value { type Field = number; }"],
+    ['module "value" { type Field = string; }', 'module "value" { type Field = number; }'],
+    ["export declare abstract class Value { field: string; }", "export declare abstract class Value { field: number; }"],
+    ["export default class Value { field: string; }", "export default class Value { field: number; }"],
+    ["async function value(): Promise<string>;", "async function value(): Promise<number>;"],
+  ])("starts a block at a top-level declaration: %s", (before, after) => {
+    expect(summarizeApiDiff(report(`${before}\n`), report(`${after}\n`))).toEqual({ added: [], removed: [], changed: [after] });
+  });
+
+  it("keeps comments with the following declaration and reports declaration first lines", () => {
+    const before = report("// Standalone comment\n\nexport type Kept = string;\n/** Previous description.\n * More detail.\n */\n// Detail\ntype Updated = string;\n");
+    const after = before.replace("Previous description", "Updated description").replace("More detail", "New detail").replace("// Detail", "// New detail");
+    expect(summarizeApiDiff(before, after)).toEqual({ added: [], removed: [], changed: ["type Updated = string;"] });
+    expect(summarizeApiDiff("", report("// Comment\n/** Description */\n"))).toEqual({ added: [], removed: [], changed: [] });
+  });
+
+  it("compares export lists and star exports", () => {
+    const source = report('export * from "./values.js";\nexport { value };\nexport type * from "./types.js";\n');
+    expect(summarizeApiDiff("", source)).toEqual({
+      added: ['export * from "./values.js";', "export { value };", 'export type * from "./types.js";'], removed: [], changed: [],
+    });
+  });
+
+  it.each([
+    ["Configuration", "maxRequestBytes?: number;", "maxRequestBytes?: string;"],
+    ["Fact", "sourceId: string;", "sourceId: number;"],
+  ])("detects a member change in the real unexported %s alias", (name, before, after) => {
+    const source = execFileSync("git", ["show", "openlup-core-v0.40.0:packages/platform/api/communications-klaviyo.api.md"], { encoding: "utf8" });
+    expect(source).toContain(before);
+    const result = summarizeApiDiff(source, source.replace(before, after));
+    expect(result).toEqual({ added: [], removed: [], changed: [name === "Configuration" ? "type Configuration = {" : "type Fact<K extends string, D> = Readonly<{"] });
+  });
+
+  it("ignores import-line changes in the real report and between declarations", () => {
+    const source = execFileSync("git", ["show", "openlup-core-v0.40.0:packages/platform/api/communications-klaviyo.api.md"], { encoding: "utf8" });
+    const before = source + report('type Kept = string;\nimport type { Value } from "./before.js";\nexport type Next = number;\n');
+    const after = before.replace("'./marketingSync.js'", "'./renamed.js'").replace('"./before.js"', '"./after.js"');
+    expect(after).not.toBe(before);
+    expect(summarizeApiDiff(before, after)).toEqual({ added: [], removed: [], changed: [] });
+  });
+
   it("lists the existing adapter declaration changed between the real release tags", (context) => {
     const repository = resolve("."), since = "openlup-core-v0.39.0", target = "openlup-core-v0.40.0";
     const tags = execFileSync("git", ["tag", "--list", since, target], { cwd: repository, encoding: "utf8" }).split("\n");
