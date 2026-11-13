@@ -35,9 +35,12 @@ export async function runPaymentSafetyConformance(subject: PaymentAdapterTestSub
   };
   for (const input of safety.capabilityInputs) {
     if (input.purpose === "renewal-unattended" && capabilities.unattended === "unsupported") {
-      const result = await execute(input);
+      const before = safety.providerRequests();
+      let result: PaymentExecutionEnvelope;
+      try { result = await execute(input); }
+      finally { requireFact(safety.providerRequests() === before, "unattended typed refusal no provider requests"); }
       requireFact(result.outcome.kind === "decline" && result.dispatch.kind === "notDispatched"
-        && result.dispatch.evidence.exact, "unattended typed refusal");
+        && result.dispatch.evidence.exact && result.dispatch.evidence.phase === "before-dispatch", "unattended typed refusal");
       continue;
     }
     if (input.purpose === "renewal-unattended") requireFact(capabilities.assessMandate(input.storedMethod?.mandate ?? {}).chargeable,

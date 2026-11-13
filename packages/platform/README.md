@@ -1755,6 +1755,8 @@ and is recorded as not applicable when unattended is unsupported.
 Refusal probes require `providerRequests()` (the count of every injected-client
 invocation, recorded at entry before parsing or assertions) to stay unchanged whether execution throws or returns;
 a returned refusal must be an exact `notDispatched` decline before dispatch.
+This includes the first unsupported unattended invocation, which must return that
+typed decline; a throw does not satisfy it.
 Unsupported currency must refuse both validation and execution. Each successful
 capture execution must match a declared flow for its family: customer authorization
 must be present in the input, or the returned handoff kind must match the declaration.

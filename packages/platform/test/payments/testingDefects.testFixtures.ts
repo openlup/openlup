@@ -88,24 +88,46 @@ export function paymentTestingDefects(provider: string, fixture: () => { subject
       await expect(runPaymentAdapterConformance(subjects)).rejects.toThrow(operation === "close" ? "close refuses" : "absence capability");
     });
   }
-  it(`${provider}: detects an unsupported unattended attempt dispatching before its refusal`, async () => {
+  for (const failure of ["cached exact decline", "throw"] as const) {
+    it(`${provider}: detects the first unsupported unattended dispatch before ${failure}`, async () => {
+      const subjects = fixture().subjects;
+      const subject = subjects[0];
+      const renewal = subject.safety!.capabilityInputs.find(input => input.purpose === "renewal-unattended")!;
+      const { execute, validateInput } = subject.adapter.attemptPort;
+      const refusal = exactDecline();
+      let first = true;
+      let requestsBeforePlant = Infinity;
+      subject.adapter = { ...subject.adapter, capabilities: { ...subject.adapter.capabilities, unattended: "unsupported" },
+      attemptPort: {
+        validateInput(input) {
+          if (input.purpose === "renewal-unattended") throw new Error("unattended unsupported");
+          validateInput(input);
+        },
+        async execute(input) {
+          if (input.purpose !== "renewal-unattended") return execute(input);
+          if (first) {
+            first = false;
+            requestsBeforePlant = subject.safety!.providerRequests();
+            await execute(renewal);
+            if (failure === "throw") throw new Error("failure after provider request");
+          }
+          return refusal;
+        },
+      } };
+      await expect(runPaymentAdapterConformance(subjects)).rejects.toThrow("unattended typed refusal no provider requests");
+      expect(subject.safety!.providerRequests()).toBeGreaterThan(requestsBeforePlant);
+    });
+  }
+  it(`${provider}: rejects an unsupported unattended throw without a provider request`, async () => {
     const subjects = fixture().subjects;
     const subject = subjects[0];
-    const renewal = subject.safety!.capabilityInputs.find(input => input.purpose === "renewal-unattended")!;
-    const { execute, validateInput } = subject.adapter.attemptPort;
+    const { execute } = subject.adapter.attemptPort;
     subject.adapter = { ...subject.adapter, capabilities: { ...subject.adapter.capabilities, unattended: "unsupported" },
-    attemptPort: {
-      validateInput(input) {
-        if (input.purpose === "renewal-unattended") throw new Error("unattended unsupported");
-        validateInput(input);
-      },
-      async execute(input) {
-        if (input.purpose !== "renewal-unattended") return execute(input);
-        await execute(renewal);
-        return exactDecline();
-      },
-    } };
-    await expect(runPaymentAdapterConformance(subjects)).rejects.toThrow("assessed mandate refuses execution no provider requests");
+    attemptPort: { ...subject.adapter.attemptPort, execute: async input => {
+      if (input.purpose === "renewal-unattended") throw new Error("typed refusal required");
+      return execute(input);
+    } } };
+    await expect(runPaymentAdapterConformance(subjects)).rejects.toThrow("typed refusal required");
   });
   for (const failure of ["throw", "exact decline"] as const) {
     it(`${provider}: detects a provider request followed by ${failure} for a refused mandate`, async () => {
