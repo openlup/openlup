@@ -91,7 +91,7 @@ hosted qualification.
 
 The exact-shipment native G17 host binding and its local unit/native witnesses
 route to the [transfer architecture owner](ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery).
-The [data owner](DATA_AND_MIGRATIONS.md#compatibility-lifecycle) defines its
+The [data owner](../../packages/core/docs/guide/upgrade/database-migrations.md#check-application-compatibility) defines its
 actual restricted-login recovery proof. This source routing does not establish
 whole-store transfer, host exclusion, provider qualification or new-dispatch
 runtime capability.
@@ -106,12 +106,12 @@ no current test result or complete store-transfer claim.
 
 The migration session hook, union/history controls, seven issued qualified
 approval inputs and five additional inert restricted-bootstrap fixtures retain the
-[migration owner](DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories).
+[migration owner](../../packages/core/docs/guide/upgrade/database-migrations.md#select-the-complete-catalogue).
 The package entry and contributor witness descriptions link to that boundary;
 publication inventory includes the control witnesses and inert fixtures without
 admitting the five separately approved replacements to the canonical installation catalogue.
 The released legacy upgrade witness and its child process route to the same
-[data owner](DATA_AND_MIGRATIONS.md#compatibility-lifecycle). Its published
+[data owner](../../packages/core/docs/guide/upgrade/database-migrations.md#check-application-compatibility). Its published
 predecessor pin, real backfill and code-rollback limit belong there; contributor
 guidance owns the process-kill test invocation and the child's execution-path
 registration. This adds no qualified-v2 upgrade lineage or migration SQL.
@@ -230,7 +230,7 @@ runtime and package ownership routes remain unchanged.
 
 Marketing's PostgreSQL export barrel and generated server API reports are public
 source outputs in the publication catalogue. The package README and
-[server composition recipe](PLATFORM_PACKAGE_REFERENCE.md#marketing-server-composition)
+[server composition recipe](../../packages/core/docs/guide/how-to/build/marketing.md#choose-the-import-boundary)
 own the separate handler and optional-peer adapter entries; the contributor
 guide owns their existing boundary, cold-consumer and PostgreSQL proof checks.
 
@@ -440,6 +440,8 @@ in `scripts/ci-test-scope.mjs`: unlisted tests always run. The contract refuses:
   line; JSX is checked with `jsx: preserve`;
 - a stale or unknown `<!-- generated:<name> -->` region. The generators are
   `maturity:<core|outbox|platform>` from that package's `release-gates.json`,
+  `compatibility-policies` from the validator's static `compatibilityByMaturity`
+  object in `packages/core/scripts/public-api-config.ts`,
   `exports:<core|outbox|platform>` from its `package.json` and release gates,
   `sql:<outbox|platform>` from the `.sql` files the package ships under `sql/`, `cli:openlup` and
   `cli:openlup-context` from their static help constants, `versioning` from release
@@ -475,6 +477,27 @@ the adopter store terms in Markdown as categories `store-0` and `store-1`. Separ
 `npm run oss:published-tree -- --policy` refuses a home-directory path
 (`/Users/…`, `/home/…`, their `file://` forms, `C:\Users\…` and `C:/Users/…`)
 in any tracked Markdown.
+
+The evaluation-path table and payment-support paragraph in
+[`reference/limits.md`](../../packages/core/docs/guide/reference/limits.md)
+remain authored: no machine-readable owner describes those complete boundaries.
+[`public-reference-capability-manifest.json`](../../config/public-reference-capability-manifest.json)
+owns the default reference's methods, routes and refusals only;
+[`shared/limits.ts`](../../examples/neutral-store/shared/limits.ts) owns starter
+action codes and localized explanations. Neither describes all five evaluation
+paths, the subscription reference's database and egress prerequisites, or a
+portable-versus-managed real-money support matrix. Those wider limits are
+explained by the [install support policy](../../.github/INSTALL_SUPPORT_POLICY.md)
+and [subscription reference](SUBSCRIPTION_REFERENCE.md), with application
+composition still required. A provider capability or source file alone cannot
+generate that support claim; no documentation-only fact registry is introduced.
+
+There is no blanket refusal of hand-written reference tables. Auditing every
+reference page finds legitimate evaluation and action/refusal explanations in
+`limits.md` and a localized route inventory in `starter-routes.md` outside
+generated regions. Such a rule would reject existing guidance and need either
+their separate owner-driven generators or an allow-list. Existing generated
+region freshness and unknown-region refusals remain in force.
 
 The [tutorial](../../packages/core/docs/guide/start/tutorial.md) marks runnable
 steps with `sh tutorial` fences and ordered stdout expectations with

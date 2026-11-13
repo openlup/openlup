@@ -853,6 +853,7 @@ describe("TypeScript fence compilation", () => {
 const referenceRegions = [
   "exports:core", "exports:outbox", "exports:platform", "sql:outbox", "sql:platform",
   "cli:openlup", "cli:openlup-context", "versioning", "configuration-keys", "refusal-codes", "refusal-codes-open",
+  "compatibility-policies",
 ];
 
 function referenceFixture() {
@@ -887,6 +888,7 @@ function referenceFixture() {
   write("packages/platform/src/lifecycle/openlup.mjs", 'const help = `openlup verify [--json]\n`; const a = "OPENLUP_E_CLI_INPUT"; const b = "OPENLUP_E_CLI_FAILURE"; const c = "OPENLUP_E_APP_UNKNOWN";');
   write("packages/core/src/openlup-context.js", 'import { runCli } from "../dist/agent-context-cli.js"; runCli();\n');
   write("packages/core/src/agent-context-cli.ts", 'const usage = "openlup-context search <task> [--code]\\nopenlup-context mcp\\n";');
+  write("packages/core/scripts/public-api-config.ts", 'const compatibilityByMaturity: Record<string, string> = { testing: "test-policy", candidate: "preview-policy", experimental: "preview-policy" };');
   write(".github/VERSIONING_AND_EOL.md", "# Versioning\n");
   return { ...fixture, write, report };
 }
@@ -960,6 +962,40 @@ describe("generated reference regions", () => {
       expect(body).toContain(`| \`@openlup/${pkg}\` | compatibilityPolicies | candidate | Preview API. |\n| \`@openlup/${pkg}\` | compatibilityPolicies | testing | Synthetic protocol support. |`);
     }
     expect(body).toContain(repositoryLink(".github/VERSIONING_AND_EOL.md"));
+  });
+
+  it("reads the validator's maturity mapping, including changes absent from the release-gate surfaces", () => {
+    const fixture = referenceFixture();
+    const path = "packages/core/scripts/public-api-config.ts";
+    const before = renderGeneratedRegion("compatibility-policies", fixture.repository)!;
+    expect(before).toBe("| Maturity | Compatibility policy |\n| --- | --- |\n| `candidate` | `preview-policy` |\n| `experimental` | `preview-policy` |\n| `testing` | `test-policy` |\n\n" + `[Compatibility policy mapping](${repositoryLink(path)})\n`);
+    // No module is executed, and neither gate entries nor renderer literals own the mapping.
+    fixture.write(path, 'throw new Error("must not execute"); const compatibilityByMaturity = { "future-preview": "new-policy", candidate: "changed-policy" };');
+    const after = renderGeneratedRegion("compatibility-policies", fixture.repository)!;
+    expect(after).toContain("| `candidate` | `changed-policy` |\n| `future-preview` | `new-policy` |\n");
+    expect(after).not.toContain("experimental");
+    expect(after).not.toContain("testing");
+    const stale: string[] = [];
+    syncGeneratedRegions(generatedRegion("compatibility-policies", before), "fixture", fixture.repository, false, stale);
+    expect(stale).toEqual(["fixture: generated region compatibility-policies is stale; run docs:check -- --write"]);
+    const repaired: string[] = [];
+    expect(syncGeneratedRegions(generatedRegion("compatibility-policies", before), "fixture", fixture.repository, true, repaired))
+      .toBe(generatedRegion("compatibility-policies", after));
+    expect(repaired).toEqual([]);
+  });
+
+  it.each([
+    "const otherMapping = {};",
+    "const compatibilityByMaturity = getPolicies();",
+    "const compatibilityByMaturity = {};",
+    "const compatibilityByMaturity = { candidate: policy };",
+    "const compatibilityByMaturity = { ...policies };",
+    'const compatibilityByMaturity = { [maturity]: "policy" };',
+  ])("refuses an unreadable maturity mapping: %s", (source) => {
+    const fixture = referenceFixture();
+    fixture.write("packages/core/scripts/public-api-config.ts", source);
+    expect(() => renderGeneratedRegion("compatibility-policies", fixture.repository))
+      .toThrow("packages/core/scripts/public-api-config.ts: expected a nonempty static compatibilityByMaturity object with literal policies");
   });
 
   it("reports undeclared release fields without borrowing another package's policy", () => {
