@@ -2,10 +2,14 @@
   "current": {
     "profiles": {
       "legacy": {
-        "count": 131,
-        "exactTailCount": 21,
-        "objectInventorySha256": "87b9a7fb53f6ee1818a5a7f52e30d91c78979673bd0a8499bfc4635c877fed5a",
+        "count": 132,
+        "exactTailCount": 22,
+        "objectInventorySha256": "a92305f9815433d4099da3626eb8cb3de35403a6c9dc743f77c5f3c10d42ecc7",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261111120000_communication_ecommerce_sources.sql",
+            "sha256": "1784eece20c831ce1d7eb1adfe19150d525b6c161cd0bebe1e6ade22b6b74256"
+          },
           {
             "file": "db/platform/migrations/20261110280000_checkout_recovery_buyer_snapshot.sql",
             "sha256": "8a61a4927412194b6c398694e835381e91718ddddb3fa501194b3eb71f69212c"
@@ -533,10 +537,14 @@
         ]
       },
       "bootstrap": {
-        "count": 136,
-        "exactTailCount": 21,
-        "objectInventorySha256": "15f0961897a8b37985123b6fa3d4601601474a5d7dd63730eeaa6f23462472be",
+        "count": 137,
+        "exactTailCount": 22,
+        "objectInventorySha256": "a04a504f9568286202f7603ac5691818af9517bc855cd1b8612c025e2d84d957",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261111120000_communication_ecommerce_sources.sql",
+            "sha256": "1784eece20c831ce1d7eb1adfe19150d525b6c161cd0bebe1e6ade22b6b74256"
+          },
           {
             "file": "db/platform/migrations/20261110280000_checkout_recovery_buyer_snapshot.sql",
             "sha256": "8a61a4927412194b6c398694e835381e91718ddddb3fa501194b3eb71f69212c"
@@ -1084,10 +1092,14 @@
         ]
       },
       "separate": {
-        "count": 136,
-        "exactTailCount": 21,
-        "objectInventorySha256": "915bb3e8ba798352a8a6e364820c3f8201c583770febe92a86925bf9f89d5d42",
+        "count": 137,
+        "exactTailCount": 22,
+        "objectInventorySha256": "d4adeb0cc0ffbc0e575c4dac19aea48382a0883bf276a5007b3692cc99f50ce7",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261111120000_communication_ecommerce_sources.sql",
+            "sha256": "1784eece20c831ce1d7eb1adfe19150d525b6c161cd0bebe1e6ade22b6b74256"
+          },
           {
             "file": "db/platform/migrations/20261110280000_checkout_recovery_buyer_snapshot.sql",
             "sha256": "8a61a4927412194b6c398694e835381e91718ddddb3fa501194b3eb71f69212c"
@@ -1635,10 +1647,14 @@
         ]
       },
       "admin-managed": {
-        "count": 135,
-        "exactTailCount": 21,
-        "objectInventorySha256": "46057c3cd3d3cf6d03a0defd1a4d96bc7fc67748c75162c7eb31401a4dbe1c9a",
+        "count": 136,
+        "exactTailCount": 22,
+        "objectInventorySha256": "ec17fb1fcfe03cef86411d16f33c6dfef12693a7fca320c47c9496b104b5e192",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261111120000_communication_ecommerce_sources.sql",
+            "sha256": "1784eece20c831ce1d7eb1adfe19150d525b6c161cd0bebe1e6ade22b6b74256"
+          },
           {
             "file": "db/platform/migrations/20261110280000_checkout_recovery_buyer_snapshot.sql",
             "sha256": "8a61a4927412194b6c398694e835381e91718ddddb3fa501194b3eb71f69212c"
@@ -2182,10 +2198,14 @@
         ]
       },
       "admin-operator": {
-        "count": 135,
-        "exactTailCount": 21,
-        "objectInventorySha256": "a6e6da2ed915ce0643bb6e1e0f7a46236b078f5cefdd8972fd62c293afe0b179",
+        "count": 136,
+        "exactTailCount": 22,
+        "objectInventorySha256": "969d3864b800b21b906028e4faa35eb23b2101eea2eabdc120cf5b69eaddb783",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261111120000_communication_ecommerce_sources.sql",
+            "sha256": "1784eece20c831ce1d7eb1adfe19150d525b6c161cd0bebe1e6ade22b6b74256"
+          },
           {
             "file": "db/platform/migrations/20261110280000_checkout_recovery_buyer_snapshot.sql",
             "sha256": "8a61a4927412194b6c398694e835381e91718ddddb3fa501194b3eb71f69212c"
@@ -2729,7 +2749,7 @@
         ]
       }
     },
-    "connectedTableCount": 132
+    "connectedTableCount": 135
   },
   "historical": {}
 }

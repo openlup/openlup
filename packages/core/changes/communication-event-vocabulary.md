@@ -1,0 +1,1 @@
+- Register the platform-owned ecommerce-export and checkout-qualification event vocabulary. This adds no executor or handler and activates no provider; the host selects disjoint claim allowlists explicitly.

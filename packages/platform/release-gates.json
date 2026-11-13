@@ -965,16 +965,16 @@
   "pack": {
     "code": {
       "maxPackedBytes": 2513518,
-      "maxFiles": 4211
+      "maxFiles": 4301
     },
     "docs": {
-      "maxPackedBytes": 99222,
+      "maxPackedBytes": 106496,
       "maxFiles": 10
     },
-    "maxPackedBytes": 3089709,
-    "maxUnpackedBytes": 14804413,
+    "maxPackedBytes": 3152896,
+    "maxUnpackedBytes": 15105024,
     "maxFiles": 4435,
-    "capReason": "Measured before the billing cap adjustment: code 2,464,233 B, documentation 90,592 B and 4,348 files; crossed caps use 2% headroom. Packed/unpacked caps and the released baseline are retained. The docs class measured 97,276 gzip bytes on the 0.39.0 set tree (release notes and package guides); its cap is measured times 1.02, rounded up.",
+    "capReason": "The owner approved documentation 106496 B after the required main 0.39.0 integration measured 104042 B, reserving about 2.36% headroom. Preserve the previously approved code-file (4301), packed (3152896 B) and unpacked (15105024 B) envelope, main's released 0.38.0 baseline, and every other inherited limit.",
     "baseline": {
       "version": "0.38.0",
       "packedBytes": 2862024

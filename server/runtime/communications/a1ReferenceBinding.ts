@@ -89,6 +89,7 @@ export async function createA1ReferenceBinding(input?: { enabled?: boolean; load
       profiles: Object.freeze({ sync: guard(marketing.profiles.sync) }),
       consent: Object.freeze({ read: guard(marketing.consent.read) }),
       erasure: Object.freeze({ request: guard(marketing.erasure.request), read: guard(marketing.erasure.read) }),
+      events: Object.freeze({ capabilities: marketing.events.capabilities, exportEvent: guard(marketing.events.exportEvent) }),
       consentPush: Object.freeze({ capabilities: marketing.consentPush.capabilities, push: guard(marketing.consentPush.push) }),
       newsletter: Object.freeze({ ...marketing.newsletter, sync: guard(marketing.newsletter.sync), ...(marketing.newsletter.reconcile ? { reconcile: guard(marketing.newsletter.reconcile) } : {}) }),
       admit: guard(marketing.admit), apply: guard(marketing.apply), observe: guard(marketing.observe),

@@ -25,7 +25,7 @@ test('customer reads the next charge and renewal order after the scheduled run',
     await page.getByLabel(copy.en.otp, { exact: true }).evaluate((element, value) => { (element as HTMLInputElement).value = value; }, challenge);
   } catch { throw new Error('starter_browser_renewal_challenge_control_failed'); }
   await page.getByRole('button', { name: copy.en.verifyOtp, exact: true }).click();
-  await expect(page.locator('.action-result').nth(1)).toContainText('expiresAt');
+  await expect(page).toHaveURL(new URL(routes.account.en, page.url()).href);
   await page.goto(routes.account.en);
   const account = page.locator('section.panel').filter({ has: page.getByRole('heading', { name: copy.en.account, exact: true }) });
   await account.getByRole('button', { name: copy.en.readStatus, exact: true }).click();
@@ -39,7 +39,7 @@ test('customer reads the next charge and renewal order after the scheduled run',
   await expect.soft(field(charge, 'chargeAt')).toHaveText(material.nextCharge.chargeAt);
   const orders = page.locator('section.panel').filter({ has: page.getByRole('heading', { name: copy.en.orders, exact: true }) });
   await orders.getByRole('button', { name: copy.en.readStatus, exact: true }).click();
-  const order = orders.locator('li > dl').filter({ has: page.locator('dd', { hasText: material.order.orderId }) });
+  const order = orders.locator('article[data-order]').filter({ has: page.getByRole('heading', { name: material.order.orderId, exact: true }) }).locator(':scope > dl');
   await expect.soft(order).toHaveCount(1);
   if (await order.count() !== 1) return;
   await expect(field(order, 'orderId')).toHaveText(material.order.orderId);
