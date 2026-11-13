@@ -22,7 +22,7 @@
  * Nothing is written unless every file passes; consumed fragments are deleted
  * only after all planned writes succeed. Set preparation also plans an upgrade
  * page from those fragments and the API diff, and refreshes guide links and generated
- * regions; the guide writes and deletions are staged.
+ * regions and re-pins package entry-point links; those documentation writes and deletions are staged.
  * The package release workflow refuses a version that differs from the package's manifest.
  */
 import { execFileSync } from "node:child_process";
