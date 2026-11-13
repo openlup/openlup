@@ -585,6 +585,7 @@ describe("reader guide contract", { timeout: 60_000 }, () => {
     ["a bare URL with dot segments", "See https://github.com/other/../openlup/openlup/blob/main/README.md for details."],
     ["a bare URL with an encoded path segment", "See https://github.com/openlup/open%6Cup/blob/main/README.md."],
     ["a bare URL to a branch", "See https://github.com/openlup/openlup/blob/main/README.md."],
+    ["a bare www text link ending with a comma", "See www.github.com/openlup/openlup/blob/main/README.md,"],
     ["an attribute name joined by a no-break space", '<div><a data-x\u00a0href="https://github.com/openlup/openlup" href="https://%67ithub.com/openlup/openlup/blob/main/README.md">Read</a></div>'],
     ["a repository URL in another attribute", '<img alt="logo" src="https://github.com/openlup/openlup/raw/main/logo.png">'],
   ])("refuses a repository link hidden by %s", (_name, link) => {
@@ -597,6 +598,25 @@ describe("reader guide contract", { timeout: 60_000 }, () => {
     expect(() => checkGuide(pinned)).not.toThrow();
     const missing = guideFixture(`# Guide\n\n<${repositoryLink("MISSING.md")}>\n`);
     expect(() => checkGuide(missing)).toThrow("targets a path missing from the repository");
+  });
+
+  it.each([
+    "See https://github.com/openlup/openlup.",
+    `Read ${repositoryLink("README.md")}.`,
+    "(see https://github.com/openlup/openlup)",
+  ])("admits a canonical bare repository URL with prose punctuation: %s", (text) => {
+    const roots = guideFixture(`# Guide\n\n${text}\n`);
+    expect(() => checkGuide(roots)).not.toThrow();
+  });
+
+  it.each([
+    `[Read](${repositoryLink("README.md")}.)`,
+    `<${repositoryLink("README.md")}.>`,
+    `<a href="${repositoryLink("README.md")}.">Read</a>`,
+    `<img src="${repositoryLink("README.md")}.">`,
+  ])("keeps punctuation in an explicit repository destination: %s", (link) => {
+    const roots = guideFixture(`# Guide\n\n${link}\n`);
+    expect(() => checkGuide(roots)).toThrow("targets a path missing from the repository");
   });
 
   it("admits &amp; in an issue-tracker link", () => {

@@ -507,10 +507,17 @@ function assertGuideLinks(guideRoot: string, file: string, label: string, raw: s
       candidates.add(value[1] ?? value[2] ?? value[3] ?? "");
     }
   }
-  for (const [token] of source.matchAll(/(?:[A-Za-z][A-Za-z0-9+.-]*:|\/\/|www\.)[^\s<>"'`()[\]{}|^]+/g)) {
-    candidates.add(token);
-    candidates.add(token.replace(/[.,;:!?*_~]+$/, ""));
-  }
+  const bareLinkSource = source.replace(/(?:[A-Za-z][A-Za-z0-9+.-]*:|\/\/|www\.)[^\s<>"'`[\]{}|^]+/g, (token) => {
+    // GFM bare autolinks omit trailing punctuation and unmatched closing parentheses.
+    let target = token.replace(/[.,;:!?*_~]+$/, "");
+    let excess = (target.match(/\)/g)?.length ?? 0) - (target.match(/\(/g)?.length ?? 0);
+    while (target.endsWith(")") && excess > 0) {
+      target = target.slice(0, -1).replace(/[.,;:!?*_~]+$/, "");
+      excess--;
+    }
+    candidates.add(target);
+    return target;
+  });
   for (const target of candidates) {
     // An HTML attribute is followed as written but without tabs and newlines; Markdown first
     // removes backslash escapes; GitHub links bare `www.` text as http.
@@ -532,17 +539,19 @@ function assertGuideLinks(guideRoot: string, file: string, label: string, raw: s
     }
   }
   const canonical = `${repositoryUrl}/blob/${tag}/<path>`;
+  // Retain the conservative text scans and the untrimmed explicit destinations/attributes.
+  const candidateSource = [bareLinkSource, ...candidates].join("\n");
   // Every link into the repository, with or without a scheme, is either a file at the release tag
   // (checked below), the repository itself or its issue tracker; raw, blame, tree, branch and
   // protocol-relative forms would bypass the release-tag and path checks.
   // GitHub also links bare `www.` text, so that form counts as a repository link too.
-  for (const [url] of source.matchAll(/(?:(?:https?:)?\/\/(?:www\.github\.com|raw\.githubusercontent\.com|github\.com)|(?<![\w./-])www\.github\.com)\/openlup\/openlup(?=\/|$|[\s)>"'`?#])[^\s)>"'`]*/gi)) {
+  for (const [url] of candidateSource.matchAll(/(?:(?:https?:)?\/\/(?:www\.github\.com|raw\.githubusercontent\.com|github\.com)|(?<![\w./-])www\.github\.com)\/openlup\/openlup(?=\/|$|[\s)>"'`?#])[^\s)>"'`]*/gi)) {
     const rest = url.startsWith(repositoryUrl) ? url.slice(repositoryUrl.length) : undefined;
     if (rest === undefined || !/^(?:\/?(?:[?#].*)?|\/blob\/.*|\/issues(?:[/?#].*)?)$/.test(rest)) {
       violations.push(`${label}: non-canonical repository link ${url}; use ${canonical}`);
     }
   }
-  for (const match of source.matchAll(/https:\/\/github\.com\/openlup\/openlup\/(blob|tree)\/([^/\s)>"'`]+)\/?([^\s)>"'`#?]*)/g)) {
+  for (const match of candidateSource.matchAll(/https:\/\/github\.com\/openlup\/openlup\/(blob|tree)\/([^/\s)>"'`]+)\/?([^\s)>"'`#?]*)/g)) {
     const [url, , ref, path] = match;
     if (ref !== tag) {
       violations.push(`${label}: repository link ${url} must pin ${tag}; run docs:check -- --write`);
