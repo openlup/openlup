@@ -48,7 +48,7 @@ use one canonical domain owner unless a narrower workflow route applies.
 
 | Surface | Purpose | Canonical owner | Selectors |
 | --- | --- | --- | --- |
-| own-stack-example | Application-owned routing and authentication using released public catalog ports | [docs/platform/ARCHITECTURE_AND_EXTENSIONS.md](ARCHITECTURE_AND_EXTENSIONS.md#own-stack-integration-sample) | `examples/own-stack/**` |
+| own-stack-example | Application-owned routing and authentication using released public catalog ports | [packages/core/docs/guide/how-to/build/own-stack.md](../../packages/core/docs/guide/how-to/build/own-stack.md#choose-the-imports-and-ports) | `examples/own-stack/**` |
 | repository | Repository entrypoints, build configuration and contributor setup | [CONTRIBUTING.md](../../CONTRIBUTING.md#development-preview-checks) | `*` |
 | public-policy | Public contribution policy and community governance | [CONTRIBUTING.md](../../CONTRIBUTING.md#pull-requests) | `.github/**` |
 | public-checks | Hosted execution ownership and the checks contributors must run | [CONTRIBUTING.md](../../CONTRIBUTING.md#development-preview-checks) | `.github/workflows/**` |
@@ -71,7 +71,7 @@ use one canonical domain owner unless a narrower workflow route applies.
 | core-agent-context | Installed offline agent context lookup and its command launcher | [packages/core/README.md](../../packages/core/README.md#agent-context-lookup) | `packages/core/src/agent-context-cli.ts`; `packages/core/src/agent-context-mcp.ts`; `packages/core/src/openlup-context.js` |
 | core-readiness | Core readiness contracts, schema probes and inert contribution checks | [packages/core/README.md](../../packages/core/README.md#readiness-contract) | `packages/core/src/readiness/**` |
 | core-bundle | Core bundle identity, descriptor and readiness contracts | [packages/core/README.md](../../packages/core/README.md#bundle-contracts) | `packages/core/src/bundle/**` |
-| subscription-kernel | Pure lifecycle, retry, cycle and deterministic-clock behavior | [packages/core/docs/SUBSCRIPTION_ENGINE.md](../../packages/core/docs/SUBSCRIPTION_ENGINE.md) | `packages/core/src/subscription/**` |
+| subscription-kernel | Pure lifecycle, retry, cycle and deterministic-clock behavior | [packages/core/docs/guide/concepts/subscription-engine.md](../../packages/core/docs/guide/concepts/subscription-engine.md) | `packages/core/src/subscription/**` |
 | tooling | Public tooling and the actual execution owner of each check | [CONTRIBUTING.md](../../CONTRIBUTING.md#development-preview-checks) | `scripts/**` |
 | tests | Integration and browser test sources; execution requires their declared owner | [CONTRIBUTING.md](../../CONTRIBUTING.md#development-preview-checks) | `tests/**`; `src/test/**` |
 | assets | Static public assets and their reference build consumption | [docs/platform/RUNTIME_AND_SELF_HOSTING.md](RUNTIME_AND_SELF_HOSTING.md#runtime-model) | `public/**` |

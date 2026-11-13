@@ -52,6 +52,13 @@ PostgreSQL connection that retains one session for the migration operation.
 See the [installation recipe](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/README.md#install-the-portable-postgresql-schema)
 for the bindings.
 
+Before a fresh `legacy` installation, `inspectLegacyPostgresInstallRoles` from
+`@openlup/platform/lifecycle` reads the legacy bootstrap's role prerequisites
+through a query handle you supply and reports blockers such as
+`legacy_bootstrap_requires_superuser`. Even `rolePrerequisitesMet: true` does not establish
+install readiness, runtime grants, pooling or host support; the helper only
+reads, creates no role or schema and runs no installer.
+
 Module migration descriptors are sparse projections of the catalogue. They
 identify their modules' SQL assets; they are not independent installation
 chains. Install the complete selected catalogue, including its dependencies,
@@ -106,7 +113,7 @@ the selected object inventory, not old/new application compatibility, data
 backfill completion or a safe rollback. Reverting application files does not
 undo committed SQL or durable effects.
 
-The development preview provides no general upgrade guarantee. Verify the
+This migration recipe provides no general upgrade guarantee. Verify the
 selected chain and application combination, including replay and refusal
 behavior. [Application file upgrades](./application-files.md) are a separate
 operation and execute no database work.

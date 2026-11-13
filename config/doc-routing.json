@@ -7,8 +7,8 @@
       "paths": [
         "examples/own-stack/**"
       ],
-      "doc": "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
-      "anchor": "#own-stack-integration-sample"
+      "doc": "packages/core/docs/guide/how-to/build/own-stack.md",
+      "anchor": "#choose-the-imports-and-ports"
     },
     {
       "id": "repository",
@@ -253,7 +253,7 @@
       "paths": [
         "packages/core/src/subscription/**"
       ],
-      "doc": "packages/core/docs/SUBSCRIPTION_ENGINE.md",
+      "doc": "packages/core/docs/guide/concepts/subscription-engine.md",
       "anchor": ""
     },
     {

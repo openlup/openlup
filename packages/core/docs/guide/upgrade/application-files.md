@@ -22,7 +22,10 @@ you supply and performs no database probe.
 ## Plan and reconcile conflicts
 
 Call `planAppUpgrade(input)` and inspect its `files` actions and `conflicts`.
-Planning only reads the application tree. Reconciliation follows these rules:
+Planning only reads the application tree. The upgrade preserves local edits to
+files that did not change between the snapshots, and
+refuses divergent changed files before writes: a managed file whose local edits
+match neither snapshot is a conflict. Reconciliation follows these rules:
 
 | Snapshot and current contents | Result |
 | --- | --- |
