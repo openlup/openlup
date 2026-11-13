@@ -29270,6 +29270,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/connectedStorePaymentMethods.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/connectedStorePromotionClaims.test.ts",
       "class": "public-output"
     },
