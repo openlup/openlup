@@ -110,6 +110,17 @@ describe("installed agent context", () => {
     expect(searchContext(root, "beyondboundmarker").hits).toEqual([]);
   });
 
+  it("counts directories toward the guide walk bound", () => {
+    const root = fixture();
+    const guide = join(root, "node_modules/@openlup/core/docs/guide");
+    mkdirSync(guide, { recursive: true });
+    writeFileSync(join(guide, "0000.md"), "# Earlywalkmarker\n");
+    for (let index = 1; index < 450; index++) mkdirSync(join(guide, `d${String(index).padStart(4, "0")}`));
+    writeFileSync(join(guide, "zzzz.md"), "# Latewalkmarker\n");
+    expect(searchContext(root, "earlywalkmarker").hits).toHaveLength(1);
+    expect(searchContext(root, "latewalkmarker").hits).toEqual([]);
+  });
+
   it("returns a matching guide page once when it is also a canonical excerpt owner", () => {
     const root = fixture();
     const directory = join(root, "node_modules/@openlup/core");

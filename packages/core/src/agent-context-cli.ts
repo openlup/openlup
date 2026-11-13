@@ -15,7 +15,7 @@ const ignoredWords = new Set(["a", "an", "and", "are", "by", "do", "for", "from"
 const codeExtensions = new Set([".ts", ".tsx", ".js", ".jsx", ".mts", ".cts", ".mjs", ".cjs"]);
 const corpusPackages = new Set(["@openlup/core", "@openlup/outbox", "@openlup/platform"]);
 const skippedDirectories = new Set(["node_modules", ".git", ".next", ".turbo", "coverage", "dist", "build", ".cache"]);
-const guideFileLimit = 400;
+const guideEntryLimit = 400;
 const guideFileBytes = 200_000;
 const usage = "Usage: openlup-context search <task> [--code] [--package-code] [--json]\n       openlup-context mcp\nRun from the application root after installing @openlup/core.\n";
 
@@ -159,20 +159,22 @@ function guideFiles(item: InstalledPackage): string[] {
   const pending = [root];
   const files: string[] = [];
   let seen = 0;
-  while (pending.length && seen < guideFileLimit) {
+  // Every visited entry (directory, file or link) counts toward one bound, and nothing is
+  // queued beyond it, so a hostile tree cannot make the walk or its queue grow without limit.
+  while (pending.length && seen < guideEntryLimit) {
     const path = pending.pop()!;
+    seen++;
     const local = relative(root, path);
     if (isAbsolute(local) || local.split(sep).includes("..")) throw new Error("Guide path escapes installed docs/guide");
     const state = lstatSync(path);
     if (state.isDirectory()) {
-      const names = readdirSync(path).sort().reverse();
-      for (const name of names) {
+      const names = readdirSync(path).sort().slice(0, Math.max(0, guideEntryLimit - seen - pending.length));
+      for (const name of names.reverse()) {
         if (name === "." || name === ".." || /[/\\]/u.test(name)) throw new Error("Invalid installed guide path");
         pending.push(join(path, name));
       }
-    } else if (state.isFile()) {
-      seen++;
-      if (path.endsWith(".md") && state.size <= guideFileBytes) files.push(`docs/guide/${local.split(sep).join("/")}`);
+    } else if (state.isFile() && path.endsWith(".md") && state.size <= guideFileBytes) {
+      files.push(`docs/guide/${local.split(sep).join("/")}`);
     }
   }
   return files.sort();
