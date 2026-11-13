@@ -1,6 +1,6 @@
 # Reconnaissance: documentation programme
 
-Status: draft evidence, 2026-11-12, for the
+Status: evidence, 2026-11-12, for the
 [intent](documentation-programme-intent.md); the execution plan follows the
 owner's reading of this page.
 Audience: the maintainer deciding the programme, and agents planning it.

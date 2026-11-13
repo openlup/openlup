@@ -1,6 +1,6 @@
 # Intent: documentation that stays true, for readers and coding agents
 
-Status: draft intent, 2026-11-12; awaiting the owner's go-ahead. The
+Status: accepted intent, 2026-11-12; the owner accepted it on 2026-11-13. The
 [reconnaissance](documentation-programme-reconnaissance.md) holds the evidence;
 the [execution plan](documentation-programme.md) holds the design, stages and
 decisions.

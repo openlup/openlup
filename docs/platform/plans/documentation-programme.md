@@ -1,7 +1,8 @@
 # Documentation programme: one reader guide that stays true
 
-Status: draft plan, version 2 (2026-11-12, after an independent challenge); no
-wave is authorised until the owner records the decisions below. The
+Status: accepted plan, version 2 (2026-11-12, after an independent challenge).
+The owner accepted decisions D1–D7 as recommended on 2026-11-13 and granted
+delivery of the waves in order. The
 [intent](documentation-programme-intent.md) states the outcome; the
 [reconnaissance](documentation-programme-reconnaissance.md) holds the evidence,
 the survey of current practice and the simplification this plan follows (its
@@ -436,7 +437,7 @@ filesystem paths in tracked Markdown.
 
 | Wave | Delivers | Exit |
 | --- | --- | --- |
-| W0 | Intent, reconnaissance and plan (draft PR; two reviewers because of the catalogue rows). | Owner decisions D1–D7 recorded. |
+| W0 | Intent, reconnaissance and plan, with the owner's decisions recorded (two reviewers because of the catalogue rows). | Owner decisions D1–D7 recorded. |
 | W1 | S2 for all three packages; the guide's implicit catalogue class and review floor of one; `pet`/`donor` in the ratchet; the absolute-path rule; the pack-size measurement; the allow-list seed; the empty guide index with the writing rules. Updates `DOCUMENTATION.md` and the catalogue paragraph in `CONTRIBUTING.md`. | Required jobs green; each new refusal has a falsifying test; two reviewers. |
 | W1b | Immediate corrections outside the move set. | Each defect fixed, or kept with its reason under the audit's rule; smoke matrix green. |
 | W2 | Overview page, tutorial, glossary, generated reference (refusal codes included), troubleshooting keyed by refusal code, the upgrade procedure page, the S4 step (non-blocking). | Contract green; S4 green or each blocked step recorded as an owner finding; owner confirms the prose claims in one batch. |
@@ -480,7 +481,7 @@ Otherwise that release's pin bump turns red on the website's claims.
 
 ## Owner decisions
 
-| # | Decision | Recommendation |
+| # | Decision | Recommendation (accepted 2026-11-13) |
 | --- | --- | --- |
 | D1 | Adopt S1, S2, S4, S5, S6 as designed above. | Yes. |
 | D2 | Guide location. | `packages/core/docs/guide/`. |
