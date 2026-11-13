@@ -119,8 +119,18 @@ RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog,
  SELECT jsonb_build_object('contractVersion','commerce.v0','paymentAttempt',jsonb_build_object(
   'id',a.id,'paymentIntentId',a.settlement_intent_id,'paymentId',a.payment_id,'status',a.status,
   'provider',a.provider,'providerAttemptId',a.provider_attempt_id,'providerSessionId',a.provider_session_id,
-  'nextActionKind',a.next_action_kind,'idempotencyKey',a.idempotency_key,'replayed',false))
+  'nextActionKind',a.next_action_kind,'idempotencyKey',a.idempotency_key,'replayed',false),
+  'orderId',i.order_id,'intentStatus',s.status,'settlementStatus',i.status,
+  'amountMinor',a.amount_minor,'currency',a.currency,'requestPayload',a.request_payload,'responsePayload',a.response_payload,
+  'observedSuccess',EXISTS(SELECT 1 FROM public.payment_provider_attempts prior
+   JOIN public.payment_provider_attempt_evidence e ON e.payment_attempt_id=prior.id AND e.settlement_intent_id=prior.settlement_intent_id
+   WHERE prior.settlement_intent_id=s.id AND e.provider=prior.provider AND e.provider_payment_id=prior.provider_attempt_id
+    AND e.signature_verified IS TRUE AND e.event_type='payment.succeeded'),
+  'observedFailure',EXISTS(SELECT 1 FROM public.payment_provider_attempt_evidence e WHERE e.payment_attempt_id=a.id
+   AND e.settlement_intent_id=s.id AND e.provider=a.provider AND e.provider_payment_id=a.provider_attempt_id
+   AND e.signature_verified IS TRUE AND e.event_type='payment.failed'))
  FROM public.payment_provider_attempts a JOIN public.payment_provider_states s ON s.id=a.settlement_intent_id
+ JOIN public.commerce_settlement_intents i ON i.id=s.id
  WHERE s.id=p_intent_id AND a.id=COALESCE(p_attempt_id,s.active_attempt_id);
 $$;
 
@@ -266,6 +276,12 @@ BEGIN
 
   PERFORM public.payment_provider_lock_aggregate(p_settlement_intent_id);
 
+  IF v_inline_retry AND EXISTS(SELECT 1 FROM public.commerce_settlement_intents i
+    JOIN public.commerce_orders o ON o.id=i.order_id WHERE i.id=p_settlement_intent_id
+     AND (o.status<>'pending_payment' OR o.metadata->>'paymentStatus'='expired')) THEN
+    RAISE EXCEPTION 'payment_control_inline_retry_order_not_payable' USING ERRCODE='55000';
+  END IF;
+
   SELECT *
     INTO v_existing
     FROM public.payment_provider_receipts
@@ -307,14 +323,15 @@ BEGIN
     RAISE EXCEPTION 'payment_control_provider_attempt_prepare_idempotency_conflict' USING ERRCODE = '23505';
   END IF;
 
-  SELECT ps.*,i.amount_minor,i.currency_code AS currency,i.order_id
+  SELECT ps.*,i.amount_minor,i.currency_code AS currency,i.order_id,i.status AS settlement_status
     INTO v_intent FROM public.payment_provider_states ps
     JOIN public.commerce_settlement_intents i ON i.id=ps.id
     WHERE ps.id=p_settlement_intent_id FOR UPDATE OF ps;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'payment_control_provider_attempt_prepare_intent_not_found' USING ERRCODE = '22023';
   END IF;
-  IF v_intent.status IN ('succeeded', 'cancelled', 'refunded', 'partially_refunded', 'disputed') THEN
+  IF v_intent.status IN ('succeeded', 'cancelled', 'refunded', 'partially_refunded', 'disputed')
+    OR v_intent.settlement_status IN ('settled','cancelled') THEN
     RAISE EXCEPTION 'payment_control_provider_attempt_prepare_intent_not_retryable' USING ERRCODE = '22023';
   END IF;
 
@@ -837,7 +854,7 @@ BEGIN
     RAISE EXCEPTION 'payment_control_provider_attempt_finalize_fingerprint_mismatch' USING ERRCODE = '23505';
   END IF;
 
-  SELECT ps.*,i.amount_minor,i.currency_code AS currency,i.order_id
+  SELECT ps.*,i.amount_minor,i.currency_code AS currency,i.order_id,i.status AS settlement_status
     INTO v_intent FROM public.payment_provider_states ps
     JOIN public.commerce_settlement_intents i ON i.id=ps.id
     WHERE ps.id=p_settlement_intent_id FOR UPDATE OF ps;
@@ -847,7 +864,7 @@ BEGIN
   IF v_intent.active_attempt_id IS DISTINCT FROM v_attempt.id THEN
     RAISE EXCEPTION 'payment_control_provider_attempt_finalize_active_attempt_mismatch' USING ERRCODE = '22023';
   END IF;
-  IF v_intent.status IN ('succeeded', 'cancelled', 'refunded', 'partially_refunded', 'disputed') THEN
+  IF v_intent.status IN ('succeeded', 'cancelled', 'refunded', 'partially_refunded', 'disputed') OR v_intent.settlement_status IN ('settled','cancelled') THEN
     RAISE EXCEPTION 'payment_control_provider_attempt_finalize_intent_terminal' USING ERRCODE = '22023';
   END IF;
 
@@ -1114,6 +1131,7 @@ BEGIN
       'paymentIntentId', v_event.settlement_intent_id,
       'paymentAttemptId', v_event.payment_attempt_id,
       'eventFingerprint', v_event.event_fingerprint,
+      'occurredAt', v_event.source_evidence->>'observedAt',
       'replayed', v_replayed
     )
   );
@@ -1130,6 +1148,16 @@ BEGIN
  SELECT * INTO s FROM public.payment_provider_states WHERE id=i.id;
  SELECT * INTO a FROM public.payment_provider_attempts WHERE id=s.active_attempt_id AND settlement_intent_id=i.id;
  IF NOT FOUND THEN RAISE EXCEPTION 'payment_control_result_active_attempt_not_found' USING ERRCODE='22023'; END IF;
+ IF p_evidence->>'sourceKind'='execution_response' THEN
+  IF p_evidence->>'sourceReference' IS DISTINCT FROM a.id::text
+   OR p_evidence->>'attemptRef' IS DISTINCT FROM a.id::text
+   OR p_amount IS DISTINCT FROM i.amount_minor OR p_currency IS DISTINCT FROM i.currency_code
+   OR p_evidence->>'payloadFingerprint' IS DISTINCT FROM encode(sha256(convert_to(a.response_payload::text,'UTF8')),'hex')
+   OR p_outcome NOT IN ('captured','refused')
+   OR (p_evidence->>'observedAt')::timestamptz IS DISTINCT FROM p_at THEN
+   RAISE EXCEPTION 'payment_control_result_evidence_mismatch' USING ERRCODE='22023'; END IF;
+  RETURN;
+ END IF;
  SELECT * INTO e FROM public.payment_provider_attempt_evidence WHERE id::text=p_evidence->>'sourceReference';
  IF NOT FOUND OR e.settlement_intent_id IS DISTINCT FROM i.id THEN
   RAISE EXCEPTION 'payment_control_result_event_mismatch' USING ERRCODE='22023'; END IF;
@@ -1140,7 +1168,7 @@ BEGIN
   OR e.provider_payment_id IS DISTINCT FROM a.provider_attempt_id
   OR p_amount IS DISTINCT FROM i.amount_minor OR p_currency IS DISTINCT FROM i.currency_code
   OR (e.amount_minor>0 AND e.amount_minor<>i.amount_minor) OR (e.currency IS NOT NULL AND e.currency<>i.currency_code)
-  OR p_outcome IS DISTINCT FROM CASE e.event_type WHEN 'payment.succeeded' THEN 'captured' WHEN 'payment.failed' THEN 'refused' ELSE 'indeterminate' END
+  OR p_outcome IS DISTINCT FROM (CASE e.event_type WHEN 'payment.succeeded' THEN 'captured' WHEN 'payment.failed' THEN 'refused' ELSE 'indeterminate' END)
   OR p_evidence->>'payloadFingerprint' IS DISTINCT FROM COALESCE(e.event_fingerprint,encode(sha256(convert_to(e.payload::text,'UTF8')),'hex'))
   OR p_evidence->>'sourceKind' IS DISTINCT FROM 'accepted_event'
   OR (p_evidence->>'observedAt')::timestamptz IS DISTINCT FROM p_at THEN
@@ -1211,15 +1239,16 @@ BEGIN
   RAISE EXCEPTION 'native_cumulative_refund_unsupported' USING ERRCODE='22023';
  END IF;
  IF kind='state_changed' THEN
-  IF p_payment_event_id IS NULL THEN
-   RAISE EXCEPTION 'payment_control_result_event_mismatch' USING ERRCODE='22023'; END IF;
   outcome:=CASE WHEN p_result_status='succeeded' THEN 'captured' ELSE 'refused' END;
   native_failure:=CASE WHEN outcome='refused' THEN CASE WHEN p_failure_class IN ('authorization_refused','insufficient_funds','method_unavailable','risk_refused','unknown_refusal') THEN p_failure_class ELSE 'unknown_refusal' END END;
-  evidence:=jsonb_build_object('sourceKind','accepted_event','sourceReference',e.id,'attemptRef',a.id,
-   'observedStatus',p_result_status,'observedAt',p_occurred_at,'payloadFingerprint',COALESCE(e.event_fingerprint,encode(sha256(convert_to(e.payload::text,'UTF8')),'hex')));
+  evidence:=CASE WHEN p_payment_event_id IS NULL THEN
+   jsonb_build_object('sourceKind','execution_response','sourceReference',a.id,'attemptRef',a.id,
+    'observedStatus',p_result_status,'observedAt',p_occurred_at,'payloadFingerprint',encode(sha256(convert_to(a.response_payload::text,'UTF8')),'hex'))
+   ELSE jsonb_build_object('sourceKind','accepted_event','sourceReference',e.id,'attemptRef',a.id,
+    'observedStatus',p_result_status,'observedAt',p_occurred_at,'payloadFingerprint',COALESCE(e.event_fingerprint,encode(sha256(convert_to(e.payload::text,'UTF8')),'hex'))) END;
   PERFORM public.payment_provider_assert_truth(i.id,outcome,i.amount_minor,i.currency_code,p_occurred_at,evidence);
   IF NOT (p_result_status='succeeded' AND i.status='settled') THEN
-   truth:=public.payment_truth_ingest_event('provider:'||e.id,encode(sha256(convert_to(jsonb_build_object('eventId',e.id,'intentId',i.id,'attemptId',a.id,'outcome',outcome)::text,'UTF8')),'hex'),
+   truth:=public.payment_truth_ingest_event('provider:'||COALESCE(e.id::text,p_idempotency_key),encode(sha256(convert_to(jsonb_build_object('eventId',e.id,'intentId',i.id,'attemptId',a.id,'outcome',outcome)::text,'UTF8')),'hex'),
     p_idempotency_key||':truth',i.id,outcome,i.amount_minor,i.currency_code,p_occurred_at,native_failure,p_failure_reason,evidence,p_dunning_template_slug,p_recovery_url_path,p_recovery_template_slug);
   END IF;
   UPDATE public.payment_provider_states SET status=p_result_status,payment_status=p_result_status,
@@ -2144,6 +2173,8 @@ BEGIN
      AND o.metadata#>>'{quoteSnapshot,quote,context,mode}'='one_time')) THEN
   RAISE EXCEPTION 'checkout_recovery_order_not_recoverable' USING ERRCODE='22023'; END IF;
  IF i.channel_key<>'sandbox' THEN
+  IF NOT EXISTS(SELECT 1 FROM public.payment_provider_states WHERE id=i.id) THEN
+   RAISE EXCEPTION 'native_prepared_attempt_store_unsupported' USING ERRCODE='22023'; END IF;
   RETURN public.payment_provider_attempt_prepare(p_request_key,p_intent_id,p_method_facts->>'provider',
    p_method_facts->>'providerIdempotencyKey',p_fingerprint,p_method_facts->>'providerFlow',p_method_facts->>'paymentMethodRef',p_method_facts->'requestPayload');
  END IF;
@@ -2167,6 +2198,8 @@ BEGIN
  SELECT * INTO i FROM public.commerce_settlement_intents WHERE id=p_intent_id AND order_id=o.id FOR UPDATE;
  IF NOT FOUND THEN RAISE EXCEPTION 'checkout_inline_retry_refused' USING ERRCODE='22023'; END IF;
  IF i.channel_key<>'sandbox' THEN
+  IF NOT EXISTS(SELECT 1 FROM public.payment_provider_states WHERE id=i.id) THEN
+   RAISE EXCEPTION 'native_prepared_attempt_store_unsupported' USING ERRCODE='22023'; END IF;
   IF p_context->>'executionRail' IS DISTINCT FROM i.channel_key OR o.status<>'pending_payment'
    OR o.metadata->>'paymentStatus'='expired' OR i.status='settled' THEN
    RAISE EXCEPTION 'checkout_inline_retry_refused' USING ERRCODE='22023'; END IF;
@@ -2278,13 +2311,19 @@ BEGIN
   OR EXISTS(SELECT 1 FROM public.fulfillment_inventory_reservations WHERE purchase_order_id=source.id AND status IN ('held','committed')) THEN
   RAISE EXCEPTION 'commerce_expired_recovery_source_not_eligible' USING ERRCODE='22023'; END IF;
  SELECT * INTO intent FROM public.commerce_settlement_intents WHERE order_id=source.id;
+ IF intent.id IS NOT NULL AND intent.channel_key<>'sandbox' AND NOT EXISTS(SELECT 1 FROM public.payment_provider_states WHERE id=intent.id) THEN
+  RAISE EXCEPTION 'native_prepared_attempt_store_unsupported' USING ERRCODE='22023'; END IF;
  IF intent.id IS NOT NULL AND intent.channel_key<>'sandbox' AND NOT EXISTS(
   SELECT 1 FROM public.payment_provider_states s JOIN public.payment_provider_attempts a ON a.id=s.active_attempt_id
   JOIN public.payment_provider_attempt_evidence e ON e.payment_attempt_id=a.id AND e.settlement_intent_id=s.id
   WHERE s.id=intent.id AND a.settlement_intent_id=s.id AND a.status IN ('failed','expired') AND e.signature_verified IS TRUE
    AND e.provider=a.provider AND e.provider_payment_id=a.provider_attempt_id AND e.event_type='payment.failed') THEN
   RAISE EXCEPTION 'commerce_expired_recovery_payment_unavailable' USING ERRCODE='22023'; END IF;
- IF intent.status='settled' OR EXISTS(SELECT 1 FROM public.payment_truth_events e JOIN public.commerce_settlement_intents i
+ IF EXISTS(SELECT 1 FROM public.payment_provider_attempts pa JOIN public.payment_provider_attempt_evidence pe
+   ON pe.payment_attempt_id=pa.id AND pe.settlement_intent_id=pa.settlement_intent_id
+   WHERE pa.settlement_intent_id=intent.id AND pe.provider=pa.provider AND pe.provider_payment_id=pa.provider_attempt_id
+    AND pe.signature_verified IS TRUE AND pe.event_type='payment.succeeded')
+  OR intent.status='settled' OR EXISTS(SELECT 1 FROM public.payment_truth_events e JOIN public.commerce_settlement_intents i
    ON i.id=e.settlement_intent_id WHERE i.order_id=source.id AND e.outcome='captured')
   OR EXISTS(SELECT 1 FROM public.payment_simulator_attempts a WHERE a.settlement_intent_id=intent.id AND a.state='captured') THEN
   RAISE EXCEPTION 'commerce_expired_recovery_money_moved' USING ERRCODE='23505'; END IF;
@@ -2430,7 +2469,9 @@ WITH current_state AS MATERIALIZED (
   ) b
  ) evidence
 )
-SELECT CASE WHEN cs.channel_key<>'sandbox' THEN (SELECT jsonb_build_object('snapshot',jsonb_build_object(
+SELECT CASE WHEN cs.channel_key<>'sandbox' AND NOT EXISTS(SELECT 1 FROM public.payment_provider_states WHERE id=cs.intent_id)
+ THEN jsonb_build_object('refusal','native_prepared_attempt_store_unsupported')
+ WHEN cs.channel_key<>'sandbox' THEN (SELECT jsonb_build_object('snapshot',jsonb_build_object(
   'orderId',cs.order_id,'clientId',cs.client_id,'orderStatus',cs.order_status,'paymentIntentId',cs.intent_id,
   'intentStatus',ps.status,'paymentAttemptId',pa.id,'attemptStatus',pa.status,'provider',pa.provider,
   'providerPaymentId',pa.provider_attempt_id,'updatedAt',ps.updated_at,'failureReason',ps.failure_reason,
@@ -2500,36 +2541,6 @@ REVOKE ALL ON FUNCTION public.payment_provider_assert_truth(uuid,text,bigint,tex
 
 REVOKE ALL ON FUNCTION public.payment_provider_result_apply(text,uuid,uuid,text,timestamptz,text,text,text,text,text,text) FROM PUBLIC;
 
-REVOKE ALL ON FUNCTION public.payment_simulator_begin_attempt(text,uuid,text,jsonb,timestamptz) FROM PUBLIC;
-
-REVOKE ALL ON FUNCTION public.payment_simulator_record_observation(uuid,text,text,text,timestamptz) FROM PUBLIC;
-
-REVOKE ALL ON FUNCTION public.payment_truth_ingest_event(text,text,text,uuid,text,bigint,text,timestamptz,text,text,jsonb,text,text,text) FROM PUBLIC;
-
-REVOKE ALL ON FUNCTION public.payment_truth_apply_terminal(uuid,text,text,timestamptz,text,text,jsonb,text,text,text) FROM PUBLIC;
-
-REVOKE ALL ON FUNCTION public.payment_truth_record_reconciliation(uuid,text,text,text,text,timestamptz,text,text,jsonb,text,text,text) FROM PUBLIC;
-
-REVOKE ALL ON FUNCTION public.commerce_record_settlement(text,uuid,text,text,jsonb,timestamptz) FROM PUBLIC;
-
-REVOKE ALL ON FUNCTION public.commerce_cancel_abandoned_purchase_checkout(text,uuid,text,timestamptz) FROM PUBLIC;
-
-REVOKE ALL ON FUNCTION public.oms_cancel_unpaid_order_owned(text,uuid,text,uuid,jsonb,timestamptz) FROM PUBLIC;
-
-REVOKE ALL ON FUNCTION public.commerce_sweep_expired_checkouts(integer,jsonb,timestamptz) FROM PUBLIC;
-
-REVOKE ALL ON FUNCTION public.commerce_checkout_recovery_payment_blocked(uuid,integer,timestamptz) FROM PUBLIC;
-
-REVOKE ALL ON FUNCTION public.commerce_initial_checkout_abandonment_safe(uuid) FROM PUBLIC;
-
-REVOKE ALL ON FUNCTION public.commerce_checkout_recovery_attempt_begin(text,uuid,uuid,uuid,text,jsonb,timestamptz) FROM PUBLIC;
-
-REVOKE ALL ON FUNCTION public.commerce_checkout_inline_retry_begin(text,uuid,uuid,uuid,uuid,text,jsonb,timestamptz) FROM PUBLIC;
-
-REVOKE ALL ON FUNCTION public.commerce_prepare_expired_checkout_recovery(text,uuid,uuid,bigint,timestamptz) FROM PUBLIC;
-
-REVOKE ALL ON FUNCTION public.commerce_checkout_payment_guidance_snapshot(uuid,uuid,uuid) FROM PUBLIC;
-
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN
   EXECUTE 'REVOKE ALL ON TABLE public.payment_provider_states,public.payment_provider_attempts,public.payment_provider_attempt_evidence,public.payment_provider_receipts,public.payment_provider_transitions FROM anon';
 END IF; END; $$;
@@ -2543,13 +2554,13 @@ DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
 END IF; END; $$;
 
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN
-  EXECUTE 'REVOKE ALL ON FUNCTION public.payment_provider_lock_aggregate(uuid),public.payment_provider_attempt_read(uuid,uuid),public.payment_provider_intent_create(text,text,uuid,uuid,uuid,bigint,text,jsonb,text,timestamptz),public.payment_provider_attempt_prepare(text,uuid,text,text,text,text,text,jsonb),public.payment_provider_attempt_record(text,uuid,text,text,text,text,text,jsonb,jsonb),public.payment_provider_attempt_finalize(text,uuid,uuid,text,text,text,text,text,text,jsonb,jsonb),public.payment_provider_event_ingest(text,text,text,text,uuid,uuid,integer,text,boolean,jsonb),public.payment_provider_assert_truth(uuid,text,bigint,text,timestamptz,jsonb),public.payment_provider_result_apply(text,uuid,uuid,text,timestamptz,text,text,text,text,text,text),public.payment_simulator_begin_attempt(text,uuid,text,jsonb,timestamptz),public.payment_simulator_record_observation(uuid,text,text,text,timestamptz),public.payment_truth_ingest_event(text,text,text,uuid,text,bigint,text,timestamptz,text,text,jsonb,text,text,text),public.payment_truth_apply_terminal(uuid,text,text,timestamptz,text,text,jsonb,text,text,text),public.payment_truth_record_reconciliation(uuid,text,text,text,text,timestamptz,text,text,jsonb,text,text,text),public.commerce_record_settlement(text,uuid,text,text,jsonb,timestamptz),public.commerce_cancel_abandoned_purchase_checkout(text,uuid,text,timestamptz),public.oms_cancel_unpaid_order_owned(text,uuid,text,uuid,jsonb,timestamptz),public.commerce_sweep_expired_checkouts(integer,jsonb,timestamptz),public.commerce_checkout_recovery_payment_blocked(uuid,integer,timestamptz),public.commerce_initial_checkout_abandonment_safe(uuid),public.commerce_checkout_recovery_attempt_begin(text,uuid,uuid,uuid,text,jsonb,timestamptz),public.commerce_checkout_inline_retry_begin(text,uuid,uuid,uuid,uuid,text,jsonb,timestamptz),public.commerce_prepare_expired_checkout_recovery(text,uuid,uuid,bigint,timestamptz),public.commerce_checkout_payment_guidance_snapshot(uuid,uuid,uuid) FROM anon';
+  EXECUTE 'REVOKE ALL ON FUNCTION public.payment_provider_lock_aggregate(uuid),public.payment_provider_attempt_read(uuid,uuid),public.payment_provider_intent_create(text,text,uuid,uuid,uuid,bigint,text,jsonb,text,timestamptz),public.payment_provider_attempt_prepare(text,uuid,text,text,text,text,text,jsonb),public.payment_provider_attempt_record(text,uuid,text,text,text,text,text,jsonb,jsonb),public.payment_provider_attempt_finalize(text,uuid,uuid,text,text,text,text,text,text,jsonb,jsonb),public.payment_provider_event_ingest(text,text,text,text,uuid,uuid,integer,text,boolean,jsonb),public.payment_provider_assert_truth(uuid,text,bigint,text,timestamptz,jsonb),public.payment_provider_result_apply(text,uuid,uuid,text,timestamptz,text,text,text,text,text,text) FROM anon';
 END IF; END; $$;
 
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN
-  EXECUTE 'REVOKE ALL ON FUNCTION public.payment_provider_lock_aggregate(uuid),public.payment_provider_attempt_read(uuid,uuid),public.payment_provider_intent_create(text,text,uuid,uuid,uuid,bigint,text,jsonb,text,timestamptz),public.payment_provider_attempt_prepare(text,uuid,text,text,text,text,text,jsonb),public.payment_provider_attempt_record(text,uuid,text,text,text,text,text,jsonb,jsonb),public.payment_provider_attempt_finalize(text,uuid,uuid,text,text,text,text,text,text,jsonb,jsonb),public.payment_provider_event_ingest(text,text,text,text,uuid,uuid,integer,text,boolean,jsonb),public.payment_provider_assert_truth(uuid,text,bigint,text,timestamptz,jsonb),public.payment_provider_result_apply(text,uuid,uuid,text,timestamptz,text,text,text,text,text,text),public.payment_simulator_begin_attempt(text,uuid,text,jsonb,timestamptz),public.payment_simulator_record_observation(uuid,text,text,text,timestamptz),public.payment_truth_ingest_event(text,text,text,uuid,text,bigint,text,timestamptz,text,text,jsonb,text,text,text),public.payment_truth_apply_terminal(uuid,text,text,timestamptz,text,text,jsonb,text,text,text),public.payment_truth_record_reconciliation(uuid,text,text,text,text,timestamptz,text,text,jsonb,text,text,text),public.commerce_record_settlement(text,uuid,text,text,jsonb,timestamptz),public.commerce_cancel_abandoned_purchase_checkout(text,uuid,text,timestamptz),public.oms_cancel_unpaid_order_owned(text,uuid,text,uuid,jsonb,timestamptz),public.commerce_sweep_expired_checkouts(integer,jsonb,timestamptz),public.commerce_checkout_recovery_payment_blocked(uuid,integer,timestamptz),public.commerce_initial_checkout_abandonment_safe(uuid),public.commerce_checkout_recovery_attempt_begin(text,uuid,uuid,uuid,text,jsonb,timestamptz),public.commerce_checkout_inline_retry_begin(text,uuid,uuid,uuid,uuid,text,jsonb,timestamptz),public.commerce_prepare_expired_checkout_recovery(text,uuid,uuid,bigint,timestamptz),public.commerce_checkout_payment_guidance_snapshot(uuid,uuid,uuid) FROM authenticated';
+  EXECUTE 'REVOKE ALL ON FUNCTION public.payment_provider_lock_aggregate(uuid),public.payment_provider_attempt_read(uuid,uuid),public.payment_provider_intent_create(text,text,uuid,uuid,uuid,bigint,text,jsonb,text,timestamptz),public.payment_provider_attempt_prepare(text,uuid,text,text,text,text,text,jsonb),public.payment_provider_attempt_record(text,uuid,text,text,text,text,text,jsonb,jsonb),public.payment_provider_attempt_finalize(text,uuid,uuid,text,text,text,text,text,text,jsonb,jsonb),public.payment_provider_event_ingest(text,text,text,text,uuid,uuid,integer,text,boolean,jsonb),public.payment_provider_assert_truth(uuid,text,bigint,text,timestamptz,jsonb),public.payment_provider_result_apply(text,uuid,uuid,text,timestamptz,text,text,text,text,text,text) FROM authenticated';
 END IF; END; $$;
 
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
-  EXECUTE 'GRANT EXECUTE ON FUNCTION public.payment_provider_lock_aggregate(uuid),public.payment_provider_attempt_read(uuid,uuid),public.payment_provider_intent_create(text,text,uuid,uuid,uuid,bigint,text,jsonb,text,timestamptz),public.payment_provider_attempt_prepare(text,uuid,text,text,text,text,text,jsonb),public.payment_provider_attempt_record(text,uuid,text,text,text,text,text,jsonb,jsonb),public.payment_provider_attempt_finalize(text,uuid,uuid,text,text,text,text,text,text,jsonb,jsonb),public.payment_provider_event_ingest(text,text,text,text,uuid,uuid,integer,text,boolean,jsonb),public.payment_provider_assert_truth(uuid,text,bigint,text,timestamptz,jsonb),public.payment_provider_result_apply(text,uuid,uuid,text,timestamptz,text,text,text,text,text,text),public.payment_simulator_begin_attempt(text,uuid,text,jsonb,timestamptz),public.payment_simulator_record_observation(uuid,text,text,text,timestamptz),public.payment_truth_ingest_event(text,text,text,uuid,text,bigint,text,timestamptz,text,text,jsonb,text,text,text),public.payment_truth_apply_terminal(uuid,text,text,timestamptz,text,text,jsonb,text,text,text),public.payment_truth_record_reconciliation(uuid,text,text,text,text,timestamptz,text,text,jsonb,text,text,text),public.commerce_record_settlement(text,uuid,text,text,jsonb,timestamptz),public.commerce_cancel_abandoned_purchase_checkout(text,uuid,text,timestamptz),public.oms_cancel_unpaid_order_owned(text,uuid,text,uuid,jsonb,timestamptz),public.commerce_sweep_expired_checkouts(integer,jsonb,timestamptz),public.commerce_checkout_recovery_payment_blocked(uuid,integer,timestamptz),public.commerce_initial_checkout_abandonment_safe(uuid),public.commerce_checkout_recovery_attempt_begin(text,uuid,uuid,uuid,text,jsonb,timestamptz),public.commerce_checkout_inline_retry_begin(text,uuid,uuid,uuid,uuid,text,jsonb,timestamptz),public.commerce_prepare_expired_checkout_recovery(text,uuid,uuid,bigint,timestamptz),public.commerce_checkout_payment_guidance_snapshot(uuid,uuid,uuid) TO service_role';
+  EXECUTE 'GRANT EXECUTE ON FUNCTION public.payment_provider_lock_aggregate(uuid),public.payment_provider_attempt_read(uuid,uuid),public.payment_provider_intent_create(text,text,uuid,uuid,uuid,bigint,text,jsonb,text,timestamptz),public.payment_provider_attempt_prepare(text,uuid,text,text,text,text,text,jsonb),public.payment_provider_attempt_record(text,uuid,text,text,text,text,text,jsonb,jsonb),public.payment_provider_attempt_finalize(text,uuid,uuid,text,text,text,text,text,text,jsonb,jsonb),public.payment_provider_event_ingest(text,text,text,text,uuid,uuid,integer,text,boolean,jsonb),public.payment_provider_assert_truth(uuid,text,bigint,text,timestamptz,jsonb),public.payment_provider_result_apply(text,uuid,uuid,text,timestamptz,text,text,text,text,text,text) TO service_role';
 END IF; END; $$;

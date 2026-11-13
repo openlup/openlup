@@ -976,7 +976,7 @@ cover legacy and both qualified runtimes.
 
 | Profile limit | Current refusal | Closure |
 | --- | --- | --- |
-| Native real-provider attempt persistence and recovery evidence | `native_prepared_attempt_store_unsupported`; recreation is qualified only for the sandbox owner | N6 portable real-money payment-owner round, with its own SQL admission and provider evidence |
+| Native provider attempt persistence and recovery evidence | Available after installing the complete chain through `20261114100000_payment_provider_attempt_store.sql` and explicitly recording the provider lifecycle; missing local evidence remains unavailable | Use the provider persistence and evidence readers described in [the data owner](DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories). Provider journey activation and method authority require their own composition. |
 
 ## Atomic checkout payment guidance
 

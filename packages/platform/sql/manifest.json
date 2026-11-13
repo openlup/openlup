@@ -530,9 +530,13 @@
       {
         "file": "db/platform/migrations/20261111120000_communication_ecommerce_sources.sql",
         "sha256": "1784eece20c831ce1d7eb1adfe19150d525b6c161cd0bebe1e6ade22b6b74256"
+      },
+      {
+        "file": "db/platform/migrations/20261114100000_payment_provider_attempt_store.sql",
+        "sha256": "3d0e3c5696e417f47a30c0581915df86c5386d4bcec9b0715c9f561fd7b6c291"
       }
     ],
-    "objectInventorySha256": "a92305f9815433d4099da3626eb8cb3de35403a6c9dc743f77c5f3c10d42ecc7",
+    "objectInventorySha256": "2e5606bbc37a67ce31651cb9920d2300b1a840c18e37e76eb1917dd81a794bb9",
     "qualified": {
       "baseline": {
         "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1082,14 +1086,18 @@
         {
           "file": "db/platform/migrations/20261111120000_communication_ecommerce_sources.sql",
           "sha256": "1784eece20c831ce1d7eb1adfe19150d525b6c161cd0bebe1e6ade22b6b74256"
+        },
+        {
+          "file": "db/platform/migrations/20261114100000_payment_provider_attempt_store.sql",
+          "sha256": "3d0e3c5696e417f47a30c0581915df86c5386d4bcec9b0715c9f561fd7b6c291"
         }
       ],
       "objectInventorySha256": {
         "bootstrapMigrator": {
-          "withRestore": "a04a504f9568286202f7603ac5691818af9517bc855cd1b8612c025e2d84d957"
+          "withRestore": "bf9fbd99fa972a70e3a4a9123f610108daa04c54c0f5fe9896ded9fc5f1c58df"
         },
         "separateMigrator": {
-          "withRestore": "d4adeb0cc0ffbc0e575c4dac19aea48382a0883bf276a5007b3692cc99f50ce7"
+          "withRestore": "e3e86597360b7a8e8d51d6f3fc7cba5559eefc263513393cf2a963c1e1b917b2"
         }
       }
     },
@@ -1638,11 +1646,15 @@
         {
           "file": "db/platform/migrations/20261111120000_communication_ecommerce_sources.sql",
           "sha256": "1784eece20c831ce1d7eb1adfe19150d525b6c161cd0bebe1e6ade22b6b74256"
+        },
+        {
+          "file": "db/platform/migrations/20261114100000_payment_provider_attempt_store.sql",
+          "sha256": "3d0e3c5696e417f47a30c0581915df86c5386d4bcec9b0715c9f561fd7b6c291"
         }
       ],
       "objectInventorySha256": {
-        "installerManaged": "ec17fb1fcfe03cef86411d16f33c6dfef12693a7fca320c47c9496b104b5e192",
-        "operatorProvisioned": "969d3864b800b21b906028e4faa35eb23b2101eea2eabdc120cf5b69eaddb783"
+        "installerManaged": "bde73f42ba4cfa0548109865010d5a7b3984b3e6da1f025ca7ef05b21679e1e9",
+        "operatorProvisioned": "b04f182596092e230736cd832b9a06144306cb24472ff6acbb39a066aec44592"
       }
     }
   },
@@ -2306,6 +2318,11 @@
       "file": "20261111120000_communication_ecommerce_sources.sql",
       "source": "db/platform/migrations/20261111120000_communication_ecommerce_sources.sql",
       "sha256": "1784eece20c831ce1d7eb1adfe19150d525b6c161cd0bebe1e6ade22b6b74256"
+    },
+    {
+      "file": "20261114100000_payment_provider_attempt_store.sql",
+      "source": "db/platform/migrations/20261114100000_payment_provider_attempt_store.sql",
+      "sha256": "3d0e3c5696e417f47a30c0581915df86c5386d4bcec9b0715c9f561fd7b6c291"
     },
     {
       "file": "q2_00000000000000_platform_baseline.sql",

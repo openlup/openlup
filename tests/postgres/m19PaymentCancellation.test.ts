@@ -101,7 +101,7 @@ it("confines four pinned definers, refuses direct runtime table access and keeps
       await browser.query("RESET ROLE");
     }
   } finally { await browser.query("RESET ROLE"); browser.release(); }
-  expect(paymentSchemaDescriptor.preparedDurableStore).toBe("unsupported");
+  expect(paymentSchemaDescriptor.preparedDurableStore).toBe("supported");
   const f = await fixture("future-provider");
   await expect(simulator().beginAttempt(begin(f.intent))).rejects.toThrow("native_prepared_attempt_store_unsupported");
 });

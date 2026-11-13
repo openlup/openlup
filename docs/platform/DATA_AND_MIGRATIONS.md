@@ -649,7 +649,7 @@ owns immutable simulated outcomes. The runtime has function execution only,
 with no direct access to either table. The forward explicitly revokes all table
 privileges from PUBLIC, anon, authenticated and service_role, removing
 creation-time default grants to those recipients; it does not enable RLS.
-Real PSP support remains unavailable. Install the
+This simulator forward alone supplies no real provider storage. Install the
 complete selected chain, including its exact inventory; this forward alone is
 not an installer. Earlier migration bytes and approvals stay unchanged.
 
@@ -657,6 +657,33 @@ The same forward adds `payment_truth_events.review_required_at` and a new
 consistency CHECK, preserving every existing CHECK and the `open|settled` state
 vocabulary. Existing OMS captured-truth visibility is preserved.
 `commerce_record_settlement` and its later-only schedule rule remain unchanged.
+
+The appended `20261114100000_payment_provider_attempt_store.sql` adds private
+provider lifecycle, attempt, immutable ingress, replay receipt and transition
+relations. Its service functions implement explicit intent admission, durable
+preparation, same-row acknowledgement and exact-attempt result application.
+Preparation commits before provider execution; ingress commits before application.
+An unresolved attempt or exact durable success fences another dispatch. Aggregate
+locks precede payment children, including the existing settlement and truth
+entry points. Financial effects and dunning recovery retain their existing owners.
+All five new tables have RLS and no runtime table privileges; service-role
+execution uses pinned function paths. Capture and restore carry their rows and
+restore the active-attempt pointer after its referenced attempt.
+
+| Historical data | Result and manual path |
+| --- | --- |
+| Native intent without a recorded provider lifecycle or attempt | No automatic backfill or inferred payment identity. Inspect the provider object and admit complete authority explicitly before preparing a fresh attempt. |
+| Unlinked or superseded event | Ingress remains durable; application returns `payment_control_result_attempt_unresolved` or `payment_control_result_attempt_mismatch`, with no business effects. Resolve attribution through operator recovery. |
+| Prepared attempt with no provider handle | Keep the attempt in flight. Missing local handles do not prove provider absence or authorize redispatch. |
+| Settled intent without provider correlation | Preserve settlement and historical evidence. No synthetic provider history is created. |
+| Method health without a recorded provider reference | Health supplies no charging authority. Record provider method authority through the selected method store before execution. |
+
+Only `paymentSchemaDescriptor.preparedDurableStore` is enabled by this forward.
+Method setup, absence reopening and cumulative refund remain separate capabilities;
+absence auto-reopen stays off. A refund never pauses or cancels a subscription.
+The [native witnesses](../../tests/postgres/paymentProviderStore.test.ts) and
+[pgTAP twins](../../tests/postgres/paymentProviderStorePgtap.test.ts) exercise the
+installed store without contacting a payment provider.
 
 List payments awaiting operator review:
 

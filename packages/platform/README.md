@@ -1627,6 +1627,9 @@ artifact evidence.
 
 The payments entry also exports verified ingress, canonical truth fingerprints, method lifecycle/refusal handoff, reconciliation/verify-now and three runner-independent conformance functions. A new internal boundary projects verified envelopes into the contributed processing carrier: original bytes reach verification unchanged, receipt time starts processing, and durable first receipt overrides redelivery time. Full-reversal chargebacks use the existing dispute path. Snapshot and delta observations preserve original payment money; missing observation, required money or identity refuses before terminal application. Missing money, amounts that are not safe positive integers, or blank currencies on succeeded, refunded or disputed adapter evidence use the existing amount-mismatch refusal before ingestion or terminal application; ingress returns the existing processing-failure response. Failed and pending evidence may still omit money. Hosts own durable stores and response transport. Conformance requires safe positive integer amounts and nonblank currencies on settling money and checks exact identity/money, capability/port agreement and transient-secret exclusion; its evidence contains no handoff. Real-store durability still requires a selected-store proof.
 
+The paragraph below records the earlier direct-truth-only profile; the current
+source preview adds the provider store described immediately afterwards.
+
 `createPostgresPaymentTruthPort` accepts the platform data executor structural
 shape and `PostgresPaymentTruthOptions` from the contracts entry. It preserves
 the native truth ingest, reconciliation, sweep and readback SQL. `PAYMENT_MIGRATIONS`
@@ -1638,6 +1641,28 @@ absence reopen and cumulative refund. Refunds are purely financial. Seven real
 PostgreSQL cases cover fresh/prefix installs, replay/conflict, unknown readback,
 lost acknowledgement, rollback, denied access, dunning/recovery, concurrency and
 later-only dates; this does not claim managed-store parity or host activation.
+
+The current native chain through `20261114100000_payment_provider_attempt_store.sql`
+adds `createPostgresPreparedAttemptPersistencePort`,
+`createPostgresProviderPaymentControlPort` and
+`createPostgresPaymentWebhookControlPort`. Explicit intent admission allocates a
+separate durable payment identity. Preparation persists request authority before
+the provider call; finalization acknowledges that same row. An unresolved attempt
+replays without another dispatch. Verified ingress persists independently of result
+application, which refuses unresolved or stale attempt attribution before effects.
+`paymentSchemaDescriptor.preparedDurableStore` is now `supported`; method setup,
+absence reopening and cumulative refund remain `unsupported`.
+
+The additive provider recovery factories read bounded evidence and use the existing
+checkout admission owners: `createPostgresProviderPaymentRecoveryGuidancePort`,
+`createPostgresProviderExpiredCheckoutSafety`,
+`createPostgresProviderCheckoutRecoveryAttemptPort` and
+`createPostgresProviderInlineRecoveryAttemptPort`. Their host still supplies
+recorded provider authority, verified ingress, evidence normalization and route
+composition. Historical intents are never backfilled; missing handles stay in
+flight and do not prove absence. Install the complete selected migration chain
+before composing these ports. Offline PostgreSQL proof does not activate a
+provider account or qualify a complete hosted payment journey.
 
 The source preview's `createPostgresSandboxPaymentSimulator` requires the complete
 native chain through `20261101222000_sandbox_payment_attempts.sql`. Its server

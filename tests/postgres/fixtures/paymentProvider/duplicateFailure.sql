@@ -1,0 +1,13 @@
+BEGIN;
+SELECT plan(3);
+INSERT INTO public.clients(id,email) VALUES('f1100000-0000-4000-8000-000000000001','duplicate-failure@example.invalid');
+SELECT pg_temp.provider_order('f1200000-0000-4000-8000-000000000001','f1100000-0000-4000-8000-000000000001',100);
+CREATE TEMP TABLE _duplicate AS SELECT (pg_temp.provider_intent('duplicate-intent','one_time_order','f1200000-0000-4000-8000-000000000001',NULL,NULL,100,'XXX','{}')#>>'{paymentIntent,id}')::uuid AS id;
+SELECT public.payment_provider_attempt_record('duplicate-attempt',(SELECT id FROM _duplicate),'stripe','pi_duplicate',NULL,'processing',NULL,'{}','{}');
+SELECT pg_temp.provider_apply('duplicate-first',(SELECT id FROM _duplicate),NULL,'failed','2026-11-13T12:00:00Z','declined');
+CREATE TEMP TABLE _duplicate_before AS SELECT count(*)::integer AS n FROM public.commerce_settlement_transitions WHERE intent_id=(SELECT id FROM _duplicate);
+SELECT is((pg_temp.provider_apply('duplicate-second',(SELECT id FROM _duplicate),NULL,'failed','2026-11-13T12:00:00Z','declined')#>>'{paymentResult,kind}'),'ignored_duplicate_terminal_failure','duplicate failure is ignored under a different request key');
+SELECT is((SELECT count(*)::integer FROM public.commerce_settlement_transitions WHERE intent_id=(SELECT id FROM _duplicate)),(SELECT n FROM _duplicate_before),'duplicate failure cannot emit a second settlement transition');
+SELECT is((SELECT count(*)::integer FROM public.payment_truth_events WHERE settlement_intent_id=(SELECT id FROM _duplicate)),1,'duplicate failure cannot invoke the truth effect owner twice');
+SELECT * FROM finish();
+ROLLBACK;

@@ -1,9 +1,9 @@
-/** Direct truth graph only; unsupported operations require a separate store. */
+/** Installed native payment capabilities; provider composition remains explicit. */
 export const paymentSchemaDescriptor = {
   truth: "supported",
   settlement: "supported",
   laterOnlyCycle: "supported",
-  preparedDurableStore: "unsupported",
+  preparedDurableStore: "supported",
   methodSetup: "unsupported",
   absenceReopen: "unsupported",
   cumulativeRefund: "unsupported",

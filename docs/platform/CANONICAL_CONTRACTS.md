@@ -1481,8 +1481,10 @@ Accepted prices lock until edit with no proration; only future agreement changes
 An existing claim, cycle or order keeps its frozen snapshot and money. Preview
 and apply are separate transactions; apply commits terms, event and receipt
 atomically. Private introductory cadence and acquisition policy remain host-owned.
-Multi-cycle prepaid and M07 prepared-store parity retain named unsupported
-capabilities; N1 retry recovery is selected while stock recovery remains
+Multi-cycle prepaid retains its named unsupported capability. The dedicated
+native payment store supports durable preparation, immutable ingress and exact
+attempt correlation; the subscription descriptor retains its separate composition
+limits. N1 retry recovery is selected while stock recovery remains
 unavailable. One executor stays default off with mandatory delivery admission.
 Host-selected M04 descriptors carry recorded
 lifecycle facts; copy, recipient, consent and delivery remain host/M04-owned.
