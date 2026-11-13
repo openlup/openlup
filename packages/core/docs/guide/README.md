@@ -15,9 +15,7 @@ versions and upgrade all `@openlup/*` packages together.
   another version's pages.
 - Never hardcode an OpenLup version; read it from the installed packages.
 - Prefer the refusal-code reference to guessing what a refusal means.
-- Report a wrong page as an
-  [issue](https://github.com/openlup/openlup/issues) that names the page and
-  the installed version.
+- Report a wrong page through the [documentation problem form](https://github.com/openlup/openlup/issues/new?template=documentation_problem.yml), naming the page and the installed version.
 
 ## Pages
 

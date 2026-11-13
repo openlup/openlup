@@ -180,9 +180,10 @@ This MVP indexes English documentation. Translate Polish or other natural-langua
 tasks into concise English domain terms, or search an exact public symbol;
 freeform Polish queries may miss relevant guidance.
 
-The command searches documentation in the installed OpenLup packages offline and
-returns file-and-line citations. Add `--code` for a bounded local application
-source scan, or `--package-code` to inspect the installed packages' `src/` files.
+The command searches documentation in the installed OpenLup packages offline,
+including core's reader guide under `docs/guide/`, and returns file-and-line
+citations. Add `--code` for a bounded local application source scan, or
+`--package-code` to inspect the installed packages' `src/` files.
 Both scans are opt-in and may be incomplete; use direct `rg` when a path or
 symbol is known. Add `--json` for structured results, including a `scans` array
 for executed declaration, application and package-source scans. Each summary
