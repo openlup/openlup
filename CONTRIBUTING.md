@@ -591,8 +591,8 @@ The complete projected root command inventory is `build`,
 `build:public-reference`, `build:public-reference:client`,
 `build:public-reference:prerender`, `build:public-reference:ssr`,
 `check:dco-signoff`, `guard:client-secret-boundary`,
-`guard:public-reference-site-routes`, `inventory:refresh`, `landing:merge`, `lint`, `prelint`,
-`oss:published-tree`, `packages:check`, `release:bump`, `sql:admit`, `pretest`, `test`, and `test:scoped`.
+`guard:public-reference-site-routes`, `inventory:refresh`, `landing:merge`, `lint`, `preflight`, `prelint`,
+`oss:published-tree`, `packages:check`, `release:bump`, `sql:admit`, `pretest`, `test`, `test:hosted`, and `test:scoped`.
 This reclassifies the complete current root script inventory; all commands are
 public, with `test:scoped` as the local wrapper around the unchanged `test` command.
 `npm run build` is the public build truth; its public-reference subcommands and
@@ -717,7 +717,7 @@ namespace, in actual package artifacts. These checks add no command or CI job.
 
 ### Test scope and diagnostics
 
-Use the pinned Node version in [.nvmrc](.nvmrc), npm 11.19.0 and the committed lockfile in your task worktree. Run the tests being written locally; [required and raw checks](#required-and-raw-checks) describe hosted CI and optional full local verification.
+Use the pinned Node version in [.nvmrc](.nvmrc), npm 11.19.0 and the committed lockfile in your task worktree. Run the tests being written locally, in hosted parity with `npm run test:hosted -- <files>`; [required and raw checks](#required-and-raw-checks) describe hosted CI and optional full local verification.
 
 #### Run and inspect
 
@@ -726,6 +726,12 @@ After `npm ci`, use:
 ```sh
 # Builds Core, Outbox and Platform, then runs the affected root tests.
 npm test -- server/domains/subscription
+
+# The same, the way a hosted test shard runs them; at least one file is required.
+npm run test:hosted -- scripts/ci-test-scope.test.ts
+
+# Advisory self-checks over the change since the fork point, before prepare.
+npm run preflight
 
 # Ordinary local root gate: excludes only eligible untouched tooling fixtures.
 npm run test:scoped
@@ -750,6 +756,40 @@ npm test -- scripts/packages/required-package-gates.test.ts scripts/packages/set
 # Separate Core suite; includes coverage, API/docs/release and packed consumer.
 npm --workspace @openlup/core run ci
 ```
+
+`test:hosted` runs the named root test files through `npm test` with the
+settings of a hosted `test-full-shard` job: `CI=true`; no coverage (a
+`--coverage` flag or coverage environment is dropped); no external duration
+pins, so the flat test timeout applies; no exclusion file, so every named file
+runs; three workers, the Vitest default on the 4-vCPU hosted runner; and the
+runner's `TZ=UTC` and `LANG=C.UTF-8`. Git sees `GIT_CONFIG_GLOBAL=/dev/null`, no
+`GIT_AUTHOR_*` or `GIT_COMMITTER_*` variables and `user.useConfigOnly`, so a
+fixture commit without explicit identity fails locally as it does on a runner,
+instead of using an identity guessed from the host name. It does not reproduce
+the hosted runner's CPU speed; size bounds for hosted runners as described below.
+Locale overrides (`LC_*`), a system gitconfig and `OPENLUP_STACK_BASE` are also
+removed; other local environment variables pass through unchanged.
+
+`preflight` is advisory: no CI job or review step runs it, and it exits non-zero
+only when a check reports `FAIL`. It reads the change since
+`git merge-base HEAD origin/main`, plus uncommitted and untracked files, and prints
+one `PASS`, `WARN`, `SKIP` or `FAIL` line per check:
+
+- the published-tree typecheck of the required `typecheck` job, after the package build;
+- the ast-grep scan from [lint rules](#commands-and-lint-rules);
+- `npm run inventory:refresh` when SQL under `db/` or `packages/*/sql/` changed;
+  it has no check mode, so a rewritten inventory stays in the working tree and
+  is reported for commit. It needs Docker and reports `WARN` without it; because
+  it refreshes five disposable installations, a preflight on an SQL change may
+  take longer than three minutes;
+- a `changes/*.md` fragment for each released package whose `src/` changed;
+- on added lines of test files, literal ISO dates within 400 days of now and
+  expiries or TTLs under ten minutes; these simple patterns can misfire, so
+  explain a false positive instead of contorting the test;
+- `gitleaks` with the repository configuration, when it is on `PATH`;
+- `test:hosted` for the changed root test files;
+- the tree-wide neutrality ratchet of the required `self-check` job,
+  `node scripts/public-ci-neutrality.mjs`, against the fork point.
 
 Unset `OPENLUP_VITEST_EXCLUDE_FILE` when requesting an unfiltered run. Outbox and Platform tests also run locally with `npm --workspace @openlup/outbox test` or `npm --workspace @openlup/platform test` after building prerequisites; their package configs use Node and do not inherit root setup. Their installed consumers belong to the shared package gate, not that local command.
 
@@ -1319,9 +1359,10 @@ that required CI and the change's own review would miss.
 2. **Implement, test and document in the same PR.** Implement the change, add
    tests, and update the documentation it makes stale; this is implementation
    work, and the reviewer checks it. Locally run only the tests being written,
-   `npm run lint`, and
+   root test files with `npm run test:hosted -- <files>`, `npm run lint`, and
    `npx --no -- ast-grep scan --error=no-suppress-all --error=unused-suppression`.
-   Full local verification is optional.
+   Before `prepare`, run `npm run preflight` and have it green, or explain each
+   `WARN` in the task record. Full local verification is optional.
 3. **Describe the task in the PR description.** Record the finite outcome, scope
    and exclusions, acceptance criteria, risk, actual delivery authority and
    evidence. Keep this record current through fixes and handoffs.

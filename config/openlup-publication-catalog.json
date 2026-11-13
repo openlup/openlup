@@ -12082,6 +12082,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/preflight.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/preflight.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/prelaunch-acquisition-schema.test.ts",
       "class": "public-output"
     },
@@ -12259,6 +12267,14 @@
     },
     {
       "path": "scripts/subscriber-retention-authorization-fixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/test-hosted.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/test-hosted.test.ts",
       "class": "public-output"
     },
     {
@@ -30082,6 +30098,16 @@
       "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
     },
     {
+      "name": "preflight",
+      "command": "node --experimental-strip-types scripts/preflight.ts",
+      "publicDocs": [
+        "CONTRIBUTING.md",
+        "README.md"
+      ],
+      "publicCiEntrypoint": ".github/workflows/published-tree-ci.yml",
+      "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
+    },
+    {
       "name": "prelint",
       "command": "npm --workspace @openlup/core run build && npm --workspace @openlup/outbox run build && npm --workspace @openlup/platform run build",
       "publicDocs": [
@@ -30152,6 +30178,16 @@
       "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
     },
     {
+      "name": "test:hosted",
+      "command": "node scripts/test-hosted.mjs",
+      "publicDocs": [
+        "CONTRIBUTING.md",
+        "README.md"
+      ],
+      "publicCiEntrypoint": ".github/workflows/published-tree-ci.yml",
+      "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
+    },
+    {
       "name": "test:scoped",
       "command": "scope_file=$(mktemp) && trap 'rm -f \"$scope_file\"' EXIT && export OPENLUP_VITEST_EXCLUDE_FILE=\"$scope_file\" && node scripts/ci-test-scope.mjs && npm test",
       "publicDocs": [
@@ -30169,7 +30205,7 @@
     },
     {
       "path": "package.json",
-      "digest": "sha256-103eb5defa4fd82e6bdbae8387857376b9b3791705699a69da56dd3a8c697d3d"
+      "digest": "sha256-0933c941a2365a330414a877f6e2ccb35697ba5a0b243984f4e5812cf635400f"
     },
     {
       "path": "packages/core/package.json",
