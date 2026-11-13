@@ -1,12 +1,11 @@
 import { projectVerifiedEvidence } from "./verifiedEvidenceProjection.js";
-import { validatePaymentExecutionContractResult } from "@openlup/core/testing";
 import type {
   PaymentAdapterConformanceEvidence,
   PaymentAttemptIdentity, PaymentMoney,
 } from "./contracts/index.js";
 
 import type { PaymentAdapterTestSubject } from "./paymentTestingScenarios.js";
-import { runPaymentSafetyConformance } from "./paymentSafetyConformance.js";
+import { assertPaymentExecution, runPaymentSafetyConformance } from "./paymentSafetyConformance.js";
 
 /** Runner-independent adapter proof. Verification fixtures are owned by each adapter. */
 export async function runPaymentAdapterConformance(
@@ -24,22 +23,7 @@ export async function runPaymentAdapterConformance(
     const sensitiveValues = [executionInput.payer?.email, executionInput.payer?.name, executionInput.customerAuthorization,
       handoff?.kind === "client-confirmed" ? handoff.payload : handoff?.url].filter((v): v is NonNullable<typeof v> => v !== undefined && v.length > 0);
     const sensitiveForms = sensitiveValues.flatMap(value => [value, JSON.stringify(value).slice(1, -1)]);
-    const payerForms = [executionInput.payer?.email, executionInput.payer?.name]
-      .filter((value): value is string => Boolean(value?.length))
-      .flatMap(value => [value, JSON.stringify(value).slice(1, -1)]);
-    const input = {
-      idempotencyKey: executionInput.attemptRef, providerIdempotencyKey: executionInput.providerIdempotencyKey,
-      providerRequestFingerprint: executionInput.fingerprint, paymentIntentId: executionInput.intentRef,
-      amountMinor: executionInput.money.amountMinor, currency: executionInput.money.currency, mode: "one_time" as const,
-    };
-    const validation = validatePaymentExecutionContractResult({ input, expectedProvider: provider, sensitiveValues: sensitiveForms,
-      result: { provider, providerAttemptId: result.dispatch.kind === "dispatched" ? result.dispatch.providerPaymentRef : null,
-        providerSessionId: null, attemptStatus: result.outcome.kind === "attempt" ? result.outcome.status : "processing",
-        nextActionKind: null, requestPayload: { providerIdempotencyKey: input.providerIdempotencyKey,
-          providerRequestFingerprint: input.providerRequestFingerprint }, responsePayload: result.diagnostics },
-    });
-    requireFact(validation.ok, "execution diagnostics and taxonomy");
-    requireFact(!payerForms.some(value => JSON.stringify(result).includes(value)), "execution payer redaction");
+    assertPaymentExecution(subject, executionInput, result);
     if (adapter.capabilities.payerContext.requiresPayerBlock && !executionInput.payer) {
       requireFact(result.dispatch.kind === "notDispatched" && result.dispatch.evidence.exact
         && result.dispatch.evidence.phase === "before-dispatch", "missing required input exact notDispatched");
@@ -103,7 +87,7 @@ export async function runPaymentAdapterConformance(
         fingerprints.set(verified.providerEventId, { fingerprint: verified.fingerprint, outcome });
       }
     }
-    for (const name of await runPaymentSafetyConformance(subject)) {
+    for (const name of await runPaymentSafetyConformance(subject, subjects)) {
       cases.push({ subjectIds: [subject.subjectId], name, passed: true });
     }
     // Transient handoffs are deliberately excluded from the returned evidence.

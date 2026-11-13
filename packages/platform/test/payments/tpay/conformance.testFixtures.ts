@@ -19,6 +19,7 @@ export function createTpayConformanceFixture() {
     { intentRef: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", attemptRef: "attempt-a", remote: "api-a", title: "TR-A", amountMinor: 2599 },
     { intentRef: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", attemptRef: "attempt-b", remote: "api-b", title: "TR-B", amountMinor: 7300 },
   ];
+  const unattendedRequests: unknown[] = [];
   const fake = createScriptedPaymentFake<{ http: unknown }>();
   let failure: { call: string; step: ScriptedPaymentOutcome<unknown> } | undefined;
   const fetch: TpayPaymentAdapterConfig["http"]["fetchImpl"] = vi.fn(async (url, init) => {
@@ -29,6 +30,13 @@ export function createTpayConformanceFixture() {
       const fixture = fixtures.find(row => row.intentRef === request.hiddenDescription);
       if (!fixture) throw new Error("unexpected execution subject");
       expect(request).toMatchObject({ amount: fixture.amountMinor / 100, currency: "PLN" });
+      if (request.pay?.blikPaymentData?.aliases) {
+        unattendedRequests.push(request);
+        expect(adapter.capabilities.unattendedChargeFlow).toBe("recurring_charge");
+        expect(request.pay.blikPaymentData.type).toBe(2);
+        expect(request.pay.blikPaymentData.aliases).toMatchObject({ value: "alias-fixture", type: "PAYID",
+          noDelay: true, recommendedAuthLevel: "NOCONFREQ" });
+      }
       data = { transactionId: fixture.remote, title: fixture.title, status: "pending",
         transactionPaymentUrl: `https://example.test/pay/${fixture.remote}`, payments: { errors: [] } };
     } else if (url.endsWith("/payments")) data = { payments: { attempts: [] } };
@@ -97,7 +105,7 @@ export function createTpayConformanceFixture() {
       ],
     } satisfies Subject & { verificationFixture: typeof verification; certificate: typeof certificate; timestamp: number };
   });
-  return { subjects, fake, config, configureFailure: (call: string, step: ScriptedPaymentOutcome<unknown>) => { failure = { call, step }; } };
+  return { subjects, fake, config, unattendedRequests, configureFailure: (call: string, step: ScriptedPaymentOutcome<unknown>) => { failure = { call, step }; } };
 }
 
 export function tpaySafetyFixture() {

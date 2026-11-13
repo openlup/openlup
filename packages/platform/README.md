@@ -1731,22 +1731,44 @@ transport.assertDrained();
 ```
 
 In the author's test, pass `PaymentAdapterTestSubject[]` to
-`runPaymentAdapterConformance`. Supply `safety` on each subject for the complete
-named suite: `capabilityInputs` exercise every declared capture family/currency
+`runPaymentAdapterConformance`. Supply `safety` on each subject for the named
+offline suite: `capabilityInputs` exercise every declared capture family/currency
 and unattended support or refusal; `transport` invokes the real adapter against
 each scripted failure; `webhooks` supplies signed original bytes and independent
 expected evidence for valid/duplicate delivery, signature mismatch, partial/zero/
 missing amount, missing currency and chargeback. `partialMoney` pins exact minor
 units. Optional close/absence ports are exercised when present; refund creation
 and split authorization/capture are structurally absent. Baseline subjects
-without `safety` retain the existing, narrower checks.
+without `safety` retain the existing, narrower checks. Each capability input must
+identify a supplied subject by its intent/attempt pair; dispatched remote references
+must equal that subject's independent readback reference. All returned executions,
+including capability and transport probes, share diagnostic redaction validation.
+
+A typed map covers all 17 current `PaymentAdapterCapabilities` keys, including
+inherited descriptor fields; adding a key requires a proof at compile time.
+Mandate probes compare `assessMandate` with validation and execution for absent,
+null, admitted and unsupported model evidence. Required stored evidence and payer
+context must refuse when missing. The fixtures independently pin inherited
+values and inspect unattended wire requests. Coverage of every key does not mean
+every descriptor has an executable adapter-port behavior: `unattendedChargeFlow`
+has a structural runner check plus those wire witnesses; `methodHealth`, terminal
+reporting policy/threshold, payer customer-reference fallback and
+`mandateUpsertIsSubscriptionScoped` have structural declaration checks only.
+The attempt input has no customer-reference, method-kind or subscription-write
+port, so this kit cannot prove host method-health admission or mandate persistence.
+The card fixture dispatches without a customer reference despite the declared
+method-health prerequisite; the bank/code fixture reads a terminal status while
+its descriptor names attempt records. These are observed boundary limits, not
+host-policy parity or adapter repairs.
 
 The runner checks replay identity and ingress calls with an in-memory host;
 it does not establish durable-store idempotency. Signature refusal and unusable
 settling money must reach no persistence call. A currencyless notification may
 bind to an adapter's single declared currency; several currencies cannot supply
 an invented choice. Network errors may propagate to the host, so failure probes
-assert no success without inventing proof of non-dispatch. A 409 remains a
+assert no success without inventing proof of non-dispatch. Returned after-dispatch
+timeout and 409 envelopes must also retain dispatched/unknown evidence; exact
+`notDispatched`/`before-dispatch` would erase uncertainty and fails the suite. A 409 remains a
 conflict response; later redelivery of the original event retains replay identity.
 Partial paid amounts and cumulative partial refunds retain their witnessed
 classifications. Chargebacks may be `refunded` or `disputed`.
@@ -1754,7 +1776,7 @@ classifications. Chargebacks may be `refunded` or `disputed`.
 From the repository root, run the existing adapter witnesses with:
 
 ```sh
-npm run test:hosted -- packages/platform/test/payments/stripe/conformance.test.ts packages/platform/test/payments/tpay/conformance.test.ts
+npm --prefix . run test:hosted -- packages/platform/test/payments/stripe/conformance.test.ts packages/platform/test/payments/tpay/conformance.test.ts
 ```
 
 The fixtures in those tests show the client bindings, the card adapter's inclusive

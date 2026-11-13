@@ -19,6 +19,7 @@ export function createStripeConformanceFixture() {
   ];
   const intent = (fixture: typeof fixtures[number]) => ({ id: fixture.remote, status: "requires_action", amount: fixture.amountMinor,
     currency: fixture.currency.toLowerCase(), client_secret: `transient_${fixture.remote}` });
+  const unattendedRequests: unknown[] = [];
   const fake = createScriptedPaymentFake<{ create: unknown; read: unknown }>();
   let failure: ScriptedPaymentOutcome<unknown> | undefined;
   const client: StripePaymentAdapterConfig["client"] = {
@@ -26,6 +27,11 @@ export function createStripeConformanceFixture() {
       const fixture = fixtures.find(row => row.intentRef === input.metadata?.paymentIntentId);
       if (!fixture) throw new Error("unexpected execution subject");
       expect(input).toMatchObject({ amount: fixture.amountMinor, currency: fixture.currency.toLowerCase() });
+      if (input.paymentMethod) {
+        unattendedRequests.push(input);
+        expect(adapter.capabilities.unattendedChargeFlow).toBe("off_session_payment");
+        expect(input).toMatchObject({ offSession: true, metadata: { providerFlow: "off_session_payment", mode: "subscription_cycle" } });
+      }
       fake.enqueue("create", failure ?? { kind: "success", value: intent(fixture) });
       failure = undefined;
       return await fake.invoke("create") as ReturnType<typeof intent>;
@@ -86,7 +92,7 @@ export function createStripeConformanceFixture() {
       ],
     } satisfies Subject & { verificationFixture: typeof verification };
   });
-  return { subjects, client, fake, configureFailure: (step: ScriptedPaymentOutcome<unknown>) => { failure = step; } };
+  return { subjects, client, fake, unattendedRequests, configureFailure: (step: ScriptedPaymentOutcome<unknown>) => { failure = step; } };
 }
 
 export function stripeSafetyFixture() {
