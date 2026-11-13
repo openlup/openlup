@@ -2138,18 +2138,11 @@ prepare/outcome/recovery transaction units differ from the managed RPC sequence;
 external payment execution never belongs inside a database transaction. Reuse
 `@openlup/core/subscription` for pure retry and cadence arithmetic.
 
-Nothing in automatic renewal pauses an active subscription. Late delivery extends
-the next cycle using the maximum of its existing date and latest actual arrival
-plus cadence; it never moves earlier or stacks cycles. Never invoke
-`subscription_delivery_alignment_confirm_replacement` for an undelivered
-replacement: that operation records the customer-facing fact “Parcel delivered”.
+Reader guidance for renewal timing and captured protection lives in
+[Subscriptions](../../packages/core/docs/guide/concepts/subscriptions.md#subscription-delivery-alignment).
 After rollback to `off`, shadow cases are admitted. Captured protected cases
-still go through admission and defer until actual arrival: `protect` releases
-the case; `auto_align` settles as `aligned` using the latest arrival plus cadence
-with the outer maximum, never earlier or stacked. `manual_review` cases, including
-protected cases whose arrival meets open dunning or a successor cycle, keep
-deferring until resolved. A deferred result preserves the schedule and may carry a
-durable case.
+still pass through admission; a deferred result may carry a durable case.
+`manual_review` cases keep deferring until resolved.
 
 Native N2 supports generic bundle commands and command-bound receipts through
 `createPostgresSubscriptionCommandStore` and the P1-shaped
@@ -2392,15 +2385,13 @@ the selected binding and its failure/replay boundaries.
 
 ## Invoicing contracts
 
-The optional `@openlup/platform/invoicing/postgres` composition supplies a captured
-sandbox provider and native owned invoice history/tickets. Its append-only
-artifact observations retain repeat-safe full-identity receipts and explicitly
-non-fiscal PDF bytes; no real fiscal provider or clearance is supplied. History
-uses the authenticated principal/order join and preserves signed correction
-lineage and stored currency. The host retains authentication, seller/money
-selection, scheduling and routes; managed adapters are unchanged. See
-[captured native invoices](PLATFORM_PACKAGE_REFERENCE.md#captured-native-invoices)
-for the exact selection and refusal boundaries.
+Reader guidance: [Compose invoicing](../../packages/core/docs/guide/how-to/build/invoicing.md).
+
+Managed invoicing adapters are unchanged by the optional
+`@openlup/platform/invoicing/postgres` composition. The
+[captured native invoice record](PLATFORM_PACKAGE_REFERENCE.md#captured-native-invoices)
+retains its source witnesses; the reader guide above owns composition and
+refusal guidance.
 
 `createInvoiceServices` and `createInvoiceContribution` are exported through
 `@openlup/platform/invoicing`. Explicit provider selection and host readiness
@@ -2443,14 +2434,10 @@ M04 delivery and authorized M12 history. Missing parity returns typed unsupporte
 before writes. A structural-executor native store is supplied; the host owns the driver and independent transaction lane. Seller reads select the current
 host configuration before the next claim, scoped by order or null for unscoped
 claims, never by duty. The seller wrapper freezes the first-ever claim, using revisionRef as
-the claim wrapper revision. Compatibility stores bind the selected provider at
-construction. The structural native store accepts it per claim and persists the
-first provider on the duty.
-Delivery settlement
-retains provider identity, retry delay and uncertain receipt hints. Native takes
+the claim wrapper revision. Delivery settlement retains provider identity, retry
+delay and uncertain receipt hints. Native takes
 `p_evidence.retrySeconds`: a whole number of seconds clamped to 60..86400,
-otherwise 900; `retryable:false` parks at infinity. Local document requests
-retain provider selection, invoice reference, status and replay. The
+otherwise 900; `retryable:false` parks at infinity. The
 [invoicing reference](PLATFORM_PACKAGE_REFERENCE.md#invoicing-contracts) describes
 delivery retry evidence, correction, payout item and account-lineage seams and
 their source witnesses.
@@ -2466,9 +2453,8 @@ No adopter switch is needed for first capture. See the
 for selection precedence, atomicity, retention and exact transfer.
 
 The [invoicing design](plans/oss-m09-invoicing.md) separates the available issue helpers and
-native persistence and explicit service composition from activation. The native refusal factory has no
-executor and never inspects inputs. The conformance helper consumes offline
-adapter fixtures and returns filtered case evidence; it installs no provider or
+native persistence and explicit service composition from activation. The
+conformance helper consumes offline adapter fixtures and returns filtered case evidence; it installs no provider or
 runtime route. Its [contract tests](../../packages/platform/test/invoicing/adapterConformance.test.ts)
 cover parent recovery, exact absence and distinct payout item receipts.
 
@@ -2494,12 +2480,9 @@ remain failed/owed recovery work, never evidence of absence or success.
 
 
 `createPostgresInvoiceStore` binds the reviewed native duty/fact/claim/reversal
-RPCs through an injected executor. Each local persistence transaction commits
-before host/provider I/O; a store method may coordinate multiple transactions
-with host callbacks outside them and is not necessarily one atomic transaction.
-Never bind a client in a transaction spanning fiscal/provider I/O. Missing or unsafe host
-facts return typed unsupported without installing facts or consuming the owed
-duty. Clearance and observation host projections remain unsupported in this store.
+RPCs through an injected executor. Missing or unsafe host facts consume no owed
+duty and install no facts. Clearance and observation host projections remain
+unsupported in this store.
 Delivery is supported only with the host's explicit M04 envelope projection;
 SQL primitives alone do not establish that envelope.
 The local-only constructor for the reference Postgres adapter adds effective
@@ -2575,8 +2558,7 @@ owner/order/document checks compare standard UUID identifiers by value, includin
 uppercase and mixed-case spelling. Echoes retain their source spelling; opaque
 host references, provider references and artifact identities remain case-sensitive.
 The [restricted native witness](../../tests/postgres/invoicingCaptured.test.ts)
-checks owned history and PDF access with alternate UUID letter case. Missing
-native parity is typed unsupported with `host_binding_required`. Operator auth
+checks owned history and PDF access with alternate UUID letter case. Operator auth
 precedes query and customer ticket ownership precedes PDF fetch/validation. The
 reference browser client consumes the host route without importing the server
 entry and filters diagnostics to closed codes. Runbooks, correction intent and
@@ -2602,11 +2584,9 @@ own structural injected ports. No provider SDK, environment reader, host source
 or owner implementation enters the module. This subpath placement needs no new
 package, dependency or release lifecycle.
 
-`createAccountReadFacade` delegates account and order reads without changing
-arguments, callback receivers, result identity, nulls or thrown failures. The
-account-read diagnostic slice retains its original wrapping, failure details and
-bounded logging. Authorization, owner DTO projection and private enrichment stay
-in the host; the reference binding selects no driver by default.
+Reader guidance: [Compose account and support services](../../packages/core/docs/guide/how-to/build/account-and-support.md).
+The account-read diagnostic slice retains its original wrapping, failure details
+and bounded logging. The reference binding selects no driver by default.
 
 The five browser-safe envelopes transcribe owner vocabulary locally, as required
 by contracts isolation. Executed TypeScript equality and real-driver assignability
@@ -2617,10 +2597,7 @@ not landed executors. See the [R1 plan](plans/oss-m12-account-support.md) and
 [consumer reference](PLATFORM_PACKAGE_REFERENCE.md#account-and-support-contracts)
 for available behavior and exclusions.
 
-R5a's `createAccountSupportBindings` captures the host's one graph and injected
-operation inventory. `createAccountSupportServices` wraps each distinct callable
-once and preserves its concrete parameters/results. The contribution factory in
-`/composition` publishes the two existing account-support entries and selected
+The contribution factory in `/composition` publishes the two existing account-support entries and selected
 owner dependencies, namespaced ports and route descriptors. Null selected slots
 remain required but unbound. Dependencies must name entries actually provided by
 the selected identity, communications, fulfillment, invoicing, subscriptions or
@@ -2893,21 +2870,13 @@ openlup upgrade plan --root ./my-app --from ./previous.json --to ./candidate.jso
 openlup upgrade apply --root ./my-app --from ./previous.json --to ./candidate.json --schema-version 53 --json
 ```
 
-Each JSON input is an `AppVersionSnapshot`, with `version`, an inclusive
-`schema: { min, max }` ordinal range, and `files`, a map of relative paths to exact
-UTF-8 content. The ordinal above is illustrative: observe your database's actual
-applied chain before supplying it. These inputs describe application files,
-including dependency declarations when explicitly managed; they are not tarball
-paths. `openlup` neither installs dependencies nor runs migrations. Acquire and
-verify release artifacts through the existing package/provenance route.
-
-Plan reports `application-owned` for every unlisted path, `locally-customizable`
-for unchanged upstream paths, and `upgrade-managed` for paths changed between the
-explicit snapshots. The existing lifecycle rules above govern every write.
-Apply re-inspects the whole tree and refuses conflicts before its first write.
-Keep the same snapshots when recovering an interrupted run; exact completed bytes
-become `already-applied`. Reconcile divergent files explicitly and repeat plan.
-Do not start the application while the file set is partially upgraded.
+The snapshot shape, conflict rules and interruption recovery are described in
+[Upgrade application files](../../packages/core/docs/guide/upgrade/application-files.md).
+The ordinal above is illustrative. Explicitly managed dependency declarations
+are application files, not tarball paths; artifact acquisition and verification
+remain under the package/provenance route. CLI plan classifications are
+`application-owned` for unlisted paths, `locally-customizable` for unchanged
+upstream paths and `upgrade-managed` for paths changed between snapshots.
 
 `openlup verify` is the composed application's single diagnosis command:
 

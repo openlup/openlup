@@ -163,6 +163,10 @@ witnesses and records the remaining evidence.
 
 Moved to [Identity](../../packages/core/docs/guide/concepts/identity.md#operator-invitations).
 
+The direct pending lifecycle’s migration pin is
+`20261018120000_identity_operator_invitations`, applied after the existing direct
+catalogue.
+
 The direct pending-invitation store retains the trusted PostgreSQL transaction
 lane, ordered membership locks and atomic membership/audit writes. Principal
 creation commits separately. Its package projection remains at canonical
@@ -204,6 +208,10 @@ It does not establish managed/direct lifecycle parity.
 ## Personal data
 
 Moved to [Personal data](../../packages/core/docs/guide/concepts/personal-data.md#personal-data-coverage).
+
+Migration: apply the complete direct catalogue including
+`20261018190000_identity_privacy_erasures` before using privacy or the updated
+customer challenge store.
 
 Reference identity and subscription-veto composition shares one direct executor
 and a relation lock held through commit. Opaque retention declares lifecycle and
@@ -260,6 +268,8 @@ for both-bundle commands, the committed managed grants and installation limits.
 
 ## Communications import
 
+Reader guidance: [Compose a provider adapter](../../packages/core/docs/guide/how-to/extend/provider-adapters.md).
+
 For adoption from `0.16.0`, follow the [0.17.0 Migration guidance](../../packages/platform/CHANGELOG-HISTORY.md#0170) (source repository)
 for the complete package set, canonical SQL installation and host-owned bindings.
 
@@ -311,12 +321,9 @@ no identifier and bounded error codes. Reasons are lower-case token codes up to
 whitespace, lists, display names and local-only domains are refused on this new
 alternate-transport policy boundary.
 
-`blocked` returns failure; explicit `drop` returns terminal suppression with no
-send, no identifier and an ineligible sent timestamp. Arbitrary injected objects
-are refused by `guardEmailTransport`; a provider name or copied capture shape
-cannot establish admission. Package-created capture retains its ordered envelopes
-and synthetic identifiers with no network effect. Capture acceptance remains
-local acceptance, never evidence of external delivery.
+A dropped send has no identifier or eligible sent timestamp. Package-created
+capture retains ordered envelopes and synthetic identifiers; a copied capture
+shape cannot establish transport admission.
 
 `admitPolicyEnforcedEmailTransport` is the trusted host bridge for a transport
 that already enforces egress internally, as the maintained reference client does.
@@ -830,6 +837,9 @@ for destination and reservation facts in a separate change.
 
 Moved to [Compose native fulfillment](../../packages/core/docs/guide/how-to/build/fulfillment.md#bind-operator-commands-and-reads).
 
+Install the complete selected catalogue through
+`20261110230000_operator_shipment_commands.sql`.
+
 ## PostgreSQL checkout recovery tokens
 
 Moved to [Recover abandoned checkouts and payments](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#issue-a-recovery-token-for-an-admitted-checkout).
@@ -862,6 +872,9 @@ obligations.
 
 Moved to [Recover abandoned checkouts and payments](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#give-an-operator-a-payment-link).
 
+Use the complete native migration chain, including
+[`20261110110000_operator_checkout_links.sql`](../../db/platform/migrations/20261110110000_operator_checkout_links.sql).
+
 Evidence (historical record, 2026-11-13):
 
 The [PostgreSQL witnesses](../../tests/postgres/operatorCheckoutPaymentLink.test.ts)
@@ -872,6 +885,9 @@ hosted, browser or provider qualification.
 ## Customer checkout recovery entry points
 
 Moved to [Recover abandoned checkouts and payments](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#add-customer-recovery-entry-points).
+
+Apply the complete native chain through
+[`20261110115000_customer_checkout_links.sql`](../../db/platform/migrations/20261110115000_customer_checkout_links.sql).
 
 Evidence (historical record, 2026-11-13):
 

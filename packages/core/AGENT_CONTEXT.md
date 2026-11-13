@@ -7,7 +7,7 @@ Shipped package-local sources are relative to this package. Other sources link t
 Repository paths, imports and relative links inside verbatim excerpts describe that source checkout, not files to find or create in your application.
 Consult installed declarations and README for the installed version.
 
-<!-- openlup-context-inventory [{"id":"extend-platform","source":"docs/guide/how-to/extend/choose-an-extension-seam.md","heading":"Extension seams","startLine":7,"endLine":22,"sha256":"e47333e4c82309d656bd8d3934a97ee9aa5d0966fa8e82ae99367ad7f516d274"},{"id":"canonical-status","source":"docs/guide/concepts/payments.md","heading":"Canonical status","startLine":7,"endLine":64,"sha256":"02e09ec849dd134c9f6aa2f88d278e2744e3459e330d2e21aea8065003944af9"},{"id":"late-payment-cycle","source":"docs/guide/concepts/subscription-engine.md","heading":"A late payment shifts the cycle; it never compresses it","startLine":65,"endLine":85,"sha256":"df3a8e0f35ffa6a62b4758f2c58f2abffe4137c3f80e20c6fadf72b9f2bf4ad3"},{"id":"subscription-layer-delivery","source":"docs/guide/concepts/subscriptions.md","heading":"Installed subscription boundary","startLine":8,"endLine":27,"sha256":"d93ab6ab2337641da4d2d38279f6b5a1afc96a61577a3765f5399ea04de31c80"}] -->
+<!-- openlup-context-inventory [{"id":"extend-platform","source":"docs/guide/how-to/extend/choose-an-extension-seam.md","heading":"Extension seams","startLine":7,"endLine":22,"sha256":"e47333e4c82309d656bd8d3934a97ee9aa5d0966fa8e82ae99367ad7f516d274"},{"id":"canonical-status","source":"docs/guide/concepts/payments.md","heading":"Canonical status","startLine":7,"endLine":64,"sha256":"02e09ec849dd134c9f6aa2f88d278e2744e3459e330d2e21aea8065003944af9"},{"id":"late-payment-cycle","source":"docs/guide/concepts/subscription-engine.md","heading":"A late payment shifts the cycle; it never compresses it","startLine":53,"endLine":74,"sha256":"19003020b2a30fdf5a83d57aea4df53c13dc5ef9be961d77c12da01ad89a9a9c"},{"id":"subscription-layer-delivery","source":"docs/guide/concepts/subscriptions.md","heading":"Installed subscription boundary","startLine":8,"endLine":27,"sha256":"d93ab6ab2337641da4d2d38279f6b5a1afc96a61577a3765f5399ea04de31c80"}] -->
 
 ## extend-platform: Choose an extension seam
 
@@ -101,14 +101,15 @@ regress a terminal canonical fact.
 
 Source: [docs/guide/concepts/subscription-engine.md](docs/guide/concepts/subscription-engine.md).
 
-<!-- openlup-context {"id":"late-payment-cycle","source":"docs/guide/concepts/subscription-engine.md","heading":"A late payment shifts the cycle; it never compresses it","startLine":65,"endLine":85,"sha256":"df3a8e0f35ffa6a62b4758f2c58f2abffe4137c3f80e20c6fadf72b9f2bf4ad3"} -->
+<!-- openlup-context {"id":"late-payment-cycle","source":"docs/guide/concepts/subscription-engine.md","heading":"A late payment shifts the cycle; it never compresses it","startLine":53,"endLine":74,"sha256":"19003020b2a30fdf5a83d57aea4df53c13dc5ef9be961d77c12da01ad89a9a9c"} -->
 ## A late payment shifts the cycle; it never compresses it
 
 A successful payment calculates the next cycle from the paid cycle's own
-`scheduledAt` and snapshot cadence, then adds the whole days it was late:
+`scheduledAt` and snapshot cadence, then adds the whole days it was late.
+In this formula, `elapsedDay` is the duration of an elapsed day:
 
 ```text
-shiftedByDays = max(0, floor((min(paidAt, recordedAt) - scheduledAt) / 24 hours))
+shiftedByDays = max(0, floor((min(paidAt, recordedAt) - scheduledAt) / elapsedDay))
 onTimeNextCycleAt = scheduledAt + cycle.templateSnapshot.cadence_days days
 nextCycleAt = max(subscription.nextCycleAt, onTimeNextCycleAt + shiftedByDays days)
 ```

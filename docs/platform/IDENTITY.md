@@ -14,6 +14,8 @@ profile builds explicitly refuse the pricing root and commerce server entry.
 
 ## Responsibility and composition
 
+Reader guidance: [Identity](../../packages/core/docs/guide/concepts/identity.md).
+
 Reference hosts can pass a candidate from
 [`createReferenceIdentity`](../../server/runtime/auth/referenceIdentity.ts) to
 `startPublicReferenceServer({ identity })`. Startup composes the identity
@@ -66,175 +68,57 @@ objects, including the managed runtime's externally owned Auth schema.
 `POST /api/bff/customers/reconcile-account` selects direct linked-profile readback
 on the direct bundle. It authenticates the customer and reads through that
 principal's actor-scoped profile port, returning `{ accountId, created: false,
-linked: false }`. Request or token email never creates or associates a contact.
-Missing links return `CONFLICT` with `ACCOUNT_LINK_CONFLICT`; missing or invalid
-sessions return 401. The direct route reads no managed provider settings.
+linked: false }`. Missing or invalid sessions return 401. The direct route reads no managed provider settings.
 For `node-supabase` and `vercel-supabase`, the route reads managed settings and
 applies the email-trust policy before any email-based association.
 
 **Migration:** the mounted route previously applied managed policy even when
 `PLATFORM_BUNDLE=node-postgres`. That selection now uses direct linked-profile
-readback; the route's managed policy applies only to managed bundles. Existing
-direct sessions must already have a linked contact; reconciliation cannot create
-or repair that link by email.
+readback; the route’s managed policy applies only to managed bundles.
 
 Invite and remove route factories select the direct directory and invitation
 store on the direct bundle, reusing the existing invitation/removal use cases.
-Live human-admin authorization and store checks remain required. The invite
-factory accepts a role-notification port; without delivery, a persisted invitation
-returns `INVITATION_NOTIFICATION_FAILED` and preserves the pending invitation.
-Retrying an existing pending invitation returns `ALREADY_INVITED` without retrying
-notification delivery.
-Managed routes retain immediate active membership. All routes remain behind
+All routes remain behind
 `#deployment-route-policy`; public default denial precedes input or binding
 construction. This startup seam adds no disposable profile, browser mount or
 mailbox. Mounted fresh-install acceptance still requires application composition.
 
-
-Direct PostgreSQL human operators use the dedicated operator challenge store,
-not customer recovery. The browser-safe identity contracts export strict challenge
-and session schemas plus `OperatorBrowserAuthPort`; the server entry exports the
-operator store, session service, verifier, authorizer and HTTP handler factories.
-
-Creating a client/contact records commerce contact data. Creating an auth user
-provisions an authentication principal. Neither a typed address nor the soft-account
-link proves mailbox ownership. Reconcile may mint a contact for an existing
-authenticated principal; it does not mint that auth user.
-
-Managed verification requires `Boolean(user.email_confirmed_at)` from the
-provider-authenticated `getUser` result. Editable `user_metadata.email_verified`
-does not qualify.
 Existing confirmations are not rewritten; their historical provenance is unknown.
 
-`reconcileAccountForPrincipal(store, input, emailTrustPolicy)` and
-`createReconcileAccountHandler({ verifier, store, emailTrustPolicy })` require an
-explicit policy. Matching existing principal links return before assessment.
-Every email lookup, conditional link, new contact and create-conflict retry is
-inside the assessed operation. Missing, malformed or throwing bindings fail
-closed. Reserved principals, unverified email and mismatched existing links
-retain their earlier refusals.
+Implementation pins for managed email trust remain 60 seconds for valid safe or
+unsafe settings and 5 seconds for unavailable or malformed settings. The
+transport deadline is 3 seconds including body consumption, limited to 64 KiB.
+Configuration changes can take up to 60 seconds to affect an already serving
+process. The browser-safe email-trust constants/types live in `identity/contracts`;
+runtime schemas remain in the reference boundary.
 
-The managed default uses `createManagedEmailTrustPolicy` with the verifier's
-configured origin and public key. It reads `/auth/v1/settings`, refuses redirects,
-requires boolean `mailer_autoconfirm` and a boolean `external` map, and trusts
-only disabled automatic confirmation and explicitly declared enabled non-email
-providers. Unknown enabled providers also require declaration. The server-only
-`IDENTITY_EMAIL_VERIFYING_PROVIDERS` is comma-separated, trimmed and lowercased;
-unset/blank means an empty allowlist. Wildcards, empty entries and malformed
-identifiers refuse configuration. A declaration is the adopter's assertion that
-the provider verifies email, not a certification by the platform.
-
-Valid safe or unsafe settings cache for 60 seconds; unavailable or malformed
-settings cache for 5 seconds. Each immutable policy instance coalesces concurrent
-requests. The deadline is 3 seconds including body consumption, limited to 64 KiB.
-Every completed assessment aborts outstanding transport, including an unread
-error response body.
-A failed refresh never reuses expired trust. Configuration changes can therefore
-take up to 60 seconds to affect admission in an already serving process.
-
-`EMAIL_TRUST_ENVELOPE_REFUSED` maps to HTTP 403 / `FORBIDDEN`;
-`EMAIL_TRUST_SETTINGS_UNAVAILABLE` maps to HTTP 503 / `UPSTREAM_UNAVAILABLE`.
-The two browser-safe constants/types are exported by `identity/contracts`;
-runtime schemas remain in the reference boundary. Responses expose
-neutral codes, not settings bodies, tokens or another principal's identifier.
-
-**Migration:** adopters retaining today's verifier-result rule explicitly bind
-`createVerifierResultOnlyEmailTrustPolicy()`. It disables settings assessment
-but still requires the verifier's `emailVerified` result. Managed reference
-bindings use the stricter default. The direct bundle retains its existing
-mailbox challenge and signed-session verifier (`email:null`, unverified), without
-direct email reconcile or JWT email claim consumption.
-
-
-The server entry is `@openlup/platform/identity`; its source is
+The server entry's source is
 [`packages/platform/src/identity`](../../packages/platform/src/identity/index.ts).
-The separate `identity/contracts` entry contains browser value types, the customer
-auth port and provider-list parser. Browser hooks, pages, environment readers,
-redirect configuration or an explicit resolver override, feature flags, rate
-limiting, mail transport and route observation remain application composition. The send-email hook remains in the reference
-application for the communications boundary.
-
 The module imports foundation modules only through `bff`, `data`, `http` and
 `kernel` entries. Its source layout is flat except for the isolated contracts
-subtree. Managed adapters accept structural clients; token adapters accept a JWT
-library loader. Loading the server entry reads no environment, initializes no SDK
-and executes no SQL. A host selects the adapter and supplies its configuration.
+subtree. Loading the server entry reads no environment, initializes no SDK and
+executes no SQL. The send-email hook remains in the reference application for
+the communications boundary.
 
-Customer reconciliation refuses a principal its verifier reports as unverified,
-reserved machine principals, conflicting links and a principal/account email
-mismatch. Verification is the composed verifier's decision. The managed verifier
-requires `email_confirmed_at` and ignores editable `user_metadata.email_verified`.
-The reference source `server/bff/customers/reconcile-account.ts` selects
-actor-scoped linked-profile readback for `node-postgres`. Its managed branch
-composes the managed email-trust policy; the direct branch never constructs the
-managed verifier, clients or email association.
-A host mounting managed reconciliation
-must inject a policy as described above; confirmation alone does not establish
-the installation's email-trust envelope. The token verifier reports every
-principal as unverified. The engine retries the email
-branch once after a concurrent create failure. The new
+The token verifier reports every principal as unverified. The engine retries
+the email branch once after a concurrent create failure. The
 [`createReconcileAccountHandler`](../../packages/platform/src/identity/reconcileAccountHandler.ts)
-returns those refusals as 400, 403, 409 or 503 and has no personalization hook.
+returns domain refusals as 400, 403, 409 or 503 and has no personalization hook.
+The direct bundle retains its mailbox challenge and signed-session verifier
+(`email:null`, unverified), without direct email reconcile or JWT email claim
+consumption.
 
-Customer soft accounts provision new auth users with `email_confirm:false`.
-The commerce contact and soft-account link are not mailbox proof.
-`createSupabaseClientAuthLinkStore(client, emailTrustPolicy)` requires the injected
-policy on `ClientAuthLinkStore`. The linker assesses it before create-first
-provisioning or existing-identity lookup by email. An unsafe envelope returns
-`{ ok:false, code: "EMAIL_TRUST_ENVELOPE_REFUSED", message }`; unavailable,
-missing, malformed or throwing policies return `EMAIL_TRUST_SETTINGS_UNAVAILABLE`.
-These are non-fatal soft-account outcomes: callers can complete commerce without
-an identity link. No identity or link is created on refusal. Matching existing
-links return before assessment, preserving replay without a new association.
-The reference managed adapter always binds the settings-reading policy, even
-when the bundle environment selects direct storage.
-Customer magic links retain `shouldCreateUser:false`: first-login mailbox proof
-confirms the already provisioned principal. Unknown-address login creates no user.
-Neither a failed conditional link nor a failed write deletes the created identity;
-a retry recovers it through the existing duplicate lookup. Existing links and
-subscription references remain unchanged.
+**Migration:** with automatic confirmation on, anonymous signup can confirm an
+existing unconfirmed user and obtain its session without mailbox proof. Run the
+joint Auth/mail conformance command below before adopting the changed trust
+boundary. Existing users are not rewritten or retroactively unconfirmed; no SQL
+projection, migration or ledger changes.
 
-**Migration:** soft-account provisioning requires a trusted envelope: automatic
-email confirmation off and all enabled non-email providers explicitly declared
-email-verifying. With automatic confirmation on, anonymous signup can confirm an
-existing unconfirmed user and obtain its session without mailbox proof. Bind the
-policy in the managed store and expose it on custom `ClientAuthLinkStore`
-implementations; an adopter may explicitly select verifier-result-only policy
-when its own trust boundary supplies that guarantee. The selected Auth installation must deliver and verify first-login
-mail for an existing unconfirmed user. Run the joint Auth/mail conformance command
-below before adopting this behaviour. Existing users are not rewritten or
-retroactively unconfirmed; no SQL projection, migration or ledger changes.
-
-The soft-account linker attempts identity creation first, then scans the existing
-directory only after an already-registered response. Both directory adapters
-follow `nextPage`, compare trimmed lowercase addresses, propagate lookup failures
-and refuse after 5000 scanned users. The invite use case and HTTP authorizer require active human membership. Only stored `admin` and
-`distributor` roles authorize. Null and unknown roles return
-`FORBIDDEN` (HTTP 403), with or without a route-specific role restriction.
-The reference profile adapter returns `{ isAdmin: false, role: null }` for these
-rows, and its magic-link eligibility refuses them. The magic-link handler still
-records quota before eligibility and returns the padded, non-enumerating
-`{ accepted: true }` response without sending. Adopters wanting legacy mapping
-must perform it in their own adapter before the package receives the role;
-identity exposes no fallback setting.
-Invitation lookup and new identity creation use trimmed lowercase addresses;
-existing durable principal, membership and customer addresses remain untouched.
-Issuance requires an active human administrator. The direct lifecycle store also checks this authority inside its transaction.
-
-Both managed contact stores find mixed-case stored addresses using the
-normalized input. Literal matching means an anchored, escaped `imatch` database
-prefilter followed by exact equality of `email.trim().toLowerCase()` with that
-input. Escaping keeps `_`, `%`, backslash and `*` literal; the exact comparison
-rejects Unicode lookalikes widened by the database's case-insensitive regex.
-Each store has one private helper that selects email and fetches at most ten candidates.
-Soft linking preserves ascending creation order and chooses the oldest accepted
-row. Reconciliation accepts a single exact row and throws the existing
-`PGRST116` multiple-row error when more than one is accepted, before any link or
-create. Missing email is never accepted. A match outside the candidate bound is
-not selected: soft linking can return `CLIENT_NOT_FOUND`, while reconciliation
-can attempt creation and retain its existing create-failure retry/error path.
-Structural clients must implement `filter(column, "imatch", value)` and bounded
-array results for both lookups. Both managed bundles share these stores.
+The directory lookup cap is 5000 scanned users. Managed contact helpers each
+select email and fetch at most ten candidates. Reconciliation throws the existing
+`PGRST116` multiple-row error before any link or create. A match outside the bound
+can produce `CLIENT_NOT_FOUND` in soft linking or the existing create-failure
+retry/error path in reconciliation. Both managed bundles share these stores.
 The direct challenge adapter calls `customer_identity_challenge_issue`;
 its existing portable SQL already normalizes the input at line 105 and compares
 `lower(email) = v_email` at line 113 of
@@ -247,12 +131,7 @@ refuses non-GET/HEAD methods unless the host's explicit write-route list permits
 them. A missing method is a write. The direct bundle keeps its operator-token
 exemption. The reference application supplies the characterized write-route list.
 
-Handler factories construct the foundation BFF responder themselves. The customer
-profile factory requires the host response schema, retaining its selected currency
-policy without putting that policy in identity. Applications
-may supply the observed request-ID reader; they do not replace the responder.
-Invite/remove use cases return stable error codes. Invitation bindings expose typed conflict reasons and preserve the selected bundle result: direct pending invitations carry their deadline, while managed invitations return active membership. Receipt field mapping stays in reference composition. Mail sender and origin remain inputs to the application's mail
-adapter; the package has no default sender or deployment URL.
+Receipt field mapping stays in reference composition.
 
 ## Magic-link redirect policy
 

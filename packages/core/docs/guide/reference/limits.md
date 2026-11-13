@@ -25,7 +25,7 @@ In the tables, “—” means the boundary has no dedicated refusal code.
 | Seed through a runtime login or role | Seeding stops rather than writing through the runtime identity. | `starter_seed_runtime_role_forbidden` |
 | Seed through a different install identity | Both the login and current role must match the install identity. | `starter_seed_install_role_required` |
 | Seed an unmarked database | The demonstration marker is required; the bootstrap also refuses a pre-existing unmarked database. | `starter_seed_demonstration_database_required` |
-| Keep demonstration sessions across a restart | Sessions live in one process, expire after an hour and disappear on restart. Issuance stops when the session store is full. | `starter_session_capacity_exceeded` at capacity |
+| Keep demonstration sessions across a restart | Sessions live in the current process, have a bounded lifetime and disappear on restart. Issuance stops when the session store is full. | `starter_session_capacity_exceeded` at capacity |
 | Call an unbound operation | A missing host binding refuses. Customer and operator admission may refuse first. | `host_binding_required`; `customer_session_required` or `operator_required` before admission |
 
 ## Subscription editors
@@ -59,7 +59,7 @@ Configured support appears as plain text with an account link; missing contact
 configuration is stated explicitly. Partner submission, operator list/transition
 and review read/submit/list/moderation need the runtime database connection.
 
-Intake allows five requester attempts and three email attempts per 60 minutes.
+Intake enforces bounded requester and email quotas over a rolling window.
 Replay is checked before quotas. Repeated contact submissions conflict without
 a time-based deduplication expiry. Public success exposes only a case reference;
 contact details require the authorized operator view.
@@ -78,13 +78,13 @@ address tuple returns `starter_acquisition_seed_conflict` and rolls back.
 | Use an email address alone to access an existing purchase | Guest checkout is available, but existing-order access needs an owned customer session or an admitted recovery link. A recovery link grants no account or subscription-command access. | `customer_session_required` for account actions; `starter_recovery_unavailable` for unavailable recovery authority |
 | Change the address of a parcel already in flight through the customer action | The destination change applies from the next parcel; the parcel in flight keeps its address. | —; result `applied_from_next_parcel` |
 
-A new checkout issues a random 256-bit recovery token; only its SHA-256 hash
+A new checkout issues a random recovery token; only its SHA-256 hash
 is stored in the database. The creating response and private recovery message
 carry it, never an authentication challenge or event. Creation, reminder-wave
-and signed-in recovery links end 24 hours after order creation and preserve
-earlier links. Expiry-notice links instead last 30 days from order creation and
+and signed-in recovery links have a bounded lifetime from order creation and
+preserve earlier links. Expiry-notice links use a longer bounded lifetime and
 refer to the terminal source. Operator issuance revokes earlier order links and
-expires at the earlier of issuance plus 24 hours or order creation plus 30 days.
+caps expiry by both issuance time and the order’s recovery window.
 Payment prevents further payment through every link. Payment-case links rotate
 separately with one live link per case.
 
@@ -96,7 +96,7 @@ in a tab does not revoke other links.
 
 A live pending-order link can continue sandbox payment after a decline.
 Eligible expired initial checkouts, including system-abandoned ones, can create
-a fresh order within 30 days after the source was created. Frozen re-quoting,
+a fresh order within the source’s bounded recovery window. Frozen re-quoting,
 unchanged supported content, stock and proven prior non-settlement are required.
 The terminal source is never paid. Token pay or exact-cookie retry can act on
 the same pending replacement; the ordinary simulator cannot start an attempt
@@ -138,8 +138,10 @@ application owner's duty.
 
 Purchase and sign-in use the same configured email bound, at most 160 characters.
 Phone and postal-code fields share the native destination bounds. Cadences and
-the default are whole days from 1 through 120; checkout accepts at most 50 lines
-and 99 units per line within the configured total. Stock and unit prices fit
+the default are whole days from 1 through 120; checkout bounds line count and
+units per line within the configured total. Consult the
+[starter configuration](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/neutral-store/shared/config.ts)
+for checkout limits. Stock and unit prices fit
 PostgreSQL integers, with positive prices for every offered mode. Tax legal-basis
 text is at most 200 characters; the legal revision is trimmed, nonempty and at
 most 64. Configuration outside these bounds refuses before startup.
@@ -189,6 +191,9 @@ through the native routine, while the portal supplies no consent-capture control
 Replacement creation, complete fulfillment cancellation and customer name/phone
 editing are available through native bindings. Account-event history excludes
 private payloads. Creating a replacement supplies no arrival confirmation.
+Customer invoice history and owned captured-PDF downloads use the native session
+principal. Operator invoice summaries authorize before reading local history,
+duty, retry and delivery evidence, including for guest orders.
 
 ## Expired checkout recovery and order holds
 
@@ -214,7 +219,8 @@ the starter supplies no mailbox export/erasure procedure. Private captures stay
 outside served assets, logs, traces and public reports.
 
 Distributors and administrators without the provisioned Commerce row cannot
-issue or replay holds. A locked upcoming cycle returns `starter_payment_blocked` for
+issue or replay holds. Release targets the exact hold reference. A locked
+upcoming cycle returns `starter_payment_blocked` for
 address changes; existing order and parcel destinations remain unchanged.
 
 ## Unpaid cancellation and manual refund records
@@ -224,7 +230,7 @@ address changes; existing order and parcel destinations remain unchanged.
 | Cancel an unpaid order without confirmation or with incompatible payment/order state | Confirmation and a valid reason are required. Payment uncertainty or a conflicting state can refuse cancellation. This does not cancel a subscription or dispatched parcel. | `starter_input_invalid` or `starter_order_transition_conflict` |
 | Use manual refund marking to move money | The operator records a refund already completed outside the app. This does not send money, issue a fiscal reversal, send a refund email or change a subscription. | —; external refund record only |
 
-Read the exact order, enter a trimmed reason of 1–2,000 characters and confirm
+Read the exact order, enter a bounded nonempty trimmed reason and confirm
 the shown consequence. Unpaid cancellation releases only held purchase
 reservations; dispatched, indeterminate or captured payment evidence can refuse
 it. Each command and replay rechecks human-admin authority and its Commerce
@@ -327,7 +333,7 @@ they install no instrument or profile on an existing order.
 | Keep cookie-authorized controls after signing-key loss or rotation | Missing signing material leaves those controls unavailable; rotation invalidates old cookies. Keep the private acceptance-key root stable across restarts. | `starter_continuation_required` for inline retry without valid claims |
 | Treat the embedded-browser send-link confirmation as delivery or payment | The cookie-authorized control captures a link in the private mailbox. Sending/enqueueing, local capture and payment are separate outcomes. | —; local capture only |
 
-Dedicated token pay accepts the two registered synthetic choices on a live
+Dedicated token pay accepts registered synthetic choices on a live
 checkout continuation. Admission reuses the latest owned descendant, intent and
 reservation and refuses expired/revoked authority, renewals, terminal orders and
 unresolved attempts. A later explicit retry can dispatch on that same replacement.
@@ -347,7 +353,7 @@ configured; real execution, method setup and card replacement remain unavailable
 The send/send-again buyer control appears only in detected embedded browsers
 after continuation exists. Detection grants no authority. Verified cookie claims
 select order/client and the saved checkout recipient; sends deduplicate within
-ten minutes. Sent confirmation survives remounting, sending again stays reachable
+a bounded window. Sent confirmation survives remounting, sending again stays reachable
 and failures offer retry. Sending, private capture and payment remain separate.
 
 ## Billing profiles and frozen invoice buyers

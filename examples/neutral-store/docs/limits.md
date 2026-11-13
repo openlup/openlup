@@ -4,51 +4,18 @@ Status: moved to the [OpenLup guide](../../../packages/core/docs/guide/reference
 
 `owned/demo-seed.ts` builds demonstration rows from typed configuration. `installation/install.ts` runs the transactional seed with the install connection after bootstrap; stock observations use the native stock writer. Do not replace purchase or renewal truth with application rows.
 
-The portable rail has **no lot traceability, locations or stock movements**.
-Readers of the supplement and coffee configurations may expect these features;
-the examples provide none of them and make no health or compliance claim.
-The same statement is visible in both locales on the limits page.
+Reader guidance: [Starter limits](../../../packages/core/docs/guide/reference/limits.md).
 
-Other explicit boundaries: monetary refund creation, receiving/restocking
-returns and catalogue publication are unavailable; no legacy participant source
-exists; media bytes need a proper storage binding. Reduced OMS reads do not
-stand in for rich projections. Review grants do not establish account sessions,
-and account sessions do not establish authority over an arbitrary research case.
-
-Demonstration sessions run in a single process, expire after one hour, have
-capacity 1000 and are lost on restart. This is not a production session store.
-The capture is a developer mailbox with no real recipients. Its files stay in
-the git-ignored `.context` directory with 0700 mailbox directories and 0600 files.
-Tokens, recovery URLs and recipient email addresses require private filesystem
-access and stay out of application logs and recovery responses.
-
-With the runtime URL supplied by lifecycle, native customer challenges and
-opaque host sessions bind reduced profile/subscription-control reads, selected
-owned order headers/detail, newsletter read/withdraw and reduced OMS order
-list/detail. Full account projection sources remain unavailable
-(`starter_account_projection_binding_required`); newsletter grants and other
-purposes wait for the consent lifecycle and refuse `host_binding_required`.
-The account order response does not claim a rich customer-order projection.
-Native detail preserves `native_account_order_money_unavailable` when a historical
-order lacks captured money; it never reconstructs purchase truth.
-
-Purchase creation uses the native contact-client factory. Customer invoice history
-and owned captured PDF downloads use the native session principal. Documents are
-explicitly non-fiscal sandbox artifacts. Operator invoice summaries authorize
-before querying local history, duty, retry and delivery evidence, including guest
-orders. Placing and releasing order holds require an active human admin and a
-provisioned Commerce operator. Every invocation, including replay, repeats those
-checks. Release targets the exact hold reference.
+Session implementation pins are a one-hour lifetime and capacity 1000. The
+private developer mailbox uses git-ignored `.context` storage with 0700 mailbox
+directories and 0600 files. Tokens, recovery URLs and recipient email addresses
+require private filesystem access and stay out of application logs and recovery
+responses.
 
 The operation catalogue in `shared/limits.ts` supplies the same code and exact
-localized explanation to action results and the limits page. Named deferred
-actions remain unbound and refuse after customer/operator admission, before any
-native routine. Return forms retain reason codes, order-item quantities and
-refund intent. No operator returns list or detail; the operator approves or
-rejects by the return reference the customer receives. Authenticated customers request returns for owned paid or fulfilled orders. Active
-human admins approve or reject the exact request reference; these decisions record
-intent only. Receiving, restocking and financial refund execution remain unavailable. The removed `operator.returns` route returns
-HTTP 404 with `starter_operation_unknown`.
+localized explanation to action results and the limits page. The removed
+`operator.returns` route retains HTTP 404 with
+`starter_operation_unknown`.
 
 The catalogue covers three declared named-refusal operations. The removed reader
 retains its separate HTTP 404 protocol.
@@ -71,11 +38,6 @@ no contact revision, digest, correction target or baseline comparison. Tracking
 and operation evidence retain the native reader's limits; missing required facts
 refuse rather than omit a selected shipment. See the canonical
 [native read limits](../../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#native-parity-boundaries).
-Operator label, handoff and tracking evidence commands are bound. Owned account tracking needs
-its separate account composition proof. Signed unsubscribe retains its separately
-owned pending binding. Other absent bindings return `host_binding_required` after
-admission. An invalid-grant example does not
-prove a valid grant works.
 
 Both example catalogues price in `XTS` test units for fictional market `ZZ` at
 `UTC`. These choices make no real tax, shipping or compliance claim. The selected
@@ -86,12 +48,6 @@ supply an installation capability.
 | Limit | Actions | Named refusal |
 | --- | --- | --- |
 | N8 | Demand-driven plan-length and portion resizing are unconfigured; the seven exact commands are API-only | `starter_subscription_resize_unconfigured` |
-
-Sandbox payments only are in scope on this rail. Real-money commerce currently needs a
-separately qualified rail and provider; this app does not claim real-money
-provider independence. An existing subscription is never paused or frozen by
-these refusals. The starter does not expose confirmation of an undelivered
-replacement parcel.
 
 Evidence (historical record, 2026-11-13):
 

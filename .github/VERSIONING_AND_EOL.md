@@ -4,6 +4,10 @@
 
 Moved to [Versioning and stability](../packages/core/docs/guide/reference/stability.md#version-numbers).
 
+Development preview is the current channel, for evaluation and first-party
+integration evidence, with no support window. An explicitly experimental surface
+follows preview rules.
+
 - **Stable** begins only after the `P1-SF` stable-framework gate has produced a versioned platform
   release/BOM, a thin adopter app, public extension contracts and upgrade
   tooling, with the advertised clean install, typecheck, build, tests and
@@ -18,9 +22,18 @@ Moved to [Versioning and stability](../packages/core/docs/guide/reference/stabil
 
 Moved to [Versioning and stability](../packages/core/docs/guide/reference/stability.md#version-numbers).
 
+Keep a deprecation bridge through at least one supported stable minor, and
+remove it no earlier than the next major with explicit upgrade notes.
+
 ## Support window
 
 Moved to [Versioning and stability](../packages/core/docs/guide/reference/stability.md#support-window).
+
+The current stable major’s latest minor receives fixes, security fixes and new
+features. The previous stable major’s latest minor, if one exists, receives only
+security and critical-defect fixes for six months after the current major’s
+release. Older minors and majors receive no fixes. Preview trains never count
+as a previous stable major; the published window is advance end-of-life notice.
 
 ## Exceptional cessation
 
@@ -42,6 +55,10 @@ permit casually shortening a support window.
 
 Moved to [Versioning and stability](../packages/core/docs/guide/reference/stability.md#version-numbers).
 
+All preview `@openlup/*` packages share a `0.N.P` set version from one commit,
+with package tags `openlup-<package>-v<version>` at that commit. The project has
+not entered the stable channel and no current version has a support window.
+
 For the contributor-to-release sequence and diagnostic execution map, start with
 [Development, diagnostics and preview releases](../docs/platform/DEVELOPMENT_AND_RELEASE.md).
 This policy remains the owner of release permissions, channel rules and recovery.
@@ -49,6 +66,9 @@ This policy remains the owner of release permissions, channel rules and recovery
 ## Upgrades
 
 Moved to [Versioning and stability](../packages/core/docs/guide/reference/stability.md#upgrades).
+
+Stable upgrades are supported one major at a time, in order; skipping a major
+is unsupported even if it appears to work.
 
 ## Pending preview upgrade notes: public coordinates
 

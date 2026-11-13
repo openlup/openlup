@@ -29,20 +29,29 @@ reason `adopter_policy_required` under the public default, including for operato
 
 Supply SDK clients or loaders, feature admission, request-ID observation, rate
 limits, message text, sender and deployment URLs in server composition. Factories
-use the foundation BFF envelope. `IdentityJwtLibrary.jwtVerify` implementations
+construct the foundation BFF responder. Supply the customer profile response
+schema to retain your currency policy, and optionally the request-ID reader;
+these factories do not accept a replacement responder. `IdentityJwtLibrary.jwtVerify` implementations
 must accept optional `currentDate?: Date` and `clockTolerance?: number` options
 and return `{ payload: IdentityJwtClaims }`; the claims shape permits additional
 string-keyed claims. The package loads the injected JWT library on use.
 
 Managed contact lookup uses an anchored, escaped `imatch` prefilter followed by
-exact `email.trim().toLowerCase()` comparison, with at most ten candidates.
+exact `email.trim().toLowerCase()` comparison over a bounded candidate set.
 Soft linking selects the oldest accepted contact; reconciliation requires one
 accepted contact and rejects multiple matches. A match beyond the bound is not
 selected. Injected query clients must implement `filter(column, "imatch", value)`
-and bounded array queries. Supply `emailTrustPolicy` on custom
+and bounded array queries. Escaping keeps wildcard characters literal; exact
+comparison rejects Unicode lookalikes widened by the database prefilter.
+Missing email is never accepted. Supply `emailTrustPolicy` on custom
 `ClientAuthLinkStore` implementations. Legacy operator-role mapping belongs in
 your adapter before passing the role to identity; null or unknown roles return
-HTTP 403 / `FORBIDDEN` without a fallback.
+HTTP 403 / `FORBIDDEN` without a fallback. The reference profile reports
+`{ isAdmin: false, role: null }` for these rows; magic-link eligibility refuses
+them after recording quota and returns the padded accepted response without
+sending. Invitation lookup and creation normalize their input but do not rewrite
+stored principal, membership or customer addresses. The direct lifecycle store
+checks administrator authority inside its transaction.
 
 ## Customer sign-in and email trust
 
@@ -77,8 +86,8 @@ The reconcile handler maps these to HTTP 403 / `FORBIDDEN` and HTTP 503 /
 failure without creating an identity or link; the commerce caller decides how
 to continue. A matching existing link returns before the policy assessment.
 
-The managed policy caches valid safe or unsafe settings for 60 seconds and
-unavailable settings for five seconds. A failed refresh never reuses expired
+The managed policy caches valid safe or unsafe settings and uses a shorter
+cache window for unavailable settings. A failed refresh never reuses expired
 trust. Configuration changes can therefore take time to affect a serving
 process. `identityEmailTrustReadiness` reports a refused policy as
 `OPENLUP_E_PORT_MISSING`, module `identity`, subject `emailTrustPolicy`, with the
@@ -96,10 +105,20 @@ principals with `RESERVED_PRINCIPAL_REFUSED`, mismatched linked email with
 
 Checkout and paid-order retry must explicitly call the soft-account linker if
 they need provisioning. It attempts creation first, recovers normalized duplicate
-identities and writes the link conditionally. Existing-link replay precedes
+identities and writes the link conditionally. Directory scans follow `nextPage`,
+compare trimmed lowercase addresses, propagate lookup failures and refuse when
+the scan bound is reached. Existing-link replay precedes
 policy assessment; failed linking retains the provisioned identity. For managed settings assessment,
 `IDENTITY_EMAIL_VERIFYING_PROVIDERS` is a server-only, comma-separated declaration
-with an empty default. Malformed declarations refuse configuration.
+with an empty default. Declarations are trimmed and lowercased; wildcards, empty entries and malformed
+identifiers refuse configuration. The managed reference adapter binds the
+settings-reading policy even when its bundle environment selects direct storage.
+The policy reads `/auth/v1/settings`, refuses redirects and requires boolean
+`mailer_autoconfirm` and a boolean `external` map. Unknown enabled providers need
+an explicit declaration. Concurrent requests on the same immutable policy
+instance coalesce. Assessment bounds body consumption and aborts outstanding
+transport on completion, including an unread error body. Refusal responses expose
+neutral codes rather than settings bodies, tokens or another principal’s ID.
 
 ## Magic-link destinations
 
@@ -124,7 +143,7 @@ and fragment data. It omits absolute or protocol-relative destinations,
 backslashes, controls, encoded separators and nested escapes, leaving the
 callback's default landing page. Application request validation can be narrower.
 
-Origin-configuration refusal retains the 400 ms padding floor independently
+Origin-configuration refusal retains the response-padding floor independently
 of the requested identity. The host supplies callback paths. A return-path
 normalization that would produce a leading `//` is omitted as unsafe.
 
@@ -143,8 +162,8 @@ pending repeat preserves its attempt and sends no notification. A different
 pending role returns `INVITATION_ROLE_CONFLICT`; an already active target returns
 `MEMBERSHIP_ALREADY_ACTIVE`; inconsistent or erased identities return
 `IDENTITY_CONFLICT`. Expired or cancelled attempts can be reissued. Direct
-hosts parse the invitation lifetime before effects: the default is seven days,
-with integer bounds from 60 to 2592000 seconds; invalid values throw
+hosts parse the invitation lifetime before effects, requiring an integer
+from 60 to 2592000 seconds; invalid values throw
 `operator_invitation_ttl_invalid`.
 
 `acceptOperatorInvitation(principalId)` is a trusted server operation whose
@@ -162,7 +181,8 @@ Role differences return `INVITATION_ROLE_CONFLICT`; revoked members return
 `MANAGED_REINVITE_UNSUPPORTED`. First entry does not activate membership, and
 authentication metadata does not substitute for the active native membership.
 
-Notification failure returns `INVITATION_NOTIFICATION_FAILED` with HTTP 503
+Bind a role-notification port to the invite handler. Notification failure
+returns `INVITATION_NOTIFICATION_FAILED` with HTTP 503
 after persistence. The direct invitation stays pending; managed membership stays
 active. Retrying returns `ALREADY_INVITED` or `ALREADY_ACTIVE` without resending.
 Treat the failure as a delivery problem, not as proof that membership was undone.
@@ -204,7 +224,7 @@ from customer recovery. `createOperatorSessionService` permits a challenge only
 for an existing principal with active allowed membership or a live invitation
 for an allowed role. Issuance creates no principal, customer or membership.
 Unknown, revoked, ineligible and limited addresses receive the same
-`{ accepted: true }` response with a 400 ms floor.
+`{ accepted: true }` response with a padding floor.
 
 `createOperatorAuthHandlers` sends that response before awaiting delivery.
 Custom HTTP hosts must use the service's acceptance callback for the same
@@ -215,10 +235,10 @@ eligible response; delivery failure records only
 discards the challenge when no sink is supplied. Authentication writes require
 same-origin JSON against the configured application origin.
 
-Operator challenge tokens contain 32 random bytes encoded as base64url; only their
-SHA-256 hash and normalized-email fingerprint persist. The store allows one
-challenge per rolling minute and five per rolling hour per principal, including
-consumed challenges. Challenges expire after ten minutes; a new request does not
+Operator challenge tokens contain random bytes encoded as base64url; only their
+SHA-256 hash and normalized-email fingerprint persist. The store enforces
+bounded rolling quotas per principal, including consumed challenges. Challenges
+have a bounded lifetime; a new request does not
 invalidate other live challenges. Redemption rechecks current email and
 eligibility, activates a pending invitation and consumes the challenge in one
 transaction. Exactly one redemption succeeds. Active operators can sign in
@@ -228,7 +248,7 @@ malformed request envelopes return `BAD_REQUEST`.
 
 The browser callback consumes `/admin/auth/callback#operator_token=…`, removes
 the token fragment before asynchronous work and redeems once, including repeated
-component mounting. The token is 43 base64url characters. Challenge delivery and
+component mounting. Challenge delivery and
 session signing use injected structural ports; `OperatorBrowserAuthPort` and
 strict challenge/session schemas are available from `identity/contracts`.
 
@@ -243,7 +263,7 @@ It issues no session or token: the first administrator must complete normal
 mailbox sign-in and invitation acceptance. Bootstrap is not an HTTP or startup
 operation.
 
-The bootstrap invitation expires after seven days. Expiry does not reopen
+The bootstrap invitation has a bounded lifetime. Expiry does not reopen
 bootstrap. Another active human administrator can reissue through the normal
 invitation lifecycle; otherwise the database owner needs an audited recovery
 procedure. There is no shipped bootstrap reset. Preserve principal IDs, customer
@@ -254,9 +274,9 @@ to repeat bootstrap.
 
 Configure distinct nonempty `OPERATOR_IDENTITY_AUDIENCE` and
 `CUSTOMER_IDENTITY_AUDIENCE`. The direct operator binding issues ES256 sessions
-with an exact scalar operator audience and a 900-second lifetime. Verification
+with an exact scalar operator audience and a bounded lifetime. Verification
 requires integer issue and expiry times, no future issuance and a positive
-lifetime no longer than 900 seconds. Customer tokens and tokens with an audience
+lifetime within the verifier’s bound. Customer tokens and tokens with an audience
 array cannot authenticate an operator.
 
 Each protected human request reads current membership. Only active `admin` or
@@ -289,7 +309,9 @@ remain cryptographically valid until expiry, but membership revocation denies
 subsequent operator authorization.
 
 The operator and customer stores expose bounded `pruneChallenges` operations:
-each deletes at most 500 rows whose expiry is strictly more than 24 hours old.
+each deletes a bounded number of rows beyond the retained expiry-history window.
+See the [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/identity.api.md) and its linked implementation
+for quotas, lifetimes, padding and pruning limits.
 Recent expiry and rate-limit history remain. The application schedules cleanup;
 pruning does not renew invitations.
 
@@ -354,15 +376,14 @@ on each configurator render. An unverified buyer can enter another person's
 email: the new purchase can belong to that contact without granting existing
 account access.
 
-`profileDefaults` accepts optional nullable `firstName` and `lastName` (at most
-80 characters each), `phone` (64) and `country` (2). The registrar does not
-normalize these values or freeze them as an order's delivery contact.
-`journey` requires an `idempotencyKey` of 8–160 characters, `locale` of 1–35
-and mode `one_time` or `subscription`. Its checkout metadata contains
-`lastIntentIdempotencyKey`, locale, mode and `clientMatchReason` of
-`client_created` or `client_match_exact_email`; absent journey preserves metadata.
-Raw email is bounded to 320 characters; acquisition source is nonempty trimmed
-text with a raw limit of 100; lifecycle stage is `lead`, `customer` or `inactive`.
+`profileDefaults` accepts optional nullable name, phone and country fields.
+The registrar does not normalize these values or freeze them as an order’s
+delivery contact. `journey` requires bounded idempotency and locale values and
+a supported purchase mode. Its checkout metadata preserves the last intent key,
+locale, mode and match reason; absent journey preserves metadata. Raw email and
+acquisition source are bounded, and lifecycle stage must be supported. Use the
+registrar input contracts in the [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/identity.api.md)
+and its linked validation source for the exact bounds and accepted values.
 
 The separate account-link lookup trims stored email and can return
 `account_normalized_email_ambiguous` for a space-padded legacy row beside its
@@ -386,8 +407,8 @@ HTTPS is required except for an explicit literal-loopback test option. Tokens
 need a bounded nonempty `kid`, an allowed RS256 or ES256 algorithm, a valid
 signature, the exact issuer and the configured API audience. Configure API
 audiences separately from relying-party client identifiers so ID tokens cannot
-serve as API credentials. Customer lifetime is bounded to 3600 seconds; the
-reference operator verifier requires a scalar audience and at most 900 seconds.
+serve as API credentials. Customer lifetime is bounded; the reference operator
+verifier requires a scalar audience and a shorter lifetime bound.
 Integer `iat` and `exp`, no future issuance, `nbf` enforcement and zero clock
 tolerance apply; equality at expiry refuses.
 
@@ -408,12 +429,11 @@ ignored; malformed sets, private key material, unusable signing parameters and
 duplicate usable key IDs refuse. Token `jku` or `x5u` values never choose a
 network destination.
 
-Discovery caches for at most an hour and keys for at most five minutes; response
-cache directives can shorten these bounds. `no-store` prevents reuse and
-`no-cache` caps reuse at 30 seconds. Fetches reject redirects and bound both
-deadline to three seconds and body size to 64 KiB. Concurrent loads coalesce.
-Every key-fetch attempt
-starts a 30-second refresh window, so unknown keys during that window refuse
+Discovery and keys have bounded cache lifetimes; response cache directives can
+shorten these bounds. `no-store` prevents reuse and `no-cache` caps reuse at a
+shorter window. Fetches reject redirects and bound both deadline and body size.
+Concurrent loads coalesce. Every key-fetch attempt starts a bounded refresh
+window, so unknown keys during that window refuse
 without another fetch. A successful refresh replaces the set atomically. A
 failed forced refresh may leave the old unexpired set usable until its original
 expiry; expired keys are never reused after failure. A known-key signature
@@ -430,13 +450,14 @@ it does not certify an issuer's operation or the application's login flow.
 For the exact callable contracts, see the
 [identity API reference](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/identity.api.md)
 and [browser contracts](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/identity-contracts.api.md).
+The server report links the implementation that owns verifier and transport limits.
 The [package surface reference](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/README.md#package-surface)
 owns capability maturity.
 
 Configure `IDENTITY_OIDC_ISSUER`, `IDENTITY_OIDC_CUSTOMER_AUDIENCE` and
-`IDENTITY_OIDC_OPERATOR_AUDIENCE` in the direct host. Principal derivation hashes
-UTF-8 `openlup:oidc-principal:v1`, a NUL byte and `JSON.stringify([issuer, subject])`
-with SHA-256, then takes 16 bytes and sets UUID version 8 and RFC variant bits.
+`IDENTITY_OIDC_OPERATOR_AUDIENCE` in the direct host. Principal derivation uses the exact issuer/subject mapping
+implemented by `deriveOidcPrincipalId`; consult its declaration and linked
+implementation in the identity API report.
 Preserve that mapping when provisioning operator principals; existing random
 operator IDs are not migrated automatically.
 

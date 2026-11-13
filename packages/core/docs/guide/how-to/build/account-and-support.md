@@ -6,13 +6,13 @@ routes and operator routes separately authorized.
 
 ## Choose the imports
 
-Use `@openlup/platform/account-support` for the runtime factories below. Import
-browser-shareable types from `@openlup/platform/account-support/contracts`,
-including `AccountReadPort`, `Customer360ReadPort`, `SelfServiceCommandFacade`,
-`OperatorRecoveryCommandEnvelope` and `InvoiceAccessPort`. Contribution descriptors
-come from `@openlup/platform/composition`. The runtime entry also exports
-account-read stage, error and diagnostic helpers. Owner DTOs retain generic
-frozen money and private extensions.
+Use `@openlup/platform/account-support` for runtime composition and
+`@openlup/platform/account-support/contracts` for browser-shareable types.
+See the [runtime API report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/account-support.api.md) and
+[contracts API report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/account-support-contracts.api.md)
+for their inventories. Contribution descriptors come from
+`@openlup/platform/composition`. Owner DTOs retain generic frozen money and
+private extensions.
 
 For capability maturity, consult the
 [package reference](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/AGENTS.md#subpath-maturity).
@@ -28,8 +28,8 @@ failures when mapping results to HTTP.
 To assemble an account snapshot, supply `AccountReadSources`,
 `AccountReadProjectionPolicy` and an already authorized client row to
 `readAccountSnapshot`. Independent sections load in parallel; subscription rows
-are bounded to 50 before visibility filtering, and the order store is asked for
-exactly 20 recent orders. Subscription assembly and action-evidence reads run
+are bounded before visibility filtering, and the order store is asked for a
+bounded number of recent orders. Subscription assembly and action-evidence reads run
 alongside each other. Recurring money comes from captured line subtotals. Empty,
 unpriced or mixed-currency lines leave the recurring amount unknown. Your
 `withNextCharge` policy selects the payable-cycle and shipping facts; your
@@ -69,7 +69,7 @@ Use `projectCustomer360Snapshot` with supplied journey, recovery, order and
 contact evidence plus lifecycle and timeline policies. Recovery eligibility
 requires a pending order for the same client; token availability also depends on
 unexpired, unused, unrevoked evidence. Audit history is bounded and presented
-chronologically, retaining the newest 80 events. Unselected enrichment is
+chronologically, retaining a bounded set of the newest events. Unselected enrichment is
 omitted; failed or partial profile enrichment produces warnings. Contact health,
 account linkage and sign-in evidence remain separate facts. Subscription
 `paymentMethodKind` is omitted when its source was unselected and null when the

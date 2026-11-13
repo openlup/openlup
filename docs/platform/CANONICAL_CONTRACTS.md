@@ -1359,27 +1359,21 @@ the unscoped wrapper can run. Managed order-status reversals use the seller
 request wrapper and preserve the incumbent result. SQL replay identity conflicts
 surface as typed conflicts. Native upgrades never freeze a previously claimed duty.
 
-Invoicing keeps issued proof, exact scoped absence, unknown and unsupported
-separate. Unknown never authorizes another create; correction recovery binds
-stable correction identity and parent. Local void cannot erase an issued
-invoice. An owed-duty readback retains unsupported duties and capture faults;
-`accountingRequested=false` does not prove absence. Distinct payout items stay
-distinct, and account projections preserve owner and document lineage. Host
-artifact persistence, clearance observation and M04 acceptance are separate proofs.
-See the [invoicing contract reference](PLATFORM_PACKAGE_REFERENCE.md#invoicing-contracts).
+Reader guidance: [Compose invoicing](../../packages/core/docs/guide/how-to/build/invoicing.md).
+
+Host artifact persistence, clearance observation and M04 acceptance are separate
+proofs. The [invoicing contract reference](PLATFORM_PACKAGE_REFERENCE.md#invoicing-contracts)
+retains source witnesses.
 
 See the [M09 forward owner](DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval) for the registered managed-correction limit and follow-up.
 
-The invoicing refusal factory cannot clear a previously unknown effect: its
-unsupported result describes this call only. Offline conformance checks stable
+Offline conformance checks stable
 identity, recovery without a second write and parent mismatch before another
 write. Adapter-owned fixtures establish this contract boundary; live fiscal
 readiness and inbox delivery require their own evidence. Native P4a fencing is
-covered by the real-Postgres conformance witness, with no provider access. The
-store refuses absent host facts before writes; the duty stays owed. Native
+covered by the real-Postgres conformance witness, with no provider access. Native
 child-document corrections and managed base-row corrections have separate
-migration descriptors. An unknown claim always recovers by exact readback;
-only authoritative scoped absence can authorize a fresh create.
+migration descriptors.
 
 ## Account self-service owner results
 

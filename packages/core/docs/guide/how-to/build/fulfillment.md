@@ -6,14 +6,13 @@ operator handlers.
 
 ## Choose the imports
 
-Use `@openlup/platform/fulfillment/native` for `createNativeFulfillmentBinding`,
-`createPostgresFulfillmentShipmentCommandPort` and
-`createPostgresFulfillmentCommerceReadPort`. Use
-`@openlup/platform/fulfillment` for `createCapturedFulfillmentAdapter`,
+Use `@openlup/platform/fulfillment/native` for native bindings and stores; see
+its [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/fulfillment-native.api.md). Use
+`@openlup/platform/fulfillment` for dispatch composition and captures,
 `@openlup/platform/fulfillment/contracts` for request and port types, and
-`@openlup/platform/composition` for `createFulfillmentContribution`.
-Consult the [package reference](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/AGENTS.md#subpath-maturity)
-for capability maturity. Install the
+`@openlup/platform/composition` for contribution composition. Consult the
+[API report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/fulfillment.api.md), [contracts report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/fulfillment-contracts.api.md)
+and [composition report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/composition.api.md) for those inventories. Install the
 [complete selected catalogue](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/DATA_AND_MIGRATIONS.md#compatibility-lifecycle),
 including the operator shipment routines, before selecting native commands.
 

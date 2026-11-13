@@ -62,7 +62,9 @@ method is chargeable unattended, closes the old case and skips every
 uncollected cycle. These duties are not performed by a pure engine call.
 
 The managed win-back and historical recovery functions assign the requested
-instant plus two days unconditionally. Unlike the core restart, they do not
+instant plus the implementation’s restart lead unconditionally; consult the
+[migration owner](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/DATA_AND_MIGRATIONS.md#native-subscription-commands-n2)
+for the durable timing boundary. Unlike the core restart, they do not
 preserve a later stored date: a subscription paid through a later date can
 therefore receive an earlier next charge on this path. Account for that
 limitation when selecting a durable restart.
@@ -83,7 +85,7 @@ future subscription demand. Existing cancelled subscriptions are not revived.
 On the cumulative-refund path, observations need verified signatures and exact
 payment-attempt correlation. Equal or older totals have no new refund effect;
 the transition to a refunded order emits its notice once. Future hard
-reservations and the rolling 14-day soft protection remain in place, so a
+reservations and the rolling soft-protection window remain in place, so a
 one-time allocation cannot consume that protected demand. Stock waiting retains
 active service and the original obligation.
 

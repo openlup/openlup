@@ -7,21 +7,9 @@ explains that boundary.
 
 ## What this package owns
 
-The public subscription entry exports these groups:
-
-| Responsibility | Exports |
-| --- | --- |
-| Cycle planning and edit windows | `createInitialSubscriptionCheckoutModel`, `planSubscriptionCycle`, `isRenewalDue`, `findDueSubscriptions`, `isEditWindowOpen`, `editCutoffAt` |
-| Lifecycle and template changes | `SUBSCRIPTION_STATUS_TRANSITIONS`, `canTransitionSubscriptionStatus`, `pauseSubscription`, `resumeSubscription`, `cancelSubscription`, `completeSubscription`, `reactivateSubscription`, `pauseSubscriptionForExpiredDunning`, `resumeSubscriptionFromExpiredDunning`, `RESTART_LEAD_DAYS`, `skipNextCycle`, `slideNextCycle`, `swapTemplateLine`, `addPermanentAddon` |
-| Payment recording | `recordPaymentSuccess`, `recordPaymentFailure` |
-| Retry decisions | `DEFAULT_CYCLE_RETRY_CADENCE`, `nextRetryAttemptAt`, `shouldScheduleRetry`, `maxRetryAttempts`, `ladderTerminatedByClass`, `isDunningLadderExhausted` |
-
-`EngineSubscription`, `EngineCycle` and `EngineEvent` describe the inputs and
-outputs. `SubscriptionTemplateSnapshot` holds the cadence and recurring lines.
-The entry also exports helpers such as `addCadenceDays`, `parseIso` and
-`validateTemplate`; see the
-[API reference](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/core/api/subscription.api.md)
-for signatures.
+The subscription entry owns cycle planning, edit windows, lifecycle changes,
+payment recording and retry decisions. See the [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/core/api/subscription.api.md)
+for the runtime functions and model contracts.
 
 Mutation functions return `SubscriptionEngineResult<T>`: either `ok: true` with
 `value`, or `ok: false` with `error.code` and `error.message`. Handle the refusal
@@ -46,8 +34,8 @@ outputs, so you can exercise it without network access or a fake clock.
 
 Pass ISO timestamp strings. `DEFAULT_TIMEZONE` is `UTC`; supply your
 application's timezone explicitly when creating a subscription if it differs.
-Cadence arithmetic adds elapsed days of 24 hours; the timezone field does not
-turn it into local-calendar arithmetic.
+Cadence arithmetic adds elapsed days; the timezone field does not turn it
+into local-calendar arithmetic.
 
 ## The deterministic clock on recordPaymentSuccess
 
@@ -57,7 +45,7 @@ it. Neither has a clock fallback. An unreadable instant returns
 `invalid_timestamp`; a cycle already `paid`, `skipped` or `cancelled` returns
 `terminal_cycle`.
 
-Lateness uses the earlier of the two instants. A future settlement timestamp
+Lateness uses the earlier instant. A future settlement timestamp
 cannot inflate the shift, and observing an older settlement later does not
 replace its payment time with the observation time. The recorded cycle keeps
 `paidAt`; the subscription's `updatedAt` uses `recordedAt`.
@@ -65,10 +53,11 @@ replace its payment time with the observation time. The recorded cycle keeps
 ## A late payment shifts the cycle; it never compresses it
 
 A successful payment calculates the next cycle from the paid cycle's own
-`scheduledAt` and snapshot cadence, then adds the whole days it was late:
+`scheduledAt` and snapshot cadence, then adds the whole days it was late.
+In this formula, `elapsedDay` is the duration of an elapsed day:
 
 ```text
-shiftedByDays = max(0, floor((min(paidAt, recordedAt) - scheduledAt) / 24 hours))
+shiftedByDays = max(0, floor((min(paidAt, recordedAt) - scheduledAt) / elapsedDay))
 onTimeNextCycleAt = scheduledAt + cycle.templateSnapshot.cadence_days days
 nextCycleAt = max(subscription.nextCycleAt, onTimeNextCycleAt + shiftedByDays days)
 ```
@@ -90,8 +79,9 @@ decision; it does not establish that a parcel arrived.
 `null` produces `payment_failed` with no next retry. It preserves the cycle's
 identity and does not change the subscription's schedule.
 
-`DEFAULT_CYCLE_RETRY_CADENCE` is frozen. Its `backoffHours` are `[24, 72, 168]`,
-measured from each successive failure. Its array length is the retry budget;
+`DEFAULT_CYCLE_RETRY_CADENCE` is frozen. Its `backoffHours` are measured from
+each successive failure; read the offsets from the installed cadence rather
+than copying them. Its array length is the retry budget;
 a failure past the last slot returns `null`, never the last slot again.
 `shouldScheduleRetry` accepts only `payment_failed` cycles within that budget.
 Use these helpers rather than adding a second attempt-limit check.
@@ -148,7 +138,7 @@ late. The host must check unattended chargeability and handle any other
 uncollected cycles; plain resume does neither this cleanup nor schedule repair.
 
 Win-back and historical dunning recovery set the next date to the later of the
-stored date and `now + RESTART_LEAD_DAYS`, where the lead is two elapsed days.
+stored date and `now + RESTART_LEAD_DAYS`; use the installed lead constant.
 An overflowing restart returns `invalid_timestamp`. Durable restarts have
 additional requirements and may use different timing; see
 [Lifecycle in durable storage](subscriptions.md#lifecycle-in-durable-storage).

@@ -56,8 +56,9 @@ directory links or private build paths.
 
 Create the gitignored `app.local.json` in the copied application with owner-only
 read/write permissions. Set `databaseUrl` to the restricted runtime connection
-string. Generate `operatorToken` with `randomBytes(32).toString("hex")` from
-`node:crypto`. Keep both values out of Git, logs and command-line arguments.
+string. Generate a cryptographically random lowercase hexadecimal
+`operatorToken` matching the configuration constraint in
+[app.mjs](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/own-stack/app.mjs). Keep both values out of Git, logs and command-line arguments.
 
 ```json
 {

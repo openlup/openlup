@@ -108,8 +108,8 @@ and remote processors retain their own export, retention and deletion duties.
 An `ERASED` identity receipt does not mean all platform data has been deleted.
 
 Already-issued customer tokens can remain cryptographically valid until expiry.
-The direct session binding defaults to 3600 seconds, with an allowed range of
-300–86400 seconds. After its link is cleared, customer `me` returns HTTP 403 /
+The direct session binding allows a configured lifetime from 300–86400 seconds.
+After its link is cleared, customer `me` returns HTTP 403 /
 `FORBIDDEN` with “No customer account linked to this session.” Operator
 membership revocation likewise denies authorization without claiming immediate
 cryptographic token revocation.

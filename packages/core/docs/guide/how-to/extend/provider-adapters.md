@@ -29,10 +29,10 @@ contracts as the template for your implementation:
 
 | Class | Contract and construction | Offline check |
 | --- | --- | --- |
-| Email | Return an `EmailTransport` using `createGuardedEmailTransport` from `@openlup/platform/communications`. | `runCommunicationsAdapterConformance` from the same entry. |
-| Marketing | Implement `MarketingSyncProvider` from `@openlup/platform/communications/contracts` for profile sync, consent readback and erasure. Use the separate `ConsentPushPort` for consent changes. | `runCommunicationsAdapterConformance` checks marketing sync; consent push needs separate checks. |
-| Payments | Implement `PaymentAdapter` and declare `PaymentAdapterCapabilities` from `@openlup/platform/payments/contracts`. | `runPaymentAdapterConformance` from `@openlup/platform/payments`, with a `PaymentAdapterConformanceSubject` and verification fixtures. |
-| Fulfillment | Declare `FulfillmentCapabilityDescriptor` and implement `FulfillmentDispatchPort`, `FulfillmentObservationPort` and `FulfillmentReadbackPort` from `@openlup/platform/fulfillment/contracts`. Add label, stock or product sync ports only for the capabilities you expose. | `runFulfillmentAdapterConformance` from `@openlup/platform/fulfillment`, with adapter-owned fixtures. |
+| Email | Bind a guarded email transport; see the [communications API report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/communications.api.md). | Check transport acceptance and refusal behavior with communications conformance. |
+| Marketing | Implement neutral profile, consent-readback and erasure ports from the [communications contracts report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/communications-contracts.api.md). Keep consent push separate. | Communications conformance covers marketing sync; consent push needs separate checks. |
+| Payments | Implement the payment contract and declare capabilities from the [payments contracts report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/payments-contracts.api.md). | Use the conformance runner and fixtures in the [payments API report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/payments.api.md). |
+| Fulfillment | Implement the operations you declare in the [fulfillment contracts report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/fulfillment-contracts.api.md). | Use the conformance runner with adapter-owned fixtures from the [fulfillment API report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/fulfillment.api.md). |
 
 Opt-in templates cover email, marketing, payments and fulfillment. Default
 wiring selects none of them. Find their protocol-specific entries in the
@@ -46,9 +46,10 @@ for maturity.
 
 ### Node email protocol template
 
-The experimental Node-only email template offers exactly three runtime
-functions: guarded transport creation, authenticated webhook handling and
-GET-only delivery reconciliation. Types stay on the neutral entries.
+The Node-only email template composes the neutral runtime operations listed in
+the [communications API report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/communications.api.md).
+Select its protocol-specific entry through the installed export map above. Types
+stay on the neutral entries.
 
 Put the outbound request behind `createGuardedEmailTransport`. Supply a host
 egress policy for every send: it selects the credential, effective recipient and
@@ -70,8 +71,9 @@ scheduling, storage and credential resolution.
 
 For this protocol template, signatures accept bare or `v1,` members and literal
 keys or canonical base64 keys prefixed with `whsec_`. Supply a UTC-seconds
-clock; the timestamp window includes both endpoints at ±300 seconds. This is a
-separate policy from the standard Auth verifier. The receiver defaults to
+clock; the template enforces a bounded timestamp window, including its
+endpoints. Inspect the selected template through the installed export map for
+its verification policy; this policy is separate from the standard Auth verifier. The receiver defaults to
 non-production. Lookup/apply failures return a fixed HTTP 500 response for
 retry; attempt telemetry cannot overturn a successful observation. Unsupported
 event types, missing message IDs and foreign-environment events return only an
