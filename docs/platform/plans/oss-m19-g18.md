@@ -117,7 +117,7 @@ review. No hand-written grants, owner-login bypass or invented chain is allowed.
 At that checkpoint, full acceptance and canonical verification remained pending that proof.
 
 Closure cleanup remains: remove the owned independent consumer directory
-`/Users/bartroszkowski/development/m19-own-stack-g18-consumer` only when its PR closes. Keep it available through
+`m19-own-stack-g18-consumer` (a maintainer-local checkout outside the repository) only when its PR closes. Keep it available through
 repair review and delivery; proof logs and actual outcomes stay in ignored scratch.
 
 Self-retro: the requested record corrections preserve the read-bound code.
