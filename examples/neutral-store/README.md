@@ -31,16 +31,10 @@ The [execution record](docs/proof.md) retains development evidence.
 The headings below preserve existing links to moved guidance.
 
 ## Local UI edit loop
-
 Moved to [the reader guide](../../packages/core/docs/guide/how-to/build/customize-the-starter.md#edit-and-refresh).
 
-On macOS or Linux, after extracting the application and preparing its package
-artifacts and dependencies as described below, run `npm run dev`. Optionally
-pass `-- --configuration coffee --port 4320` (the default port is 4319).
-The command builds the browser assets and starts the existing loopback host
-only after a successful build. It rebuilds edited client code and restarts the
-host when its imported configuration changes. Refresh the browser manually to
-see the result. It does not run the database-backed composition.
+`dev.mjs` owns the polling watcher, separate client build and Node host restart.
+The database-free preview does not compose native database actions.
 
 ## Current candidate
 
@@ -52,99 +46,38 @@ subscription address and lifecycle changes through public native factories. Host
 purchase/recovery proofs run on real PostgreSQL in both configurations. `./lifecycle up` installs
 the packaged PostgreSQL history and fictional catalogue before starting the UI.
 Final release pins and lockfile wait for the selected set.
+Review grants retain the native fixed thirty-day expiry, with no application time seam.
 The unchanged required purchase spec must run against installed PostgreSQL;
 the default database-less UI host cannot satisfy it. See [proof](docs/proof.md).
-
-No generic contact form; the partner inquiry is the durable intake.
-With the native runtime connection, public partner submissions use the native
-idempotency, contact deduplication and rate limits. Operator partner list and
-status transitions use the existing native human operator session. Public review
-read/submit require an order review grant; operator review list/moderation use
-that same operator authority. Positive review submission/read, moderation, revocation and grant ownership
-belong to the later review journey after delivered-shipment reads. Grants retain
-the native bearer-capability semantics. Their fixed thirty-day expiry has no
-application time seam; this contribution claims no additional review proof.
-Tester applications are public durable writes through the native acquisition
-case port and an install-seeded adopter-owned opaque registry. Research needs
-case ownership and ingest needs a complete native binding; those two actions
-remain unmounted and refuse `host_binding_required`.
-Support is a static contact page; see [contact configuration](docs/customization.md#support-contact).
 
 ## Order controls and documents
 
 Moved to [the reader guide](../../packages/core/docs/guide/reference/limits.md#account-and-operator-bindings).
 
 ## Start from an exact source archive
-
 Moved to [the reader guide](../../packages/core/docs/guide/how-to/build/customize-the-starter.md#prepare-the-application).
 
-The release route is a source archive, followed by the small extraction script.
-No generator package or author checkout is required. Select the exact public
-release and its source commit; do not use a floating main archive. The final
-release reference is pending; the following shows the shape, not a published
-artifact claim:
-
-```sh
-# Download the source archive for your selected immutable release commit.
-# Extract it into a staging directory using your normal archive tool.
-node /path/to/extracted-release/examples/neutral-store/extract.mjs /path/to/empty-store
-cd /path/to/empty-store
-```
-
-The script requires Node 24 and Git. It refuses a nonempty destination, copies
-only application-owned and managed inventory entries (not source-only extraction
-tooling or its tests), creates a new `.git` directory and
-materializes the application agent guide. It never searches a parent directory,
-copies the monorepo configuration or resolves workspace packages.
-
-During candidate development, supply only the three selected tarballs as
-described in [candidate artifacts](artifacts/README.md). The application manifest
-contains exact `file:` references to those bytes. Candidate import records their
-names, equal set version and SHA-256 identities. It does not certify publication.
+`extract.mjs` requires Node 24 and Git, copies only owned/managed inventory and
+materializes `AGENTS.md` and `README.md` through `sourceMappings`. It creates an
+independent Git repository without ancestor lookup or workspace resolution.
+`lifecycle.mjs` binds the selected tarball names, equal set versions
+and SHA-256 identities to the candidate's exact `file:` references.
 
 ## Run the local application
-
 Moved to [the reader guide](../../packages/core/docs/guide/how-to/build/customize-the-starter.md#run-the-local-demonstration).
 
-```sh
-./lifecycle up
-```
-
-With the selected local candidate artifacts and generated lockfile in place,
-Compose builds the application, starts pinned PostgreSQL 16, runs the one-shot
-installed migration runner and fictional seed, then serves the application at
-`http://127.0.0.1:4319`. No manual key provisioning, source edits or manual migration are needed.
-A healthy application does not by itself establish a completed sandbox purchase.
-
-```sh
-npm ci
-npm run build
-npm start
-```
-
-```sh
-npm start -- --configuration coffee
-```
-
-Stop the running process before restarting on the same port. For the eventual
-Compose path, use `./lifecycle up --configuration coffee`. With no flags,
-`./lifecycle up` uses the owned default.
-`./lifecycle down` stops this Compose project without deleting persistent data.
+`compose.yaml` pins PostgreSQL 16 and publishes the application only at
+`http://127.0.0.1:4319`. The lifecycle starts its one-shot installed migration
+runner and seed before the application container.
 
 ## Host origin and local sessions
 
 Moved to [the reader guide](../../packages/core/docs/guide/how-to/build/customize-the-starter.md#protect-local-sessions-and-messages).
 
-`StoreConfig.publicOrigin` is an optional owned input. Without it, the host
-accepts only `127.0.0.1:<listening-port>` and `localhost:<listening-port>` over
-HTTP. With it, the host accepts exactly that origin's canonical Host authority
-and requires its exact scheme, host and port in Origin on every method other
-than GET/HEAD. The request marker and JSON content type remain required.
-Unknown or ambiguous Host/Origin headers refuse; forwarded headers grant no
-trust. A TLS terminator must pass the original Host through. This setting opens
-no port and provides no deployment qualification: the demonstration Compose
-publication stays loopback-only, and its passwordless HBA is never a deployment
-recipe. See [customization](docs/customization.md#public-origin).
+The default Host authorities are `127.0.0.1:<listening-port>` and
+`localhost:<listening-port>`. `StoreConfig.publicOrigin` replaces that selection;
+its validation owner is `assertPublicOrigin` in `shared/config.ts`. The demonstration HBA and
+loopback-only Compose publication remain separate from origin selection.
 
 `./lifecycle up` supplies the passwordless runtime URL as a non-secret host
 argument; the application receives no install connection or socket. `npm start`
@@ -161,24 +94,13 @@ real-HTTP proofs. Separate local real-browser evidence passes the unchanged
 required journey and recovery checks in both configurations; those browser runs
 are not a committed root-job witness.
 
-The demonstration captured mailbox is `.context/captured-messages/identity.jsonl` inside
-the application container, readable only with that runtime's filesystem
-access. The container runs as `node` in `/application`; read the 0600
-file with this exact command from the extracted application directory:
+`host/native-composition.ts` writes the private captured mailbox to
+`/application/.context/captured-messages/identity.jsonl` as `node`, mode 0600.
 
-```sh
-docker compose exec -T --user node application cat /application/.context/captured-messages/identity.jsonl
-```
-
-This demonstration mailbox is not a real mailbox. It is never served by HTTP or
-printed in application logs. Native redemption accepts
-its token through `auth.verify` or `auth.callback`; `auth.operator` accepts email
-for a challenge and token for redemption. The native stores must already contain
-the contact client from checkout or an invited operator. There is no public operator bootstrap.
-After activation, support reads require the [owner roster step](#operator-support-roster-and-catalogue-authoring), including its deactivation recipe.
-Opaque sessions are limited to a single process, expire after one hour, have a
-capacity of 1000 and are lost on restart. This is not a production session store;
-operator membership and customer ownership are rechecked on requests.
+The native action bindings are `auth.verify`, `auth.callback` and `auth.operator`;
+there is no public operator bootstrap. `host/sessions.ts` limits opaque sessions
+to one process, one-hour expiry and capacity 1000; restart loses them. Native
+stores recheck operator membership and customer ownership on requests.
 Cookies are host-only, HttpOnly, SameSite=Lax, scoped to `/api/actions`, and Secure
 exactly for a configured HTTPS origin. The local mailbox is a demonstration
 transport, not proof of access to a real mailbox.
@@ -250,7 +172,7 @@ is not a schema installer, price editor, promotion engine or customer import.
 
 ## Customer subscription editors
 
-Moved to [the reader guide](../../packages/core/docs/guide/how-to/build/customize-the-starter.md#configure-subscription-editing).
+Moved to [the reader guide](../../packages/core/docs/guide/how-to/build/customize-the-starter.md#edit-a-customer-subscription).
 
 The host mounts `subscription.preview`, `subscription.command` and
 `subscription.catalog` under the existing customer session. Preview/apply receive
@@ -297,33 +219,10 @@ Existing subscriptions without that template refuse with
 fixture backfill. See [editor proof](docs/proof.md#subscription-editor-proof).
 
 ## Reset an interrupted first install
-
 Moved to [the reader guide](../../packages/core/docs/guide/how-to/build/customize-the-starter.md#reset-an-interrupted-first-install).
 
-An interruption after database creation but before its demonstration marker is
-written leaves an unmarked database. Startup refuses it with
-`starter_seed_demonstration_database_required`; it never adopts or marks it.
-To discard that interrupted **local demonstration**, run from its extracted
-application directory with the same Compose project selection used to start it:
-
-```sh
-./lifecycle down
-docker compose down --volumes
-./lifecycle up
-```
-
-`docker compose down --volumes` explicitly removes the named demonstration
-volumes and destroys all local demonstration data. It must never be run against
-anything else. A fresh startup creates and marks a new demonstration database.
-
 ## Data boundary
-
 Moved to [the reader guide](../../packages/core/docs/guide/reference/limits.md).
-
-All identities, contacts, catalogue entries, labels and prices are fictional.
-The supplement catalogue contains no health claim or consumption advice. No
-money is charged, real parcel sent or real invoice issued. Use `.test` addresses
-and fictional contacts only. The browser cart is convenience state, not an order.
 
 ## Pages and proof
 
@@ -353,47 +252,10 @@ The documented no-flag `./lifecycle up` remains the one-command target.
 
 Moved to [the reader guide](../../packages/core/docs/guide/how-to/build/customize-the-starter.md#provision-operator-rosters).
 
-Activate a native human operator through the native invitation and challenge
-redemption described in [Host origin and local sessions](#host-origin-and-local-sessions)
-first. On the operator page (`/admin` or `/pl/admin`), enter the invited email
-and request a sign-in token. Read the token from the private demonstration mailbox
-with the documented `docker compose exec -T --user node application cat
-/application/.context/captured-messages/identity.jsonl` command above, then enter
-the exact 43-character URL-safe token in the separate operator token form and
-sign in. The password field hides the token and clears after successful
-redemption; the response does not echo it. Keep mailbox access private.
-There is no HTTP bootstrap or roster writer. The database owner then runs
-this **one owner-connection step**, never with the runtime login or application
-connection. From the extracted demonstration application directory:
-
-```sh
-docker compose exec -T database psql -U starter_install -d neutral_store
-```
-
-```sql
-SELECT p.principal_id, p.email, m.role, m.membership_state
-FROM public.platform_human_principals p
-JOIN public.platform_human_memberships m USING (principal_id)
-WHERE lower(btrim(p.email)) = lower(btrim('operator@example.test'))
-  AND m.membership_state = 'active' AND m.role = 'admin'
-  AND NOT EXISTS (SELECT 1 FROM public.platform_control_operators o
-                  WHERE o.principal_id = p.principal_id);
-```
-
-Require exactly one row. Copy its `principal_id` unchanged below; this is exactly
-the principal passed by the host as `operatorRef`, never a customer/client ID:
-
-```sql
-INSERT INTO public.platform_communication_operators (principal_id, active)
-VALUES ('<activated-principal-id>'::uuid, true)
-ON CONFLICT (principal_id) DO UPDATE SET active = true, updated_at = now();
-```
-
-```sql
-UPDATE public.platform_communication_operators
-SET active = false, updated_at = now()
-WHERE principal_id = '<activated-principal-id>'::uuid;
-```
+`host/operator-composition.ts` passes the activated human principal as
+`operatorRef`. Native support additionally checks
+`platform_communication_operators(principal_id, active)`; the database owner
+owns that roster. Installation cannot seed it before the human principal exists.
 
 This roster is an additional native support precondition, not human membership
 or sign-in authority. The host checks active native human membership on every
@@ -407,12 +269,6 @@ every read failure means not provisioned. No second authority is built here.
 #### Commerce operator roster for hold and release admission
 
 Moved to [the reader guide](../../packages/core/docs/guide/how-to/build/customize-the-starter.md#provision-operator-rosters).
-
-```sql
-INSERT INTO public.commerce_operators (id, label)
-VALUES ('<activated-principal-id>'::uuid, 'Human administrator')
-ON CONFLICT (id) DO NOTHING;
-```
 
 Require active `admin` membership and no `platform_control_operators` row of any
 state; distributors do not qualify. The resolver never inserts this row. Never
@@ -449,47 +305,19 @@ installation, never by the runtime host. Conflicting registry data fails install
 loudly. Replace this fictional registry and its onboarding for a customer environment.
 
 ## Guest purchase and later sign-in
-
 Moved to [the reader guide](../../packages/core/docs/guide/concepts/starter-ownership.md#checkout-continuation-and-recovery).
 
-An admitted new checkout issues a 256-bit recovery token through the native
-PostgreSQL port. Only its SHA-256 hash is stored. Checkout creation, reminder
-waves and signed-in recovery issue links whose continuation authority ends 24 hours after order
-creation; these issuers preserve earlier links. Links in checkout-expiry notices instead
-expire 30 days after order creation and retain the terminal source order.
-Eligible expiry can start a replacement through the single Pay action; the
-source order itself cannot be paid. An operator-issued checkout link revokes all earlier links
-for that order; its continuation authority ends at the earlier of issuance plus
-24 hours or order creation plus 30 days. Payment prevents further payment through any link;
-other links remain subject to their own expiry and the operator revocation rule.
-Payment-case links rotate separately, leaving one live link per case.
-The token is returned only in the creating response and a separate private
-captured checkout-recovery message, never an authentication challenge or event.
-The completion page reads the URL token once and replaces history synchronously
-before configuration fetch or rendering. Request bodies carry the token; memory
-and session storage preserve reload convenience but grant no authority. An unchanged repeated submit for the same order keeps its existing token when the replay response omits it. A different order never inherits that token. A new token replaces the token stored in this tab; this storage update does not revoke other links. Operator issuance revokes them through the native issuer.
+The native recovery port issues 256-bit tokens and stores only SHA-256 hashes.
+Initial-checkout, reminder and signed-in recovery continuation expires 24 hours
+after order creation. Expiry-notice recovery ends 30 days after creation.
+Operator issuance revokes earlier checkout links and caps authority at the earlier
+of issuance plus 24 hours or creation plus 30 days; payment-case rotation is
+separate. Indexed hash lookup makes no constant-time guarantee.
+
 The committed continuity proof consists of the source continuity test and the
 clean-index root proof, which needs only npm ci and the three-package build,
 without a starter build or browser. A real-browser second-submit check was
 confirmed in a local run that is not part of the committed suite.
-Live pending-order links support sandbox continuation payment of the original
-order, including retry after a decline. Dedicated token pay and exact cookie-authorized
-inline retry are also bound for the explicit synthetic sandbox choices. Real-provider
-method switching and instrument setup remain unavailable.
-Expired-policy inspection can offer recreation of a fresh order until 30 days
-after the source order was created, including system-abandoned initial checkouts.
-Frozen re-quoting, unchanged supported content, stock admission and proven prior
-payment non-settlement remain required. Manual cancellation, paid orders and
-revoked or unavailable links cannot start payment. Paid presentation has priority
-over any stored attempt. Fresh recreation uses its transition and replay receipt. Dedicated token or
-exact-cookie retry can then act on its same pending replacement; the ordinary
-sandbox action cannot start an attempt on that replacement. Indexed hash lookup makes no constant-time claim.
-Owning sessions retain order ownership checks. An email alone mints no link for
-an existing order. Recovery grants no account or subscription-command access.
-
-The first-subscription offer is not offered yet and comes in a later part of this release. Sandbox outcomes
-are `captured`, `refused`, `expired` and `indeterminate`; other values refuse.
-No real-money provider is selected by this composition.
 
 ## Native quote and acquisition composition
 
@@ -643,10 +471,6 @@ send methods refuse with `starter_paid_mail_method_not_selected`.
 
 Moved to [the reader guide](../../packages/core/docs/guide/reference/limits.md#subscription-care).
 
-```sh
-./lifecycle care --configuration supplements --database-url <restricted-runtime-url>
-```
-
 The command invokes finite auto-resume, drains the native notice dispatcher and
 runs winback only. It creates no timer or HTTP endpoint. A session lock and the
 native job ledger exclude another care invocation. Message bodies and bounded
@@ -711,12 +535,7 @@ The communications operator
 roster documented above is also required for this command. Queued email is not
 a delivery claim.
 
-```sh
-./lifecycle checkout-recovery --configuration supplements --database-url <restricted-runtime-url>
-```
-
-Use `--port` for this local host's actual listening port, or the configured public
-origin. The invocation composes the native job lease, first/final wave producer,
+`host/paid-mail.ts` composes the native job lease, first/final wave producer,
 canonical expiry and initial-checkout sweeps, reconciliation and the existing
 outbox handlers. Private messages reuse the atomic local capture protocol.
 Only confirmed capture in the selected profile qualifies the final wave.
@@ -724,22 +543,6 @@ Checkout expiry links inspect the source and recovery lineage. Live pending-orde
 links support original-order sandbox continuation payment. Dedicated token pay,
 exact cookie-authorized inline retry and the embedded-browser buyer-link control
 are bound to native sandbox execution. The scheduled mail pass never mints a cookie.
-
-The operator reads the current order and parcel before requesting a replacement
-or complete fulfillment cancellation. Replacement shows the frozen destination,
-reason and exception-hold consequences and requires confirmation. Cancellation
-also requires confirmation; the native command owns provider fences and recorded
-reservation release. These actions do not confirm arrival, dispatch a real
-parcel, create a refund or move a subscription cycle earlier.
-Unpaid cancellation and completed external-refund marking use the native order
-commands. Shipment label, handoff and tracking evidence are also bound to native
-operator commands; N3 order notes and order-address corrections remain unavailable.
-
-```sql
-INSERT INTO public.commerce_operators (id, label)
-VALUES ('<activated-principal-id>'::uuid, 'Demonstration administrator')
-ON CONFLICT (id) DO NOTHING;
-```
 
 Run the candidate portal journeys with `./lifecycle browser
 browser/acquisition.spec.ts --grep 'portal '`, or include them in the complete
@@ -776,18 +579,7 @@ unavailable actions are bound; physical-return, tracking and account limits stay
 listed until their own complete bindings exist.
 
 ## Return requests and decisions
-
 Moved to [the reader guide](../../packages/core/docs/guide/reference/limits.md#return-requests-and-decisions).
-
-Signed-in customers submit configured reason codes and positive quantities for
-items from their own paid or fulfilled order. Native ownership, quantity and
-canonical replay checks own admission. The customer retains the returned request
-reference. There is no operator returns list or detail: an active human admin
-uses that exact reference to approve or reject. Every decision and replay resolves
-the existing Commerce operator after fresh membership admission. Full, partial
-(including zero) and no-refund modes record intent; partial requires an amount.
-A repeated decision receipt preserves the original note. These operations do not
-receive goods, restock, execute a refund or change a subscription.
 
 ## Optional payment guidance
 
@@ -796,13 +588,6 @@ Moved to [the reader guide](../../packages/core/docs/guide/reference/limits.md#o
 ## Operator shipment evidence
 
 Moved to [the reader guide](../../packages/core/docs/guide/reference/limits.md#operator-shipment-evidence).
-
-The operator reads the exact parcel and confirms each label, handoff or tracking
-action. Every command and replay rechecks an active human admin session; the
-native human principal supplies audit attribution. Caller identities and command
-keys in the body refuse. Public package handlers own request validation and the
-native command runs in a host-owned READ COMMITTED transaction. Existing order,
-hold and return commands retain their separate Commerce operator provisioning.
 
 Label evidence includes an explicit provider namespace and tracking number.
 Native correlation refuses cross-order reuse in the same namespace and refuses

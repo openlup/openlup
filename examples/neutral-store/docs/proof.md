@@ -2,7 +2,7 @@
 
 Status: historical record, 2026-11-13.
 
-Recorded status: proof recipe with bounded base-candidate execution evidence below.
+Status: proof recipe with bounded base-candidate execution evidence below.
 
 Run from the independent application's root with its exact selected artifacts.
 Use the application's own installation, resource and verification authority.

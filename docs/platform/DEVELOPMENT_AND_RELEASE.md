@@ -328,61 +328,36 @@ A source change to a bound input after preparation refuses until refreshed in a
 reviewed preparation change; other source bytes and modes remain Git-bound.
 The source-preview descendant check retains its strict snapshot equality.
 
+### Core release preparation
+
+The prepared `0.39.0` set adds Platform's checkout recovery, customer account,
+operator order and parcel surfaces. Core runtime, exports and SQL are unchanged
+since `0.38.0`. Upgrade all packages together and read
+[the set notes](../../packages/core/CHANGELOG.md#0390); Core introduces no schema migration.
+Size comparison uses the published `0.38.0` tarball; releases before `0.37.0`
+remain in the source-only `CHANGELOG-HISTORY.md`. Preparation establishes no
+npm publication.
+
+The set requires Zod `^4.6.6` for GHSA-mrhx-c7xc-m3w5.
+Oversized constrained collections fail before per-element errors accumulate;
+bounded valid inputs and public exports are preserved. Both dependency locks
+select the fixed runtime. The build uses the existing development-only Node
+types for Zod's standard `URL` declaration; Core adds no runtime Node import.
+
+### Outbox release preparation
+
+The reviewed release workflow owns provenance-backed publication; direct directory publishing refuses. New API and shipped SQL require the next minor set.
+
+The prepared `0.39.0` set republishes Outbox with unchanged runtime, exports and
+SQL, and an exact `@openlup/core@0.39.0` peer. Upgrade the complete set together;
+no Outbox schema migration is introduced. Read [0.39.0 notes](../../packages/outbox/CHANGELOG.md#0390).
+Releases before `0.37.0` are retained in the source-only `CHANGELOG-HISTORY.md`.
+Size comparison uses the published `0.38.0` tarball; preparation grants no
+publication or installation proof.
+
 ### Verify the published npm artifact
 
 Moved to [Verify the published packages](../../packages/core/docs/guide/how-to/operate/verify-published-packages.md#verify-the-published-packages).
-
-Use a disposable directory outside any checkout, Node 24, npm 11.19.0 and an
-authenticated `gh`. Select the package/version and full commit from the reviewed
-release. This historical first-core-set recipe pins `0.12.0` and
-`5a851a6db5483fe1c754445ab837429f108dfd75`; its toolchain is Node 24 and npm
-11.19.0. This example verifies that first core set; replace both values together
-for a later release. Repeat for each package before offering the whole set.
-
-```sh
-export OPENLUP_VERSION=0.12.0
-export OPENLUP_COMMIT=5a851a6db5483fe1c754445ab837429f108dfd75
-gh release verify "openlup-core-v$OPENLUP_VERSION" --repo openlup/openlup
-npm init -y
-npm install --save-exact --ignore-scripts --no-audit --fund=false "@openlup/core@$OPENLUP_VERSION"
-npm view "@openlup/core@$OPENLUP_VERSION" dist --json > registry-dist.json
-npm pack "@openlup/core@$OPENLUP_VERSION" --ignore-scripts --json > registry-pack.json
-npm audit signatures --json --include-attestations > signatures.json
-node --input-type=module - "$OPENLUP_VERSION" "$OPENLUP_COMMIT" <<'JS'
-import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { createHash } from 'node:crypto';
-const json = path => JSON.parse(readFileSync(path, 'utf8'));
-const [version, commit] = process.argv.slice(2);
-const dist = json('registry-dist.json'), audit = json('signatures.json');
-assert.deepEqual(audit.invalid, []); assert.deepEqual(audit.missing, []);
-const digest = createHash('sha512').update(readFileSync(json('registry-pack.json')[0].filename)).digest();
-assert.equal(dist.integrity, `sha512-${digest.toString('base64')}`);
-const verified = audit.verified.find(row => row.name === '@openlup/core' && row.version === version);
-const provenance = verified.attestationBundles.find(row => row.predicateType === 'https://slsa.dev/provenance/v1');
-const statement = JSON.parse(Buffer.from(provenance.bundle.dsseEnvelope.payload, 'base64'));
-assert(statement.subject.some(row => row.name === `pkg:npm/%40openlup/core@${version}` && row.digest.sha512 === digest.toString('hex')));
-const build = statement.predicate.buildDefinition, tag = `refs/tags/openlup-core-v${version}`;
-assert.deepEqual(build.externalParameters.workflow, {
-  ref: tag, repository: 'https://github.com/openlup/openlup', path: '.github/workflows/publish-packages.yml',
-});
-assert(build.resolvedDependencies.some(row => row.uri === `git+https://github.com/openlup/openlup@${tag}` && row.digest.gitCommit === commit));
-console.log('PASS: registry integrity and verified provenance match the reviewed package, tag, commit and workflow');
-JS
-npm view @openlup/core dist-tags.latest
-```
-
-Require each command to succeed; the final `latest` value must equal the selected
-version when confirming a newly published set. `npm audit signatures` verifies
-the signatures before the snippet inspects its verified bundles; decoding a raw
-registry attestation alone is not signature verification. See the
-[npm verification contract](https://docs.npmjs.com/cli/audit/).
-Missing bundles, unsupported npm options, network/authentication failures or
-unavailable release verification mean **verification unavailable**: record the
-failed command, fix that prerequisite and rerun it before offering adoption.
-A digest or identity mismatch is a refusal requiring maintainer investigation.
-Compare the downloaded registry tarball with registry integrity and the signed
-subject digest; a local preflight tarball can differ and is not that evidence.
 
 ## Cutting an optional source preview
 

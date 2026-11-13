@@ -137,8 +137,7 @@ measured budget decision. Passing a local pack does not authorize publication.
 Use the [glossary](docs/guide/glossary.md) for shared terms.
 
 ## Kernel Documentation
-
-[Subscription engine](docs/guide/concepts/subscription-engine.md).
+Moved to [Subscription engine](docs/guide/concepts/subscription-engine.md).
 
 ### Module readiness
 
@@ -164,8 +163,7 @@ retains database access, transaction and admission policy; these helpers do not
 run migrations, schedule work or activate a module.
 
 ## Bundle contracts
-
-[Compose native bundle writes](docs/guide/how-to/build/bundles.md).
+Moved to [Compose native bundle writes](docs/guide/how-to/build/bundles.md).
 
 The `./bundle` export defines commerce composition: `Bundle` contains `coreLines`,
 `addonLines` and a `CompositionConstraint`. Its `BundleLineRef` identifies a line,
@@ -174,56 +172,44 @@ are commerce bundle contracts. Platform bundle identifiers, descriptors and
 readiness composition belong to `./platform-runtime`.
 
 ## Commerce data contracts
-
-[Read prices for a quote](docs/guide/how-to/build/quote-prices.md) and [add OpenLup to an existing application](docs/guide/how-to/build/own-stack.md).
+Moved to [Read prices for a quote](docs/guide/how-to/build/quote-prices.md) and [add OpenLup to an existing application](docs/guide/how-to/build/own-stack.md).
 
 ### Catalog identifiers
-
-The identity schemas are in the shipped `src/catalog/`; [catalog draft composition](docs/guide/how-to/build/own-stack.md#choose-the-imports-and-ports) keeps product definitions in the application.
+Moved to [Pure contract limits](docs/guide/reference/limits.md#pure-contract-limits).
 
 ### Inventory availability
-
-Read the `./inventory` declarations and shipped `src/inventory/` for the available-to-promise contract.
+Moved to [Pure contract limits](docs/guide/reference/limits.md#pure-contract-limits).
 
 ### Price resolution and breakdown
-
-[Read prices for a quote](docs/guide/how-to/build/quote-prices.md).
+Moved to [Read prices for a quote](docs/guide/how-to/build/quote-prices.md).
 
 ### Promotion evaluation and adjustments
-
-[Read prices for a quote](docs/guide/how-to/build/quote-prices.md).
+Moved to [Read prices for a quote](docs/guide/how-to/build/quote-prices.md).
 
 ## Delivery contracts
-
-[Compose native fulfillment](docs/guide/how-to/build/fulfillment.md).
+Moved to [Compose native fulfillment](docs/guide/how-to/build/fulfillment.md).
 
 ### Fulfillment fact and status contracts
-
-[Canonical status](docs/guide/concepts/payments.md#canonical-status) and [compose native fulfillment](docs/guide/how-to/build/fulfillment.md).
+Moved to [Canonical status](docs/guide/concepts/payments.md#canonical-status) and [compose native fulfillment](docs/guide/how-to/build/fulfillment.md).
 
 ### Shipping rule resolution
-
-[Read prices for a quote](docs/guide/how-to/build/quote-prices.md).
+Moved to [Read prices for a quote](docs/guide/how-to/build/quote-prices.md).
 
 ## Partner and risk contracts
-
-[Architecture and ownership](docs/guide/concepts/architecture-and-ownership.md).
+Moved to [Architecture and ownership](docs/guide/concepts/architecture-and-ownership.md).
 
 ### Company identity lookup contracts
-
-[Identity](docs/guide/concepts/identity.md); lookup schemas are in the shipped `src/company-identity/`.
+Moved to [Pure contract limits](docs/guide/reference/limits.md#pure-contract-limits).
 
 ### Partner lifecycle contracts
 
 [Compose marketing handlers](docs/guide/how-to/build/marketing.md); inquiry contracts are in the shipped `src/partners/`.
 
 ### Risk evaluation contracts
-
-Read the `./risk` declarations and shipped `src/risk/` for evaluation inputs and enforcement facts.
+Moved to [Pure contract limits](docs/guide/reference/limits.md#pure-contract-limits).
 
 ## Payment contracts
-
-[Payments](docs/guide/concepts/payments.md).
+Moved to [Payments](docs/guide/concepts/payments.md).
 
 The `./payment` export's `withinSchemeRetryCeiling` helper checks only its local
 15-attempt/30-day numeric bound. A passing result does not authorize a retry or
@@ -231,39 +217,16 @@ certify compliance; the host/provider must apply actual decline advice and
 current applicable rules, including any narrower limits.
 
 ## Marketing contracts
-
-[Marketing sync](docs/guide/concepts/marketing-sync.md) and [compose marketing handlers](docs/guide/how-to/build/marketing.md).
+Moved to [Marketing sync](docs/guide/concepts/marketing-sync.md) and [compose marketing handlers](docs/guide/how-to/build/marketing.md).
 
 ## Outbox contracts
-
-The `./outbox` export defines the shared event row, handler outcomes, execution
-context, inert handler descriptors, abort signal, handler interface and event
-vocabulary. Handlers must keep effects idempotent and honor the abort signal.
-The separate `@openlup/outbox` rail owns claiming and settlement ports; its host
-adapter and worker supply durable storage, transactions and external delivery.
-
-`PLATFORM_EVENT_VOCABULARY` includes `commerce.settlement.settled`, emitted by
-the platform settlement rail beside the paid-order events. A host that passes
-this vocabulary as the rail's known-type list can leave a settlement fact
-pending without blocking a later paid receipt on the same order aggregate.
-The claim allowlist still comes from registered handlers. A known type without
-a handler is retained without acknowledgement or delivery; no dormant seed is
-required. Readiness evaluation separately requires an explicit owned
-`ignored` or `dormant` exemption when that selected type has no handler.
-
-The platform communications owner also declares
-`commerce.checkout.recovery_qualified.v1` and `communication.ecommerce.export.v1`.
-The former is a recorded token-free source fact; the latter is an independently
-claimed export duty. Their vocabulary entries install no worker. Hosts select
-export and commerce handlers in separate invocations with disjoint allowlists.
+Moved to [Deliver events with the outbox](docs/guide/how-to/build/outbox.md).
 
 ## Platform runtime contracts
-
-[Run OpenLup on your own host](docs/guide/how-to/operate/self-host.md).
+Moved to [Run OpenLup on your own host](docs/guide/how-to/operate/self-host.md).
 
 ## Standard schema contracts
-
-[Compose a provider adapter](docs/guide/how-to/extend/provider-adapters.md); the shared schema interface is in the shipped `src/standard-schema/`.
+Moved to [Pure contract limits](docs/guide/reference/limits.md#pure-contract-limits).
 
 ## Agent context lookup
 
@@ -417,19 +380,3 @@ artifact evidence.
 ## Release notes
 
 Read [the changelog](CHANGELOG.md#0390) before upgrading the package set.
-The following preparation details are retained because they are not recorded
-in this package's shipped changelog:
-
-The prepared `0.39.0` set adds Platform's checkout recovery, customer account,
-operator order and parcel surfaces. Core runtime, exports and SQL are unchanged
-since `0.38.0`. Upgrade all packages together and read
-[the set notes](CHANGELOG.md#0390); Core introduces no schema migration.
-Size comparison uses the published `0.38.0` tarball; releases before `0.37.0`
-remain in the source-only `CHANGELOG-HISTORY.md`. Preparation establishes no
-npm publication.
-
-The set requires Zod `^4.6.6` for GHSA-mrhx-c7xc-m3w5.
-Oversized constrained collections fail before per-element errors accumulate;
-bounded valid inputs and public exports are preserved. Both dependency locks
-select the fixed runtime. The build uses the existing development-only Node
-types for Zod's standard `URL` declaration; Core adds no runtime Node import.

@@ -1,4 +1,4 @@
-# `@openlup/outbox` for agents
+# @openlup/outbox for agents
 
 ## Purpose and kind
 

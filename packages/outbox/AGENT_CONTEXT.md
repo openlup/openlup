@@ -7,46 +7,82 @@ Shipped package-local sources are relative to this package. Other sources link t
 Repository paths, imports and relative links inside verbatim excerpts describe that source checkout, not files to find or create in your application.
 Consult installed declarations and README for the installed version.
 
-<!-- openlup-context-inventory [{"id":"configure-dispatch","source":"README.md","heading":"Dispatch configuration and optional diagnostics","startLine":49,"endLine":65,"sha256":"e7a3e7c564b70a20f0ab73d6d1df54a03f44540c10d5615e57371942ec6d71da"},{"id":"install-outbox","source":"README.md","heading":"PostgreSQL installation and transactions","startLine":66,"endLine":75,"sha256":"c8c296aec57ed0f3c8529a5d1fbbe4957326baa32540276a19ba007a9c4cee15"},{"id":"outbox-retry-dispatch-handler-idempotency","source":"https://github.com/openlup/openlup/blob/openlup-outbox-v0.39.0/packages/core/docs/guide/concepts/idempotency.md","heading":"Idempotency contract","startLine":7,"endLine":75,"sha256":"c22db737e286cd19ef4d00f7df13c6f4d40e0e3b0869c57bf7fb116bc351796e"}] -->
+<!-- openlup-context-inventory [{"id":"configure-dispatch","source":"https://github.com/openlup/openlup/blob/openlup-outbox-v0.39.0/packages/core/docs/guide/how-to/build/outbox.md","heading":"Dispatch configuration and optional diagnostics","startLine":64,"endLine":105,"sha256":"443291123ea9bdc40ece930625cd33c90cdb3a324aee7b72b3071d794f21c8e9"},{"id":"install-outbox","source":"https://github.com/openlup/openlup/blob/openlup-outbox-v0.39.0/packages/core/docs/guide/how-to/build/outbox.md","heading":"PostgreSQL installation and transactions","startLine":6,"endLine":26,"sha256":"a45fb894711be7d2f198de09273f2ca80238edcad791071965e386a6baa157c4"},{"id":"outbox-retry-dispatch-handler-idempotency","source":"https://github.com/openlup/openlup/blob/openlup-outbox-v0.39.0/packages/core/docs/guide/concepts/idempotency.md","heading":"Idempotency contract","startLine":7,"endLine":75,"sha256":"c22db737e286cd19ef4d00f7df13c6f4d40e0e3b0869c57bf7fb116bc351796e"}] -->
 
 ## configure-dispatch: Configure dispatch and diagnostics
 
-Source: [README.md](README.md).
+Source: [OpenLup source repository at openlup-outbox-v0.39.0](https://github.com/openlup/openlup/blob/openlup-outbox-v0.39.0/packages/core/docs/guide/how-to/build/outbox.md#L64-L105).
 
-<!-- openlup-context {"id":"configure-dispatch","source":"README.md","heading":"Dispatch configuration and optional diagnostics","startLine":49,"endLine":65,"sha256":"e7a3e7c564b70a20f0ab73d6d1df54a03f44540c10d5615e57371942ec6d71da"} -->
+<!-- openlup-context {"id":"configure-dispatch","source":"https://github.com/openlup/openlup/blob/openlup-outbox-v0.39.0/packages/core/docs/guide/how-to/build/outbox.md","heading":"Dispatch configuration and optional diagnostics","startLine":64,"endLine":105,"sha256":"443291123ea9bdc40ece930625cd33c90cdb3a324aee7b72b3071d794f21c8e9"} -->
 ## Dispatch configuration and optional diagnostics
 
-`readOutboxDispatchConfig` reads prefixed settings from an environment-like
-record. Its default prefix is `COMMERCE_OUTBOX_DISPATCH_`; pass a different
-prefix to use another host naming scheme. Missing or blank values use each
-setting's default. Other values are parsed with base-10 `parseInt`, non-finite
-parses use defaults, and parsed values clamp to their configured bounds. If the
-backoff cap is below its base, the helper raises the cap to the base.
-`createOutbox` separately validates the host-dependent scheduled limits through
-`validateScheduledConfig`. The setting suffixes, numeric defaults and bounds
-are listed in [`src/config.ts`](src/config.ts).
+Read settings with `readOutboxDispatchConfig` from an environment-like record.
+The default prefix is `COMMERCE_OUTBOX_DISPATCH_`; pass another prefix for your
+host's naming scheme. Missing or blank values use defaults. Other values use
+base-ten `parseInt`; non-finite parses use defaults and parsed values clamp to
+the configured bounds. A backoff cap below the base is raised to the base.
+The [configuration source](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/outbox/src/config.ts)
+owns the setting suffixes, numeric defaults and bounds. `createOutbox` separately
+checks host-dependent scheduled limits through `validateScheduledConfig`.
 
-`OutboxQueueDiagnostics` is an optional host-supplied port. When bound, the
-worker reports its queue observation on a best-effort basis after dispatch,
-with a three-second deadline. This observation is separate from claim and
-acknowledgement policy.
+Bind the optional `OutboxQueueDiagnostics` port to observe the queue after
+dispatch. Observation is best effort, bounded by the worker's deadline, and
+separate from claim and acknowledgement policy.
+
+For scheduled dispatch, call `createOutbox` with the store, `JobLeasePort`,
+inert handler descriptors and `buildHandlers`, plus configuration, known event
+types, host execution limit, lease duration, cadence and the selected adapter's
+`requiredSchema`. Disable pruning explicitly when no compactor is bound.
+The factory validates scheduled configuration before returning a contribution;
+the lease must cover the full host execution window, including finish time.
+It provides no lease-renewal loop.
+
+Handlers are built after lease acquisition. Until the builder returns a
+`HandlerScope`, it owns cleanup of partially acquired resources. The returned
+scope closes after the finish attempt, including failure. The built registry
+must match descriptor event types and effective timeouts before any claim;
+a mismatch reports `outbox_registry_descriptor_mismatch`.
+
+A `beforeDispatch` hook can return observation metadata. Reserved run identity
+and worker counters override that metadata. A resolved negative business
+observation does not itself prevent dispatch; a thrown hook prevents claims
+and attempts a failed finish. Observe `finishApplied`: a refused finish returns
+a failed schedule result, and a thrown finish error propagates. A scope-close
+failure is logged without turning accepted effects into retries.
+
+For an immediate invocation, call `runOutboxDispatchWorker` with a committed-operation
+store, registry, configuration and explicit known vocabulary. It acquires no
+job lease. Both entry styles need handlers that honor cancellation.
+Storage errors propagate; PostgreSQL claims not started in an interrupted run expire
+rather than being falsely settled.
 
 <!-- /openlup-context -->
 
 ## install-outbox: Install SQL and enqueue transactionally
 
-Source: [README.md](README.md).
+Source: [OpenLup source repository at openlup-outbox-v0.39.0](https://github.com/openlup/openlup/blob/openlup-outbox-v0.39.0/packages/core/docs/guide/how-to/build/outbox.md#L6-L26).
 
-<!-- openlup-context {"id":"install-outbox","source":"README.md","heading":"PostgreSQL installation and transactions","startLine":66,"endLine":75,"sha256":"c8c296aec57ed0f3c8529a5d1fbbe4957326baa32540276a19ba007a9c4cee15"} -->
+<!-- openlup-context {"id":"install-outbox","source":"https://github.com/openlup/openlup/blob/openlup-outbox-v0.39.0/packages/core/docs/guide/how-to/build/outbox.md","heading":"PostgreSQL installation and transactions","startLine":6,"endLine":26,"sha256":"a45fb894711be7d2f198de09273f2ca80238edcad791071965e386a6baa157c4"} -->
 ## PostgreSQL installation and transactions
 
-Apply [the baseline](sql/0001_outbox.sql) through your own migration chain on a fresh PostgreSQL database. [The manifest](sql/manifest.json) binds its bytes to their public migration owner. PostgreSQL 16 or later supplies the validated timestamp parser used by compaction. Importing the package never applies SQL. Existing managed schemas need their own compatibility assessment; do not apply the fresh-install baseline over them. The default does not supply provider recovery, RLS or role grants.
+Apply the package's [baseline SQL](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/outbox/sql/0001_outbox.sql)
+through your migration chain on a fresh PostgreSQL database. Its
+[manifest](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/outbox/sql/manifest.json)
+binds the bytes to their migration owner. Use a database meeting the
+[SQL prerequisite](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/outbox/README.md#postgresql-installation-and-transactions).
+Importing the package applies no SQL. Assess compatibility before installing
+into an existing managed schema; the fresh-install baseline is not an upgrade
+for it. Supply your own role grants, row-level security and provider recovery.
 
-`buildOutboxEnqueue` returns bound SQL for the producer's transaction. Execute the domain write and enqueue on the same transaction client; commit or roll back both. Duplicate `(event_type,idempotency_key)` enqueue creates no second row. The dispatch executor must commit each claim/ack/failure/release operation before its promise resolves, with no transaction held across handler I/O. A type-compatible executor alone does not prove this property. Compaction likewise commits per operation.
-
-Claims retain six timestamp digits, per-aggregate ordering, exact dormant identities and claim-token fences. An unknown non-dormant predecessor blocks its aggregate; a known but currently unclaimed type may be bypassed. Snooze and release refund attempts. Storage errors remain exceptions; unstarted claims from an interrupted batch expire rather than being falsely settled.
-
-Prune defaults to 30 days for processed and 90 for discarded, in batches of 500. It empties terminal payload/error and stamps `retentionCompactedAt`, `retentionCompactedBy` and `retentionCompactedStatus`; rows and unique dedupe keys survive. Missing/malformed discard timestamps are ineligible. Pending, failed and processing work remains untouched. Application delivery/ledger adjunct retention remains application-owned. An owner may set `metadata.retainPayload=true` while a downstream obligation needs the original payload. The compactor skips that row, including terminal discarded work, and continues pruning unrelated rows. The owner must preserve the pin until durable handoff or resolution and then clear it; this hint supplies no recovery or erasure authority.
+Keep domain writes and `buildOutboxEnqueue` in the same producer transaction;
+commit or roll back both. Duplicate `(event_type,idempotency_key)` enqueue
+creates no second row. Give `createPostgresOutboxStore` an executor that commits
+each claim, acknowledgement, failure or release before resolving, separately
+from the producer transaction. Hold no transaction across handler I/O; type
+compatibility alone does not prove these commit boundaries. Compaction also
+commits per operation. Claims preserve timestamp precision, aggregate ordering,
+exact dormant identities and claim-token fences. Snooze and release refund
+attempts.
 
 <!-- /openlup-context -->
 

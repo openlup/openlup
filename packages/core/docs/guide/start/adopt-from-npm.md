@@ -6,13 +6,16 @@ for a first runnable example, or [add OpenLup to an existing application](../how
 
 ## Select the packages
 
-Use the toolchain declared in the [adopter source recipe](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/adopter-kit/README.md#start-with-npm). From your application's root, set
+Use the toolchain declared in the [source manifest](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/package.json). From your application's root, set
 `OPENLUP_VERSION` to the exact release you selected and install only the packages
 you use. For the core package alone:
 
 ```sh
 npm install --save-exact "@openlup/core@$OPENLUP_VERSION"
 ```
+
+For a new disposable application, create its directory and run `npm init -y`
+before installing.
 
 Keep every installed `@openlup/*` package at that same exact version. Read the
 installed `node_modules/@openlup/core/docs/guide/README.md`, then each relevant

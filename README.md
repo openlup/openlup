@@ -46,9 +46,15 @@ its own brand, catalog, policies and provider composition.
 not the generic OpenLup reference profile.*
 
 
+## The gap OpenLup addresses
+Moved to [Subscriptions](packages/core/docs/guide/concepts/subscriptions.md).
+
 ## Is OpenLup for you?
 
 Read the [overview](packages/core/docs/guide/start/README.md) for application ownership, package choices and next steps.
+
+## Why OpenLup
+Moved to [Subscription delivery alignment](packages/core/docs/guide/concepts/subscriptions.md#subscription-delivery-alignment).
 
 ## Choose an evaluation path
 
@@ -90,6 +96,9 @@ This calculates a time; it does not schedule work, persist state or charge.
 Continue with the [example explanation](packages/core/docs/guide/start/tutorial.md#calculate-a-retry-time)
 and the [database tutorial](packages/core/docs/guide/start/tutorial.md).
 
+### Evaluate the source reference
+Moved to [Evaluation boundaries](packages/core/docs/guide/reference/limits.md#evaluation-boundaries).
+
 ## Packages and architecture
 
 | Package | Responsibility | Export maturity |
@@ -105,6 +114,9 @@ The reference UI uses React, Vite and Tailwind CSS; Core does not require that
 frontend stack. Browser-shareable contracts stay separate from server execution.
 Provider SDKs, environment readers and payload translation belong behind adapters.
 Portable PostgreSQL and managed Supabase retain distinct installation histories.
+
+## What is already in the repository
+Moved to [Platform source map](docs/platform/SOURCE_MAP.md).
 
 ## Current limits and direction
 
@@ -173,6 +185,9 @@ revision without copying moving gap counts into this page.
 - [Contributing](CONTRIBUTING.md), [maintainer documentation](docs/platform/README.md) and [source map](docs/platform/SOURCE_MAP.md).
 - [Releases](https://github.com/openlup/openlup/releases) and [issue reports](https://github.com/openlup/openlup/issues).
 - [Security reporting](SECURITY.md), [governance](.github/GOVERNANCE.md) and [Code of Conduct](CODE_OF_CONDUCT.md).
+
+## Follow OpenLup
+Moved to [Documentation and contribution](README.md#documentation-and-contribution).
 
 ## License and openness
 

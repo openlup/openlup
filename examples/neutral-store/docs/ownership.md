@@ -4,8 +4,9 @@ Moved to [Who owns what in the starter](../../../packages/core/docs/guide/concep
 Status: moved to the [OpenLup guide](../../../packages/core/docs/guide/concepts/starter-ownership.md); this page keeps its headings so links resolve. Sections marked "Evidence" are frozen historical records.
 
 `ownership.json` is the machine-readable split. Its `owned` and `managed`
-arrays contain exact application-relative paths; `sourceMappings` only maps the
-archive's non-loading instruction template to the new repository's `AGENTS.md`.
+arrays contain exact application-relative paths. `sourceMappings` maps application
+`AGENTS.md` to archive `AGENTS.template.md` and application `README.md` to archive
+`README.template.md`; extraction materializes both destination files.
 `generated` names local output (a trailing slash denotes a directory), and
 `demoData` identifies fictional seed/media files already classified as owned.
 `sourceOnly` lists archive tooling and source-release witnesses, never copied
@@ -14,23 +15,9 @@ No glob, parent checkout discovery or implicit workspace inheritance is needed.
 `demoDataNote`, `pageCopyRequiredFor` and `pageCopyRule` preserve the customer
 environment boundary and explain which changes require taking ownership of a page.
 
-| Class | Responsibility |
-| --- | --- |
-| Owned | Identity, configuration, general copy, media, named UI fragments and the application's agent guide |
-| Managed | Starter host, pages, shared validation and DTOs, test recipes, lifecycle wrapper and documentation |
-| Source only | Extraction script/test, instruction template and selected package/compiler-backed editor witnesses; the source release retains their coverage |
-| Generated | Local source provenance, artifact identities, lockfile during candidate preparation and build/browser output |
-
-Managed means eligible for a reviewed starter update, not automatic overwrite.
-The package CLI owns its actual upgrade plan/apply semantics. This draft does
-not claim that the pending CLI already reads this inventory. The starter's
-`./lifecycle ownership` exposes it without mutating files. The wrapper delegates
-verify and upgrade to the installed CLI and never adds another upgrader.
-
-In the public source tree, the instructions remain `AGENTS.template.md` so they
-do not govern monorepo contributors. Extraction creates the new application's
-`AGENTS.md`. Local application rules outside the managed instruction block
-must survive subsequent guide updates.
+The extractor materializes both templates; its `sourceOnly` exclusions keep
+them out of the application's copied source inventory. `./lifecycle ownership`
+reads the inventory, while verify/upgrade delegate to the installed CLI.
 
 During candidate work, the three `.tgz` files and `artifacts/identity.json` are
 ignored local inputs. Final release preparation must replace candidate `file:`
@@ -319,18 +306,7 @@ unavailable actions are bound; physical-return, tracking and account limits stay
 listed until their own complete bindings exist.
 
 ## Return requests and decisions
-
 Moved to [Who owns what in the starter](../../../packages/core/docs/guide/concepts/starter-ownership.md#cancellation-refund-records-and-returns).
-
-Signed-in customers submit configured reason codes and positive quantities for
-items from their own paid or fulfilled order. Native ownership, quantity and
-canonical replay checks own admission. The customer retains the returned request
-reference. There is no operator returns list or detail: an active human admin
-uses that exact reference to approve or reject. Every decision and replay resolves
-the existing Commerce operator after fresh membership admission. Full, partial
-(including zero) and no-refund modes record intent; partial requires an amount.
-A repeated decision receipt preserves the original note. These operations do not
-receive goods, restock, execute a refund or change a subscription.
 
 ## Optional payment guidance
 Moved to [Who owns what in the starter](../../../packages/core/docs/guide/concepts/starter-ownership.md#payment-guidance-and-sandbox-continuation).
@@ -340,13 +316,6 @@ Moved to [Who owns what in the starter](../../../packages/core/docs/guide/concep
 ## Operator shipment evidence
 
 Moved to [Who owns what in the starter](../../../packages/core/docs/guide/concepts/starter-ownership.md#shipment-evidence-and-retention).
-
-The operator reads the exact parcel and confirms each label, handoff or tracking
-action. Every command and replay rechecks an active human admin session; the
-native human principal supplies audit attribution. Caller identities and command
-keys in the body refuse. Public package handlers own request validation and the
-native command runs in a host-owned READ COMMITTED transaction. Existing order,
-hold and return commands retain their separate Commerce operator provisioning.
 
 Label evidence includes an explicit provider namespace and tracking number.
 Native correlation refuses cross-order reuse in the same namespace and refuses

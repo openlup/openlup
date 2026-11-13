@@ -1526,6 +1526,14 @@ on refusal. `ci:required` invokes that proof; API checks remain in the shared
 cheap phase. The producer must include publishable core and platform tarballs;
 the package inventory includes both at the same set version. Cold packing requires a clean committed package tree; an uncommitted preparation cannot produce the manifest.
 
+The proof installs those tarballs, locked Zod and explicit Node type tooling
+offline from the default npm cache into an OS temporary directory outside the checkout.
+It verifies optional-peer absence physically and through both CommonJS and ESM
+resolution, refuses symlinks and ancestor package sources, checks the complete
+export classification, imports every nonadapter entry with an empty environment,
+and compiles its types in strict NodeNext and Bundler modes without skipping
+library checks. A type leak fails the proof even if runtime imports pass.
+
 It then checks actual missing-SDK refusals, installs the three peers at the root
 lockfile's exact versions using `npm install --prefer-offline --min-release-age=3 --no-audit --fund=false`
 and the default npm cache, compiles all adapter declarations and runs the real SDKs against owned
@@ -1545,6 +1553,7 @@ The composition declarations describe the injected Supabase factory structurally
 they do not import the data entry or its PostgreSQL types. The cold proof still
 requires all declared non-adapter entries (including `./identity/contracts`) to import in fresh processes and compile
 in both resolution modes with all three optional peers absent.
+
 
 ## Identity import candidate
 

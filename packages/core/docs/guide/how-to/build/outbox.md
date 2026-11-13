@@ -3,19 +3,30 @@
 Deliver durable events through application-owned handlers while retaining work
 across retries. Compose the store, handlers and host entrypoints explicitly.
 
-## Install and enqueue
+## PostgreSQL installation and transactions
 
-Follow the [tutorial](../../start/tutorial.md) for a runnable enqueue and dispatch
-example. The outbox package's [PostgreSQL installation and transactions](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/outbox/README.md#postgresql-installation-and-transactions)
-section owns baseline installation, transaction boundaries, ordering and storage
-retention. Apply its SQL through your migration chain; importing the package
-runs no migration.
+Apply the package's [baseline SQL](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/outbox/sql/0001_outbox.sql)
+through your migration chain on a fresh PostgreSQL database. Its
+[manifest](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/outbox/sql/manifest.json)
+binds the bytes to their migration owner. Use a database meeting the
+[SQL prerequisite](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/outbox/README.md#postgresql-installation-and-transactions).
+Importing the package applies no SQL. Assess compatibility before installing
+into an existing managed schema; the fresh-install baseline is not an upgrade
+for it. Supply your own role grants, row-level security and provider recovery.
 
-Keep domain writes and `buildOutboxEnqueue` in the same producer transaction.
-Give `createPostgresOutboxStore` an executor that commits each operation before
-resolving, separately from that producer transaction. See
-[idempotency](../../concepts/idempotency.md#handler-effects-across-retries) for
-enqueue identity, acknowledgement loss and handler replay.
+Keep domain writes and `buildOutboxEnqueue` in the same producer transaction;
+commit or roll back both. Duplicate `(event_type,idempotency_key)` enqueue
+creates no second row. Give `createPostgresOutboxStore` an executor that commits
+each claim, acknowledgement, failure or release before resolving, separately
+from the producer transaction. Hold no transaction across handler I/O; type
+compatibility alone does not prove these commit boundaries. Compaction also
+commits per operation. Claims preserve timestamp precision, aggregate ordering,
+exact dormant identities and claim-token fences. Snooze and release refund
+attempts.
+
+For a runnable example, follow the [tutorial](../../start/tutorial.md). See
+[idempotency](../../concepts/idempotency.md#handler-effects-across-retries)
+for acknowledgement loss and handler replay.
 
 ## Select and compose handlers
 
@@ -50,11 +61,20 @@ Keep export and commerce handler invocations on disjoint allowlists. See
 [checkout recovery](checkout-recovery.md) for reminder composition. Vocabulary
 entries start no worker.
 
-## Bind scheduled or immediate dispatch
+## Dispatch configuration and optional diagnostics
 
-Read settings with `readOutboxDispatchConfig`; the package's
-[dispatch configuration and optional diagnostics](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/outbox/README.md#dispatch-configuration-and-optional-diagnostics)
-section owns prefixes, parsing, defaults and queue observations.
+Read settings with `readOutboxDispatchConfig` from an environment-like record.
+The default prefix is `COMMERCE_OUTBOX_DISPATCH_`; pass another prefix for your
+host's naming scheme. Missing or blank values use defaults. Other values use
+base-ten `parseInt`; non-finite parses use defaults and parsed values clamp to
+the configured bounds. A backoff cap below the base is raised to the base.
+The [configuration source](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/outbox/src/config.ts)
+owns the setting suffixes, numeric defaults and bounds. `createOutbox` separately
+checks host-dependent scheduled limits through `validateScheduledConfig`.
+
+Bind the optional `OutboxQueueDiagnostics` port to observe the queue after
+dispatch. Observation is best effort, bounded by the worker's deadline, and
+separate from claim and acknowledgement policy.
 
 For scheduled dispatch, call `createOutbox` with the store, `JobLeasePort`,
 inert handler descriptors and `buildHandlers`, plus configuration, known event
@@ -79,10 +99,12 @@ failure is logged without turning accepted effects into retries.
 
 For an immediate invocation, call `runOutboxDispatchWorker` with a committed-operation
 store, registry, configuration and explicit known vocabulary. It acquires no
-job lease. Both entry styles need handlers that honor cancellation and enforce
-[effect idempotency](../../concepts/idempotency.md#handler-effects-across-retries).
+job lease. Both entry styles need handlers that honor cancellation.
 Storage errors propagate; PostgreSQL claims not started in an interrupted run expire
 rather than being falsely settled.
+
+For handler replay, enforce [effect idempotency](../../concepts/idempotency.md#handler-effects-across-retries)
+in both entry styles.
 
 ## Observe the selected schema
 
@@ -133,8 +155,11 @@ Preserve producer payloads, pending obligations and recovery behavior when
 To schedule compaction, bind `createPostgresOutboxCompactor` or a compatible
 `CompactionPort`, and enable `prune` with its cadence and retention settings.
 Compaction clears eligible terminal payloads and errors while retaining rows
-and unique enqueue keys. Its defaults and eligibility rules are in the
-[installation and transaction contract](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/outbox/README.md#postgresql-installation-and-transactions).
+and unique enqueue keys. It stamps `retentionCompactedAt`, `retentionCompactedBy`
+and `retentionCompactedStatus`. Pending, failed and processing work stays intact;
+a discarded row without a valid discard timestamp is ineligible. The
+[compaction source](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/outbox/src/postgres.ts)
+owns retention defaults and batch limits.
 Keep `metadata.retainPayload=true` while an unresolved downstream obligation
 needs the original payload; clear it only after durable handoff or resolution.
 The hint grants no recovery or erasure authority. Application delivery and

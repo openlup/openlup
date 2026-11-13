@@ -1,3 +1,6 @@
+# Starter limits
+Moved to [Current limits](#current-limits).
+
 # Current limits
 
 Compare package composition, source references and the application starter before
@@ -25,6 +28,31 @@ revision's README and release notes, including its toolchain and test
 prerequisites. A source build does not start a complete commerce application.
 See the [install support policy](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/.github/INSTALL_SUPPORT_POLICY.md)
 for the installation boundary.
+
+## Pure contract limits
+
+Core's catalogue identifier schemas validate bounded shapes. They do not prove
+that a product, SKU, variant or slug exists; your catalogue reader owns
+membership and current product facts.
+
+`calculateInventoryAtp` evaluates supplied stock, reservations, unavailable
+quantities, safety stock and lot facts. It selects a location when the request
+can be fulfilled there and can return review-required or unsupported results.
+It neither reads stock nor reserves it. Its no-split policy refuses split
+shipment requests with `split_shipment_unsupported`.
+
+Company-identity contracts describe lookup requests, per-source outcomes and
+verification levels. Your host selects identifier kinds, supplies the lookup
+adapter and decides whether its trust level meets the purpose. Schema validation
+queries no registry and approves no seller.
+
+`StandardSchemaV1` is a structural schema interface that keeps browser consumers
+independent of a validation-library runtime. The selected schema and its
+consumer still own validation behavior.
+
+Risk evaluation matches supplied signals against deterministic rules and returns
+score, severity, reasons and mode-dependent enforcement facts. Your host selects
+shadow, review or enforcement policy; a result alone authorizes no order or payment.
 
 ## Store composition
 

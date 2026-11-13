@@ -131,7 +131,9 @@ and refuse with `minimum_units`. Do not duplicate the minimum in a click handler
 The host also validates SKU, quantity, purchase mode, cadence and accepted terms;
 a stale or unaccepted terms revision refuses with `starter_terms_required`.
 Changing displayed amounts cannot change the authoritative package quote or
-settle a payment.
+settle a payment. A valid selection below the minimum stays in the browser cart
+across reloads and storage updates. It remains ineligible for checkout until
+the minimum is met; saved selection state is not an order quote.
 
 Add product images below `public/media/`, update the product's `media` and
 localized `mediaAlt`, and add the file to the owned inventory. Product media
@@ -184,6 +186,35 @@ The demonstration supplies grouped variants, physical sizes, demand units,
 exclusions, verified product documents and fictional stock through the native
 stock writer. Replace the fictional data and fact resolvers for your own
 application. Product labels and illustrative coverage are not usage advice.
+
+## Edit a customer subscription
+
+Open the appropriate editor from the signed-in customer's subscription card.
+In the classic editor, change exact base quantities or add selectable base
+products. Remove an agreed extra, then use its restore control to put it back
+at its saved quantity. The minimum banner and edit-window, payment and cycle
+notices explain why a change cannot proceed.
+
+Choose review before confirming. Review shows the server's current and new
+recurring prices, their signed difference and the effective next-cycle date.
+Confirmation submits the whole desired set with the accepted quote and then
+reads the account again. The recurring price applies from the shown cycle;
+it excludes the one-time introductory promotion.
+
+A classic customer can enter the size-aware invitation without changing the
+subscription. Even unchanged contents require priced review and explicit opt-in
+consent. Leaving the invitation keeps classic servicing. In the size-aware
+editor, select a group's exact size for its full count, change counts separately,
+or change cadence while keeping counts. Repair conflicting selections before
+review. The coverage summary uses synthetic fixture units and gives no usage advice.
+
+Refreshing the size-aware catalogue clears confirmation while retaining
+recoverable quantities. Review the refreshed selection again before applying.
+After an uncertain save, read the account before requesting another preview;
+a failed response alone does not establish whether the change committed.
+The size-aware editor attempts that readback and blocks review until it succeeds.
+The classic editor clears its review after an error; return to the account and
+check the saved subscription before retrying an uncertain result.
 
 ## Set the support contact
 

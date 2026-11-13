@@ -48,30 +48,20 @@ See [lookup instructions](https://github.com/openlup/openlup/blob/main/packages/
 
 ## Dispatch configuration and optional diagnostics
 
-`readOutboxDispatchConfig` reads prefixed settings from an environment-like
-record. Its default prefix is `COMMERCE_OUTBOX_DISPATCH_`; pass a different
-prefix to use another host naming scheme. Missing or blank values use each
-setting's default. Other values are parsed with base-10 `parseInt`, non-finite
-parses use defaults, and parsed values clamp to their configured bounds. If the
-backoff cap is below its base, the helper raises the cap to the base.
-`createOutbox` separately validates the host-dependent scheduled limits through
-`validateScheduledConfig`. The setting suffixes, numeric defaults and bounds
-are listed in [`src/config.ts`](src/config.ts).
+Moved to [Bind scheduled or immediate dispatch](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/outbox.md#dispatch-configuration-and-optional-diagnostics).
 
-`OutboxQueueDiagnostics` is an optional host-supplied port. When bound, the
-worker reports its queue observation on a best-effort basis after dispatch,
-with a three-second deadline. This observation is separate from claim and
-acknowledgement policy.
+The parser and `validateScheduledConfig` share [`src/config.ts`](src/config.ts).
+The optional diagnostics deadline in `src/worker.ts` is three seconds.
 
 ## PostgreSQL installation and transactions
 
-Apply [the baseline](sql/0001_outbox.sql) through your own migration chain on a fresh PostgreSQL database. [The manifest](sql/manifest.json) binds its bytes to their public migration owner. PostgreSQL 16 or later supplies the validated timestamp parser used by compaction. Importing the package never applies SQL. Existing managed schemas need their own compatibility assessment; do not apply the fresh-install baseline over them. The default does not supply provider recovery, RLS or role grants.
+Moved to [Install and enqueue](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/outbox.md#postgresql-installation-and-transactions).
 
-`buildOutboxEnqueue` returns bound SQL for the producer's transaction. Execute the domain write and enqueue on the same transaction client; commit or roll back both. Duplicate `(event_type,idempotency_key)` enqueue creates no second row. The dispatch executor must commit each claim/ack/failure/release operation before its promise resolves, with no transaction held across handler I/O. A type-compatible executor alone does not prove this property. Compaction likewise commits per operation.
-
-Claims retain six timestamp digits, per-aggregate ordering, exact dormant identities and claim-token fences. An unknown non-dormant predecessor blocks its aggregate; a known but currently unclaimed type may be bypassed. Snooze and release refund attempts. Storage errors remain exceptions; unstarted claims from an interrupted batch expire rather than being falsely settled.
-
-Prune defaults to 30 days for processed and 90 for discarded, in batches of 500. It empties terminal payload/error and stamps `retentionCompactedAt`, `retentionCompactedBy` and `retentionCompactedStatus`; rows and unique dedupe keys survive. Missing/malformed discard timestamps are ineligible. Pending, failed and processing work remains untouched. Application delivery/ledger adjunct retention remains application-owned. An owner may set `metadata.retainPayload=true` while a downstream obligation needs the original payload. The compactor skips that row, including terminal discarded work, and continues pruning unrelated rows. The owner must preserve the pin until durable handoff or resolution and then clear it; this hint supplies no recovery or erasure authority.
+[`sql/manifest.json`](sql/manifest.json) binds [`sql/0001_outbox.sql`](sql/0001_outbox.sql)
+to its public migration owner. PostgreSQL 16 or later supplies the validated
+timestamp parser used by compaction. Claims retain six timestamp digits.
+Prune defaults are 30 days for processed and 90 for discarded, in batches of 500;
+`src/postgres.ts` owns the terminal compaction statement and stamps.
 
 ## Readiness and verification
 
@@ -79,8 +69,6 @@ Follow [the composition guide](https://github.com/openlup/openlup/blob/main/pack
 for runtime admission. Contributor verification belongs to the
 [contribution guide](https://github.com/openlup/openlup/blob/main/CONTRIBUTING.md#test-scope-and-diagnostics)
 and the source [packed consumer proof](https://github.com/openlup/openlup/blob/main/scripts/packages/outbox-consumer-proof.ts).
-
-Compose the contribution with `@openlup/core/readiness`, actual loaded package metadata, selected-adapter schema observations and host bindings to the exact contribution run/handle functions before activating the exact new candidate. Only `ready` admits; `unknown` and `unsatisfied` leave the serving version running. Descriptors are inert; the builder supplies the same actual event identities and effective timeouts after lease acquisition. The default schema declaration describes catalog existence and overloads; it does not prove bodies, ACL or recovery. Use framework-free fence conformance from `./testing` and real transactional proof for your adapter. No ambient database URL is used by the packed proof.
 
 From an OpenLup task checkout, the existing packed proof accepts an explicit disposable loopback PostgreSQL database and a verified cold-set manifest:
 
@@ -151,14 +139,3 @@ artifact evidence.
 ## Release notes
 
 Read [the changelog](CHANGELOG.md#0390) before upgrading the package set.
-The following preparation details are retained because they are not recorded
-in this package's shipped changelog:
-
-The reviewed release workflow owns provenance-backed publication; direct directory publishing refuses. New API and shipped SQL require the next minor set.
-
-The prepared `0.39.0` set republishes Outbox with unchanged runtime, exports and
-SQL, and an exact `@openlup/core@0.39.0` peer. Upgrade the complete set together;
-no Outbox schema migration is introduced. Read [0.39.0 notes](CHANGELOG.md#0390).
-Releases before `0.37.0` are retained in the source-only `CHANGELOG-HISTORY.md`.
-Size comparison uses the published `0.38.0` tarball; preparation grants no
-publication or installation proof.
