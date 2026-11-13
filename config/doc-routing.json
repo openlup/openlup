@@ -71,7 +71,9 @@
         "config/doc-routing.json",
         "config/openlup-publication-catalog.json",
         "config/openlup-source-release-contract.json",
-        "scripts/documentation-routing.ts"
+        "scripts/documentation-routing.ts",
+        "scripts/documentation-git*.ts",
+        "scripts/documentation-navigation*.ts"
       ],
       "doc": "docs/platform/DOCUMENTATION.md",
       "anchor": "#ownership"
@@ -263,18 +265,6 @@
       ],
       "doc": "CONTRIBUTING.md",
       "anchor": "#development-preview-checks"
-    },
-    {
-      "id": "docs-export",
-      "when": "Generated documentation navigation and the checked bundle consumer boundary",
-      "paths": [
-        "scripts/documentation-bundle*.ts",
-        "scripts/documentation-git*.ts",
-        "scripts/documentation-navigation*.ts",
-        ".gitignore"
-      ],
-      "doc": "docs/platform/DOCUMENTATION.md",
-      "anchor": "#exporting"
     },
     {
       "id": "tests",

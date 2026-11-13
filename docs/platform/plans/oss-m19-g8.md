@@ -375,7 +375,7 @@ At the first audit stop, 60 suites passed (3598 cases), the unchanged handover p
 | `scripts/customer-recovery-console-managed-schema.test.ts` | PASS before R0 merge — Tests  9 passed (9) |
 | `scripts/customer-recovery-console-schema.test.ts` | PASS before R0 merge — Tests  12 passed (12) |
 | `scripts/customer-selfservice-recovery-schema.test.ts` | PASS before R0 merge — Tests  3 passed (3) |
-| `scripts/documentation-bundle.test.ts` | PASS on R0 base before address repair — Tests  20 passed (20) |
+| [retired `documentation-bundle.test.ts`](https://github.com/openlup/openlup/blob/5acb11d04b9a0db2fc73417b24d518ac257731d8/scripts/documentation-bundle.test.ts) | PASS on R0 base before address repair — Tests  20 passed (20) |
 | `scripts/documentation-cli.test.ts` | PASS on R0 base before address repair — Tests  3 passed (3) |
 | the former documentation-impact suite | PASS before R0 merge — Tests  101 passed (101) |
 | Fulfillment provider lifecycle-evidence suite | PASS before R0 merge — Tests  28 passed (28) |

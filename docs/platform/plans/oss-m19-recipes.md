@@ -267,7 +267,7 @@ execution path and application build inputs are unchanged by those scan refineme
 | `scripts/source-release-preparation.test.ts` | 7 | No |
 | `scripts/check-publishable-gap-enumeration.test.ts` | 5 | No |
 | `scripts/documentation-cli.test.ts` | 3 | Only the authorized synthetic owner string |
-| `scripts/documentation-bundle.test.ts` | 20 | No |
+| [retired `documentation-bundle.test.ts`](https://github.com/openlup/openlup/blob/5acb11d04b9a0db2fc73417b24d518ac257731d8/scripts/documentation-bundle.test.ts) | 20 | No |
 | `scripts/documentation-links.test.ts` | 14 | No |
 | `scripts/public-ci-neutrality.test.ts` | 60 | No |
 | `scripts/source-preview-release.test.ts` | 718 | No |
