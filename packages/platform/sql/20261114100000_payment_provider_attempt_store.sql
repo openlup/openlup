@@ -232,8 +232,10 @@ DECLARE
   v_hold record;
 BEGIN
   IF v_inline_retry THEN
-   IF NOT COALESCE(pg_input_is_valid(p_request_payload->>'expectedPaymentAttemptId','uuid'),false)
-    OR NOT COALESCE(pg_input_is_valid(p_request_payload->>'retryRequestId','uuid'),false)
+   IF NOT regexp_like(COALESCE(p_request_payload->>'expectedPaymentAttemptId',''),
+     '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$')
+    OR NOT regexp_like(COALESCE(p_request_payload->>'retryRequestId',''),
+     '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$')
     OR COALESCE(p_request_payload->>'purchaseContext','') NOT IN ('one_time','subscription_initial') THEN
     RAISE EXCEPTION 'payment_control_inline_retry_invalid_context' USING ERRCODE='22023'; END IF;
    v_expected_attempt_id:=(p_request_payload->>'expectedPaymentAttemptId')::uuid;
@@ -2363,7 +2365,8 @@ BEGIN
  IF p_at IS NULL OR NOT isfinite(p_at) OR p_expected_attempt_id IS NULL
   OR p_request_key IS DISTINCT FROM 'checkout-inline-recovery:'||p_expected_attempt_id::text||':payment-execution:prepare-attempt'
   OR p_context IS NULL OR jsonb_typeof(p_context)<>'object'
-  OR NOT COALESCE(pg_input_is_valid(p_context->>'retryRequestId','uuid'),false) THEN
+  OR NOT regexp_like(COALESCE(p_context->>'retryRequestId',''),
+   '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$') THEN
   RAISE EXCEPTION 'checkout_inline_retry_refused' USING ERRCODE='22023'; END IF;
  SELECT * INTO o FROM public.commerce_orders WHERE id=p_order_id FOR UPDATE;
  IF NOT FOUND OR o.client_id IS DISTINCT FROM p_client_id OR o.subscription_cycle_id IS NOT NULL THEN

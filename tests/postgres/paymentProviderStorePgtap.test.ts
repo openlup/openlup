@@ -47,6 +47,61 @@ it.each([
         retryRequestId: randomUUID(), executionRail: f.provider, methodKey: "card" };
       const method = { provider: f.provider, providerIdempotencyKey: `inline-provider:${f.order_id}`, providerRequestFingerprint: "f".repeat(64),
         providerFlow: "one_time_payment", paymentMethodRef: null, requestPayload: { method: "card" } };
+      const canonical = "abcdef01-2345-8abc-bdef-0123456789ab";
+      const requestPayload = { source: "commerce.checkout-inline-recovery.prepare.v1", expectedPaymentAttemptId: f.predecessor,
+        retryRequestId: canonical, purchaseContext: "one_time" };
+      const recordedCanonical = async () => (await db.query(`SELECT jsonb_build_array(
+        (SELECT jsonb_agg(to_jsonb(s) ORDER BY id) FROM public.payment_provider_states s),
+        (SELECT jsonb_agg(to_jsonb(a) ORDER BY id) FROM public.payment_provider_attempts a),
+        (SELECT jsonb_agg(to_jsonb(e) ORDER BY id) FROM public.payment_provider_attempt_evidence e),
+        (SELECT jsonb_agg(to_jsonb(r) ORDER BY scope,idempotency_key) FROM public.payment_provider_receipts r),
+        (SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM public.payment_provider_transitions t),
+        (SELECT to_jsonb(i) FROM public.commerce_settlement_intents i WHERE id=$1),
+        (SELECT to_jsonb(o) FROM public.commerce_orders o WHERE id=$2)) AS value`, [f.intent_id, f.order_id])).rows[0].value;
+      const prepareCanonical = async (payload: Record<string, unknown>, field: string) => db.query(
+        "SELECT public.payment_provider_attempt_prepare($1,$2,$3,$4,$5,$6,$7,$8) AS response", [
+          `canonical:${f.intent_id}:${field}`, f.intent_id, f.provider, `canonical-provider:${f.intent_id}:${field}`,
+          method.providerRequestFingerprint, method.providerFlow, method.paymentMethodRef, payload,
+        ]);
+      const beforeCanonical = await recordedCanonical();
+      for (const field of ["expectedPaymentAttemptId", "retryRequestId"] as const) {
+        for (const value of [null, undefined, "", "00000000-0000-0000-0000-000000000000", `{${canonical}}`, canonical.replaceAll("-", ""),
+          canonical.replace("8abc", "0abc"), canonical.replace("8abc", "9abc"), canonical.replace("bdef", "7def"),
+          canonical.replace("bdef", "cdef"), canonical.replace("abcdef01", "abcdeg01"), canonical.slice(1), `${canonical}0`,
+          canonical.replace("-2345", "2345-"), ` ${canonical}`, `${canonical}\n`]) {
+          await db.query("SAVEPOINT canonical_input");
+          try {
+            await expect(prepareCanonical({ ...requestPayload, [field]: value }, field)).rejects.toMatchObject({
+              message: "payment_control_inline_retry_invalid_context", code: "22023",
+            });
+          } finally { await db.query("ROLLBACK TO SAVEPOINT canonical_input"); }
+          expect(await recordedCanonical()).toEqual(beforeCanonical);
+        }
+        await db.query("SAVEPOINT canonical_valid");
+        try {
+          const valid = await prepareCanonical({ ...requestPayload,
+            expectedPaymentAttemptId: field === "expectedPaymentAttemptId" ? f.predecessor.toUpperCase() : f.predecessor,
+            retryRequestId: field === "expectedPaymentAttemptId" ? canonical.toUpperCase() : canonical.replace("8abc", "1abc") }, field);
+          expect(valid.rows[0].response.paymentAttempt).toMatchObject({ replayed: false, status: "created" });
+          expect(valid.rows[0].response.paymentAttempt.id).not.toBe(f.predecessor);
+        } finally { await db.query("ROLLBACK TO SAVEPOINT canonical_valid"); }
+        expect(await recordedCanonical()).toEqual(beforeCanonical);
+      }
+      const counts = async () => (await db.query(`SELECT jsonb_build_array(
+        (SELECT count(*) FROM public.payment_provider_attempts), (SELECT count(*) FROM public.payment_provider_receipts),
+        (SELECT count(*) FROM public.payment_provider_transitions)) AS value`)).rows[0].value;
+      const beforeInvalid = await counts();
+      for (const retryRequestId of [null, "", "00000000-0000-0000-0000-000000000000", `{${request.retryRequestId}}`,
+        request.retryRequestId.replaceAll("-", ""), "abcdef01-2345-0abc-bdef-0123456789ab", "abcdef01-2345-4abc-7def-0123456789ab"]) {
+        await db.query("SAVEPOINT canonical_refusal");
+        try {
+          await expect(db.query("SELECT public.commerce_checkout_inline_retry_begin($1,$2,$3,$4,$5,$6,$7,$8)", [
+            `checkout-inline-recovery:${f.predecessor}:payment-execution:prepare-attempt`, f.order_id, f.client_id, f.intent_id,
+            f.predecessor, method.providerRequestFingerprint, { ...method, retryRequestId, executionRail: f.provider, purchaseContext: "one_time" }, new Date(),
+          ])).rejects.toMatchObject({ message: "checkout_inline_retry_refused", code: "22023" });
+        } finally { await db.query("ROLLBACK TO SAVEPOINT canonical_refusal"); }
+        expect(await counts()).toEqual(beforeInvalid);
+      }
       const fresh = await createPostgresProviderInlineRecoveryAttemptPort(db, () => "card").begin({ request, method,
         admission: { replayOnly: false, purchaseContext: "one_time", previousMethodKey: "card", actions: ["change_instrument"], restriction: null } });
       expect(fresh).toMatchObject({ replayed: false, status: "processing" });

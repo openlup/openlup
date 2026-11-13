@@ -5931,7 +5931,7 @@
     },
     {
       "path": "db/platform/migrations/20261114100000_payment_provider_attempt_store.sql",
-      "sha256": "46009c98ce9d77b126444ff3f2651a47af97048ee0df96e0561c211a38a28a56",
+      "sha256": "e99f59e7146ee5cdd57c9b24c60ba7951db264d332d24a9c84b3bb1e9de61511",
       "functions": [
         {
           "signature": "public.payment_simulator_begin_attempt(text,uuid,text,jsonb,timestamptz)",
@@ -5996,7 +5996,7 @@
         {
           "signature": "public.commerce_checkout_inline_retry_begin(text,uuid,uuid,uuid,uuid,text,jsonb,timestamptz)",
           "beforeSha256": "eae0ddf33504b3e86ab47425d1c80c09f12a43e53d21ab6aa7a72ce6eb3539a0",
-          "afterSha256": "36e547cc75d8bccda955c382fe8e41fbcb63b7d105795c8bd4a65693521b3af1"
+          "afterSha256": "8505136ab9564ae6373f29e4839026900e8dab106f255429f954230eda1f25a3"
         },
         {
           "signature": "public.commerce_prepare_expired_checkout_recovery(text,uuid,uuid,bigint,timestamptz)",
@@ -6026,7 +6026,7 @@
         {
           "signature": "public.payment_provider_attempt_prepare(text,uuid,text,text,text,text,text,jsonb)",
           "beforeSha256": null,
-          "afterSha256": "01f6b2fe92f5fc650df607fc5f53de852cdf257cf72c5b3526ff775d856e3822"
+          "afterSha256": "32a796357656910c9886789c49c72b1dfd2dcbc021de766a653c8c363191587b"
         },
         {
           "signature": "public.payment_provider_attempt_record(text,uuid,text,text,text,text,text,jsonb,jsonb)",

@@ -2297,8 +2297,9 @@ same command carriers. The new lifecycle terms contain no retained purchase,
 pricing, cadence-offer or acquisition override. Stored receipts replay before
 reading changed host timing policy; a changed command still conflicts.
 Timed auto-resume, its system-event alias and starter portal mounting are
-separate integrations. Native multi-cycle prepaid and the M07 prepared-attempt
-store retain named unsupported declarations. The unbound native descriptor keeps stock recovery unavailable;
+separate integrations. Native multi-cycle prepaid and prepared-attempt composition
+remain unsupported in the subscription composition descriptor. The payment schema
+descriptor declares `paymentSchemaDescriptor.preparedDurableStore` supported. The unbound native descriptor keeps stock recovery unavailable;
 the explicitly selected M10 reference binding declares it selected, with the
 composed PostgreSQL witness. N1 retry recovery is selected after its store proofs. The
 [Subscription port witnesses](../../packages/platform/test/subscriptions/portFit.test.ts) test
