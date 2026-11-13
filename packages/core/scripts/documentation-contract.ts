@@ -307,7 +307,8 @@ function markdownLinkTargets(source: string, refuse: (reason: string) => void): 
     .map((match) => linkDestination(referenceSource.slice(match.index + match[0].length), refuse));
   const html = [...source.matchAll(/<a\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi)].flatMap(([element]) => {
     // Consume whole attribute values: href-like text or > inside a title is not a boundary.
-    for (const attribute of element.slice(2, -1).matchAll(/([^\s=/>]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g)) {
+    // HTML whitespace only: a no-break space is part of an attribute name, not a separator.
+    for (const attribute of element.slice(2, -1).matchAll(/([^\t\n\f\r =/>]+)(?:[\t\n\f\r ]*=[\t\n\f\r ]*(?:"([^"]*)"|'([^']*)'|([^\t\n\f\r "'=<>`]+)))?/g)) {
       if (attribute[1]!.toLowerCase() === "href") return [attribute[2] ?? attribute[3] ?? attribute[4] ?? ""];
     }
     return [];
@@ -497,9 +498,25 @@ function assertGuideLinks(guideRoot: string, file: string, label: string, raw: s
     const repositoryPath = safeDecode(url.pathname).replace(/\\/g, "/").toLowerCase();
     return /^(?:www\.)?github\.com$|^raw\.githubusercontent\.com$/.test(host) && /^\/+openlup\/+openlup(?:[/?#.]|$)/.test(repositoryPath);
   };
-  for (const target of targets) {
-    // An HTML attribute is followed as written; Markdown first removes backslash escapes.
-    const spellings = [target, target.replace(/\\([!-/:-@[-`{-~])/g, "$1")];
+  // Candidates are not only parsed link destinations: every attribute value of every HTML tag
+  // (split on HTML whitespace, so no parser disagreement can choose a different value) and every
+  // URL-shaped token in the text (GitHub links bare URLs) are classified the same way.
+  const candidates = new Set<string>(targets);
+  for (const [tag] of source.matchAll(/<[A-Za-z][^>]*>/g)) {
+    for (const value of tag.matchAll(/=[\t\n\f\r ]*(?:"([^"]*)"|'([^']*)'|([^\t\n\f\r "'=<>`]+))/g)) {
+      candidates.add(value[1] ?? value[2] ?? value[3] ?? "");
+    }
+  }
+  for (const [token] of source.matchAll(/(?:[A-Za-z][A-Za-z0-9+.-]*:|\/\/|www\.)[^\s<>"'`()[\]{}|^]+/g)) {
+    candidates.add(token);
+    candidates.add(token.replace(/[.,;:!?*_~]+$/, ""));
+  }
+  for (const target of candidates) {
+    // An HTML attribute is followed as written but without tabs and newlines; Markdown first
+    // removes backslash escapes; GitHub links bare `www.` text as http.
+    const unescaped = target.replace(/\\([!-/:-@[-`{-~])/g, "$1");
+    const spellings = [target, unescaped, target.replace(/[\t\n\r]/g, "")]
+      .flatMap((spelling) => /^www\./i.test(spelling) ? [spelling, `http://${spelling}`] : [spelling]);
     if (!spellings.some(reachesRepository)) continue;
     let canonical: string | undefined;
     try { canonical = new URL(target).href; } catch { canonical = undefined; }

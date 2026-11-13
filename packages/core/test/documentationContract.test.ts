@@ -581,6 +581,12 @@ describe("reader guide contract", { timeout: 60_000 }, () => {
     ["an autolink to a branch", "<https://github.com/openlup/openlup/blob/main/README.md>"],
     ["an autolink to raw content", "<https://github.com/openlup/openlup/raw/main/README.md>"],
     ["a bare www text link", "See www.github.com/openlup/openlup/blob/main/README.md for details."],
+    ["a bare URL with a default port", "See https://github.com:443/openlup/openlup/blob/main/README.md for details."],
+    ["a bare URL with dot segments", "See https://github.com/other/../openlup/openlup/blob/main/README.md for details."],
+    ["a bare URL with an encoded path segment", "See https://github.com/openlup/open%6Cup/blob/main/README.md."],
+    ["a bare URL to a branch", "See https://github.com/openlup/openlup/blob/main/README.md."],
+    ["an attribute name joined by a no-break space", '<div><a data-x\u00a0href="https://github.com/openlup/openlup" href="https://%67ithub.com/openlup/openlup/blob/main/README.md">Read</a></div>'],
+    ["a repository URL in another attribute", '<img alt="logo" src="https://github.com/openlup/openlup/raw/main/logo.png">'],
   ])("refuses a repository link hidden by %s", (_name, link) => {
     const roots = guideFixture(`# Guide\n\n${link}\n`);
     expect(() => checkGuide(roots)).toThrow(/character reference or a bare &|non-canonical repository link|must pin/);
