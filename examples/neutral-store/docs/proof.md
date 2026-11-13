@@ -1141,8 +1141,10 @@ The required runner retains complete migrations and replay, repeated seed,
 restricted runtime-role checks and both hosts per group. A setup failure stops
 before acquiring another group and reports its group number and phase. A failure
 after Playwright starts retains later groups' diagnostics. Cleanup and the private
-output scan still run on either path. The job deadline remains 35 minutes pending
-a new hosted measurement.
+output scan still run on either path. The first hosted seven-group run took
+16m03s overall, including 10m36s of journeys. The estimated slowest hosted total
+with twelve groups was about 23 minutes; seven groups save about one minute of
+journeys. The job deadline is 30 minutes: ceil(1.3 × 23).
 
 Local Docker verification of the two combined selections passed 40/40 and 52/52
 cases in both configurations, with one worker, zero retries and no quota refusal.

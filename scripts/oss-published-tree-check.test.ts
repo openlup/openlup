@@ -360,7 +360,7 @@ describe("complete public CI", () => {
   });
   it("runs package proof, root shards and database diagnostics independently", () => {
     for (const name of ["install-proof", "test-full-shard", "pgtap"]) expect(workflowJob(name)).not.toMatch(/^ {4}needs:/mu);
-    for (const [name, timeoutMinutes] of [["install-proof", 35], ["test-full-shard", 20]] as const) {
+    for (const [name, timeoutMinutes] of [["install-proof", 30], ["test-full-shard", 20]] as const) {
       const job = workflowJob(name);
       expect(job).toContain(`    runs-on: ubuntu-latest\n    timeout-minutes: ${timeoutMinutes}\n`);
       expect(job).toContain("      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7\n        with:\n          persist-credentials: false\n");
