@@ -15,4 +15,12 @@ export const browserJourneyGroups = journeySelections([
   'database subscription care',
   'portal ',
   'recovery extension ',
+  'operator operations ',
+  'returns portal ',
+  'payment guidance ',
+  'shipment operations ',
+  'account preferences ',
+  'payment retry ',
+  'embedded browser ',
+  'billing profiles ',
 ]);

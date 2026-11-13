@@ -71,7 +71,8 @@ const RELEASE_CATALOG_BOUND_MIGRATION_LOCK = "SELECT pg_catalog.pg_advisory_unlo
 // The expected catalog projection is pinned to the ledger CREATE TABLE in
 // db/platform/migrations/00000000000000_platform_baseline.sql. The raw catalog
 // expression trees keep operator, function, type and constant identities; only
-// source locations and a signed varlena header byte are normalized. PostgreSQL
+// source locations, a signed varlena header byte and numeric pg_attver column
+// options are normalized. All other attribute options remain exact. PostgreSQL
 // 16 and 17 produce this same shape on both amd64 and arm64.
 const EXPECTED_LEDGER_CATALOG_SHAPE = {
   "relation": ["r","p",false,"0",false,false,false,false,true,3,"d",false,false,"heap",null],
@@ -94,7 +95,15 @@ const LEDGER_IDENTITY = `SELECT c.oid::pg_catalog.text AS ledger_oid,
       'columns', (SELECT COALESCE(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_array(
         a.attnum, a.attname, a.atttypid, a.atttypmod, a.attcollation, a.attnotnull,
         a.attgenerated, a.attidentity, a.atthasdef, a.attisdropped, a.attinhcount,
-        a.atthasmissing, a.attstorage, a.attcompression, a.attoptions, a.attfdwoptions)
+        a.atthasmissing, a.attstorage, a.attcompression,
+        CASE WHEN a.attoptions IS NOT NULL
+          AND pg_catalog.array_ndims(a.attoptions) OPERATOR(pg_catalog.=) 1::pg_catalog.int4
+          AND pg_catalog.array_lower(a.attoptions, 1::pg_catalog.int4) OPERATOR(pg_catalog.=) 1::pg_catalog.int4
+          AND pg_catalog.cardinality(a.attoptions) OPERATOR(pg_catalog.>=) 1::pg_catalog.int4
+          AND NOT EXISTS (
+          SELECT 1 FROM pg_catalog.unnest(a.attoptions) AS o(opt)
+          WHERE o.opt IS NULL OR o.opt OPERATOR(pg_catalog.!~) '^pg_attver=[0-9]+$'::pg_catalog.text
+        ) THEN NULL ELSE a.attoptions END, a.attfdwoptions)
         ORDER BY a.attnum), '[]'::pg_catalog.jsonb)
         FROM pg_catalog.pg_attribute a WHERE a.attrelid OPERATOR(pg_catalog.=) c.oid
           AND a.attnum OPERATOR(pg_catalog.>) 0::pg_catalog.int2),

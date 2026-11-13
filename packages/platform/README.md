@@ -2328,7 +2328,8 @@ The experimental migration source may supply `assertSession` to observe host
 facts once under the existing advisory lock, after exact ledger-prefix admission
 and before status, dry-run or pending SQL. Every source uses catalog-bound locks
 and admits only the canonical baseline ledger catalog shape before reading its
-exact prefix. A pending unit locks an installed ledger before its first catalog
+exact prefix. The fingerprint stays exact except for numeric `pg_attver` column version markers in a nonempty, one-dimensional array starting at index 1; every other attribute option refuses admission.
+A pending unit locks an installed ledger before its first catalog
 read in that transaction and preserves the connection's isolation setting. The
 [migration owner](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
 and [runner witness](https://github.com/openlup/openlup/blob/main/packages/platform/test/migrations/postgresRunner.test.ts) define that boundary;
@@ -2439,7 +2440,7 @@ handler schemas and recognize
 `CustomerSavedAddressRefused` with code `address_in_use` as a mutation conflict.
 `createShippingBindings` accepts an explicitly selected complete native book and
 mutation port; an unbound or incomplete native writer still refuses. Construction
-mounts no route, and starter pages remain separately bound work.
+mounts no route.
 
 Save updates an owned ID, reuses the canonical match, or inserts. Defaults clear
 only the same customer and exact kind (`shipping`, `billing`, `both` are distinct).
@@ -2472,7 +2473,7 @@ The finite connected-store profile carries exact saved rows and event history,
 restores addresses after clients and before subscription pointers, and replays
 without rewriting them. The smaller compatible-row copier remains a separate
 closed profile. Delivery/payment preferences, checkout hints and billing-profile
-persistence are described below; browser journeys remain separately bound work.
+persistence are described below.
 
 
 ### Saved subscription shipping selection
@@ -2524,9 +2525,8 @@ Saved contact, tax and free-text copied into a destination remain personal data.
 Finite connected transfer carries the saved rows, pointers, immutable destination
 rows and retained events under their existing classifications. Address-book
 erasure does not erase immutable destination copies; this port adds no
-export/erasure operation for destination rows. Starter selection pages and routes
-remain separately bound work. The new SQL routine grants EXECUTE only to
-`service_role`; PUBLIC and browser roles remain closed.
+export/erasure operation for destination rows. The new SQL routine grants
+EXECUTE only to `service_role`; PUBLIC and browser roles remain closed.
 
 
 ### Customer delivery and payment preferences
@@ -2588,7 +2588,7 @@ them after their clients and replay leaves them unchanged. Legacy installations
 are capture sources. The smaller compatible-row copier is unchanged; a managed
 source with nonempty preferences has no typed projection and refuses as an
 unsupported relation. Restore does not apply defaults, select payment instruments
-or activate a target. Starter pages and routes remain separately bound work.
+or activate a target.
 
 ### Customer billing profiles and frozen invoice buyers
 
@@ -2643,7 +2643,7 @@ buyer capture cannot change an existing request, issued artifact or replay;
 a later invoice request sees the new profile. Existing historical duties and installed
 facts without a buyer component remain unchanged. This is no fiscal provider
 qualification, invoice rewrite or automatic checkout application: checkout hints
-remain explicitly unapplied. Starter billing pages belong to a later binding.
+remain explicitly unapplied.
 
 Profiles (contact, tax/company identity, verification provenance and source),
 events and frozen buyers are personal data. Register

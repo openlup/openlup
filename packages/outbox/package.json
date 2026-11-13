@@ -13,7 +13,7 @@
     "at-least-once",
     "typescript"
   ],
-  "homepage": "https://github.com/openlup/openlup/tree/main/packages/outbox#readme",
+  "homepage": "https://openlup.com",
   "bugs": {
     "url": "https://github.com/openlup/openlup/issues"
   },

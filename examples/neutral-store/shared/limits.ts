@@ -12,31 +12,6 @@ export interface NativeLimit {
 
 /** One immutable catalogue for unmounted operations and their visible explanations. */
 export const operationLimitDefinitions = Object.freeze({
-  returnRequest: Object.freeze({
-    id: 'returnRequest', actions: Object.freeze(["requestReturn"] as const), code: 'starter_return_request_unavailable',
-    explanation: Object.freeze({ en: "Requesting a return is unavailable in this release.",
-      pl: "Zgłoszenie zwrotu jest niedostępne w tym wydaniu." }),
-  }),
-  returnDecision: Object.freeze({
-    id: 'returnDecision', actions: Object.freeze(["approveReturn", "rejectReturn"] as const), code: 'starter_return_decision_unavailable',
-    explanation: Object.freeze({ en: "Approving and rejecting a return are unavailable in this release. These actions use the customer's return reference.",
-      pl: "Zatwierdzanie i odrzucanie zwrotu są niedostępne w tym wydaniu. Te działania używają numeru zgłoszenia otrzymanego przez klienta." }),
-  }),
-  orderCancellation: Object.freeze({
-    id: 'orderCancellation', actions: Object.freeze(["cancelUnpaid"] as const), code: 'starter_order_cancellation_unavailable',
-    explanation: Object.freeze({ en: "Cancelling an unpaid order is unavailable in this release.",
-      pl: "Anulowanie nieopłaconego zamówienia jest niedostępne w tym wydaniu." }),
-  }),
-  externalRefundMark: Object.freeze({
-    id: 'externalRefundMark', actions: Object.freeze(["externalRefund"] as const), code: 'starter_external_refund_mark_unavailable',
-    explanation: Object.freeze({ en: "Recording an external refund is unavailable in this release.",
-      pl: "Zapisanie informacji o zwrocie środków wykonanym poza sklepem jest niedostępne w tym wydaniu." }),
-  }),
-  shipmentMutation: Object.freeze({
-    id: 'shipmentMutation', actions: Object.freeze(["label", "handoff", "delivery"] as const), code: 'starter_shipment_mutation_unavailable',
-    explanation: Object.freeze({ en: "Recording a label, handing over a parcel and recording delivery are unavailable in this release. Shipment reads remain available.",
-      pl: "Zapisanie etykiety, przekazanie przesyłki i zapisanie doręczenia są niedostępne w tym wydaniu. Odczyt przesyłek pozostaje dostępny." }),
-  }),
   trackingAccess: Object.freeze({
     id: 'trackingAccess', actions: Object.freeze(["tracking"] as const), code: 'starter_tracking_access_unavailable',
     explanation: Object.freeze({ en: "Public tracking lookup is unavailable.",
@@ -60,14 +35,6 @@ export const operationLimitDefinitions = Object.freeze({
 } satisfies Record<string, NativeLimit>);
 
 export const operationLimits: Readonly<Partial<Record<Operation, NativeLimit>>> = Object.freeze({
-  'return.request': operationLimitDefinitions.returnRequest,
-  'operator.returnApprove': operationLimitDefinitions.returnDecision,
-  'operator.returnReject': operationLimitDefinitions.returnDecision,
-  'operator.cancelUnpaid': operationLimitDefinitions.orderCancellation,
-  'operator.externalRefund': operationLimitDefinitions.externalRefundMark,
-  'operator.label': operationLimitDefinitions.shipmentMutation,
-  'operator.handoff': operationLimitDefinitions.shipmentMutation,
-  'operator.delivery': operationLimitDefinitions.shipmentMutation,
   'tracking.read': operationLimitDefinitions.trackingAccess,
   'research.submit': operationLimitDefinitions.researchAuthority,
   'ingest.submit': operationLimitDefinitions.ingestBinding,
@@ -97,10 +64,10 @@ export const nativeLimits: readonly NativeLimit[] = [
     },
   },
   {
-    id: 'N5', actions: ['savedAddresses', 'billing', 'deliveryPreference', 'paymentPreference', 'privateProfile', 'profileViews'], code: 'starter_account_preferences_unavailable',
+    id: 'N5', actions: ['privateProfile', 'profileViews'], code: 'starter_account_preferences_unavailable',
     explanation: {
-      en: 'Saved addresses, billing profiles, delivery preferences, payment preferences, private-profile views and profile/address/billing/private-profile views are unavailable on the portable rail.',
-      pl: 'Ścieżka przenośna nie obsługuje zapisanych adresów, profili rozliczeniowych, preferencji dostawy i płatności, widoków profilu prywatnego ani widoków profilu, adresów, rozliczeń i profilu prywatnego.',
+      en: 'Private-profile views and complete profile views remain unavailable. Billing profiles, saved addresses and scoped delivery/payment preferences are bound separately.',
+      pl: 'Widoki profilu prywatnego i pełne widoki profilu pozostają niedostępne. Profile rozliczeniowe, zapisane adresy oraz preferencje dostawy i płatności są obsługiwane osobno.',
     },
   },
   {

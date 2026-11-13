@@ -2852,7 +2852,7 @@
     }
   ],
   "nativeStoreForwardClass": {
-    "sealed": false,
+    "sealed": true,
     "slots": [
       {
         "row": "G6",
