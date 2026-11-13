@@ -727,6 +727,9 @@ receipt, validates case attribution and replays its canonical response. Only the
 five named attribution refusals preserve applied money with sticky refusal
 evidence; other errors roll back application, rung, case, notices and receipts.
 It never applies a failure twice or adopts an unattributed historical case.
+Finite native capture and qualified restore retain all four new relations after
+their payment, truth, case and retry-receipt parents. Exact restore and replay
+preserve the recorded financial evidence and do not issue another notice or token.
 
 Absence reopening is default off. Exact provider proof, a recorded watchdog,
 30-minute age and the absence of references, events or terminal corrections are

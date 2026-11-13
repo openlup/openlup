@@ -29,6 +29,8 @@ const owned = [
   "payment_simulator_attempts", "payment_simulator_observations",
   "payment_provider_states", "payment_provider_attempts", "payment_provider_attempt_evidence",
   "payment_provider_receipts", "payment_provider_transitions",
+  "payment_provider_reconciliation_runs", "payment_prepared_absence_reopens",
+  "payment_dunning_case_attribution", "payment_refund_evidence",
   "commerce_destinations", "commerce_destination_bindings", "fulfillment_parcel_contacts", "subscription_command_receipts", "subscription_quote_previews",
   "customer_support_subscription_commands", "customer_support_subscription_audit_events",
   "platform_human_principals", "platform_human_memberships", "platform_human_membership_audit_events",
