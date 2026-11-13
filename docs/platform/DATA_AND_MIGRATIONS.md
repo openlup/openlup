@@ -714,6 +714,12 @@ The authority writers record token context, record the method binding and freeze
 that binding at dispatch; they accept stored identifiers and facts, not SQL or
 object names. Store transfer must retain all three row-holding relations.
 
+The retry driver consumes a recorded provider failure through its original
+immutable receipt key and input. It validates the operation, sequence, logical
+cycle and attempt evidence before replay, so another caller key cannot advance
+that failure twice. Provider case creation remains with attributed dunning
+composition; the existing sandbox case handoff remains selected separately.
+
 | Historical method state | Named result and manual path |
 | --- | --- |
 | Healthy label or mirror string with no reusable row | `method_ref_not_recorded` from the recorded-method reader; `subscription_missing_payment_method_ref` or `no_matching_method_ref` from scope repair. Obtain verified method evidence; no synthetic reference or automatic backfill is created. |

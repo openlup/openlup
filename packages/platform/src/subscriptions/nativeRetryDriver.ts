@@ -45,10 +45,25 @@ export function createNativeRetryDriver(options: NativeRetryDriverOptions) {
       await db.query(`SELECT id FROM public.subscriptions WHERE id=(SELECT subscription_id
         FROM public.subscription_renewal_operations WHERE id=$1::uuid) FOR UPDATE`, [operationId]);
       const retry = createPostgresRetryStore(db, options.retryCadence);
-      const prior = await retry.failureProgress(operationId, key);
-      const obligation = await retry.applyFailure(operationId, key, input); // validates replay identity
-      const progress = await retry.failureProgress(operationId, key);
-      if (!progress.caseAdvanced) await retry.openCase(operationId, options.failureTemplate, options.recoveryPath);
+      const recorded = (await db.query(`SELECT r.receipt_key,r.input,
+        public.payment_provider_retry_failure_recorded(o.settlement_intent_id,r.receipt_key,
+          r.input->>'paymentAttemptId') AS attributed
+        FROM public.subscription_retry_obligations o
+        JOIN public.subscription_retry_receipts r ON r.obligation_id=o.id AND r.kind='failure'
+        WHERE o.renewal_operation_id=$1::uuid AND r.attempt_sequence=$2::integer
+          AND r.input ? 'paymentAttemptId'`, [operationId, input.attemptSequence])).rows[0] as { receipt_key: string; input: NativeRetryFailure; attributed: boolean } | undefined;
+      if (recorded && (recorded.attributed !== true
+        || recorded.input.logicalCycleNumber !== input.logicalCycleNumber
+        || recorded.input.evidenceKey !== input.evidenceKey || recorded.input.externalRef !== input.externalRef)) {
+        throw new Error("subscription_retry_provider_failure_mismatch");
+      }
+      // Provider application already owns this rung and financial transition.
+      // Replay its immutable input/key; attributed case handoff has another owner.
+      const failureKey = recorded ? String(recorded.receipt_key) : key;
+      const prior = await retry.failureProgress(operationId, failureKey);
+      const obligation = await retry.applyFailure(operationId, failureKey, recorded ? recorded.input : input);
+      const progress = await retry.failureProgress(operationId, failureKey);
+      if (!recorded && !progress.caseAdvanced) await retry.openCase(operationId, options.failureTemplate, options.recoveryPath);
       return { obligation, replayed: prior.replayed, caseAdvanced: progress.caseAdvanced };
     });
   }

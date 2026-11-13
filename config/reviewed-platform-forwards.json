@@ -6241,7 +6241,7 @@
     },
     {
       "path": "db/platform/migrations/20261114110000_payment_method_refs.sql",
-      "sha256": "84b58878f774db13a1612ab5d74094b94f25d89f5db75bd6b7461e84655112b8",
+      "sha256": "34a00582a20c851cba1e039e5f159e19655a54bb8fbbc3146d96e9ac9b7f6530",
       "functions": [
         {
           "signature": "public.subscription_command_preview(uuid,uuid,text,uuid,text,jsonb,timestamptz)",

@@ -63,15 +63,8 @@ ALTER TABLE public.payment_method_recovery_authorities ENABLE ROW LEVEL SECURITY
 REVOKE ALL ON TABLE public.payment_method_refs FROM PUBLIC;
 REVOKE ALL ON TABLE public.payment_method_ref_receipts FROM PUBLIC;
 REVOKE ALL ON TABLE public.payment_method_recovery_authorities FROM PUBLIC;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN EXECUTE 'REVOKE ALL ON TABLE public.payment_method_refs,public.payment_method_ref_receipts,public.payment_method_recovery_authorities FROM anon;'; END IF; END; $$;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN EXECUTE 'REVOKE ALL ON TABLE public.payment_method_refs,public.payment_method_ref_receipts,public.payment_method_recovery_authorities FROM authenticated;'; END IF; END; $$;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'REVOKE ALL ON TABLE public.payment_method_refs,public.payment_method_ref_receipts,public.payment_method_recovery_authorities FROM service_role;'; END IF; END; $$;
 INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('payment_method_refs', 'block', 'Saved payment references remain bound to their client and prevent lead absorption.');
 INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('payment_method_recovery_authorities', 'block', 'Payment repair authority remains bound to its original client.');
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT SELECT (client_id) ON TABLE public.payment_method_refs TO service_role;'; END IF; END; $$;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'CREATE POLICY payment_method_refs_absorption_census ON public.payment_method_refs FOR SELECT TO service_role USING (true);'; END IF; END; $$;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT SELECT (client_id) ON TABLE public.payment_method_recovery_authorities TO service_role;'; END IF; END; $$;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'CREATE POLICY payment_method_recovery_authorities_absorption_census ON public.payment_method_recovery_authorities FOR SELECT TO service_role USING (true);'; END IF; END; $$;
 
 CREATE FUNCTION public.payment_method_ref_upsert(
  p_idempotency_key text,p_client_id uuid,p_subscription_id uuid,p_provider_kind text,p_method_kind text,
@@ -1875,6 +1868,7 @@ RETURNS jsonb LANGUAGE sql STABLE SET search_path = pg_catalog AS $$
  ) c;
 $$;
 -- Bounded executable surface.
+
 REVOKE ALL ON FUNCTION public.payment_method_ref_upsert(text,uuid,uuid,text,text,text,text,text,text,boolean,timestamptz,jsonb,jsonb) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.payment_method_ref_deactivate(text,uuid,text,jsonb) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.payment_method_ref_switch_active(text,uuid,uuid) FROM PUBLIC;
@@ -1887,28 +1881,17 @@ REVOKE ALL ON FUNCTION public.payment_control_mark_setup_event_processed(uuid) F
 REVOKE ALL ON FUNCTION public.payment_method_ref_repair_subscription_scope(text,uuid,timestamptz,text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.payment_method_ref_repair_subscription_scope_batch(integer,boolean,text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.subscription_try_schedule_recovery_retry(uuid,text,timestamptz,text) FROM PUBLIC;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.payment_method_ref_upsert(text,uuid,uuid,text,text,text,text,text,text,boolean,timestamptz,jsonb,jsonb) TO service_role;'; END IF; END; $$;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.payment_method_ref_deactivate(text,uuid,text,jsonb) TO service_role;'; END IF; END; $$;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.payment_method_ref_switch_active(text,uuid,uuid) TO service_role;'; END IF; END; $$;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.payment_method_ref_link_subscription_mirror(text,uuid,uuid) TO service_role;'; END IF; END; $$;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.subscription_method_chargeable_unattended(uuid,timestamptz) TO service_role;'; END IF; END; $$;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.subscription_method_health_read(uuid) TO service_role;'; END IF; END; $$;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.payment_method_ref_read(text,text) TO service_role;'; END IF; END; $$;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.payment_method_setup_resolve_owner(uuid,uuid) TO service_role;'; END IF; END; $$;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.payment_control_mark_setup_event_processed(uuid) TO service_role;'; END IF; END; $$;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.payment_method_ref_repair_subscription_scope(text,uuid,timestamptz,text) TO service_role;'; END IF; END; $$;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.payment_method_ref_repair_subscription_scope_batch(integer,boolean,text) TO service_role;'; END IF; END; $$;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.subscription_try_schedule_recovery_retry(uuid,text,timestamptz,text) TO service_role;'; END IF; END; $$;
-
 REVOKE ALL ON FUNCTION public.subscription_method_uses_recorded_refs(uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.payment_method_ref_for_subscription_read(uuid,text,timestamptz) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.payment_method_recovery_authority_read(uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.payment_method_recovery_authority_bind(uuid,uuid,text,text,timestamptz) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.payment_method_recovery_authority_record(uuid,uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.payment_method_recovery_authority_freeze(uuid,uuid,text,text,timestamptz) FROM PUBLIC;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.subscription_method_uses_recorded_refs(uuid) TO service_role;'; END IF; END; $$;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.payment_method_ref_for_subscription_read(uuid,text,timestamptz) TO service_role;'; END IF; END; $$;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.payment_method_recovery_authority_read(uuid) TO service_role;'; END IF; END; $$;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.payment_method_recovery_authority_bind(uuid,uuid,text,text,timestamptz) TO service_role;'; END IF; END; $$;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.payment_method_recovery_authority_record(uuid,uuid) TO service_role;'; END IF; END; $$;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.payment_method_recovery_authority_freeze(uuid,uuid,text,text,timestamptz) TO service_role;'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN EXECUTE 'REVOKE ALL ON TABLE public.payment_method_refs,public.payment_method_ref_receipts,public.payment_method_recovery_authorities FROM anon;'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN EXECUTE 'REVOKE ALL ON TABLE public.payment_method_refs,public.payment_method_ref_receipts,public.payment_method_recovery_authorities FROM authenticated;'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'REVOKE ALL ON TABLE public.payment_method_refs,public.payment_method_ref_receipts,public.payment_method_recovery_authorities FROM service_role;'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT SELECT (client_id) ON TABLE public.payment_method_refs TO service_role;'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'CREATE POLICY payment_method_refs_absorption_census ON public.payment_method_refs FOR SELECT TO service_role USING (true);'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT SELECT (client_id) ON TABLE public.payment_method_recovery_authorities TO service_role;'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'CREATE POLICY payment_method_recovery_authorities_absorption_census ON public.payment_method_recovery_authorities FOR SELECT TO service_role USING (true);'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.payment_method_ref_upsert(text,uuid,uuid,text,text,text,text,text,text,boolean,timestamptz,jsonb,jsonb),public.payment_method_ref_deactivate(text,uuid,text,jsonb),public.payment_method_ref_switch_active(text,uuid,uuid),public.payment_method_ref_link_subscription_mirror(text,uuid,uuid),public.subscription_method_chargeable_unattended(uuid,timestamptz),public.subscription_method_health_read(uuid),public.payment_method_ref_read(text,text),public.payment_method_setup_resolve_owner(uuid,uuid),public.payment_control_mark_setup_event_processed(uuid),public.payment_method_ref_repair_subscription_scope(text,uuid,timestamptz,text),public.payment_method_ref_repair_subscription_scope_batch(integer,boolean,text),public.subscription_try_schedule_recovery_retry(uuid,text,timestamptz,text),public.subscription_method_uses_recorded_refs(uuid),public.payment_method_ref_for_subscription_read(uuid,text,timestamptz),public.payment_method_recovery_authority_read(uuid),public.payment_method_recovery_authority_bind(uuid,uuid,text,text,timestamptz),public.payment_method_recovery_authority_record(uuid,uuid),public.payment_method_recovery_authority_freeze(uuid,uuid,text,text,timestamptz) TO service_role;'; END IF; END; $$;

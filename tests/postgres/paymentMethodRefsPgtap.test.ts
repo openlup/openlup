@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { createPostgresPaymentMethodStore, createPostgresPaymentMethodSetup, createPostgresPaymentWebhookControlPort,
+import { createPostgresProviderPaymentControlPort, createPostgresPaymentMethodStore, createPostgresPaymentMethodSetup, createPostgresPaymentWebhookControlPort,
   createPostgresPaymentWebhookMethodRefPort, createVerifiedPaymentIngress, consumePostgresPaymentMethodDelivery,
   applyPostgresPaymentMethodLifecycleEvent, schedulePostgresRetryOnDurableMethodUpdate, createPostgresRecordedSubscriptionMethodReader } from "@openlup/platform/payments";
 import type { VerifiedMethodEvidence } from "@openlup/platform/payments/contracts";
 import { createSelfServiceCommandFacade } from "@openlup/platform/account-support";
-import { NATIVE_SUBSCRIPTION_CAPABILITIES } from "@openlup/platform/subscriptions";
+import { createNativeRetryDriver, createPostgresRetryStore, NATIVE_SUBSCRIPTION_CAPABILITIES } from "@openlup/platform/subscriptions";
 import type { PaymentMethodLifecycleEvent, PaymentMethodReplacementFacts } from "@openlup/core/payment";
 import { call, failure, prepareOriginal, renewal, request } from "./subscriptionNativeFixture.js";
 import { readFileSync } from "node:fs";
@@ -269,4 +269,57 @@ it("allows an exhausted rung only through recorded token authority without reple
   expect(await call(db, "subscription_retry_schedule_recovery", [f.operation, "exhausted-replay", authority.id, AT])).toMatchObject({ scheduled: false });
   expect((await db.query("SELECT retry_attempt,attempt_sequence FROM public.subscription_retry_obligations WHERE id=$1", [f.obligation])).rows[0]).toEqual({ retry_attempt: 4, attempt_sequence: 0 });
   expect(await call(db, "subscription_retry_prepare", [f.operation, "exhausted-prepare", { ...request(f), paymentMethodRef: m.reference }, "2026-11-14T12:00:00Z"])).toMatchObject({ execute: true, attemptSequence: 1 });
+});
+
+
+it("consumes the provider owner's canonical failure once and replays its original result without another rung or case", async () => {
+  const f = await renewal(pool, 10, 1, randomUUID(), true);
+  await call(db, "fulfillment_reserve_subscription_renewal", [f.operation, f.token, 900, "2026-09-01T12:00:00Z"]);
+  const original = await call(db, "commerce_prepare_subscription_renewal", [f.operation, f.token, "2026-09-01T12:00:00Z"]);
+  const cycle = (await db.query("SELECT subscription_cycle_id FROM public.commerce_orders WHERE id=$1", [original.orderId])).rows[0].subscription_cycle_id;
+  const control = createPostgresProviderPaymentControlPort(db, { dunningTemplateSlug: "failed", recoveryUrlPath: "/recover", recoveryTemplateSlug: "recovered" });
+  const intent = original.settlementIntentId as string;
+  await control.createIntent({ idempotencyKey: `provider:${intent}`, targetKind: "subscription_cycle", orderId: original.orderId,
+    subscriptionId: f.subscription, subscriptionCycleId: cycle, amountMinor: 200, currency: "XXX", metadata: {}, channelKey: "fixture", at: AT });
+  const prepared = await control.prepareProviderAttempt({ idempotencyKey: `prepare:${intent}`, paymentIntentId: intent, provider: "card_rail",
+    providerIdempotencyKey: `provider:${intent}`, providerRequestFingerprint: "f".repeat(64), providerFlow: "off_session_payment", paymentMethodRef: "method-primary", requestPayload: {} });
+  const external = `provider-attempt:${prepared.paymentAttemptId}`;
+  await control.finalizeProviderAttempt({ idempotencyKey: `finalize:${intent}`, paymentIntentId: intent, paymentAttemptId: prepared.paymentAttemptId,
+    providerIdempotencyKey: `provider:${intent}`, providerRequestFingerprint: "f".repeat(64), providerAttemptId: external,
+    providerSessionId: null, attemptStatus: "processing", nextActionKind: null, requestPayload: {}, responsePayload: {} });
+  await call(db, "commerce_acknowledge_subscription_renewal_attempt", [f.operation, f.fingerprint, external, AT]);
+  await control.applyPaymentResult({ idempotencyKey: `result:${intent}`, paymentIntentId: intent, paymentEventId: null,
+    resultStatus: "failed", occurredAt: AT, failureReason: "declined", failureClass: "soft_retryable" });
+  const receipt = (await db.query("SELECT * FROM public.subscription_retry_receipts WHERE receipt_key=$1", [`result:${intent}:truth`])).rows[0];
+  const retry = createPostgresRetryStore(db);
+  const expected = await retry.applyFailure(f.operation, receipt.receipt_key, receipt.input);
+  const unreachable = () => { throw new Error("unexpected payment I/O"); };
+  const driver = createNativeRetryDriver({ executor: db, withTransaction: async work => {
+    await db.query("BEGIN");
+    try { const result = await work(db); await db.query("COMMIT"); return result; }
+    catch (error) { await db.query("ROLLBACK"); throw error; }
+  }, decode: unreachable, readFrozenMandate: unreachable, retryInput: unreachable, validateInput: unreachable,
+  payments: { execute: unreachable, readOutcome: unreachable }, classifyFailure: unreachable,
+  failureTemplate: "failed", recoveredTemplate: "recovered", recoveryPath: "/recover" });
+  const before = (await db.query(`SELECT jsonb_build_array(
+    (SELECT to_jsonb(o) FROM public.subscription_retry_obligations o WHERE renewal_operation_id=$1),
+    (SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM public.commerce_settlement_transitions t WHERE intent_id=$2),
+    (SELECT jsonb_agg(to_jsonb(r) ORDER BY id) FROM public.subscription_retry_receipts r WHERE obligation_id=$3),
+    (SELECT jsonb_agg(to_jsonb(c) ORDER BY id) FROM public.subscription_dunning_cases c WHERE cycle_id=$4)) AS value`,
+  [f.operation, intent, receipt.obligation_id, cycle])).rows[0].value;
+  for (const key of ["retry-handoff:first", "retry-handoff:replay", receipt.receipt_key]) {
+    expect(await driver.propagateFailure(f.operation, key, receipt.input)).toEqual({ obligation: expected, replayed: true, caseAdvanced: false });
+  }
+  await expect(driver.propagateFailure(f.operation, "wrong-attempt", { ...receipt.input, externalRef: "another-attempt" }))
+    .rejects.toThrow("subscription_retry_provider_failure_mismatch");
+  expect(await call(db, "subscription_retry_apply_failure", [f.operation, receipt.receipt_key, receipt.input])).toEqual(receipt.result);
+  expect((await db.query(`SELECT jsonb_build_array(
+    (SELECT to_jsonb(o) FROM public.subscription_retry_obligations o WHERE renewal_operation_id=$1),
+    (SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM public.commerce_settlement_transitions t WHERE intent_id=$2),
+    (SELECT jsonb_agg(to_jsonb(r) ORDER BY id) FROM public.subscription_retry_receipts r WHERE obligation_id=$3),
+    (SELECT jsonb_agg(to_jsonb(c) ORDER BY id) FROM public.subscription_dunning_cases c WHERE cycle_id=$4)) AS value`,
+  [f.operation, intent, receipt.obligation_id, cycle])).rows[0].value).toEqual(before);
+  expect(before[0].retry_attempt).toBe(1);
+  expect(before[1].filter((row: { outcome: string }) => row.outcome !== "opened")).toHaveLength(1);
+  expect(before[2]).toHaveLength(1); expect(before[3]).toBeNull();
 });
