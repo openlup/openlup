@@ -486,7 +486,8 @@ function assertGuideLinks(guideRoot: string, file: string, label: string, raw: s
     }
   }
   const source = decodeCharacterReferences(raw);
-  const targets = markdownLinkTargets(source, (reason) => violations.push(`${label}: ${reason}`));
+  // Find delimiters in raw source so decoded quotes and angles cannot split HTML values.
+  const targets = markdownLinkTargets(raw, (reason) => violations.push(`${label}: ${reason}`)).map(decodeCharacterReferences);
   // Browsers normalise a destination before following it (percent-encoded or mixed-case hosts,
   // tabs and newlines, backslashes, default ports, user info). Parse each destination as a browser
   // does; one that reaches GitHub must already be written in the parser's own canonical
@@ -501,9 +502,9 @@ function assertGuideLinks(guideRoot: string, file: string, label: string, raw: s
   // (split on HTML whitespace, so no parser disagreement can choose a different value) and every
   // URL-shaped token in the text (GitHub links bare URLs) are classified the same way.
   const candidates = new Set<string>(targets);
-  for (const [tag] of source.matchAll(/<[A-Za-z][^>]*>/g)) {
+  for (const [tag] of raw.matchAll(/<[A-Za-z][^\s/>]*(?:[^>"']|"[^"]*"|'[^']*')*>/g)) {
     for (const value of tag.matchAll(/=[\t\n\f\r ]*(?:"([^"]*)"|'([^']*)'|([^\t\n\f\r "'=<>`]+))/g)) {
-      candidates.add(value[1] ?? value[2] ?? value[3] ?? "");
+      candidates.add(decodeCharacterReferences(value[1] ?? value[2] ?? value[3] ?? ""));
     }
   }
   const bareLinkSource = source.replace(/(?:[A-Za-z][A-Za-z0-9+.-]*:|\/\/|www\.)[^\s<>"'`[\]{}|^]+/g, (token) => {

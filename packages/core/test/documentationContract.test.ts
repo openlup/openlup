@@ -579,6 +579,8 @@ describe("reader guide contract", { timeout: 60_000 }, () => {
     ["a percent-encoded host", '<a href="https://%67ithub.com/openlup/openlup/blob/main/README.md">Read</a>'],
     ["a tab inside the host", '<a href="https://git\thub.com/openlup/openlup/blob/main/README.md">Read</a>'],
     ["a newline inside the host", '<a href="https://git\nhub.com/openlup/openlup/blob/main/README.md">Read</a>'],
+    ["an encoded quote and angle in a title", '<a title="&quot;>" href="https://git\thub.com/openlup/openlup/blob/main/README.md">Read</a>'],
+    ["a quoted angle before an image source", '<img alt=">" src="https://git\nhub.com/openlup/openlup/raw/main/logo.png">'],
     ["backslashes", '<a href="https:\\\\github.com\\openlup\\openlup\\blob\\main\\README.md">Read</a>'],
     ["an upper-case host", "[Read](https://GitHub.com/openlup/openlup/blob/main/README.md)"],
     ["a mixed-case repository path", "[Read](https://github.com/OpenLup/openlup/blob/main/README.md)"],
@@ -610,6 +612,11 @@ describe("reader guide contract", { timeout: 60_000 }, () => {
     expect(() => checkGuide(pinned)).not.toThrow();
     const missing = guideFixture(`# Guide\n\n<${repositoryLink("MISSING.md")}>\n`);
     expect(() => checkGuide(missing)).toThrow("targets a path missing from the repository");
+  });
+
+  it("admits a canonical repository link after an encoded quote and angle in a title", () => {
+    const roots = guideFixture(`# Guide\n\n<a title="&quot;>" href="${repositoryLink("README.md")}">Read</a>\n`);
+    expect(() => checkGuide(roots)).not.toThrow();
   });
 
   it.each([
