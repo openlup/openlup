@@ -216,7 +216,7 @@ describe('installed starter browser CI', () => {
     expect(install).toContain('needs: [install-packages]');
     expect(workflow).toContain('needs: [install-packages, install-browser]');
     const groups = install.match(/groups: \[(.*)\]/u)![1]!.replaceAll("'", '').split(', ').flatMap(shard => shard.split(',').map(Number));
-    expect(groups.sort()).toEqual(browserJourneyGroups.map((_, index) => index));
+    expect(groups.sort((left, right) => left - right)).toEqual(browserJourneyGroups.map((_, index) => index));
     expect(workflow).toContain('needs: [dco, typecheck, install-proof, test, self-check, gitleaks]');
   });
 });

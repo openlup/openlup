@@ -89,7 +89,7 @@ export async function runDisposablePostgres(args: readonly string[]): Promise<vo
   const started = performance.now();
   try {
     if (service) {
-      // Identity comes from job.services, not an ambient port/URL. Require the pinned image.
+      // Identity comes from explicit CI service startup, not an ambient port/URL. Require the pinned image.
       const info = JSON.parse(docker(["inspect", service]))[0];
       const image = proofImage(), reference = info?.Config?.Image;
       if (info?.Id !== service || ![POSTGRES_PROOF_IMAGE, ...image.sources.map((source: string) => imageReference(image, source))].includes(reference) || !info?.State?.Running || !info?.NetworkSettings?.Ports?.["5432/tcp"]?.some((binding: { HostPort: string }) => binding.HostPort === port)) throw new Error("Job service is not the exact pinned running container/port");

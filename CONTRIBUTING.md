@@ -208,7 +208,9 @@ imports the JSON module directly so the same pins load in plain Node and both
 Vitest projects, including jsdom. In CI and locally they try the organization
 mirror first, then the upstream order with the same digest: Docker Hub, then
 ECR, for all four library PostgreSQL pins. Private or absent organization
-packages do not remove these public upstream fallbacks. Microsoft registry
+packages do not remove these public upstream fallbacks. The required
+`install-packages` PostgreSQL startup step is an exception: it selects only the
+GHCR mirror and requires access to that organization package. Microsoft registry
 sources, such as the starter browser image's, are mirror inputs only: that image
 is pulled from the organization mirror alone, with no upstream fallback.
 Disposable PostgreSQL suites use `postgresSetupTimeoutMs` (600 seconds), including
@@ -261,9 +263,13 @@ expiry prevents another pull. Backoff adds at most 10 seconds per failed source
 image.
 The shared loop retries transport, context-deadline, killed process timeout,
 registry 5xx and 429 failures. Mirror not-found,
-denied or unauthorized errors immediately fall through without retry. Library
-PostgreSQL pins retain Docker Hub/ECR fallback in CI and locally. An empty or private organization mirror therefore
-does not by itself fail these consumers.
+denied or unauthorized errors immediately fall through without retry when an
+upstream source is selected. Library PostgreSQL consumers retain Docker Hub/ECR
+fallback in CI and locally, except the required `install-packages` PostgreSQL
+startup step, which selects only the GHCR mirror. An empty or inaccessible private
+organization mirror does not by itself fail the other PostgreSQL consumers;
+that required startup step has no upstream fallback and requires organization
+package access.
 Local daemon/disk/malformed failures, upstream non-transient errors and pinned
 RepoDigest mismatches refuse rather than silently selecting another image.
 The gate's offline guard rejects literal digest pins or registry source lists.
@@ -412,9 +418,9 @@ runs with the host user identity to preserve private capture permissions.
 The script captures output privately, scans it for credentials, removes its
 hosts, containers, databases, roles and scratch files on success or failure, and
 prints the public image identity, counts, timings and bounded failure diagnostics. It uploads no artifacts.
-Provisional deadlines are 12 minutes for packages, 8 per browser shard and 2 for
-the aggregate. Set each job deadline to at least 1.3 times its measured slowest
-hosted run; the supervisor calibrates these values from the first hosted runs.
+Current deadlines are 12 minutes for packages, 8 per browser shard and 2 for
+the aggregate. Set each job deadline to at least 1.3 times its slowest observed
+hosted run.
 Browser journeys retain zero retries. See the
 [starter proof recipe](examples/neutral-store/docs/proof.md#database-backed-purchase-acceptance-recipe)
 for the selected journeys and the separate local proofs.

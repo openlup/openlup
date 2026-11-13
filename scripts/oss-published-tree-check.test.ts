@@ -364,6 +364,10 @@ describe("complete public CI", () => {
   });
   it("requires package proof and all browser shards, including on main-push reuse", () => {
     const browser = workflowJob("install-browser"), aggregate = workflowJob("install-proof");
+    const eventFence = workflowJob("typecheck").split("\n").find(line => line.startsWith("    if:"))!;
+    expect(workflowJob("install-packages")).toContain(eventFence);
+    expect(browser).toContain(eventFence);
+    expect(aggregate).toContain(eventFence.replace("${{ ", "${{ always() && "));
     expect(browser).toContain("needs: [install-packages]");
     expect(workflowJob("install-packages")).toContain("outputs:\n      reuse: ${{ steps.reused.outputs.reuse }}");
     expect(browser).toContain("if: needs.install-packages.outputs.reuse != 'true'");
@@ -371,7 +375,6 @@ describe("complete public CI", () => {
     expect(browser).toContain("fail-fast: false\n      max-parallel: 4");
     expect(browser).toContain("groups: ['0', '1,6', '2,4', '3,5']");
     expect(aggregate).toContain("name: install-proof\n");
-    expect(aggregate).toContain("always() && github.event.repository.private == false");
     expect(aggregate).toContain("needs: [install-packages, install-browser]");
     expect(aggregate).toContain("timeout-minutes: 2");
     expect(aggregate).toContain("PACKAGE_RESULT: ${{ needs.install-packages.result }}");
