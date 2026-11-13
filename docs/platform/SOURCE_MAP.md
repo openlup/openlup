@@ -55,8 +55,8 @@ use one canonical domain owner unless a narrower workflow route applies.
 | documentation | Public documentation navigation and current writing guidance | [docs/platform/DOCUMENTATION.md](DOCUMENTATION.md#authoring) | `docs/**` |
 | history | Dated public implementation plans, with no runtime authority | [docs/platform/DOCUMENTATION.md](DOCUMENTATION.md#authoring) | `docs/platform/plans/**` |
 | configuration | Machine-readable platform configuration and contract inputs | [docs/platform/CANONICAL_CONTRACTS.md](CANONICAL_CONTRACTS.md#compatibility-posture) | `config/**` |
-| ownership | Documentation ownership, publication inventory and generated projections | [docs/platform/DOCUMENTATION.md](DOCUMENTATION.md#ownership) | `config/doc-routing.json`; `config/openlup-publication-catalog.json`; `config/openlup-source-release-contract.json`; `scripts/documentation-routing.ts` |
-| agent-context | Generated offline adopter context, source spans and freshness | [docs/platform/DOCUMENTATION.md](DOCUMENTATION.md#ownership) | `scripts/agent-context/**`; `packages/*/AGENT_CONTEXT.md` |
+| ownership | Documentation ownership, publication inventory and generated projections | [docs/platform/DOCUMENTATION.md](DOCUMENTATION.md#ownership) | `config/doc-routing.json`; `config/openlup-publication-catalog.json`; `config/openlup-source-release-contract.json`; `scripts/documentation-routing.ts`; `scripts/documentation-git*.ts`; `scripts/documentation-navigation*.ts` |
+| agent-context | Installed reader guide lookup smoke matrix | [docs/platform/DOCUMENTATION.md](DOCUMENTATION.md#reader-guide-contract) | `scripts/agent-context/evaluate.mjs` |
 | browser | Browser components, routes, clients and application composition | [docs/platform/ARCHITECTURE_AND_EXTENSIONS.md](ARCHITECTURE_AND_EXTENSIONS.md#runtime-boundaries) | `src/**` |
 | server | Server composition, shared server utilities and use cases | [docs/platform/ARCHITECTURE_AND_EXTENSIONS.md](ARCHITECTURE_AND_EXTENSIONS.md#runtime-boundaries) | `server/**` |
 | adapters | Provider translation at domain ports and capability refusals | [server/adapters/README.md](../../server/adapters/README.md#capability-map) | `server/adapters/**` |
@@ -73,7 +73,6 @@ use one canonical domain owner unless a narrower workflow route applies.
 | core-bundle | Core bundle identity, descriptor and readiness contracts | [packages/core/docs/guide/how-to/build/bundles.md](../../packages/core/docs/guide/how-to/build/bundles.md#compose-native-bundle-writes) | `packages/core/src/bundle/**` |
 | subscription-kernel | Pure lifecycle, retry, cycle and deterministic-clock behavior | [packages/core/docs/guide/concepts/subscription-engine.md](../../packages/core/docs/guide/concepts/subscription-engine.md) | `packages/core/src/subscription/**` |
 | tooling | Public tooling and the actual execution owner of each check | [CONTRIBUTING.md](../../CONTRIBUTING.md#development-preview-checks) | `scripts/**` |
-| docs-export | Generated documentation navigation and the checked bundle consumer boundary | [docs/platform/DOCUMENTATION.md](DOCUMENTATION.md#exporting) | `scripts/documentation-bundle*.ts`; `scripts/documentation-git*.ts`; `scripts/documentation-navigation*.ts`; `.gitignore` |
 | tests | Integration and browser test sources; execution requires their declared owner | [CONTRIBUTING.md](../../CONTRIBUTING.md#development-preview-checks) | `tests/**`; `src/test/**` |
 | assets | Static public assets and their reference build consumption | [docs/platform/RUNTIME_AND_SELF_HOSTING.md](RUNTIME_AND_SELF_HOSTING.md#runtime-model) | `public/**` |
 | operations | Deployment recipes and operational interface boundaries | [docs/platform/RUNTIME_AND_SELF_HOSTING.md](RUNTIME_AND_SELF_HOSTING.md#self-host-boundary) | `deploy/**`; `mcp/**` |
@@ -153,7 +152,5 @@ use one canonical domain owner unless a narrower workflow route applies.
 
 ## Drill down to a file
 
-The checked documentation bundle's `sources.json` lists every selected public path,
-publication class, structural role, canonical owner, content digest and syntactically
-declared export names. It labels the origin of those descriptions. Read the owner's
+Follow a surface's selectors to its files and open the canonical owner. Read the owner's
 invariants and tests before changing behavior; a file name is not a behavioral contract.

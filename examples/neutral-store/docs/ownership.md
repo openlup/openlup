@@ -305,21 +305,10 @@ order status and conflicting commands refuse. Reasons use the package's trimmed
 unavailable actions are bound; physical-return, tracking and account limits stay separately
 listed until their own complete bindings exist.
 
-## Return requests and decisions
-Moved to [Who owns what in the starter](../../../packages/core/docs/guide/concepts/starter-ownership.md#cancellation-refund-records-and-returns).
-
 ## Optional payment guidance
 Moved to [Who owns what in the starter](../../../packages/core/docs/guide/concepts/starter-ownership.md#payment-guidance-and-sandbox-continuation).
 
 `host/checkout-recovery.ts` composes the optional native guidance reader.
-
-## Operator shipment evidence
-
-Moved to [Who owns what in the starter](../../../packages/core/docs/guide/concepts/starter-ownership.md#shipment-evidence-and-retention).
-
-## Saved addresses and scoped preferences
-
-Moved to [Who owns what in the starter](../../../packages/core/docs/guide/concepts/starter-ownership.md#saved-addresses-billing-and-preferences).
 
 ## Sandbox token payment and exact continuation
 

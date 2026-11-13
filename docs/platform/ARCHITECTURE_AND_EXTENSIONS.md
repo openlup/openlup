@@ -381,11 +381,11 @@ in core; importing platform as a whole is not a browser-safety guarantee.
 
 The `openlup-context` executable is a narrow tool-only distribution decision:
 core already reaches installed consumers, so it carries offline context lookup
-without a new package or service. Its Node built-ins read local installed
-snapshots only when explicitly invoked. No kernel export imports the executable;
-all kernel imports remain I/O-free and browser-safe. Package-root
-`AGENT_CONTEXT.md` snapshots ship with their owning packages. Lookup results
-locate evidence and grant no policy or execution authority. This exception does
+without a new package or service. When explicitly invoked, its Node built-ins
+search core's installed reader guide and package instructions, READMEs,
+changelogs, declarations and exports. No kernel export imports the executable;
+all kernel imports remain I/O-free and browser-safe. Lookup results locate
+evidence and grant no policy or execution authority. This exception does
 not permit Node dependencies or I/O in kernel contracts or logic.
 
 Place a new module at declared subpaths of `@openlup/platform` by default.

@@ -136,9 +136,6 @@ measured budget decision. Passing a local pack does not authorize publication.
 [the tutorial](docs/guide/start/tutorial.md) and [upgrade an application](docs/guide/upgrade/README.md).
 Use the [glossary](docs/guide/glossary.md) for shared terms.
 
-## Kernel Documentation
-Moved to [Subscription engine](docs/guide/concepts/subscription-engine.md).
-
 ### Module readiness
 
 Selected `./readiness` modules retain independent schema requirements.
@@ -162,45 +159,9 @@ The grouped query builder and result decoder perform no I/O. The application
 retains database access, transaction and admission policy; these helpers do not
 run migrations, schedule work or activate a module.
 
-## Bundle contracts
-Moved to [Compose native bundle writes](docs/guide/how-to/build/bundles.md).
-
-## Commerce data contracts
-Moved to [Read prices for a quote](docs/guide/how-to/build/quote-prices.md) and [add OpenLup to an existing application](docs/guide/how-to/build/own-stack.md).
-
-### Catalog identifiers
-Moved to [Pure contract limits](docs/guide/reference/limits.md#pure-contract-limits).
-
-### Inventory availability
-Moved to [Pure contract limits](docs/guide/reference/limits.md#pure-contract-limits).
-
-### Price resolution and breakdown
-Moved to [Read prices for a quote](docs/guide/how-to/build/quote-prices.md).
-
-### Promotion evaluation and adjustments
-Moved to [Read prices for a quote](docs/guide/how-to/build/quote-prices.md).
-
-## Delivery contracts
-Moved to [Compose native fulfillment](docs/guide/how-to/build/fulfillment.md).
-
-### Fulfillment fact and status contracts
-Moved to [Canonical status](docs/guide/concepts/payments.md#canonical-status) and [compose native fulfillment](docs/guide/how-to/build/fulfillment.md).
-
-### Shipping rule resolution
-Moved to [Select shipping rules](docs/guide/how-to/build/fulfillment.md#select-shipping-rules).
-
-## Partner and risk contracts
-Moved to [Architecture and ownership](docs/guide/concepts/architecture-and-ownership.md).
-
-### Company identity lookup contracts
-Moved to [Pure contract limits](docs/guide/reference/limits.md#pure-contract-limits).
-
 ### Partner lifecycle contracts
 
 [Compose marketing handlers](docs/guide/how-to/build/marketing.md); inquiry contracts are in the shipped `src/partners/`.
-
-### Risk evaluation contracts
-Moved to [Pure contract limits](docs/guide/reference/limits.md#pure-contract-limits).
 
 ## Payment contracts
 Moved to [Payments](docs/guide/concepts/payments.md).
@@ -210,27 +171,15 @@ The `./payment` export's `withinSchemeRetryCeiling` helper checks only its local
 certify compliance; the host/provider must apply actual decline advice and
 current applicable rules, including any narrower limits.
 
-## Marketing contracts
-Moved to [Marketing sync](docs/guide/concepts/marketing-sync.md) and [compose marketing handlers](docs/guide/how-to/build/marketing.md).
-
-## Outbox contracts
-Moved to [Deliver events with the outbox](docs/guide/how-to/build/outbox.md).
-
-## Platform runtime contracts
-Moved to [Run OpenLup on your own host](docs/guide/how-to/operate/self-host.md).
-
-## Standard schema contracts
-Moved to [Pure contract limits](docs/guide/reference/limits.md#pure-contract-limits).
-
 ## Agent context lookup
 
 ```sh
 ./node_modules/.bin/openlup-context search "subscription renewal"
 ```
 
-The command searches documentation in the installed OpenLup packages offline,
-including core's reader guide under `docs/guide/`, and returns file-and-line
-citations. Add `--code` for a bounded local application source scan, or
+The command searches core's installed reader guide under `docs/guide/`, package
+`AGENTS.md`, `README.md`, declarations and exports, and `CHANGELOG.md` for upgrade
+questions. It returns file-and-line citations offline. Add `--code` for a bounded local application source scan, or
 `--package-code` to inspect the installed packages' `src/` files.
 Both scans are opt-in and may be incomplete; use direct `rg` when a path or
 symbol is known. Add `--json` for structured results, including a `scans` array
@@ -245,19 +194,9 @@ The top-eight result cap is separate from these scan limits. It never downloads
 packages or starts a service. Its Node-only launcher is isolated from the
 I/O-free kernel exports and adds no runtime dependency.
 
-Nested Markdown headings return separate spans; copied excerpts of an already
-indexed installed page do not take another result slot. Each package's root
-`AGENT_CONTEXT.md` contains small excerpts of canonical
-repository guidance, with shipped local sources or repository links at
-`openlup-core-v<version>`, line ranges and excerpt digests. Repository paths and
-aliases inside excerpts belong to that checkout, not the application.
-Repository citations must name that package's own release tag at its installed
-version; another package, version, branch or host is refused. The same canonical
-owner and heading take one result slot across package release tags. No link is
-fetched. Read the package version from its installed `package.json` and check the cited source
-before changing a contract; a result locates
-evidence, and does not grant application policy or execution authority. The
-snapshot and command do not establish a registry release or stable support.
+Nested Markdown headings return separate spans. Read the installed package version
+and cited source before changing a contract; a result locates evidence and grants
+no application policy or execution authority.
 
 ## Agent context over MCP
 
@@ -291,9 +230,8 @@ are supported; file realpaths must stay inside the resolved package root. Read
 refuses traversal and never fetches release-tag source URLs. These checks guard
 against wrong paths and links present when the file is read; they do not defend
 against a process that rewrites `node_modules` during the read, which can already
-change the code the application runs. For a repository-only
-source, read its installed context excerpt; application source hits require your
-client's own file tool. Search tasks are limited to 1,000 characters, and each
+change the code the application runs. Read repository-only sources and application source hits with your client's own
+file tool. Search tasks are limited to 1,000 characters, and each
 incoming message line to 1 MiB. Oversized messages receive one error and are
 discarded through the next newline; the server continues serving. End stdin to
 stop the process.

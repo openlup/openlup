@@ -43,7 +43,9 @@ shipped `src/`; JavaScript source maps are not shipped.
 
 ## Installed agent context
 
-Core's installed `openlup-context` searches the local `AGENT_CONTEXT.md` snapshot offline.
+Core's installed `openlup-context` searches core's installed reader guide under
+`docs/guide/`, package `AGENTS.md`, `README.md`, declarations and exports, and
+`CHANGELOG.md` for upgrade questions offline.
 See [lookup instructions](https://github.com/openlup/openlup/blob/main/packages/core/README.md#agent-context-lookup); your application's instructions govern.
 
 ## Dispatch configuration and optional diagnostics

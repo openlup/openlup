@@ -2,7 +2,7 @@
 
 Status: development-preview guidance.
 Audience and purpose: contributors maintaining public navigation and behavior
-guidance, and consumers importing that documentation into another presentation.
+guidance.
 
 Documentation is authored with the code it explains. Generated maps help readers
 find that code; a reviewer still checks whether the explanation is correct.
@@ -88,42 +88,6 @@ lifecycle continuity and pending/observed/cleanup receipt boundary. The adapter
 owner defines prefix selection and opt-in single-current-version admission;
 default history refusal remains unchanged. Generated navigation grants no
 hosted qualification.
-
-The small installed `AGENT_CONTEXT.md` corpora in core, outbox and platform are
-generated from selected canonical owner sections by
-[`scripts/agent-context/generate.mjs`](../../scripts/agent-context/generate.mjs).
-Run `node scripts/agent-context/generate.mjs` after changing a selected owner
-or a package version;
-`node scripts/agent-context/generate.mjs --check` refuses stale or missing
-snapshots without writing; `npm run oss:published-tree -- --policy` runs this
-freshness check before the publication and documentation policy. Packaging consumes the checked-in Markdown and never
-generates context during prepack. The generator's focused witness runs with
-`node --test scripts/agent-context/generate.test.mjs`.
-Each excerpt retains its original Markdown bytes, source path, one-based
-inclusive line span and SHA-256. Shipped package-local owner paths are relative
-to the installed package; all other owners link to the source repository at
-`openlup-<package>-v<version>`, read from the package manifest. Relative links and
-repository-internal paths or aliases inside verbatim excerpts describe that
-checkout, not required application files. The corpus cap is 14,000 bytes
-(previously 12,000) to retain the existing routes plus explicit release citations. These small task routes support offline reading; they do
-not certify an installed runtime, hosted qualification or compatibility with
-another revision. Canonical owners remain authoritative and the source map
-continues to own broad source navigation.
-The cycle task routes retain the core engine's late-payment clamp and the
-canonical late-delivery/replacement alignment boundary as separate owner
-excerpts; retrieval must not conflate payment timing with delivery confirmation.
-The delivery excerpt stops before the native translation paragraph; its cited
-line span and hash describe only the retained verbatim guidance.
-Additional small routes cover adopter data ownership, the first ordered-forward
-rules, cross-domain idempotency, provider-adapter capabilities and subscription
-layer/delivery navigation. The idempotency owner is reachable from the platform
-and outbox corpora; retrieval returns one canonical-source result for the same
-section.
-An excerpt from an installed README or engine page is not returned alongside
-that page's matching section. The CLI separates nested headings into disjoint
-spans and offers `--package-code` only when an agent explicitly needs installed
-`src/` evidence; these are bounded source leads, not proof of application
-composition or installed database state.
 
 The exact-shipment native G17 host binding and its local unit/native witnesses
 route to the [transfer architecture owner](ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery).
@@ -450,8 +414,14 @@ architecture owns explicit owner composition and provider readiness boundaries.
 The reader guide lives in
 [`packages/core/docs/guide/`](../../packages/core/docs/guide/README.md); its index
 holds the writing rules. It ships in the `@openlup/core` npm tarball under
-`docs/guide/`, and installed context lookup indexes its Markdown pages. Both
-pack checkers enforce a separate `guide` sub-budget from core's
+`docs/guide/`. The installed `openlup-context` command and its MCP tools index
+these Markdown pages alongside package `AGENTS.md`, `README.md`, declarations
+and exports, with `CHANGELOG.md` included for upgrade questions. Nested headings
+produce disjoint spans. The optional `--package-code` scan provides bounded
+installed `src/` leads; results never prove application composition or database
+state. The unchanged [lookup smoke matrix](../../scripts/agent-context/evaluate.mjs)
+checks static query targets in installed core, outbox and platform artifacts.
+Both pack checkers enforce a separate `guide` sub-budget from core's
 `release-gates.json` (`pack.guide`), measured like the code and docs classes;
 the total tarball limits also apply.
 The `docs:check` script of each publishable package runs the
@@ -571,98 +541,3 @@ The routing map selects canonical owners; it is navigation rather than a second
 capability census. Regenerate after adding or moving sources or changing headings.
 Generated output does not establish runtime behavior, hosted qualification or
 compatibility with a different installed package version.
-
-## Exporting
-
-Bundle source records use actual file-byte hashes and authored catalogue classes.
-The sole implicit class is `public-output` for validated package changelog
-fragments under the exact `packages/{core,outbox,platform}/changes/*.md` pattern.
-A stale committed source-release digest snapshot does not invalidate navigation:
-policy still runs derivation and validates its authored fields before export.
-Bundles hash the snapshot's actual bytes rather than trusting its digest fields.
-
-The documentation bundle carries the selected Markdown bytes, navigation,
-search information, source links and `llms` indexes from the same inputs. Its
-manifest records the format version, profile and maturity, stable page/source
-identities, content digests and provenance.
-
-A clean export names the exact public source commit. A local candidate export
-binds its base revision and current content digest and is explicitly
-non-publishable; changed bytes must not be attributed to committed `HEAD`.
-HEAD, committed inventory, index and raw blob comparisons use the same isolated
-Git reader as navigation checks, so local object replacements or environment
-redirects cannot substitute the revision being exported. The exporter compares
-raw bytes and modes without `git status` or worktree conversions, which could
-execute configured Git clean/process filters. A changed index or an untracked
-source also refuses a committed export.
-Keep output in a new ignored `dist-docs/<name>` directory. The exporter refuses
-existing outputs, escaping paths and symbolic-link parents.
-Re-export the complete bundle after changing an input instead of copying an
-individual stale page over a previous version.
-
-Export does not run Markdown code blocks or MDX. A website may render the plain
-Markdown and build search from the bundle; selecting a website revision and
-publishing it are separate actions.
-
-From the root of a clean committed checkout containing this mechanism:
-
-```sh
-npm run oss:published-tree -- --policy --docs-export dist-docs/committed
-```
-
-For review of an uncommitted candidate:
-
-```sh
-npm run oss:published-tree -- --policy --docs-export dist-docs/local --docs-local
-```
-
-The bundle includes `manifest.json`, raw pages under `markdown/`, `sources.json`,
-`search.json`, `llms.txt` and `llms-full.txt`. Page/source IDs use their normalized
-repository path; preserve or explicitly migrate links when renaming a page.
-The manifest resolves Markdown links to bundled pages or public source at the
-same SHA. Draft source links are null, so changed code is never attributed to
-its base. Syntactic export names are hints, not a complete TypeScript API index;
-the core package's existing API/documentation checks remain authoritative.
-`llms` indexes are convenience formats, not a promise that every agent reads them.
-
-## Consumer integrity
-
-Before accepting a bundle, validate its format, required pages and source IDs,
-safe paths, content digests and consistent provenance. Refuse missing content,
-tampering or a mixture of revisions. Preserve the profile and development-preview
-status in the consumer's presentation.
-Inspect the plain file tree, including `manifest.json`, before reading any bundle
-content. Symbolic links and special files are refused before their bytes are opened.
-Source IDs must equal `source:<normalized repository path>` and remain unique.
-Each source's owner ID, page, anchor and purpose must agree with its navigation
-surface. Page headings are checked against the raw Markdown so an invented
-heading cannot make a dangling owner link appear valid.
-
-Pin the public revision and bundle digest from a trusted public build deliberately.
-Self-consistent hashes alone do not authenticate a downloaded manifest. A commit
-or digest identifies the source
-bytes; it is not evidence of a stable framework, a passing test or a hosted
-installation. Keep links back to canonical owners so a reader can inspect the
-contract and implementation behind an extracted page.
-
-Changes to meaning are authored upstream at those owners and exported again.
-The consumer owns rendering, search and navigation presentation; it should not
-silently maintain a divergent copy of the platform's contracts.
-
-Validate a local bundle, then validate a public consumer's two trusted pins:
-
-```sh
-npm run oss:published-tree -- --policy --docs-check-bundle dist-docs/local
-npm run oss:published-tree -- --policy --docs-check-bundle dist-docs/committed \
-  --docs-source <full-public-sha> --docs-digest <sha256-digest>
-```
-
-Bundle validation is a separate operation: it does not report that the current
-source tree passed policy checks. A consumer with both pins refuses
-drafts and mismatched revisions/digests. Its loader may import
-[validateDocumentationBundle](../../scripts/documentation-bundle-io.ts) directly;
-it must use data as plain Markdown, validate before rendering, and sanitize its
-chosen Markdown renderer. The platform does not execute content or ship MDX.
-An initial website build can obtain the bundle from a pinned public checkout;
-attaching archives to releases or adding a hosted endpoint is later publication
-work. No second authoring copy or live feed service is required.

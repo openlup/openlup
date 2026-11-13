@@ -50,10 +50,6 @@ Review grants retain the native fixed thirty-day expiry, with no application tim
 The unchanged required purchase spec must run against installed PostgreSQL;
 the default database-less UI host cannot satisfy it. See [proof](docs/proof.md).
 
-## Order controls and documents
-
-Moved to [the reader guide](../../packages/core/docs/guide/reference/limits.md#account-and-operator-bindings).
-
 ## Start from an exact source archive
 Moved to [the reader guide](../../packages/core/docs/guide/how-to/build/customize-the-starter.md#prepare-the-application).
 
@@ -218,13 +214,6 @@ fixture backfill. See [editor proof](docs/proof.md#subscription-editor-proof).
 
 ## Reset an interrupted first install
 Moved to [the reader guide](../../packages/core/docs/guide/how-to/build/customize-the-starter.md#reset-an-interrupted-first-install).
-
-## Data boundary
-Moved to [the reader guide](../../packages/core/docs/guide/reference/limits.md).
-
-## Pages and proof
-
-Moved to [the reader guide](../../packages/core/docs/guide/reference/starter-routes.md).
 
 ## Neutral inputs and local transport
 
@@ -504,10 +493,6 @@ subscriptions and payment cases are created through their native purchase and
 renewal commands. Separate operator/document proof recipes retain their own
 fixtures and scope. The candidate changes below retain the local-preview release boundary.
 
-### Candidate changes
-
-Moved to [the reader guide](../../packages/core/docs/guide/reference/limits.md#subscription-care).
-
 ### Checkout and account candidate changes
 
 Moved to [the reader guide](../../packages/core/docs/guide/reference/limits.md#account-and-operator-bindings).
@@ -574,21 +559,6 @@ order status and conflicting commands refuse. Reasons use the package's trimmed
 1–2,000 character contract. Native durable receipts own replay. The two formerly
 unavailable actions are bound; physical-return, tracking and account limits stay separately
 listed until their own complete bindings exist.
-
-## Return requests and decisions
-Moved to [the reader guide](../../packages/core/docs/guide/reference/limits.md#return-requests-and-decisions).
-
-## Optional payment guidance
-
-Moved to [the reader guide](../../packages/core/docs/guide/reference/limits.md#optional-payment-guidance).
-
-## Operator shipment evidence
-
-Moved to [the reader guide](../../packages/core/docs/guide/reference/limits.md#operator-shipment-evidence).
-
-## Saved addresses and scoped preferences
-
-Moved to [the reader guide](../../packages/core/docs/guide/reference/limits.md#saved-addresses-and-scoped-preferences).
 
 ## Sandbox token payment and exact continuation
 

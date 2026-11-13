@@ -125,8 +125,8 @@ boundaries; a fixture does not establish hosted qualification or provider access
 For SQL mechanics and migration witnesses, follow
 [Data and migrations](docs/platform/DATA_AND_MIGRATIONS.md).
 
-The policy self-check validates local Markdown links and fragments, generated
-navigation and agent-context freshness. See
+The policy self-check validates local Markdown links and fragments and generated
+navigation. See
 [Documentation maintenance](docs/platform/DOCUMENTATION.md) for ownership and generation.
 
 ### Local stack bases and heavy verification
@@ -626,7 +626,7 @@ The complete projected root command inventory is `build`,
 `build:public-reference:prerender`, `build:public-reference:ssr`,
 `check:dco-signoff`, `guard:client-secret-boundary`,
 `guard:public-reference-site-routes`, `inventory:refresh`, `landing:merge`, `lint`, `preflight`, `prelint`,
-`oss:published-tree`, `packages:check`, `release:bump`, `sql:admit`, `pretest`, `test`, `test:hosted`, and `test:scoped`.
+`oss:published-tree`, `packages:check`, `release:bump`, `release:docs-pass`, `sql:admit`, `pretest`, `test`, `test:hosted`, and `test:scoped`.
 This reclassifies the complete current root script inventory; all commands are
 public, with `test:scoped` as the local wrapper around the unchanged `test` command.
 `npm run build` is the public build truth; its public-reference subcommands and
@@ -1045,7 +1045,7 @@ the host-local broker helper is absent, with the same arguments, environment
 and coverage-summary handling as an already admitted run. A focused subset still
 uses root percentage thresholds; it does not establish full-suite coverage.
 
-Keep documentation falsifiers independently discoverable for routing, navigation, bare-runtime CLI and bundle corruption; never import one test file from another. Disposable fixtures prove those refusals, not arbitrary prose meaning. Follow [lint rules](#commands-and-lint-rules), including valid/invalid cases for new ast-grep rules, and [documentation navigation](docs/platform/DOCUMENTATION.md#navigation-and-source-map). Fixtures still obey neutrality and secret-handling policy.
+Keep documentation falsifiers independently discoverable for routing, navigation, bare-runtime CLI; never import one test file from another. Disposable fixtures prove those refusals, not arbitrary prose meaning. Follow [lint rules](#commands-and-lint-rules), including valid/invalid cases for new ast-grep rules, and [documentation navigation](docs/platform/DOCUMENTATION.md#navigation-and-source-map). Fixtures still obey neutrality and secret-handling policy.
 
 ### Package, policy and release checks
 
@@ -1227,7 +1227,7 @@ red root suite or `pgtap` run now refuses release through `test`.
 
 For independently discovered documentation falsifiers and their proof limits,
 follow [Test scope and diagnostics](#test-scope-and-diagnostics). Documentation
-regeneration and export remain owned by [Documentation maintenance](docs/platform/DOCUMENTATION.md).
+regeneration remains owned by [Documentation maintenance](docs/platform/DOCUMENTATION.md).
 
 A change can be released as the next source preview when the required checks of
 Published Tree CI pass and its tree describes itself: the publication catalogue
@@ -1492,8 +1492,8 @@ rows retain the existing closed registry union.
 Integration proof classifies an exact merge of the reviewed head and a commit
 on `origin/main` as `derived` only for a closed carrier set: migration registry
 unions, the package SQL manifest and selection mirror, publication catalogue,
-generated source map and package agent contexts, and the current installation
-data file. Trusted owner generators run on a temporary prediction, without
+generated source map, and the current installation data file. Trusted owner
+generators run on a temporary prediction, without
 executing candidate tooling or touching the checkout. Output must equal committed
 bytes. Every SQL byte and mode must equal the mechanical merge; other changes
 remain a `resolution` delta with its existing review floor. Size caps and release

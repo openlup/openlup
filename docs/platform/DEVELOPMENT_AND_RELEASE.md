@@ -313,6 +313,16 @@ owns release permissions, setup, detailed refusals and recovery. The sequence is
    integrity and provenance before offering adoption. A release success alone
    cannot prove npm success.
 
+After a successful core publication, the separate
+[Guide tutorial against the npm registry](../../.github/workflows/registry-tutorial.yml)
+workflow waits for the matching package set and core's `latest` value on npm,
+then runs the guide tutorial against the registry. It runs trusted default-branch
+code and reads only the release tag's tutorial page, after checking the tag's
+commit against the completed publication run. It does not hold the
+publication run open or delay the next release dispatch, and is not a required
+check. The tutorial remains advisory until two green merge-group runs on main:
+a tutorial failure appears as a warning annotation and in the step summary.
+
 On partial release or package failure, stop for maintainer recovery. Do not
 retag, rewrite an immutable release or republish a version. A failed publish job
 may be rerun: it re-reads npm and refuses once npm holds that version or a later
@@ -354,10 +364,6 @@ no Outbox schema migration is introduced. Read [0.39.0 notes](../../packages/out
 Releases before `0.37.0` are retained in the source-only `CHANGELOG-HISTORY.md`.
 Size comparison uses the published `0.38.0` tarball; preparation grants no
 publication or installation proof.
-
-### Verify the published npm artifact
-
-Moved to [Verify the published packages](../../packages/core/docs/guide/how-to/operate/verify-published-packages.md#verify-the-published-packages).
 
 ## Cutting an optional source preview
 

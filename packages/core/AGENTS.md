@@ -17,13 +17,14 @@ From the application root, run:
 ./node_modules/.bin/openlup-context search "subscription renewal"
 ```
 
+The command searches core's installed reader guide under `docs/guide/`, package
+`AGENTS.md`, `README.md`, declarations and exports, and `CHANGELOG.md` for upgrade
+questions.
+
 Use concise English terms or an exact symbol, then read the cited owner. Source
 scans are opt-in and bounded. Read known paths directly; ranked hits do not
 establish complete coverage. Core supplies the executable. See
 [lookup and MCP settings](README.md#agent-context-lookup).
-
-## Agent context over MCP
-Moved to [Agent context over MCP](README.md#agent-context-over-mcp).
 
 ## Subpath maturity
 

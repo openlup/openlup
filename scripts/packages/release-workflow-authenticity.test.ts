@@ -390,6 +390,13 @@ describe("package release workflow controls", () => {
   });
 });
 
+describe("publication workflow boundary", () => {
+  it("ends after publication without a tutorial job", () => {
+    expect([...committed.producer.split("\njobs:\n")[1]!.matchAll(/^ {2}([a-z][a-z-]*):$/gmu)].map(match => match[1])).toEqual(["pack", "publish"]);
+    expect(committed.producer).not.toMatch(/registry-tutorial|guide-tutorial\.ts/u);
+  });
+});
+
 describe("publication audit freshness", () => {
   const guard = script(step(committed.producer, "Require the dependency audit from this workflow attempt"));
   it("accepts the current audit and refuses an earlier/missing audit on publish-only recovery", () => {

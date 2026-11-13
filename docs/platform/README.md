@@ -14,7 +14,7 @@ This index is for maintainers changing OpenLup. For installing, composing, exten
 - [Distribution evidence](DISTRIBUTION_EVIDENCE.md) — generated partial outcome projection, package-set BOM and current neutrality limits.
 - [Source map](SOURCE_MAP.md) — every platform domain and source responsibility, with canonical owners and source links.
 - [Subscription workflows](SUBSCRIPTION_WORKFLOWS.md) — meaningful internal steps, refusal boundaries and the tests to inspect.
-- [Documentation maintenance](DOCUMENTATION.md) — authoring, same-change impact, generated navigation and checked bundle export.
+- [Documentation maintenance](DOCUMENTATION.md) — authoring, same-change impact and generated navigation.
 - [Agent guide](AGENT_GUIDE.md) — a stable pointer to the root [`AGENTS.md`](../../AGENTS.md) and the reader guide shipped in `@openlup/core`.
 - [Architecture and extensions](ARCHITECTURE_AND_EXTENSIONS.md) — module ownership, extension seams, and source-ejection consequences.
 - [Data and migrations](DATA_AND_MIGRATIONS.md) — compatibility-first schema evolution and adopter-owned data.
@@ -67,8 +67,8 @@ procedure must not look executable today. Name the available development-preview
 profile and its support limits without implying a stable install.
 
 Use the [ownership and maintenance route](DOCUMENTATION.md#ownership) before
-creating a page. The [generated source map](SOURCE_MAP.md) and its bundle are
-projections of existing public inputs. Regenerate them with the same change;
+creating a page. The [generated source map](SOURCE_MAP.md) is a
+projection of existing public inputs. Regenerate it with the same change;
 review the authored explanation at the affected owner section.
 
 For a new task-oriented page, copy only the fields that serve its readers:
