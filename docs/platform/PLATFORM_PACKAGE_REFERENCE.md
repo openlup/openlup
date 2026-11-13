@@ -149,8 +149,7 @@ optional `pg` peer. Identity's public surface is unchanged.
 Moved to [Identity](../../packages/core/docs/guide/concepts/identity.md#contacts-principals-and-authority).
 
 The `./identity` server entry composes identity use cases, authorization, profile
-readers, session adapters and BFF factories. Browser composition uses the separate
-`./identity/contracts` entry. Callable inventories remain in the
+readers, session adapters and BFF factories. Callable inventories remain in the
 [server API reference](../../packages/platform/api/identity.api.md) and
 [browser API reference](../../packages/platform/api/identity-contracts.api.md).
 
@@ -199,9 +198,8 @@ owns invocation and teardown limits.
 `createPostgresContactClientRegistrar` adds host-only guest contact resolution
 through the existing identity entry. It inserts only unlinked contacts and
 refreshes optional defaults and journey facts only while a contact is unlinked;
-linked rows remain byte-identical. The result's `linked` and `created` fields must
-never reach a browser. The host owns checkout admission, requester quotas and
-retention. See [guest contact resolution](IDENTITY.md#guest-checkout-contact-resolution)
+linked rows remain byte-identical. See
+[guest contact resolution](IDENTITY.md#guest-checkout-contact-resolution)
 for typed refusals, exact email matching and subject-level erasure behaviour.
 
 The OIDC API adds `createOidcIdentityVerifier`,
@@ -461,10 +459,7 @@ The experimental identity entry exposes `createPersonalDataContributorRegistry`,
 `createIdentityPersonalDataContributor`, `createPrivacyOperations`,
 `exportPersonalData`, `erasePersonalData`, `createPrivacyExportHandler` and
 `createPrivacyEraseHandler`. Browser requests, versioned contributor documents and
-receipts come from `@openlup/platform/identity/contracts`. Register every required
-contributor explicitly, with its owned fields, assessment, erase/retain operation
-and remote/retention obligations. Missing required owners refuse erasure; export
-reports missing coverage. This capability erases identity-owned data only.
+receipts come from `@openlup/platform/identity/contracts`.
 
 Managed hosts compose `createManagedPrivacyStore` with their structural service
 client for export. Coverage explicitly excludes inaccessible country and

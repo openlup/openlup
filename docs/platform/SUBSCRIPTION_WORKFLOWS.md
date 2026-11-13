@@ -13,11 +13,6 @@ profile and [canonical contracts](CANONICAL_CONTRACTS.md) for public invariants.
 
 Moved to [Subscriptions](../../packages/core/docs/guide/concepts/subscriptions.md#installed-subscription-boundary).
 
-The experimental
-`@openlup/platform/subscriptions` entry supplies native renewal mechanisms and
-ports; it does not mount a runner or choose a provider. The application must
-compose its own authorization, durable store, scheduler and provider bindings.
-
 ## Choose the right layer
 
 Moved to [Subscriptions](../../packages/core/docs/guide/concepts/subscriptions.md#choose-the-right-layer).
@@ -51,9 +46,8 @@ Moved to [Subscriptions](../../packages/core/docs/guide/concepts/subscriptions.m
 package boundary. See [evidence and limits](#evidence-and-limits) before choosing
 a runnable test scope.
 
-`createPostgresSubscriptionAutoResume` in `@openlup/platform/subscriptions`
-exposes `run(limit, now)` for a host-owned scheduled job. It selects due finite
-pause windows with row-skip-locked admission. Missing healthy stored-method
+Auto-resume selects due finite pause windows with row-skip-locked admission.
+Missing healthy stored-method
 state, next date or lines, open recovery, any uncollected cycle, a paid cycle
 on the next date, or an order in the existing `paid` / `fulfillment_pending` /
 `fulfilled` allowlist whose cycle is scheduled at `next_cycle_at` causes a
@@ -76,7 +70,6 @@ Retained ledger reminders read the same SQL facts as newly produced reminders.
 Manual customer resume keeps its
 existing cadence policy.
 The lifecycle dispatcher sends that event with the existing resumed confirmation.
-Scheduling, enablement and job-ledger composition belong to the host.
 Resume creates no delivery arrival or replacement confirmation; paid cycles and
 parcels retain their existing lifecycle.
 

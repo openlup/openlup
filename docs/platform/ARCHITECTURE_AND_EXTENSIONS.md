@@ -9,23 +9,16 @@ Moved to [Architecture and ownership](../../packages/core/docs/guide/concepts/ar
 
 OpenLup is one platform monorepo containing platform code, official modules, a
 reference application, conformance material, and release tools. An adopter is a
-separate application. It owns its brand, presentation, catalogue, local market
-policy, provider composition, and business-specific integrations.
+separate application.
 
 The reference application demonstrates a neutral platform composition. It is
 not a default adopter application and does not transfer ownership of adopter
 assets or business policy to the platform.
 
-An adopted package owns its engine algorithm and public contract. Consume that
-engine through an exact authenticated `@openlup/*` npm artifact. An application
-agent must not autonomously patch, fork, vendor, monkey-patch, shadow its imports
-or restore a copied implementation as an alternative engine. Use only the
-installed package's declared public exports, not internal source or `dist` paths.
+Consume the engine through an exact authenticated `@openlup/*` npm artifact.
 Dependency identity alone does not establish which engine actually serves work.
 
-Application handlers, policies, ports, composition, host bindings and compatible
-native adapters remain ordinary application code. They need no ownership record
-per function or upstream release. Historical OpenLup origin alone does not freeze
+Application code needs no ownership record per function or upstream release. Historical OpenLup origin alone does not freeze
 unpackaged application source. One engine algorithm owner can serve multiple hosts
 under the existing admission, fencing and retirement contract; a second competing
 state writer is not an extension seam.

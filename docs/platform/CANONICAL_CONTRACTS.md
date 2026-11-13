@@ -239,9 +239,8 @@ Keep each domain's status vocabulary separate. Adding a status or transition
 requires explicit mapping, persistence compatibility, and tests for refusal,
 replay and ordering.
 
-Do not compare provider strings throughout application code or treat a browser
-return value as settlement truth. Preserve the raw evidence needed for diagnosis
-in a bounded form, map it once, and refuse impossible transitions. Late,
+Preserve the raw evidence needed for diagnosis in a bounded form, map it once,
+and refuse impossible transitions. Late,
 duplicate, or out-of-order evidence must not regress a terminal canonical fact.
 
 ## Idempotency
@@ -525,8 +524,7 @@ actual arrival; missing correlation remains manual review. Native invoker
 privileges and complete catalogue installation are described in
 [Data and migrations](DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories).
 
-A replacement parcel does not erase the obligation merely because it was
-created or dispatched. Once a row names an earlier parcel through
+Once a row names an earlier parcel through
 `replaces_fulfillment_order_id`, that superseded predecessor is no longer an
 outstanding obligation; the latest unsuperseded replacement remains outstanding
 until it reaches the customer. Its arrival may settle the predecessor's case as
@@ -1205,19 +1203,15 @@ The development-preview communications entries expose the same 17 type-only
 marketing-sync declarations in
 [`marketingSync.ts`](../../packages/platform/src/communications/contracts/marketingSync.ts).
 The four families have five operations: `profile.sync`, `consent.read`,
-`erasure.request`, `erasure.read` and additive `consent.push`. Capabilities bind an account, environment,
-namespace, mapping version and audience. Unsupported scope refuses honestly;
-verification remains pending until the applicable account evidence is admitted.
-This contract supplies no provider implementation or activation.
+`erasure.request`, `erasure.read` and additive `consent.push`. This contract
+supplies no provider implementation or activation.
 
 The private construction mapper resolves opaque subjects and owned targets.
 Brands supplement schema, binding, audience, subject, case and journal checks;
 a cast or deserialized receipt grants no authority. Admission saves validated,
 immutable effect evidence before dispatch and rechecks generation and tombstones
-after awaits. Profile sync changes owned scalar data only. Current-state consent
-readback has bounded coverage and source-bound negative facts; account-wide
-facts retain that scope and audience denials cannot become global. Remote
-subscribed state never grants local consent. The `NegativeFeedback` discriminant
+after awaits. Remote subscribed state never grants local consent.
+The `NegativeFeedback` discriminant
 union is readonly, matching its other fields.
 
 Evidence (historical record, 2026-11-13):
@@ -1279,10 +1273,8 @@ its settlement cannot be established, withdrawal returns `true`; replay retains
 that unresolved race and remote state counts as UNKNOWN regardless of journal
 confirmation or an early unsubscribed read. Only `consent.read` after all earlier
 grant jobs settle can resolve it. Pending, unknown or insufficient readback leaves
-it unresolved. If that fresh read says subscribed, the HOST reissues withdrawal
-through existing reconciliation with a new request ID. The adapter adds no job API,
-executor, callback or automatic retry. Even `reconcileRequired:false` proves no
-remote effect. Receipt evidence stays the original admitted request while the
+it unresolved. The adapter adds no job API, executor, callback or automatic retry.
+Receipt evidence stays the original admitted request while the
 result echoes the current call; replay identity excludes generation and rejects
 changed audience, action or evidence with `invalid_request`.
 

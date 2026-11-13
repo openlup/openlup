@@ -152,7 +152,6 @@ Moved to [Starter limits](../../../packages/core/docs/guide/reference/limits.md#
 
 The acquisition address registry is loaded only by the install connection in the marked demonstration seed transaction. Preserve the tuple provenance on reinstall. Operator support additionally requires a communications-operator roster entry; provision and deactivate it through its owner connection. See the [operator roster recipe](../README.md#operator-support-roster-and-catalogue-authoring).
 
-No generic contact form; the partner inquiry is the durable intake.
 Support is static and shows optional validated `supportEmail` as plain text,
 with an account link. Missing contact configuration is stated explicitly.
 The application declares 70 operations (66 bound with a runtime connection). With a runtime connection, the partner
@@ -244,7 +243,7 @@ over any stored attempt. Fresh recreation uses its transition and replay receipt
 exact-cookie retry can then act on its same pending replacement; the ordinary
 sandbox action cannot start an attempt on that replacement. Indexed hash lookup makes no constant-time claim.
 Owning sessions retain order ownership checks. An email alone mints no link for
-an existing order. Recovery grants no account or subscription-command access.
+an existing order.
 
 Address changes render the native result: `applied` says “Shipping address
 updated.” / “Adres dostawy został zmieniony.” The result
@@ -254,7 +253,6 @@ od następnej przesyłki. Przesyłka będąca już w drodze zachowuje dotychczas
 The native customer branch returns the next-parcel outcome. Current-parcel
 operator correction is not offered through this customer action.
 
-The starter runs on its local demonstration database only; a hosted database connection is not part of this release and comes in a later round.
 The first-subscription offer is not offered yet and comes in a later part of this release.
 A purchase needs no account; checkout keeps a contact record for the e-mail; the customer signs in with that e-mail to see the purchase.
 
@@ -325,8 +323,8 @@ The one-shot lifecycle renewal command also drains only paid-order email events,
 including when renewal execution is disabled. A paid order with its emitted
 paid-mail event and contact yields one private filesystem message record;
 unpaid and cancelled purchases emit no paid-mail event. The record dedupes
-reclaimed sends, and processed outbox state prevents another claim. No real mail
-provider is active. This adds no other event dispatcher, transport, SQL or grant.
+reclaimed sends, and processed outbox state prevents another claim. This adds no
+other event dispatcher, transport, SQL or grant.
 Subscription notices retain their separate native owner and existing limits.
 The sibling settlement event is known but unclaimed: it remains pending without
 delivery or a message record, and does not hold the paid receipt behind it.
@@ -343,8 +341,7 @@ The scheduled care entry selects finite auto-resume, native notices and winback
 only. Its capture is local; it establishes no real email delivery.
 
 Winback keeps the unseeded default retention gate ON and writes no settings row.
-The portal displays native refusal and host-recorded delivery outcomes. It has
-no retention-consent capture; newsletter/offers do not authorize retention.
+The portal displays native refusal and host-recorded delivery outcomes.
 A trusted host may record consent through the native routine. Adopter policy
 changes follow the [owning section](../../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#composed-subscription-module).
 Private-profile views, real payment methods and signed unsubscribe retain
@@ -453,8 +450,7 @@ Moved to [Starter limits](../../../packages/core/docs/guide/reference/limits.md#
 Signed-in customers submit configured reason codes and positive quantities for
 items from their own paid or fulfilled order. Native ownership, quantity and
 canonical replay checks own admission. The customer retains the returned request
-reference. There is no operator returns list or detail: an active human admin
-uses that exact reference to approve or reject. Every decision and replay resolves
+reference. Every decision and replay resolves
 the existing Commerce operator after fresh membership admission. Full, partial
 (including zero) and no-refund modes record intent; partial requires an amount.
 A repeated decision receipt preserves the original note. These operations do not
@@ -466,7 +462,8 @@ Moved to [Starter limits](../../../packages/core/docs/guide/reference/limits.md#
 
 The ordinary completion reader may add safe payment guidance for an exact live
 order bearer. A native atomic snapshot rechecks token authority and binds the
-order, client, intent and current attempt. The optional reader issues no credential. The sandbox can establish a verified generic decline; it cannot identify
+order, client, intent and current attempt. The sandbox can establish a verified
+generic decline; it cannot identify
 a method, instrument, operation or consecutive same-method refusal count. The
 localized notice explains that limit; synthetic choices use the explicit sandbox
 registry rather than an inferred provider method. Missing, unreadable or unsupported evidence, ineligible orders,
@@ -499,15 +496,12 @@ same-order reference must be admitted. Terminal replay and earlier chronology
 repair retain their native rules. A delivered event
 records actual arrival. Explicit-zone occurrence times can repair chronology
 earlier; later inputs cannot postpone recorded arrival, replace the original
-receipt or move the next cycle earlier. An undelivered replacement remains an
-outstanding obligation. There is no separate replacement-delivery attestation control.
+receipt or move the next cycle earlier.
 
 Label URLs and full provider payloads are durable operator/service evidence.
 URLs may appear in authorized operator operation detail; complete label requests
-and raw tracking events remain in private operator receipts. URL expiry does not
-erase their stored bytes. No automatic purge or TTL is supplied: the application
-owner controls retention and authorized cleanup, including backups and transferred
-copies. Customer pages, account reads and public tracking do not expose this
+and raw tracking events remain in private operator receipts. Customer pages,
+account reads and public tracking do not expose this
 operator evidence. Public tracking authorization remains unavailable.
 
 ## Saved addresses and scoped preferences
@@ -520,7 +514,7 @@ clearing, address writes and event append are separate commits: a failed save ca
 leave earlier changes committed, so reload before retrying. An admitted command
 key returns the current book without another write. Deleting a missing or foreign
 row acknowledges a zero-row deletion and returns only the caller's book; updating
-a foreign row refuses. Active or paused subscription use prevents deletion.
+a foreign row refuses.
 
 An active or paused subscription can select an owned shipping/both address.
 The native command owns the saved pointer, subscription/account events and outbox.
@@ -563,7 +557,7 @@ one of two explicit synthetic demo choices. Native admission reuses the existing
 latest owned recovery descendant, intent and reservation and refuses expired/revoked authority, renewals,
 terminal orders and unresolved attempts. Fresh recreation retains its lineage/receipt transition. A later explicit token
 retry may dispatch another attempt on that same replacement, while the ordinary
-simulator remains fenced from creating attempts on recreated targets. No real-provider or instrument capability is implied.
+simulator remains fenced from creating attempts on recreated targets.
 
 Only an actual fresh dispatched sandbox attempt can mint the native continuation
 cookie. Its private claims bind the real order, client, intent, attempt and rail;
@@ -634,7 +628,7 @@ boundaries; a cross-transaction outage is not an atomicity guarantee.
 The Node host composes customer-billing, saved-address, preference and parcel-contact
 privacy contributors. Its programmatic registry requires identity and subscription
 coverage from the application owner and reports missing contributors; account-event
-retention remains unresolved. It supplies no HTTP export/erasure workflow. Owners
+retention remains unresolved. Owners
 must complete these boundaries and retain authorized cleanup of private captures.
 Erasure or corruption of the original immutable checkout capture refuses recovery
 re-quoting; it is never reconstructed from current billing or profile data.

@@ -265,18 +265,14 @@ The reference customer binding supplies a one-origin allowlist from nonblank
 through to compatibility configuration. Callback paths remain host-supplied;
 an injected `resolveOrigin(req)` retains the application's origin policy.
 
-Configurations containing a path, credentials, query or fragment must be replaced
-with origins. Missing or invalid origins now refuse before quota or challenge
-issuance instead of using forwarded-host or implicit local-host fallbacks.
 Default static/reference route admission remains unchanged.
 
-The refusal receives the
-existing 400 ms padding floor and does not depend on the requested identity.
+An origin-configuration refusal receives the existing 400 ms padding floor
+and does not depend on the requested identity.
 
 Customer return paths pass through
-`normalizeMagicLinkReturnPath` before being put in the callback query. It accepts
-root-relative same-origin paths, normalizes URL dot segments and preserves safe
-query/fragment data. Absolute, protocol-relative, backslash, control-character,
+`normalizeMagicLinkReturnPath` before being put in the callback query.
+Absolute, protocol-relative, backslash, control-character,
 encoded separator/control and nested-percent escape forms are omitted, so the
 callback uses its default landing page. A normalization that produces a leading
 `//` is also omitted. Application request schemas may impose narrower path rules
@@ -344,9 +340,8 @@ See [data compatibility](DATA_AND_MIGRATIONS.md#compatibility-lifecycle) and the
 
 Direct issue returns HTTP 200 with `INVITATION_CREATED`, `ALREADY_INVITED` or
 `INVITATION_REISSUED`, principal ID, invitation ID, `membershipState: "invited"`,
-role, issue time and deadline. A repeat retains its attempt and sends no mail.
-Different pending roles, active membership and inconsistent identities return
-409 with `INVITATION_ROLE_CONFLICT`, `MEMBERSHIP_ALREADY_ACTIVE` or
+role, issue time and deadline. Different pending roles, active membership and
+inconsistent identities return 409 with `INVITATION_ROLE_CONFLICT`, `MEMBERSHIP_ALREADY_ACTIVE` or
 `IDENTITY_CONFLICT`. Expired and cancelled attempts can be reissued with a new
 notification ID. Notification failure returns 503 with the persisted invitation
 ID; retry returns `ALREADY_INVITED` without another notification.
@@ -710,8 +705,7 @@ clear a newer session or cancel its pending redemption.
 The callback removes its token fragment before asynchronous work and redeems once
 under StrictMode. Managed SDK initialization stays behind managed selection.
 
-Configure nonempty, distinct `OPERATOR_IDENTITY_AUDIENCE` and
-`CUSTOMER_IDENTITY_AUDIENCE`. Operator sessions reuse the existing ES256 issuer,
+Operator sessions reuse the existing ES256 issuer,
 key ID, private JWK and public JWKS settings, with an exact scalar operator
 audience and a fixed 900-second lifetime. Verification requires integer `iat`
 and `exp`, no future issuance and a positive lifetime of at most 900 seconds.
@@ -726,7 +720,7 @@ capabilities. Customer identity and subscription ownership do not change.
 
 The shell maps `accessToken` to its neutral `access_token` session subset.
 The direct adapter stores the session in `sessionStorage`, with document memory
-fallback when storage is denied. There is no refresh token. Restoration and
+fallback when storage is denied. Restoration and
 window focus recheck `/me`; expiry and sign-out clear authentication and its query
 cache. A focus check clears the session on an authorization refusal (HTTP 401/403
 or a profile without an allowed operator role). A network failure or upstream
@@ -742,7 +736,6 @@ admin shell after authorization completes, including when `/me` is delayed.
 It never signs out on a stale authorization response.
 An older check cannot clear an established newer session or cancel its pending
 redemption, regardless of which response completes first.
-A copied bearer remains usable until expiry or membership revocation.
 The callback removes its token fragment before asynchronous work and redeems once
 under StrictMode. Managed SDK initialization stays behind managed selection.
 
@@ -850,10 +843,8 @@ for finite native capture/qualified restore and explicit managed-source refusals
 
 `@openlup/platform/identity/contracts` exports strict contact/principal subject
 references, versioned contributor documents, erasure receipts and named privacy
-refusals. Each contributor declares `ownedResources` alongside its ID and version. `createPersonalDataContributorRegistry` registers explicit owners and
-versions at composition; duplicate IDs refuse, missing required contributors
-remain visible on export and refuse erasure. Every assessment completes before
-any contributor mutates data. An assessment failure rolls the transaction back.
+refusals. Each contributor declares `ownedResources` alongside its ID and version.
+Every assessment completes before any contributor mutates data. An assessment failure rolls the transaction back.
 Identity never discovers another domain by email or cancels a subscription.
 
 `exportPersonalData` and `erasePersonalData` accept an authorized human
@@ -866,9 +857,8 @@ through commit, including protection against concurrent insertion or activation.
 `PRIVACY_ASSESSMENT_UNAVAILABLE`. Subscriptions are read only.
 
 Resolve a subject through `clients.principal_id` on direct, or the persisted
-`auth_user_id` on managed. Equal email addresses do not join customer and operator
-principals. Direct erasure preserves `clients.id`, never writes `auth_user_id`,
-and deletes neither contact nor principal rows. It replaces email with a unique
+`auth_user_id` on managed. Direct erasure preserves `clients.id`, never writes
+`auth_user_id`, and deletes neither contact nor principal rows. It replaces email with a unique
 reserved `erased+<id>@identity.invalid` address, clears first/last name, phone and
 country, and clears the direct customer principal link. All customer challenges,
 including consumed rows, and the linked operator challenges are deleted. Pending,
@@ -888,8 +878,7 @@ otherwise erasure returns `PRIVACY_OWNERSHIP_UNDECLARED`. The reference declares
 retention only for `lifecycle_stage` and `acquisition_source`. Nonempty metadata,
 external references and future undeclared fields therefore refuse. Export omits
 opaque payloads and reports those fields as unavailable; it excludes challenge
-hashes, provider metadata, credentials and provider tokens. Each contributor
-reports its own coverage rather than claiming a complete platform export.
+hashes, provider metadata, credentials and provider tokens.
 
 Native parcel preparation captures minimal recipient and delivery-selection data
 in the private `fulfillment_parcel_contacts` relation. The Node reference
@@ -1220,19 +1209,12 @@ Exact optional-field schemas and input lengths remain in the
 server-only factory in `@openlup/platform/identity`. Its
 `ensureContactClient({ email, acquisitionSource, lifecycleStage, profileDefaults?, journey? })` returns
 `{ ok: true, clientId, created, linked }` or `{ ok: false, code }`; `close()`
-releases its pool. It finds or inserts a contact, without creating a session,
-assigning a principal or updating any linked row. Concurrent requests for the
-same canonical email share one client and exactly one reports `created: true`.
-The existing native challenge can subsequently prove the mailbox and link that
-contact to a principal; owned account reads then follow the same client.
+releases its pool. Concurrent requests for the same canonical email share one
+client and exactly one reports `created: true`.
 
-The host must never expose `linked` or `created` to a browser: these fields
-would reveal account existence. Keep `clientId` internal to the admitted new
-purchase. Resolving an existing linked contact is not authentication and grants
-no access to its profile, previous orders, subscriptions, addresses or invoices.
 An unverified buyer can enter another person's email; returning that contact
 allows the new purchase to belong to that email's client, without modifying a
-linked account. A signed-in buyer instead uses the verified session's owned client.
+linked account.
 
 Optional `profileDefaults` contains `firstName`, `lastName`, `phone` and `country`
 (each optional or null). On a new unlinked contact these initialize the profile;

@@ -593,10 +593,9 @@ Existing native and managed migration bytes remain unchanged.
 
 Moved to [Subscriptions](../../packages/core/docs/guide/concepts/subscriptions.md#subscription-delivery-alignment).
 
-For a fresh native install, the invariant "a late delivery extends the next cycle"
-is enforced automatically only when delivery-alignment control mode is
-`auto_align`. `public.subscription_delivery_alignment_control.mode` defaults to
-`off` for rollout safety, so installation alone does not enforce the invariant.
+`public.subscription_delivery_alignment_control.mode` defaults to
+`off` for rollout safety, so installation alone does not enforce late-delivery
+alignment.
 The complete mode set is `off`, `shadow`, `protect` and `auto_align`, selected
 through `public.subscription_delivery_alignment_set_mode`. Existing cases retain
 their captured mode and protection after a control change.
@@ -609,8 +608,7 @@ runner must wrap its store port with the
 [admission decorator](../../server/runtime/subscription/deliveryAlignmentRenewalStore.ts)
 before selecting an enforcing mode; an uncomposed
 new-cycle insertion refuses with `subscription_delivery_alignment_admission_required`.
-Until the host wraps that port, native delivery-alignment mode stays `off` or
-`shadow`. The supplied boundary stops at the decorator, with no runner composer,
+The supplied boundary stops at the decorator, with no runner composer,
 factory or production entrypoint. Captured protection survives rollback to `off`.
 
 The command forward adds durable dispatch/attempt/paid-handoff and observation
