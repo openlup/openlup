@@ -1,0 +1,39 @@
+name: Documentation problem
+description: Report a wrong, unclear or missing page of the OpenLup core guide.
+title: "[Documentation]: "
+labels: ["documentation", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This development-preview package does not promise a supported installation.
+        File one report per page. For a bug in the software, use the bug report
+        form. Report security issues through SECURITY.md.
+  - type: input
+    id: page
+    attributes:
+      label: Page
+      description: >-
+        The guide page path (for example packages/core/docs/guide/README.md)
+        or its openlup.com URL.
+    validations:
+      required: true
+  - type: input
+    id: pin
+    attributes:
+      label: Version
+      description: >-
+        The @openlup/core version, release tag or commit the page was read at.
+        "latest" is not a version.
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is wrong
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What the page should say

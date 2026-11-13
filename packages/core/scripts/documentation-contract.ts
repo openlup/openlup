@@ -31,6 +31,7 @@ const packageHygieneFiles = [
   "docs/SPLIT_AND_UPGRADE.md",
   ".github/pull_request_template.md",
   ".github/ISSUE_TEMPLATE/bug_report.yml",
+  ".github/ISSUE_TEMPLATE/documentation_problem.yml",
   ".github/ISSUE_TEMPLATE/feature_request.yml",
 ];
 const generatedOutputIgnoreRules = ["/coverage/", "/dist/", "/node_modules/", "/release/"];

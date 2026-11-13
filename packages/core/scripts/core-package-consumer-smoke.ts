@@ -152,6 +152,13 @@ function packedFiles(directory: string, base = directory): string[] {
   }).sort();
 }
 
+export function assertInstalledGuide(installedCoreRoot: string): void {
+  const readme = join(installedCoreRoot, "docs/guide", "README.md");
+  assert(existsSync(readme), "installed core is missing docs/guide/README.md");
+  assert(readFileSync(readme, "utf8").startsWith("# OpenLup guide"), "installed guide README must start with # OpenLup guide");
+  // Links inside the guide are checked against the packed file list by docs:check.
+}
+
 function toolBinary(name: string, roots: string[]): string {
   return installedPath(`.bin/${name}`, roots);
 }
@@ -399,6 +406,7 @@ export function runCorePackageConsumerSmoke(options: CorePackageConsumerSmokeOpt
     );
     assertInstalled(consumerDir, [packageName, "zod"]);
     const installedCoreRoot = join(consumerDir, "node_modules", packageName);
+    assertInstalledGuide(installedCoreRoot);
     assert(existsSync(join(installedCoreRoot, "AGENT_CONTEXT.md")), "installed core is missing its context snapshot");
     const installedMetadata = JSON.parse(readFileSync(join(installedCoreRoot, "package.json"), "utf8"));
     assert(installedMetadata.bin?.["openlup-context"] === "./src/openlup-context.js", "installed context executable target differs");

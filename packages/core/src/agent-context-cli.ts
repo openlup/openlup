@@ -3,7 +3,7 @@
 // Opt-in development tool. Kernel exports never import this file.
 import { createHash } from "node:crypto";
 import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
-import { basename, join, relative, resolve } from "node:path";
+import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 type InstalledPackage = { name: string; version: string; root: string; manifest: string };
@@ -15,6 +15,8 @@ const ignoredWords = new Set(["a", "an", "and", "are", "by", "do", "for", "from"
 const codeExtensions = new Set([".ts", ".tsx", ".js", ".jsx", ".mts", ".cts", ".mjs", ".cjs"]);
 const corpusPackages = new Set(["@openlup/core", "@openlup/outbox", "@openlup/platform"]);
 const skippedDirectories = new Set(["node_modules", ".git", ".next", ".turbo", "coverage", "dist", "build", ".cache"]);
+const guideEntryLimit = 400;
+const guideFileBytes = 200_000;
 const usage = "Usage: openlup-context search <task> [--code] [--package-code] [--json]\n       openlup-context mcp\nRun from the application root after installing @openlup/core.\n";
 
 function readText(path: string): string | undefined {
@@ -147,6 +149,37 @@ function markdownHits(item: InstalledPackage, fileName: string, query: string, t
   return hits;
 }
 
+function guideFiles(item: InstalledPackage): string[] {
+  // Package roots may be linked by the package manager; guide paths may not.
+  for (const directory of ["docs", "docs/guide"]) {
+    const path = join(item.root, directory);
+    if (!existsSync(path) || !lstatSync(path).isDirectory()) return [];
+  }
+  const root = join(item.root, "docs/guide");
+  const pending = [root];
+  const files: string[] = [];
+  let seen = 0;
+  // Every visited entry (directory, file or link) counts toward one bound, and nothing is
+  // queued beyond it, so a hostile tree cannot make the walk or its queue grow without limit.
+  while (pending.length && seen < guideEntryLimit) {
+    const path = pending.pop()!;
+    seen++;
+    const local = relative(root, path);
+    if (isAbsolute(local) || local.split(sep).includes("..")) throw new Error("Guide path escapes installed docs/guide");
+    const state = lstatSync(path);
+    if (state.isDirectory()) {
+      const names = readdirSync(path).sort().slice(0, Math.max(0, guideEntryLimit - seen - pending.length));
+      for (const name of names.reverse()) {
+        if (name === "." || name === ".." || /[/\\]/u.test(name)) throw new Error("Invalid installed guide path");
+        pending.push(join(path, name));
+      }
+    } else if (state.isFile() && path.endsWith(".md") && state.size <= guideFileBytes) {
+      files.push(`docs/guide/${local.split(sep).join("/")}`);
+    }
+  }
+  return files.sort();
+}
+
 function declarationHits(item: InstalledPackage, query: string): ScanResult {
   const exact = /^[A-Za-z_$][A-Za-z0-9_$]*$/u.test(query.trim());
   const symbol = query.match(/\b[A-Za-z_$][A-Za-z0-9_$]{2,}\b/gu)?.find((word) =>
@@ -264,7 +297,10 @@ export function searchContext(cwd: string, task: string, includeCode = false, in
       ...corpusHits(item, query, terms),
       ...markdownHits(item, "AGENTS.md", query, terms),
       ...markdownHits(item, "README.md", query, terms),
-      ...(item.name === "@openlup/core" ? markdownHits(item, "docs/SUBSCRIPTION_ENGINE.md", query, terms) : []),
+      ...(item.name === "@openlup/core" ? [
+        ...markdownHits(item, "docs/SUBSCRIPTION_ENGINE.md", query, terms),
+        ...guideFiles(item).flatMap((file) => markdownHits(item, file, query, terms)),
+      ] : []),
       ...(terms.some((term) => /upgrad|migrat|release|wersj/u.test(term)) ? markdownHits(item, "CHANGELOG.md", query, terms) : []),
     ];
     const declarations = declarationHits(item, task);

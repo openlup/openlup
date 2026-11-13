@@ -449,7 +449,12 @@ architecture owns explicit owner composition and provider readiness boundaries.
 
 The reader guide lives in
 [`packages/core/docs/guide/`](../../packages/core/docs/guide/README.md); its index
-holds the writing rules. The `docs:check` script of each publishable package runs the
+holds the writing rules. It ships in the `@openlup/core` npm tarball under
+`docs/guide/`, and installed context lookup indexes its Markdown pages. Both
+pack checkers enforce a separate `guide` sub-budget from core's
+`release-gates.json` (`pack.guide`), measured like the code and docs classes;
+the total tarball limits also apply.
+The `docs:check` script of each publishable package runs the
 [documentation contract](../../packages/core/scripts/documentation-contract.ts).
 Core runs it inside its `ci:required`; the root test suite runs it for outbox and
 platform, so a required check covers all three. The contract refuses:
@@ -493,12 +498,14 @@ The policy self-check validates owner paths and anchors, ordinary local Markdown
 links and generated navigation/source-map freshness. It checks structure; the
 reviewer checks whether the explanation remains true against source and contracts.
 
-The root [`AGENTS.md`](../../AGENTS.md) is the single source of the
-[public agent guide](AGENT_GUIDE.md). `--docs-update` copies it to
-`docs/platform/AGENT_GUIDE.md`, relocating each relative Markdown link outside
-code for that directory and replacing only the status paragraph that names the
-source. The check refuses a guide that differs from this generated form, so
-edit the root file and regenerate; never edit the guide by hand.
+The root [`AGENTS.md`](../../AGENTS.md) is the single agent guide for this
+repository. The [public agent guide page](AGENT_GUIDE.md) is a stable pointer to
+that file and the reader guide shipped in `@openlup/core`.
+`--docs-update` regenerates this fixed pointer page. The check refuses a page
+that differs from its generated form. Edit repository rules in the root file;
+restore the pointer with `--docs-update` rather than editing it by hand.
+The legacy `#architecture-rules` anchor remains on the pointer page so historical
+links still resolve.
 
 The migration-history and package Migration-block checks use an explicit full
 base SHA or a local merge base with `origin/main`. Hosted checks use validated
@@ -522,8 +529,7 @@ npm run oss:published-tree -- --policy --docs-update
 ```
 
 The routing map selects canonical owners; it is navigation rather than a second
-capability census. Regenerate after adding or moving sources, changing headings
-or editing the root `AGENTS.md`.
+capability census. Regenerate after adding or moving sources or changing headings.
 Generated output does not establish runtime behavior, hosted qualification or
 compatibility with a different installed package version.
 

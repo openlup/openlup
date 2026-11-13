@@ -10,20 +10,21 @@ type ClassBudget = { maxPackedBytes: number; maxFiles: number };
 export type PackBudget = ClassBudget & {
   code: ClassBudget;
   docs: ClassBudget;
+  guide?: ClassBudget;
   maxUnpackedBytes: number;
   baseline: { version: string; packedBytes: number };
   browserEntries: Record<string, number>;
 };
-export type PackMeasurement = { packedBytes: number; unpackedBytes: number; files: number; code: { packedBytes: number; files: number }; docs: { packedBytes: number; files: number } };
+export type PackMeasurement = { packedBytes: number; unpackedBytes: number; files: number; code: { packedBytes: number; files: number }; docs: { packedBytes: number; files: number }; guide: { packedBytes: number; files: number } };
 
 /** Same compressed class measure as core's release:pack: sorted contents gzipped together, not a tar. */
 export function measurePack(entries: readonly TarballEntry[], packedBytes: number): PackMeasurement {
-  const group = (kind: "code" | "docs") => {
-    const files = entries.filter(({ path }) => kind === "code" ? /^(?:dist\/.+\.(?:[cm]?js|d\.[cm]?ts(?:\.map)?)|src\/.+\.tsx?)$/u.test(path) : !path.includes("/"));
+  const group = (kind: "code" | "docs" | "guide") => {
+    const files = entries.filter(({ path }) => kind === "code" ? /^(?:dist\/.+\.(?:[cm]?js|d\.[cm]?ts(?:\.map)?)|src\/.+\.tsx?)$/u.test(path) : kind === "guide" ? /^docs\/guide\/.+$/u.test(path) : !path.includes("/"));
     files.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
     return { packedBytes: gzipSync(Buffer.concat(files.map(({ bytes }) => bytes))).length, files: files.length };
   };
-  return { packedBytes, unpackedBytes: entries.reduce((sum, { bytes }) => sum + bytes.length, 0), files: entries.length, code: group("code"), docs: group("docs") };
+  return { packedBytes, unpackedBytes: entries.reduce((sum, { bytes }) => sum + bytes.length, 0), files: entries.length, code: group("code"), docs: group("docs"), guide: group("guide") };
 }
 
 export function readPackBudget(root: string, entry: PackageEntry): PackBudget {
@@ -31,6 +32,7 @@ export function readPackBudget(root: string, entry: PackageEntry): PackBudget {
   const pack = (JSON.parse(readFileSync(join(root, file), "utf8")) as { pack: PackBudget }).pack;
   const positive = (value: unknown): boolean => Number.isSafeInteger(value) && (value as number) > 0;
   if (!pack || ![pack.maxPackedBytes, pack.maxFiles, pack.maxUnpackedBytes, pack.code?.maxPackedBytes, pack.code?.maxFiles, pack.docs?.maxPackedBytes, pack.docs?.maxFiles, pack.baseline?.packedBytes].every(positive)
+    || (pack.guide !== undefined && ![pack.guide?.maxPackedBytes, pack.guide?.maxFiles].every(positive))
     || typeof pack.baseline?.version !== "string" || releaseVersionAbove(pack.baseline.version, "0.0.0") !== true
     || !pack.browserEntries || Array.isArray(pack.browserEntries) || typeof pack.browserEntries !== "object" || !Object.values(pack.browserEntries).every(positive)) throw new Error(`${file}: package-size-policy requires positive integer caps, a released baseline and browserEntries`);
   return pack;
@@ -44,6 +46,12 @@ export function checkPackBudget(entry: PackageEntry, budget: PackBudget, measure
   for (const kind of ["code", "docs"] as const) {
     cap(`${kind} packed bytes`, measured[kind].packedBytes, budget[kind].maxPackedBytes);
     cap(`${kind} files`, measured[kind].files, budget[kind].maxFiles);
+  }
+  if (budget.guide) {
+    cap("guide packed bytes", measured.guide.packedBytes, budget.guide.maxPackedBytes);
+    cap("guide files", measured.guide.files, budget.guide.maxFiles);
+  } else if (measured.guide.files > 0) {
+    findings.push({ subject: entry.name, rule: "package-size-cap", detail: "tarball contains docs/guide/ files but pack.guide is missing; add an explicit guide budget" });
   }
   cap("tarball packed bytes", measured.packedBytes, budget.maxPackedBytes);
   cap("unpacked bytes", measured.unpackedBytes, budget.maxUnpackedBytes);
