@@ -1,3 +1,0 @@
-- Ship the reader guide under `docs/guide/`; start with `docs/guide/README.md`.
-- Search the installed reader guide, package `AGENTS.md`, `README.md`, declarations and exports with `openlup-context` and its MCP tools. Upgrade questions also search `CHANGELOG.md`.
-- Stop shipping the package-root `AGENT_CONTEXT.md` corpus. Result and JSON output shapes are unchanged; a hit's optional `owner` field is no longer set.

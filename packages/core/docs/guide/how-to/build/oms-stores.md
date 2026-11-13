@@ -17,9 +17,9 @@ and ports. Node handlers, managed query hydration and
 `buildOmsOrderDetailResponse` belong to `@openlup/platform/commerce/server`.
 
 Select native OMS factories from `@openlup/platform/commerce/server/postgres`
-using its [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/commerce-server-postgres.api.md). Select customer-support
+using its [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/packages/platform/api/commerce-server-postgres.api.md). Select customer-support
 journey persistence from `@openlup/platform/account-support/postgres` using its
-[API report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/account-support-postgres.api.md).
+[API report](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/packages/platform/api/account-support-postgres.api.md).
 
 The commerce factories take a host-owned `PgQueryExecutor`, whose type comes
 from `@openlup/platform/data`. Supply the selected installation's restricted

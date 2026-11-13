@@ -8,7 +8,7 @@ activation gates.
 
 Use `@openlup/platform/catalog` for bundle-write composition and
 `@openlup/platform/catalog/contracts` for browser request contracts. Consult
-the [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/catalog.api.md) and [contracts report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/catalog-contracts.api.md)
+the [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/packages/platform/api/catalog.api.md) and [contracts report](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/packages/platform/api/catalog-contracts.api.md)
 for their inventories.
 
 ## Describe the composition
@@ -21,7 +21,7 @@ separate from runtime bundle selection and readiness descriptors.
 
 ## Provide the database and authorization
 
-Install the [complete selected catalogue](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/DATA_AND_MIGRATIONS.md#compatibility-lifecycle)
+Install the [complete selected catalogue](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/docs/platform/DATA_AND_MIGRATIONS.md#compatibility-lifecycle)
 before binding the store. The bundle SQL list is not a complete installation
 chain. Supply the native constructor's data connection and optional pool
 configuration. Each operation uses a pooled transaction without changing the

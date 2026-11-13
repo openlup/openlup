@@ -72,7 +72,7 @@ Continue with the [tutorial](tutorial.md) for a runnable example.
 ### `@openlup/platform`
 
 The platform package's subpaths and their maturity are listed in its
-[agent guide](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/AGENTS.md#subpath-maturity).
+[agent guide](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/packages/platform/AGENTS.md#subpath-maturity).
 
 ## Next steps
 

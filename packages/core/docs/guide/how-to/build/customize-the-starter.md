@@ -8,7 +8,7 @@ change reaches its structure or workflow.
 
 The starter is separate application source. Choose an immutable source archive
 and extract it before running the following command from that archive's root.
-Use Git and the toolchain pinned in the [starter source entry](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/neutral-store/README.md#neutral-store);
+Use Git and the toolchain pinned in the [starter source entry](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/examples/neutral-store/README.md#neutral-store);
 the destination must be empty.
 
 ```sh
@@ -44,7 +44,7 @@ the prepared application directory:
 ```
 
 This builds the image, starts PostgreSQL, applies the packaged migration history
-and fictional seed, then serves the application on the [starter's loopback listener](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/neutral-store/README.md#run-the-local-application).
+and fictional seed, then serves the application on the [starter's loopback listener](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/examples/neutral-store/README.md#run-the-local-application).
 Pass `--configuration <id>` to select another owned configuration.
 `./lifecycle down` stops the project while preserving its data. Keep the
 passwordless demonstration network and its database isolated; do not reuse this
@@ -60,7 +60,7 @@ node --experimental-strip-types host/server.ts
 ```
 
 This host does not compose the database-backed actions. Pass `--configuration`
-and `--port` to select your configuration and listener; the [host CLI](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/neutral-store/host/server.ts)
+and `--port` to select your configuration and listener; the [host CLI](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/examples/neutral-store/host/server.ts)
 owns their defaults. Stop with Ctrl-C before reusing the port. Use the
 [edit loop](#edit-and-refresh) while changing the presentation.
 
@@ -101,7 +101,7 @@ sessions, and client and configuration changes do not reload atomically.
 ## Select your configuration
 
 Add a configuration satisfying `StoreConfig` from `shared/config.ts` to the
-owned registry and choose its ID as the default. The [registry contract](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/neutral-store/docs/customization.md#one-input-and-three-fragments)
+owned registry and choose its ID as the default. The [registry contract](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/examples/neutral-store/docs/customization.md#one-input-and-three-fragments)
 identifies its exports. The host and
 lifecycle use that default unless you pass `--configuration <id>`; an unknown ID
 refuses with `starter_configuration_unknown`. IDs use lowercase letters and
@@ -149,8 +149,8 @@ trimmed, nonempty legal revision within `assertConfig`'s limits. Configuration
 validation runs before composition; do not rely on browser controls to enforce
 these limits.
 
-Read the [configuration validator](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/neutral-store/docs/customization.md#one-input-and-three-fragments)
-and [cart validator](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/neutral-store/docs/customization.md#acquisition-location-choices) for exact
+Read the [configuration validator](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/examples/neutral-store/docs/customization.md#one-input-and-three-fragments)
+and [cart validator](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/examples/neutral-store/docs/customization.md#acquisition-location-choices) for exact
 text, color, cadence, cart, stock and price bounds.
 
 ## Replace a presentation fragment
@@ -158,7 +158,7 @@ text, color, cadence, cart, stock and price bounds.
 Edit the `fragments` object in `owned/fragments.ts`:
 
 Select the fragment for the offer introduction, product presentation or
-checkout summary using the [fragment inventory](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/neutral-store/docs/customization.md#one-input-and-three-fragments).
+checkout summary using the [fragment inventory](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/examples/neutral-store/docs/customization.md#one-input-and-three-fragments).
 
 Each function receives `PageContext` and returns a DOM element; the card also
 receives its product and the summary its quote. Keep fragments about
@@ -235,7 +235,7 @@ The lifecycle validates configuration before starting containers and the host
 validates it again on startup.
 
 Use canonical lowercase ASCII or already encoded punycode, within the
-[origin parser's input bound](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/neutral-store/docs/customization.md#public-origin). A root slash and an
+[origin parser's input bound](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/examples/neutral-store/docs/customization.md#public-origin). A root slash and an
 explicit default port normalize to the URL origin. Userinfo, whitespace,
 wildcards, trailing dots, paths, query strings, fragments, other schemes and
 parser repairs such as uppercase or Unicode host input refuse. Host matching
@@ -290,16 +290,16 @@ Unchanged copied bytes alone do not establish working behavior. See
 
 ## Protect local sessions and messages
 
-Sessions are held in process memory; restarting loses them. The [session store](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/neutral-store/host/sessions.ts)
+Sessions are held in process memory; restarting loses them. The [session store](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/examples/neutral-store/host/sessions.ts)
 owns expiry and capacity; a full store refuses with
 `starter_session_capacity_exceeded`. Customer ownership and operator membership are rechecked against
 native stores. Replace this session storage for a production application.
 
 The demonstration captures sign-in messages privately rather than sending mail.
 Read `identity.jsonl` through the application container's filesystem as its
-`node` user; the [capture binding](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/neutral-store/host/native-composition.ts)
+`node` user; the [capture binding](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/examples/neutral-store/host/native-composition.ts)
 defines its private location.
-The [capture binding](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/neutral-store/host/native-composition.ts)
+The [capture binding](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/examples/neutral-store/host/native-composition.ts)
 creates the file with owner-only permissions. Access exposes sign-in tokens; keep it
 private. HTTP serves only built assets, not the mailbox.
 

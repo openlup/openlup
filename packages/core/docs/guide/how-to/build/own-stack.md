@@ -10,7 +10,7 @@ Import `createCatalogDraftHandler`, `createCatalogProductTypeRegistry` and
 `createPostgresCatalogDraftStore` from `@openlup/platform/catalog`.
 Import `createPostgresDataGateway` from `@openlup/platform/data`.
 Browser command types come from `@openlup/platform/catalog/contracts`.
-Use the [package reference](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/AGENTS.md#subpath-maturity)
+Use the [package reference](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/packages/platform/AGENTS.md#subpath-maturity)
 for the declared capability boundary.
 
 Your composition provides a database pool, a `CatalogDraftStorePort`, product
@@ -21,18 +21,18 @@ PostgreSQL store inside each service transaction. Its application-owned
 Draft authoring does not publish products, change prices, take payments or
 change subscriptions.
 
-Read [app.mjs](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/own-stack/app.mjs)
+Read [app.mjs](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/examples/own-stack/app.mjs)
 for the composition and
-[run.mjs](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/own-stack/run.mjs)
+[run.mjs](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/examples/own-stack/run.mjs)
 for the loopback runner and shutdown behavior.
 
 ## Prepare an independent application
 
-Use a disposable PostgreSQL database meeting the [sample's prerequisites](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/own-stack/README.md#run-outside-the-platform-checkout), with the complete `qualified-v2` portable
+Use a disposable PostgreSQL database meeting the [sample's prerequisites](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/examples/own-stack/README.md#run-outside-the-platform-checkout), with the complete `qualified-v2` portable
 catalogue installed and a restricted runtime login that can assume
 `service_role`. Do not use the bootstrap or migration login. Follow the
-[connection roles](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/DATA_AND_MIGRATIONS.md#connection-roles)
-and [runtime connection recipe](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/RUNTIME_AND_SELF_HOSTING.md#postgresql-connection-recipe).
+[connection roles](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/docs/platform/DATA_AND_MIGRATIONS.md#connection-roles)
+and [runtime connection recipe](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/docs/platform/RUNTIME_AND_SELF_HOSTING.md#postgresql-connection-recipe).
 Schema installation is a prerequisite; the example installs no schema. Sparse
 module SQL assets do not form a complete installation chain.
 
@@ -48,7 +48,7 @@ npm install --ignore-scripts --omit=optional
 ```
 
 Use the runtime requirements and matching package pins in
-[package.template.json](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/own-stack/package.template.json).
+[package.template.json](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/examples/own-stack/package.template.json).
 The sample's pins are independent of the surrounding checkout. Keep the
 generated lockfile in your application; use public imports rather than source
 directory links or private build paths.
@@ -59,7 +59,7 @@ Create the gitignored `app.local.json` in the copied application with owner-only
 read/write permissions. Set `databaseUrl` to the restricted runtime connection
 string. Generate a cryptographically random lowercase hexadecimal
 `operatorToken` matching the configuration constraint in
-[app.mjs](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/own-stack/app.mjs). Keep both values out of Git, logs and command-line arguments.
+[app.mjs](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/examples/own-stack/app.mjs). Keep both values out of Git, logs and command-line arguments.
 
 ```json
 {
@@ -69,7 +69,7 @@ string. Generate a cryptographically random lowercase hexadecimal
 }
 ```
 
-The `port` field is optional; [the runner](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/own-stack/run.mjs) owns its default. Feed the configuration on
+The `port` field is optional; [the runner](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/examples/own-stack/run.mjs) owns its default. Feed the configuration on
 standard input:
 
 ```sh
@@ -119,7 +119,7 @@ current product registry.
 Missing or invalid bearer credentials return `401/operator_required` before
 database access. A request-supplied `actorId` fails the strict command schema
 with `422/draft_input_invalid`. The HTTP adapter refuses unsupported content
-types with `415/json_required`, bodies beyond the [handler's byte limit](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/own-stack/README.md#run-outside-the-platform-checkout) with
+types with `415/json_required`, bodies beyond the [handler's byte limit](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/examples/own-stack/README.md#run-outside-the-platform-checkout) with
 `413/body_too_large` and malformed JSON with `400/invalid_json`. An unavailable dependency maps to a
 service-unavailable response; do not interpret it as a successful write.
 
