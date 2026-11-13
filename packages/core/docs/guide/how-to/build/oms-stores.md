@@ -49,11 +49,12 @@ failures throw `CommerceOmsPersistenceError`.
 
 For managed rich reads, `createManagedCommerceOmsPort` takes a structural
 `CommerceOmsRpcClient` plus a separate `queries` capability and optional
-`projections`. Bind identity extensions, provider evidence and presentation in
-your host projections. Read operations without `queries` throw
-`CommerceOmsPersistenceError`. Supply `respond` and `authorizeAdmin` to the
-admin handlers, and preserve final response validation when extending schemas.
-The mark-refunded handler also requires `mutationsEnabled`; false returns
+`projections`. Preserve one executor per logical order operation. Bind identity
+extensions, provider evidence and presentation in your host projections. Read
+operations without `queries` throw `CommerceOmsPersistenceError`. Supply
+`respond` and `authorizeAdmin` to the admin handlers, and preserve final
+response validation when extending schemas. Supply settlement policy in your
+host. The mark-refunded handler also requires `mutationsEnabled`; false returns
 `FORBIDDEN` before mutation.
 
 Replacement creation belongs to fulfillment. Its
@@ -95,7 +96,8 @@ Empty connection and operator inputs throw `customer_support_database_url_requir
 and `customer_support_operator_required`. Subscription commands and contact
 email/phone corrections throw `operator_subscription_authority_unavailable`.
 Recovery and lead-absorption inputs must match the configured operator;
-a mismatch throws `customer_support_operator_scope_mismatch`.
+a mismatch throws `customer_support_operator_scope_mismatch`. Import the shared
+support error constructors from `@openlup/platform/account-support`.
 
 For browser reads, use `@openlup/platform/account-support/read-contracts` for
 portable-client and Customer 360 schemas and inferred types. It uses CSP-safe

@@ -61,40 +61,11 @@ installed database, runtime ACLs or a qualified provider.
 
 Moved to [Compose marketing handlers](../../packages/core/docs/guide/how-to/build/marketing.md#choose-the-import-boundary).
 
-The Node-only `@openlup/platform/marketing/server` entry requires no optional
-`pg` peer. Reference bindings load `@openlup/platform/marketing/server/postgres`
-lazily after bundle and connection guards. Browser entries never re-export
-either server entry.
-
-The host owns observed-route wrappers and admin auth binding. Evidence handlers forward a successful port value unchanged;
-research and case/prelaunch handlers retain their existing response validation.
-
-`MarketingAcquisitionPrivacyPort` retains acquisition records/content-free
-evidence; `MarketingRemoteErasurePort` retains read-only case outcomes and
-transactional case opening/fencing. Both use identity's resolved subject and
-transaction context with host-owned authorization, atomic persistence and
-rollback. Preparation and assessment are side-effect free. Identity completes every assessment, including the existing
-subscriptions veto, before invoking `eraseOrRetain`. A failed or throwing fence
-throws without echoing owner error text, so the unit of work rolls back without
-a receipt. Receipt replay uses identity's existing path.
-
-`createMarketingPrivacyBindings` defaults off. Only `enabled === true` with both
-complete owner ports selects a contributor. Its `exportPersonalData`,
-`assessErasure` and `eraseOrRetain` callables are the same selected contributor
-methods. Otherwise all three are null and remain Core readiness requirements.
-The manifest provides the browser, contracts and server entries and depends on identity's
-`./identity/contracts` runtime obligation schema. Unbound or partial contributor
-ownership reports unavailable coverage and unresolved obligations, which identity
-refuses as `PRIVACY_OWNERSHIP_UNDECLARED` before any owner effect.
-
-Remote profile export is unavailable even with bound owners. Pending, requested,
-accepted, failed and unbound-provider outcomes retain explicit reasons; acceptance
-never means observed deletion. Waiting imports and pending targets remain owner
-obligations. The donor worker, operator and store stay app-owned; this seam adds
-outcomes and fencing only, with no provider call, claim, retry, scheduler or SQL.
-Raw managed questionnaires and other processors remain outside its coverage.
-The reference privacy graph leaves marketing unselected, and its marketing
-privacy coverage remains an open gap.
+Reference bindings load `@openlup/platform/marketing/server/postgres`
+lazily after bundle and connection guards. The reference host owns observed-route
+wrappers and admin auth binding. The manifest depends on identity's
+`./identity/contracts` runtime obligation schema. The reference privacy graph
+leaves marketing unselected; its marketing privacy coverage remains an open gap.
 
 Evidence (historical record, 2026-11-13):
 
@@ -723,84 +694,7 @@ release preparation assembles the shipped CHANGELOG. Follow the
 
 Moved to [Compose invoicing](../../packages/core/docs/guide/how-to/build/invoicing.md#select-the-ports).
 
-The experimental `@openlup/platform/invoicing` entry interprets explicit host
-selection through `readInvoiceCapabilities`. Disabled activation and missing or
-mismatched provider selection refuse before any host call. A ready descriptor
-reports declared operations; it is not proof of fiscal readiness or host parity.
-`@openlup/platform/invoicing/contracts` exports declarations only, with no browser
-runtime values or server import edge. There is no new npm package or dependency.
-
-Eleven compatibility helpers serve host facades: `runInvoiceIssueJob` takes managed
-claim/preflight/provider/finalizer callbacks; `mapInvoiceClaimToProviderSnapshot`
-and `mapCanonicalIssueLines` take saved facts and host labels/tax defaults;
-`allocateChargedGrossTotals` and `allocateDiscountedGrossTotals` take gross totals;
-`readInvoicePaymentEvidence` takes payment identity and a selected provider;
-`createFulfillmentHandoffInvoiceHandler` takes the host descriptor, parser, policy,
-request and error callbacks; `withAccountingInvoiceShadowTrigger` and
-`withAutoDispatchAccountingInvoiceTrigger` take fulfillment/accounting ports,
-provider selection, exact key functions and optional resolved channel policy.
-`runInvoiceCorrectionJob` takes create/provider enable flags, claim, projection,
-recovery-bridge create and fenced finish/fail callbacks, plus the claim-fence
-predicate. `createInvoiceReversalHandlers` takes the enable flag, per-event
-adapters and the reversal writer; it retains the donor's 10 s timeout.
-
-Facts retain revision, ordered canonical line amounts, explicit
-delivery/discount components, dates and references. `InvoiceIdentity` retains
-original request keys. Amounts are
-safe integer currency minor units; no FX, catalogue reread or zero-tax substitute
-is supplied. Legacy line kinds and order-money headers can remain explicitly null;
-the host cannot invent missing facts. The provider owns fiscal numbering; local references and nullable
-external numbers remain distinct. Identifier, tax and rounding policy references
-and the host fiscal verification seam carry policy, rather than country rules.
-
-Issue and full-reversal correction use stable identities and immutable BEFORE
-facts; full reversal has explicit zero AFTER totals. A bridge must prove the
-parent and correction reference on recovery. Unknown remote outcome stays unknown;
-only a complete exact lookup of the full scope can establish absence. A failed,
-ambiguous or unsupported lookup cannot authorize another create. Local pre-issue
-void is separate from unsupported remote void. Commit each local persistence
-transaction before host/provider I/O. Higher-level store calls may coordinate
-multiple persistence transactions and injected host callbacks outside those
-transactions; the whole method is not necessarily atomic. A late accepted issue
-retains its external identity and atomically creates one compensation duty at
-finalization.
-
-Every missing host binding returns typed `unsupported` before unsupported writes.
-A recorded reversal that native SQL cannot fulfill returns `unsupported_recorded`.
-Reversal `missing` means no M09 duty, never invoice absence: retain/retry the
-intent and route legacy documents to the incumbent path. Local-only requests
-retain provider selection, document ID, invoice reference, status and replay.
-The required seams are facts, seller, fiscal policy, read-only M07 money,
-artifacts/storage, registry, clearance observation, M04 delivery, payout item
-recording/resolution, policy decisions and M12 account history. Registry evidence
-retains identifier scheme, legal name, optional registration/address/tax evidence,
-source, fingerprint and observation time; host validation/freshness/fallback do not
-replace checkout truth or require a lookup for renewal.
-
-Policy suppression enumerates `channel_issues` and `no_document`; an explicit
-operator skip retains actor, reason and key. The executor decides policy before
-installing facts, so suppressed orders get no local document. Readback consumers
-merge host-recorded receipts (including recordedAt) with owed duties. Neither
-receipt fabricates an invoice ID.
-The owed-duty readback matches `invoicing_duty_readback`: order, capture faults,
-duty/parent/document identity, state, attempts, closed diagnostic code and lease
-chronology. Ready maps to owed and processing to claimed; unsupported obligations
-remain visible. Empty duties and payment truth's `accountingRequested=false` do
-not establish invoice absence. Capture faults remain separately observable.
-
-Payout evidence preserves distinct item references even for the same batch and
-payment. Native uniqueness cannot silently merge them or replace nullable links;
-a conforming host recorder/resolver is required. Account history preserves the
-owner, order, parent lineage, signed correction totals and currency in a safe
-projection, without buyer payloads, raw diagnostics or signed URLs. A found history
-is the complete owned projection; incomplete reads return unknown. The host owns
-customer authentication, operator authorization, retention and original key bytes.
-
-`createNativeUnsupportedInvoicePorts()` returns `{ host, store, provider }` with
-all operations refusing `host_binding_required`, `retryable=false` and no possible
-effect in the current call. It takes no executor or configuration and inspects no
-input. The refusal cannot prove absence or settle an existing unknown outcome;
-its owning duty must stay visible for a selected host adapter or operator.
+This extraction adds no npm package or dependency.
 
 Evidence (historical record, 2026-11-13):
 
@@ -873,38 +767,11 @@ remote attestation, PostgreSQL atomicity proof or fiscal certification.
 
 Moved to [Compose invoicing](../../packages/core/docs/guide/how-to/build/invoicing.md#deliver-documents).
 
-`runInvoiceDeliveryJob` requires `terminalFailure` before leasing native work;
-its absence refuses before claim. With CTL-M09-3's
-191000 pin, `failedBeforeSend` settles `failed_before_send` with evidence
-`{phase:'before_send', retrySeconds}`: `available_at` is `now()` plus validated
-whole-number seconds clamped to 60..86400; absent/invalid seconds use 900.
-`terminalFailure` settles that same branch with
-`{phase:'before_send', retryable:false}`: `available_at='infinity'` prevents reclaim,
-with status `failed` and `last_error` visible.
-Store mode supplies the finalizers. The store checks document/order/provider
-identity and the projected attempt count before returning the claim.
-An absent projector refuses before leasing. A projection or document-read exception
-settles only that row as retryable `failed_before_send`, with the same generation-based
-backoff as the job (300 seconds per attempt, capped at 3600). A mismatched envelope
-settles as non-retryable `failed_before_send` and parks the row. Neither sends or
-creates an uncertain receipt; other valid rows in the leased batch continue.
-Job counters cover only the valid claims returned by the store.
-A thrown M04 send is permitted only
-before entering transport; after entry, return uncertain. The managed facade
-retains its existing key and diagnostic bytes.
-
-`syncAcceptedInvoiceDocuments` downloads attachments concurrently and records
-their metadata/provider references. Observation mode counts per-target failures.
-`syncInvoicePayoutSettlements` projection owns optional link resolution.
-
-`resolveInvoiceDocumentHistory` retains the donor's chronological original,
-correction and replacement decisions over neutral projected columns; the reference
-shim translates legacy columns without changing its public DTO. Native account
-history instead uses the safe P1 host projection, preserving signed correction
-totals and explicit parent identity. `createInvoiceReadModel` keeps four-way
-provider readback distinct. Operator and legacy ticket callbacks keep HTTP/auth/SDK
-code in the host. No default query or storage is fabricated. Reference operator
-HTTP/UI diagnostics use closed codes and omit provider free text; runbook URLs remain host inputs.
+The delivery-settlement behavior is carried by CTL-M09-3's 191000 pin. The
+managed facade retains its existing key and diagnostic bytes. The reference
+history shim translates legacy columns without changing its public DTO.
+Reference operator HTTP/UI diagnostics use closed codes and omit provider free
+text; runbook URLs remain host inputs.
 
 Evidence (historical record, 2026-11-13):
 
@@ -939,42 +806,11 @@ not live-provider or hosted qualification.
 
 Moved to [Compose order management stores](../../packages/core/docs/guide/how-to/build/oms-stores.md#choose-the-imports).
 
-The host supplies settlement policy and reference projections. Keep
-provider evidence, identity extensions and presentation in the host and bind the
-host schema through the final response validation. A structural RPC client and
-separate query capability preserve one executor per order operation. Replacement
-creation delegates to fulfillment and leaves alignment pending actual arrival.
-
 ### Native OMS and support stores
 
 Moved to [Compose order management stores](../../packages/core/docs/guide/how-to/build/oms-stores.md#choose-the-imports).
 
-OMS commands preserve existing SQL, idempotency keys and error mapping. The
-control-plane factory supplies operator resolution and reduced `control_plane_v1`
-list/detail reads; it supplies neither rich OMS projections nor customer/payment
-history. The command port retains its existing rich-read, note, address and
-replacement refusals. Return request/approve/reject record lifecycle intent;
-there is no receive, restock or refund execution. The existing SQL owns which
-reasons `createPostgresCommerceReturnsPort<Reason>` accepts.
-
-Support journey reads, recovery issue and lead absorption preserve their current
-SQL and refusal boundaries. The journey store still throws
-`operator_subscription_authority_unavailable` for subscription actions and
-contact corrections. Error constructors are shared with the package's
-account/support entry, including through the source reference facades.
-
-System-hold recovery reads only actually delivered shipments with earlier
-exception evidence, excludes human holds and terminal orders, and reuses the
-existing deterministic release key. Call `releaseDelivered` only on a row from
-that selection; it is not a delivery evidence validator for arbitrary caller
-objects and never confirms a subscription replacement.
-
-`@openlup/platform/account-support/read-contracts` exposes the unchanged
-portable-client and Customer 360 schemas and inferred read types. It is
-browser-safe and initializes Zod's CSP-safe mode; the existing type-only
-`account-support/contracts` boundary is preserved. Diagnostic history remains an
-independently injected port of `createCustomer360ReadFacade`, with host-owned
-admission and governance. This promotion adds no diagnostic store or route.
+Reference facades re-export the package's account/support error constructors.
 
 Evidence (historical record, 2026-11-13):
 
@@ -988,73 +824,28 @@ qualification result; the [task record](plans/oss-m19-g12.md) carries executed p
 
 Moved to [Compose account and support services](../../packages/core/docs/guide/how-to/build/account-and-support.md#choose-the-imports).
 
-The [customer account mutation recipe](../../packages/platform/README.md#customer-account-events-and-mutations)
-adds an explicit PostgreSQL profile/correction port, strict request schemas and
-host-bound handlers. Browser request/result types stay in the type-only contracts
-entry. Unselected facade lanes retain their existing refusal. The host supplies
-policy, verified identity, per-query commit behavior, copy and route mounting. Saved
-addresses, billing profiles and starter editors remain outside this slice.
+The reference recipe rejects a route whose callable is not selected with
+`account_support_entry_operation_required`; service, port and route aliases
+return the same guarded function.
 
-`createAccountSupportBindings` captures prebound owner callables for one graph.
-In `createAccountSupportServices`, each distinct callable
-has one shared wrapper; null operations stay null. The observer returns `ready`
-or the exact schema refusal, and is never called while disabled. Known request
-and result types propagate through the guard; the binding refusal joins their
-result union without replacing owner refusals or thrown errors.
+The reference-only `commerceOwner` option accepts the host-built M11 result
+over bound checkout/recovery and ATP callables through a local structural type.
+R5b does not construct M11 or import its adapters. The reference host includes
+account/ATP requirements in the M11 schema, matches enablement/readiness and
+supplies the existing registry as `commerceRegistry`. It forwards
+`commerceOwner.services` directly, avoiding a second M11 binding and duplicate
+native operations. No package export, contract, ATP allocator or effect installer
+changes; see the [runtime recipe](RUNTIME_AND_SELF_HOSTING.md#opt-in-disposable-subscription-reference).
 
-`createAccountSupportContribution` from `/composition` accepts `version`,
-`requiredSchema`, an `accountSupport` operation map, explicit `dependsOn` and
-optional routes. It returns inert contributions and namespaced ports/routes,
-with empty triggers, handlers, emissions and schedules. A null map member stays
-in `requiredPorts` but gets no port binding. Duplicate route IDs throw
-`account_support_duplicate_route`; the reference recipe rejects a route whose
-callable is not selected with `account_support_entry_operation_required`.
-The reference returns the same guarded function through service, port and route
-aliases.
+The reference `createM12AccountReadBinding` specializes the facade to existing
+customer ports; it registers no route or default selection. The
+[bounded task record](plans/oss-m19-g11.md) retains proof and the remaining
+delivery boundary.
 
-The binding's separate `commerce(key, ...args)` accepts a nullable injected
-record. Null record/member returns `unsupported/host_binding_required`, while
-selected owner results retain identity. The reference-only `commerceOwner`
-option accepts the host-built M11 result over bound checkout/recovery and ATP
-callables through a local structural type. R5b does not construct M11 or import
-its adapters. The host includes all account/ATP requirements in the M11 schema,
-uses matching enablement/readiness and supplies the existing registry separately
-as `commerceRegistry`.
-Forward `commerceOwner.services` directly: wrapping them in another M11 binding
-would duplicate native operations. The keyed entrance preserves its concrete
-request/result relation and delegates to the same selected executor. Owner
-refusals and unknown ATP pass through. No package export, contract, ATP allocator
-or effect installer changes; see the [runtime recipe](RUNTIME_AND_SELF_HOSTING.md#opt-in-disposable-subscription-reference).
-
-`@openlup/platform/account-support` also exports account-read stage/error/diagnostic
-helpers. `createAccountReadFacade` forwards each call exactly once. Owner DTOs remain
-generic, including frozen money and private extensions. The facade adds no query
-or diagnostic policy.
-The reference `createM12AccountReadBinding` specializes it to the existing customer
-ports; it registers no route or default selection.
-
-The existing `@openlup/platform/account-support` entry also provides
-owned native order-store/account-source factories, an owned account identity
-lookup, and actor-bound subscription snapshot/newsletter read-withdrawal ports.
-The [native persistence boundary](../../packages/platform/README.md#native-account-persistence-reads)
-describes host inputs and named section refusals. Detail uses captured money
-and promoted allocations; historical summaries keep recorded total/currency.
-Missing captured detail money refuses explicitly. The native
-`readPaidActivationGaps` order companion identifies paid provisional activations
-by owned order ID, before any subscription exists. Missing saved profile or
-event sections refuse `host_binding_required`, including the private-profile
-view. Complete consent grants/choices await their separate change; a saved flag
-is not effective consent. See the [bounded task record](plans/oss-m19-g11.md)
-for proof and the remaining delivery boundary.
-
-For billing profiles, the existing `account-support` entry adds the owned
-PostgreSQL port, strict schema factory and GET/POST/PATCH/DELETE handler factory.
-Browser-shareable request/response/port types remain in `account-support/contracts`.
-Default clearing,
-writing and event append keep their separate failure boundaries, and repeated
-request identifiers execute again. The
+The [native persistence owner](../../packages/platform/README.md#native-account-persistence-reads)
+owns host inputs and section refusals. The
 [billing recipe](../../packages/platform/README.md#customer-billing-profiles-and-frozen-invoice-buyers)
-also names the selected invoice freeze point and privacy contributor.
+owns the invoice freeze point and privacy contributor.
 
 Evidence (historical record, 2026-11-13):
 
@@ -1078,71 +869,8 @@ release or adopter cutover authority.
 
 Moved to [Compose account and support services](../../packages/core/docs/guide/how-to/build/account-and-support.md#bind-reads-to-the-customer).
 
-`readAccountSnapshot(sources, policy, client)` runs the independent account reads
-in parallel, requesting 50 subscription rows before visibility filtering and
-exactly 20 recent orders at the store. Subscription assembly runs alongside
-subscription action evidence. Captured line money determines recurring prices;
-any unpriced or mixed-currency line leaves that amount unknown. The selected
-next-charge authority owns payable-cycle and shipping precedence. Private
-profile and catalogue fields belong in the injected extension/presentation seams.
-
-Commerce derives money from stored headers/lines, including effective delivery
-discount and the order's currency. Current-parcel and commerce recovery rules
-retain their existing owners.
-
-`projectCustomer360Snapshot` keeps same-client pending-order recovery eligibility,
-live-token evidence and the newest 80 audit events in chronological order.
-Optional enrichment is omitted when unselected; failed/partial enrichment carries
-its existing warning. Contact observation is independent of identity linkage and
-sign-in evidence. `createCustomer360ReadFacade({ authorize, journey, summary,
-diagnostics })` requires `authorize(): Promise<boolean>` before every search,
-snapshot, summary or diagnostic source read. A refusal returns `{ kind: "denied" }`
-without source IO; admitted reads retain exact arguments, results, nulls and
-thrown failures. It exposes no command authority.
-Subscription pointers retain generic `paymentMethodKind`: a selected value is
-preserved, a selected-empty source emits null, and an unread source omits it.
-
-`createInvoiceAccess` checks that the requested document appears in a found
-history with the same accountRef/orderId before resolving a download ticket.
-Foreign or unknown documents return `{ kind: "denied" }` without artifact/provider
-IO. This adds one history read; invoice order references are not raw order IDs.
-M09 still owns signed correction totals, document/parent lineage and PDF access. `downloadOwnedInvoicePdf` retains M09's existing PDF validation.
-
-`createSelfServiceCommandFacade` returns `SelfServiceCommandFacade` with
-host-supplied `AccountSupportCapabilities`. Every output lane is callable.
-`paymentMethodSetup` requires `paymentMethod` when supported; `commerceRecovery` and `configuredPurchase` require
-`commerce`. Supported subscriptions.genericBundleCommands/commandBoundReceipts
-require at least one selected managed/native legacy/raw/typed command lane.
-Missing required lanes and incomplete selected lanes refuse with
-`customer_self_service_lane_configuration_required`. Unselected methods return
-`AccountSupportLaneUnavailable<Code>`, the `{ supported: false, refusalCode }` arm
-of `AccountSupportCapability`. PaymentMethod uses paymentMethodSetup by identity;
-commerce uses commerceRecovery by identity. Every other lane uses the same frozen
-host_binding_required refusal. The principal guard runs before these refusals.
-Each returned lane verifies the principal before calling its owner; raw/typed
-commands require the supplied clientId to equal context.clientId, refusing
-omitted, undefined, null or foreign values before any owner call. A mismatched
-graph refuses configuration.
-
-`managedSubscription` delegates to the managed owner. `nativeLegacySubscription`
-accepts `explicitPause`, `control` (including hasSubscription/getSnapshot) and
-`ownershipRefusal`. Its update_bundle path canonicalizes the subscription ID before
-ownership lookup, then delegates to control; absent ownership throws the host's
-refusal before quote validation. Pause uses only explicitPause; other actions
-retain control's own refusal. Preview delegates to control preview, while
-`subscriptionControl.getSnapshot` delegates to control snapshot. The trailing
-`ControlSnapshot = unknown` generic preserves the host snapshot type, including
-its nullability, through the facade, input/parts and reference binding. Explicit
-`nativeSubscription` and `nativeRawSubscription` lanes retain M10's typed and raw
-results. `profile.updateProfile`, `paymentMethod.execute`, `commerce.execute` and
-`recovery.startPaymentRecovery` preserve owner results, nulls and errors.
-
-`encodeNativeSubscriptionCommand(context, request, now)` accepts an already
-resolved `LegacySubscriptionRequest`. `createNativeSubscriptionDriver` copies the
-preview payload to remove acceptedQuoteHash while preserving the original apply
-payload and key. `decodeNativeSubscriptionPreview` validates native quote fields
-before `previewProjection`; non-preview owner records pass through in the owner
-arm by identity. No legacy currency, cutoff, address or method facts are invented.
+Current-parcel and commerce recovery rules retain their existing owners.
+M09 owns signed correction totals, document/parent lineage and PDF access.
 
 Evidence (historical record, 2026-11-13):
 
@@ -1175,30 +903,10 @@ R5 limits.
 
 Moved to [Compose account and support services](../../packages/core/docs/guide/how-to/build/account-and-support.md#select-operator-recovery).
 
-`createOperatorRecovery` rejects machine/admin/graph/key/subject mismatches.
-Phone, recovery, absorption and subscription results remain their owners' objects.
-
-`createManagedOperatorAuthority` retains `OperatorAuthorityOptions`. Its email
-flow calls the current admission/claim/settlement RPCs; identity commits must enforce the issued claim. A pending claim reports
-`customer_support_email_correction_in_progress`; failed execution reports
-`customer_support_email_correction_failed`; uncertain completion releases or
-reports `customer_support_email_correction_repair_required`. Original attribution
-is durable even when another authorized human resumes execution.
-
-`linkThenApply` requires distinct idempotency keys and separately committed link
-and subscription commands. After a successful link it invokes `void onLinked()`
-before the subscription call. A refusal,
-`applied_from_next_parcel` outcome or transport failure returns a partial result
-with the completed link; the next-parcel outcome retains the subscription result.
-It never claims the link rolled back or the current parcel changed. The helper
-preserves this order and partial result but does not create or verify the keys
-or transactions.
-`createM12OperatorRecoveryBinding` selects these package
-exports only with `enabled: true` and complete ports. The reference
-`AccountSupportRecoveryStatus` displays the partial result/capability refusal;
-neither file mounts a route. Install the complete rail, including M11 managed
-predecessors, before selecting this boundary. The sparse migration catalog is
-not an installer. See [migration compatibility](DATA_AND_MIGRATIONS.md#compatibility-lifecycle).
+`createM12OperatorRecoveryBinding` selects the package exports only with
+`enabled: true` and complete ports. The reference
+`AccountSupportRecoveryStatus` displays partial results and capability refusals;
+neither reference file mounts a route.
 
 Evidence (historical record, 2026-11-13):
 
@@ -1226,9 +934,6 @@ success. See [saved subscription selection](../../packages/platform/README.md#sa
 
 Moved to [Compose SEO and content slots](../../packages/core/docs/guide/how-to/build/seo-and-content-slots.md#choose-the-imports).
 
-`buildHeadDescriptor` always emits `og:image:width`, `og:image:height` and
-`twitter:site` in the ordered tag sequence.
-
 Evidence (historical record, 2026-11-13):
 
 `ContactContent`, `LegalDocumentContent` and `PrivacyProcessorDisclosure` are
@@ -1248,12 +953,8 @@ entry and compiles its content types.
 
 Moved to [Compose native bundle writes](../../packages/core/docs/guide/how-to/build/bundles.md#choose-the-imports).
 
-Apply the complete selected canonical chain, not the sparse bundle SQL list.
-The existing native routines retain their invoker privilege requirements and
-sequential idempotency recognition; this export adds no concurrency guarantee.
-Reference error paths re-export
-the same constructors, preserving instanceof and the existing SQLSTATE mapper;
-managed transport composition and response mapping remain host-owned.
+Reference error paths re-export the same constructors, preserving `instanceof`
+and the existing SQLSTATE mapper.
 
 Evidence (historical record, 2026-11-13):
 
@@ -1266,28 +967,8 @@ The identity witness is `tests/postgres/m19BundleWriteIdentity.test.ts`.
 
 Moved to [Compose native fulfillment](../../packages/core/docs/guide/how-to/build/fulfillment.md#choose-the-imports).
 
-The experimental `createNativeFulfillmentBinding` preparation acquires the
-dispatch advisory lock before the shipment row lock,
-reads authoritative contact/selection/withholding facts inside that transaction,
-and synchronizes only redacted dispatch context. All authoritative edits must
-use `editAuthoritative` with host authorization and replay receipts. Actor/key
-presence is not authorization. The host owns closing its lane. Construction is
-inert and the default is disabled; no route or schedule is registered.
-The package return contains `services`, `version`, `requiredSchema`, nullable
-`dispatch`, `prepare` and `editAuthoritative`; it contains no contribution.
-`dispatch` is null when the transaction lane or authoritative reader is absent.
-The reference host facade keeps its prior result
-shape and delegates services and methods to the package binding.
-
-`createCapturedFulfillmentAdapter` canonical JSON fingerprints include all
-command fields, sorting object keys by code unit and preserving array order.
-Unknown/modified commands and mismatched evidence refuse before submission.
-Provider references must be lowercase opaque IDs; accepted external references
-use the existing opaque-ID grammar. Duplicate capture request keys are rejected
-at construction. Returned results
-are copied; mutating them cannot alter replay. `readSubmissionCount()` reports
-distinct captured submissions, including refused/unknown captures, and stays
-unchanged on replay. It measures synthetic execution, not provider network I/O.
+The reference host facade keeps its prior result shape and delegates services
+and methods to the package binding.
 
 Evidence (historical record, 2026-11-13):
 
@@ -1305,133 +986,24 @@ for destination and reservation facts in a separate change.
 
 Moved to [Compose native fulfillment](../../packages/core/docs/guide/how-to/build/fulfillment.md#bind-operator-commands-and-reads).
 
-The experimental `createPostgresFulfillmentShipmentCommandPort` from
-`@openlup/platform/fulfillment/native` takes a structural SQL executor. Install
-the complete selected catalogue through `20261110230000_operator_shipment_commands.sql`.
-The authenticated admin label, handoff and tracking handlers derive `actorUserId`
-on the server. Construction mounts no route or operator UI and makes no carrier call. These commands require
-READ COMMITTED transactions; stronger isolation levels refuse before writing.
-The shared `fulfillment_record_evidence` writer requires an explicit
-`metadata.providerKind` for tracking references and applies the same correlation
-lock and cross-order refusals. Missing provider identity refuses with
-`fulfillment_record_evidence_provider_kind_required`; non-tracking evidence keeps
-its existing behavior.
-
-Label recording commits a succeeded evidence snapshot, provider/tracking
-correlation, actor and operation together. Same-key replay returns the original
-parcel's current status. A provider/number pair on another order conflicts;
-same-order reuse attributes it to the selected parcel. The first accepted label
-and tracking writes retain full requests, including label URLs, raw provider
-payloads and raw tracking events, in the private operator receipt. Runtime roles
-cannot select that receipt table; owner routines use it for replay. The label URL
-also remains in the operation payload returned to authorized operator/service
-readers. Treat it as potentially sensitive or expiring access information, not a
-public tracking URL. The read store does not authenticate and must not be bound
-to customer routes; customer order history omits operation payloads. No automatic
-TTL or purge removes this evidence. Hosts own authorized retention and cleanup,
-including backup and transfer copies; replay preserves the original receipt.
-
-Handoff accepts packed or labelled parcels, consumes only the frozen purchase
-or renewal reservation IDs and commits the stock effect with its audit. Terminal
-handoff is inert replay. An exact recorded command also replays after an
-exception and relabel, without changing status, timestamps or audit. The result includes `reservationDisposition` and
-`consumedReservationCount`. See the [historical stock and tracking limits](ARCHITECTURE_AND_EXTENSIONS.md#native-parity-boundaries)
-for manual resolution when facts were never recorded.
-
-Tracking requires the corresponding label/handoff state and a same-order
-reference when one is supplied. Delivered parcels refuse regression. An explicit
-zone in `rawEvent.occurredAt` supplies provider chronology; unusable chronology
-falls back to receipt time on the first delivery. Delivered replay may repair
-arrival earlier through the arrival recorder, never later, without rewriting the
-original operation or repeating delivery alignment. A late actual arrival may
-extend the next cycle; evidence that a parcel has only been labelled or is in
-transit never confirms arrival of a replacement.
-
 ## PostgreSQL checkout recovery tokens
 
 Moved to [Recover abandoned checkouts and payments](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#issue-a-recovery-token-for-an-admitted-checkout).
-
-Each method owns one
-transaction; an actor lane is refused.
-
-Issuance locks the order then its contact, requires pending payment and a non-null
-contact, and permits a contact with no customer principal. It never accepts a
-client ID, principal or bare email as authority. The host must already have
-admitted the order; arbitrary order IDs are not public issuance authorization.
-The `expiresAt` input is ignored: PostgreSQL computes and stores exactly
-`order.created_at + 24 hours`, retaining sub-millisecond precision and refusing
-an elapsed deadline. Only the SHA-256 hash reaches storage. The caller retains
-the raw credential for its separately authorized delivery and never logs it.
-
-New checkout links preserve earlier links of the same order until expiry or
-payment. Identical hash/order replay returns its original token ID without
-reactivating links; reuse for another order refuses. Pending orders with a
-`subscription_cycle_id` are renewal orders and refuse checkout issuance. Initial
-subscription purchases remain eligible before paid activation attaches a cycle.
-The actor issuer also preserves earlier checkout links. Payment-case issuance
-retains its separate rotation and serializes on the pending order before
-revocation and insertion.
-
-`PostgresCheckoutRecoveryTokenInspection` adds `cadenceDays: number | null` to
-the existing inspection. Initial subscription mode/cadence come from the order's
-stored draft and quote contexts and provisional activation declaration, before a
-paid cycle exists. Contradictory or missing required subscription facts refuse;
-no browser field supplies them. One-time cadence is null. No customer email,
-arbitrary order reader, payment execution or settlement shortcut is exposed.
-The captured rehearsal settlement routine is not wrapped and cannot replace a
-sandbox observation and verified-ingress payment path.
-
-Failures use static messages (`checkout_recovery_service_required`,
-`checkout_recovery_order_not_recoverable`, `checkout_recovery_hash_conflict`,
-`checkout_recovery_response_invalid`, `checkout_recovery_storage_failed`), without
-driver details, raw credentials or attached causes. This adapter adds no SQL,
-grants, reminder producer, mail sender or automatic binding.
 
 ## Checkout recovery waves and expiry
 
 Moved to [Recover abandoned checkouts and payments](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#schedule-reminders-and-expire-abandoned-checkouts).
 
-The legacy integer SQL entry of
-[`createPostgresCheckoutRecoveryWaves`](../../packages/platform/src/commerce/server/checkoutRecoveryWaves.ts)
-retains defaults of 3600/72000 seconds for first/final offsets, 86400 checkout
-seconds, 2592000 recovery seconds and 900 activity seconds. The configured
-overload accepts explicit UTC invocation time. Existing payload wave labels `1`
-and `20` identify first/final content; offsets remain separate scheduling inputs. The host supplies localized copy to
-the existing content factory, rather than copying product content into SQL.
-
-`withCheckoutRecoverySendEvidence` wraps only recovery mail and uses the shared
-transport outcome classifier before recording confirmed acceptance in the
-existing transactional receipt store. The receipt
-fingerprint binds event, recipient reference, template and profile. The profile
-must uniquely identify the selected delivery transport: acceptance by a selected
-captured transport proves captured delivery only. Never reuse its profile to
-claim network delivery. Generic acceptance and processed outbox state cannot
-replace this evidence. Receipt-write failure remains visible to the caller;
-the selected transport must retain the event's idempotency across retries.
-Other mail methods and the existing dedupe binding remain unchanged.
-
-The service's `expire` reads elapsed native purchase-reservation deadlines,
-including retained expiry evidence from the inventory sweeper; it does not expire
-an old order without reservation evidence. It excludes initial subscriptions and
-renewals, retains successful payment facts, and atomically captures one
-`commerce.checkout.expired` event and hash-only token. Existing links are retained.
-A notice must not carry a link that is already expired: when the order-based
-recovery deadline is not later than minting time, the same notice omits the
-token and no token row is inserted. This also applies to initial abandonment.
-`reconcile` repairs absent capture for canonical expired orders and attributed
-initial abandonment. `sweepInitial` takes an explicit UTC cutoff, filters stable
-provider-contact refusals before its limit, locks and rechecks before delegating
-native compensation, and emits the recovery notice without ordinary cancellation
-mail. A compensated provisional activation is not a cancelled live subscription.
-The expired-mail lifecycle reader must expose `subscriptionActivationAbandoned`
-only for the durable sweep marker and compensated activation.
+The legacy integer SQL entry retains defaults of 3600/72000 seconds for
+first/final offsets, 86400 checkout seconds, 2592000 recovery seconds and 900
+activity seconds.
 
 The [forward](../../db/platform/migrations/20261110100000_checkout_recovery_waves.sql)
 retains existing function headers/ACLs. New routines revoke PUBLIC/browser
-execution; only the selected entry points grant service-role execution. The
-scoped `commerce_checkout_recovery_wave_delivery_authorize` wrapper exposes the
-existing owner-authorized automatic reminder check without widening its ACL or
-admitting operator/buyer flows. No raw table grant is added.
+execution; only selected entry points grant service-role execution. The scoped
+`commerce_checkout_recovery_wave_delivery_authorize` wrapper preserves the
+automatic-reminder ACL without admitting operator/buyer flows. No raw table grant
+is added.
 
 Evidence (historical record, 2026-11-13):
 
@@ -1446,53 +1018,6 @@ obligations.
 
 Moved to [Recover abandoned checkouts and payments](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#give-an-operator-a-payment-link).
 
-The development-preview commerce server entry exports
-[`createAdminCheckoutPaymentLinkHandler` and `createPostgresOperatorCheckoutLinkStore`](../../packages/platform/src/commerce/server/operatorCheckoutPaymentLink.ts).
-Use the complete native migration chain, including
-[`20261110110000_operator_checkout_links.sql`](../../db/platform/migrations/20261110110000_operator_checkout_links.sql).
-Inject a restricted service executor whose query calls commit separately. Wrapping
-an entire command in one transaction would lose the durable admission and failure
-stage that the command promises. The public executor interface contains no `pg`
-types and requires no optional database SDK merely to import its declarations.
-
-Identity comes only from the authenticated active human administrator session;
-SQL uses the same native active-operator registry as existing operator commands
-and refuses control/machine principals.
-Neutral demonstration values are `operatorLifetimeMs: 3600000` and
-`recoveryWindowMs: 86400000`.
-No feature flag, scheduler or operator UI is installed by construction.
-
-Pending orders qualify without repricing. Other orders pass the shared
-`createExpiredCheckoutRecoveryPolicy` order predicate with the configured window;
-provide canonical technical-expiry, frozen quote and shipping facts, and the
-selected commercial validator before issuing an expired-order link. Initial
-activations have no native cycle; their persisted order mode still selects
-subscription mail copy. Any non-null `subscriptionCycleId` refuses.
-Paid, manual-cancelled, missing/changed and unrecoverable orders use the existing
-closed refusal vocabulary. The earlier of issuance plus operator lifetime and
-order creation plus recovery window sets expiry. If it is not later than issuance,
-the existing `order_not_recoverable` refusal issues no token.
-
-The command records admission, revokes prior same-order checkout links, inserts
-the replacement, and records succeeded/failed with the last acknowledged stage
-(`none`, `revoked`, `minted`, `email_queued`). A failed admission makes no token
-change; a failed insert after successful revocation leaves no live predecessor.
-These are separate committed effects. Two operators can both finish revocation
-before inserting and leave two live links. A later operator command revokes both.
-Customer/service issuance remains nonrevoking; later customer/service links
-coexist with an operator token. Renewal payment cases retain their separate issuer.
-
-`copy` (also the default) returns the raw token and `emailQueued: false` without
-mail. `email` inserts the existing `commerce.checkout_recovery` event using
-`checkout_recovery:operator:<token-id>`, `operatorIssued: true` and the same raw
-bearer. The event retains the `admin_payment_link` source marker. Replay of that token's enqueue inserts no second event. Queue failure
-returns upstream unavailability without claiming mail is queued. Route these
-events through the existing recovery email handler and the store's scoped
-`authorize(eventId, claimToken)` gate. Its exact token must remain live and bound
-to the claimed order and client. It does not replace automatic-wave authorization.
-Actual rendering, transport, host registration, redemption/recreation and browser
-journeys remain selected host responsibilities.
-
 Evidence (historical record, 2026-11-13):
 
 The [PostgreSQL witnesses](../../tests/postgres/operatorCheckoutPaymentLink.test.ts)
@@ -1503,46 +1028,6 @@ hosted, browser or provider qualification.
 ## Customer checkout recovery entry points
 
 Moved to [Recover abandoned checkouts and payments](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#add-customer-recovery-entry-points).
-
-The development-preview commerce server exports
-[`createCheckoutRecoveryStartHandler`, `createCheckoutPaymentLinkHandler` and their PostgreSQL ports](../../packages/platform/src/commerce/server/customerCheckoutLinks.ts).
-Apply the complete native chain through
-[`20261110115000_customer_checkout_links.sql`](../../db/platform/migrations/20261110115000_customer_checkout_links.sql).
-The public query interface contains no database-driver types.
-
-The start handler checks the recovery flag before authenticating or constructing
-persistence. `authenticateUser` supplies the customer session; `createPort`
-constructs the actor-bound port only after admission. PostgreSQL derives ownership
-from `auth.uid()` rather than a request principal. The strict request accepts
-exactly `{ orderId }` or `{ subscriptionId }`. In native initial checkout context,
-`subscriptionId` is the provisional `activationId` returned by declaration;
-there is no active subscription or renewal cycle yet. The exact owned pending
-order is selected, or the newest eligible order for the supplied declaration
-context. Native non-null `subscription_cycle_id` orders refuse checkout issuance.
-An initial declaration or persisted subscription checkout context selects
-subscription presentation without admitting renewal recovery.
-
-Supply `lifetimeMs` explicitly (a neutral example is `86400000`, the maximum).
-Expiry is order creation plus that lifetime. An elapsed deadline returns the
-existing `recoverable: false` account/fresh-checkout fallback without a token.
-PostgreSQL checks its actual clock after blocking writes and rolls them back if
-the deadline elapsed. Missing/terminal orders use owned context and live or
-provisional subscription facts to choose that same fallback. Successful starts
-return a fresh raw token for immediate navigation and send no mail. Earlier
-checkout tokens remain live until payment, expiry or an operator revocation.
-
-The buyer handler takes a selected continuation codec. Only
-`verifyCookieHeader` claims authorize the exact order and client; request-body
-order IDs and recipient addresses supply no authority. Missing, invalid or
-expired cookies construct no persistence. The service-only issuer locks the
-order and admits pending, non-renewal checkout only. Configure `lifetimeMs` and
-`sendBucketMs` on `createPostgresBuyerCheckoutLinkPort` (neutral examples:
-`86400000` and `600000`). Within a bucket, existing outbox uniqueness admits one
-`checkout_recovery:buyer:<order>:<bucket>` event and its token atomically. A losing
-request inserts neither and acknowledges the existing send. A later bucket can
-queue another link while the first stays live. The wire response `{ sent: true }`
-acknowledges queuing/deduplication, not transport delivery; the port additionally
-reports `queued` for the actual winning insertion.
 
 Evidence (historical record, 2026-11-13):
 
@@ -1561,21 +1046,6 @@ browser or real-provider qualification.
 
 Moved to [Recover abandoned checkouts and payments](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#inspect-a-link-before-showing-recovery-controls).
 
-Public executor types for `createPostgresCheckoutRecoveryOrderPort` require no
-PostgreSQL driver types.
-The SQL readers return the bound original or the root's latest-created descendant;
-the composition binds either result to the token's client. It refuses renewal
-orders with a non-null subscription cycle. A compensated initial declaration is
-first-purchase context, without reopening the predecessor or a live subscription.
-
-`createCheckoutRecoveryValidationPolicy` returns `false` for unsupported frozen
-snapshots before commercial validation runs. The same policy must fence a later
-recreation composition before its side effects. This inspection contribution creates no
-replacement, token, reservation or payment attempt. Its result is presentation,
-never payment authority: every later mutation must independently admit its bearer,
-order and current payment evidence. Real-provider preparation and recovery evidence
-retain their existing refusals; the payment persistence capability owns their closure.
-
 Evidence (historical record, 2026-11-13):
 
 The additive migration introduces nullable recovery-root and immediate-predecessor
@@ -1588,59 +1058,9 @@ and [composition characterizations](../../packages/platform/test/commerce/checko
 
 Moved to [Recover abandoned checkouts and payments](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#recreate-a-technically-expired-checkout).
 
-Recreation requires the frozen quote and destination. The injected
-`ExpiredCheckoutPaymentSafetyPort` must read the actual prior payment object:
-success returns `paid`, confirmed terminal non-settlement with exact amount and
-currency returns `safe`, and missing, unknown, pending or failed reads return
-`unavailable`. Absence of local success does not establish non-settlement.
-`createPostgresSandboxExpiredCheckoutSafety` binds this contract to the native
-simulator's durable attempt and observation; it never invents missing evidence.
-
-The quote port receives the persisted `pricingPolicy` and `offerVersion`.
-The service compares the existing commercial fingerprint, preserving frozen
-offer evidence while excluding transient quote IDs and timestamps. Drift returns
-`order_changed` before draft creation. It uses the stable
-`checkout-recovery-recreate:<sourceOrderId>` key, creates the native draft, calls
-`createPostgresExpiredCheckoutRecoveryPort` to prepare lineage and then starts
-the fresh purchase runtime. The draft wrapper
-`createPostgresExpiredCheckoutDraftPort` delegates replay through the existing
-draft owner using its original accepted snapshot when only transient quote
-identity changed.
-
-For the native sandbox runtime, bind `createPostgresExpiredCheckoutRuntime` to a
-dedicated READ COMMITTED transaction lane. Bind `verifyPriorPayment` to
-`createPostgresSandboxExpiredCheckoutSafety` using the supplied executor, as with
-the reservation and payment callbacks. The runtime locks the source order before
-the replacement and source intent. Before the first replacement admission it
-rechecks source payment evidence under these locks, which serialize with source
-observations. Source success returns `paid` before stock or payment writes and
-the service compensates the replacement. An already opened replacement intent
-does not bypass the check; native payment owners retain their guarded replay. Bind reservation to
-`createPostgresPurchaseReservationPort` and payment to the native simulator;
-`checkoutRecoveryExecutionFingerprint` supplies its stable execution identity.
-No remote provider dispatch belongs inside this transaction. Configure the stock
-source, channel and reservation lifetime explicitly. A host using other purchase
-profiles must supply its own admitted runtime port.
-
-The preparation writer locks the source and replacement, checks current payment
-evidence and the current recovery deadline after blocking locks, and admits one
-immediate replacement. Exact linked replay precedes fresh admission checks,
-including after compensation. A linked replacement can never be reparented to
-another source. With the complete catalogue through
-`20261110280000_checkout_recovery_buyer_snapshot.sql`, preparation copies recorded
-buyer snapshots without creating an absent `invoiceBuyerSnapshot` key. A nonempty
-runtime snapshot retains precedence; recorded empty objects stay explicit.
-First-duty capture can therefore select the owned billing profile/address and
-then the marked shipping fallback when the source has no snapshot. Captured buyer
-facts remain immutable after later profile edits. No existing order is backfilled.
-An initial subscription gets a new provisional
-declaration; the terminal predecessor stays compensated. Recreation creates no
-cycle, never mutates an active/paused subscription, and refuses every non-null
-source subscription cycle. Existing captured-payment activation creates a live
-subscription only after a later successful purchase.
-
-This mechanism adds no route, UI, token issuer, recreation guidance or real-provider
-qualification. Those remain separate host composition and payment-owner work.
+The buyer-snapshot preparation change is carried by
+`20261110280000_checkout_recovery_buyer_snapshot.sql`. It backfills no existing
+order.
 
 Evidence (historical record, 2026-11-13):
 
@@ -1661,45 +1081,6 @@ cover legacy and both qualified runtimes.
 
 Moved to [Recover abandoned checkouts and payments](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#show-payment-recovery-guidance-from-one-snapshot).
 
-In the development-preview sandbox profile,
-`createPostgresPaymentRecoveryGuidancePort(executor, normalizeSandboxPaymentRecoveryEvidence)`
-reads status, checkout provenance, authority and evidence through one service-only
-`commerce_checkout_payment_guidance_snapshot` call. Use a fresh READ COMMITTED
-statement on a service executor. The query joins existing native owners; it never
-materializes destinations, issues tokens or changes payment state. Non-sandbox
-channels retain `native_prepared_attempt_store_unsupported` and the N6 payment-owner
-limit above.
-
-The snapshot binds the exact order, client, intent and current native attempt.
-A draft receipt and frozen checkout context establish one-time provenance; an
-initial subscription also needs its own declaration. Renewal-cycle orders are
-ineligible. Token authority is rechecked at statement time against the exact
-order/client, expiry, revocation and pending checkout state. A previously
-validated token cannot bypass that check. An exactly linked captured observation,
-including an older attempt outside the returned history, suppresses refusal
-advice before settlement converges. This does not declare the order paid.
-
-The read probes 101 attempts and returns at most 100, newest first. It probes 33
-evidence members per attempt and admits at most 32; overflow or a contradictory
-or oversized envelope drops that attempt's whole proof set and marks history
-incomplete. Native observation records and truth/readback source envelopes have
-an 8,192-byte bound. Only correlated identity/outcome fields are projected; raw
-source envelopes, request keys, token hashes and opaque authorization/method
-references are excluded. The adapter maps native state to the existing Core
-attempt vocabulary and derives public actions through Core. Native observations
-prove generic refusal only: method, operation and advice remain unknown. They do
-not establish complete method-specific guidance or a reusable payment method.
-
-`readAuthorizedPaymentRecovery` accepts only token validation or verified
-continuation claims bound to the exact journey/order/client/intent/current
-attempt/rail. Its token dependency exposes only `validate`. The status host calls
-it only for the existing `X-Payment-Recovery-Guidance: 1` opt-in. Missing authority,
-infrastructure or malformed snapshots retain the legacy reader fallback; an
-atomic snapshot with dead token authority carries no guidance. Without opt-in,
-the legacy response shape is unchanged. The optional `projectGuidance` callback
-retains the host's existing display fallback; it cannot turn observed success
-into refusal advice.
-
 Evidence (historical record, 2026-11-13):
 
 Raw `activationState`, `subscriptionStatus`, `paidAt` and `hasExactGap` come from
@@ -1717,39 +1098,6 @@ The host owns rendering and route mounting. See the
 
 Moved to [Recover abandoned checkouts and payments](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#retry-payment-with-a-recovery-token).
 
-The executor for `createPostgresSandboxCheckoutRecoveryAttemptPort` is
-structural; importing or composing the checkout-token payment factories requires
-no `pg` types. Keep the executor at READ COMMITTED.
-
-The service starts another attempt on the existing intent and leaves the order
-and inventory reservation in place. The existing native reader's `pending`
-projection means a created intent; unresolved dispatch is fenced by the attempt
-owner under locks. Order/client/intent, token expiry/revocation, initial checkout
-provenance, money and observed capture are rechecked by the service-only
-`commerce_checkout_recovery_attempt_begin` function under order/intent locks.
-Non-null renewal cycles are refused; a provisional initial declaration remains
-eligible. Captured observations prevent another dispatch even before settlement
-converges. A repeated request key and fingerprint returns its original attempt;
-changing method facts under that key refuses.
-
-`CheckoutRecoveryPayError.kind` distinguishes `upstream_unavailable` for in-flight
-or uncertain execution from `conflict` for dead checkout authority. A known
-refusal stays a recoverable `failed` result. Invalid local method facts roll back
-before dispatch and permit a corrected retry. The sandbox owner records dispatch
-atomically when it creates an attempt: it has no external preparation or
-finalization phase. Observations and verified ingress retain ownership of money
-results; the pay service never settles from a browser result or a rehearsal
-shortcut. Other channels retain `native_prepared_attempt_store_unsupported` and
-the existing [payment-owner limit](#expired-checkout-recreation).
-
-`withCheckoutRecoveryPaymentHold` permits withholding only a first purchase
-created strictly after its method's hold. Recreated orders, foreign-root chains and renewal cycles
-bypass the wrapper; unknown first-purchase evidence or a failed hold read permits
-payment. Subscription evidence must establish that the subscription was never
-live. Holding every offered method ignores the hold for that checkout kind.
-Control keys, offered-method policy and the hold trigger belong to the adopter.
-The exact inline consumer reuses this service wrapper.
-
 Evidence (historical record, 2026-11-13):
 
 The [PostgreSQL witnesses](../../tests/postgres/checkoutRecoveryPay.test.ts)
@@ -1761,18 +1109,6 @@ cover the neutral port and injected hold rules.
 ## Exact inline checkout retry
 
 Moved to [Recover abandoned checkouts and payments](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#retry-the-exact-failed-attempt-inline).
-
-`checkoutInlineRecoveryTransitionKey(expectedAttemptId)` preserves
-`checkout-inline-recovery:<expectedAttemptId>`. The native prepare key appends
-`:payment-execution:prepare-attempt`. The existing sandbox request key and a
-server-computed fingerprint bind the transition, retry nonce and selected rail;
-there is no nonce ledger. The same order/intent/attempt locks protect the exact
-predecessor CAS, cancellation and captured-observation fence before the attempt
-owner runs. No order, intent or reservation is created by retry.
-
-Transient codes add no replay comparisons. Native financial intent status may
-still describe the preceding refusal while its replacement attempt is dispatched;
-that durable attempt supplies the processing result.
 
 Evidence (historical record, 2026-11-13):
 

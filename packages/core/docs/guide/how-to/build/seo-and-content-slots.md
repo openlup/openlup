@@ -29,10 +29,11 @@ well as image URLs. Select `noindex` when the descriptor should emit
 `noindex, nofollow`.
 
 Render its `htmlLang`, `title`, ordered `tags` and optional `jsonLd` payload.
-An alternate route produces locale-sorted hreflang links plus `x-default`.
-If the requested default locale is absent from the pair, the first sorted
-route becomes the default. An unresolved alternate produces no hreflang links.
-The alternate social locale tag appears only when you supply its value.
+The ordered tags always include `og:image:width`, `og:image:height` and
+`twitter:site`. An alternate route produces locale-sorted hreflang links plus
+`x-default`. If the requested default locale is absent from the pair, the first
+sorted route becomes the default. An unresolved alternate produces no hreflang
+links. The alternate social locale tag appears only when you supply its value.
 
 ## Assemble structured data
 

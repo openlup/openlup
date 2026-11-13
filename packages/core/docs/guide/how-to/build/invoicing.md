@@ -38,9 +38,18 @@ The host ports cover:
 | `accountHistory` | Owned document history and download authorization |
 
 Keep original request-key bytes, fact revision and provider create identity.
-Money uses safe integer currency minor units. Preserve nullable legacy facts;
-do not fill missing tax or money with invented values. The provider owns fiscal
-numbering; local invoice references and external document numbers are distinct.
+Money uses safe integer currency minor units. Preserve nullable legacy facts; do
+not fill missing tax or money with invented values. The provider owns fiscal
+numbering; local invoice references and nullable external document numbers are
+distinct. Keep ordered canonical line amounts, explicit delivery and discount
+components, dates and references. These contracts supply no currency conversion,
+catalogue reread or zero-tax substitute. Identifier, tax and rounding policy
+references select your fiscal policy; there is no built-in country rule.
+
+Registry evidence carries the identifier scheme, legal name, optional
+registration/address/tax facts, source, fingerprint and observation time. Your
+host validates identifiers, freshness and fallback. Registry evidence does not
+replace checkout facts or become a renewal prerequisite.
 
 ## Run duties and issue jobs
 
@@ -87,25 +96,57 @@ documents to their owning adapter. Policy suppression (`channel_issues` or
 For deliberately unbound composition, `createNativeUnsupportedInvoicePorts()`
 returns host, store and provider ports that return `host_binding_required`,
 `retryable: false` and `effectMayHaveSucceeded: false`. This refusal describes
-only the current call; it cannot settle an earlier unknown outcome.
+only the current call; it cannot settle an earlier unknown outcome or prove
+absence. The factory takes no executor or configuration and inspects no input.
+Keep earlier unknown duties visible for an admitted adapter or operator.
+
+## Adapt existing invoice callbacks
+
+For a callback-based invoice host, the invoicing entry also exports these
+helpers:
+
+| Helper | Supply |
+| --- | --- |
+| `mapInvoiceClaimToProviderSnapshot`, `mapCanonicalIssueLines` | Saved facts and your labels/tax defaults |
+| `allocateChargedGrossTotals`, `allocateDiscountedGrossTotals` | Line gross totals and the charged total |
+| `readInvoicePaymentEvidence` | Payment identity and the selected provider reader |
+| `createFulfillmentHandoffInvoiceHandler` | Host descriptor, parser, policy, request and error callbacks |
+| `withAccountingInvoiceShadowTrigger`, `withAutoDispatchAccountingInvoiceTrigger` | Fulfillment/accounting ports, provider selection, exact key functions and optional resolved channel policy |
+| `runInvoiceCorrectionJob` | Create/provider enable flags, claim, immutable projection, recovery-bridge create, fenced finish/fail and a claim-fence predicate |
+| `createInvoiceReversalHandlers` | Enable flag, per-event adapters and the reversal writer; handlers use a 10-second timeout |
+
+A correction recovery bridge must prove both the parent document and correction
+reference. Local-only requests preserve provider selection, document ID, invoice
+reference, status and replay. If a reversal was requested while the remote issue
+outcome was unknown, late acceptance retains its external identity and
+atomically creates one compensation duty at finalization.
 
 ## Deliver documents
 
 Use `runInvoiceDeliveryJob` in store mode with `store`, `claimOptions`,
 `download`, `filename`, `send` and the enable flags. Construct the PostgreSQL
-store with `projectDelivery` as well as `seller` if it serves both jobs.
-The projector resolves recipient, presentation and original delivery keys after
+store with `projectDelivery` as well as `seller` if it serves both jobs. The
+projector resolves recipient, presentation and original delivery keys after
 lease. Without it the store refuses before leasing. A projection exception
 settles that row as retryable `failed_before_send`; an envelope identity or
-attempt mismatch settles it as non-retryable. Other valid rows can continue.
+attempt mismatch settles it as non-retryable. The checks include document,
+order, provider and projected attempt identity. Document-read exceptions use the
+retryable branch too. Neither branch sends or creates an uncertain receipt.
+Other valid rows can continue; job counters include only returned valid claims.
 
 Callback mode requires claim, validation, download, filename, send and fenced
 finalizers. Bind `terminalFailure` before claiming; its absence skips with
 `host_binding_required`. Retryable pre-send failures use backoff; terminal
-pre-send failures stop reclaiming. Once transport has been entered, `send` must
-return `uncertain` for a timeout or lost acknowledgement. Throwing is permitted
-only before transport entry. An uncertain send never authorizes a blind repeat send,
-and provider acceptance does not prove inbox delivery.
+pre-send failures stop reclaiming. Native retryable settlement carries `{ phase:
+"before_send", retrySeconds }`: whole seconds clamp to 60–86400, with 900 for
+absent or invalid values. Terminal settlement carries `{ phase: "before_send",
+retryable: false }`, parks availability at infinity and leaves failed status and
+the diagnostic visible. Projection failures and job retries use 300 seconds per
+attempt, capped at 3600. Store mode supplies these finalizers. Once transport
+has been entered, `send` must return `uncertain` for a timeout or lost
+acknowledgement. Throwing is permitted only before transport entry. An uncertain
+send never authorizes a blind repeat send, and provider acceptance does not
+prove inbox delivery.
 
 `assertInvoicePdf` validates MIME type, nonempty content, size and PDF signature
 before sending or returning bytes. Its errors are
@@ -118,23 +159,44 @@ and accepts your fallback caption.
 `createInvoiceReadModel` takes optional account-history, artifact-download,
 provider-read and duty-read ports. Missing bindings return `unsupported` with
 `host_binding_required`. Account history checks account/order identity and
-whitelists fields; download resolves authorization before fetching and validating
-PDF bytes. Authorize operator duty reads in your application.
+whitelists fields; download resolves authorization before fetching and
+validating PDF bytes. Authorize operator duty reads in your application.
 `resolveInvoiceDocumentHistory` builds chronological original, correction and
-replacement history from projected columns.
+replacement history from projected columns. Provider readback preserves `found`,
+exact `absent`, `unknown` and `unsupported` as separate outcomes; it supplies no
+default query or storage. Keep HTTP, authentication and service SDKs inside your
+host callbacks.
 
-`syncAcceptedInvoiceDocuments` takes attachment download and recording callbacks.
-In observation mode, also supply targets, observation, status recording and an
-accepted-status predicate. It records status before syncing accepted documents;
-it neither stores blobs nor submits clearance itself.
+Account history is a complete owned projection, with order/parent lineage,
+signed correction totals and currency. Incomplete history is `unknown`. Omit
+buyer payloads, raw diagnostics and signed URLs; your application owns customer
+authentication, operator authorization and retention.
+
+Merge policy receipts, including `recordedAt`, with owed duties. Decide
+suppression before installing facts: a suppressed order gets no local document.
+Operator skips retain actor, reason and original key. Duty readback includes
+capture faults, duty/parent/document identity, state, attempts, closed
+diagnostic code and lease chronology; ready work is owed and processing work is
+claimed. Unsupported duties stay visible. Empty duties or `accountingRequested:
+false` do not prove invoice absence; capture faults remain separately
+observable.
+
+`syncAcceptedInvoiceDocuments` takes attachment download and recording
+callbacks. In observation mode, also supply targets, observation, status
+recording and an accepted-status predicate. It records status before syncing
+accepted documents; it downloads attachments concurrently, records their
+metadata and provider references, and counts per-target failures. It neither
+stores blobs nor submits clearance itself.
 
 `syncInvoicePayoutSettlements` takes `list`, `project` and `settlement.record`.
-Each projected payout item needs a distinct item receipt even when batch and
-payment match. Recorder results of unknown, conflict or unsupported throw;
-they do not count as success. If a recorder returns a receipt already used for
-a different item scope, the helper adds `conflict` / `identity_mismatch` to
-`items` and continues. The recorder has already been called for that item.
-These receipts are bank evidence, not payment-success writes.
+The projection may resolve links through your host. Preserve nullable links; a
+host recorder/resolver must not silently merge item identities. Each projected
+payout item needs a distinct item receipt even when batch and payment match.
+Recorder results of unknown, conflict or unsupported throw; they do not count as
+success. If a recorder returns a receipt already used for a different item
+scope, the helper adds `conflict` / `identity_mismatch` to `items` and
+continues. The recorder has already been called for that item. These receipts
+are bank evidence, not payment-success writes.
 
 ## Capture sandbox invoices
 

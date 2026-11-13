@@ -34,13 +34,21 @@ contracts as the template for your implementation:
 | Payments | Implement `PaymentAdapter` and declare `PaymentAdapterCapabilities` from `@openlup/platform/payments/contracts`. | `runPaymentAdapterConformance` from `@openlup/platform/payments`, with a `PaymentAdapterConformanceSubject` and verification fixtures. |
 | Fulfillment | Declare `FulfillmentCapabilityDescriptor` and implement `FulfillmentDispatchPort`, `FulfillmentObservationPort` and `FulfillmentReadbackPort` from `@openlup/platform/fulfillment/contracts`. Add label, stock or product sync ports only for the capabilities you expose. | `runFulfillmentAdapterConformance` from `@openlup/platform/fulfillment`, with adapter-owned fixtures. |
 
-Find protocol-specific opt-in entries in the installed package's export map.
+Opt-in templates cover email, marketing, payments and fulfillment. Default
+wiring selects none of them. Find their protocol-specific entries in the
+[installed package export
+map](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/package.json).
 Keep their imports in your server composition. The neutral communications and
-browser contracts entries do not export provider factories. Consult the
-[package capability reference](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/AGENTS.md#subpath-maturity)
+browser contracts entries do not export provider factories. Consult the [package
+capability
+reference](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/AGENTS.md#subpath-maturity)
 for maturity.
 
 ### Node email protocol template
+
+The experimental Node-only email template offers exactly three runtime
+functions: guarded transport creation, authenticated webhook handling and
+GET-only delivery reconciliation. Types stay on the neutral entries.
 
 Put the outbound request behind `createGuardedEmailTransport`. Supply a host
 egress policy for every send: it selects the credential, effective recipient and
@@ -51,15 +59,31 @@ returns a suppressed result without sending. A raw transport passed to
 `guardEmailTransport` returns `email_egress_unadmitted`.
 
 Preserve optional message fields, the exact idempotency key and cancellation
-signal. A successful send response means acceptance, not confirmed delivery.
-For delivery observations, authenticate the original webhook bytes before JSON
-parsing and exclude explicitly foreign environments before lookup or writes.
-Use `processEmailObservation` with your lookup and atomic writer. Use
+signal, including an explicitly empty idempotency key. A successful 2xx response
+can have no message ID; it means acceptance, not confirmed delivery. For
+delivery observations, authenticate the original webhook bytes before JSON
+parsing and exclude explicitly foreign environments before lookup or writes. Use
+`processEmailObservation` with your lookup and atomic writer. Use
 `runDeliveryReconciliation` to read existing message IDs and apply observations;
 reconciliation must not send replacement messages. Your host supplies routing,
 scheduling, storage and credential resolution.
 
+For this protocol template, signatures accept bare or `v1,` members and literal
+keys or canonical base64 keys prefixed with `whsec_`. Supply a UTC-seconds
+clock; the timestamp window includes both endpoints at ±300 seconds. This is a
+separate policy from the standard Auth verifier. The receiver defaults to
+non-production. Lookup/apply failures return a fixed HTTP 500 response for
+retry; attempt telemetry cannot overturn a successful observation. Unsupported
+event types, missing message IDs and foreign-environment events return only an
+HTTP disposition and do not converge state. Event metadata stays opaque. Webhook
+and poll observations preserve raw `email.*` event types; the webhook inventory
+only gates admission.
+
 ### Singleton marketing template
+
+The Node factory implements profile, negative-consent, erasure and consent-push
+ports alongside the marketing bridge and refusal-only newsletter port. Inject
+fetch and clock for offline checks; construction installs no route or worker.
 
 Use an account-scoped adapter when the external service shares profile and
 consent state across audiences. For this singleton template, supply private
@@ -73,11 +97,18 @@ The existing marketing bridge uses `MarketingAutomationProviderPort`. Its
 `NewsletterSyncProviderPort` exposes no newsletter capabilities and returns
 `status: "skipped"` with reason `unsupported` for sync and reconciliation.
 
-Write only owned profile fields. Preserve the audience on negative feedback;
-remote subscribed state never grants local permission. Report incomplete
-readback as partial coverage. An audience-scoped erasure request cannot become
-account-wide deletion, and acknowledgement cannot prove completed erasure.
-If deletion readback is unavailable, refuse it with `unsupported`.
+Verify the private profile projection when writing; audience-scoped remote
+consent remains unknown. Write only owned profile fields. Preserve the audience
+on negative feedback; remote subscribed state never grants local permission.
+Report incomplete readback as partial coverage. An audience-scoped erasure
+request cannot become account-wide deletion, and acknowledgement cannot prove
+completed erasure. If deletion readback is unavailable, refuse it with
+`unsupported`.
+
+This singleton template declares account-wide grant effects while local grants
+remain audience-scoped. Check segments, backfills and double opt-in at effect
+time; list-only withdrawal needs proof of safe scope. It supplies no import flag
+or job-control API.
 
 Declare whether a consent grant affects an audience or the whole account. For
 account-wide effects, check every affected consent flow and prove that the
@@ -97,6 +128,9 @@ quarantined until explicit host reconciliation and adapter reconstruction.
 
 Cover success, refusal, malformed or missing evidence, duplicates, out-of-order
 observations and retry or replay with offline fixtures. A passing fixture check
-does not prove account readiness, durable storage atomicity or authorization to
-perform live operations. Follow [adapter conformance](adapter-conformance.md) to
-run the communications example and check your implementation.
+does not prove account readiness, durable storage atomicity, a live integration,
+a release or support tier, or authorization to perform live operations. Follow
+[adapter conformance](adapter-conformance.md) to run the communications example
+and check your implementation. Keep the adapter in your application's source or
+propose it upstream through the [contribution
+process](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/CONTRIBUTING.md#contribute-existing-adopter-code-then-refactor).

@@ -15,9 +15,10 @@ application.
 | `@openlup/platform/marketing/server/postgres` | PostgreSQL acquisition case and evidence ports; install the optional `pg` peer |
 | `@openlup/platform/composition` | `createMarketingContribution` for already-bound operations and host registrations |
 
-The browser entry does not re-export the server entries. Select PostgreSQL
-only in your server composition. The
-[marketing reference](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/README.md#marketing-contracts)
+The Node-only server entry requires no optional database driver. The browser
+entry does not re-export the server entries. Select PostgreSQL only in your
+server composition. The [marketing
+reference](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/README.md#marketing-contracts)
 describes the surrounding package boundary.
 
 ## Bind acquisition and consent
@@ -91,10 +92,18 @@ type imports for the ports. Supply `randomId`, both complete ports and
 `callables` as `marketing` to `createMarketingContribution`, together with your
 version, schema requirements, handlers, schedules and routes.
 
-The acquisition owner supplies export, assessment and erasure/retention. The
-remote owner supplies read-only outcomes and transactional `openAndFence`.
-Use identity's resolved subject and transaction context; your unit of work
-must atomically persist or roll back the fence and local erasure.
+The returned `exportPersonalData`, `assessErasure` and `eraseOrRetain` callables
+are the selected contributor methods themselves.
+
+The acquisition owner supplies record export, content-free evidence, assessment
+and erasure/retention. The
+remote owner supplies read-only outcomes and transactional `openAndFence`. Use
+identity's resolved subject and transaction context; your unit of work must
+atomically persist or roll back the fence and local erasure. Keep preparation
+and assessment free of effects. Identity completes all assessments, including
+subscription vetoes, before erasure/retention. A failed or throwing fence aborts
+the unit of work without a receipt; owner error text is not echoed. Receipt
+replay follows identity's existing path.
 
 Disabled or partial bindings select no contributor and expose null callables;
 missing ports report `OPENLUP_E_PORT_MISSING`. Unresolved ownership in an erasure
@@ -104,6 +113,9 @@ or missing fence throws `marketing_privacy_fence_required`.
 
 Remote profile export remains unavailable. An accepted erasure request retains
 `REMOTE_ERASURE_ACCEPTED_NOT_OBSERVED`: acceptance does not prove deletion.
+Pending, requested, failed and unbound cases retain distinct reason codes.
 Waiting imports and pending targets remain obligations. These bindings perform
 no remote provider call; your application owns that worker and its retries.
-Raw managed questionnaires are outside the acquisition privacy coverage.
+These bindings add no scheduler or persistence schema. Raw managed
+questionnaires and other processors are outside the acquisition privacy
+coverage.

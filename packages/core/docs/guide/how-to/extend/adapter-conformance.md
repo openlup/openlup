@@ -55,7 +55,9 @@ provider payloads or exception details.
 This proves the supplied fixtures only. It does not qualify consent push,
 durable-store atomicity, application wiring or a provider account, and it grants
 no permission to send messages. Inject offline transports: the helper cannot
-sandbox your factory's I/O and does not discover fixtures automatically.
+sandbox your factory's I/O and does not discover fixtures automatically. The
+runner supplies no network client, provider, registry or CLI command; invoke the
+helper from your application code.
 
 For payment and fulfillment runners, see
 [adapter classes and templates](provider-adapters.md#adapter-classes-and-templates).

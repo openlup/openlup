@@ -9,8 +9,9 @@ Install the complete native PostgreSQL catalogue. For maturity, consult the
 [platform capability
 reference](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/release-gates.json).
 The native payment execution and recreation bindings described here use the
-sandbox simulator. Other payment channels retain
-`native_prepared_attempt_store_unsupported`.
+sandbox simulator. Their public query executors are structural and require no
+database-driver types merely to import or compose these factories. Other payment
+channels retain `native_prepared_attempt_store_unsupported`.
 
 Recovery covers one-time purchases and eligible provisional initial subscription
 checkouts, before a live subscription exists. Orders with a non-null
@@ -30,22 +31,37 @@ it separate from actor lanes and close it when finished. Missing privileges
 produce `checkout_recovery_service_required`.
 
 Call `issue({ orderId, rawToken, expiresAt })`. This adapter ignores `expiresAt`
-and sets expiry to order creation plus 24 hours. It locks the order and contact,
-requiring `pending_payment`, a contact and no renewal cycle. Ineligible orders
-or elapsed deadlines produce `checkout_recovery_order_not_recoverable`. The
-contact need not have a customer principal. Store the raw bearer securely and
-exclude it from logs; the token table receives only its SHA-256 hash.
+and sets expiry to order creation plus 24 hours, preserving database
+sub-millisecond precision. It locks the order and contact, requiring
+`pending_payment`, a contact and no renewal cycle. Ineligible orders or elapsed
+deadlines produce `checkout_recovery_order_not_recoverable`. The contact need
+not have a customer principal. Store the raw bearer securely and exclude it from
+logs; the token table receives only its SHA-256 hash.
 
 New service-issued links leave earlier checkout links live. Reusing the same
 hash for the same eligible order returns the original token ID without
-reactivating it. Reusing it for another order produces
-`checkout_recovery_hash_conflict`.
+reactivating it. Actor-issued checkout links also preserve earlier links.
+Renewal payment-case issuance uses its separate rotating issuer, serializing on
+the pending order before revocation and insertion. Reusing a checkout hash for
+another order produces `checkout_recovery_hash_conflict`.
 
 Use `inspect(rawToken)` for presentation. It prioritizes revoked, expired,
 consumed, then active state; consumption maps to `order_not_recoverable`,
 unknown states to `unknown`. `validate(rawToken)` returns context only for an
-active token on a pending order. Paid confirmation may still be available
-through inspection. Payment admission must recheck current facts.
+active token on a pending order. PostgreSQL inspection adds `cadenceDays: number
+| null`: initial subscription mode and cadence come from stored draft/quote
+context and the provisional declaration; one-time cadence is null. Missing
+required or contradictory subscription facts refuse, and browser fields supply
+none of them. Paid confirmation may still be available through inspection.
+Payment admission must recheck current facts. Inspection exposes no customer
+email or arbitrary order reader and cannot execute or settle payment. Rehearsal
+settlement cannot substitute for observations and verified ingress.
+
+The adapter uses static errors: `checkout_recovery_service_required`,
+`checkout_recovery_order_not_recoverable`, `checkout_recovery_hash_conflict`,
+`checkout_recovery_response_invalid` and `checkout_recovery_storage_failed`.
+Driver details, raw credentials and attached causes are excluded. Construction
+installs no schema, grants, reminder producer, mail sender or automatic binding.
 
 ## Schedule reminders and expire abandoned checkouts
 
@@ -68,8 +84,12 @@ Wrap automatic-wave mail with `withCheckoutRecoverySendEvidence(emailPort,
 recovery)` from `@openlup/platform/communications`. The final wave requires a
 confirmed first-wave acceptance receipt for the same delivery profile. A
 processed outbox event alone is insufficient. A captured transport's receipt
-proves acceptance by that transport only. Receipt-write failure reaches the
-caller; preserve event idempotency on retries.
+proves acceptance by that transport only; never reuse its profile to claim
+network delivery. The receipt fingerprint binds event, recipient reference,
+template and delivery profile. The wrapper classifies the send outcome before
+recording confirmed acceptance, leaving other mail methods and deduplication
+unchanged. Receipt-write failure reaches the caller; preserve event idempotency
+on retries.
 
 Use `createCheckoutRecoveryWaveJob` from `@openlup/platform/composition` to bind
 an enabled predicate, job name, lease duration, batch size and lazy `{ ledger,
@@ -86,13 +106,17 @@ Run the other operations separately:
   a `commerce.checkout.expired` event atomically. Order age alone is insufficient.
 - `sweepInitial(limit, olderThan, now)` compensates eligible provisional initial
   checkouts older than the supplied UTC cutoff. Prior payment attempts, external
-  payment references or payment evidence block this sweep. Compensation marks
-  initial abandonment; it does not cancel a live subscription.
+  payment references or payment evidence block this sweep. The selection filters stable contact refusals before applying the limit,
+  then locks and rechecks before compensation. It emits a recovery notice without
+  ordinary cancellation mail. Compensation marks initial abandonment; it does
+  not cancel a live subscription.
 - `reconcile(limit, now)` adds missing expiry events for eligible expired orders
   and marked initial abandonment.
 
 Expiry notices omit the token and token insertion when the order-based
-`recoverySeconds` deadline has elapsed. Earlier links are retained.
+`recoverySeconds` deadline has elapsed. Earlier links are retained. Expose
+`subscriptionActivationAbandoned` in your expired-mail lifecycle reader only for
+the durable sweep marker together with compensated activation.
 
 ## Give an operator a payment link
 
@@ -100,7 +124,9 @@ Bind `createAdminCheckoutPaymentLinkHandler` to `authorizeAdmin`, `respond`,
 `orderPort`, `tokenStore`, `policy` and commercial `validateRecreate`. Use
 `createPostgresOperatorCheckoutLinkStore` with a restricted service executor
 whose calls commit separately, preserving admission and completed effects after
-failure.
+failure. Do not wrap the entire command in one transaction. Example policy
+values are `operatorLifetimeMs: 3600000` and `recoveryWindowMs: 86400000`.
+Construction installs no feature flag, scheduler or operator UI.
 
 Authorize an active human administrator through your operator session; machine
 and control principals refuse. Send a POST body containing `orderId` and
@@ -110,7 +136,8 @@ Pending orders qualify without repricing. For expired orders, supply canonical
 technical-expiry, frozen quote and destination facts and bind
 `validateRecreate`; the callback is optional in the API, so omission skips
 commercial validation. Manual cancellation and renewal cycles do not qualify.
-Refusals include `order_not_found`, `order_paid`, `order_cancelled`,
+Persisted initial-checkout mode selects subscription mail copy without a native
+cycle. Refusals include `order_not_found`, `order_paid`, `order_cancelled`,
 `order_not_recoverable` and `order_changed`.
 
 Set positive `operatorLifetimeMs` and `recoveryWindowMs` in `policy`, and use
@@ -120,9 +147,10 @@ returns `order_not_recoverable` without inserting a token.
 
 The command records admission, revokes same-order links, mints, optionally
 queues email, then records the outcome and last stage: `none`, `revoked`,
-`minted` or `email_queued`. A failed mint after revocation can leave no live
-predecessor. Concurrent operators can leave multiple live links; a later
-operator command revokes them, while service/customer issuance preserves them.
+`minted` or `email_queued`. Failed admission changes no token. A failed mint
+after revocation can leave no live predecessor. Concurrent operators can leave
+multiple live links; a later operator command revokes them, while
+service/customer issuance preserves them.
 
 `copy` is the default and returns the raw token with `emailQueued: false`.
 `email` queues `commerce.checkout_recovery` with `operatorIssued: true`, source
@@ -139,10 +167,13 @@ executor. PostgreSQL derives ownership from `auth.uid()`.
 The POST body accepts exactly `{ orderId }` or `{ subscriptionId }`. For an
 initial subscription checkout, use the provisional `activationId` as
 `subscriptionId`. Selection uses the exact owned pending order or newest
-eligible declaration order. Flag and session checks precede port construction.
+eligible declaration order. An initial declaration or persisted subscription
+checkout context selects subscription presentation without admitting renewals.
+Flag and session checks precede port construction.
 
-Set `lifetimeMs` explicitly, up to 24 hours. The deadline is order creation plus
-that lifetime, and the database rechecks it after blocking writes. A successful
+Set `lifetimeMs` explicitly, up to 24 hours (for example, `86400000`). The
+deadline is order creation plus that lifetime, and the database rechecks it
+after blocking writes, rolling them back if the deadline elapsed. A successful
 start returns a fresh raw token for navigation and sends no mail. An elapsed
 deadline or terminal checkout returns `recoverable: false` with `fresh_checkout`
 or `customer_account` fallback. Earlier checkout tokens remain live until
@@ -155,21 +186,24 @@ For a buyer's “email me a payment link” action, bind
 expired cookies produce `continuation_missing` before persistence is
 constructed; body identifiers and recipient addresses supply no authority.
 
-Configure the buyer port's `lifetimeMs` and positive `sendBucketMs`. Each bucket
-admits one `checkout_recovery:buyer:<order>:<bucket>` event and token
-atomically; a duplicate inserts neither. Later buckets preserve earlier links.
-`{ sent: true }` means queued or deduplicated; only the port's `queued`
-identifies a new insertion. A terminal mint race reports
-`order_not_recoverable`; other mint failures report `mint_failed`.
+The service issuer locks the order and admits pending non-renewal checkout only.
+Configure the buyer port's `lifetimeMs` and positive `sendBucketMs` (for
+example, `86400000` and `600000`). Each bucket admits one
+`checkout_recovery:buyer:<order>:<bucket>` event and token atomically; a
+duplicate inserts neither. Later buckets preserve earlier links. `{ sent: true
+}` means queued or deduplicated; only the port's `queued` identifies a new
+insertion. Neither response proves transport delivery. A terminal mint race
+reports `order_not_recoverable`; other mint failures report `mint_failed`.
 
 Route all three reminder producers through
 `createOutboxCheckoutRecoveryEmailHandler`, with the appropriate scoped
 `authorize(eventId, claimToken)` gate: waves, operator store or buyer port. Each
-gate checks its own event and authority. Buyer events carry `buyerRequested:
-true` and source `buyer_payment_link`. They bypass the fresh-payment-session
-courtesy deferral, while missing or paid orders still suppress mail. Bind
-recipient resolution, localization and transactional transport in your
-application.
+gate checks its own event and authority. The operator gate requires its exact
+token to remain live and bound to the claimed order and client; it cannot
+replace the automatic-wave gate. Buyer events carry `buyerRequested: true` and
+source `buyer_payment_link`. They bypass the fresh-payment-session courtesy
+deferral, while missing or paid orders still suppress mail. Bind recipient
+resolution, localization and transactional transport in your application.
 
 ## Inspect a link before showing recovery controls
 
@@ -195,9 +229,10 @@ Without it, clients retain fallback behavior and payable orders need not carry
 `recoveryKind`. Expired tokens may expose validated expired context, but cannot
 resume a pending replacement. Only `active` and `order_not_recoverable`
 inspection states permit continuation; revoked, used or unknown authority
-refuses before descendant reads. Original and latest reads must match the
-token's client. An initial subscription replacement requires a compensated
-declaration.
+refuses before descendant reads. The order reader returns the bound original or
+the root's latest-created descendant; both must match the token's client. An
+initial subscription replacement requires a compensated declaration; inspection
+reopens neither its predecessor nor a live subscription.
 
 Include `resolve_active_payment` separately to invoke the injected payment
 resolver. If no resolver is bound, that opt-in returns `awaiting_provider`.
@@ -229,6 +264,9 @@ Wrap draft persistence with `createPostgresExpiredCheckoutDraftPort`; use
 `checkout-recovery-recreate:<sourceOrderId>`. Replay preserves the accepted
 draft when only quote identity changed. Preparation allows one immediate
 replacement, including replay after compensation, and never reparents it.
+Preparation locks source and replacement, checking payment evidence and the
+recovery deadline after waiting for locks. Exact linked replay precedes fresh
+admission checks.
 
 Bind `createPostgresExpiredCheckoutRuntime` to a dedicated READ COMMITTED lane.
 Bind `verifyPriorPayment`, reservation and payment callbacks to its executor,
@@ -237,10 +275,15 @@ and the native simulator. Set `stockSourceKey`, `channelKey` and
 `reservationLifetimeMs`. Use `checkoutRecoveryExecutionFingerprint` for
 execution identity. Keep remote dispatch outside this transaction.
 
-The runtime locks source and replacement and rechecks prior payment before stock
+The runtime locks the source order before the replacement and source intent,
+then rechecks prior payment before stock
 or payment writes, even with an existing replacement intent. Racing source
 success returns `paid` and triggers compensation. Recorded buyer snapshots are
-preserved without inventing an absent `invoiceBuyerSnapshot` key.
+preserved without inventing an absent `invoiceBuyerSnapshot` key. A nonempty
+runtime snapshot takes precedence; recorded empty objects remain explicit. When
+there is no snapshot, first-duty invoice capture can select the owned billing
+profile/address and then the marked shipping fallback. Later profile edits do
+not change captured buyer facts.
 
 Initial recreation makes a new provisional declaration, leaving its predecessor
 compensated and live subscriptions untouched. It creates no renewal cycle. Use
@@ -248,7 +291,10 @@ compensated and live subscriptions untouched. It creates no renewal cycle. Use
 unstarted cleanup; dispatched or uncertain payments block cancellation. A
 compensated replacement keeps its lineage and permits no sibling. Handle
 `ExpiredCheckoutRecoveryError.reason`: `paid`, `order_changed` (including stock
-refusal), `unavailable` or `execution_failed`.
+refusal), `unavailable` or `execution_failed`. Other purchase profiles need
+their own admitted runtime port. These factories supply no route, UI or token
+issuer and establish no real-service qualification. A live subscription is
+created only by a later successful captured-payment activation.
 
 ## Show payment recovery guidance from one snapshot
 
@@ -256,12 +302,27 @@ Compose `createPostgresPaymentRecoveryGuidancePort` with a service executor and
 `normalizeSandboxPaymentRecoveryEvidence` from `@openlup/platform/payments`. Use
 a fresh READ COMMITTED statement: one
 `commerce_checkout_payment_guidance_snapshot` call reads status, provenance,
-authority and evidence without payment writes.
+authority and evidence without materializing destinations, issuing tokens or
+changing payment state. A draft receipt and frozen checkout context establish
+one-time provenance; an initial subscription also needs its declaration.
+Renewal-cycle orders are ineligible.
+
+History probes 101 attempts and returns at most 100, newest first. Each attempt
+probes 33 evidence members and admits at most 32. Overflow, contradictory proof
+or an oversized envelope drops that attempt's whole proof set and marks history
+incomplete. Observation records and truth/readback source envelopes are limited
+to 8,192 bytes. Only correlated identity/outcome fields are projected; raw
+source envelopes, request keys, token hashes and opaque authorization/method
+references are excluded. Native states map to the Core attempt vocabulary and
+Core derives the public actions. These observations establish neither
+method-specific advice nor a reusable payment method.
 
 Call `readAuthorizedPaymentRecovery` with a validated bearer or verified
 continuation claims. Cookie claims bind journey/order/client/intent and must
 match the snapshot's current attempt and rail. Token authority is rechecked in
-the snapshot. Fall back to the legacy reader for missing authority, read failure
+the snapshot against the exact order/client, expiry, revocation and pending
+state; earlier validation cannot bypass it. The token dependency needs only
+`validate`. Fall back to the legacy reader for missing authority, read failure
 or malformed data; a snapshot with dead authority carries null guidance.
 
 Opt in with `X-Payment-Recovery-Guidance: 1` and preserve the legacy response
@@ -272,7 +333,9 @@ Render returned actions without inferring method-specific advice: native
 observations prove generic refusal, with method, operation and advice unknown.
 Exactly linked capture suppresses refusal guidance and `projectGuidance` before
 settlement converges, without declaring the order paid. Guidance authorizes no
-new payment.
+new payment. Supply `projectGuidance` only to preserve your existing display
+fallback; it cannot turn observed success into refusal advice. Exactly linked
+capture suppresses advice even when its attempt falls outside returned history.
 
 ## Retry payment with a recovery token
 
@@ -288,26 +351,32 @@ follow the recovery root's latest order: inspection must establish continuation
 authority and original ownership. Expired inspection alone cannot pay a
 replacement; use the separate recreation command.
 
-Payment retry uses the existing order, intent and stock reservation. Under
-order/intent locks, native admission rechecks token expiry/revocation, checkout
-provenance, money and captured observations. A capture blocks another dispatch
-before settlement converges. Repeating the same key and fingerprint returns its
-attempt; changed method facts under the same key refuse. After a terminal
-failure, use a fresh per-click key to select another synthetic method.
+Payment retry uses the existing order, intent and stock reservation. The native
+reader's `pending` projection means a created intent; the attempt owner fences
+unresolved dispatch under locks. Under order/intent locks, native admission
+rechecks token expiry/revocation, checkout provenance, money and captured
+observations. A capture blocks another dispatch before settlement converges.
+Repeating the same key and fingerprint returns its attempt; changed method facts
+under the same key refuse. After a terminal failure, use a fresh per-click key
+to select another synthetic method.
 
 Handle `CheckoutRecoveryPayError.kind`: `conflict` includes dead authority and
 unrecoverable orders; `upstream_unavailable` includes in-flight or uncertain
 execution. Known payment refusal remains a recoverable `failed` result. Invalid
 local method facts roll back before dispatch, allowing correction. Money results
-come from observations and verified ingress, never from a browser result.
+come from observations and verified ingress, never from a browser result or
+rehearsal shortcut. The sandbox owner records dispatch atomically with attempt
+creation, without a separate external preparation/finalization phase.
 
 Inject hold reads, method classification, offered methods and first-purchase
 evidence. A one-time order without a subscription is treated as a first
-purchase; subscription context needs your first-purchase lookup. A matching hold
-withholds only orders created strictly after it (`payment_method_withheld`).
-Recreated orders and foreign-root chains bypass holds. Failed reads, unknown
-first-purchase evidence or holding every offered method permit payment. Reuse
-this policy for fresh inline retries.
+purchase; subscription context needs evidence that it was never live from your
+first-purchase lookup. A matching hold withholds only orders created strictly
+after it (`payment_method_withheld`). Recreated orders, foreign-root chains and
+renewal cycles bypass holds. Your application owns control keys, the
+offered-method policy and the hold trigger. Failed reads, unknown first-purchase
+evidence or holding every offered method permit payment. Reuse this policy for
+fresh inline retries.
 
 ## Retry the exact failed attempt inline
 
@@ -337,13 +406,19 @@ without a method-wide prohibition; switching methods requires `change_method`.
 `checkoutInlineRecoveryTransitionKey(expectedPaymentAttemptId)` yields
 `checkout-inline-recovery:<expectedPaymentAttemptId>`. Keep the retry nonce
 (`retryRequestId`) and selected rail unchanged when retrying a lost response.
-The native owner compares the exact predecessor under locks and fences
+The native prepare key appends `:payment-execution:prepare-attempt`; its request
+key and server-computed fingerprint bind transition, nonce and rail without a
+separate nonce ledger. The native owner compares the exact predecessor under
+locks and fences
 cancellation and capture. Retry creates no order, intent or reservation.
 
 Replay binds the replacement to the transition, nonce and rail, without
 redispatch or fresh execution/hold policy. Method input adds no comparison.
 Failed replacements return failure; live replacements permit action readback or
-safe polling when readback lags.
+safe polling when readback lags. Native intent status may still describe the
+previous refusal while its replacement is dispatched; the durable replacement
+attempt supplies the processing result. Transient codes add no replay
+comparison.
 
 On every successful response, write the returned `setCookie` as the response's
 `Set-Cookie` header and expose only `result` as the response body. The new

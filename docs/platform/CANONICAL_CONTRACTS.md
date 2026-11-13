@@ -308,38 +308,13 @@ freezes these behaviors using the existing three routines.
 
 Moved to [Compose a provider adapter](../../packages/core/docs/guide/how-to/extend/provider-adapters.md#provider-adapters).
 
-Domain code depends on a port, not on a provider SDK. An adapter translates the
-provider protocol, verification evidence, and failure facts into the port's
-neutral contract. It must carry the platform's identity fields without changing
-their meaning and expose declared capabilities rather than relying on provider
-name checks in domain policy.
-
-An adapter needs conformance coverage for success, refusal, malformed or missing
-evidence, duplicate delivery, out-of-order delivery, and retry/replay. Reference
-fixtures demonstrate these behaviours without live provider access; they do not
-prove a provider integration, release, or support tier.
-
 ### Adapter classes and example templates
 
 Moved to [Compose a provider adapter](../../packages/core/docs/guide/how-to/extend/provider-adapters.md#adapter-classes-and-templates).
 
-The marketing example also implements
-`MarketingAutomationProviderPort` and a refusal-only `NewsletterSyncProviderPort`.
-See the [communications import](PLATFORM_PACKAGE_REFERENCE.md#communications-import)
-and the [marketing adapter](#opt-in-singleton-marketing-adapter).
-
-| Class | Shipped example subpaths |
-| --- | --- |
-| Communications | `@openlup/platform/communications/resend`, `@openlup/platform/communications/klaviyo` |
-| Payments | `@openlup/platform/payments/stripe`, `@openlup/platform/payments/tpay` |
-| Fulfillment | `@openlup/platform/fulfillment/omnipack` |
-
-Default wiring includes no example adapters. For communications, extend the class's
+For communications changes, extend the class's
 [tests](../../packages/platform/test/communications/), including refusal
-behaviour, without live provider access. Keep secrets transient and host-supplied
-at call time, never in source, fixtures or logs. Keep the adapter in your own
-source or propose it upstream through
-[contribute existing adopter code, then refactor](../../CONTRIBUTING.md#contribute-existing-adopter-code-then-refactor).
+behaviour, without live provider access.
 
 Evidence (historical record, 2026-11-13):
 
@@ -362,32 +337,6 @@ This surface activates no provider or reference route.
 
 Moved to [Compose a provider adapter](../../packages/core/docs/guide/how-to/extend/provider-adapters.md#node-email-protocol-template).
 
-`communications/resend` is an experimental Node-only subpath.
-It exports exactly three functions: guarded transport creation, authenticated
-webhook handling and GET-only delivery reconciliation. Types remain on the existing neutral entries.
-The neutral communications and browser contracts entries expose no vendor factory.
-
-Every `.send` enters `createGuardedEmailTransport` before the internal POST.
-The host supplies the policy and environment tag name; only the validated
-credential, effective recipient and environment tag reach the provider. Missing,
-throwing, malformed or blocked policy causes zero POST; drop is terminal
-`ok + suppressed` with zero POST. Optional payload keys, exact idempotency-key
-bytes (including empty), abort and 2xx acceptance without an ID retain the
-reference transport shapes. Acceptance is not delivery.
-
-The webhook authenticates the original string/UTF-8 bytes before JSON parsing,
-using the provider bare or `v1,` signature-member dialect, literal or canonical
-`whsec_` keys, a UTC-seconds clock and an inclusive ±300-second window. This
-policy is separate from the standard Auth verifier's normalization and grammar.
-Explicit foreign environment tags stop before lookup or convergence; the
-receiver defaults to non-production. Admitted events use `processEmailObservation`:
-lookup/apply errors retry with 500, while attempt telemetry cannot overturn
-success. Unsupported or missing-ID events are ignored. Event metadata is opaque.
-Webhook and poll observations retain the raw `email.*` provider event type;
-the webhook event inventory is an admission gate only.
-The webhook returns a fixed 500 body on processing failure and only an HTTP
-disposition for unsupported, missing-ID or foreign events.
-
 Evidence (historical record, 2026-11-13):
 
 Reconciliation delegates to `runDeliveryReconciliation`, with internal GET reads
@@ -402,18 +351,6 @@ are protocol-only; account verification remains pending.
 ### Opt-in singleton marketing adapter
 
 Moved to [Compose a provider adapter](../../packages/core/docs/guide/how-to/extend/provider-adapters.md#singleton-marketing-template).
-
-`communications/klaviyo` exposes one Node factory implementing the neutral
-profile, negative-consent, erasure and consent-push ports, plus the existing
-marketing bridge and refusal-only newsletter port. Fetch and clock are injectable.
-Nothing installs a route or worker.
-
-Profile writes verify the private projection. Scoped remote consent is unknown.
-
-The push capability declares account-wide grant effects while each local grant
-remains audience-scoped. Grant admission includes segments, backfills and DOI
-at effect time. List-only withdrawal requires proven-safe scope. There is no
-import flag or job-control API.
 
 Evidence (historical record, 2026-11-13):
 

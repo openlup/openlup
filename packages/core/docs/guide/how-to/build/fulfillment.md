@@ -57,11 +57,13 @@ Call `createCapturedFulfillmentAdapter` with `providerRef`, explicit
 
 For each request, call `dispatch.prepare(request)`, require a `prepared` result,
 then pass its evidence to `dispatch.dispatch(request, evidence)`. Fingerprints
-cover the complete command, sort object keys and retain array order. A changed
-or unknown request, skipped preparation or mismatched evidence refuses with
-`not_dispatchable` before submission. Invalid provider IDs throw
-`captured_fulfillment_provider_invalid`; duplicate keys or invalid captures throw
-`captured_fulfillment_command_invalid` during construction.
+cover the complete command, sort object keys by code unit and retain array
+order. Use a lowercase opaque `providerRef`; accepted external references must
+also satisfy the opaque-ID grammar. A changed or unknown request, skipped
+preparation or mismatched evidence refuses with `not_dispatchable` before
+submission. Invalid provider IDs throw `captured_fulfillment_provider_invalid`;
+duplicate keys or invalid captures throw `captured_fulfillment_command_invalid`
+during construction.
 
 Results are copied and replay does not add another submission.
 `readSubmissionCount()` counts distinct synthetic submissions, including captured
@@ -99,15 +101,19 @@ executor, eligibility `policy` and `orderMode`, optionally a destination reader,
 and bind it only behind operator authorization. It refuses missing destination
 facts with `native_fulfillment_destination_unavailable`. Customer order history
 omits operation payloads. Your host owns retention and cleanup, including backup
-copies; these commands install no automatic purge.
+and transfer copies; these commands install no automatic TTL or purge. Replay
+preserves the original receipt.
 
 ## Record handoff and arrival accurately
 
 Handoff accepts packed or labelled parcels and consumes only frozen purchase or
 renewal reservation IDs, committing stock effects and audit together. Inspect
 `reservationDisposition` and `consumedReservationCount`; absent recorded
-reservations are reported as `reservations_not_recorded`. Terminal handoff and
-recorded-command replay do not consume stock again. Other states refuse with
+reservations are reported as `reservations_not_recorded`. Treat missing historical
+stock or tracking facts as an authorized manual-resolution case. Terminal handoff and
+recorded-command replay do not consume stock again. An exact recorded command
+also replays after an exception and relabel without changing status, timestamps
+or audit. Other states refuse with
 `commerce_fulfillment_handoff_requires_label`.
 
 If invoicing follows handoff, wrap the committed command port with

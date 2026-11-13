@@ -527,12 +527,8 @@ names the platform's core domains, and the public binding registers none.
 
 Moved to [Run an adapter conformance check](../../packages/core/docs/guide/how-to/extend/adapter-conformance.md#run-the-example).
 
-This is supplied-fixture proof, not exhaustive conformance, consent-push
-qualification, durable-store atomicity, host wiring, provider-account readiness
-or permission to send real messages. Keep the existing owner suites for those
-boundaries. The runner itself adds no network client, provider, registry, CLI
-command or automatic fixture discovery. Adapter factories must inject offline
-transports; the helper cannot sandbox an arbitrary factory's I/O.
+Keep the existing owner suites for exhaustive conformance, consent push,
+durable-store atomicity and host wiring.
 
 Evidence (historical record, 2026-11-13):
 
@@ -587,9 +583,8 @@ current core, outbox and platform code exports and refuse missing evidence.
 
 Moved to [Take ownership of a copied component or page](../../packages/core/docs/guide/how-to/extend/eject-source.md#check-for-a-seam-first).
 
-The
-[adopter recipe](adopter-kit/README.md#adopt-or-upgrade-a-package) owns the comparison
-and extension-disposition steps.
+The [adopter recipe](adopter-kit/README.md#adopt-or-upgrade-a-package) owns the
+comparison and extension-disposition steps.
 
 ## Package architecture
 
