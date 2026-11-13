@@ -1638,6 +1638,8 @@ array, including unissued reservations, must remain a canonical content-equal
 prefix of every later array. Only appends are allowed; editing, deleting or
 inserting among those slots refuses. Issued bindings and their slots retain their content and array positions, even
 while the class is unsealed. There is no slot-count maximum or second class key.
+The production class is sealed from the 0.39.0 set preparation; later slots only
+append after its existing slots.
 Slot timestamps come from their paths and strictly increase in array order. A
 new slot's time must exceed every dated migration in its introduction base,
 including qualified identities; later migrations do not invalidate issued slots.

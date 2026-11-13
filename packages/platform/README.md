@@ -2253,12 +2253,21 @@ Invoicing exports explicit `createInvoiceServices`, `InvoiceServices` and inert
 SQL wrappers persist it for eligible obligations. `InvoiceSellerRevision` is also
 available from the type-only contracts entry. Legacy obligations keep fallback.
 
-For the prepared `0.38.0` set, read the [adjacent-release migration and known
-limitations](CHANGELOG.md#0380) before selecting optional services. This set adds
-subscription lifecycle closure, notice production, opt-in winback, retry timing,
-timed resume and classic package editing, plus coexisting checkout recovery
-links and package discovery metadata. Apply the complete selected migration
-catalogue before composing the new native bindings. Experimental
+For the prepared `0.39.0` set, read the [adjacent-release migration and known
+limitations](CHANGELOG.md#0390) before selecting optional services. This set
+adds checkout recovery inspection, expired initial-checkout recreation, reminder
+waves with reservation-backed expiry, checkout payment guidance, sandbox token
+payment and inline retry, and customer and operator payment-link entry points;
+customer account history, profile edits, billing profiles, invoice buyer inputs
+frozen on first native duty capture, a saved address book with future-delivery
+selection and scoped preferences; native operator parcel replacement and
+cancellation with private parcel contacts and a parcel status fence, and
+operator shipment commands; human operator admission, unpaid cancellation
+commands and owned return requests and decisions; and an opt-in sized
+future-plan editor. A timed pause now shifts the next cycle by its length, and
+timed auto-resume no longer stays paused after a delivered paid first order.
+Apply the complete selected migration catalogue before composing the new native
+bindings. Experimental
 marketing uses browser-safe `./marketing`, type-only browser-safe
 `./marketing/contracts`, and Node-only `./marketing/server` and
 `./marketing/server/postgres`. Marketing contributions and bindings remain
@@ -2301,7 +2310,7 @@ Adopters must not activate unselected or unready invoicing; installation and
 inert contributions register no runner, worker, route or schedule.
 M06 managed-host proof classes remain pending in the
 [M06 parity ledger](https://github.com/openlup/openlup/blob/main/docs/platform/plans/oss-m06-stock-reservations-delivery.md#parity-pending-rows).
-Size comparison uses the published `0.37.0` tarball. Preparation and offline
+Size comparison uses the published `0.38.0` tarball. Preparation and offline
 adapter evidence grant no publication or provider-account certification.
 
 Longer module recipes live in the [platform package reference](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md).
@@ -2431,7 +2440,7 @@ handler schemas and recognize
 `CustomerSavedAddressRefused` with code `address_in_use` as a mutation conflict.
 `createShippingBindings` accepts an explicitly selected complete native book and
 mutation port; an unbound or incomplete native writer still refuses. Construction
-mounts no route, and starter pages remain separately bound work.
+mounts no route.
 
 Save updates an owned ID, reuses the canonical match, or inserts. Defaults clear
 only the same customer and exact kind (`shipping`, `billing`, `both` are distinct).
@@ -2464,7 +2473,7 @@ The finite connected-store profile carries exact saved rows and event history,
 restores addresses after clients and before subscription pointers, and replays
 without rewriting them. The smaller compatible-row copier remains a separate
 closed profile. Delivery/payment preferences, checkout hints and billing-profile
-persistence are described below; browser journeys remain separately bound work.
+persistence are described below.
 
 
 ### Saved subscription shipping selection
@@ -2516,9 +2525,8 @@ Saved contact, tax and free-text copied into a destination remain personal data.
 Finite connected transfer carries the saved rows, pointers, immutable destination
 rows and retained events under their existing classifications. Address-book
 erasure does not erase immutable destination copies; this port adds no
-export/erasure operation for destination rows. Starter selection pages and routes
-remain separately bound work. The new SQL routine grants EXECUTE only to
-`service_role`; PUBLIC and browser roles remain closed.
+export/erasure operation for destination rows. The new SQL routine grants
+EXECUTE only to `service_role`; PUBLIC and browser roles remain closed.
 
 
 ### Customer delivery and payment preferences
@@ -2580,7 +2588,7 @@ them after their clients and replay leaves them unchanged. Legacy installations
 are capture sources. The smaller compatible-row copier is unchanged; a managed
 source with nonempty preferences has no typed projection and refuses as an
 unsupported relation. Restore does not apply defaults, select payment instruments
-or activate a target. Starter pages and routes remain separately bound work.
+or activate a target.
 
 ### Customer billing profiles and frozen invoice buyers
 
@@ -2635,7 +2643,7 @@ buyer capture cannot change an existing request, issued artifact or replay;
 a later invoice request sees the new profile. Existing historical duties and installed
 facts without a buyer component remain unchanged. This is no fiscal provider
 qualification, invoice rewrite or automatic checkout application: checkout hints
-remain explicitly unapplied. Starter billing pages belong to a later binding.
+remain explicitly unapplied.
 
 Profiles (contact, tax/company identity, verification provenance and source),
 events and frozen buyers are personal data. Register

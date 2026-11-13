@@ -2,6 +2,37 @@
 
 Releases moved verbatim out of the packed `CHANGELOG.md`, which keeps the current release and the two previous ones.
 
+## [0.36.0]
+
+- Publishable on the npm `latest` dist-tag as `0.36.0`, from tag
+  `openlup-platform-v0.36.0`.
+
+Add the existing neutral partner-acquisition schemas, type-only port and unchanged
+three-operation PostgreSQL factory through the existing marketing entries.
+Partners retains domain/data ownership; host routing, authorization and runtime
+selection stay separate. Pipeline `closed_won` does not create a customer or
+marketing consent. Partner privacy export/erasure remains unavailable.
+
+Migration: before, partner submit/list/transition required reference-source
+contracts and store imports; after, consumers can use the existing marketing,
+marketing/contracts and marketing/server/postgres exports against a complete
+compatible source catalogue. No SQL, grants, npm export subpaths or automatic
+route activation change. Sparse npm SQL assets alone are not a complete install.
+
+- The public reference partner schemas, neutral ports and PostgreSQL factory
+  delegate to the existing marketing package exports. Rich managed contracts and
+  host authorization, drain, environment selection and connection ownership are
+  unchanged. Frozen R1 expectations remain unchanged.
+- The shared isolated consumer adds the actual public default-binding journey
+  against its existing native catalogue fixture, covering original persisted
+  replay and cache/close/reopen without an injected factory.
+
+Migration: before, reference neutral schemas, ports and the PostgreSQL store had
+local copies; after, the same reference import paths delegate to the existing
+`@openlup/platform/marketing` schemas, `marketing/contracts` types and
+`marketing/server/postgres` factory with unchanged observable contracts. Install
+no new SQL or grants for this delegation. Existing compatible adopter SQL remains
+owned by that adopter; this source refactor grants no publication or activation.
 ## [0.35.0]
 
 - Publishable on the npm `latest` dist-tag as `0.35.0`, from tag

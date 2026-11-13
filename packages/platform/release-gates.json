@@ -968,16 +968,16 @@
       "maxFiles": 4211
     },
     "docs": {
-      "maxPackedBytes": 92404,
+      "maxPackedBytes": 99222,
       "maxFiles": 10
     },
     "maxPackedBytes": 3089709,
     "maxUnpackedBytes": 14804413,
     "maxFiles": 4435,
-    "capReason": "Measured before the billing cap adjustment: code 2,464,233 B, documentation 90,592 B and 4,348 files; crossed caps use 2% headroom. Packed/unpacked caps and the released baseline are retained.",
+    "capReason": "Measured before the billing cap adjustment: code 2,464,233 B, documentation 90,592 B and 4,348 files; crossed caps use 2% headroom. Packed/unpacked caps and the released baseline are retained. The docs class measured 97,276 gzip bytes on the 0.39.0 set tree (release notes and package guides); its cap is measured times 1.02, rounded up.",
     "baseline": {
-      "version": "0.37.0",
-      "packedBytes": 2791358
+      "version": "0.38.0",
+      "packedBytes": 2862024
     },
     "browserEntries": {
       "./catalog/contracts": 4096,
