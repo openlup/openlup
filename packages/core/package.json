@@ -49,6 +49,7 @@
     "README.md",
     "SECURITY.md",
     "docs/SUBSCRIPTION_ENGINE.md",
+    "docs/guide/**",
     "release-gates.json"
   ],
   "scripts": {

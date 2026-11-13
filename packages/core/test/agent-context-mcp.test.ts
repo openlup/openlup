@@ -49,6 +49,22 @@ async function toolError(cwd: string, message: unknown, expected: RegExp, hooks:
 }
 
 describe("installed context MCP protocol", () => {
+  it("searches and reads a nested installed guide page with the existing wire shape", async () => {
+    const root = fixture();
+    const file = `${prefix}docs/guide/nested/page.md`;
+    mkdirSync(join(root, prefix, "docs/guide/nested"), { recursive: true });
+    writeFileSync(join(root, file), "# Guide discovery\nRead this installed guide page.\n");
+    const response = await result(root, search({ task: "guide discovery" }));
+    const structured = response.result.structuredContent;
+    expect(Object.keys(structured).sort()).toEqual(["hits", "packages", "scans", "version"]);
+    expect(structured.hits).toHaveLength(1);
+    expect(structured.hits[0]).toMatchObject({ file, title: "Guide discovery", reason: "installed docs/guide/nested/page.md" });
+    expect(Object.keys(structured.hits[0]).sort()).toEqual(["end", "file", "packageName", "reason", "score", "start", "title"]);
+    const readResponse = await result(root, read(file, { startLine: 1, endLine: 2 }));
+    expect(readResponse.result.isError).toBeUndefined();
+    expect(readResponse.result.content[0].text).toContain("1: # Guide discovery\n2: Read this installed guide page.");
+  });
+
   it.each([["2025-06-18", "2025-06-18"], ["2024-11-05", "2024-11-05"], ["2025-03-26", "2025-06-18"], ["2099-01-01", "2025-06-18"]])("negotiates %s to %s and reads its own installed server version", async (version, expected) => {
     const response = await result(temporaryRoot(), initialize(version));
     expect(response).toMatchObject({ jsonrpc: "2.0", id: 1, result: {
