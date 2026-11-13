@@ -26,6 +26,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
+import { env as processEnvironment } from "node:process";
 import { pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { PACKAGES_CONFIG_PATH, RELEASE_VERSION, SET_VERSION, parsePackagesConfig, releaseVersionAbove, type PackageEntry, type PackagesConfig } from "./package-manifest-policy.ts";
@@ -82,7 +83,7 @@ export function addReleaseSection(file: string, text: string, version: string, t
 
 /** npm's own CLI, as `npm run` names it, run by this Node binary rather than found through PATH. */
 function npmCli(args: string[]): string {
-  const cli = process.env.npm_execpath;
+  const cli = processEnvironment.npm_execpath;
   if (!cli || !isAbsolute(cli)) throw new Error("release:bump reads the registry through npm: run it as npm run release:bump");
   return execFileSync(process.execPath, [cli, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024 });
 }
