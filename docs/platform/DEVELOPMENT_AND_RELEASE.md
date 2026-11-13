@@ -262,12 +262,14 @@ owns release permissions, setup, detailed refusals and recovery. The sequence is
    changelog's version section below a fresh Unreleased heading. It assembles the
    legacy body first, then validated package fragments in byte order of path,
    and deletes only consumed fragments after successful planning and writes,
-   then stages those deletions and guide writes so preparation can read
+   then stages those deletions and documentation writes so preparation can read
    the Git inventory; historical sections stay byte-identical. The bump assembles
    `packages/core/docs/guide/upgrade/v<major>-<minor>-<patch>.md` from the consumed
-   fragments and API diff; the maintainer's agent edits that page and the listed guide pages in
+   fragments and API diff, listing added, removed and changed declarations;
+   the maintainer's agent edits that page and the listed guide pages in
    the same PR. The bump also re-pins the guide's repository links and refreshes
-   its generated regions. If no core release tag is an ancestor of HEAD, the listing
+   its generated regions, and re-pins released repository links in each publishable
+   package's `AGENTS.md` and `README.md`. If no core release tag is an ancestor of HEAD, the listing
    and page say that the previous release could not be determined. Each packed package
    CHANGELOG keeps the current release and the two previous ones; older sections
    move verbatim to its non-packed `CHANGELOG-HISTORY.md`. Add notable-change notes under

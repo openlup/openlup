@@ -412,6 +412,24 @@ export function planGuideUpdates(repositoryRoot: string, packageRoot: string, ve
   return { writes, violations };
 }
 
+/** Plan package entry points separately so guide-only regeneration keeps its existing scope. */
+export function planPackageDocumentationUpdates(repositoryRoot: string, version: string): Array<[string, string]> {
+  const config = readJson<{ packages: Array<{ directory: string; publish: boolean }> }>(repositoryRoot, "config/openlup-packages.json");
+  const writes: Array<[string, string]> = [], violations: string[] = [];
+  for (const { directory } of config.packages.filter(({ publish }) => publish)) {
+    for (const file of ["AGENTS.md", "README.md"]) {
+      const path = resolve(repositoryRoot, directory, file);
+      if (!existsSync(path)) continue;
+      const original = readFileSync(path, "utf8");
+      const source = syncGeneratedRegions(original, `${directory}/${file}`, repositoryRoot, true, violations, version)
+        .replace(/(https:\/\/github\.com\/openlup\/openlup\/(?:blob|tree)\/openlup-[a-z0-9-]+-v)[0-9A-Za-z.+-]+\//g, (_match, prefix: string) => `${prefix}${version}/`);
+      if (source !== original) writes.push([path, source]);
+    }
+  }
+  assert(violations.length === 0, `package documentation planning violations:\n${violations.join("\n")}`);
+  return writes;
+}
+
 /**
  * Checks (and with `write`, regenerates) the guide under `docs/guide/`. Returns its Markdown files
  * so the package-wide rules and the fence compiler read the same pages.
@@ -1032,6 +1050,7 @@ if (invokedPath === import.meta.url) {
       pending.set(file, source);
     }
     const planned = planGuideUpdates(repositoryRoot, packageRoot, version, pending);
+    planned.writes.push(...planPackageDocumentationUpdates(repositoryRoot, version));
     const updates = new Map(planned.writes), pageViolations: Record<string, string[]> = {};
     if (pending.size > 0) {
       const allowed = readGuideAllowList(repositoryRoot, planned.violations);

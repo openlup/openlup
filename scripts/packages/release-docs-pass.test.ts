@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { assembleUpgradePage, formatReleaseDocumentation, listReleaseDocumentation, previousCoreTag, summarizeApiDiff, upgradePagePath } from "./release-docs-pass.ts";
 import { isGuidePage, validateGuidePage } from "../oss-publication-policy.ts";
 
+const report = (source: string) => `# API report\n\n\`\`\`ts\n${source}\`\`\`\n`;
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 const api = "packages/core/api/core.api.md", catalog = "config/openlup-publication-catalog.json";
@@ -23,7 +24,7 @@ function fixture() {
     { id: "catalog", when: "Catalogue", paths: [catalog], doc: "docs/platform/DISTRIBUTION.md", anchor: "" },
     { id: "docs", when: "Other documentation", paths: ["**"], doc: "docs/platform/DOCUMENTATION.md", anchor: "" },
   ] }));
-  write(api, "// API\nexport declare const oldName: string;\nexport declare const kept: string;\n");
+  write(api, report("// API\nexport declare const oldName: string;\nexport declare const kept: string;\n"));
   write(catalog, "{}\n");
   write("docs/platform/API.md", "# API\n\n## API\n");
   write("docs/platform/old.md", "# Previous page\n");
@@ -124,7 +125,7 @@ describe("upgrade page assembly", () => {
   it("uses publishable fragments in bump order, and includes added and removed exports with exempt fences", () => {
     const f = fixture();
     f.write("packages/core/docs/guide/upgrade/README.md", "# Upgrade procedure\n");
-    f.write(api, "// Updated comment\nexport declare const nextName: string;\nexport declare const kept: string;\n"); f.commit();
+    f.write(api, report("// Updated comment\nexport declare const nextName: string;\nexport declare const kept: string;\n")); f.commit();
     const fragments = [
       { path: "packages/outbox/changes/one.md", contents: "- Outbox body.\n" },
       { path: "packages/core/changes/z-last.md", contents: "- Last body.\n" },
@@ -153,14 +154,62 @@ describe("upgrade page assembly", () => {
   });
 
   it("reports both deleted and newly added API reports", () => {
-    const f = fixture(); f.git("rm", api); f.write("packages/outbox/api/outbox.api.md", "export declare const send: () => void;\n"); f.commit();
+    const f = fixture(); f.git("rm", api); f.write("packages/outbox/api/outbox.api.md", report("export declare const send: () => void;\n")); f.commit();
     const { text } = assembleUpgradePage({ root: f.root, version: "0.5.0", since: "openlup-core-v0.4.0", fragments: [] });
     expect(text).toContain(`### \`${api}\``); expect(text).toContain("export declare const oldName"); expect(text).toContain("export declare const send");
   });
 
-  it("extracts only changed top-level export declaration lines", () => {
-    expect(summarizeApiDiff("--- a/report\n+++ b/report\n@@ -1 +1 @@\n-export declare const old: string;  \n+export declare const next: string;\n+// comment\n+    method(): void;\n export declare const kept: string;\n")).toEqual({ added: ["export declare const next: string;"], removed: ["export declare const old: string;"] });
+  it("compares added, removed, changed and unchanged declaration blocks across fences", () => {
+    const before = report([
+      "export interface Updated {", "    old: string;", "}",
+      "export type Removed = string;",
+      "declare class Kept {", "    method(): void;", "}",
+      "export declare function overload(value: string): void;",
+      "export declare function overload(value: number): void;",
+      "export { previous };", "",
+    ].join("\n"));
+    const after = "export type OutsideFence = never;\n" + report([
+      "export interface Updated {", "    old: string;", "    events?: {};", "}",
+      "export type Added = string;",
+      "declare class Kept {", "    method(): void;  ", "}",
+      "export declare function overload(value: string): void;",
+      "export declare function overload(value: boolean): void;",
+      "export { next };", "",
+    ].join("\r\n"));
+    expect(summarizeApiDiff(before, after)).toEqual({
+      added: ["export type Added = string;", "export { next };"],
+      removed: ["export type Removed = string;", "export { previous };"],
+      changed: ["export interface Updated {", "export declare function overload(value: string): void;", "export declare function overload(value: boolean): void;"],
+    });
+    expect(summarizeApiDiff(before, before)).toEqual({ added: [], removed: [], changed: [] });
   });
+
+  it("treats an absent report as entirely added or removed and deduplicates first lines", () => {
+    const source = report("export interface Repeated {\n    field: string;\n}\n") + report("export interface Repeated {\n    field: string;\n}\n");
+    expect(summarizeApiDiff("", source)).toEqual({ added: ["export interface Repeated {"], removed: [], changed: [] });
+    expect(summarizeApiDiff(source, "")).toEqual({ added: [], removed: ["export interface Repeated {"], changed: [] });
+    expect(summarizeApiDiff(source, source + source)).toEqual({ added: [], removed: [], changed: [] });
+    const changed = source.replaceAll("field: string", "field: number");
+    expect(summarizeApiDiff(source, changed)).toEqual({ added: [], removed: [], changed: ["export interface Repeated {"] });
+    expect(summarizeApiDiff(report("declare const internal: string;\n"), report("declare const internal: number;\n"))).toEqual({ added: [], removed: [], changed: ["declare const internal: number;"] });
+  });
+
+  it("lists the existing adapter declaration changed between the real release tags", (context) => {
+    const repository = resolve("."), since = "openlup-core-v0.39.0", target = "openlup-core-v0.40.0";
+    const tags = execFileSync("git", ["tag", "--list", since, target], { cwd: repository, encoding: "utf8" }).split("\n");
+    for (const tag of [since, target]) if (!tags.includes(tag)) context.skip(`Real release comparison requires the missing local tag ${tag}`);
+    const root = mkdtempSync(join(tmpdir(), "release-docs-tags-"));
+    execFileSync("git", ["worktree", "add", "--detach", root, target], { cwd: repository, stdio: "pipe" });
+    try {
+      const { text } = assembleUpgradePage({ root, version: "0.40.0", since, fragments: [] });
+      const section = text.split("### `packages/platform/api/communications-klaviyo.api.md`\n")[1]!.split("\n### ")[0]!;
+      const changed = section.split("Changed declarations:\n")[1];
+      expect(changed).toContain("```ts nocheck\n// API report diff: not compiled.\n");
+      expect(changed).toContain("\nexport declare function createKlaviyoMarketingAdapter(input: Configuration): MarketingSyncProvider & MarketingAutomationProviderPort & {\n");
+    } finally {
+      execFileSync("git", ["worktree", "remove", "--force", root], { cwd: repository, stdio: "pipe" });
+    }
+  }, 30_000);
 
   it("keeps publication refusals for invalid version paths, modes and upgrade-page contents", () => {
     for (const path of ["upgrade/0.5.0.md", "upgrade/00.5.0.md", "upgrade/0.5.md", "upgrade/0.5.0-rc.1.md", "reference/0.5.0.md", "Upgrade/0.5.0.md", "upgrade/nested/0.5.0.md"]) {
