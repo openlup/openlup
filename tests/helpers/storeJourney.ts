@@ -161,14 +161,24 @@ export async function journeyCensus(owner: Pool) {
     const tables = (await client.query<{ name: string }>(`SELECT c.relname AS name FROM pg_catalog.pg_class c
       JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind IN ('r','p')
       AND c.relname<>'platform_schema_migrations' ORDER BY c.relname`)).rows;
-    const statements = tables.map(({ name }) => {
+    const statements = tables.map(({ name }, ordinal) => {
       if (!/^[a-z][a-z0-9_]*$/.test(name)) throw new Error("Unexpected fixture relation");
-      return `SELECT '${name}' AS name, ARRAY(SELECT to_jsonb(t)::text FROM public."${name}" t ORDER BY to_jsonb(t)::text) AS rows`;
+      return `SELECT ${ordinal} AS table_ordinal, 0::bigint AS row_ordinal, NULL::text AS value
+        UNION ALL
+        (SELECT ${ordinal} AS table_ordinal, row_number() OVER (ORDER BY to_jsonb(t)::text) AS row_ordinal,
+          to_jsonb(t)::text AS value FROM public."${name}" t ORDER BY to_jsonb(t)::text)`;
     });
-    // One round trip retains every discovered table (including empty tables)
-    // and PostgreSQL's exact row text/order in the same read-only snapshot.
-    if (statements.length) for (const table of (await client.query<{ name: string; rows: string[] }>(statements.join(" UNION ALL "))).rows) {
-      rows[table.name] = table.rows;
+    // One round trip, one text datum per original row: no per-table value-size cap.
+    // Ordinals retain discovery/row order; NULL sentinels retain empty tables.
+    // PostgreSQL still encodes each whole row in the same UTC/read-only snapshot.
+    if (statements.length) {
+      const result = await client.query<{ table_ordinal: number; value: string | null }>(
+        `${statements.join(" UNION ALL ")} ORDER BY table_ordinal, row_ordinal`);
+      for (const { table_ordinal, value } of result.rows) {
+        const name = tables[table_ordinal]!.name;
+        if (value === null) rows[name] = [];
+        else rows[name]!.push(value);
+      }
     }
     await client.query("COMMIT"); return rows;
   } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
