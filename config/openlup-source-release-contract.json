@@ -5,8 +5,8 @@
     "npm": "11.19.0"
   },
   "inventory": {
-    "digest": "sha256-3f72e0d2fd1bde210f70dc109846ee62ff2f44afb1926b46847e69b04e515e61",
-    "classDigest": "sha256-7962081b1e9784e9c1c0bdb7ecafe4f5315d5ab0166b7c1bd03a84b00c63950e"
+    "digest": "sha256-80a7ef7cd1fd254f237b3c1404c387ba3febc06c56e8ec1fba506ead247457aa",
+    "classDigest": "sha256-aa2f9bd83b68fea1f806833251d252c362af12f00478213cd3468a5bef749131"
   },
   "packages": {
     "manifestDigest": "sha256-3c0e3e0fbcd535c27d80908b0f8e92cd60f0f1d0bda79c12123acb2025afb069",
