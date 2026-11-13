@@ -1153,6 +1153,15 @@
       "anchor": "#ownership"
     },
     {
+      "id": "reader-guide",
+      "when": "The reader guide under packages/core/docs/guide and its documentation contract",
+      "paths": [
+        "packages/core/docs/guide/**"
+      ],
+      "doc": "docs/platform/DOCUMENTATION.md",
+      "anchor": "#reader-guide-contract"
+    },
+    {
       "id": "core-testing",
       "when": "Core standalone test helpers and package testing exports",
       "paths": [
