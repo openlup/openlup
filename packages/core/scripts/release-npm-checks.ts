@@ -32,6 +32,7 @@ type Gates = {
   pack: {
     code: ClassBudget;
     docs: ClassBudget;
+    guide: ClassBudget;
     maxPackedBytes: number;
     maxUnpackedBytes: number;
     maxFiles: number;
@@ -208,7 +209,7 @@ export function createNpmReleaseChecks(input: {
       const paths = (report.files ?? []).map((file) => file.path).sort();
       const files = new Set(paths);
       const classSummaries = [];
-      for (const budgetClass of ["code", "docs"] as const) {
+      for (const budgetClass of ["code", "docs", "guide"] as const) {
         const budget = gates.pack[budgetClass];
         const members = paths.filter((path) => packFileClass(path) === budgetClass);
         // A class's packed share: its files gzipped together, in path order.
@@ -223,7 +224,7 @@ export function createNpmReleaseChecks(input: {
         );
         classSummaries.push(`${budgetClass} ${packed} packed bytes in ${members.length} files`);
       }
-      // The backstop: also counts files outside both classes.
+      // The backstop: also counts files outside the classes.
       assert(
         report.size <= gates.pack.maxPackedBytes,
         `packed bytes ${report.size} exceed ${gates.pack.maxPackedBytes}`,
@@ -257,10 +258,12 @@ export function createNpmReleaseChecks(input: {
 
 // The code budget counts dist JavaScript, declarations and shipped TypeScript
 // sources; the docs budget counts files at the package root (documentation and
-// metadata). Anything else counts only toward the tarball total.
-export function packFileClass(path: string): "code" | "docs" | "other" {
+// metadata). The guide has its own budget; anything else counts only toward
+// the tarball total.
+export function packFileClass(path: string): "code" | "docs" | "guide" | "other" {
   if (/^dist\/.+\.(?:js|d\.ts(?:\.map)?)$/.test(path) || /^src\/.+\.ts$/.test(path))
     return "code";
+  if (/^docs\/guide\/.+$/.test(path)) return "guide";
   return path.includes("/") ? "other" : "docs";
 }
 

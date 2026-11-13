@@ -19,6 +19,7 @@ const gates = {
   pack: {
     code: { maxPackedBytes: 1, maxFiles: 1 },
     docs: { maxPackedBytes: 1, maxFiles: 1 },
+    guide: { maxPackedBytes: 1, maxFiles: 1 },
     maxPackedBytes: 1,
     maxUnpackedBytes: 1,
     maxFiles: 1,
@@ -238,6 +239,7 @@ const packGates = {
   pack: {
     code: { maxPackedBytes: 2048, maxFiles: 2 },
     docs: { maxPackedBytes: 1024, maxFiles: 2 },
+    guide: { maxPackedBytes: 1024, maxFiles: 2 },
     maxPackedBytes: 4096,
     maxUnpackedBytes: 16_384,
     maxFiles: 5,
@@ -287,6 +289,10 @@ describe("release pack check", () => {
     expect(packFileClass("dist/subscription/index.d.ts")).toBe("code");
     expect(packFileClass("dist/subscription/index.d.ts.map")).toBe("code");
     expect(packFileClass("src/subscription/index.ts")).toBe("code");
+    expect(packFileClass("docs/guide/README.md")).toBe("guide");
+    expect(packFileClass("docs/guide/nested/page.md")).toBe("guide");
+    expect(packFileClass("docs/guide/asset.png")).toBe("guide");
+    expect(packFileClass("docs/SUBSCRIPTION_ENGINE.md")).toBe("other");
     expect(packFileClass("CHANGELOG.md")).toBe("docs");
     expect(packFileClass("release-gates.json")).toBe("docs");
     expect(packFileClass("dist/subscription/index.js.map")).toBe("other");
@@ -296,10 +302,10 @@ describe("release pack check", () => {
   it("accepts a tarball inside every cap and reports each class", () => {
     const logged = vi.spyOn(console, "log").mockImplementation(() => {});
 
-    runPack(withinBudget());
+    runPack({ ...withinBudget(), "docs/guide/README.md": Buffer.from("# OpenLup guide\n") });
 
     expect(logged).toHaveBeenCalledWith(
-      expect.stringMatching(/; code \d+ packed bytes in 2 files; docs \d+ packed bytes in 2 files\)$/),
+      expect.stringMatching(/; code \d+ packed bytes in 2 files; docs \d+ packed bytes in 2 files; guide \d+ packed bytes in 1 files\)$/),
     );
   });
 
@@ -311,6 +317,15 @@ describe("release pack check", () => {
   it("refuses one code file more than the code cap", () => {
     const files = { ...withinBudget(), "dist/extra.d.ts": Buffer.from("export {};\n") };
     expect(() => runPack(files)).toThrow("code files 3 exceed 2");
+  });
+
+  it("refuses guide bytes above its own cap", () => {
+    expect(() => runPack({ ...withinBudget(), "docs/guide/README.md": randomBytes(1500) })).toThrow(/^guide packed bytes \d+ exceed 1024$/);
+  });
+
+  it("refuses guide files above its own cap", () => {
+    const files = { ...withinBudget(), "docs/guide/README.md": Buffer.from("# OpenLup guide\n"), "docs/guide/nested/page.md": Buffer.from("page\n") };
+    expect(() => runPack(files, { pack: { guide: { maxPackedBytes: 1024, maxFiles: 1 } } })).toThrow("guide files 2 exceed 1");
   });
 
   it("refuses docs whose packed bytes exceed the docs cap", () => {
