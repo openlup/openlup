@@ -161,9 +161,14 @@ export async function journeyCensus(owner: Pool) {
     const tables = (await client.query<{ name: string }>(`SELECT c.relname AS name FROM pg_catalog.pg_class c
       JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind IN ('r','p')
       AND c.relname<>'platform_schema_migrations' ORDER BY c.relname`)).rows;
-    for (const { name } of tables) {
+    const statements = tables.map(({ name }) => {
       if (!/^[a-z][a-z0-9_]*$/.test(name)) throw new Error("Unexpected fixture relation");
-      rows[name] = (await client.query<{ value: string }>(`SELECT to_jsonb(t)::text AS value FROM public."${name}" t ORDER BY to_jsonb(t)::text`)).rows.map(row => row.value);
+      return `SELECT '${name}' AS name, ARRAY(SELECT to_jsonb(t)::text FROM public."${name}" t ORDER BY to_jsonb(t)::text) AS rows`;
+    });
+    // One round trip retains every discovered table (including empty tables)
+    // and PostgreSQL's exact row text/order in the same read-only snapshot.
+    if (statements.length) for (const table of (await client.query<{ name: string; rows: string[] }>(statements.join(" UNION ALL "))).rows) {
+      rows[table.name] = table.rows;
     }
     await client.query("COMMIT"); return rows;
   } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }

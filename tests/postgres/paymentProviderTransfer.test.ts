@@ -55,9 +55,10 @@ it("captures every provider relation byte-exactly and rolls back a broken cyclic
   expect(await journeyCensus(target.owner)).toEqual(pristine);
 });
 
+// Real PostgreSQL restore/replay measured 3.5–4.2 s locally and hit 10.454 s hosted; allow about 3x hosted headroom.
 it("restores every provider relation and its cyclic pointer byte-exactly and replays", async () => {
   expect(await restoreConnectedNativeStore({ owner: target.owner, installation: journeySelection, packet, freshTarget })).toMatchObject({ replayed: false });
   expect(await journeyCensus(target.owner)).toEqual(before);
   expect(await restoreConnectedNativeStore({ owner: target.owner, installation: journeySelection, packet, freshTarget })).toMatchObject({ replayed: true });
   expect(await journeyCensus(target.owner)).toEqual(before);
-});
+}, 30_000);
