@@ -45,6 +45,8 @@ describe("release documentation listing", () => {
     f.git("rm", "docs/platform/deleted.md");
     f.write("docs/platform/plans/plan.md", "# Changed history\n");
     f.write(".github/POLICY.md", "# Policy\n"); f.write("packages/outbox/AGENTS.md", "# Agents\n");
+    f.write("server/adapters/README.md", "# Adapters\n"); f.write("src/domain/README.md", "# Domain\n"); f.write("deploy/neutral-store/README.md", "# Deploy\n");
+    f.write("src/domain/notes.md", "# Not a maintainer page\n");
     f.commit();
     f.write("README.md", "# Uncommitted\n");
     const website = mkdtempSync(join(tmpdir(), "release-docs-site-")); roots.push(website);
@@ -58,7 +60,8 @@ describe("release documentation listing", () => {
     expect(listing.since).toBe("openlup-core-v0.4.0"); expect(listing.warnings).toEqual([]);
     expect(listing.changes.find(({ path }) => path === api)).toMatchObject({ status: "M", owner: { doc: "docs/platform/API.md", anchor: "#api" }, guidePages: [guide, routed] });
     expect(listing.changes.find(({ path }) => path === catalog)?.owner?.doc).toBe("docs/platform/DISTRIBUTION.md");
-    expect(listing.changes.map(({ path }) => path)).toEqual(expect.arrayContaining([".github/POLICY.md", "packages/outbox/AGENTS.md"]));
+    expect(listing.changes.map(({ path }) => path)).toEqual(expect.arrayContaining([".github/POLICY.md", "packages/outbox/AGENTS.md", "server/adapters/README.md", "src/domain/README.md", "deploy/neutral-store/README.md"]));
+    expect(listing.changes.some(({ path }) => path === "src/domain/notes.md")).toBe(false);
     expect(listing.changes.some(({ path }) => path === "README.md" || path.includes("/plans/"))).toBe(false);
     expect(listing.websiteReferences).toEqual([
       { file: claims, line: 1, reference: `oss:${api}:12-14`, status: "M" },

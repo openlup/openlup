@@ -62,6 +62,7 @@ const changedPaths = (change: ReleaseChange): string[] => change.previousPath ? 
 const listedPath = (path: string): boolean => API_REPORT.test(path) || path === "config/openlup-publication-catalog.json"
   || (/^docs\/platform\/.*\.md$/u.test(path) && !path.startsWith("docs/platform/plans/"))
   || /^\.github\/[^/]+\.md$/u.test(path) || /^packages\/[^/]+\/(?:README|AGENTS)\.md$/u.test(path)
+  || /^(?:src|server)\/(?:.+\/)?README\.md$/u.test(path) || /^deploy\/[^/]+\/README\.md$/u.test(path)
   || ["AGENTS.md", "README.md", "CONTRIBUTING.md"].includes(path);
 
 /** Walk regular files only; a supplied website checkout is never mutated or followed through links. */
