@@ -262,12 +262,15 @@ owns release permissions, setup, detailed refusals and recovery. The sequence is
    changelog's version section below a fresh Unreleased heading. It assembles the
    legacy body first, then validated package fragments in byte order of path,
    and deletes only consumed fragments after successful planning and writes,
-   then stages those deletions and guide writes so preparation can read
-   the Git inventory; historical sections stay byte-identical. The bump assembles
+   then stages those deletions and the documentation writes described below so
+   preparation can read the Git inventory. It stages no other changes;
+   historical sections stay byte-identical. The bump assembles
    `packages/core/docs/guide/upgrade/v<major>-<minor>-<patch>.md` from the consumed
-   fragments and API diff; the maintainer's agent edits that page and the listed guide pages in
+   fragments and API diff, listing added, removed and changed declarations;
+   the maintainer's agent edits that page and the listed guide pages in
    the same PR. The bump also re-pins the guide's repository links and refreshes
-   its generated regions. If no core release tag is an ancestor of HEAD, the listing
+   its generated regions, and re-pins released repository links in each publishable
+   package's `AGENTS.md` and `README.md`. If no core release tag is an ancestor of HEAD, the listing
    and page say that the previous release could not be determined. Each packed package
    CHANGELOG keeps the current release and the two previous ones; older sections
    move verbatim to its non-packed `CHANGELOG-HISTORY.md`. Add notable-change notes under
@@ -320,8 +323,10 @@ then runs the guide tutorial against the registry. It runs trusted default-branc
 code and reads only the release tag's tutorial page, after checking the tag's
 commit against the completed publication run. It does not hold the
 publication run open or delay the next release dispatch, and is not a required
-check. The tutorial remains advisory until two green merge-group runs on main:
+check. The registry tutorial remains advisory until its second green run:
 a tutorial failure appears as a warning annotation and in the step summary.
+The packed-candidate tutorial in `install-packages` is blocking because its
+condition of two green merge-group runs on main has been met.
 
 On partial release or package failure, stop for maintainer recovery. Do not
 retag, rewrite an immutable release or republish a version. A failed publish job

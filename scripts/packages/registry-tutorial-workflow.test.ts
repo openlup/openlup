@@ -142,9 +142,13 @@ describe("the advisory registry tutorial after publication", () => {
     expect(start).toContain(`docker exec "$container" sh -c '${readiness}'`);
     expect(step(tutorial, "Remove the package-proof PostgreSQL service")).toBe(`${REGISTRY_CLEANUP}\n        run: docker rm -f install-proof-postgres\n`);
     expect(step(tutorial, REGISTRY_STEP)).toBe(`${REGISTRY_READY}\n        timeout-minutes: 4\n        env:\n          OPENLUP_PROOF_SERVICE_PORT: \${{ steps.postgres.outputs.port }}\n        run: node --experimental-strip-types scripts/packages/guide-tutorial.ts --advisory --registry --page "$RUNNER_TEMP/tutorial.md" --database-url "postgresql://postgres@127.0.0.1:$OPENLUP_PROOF_SERVICE_PORT/postgres"\n`);
-    const advisoryComment = candidateWorkflow.match(/ {6}# --advisory[^\n]*\n {6}#[^\n]*\n/u)?.[0];
-    expect(advisoryComment).toBeDefined();
-    expect(tutorial).toContain(advisoryComment!);
+    const advisoryComment = "      # --advisory reports a failed tutorial as a warning and exits 0. Remove it after two green\n      # merge-group runs on main to make the step blocking (documentation programme, decision D4).\n";
+    expect(candidateWorkflow).not.toContain(advisoryComment);
+    expect(tutorial).toContain(advisoryComment);
+    const candidate = step(candidateWorkflow, "Guide tutorial against the packed candidate");
+    expect(candidate).toContain("run: node --experimental-strip-types scripts/packages/guide-tutorial.ts --page");
+    expect(candidate).not.toContain("--advisory");
+    expect(candidateWorkflow).not.toContain("Guide tutorial against the packed candidate (advisory)");
   });
 
   function registryWait(answers: Array<{ version?: string; fail?: boolean }>, expire = false) {
