@@ -323,11 +323,7 @@ prove a provider integration, release, or support tier.
 
 Moved to [Compose a provider adapter](../../packages/core/docs/guide/how-to/extend/provider-adapters.md#adapter-classes-and-templates).
 
-A communications (M04) mail adapter returns an `EmailTransport` from
-`@openlup/platform/communications`, built with `createGuardedEmailTransport`.
-Marketing types come from `./communications/contracts`: `MarketingSyncProvider`
-covers profile sync, consent readback and erasure, and `ConsentPushPort` covers
-consent push. The marketing example also implements
+The marketing example also implements
 `MarketingAutomationProviderPort` and a refusal-only `NewsletterSyncProviderPort`.
 See the [communications import](PLATFORM_PACKAGE_REFERENCE.md#communications-import)
 and the [marketing adapter](#opt-in-singleton-marketing-adapter).
@@ -338,15 +334,11 @@ and the [marketing adapter](#opt-in-singleton-marketing-adapter).
 | Payments | `@openlup/platform/payments/stripe`, `@openlup/platform/payments/tpay` |
 | Fulfillment | `@openlup/platform/fulfillment/omnipack` |
 
-The examples are default-off and opt-in: the host selects an adapter for each
-port it needs, and default wiring includes none. To write another vendor's
-adapter, implement the class port and declare capabilities honestly: an
-unsupported capability is an explicit refusal, never a silent no-op. Pass the
-payments conformance runner or, for communications, extend the class's
+Default wiring includes no example adapters. For communications, extend the class's
 [tests](../../packages/platform/test/communications/), including refusal
-behaviour, without live provider access. Keep secrets transient and
-host-supplied at call time, never in source, fixtures or logs. Keep the adapter
-in your own source or propose it upstream through
+behaviour, without live provider access. Keep secrets transient and host-supplied
+at call time, never in source, fixtures or logs. Keep the adapter in your own
+source or propose it upstream through
 [contribute existing adopter code, then refactor](../../CONTRIBUTING.md#contribute-existing-adopter-code-then-refactor).
 
 Evidence (historical record, 2026-11-13):
@@ -413,23 +405,15 @@ Moved to [Compose a provider adapter](../../packages/core/docs/guide/how-to/exte
 
 `communications/klaviyo` exposes one Node factory implementing the neutral
 profile, negative-consent, erasure and consent-push ports, plus the existing
-marketing bridge and refusal-only newsletter port. Construction supplies private
-host identity/authority registries, a credential resolver and atomic account
-storage; fetch and clock are injectable. Nothing installs a route or worker.
+marketing bridge and refusal-only newsletter port. Fetch and clock are injectable.
+Nothing installs a route or worker.
 
-Account-dependent operations remain `verification_pending` until owner TEST
-readback binds scopes, mappings and operation-specific no-trigger evidence.
-Deletion read is unsupported; audience-only deletion cannot become account-wide.
-Profile writes change owned fields only and verify the private projection.
-Negative readback preserves each fact's scope; scoped remote consent is unknown,
-missing sources mean partial coverage, and remote subscribed never grants locally.
+Profile writes verify the private projection. Scoped remote consent is unknown.
 
 The push capability declares account-wide grant effects while each local grant
-remains audience-scoped. Grant admission must account for all profile-consent
-flows, segments, backfills and DOI, and prove suppression cannot be cleared at
-effect time. List-only withdrawal requires proven-safe scope; explicit all-purpose
-withdrawal is separate. Every request encodes one subject. Asynchronous job
-acknowledgement proves acceptance only, with no import flag or job-control API.
+remains audience-scoped. Grant admission includes segments, backfills and DOI
+at effect time. List-only withdrawal requires proven-safe scope. There is no
+import flag or job-control API.
 
 Evidence (historical record, 2026-11-13):
 
