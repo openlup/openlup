@@ -83,7 +83,8 @@ export function createNativeRetryDriver(options: NativeRetryDriverOptions) {
         WHERE r.obligation_id=o.id AND r.kind='failure' ORDER BY r.attempt_sequence DESC LIMIT 1) latest ON true
       LEFT JOIN public.subscription_retry_receipts prep ON prep.obligation_id=o.id
         AND prep.kind='prepare' AND prep.attempt_sequence=o.attempt_sequence
-      WHERE o.state<>'recovered' AND (o.state='prepared' OR o.next_retry_at<=$1::timestamptz
+      WHERE o.state<>'recovered' AND (o.renewal_quarantined_until IS NULL OR o.renewal_quarantined_until<=$1::timestamptz)
+        AND (o.state='prepared' OR o.next_retry_at<=$1::timestamptz
         OR c.id IS NULL OR c.retry_attempt<(latest.result->>'retry_attempt')::integer)
       ORDER BY o.next_retry_at NULLS FIRST,o.id LIMIT $2::integer`, [now, limit])).rows;
     const results: { operationId: string; status: string }[] = [];

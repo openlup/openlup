@@ -6241,7 +6241,7 @@
     },
     {
       "path": "db/platform/migrations/20261114110000_payment_method_refs.sql",
-      "sha256": "68926c2adf3216cb705570118abb373a9c185f70ecbcfde531cea053bd200fc9",
+      "sha256": "afc06bbc9786c1e86d0c9e710aea25c776fcf3e069016becc050a39f329ab70e",
       "functions": [
         {
           "signature": "public.subscription_command_preview(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
@@ -6281,7 +6281,7 @@
         {
           "signature": "public.dunning_lifecycle_renewal_reminder_enqueue(integer,integer,integer,integer,integer)",
           "beforeSha256": "6ad044408c80e48e40b2299963d2989d9c87b5a08ba82c7b33b89a0222a13365",
-          "afterSha256": "554952d66781fe94ba3263a7561344e2ae12e60374ba28b608145a0848dd57da"
+          "afterSha256": "ef25ac9c4cdbb2aeda6be5ec70aa22b7466db818033a22c6551e2602e258fabf"
         },
         {
           "signature": "public.subscription_register_renewal_purchase(uuid,jsonb)",
@@ -6316,7 +6316,7 @@
         {
           "signature": "public.subscription_retry_prepare(uuid,text,jsonb,timestamptz)",
           "beforeSha256": "fba98bb98e04b4b91fac8ab23fd84bf0edfe92f01b5c28fcf44b28ed4ac5801e",
-          "afterSha256": "9ef6834017b39bfebd273c65861a4959f49e13814c7f71a661dd894787502b81"
+          "afterSha256": "0f9f7fc4a022e4a40239bb9d546c7de2bd1ea1f4f2b10c2c237470dc11cc3297"
         },
         {
           "signature": "public.subscription_retry_candidates(integer,timestamptz)",
@@ -6381,12 +6381,12 @@
         {
           "signature": "public.subscription_try_schedule_recovery_retry(uuid,text,timestamptz,text)",
           "beforeSha256": null,
-          "afterSha256": "6b9ffce2f596f0adbb95a1770cae34f67bee23ef0d8973479d91b6ead54e32d3"
+          "afterSha256": "d24d36c1adf80466d90ba4017c407ead716137ebe7d6d6a81290a907e09ac0e7"
         },
         {
           "signature": "public.subscription_method_uses_recorded_refs(uuid)",
           "beforeSha256": null,
-          "afterSha256": "ce725943b26613d19e29e8bfb9456c28394b0f36a83e7163d9f449b9bb10eefa"
+          "afterSha256": "01ab558862cf25c309178a5058756eee7485ad660cc00b876ee81b8ed89fa048"
         },
         {
           "signature": "public.payment_method_ref_for_subscription_read(uuid,text,timestamptz)",
@@ -6401,7 +6401,7 @@
         {
           "signature": "public.payment_method_recovery_authority_bind(uuid,uuid,text,text,timestamptz)",
           "beforeSha256": null,
-          "afterSha256": "3be8d4f1bfba6612367824afb8c7ac0bb1548d93274f6261e9643dbecc3eb8ff"
+          "afterSha256": "88e7702dd8507a9706cbe090f11d51367796cd55af74820ae75f311fc6c7bff0"
         },
         {
           "signature": "public.payment_method_recovery_authority_record(uuid,uuid)",
@@ -6411,7 +6411,7 @@
         {
           "signature": "public.payment_method_recovery_authority_freeze(uuid,uuid,text,text,timestamptz)",
           "beforeSha256": null,
-          "afterSha256": "b981f1f0581623615d726f6db5c72a58269db0d5346f23ae2edbb0876af6fb29"
+          "afterSha256": "4d83a4eeb76ad414fdf9e97eb217e94b2a7e3b1f1bc51c5d668e96b4980c0f13"
         }
       ]
     }

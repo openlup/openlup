@@ -185,6 +185,9 @@ RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalo
  SELECT EXISTS(SELECT 1 FROM public.payment_method_refs WHERE subscription_id=p_subscription_id)
   OR EXISTS(SELECT 1 FROM public.subscription_method_states WHERE subscription_id=p_subscription_id AND provider_kind IS NOT NULL)
   OR EXISTS(SELECT 1 FROM public.payment_provider_states WHERE subscription_id=p_subscription_id)
+  OR EXISTS(SELECT 1 FROM public.commerce_settlement_intents i JOIN public.commerce_orders o ON o.id=i.order_id
+   JOIN public.subscription_cycles c ON c.id=o.subscription_cycle_id WHERE c.subscription_id=p_subscription_id AND i.channel_key<>'sandbox')
+  OR EXISTS(SELECT 1 FROM public.subscription_renewal_operations WHERE subscription_id=p_subscription_id AND cycle_snapshot->>'settlementChannelKey'<>'sandbox')
   OR EXISTS(SELECT 1 FROM public.subscription_retry_obligations o JOIN public.subscription_retry_receipts r ON r.obligation_id=o.id
    WHERE o.subscription_id=p_subscription_id AND r.kind='failure' AND r.input->>'provider' IS NOT NULL AND r.input->>'paymentAttemptId' IS NOT NULL);
 $$;
@@ -365,9 +368,9 @@ BEGIN
  SELECT a.* INTO authority FROM public.payment_method_recovery_authorities a JOIN public.commerce_checkout_recovery_tokens t ON t.id=a.token_id
   WHERE a.case_id=case_row.id AND a.subscription_id=subscription.id AND a.client_id=subscription.client_id AND a.cycle_id=cycle.id
    AND a.purpose='repair_payment' AND a.used_at IS NOT NULL AND a.revoked_at IS NULL AND t.revoked_at IS NULL AND t.expires_at>p_requested_at
-   AND a.retry_attempt=obligation.retry_attempt AND a.method_ref=method.provider_method_ref ORDER BY a.used_at DESC,a.id DESC LIMIT 1 FOR UPDATE OF a;
+   AND a.retry_attempt=obligation.retry_attempt AND a.method_ref=method.provider_method_ref AND a.method_id=method.id ORDER BY a.used_at DESC,a.id DESC LIMIT 1 FOR UPDATE OF a,t;
  IF authority.id IS NULL THEN
-  IF p_entry<>'method_ref_webhook' OR obligation.next_retry_at IS NULL OR obligation.retry_attempt>=4 OR method.updated_at<case_row.opened_at THEN
+  IF p_entry<>'method_ref_webhook' OR obligation.next_retry_at IS NULL OR obligation.retry_attempt>=4 OR obligation.failure_class='hard_do_not_retry' OR method.updated_at<case_row.opened_at THEN
    RETURN jsonb_build_object('scheduled',false,'reason','recovery_not_ready'); END IF;
  ELSE
   IF method.consent_snapshot->>'recoveryCaseId' IS DISTINCT FROM case_row.id::text OR authority.scheduled_at IS NOT NULL THEN
@@ -417,11 +420,11 @@ BEGIN
    NOT EXISTS(SELECT 1 FROM public.subscription_dunning_cases WHERE id=o.case_id AND status='open') THEN
    RAISE EXCEPTION 'subscription_retry_recovery_not_authorized' USING ERRCODE='22023'; END IF;
   IF real_authority.used_at IS NOT NULL THEN
-   IF real_authority.retry_attempt IS DISTINCT FROM o.retry_attempt OR real_authority.method_ref IS DISTINCT FROM p_method OR real_authority.method_evidence_ref IS DISTINCT FROM p_evidence THEN
+   IF real_authority.retry_attempt IS DISTINCT FROM o.retry_attempt OR real_authority.method_ref IS DISTINCT FROM p_method OR real_authority.method_id IS DISTINCT FROM method.id OR real_authority.method_evidence_ref IS DISTINCT FROM p_evidence THEN
     RAISE EXCEPTION 'subscription_retry_authorization_conflict' USING ERRCODE='23505'; END IF;
    RETURN to_jsonb(real_authority);
   END IF;
-  UPDATE public.payment_method_recovery_authorities SET used_at=p_now,retry_attempt=o.retry_attempt,method_ref=p_method,method_evidence_ref=p_evidence WHERE id=real_authority.id RETURNING * INTO real_authority;
+  UPDATE public.payment_method_recovery_authorities SET used_at=p_now,retry_attempt=o.retry_attempt,method_ref=p_method,method_id=method.id,method_evidence_ref=p_evidence WHERE id=real_authority.id RETURNING * INTO real_authority;
   RETURN to_jsonb(real_authority);
 END; $$;
 
@@ -444,15 +447,19 @@ END; $$;
 CREATE FUNCTION public.payment_method_recovery_authority_freeze(p_authority_id uuid,p_operation_id uuid,p_dispatch_key text,p_method_ref text,p_now timestamptz)
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE o public.subscription_retry_obligations; a public.payment_method_recovery_authorities;
+ t public.commerce_checkout_recovery_tokens; method public.payment_method_refs;
 BEGIN
  PERFORM 1 FROM public.subscriptions WHERE id=(SELECT subscription_id FROM public.subscription_renewal_operations WHERE id=p_operation_id) FOR UPDATE;
  SELECT * INTO o FROM public.subscription_retry_obligations WHERE renewal_operation_id=p_operation_id FOR UPDATE;
  SELECT * INTO a FROM public.payment_method_recovery_authorities WHERE id=p_authority_id FOR UPDATE;
+ SELECT * INTO t FROM public.commerce_checkout_recovery_tokens WHERE id=a.token_id FOR UPDATE;
+ SELECT * INTO method FROM jsonb_populate_record(NULL::public.payment_method_refs,
+  public.payment_method_ref_for_subscription_read(o.subscription_id,p_method_ref,p_now));
  IF p_now IS NULL OR nullif(btrim(p_dispatch_key),'') IS NULL OR o.id IS NULL OR a.id IS NULL OR o.state<>'prepared' OR
   o.method_recovery_authority_id IS DISTINCT FROM a.id OR a.case_id IS DISTINCT FROM o.case_id OR a.cycle_id IS DISTINCT FROM o.cycle_id OR
   a.subscription_id IS DISTINCT FROM o.subscription_id OR a.retry_attempt IS DISTINCT FROM o.retry_attempt OR a.used_at IS NULL OR a.scheduled_at IS NULL OR
   a.revoked_at IS NOT NULL OR a.dispatch_key IS NOT NULL OR a.method_ref IS DISTINCT FROM p_method_ref OR
-  NOT EXISTS(SELECT 1 FROM public.commerce_checkout_recovery_tokens WHERE id=a.token_id AND revoked_at IS NULL AND expires_at>p_now) THEN
+  method.id IS NULL OR a.method_id IS DISTINCT FROM method.id OR t.id IS NULL OR t.revoked_at IS NOT NULL OR t.expires_at<=p_now THEN
   RAISE EXCEPTION 'payment_method_recovery_authority_dispatch_mismatch' USING ERRCODE='22023'; END IF;
  UPDATE public.payment_method_recovery_authorities SET dispatch_key=p_dispatch_key WHERE id=a.id;
 END; $$;
@@ -1415,7 +1422,7 @@ BEGIN
       AND s.next_cycle_at<=now()+make_interval(secs=>p_renewal_max_seconds)
       -- Active-method eligibility is intentionally distinct from unattended chargeability.
       AND CASE WHEN public.subscription_method_uses_recorded_refs(s.id) THEN
-        EXISTS(SELECT 1 FROM public.payment_method_refs m WHERE m.subscription_id=s.id AND m.active AND m.status='active')
+        public.subscription_method_health_read(s.id)->>'payment_method_ref_id' IS NOT NULL
         ELSE EXISTS(SELECT 1 FROM public.subscription_method_states legacy WHERE legacy.subscription_id=s.id AND legacy.health_state IN ('healthy','mandate_not_chargeable_unattended')) END
       AND NOT EXISTS(SELECT 1 FROM public.subscription_cycles c WHERE c.subscription_id=s.id AND c.status IN ('payment_pending','retry_scheduled'))
       AND s.updated_at<now()-make_interval(secs=>CASE WHEN
@@ -1808,7 +1815,7 @@ CREATE OR REPLACE FUNCTION public.subscription_retry_prepare(p_operation_id uuid
 RETURNS jsonb LANGUAGE plpgsql SET search_path = pg_catalog AS $$
 DECLARE o public.subscription_retry_obligations; op public.subscription_renewal_operations; r public.subscription_retry_receipts;
  a public.subscription_retry_recovery_authorizations; real_authority public.payment_method_recovery_authorities; real_method boolean; reservation public.fulfillment_inventory_reservations;
- line record; available bigint; committed bigint; result jsonb;
+ line record; available bigint; committed bigint; result jsonb; method public.payment_method_refs; recovery_token public.commerce_checkout_recovery_tokens;
 BEGIN
  PERFORM 1 FROM public.subscriptions WHERE id=(SELECT subscription_id FROM public.subscription_renewal_operations WHERE id=p_operation_id) FOR UPDATE;
  SELECT * INTO op FROM public.subscription_renewal_operations WHERE id=p_operation_id FOR UPDATE;
@@ -1818,7 +1825,7 @@ BEGIN
   IF r.obligation_id<>o.id OR r.kind<>'prepare' OR r.input<>p_input THEN RAISE EXCEPTION 'subscription_retry_replay_conflict' USING ERRCODE='23505'; END IF;
   RETURN r.result||jsonb_build_object('execute',false,'replayed',true);
  END IF;
- IF o.id IS NULL OR o.state<>'waiting' OR o.next_retry_at IS NULL OR o.next_retry_at>p_now OR
+ IF o.id IS NULL OR o.state<>'waiting' OR o.next_retry_at IS NULL OR o.next_retry_at>p_now OR o.renewal_quarantined_until>p_now OR
   NOT EXISTS(SELECT 1 FROM public.subscriptions WHERE id=o.subscription_id AND status='active') OR
   NOT EXISTS(SELECT 1 FROM public.subscription_cycles WHERE id=o.cycle_id AND status='payment_pending') OR
   NOT EXISTS(SELECT 1 FROM public.commerce_settlement_intents WHERE id=o.settlement_intent_id AND status='failed') OR
@@ -1836,10 +1843,13 @@ BEGIN
    WHERE recorded.retry_attempt=o.retry_attempt;
   IF (o.retry_attempt>=4 OR o.failure_class='hard_do_not_retry') AND (real_authority.id IS NULL OR real_authority.retry_attempt<>o.retry_attempt OR real_authority.dispatch_key IS NOT NULL) THEN
    RAISE EXCEPTION 'subscription_retry_recovery_not_authorized' USING ERRCODE='22023'; END IF;
-  IF public.payment_method_ref_for_subscription_read(o.subscription_id,p_input->>'paymentMethodRef',p_now) IS NULL THEN
+  SELECT * INTO recovery_token FROM public.commerce_checkout_recovery_tokens WHERE id=real_authority.token_id FOR UPDATE;
+  SELECT * INTO method FROM jsonb_populate_record(NULL::public.payment_method_refs,
+   public.payment_method_ref_for_subscription_read(o.subscription_id,p_input->>'paymentMethodRef',p_now));
+  IF method.id IS NULL THEN
    RAISE EXCEPTION 'subscription_missing_payment_method_ref' USING ERRCODE='22023'; END IF;
   IF NOT public.subscription_method_chargeable_unattended(o.subscription_id,p_now) OR
-   (real_authority.id IS NOT NULL AND (real_authority.retry_attempt<>o.retry_attempt OR real_authority.dispatch_key IS NOT NULL OR real_authority.method_ref IS DISTINCT FROM p_input->>'paymentMethodRef' OR NOT EXISTS(SELECT 1 FROM public.commerce_checkout_recovery_tokens t WHERE t.id=real_authority.token_id AND t.revoked_at IS NULL AND t.expires_at>p_now) OR real_authority.revoked_at IS NOT NULL)) THEN
+   (real_authority.id IS NOT NULL AND (real_authority.retry_attempt<>o.retry_attempt OR real_authority.dispatch_key IS NOT NULL OR real_authority.method_ref IS DISTINCT FROM p_input->>'paymentMethodRef' OR real_authority.method_id IS DISTINCT FROM method.id OR recovery_token.id IS NULL OR recovery_token.revoked_at IS NOT NULL OR recovery_token.expires_at<=p_now OR real_authority.revoked_at IS NOT NULL)) THEN
    RAISE EXCEPTION 'subscription_retry_method_mismatch'; END IF;
  ELSE
  SELECT * INTO a FROM public.subscription_retry_recovery_authorizations WHERE obligation_id=o.id AND retry_attempt=o.retry_attempt FOR UPDATE;

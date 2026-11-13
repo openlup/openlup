@@ -305,7 +305,7 @@ async function methodRows() {
   for (const table of ["subscriptions", "subscription_cycles", "subscription_renewal_operations", "subscription_retry_obligations",
     "subscription_retry_receipts", "subscription_retry_recovery_authorizations", "subscription_dunning_cases", "subscription_events",
     "subscription_method_states", "payment_method_refs", "payment_method_ref_receipts", "payment_method_recovery_authorities", "commerce_checkout_recovery_tokens",
-    "commerce_orders", "commerce_settlement_intents", "fulfillment_inventory_reservations"]) {
+    "commerce_orders", "commerce_settlement_intents", "commerce_settlement_transitions", "payment_provider_attempt_evidence", "fulfillment_inventory_reservations"]) {
     rows[table] = (await db.query(`SELECT to_jsonb(t) AS row,xmin::text AS version FROM public.${table} t ORDER BY to_jsonb(t)::text`)).rows;
   }
   return rows;
@@ -383,6 +383,15 @@ it("uses the current recorded method after a repaired attempt soft-fails and the
     async readOutcome() { return { operationId: f.operation, requestFingerprint: "f".repeat(64), status: "processing", disposition: "ambiguous" } as never; } },
   classifyFailure: () => "soft_retryable", failureTemplate: "failed", recoveredTemplate: "recovered", recoveryPath: "/recover" });
   const due = (await db.query("SELECT next_retry_at FROM public.subscription_retry_obligations WHERE id=$1", [f.obligation])).rows[0].next_retry_at.toISOString();
+  await db.query("UPDATE public.subscription_retry_obligations SET renewal_quarantined_until='2099-11-13T00:00:00Z' WHERE id=$1", [f.obligation]);
+  const quarantined = await call(db, "subscription_retry_read", [f.operation]);
+  expect(await driver.run(due, 500)).not.toContainEqual(expect.objectContaining({ operationId: f.operation }));
+  expect(executed).toEqual([]);
+  expect(await call(db, "subscription_retry_read", [f.operation])).toEqual(quarantined);
+  await expect(call(db, "subscription_retry_prepare", [f.operation, "quarantine:direct", { ...request(f), paymentMethodRef: current.reference }, due]))
+    .rejects.toThrow("subscription_retry_not_due_or_ambiguous");
+  expect(await call(db, "subscription_retry_read", [f.operation])).toEqual(quarantined);
+  await db.query("UPDATE public.subscription_retry_obligations SET renewal_quarantined_until=$2 WHERE id=$1", [f.obligation, due]);
   expect(await driver.run(due, 500)).toContainEqual({ operationId: f.operation, status: "awaiting_provider" });
   expect(executed).toContain(current.reference);
   expect(await call(db, "payment_method_recovery_authority_read", [authority.id])).toMatchObject({ dispatch_key: "repair:dispatch", retry_attempt: 1, method_ref: repaired.reference });
@@ -418,4 +427,81 @@ it("holds the exact authorized method through admission and re-reads rotation af
     expect((await db.query("SELECT state,attempt_sequence FROM public.subscription_retry_obligations WHERE id=$1", [f.obligation])).rows[0]).toEqual({ state: "waiting", attempt_sequence: 0 });
     expect(await call(db, "payment_method_recovery_authority_read", [authority.id])).toMatchObject({ dispatch_key: null });
   } finally { await Promise.all([admission.query("ROLLBACK"), rotation.query("ROLLBACK")]); await pending; admission.release(); rotation.release(); }
+});
+
+
+it("refuses a direct non-setup event close and leaves the received event and money rows unchanged", async () => {
+  const f = await declined(), id = randomUUID();
+  await db.query(`INSERT INTO public.payment_provider_attempt_evidence(id,provider,provider_event_id,event_type,processing_status,payload,settlement_intent_id)
+    VALUES($1,'card_rail',$1::uuid::text,'payment.succeeded','received','{}',$2)`, [id, f.original.settlementIntentId]);
+  const before = await methodRows();
+  expect(await call(db, "payment_control_mark_setup_event_processed", [id])).toMatchObject({ setupEventProcessed: { updated: false } });
+  expect((await db.query("SELECT processing_status,processed_at FROM public.payment_provider_attempt_evidence WHERE id=$1", [id])).rows)
+    .toEqual([{ processing_status: "received", processed_at: null }]);
+  expect(await methodRows()).toEqual(before);
+});
+
+it("refuses another provider's same-text method at admission and at the dispatch freeze", async () => {
+  const f = await declined(), a = await method(f, randomUUID(), { recoveryCaseId: f.caseId });
+  const authority = await authorize(f, a);
+  await call(db, "subscription_retry_schedule_recovery", [f.operation, "identity:schedule", authority.id, AT]);
+  const b = await store().upsert({ key: randomUUID(), clientId: f.client, subscriptionId: f.subscription, provider: "other_rail",
+    methodKind: "card", customer: null, reference: a.reference, mandate: null, status: "active", active: true, expiresAt: null,
+    consent: { recoveryCaseId: f.caseId }, payload: {} });
+  expect(b.id).not.toBe(a.id);
+  expect(await call(db, "payment_method_recovery_authority_read", [authority.id])).toMatchObject({ method_id: a.id, method_ref: a.reference });
+  const before = await methodRows();
+  await expect(call(db, "subscription_retry_prepare", [f.operation, "identity:prepare", { ...request(f), paymentMethodRef: a.reference }, "2026-11-14T12:00:00Z"]))
+    .rejects.toThrow("subscription_retry_method_mismatch");
+  expect(await methodRows()).toEqual(before);
+  // Exercise the bounded writer separately from the caller's admission check.
+  await db.query("UPDATE public.subscription_retry_obligations SET state='prepared' WHERE id=$1", [f.obligation]);
+  const freezeBefore = await methodRows();
+  await expect(call(db, "payment_method_recovery_authority_freeze", [authority.id, f.operation, "identity:freeze", a.reference, "2026-11-14T12:00:00Z"]))
+    .rejects.toThrow("payment_method_recovery_authority_dispatch_mismatch");
+  expect(await methodRows()).toEqual(freezeBefore);
+});
+
+it.each(["settlement", "frozen"] as const)("refuses historical %s provider-channel context without reusable evidence and changes no rows", async context => {
+  const f = await declined();
+  // Isolate each recorded context from method/provider state and from the other channel.
+  await db.query("UPDATE public.commerce_settlement_intents SET channel_key=$2 WHERE id=$1", [f.original.settlementIntentId, context === "settlement" ? "card_rail" : "sandbox"]);
+  await db.query("UPDATE public.subscription_renewal_operations SET cycle_snapshot=jsonb_set(cycle_snapshot,'{settlementChannelKey}',to_jsonb($2::text)) WHERE id=$1", [f.operation, context === "frozen" ? "card_rail" : "sandbox"]);
+  await db.query("INSERT INTO public.subscription_method_states(subscription_id,health_state,method_ref) VALUES($1,'healthy','historical-channel-method')", [f.subscription]);
+  const token = randomUUID();
+  await db.query("INSERT INTO public.commerce_checkout_recovery_tokens(id,token_hash,order_id,client_id,expires_at) VALUES($1,$2,$3,$4,'2099-11-13')",
+    [token, randomUUID().replaceAll("-", "").repeat(2), f.original.orderId, f.client]);
+  const before = await methodRows();
+  expect(await call(db, "subscription_method_uses_recorded_refs", [f.subscription])).toBe(true);
+  expect(await createPostgresRecordedSubscriptionMethodReader(db).read(f.subscription)).toEqual({ kind: "unavailable", reason: "method_ref_not_recorded" });
+  await expect(call(db, "subscription_retry_prepare", [f.operation, `historical:${context}`, { ...request(f), paymentMethodRef: "historical-channel-method" }, AT]))
+    .rejects.toThrow("subscription_missing_payment_method_ref");
+  await expect(call(db, "subscription_retry_authorize_recovery", [f.operation, token, "historical-channel-method", "historical-evidence", AT]))
+    .rejects.toThrow("subscription_retry_recovery_not_authorized");
+  expect(await methodRows()).toEqual(before);
+});
+
+it("keeps a hard stop below rung four closed to a bare webhook and repairs it once in webhook-first order", async () => {
+  const f = await renewal(pool), original = await prepareOriginal(pool, f);
+  await call(db, "subscription_retry_apply_failure", [f.operation, `hard:${f.operation}`, failure(0, AT, "hard_do_not_retry")]);
+  await call(db, "subscription_retry_open_case", [f.operation, "failed", "/recover"]);
+  const row = (await db.query("SELECT * FROM public.subscription_retry_obligations WHERE renewal_operation_id=$1", [f.operation])).rows[0];
+  const subject = { ...f, original, obligation: row.id as string, caseId: row.case_id as string };
+  const m = await method(subject, randomUUID(), { recoveryCaseId: subject.caseId });
+  expect(row).toMatchObject({ state: "waiting", retry_attempt: 1, next_retry_at: null });
+  expect((await db.query("SELECT status FROM public.subscription_dunning_cases WHERE id=$1", [subject.caseId])).rows).toEqual([{ status: "open" }]);
+  expect((await db.query("SELECT status FROM public.subscriptions WHERE id=$1", [subject.subscription])).rows).toEqual([{ status: "active" }]);
+  const before = await methodRows();
+  expect(await call(db, "subscription_try_schedule_recovery_retry", [subject.caseId, m.reference, AT, "method_ref_webhook"]))
+    .toEqual({ scheduled: false, reason: "recovery_not_ready" });
+  expect((await call(db, "subscription_retry_candidates", [500, "2026-11-14T12:00:00Z"])).filter((item: { id: string }) => item.id === subject.obligation)).toHaveLength(0);
+  expect(await methodRows()).toEqual(before);
+  const authority = await authorize(subject, m);
+  expect(await call(db, "subscription_retry_schedule_recovery", [subject.operation, "hard:repair", authority.id, AT])).toMatchObject({ scheduled: true });
+  expect(await call(db, "subscription_try_schedule_recovery_retry", [subject.caseId, m.reference, AT, "method_ref_webhook"]))
+    .toMatchObject({ scheduled: false });
+  expect((await call(db, "subscription_retry_candidates", [500, "2026-11-14T12:00:00Z"])).filter((item: { id: string }) => item.id === subject.obligation)).toHaveLength(1);
+  expect((await db.query("SELECT retry_attempt,attempt_sequence FROM public.subscription_retry_obligations WHERE id=$1", [subject.obligation])).rows)
+    .toEqual([{ retry_attempt: 1, attempt_sequence: 0 }]);
+  expect((await db.query("SELECT count(*)::int AS n FROM public.subscription_events WHERE subscription_id=$1 AND event_type='subscription.retry_scheduled' AND payload->>'source'='subscription.payment_recovery'", [subject.subscription])).rows).toEqual([{ n: 1 }]);
 });

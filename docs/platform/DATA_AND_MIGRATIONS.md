@@ -716,10 +716,15 @@ object names. Store transfer must retain all three row-holding relations.
 
 Repair authority applies only to its recorded retry rung. After that attempt
 fails, later automatic rungs use the current usable method and preserve the spent
-authority's dispatch history. Admission holds a shared lock on the exact method
-through commit and rechecks usability after acquiring that lock. Recorded provider
-or renewal-attempt context selects this path even when historical method refs are
-absent; a healthy legacy label cannot select sandbox compatibility for that work.
+authority's dispatch history. Admission and dispatch freeze compare the recorded
+method row, preserving its provider/reference identity, and lock the recovery token
+through commit. Admission holds a shared lock on the exact method and rechecks
+usability after acquiring that lock. Driver selection and preparation both respect
+the quarantine deadline. Recorded provider state, settlement channels and frozen
+renewal channels select this path even when historical method refs are absent;
+a healthy legacy label cannot select sandbox compatibility for that work.
+Reminder eligibility reads active-method facts through the bounded health reader
+under runtime privileges, independently of unattended chargeability.
 
 The retry driver consumes a recorded provider failure through its original
 immutable receipt key and input. It validates the operation, sequence, logical
