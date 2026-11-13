@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { createPostgresProviderPaymentControlPort, createPostgresPaymentWebhookControlPort,
   createPostgresPaymentProviderReconciliationPort } from "@openlup/platform/payments";
@@ -187,4 +187,41 @@ it("serializes webhook and reconciliation observations without another rung, fin
   expect((await env.owner.query("SELECT count(*)::integer n FROM public.subscription_retry_receipts WHERE kind='failure' AND obligation_id IN (SELECT id FROM public.subscription_retry_obligations WHERE cycle_id=$1)", [f.cycle])).rows[0].n).toBe(1);
   expect((await env.owner.query("SELECT count(*)::integer n FROM public.commerce_settlement_transitions WHERE intent_id=$1 AND outcome='failed'", [f.intent])).rows[0].n).toBe(1);
   expect((await env.owner.query("SELECT count(*)::integer n FROM public.subscription_dunning_cases WHERE cycle_id=$1", [f.cycle])).rows[0].n).toBe(1);
+});
+
+it.each([
+  { label: "prompt", firstAt: AT, nextAt: "2032-01-02T12:00:00.000Z" },
+  { label: "late", firstAt: preparedAt, nextAt: "2026-09-02T12:00:00.000Z" },
+])("retains $label handoff token, revocation, rung and notice identities on fresh advancement and replay", async ({ firstAt, nextAt }) => {
+  const f = await fixture();
+  const prior = (await env.owner.query(`INSERT INTO public.commerce_checkout_recovery_tokens(order_id,client_id,token_hash,expires_at)
+    VALUES($1,$2,$3,'2033-01-01T00:00Z') RETURNING id`, [f.order, f.client, createHash("sha256").update(randomUUID()).digest("hex")])).rows[0].id;
+  const first = await reconciliation().applyTerminalResult({ ...input(f), occurredAt: firstAt, checkedAt: firstAt });
+  const caseId = first.subscriptionWebhookDunning!.caseId;
+  expect((await env.owner.query("SELECT revoked_at IS NOT NULL revoked FROM public.commerce_checkout_recovery_tokens WHERE id=$1", [prior])).rows[0].revoked).toBe(true);
+  expect((await env.owner.query("SELECT recovery_url_path FROM public.subscription_dunning_notifications WHERE case_id=$1 AND recipient_kind='customer' AND retry_attempt=1", [caseId])).rows[0].recovery_url_path)
+    .toEqual(expect.stringMatching(/^\/recover\?token=rcv_/u));
+  await env.owner.query("UPDATE public.fulfillment_stock_current SET stale_after='2033-01-01T00:00Z' WHERE source_key=$1", [f.source]);
+  const prepare = { ...f.prepare, idempotencyKey: `window-next:${f.intent}`, providerIdempotencyKey: `window-provider:${f.intent}` };
+  await call(env.owner, "subscription_retry_prepare", [f.operation, `window-retry:${f.intent}`, { ...prepare, orderRef: f.order, amountMinor: 200, currency: "XXX" }, nextAt]);
+  const a = await attempt(prepare);
+  await control().applyPaymentResult({ idempotencyKey: `window-failure:${f.intent}`, paymentIntentId: f.intent, paymentEventId: null,
+    resultStatus: "failed", occurredAt: nextAt, failureReason: "declined", failureClass: "soft_retryable" });
+  expect(await observe(f, `window-observation:${f.intent}`, a.paymentAttemptId, nextAt)).toMatchObject({ subscriptionWebhookDunning: { caseId, retryAttempt: 2, replayed: false } });
+  const tokens = (await env.owner.query(`SELECT count(*)::integer total,count(*) FILTER(WHERE revoked_at IS NULL)::integer active,
+    bool_and(expires_at>created_at) valid FROM public.commerce_checkout_recovery_tokens WHERE order_id=$1`, [f.order])).rows[0];
+  expect(tokens).toEqual({ total: 3, active: 1, valid: true });
+  expect((await env.owner.query(`SELECT t.expires_at=t.created_at+interval '14 days' correct
+    FROM public.commerce_checkout_recovery_tokens t JOIN public.subscription_retry_obligations o ON o.order_id=t.order_id
+    WHERE t.order_id=$1 AND t.revoked_at IS NULL`, [f.order])).rows[0].correct).toBe(true);
+  const notices = (await env.owner.query("SELECT id,retry_attempt,recovery_url_path FROM public.subscription_dunning_notifications WHERE case_id=$1 AND recipient_kind='customer' ORDER BY retry_attempt", [caseId])).rows;
+  expect(notices.map(n => n.retry_attempt)).toEqual([1, 2]);
+  expect((await env.owner.query("SELECT retry_attempt,recovery_url_path FROM public.subscription_dunning_notifications WHERE case_id=$1 AND recipient_kind='operator' ORDER BY retry_attempt", [caseId])).rows)
+    .toEqual([{ retry_attempt: 1, recovery_url_path: null }, { retry_attempt: 2, recovery_url_path: null }]);
+  expect(notices[1].recovery_url_path).toEqual(expect.stringMatching(/^\/recover\?token=rcv_/u));
+  const before = await snapshot(f);
+  expect(await observe(f, `window-duplicate:${f.intent}`, a.paymentAttemptId, nextAt)).toMatchObject({ subscriptionWebhookDunning: { retryAttempt: 2, replayed: true } });
+  expect(await observe(f, `window-stale:${f.intent}`, f.a.paymentAttemptId, firstAt)).toMatchObject({ subscriptionWebhookDunning: { retryAttempt: 2, replayed: true } });
+  expect(await snapshot(f)).toEqual(before);
+  expect((await env.owner.query("SELECT id,retry_attempt,recovery_url_path FROM public.subscription_dunning_notifications WHERE case_id=$1 AND recipient_kind='customer' ORDER BY retry_attempt", [caseId])).rows).toEqual(notices);
 });

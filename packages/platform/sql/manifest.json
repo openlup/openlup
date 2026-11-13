@@ -537,10 +537,10 @@
       },
       {
         "file": "db/platform/migrations/20261114120000_payment_reconciliation_refund_evidence.sql",
-        "sha256": "08692c183b1fd078f2334749b2bf766ae6e9e87b3c8a797a83365436610a9347"
+        "sha256": "6063701721be0b828e47f392ddd801ac920a6a7b149e7750a9234f92fd1d043b"
       }
     ],
-    "objectInventorySha256": "7b8734fb6599747b41ed92af6bd20152f681bca1fa76a627e9dbd602d327af43",
+    "objectInventorySha256": "9711f046441c88afc150d3bfd59dce1a575190bef99b4ea7dc5817ea0b9631d6",
     "qualified": {
       "baseline": {
         "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1097,15 +1097,15 @@
         },
         {
           "file": "db/platform/migrations/20261114120000_payment_reconciliation_refund_evidence.sql",
-          "sha256": "08692c183b1fd078f2334749b2bf766ae6e9e87b3c8a797a83365436610a9347"
+          "sha256": "6063701721be0b828e47f392ddd801ac920a6a7b149e7750a9234f92fd1d043b"
         }
       ],
       "objectInventorySha256": {
         "bootstrapMigrator": {
-          "withRestore": "3864986033e0ae2f1d449a90263c2363d41dbfb90c446ca4a7a79f05efacd0c8"
+          "withRestore": "b102ef8e60151afcfe2904a8281202e1ac8323124caef0b3d165f75d1859515c"
         },
         "separateMigrator": {
-          "withRestore": "c38d356c4bae1ca633a7232f7459337c4fb793d54df38e44b24b8340b4686bbd"
+          "withRestore": "0aa781d411ed68292cd32aa512cabe5debe4e95dcee281dfcc4c0470f3689a37"
         }
       }
     },
@@ -1661,12 +1661,12 @@
         },
         {
           "file": "db/platform/migrations/20261114120000_payment_reconciliation_refund_evidence.sql",
-          "sha256": "08692c183b1fd078f2334749b2bf766ae6e9e87b3c8a797a83365436610a9347"
+          "sha256": "6063701721be0b828e47f392ddd801ac920a6a7b149e7750a9234f92fd1d043b"
         }
       ],
       "objectInventorySha256": {
-        "installerManaged": "db7efc52a48d708492eab0852e64ccb2123040941e03576e4b2f91e958baa778",
-        "operatorProvisioned": "37fedb78a9dab0a0893998dc5951bc1a0c26405353c8ce3fa16e63ade5cba88c"
+        "installerManaged": "66f638ff3c6431c14b97ea7e31c33cc30e90a645f07033c828d012cf0555286c",
+        "operatorProvisioned": "5da8c71f02c1487b7978b5980e1aef97112c080524dcde6f4a603e7cde26cd60"
       }
     }
   },
@@ -2339,7 +2339,7 @@
     {
       "file": "20261114120000_payment_reconciliation_refund_evidence.sql",
       "source": "db/platform/migrations/20261114120000_payment_reconciliation_refund_evidence.sql",
-      "sha256": "08692c183b1fd078f2334749b2bf766ae6e9e87b3c8a797a83365436610a9347"
+      "sha256": "6063701721be0b828e47f392ddd801ac920a6a7b149e7750a9234f92fd1d043b"
     },
     {
       "file": "q2_00000000000000_platform_baseline.sql",

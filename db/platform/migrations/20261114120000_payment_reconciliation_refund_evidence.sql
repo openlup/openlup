@@ -822,14 +822,14 @@ BEGIN
   IF existing_case.id IS NOT NULL AND obligation.case_id IS DISTINCT FROM existing_case.id THEN
    RAISE EXCEPTION 'subscription_dunning_case_unattributed' USING ERRCODE='55000'; END IF;
   case_result:=public.subscription_retry_open_case(i.renewal_operation_id,p_template,p_recovery_path);
+  token_expiry:=now()+CASE WHEN obligation.next_retry_at IS NULL AND rung>=4
+   THEN interval '30 days' ELSE interval '14 days' END;
   recovery_token:='rcv_'||replace(gen_random_uuid()::text,'-','')||replace(gen_random_uuid()::text,'-','');
-  token_expiry:=CASE WHEN obligation.next_retry_at IS NULL AND rung>=4 THEN p_occurred_at+interval '30 days'
-   ELSE COALESCE(obligation.next_retry_at,p_occurred_at)+interval '14 days' END;
   PERFORM public.dunning_lifecycle_issue_recovery_token((case_result->>'caseId')::uuid,
    encode(sha256(convert_to(recovery_token,'UTF8')),'hex'),token_expiry);
   recovery_path:=p_recovery_path||CASE WHEN position('?' IN p_recovery_path)>0 THEN '&' ELSE '?' END||'token='||recovery_token;
   UPDATE public.subscription_dunning_notifications SET recovery_url_path=recovery_path
-   WHERE case_id=(case_result->>'caseId')::uuid AND retry_attempt=CASE WHEN obligation.next_retry_at IS NULL THEN 0 ELSE rung END;
+   WHERE case_id=(case_result->>'caseId')::uuid AND recipient_kind='customer' AND retry_attempt=CASE WHEN obligation.next_retry_at IS NULL THEN 0 ELSE rung END;
   result:=jsonb_build_object('subscriptionWebhookDunning',jsonb_build_object('opened',true,'replayed',false,
    'caseId',case_result->>'caseId','subscriptionId',s.subscription_id,'cycleId',s.subscription_cycle_id,
    'orderId',i.order_id,'paymentIntentId',i.id,'retryAttempt',rung,'nextRetryAt',failure.result->'next_retry_at'));
