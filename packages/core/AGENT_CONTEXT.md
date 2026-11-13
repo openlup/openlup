@@ -7,7 +7,7 @@ Shipped package-local sources are relative to this package. Other sources link t
 Repository paths, imports and relative links inside verbatim excerpts describe that source checkout, not files to find or create in your application.
 Consult installed declarations and README for the installed version.
 
-<!-- openlup-context-inventory [{"id":"extend-platform","source":"docs/guide/how-to/extend/choose-an-extension-seam.md","heading":"Extension seams","startLine":7,"endLine":22,"sha256":"e47333e4c82309d656bd8d3934a97ee9aa5d0966fa8e82ae99367ad7f516d274"},{"id":"canonical-status","source":"https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Canonical status","startLine":235,"endLine":249,"sha256":"3e8eacd8144a6856235738448cf0cbb310e75f7eff676a08b69277b5eb84156b"},{"id":"late-payment-cycle","source":"docs/SUBSCRIPTION_ENGINE.md","heading":"A late payment shifts the cycle; it never compresses it","startLine":103,"endLine":132,"sha256":"e57a69b406ed770b4da857883d2dc99bca556125ea7e4c50cb3c0837707ed810"},{"id":"subscription-layer-delivery","source":"https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/SUBSCRIPTION_WORKFLOWS.md","heading":"Installed subscription boundary","startLine":12,"endLine":25,"sha256":"914c5b59307c7b969bdea216df9a5c57c924d95bdfe73c6ad1647de645a01698"}] -->
+<!-- openlup-context-inventory [{"id":"extend-platform","source":"docs/guide/how-to/extend/choose-an-extension-seam.md","heading":"Extension seams","startLine":7,"endLine":22,"sha256":"e47333e4c82309d656bd8d3934a97ee9aa5d0966fa8e82ae99367ad7f516d274"},{"id":"canonical-status","source":"docs/guide/concepts/payments.md","heading":"Canonical status","startLine":7,"endLine":64,"sha256":"02e09ec849dd134c9f6aa2f88d278e2744e3459e330d2e21aea8065003944af9"},{"id":"late-payment-cycle","source":"docs/guide/concepts/subscription-engine.md","heading":"A late payment shifts the cycle; it never compresses it","startLine":65,"endLine":85,"sha256":"df3a8e0f35ffa6a62b4758f2c58f2abffe4137c3f80e20c6fadf72b9f2bf4ad3"},{"id":"subscription-layer-delivery","source":"docs/guide/concepts/subscriptions.md","heading":"Installed subscription boundary","startLine":8,"endLine":27,"sha256":"d93ab6ab2337641da4d2d38279f6b5a1afc96a61577a3765f5399ea04de31c80"}] -->
 
 ## extend-platform: Choose an extension seam
 
@@ -34,80 +34,120 @@ your package imports; do not edit a platform domain list to add them.
 
 ## canonical-status: Map provider status safely
 
-Source: [OpenLup source repository at openlup-core-v0.39.0](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/CANONICAL_CONTRACTS.md#L235-L249).
+Source: [docs/guide/concepts/payments.md](docs/guide/concepts/payments.md).
 
-<!-- openlup-context {"id":"canonical-status","source":"https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Canonical status","startLine":235,"endLine":249,"sha256":"3e8eacd8144a6856235738448cf0cbb310e75f7eff676a08b69277b5eb84156b"} -->
+<!-- openlup-context {"id":"canonical-status","source":"docs/guide/concepts/payments.md","heading":"Canonical status","startLine":7,"endLine":64,"sha256":"02e09ec849dd134c9f6aa2f88d278e2744e3459e330d2e21aea8065003944af9"} -->
 ## Canonical status
 
-Each domain owns its canonical status vocabulary, allowed transitions, and
-terminal-state rules. A provider's raw status is evidence at the adapter edge;
-it is mapped into a domain fact before it affects durable platform state.
+A payment intent records the local payment obligation and its money; an attempt
+records an execution against that intent. Their statuses come from
+`PaymentIntentStatus` and `PaymentAttemptStatus` in `@openlup/core/payment`.
+A provider's status belongs at the adapter boundary: verify its evidence,
+translate it into a neutral outcome, then apply the payment domain's transition
+rules. Never use a provider status directly to settle local state. A provider
+string alone establishes neither the active local attempt nor matching money,
+and it bypasses the rules that protect an already recorded success.
 
-Do not compare provider strings throughout application code or treat a browser
-return value as settlement truth. Preserve the raw evidence needed for diagnosis
-in a bounded form, map it once, and refuse impossible transitions. Late,
-duplicate, or out-of-order evidence must not regress a terminal canonical fact.
+The verified ingress maps normalized money events as follows:
 
-Status vocabularies are not interchangeable between domains. A new status or
-transition requires an explicit mapping, persistence compatibility, and tests
-for refusal, replay, and ordering.
+| Event | Local result |
+| --- | --- |
+| `payment.succeeded` | `succeeded` |
+| `payment.failed` | `failed` |
+| `payment.refunded` | `refunded` or `partially_refunded`, according to refund evidence |
+| `payment.disputed` | `disputed` |
+
+`payment.requires_action` is a request for customer action, not settlement.
+Method registration and other `setup.*` events do not apply a money result.
+A browser return or provider silence never proves payment. Readback must identify
+the exact attempt and expected money; timeout, truncation or indeterminate
+evidence remains `unknown`, which does not authorize another charge.
+
+`applyProviderPaymentEvent` checks that the attempt belongs to the intent and is
+its active attempt, refusing `wrong_attempt` otherwise. Asserted currency or
+charge-amount mismatches return `currency_mismatch` or `amount_mismatch`.
+An illegal transition returns `invalid_transition`. This core function computes
+a decision; the application must persist it and the event identities used to
+recognize repeats.
+
+Ordering follows the payment rules, not arrival order. An event ID supplied in
+`seenProviderEventIds` yields `noop` with `duplicate_provider_event`. A matching failure
+after success, refund or dispute is ignored. Matching late success can recover
+a failed or expired intent as `late_success_recovered`; success after a cancelled,
+refunded, partially refunded or disputed intent refuses `terminal_intent`.
+Failure and expiry therefore do not mean that a later positive payment fact can
+be discarded.
+
+Refunds require a prior successful intent (`refund_requires_success` otherwise).
+The default verified ingress also requires refund kind, payment identity,
+positive money and currency before applying a refund result. The normalized
+refund observation carries the original money and a stable operation identity;
+missing evidence must not be guessed into a full refund.
+
+The payment transitions exported from `@openlup/core/payment`
+(`transitionPaymentIntent`, `transitionPaymentAttempt`,
+`applyProviderPaymentEvent`) and the
+[verified evidence contracts](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/src/payments/contracts/evidence.ts)
+define these separate boundaries. Other commerce domains have their own status
+types; do not substitute payment statuses for them.
+
+Retain bounded diagnostic evidence inside the adapter and map provider facts
+once; diagnosis must not weaken transition refusals or allow late evidence to
+regress a terminal canonical fact.
 
 <!-- /openlup-context -->
 
 ## late-payment-cycle: Handle late payment without compressing the cycle
 
-Source: [docs/SUBSCRIPTION_ENGINE.md](docs/SUBSCRIPTION_ENGINE.md).
+Source: [docs/guide/concepts/subscription-engine.md](docs/guide/concepts/subscription-engine.md).
 
-<!-- openlup-context {"id":"late-payment-cycle","source":"docs/SUBSCRIPTION_ENGINE.md","heading":"A late payment shifts the cycle; it never compresses it","startLine":103,"endLine":132,"sha256":"e57a69b406ed770b4da857883d2dc99bca556125ea7e4c50cb3c0837707ed810"} -->
+<!-- openlup-context {"id":"late-payment-cycle","source":"docs/guide/concepts/subscription-engine.md","heading":"A late payment shifts the cycle; it never compresses it","startLine":65,"endLine":85,"sha256":"df3a8e0f35ffa6a62b4758f2c58f2abffe4137c3f80e20c6fadf72b9f2bf4ad3"} -->
 ## A late payment shifts the cycle; it never compresses it
 
-This is the load-bearing rule of the whole engine, and the one most likely to be
-"optimised" away by someone who reads it as defensive arithmetic.
+A successful payment calculates the next cycle from the paid cycle's own
+`scheduledAt` and snapshot cadence, then adds the whole days it was late:
 
-The next cycle is computed from the **cycle's own** `scheduledAt` plus its
-cadence — not from the moment the money arrived. A late payment must not silently
-shorten the interval the subscriber bought. The whole days the payment was late
-are then **added**:
-
-```
-shiftedByDays = max(0, floor((min(paidAt, recordedAt) - cycle.scheduledAt) / 1 day))
-nextCycleAt   = max(subscription.nextCycleAt, onTimeNextCycleAt + shiftedByDays days)
+```text
+shiftedByDays = max(0, floor((min(paidAt, recordedAt) - scheduledAt) / 24 hours))
+onTimeNextCycleAt = scheduledAt + cycle.templateSnapshot.cadence_days days
+nextCycleAt = max(subscription.nextCycleAt, onTimeNextCycleAt + shiftedByDays days)
 ```
 
-The outer `max` is a **monotonic clamp**: `nextCycleAt` may only ever move later,
-never earlier. Without it a replayed webhook, an out-of-order settlement, or a
-correction applied against an older cycle could compute an earlier instant and
-pull a charge forward into a window the subscriber has already been billed for.
-That is the one failure mode this rail must never have. A deployment whose
-durable schedule enforces the same rule in SQL will spell the clamp `GREATEST`;
-the two are one rule with two spellings, and they must move together.
+The outer maximum preserves any later date already stored, including a date
+extended by delivery alignment. An old settlement or replay against an older
+cycle must not bring the next charge forward. Early payment adds no late days;
+partial late days are rounded down. A shift or cadence calculation beyond the
+representable timestamp range returns `invalid_timestamp`.
 
-`shiftedByDays` is reported on the emitted
-`subscription.next_cycle_at_updated` event alongside `basedOnScheduledAt` and
-`basedOnPaidAt`, so the shift is auditable after the fact rather than inferred.
-
-A shift that pushes the instant past the representable timestamp range answers
-`invalid_timestamp` rather than returning an invalid date.
+The `subscription.next_cycle_at_updated` event reports `nextCycleAt`,
+`basedOnScheduledAt`, `basedOnPaidAt` and `shiftedByDays`. This is a payment-clock
+decision; it does not establish that a parcel arrived.
 
 <!-- /openlup-context -->
 
 ## subscription-layer-delivery: Locate pure engine and durable delivery boundaries
 
-Source: [OpenLup source repository at openlup-core-v0.39.0](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/SUBSCRIPTION_WORKFLOWS.md#L12-L25).
+Source: [docs/guide/concepts/subscriptions.md](docs/guide/concepts/subscriptions.md).
 
-<!-- openlup-context {"id":"subscription-layer-delivery","source":"https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/SUBSCRIPTION_WORKFLOWS.md","heading":"Installed subscription boundary","startLine":12,"endLine":25,"sha256":"914c5b59307c7b969bdea216df9a5c57c924d95bdfe73c6ad1647de645a01698"} -->
+<!-- openlup-context {"id":"subscription-layer-delivery","source":"docs/guide/concepts/subscriptions.md","heading":"Installed subscription boundary","startLine":8,"endLine":27,"sha256":"d93ab6ab2337641da4d2d38279f6b5a1afc96a61577a3765f5399ea04de31c80"} -->
 ## Installed subscription boundary
 
-For an application using a version-matched installed `@openlup/*` set,
-`@openlup/core/subscription` owns the pure cycle and payment-clock decisions.
-Read the installed `@openlup/core/docs/SUBSCRIPTION_ENGINE.md` and declarations
-before changing that behavior. The experimental
-`@openlup/platform/subscriptions` entry supplies native renewal mechanisms and
-ports; it does not mount a runner or choose a provider. The application must
-compose its own authorization, durable store, scheduler and provider bindings.
-Delivery evidence belongs at the durable admission boundary before renewal
-artifacts. An undelivered replacement remains outstanding, and confirming its
-arrival must use observed delivery rather than a payment result. Check the
-installed package version, exports and capability limits before using a seam.
+`@openlup/core/subscription` owns pure cycle and payment-clock decisions: its
+timing, status and retry rules are described on the subscription engine page.
+Use the declarations shipped with your installed package set.
+
+`@openlup/platform/subscriptions` supplies native renewal mechanisms, ports and
+PostgreSQL bindings. Constructing a binding does not mount a runner or select a
+payment provider. Your application supplies authorization, durable storage,
+scheduling and provider bindings, using matching installed `@openlup/*`
+versions. Check the installed exports and
+[subscription API reference](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/subscriptions.api.md)
+before selecting a seam.
+
+The engine returns models and events. Durable admission decides whether a new
+renewal may proceed, using stored delivery facts before renewal artifacts are
+created. A successful payment is not delivery evidence; the
+delivery-alignment boundary, described under "Subscription delivery alignment"
+below, owns arrival and persisted schedule alignment.
 
 <!-- /openlup-context -->

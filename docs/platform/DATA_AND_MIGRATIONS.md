@@ -5,10 +5,38 @@ Status: maintainer page: how to change OpenLup. Reader guidance lives in the [Op
 
 ## Data ownership
 
+Moved to [Architecture and ownership](../../packages/core/docs/guide/concepts/architecture-and-ownership.md#data-ownership).
+
 Native terminal replay replaces only `subscription_claim_due_renewal` while
 retaining its header, ACL, frozen-input comparison and subscription-first lock
-order. Terminal history precedes due eligibility; cancelled new work refuses.
-The subscription owner below defines the public behavior and proof.
+order. The subscription owner below defines the public behavior and proof.
+
+The native `20261101223000_subscription_purchase_renewal.sql` forward records
+purchase facts and renewal-attachment duties beside the existing activation
+spine. Bounded definer writers avoid granting
+runtime INSERT on renewal headers or method states. The new fact/event tables
+explicitly revoke all table access from PUBLIC, anon, authenticated and
+service_role, including access inherited from installer default grants. No table
+grant or row-level-security change is added. Fixed
+definer readers expose only a bounded pending-duty list and three completed
+snapshot fields; the runtime never reads the method-event ledger. Their search
+path is `pg_catalog, pg_temp`, and
+the original activation RPC signature and commit-helper attributes are retained.
+The incumbent term-line collection INSERT/DELETE grants remain unchanged.
+Created functions revoke PUBLIC individually before conditional constant-string
+function ACL blocks for anon, authenticated and service_role. The replaced
+activation helper retains its ACL. Sandbox observation uses invoker rights
+and the existing operation/outcome capabilities, without another attempt table.
+The [subscription owner](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
+describes the codec and retry duties.
+
+See [retained renewal storage](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#retained-renewal-storage).
+
+The preview source release deliberately ships an unbound database-type seam at
+`src/integrations/supabase/types.ts`; replace it with adopter-generated types
+before enabling database adapters. It is not evidence of schema compatibility.
+
+Evidence (historical record, 2026-11-13):
 
 The native `20261101223000_subscription_purchase_renewal.sql` forward records
 purchase facts and renewal-attachment duties beside the existing activation
@@ -33,22 +61,6 @@ The [subscription owner](https://github.com/openlup/openlup/blob/main/docs/platf
 describes the codec and retry duties. The forward's approval inventory is
 admitted with it under ordinary review;
 local PostgreSQL proof does not establish that admission or a published chain.
-
-See [retained renewal storage](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#retained-renewal-storage).
-
-The platform owns its schema, migration history, and documented data contracts.
-An adopter owns tables and migrations for its own extensions in the `app` schema.
-The platform never writes there; the adopter owns extension compatibility and
-migration ordering. Extension data must live beside platform data through explicit foreign keys, ports, or events rather
-than by editing platform rows with undocumented assumptions.
-
-The published platform shape must expose a reproducible baseline and ordered
-forward migrations. Development convenience at process startup is not a
-coordination mechanism for a multi-instance deployment.
-
-The preview source release deliberately ships an unbound database-type seam at
-`src/integrations/supabase/types.ts`; replace it with adopter-generated types
-before enabling database adapters. It is not evidence of schema compatibility.
 
 ## Retained renewal storage
 
@@ -571,38 +583,17 @@ records the intentional differences preserved by the contribution.
 
 Existing native and managed migration bytes remain unchanged.
 
-For a fresh native install, the invariant "a late delivery extends the next cycle"
-is enforced automatically only when delivery-alignment control mode is
-`auto_align`. `public.subscription_delivery_alignment_control.mode` defaults to
-`off` for rollout safety, so installation alone does not enforce the invariant.
-The complete mode set is `off`, `shadow`, `protect` and `auto_align`, selected
-through `public.subscription_delivery_alignment_set_mode`. Existing cases retain
-their captured mode and protection after a control change.
+Moved to [Subscriptions](../../packages/core/docs/guide/concepts/subscriptions.md#subscription-delivery-alignment).
 
-Enforcing modes (`protect`, `auto_align`) require the host's renewal path to call
-`subscription_delivery_alignment_admit_renewal` before inserting the cycle.
 The [native renewal store](../../server/adapters/postgres/subscription/automaticRenewal.ts)
-retains its static terms gate. A host that composes the native automatic-renewal
-runner must wrap its store port with the
-[admission decorator](../../server/runtime/subscription/deliveryAlignmentRenewalStore.ts)
-before selecting an enforcing mode; an uncomposed
-new-cycle insertion refuses with `subscription_delivery_alignment_admission_required`.
-Until the host wraps that port, native delivery-alignment mode stays `off` or
-`shadow`. The supplied boundary stops at the decorator, with no runner composer,
-factory or production entrypoint. Captured protection survives rollback to `off`.
-
-In enforcing modes, a subscription whose paid history has no activation or
-renewal link, such as imported data, holds every due renewal for manual review.
-Operators should check for such cycles before switching modes.
+and its [admission decorator](../../server/runtime/subscription/deliveryAlignmentRenewalStore.ts)
+retain separate source owners; this source boundary supplies no runner composer,
+factory or production entrypoint.
 
 The command forward adds durable dispatch/attempt/paid-handoff and observation
-receipts. Atomic ACK records the native `dispatch` external reference: the `3pl`
-archetype does not create an owned label, and acceptance cannot imply physical
-packing. That receipt also retains the native local-cancellation refusal.
-Observation persistence distinguishes received observations from recorded status
-evidence; only the latter supplies local occurrence chronology. Stock movements retain opaque
-keys and replay fingerprints, while sync cursor state retains coverage gaps.
-Host inventory lines and authoritative contact preparation remain injected.
+receipts. The ACK stores the native `dispatch` external reference. Observation persistence
+keeps separate received and recorded-status rows. Stock movements retain opaque
+keys/fingerprints; cursor persistence retains coverage gaps.
 
 The alignment forward translates managed fulfillment rows to native shipments,
 replacement links to `replaces_shipment_id`, and subscription identity through
@@ -615,27 +606,7 @@ renewal operation whose linked order is the active `subscription_activations`
 row's order for the same subscription. Renewal operation numbers remain ≥1.
 Admission selects the highest known paid ordinal, so activation protects the
 first renewal and each later paid renewal outranks activation. Successor
-artifacts have a greater effective ordinal. Other unnumbered cycles remain
-unordered: paid ones require manual review at due admission without minting a
-receipt; other unordered cycles prevent automatic arrival alignment regardless
-of scheduled date. They neither outrank known predecessors nor silently permit
-an autonomous renewal. Shadow mode observes this ambiguity without blocking.
-
-Local pre-dispatch cancellation changes only the shipment locally: alignment
-creates no hold or shipment-exception event and does not block other shipments
-of the order. An undelivered, unsuperseded cancelled parcel still counts as
-outstanding at renewal admission in `protect` and `auto_align`. An explicit
-provider exception uses the existing fulfillment-exception hold and notification
-rules; alignment observes that active hold to open a case only when control is not
-`off`, the order belongs to a paid subscription cycle and the subscription is
-active. One-time orders do not open alignment cases. Exception cases never
-pause subscriptions.
-
-Existing-cycle renewal and dunning
-retries bypass new-cycle admission and receipts. The new-cycle INSERT guard
-retains exact schedule-bound, one-use receipt consumption. Default-off control
-does not erase captured protected cases. Only durable arrival can settle the
-automatic route, using the latest arrival plus cadence with the outer maximum.
+artifacts have a greater effective ordinal.
 
 All new routines are invokers with PUBLIC/anon/authenticated access revoked,
 including helpers and trigger routines. The initial native executor is the
@@ -643,17 +614,11 @@ existing deployment owner; no role, SECURITY DEFINER, default grant or browser
 capability is added. A separate service principal requires the maintainer's
 explicit least-privilege grants on routines and underlying objects; owner
 execution does not establish a non-owner grant set. Receipt pruning needs DELETE
-on that receipt table if such an invoker is configured. Replacement confirmation remains a note-only operator
-attestation with no automatic caller or new arrival predicate. The
-[arrival-only discipline](plans/oss-m08-fulfillment-physical-delivery.md#native-admission-and-delivery-alignment)
-remains binding.
+on that receipt table if such an invoker is configured. The forward adds no automatic replacement-confirmation caller or arrival predicate.
+Preserve the [arrival-only discipline](plans/oss-m08-fulfillment-physical-delivery.md#native-admission-and-delivery-alignment).
 
-`paymentSchemaDescriptor`
-declares direct truth, settlement and later-only alignment supported; durable
-prepared attempts, method setup, absence reopen and cumulative refund unsupported.
-Refunds are purely financial and do not cancel subscriptions. The direct truth
-store retains its invoker SQL and requires the host's existing executor and
-privileges; descriptor presence alone does not prove installed schema readiness.
+The payment-truth store retains invoker SQL and its existing executor/privilege
+owner; schema descriptors remain presence metadata.
 
 The source preview's additive sandbox-attempt forward
 `20261101222000_sandbox_payment_attempts.sql` adds two private tables and four
@@ -662,60 +627,28 @@ replay/fingerprint and synthetic method facts; `payment_simulator_observations`
 owns immutable simulated outcomes. The runtime has function execution only,
 with no direct access to either table. The forward explicitly revokes all table
 privileges from PUBLIC, anon, authenticated and service_role, removing
-creation-time default grants to those recipients; it does not enable RLS. This is a sandbox-specific store; generic
-prepared durable storage and real PSP support remain unavailable. Install the
-complete selected chain, including its exact inventory; this forward alone is
-not an installer. Earlier migration bytes and approvals stay unchanged.
+creation-time default grants to those recipients; it does not enable RLS. Earlier migration bytes and approvals stay unchanged.
 
 The same forward adds `payment_truth_events.review_required_at` and a new
 consistency CHECK, preserving every existing CHECK and the `open|settled` state
-vocabulary. Cancelled capture has outcome `captured`, state `open`, a review
-marker and no settlement transition. Its application disposition is terminal
-`review_required`: sweep excludes it, reconciliation retains it without applying
-settlement, and readback exposes its marker/status. Existing OMS captured-truth
-visibility is preserved. Neither an order reopen nor a refund/fiscal writer is
-introduced; `commerce_record_settlement` and its later-only schedule rule remain
-unchanged. Ordinary recovery-notice contention still rolls capture back; same-event
-redelivery converges after contention clears. This forward does not isolate that
-existing coupling or add a retry dispatcher.
-
-List payments awaiting operator review:
-
-```sql
-SELECT e.id AS payment_truth_event_id,
-       i.order_id,
-       o.status AS order_status,
-       e.amount_minor,
-       e.currency_code,
-       e.source_event_id,
-       e.review_required_at
-FROM public.payment_truth_events AS e
-JOIN public.commerce_settlement_intents AS i ON i.id = e.settlement_intent_id
-JOIN public.commerce_orders AS o ON o.id = i.order_id
-WHERE e.review_required_at IS NOT NULL
-ORDER BY e.review_required_at, e.id;
-```
-
-Run this read-only query through the host's authorized native PostgreSQL session;
-amounts are in minor currency units. It discovers review-marked events without
-already knowing their IDs and excludes ordinary open events. Use the returned
-`payment_truth_event_id` with the truth port's `readEvent` for effect details.
-The query records no decision and creates no refund or order transition.
+vocabulary. The cancelled-capture branch marks review without calling settlement. It adds
+no order-reopen, refund or fiscal writer, and leaves `commerce_record_settlement`
+and its later-only schedule implementation unchanged. Recovery-notice contention
+remains coupled to capture; this forward adds no isolation or retry dispatcher.
 
 `CATALOG_MIGRATIONS` additionally projects existing canonical catalog positions
 1, 8, 58, 59 and 61: read foundation, storefront attributes, document/identifier
 and subscription price-policy foundation, its validation, and isolated drafts.
 Each descriptor keeps the canonical path, position, digest and byte-identical
 package SQL. There is no new migration, reordered history or manifest edit.
-Install and observe the complete selected catalogue; these five projections do
-not supply an independent installation sequence. The package envelope and draft
+The package envelope and draft
 stores keep their incumbent SQL and refusal semantics after the source move.
 
 
 Inventory publishes sparse byte-identical projections of canonical units 27
 (stock evidence) and 33 (automatic renewal) through `INVENTORY_MIGRATIONS`.
 Canonical paths, positions and SHA-256 remain unchanged; this adds no migration
-or manifest row. Install the complete catalogue. The [M06 store matrix](plans/oss-m06-stock-reservations-delivery.md#parity-pending-rows)
+or manifest row. The [M06 store matrix](plans/oss-m06-stock-reservations-delivery.md#parity-pending-rows)
 separates native observed-stock operations from managed lot-based inventory,
 refusals and outstanding real-host proof. Subscription/payment/delivery writers
 remain at their incumbent boundaries; these projections install no schedule.
@@ -724,7 +657,7 @@ Catalog's `BUNDLE_MIGRATIONS` projects canonical bundle units 16 and 19 with exa
 catalogPath, position, SHA-256 and artifact URL. The package SQL bytes are identical
 to the canonical files; this is projection only, with no new migration, manifest
 row or baseline change. Unit 30 belongs to channel lines and is not included.
-Install the full canonical chain, not these two files alone. The native read
+The native read
 store performs reads only; the packaged native writer calls the existing
 canonical write routines without changing them.
 Five real-PostgreSQL cases characterize fresh/repeat application, complete reads,
@@ -737,8 +670,7 @@ Promotions publishes sparse, byte-identical projections of canonical units 47 an
 48: promotion claim lifecycle and its constraint-validation forward. The module's
 `PROMOTIONS_MIGRATIONS` descriptor retains each canonical catalogPath, position,
 SHA-256 and artifact URL. This move adds no migration, baseline change or manifest
-row. Install the full canonical catalogue rather than the sparse projections.
-The native executor-backed store owns only evaluator reads and bounded sweep;
+row. The native executor-backed store owns only evaluator reads and bounded sweep;
 claim reservation/writing remains at its existing boundary. Real PostgreSQL proof
 checks fresh canonical application/replay, read-only evidence, paid/released
 transitions, sweep replay/fences and unauthorized versus explicitly granted reads.
@@ -746,10 +678,8 @@ It does not establish native code resolution or native/managed eligibility parit
 
 Direct OIDC principals fit the existing UUID `clients.principal_id`; the
 versioned issuer/subject hash adds no table, forward, catalogue position or ledger
-change. The direct account-link capability uses normal reconciliation and
-parameterized DML, fills only null links and refuses normalized-email ambiguity.
-Privacy receipt locking prevents recreation or relinking of erased principals.
-It never converts legacy links, managed auth IDs, membership or subscriptions.
+change. The direct account-link capability retains parameterized DML and receipt-before-link
+locking without converting legacy links or managed identities.
 The opt-in real-issuer runner installs the full catalogue, checks exact ledger
 rows and proves replay and preservation of existing application state. Its
 [identity recipe](IDENTITY.md#real-issuer-oidc-recipe) requires real local services.

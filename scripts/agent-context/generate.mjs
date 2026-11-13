@@ -8,20 +8,20 @@ import { fileURLToPath } from 'node:url';
 export const routes = {
   core: [
     ['extend-platform', 'Choose an extension seam', 'packages/core/docs/guide/how-to/extend/choose-an-extension-seam.md', 'Extension seams'],
-    ['canonical-status', 'Map provider status safely', 'docs/platform/CANONICAL_CONTRACTS.md', 'Canonical status'],
-    ['late-payment-cycle', 'Handle late payment without compressing the cycle', 'packages/core/docs/SUBSCRIPTION_ENGINE.md', 'A late payment shifts the cycle; it never compresses it'],
-    ['subscription-layer-delivery', 'Locate pure engine and durable delivery boundaries', 'docs/platform/SUBSCRIPTION_WORKFLOWS.md', 'Installed subscription boundary'],
+    ['canonical-status', 'Map provider status safely', 'packages/core/docs/guide/concepts/payments.md', 'Canonical status'],
+    ['late-payment-cycle', 'Handle late payment without compressing the cycle', 'packages/core/docs/guide/concepts/subscription-engine.md', 'A late payment shifts the cycle; it never compresses it'],
+    ['subscription-layer-delivery', 'Locate pure engine and durable delivery boundaries', 'packages/core/docs/guide/concepts/subscriptions.md', 'Installed subscription boundary'],
   ],
   outbox: [
     ['configure-dispatch', 'Configure dispatch and diagnostics', 'packages/outbox/README.md', 'Dispatch configuration and optional diagnostics'],
     ['install-outbox', 'Install SQL and enqueue transactionally', 'packages/outbox/README.md', 'PostgreSQL installation and transactions'],
-    ['outbox-retry-dispatch-handler-idempotency', 'Keep handler effects idempotent across retries', 'docs/platform/CANONICAL_CONTRACTS.md', 'Idempotency'],
+    ['outbox-retry-dispatch-handler-idempotency', 'Keep handler effects idempotent across retries', 'packages/core/docs/guide/concepts/idempotency.md', 'Idempotency contract'],
   ],
   platform: [
-    ['delivery-alignment', 'Preserve subscription cycle alignment after late delivery', 'docs/platform/CANONICAL_CONTRACTS.md', 'Subscription delivery alignment', 'The native fulfillment translation uses'],
-    ['migration-data-ownership', 'Keep adopter data in its owned schema', 'docs/platform/DATA_AND_MIGRATIONS.md', 'Data ownership'],
+    ['delivery-alignment', 'Preserve subscription cycle alignment after late delivery', 'packages/core/docs/guide/concepts/subscriptions.md', 'Subscription delivery alignment', '### Control modes'],
+    ['migration-data-ownership', 'Keep adopter data in its owned schema', 'packages/core/docs/guide/concepts/architecture-and-ownership.md', 'Data ownership'],
     ['migration-forward-path', 'Follow the ordered additive migration path', 'packages/core/docs/guide/upgrade/database-migrations.md', 'Follow the additive forward path', 'The additive release path admits'],
-    ['checkout-payment-outbox-idempotency', 'Preserve repeatable checkout effects', 'docs/platform/CANONICAL_CONTRACTS.md', 'Idempotency'],
+    ['checkout-payment-outbox-idempotency', 'Preserve repeatable checkout effects', 'packages/core/docs/guide/concepts/idempotency.md', 'Idempotency contract', '### Handler effects across retries'],
     ['host-provider-adapter-capability-refusal', 'Compose declared provider capabilities through ports', 'packages/core/docs/guide/how-to/extend/provider-adapters.md', 'Provider adapters', 'Construct and inject the adapter explicitly.'],
   ],
 };

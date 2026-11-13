@@ -7,7 +7,7 @@ Shipped package-local sources are relative to this package. Other sources link t
 Repository paths, imports and relative links inside verbatim excerpts describe that source checkout, not files to find or create in your application.
 Consult installed declarations and README for the installed version.
 
-<!-- openlup-context-inventory [{"id":"configure-dispatch","source":"README.md","heading":"Dispatch configuration and optional diagnostics","startLine":49,"endLine":65,"sha256":"e7a3e7c564b70a20f0ab73d6d1df54a03f44540c10d5615e57371942ec6d71da"},{"id":"install-outbox","source":"README.md","heading":"PostgreSQL installation and transactions","startLine":66,"endLine":75,"sha256":"7b0ce57ce577ee91f317b0b766d3a15d3a3c6eee54849241c307b58bfd44070c"},{"id":"outbox-retry-dispatch-handler-idempotency","source":"https://github.com/openlup/openlup/blob/openlup-outbox-v0.39.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Idempotency","startLine":250,"endLine":272,"sha256":"2d719cee94edefe6eccf76aa9c34bbf8a40cdb7e478e313b4a939e769c2e4d71"}] -->
+<!-- openlup-context-inventory [{"id":"configure-dispatch","source":"README.md","heading":"Dispatch configuration and optional diagnostics","startLine":49,"endLine":65,"sha256":"e7a3e7c564b70a20f0ab73d6d1df54a03f44540c10d5615e57371942ec6d71da"},{"id":"install-outbox","source":"README.md","heading":"PostgreSQL installation and transactions","startLine":66,"endLine":75,"sha256":"7b0ce57ce577ee91f317b0b766d3a15d3a3c6eee54849241c307b58bfd44070c"},{"id":"outbox-retry-dispatch-handler-idempotency","source":"https://github.com/openlup/openlup/blob/openlup-outbox-v0.39.0/packages/core/docs/guide/concepts/idempotency.md","heading":"Idempotency contract","startLine":7,"endLine":75,"sha256":"c22db737e286cd19ef4d00f7df13c6f4d40e0e3b0869c57bf7fb116bc351796e"}] -->
 
 ## configure-dispatch: Configure dispatch and diagnostics
 
@@ -52,30 +52,76 @@ Prune defaults to 30 days for processed and 90 for discarded, in batches of 500.
 
 ## outbox-retry-dispatch-handler-idempotency: Keep handler effects idempotent across retries
 
-Source: [OpenLup source repository at openlup-outbox-v0.39.0](https://github.com/openlup/openlup/blob/openlup-outbox-v0.39.0/docs/platform/CANONICAL_CONTRACTS.md#L250-L272).
+Source: [OpenLup source repository at openlup-outbox-v0.39.0](https://github.com/openlup/openlup/blob/openlup-outbox-v0.39.0/packages/core/docs/guide/concepts/idempotency.md#L7-L75).
 
-<!-- openlup-context {"id":"outbox-retry-dispatch-handler-idempotency","source":"https://github.com/openlup/openlup/blob/openlup-outbox-v0.39.0/docs/platform/CANONICAL_CONTRACTS.md","heading":"Idempotency","startLine":250,"endLine":272,"sha256":"2d719cee94edefe6eccf76aa9c34bbf8a40cdb7e478e313b4a939e769c2e4d71"} -->
-## Idempotency
-The native bundle contention witness characterizes the existing global event
-key, without adding payload/entity binding. Two absent-key transactions on
-disjoint bundles can block at the unique key index: after the first commits,
-the second raises `23505` and its attempted composition is rolled back. If the
-first rolls back, the second can commit. A later same-key call recognizes the
-key before validating changed payload, entity or routine. This is incumbent
-recognition, not a stronger exactly-once or payload-fingerprint guarantee.
-Catalog draft receipts retain their separate canonical-command fingerprint and
-revision behavior; moving their adapter does not change either protocol.
+<!-- openlup-context {"id":"outbox-retry-dispatch-handler-idempotency","source":"https://github.com/openlup/openlup/blob/openlup-outbox-v0.39.0/packages/core/docs/guide/concepts/idempotency.md","heading":"Idempotency contract","startLine":7,"endLine":75,"sha256":"c22db737e286cd19ef4d00f7df13c6f4d40e0e3b0869c57bf7fb116bc351796e"} -->
+## Idempotency contract
 
+An idempotency key names a logical operation within a scope. A request fingerprint
+binds that identity to the effect's contents where the operation implements that
+check. Retain the same key and contents across a retry. Do not reuse a key for a
+different request, and do not mint a new key merely because the previous result
+is unknown: the first call may already have acted.
 
-Every externally repeatable write has an idempotency scope, a stable operation
-identity, and a request fingerprint. Replaying the same logical request returns
-the established result without a second durable effect. Reusing a key for a
-different fingerprint is a conflict, not permission to overwrite history.
+Scopes differ. A domain command, a provider attempt and an inbound event need
+separate identities. For example, `buildProviderAttemptIdentity` in
+`@openlup/core/payment` derives the provider key from namespace, provider, payment
+intent and local execution key. Its separate fingerprint includes provider,
+intent, amount, currency, mode and order reference. The adapter passes the host's
+attempt identity, key, fingerprint and configured money through; that contract
+does not replace a durable host ledger or prove provider-side deduplication.
 
-Idempotency keys are opaque values with documented derivation and scope. An
-operation, a provider attempt, a customer journey, and an inbound event may
-require different keys; do not collapse them into one user-controlled value.
-Persist the ledger before reporting success, and make concurrent repeats resolve
-to one canonical effect.
+Treat keys as opaque identities within their documented scope. A customer
+journey can need its own identity alongside command, attempt and inbound-event
+keys; do not collapse them into one user-controlled value. Commit the durable
+ledger before reporting success, using the operation's concurrency protocol to
+converge repeats on its canonical effect.
+
+Replay guarantees are operation-specific:
+
+| Boundary | Identity and behavior |
+| --- | --- |
+| Outbox enqueue | `(event_type, idempotency_key)` keeps the existing event; a repeated insert returns no new row |
+| Catalog draft command | `(draftId, commandKey)` returns the original revision when fingerprint and actor match |
+| Native bundle write | A non-null key is global across bundle write events; a recognized key short-circuits without comparing the new payload |
+| Marketing sync | Binding, operation, subject and request ID identify a request; changed audience or payload refuses `invalid_request` |
+
+For catalog drafts, changed contents under an existing key return
+`conflict/command_key_reused`; a different actor returns
+`unauthorized/operator_mismatch`. A new command against the wrong revision
+returns `conflict/revision_conflict`. The outbox has no equivalent payload check:
+changing its aggregate or payload under the same event type and key does not
+replace the stored event or produce a fingerprint conflict.
+
+Native bundle writes also do not provide a payload-bound replay receipt.
+A later call can recognize a key used by another bundle or routine before
+validating the changed request. Concurrent first uses on different bundles can
+instead collide at the unique index with SQLSTATE `23505`, rolling back the
+losing transaction. Do not interpret key recognition as proof that the new
+payload was accepted. Unkeyed bundle writes have no such deduplication.
+
+The practical guarantee is bounded by the operation's stored identity and
+receipt. It is not a universal exactly-once guarantee. Where a result remains
+uncertain, reconcile its recorded effect before starting a new logical operation.
+
+### Handler effects across retries
+
+`buildOutboxEnqueue` from `@openlup/outbox` builds the insert; it does not commit
+it. Execute it in the same transaction as the domain write so that the write and
+its event commit together. The worker store uses separate operations that commit
+before returning; do not hold the producer transaction across handler I/O.
+
+The worker invokes the handler before acknowledging the event. If the effect
+finishes but acknowledgement fails, or a processing lease expires, a later run
+can invoke the handler again. Design each handler effect to recognize a stable
+event-derived operation key in its own durable store or provider contract.
+The worker's claim token protects acknowledgement ownership; it does not undo
+an external effect. A stale token cannot mark the event processed.
+
+`composeHandlers` runs the second handler only after the first returns
+`processed`. If the second asks for a retry, the next invocation starts with the
+first again. Both effects need replay protection. Respect the handler's abort
+signal: a timeout reports `outbox_handler_timeout`, but cannot roll back a
+request already sent or forcibly stop code that ignores cancellation.
 
 <!-- /openlup-context -->

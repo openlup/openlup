@@ -1,6 +1,6 @@
 # Subscription workflows
 
-Status: development-preview source navigation.
+Status: maintainer page: how to change OpenLup. Reader guidance lives in the [OpenLup guide](../../packages/core/docs/guide/README.md); sections marked "Evidence" are frozen historical records.
 Audience and purpose: contributors following subscription behavior from its
 owner to an internal decision, durable boundary and falsifier.
 
@@ -11,19 +11,11 @@ profile and [canonical contracts](CANONICAL_CONTRACTS.md) for public invariants.
 
 ## Installed subscription boundary
 
-For an application using a version-matched installed `@openlup/*` set,
-`@openlup/core/subscription` owns the pure cycle and payment-clock decisions.
-Read the installed `@openlup/core/docs/SUBSCRIPTION_ENGINE.md` and declarations
-before changing that behavior. The experimental
-`@openlup/platform/subscriptions` entry supplies native renewal mechanisms and
-ports; it does not mount a runner or choose a provider. The application must
-compose its own authorization, durable store, scheduler and provider bindings.
-Delivery evidence belongs at the durable admission boundary before renewal
-artifacts. An undelivered replacement remains outstanding, and confirming its
-arrival must use observed delivery rather than a payment result. Check the
-installed package version, exports and capability limits before using a seam.
+Moved to [Subscriptions](../../packages/core/docs/guide/concepts/subscriptions.md#installed-subscription-boundary).
 
 ## Choose the right layer
+
+Moved to [Subscriptions](../../packages/core/docs/guide/concepts/subscriptions.md#choose-the-right-layer).
 
 | Question | Start here |
 | --- | --- |
@@ -41,6 +33,8 @@ inspect the specific unit before claiming transport independence.
 
 ## Lifecycle and retry
 
+Moved to [Subscriptions](../../packages/core/docs/guide/concepts/subscriptions.md#durable-retry-timing), [Subscription engine](../../packages/core/docs/guide/concepts/subscription-engine.md).
+
 | Decision | Implementation | Tests to inspect |
 | --- | --- | --- |
 | Cycle and edit-window calculation | [subscriptionEngineCore.ts](../../packages/core/src/subscription/subscriptionEngineCore.ts) | [subscriptionEngine.test.ts](../../packages/core/test/subscriptionEngine.test.ts) |
@@ -48,51 +42,10 @@ inspect the specific unit before claiming transport independence.
 | Record payment without compressing the paid cycle | [subscriptionEnginePayment.ts](../../packages/core/src/subscription/subscriptionEnginePayment.ts) | [subscriptionPayment.test.ts](../../packages/core/test/subscriptionPayment.test.ts) |
 | Retry time and terminating failure class | [cycleHardening.ts](../../packages/core/src/subscription/cycleHardening.ts) | [shared retry tests](../../src/domains/subscription/cycleHardening.test.ts) |
 
-The [engine contract](../../packages/core/docs/SUBSCRIPTION_ENGINE.md) explains
-the explicit clock, late-payment shift, monotonic schedule clamp and retry
-termination. These functions do not perform I/O or determine whether a physical
-parcel arrived. [Purity tests](../../packages/core/test/subscriptionPurity.test.ts)
-challenge the package boundary; delivery protection belongs to the durable rail.
+[Purity tests](../../packages/core/test/subscriptionPurity.test.ts) challenge the
+package boundary. See [evidence and limits](#evidence-and-limits) before choosing
+a runnable test scope.
 
-Native retry timing uses `CycleRetryCadence.backoffHours` through the trusted
-`retryCadence` binding option (or the retry store's second argument). Defaults
-remain 24, 72 and 168 hours from each failure: three retry slots and no next
-retry after failure four. The array length is the retry budget. A timing override
-cannot change the `hard_do_not_retry` stop, and receipt replay retains the
-accepted schedule. Browser payloads cannot supply this configuration.
-
-The native open-case entry locks the subscription and refuses observations for
-non-active subscriptions or cycles outside `payment_pending` before case or
-notice writes. Terminalized cycles remain fenced after resume or reactivation.
-
-`createPostgresSubscriptionAutoResume` in `@openlup/platform/subscriptions`
-exposes `run(limit, now)` for a host-owned scheduled job. It selects due finite
-pause windows with row-skip-locked admission. Missing healthy stored-method
-state, next date or lines, open recovery, any uncollected cycle, a paid cycle
-on the next date, or an order in the existing `paid` / `fulfillment_pending` /
-`fulfilled` allowlist whose cycle is scheduled at `next_cycle_at` causes a
-graceful skip. An associated order without a cycle blocks only while its renewal
-operation is `claimed`, `reserved` or `attempt_prepared`, or its activation is
-`provisional`. Completed (`succeeded` / `refused`) operations and completed
-(`active` / `compensated`) activations do not keep an unlinked order in flight.
-Cancelled orders left by pause closure do not block. Native delivery records
-shipment state without advancing the order past `paid`, so paid orders of past
-cycles and completed activations do not prevent timed resume.
-The window stays open for the next tick; skips leave `ok` true. Indefinite
-windows remain paused. A timed pause shifts the stored next-cycle date by the
-actual window length (`ends_at - starts_at`) and never brings it earlier.
-Auto-resume uses the later of that shifted date and its execution time, closes
-the window and writes one `subscription.system.auto_resume` event under
-`subscription_auto_resume:<window>`, including the resulting date and eligibility
-policy. The pause reminder computes `nextDeliveryAt` and `resumeAt` from the same
-duration shift, clamped to the window end: the date a punctual auto-resume will execute.
-Retained ledger reminders read the same SQL facts as newly produced reminders.
-Manual customer resume keeps its
-existing cadence policy.
-The lifecycle dispatcher sends that event with the existing resumed confirmation.
-Scheduling, enablement and job-ledger composition belong to the host.
-Resume creates no delivery arrival or replacement confirmation; paid cycles and
-parcels retain their existing lifecycle.
 
 ## Renew one cycle
 
@@ -163,9 +116,7 @@ forward preserves those historical rows instead of reversing them automatically.
 
 ## Protect delivery
 
-The pure payment clock and physical delivery alignment are separate boundaries.
-A late delivery may move the next cycle later; it must never move it earlier or
-stack a new parcel while an unsuperseded one remains outstanding.
+Moved to [Subscriptions](../../packages/core/docs/guide/concepts/subscriptions.md#subscription-delivery-alignment).
 
 1. [Admission parser and caller](../../server/domains/subscription/callSubscriptionDeliveryAlignmentAdmission.ts)
    require an explicit usable decision before renewal artifacts.
@@ -176,15 +127,6 @@ stack a new parcel while an unsuperseded one remains outstanding.
    contains the durable admission, resolution and replacement-confirmation RPCs.
    Read the ordered migration contract in [Data and migrations](DATA_AND_MIGRATIONS.md)
    before changing that authority.
-
-A parcel superseded through `replaces_fulfillment_order_id` stops being the
-outstanding obligation without acquiring an invented `delivered_at`. Its
-replacement remains outstanding until arrival. Call
-`subscription_delivery_alignment_confirm_replacement` only when the substitute
-reached the customer: `aligned` records that fact. Replaying an aligned case
-returns the stored schedule rather than adding another cadence. Ordinary case
-resolution refuses while an active subscription still has an unsuperseded,
-undelivered parcel.
 
 Inspect [admission tests](../../server/domains/subscription/callSubscriptionDeliveryAlignmentAdmission.test.ts)
 and [gateway tests](../../server/adapters/subscriptionDeliveryAlignmentGateway.test.ts)
