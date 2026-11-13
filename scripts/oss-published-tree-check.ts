@@ -120,7 +120,7 @@ export function assertAgentGuidancePlacement(root: string, paths: Iterable<strin
 }
 
 // A maintainer's home directory or a Windows drive path names one machine, never the published tree.
-const ABSOLUTE_FILESYSTEM_PATH = /(?<![\w.~:/-])\/(?:Users|home)\/[A-Za-z0-9._-]+|(?<![\w\\])[A-Za-z]:\\Users\\[A-Za-z0-9._-]+/gu;
+const ABSOLUTE_FILESYSTEM_PATH = /(?<![\w.~:/-])(?:file:\/\/)?\/(?:Users|home)\/[A-Za-z0-9._-]+|(?<![\w\\])[A-Za-z]:[\\/]Users[\\/][A-Za-z0-9._-]+/gu;
 
 /** Repository-wide: tracked Markdown carries no absolute filesystem path. */
 export function assertNoAbsoluteFilesystemPaths(root: string, paths: Iterable<string>): void {
