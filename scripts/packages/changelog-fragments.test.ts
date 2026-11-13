@@ -71,6 +71,27 @@ describe("fragment publication admission", () => {
   });
 });
 
+describe("guide publication admission", () => {
+  const catalog = JSON.stringify({ schemaVersion: 1, publicPaths: [], guardViability: [] });
+  const page = "packages/core/docs/guide/README.md";
+  it("admits guide Markdown by pattern, at any depth, without catalog rows", () => {
+    const nested = "packages/core/docs/guide/how-to/build/compose-packages.md";
+    expect(effectivePublicCatalogPaths(catalog, [{ path: page, mode: "100644" }, { path: nested, mode: "100644" }], () => "# Page\n"))
+      .toEqual([{ path: page, class: "public-output" }, { path: nested, class: "public-output" }]);
+  });
+  it.each([
+    [page, "100755", "# Page\n"], [page, "120000", "# Page\n"], ["packages/core/docs/guide/run.sh", "100644", "echo\n"],
+    ["packages/core/docs/guide/Start/page.md", "100644", "# Page\n"], [page, "100644", "  \n"], [page, "100644", "# Page\n<<<<<<< HEAD\n"],
+    [page, "100644", Buffer.from([0x23, 0x20, 0xc3, 0x28])],
+  ])("refuses %s with mode %s and unreadable or non-Markdown content", (path, mode, bytes) => {
+    expect(() => effectivePublicCatalogPaths(catalog, [{ path, mode }], () => bytes)).toThrow();
+  });
+  it("refuses a per-file catalog row for a guide page", () => {
+    const rows = JSON.stringify({ schemaVersion: 1, publicPaths: [{ path: page, class: "public-output" }], guardViability: [] });
+    expect(() => effectivePublicCatalogPaths(rows, [{ path: page, mode: "100644" }], () => "# Page\n")).toThrow("pattern admission");
+  });
+});
+
 describe("Migration gate with Git-tree fragments", () => {
   it("refuses invalid UTF-8 in a committed fragment even when its Migration marker is valid", () => {
     const f = fixture(), base = f.commit();

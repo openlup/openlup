@@ -116,6 +116,13 @@ describe('native review decisions', () => {
   it.each(['GEMINI.md', '.cursor/rules/x.md', 'nested/GEMINI.md', 'nested/.cursor/rules/x.md', 'AGENTS.md', 'nested/AGENT_GUIDE.local.rst', '.github/guide.md', '.claude/rules.md', '.agents/rules.md', '.codex/rules.md', 'nested/SKILL.md'])('keeps a review for rule file %s', path => {
     expect(candidateFloor({ changedPaths: [path] }, 'unknown')).toBe(path.endsWith('.rst') ? 2 : 1);
   });
+  it.each(['packages/core/docs/guide/README.md', 'packages/core/docs/guide/how-to/build/compose.md'])('keeps one review for reader-guide page %s', path => {
+    expect(candidateFloor({ changedPaths: [path] }, 'unknown')).toBe(1);
+    expect(candidateFloor({ changedPaths: ['docs/platform/README.md', path] }, 'prose')).toBe(1);
+  });
+  it.each(['docs/platform/README.md', 'packages/core/docs/SUBSCRIPTION_ENGINE.md', 'packages/core/docs/guide.md', 'docs/guide/README.md'])('keeps the zero floor for other Markdown %s', path => {
+    expect(candidateFloor({ changedPaths: [path] }, 'prose')).toBe(0);
+  });
   it.each(['.nvmrc', 'scripts/documentation-routing.ts'])('replays a routine v2 session and receipt with one PASS for %s', path => {
     const candidate = { ...observed, changedPaths: [path] };
     // Persisted shape emitted by main, including its historical cycle fields.

@@ -79,7 +79,8 @@ export function protectedCoveragePath(path) {
     /(?:^|\/)(?:package(?:-lock)?\.json|npm-shrinkwrap\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lockb?)$/u.test(path) ||
     /^(?:\.gitignore|\.gitattributes|\.npmrc|\.nvmrc|[^/]*config\.[^/]+)$/u.test(path);
 }
-const RULE_FILE = /(?:^|\/)(?:AGENTS|AGENT_GUIDE|CLAUDE|GEMINI|CONTRIBUTING|SECURITY|AI_CONTRIBUTION_POLICY)(?:\.local)?\.(?:md|txt|rst)$|^\.github\/.*\.md$|(?:^|\/)(?:\.claude|\.agents|\.codex)\/|(?:^|\/)\.cursor\/rules(?:\/|$)|(?:^|\/)SKILL\.md$/iu;
+// Reader-guide pages ship to npm and the website unchanged, so they keep one review like a rule file (D7).
+const RULE_FILE = /(?:^|\/)(?:AGENTS|AGENT_GUIDE|CLAUDE|GEMINI|CONTRIBUTING|SECURITY|AI_CONTRIBUTION_POLICY)(?:\.local)?\.(?:md|txt|rst)$|^\.github\/.*\.md$|(?:^|\/)(?:\.claude|\.agents|\.codex)\/|(?:^|\/)\.cursor\/rules(?:\/|$)|(?:^|\/)SKILL\.md$|^packages\/core\/docs\/guide\/.+\.md$/iu;
 const twoReviewerPath = path => protectedCoveragePath(path) && !/\.md$/iu.test(path);
 export const deltaFloor = (paths, modeChanged = false) => modeChanged || paths.some(twoReviewerPath) ? 2 : paths.every(path => /\.md$/iu.test(path) && !RULE_FILE.test(path)) ? 0 : 1;
 export const candidateFloor = (candidate, risk) => requiredReviewers(classifyRisk(candidate, risk)) === 2 ? 2 : deltaFloor(candidate.changedPaths ?? [], candidate.modeChanged);

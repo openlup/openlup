@@ -180,9 +180,10 @@ This MVP indexes English documentation. Translate Polish or other natural-langua
 tasks into concise English domain terms, or search an exact public symbol;
 freeform Polish queries may miss relevant guidance.
 
-The command searches documentation in the installed OpenLup packages offline and
-returns file-and-line citations. Add `--code` for a bounded local application
-source scan, or `--package-code` to inspect the installed packages' `src/` files.
+The command searches documentation in the installed OpenLup packages offline,
+including core's reader guide under `docs/guide/`, and returns file-and-line
+citations. Add `--code` for a bounded local application source scan, or
+`--package-code` to inspect the installed packages' `src/` files.
 Both scans are opt-in and may be incomplete; use direct `rg` when a path or
 symbol is known. Add `--json` for structured results, including a `scans` array
 for executed declaration, application and package-source scans. Each summary
@@ -295,6 +296,10 @@ Ambiguous destinations refuse explicitly: use literal punctuation or
 percent-encoded filenames, with ASCII whitespace before an optional title.
 Raw ampersands, angle characters and Unicode whitespace in local destinations
 require a canonical rewrite rather than passing an incomplete link check.
+It also type-checks TypeScript examples in `README.md` and `AGENTS.md` against
+the built package, holds `AGENTS.md` to a size cap, and checks the reader guide
+under `docs/guide/` when the package sits in its source repository;
+`npm run docs:check -- --write` refreshes the guide's generated sections.
 
 The [repository neutrality checks](https://github.com/openlup/openlup/blob/openlup-core-v0.12.0/CONTRIBUTING.md#development-preview-checks)
 reuse the source scanner through `./scripts/neutrality-tree-counts.ts` relative

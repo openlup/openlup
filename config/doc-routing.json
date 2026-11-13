@@ -1048,8 +1048,8 @@
       "paths": [
         "packages/platform/src/data/**"
       ],
-      "doc": "docs/platform/DATA_AND_MIGRATIONS.md",
-      "anchor": "#module-catalogues-and-installed-histories"
+      "doc": "packages/core/docs/guide/how-to/operate/connect-postgresql.md",
+      "anchor": "#assign-connections-by-work"
     },
     {
       "id": "platform-http",
@@ -1103,8 +1103,8 @@
         "packages/platform/src/migrations/**",
         "packages/platform/sql/**"
       ],
-      "doc": "docs/platform/DATA_AND_MIGRATIONS.md",
-      "anchor": "#compatibility-lifecycle"
+      "doc": "packages/core/docs/guide/upgrade/database-migrations.md",
+      "anchor": "#follow-the-additive-forward-path"
     },
     {
       "id": "platform-pricing",
@@ -1151,6 +1151,15 @@
       ],
       "doc": "docs/platform/DOCUMENTATION.md",
       "anchor": "#ownership"
+    },
+    {
+      "id": "reader-guide",
+      "when": "The reader guide under packages/core/docs/guide and its documentation contract",
+      "paths": [
+        "packages/core/docs/guide/**"
+      ],
+      "doc": "docs/platform/DOCUMENTATION.md",
+      "anchor": "#reader-guide-contract"
     },
     {
       "id": "core-testing",

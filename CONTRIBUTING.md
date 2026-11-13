@@ -1111,6 +1111,11 @@ The job also rejects baseline increases relative to the PR base/main push's
 previous commit. For a first baseline, or to regenerate from main without
 increasing debt, use `node scripts/public-ci-neutrality.mjs --write-baseline`.
 After removing debt, lower the affected counts; never raise them.
+Two store-vocabulary categories, `store-0` and `store-1`, are counted in Markdown
+by the ratchet script itself rather than the pinned scanners, so reader pages
+start at zero. A store category that no accepted baseline row carries yet may be
+seeded once, up to the counts measured on the base tree and never from the
+candidate; after that it ratchets like every other category.
 
 The root `ROADMAP.md` provider matrix has a scoped exception in the existing
 opt-in adapter vocabulary allowances: at most two matches each for categories
@@ -1306,11 +1311,14 @@ OIDC with `--tag latest`, without another approval.
 check and the maintainer setup.
 
 A new or renamed path needs its authored row in
-`config/openlup-publication-catalog.json`, except the single fragment pattern
-`packages/{core,outbox,platform}/changes/*.md`. These fragments are admitted as
-`public-output` only after content and regular, non-executable mode validation;
-nested directories and other extensions refuse. The catalogue remains an
-explicit classification and execution inventory, not a generated list.
+`config/openlup-publication-catalog.json`, except two patterns: the fragment
+pattern `packages/{core,outbox,platform}/changes/*.md` and the reader guide
+`packages/core/docs/guide/**/*.md`. Both are admitted as `public-output` only
+after content and regular, non-executable mode validation. Fragment nesting,
+guide directories that are not lowercase, other extensions and per-file rows for
+either pattern refuse. The catalogue remains an explicit classification and
+execution inventory, not a generated list. A guide page keeps a review floor of
+one, like a rule file, because it ships to npm and the website unchanged.
 
 For a notable package change, add a uniquely named
 `packages/<core|outbox|platform>/changes/<change>.md` fragment instead
@@ -1464,7 +1472,9 @@ rebases or pushes. Configure your Git `user.name` and `user.email` before runnin
 it: the merge uses that identity and `-s` for your personal
 [DCO certification](#developer-certificate-of-origin).
 It stops on an authored conflict, leaving the merge for a
-human or worker. Append-only migration entries are unioned in slot order;
+human or worker. It refreshes its carrier set with the merged tree's own
+inventory refresh and generators, run in new processes, not the code it loaded
+before the merge. Append-only migration entries are unioned in slot order;
 existing entries cannot be edited and new duplicate slots refuse. Issued
 prefixes retain their original order. The publication catalogue's authored path
 rows retain the existing closed registry union.

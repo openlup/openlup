@@ -14,7 +14,7 @@ import { assertDocumentationNavigation, readDocumentationState } from "./documen
 import { documentationGit, resolveDocumentationBase } from "./documentation-git.ts";
 import { evaluatePlatformMigrationManifest, evaluatePlatformMigrationManifestHistory, isQualifiedPlatformMigrationPath, type PlatformMigrationManifest } from "./platform-migration-manifest.ts";
 import { assertAdmittedPlatformForward, deriveSourceReleaseContract } from "./oss-source-release-contract.ts";
-import { AGENT_GUIDE_PATH, AGENT_GUIDE_SOURCE_PATH, renderAgentGuide, renderDocumentationSourceMap, SOURCE_MAP_PATH } from "./documentation-navigation.ts";
+import { AGENT_GUIDE_PATH, renderAgentGuide, renderDocumentationSourceMap, SOURCE_MAP_PATH } from "./documentation-navigation.ts";
 import { createDocumentationBundle } from "./documentation-bundle.ts";
 import { validateDocumentationBundle, writeDocumentationBundle } from "./documentation-bundle-io.ts";
 import { assertMaterializedOutputInventory } from "./oss-published-tree-output.ts";
@@ -119,6 +119,20 @@ export function assertAgentGuidancePlacement(root: string, paths: Iterable<strin
   if (violations.length > 0) throw new Error(`agent guidance placement:\n${violations.join("\n")}`);
 }
 
+// A maintainer's home directory or a Windows drive path names one machine, never the published tree.
+const ABSOLUTE_FILESYSTEM_PATH = /(?<![\w.~:/-])\/(?:Users|home)\/[A-Za-z0-9._-]+|(?<![\w\\])[A-Za-z]:\\Users\\[A-Za-z0-9._-]+/gu;
+
+/** Repository-wide: tracked Markdown carries no absolute filesystem path. */
+export function assertNoAbsoluteFilesystemPaths(root: string, paths: Iterable<string>): void {
+  const violations: string[] = [];
+  for (const path of paths) {
+    if (!path.endsWith(".md")) continue;
+    const found = [...readFileSync(join(root, path), "utf8").matchAll(ABSOLUTE_FILESYSTEM_PATH)].map((match) => match[0]);
+    if (found.length > 0) violations.push(`${path}: absolute filesystem path ${[...new Set(found)].join(", ")}`);
+  }
+  if (violations.length > 0) throw new Error(`tracked Markdown names a local filesystem path:\n${violations.join("\n")}`);
+}
+
 const trackedFiles = (root: string): string[] =>
   documentationGit(root, ["ls-files", "-z"]).toString("utf8").split("\0").filter(Boolean);
 
@@ -173,7 +187,9 @@ function assertPackageExecutionSurfaces(root: string, paths: Set<string>, allowe
     const base = manifestPath === MANIFEST ? "" : manifestPath.slice(0, -MANIFEST.length);
     const commands = [...Object.values(manifest.scripts ?? {}), ...(typeof manifest.bin === "string" ? [manifest.bin] : Object.values(manifest.bin ?? {}))];
     for (const command of commands) for (const match of command.matchAll(/(?:^|[\s"'])((?:\.\/)?[A-Za-z0-9_./[\]-]+\.(?:[cm]?[jt]sx?|mjs|sh))\b/gu)) {
-      const target = `${base}${match[1].replace(/^\.\//u, "")}`;
+      // A sibling package's tool (`../core/scripts/…`) resolves to its exact registered repository path;
+      // a target outside the repository normalizes to `../…`, which no inventory path matches.
+      const target = posix.normalize(`${base}${match[1].replace(/^\.\//u, "")}`);
       if (!paths.has(target)) throw new Error(`${manifestPath}: executable target is absent from the public tree: ${target}`);
       if (!allowed.has(target)) throw new Error(`${manifestPath}: executable target is not registered: ${target}`);
     }
@@ -183,12 +199,13 @@ function assertPackageExecutionSurfaces(root: string, paths: Set<string>, allowe
 export function assertMaterializedPublicationCatalog(root: string, catalogSource: string, observedPaths?: Iterable<string>): void {
   const observed = observedPaths ? [...observedPaths] : trackedFiles(root);
   for (const path of observed) { const bytes = readFileSync(join(root, path)); if (!bytes.includes(0) && carriesPrivateOperationalCoordinate(bytes.toString("utf8"), path)) throw new Error(`${PUBLICATION_CATALOG_PATH}: ${path} carries unapproved adopter-owned materialized state`); } assertMaterializedRepositoryDocReferences(root, new Set(observed));
+  const effective = liveCatalogPaths(root, catalogSource, observed);
   const { catalog } = validatePublicPolicyState(
     root,
     readFileSync(join(root, PUBLIC_POLICY_REGISTRY_PATH), "utf8"),
     catalogSource,
+    effective.map((row) => row.path),
   );
-  const effective = liveCatalogPaths(root, catalogSource, observed);
   assertMaterializedOutputInventory(root, effective.map((row) => row.path), observed);
   const scripts = JSON.parse(readFileSync(join(root, MANIFEST), "utf8") as string) as { scripts?: Record<string, string> };
   const actualScripts = Object.entries(scripts.scripts ?? {}).sort(([left], [right]) => left.localeCompare(right));
@@ -219,7 +236,8 @@ export function assertMaterializedPublicationCatalog(root: string, catalogSource
   }
 }
 
-export function validatePublicPolicyState(root: string, policySource: string, catalogSource: string) {
+/** `linkInventory`: the paths local Markdown links may target; by default the authored rows, else the effective catalogue with pattern-admitted pages. */
+export function validatePublicPolicyState(root: string, policySource: string, catalogSource: string, linkInventory?: readonly string[]) {
   const policy = parsePublicPolicyRegistry(policySource);
   const catalog = parsePublicPublicationCatalog(catalogSource);
   const catalogPaths = new Set(catalog.publicPaths.map((row) => row.path));
@@ -237,7 +255,7 @@ export function validatePublicPolicyState(root: string, policySource: string, ca
       if (!existsSync(join(root, path))) throw new Error(`${PUBLICATION_CATALOG_PATH}: published guard ${guard.id} names missing public path ${path}`);
     }
   }
-  assertMaterializedMarkdownLinks(root, catalog.publicPaths.map((row) => row.path));
+  assertMaterializedMarkdownLinks(root, linkInventory ?? catalog.publicPaths.map((row) => row.path));
   return { policy, catalog };
 }
 
@@ -286,8 +304,8 @@ export function reportSourceReleaseSnapshot(root: string, log: (line: string) =>
 
 export function publicInventoryVerdict(root: string, log: (line: string) => void): boolean {
   const catalogSource = readFileSync(join(root, PUBLICATION_CATALOG_PATH), "utf8");
-  validatePublicPolicyState(root, readFileSync(join(root, PUBLIC_POLICY_REGISTRY_PATH), "utf8"), catalogSource);
   const tracked = trackedFiles(root);
+  validatePublicPolicyState(root, readFileSync(join(root, PUBLIC_POLICY_REGISTRY_PATH), "utf8"), catalogSource, liveCatalogPaths(root, catalogSource, tracked).map((row) => row.path));
   assertMaterializedPublicationCatalog(root, catalogSource, tracked);
   reportSourceReleaseSnapshot(root, log);
   const digest = (contents: string | Buffer) => `sha256-${createHash("sha256").update(contents).digest("hex")}`;
@@ -308,10 +326,11 @@ export function publicInventoryVerdict(root: string, log: (line: string) => void
  */
 export function policyVerdict(root: string, log: (line: string) => void): boolean {
   const catalogSource = readFileSync(join(root, PUBLICATION_CATALOG_PATH), "utf8");
-  const state = validatePublicPolicyState(root, readFileSync(join(root, PUBLIC_POLICY_REGISTRY_PATH), "utf8"), catalogSource);
   const tracked = trackedFiles(root);
+  const state = validatePublicPolicyState(root, readFileSync(join(root, PUBLIC_POLICY_REGISTRY_PATH), "utf8"), catalogSource, liveCatalogPaths(root, catalogSource, tracked).map((row) => row.path));
   assertMaterializedPublicationCatalog(root, catalogSource, tracked);
   assertAgentGuidancePlacement(root, tracked);
+  assertNoAbsoluteFilesystemPaths(root, tracked);
   reportSourceReleaseSnapshot(root, log);
   log(`- public policy paths: ${state.policy.activePaths.length}`);
   log(`- public policy contracts: ${state.policy.contracts.length}`);
@@ -362,7 +381,7 @@ export function documentationPolicyCommand(root: string, argv: string[], log: (l
   }
   if (options.has("--docs-source") || options.has("--docs-digest")) throw new Error("consumer pins require --docs-check-bundle");
   let state = readDocumentationState(root);
-  const agentGuide = renderAgentGuide(readFileSync(join(root, AGENT_GUIDE_SOURCE_PATH), "utf8"));
+  const agentGuide = renderAgentGuide();
   if (options.has("--docs-update")) {
     writeFileSync(join(root, AGENT_GUIDE_PATH), agentGuide);
     writeFileSync(join(root, SOURCE_MAP_PATH), renderDocumentationSourceMap(state));
@@ -370,7 +389,7 @@ export function documentationPolicyCommand(root: string, argv: string[], log: (l
   }
   if (!existsSync(join(root, SOURCE_MAP_PATH)) || readFileSync(join(root, SOURCE_MAP_PATH), "utf8") !== renderDocumentationSourceMap(state)) throw new Error("documentation source map is stale; run --policy --docs-update");
   if (!existsSync(join(root, AGENT_GUIDE_PATH)) || readFileSync(join(root, AGENT_GUIDE_PATH), "utf8") !== agentGuide)
-    throw new Error(`${AGENT_GUIDE_PATH} differs from its generated form; edit ${AGENT_GUIDE_SOURCE_PATH}, then run --policy --docs-update`);
+    throw new Error(`${AGENT_GUIDE_PATH} differs from its generated form; run --policy --docs-update to restore the pointer page`);
   assertDocumentationNavigation(state);
   policyVerdict(root, log);
   const base = resolveDocumentationBase(root, { base: options.get("--docs-base") });

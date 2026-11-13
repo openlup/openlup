@@ -50,7 +50,8 @@ ledger paths, SHA-256 hashes, order and host-admission checks. No source checkou
 is required. Install the optional `pg` peer in the application. Call `status()`,
 `apply({ dryRun: true })` or `apply()` explicitly; imports install nothing.
 
-```ts
+```ts nocheck
+// Fragment: the application supplies directUrl, its direct PostgreSQL connection string.
 import { createPlatformPostgresMigrationRunner } from "@openlup/platform/migrations";
 
 const migrations = createPlatformPostgresMigrationRunner({ connectionString: directUrl }, {
@@ -2435,7 +2436,8 @@ customer operation. Do not derive the scope from request bodies. Billing-profile
 storage is separate; an empty reader is an explicit host choice, not a fallback.
 The returned object implements the existing address-book and mutation ports:
 
-```ts
+```ts nocheck
+// Fragment: the application supplies localPolicy, database, trustedScope, readOrdererProfiles and copy.
 import { createPostgresCustomerSavedAddressPort,
   createCustomerSavedAddressRequestSchemas } from '@openlup/platform/shipping';
 const requests = createCustomerSavedAddressRequestSchemas(localPolicy);
@@ -2498,7 +2500,8 @@ After installing the complete native catalogue through
 `20261110240000_subscription_saved_address_selection.sql`, select an owned
 shipping or both-kind address through the existing server entry:
 
-```ts
+```ts nocheck
+// Fragment: the host supplies database and the authenticated command fields.
 import { createPostgresDestinationPort } from '@openlup/platform/commerce/server/destinations';
 const destinations = createPostgresDestinationPort(database);
 await destinations.selectSavedShippingAddress({ actorId, clientId, subscriptionId,

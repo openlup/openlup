@@ -4,7 +4,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, 
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
-import { allowedFulfillmentAdapterWords, reviewedPinnedIntroductions, neutralityIncreases, scanSnapshots, unreviewedPinnedIntroductionIncreases, validateBaseline, validateReviewedPinnedIntroductions } from "./public-ci-neutrality.mjs";
+import { allowedFulfillmentAdapterWords, reviewedPinnedIntroductions, neutralityIncreases, scanSnapshots, seededIntroductions, storeTermCounts, unreviewedPinnedIntroductionIncreases, validateBaseline, validateReviewedPinnedIntroductions } from "./public-ci-neutrality.mjs";
 
 vi.mock("node:child_process", async importOriginal => {
   const original = await importOriginal<typeof import("node:child_process")>();
@@ -25,6 +25,8 @@ const fixtures: string[] = [];
 const hash = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
 // Runtime construction prevents the test source itself adding matcher debt.
 const debt = String.fromCharCode(118, 101, 108, 105, 112, 101, 116);
+// The two counted store terms, built the same way.
+const storeWord = String.fromCharCode(112, 101, 116), donorWord = String.fromCharCode(100, 111, 110, 111, 114);
 const fixtureEnvironment = { ...Reflect.get(process, "env") } as NodeJS.ProcessEnv;
 for (const name of ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_PREFIX", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY", "GIT_CONFIG", "GIT_CONFIG_COUNT"]) delete fixtureEnvironment[name];
 
@@ -596,6 +598,54 @@ describe("tree-wide neutrality ratchet", () => {
     const missing = { ...value.scannerPins }; delete missing[scannerPaths[1]];
     for (const scannerPins of [missing, { ...value.scannerPins, extra: "c".repeat(40) }, { ...value.scannerPins, [scannerPaths[0]]: "HEAD" }]) expect(() => validateBaseline({ ...value, scannerPins })).toThrow();
   });
+});
+
+describe("store vocabulary ratchet", () => {
+  it("counts singular and plural store terms in any case, never longer words or identifiers", () => {
+    const upper = storeWord.toUpperCase();
+    expect(storeTermCounts(`A ${storeWord}, ${upper}s, ${storeWord}al, ${storeWord}_id, ${donorWord}s and ${donorWord}.`)).toEqual({ "store-0": 2, "store-1": 2 });
+    expect(storeTermCounts("neutral subscription commerce")).toEqual({});
+  });
+  it("counts store terms in Markdown only", () => {
+    const line = Buffer.from(`A ${storeWord} and a ${donorWord}.\n`);
+    expect(scanSnapshots(new Map([["docs/page.md", line], ["src/page.ts", line], ["db/page.sql", line]])).rows).toEqual({ [hash("docs/page.md")]: { "store-0": 1, "store-1": 1 } });
+  });
+  it("seeds a newly introduced store category up to the measured base and never above it", () => {
+    const increases = [{ path: "a", category: "store-0", before: 0, after: 2 }, { path: "b", category: "store-0", before: 0, after: 3 }];
+    expect(seededIntroductions(increases, { a: { brand: 1 } }, { a: { "store-0": 2 }, b: { "store-0": 2 } })).toEqual([increases[1]]);
+    expect(seededIntroductions([{ path: "c", category: "store-1", before: 0, after: 1 }], {}, {})).toHaveLength(1);
+  });
+  it("ratchets a store category once any accepted row carries it", () => {
+    const increases = [{ path: "b", category: "store-0", before: 0, after: 1 }];
+    expect(seededIntroductions(increases, { a: { "store-0": 1 } }, { b: { "store-0": 1 } })).toEqual(increases);
+    expect(seededIntroductions([{ path: "a", category: "ui-1", before: 0, after: 1 }], {}, { a: { "ui-1": 1 } })).toHaveLength(1);
+  });
+  it("accepts store categories in a baseline and refuses unknown ones", () => {
+    const value = validBaseline();
+    expect(() => validateBaseline({ ...value, counts: { ["b".repeat(64)]: { "store-0": 2, "store-1": 1 } } })).not.toThrow();
+    expect(() => validateBaseline({ ...value, counts: { ["b".repeat(64)]: { "store-2": 1 } } })).toThrow();
+  });
+  it("introduces store counts from the base tree, then refuses new store terms and a candidate-derived seed", () => {
+    const { root } = installed({ "existing.md": `A ${storeWord} and a ${donorWord}.\n` });
+    // The accepted baseline before the introduction: no row carries a store category.
+    const before = baseline(root);
+    for (const counts of Object.values(before.counts) as Record<string, number>[]) { delete counts["store-0"]; delete counts["store-1"]; }
+    before.counts = Object.fromEntries(Object.entries(before.counts).filter(([, counts]) => Object.keys(counts as object).length));
+    put(root, baselinePath, `${JSON.stringify(before, null, 2)}\n`);
+    const parent = commit(root);
+    put(root, "existing.md", `A ${storeWord}, a ${storeWord} and a ${donorWord}.\n`);
+    expect(cli(root, parent, "--write-baseline").status).toBe(1);
+    put(root, "existing.md", `A ${storeWord} and a ${donorWord}.\n`);
+    const seeded = cli(root, parent, "--write-baseline");
+    expect(seeded.status, seeded.output).toBe(0);
+    expect(baseline(root).counts[hash("existing.md")]).toEqual({ "store-0": 1, "store-1": 1 });
+    expect(cli(root, parent).status).toBe(0);
+    const introduced = commit(root);
+    put(root, "guide.md", `Choose a ${storeWord} food plan.\n`);
+    const refused = cli(root, introduced);
+    expect(refused.status).toBe(1);
+    expect(refused.output).toContain('"guide.md": store-0 increased 0 -> 1');
+  }, 60_000);
 });
 
 describe("neutrality CLI on synthetic Git objects", () => {

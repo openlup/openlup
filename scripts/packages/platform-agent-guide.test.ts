@@ -65,3 +65,17 @@ it("refuses a guide whose maturity differs from its release gates", () => {
     rmSync(fixture, { recursive: true, force: true });
   }
 });
+
+it.each([
+  ["packages/platform", undefined],
+  ["packages/outbox", undefined],
+])("runs the documentation contract for %s through its docs:check script", (directory, example?: string) => {
+  const packageRoot = fileURLToPath(new URL(`../../${directory}`, import.meta.url));
+  const script = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8")).scripts["docs:check"];
+  expect(script).toBe(`node --experimental-strip-types ../core/scripts/documentation-contract.ts --package .${example ? ` ${example}` : ""}`);
+  const result = spawnSync(process.execPath, ["--experimental-strip-types", checker, "--package", ".", ...(example ? [example] : [])], {
+    cwd: packageRoot, encoding: "utf8", timeout: 60_000,
+  });
+  expect(result.status, result.stderr).toBe(0);
+  expect(result.stdout).toContain("package documentation contract ok");
+}, 90_000);
