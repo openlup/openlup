@@ -670,7 +670,7 @@ All five new tables have RLS and no runtime table privileges; service-role
 execution uses pinned function paths. Capture and restore carry their rows and
 restore the active-attempt pointer after its referenced attempt.
 
-For a provider subscription-cycle failure with recorded renewal correlation,
+For the first failure of a provider subscription-cycle attempt with recorded renewal correlation,
 application first calls `subscription_retry_apply_failure` under
 `<apply-key>:truth`. Its immutable failure receipt binds the provider attempt,
 payment, cycle, sequence, classification and observation times to the resulting
@@ -703,6 +703,7 @@ that wins first fences the sweep through its committed attempt.
 | Prepared attempt with no provider handle | Keep the attempt in flight. Missing local handles do not prove provider absence or authorize redispatch. |
 | Settled intent without provider correlation | Preserve settlement and historical evidence. No synthetic provider history is created. |
 | Recorded provider renewal operation without logical-cycle or exact prepared-attempt correlation | Refuse application without financial or retry effects. Resolve the missing correlation explicitly; native counters and the current active pointer cannot reconstruct it. |
+| Same-attempt expiry escalation | An expiry after a decline on the same renewal attempt records the escalation and does not consume an extra retry stage. |
 | Method health without a recorded provider reference | Health supplies no charging authority. Record provider method authority through the selected method store before execution. |
 
 Only `paymentSchemaDescriptor.preparedDurableStore` is enabled by this forward.

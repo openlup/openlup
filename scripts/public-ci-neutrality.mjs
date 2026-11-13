@@ -231,8 +231,8 @@ export function neutralityIncreases(baseline, current) {
 // Exact category/before/after tuples and whole-file pins apply on any base.
 // Adding an entry requires the control review and coordinator read in CONTRIBUTING.md.
 export const reviewedPinnedIntroductions = [
-  ["db/platform/migrations/20261114100000_payment_provider_attempt_store.sql", "1ec4001938ca9e66b0cb915e6238c9dd8a78b4a665c1cb0fd314376630fdd835", [["ui-13", 0, 4], ["ui-14", 0, 3]]],
-  ["packages/platform/sql/20261114100000_payment_provider_attempt_store.sql", "1ec4001938ca9e66b0cb915e6238c9dd8a78b4a665c1cb0fd314376630fdd835", [["ui-13", 0, 4], ["ui-14", 0, 3]]],
+  ["db/platform/migrations/20261114100000_payment_provider_attempt_store.sql", "d819a957961e3c2b6ff381b3efb47698a2e5f1b946c283c275b7305304b61f5d", [["ui-13", 0, 4], ["ui-14", 0, 3]]],
+  ["packages/platform/sql/20261114100000_payment_provider_attempt_store.sql", "d819a957961e3c2b6ff381b3efb47698a2e5f1b946c283c275b7305304b61f5d", [["ui-13", 0, 4], ["ui-14", 0, 3]]],
   ["tests/postgres/fixtures/paymentProvider/durability.sql", "362072b2c6edc0ade23b102e69c31ad871dda7f5dfa87b06a6cd2813fe50343d", [["ui-13", 0, 6], ["ui-14", 0, 5]]],
   ["packages/platform/sql/20260814010000_platform_control_plane.sql", "b0c8ef6424ebc6f1a84cb132c37908f4831fa40484a729c3713cfb35936559c9", [["ui-12", 0, 1]]],
   ["config/reviewed-platform-forwards.json", "f036750c10aae1e9600d98c737d573e5e4672ad817e83bd63aafe860e0685957", [["ui-13", 0, 1]]],

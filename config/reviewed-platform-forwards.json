@@ -5931,7 +5931,7 @@
     },
     {
       "path": "db/platform/migrations/20261114100000_payment_provider_attempt_store.sql",
-      "sha256": "1ec4001938ca9e66b0cb915e6238c9dd8a78b4a665c1cb0fd314376630fdd835",
+      "sha256": "d819a957961e3c2b6ff381b3efb47698a2e5f1b946c283c275b7305304b61f5d",
       "functions": [
         {
           "signature": "public.payment_simulator_begin_attempt(text,uuid,text,jsonb,timestamptz)",
@@ -6056,7 +6056,7 @@
         {
           "signature": "public.payment_provider_result_apply(text,uuid,uuid,text,timestamptz,text,text,text,text,text,text)",
           "beforeSha256": null,
-          "afterSha256": "1a86d3d7578225d63408ffa3895656552265ae78ef16879d8c6036b0b97c4827"
+          "afterSha256": "8dec7664e99abca680a2d4e95b5ed09c3eac6b196b85d24e45482214e7692dc0"
         }
       ]
     }

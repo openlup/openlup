@@ -589,6 +589,48 @@ it("records one attributed renewal failure before truth reuses its settlement an
   expect(await business(f)).toEqual(before);
 });
 
+it.each([0, 1])("records a same-attempt expiry after decline at renewal sequence %s without another retry stage and replays it without writes", async sequence => {
+  const f = await providerRenewal(); let a = f.a;
+  await result(f, `decline:${a.paymentAttemptId}`);
+  if (sequence === 1) {
+    const prepare = { ...f.prepare, idempotencyKey: `prepare:${f.intent}:1`, providerIdempotencyKey: `provider:${f.intent}:1` };
+    await call(env.owner, "subscription_retry_prepare", [f.r.operation, `retry:${f.intent}:1`,
+      { ...prepare, orderRef: f.order, amountMinor: f.r.snapshot.totalAmountMinor, currency: "XXX" }, "2026-11-14T12:00:00Z"]);
+    a = await prepared({ ...f, prepare });
+    await control().applyPaymentResult({ idempotencyKey: `decline:${a.paymentAttemptId}`, paymentIntentId: f.intent,
+      paymentEventId: null, resultStatus: "failed", occurredAt: "2026-11-14T12:00:00Z", failureReason: "declined" });
+  }
+  const e = await event(f, a.paymentAttemptId), before = await business(f);
+  const input = { idempotencyKey: `expiry:${a.paymentAttemptId}`, paymentIntentId: f.intent, paymentEventId: e.paymentEventId,
+    resultStatus: "expired" as const, occurredAt: "2026-11-15T12:00:00Z", failureReason: "window_expired" };
+  const applied = await control().applyPaymentResult(input);
+  expect(applied).toMatchObject({ status: "expired", kind: "state_changed", replayed: false, paymentAttemptId: a.paymentAttemptId });
+  expect((await env.owner.query("SELECT status,payment_status,failure_reason FROM public.payment_provider_states WHERE id=$1", [f.intent])).rows)
+    .toEqual([{ status: "expired", payment_status: "expired", failure_reason: "window_expired" }]);
+  expect((await env.owner.query("SELECT status FROM public.payment_provider_attempts WHERE id=$1", [a.paymentAttemptId])).rows).toEqual([{ status: "expired" }]);
+  expect((await env.owner.query("SELECT processing_status,processed_at IS NOT NULL AS processed FROM public.payment_provider_attempt_evidence WHERE id=$1", [e.paymentEventId])).rows)
+    .toEqual([{ processing_status: "processed", processed: true }]);
+  expect((await env.owner.query("SELECT from_status,to_status,reason,provider_event_id FROM public.payment_provider_transitions WHERE idempotency_key=$1", [`${input.idempotencyKey}:payment_result`])).rows)
+    .toEqual([{ from_status: "failed", to_status: "expired", reason: "state_changed", provider_event_id: e.paymentEventId }]);
+  expect((await env.owner.query(`SELECT count(*)::int AS n FROM public.subscription_retry_receipts r
+    JOIN public.subscription_retry_obligations o ON o.id=r.obligation_id WHERE o.cycle_id=$1 AND r.kind='failure'
+      AND r.attempt_sequence=$2`, [f.cycle, sequence])).rows[0].n).toBe(1);
+  expect((await env.owner.query("SELECT retry_attempt,next_retry_at FROM public.subscription_retry_obligations WHERE cycle_id=$1", [f.cycle])).rows)
+    .toEqual([{ retry_attempt: sequence + 1, next_retry_at: new Date(sequence === 0 ? "2026-11-14T12:00:00Z" : "2026-11-17T12:00:00Z") }]);
+  expect(await business(f)).toEqual(before);
+  const recorded = async () => (await env.owner.query(`SELECT jsonb_build_array(
+    (SELECT to_jsonb(s) FROM public.payment_provider_states s WHERE id=$1),
+    (SELECT jsonb_agg(to_jsonb(a) ORDER BY id) FROM public.payment_provider_attempts a WHERE settlement_intent_id=$1),
+    (SELECT jsonb_agg(to_jsonb(e) ORDER BY id) FROM public.payment_provider_attempt_evidence e WHERE settlement_intent_id=$1),
+    (SELECT jsonb_agg(to_jsonb(r) ORDER BY scope,idempotency_key) FROM public.payment_provider_receipts r WHERE metadata->>'paymentIntentId'=$1::text),
+    (SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM public.payment_provider_transitions t WHERE settlement_intent_id=$1),
+    (SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM public.payment_truth_events t WHERE settlement_intent_id=$1)) AS value`, [f.intent])).rows[0].value;
+  const snapshot = await recorded();
+  expect(await control().applyPaymentResult(input)).toEqual({ ...applied, replayed: true });
+  expect(await recorded()).toEqual(snapshot);
+  expect(await business(f)).toEqual(before);
+});
+
 it("retains the 24/72/168/exhausted failure ladder and cross-writer duplicate absorption on immutable attempt receipts", async () => {
   const f = await providerRenewal(); let a = f.a;
   const times = [AT, "2026-11-14T12:00:00Z", "2026-11-17T12:00:00Z", "2026-11-24T12:00:00Z"];

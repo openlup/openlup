@@ -1223,7 +1223,7 @@ DECLARE fingerprint text; legacy_fingerprint text; receipt public.payment_provid
  o public.commerce_orders%ROWTYPE; kind text:='state_changed'; answer jsonb; truth jsonb; evidence jsonb;
  outcome text; native_failure text; from_status text; held record;
  renewal public.subscription_renewal_operations%ROWTYPE; retry_preparation public.subscription_retry_receipts%ROWTYPE;
- retry_sequence integer; logical_cycle integer; retry_result jsonb;
+ retry_sequence integer; logical_cycle integer; retry_result jsonb; expiry_escalation boolean:=false;
 BEGIN
  IF p_idempotency_key IS NULL OR btrim(p_idempotency_key)='' OR length(p_idempotency_key)<8
   OR p_payment_intent_id IS NULL OR p_result_status IS NULL OR p_result_status NOT IN ('succeeded','failed','expired','refunded','partially_refunded','disputed')
@@ -1305,6 +1305,14 @@ BEGIN
    ELSIF renewal.external_attempt_ref IN (a.id::text,a.provider_attempt_id)
     AND renewal.cycle_snapshot->>'externalAttemptSequence'='0' THEN retry_sequence:=0;
    ELSE RAISE EXCEPTION 'subscription_retry_not_prepared' USING ERRCODE='22023'; END IF;
+   -- A same-attempt expiry records a lifecycle escalation. Its decline already
+   -- owns the financial failure and retry stage; neither effect runs again.
+   expiry_escalation:=p_result_status='expired' AND s.status='failed' AND a.status='failed' AND EXISTS(
+    SELECT 1 FROM public.subscription_retry_receipts r
+    JOIN public.subscription_retry_obligations obligation ON obligation.id=r.obligation_id
+    WHERE obligation.renewal_operation_id=renewal.id AND r.kind='failure' AND r.attempt_sequence=retry_sequence
+     AND r.input->>'paymentIntentId'=i.id::text AND r.input->>'paymentAttemptId'=a.id::text);
+   IF NOT expiry_escalation THEN
    -- The retry owner records the financial failure first. Truth below reuses
    -- this exact key's settlement receipt, rather than making a second transition.
    retry_result:=public.subscription_retry_apply_failure(renewal.id,p_idempotency_key||':truth',
@@ -1315,8 +1323,9 @@ BEGIN
      'failureClass',p_failure_class,'reason',COALESCE(p_failure_reason,p_result_status),
      'externalRef',CASE WHEN retry_sequence=0 THEN renewal.external_attempt_ref ELSE COALESCE(a.provider_attempt_id,a.id::text) END,
      'evidenceKey',COALESCE(e.id::text,a.id::text),'firstRecordedAt',COALESCE(e.created_at,a.updated_at)));
+   END IF;
   END IF;
-  IF NOT (p_result_status='succeeded' AND i.status='settled') THEN
+  IF NOT expiry_escalation AND NOT (p_result_status='succeeded' AND i.status='settled') THEN
    truth:=public.payment_truth_ingest_event('provider:'||COALESCE(e.id::text,p_idempotency_key),encode(sha256(convert_to(jsonb_build_object('eventId',e.id,'intentId',i.id,'attemptId',a.id,'outcome',outcome)::text,'UTF8')),'hex'),
     p_idempotency_key||':truth',i.id,outcome,i.amount_minor,i.currency_code,p_occurred_at,native_failure,p_failure_reason,evidence,p_dunning_template_slug,p_recovery_url_path,p_recovery_template_slug);
   END IF;
