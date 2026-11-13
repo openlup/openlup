@@ -18,21 +18,22 @@ export const jobs = createScheduledJobRegistry([
 ]);
 ```
 
-This CI-compiled example declares a job registry; the application must bind a
-scheduler and implement the job before running it. Start with [AGENTS.md](AGENTS.md)
-for installed context lookup, subpath maturity and application ownership.
-Node 24 or newer is required. Declaration maps connect `dist/` declarations to
-shipped `src/`; JavaScript source maps are not shipped. Directory
-publishing refuses and the authorized release workflow owns publication.
+This example declares a job registry; bind a scheduler and implement the job
+before running it. Node 24 or newer is required. Read [AGENTS.md](AGENTS.md) for
+installed agent context, subpath maturity and application ownership.
 
-The `openlup` Node bin provides [application upgrade and diagnosis](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#application-command-line-tooling); check your installed `openlup --help` for the versioned syntax.
+Start with the [OpenLup guide](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/README.md). Use the
+[self-host recipe](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/operate/self-host.md) for runtime composition,
+[database upgrade guide](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/upgrade/database-migrations.md) for installation,
+and [application-file upgrades](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/upgrade/application-files.md) for managed files.
+The `openlup` command exposes upgrade and diagnosis; read `openlup --help` from
+your installed version for its syntax.
 
-Repository-source links in this README are optional navigation to current public
-`main`; the linked files are not part of this package tarball and may describe a
-different revision than the version installed. For version-specific behavior,
-start with the installed package's README, CHANGELOG and declarations, and consult
-source at a matching release or tag when available. A current-`main` link is not
-proof of compatibility or support for an installed artifact.
+Repository-source links below navigate to current public `main`, outside this
+tarball. They may describe a different revision. For installed behavior, use
+this package's declarations and changelogs and source at the matching release
+tag. A current-`main` link establishes no compatibility or support guarantee.
+See [CHANGELOG.md](CHANGELOG.md) for release changes and migration precautions.
 
 The `subscriptions` entry also exposes `createPostgresSubscriptionAutoResume`:
 bind its `run(limit, now)` method to the host scheduler and job ledger after
@@ -42,7 +43,13 @@ enablement and cadence. Trusted native retry bindings accept
 `retryCadence: { backoffHours }`; defaults remain `[24,72,168]` and timing cannot
 alter terminating failure classes or an already accepted receipt.
 
+Declaration maps connect `dist/` declarations to shipped `src/`; JavaScript
+source maps are not shipped. Directory publishing refuses; the authorized
+release workflow owns publication.
+
 ## Install the portable PostgreSQL schema
+
+See [selecting, inspecting and applying the complete catalogue](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/upgrade/database-migrations.md#select-the-complete-catalogue).
 
 `@openlup/platform/migrations` exports `createPlatformPostgresMigrationRunner`.
 It uses the existing executor with the complete packaged catalogue, canonical
@@ -72,7 +79,7 @@ principal. Both retain `installer-managed` and `operator-provisioned` role modes
 `operatorLogin`.
 These options observe and admit the existing profiles; they do not create host
 logins, qualify a provider or authorize access. Follow the source
-[data and migration owner](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
+[data and migration owner](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/upgrade/database-migrations.md#select-the-complete-catalogue)
 for the exact provisioning boundary and use the matching installed release.
 
 The package factory requires an explicit `installation`; omitting it refuses
@@ -110,14 +117,13 @@ refuse, while system rows are bypassed without replacement. See the
 
 ## Installed agent context
 
-The tarball includes a small root `AGENT_CONTEXT.md` snapshot of canonical
-platform guidance. Source paths, line ranges and excerpt digests identify its
-provenance. Read the version from the installed `package.json` and check the
-cited source before relying on an excerpt.
-Core's installed `openlup-context` command discovers this snapshot locally and
-returns file-and-line citations offline. Shipping this documentation adds no
-runtime dependency, service or activation, and grants no host policy or execution
-authority. A snapshot does not establish publication, compatibility or support.
+Core's installed `openlup-context` command searches its reader guide under
+`docs/guide/` alongside the installed packages' `AGENTS.md`, `README.md`,
+declarations and exports. Upgrade questions also search `CHANGELOG.md`.
+Results cite local files and line ranges offline. Read the version from the
+installed `package.json` before relying on this guidance. Lookup grants no
+application policy or execution authority and establishes no runtime activation
+or compatibility with another version.
 
 ## Package surface
 
@@ -128,7 +134,7 @@ resumes exact completed replacements after interruption. The caller holds an
 exclusive maintenance window and supplies schema-range evidence; this entry
 runs no database migration, npm install or deployment. Read the
 [file-ownership boundary](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#application-file-upgrades)
-and [disposable app recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#application-file-upgrade).
+and [disposable app recipe](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/upgrade/application-files.md#prepare-snapshots).
 
 The same entry exports `inspectLegacyPostgresInstallRoles`, a read-only query
 through a caller-owned PostgreSQL handle. Its
@@ -207,6 +213,8 @@ bearer; its local fixture establishes no hosted revocation guarantee.
 
 ## HTTP runtime and security contract
 
+See [HTTP admission and request handling](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/operate/self-host.md#declare-http-admission).
+
 The Node-only `./http` entry builds a request handler around host-supplied route
 tables, dispatch, entrypoint loaders, deadlines, security-header policy, robots
 content and static-asset reader. Its request order is fixed: apply security
@@ -226,8 +234,9 @@ contract; they do not certify a deployed route or security policy.
 
 ## Marketing contracts
 
-The browser data-layer factory defaults to analytics-consent-only admission. Hosts may opt in with `consentPolicy: "independent"` to admit events with either stored analytics or marketing cookie consent. The explicit `consentPolicy: "host-authorized"` mode also admits observations when no purpose is granted, solely for hosts that authorize limited consent-aware transmission and enforce route and per-tag gates. Both nondefault modes keep consent updates tied to each stored category; `pushAnalyticsConsentUpdate(false)` denies both. The host must gate every tag by its own purpose, and may allow denied-state transmission only for explicitly authorized consent-aware tags. The factory does not inspect tag behavior or minimize event payloads; the host must authorize every admitted event and its data. Queue admission never authorizes storage or grants a purpose. In nondefault modes update(true) publishes stored flags and update(false) publishes all denial; neither switches the admission policy or fences routes. Queue admission does not prove delivery or attribution.
+See [marketing handlers, analytics and consent](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/marketing.md).
 
+The browser data-layer factory defaults to analytics-consent-only admission. Hosts may opt in with `consentPolicy: "independent"` to admit events with either stored analytics or marketing cookie consent. The explicit `consentPolicy: "host-authorized"` mode also admits observations when no purpose is granted, solely for hosts that authorize limited consent-aware transmission and enforce route and per-tag gates. Both nondefault modes keep consent updates tied to each stored category; `pushAnalyticsConsentUpdate(false)` denies both. The host must gate every tag by its own purpose, and may allow denied-state transmission only for explicitly authorized consent-aware tags. The factory does not inspect tag behavior or minimize event payloads; the host must authorize every admitted event and its data. Queue admission never authorizes storage or grants a purpose. In nondefault modes update(true) publishes stored flags and update(false) publishes all denial; neither switches the admission policy or fences routes. Queue admission does not prove delivery or attribution.
 
 `./marketing` provides acquisition address references, historical case projections,
 list/count reads, portable prelaunch list/detail schemas, idempotency keys, survey submission/evidence/list schemas and
@@ -369,10 +378,12 @@ content; the descriptor is plain data for a host head manager. The type-only
 `./marketing/contracts` entry exports shared organization facts and contact,
 legal-document and privacy-processor shapes, also forwarded as types by the
 runtime entry. The package supplies no document wording, processor inventory or
-content policy. The [marketing recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#marketing-seo-and-content-slots)
+content policy. The [marketing recipe](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/seo-and-content-slots.md#choose-the-imports)
 owns the mechanics and installed-artifact proof.
 
 ## Marketing composition
+
+See [selecting marketing operations and privacy owners](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/marketing.md#describe-the-selected-operations).
 
 `./composition` exports `createMarketingContribution`, an inert descriptor for
 the `marketing` capability's `./marketing`, `./marketing/contracts` and
@@ -395,7 +406,7 @@ owns assessment ordering, subscription vetoes, receipt replay and transaction
 rollback; the marketing fence runs only during `eraseOrRetain`. Provider request
 acceptance never proves deletion. The reference leaves marketing unselected,
 so its marketing privacy coverage remains an open gap. See the
-[privacy composition recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#marketing-server-composition).
+[privacy composition recipe](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/marketing.md#choose-the-import-boundary).
 
 The contributor and binding declarations use identity contract types and local
 structural interfaces compatible with identity's `PersonalDataContributor`.
@@ -611,7 +622,7 @@ renewal-cycle orders are refused. Inspection preserves initial subscription
 mode and cadence from stored quote/activation facts, normalizes consumed links
 for paid confirmation, and grants payment continuation only through validation
 of an active pending order. It sends no mail and performs no settlement. See the
-[recovery recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#postgresql-checkout-recovery-tokens).
+[recovery recipe](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/checkout-recovery.md#issue-a-recovery-token-for-an-admitted-checkout).
 
 `./commerce/server` exports `createPostgresCheckoutRecoveryWaves`.
 `./composition` supplies `createCheckoutRecoveryWaveJob` and
@@ -624,15 +635,6 @@ The final wave requires a confirmed first-wave receipt bound to its event,
 template and selected delivery profile, independently of outbox completion.
 Skipped, disabled, ambiguous and failed sends do not create that evidence.
 The existing recovery email handler remains the consumer.
-
-The same service composition supplies reservation-backed one-time expiry,
-initial-activation abandonment and expired-notice reconciliation. One-time expiry
-uses retained purchase-reservation deadlines, never order age. Initial sweeps
-retain any provider-contact evidence and never cancel live subscriptions. Timing,
-batch, lease, profile identity and copy are host configuration. The HTTP adapter
-authenticates before the flag check; disabling the job constructs no persistence.
-No host is started. Starter schedules/pages and expired-order recreation remain
-separate work. See the [wave recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#checkout-recovery-waves-and-expiry).
 
 `./commerce/server` exports `createAdminCheckoutPaymentLinkHandler` and
 `createPostgresOperatorCheckoutLinkStore`. The host supplies the verified active
@@ -651,7 +653,7 @@ recovery is separate. Copy returns the token without email; email returns an
 explicit queued result only after durable per-token handoff. Expiry is the earlier
 configured deadline; an elapsed deadline returns `order_not_recoverable` without
 issuing a token. The operator UI and expired-checkout recreation require separate
-host composition. See the [operator recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#operator-order-payment-links).
+host composition. See the [operator recipe](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/checkout-recovery.md#give-an-operator-a-payment-link).
 
 `./commerce/server/postgres` also exports
 `createPostgresCommercePriceAuthorityReadPort(executor)`. Allocate it once per
@@ -688,7 +690,7 @@ unchanged. The owner provisions a Commerce row for each human admin and never
 deletes it; withdraw human access by revoking membership. Deletion would set
 `commerce_order_holds.created_by` to NULL, making a human fulfillment-exception
 hold eligible for automatic release. This existing FK hazard is not changed.
-See the [composition recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#native-oms-and-support-stores).
+See the [composition recipe](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/oms-stores.md#choose-the-imports).
 
 With the complete catalogue through `20261110200000_operator_order_commands.sql`,
 unpaid cancellation locks the current payment aggregate and refuses in-flight,
@@ -716,7 +718,6 @@ catalogue. Hosts authorize parent reads and bind checkout/dispatch explicitly.
 The confirmation outbox is durable; native mail dispatch is unbound.
 Addresses and identifying reference strings persist. Use opaque references;
 destination-row export/erasure is unavailable in this port. This destination port provides no mutable address book; select the separate [saved-address port](#saved-customer-address-book) when needed.
-
 
 Native destinations use `./commerce/server/destinations` and the complete SQL
 catalogue. Hosts authorize parent reads and bind checkout/dispatch explicitly.
@@ -1360,6 +1361,8 @@ both exported helpers and their signatures: `calculateIncludedVat` delegates to
 
 ## Scheduled jobs
 
+See [scheduling selected work](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/operate/self-host.md#select-background-work).
+
 A job is `{ id, schedule, lease?, run(context) }` with a UTC cron expression. Domains and packages contribute jobs to `createScheduledJobRegistry`, which refuses duplicate ids and ships empty. The Node host runs registry jobs on its own timers and calls `run` directly, with no HTTP request and no secret. `createScheduledJobHttpEntry` mounts the same job behind the cron guard for a hosted cron. A job that declares `lease` runs only after the injected job-lease port grants it; a lease held elsewhere skips the run, and a finish the port refuses fails the run. `scheduledJobsFromContribution` turns a contribution's cadence schedules into jobs and refuses a cadence that no cron expression matches exactly; a contribution run that reports a failed outcome fails the job.
 
 Schedules are authored in UTC; a Node adapter must interpret them in UTC to
@@ -1392,7 +1395,7 @@ changed PID or missing lock ownership refuses with
 requires an actual unlock. Failed unlock retains the reservation. Use a dedicated
 direct connection or session-mode pooler, never `Pool.query` or transaction
 pooling; a finite check cannot certify a pooler's configuration. Follow the
-[connection recipe](https://github.com/openlup/openlup/blob/main/docs/platform/RUNTIME_AND_SELF_HOSTING.md#postgresql-connection-recipe)
+[connection recipe](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/operate/connect-postgresql.md#assign-connections-by-work)
 when runtime `DATABASE_URL` uses a transaction pooler. The
 [qualified PG16 witness](https://github.com/openlup/openlup/blob/main/tests/postgres/m14QualifiedComposition.test.ts)
 proves pooled requests, session exclusion and backend-switch/reset refusal before
@@ -1406,9 +1409,13 @@ retains those separate duties.
 
 ## Bundle readiness
 
+See [bundle selection and admission](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/operate/self-host.md#select-the-bundle).
+
 `PLATFORM_BUNDLE` selects `vercel-supabase` (the default when absent), `node-supabase` or `node-postgres`. A bundle's readiness refuses, before any traffic or timer: an unknown `PLATFORM_BUNDLE` (resolution itself still falls back to the default); a self-host bundle without `APP_BASE_URL`; and, reported together under `OPENLUP_E_ENV_MISSING`, every selected capability without its settings: the scheduler without `CRON_SECRET`, Node scheduling without `DATABASE_URL` for its cluster lock (never a silent single-instance lock), and the selected blob capability without its settings (see Blob storage). An unknown `PLATFORM_BLOB` is refused too. The Node host checks readiness at boot.
 
 ## Blob storage
+
+See [storage configuration and injected clients](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/operate/self-host.md#supply-configuration-and-storage).
 
 `PLATFORM_BLOB` selects the blob capability; without it the bundle's own applies (filesystem for node-postgres, the local development default). `bindBlobPort` builds each one from the environment and the clients the application injects:
 
@@ -1421,7 +1428,7 @@ The Node host passes the composed ports, blob storage included, to the HTTP runt
 
 ## What the application supplies
 
-The package carries no deployment identity. The application passes it every value that names a deployment or a domain:
+See [host composition and application-owned inputs](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/operate/self-host.md#compose-the-host).
 
 - the BFF route table, the not-found response, the request preflight and the per-request hook;
 - how a request reference is chosen, and the health payload with its strict contract;
@@ -1441,6 +1448,8 @@ installed `./payments/contracts` or `./fulfillment/contracts` declarations and
 their maturity before binding; an exported adapter does not activate a provider.
 
 ## Job-run ledger SQL
+
+See [the ledger install-path constraint](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/upgrade/database-migrations.md#select-the-complete-catalogue).
 
 `JOB_RUN_LEDGER_MIGRATIONS` lists the two files a fresh installation applies, in order, through its own migration chain:
 
@@ -1487,7 +1496,6 @@ The package test additionally requires every file in the contracts subtree to
 be a scanned `.ts` file, refuses triple-slash type and path references and all
 meta-properties (also `new.target`), and retains member-call `require` detection
 outside contracts. Identity declares this entry; synthetic graphs also exercise these checks.
-
 
 The job-run ledger SQL asset test verifies a readable, nonempty file within the
 package SQL directory. Its SQL parity tests bind the actual adapter calls to the
@@ -1552,17 +1560,17 @@ in both resolution modes with all three optional peers absent.
 The host-only `createPostgresContactClientRegistrar` resolves guest purchase
 contacts and refreshes optional defaults only on unlinked rows; its result grants
 no account access and linked rows remain untouched.
-See [guest contact resolution](../../docs/platform/IDENTITY.md#guest-checkout-contact-resolution)
+See [guest contact resolution](../core/docs/guide/concepts/identity.md#guest-checkout-contact-resolution)
 for host quotas, internal result fields and erasure boundaries.
 This is a development-preview import candidate, not an activated adopter contract.
 Installed exports alone do not mount routes or establish host readiness; the
 application must verify its selected identity composition and capabilities.
-See the [identity recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#identity-import-candidate) for composition, migrations and operator invitations.
+See the [identity recipe](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/concepts/identity.md#contacts-principals-and-authority) for composition, migrations and operator invitations.
 
 ## Personal data
 
 The experimental identity entry provides contributor-based personal-data export and erasure.
-See the [personal-data recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#personal-data) for composition, refusals and retained obligations.
+See the [personal-data recipe](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/concepts/personal-data.md#personal-data-coverage) for composition, refusals and retained obligations.
 
 ## Disposable identity composition
 
@@ -1570,11 +1578,6 @@ The opt-in reference identity shell consumes the existing identity exports with 
 See [disposable identity composition](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#disposable-identity-composition) for its boundary and reference guide.
 
 ## Communications import
-
-For transactional email, email provider setup, marketing automation and ecommerce events, use the
-[installed provider wiring recipes](#provider-wiring-recipes): captured
-delivery, signed observations, an unqualified marketing operation with zero HTTP,
-and retained event identities against a fake endpoint.
 
 `EcommerceEventsPort` and its closed event/request types live in the contracts
 entry. The Node communications entry supplies validation and the explicit
@@ -1600,10 +1603,6 @@ opt-out denies only `marketing_newsletter` and preserves suppression. Opt-in
 changes the preference without granting consent. Earlier opt-outs need the
 [operator upgrade statement](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#account-newsletter-withdrawal-upgrade),
 which also documents the provider-sync and email-change limits.
-
-The native delivery adapter suppresses newsletter, gifts/discounts, launch-offer
-and tester consent on a bounce or complaint. Complete account choices and their
-actor command boundary are documented in [Data and migrations](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#complete-account-consent-choices).
 
 `./communications` provides host-composed communications services; `./communications/contracts` supplies pure content and browser contracts.
 See the [communications recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#communications-import) for migration, email rendering and native operations.
@@ -1779,13 +1778,6 @@ is enabled only when the injected client supplies it. See the
 [A2 ledger](https://github.com/openlup/openlup/blob/main/docs/platform/plans/oss-a2-payment-adapters.md) for the current
 preview boundary and the host's responsibilities.
 
-Verified dispute events retain their distinct money outcome and original payment
-identity. Audit payloads carry only donor-filtered facts: the source event type,
-refund charge snapshot and failure-evidence provenance when present. They exclude
-raw bodies, client handoffs and customer authorization and do not affect event
-IDs or fingerprints. The offline adapter conformance witness uses two distinct
-intents and attempts with separate money and provider references.
-
 Method evidence carries the donor lifecycle and replacement facts through M07
 projection when provider time is present. Without provider time it retains the
 method outcome and omits the lifecycle instead of inventing a transition time.
@@ -1856,6 +1848,8 @@ attempts, amounts and provider references, with replay and refusal boundaries.
 
 ### Reference-support surface
 
+See [existing payment bindings](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/extend/provider-adapters.md#reuse-existing-payment-bindings).
+
 The vendor subpaths additionally expose these experimental helpers for the
 reference application's existing host bindings. Each declaration names its exact
 reference consumer and carries `@experimental`: Reference-application support
@@ -1877,6 +1871,8 @@ reference-support availability establishes no provider activation or stable API.
 
 ## Native parcel contact privacy
 
+See [protecting parcel contacts](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/fulfillment.md#protect-parcel-contacts).
+
 Native preparation retains recipient and delivery-selection fields in the private
 parcel contact store, separate from dispatch evidence and public commerce reads.
 Install the complete native catalogue before composing the preparation binding.
@@ -1886,9 +1882,11 @@ and require contributor ID `fulfillment-parcel-contacts` in the existing registr
 Keep the identity contributor and subscription veto. Erasure removes the contact
 payload and leaves a marker that prevents legacy inference from recreating it;
 finite native-store transfer carries both live contacts and erasure markers.
-See the [privacy owner](https://github.com/openlup/openlup/blob/main/docs/platform/IDENTITY.md#identity-personal-data).
+See the [privacy owner](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/concepts/personal-data.md#personal-data-coverage).
 
 ## Fulfillment stock evidence replay
+
+See [stock-alert replay and conflicts](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/fulfillment.md#replay-stock-evidence).
 
 The fulfillment migration projection additionally includes the native
 `20261022165000_fulfillment_stock_evidence_replay_reopen.sql` forward at canonical
@@ -1896,7 +1894,7 @@ position 76 in this catalogue. Install the complete chain before stock adoption.
 Matching-fingerprint alert replay refreshes severity/quantities, reopens status and
 clears `resolved_at`, preserving identity, first-seen time and historical resolver
 metadata. Mismatches, including legacy 0.22.0 whole-input fingerprints, still
-raise `23505`; no rewrite is supplied. See the [migration owner](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
+raise `23505`; no rewrite is supplied. See the [migration owner](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/upgrade/database-migrations.md#select-the-complete-catalogue)
 for upgrade and operational-dependency proof.
 
 ## Subscription contracts and renewal port
@@ -1943,7 +1941,6 @@ positions and a separate shipping charge in one transaction; replay adds neither
 A retained snapshot refuses preparation without the supplied transaction runner.
 See the [composition owner](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#composed-subscription-module)
 for destination claim transactions and qualification limits.
-
 
 The native purchase-renewal forward adds bounded attachment and method-state
 writers through `createPostgresPurchaseRenewalWriter`, plus the independently
@@ -2048,11 +2045,13 @@ account page and selects no other retention planner.
 
 ## Invoicing contracts
 
+See [invoicing composition, duties and read helpers](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/invoicing.md).
+
 Experimental `@openlup/platform/invoicing` exposes `readInvoiceCapabilities`;
 `invoicing/contracts` contains types only. Host selection is explicit and default-off.
 Frozen facts, correction recovery, exact absence, owed duties and host-only fiscal,
 artifact, delivery, payout and owned-history seams are described in the
-[invoicing reference](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#invoicing-contracts).
+[invoicing reference](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/invoicing.md#select-the-ports).
 The contract entry supplies no executor or activation.
 `createNativeUnsupportedInvoicePorts` supplies inert typed refusals for every
 host, store and provider seam. `runInvoiceAdapterConformance` checks adapter-owned
@@ -2096,15 +2095,12 @@ before returning; stale results write no failure. No scheduler or default
 composition is registered. Operator DDL/ACL limits of the unchanged M07 readback
 remain registered in the architecture owner.
 
-For bounded duty discovery before facts exist, including cursor continuation past
-unavailable facts, follow the [invoicing architecture owner](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#invoicing-contracts).
-
 The invoicing read side adds `runInvoiceDeliveryJob`, `assertInvoicePdf`,
 `invoicePdfFilename`, `syncAcceptedInvoiceDocuments`,
 `syncInvoicePayoutSettlements`, `resolveInvoiceDocumentHistory` and
 `createInvoiceReadModel`. Hosts supply authorization, storage, M04 transport,
 terminal/backoff callbacks or the native store, and safe native history projection. See the
-[read-helper recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#invoicing-read-helpers).
+[read-helper recipe](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/invoicing.md#deliver-documents).
 
 `createInvoiceServices` and `createInvoiceContribution` compose the existing
 helpers through `/invoicing`, with explicit selection, default-off and readiness
@@ -2124,11 +2120,13 @@ Experimental `@openlup/platform/invoicing/postgres` supplies an explicitly enabl
 captured sandbox provider, append-only non-fiscal PDF artifacts and a PostgreSQL
 owned invoice-history/ticket reader. The host passes a restricted runtime
 executor and authenticated principal UUID. See the
-[invoicing reference](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#captured-native-invoices)
+[invoicing reference](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/invoicing.md#capture-sandbox-invoices)
 for composition, refusal and sandbox limits. Construction installs no route,
 schedule or provider connection.
 
 ## Account and support contracts
+
+See [account reads, commands, events and operator recovery](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/account-and-support.md).
 
 The command transcription includes confirmed order now/reactivation, structured
 pause/cancel survey and save-offer carriers, and an optional slide reason.
@@ -2144,7 +2142,6 @@ still come from the frozen native subscription lines. Managed/custom account
 sources and existing self-service command bindings keep their own contracts.
 The [subscription owner](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
 describes editor composition, quote acceptance and future renewal terms.
-
 
 `./account-support/postgres` exposes the existing
 `createPostgresCustomerSupportJourneyPort`. Supply a restricted runtime connection
@@ -2169,7 +2166,7 @@ with the host. Importing this entry selects no driver or capability.
 `account-support/contracts` is type-only and browser-safe. It declares account,
 Customer 360, self-service command, operator recovery and invoice-access envelopes
 with explicit capability flags. These declarations do not install their services.
-The [account/support reference](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#account-and-support-contracts)
+The [account/support reference](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/account-and-support.md#choose-the-imports)
 owns the available boundary and later-phase limits.
 
 R2 adds `readAccountSnapshot` with the two-stage fan-out and a store-level recent
@@ -2195,9 +2192,8 @@ Refused callers receive `{ kind: "denied" }`; authorized delegates preserve
 arguments, results, nulls and thrown failures. The reference binding supplies
 that authorization once per call, before opening either support scope.
 
-The [account/support reference](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#account-and-support-contracts)
+The [account/support reference](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/account-and-support.md#choose-the-imports)
 owns the available R1 boundary and later-phase limits.
-
 
 R3 adds `createSelfServiceCommandFacade({ context, capabilities, ...lanes })`,
 returning `SelfServiceCommandFacade` with required host capabilities and every
@@ -2221,7 +2217,6 @@ setupMethod to paymentMethod.execute without owner imports. Native repair is a
 [registered follow-up](https://github.com/openlup/openlup/blob/main/docs/platform/plans/oss-m12-account-support.md#follow-up-register).
 The default-off reference binding mounts nothing; browser key retention and
 native start remains unselected; profile editing has the explicit native port below.
-
 
 R4 adds `createOperatorRecovery`, `createManagedOperatorAuthority`,
 `createPostgresOperatorAuthority`, `operatorAuthorityCapabilities`,
@@ -2261,6 +2256,8 @@ for the host's schema and transport obligations.
 
 ### Customer account events and mutations
 
+See [profile and event semantics](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/account-and-support.md#preserve-profile-and-event-semantics).
+
 `createPostgresCustomerAccountMutationPort` binds a trusted principal/client scope,
 `createCustomerAccountMutationSchemas` with adopter validation values, and a clock.
 Select it as the self-service facade's `profile` port. The same port supplies
@@ -2279,11 +2276,6 @@ separate query commits: append failure leaves the profile write committed, and a
 retry without a recorded event may mutate again. Do not wrap both in a host
 transaction or claim concurrent exactly-once mutation.
 
-Correction requests check document ownership through its order, then append an
-acknowledged event. The key is stored without deduplication; repeated submissions
-produce distinct event IDs. No current/issued status gate, fiscal correction,
-operator consumer, notification or refund is supplied.
-
 Install the complete selected prefix through `20261110120000_customer_account_events.sql`.
 The new ledger has client cascade, occurred-time index, enabled RLS and closed
 owned routines. Runtime EXECUTE grants go only to service_role; its table access is
@@ -2301,6 +2293,8 @@ rows, following the customer communication-preference event ledger. See the
 [data owner](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#customer-account-event-data).
 
 ### Native account persistence reads
+
+See [owned account reads and their refusal boundaries](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/account-and-support.md#bind-reads-to-the-customer).
 
 `@openlup/platform/account-support` supplies
 `createPostgresCustomerOrderHistoryReadStore`, `createPostgresAccountReadSources`
@@ -2500,19 +2494,14 @@ Invoicing exports explicit `createInvoiceServices`, `InvoiceServices` and inert
 SQL wrappers persist it for eligible obligations. `InvoiceSellerRevision` is also
 available from the type-only contracts entry. Legacy obligations keep fallback.
 
-For the prepared `0.39.0` set, read the [adjacent-release migration and known
-limitations](CHANGELOG.md#0390) before selecting optional services. This set
-adds checkout recovery inspection, expired initial-checkout recreation, reminder
-waves with reservation-backed expiry, checkout payment guidance, sandbox token
-payment and inline retry, and customer and operator payment-link entry points;
-customer account history, profile edits, billing profiles, invoice buyer inputs
-frozen on first native duty capture, a saved address book with future-delivery
-selection and scoped preferences; native operator parcel replacement and
-cancellation with private parcel contacts and a parcel status fence, and
-operator shipment commands; human operator admission, unpaid cancellation
-commands and owned return requests and decisions; and an opt-in sized
-future-plan editor. A timed pause now shifts the next cycle by its length, and
-timed auto-resume no longer stays paused after a delivered paid first order.
+For the prepared `0.40.0` set, read the [adjacent-release migration and known
+limitations](CHANGELOG.md#0400) before selecting optional services. This set
+adds experimental neutral ecommerce-event contracts, retained paid-time source
+snapshots and an explicit PostgreSQL projection through the existing outbox;
+separately qualified events for the opt-in `./communications/klaviyo` adapter,
+whose consent-push capability now requires the complete declared scope set; and
+offline wiring recipes for transactional delivery, marketing refusals and frozen
+event replay. The package no longer ships `AGENT_CONTEXT.md`.
 Apply the complete selected migration catalogue before composing the new native
 bindings. Experimental
 marketing uses browser-safe `./marketing`, type-only browser-safe
@@ -2559,10 +2548,8 @@ Adopters must not activate unselected or unready invoicing; installation and
 inert contributions register no runner, worker, route or schedule.
 M06 managed-host proof classes remain pending in the
 [M06 parity ledger](https://github.com/openlup/openlup/blob/main/docs/platform/plans/oss-m06-stock-reservations-delivery.md#parity-pending-rows).
-Size comparison uses the published `0.38.0` tarball. Preparation and offline
+Size comparison uses the published `0.39.0` tarball. Preparation and offline
 adapter evidence grant no publication or provider-account certification.
-
-Longer module recipes live in the [platform package reference](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md).
 
 The set requires Zod `^4.6.6` for GHSA-mrhx-c7xc-m3w5.
 Public quote requests retain their collection limits and valid-input behavior;
@@ -2580,22 +2567,21 @@ and admits only the canonical baseline ledger catalog shape before reading its
 exact prefix. The fingerprint stays exact except for numeric `pg_attver` column version markers in a nonempty, one-dimensional array starting at index 1; every other attribute option refuses admission.
 A pending unit locks an installed ledger before its first catalog
 read in that transaction and preserves the connection's isolation setting. The
-[migration owner](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
+[migration owner](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/upgrade/database-migrations.md#select-the-complete-catalogue)
 and [runner witness](https://github.com/openlup/openlup/blob/main/packages/platform/test/migrations/postgresRunner.test.ts) define that boundary;
 this callback does not provision or qualify a hosted installation.
-
 
 Customer checkout recovery entry points in `./commerce/server` provide signed-in
 navigation tokens and cookie-authorized buyer mail with atomic bucket deduplication.
 Both preserve earlier links and refuse renewal-cycle orders. See the
-[customer recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#customer-checkout-recovery-entry-points)
+[customer recipe](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/checkout-recovery.md#add-customer-recovery-entry-points)
 for session binding, PostgreSQL ports, lifetimes and host delivery/UI obligations.
 
 Checkout recovery inspection in `./commerce/server` adds service-only original
 and latest-descendant readers, capability-gated expired presentation and an
 adopter-owned content validation fence. Inspection cannot authorize payment or
 create a replacement. Renewal cycles refuse; initial declarations retain their
-separate native identity. See the [inspection recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#checkout-recovery-inspection).
+separate native identity. See the [inspection recipe](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/checkout-recovery.md#inspect-a-link-before-showing-recovery-controls).
 
 Expired checkout recreation in `./commerce/server` adds a safety-first service,
 service-only lineage preparation, native draft replay and transaction-bound
@@ -2611,7 +2597,7 @@ backfilled. A replacement initial subscription receives a new
 provisional declaration; its terminal predecessor and live subscriptions stay
 unchanged. Renewal cycles refuse. The native prior-payment safety adapter in
 `./payments` uses actual simulator attempts; real-provider paths retain their
-named unsupported refusal. See the [recreation recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#expired-checkout-recreation)
+named unsupported refusal. See the [recreation recipe](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/checkout-recovery.md#recreate-a-technically-expired-checkout)
 for required host authority, executor binding and the real-money closure limit.
 
 Atomic sandbox checkout guidance uses
@@ -2624,7 +2610,7 @@ Captured observations suppress refusal advice without claiming settlement.
 Opaque native method references establish no method or operation; those guidance
 fields remain unknown. Non-sandbox channels retain the existing named refusal.
 The host keeps status capability opt-in, its legacy display fallback and response
-shape. See the [atomic guidance recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#atomic-checkout-payment-guidance).
+shape. See the [atomic guidance recipe](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/checkout-recovery.md#show-payment-recovery-guidance-from-one-snapshot).
 
 ### Checkout token payment
 
@@ -2635,7 +2621,7 @@ The sandbox preview composes `createCheckoutRecoveryPayService`,
 key and rechecks checkout authority under locks. Renewal cycles refuse; initial
 declarations remain eligible. Hold policy/read ports stay host-owned. Other
 channels keep the named native refusal. See the
-[composition recipe](../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md#checkout-token-payment)
+[composition recipe](../core/docs/guide/how-to/build/checkout-recovery.md#retry-payment-with-a-recovery-token)
 and [PostgreSQL witnesses](../../tests/postgres/checkoutRecoveryPay.test.ts).
 
 ### Exact inline checkout retry
@@ -2648,7 +2634,7 @@ checked before reads; bearer authority cannot widen it. The existing hold
 wrapper gates fresh attempts. Durable nonce/rail replay returns the replacement
 cookie and existing result without redispatch, including safe polling when
 readback lags. Renewal cycles and observed success refuse. See the
-[composition recipe](../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md#exact-inline-checkout-retry)
+[composition recipe](../core/docs/guide/how-to/build/checkout-recovery.md#retry-the-exact-failed-attempt-inline)
 and [PostgreSQL witnesses](../../tests/postgres/checkoutInlineRecovery.test.ts).
 
 ## Saved customer address book
@@ -2843,6 +2829,8 @@ or activate a target.
 
 ### Customer billing profiles and frozen invoice buyers
 
+Read [billing profile composition](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/account-and-support.md#manage-billing-profiles) and [immutable invoice buyer capture](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/invoicing.md#freeze-the-invoice-buyer).
+
 Install the complete native catalogue through
 `20261110270000_invoicing_duty_buyer_capture.sql`. Select
 `createPostgresCustomerBillingProfilePort`, `createCustomerBillingProfileSchemas`
@@ -2862,14 +2850,6 @@ events and execute again. An owned-ID update refuses a missing/foreign row;
 a delete of a missing/foreign ID acknowledges zero rows and records its event.
 Verification level/source/evidence supplied by the customer is retained as data;
 no registry verification workflow is performed.
-
-Native invoicing now freezes ONE buyer component atomically with the first owed
-duty, including native payment-truth capture. No opt-in or payment callback is
-needed. It preserves order buyer facts first, then the default or latest owned
-profile/billing-or-both address, then the marked shipping fallback. Handoff
-requests read the owned parcel destination; paid requests read the order.
-Pre-existing duties or documents never acquire a component on replay, even
-before full facts are installed.
 
 Bind `createPostgresBillingInvoiceStore` from `@openlup/platform/invoicing` for
 subsequent host fiscal composition: `readCapturedBuyer(orderId)` supplies the

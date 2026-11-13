@@ -5,6 +5,10 @@ journeys over your installation's PostgreSQL runtime connection. Authenticate
 the principal and authorize each action in your application; constructing a
 store does not grant authority.
 
+Install the [complete selected catalogue](../../upgrade/database-migrations.md)
+before binding native stores, including human operator admission, unpaid
+cancellation and return decisions.
+
 ## Choose the imports
 
 Use `@openlup/platform/commerce` for browser-safe OMS schemas and pure list/read
@@ -13,9 +17,9 @@ and ports. Node handlers, managed query hydration and
 `buildOmsOrderDetailResponse` belong to `@openlup/platform/commerce/server`.
 
 Select native OMS factories from `@openlup/platform/commerce/server/postgres`
-using its [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/commerce-server-postgres.api.md). Select customer-support
+using its [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/packages/platform/api/commerce-server-postgres.api.md). Select customer-support
 journey persistence from `@openlup/platform/account-support/postgres` using its
-[API report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/account-support-postgres.api.md).
+[API report](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/packages/platform/api/account-support-postgres.api.md).
 
 The commerce factories take a host-owned `PgQueryExecutor`, whose type comes
 from `@openlup/platform/data`. Supply the selected installation's restricted
@@ -28,6 +32,16 @@ Pass the executor to `createPostgresCommerceOmsPort` for hold creation/release,
 mark-refunded and unpaid-order cancellation. The port passes original
 idempotency keys and actor identifiers to SQL. Derive the actor from your
 admitted operator context, never request input.
+
+Resolve the operator again before each human command and replay, enforcing
+active human-admin membership in your host. Native resolution requires an
+existing Commerce operator UUID and either an active control principal or an
+active human-admin membership with no control row of any state. Distributors,
+revoked members and admins without a Commerce row do not resolve. Resolution
+provisions nothing. Retain the Commerce row when withdrawing human access;
+revoke membership instead. Deleting that row nulls hold attribution through
+the existing foreign key and can make a human exception hold eligible for
+automatic release. The machine path keeps its own admission policy.
 
 Use `createPostgresCommerceOmsControlPlane` for operator resolution and
 `control_plane_v1` list/detail reads. These reduced projections include order,
@@ -56,12 +70,27 @@ response validation when extending schemas. Supply settlement policy in your
 host. The mark-refunded handler also requires `mutationsEnabled`; false returns
 `FORBIDDEN` before mutation.
 
+Native unpaid cancellation locks current payment state and refuses in-flight,
+captured or indeterminate evidence before recording its audit and releasing
+the order's held purchase reservations. Refusals include
+`oms_cancel_unpaid_order_payment_in_flight` and
+`oms_cancel_unpaid_order_payment_already_moved`. A late capture stays a review
+case. Mark-refunded accepts paid orders and records an external refund status;
+it calls no provider and emits no refund notification or accounting reversal.
+Object metadata keeps its keys; non-object metadata is retained as
+`previousMetadata`. Actual refund sources retain their event duties. Neither
+command changes an active subscription's lifecycle or schedule.
+
 Replacement creation belongs to fulfillment. Its
 `createAdminCommerceOrderRequestReplacementShipmentHandler` is exported from
 `@openlup/platform/fulfillment` and takes a replacement port, responder and admin
 authorizer. Creation does not establish arrival. Confirm subscription delivery
 alignment only after the replacement reaches the customer; that confirmation
 records delivery and can move the next cycle later.
+
+For richer order-detail projections, supply your health classifier and evidence
+readers. Omission leaves an unassessed `ok` snapshot with no attention reasons
+or evidence identifiers; it does not evaluate provider health.
 
 ## Record return intent
 
@@ -70,6 +99,18 @@ Pass the executor to `createPostgresCommerceReturnsPort<Reason>` and call
 reason type can narrow your application's vocabulary; SQL still decides which
 reasons are valid. These calls record lifecycle intent. They do not receive
 stock, restock it or execute refunds.
+
+Fresh requests accept paid or fulfilled orders owned by the authenticated
+customer, with one line per order item and quantity no greater than ordered.
+Choose a subset of stored reason codes; another code refuses with
+`commerce_return_request_create_invalid_input`. Replays normalize key/note
+whitespace, UUIDs, line order and defaults. New SKUs use trimmed supplied text,
+then the recorded order-item SKU, then `unknown`; historical null means
+unrecorded. Older receipts retain their own fingerprints. A unique matching
+trimmed-key alias replays its stored ID; ambiguous matches refuse with
+`commerce_return_request_create_order_not_found` without rewriting history.
+Partial approval requires an amount. Approval and rejection each record one
+intent event; creating a request emits none.
 
 ## Recover system exception holds
 
@@ -106,5 +147,5 @@ If composing `createCustomer360ReadFacade` from
 and a separate `diagnostics` port. You own its admission and governance;
 the journey store supplies no diagnostic-history route.
 
-See the [account and support reference](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/README.md#account-and-support-contracts)
-for the surrounding capability boundary.
+Follow [account and support composition](account-and-support.md) for the
+surrounding read, command and privacy boundaries.

@@ -11,65 +11,24 @@ process: an application binds its ports and composes it.
 
 ## Installed context lookup
 
-From the application root, invoke the installed local executable:
+From the application root, run:
 
 ```sh
 ./node_modules/.bin/openlup-context search "subscription renewal"
 ```
 
-This MVP indexes English documentation. Translate Polish or other natural-language
-tasks into concise English domain terms, or search an exact public symbol;
-freeform Polish queries may miss relevant guidance. `--code` scans a bounded
-set of application source paths; `--package-code` scans installed package `src/`
-files. Both are opt-in and may be incomplete; direct `rg` remains available.
+The command searches core's installed reader guide under `docs/guide/`, package
+`AGENTS.md`, `README.md`, declarations and exports, and `CHANGELOG.md` for upgrade
+questions.
 
-Choose the next lookup from the evidence needed: read a known path or symbol
-directly; use `openlup-context` when the package owner or seam is unclear; then
-open its cited source. For work spanning packages, follow the relevant exports,
-callers and tests until each required contract has a witness. A ranked hit is a
-starting point, not proof that all related constraints were found.
-
-The Node-only, tool-only executable reads the installed packages' local context
-snapshots and core's reader guide under `docs/guide/` when invoked. It is not
-imported by any kernel export and adds no runtime dependency. Results locate
-source evidence; they grant no application policy, tool permission or
-external-write authority. The application's own
-instructions govern.
-
-## Agent context over MCP
-
-An MCP client can use the same offline lookup without issuing shell searches.
-After installing core, configure stdio with the application root as its working
-directory:
-
-```json
-{
-  "mcpServers": {
-    "openlup-context": {
-      "command": "npx",
-      "args": ["openlup-context", "mcp"],
-      "cwd": "/path/to/your-application"
-    }
-  }
-}
-```
-
-Use `search_openlup_context` when an owner or seam is unclear, then
-`read_openlup_file` on its installed paths with inclusive line ranges. Code scans
-remain opt-in through `includeApplicationCode` and `includePackageCode`. Read
-supports symlinked package roots, but refuses application files, URLs, traversal,
-file realpaths outside the resolved package root and files over 200,000 bytes.
-These checks cover paths and links as they stand at read time, not concurrent
-rewrites of `node_modules`.
-Search tasks are limited to 1,000 characters; incoming message lines to 1 MiB.
-Oversized messages are refused and discarded through the next newline.
-Use the installed excerpt for repository-only citations. Prefer the installed
-local executable directly if `npx` must never fetch a missing command. See
-[Agent context over MCP](README.md#agent-context-over-mcp) for client settings and
-limits. This tool grants no additional application or external-write authority.
+Use concise English terms or an exact symbol, then read the cited owner. Source
+scans are opt-in and bounded. Read known paths directly; ranked hits do not
+establish complete coverage. Core supplies the executable. See
+[lookup and MCP settings](README.md#agent-context-lookup).
 
 ## Subpath maturity
 
+<!-- generated:maturity:core -->
 | Export | Role | Maturity |
 | --- | --- | --- |
 | `./bundle` | kernel | candidate |
@@ -78,25 +37,21 @@ limits. This tool grants no additional application or external-write authority.
 | `./fulfillment` | kernel | experimental |
 | `./inventory` | kernel | candidate |
 | `./marketing/research` | kernel | experimental |
+| `./outbox` | kernel | experimental |
 | `./partners` | kernel | experimental |
 | `./payment` | kernel | experimental |
 | `./platform-runtime` | kernel | experimental |
 | `./pricing` | kernel | candidate |
 | `./promo` | kernel | candidate |
+| `./readiness` | kernel | experimental |
 | `./risk` | kernel | candidate |
 | `./shipping` | kernel | candidate |
-| `./subscription` | kernel | candidate |
-| `./outbox` | kernel | experimental |
-| `./readiness` | kernel | experimental |
 | `./standard-schema` | kernel | experimental |
+| `./subscription` | kernel | candidate |
 | `./testing` | testing | testing |
-
-Any version may change an export, and each change is recorded in
-[the changelog](CHANGELOG.md).
+<!-- /generated:maturity:core -->
 
 ## Wiring example
-
-The application owns its composition. This example compiles in OpenLup's CI:
 
 ```ts
 import {
@@ -150,29 +105,29 @@ The checker reports `OPENLUP_E_PORT_MISSING`, `OPENLUP_E_EVENT_UNHANDLED`,
 its exact candidate. A host must provide complete installed metadata and selected-adapter
 observations; a report does not prove ACL, function bodies or recovery.
 
-See [module readiness](README.md#module-readiness) for logical modules.
-
 ## Using this package in an application
 
-- **Do not edit the installed package.** Do not change files under `node_modules/@openlup/`, and
-  do not autonomously patch, fork, vendor, monkey-patch, shadow or restore a copied package engine.
-  Import only declared public exports, not internal source or `dist` paths.
-- **Change behaviour through seams.** Application handlers, policies, ports, composition and
-  compatible native adapters remain ordinary application code, without per-function records or
-  an upstream release. Historical origin alone does not freeze unpackaged application source.
-- **If a seam is missing,** record a local reproducer and obtain submission authority before an
-  upstream proposal. A supported wrapper/adapter must preserve the contract. Otherwise hold
-  the dependent change, keep compatible serving work or use an available compatible rollback;
-  do not discard pending work or rewrite published SQL.
-- **Guides describe the installed contract.** They grant no host policy, tool permission or
-  external-write authority and install no controls. Your application's own instructions govern.
-- **Upgrade every `@openlup/*` package together,** after reading each changelog's `Migration:`
-  blocks.
-  Compare the selected authentic artifact and current bindings at first adoption and upgrade,
-  including drift outside extracted files, pending obligations and durable effects. Refresh
-  identities/readiness and settle affected nominated overlap as full, partial, retained or hold
-  in existing adoption evidence; move or settle open markers on ordinary refactors too.
-  API equality or a merged contribution is not absorption proof. See the
-  [application use guide](README.md#use-in-an-application) for the portable recipe.
-- **Inside the OpenLup monorepo,** where this package is a workspace, the repository's root
-  `AGENTS.md` governs instead.
+Read [application ownership](docs/guide/start/adopt-from-npm.md#keep-application-ownership)
+and [extension seams](docs/guide/how-to/extend/choose-an-extension-seam.md).
+
+Public handlers, policies, ports and compatible adapters need no per-function
+record or upstream release. A missing seam needs a local reproducer and actual
+submission authority; retain compatible serving work or a rollback compatible
+with durable state while holding the dependent change. Preserve pending work and
+published SQL. A guide or review receipt grants no tool or external-write rights.
+
+First adoption and upgrade compare the actual artifact with current producer
+payloads, schema, policy and bindings, including disabled branches and drift
+outside extracted files. Preserve transactional enqueue, claim/acknowledgement
+fences, distinct same-event effects and durable recovery. Settle nominated overlap
+as `full`, `partial`, `retained` or `hold` in existing adoption evidence; move or
+settle same-ID markers during ordinary refactors too. Matching APIs or a merged
+contribution do not establish absorption. Read all `Migration:` blocks and keep
+the exact `@openlup/*` set together.
+
+The application owns its instructions and execution authority. Inside the
+OpenLup monorepo, root `AGENTS.md` governs.
+
+Installed package bytes remain the engine: do not autonomously patch, fork,
+vendor, monkey-patch, shadow resolution or restore a copied engine. Import
+only declared exports, never private source or `dist` paths.

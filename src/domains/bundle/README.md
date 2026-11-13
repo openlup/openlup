@@ -114,6 +114,6 @@ The catalog server entry also owns the native bundle admin writer and unchanged
 shared marshalling. Reference store and error paths re-export its factories and
 constructors; `DomainRpcError` identity and the host response mapper are retained.
 The host still supplies verified human authorization and mutation/activation
-gates. The [package recipe](../../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md#native-bundle-admin-writes)
+gates. The [package recipe](../../../packages/core/docs/guide/how-to/build/bundles.md#choose-the-imports)
 links the installed restricted-runtime and constructor-identity witnesses.
 This relocation adds no SQL, native actor-kind gate or concurrency guarantee.

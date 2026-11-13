@@ -1,0 +1,114 @@
+# Runs separately after publication so the tutorial never holds a publication run open.
+# workflow_run executes trusted default-branch workflow and runner code. Only the
+# release tag's tutorial page is read, after checking its commit against the completed run.
+# Publish Packages handles release: published. For a release run, head_branch is the
+# release tag and head_sha is its commit; refuse other events and malformed tags.
+# Only this repository's own release runs qualify: the head repository must be
+# this repository. A release has no pull-request context; no fork ref is checked out.
+# https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#release
+# https://docs.github.com/en/webhooks/webhook-events-and-payloads#workflow_run
+name: Guide tutorial against the npm registry
+
+on:
+  workflow_run:
+    workflows: [Publish Packages]
+    types: [completed]
+
+permissions: {}
+
+concurrency:
+  group: registry-tutorial-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+jobs:
+  registry-tutorial:
+    name: Guide tutorial against the npm registry (advisory)
+    if: ${{ github.repository == 'openlup/openlup' && github.event.workflow_run.repository.full_name == 'openlup/openlup' && github.event.workflow_run.head_repository.full_name == 'openlup/openlup' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'release' && startsWith(github.event.workflow_run.head_branch, 'openlup-core-v') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Validate the core release tag
+        env:
+          RELEASE_TAG: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          [[ "$RELEASE_TAG" =~ ^openlup-core-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || { echo '::error::Expected an openlup-core-vMAJOR.MINOR.PATCH release tag'; exit 1; }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24.21.0
+          package-manager-cache: false
+      - name: Read the release's tutorial page
+        env:
+          RELEASE_TAG: ${{ github.event.workflow_run.head_branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          git fetch --no-tags --depth=1 origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          if [ "$(git rev-list -n 1 "refs/tags/$RELEASE_TAG")" != "$HEAD_SHA" ]; then
+            echo '::error::Release tag commit does not match the completed publication run'
+            exit 1
+          fi
+          git show "refs/tags/$RELEASE_TAG:packages/core/docs/guide/start/tutorial.md" > "$RUNNER_TEMP/tutorial.md"
+      - name: Wait for the published set on npm
+        id: registry
+        timeout-minutes: 11
+        env:
+          RELEASE_TAG: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          version="${RELEASE_TAG##*-v}"
+          # The publishable package set is stable, so use the trusted default-branch inventory.
+          packages="$(node -p 'require("./config/openlup-packages.json").packages.filter(entry => entry.publish).map(entry => entry.name).join(" ")')"
+          specs=""
+          for package in $packages; do specs="$specs $package@$version"; done
+          deadline=$((SECONDS + 600))
+          delay=5
+          while (( SECONDS < deadline )); do
+            ready=true
+            # The page reads core's latest version; also wait for that dist-tag to catch up.
+            for spec in $specs @openlup/core; do
+              remaining=$((deadline - SECONDS))
+              if (( remaining <= 0 )); then ready=false; break; fi
+              if ! observed="$(timeout "$remaining" npm view "$spec" version --registry=https://registry.npmjs.org --fetch-retries=0 --fetch-timeout=10000)" || [ "$observed" != "$version" ]; then
+                ready=false
+                break
+              fi
+            done
+            if [ "$ready" = true ]; then
+              echo 'ready=true' >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            remaining=$((deadline - SECONDS))
+            if (( remaining <= 0 )); then break; fi
+            wait_seconds=$delay
+            if (( wait_seconds > remaining )); then wait_seconds=$remaining; fi
+            sleep "$wait_seconds"
+            if (( delay < 30 )); then delay=$((delay + 5)); fi
+          done
+          echo '::warning title=Guide tutorial::Published set not visible on npm within 10 minutes; registry tutorial deferred.'
+          echo '### Guide tutorial: deferred (advisory)' >> "$GITHUB_STEP_SUMMARY"
+          echo "The published set $version was not visible on npm within 10 minutes." >> "$GITHUB_STEP_SUMMARY"
+      - name: Start the pinned package-proof PostgreSQL service
+        id: postgres
+        if: steps.registry.outputs.ready == 'true'
+        run: |
+          # Use the same digest and pull helper, allowing public fallback without registry credentials.
+          image="$(node --input-type=module -e 'import { readCiImage, pullWithRetry } from "./scripts/ci-image-pull.mjs"; console.log(await pullWithRetry(readCiImage("install-proof-postgres")));')"
+          container="$(docker run --pull=never --detach --name install-proof-postgres --env POSTGRES_HOST_AUTH_METHOD=trust --publish 127.0.0.1::5432 "$image")"
+          echo "container=$container" >> "$GITHUB_OUTPUT"
+          echo "port=$(docker port "$container" 5432/tcp | cut -d: -f2)" >> "$GITHUB_OUTPUT"
+          docker exec "$container" sh -c 'for i in $(seq 1 30); do pg_isready -h 127.0.0.1 -U postgres -t 1 && exit 0; sleep 1; done; exit 1'
+      # --advisory reports a failed tutorial as a warning and exits 0. Remove it after two green
+      # merge-group runs on main to make the step blocking (documentation programme, decision D4).
+      - name: Guide tutorial against the npm registry (advisory)
+        if: steps.registry.outputs.ready == 'true'
+        timeout-minutes: 4
+        env:
+          OPENLUP_PROOF_SERVICE_PORT: ${{ steps.postgres.outputs.port }}
+        run: node --experimental-strip-types scripts/packages/guide-tutorial.ts --advisory --registry --page "$RUNNER_TEMP/tutorial.md" --database-url "postgresql://postgres@127.0.0.1:$OPENLUP_PROOF_SERVICE_PORT/postgres"
+      - name: Remove the package-proof PostgreSQL service
+        if: always() && steps.postgres.outcome != 'skipped'
+        run: docker rm -f install-proof-postgres

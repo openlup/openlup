@@ -13,7 +13,7 @@ you need to own.
 | React to a recorded domain fact | Event subscriber | Bind a handler for the documented event in your application's event registry. Keep the subscriber's work separate from ownership of the originating transaction. |
 | Change presentation or commercial inputs | Theme, copy, catalogue and local policy | Keep these inputs in your application and pass them through the relevant configuration or rendering boundary. |
 | Add a responsibility unique to your application | Application domain | Keep its browser-safe contracts and server implementation in your own source, then connect its handlers and ports in your composition root. |
-| Add a reusable platform capability | Upstream contribution | Propose a generic contract with an explicit compatibility and maintenance owner and conformance evidence. Follow the [contribution rules](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/CONTRIBUTING.md#contribute-existing-adopter-code-then-refactor). |
+| Add a reusable platform capability | Upstream contribution | Propose a generic contract with an explicit compatibility and maintenance owner and conformance evidence. Follow the [contribution rules](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/CONTRIBUTING.md#contribute-existing-adopter-code-then-refactor). |
 
 For an application domain, use your application's own module layout and
 registration mechanism. The platform checkout's domain registry and import

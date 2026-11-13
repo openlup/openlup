@@ -17,8 +17,6 @@ repository facade defaults to legacy. No checkout is required.
 
 ## PostgreSQL quote price reads
 
-Moved to [Read prices for a quote](../../packages/core/docs/guide/how-to/build/quote-prices.md#compose-a-request-scope).
-
 The four reads preserve complete list, exact base, exact legacy subscription and
 policy histories.
 
@@ -34,8 +32,6 @@ capabilities from the factory's presence. See
 [restricted PostgreSQL characterization](../../tests/postgres/commercePriceAuthorityRead.test.ts).
 
 ## Application file upgrade
-
-Moved to [Upgrade application files](../../packages/core/docs/guide/upgrade/application-files.md#prepare-snapshots).
 
 The disposable example uses Node 24, predecessor/candidate schema ranges
 `{ min: 1, max: 2 }` and caller-supplied `schemaVersion: 2`. Its managed
@@ -68,8 +64,6 @@ installed database, runtime ACLs or a qualified provider.
 
 ## Marketing server composition
 
-Moved to [Compose marketing handlers](../../packages/core/docs/guide/how-to/build/marketing.md#choose-the-import-boundary).
-
 Reference bindings load `@openlup/platform/marketing/server/postgres`
 lazily after bundle and connection guards. The reference host owns observed-route
 wrappers and admin auth binding. The manifest depends on identity's
@@ -99,8 +93,6 @@ optional `pg` peer. Identity's public surface is unchanged.
 
 ## Identity import candidate
 
-Moved to [Identity](../../packages/core/docs/guide/concepts/identity.md#contacts-principals-and-authority).
-
 Identity depends on the declared foundation entries without changing the
 artifact's rail kind. Its seven SQL files are verbatim projections at canonical
 positions 11, 12, 29, 60, 67, 68 and 69. The reference dispatcher accepts a
@@ -113,7 +105,7 @@ For the repository OIDC recipe, run
 `node tests/postgres/runOidcIdentityConformance.mjs` with the cached pinned issuer
 and local prerequisites. The [recipe owner](IDENTITY.md#real-issuer-oidc-recipe)
 owns invocation and teardown. The repository's
-[bootstrap/prune commands](IDENTITY.md#direct-human-login) own maintenance wiring.
+[bootstrap/prune commands](../../packages/core/docs/guide/concepts/identity.md#direct-human-login) own maintenance wiring.
 Callable inventories remain in the
 [server API reference](../../packages/platform/api/identity.api.md) and
 [browser API reference](../../packages/platform/api/identity-contracts.api.md).
@@ -175,8 +167,6 @@ witnesses and records the remaining evidence.
 
 ### Operator invitations
 
-Moved to [Identity](../../packages/core/docs/guide/concepts/identity.md#operator-invitations).
-
 The direct pending lifecycle’s migration pin is
 `20261018120000_identity_operator_invitations`, applied after the existing direct
 catalogue.
@@ -221,8 +211,6 @@ It does not establish managed/direct lifecycle parity.
 
 ## Personal data
 
-Moved to [Personal data](../../packages/core/docs/guide/concepts/personal-data.md#personal-data-coverage).
-
 Migration: apply the complete direct catalogue including
 `20261018190000_identity_privacy_erasures` before using privacy or the updated
 customer challenge store.
@@ -243,7 +231,7 @@ bundle-specific inventory and email-trust admission before listening. Direct
 reconcile reads actor links; invite/remove select pending-invitation stores.
 Default static/browser page sets are unchanged. See
 [identity composition](IDENTITY.md#responsibility-and-composition) and
-[privacy wiring](IDENTITY.md#identity-personal-data).
+[privacy wiring](../../packages/core/docs/guide/concepts/personal-data.md#personal-data-coverage).
 
 Evidence (historical record, 2026-11-13):
 
@@ -557,8 +545,6 @@ release preparation assembles the shipped CHANGELOG. Follow the
 
 ## Invoicing contracts
 
-Moved to [Compose invoicing](../../packages/core/docs/guide/how-to/build/invoicing.md#select-the-ports).
-
 This extraction adds no npm package or dependency.
 
 Eleven compatibility helpers serve host facades. `createInvoiceReversalHandlers`
@@ -634,8 +620,6 @@ remote attestation, PostgreSQL atomicity proof or fiscal certification.
 
 ### Invoicing read helpers
 
-Moved to [Compose invoicing](../../packages/core/docs/guide/how-to/build/invoicing.md#deliver-documents).
-
 The delivery-settlement behavior is carried by CTL-M09-3's 191000 pin. The
 managed facade retains its existing key and diagnostic bytes. The reference
 history shim translates legacy columns without changing its public DTO.
@@ -661,8 +645,6 @@ terminal outcomes; it makes no live transport or inbox-delivery claim.
 
 ### Captured native invoices
 
-Moved to [Compose invoicing](../../packages/core/docs/guide/how-to/build/invoicing.md#capture-sandbox-invoices).
-
 Captured native invoice composition uses the existing native accounting/invoicing
 tables on the qualified-v2 chain.
 
@@ -675,13 +657,7 @@ The [installed/native witness](../../tests/postgres/invoicingCaptured.test.ts)
 exercises the packed entry through a restricted login; it is local sandbox proof,
 not live-provider or hosted qualification.
 
-## OMS composition
-
-Moved to [Compose order management stores](../../packages/core/docs/guide/how-to/build/oms-stores.md#choose-the-imports).
-
 ### Native OMS and support stores
-
-Moved to [Compose order management stores](../../packages/core/docs/guide/how-to/build/oms-stores.md#choose-the-imports).
 
 Reference facades re-export the package's account/support error constructors.
 
@@ -694,8 +670,6 @@ cover reference facades and refusal constructors. Their presence is not a passin
 qualification result; the [task record](plans/oss-m19-g12.md) carries executed proof.
 
 ## Account and support contracts
-
-Moved to [Compose account and support services](../../packages/core/docs/guide/how-to/build/account-and-support.md#choose-the-imports).
 
 The reference recipe rejects a route whose callable is not selected with
 `account_support_entry_operation_required`; service, port and route aliases
@@ -740,8 +714,6 @@ release or adopter cutover authority.
 
 ### Bounded account and support reads
 
-Moved to [Compose account and support services](../../packages/core/docs/guide/how-to/build/account-and-support.md#bind-reads-to-the-customer).
-
 Current-parcel and commerce recovery rules retain their existing owners.
 M09 owns signed correction totals, document/parent lineage and PDF access.
 
@@ -778,8 +750,6 @@ R5 limits.
 
 ### Operator recovery selection
 
-Moved to [Compose account and support services](../../packages/core/docs/guide/how-to/build/account-and-support.md#select-operator-recovery).
-
 `createM12OperatorRecoveryBinding` selects the package exports only with
 `enabled: true` and complete ports. The reference
 `AccountSupportRecoveryStatus` displays partial results and capability refusals;
@@ -809,8 +779,6 @@ success. See [saved subscription selection](../../packages/platform/README.md#sa
 
 ## Marketing SEO and content slots
 
-Moved to [Compose SEO and content slots](../../packages/core/docs/guide/how-to/build/seo-and-content-slots.md#choose-the-imports).
-
 Evidence (historical record, 2026-11-13):
 
 `ContactContent`, `LegalDocumentContent` and `PrivacyProcessorDisclosure` are
@@ -828,8 +796,6 @@ entry and compiles its content types.
 
 ## Native bundle admin writes
 
-Moved to [Compose native bundle writes](../../packages/core/docs/guide/how-to/build/bundles.md#choose-the-imports).
-
 Reference error paths re-export the same constructors, preserving `instanceof`
 and the existing SQLSTATE mapper.
 
@@ -841,8 +807,6 @@ result is recorded in the task record, not a hosted or provider qualification.
 The identity witness is `tests/postgres/m19BundleWriteIdentity.test.ts`.
 
 ## Native fulfillment preparation and captured dispatch
-
-Moved to [Compose native fulfillment](../../packages/core/docs/guide/how-to/build/fulfillment.md#choose-the-imports).
 
 The reference host facade keeps its prior result shape and delegates services
 and methods to the package binding.
@@ -861,22 +825,16 @@ for destination and reservation facts in a separate change.
 
 ## Native operator shipment commands
 
-Moved to [Compose native fulfillment](../../packages/core/docs/guide/how-to/build/fulfillment.md#bind-operator-commands-and-reads).
-
 Install the complete selected catalogue through
 `20261110230000_operator_shipment_commands.sql`.
 
 ## PostgreSQL checkout recovery tokens
-
-Moved to [Recover abandoned checkouts and payments](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#issue-a-recovery-token-for-an-admitted-checkout).
 
 PostgreSQL computes and stores exactly `order.created_at + 24 hours`, retaining
 sub-millisecond precision and refusing an elapsed deadline. Only the SHA-256
 hash reaches storage.
 
 ## Checkout recovery waves and expiry
-
-Moved to [Recover abandoned checkouts and payments](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#schedule-reminders-and-expire-abandoned-checkouts).
 
 The legacy integer SQL entry retains defaults of 3600/72000 seconds for
 first/final offsets, 86400 checkout seconds, 2592000 recovery seconds and 900
@@ -903,8 +861,6 @@ obligations.
 
 ## Operator order payment links
 
-Moved to [Recover abandoned checkouts and payments](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#give-an-operator-a-payment-link).
-
 Use the complete native migration chain, including
 [`20261110110000_operator_checkout_links.sql`](../../db/platform/migrations/20261110110000_operator_checkout_links.sql).
 
@@ -919,8 +875,6 @@ retains bounded failures and effect ordering. These sources do not establish
 hosted, browser or provider qualification.
 
 ## Customer checkout recovery entry points
-
-Moved to [Recover abandoned checkouts and payments](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#add-customer-recovery-entry-points).
 
 Apply the complete native chain through
 [`20261110115000_customer_checkout_links.sql`](../../db/platform/migrations/20261110115000_customer_checkout_links.sql).
@@ -945,8 +899,6 @@ browser or real-provider qualification.
 
 ## Checkout recovery inspection
 
-Moved to [Recover abandoned checkouts and payments](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#inspect-a-link-before-showing-recovery-controls).
-
 Evidence (historical record, 2026-11-13):
 
 The additive migration introduces nullable recovery-root and immediate-predecessor
@@ -956,8 +908,6 @@ policy is included. See the [PostgreSQL witness](../../tests/postgres/checkoutRe
 and [composition characterizations](../../packages/platform/test/commerce/checkoutRecoveryInspection.test.ts).
 
 ## Expired checkout recreation
-
-Moved to [Recover abandoned checkouts and payments](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#recreate-a-technically-expired-checkout).
 
 The buyer-snapshot preparation change is carried by
 `20261110280000_checkout_recovery_buyer_snapshot.sql`. It backfills no existing
@@ -980,8 +930,6 @@ cover legacy and both qualified runtimes.
 
 ## Atomic checkout payment guidance
 
-Moved to [Recover abandoned checkouts and payments](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#show-payment-recovery-guidance-from-one-snapshot).
-
 The read probes 101 attempts and returns at most 100. It probes 33
 evidence members per attempt and admits at most 32. Native observation records
 and truth/readback source envelopes have an 8,192-byte bound.
@@ -1001,8 +949,6 @@ The host owns rendering and route mounting. See the
 
 ## Checkout token payment
 
-Moved to [Recover abandoned checkouts and payments](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#retry-payment-with-a-recovery-token).
-
 Evidence (historical record, 2026-11-13):
 
 The [PostgreSQL witnesses](../../tests/postgres/checkoutRecoveryPay.test.ts)
@@ -1012,8 +958,6 @@ verified settlement and hold composition on legacy and both qualified runtimes.
 cover the neutral port and injected hold rules.
 
 ## Exact inline checkout retry
-
-Moved to [Recover abandoned checkouts and payments](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#retry-the-exact-failed-attempt-inline).
 
 Evidence (historical record, 2026-11-13):
 

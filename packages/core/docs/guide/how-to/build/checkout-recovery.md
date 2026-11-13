@@ -7,7 +7,7 @@ authentication, routes, screens, localized messages, transport and schedules.
 Commerce factories below use `@openlup/platform/commerce/server` in Node.
 Install the complete native PostgreSQL catalogue. For maturity, consult the
 [platform capability
-reference](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/release-gates.json).
+reference](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/packages/platform/release-gates.json).
 The native payment execution and recreation bindings described here use the
 sandbox simulator. Their public query executors are structural and require no
 database-driver types merely to import or compose these factories. Other payment
@@ -77,7 +77,7 @@ Invoke `enqueue(limit, now)` with a UTC timestamp. It queues first and final
 reminders for eligible pending checkouts, excluding recent payment activity and
 known capture. The payload’s first/final content labels do not change when
 you change the offsets; use the content contract in the
-[API report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/communications-contracts.api.md) rather than inferring labels from timing. Supply localized copy through
+[API report](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/packages/platform/api/communications-contracts.api.md) rather than inferring labels from timing. Supply localized copy through
 `createCheckoutRecoveryContentFactory` from
 `@openlup/platform/communications/contracts`.
 
@@ -126,8 +126,8 @@ Bind `createAdminCheckoutPaymentLinkHandler` to `authorizeAdmin`, `respond`,
 `createPostgresOperatorCheckoutLinkStore` with a restricted service executor
 whose calls commit separately, preserving admission and completed effects after
 failure. Do not wrap the entire command in one transaction. Choose explicit
-policy lifetimes; the [maintainer operator-link recipe](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#operator-order-payment-links)
-retains example values for `operatorLifetimeMs` and `recoveryWindowMs`.
+policy lifetimes; neutral examples are `operatorLifetimeMs: 3600000` and
+`recoveryWindowMs: 86400000`. Bind the same recovery window at redemption.
 Construction installs no feature flag, scheduler or operator UI.
 
 Authorize an active human administrator through your operator session; machine
@@ -173,8 +173,7 @@ eligible declaration order. An initial declaration or persisted subscription
 checkout context selects subscription presentation without admitting renewals.
 Flag and session checks precede port construction.
 
-Set `lifetimeMs` explicitly within the accepted bound in the
-[maintainer customer-link recipe](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#customer-checkout-recovery-entry-points).
+Set `lifetimeMs` explicitly to a positive safe integer at most `86400000`.
 The deadline is order creation plus that lifetime, and the database rechecks it
 after blocking writes, rolling them back if the deadline elapsed. A successful
 start returns a fresh raw token for navigation and sends no mail. An elapsed
@@ -190,8 +189,8 @@ expired cookies produce `continuation_missing` before persistence is
 constructed; body identifiers and recipient addresses supply no authority.
 
 The service issuer locks the order and admits pending non-renewal checkout only.
-Configure the buyer port's `lifetimeMs` and positive `sendBucketMs` using the
-[maintainer customer-link recipe](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#customer-checkout-recovery-entry-points).
+Configure the buyer port's `lifetimeMs` and positive `sendBucketMs`; neutral
+examples are `86400000` and `600000`, respectively.
 Bucket admission deduplicates the
 `checkout_recovery:buyer:<order>:<bucket>` event and token atomically; a
 duplicate inserts neither. Later buckets preserve earlier links. `{ sent: true
@@ -315,7 +314,7 @@ History probes a bounded number of attempts and evidence members, returning
 attempts newest first. Overflow, contradictory proof or an oversized envelope
 drops that attempt’s whole proof set and marks history incomplete. Observation
 records and truth/readback source envelopes have bounded sizes; consult the
-[API report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/commerce-server-postgres.api.md) and its linked implementation
+[API report](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/packages/platform/api/commerce-server-postgres.api.md) and its linked implementation
 for the limits. Only correlated identity/outcome fields are projected; raw
 source envelopes, request keys, token hashes and opaque authorization/method
 references are excluded. Native states map to the Core attempt vocabulary and
@@ -332,7 +331,7 @@ or malformed data; a snapshot with dead authority carries null guidance.
 
 Opt in with `X-Payment-Recovery-Guidance: 1` and preserve the legacy response
 without it, as in the [status-handler
-composition](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/server/domains/commerce/commercePaymentStatusHandler.ts).
+composition](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/server/domains/commerce/commercePaymentStatusHandler.ts).
 
 Render returned actions without inferring method-specific advice: native
 observations prove generic refusal, with method, operation and advice unknown.

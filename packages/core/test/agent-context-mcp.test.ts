@@ -1,5 +1,4 @@
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
@@ -20,9 +19,8 @@ function install(root: string, name = "core", version = "0.37.0"): string {
   const directory = join(root, "node_modules/@openlup", name);
   mkdirSync(directory, { recursive: true });
   writeFileSync(join(directory, "package.json"), JSON.stringify({ name: `@openlup/${name}`, version }));
-  const excerpt = "## Retry policy\nUse nextRetryAttemptAt for the retry schedule.\n";
-  const metadata = { id: "retry-policy", source: `https://github.com/openlup/openlup/blob/openlup-${name}-v${version}/docs/platform/CANONICAL_CONTRACTS.md`, heading: "Retry policy", sha256: createHash("sha256").update(excerpt).digest("hex") };
-  writeFileSync(join(directory, "AGENT_CONTEXT.md"), `# Context\n<!-- openlup-context-inventory ${JSON.stringify([metadata])} -->\n<!-- openlup-context ${JSON.stringify(metadata)} -->\n${excerpt}<!-- /openlup-context -->\n`);
+  mkdirSync(join(directory, "docs/guide"), { recursive: true });
+  writeFileSync(join(directory, "docs/guide/retry.md"), "## Retry policy\nUse nextRetryAttemptAt for the retry schedule.\n");
   writeFileSync(join(directory, "README.md"), "# Installed package\r\nFirst line\r\nSecond line\r\nThird line\r\n");
   return directory;
 }
@@ -194,10 +192,10 @@ describe("MCP installed context search", () => {
     const root = fixture();
     const { result: response } = await result(root, search());
     expect(response.content).toEqual([{ type: "text", text: formatContextResult(root, searchContext(root, "retry")) }]);
-    expect(response.structuredContent).toMatchObject({ version: "0.37.0", packages: ["@openlup/core"], hits: [{ file: `${prefix}AGENT_CONTEXT.md`, start: 4, end: 5, reason: "canonical owner excerpt", owner: expect.stringContaining("openlup-core-v0.37.0") }] });
+    expect(response.structuredContent).toMatchObject({ version: "0.37.0", packages: ["@openlup/core"], hits: [{ file: `${prefix}docs/guide/retry.md`, start: 1, end: 3, reason: "installed docs/guide/retry.md" }] });
     const hit = response.structuredContent.hits[0];
-    expect((await result(root, read(hit.file, { startLine: hit.start, endLine: hit.end }))).result.content[0].text).toContain("4: ## Retry policy\n5: Use nextRetryAttemptAt");
-    await toolError(root, read(hit.owner), /source URL is not installed/);
+    expect((await result(root, read(hit.file, { startLine: hit.start, endLine: hit.end }))).result.content[0].text).toContain("1: ## Retry policy\n2: Use nextRetryAttemptAt");
+    await toolError(root, read("https://github.com/openlup/openlup/blob/openlup-core-v0.37.0/docs/guide/retry.md"), /source URL is not installed/);
   });
 
   it("accepts 1,000-character tasks and returns a tool error above the limit", async () => {
@@ -224,7 +222,7 @@ describe("MCP installed context search", () => {
     expect(empty.isError).toBeUndefined();
   });
 
-  it("returns installed-package, task and corpus failures as tool errors", async () => {
+  it("returns installed-package and task failures as tool errors", async () => {
     await toolError(temporaryRoot(), search(), /No installed/);
     const root = fixture();
     for (const task of ["", "   ", "the and"]) await toolError(root, search({ task }), /specific task/);
@@ -234,9 +232,6 @@ describe("MCP installed context search", () => {
     writeFileSync(join(root, "package-lock.json"), JSON.stringify({ packages: { "node_modules/@openlup/core": { version: "0.36.0" } } }));
     await toolError(root, search(), /Lockfile and installed/);
     rmSync(join(root, "package-lock.json"));
-    const file = join(root, prefix, "AGENT_CONTEXT.md");
-    writeFileSync(file, readFileSync(file, "utf8").replace("retry schedule", "altered schedule"));
-    await toolError(root, search(), /digest mismatch/);
   });
 });
 
@@ -280,8 +275,8 @@ describe("MCP installed file reader", () => {
     symlinkSync(relative(dirname(packagePath), installedPath), packagePath);
     expect((await result(root, read())).result.content[0].text).toContain("1: # Installed package");
     const hit = (await result(root, search())).result.structuredContent.hits[0];
-    expect(hit.file).toBe(`${prefix}AGENT_CONTEXT.md`);
-    expect((await result(root, read(hit.file, { startLine: hit.start, endLine: hit.end }))).result.content[0].text).toContain("4: ## Retry policy");
+    expect(hit.file).toBe(`${prefix}docs/guide/retry.md`);
+    expect((await result(root, read(hit.file, { startLine: hit.start, endLine: hit.end }))).result.content[0].text).toContain("1: ## Retry policy");
   });
 
   it.each(["file", "directory", "sibling-prefix"])("refuses an escaping %s symlink inside the package", async kind => {

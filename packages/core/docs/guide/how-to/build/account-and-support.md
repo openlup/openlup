@@ -8,14 +8,14 @@ routes and operator routes separately authorized.
 
 Use `@openlup/platform/account-support` for runtime composition and
 `@openlup/platform/account-support/contracts` for browser-shareable types.
-See the [runtime API report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/account-support.api.md) and
-[contracts API report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/account-support-contracts.api.md)
+See the [runtime API report](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/packages/platform/api/account-support.api.md) and
+[contracts API report](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/packages/platform/api/account-support-contracts.api.md)
 for their inventories. Contribution descriptors come from
 `@openlup/platform/composition`. Owner DTOs retain generic frozen money and
 private extensions.
 
-For capability maturity, consult the
-[package reference](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/AGENTS.md#subpath-maturity).
+For the declared selection boundary, consult the
+[package reference](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/packages/platform/AGENTS.md#subpath-maturity).
 
 ## Bind reads to the customer
 
@@ -58,6 +58,23 @@ fulfillment interpretation and source attribution come from your projection.
 Native detail refuses unavailable captured money with
 `native_account_order_money_unavailable`.
 
+Every native query rechecks the principal/client pair, including companion reads.
+Use a server-authorized executor on the restricted runtime lane; these factories
+create no connection. Native tracking URLs come from recorded observations;
+a tracking identifier alone supplies no URL. `readPaidActivationGaps` returns
+`orderId` and `paidAt` keyed by order, without inventing a provisional
+subscription. Terminalized settlement intents appear as cancelled in order
+history. The subscription source maps stored `composition_constraint` to
+`sizeConstraint`; your editor interprets that constraint, while line amounts
+remain frozen subscription prices. An aggregate snapshot needs every selected
+section even when independent profile, order and subscription reads succeed.
+
+Bind actor snapshot/newsletter readers through an already verified actor
+gateway. They preserve database errors and null ownership results. If the
+newsletter reader sees a saved grant without evaluator evidence, it throws
+`host_binding_required` for `newsletterConsent`. It exposes withdrawal, without
+a grant command or a complete purpose-choice interface.
+
 ## Authorize support and invoice reads
 
 Compose `createCustomer360ReadFacade` with `authorize`, `journey`, `summary`
@@ -82,6 +99,10 @@ before ticket resolution or artifact access. Preserve the invoice owner's
 order-reference format. This composition supplies neither an archive nor
 storage; `downloadOwnedInvoicePdf` delegates PDF validation to the invoice
 reader.
+
+Standard UUID account/order/document identifiers compare without letter-case
+differences; opaque host references remain case-sensitive. Preserve the original
+echoed values rather than normalizing every reference indiscriminately.
 
 ## Select self-service commands
 
@@ -123,6 +144,11 @@ The codec invents no currency, cutoff, address or payment-method facts. The
 facade's trailing `ControlSnapshot = unknown` generic preserves your snapshot
 type and its nullability through the input and returned methods.
 
+Command envelopes carry explicit charge-timing confirmation for order-now and
+reactivation, structured pause/cancel surveys and save-offer facts, and an
+optional slide reason. Historical survey/offer strings remain valid carriers;
+these declarations do not select a retention offer or install a browser binding.
+
 For profile edits and invoice-correction requests, compose
 `createCustomerAccountMutationSchemas`,
 `createPostgresCustomerAccountMutationPort` and
@@ -138,6 +164,72 @@ Supply the principal/client pair, clock, tax policy, authentication and messages
 Default clearing, profile writing and event append can fail separately. Reusing
 the request identifier executes again. Mount the handlers yourself; saving a
 profile does not select it for checkout.
+
+## Preserve profile and event semantics
+
+Select the mutation port as the self-service facade's `profile` lane. It also
+supplies `requestInvoiceCorrection` and metadata-only `readEvents` for the
+recent events within the [mutation port's read bound](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/packages/platform/README.md#customer-account-events-and-mutations). Profile names collapse whitespace; empty or null clears a
+field, and omission preserves it. Email is not an editable field. Your phone
+policy supplies the calling prefix and must preserve the native phone shape.
+
+The schema policy may narrow the native text and collection limits, but cannot
+widen them. Consult the [mutation schema contract](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/packages/platform/README.md#customer-account-events-and-mutations)
+for the exact bounds and phone shape. Invalid policy construction throws
+`customer_account_policy_invalid`.
+
+A recorded profile-event key returns the current profile without another write.
+If the event append fails after the profile write, the write remains committed;
+a retry without that event can mutate again. Keep those separate query commits
+and do not claim concurrent exactly-once mutation. Correction requests verify
+document ownership through the order, then append an acknowledgement. Repeating
+their key creates another event. This path has no issued/current-status gate,
+fiscal correction executor, operator consumer, notification or refund.
+
+Event payloads contain personal data. Register
+`createAccountEventPrivacyContributor` and require `account-support` in identity's
+privacy registry. Supply a privileged payload reader and an explicit retain or
+unresolved policy. Unavailable export remains visible; missing reader or policy
+does not permit erasure. With both configured, a retain assessment leaves
+payloads in place even when that reader reports export unavailable. Identity
+field clearing does not erase these events. No retention duration or deletion
+worker is installed. Runtime event routines are service-only; the table's
+client-column census grant is not payload-read authority.
+
+## Manage billing profiles
+
+The billing-profile handler supports GET/POST/PATCH/DELETE with authenticated
+identity, strict requests/responses and your responder/messages. Consumer
+signatures require no driver types. Tax policy cannot widen the fixed limits
+or bypass the native weighted checksum. Exact validation belongs to the
+[billing schema contract](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/packages/platform/README.md#customer-billing-profiles-and-frozen-invoice-buyers). Customer-supplied verification level,
+source and evidence are stored facts, not a registry verification workflow.
+
+Updating a missing or foreign profile refuses with
+`customer_billing_profile_not_found`. Deleting such an ID acknowledges zero
+rows and still records the event. A failed default write may leave defaults
+cleared; an append failure may leave the profile saved. Reusing an event key
+executes again. Keep this behavior distinct from profile-edit replay.
+
+Register `createCustomerBillingPrivacyContributor` from
+`@openlup/platform/identity` and require `customer-billing`, alongside identity,
+subscription vetoes and the separate account-event contributor. It exports
+exact profiles and frozen invoice-buyer components, erases editable profiles
+and retains frozen buyers under the invoicing owner's document-retention rule.
+No default duration is supplied. Clearing client fields does not cover these
+rows. Closed routines receive service-only execution; browser roles have no
+direct profile access.
+
+Profile rows block lead absorption. The service role's client-ID census access
+does not permit arbitrary profile payload reads; use the closed owned routines.
+
+Finite native capture/qualified restore carries exact profiles, buyer components
+and account-event history; buyer components follow invoice duties. Replay does
+not rewrite them. Legacy installations serve as capture sources; the smaller
+compatible-row copier is separate. A managed source with nonempty profiles and
+no typed transfer path refuses. Transfer grants no credentials or target
+activation. Follow [buyer capture](invoicing.md#freeze-the-invoice-buyer) before
+installing fiscal facts: later profile edits cannot rewrite a captured buyer.
 
 ## Select operator recovery
 
@@ -209,5 +301,5 @@ required ports without bindings; duplicate route IDs throw
 emissions and schedules. Construction mounts no route or schedule. Your host
 maps refusals and admits routes before serving them. Install the [complete
 selected
-catalogue](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/DATA_AND_MIGRATIONS.md#compatibility-lifecycle)
+catalogue](../../upgrade/database-migrations.md#check-application-compatibility)
 before selecting native operations; module SQL lists alone are not an installer.

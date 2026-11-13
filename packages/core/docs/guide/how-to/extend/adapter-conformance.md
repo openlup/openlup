@@ -6,7 +6,7 @@ from the Node-only `@openlup/platform/communications` entry.
 
 ## Run the example
 
-Save the complete [offline Node example](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/communications-conformance.mjs)
+Save the complete [offline Node example](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/docs/platform/communications-conformance.mjs)
 as `communications-conformance.mjs` in your application root. The application
 must have `@openlup/platform` installed with that exported helper. Run:
 

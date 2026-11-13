@@ -1,5 +1,7 @@
 # Distribution evidence
 
+Status: historical record, 2026-11-09.
+
 Status: development-preview source tooling. No complete release outcome or
 supported installation is claimed.
 

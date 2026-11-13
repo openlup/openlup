@@ -73,7 +73,7 @@ real credentials, a hosted database, TLS or production deployment.
 
 The proof covers an application-image swap over an unchanged schema and package
 set, for the two records it wrote. It says nothing about rolling back a package
-or schema upgrade. The [compatibility lifecycle](../../docs/platform/DATA_AND_MIGRATIONS.md#compatibility-lifecycle)
+or schema upgrade. The [compatibility lifecycle](../../packages/core/docs/guide/upgrade/database-migrations.md#check-application-compatibility)
 requires additive expansion, compatible code, resumable backfill and a later
 contracting release. Code rollback must work with the expanded schema; it does
 not restore the old schema or undo backfill, and destructive down migrations
@@ -105,7 +105,7 @@ production-ready deployment is claimed.
 
 The starter runs on its local demonstration database only; a hosted database
 connection is not part of this release.
-See the [starter’s limits](../../examples/neutral-store/docs/limits.md).
+See the [starter’s limits](../../packages/core/docs/guide/reference/limits.md).
 
 ## Executed data proof
 

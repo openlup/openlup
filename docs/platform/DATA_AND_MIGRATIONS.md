@@ -5,8 +5,6 @@ Status: maintainer page: how to change OpenLup. Reader guidance lives in the [Op
 
 ## Data ownership
 
-Moved to [Architecture and ownership](../../packages/core/docs/guide/concepts/architecture-and-ownership.md#data-ownership).
-
 Native terminal replay replaces only `subscription_claim_due_renewal` while
 retaining its header, ACL, frozen-input comparison and subscription-first lock
 order. The subscription owner below defines the public behavior and proof.
@@ -257,13 +255,11 @@ this adapter does not authorize applying public migrations to that database.
 
 ## Connection roles
 
-Moved to [Connect to PostgreSQL](../../packages/core/docs/guide/how-to/operate/connect-postgresql.md#assign-connections-by-work).
-
 Connection composition must preserve the selected installation's principal/grant
 contract; transport separation grants no runtime DDL or migrator isolation.
 The qualified-v2 profile requires its declared privileged migration principal.
 Qualified-admin provisioning and role-graph admission belong to
-[module catalogues and installed histories](#module-catalogues-and-installed-histories).
+[module catalogues and installed histories](../../packages/core/docs/guide/upgrade/database-migrations.md#select-the-complete-catalogue).
 
 Evidence (historical record, 2026-11-13):
 
@@ -461,7 +457,7 @@ separate. At audited source pin `535349050419abe5122bd74fa6766c58947be3dd`, the
 selected manifest includes this retained-row unit plus runtime completion in a
 91-unit catalogue; the [manifest at that pin](https://github.com/openlup/openlup/blob/535349050419abe5122bd74fa6766c58947be3dd/config/platform-migration-manifest.json)
 owns those historical hashes and inventory values. Current selections are defined
-under [module catalogues and installed histories](#module-catalogues-and-installed-histories).
+under [module catalogues and installed histories](../../packages/core/docs/guide/upgrade/database-migrations.md#select-the-complete-catalogue).
 A request without the
 restore binding refuses before installation.
 
@@ -496,12 +492,10 @@ The owner provisions each human admin's Commerce row and never deletes it:
 revoke membership to withdraw access. The existing ON DELETE SET NULL on
 `commerce_order_holds.created_by` would otherwise make that operator's
 fulfillment-exception holds look system-created and eligible for automatic
-release. This forward preserves that FK; see the [owner step](../../examples/neutral-store/README.md#commerce-operator-roster-for-hold-and-release-admission).
+release. This forward preserves that FK; see the [owner step](../../packages/core/docs/guide/how-to/build/customize-the-starter.md#provision-operator-rosters).
 The starter binds hold and release with a fresh human-admin and Commerce-operator check on every command and replay.
 
 ## Additive forward release path
-
-Moved to [Upgrade the database](../../packages/core/docs/guide/upgrade/database-migrations.md#follow-the-additive-forward-path).
 
 A development preview may append expand-only platform forwards to either chain:
 
@@ -550,8 +544,6 @@ forward, rather than relying on a reference fixture or process startup. A missin
 twin in the other chain is a documented compatibility gap, not implicit parity.
 
 ## Module catalogues and installed histories
-
-Moved to [Upgrade the database](../../packages/core/docs/guide/upgrade/database-migrations.md#select-the-complete-catalogue).
 
 The generated `packages/platform/sql/manifest.json` projects canonical paths,
 hashes, ordering and inventory pins from `config/platform-migration-manifest.json`.
@@ -1002,7 +994,7 @@ The fixed `qualifiedInstallations` class requires exact whole-file approval
 for four bootstrap units, an optional retained-import unit, the runtime
 completion tail and the owner-path forward. Position 17
 approves the shared lock and conflict completion tail described under
-[Compatibility lifecycle](#compatibility-lifecycle); its active SQL is
+[Compatibility lifecycle](../../packages/core/docs/guide/upgrade/database-migrations.md#check-application-compatibility); its active SQL is
 byte-identical to that approval. Even expand-only
 qualified SQL may land with its approval pins. Simultaneous machinery changes,
 later repins, unknown paths and edits to issued files refuse. Trusted queue admission applies this guard to qualified SQL
@@ -1814,7 +1806,7 @@ a minted token without queued mail. The operator issuer revokes prior same-order
 checkout links; customer/service issuers are unchanged. The scoped delivery
 authorizer binds the active claim, exact token digest/row, order/client and
 expiry, and refuses renewal cycles. Flow-specific authorization does not change
-the existing reminder authorizer. See the [operator recipe](PLATFORM_PACKAGE_REFERENCE.md#operator-order-payment-links).
+the existing reminder authorizer. See the [operator recipe](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#give-an-operator-a-payment-link).
 
 The checkout-wave forward adds `expired` to the native order CHECK, retaining
 its `NOT VALID` state so historical rows are not revalidated. It uses retained
@@ -1828,7 +1820,7 @@ closed service execution; both replaced entry points retain their headers and
 ACLs. The scoped runtime authorizer delegates to the existing owner-only check.
 First-send evidence uses the existing transactional receipts, with an event,
 template, recipient and profile fingerprint; outbox completion is independent.
-See the [composition recipe](PLATFORM_PACKAGE_REFERENCE.md#checkout-recovery-waves-and-expiry)
+See the [composition recipe](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#schedule-reminders-and-expire-abandoned-checkouts)
 for configured timing and transport-profile limits.
 
 `checkSupersets` entries declare table, constraint, column and values;
@@ -2152,8 +2144,6 @@ qualified installer or portable installation claim; those decisions remain
 separate from both this probe and application-file upgrades.
 
 ## Compatibility lifecycle
-
-Moved to [Upgrade the database](../../packages/core/docs/guide/upgrade/database-migrations.md#check-application-compatibility).
 
 Evidence (historical record, 2026-11-13):
 
@@ -3706,7 +3696,7 @@ fiscal facts. The separate managed descriptor names P3's base-row correction
 forwards; neither descriptor claims storage or fiscal parity.
 
 The seller-revision forwards are introduced by this change as described in the
-[compatibility lifecycle](#compatibility-lifecycle). Default service activation
+[compatibility lifecycle](../../packages/core/docs/guide/upgrade/database-migrations.md#check-application-compatibility). Default service activation
 remains later work.
 
 The operations package carries an unchanged projection of native forward
@@ -3810,7 +3800,7 @@ prior links. Buyer issuance uses existing outbox uniqueness to commit its bucket
 event and hashed token together, only for the winning event. Both check actual
 time after blocking writes and roll back elapsed issuance. The additive buyer
 delivery gate leaves automatic and operator authorizers unchanged. See the
-[entry-point recipe](PLATFORM_PACKAGE_REFERENCE.md#customer-checkout-recovery-entry-points)
+[entry-point recipe](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#add-customer-recovery-entry-points)
 for the host authority boundary and configured deadlines.
 
 ### Checkout recovery lineage
@@ -3823,7 +3813,7 @@ an `ON DELETE RESTRICT NOT VALID` self-FK. Existing rows remain null; new writes
 must satisfy both constraints. The partial root/created index serves the latest
 reader, and the partial unique predecessor index permits one immediate replacement.
 The two stable definer snapshots grant execution only to `service_role`, with no
-new raw-table grants. Their [package composition](PLATFORM_PACKAGE_REFERENCE.md#checkout-recovery-inspection)
+new raw-table grants. Their [package composition](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#inspect-a-link-before-showing-recovery-controls)
 binds client ownership and separates expired inspection from payment authority.
 This forward contains no recreation writer or historical backfill.
 
@@ -3841,7 +3831,7 @@ fresh checks; a replacement with either lineage field already populated refuses
 fresh preparation. The source payment/window checks follow blocking aggregate
 locks. Runtime first payment admission also rechecks source evidence under the
 source order lock before any replacement stock or payment write. A fresh initial declaration belongs to the replacement; the predecessor
-is never reopened. See the [recreation composition](PLATFORM_PACKAGE_REFERENCE.md#expired-checkout-recreation)
+is never reopened. See the [recreation composition](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#recreate-a-technically-expired-checkout)
 for commercial validation, transaction binding, compensation and profile limits.
 
 ### Atomic checkout guidance read
@@ -3856,7 +3846,7 @@ Pure joins read checkout provenance, token authority, native attempts and bounde
 correlated observations/truth/readback evidence together. It neither calls a
 materializing reader nor treats observed capture as completed settlement.
 Current complete-installation inventories include the new function; historical
-prefixes are unchanged. The [composition recipe](PLATFORM_PACKAGE_REFERENCE.md#atomic-checkout-payment-guidance)
+prefixes are unchanged. The [composition recipe](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#show-payment-recovery-guidance-from-one-snapshot)
 owns capability opt-in, neutral normalization and the sandbox profile limits.
 
 ### Operator shipment evidence
@@ -3877,7 +3867,7 @@ its INVOKER header, owner, ACL and subscription-before-parcel lock order.
 Ordinary arrival keys retain strict timestamp replay. The operator chronology
 namespace permits earlier-only repair and retains the original arrival receipt.
 No decision or status evidence alone calls replacement confirmation. See the
-[shipment composition and limits](PLATFORM_PACKAGE_REFERENCE.md#native-operator-shipment-commands).
+[shipment composition and limits](../../packages/core/docs/guide/how-to/build/fulfillment.md#bind-operator-commands-and-reads).
 
 ### Saved subscription destination selection
 
@@ -3962,8 +3952,8 @@ Only service EXECUTE is granted, after all PUBLIC revokes and grouped role
 revokes. No existing function, table, trigger, column or historical row is
 changed. The ordered plans append one unit containing both entry points;
 current complete inventories advance while issued and released prefixes remain
-fixed. See [token payment](PLATFORM_PACKAGE_REFERENCE.md#checkout-token-payment)
-and [exact inline retry](PLATFORM_PACKAGE_REFERENCE.md#exact-inline-checkout-retry).
+fixed. See [token payment](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#retry-payment-with-a-recovery-token)
+and [exact inline retry](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#retry-the-exact-failed-attempt-inline).
 
 ### Customer billing profile and invoice buyer data
 
@@ -4002,7 +3992,7 @@ Contact/tax/company/verification/source values, linked events and frozen buyers
 are personal data. The explicit `customer-billing` contributor exports both
 new tables, erases subject profiles through an owned routine after preparing
 relation locks, and retains frozen buyers under the existing rule:
-[Invoices are retained outside identity](IDENTITY.md#identity-personal-data),
+[Invoices are retained outside identity](../../packages/core/docs/guide/concepts/personal-data.md#personal-data-coverage),
 with document export, retention and processor handling supplied by invoicing.
 There is no default statutory duration or new erasure claim for financial facts.
 Identity field clearing and client cascade are insufficient coverage; account

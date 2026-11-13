@@ -1,5 +1,7 @@
 # Starter execution evidence
 
+Status: historical record, 2026-11-13.
+
 Status: proof recipe with bounded base-candidate execution evidence below.
 
 Run from the independent application's root with its exact selected artifacts.

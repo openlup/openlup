@@ -299,7 +299,7 @@ function assertInstalledContextMcp(executable: string, consumerDir: string, vers
     { jsonrpc: "2.0", method: "notifications/initialized" },
     { jsonrpc: "2.0", id: 2, method: "tools/list" },
     { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "search_openlup_context", arguments: { task: "extension seam" } } },
-    { jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "read_openlup_file", arguments: { path: "node_modules/@openlup/core/AGENT_CONTEXT.md", startLine: 1, endLine: 3 } } },
+    { jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "read_openlup_file", arguments: { path: "node_modules/@openlup/core/docs/guide/README.md", startLine: 1, endLine: 3 } } },
   ];
   const stdout = execFileSync(executable, ["mcp"], {
     cwd: consumerDir, encoding: "utf8", env: consumerEnvironment(), timeout: 10_000,
@@ -315,7 +315,7 @@ function assertInstalledContextMcp(executable: string, consumerDir: string, vers
   const search = replies[2].result;
   assert(search.structuredContent.version === version && search.structuredContent.hits.some((hit: { file: string }) => hit.file === "node_modules/@openlup/core/docs/guide/how-to/extend/choose-an-extension-seam.md"), "installed MCP search did not return the relative installed guide page");
   assert(search.content[0].text.includes("node_modules/@openlup/core/"), "installed MCP search did not format citations");
-  assert(replies[3].result.content[0].text.includes("1: # @openlup/core agent context"), "installed MCP file range did not contain numbered installed lines");
+  assert(replies[3].result.content[0].text.includes("1: # OpenLup guide"), "installed MCP file range did not contain numbered installed lines");
   console.log("core installed context MCP smoke ok (initialize, tools/list, search, read, EOF)");
 }
 
@@ -407,7 +407,6 @@ export function runCorePackageConsumerSmoke(options: CorePackageConsumerSmokeOpt
     assertInstalled(consumerDir, [packageName, "zod"]);
     const installedCoreRoot = join(consumerDir, "node_modules", packageName);
     assertInstalledGuide(installedCoreRoot);
-    assert(existsSync(join(installedCoreRoot, "AGENT_CONTEXT.md")), "installed core is missing its context snapshot");
     const installedMetadata = JSON.parse(readFileSync(join(installedCoreRoot, "package.json"), "utf8"));
     assert(installedMetadata.bin?.["openlup-context"] === "./src/openlup-context.js", "installed context executable target differs");
     const contextExecutable = join(consumerDir, "node_modules", ".bin", "openlup-context");

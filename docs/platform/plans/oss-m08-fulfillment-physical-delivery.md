@@ -1,5 +1,7 @@
 # M08 fulfillment and physical delivery
 
+Status: historical record, 2026-10-29.
+
 Development-preview programme design and contents. The boundary is recorded in
 decisions D0–D13, carrier-fit amendments G1–G17, the approved
 [replacement, operator, customer-projection, host-read and renewal-admission amendments G18–G23](#lifecycle-handlers-and-customer-projections), and the export/source

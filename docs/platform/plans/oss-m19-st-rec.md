@@ -1,5 +1,7 @@
 # PostgreSQL checkout recovery token port
 
+Status: historical record, 2026-11-09.
+
 ## Outcome and scope
 
 Add `createPostgresCheckoutRecoveryTokenPort` to the existing commerce server

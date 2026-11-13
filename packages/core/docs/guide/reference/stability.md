@@ -2,8 +2,19 @@
 
 Use the release policy to understand which application dependencies OpenLup
 promises to preserve and how to plan an upgrade. Consult the
-[versioning policy](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/.github/VERSIONING_AND_EOL.md)
-for channel maturity, version format and support-window durations.
+[versioning policy](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/.github/VERSIONING_AND_EOL.md)
+for channel commitments, version format and support-window durations.
+
+## Release evidence
+
+Before relying on release commitments, require a versioned release
+and bill of materials, an adopter application, public extension and adapter
+conformance contracts, upgrade tools, and installation, compatibility,
+provenance and independent-adopter evidence. A package's `latest` tag or a
+successful source build does not establish those guarantees. The
+[install support policy](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/.github/INSTALL_SUPPORT_POLICY.md)
+defines the installation and support boundary; use the
+[current limits](limits.md) to choose an evaluation path.
 
 ## Public API
 
@@ -62,7 +73,7 @@ a support window merely because a later major exists.
 If the unanswered-issue period specified by the versioning policy elapses,
 the project enters exceptional cessation. A notice in that policy and at the
 top of the
-[repository README](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/README.md)
+[repository README](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/README.md)
 records the decision date, exact end-of-maintenance date and last supported
 releases. The repository is archived on or after that date; channels without a
 support commitment may be archived as soon as the condition is recorded.
@@ -101,5 +112,5 @@ Each package's release and compatibility policies, as its release contract decla
 | `@openlup/platform` | packageRelease | none | not declared |
 | `@openlup/platform` | compatibilityPolicies | internal-candidate | Development-preview API; no stable compatibility claim. |
 
-[Versioning and end-of-life policy](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/.github/VERSIONING_AND_EOL.md)
+[Versioning and end-of-life policy](https://github.com/openlup/openlup/blob/openlup-core-v0.40.0/.github/VERSIONING_AND_EOL.md)
 <!-- /generated:versioning -->

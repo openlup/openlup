@@ -19,7 +19,7 @@ uses the browser-safe package port through the PostgreSQL HTTP adapter, persists
 in tab-scoped `sessionStorage` with document-memory fallback, and rechecks `/me`
 on restoration/focus. The shell maps package `accessToken` to `access_token`;
 expiry and sign-out clear the auth-scoped query cache. Managed browser loading
-is deferred until managed selection. See [direct human login](../../../docs/platform/IDENTITY.md#direct-human-login)
+is deferred until managed selection. See [direct human login](../../../packages/core/docs/guide/concepts/identity.md#direct-human-login)
 for callback, audience and delivery limits.
 
 - `ports.ts` — `CustomerAuthPort`.
@@ -79,7 +79,7 @@ obligations and receipt readback. Subject/session changes clear its in-memory
 personal data and retry key, including late responses. It writes no export into
 browser storage. Only a live human administrator may use either endpoint;
 managed erasure explicitly refuses. See the
-[identity contract](../../../docs/platform/IDENTITY.md#identity-personal-data).
+[identity contract](../../../packages/core/docs/guide/concepts/personal-data.md#personal-data-coverage).
 
 ## Auth email package delegation
 
