@@ -306,7 +306,7 @@ names, and BFF responder. There is no default persistence, portable context SQL
 or reference context route; context failure never gates commerce.
 
 The accounting HTTP scheduler receives an explicitly composed invoicing service
-after method and bearer checks. The reversal binding retains its event adapters,
+after method and bearer checks. The reversal binding retains its three event adapters,
 provider selection and business keys; correction execution requires a conforming
 recovery bridge. The local-document adapter supplies a structural executor and
 local provider metadata to `createPostgresInvoiceStore`. Native sweep, prepare
@@ -373,6 +373,12 @@ customer origins select `APP_BASE_URL` then `CUSTOMER_AUTH_REDIRECT_ORIGIN`, adm
 origins select `APP_BASE_URL` then `SITE_URL`. Invalid or absent origins refuse
 before provider access; request hosts supply no fallback. The Auth mail bridge
 preserves its admitted transport, envelope and verification/render/send/store order.
+
+The accounting reversal helper retains its existing 10 s timeout. The A1 bounded
+delivery callable uses a six-entry poll-event translation. Native communications lifecycle
+composition requires the full position-70 catalogue. Challenge pruning deletes
+at most 500 per operator/customer store whose expiry is strictly older than
+24 hours.
 
 Evidence (historical record, 2026-11-13):
 
@@ -1044,9 +1050,20 @@ they are not automatically registered installed-package exports. Their owners
 are the [history binding](../../server/runtime/observability/customerDiagnosticHistoryBinding.ts)
 and [support read route](../../server/bff/admin/support/customer-diagnostics.ts).
 
+`CUSTOMER_DIAGNOSTIC_RETENTION_DAYS` is a required integer from 1 to 90 whenever
+server ingest is enabled. `CUSTOMER_DIAGNOSTIC_INGRESS_KEY` is a runtime-only HMAC
+key of at least 32 characters. The `customer-diagnostic-history.v2` overview is
+bounded to seven days and returns up to three opaque segment IDs per bucket.
+Version 1 and version 2 coverage can coexist in one retained history.
+
 ### Retention drain
 
 Moved to [Customer diagnostic history and retention](../../packages/core/docs/guide/how-to/operate/diagnostics-and-retention.md#retention-drain).
+
+`CUSTOMER_DIAGNOSTIC_RETENTION_DAYS` uses the same 1–90 value as ingest; expiry
+is stamped on each row at ingest, so changing it ages future rows only.
+
+Two lanes ship: a selected PostgreSQL direct job and a routed HTTP fallback.
 
 Evidence (historical record, 2026-11-13):
 
