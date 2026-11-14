@@ -1305,9 +1305,11 @@ Evidence: historical record, 2026-11-13. Not reader guidance.
 | Local creation and operator attempts | `createPostgresFulfillmentCommerceMutationPort` composes strict local creation, first-write operator-attempt audit and existing cancellation | Authenticated operator, selected native port and stock binding; install the complete catalogue |
 | Legacy handoff stock | A parcel without a recorded reservation set hands off with `reservationDisposition: "reservations_not_recorded"` and `consumedReservationCount: 0`; parent stock is never reconstructed | The operator corrects stock by hand |
 | Historical tracking namespace | A number on another order without recorded provider identity refuses with `tracking_reference_unattributed` and the conflicting order reference. Rarely, the same number at a different carrier produces a false refusal. Same-order reuse records the supplied provider identity; there is no backfill | The operator checks the referenced order through authorized reads and resolves the carrier/reference evidence by hand before retrying |
-| Commerce orders list/detail and shipments overview | No equivalent native commerce read | Host read callbacks for orders list, detail and shipments overview; payment status passes through the existing payments projection using core payment-intent statuses |
+| Commerce orders list/detail | Select the existing reduced `createPostgresFulfillmentCommerceReadPort`; shipment-scoped totals and explicit/latest parcel detail | Existing eligibility policy, order-mode mapping and authorized executor; no expanded commerce projection |
+| Shipments overview | `host_binding_required`; overview requires host-owned overview data unavailable in native shipment rows | Host overview reader; shipment counts cannot substitute for that dataset |
+| Customer delivery alignment | `createPostgresCustomerAlignmentRowsReader` selects protected/aligned raw rows by update time for `readFulfillmentDelay` | Authorized subscription IDs and current next-cycle schedules; obsolete aligned history is hidden by the existing mapper |
 | Dispatch preparation writer | Selected `nativeDispatch` composes recorded candidates, locked contact preparation and final commerce admission; explicit host preparation remains available | Transaction lane, selected adapter, keys and readiness; disabled and capability refusals precede all worker writes |
-| Enforcing delivery alignment | The [host admission decorator](../../server/runtime/subscription/deliveryAlignmentRenewalStore.ts) preserves static terms and captured cases, skips off/no-case admission and obtains one-use schedule receipts before new cycles. Native denials return non-terminal `deferred` results, leaving claims retryable at the same schedule after lease expiry; static refusals remain terminal | A host that composes the native automatic-renewal runner must wrap its store port with the decorator; until it does, native delivery-alignment mode stays off or shadow. No runner composer, factory or production entrypoint is supplied |
+| Enforcing delivery alignment | The [host admission decorator](../../server/runtime/subscription/deliveryAlignmentRenewalStore.ts) preserves static terms and captured cases, skips off/no-case admission and obtains one-use schedule receipts before new cycles. Native denials return non-terminal `deferred` results, leaving claims retryable at the same schedule after lease expiry; static refusals remain terminal | A host that composes the native automatic-renewal runner must wrap its store port with the decorator; until it does, native delivery-alignment mode stays off or shadow. The native renewal binding supplies the runner; the host selects and schedules it explicitly |
 
 Install the complete native catalogue before selecting the operator port. Its
 replacement command retains actor-bound replay matching, the one-undispatched-
@@ -1333,7 +1335,17 @@ requests no accounting reversal and performs no refund. An ordinary paid-order
 cancellation still emits its existing event; unpaid cancellation emits none.
 Refund settlement remains a separate unavailable provider-ingestion boundary.
 Neither replacement creation nor cancellation confirms arrival or moves the next
-subscription cycle.
+subscription cycle. Replacement dispatch uses the existing preparation, claim and
+submission rail under the new parcel identity. Its frozen lines retain optional
+lot/expiry fields; the adapter alone derives any provider-facing number from the
+parcel sequence. No inventory lot/location workflow is added.
+
+Arrival tracking repairs earlier explicit-zone evidence. The delivery trigger
+processes changed non-null timestamps: while protection remains open, the case
+retains the earliest recorded arrival and waits for every unsuperseded parcel.
+Settlement uses the latest parcel arrival plus cadence with the existing outer
+schedule maximum, once. Later repair of a settled case cannot add cadence or
+move its aligned schedule earlier.
 
 `createPostgresParcelReservationConsumption` supplies the host stock-effect
 callback for exact parcel consumption. It consumes only associated held/committed
