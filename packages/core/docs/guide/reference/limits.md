@@ -38,6 +38,9 @@ capability declaration does not activate an adapter or install an execution path
 | Movements on a snapshot-only stock source | `stock_movements_unsupported` in `movementRefusal` | Snapshots may succeed; retain the prior movement watermark. |
 | Independent split allocations | `independent_split_unsupported` | Multiple tracking references may describe one commitment; resolve independent allocations through host operations. |
 | Standalone pickup-point or locker booking/delivery | `pickup_point_delivery_unsupported` | Existing adapter pickup-point selection data remains accepted. |
+| Historical dispatch without recorded reservations or order mode | `dispatch_reservations_not_recorded` or `order_mode_unproven`; batch selection withholds unpreparable rows | Authorized manual repair; no backfill or inferred acceptance. |
+| Native replacement dispatch | `replacement_dispatch_not_composed`; unsubmitted parcels with a predecessor or a positive sequence are withheld | Replacement dispatch is not yet composed natively; accepted-proof recovery remains available. |
+| Historical failed/uncertain dispatch | Old diagnostic `outcome` remains NULL; no automatic resubmission | Inspect recorded proof and use authorized provider readback/manual recovery. |
 | Native label creation | `label_create_unsupported` | Bind a separately authorized host label workflow. |
 | Native label void | `label_void_unsupported` | Bind a separately authorized host cleanup workflow. |
 | Provider-side cancellation | `provider_cancel_unsupported` | Local cancellation retains its dispatch fences; use the provider's operator path for remote action. |
@@ -471,3 +474,22 @@ is not an atomic purchase/activation guarantee. Privacy contributors cover
 billing, addresses, preferences and parcel contacts; application owners still
 supply identity/subscription coverage, account-event retention and authorized
 private-capture cleanup.
+
+## Provider intake history
+
+| Historical or incomplete evidence | Native result and manual path |
+| --- | --- |
+| No recorded dispatch association, including an unrecorded suffixed merchant reference | Webhook `ignored/local_missing`; polling `missing_correlation`. Record an authorized association before retrying; no inferred parcel. |
+| Exact dispatch with external reference absent on both sides | Webhook remains unfinished with a missing-reference error; polling `missing_external_ref`. Restore actual accepted evidence through authorized recovery. |
+| No frozen reservation set | Operator handoff reports `reservations_not_recorded` with zero consumption; provider stock refuses `fulfillment_parcel_reservations_not_recorded`. Resolve historical stock explicitly. |
+| Unattributed cross-order tracking | `tracking_reference_unattributed`; no reassignment or backfill. An authorized operator must resolve provenance. |
+| No typed durable envelope or evidence pointer | `observation_evidence_not_recorded`; use a supported retained version or authorized manual recovery. Current provider data cannot reconstruct an erased digest. |
+| No occurrence time or status evidence | Chronology remains null; no invented healing proof. An actual tracking delivery retains its first-receipt-time fallback. |
+| Hold without proven provider-exception scope or recovery classification | Zero automatic release, `provider_exception_scope_unproven`. An authorized operator handles the hold. Human and terminal exception holds remain manual. |
+| Erased contact or missing carrier selection | No reconstruction of contact; unknown carrier/service stay null. Supply only independently authorized current evidence. |
+| Missing, malformed or resized pagination metadata | Begin at page zero. A checkpoint-read error aborts before GET and writes no replacement checkpoint; repair storage before retrying. |
+| Delivered observation with no admitted tracking reference | Status evidence persists and an eligible hold can heal, but arrival and alignment remain unchanged. Use an authorized operator tracking/delivery command or a later observation carrying a reference. |
+
+Native intake composes existing commands and the job ledger; it installs no
+scheduler. Public tracking access, label create/void, independent split shipments,
+provider activation and hosted qualification retain their existing limits.

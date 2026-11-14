@@ -68,6 +68,8 @@ export interface FulfillmentServicesOptions {
         mode: DispatchRecord['mode'];
         batchLimit: number;
     };
+    /** Pure SHA-256 of the actual adapter command; never resolves credentials or performs I/O. */
+    shadowCommandFingerprint?: (request: FulfillmentDispatchRequest) => string;
     now?: () => Date;
 }
 /** Import and construction are inert. Every invocation checks activation before any worker. */
@@ -269,7 +271,7 @@ export interface FulfillmentSelection {
     pickupPoint: PickupPoint | null;
 }
 export interface FulfillmentRefusal {
-    reason: "not_dispatchable" | "selection_required" | "provider_mismatch" | "carrier_service_required" | "disabled" | "not_ready" | "unsupported" | "withheld" | "claim_conflict" | "contact_stale" | "stock_contention" | "local_missing" | "io_failure" | "malformed" | "untrusted" | "unsupported_event" | "stale" | "missing_correlation" | "provider_reservations_unsupported" | "stock_consumption_policy_unsupported" | "stock_movements_unsupported" | "independent_split_unsupported" | "pickup_point_delivery_unsupported" | "label_create_unsupported" | "label_void_unsupported" | "provider_cancel_unsupported" | "label_format_unsupported";
+    reason: "dispatch_reservations_not_recorded" | "order_mode_unproven" | "payment_not_succeeded" | "subscription_cycle_not_paid" | "not_dispatchable" | "selection_required" | "provider_mismatch" | "carrier_service_required" | "disabled" | "not_ready" | "unsupported" | "withheld" | "claim_conflict" | "contact_stale" | "stock_contention" | "local_missing" | "io_failure" | "malformed" | "untrusted" | "unsupported_event" | "stale" | "missing_correlation" | "provider_reservations_unsupported" | "stock_consumption_policy_unsupported" | "stock_movements_unsupported" | "independent_split_unsupported" | "pickup_point_delivery_unsupported" | "label_create_unsupported" | "label_void_unsupported" | "provider_cancel_unsupported" | "label_format_unsupported" | "provider_proof_requires_acknowledgement" | "succeeded_provider_attempt_exists" | "replacement_dispatch_not_composed";
     phase: "selection" | "prepare" | "claim" | "begin" | "dispatch" | "acknowledge" | "verify" | "normalize" | "apply" | "readback" | "sync";
     retryable: boolean;
 }
@@ -502,6 +504,12 @@ export interface FulfillmentObservation {
         parcelRef: string | null;
     };
     trackingRefs: readonly FulfillmentTrackingReference[];
+    /** Adapter-owned occurrence identity and closed recovery policy; no raw status interpretation in stores. */
+    intake?: {
+        occurredAt?: string | null;
+        occurrenceKey: string;
+        recovery: "provider_recovered" | "delivery_only" | "manual" | null;
+    };
     /** Original provider status tokens; canonical status does not identify an occurrence. */
     providerStatus?: {
         primary: string | null;
@@ -851,6 +859,16 @@ export interface DispatchRecord {
     acceptance?: Extract<FulfillmentDispatchResult, {
         kind: "accepted";
     }> | null;
+    /** Closed neutral diagnostics. Historical references retain null. */
+    outcome?: {
+        classification: 'failed' | 'uncertain';
+        code: string;
+        status: number | null;
+        retryable: boolean;
+        mayHaveSucceeded: boolean;
+        submissionAttempted?: boolean;
+        responseBodyRead?: boolean;
+    } | null;
 }
 export interface FulfillmentStorePort {
     read(requestKey: string): Promise<DispatchRecord | null>;
@@ -1201,6 +1219,7 @@ export declare const omnipackFulfillmentCapabilities: Readonly<FulfillmentCapabi
 import type { FulfillmentCapabilityDescriptor, FulfillmentDispatchPort, FulfillmentDispatchRequest, FulfillmentLabelPort, FulfillmentObservationPort, FulfillmentReadbackPort, FulfillmentObservationPagePort, FulfillmentStockSyncProvider, FulfillmentProductSyncProvider } from "../contracts/index.js";
 import { type OmnipackWebhookRouteEvent } from "./omnipackWebhookPayload.js";
 import { type OmnipackObservationCodecs } from "./observation.js";
+import { omnipackIntakeOrderIdentity } from "./intake.js";
 export { omnipackFulfillmentCapabilities } from "./capabilities.js";
 /** Node-only, explicit construction. Secrets are supplied per call, never retained as values. */
 export interface OmnipackFulfillmentAdapterConfig {
@@ -1245,6 +1264,7 @@ export interface OmnipackFulfillmentAdapterConfig {
 /** No route, schedule, environment reader or default binding is installed. */
 export declare function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdapterConfig): {
     capabilities: FulfillmentCapabilityDescriptor;
+    orderIdentity: typeof omnipackIntakeOrderIdentity;
     dispatch: FulfillmentDispatchPort;
     label: FulfillmentLabelPort;
     observation: FulfillmentObservationPort;
@@ -1252,6 +1272,27 @@ export declare function createOmnipackFulfillmentAdapter(config: OmnipackFulfill
     reconciliation: FulfillmentObservationPagePort;
     stockSync: FulfillmentStockSyncProvider;
     productSync: FulfillmentProductSyncProvider;
+};
+```
+## dist/fulfillment/omnipack/intake.d.ts
+
+```ts
+import type { FulfillmentObservation } from "../contracts/index.js";
+import { type NormalizedProviderStatus } from "./omnipackStatusVocabulary.js";
+/** The provider's normalized primary status and original occurrence bytes own status dedupe. */
+export declare function intakeFacts(status: NormalizedProviderStatus, occurredAt: string | null): NonNullable<FulfillmentObservation["intake"]>;
+export declare function reconciliationIntake(status: string | null, occurredAt: string | null): {
+    occurredAt?: string | null;
+    occurrenceKey: string;
+    recovery: "provider_recovered" | "delivery_only" | "manual" | null;
+} | undefined;
+/** Same outbound identity as dispatch; only recorded native order associations may resolve the fallback. */
+export declare const omnipackIntakeOrderIdentity: {
+    merchantOrderRef: (number: string) => string | null;
+    outboundOrderNumber: (order: {
+        orderRef: string;
+        orderNumber: string | null;
+    }) => string;
 };
 ```
 ## dist/fulfillment/omnipack/mappers.d.ts

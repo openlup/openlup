@@ -18,6 +18,8 @@ export interface FulfillmentServicesOptions {
     acceptance(fulfillmentRef: string): { providerAttemptKey: string; labelKey: string };
   };
   config: { mode: DispatchRecord['mode']; batchLimit: number };
+  /** Pure SHA-256 of the actual adapter command; never resolves credentials or performs I/O. */
+  shadowCommandFingerprint?: (request: FulfillmentDispatchRequest) => string;
   now?: () => Date;
 }
 /** Import and construction are inert. Every invocation checks activation before any worker. */

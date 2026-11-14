@@ -55,13 +55,123 @@ shared-proof follow-up on the same date passed against that set in 27.814
 seconds, with all three provenances, 296 application tests and two development-loop
 tests passing. The existing two-minute bound still covers 4× the follow-up.
 
-One JSON workflow artifact, retained for 90 days, records the set/tag/commit,
+One workflow artifact, retained for 90 days, contains the qualification receipt
+and the [exact-set BOM](#package-set-bom). The receipt records the set/tag/commit,
 extraction mode and content hash, committed lock SHA-256, each package SHA-512
 and provenance verification source, commands/results, runner image and times.
 A failed entry-point run retains its partial receipt and error. This supplies
 bounded exact-set qualification; it does not certify a full store, provider
-behavior, browser journeys, upgrade/recovery, public hosting, stable support or
+behavior, browser journeys, database upgrade/recovery, public hosting, stable support or
 a production deployment. Later proofs need their own executed evidence.
+
+## Interrupted adjacent-set starter upgrade
+
+The same qualification job adds one step using the existing
+[distribution CLI proof](../../scripts/packages/distribution-cli-proof.ts) in
+pair mode. Its no-pair mode retains the fixed published 0.35.0→0.36.0 witness
+and existing PR execution. Pair mode chooses the greatest stable core release
+tag below the target whose version appears in every publishable package's npm
+history. Missing complete predecessors refuse qualification. Both tag-bound
+starters reuse the exact-set extractor, lock checker, isolated install and npm
+signature/provenance checks above; older sources are labelled `reconstructed`.
+The shared released-input consumer proof checks both extracted applications,
+including the target application that supplies the installed upgrade CLI.
+
+Managed snapshots are derived from each extracted `ownership.json`, excluding
+generated and owned paths. The proof customizes owned theme and fragment files,
+uses the target's installed public CLI for plan/apply, and checks the exact
+`current bytes match neither predecessor nor candidate` managed conflict before
+any writes. After reconciliation it SIGKILLs apply immediately after the first
+rename. The harness asserts `incomplete_application_upgrade` against target
+managed bytes and declared/installed package versions, then resumes and proves
+replay applies nothing. That refusal is a harness observation, not a CLI-added
+application serving guard. The CLI changes files only; the harness installs
+the target's separately regenerated, extractor-verified lock through that same
+shared consumer proof. It runs `npm ci`, typecheck, build, application tests and
+development-loop checks on the upgraded application, including package
+confinement, installed provenance and unchanged target-lock assertions.
+Owned customization bytes must remain identical.
+
+For 0.40.0→0.41.0 the only changing managed file is the extracted
+`package.json` with exact package pins. The kill therefore interrupts the CLI
+after that replacement, and resume recognizes it as already applied; dependency
+installation is still outstanding. The proof does not manufacture extra source
+changes to make this pair appear broader. The receipt retains both versions,
+extraction identities, package provenance, plan SHA-256, phase results and
+commands.
+
+The local 2026-11-14 0.40.0→0.41.0 run passed in 49.62 seconds on Node
+24.21.0/npm 11.19.0. Both extractions were reconstructed; old and upgraded apps
+each passed typecheck, build, 296 application tests and two development-loop
+tests. The shared-proof follow-up on the same date passed in 65.08 seconds;
+both baseline extractions and the upgraded application each passed all shared
+checks, including 296 application tests and two development-loop tests. This is
+local evidence, not a hosted upgrade receipt. The step's five-minute bound is
+4× the follow-up measurement, rounded up; the first hosted run must remeasure
+it. An earlier attempt exposed the development-loop
+witness's fixed demo brand assumption; customization now changes theme colors
+and a fragment class while retaining that witness unchanged.
+
+This is file/dependency qualification on the neutral starter, with
+no SQL, database compatibility, browser/provider, rollback or support claim.
+
+## Released-pair schema compatibility
+
+The qualification job's separate schema step consumes both original installed
+applications retained by the adjacent-set starter proof. It checks their
+extraction identities, lock hashes, installed package versions and locked
+integrities against that proof's receipt. Runner, payment, delivery-alignment
+and readiness exports resolve inside those installations. The
+[existing schema proof](../../tests/postgres/m14ReleasedSchemaUpgrade.proof.ts)
+has an explicit released-pair mode; its no-argument historical execution and PR
+CI selection are unchanged. The schema step uses the existing digest-pinned
+PostgreSQL 16 mirror in a separate disposable container; the rest of the job
+keeps its PostgreSQL 17 service. Cleanup removes both retained installations
+after the BOM has checked the original installed target.
+Before image acquisition or container setup, the schema step records its start
+and FAIL in the receipt. Final sealing requires a successful schema step and
+schema result; setup failure, interruption or a skipped schema step cannot retain
+the preceding upgrade's PASS.
+
+The predecessor's shipped runner installs its packaged `qualified-v2` catalogue,
+using the starter bootstrap's installer-managed profile with distinct install,
+runtime and restore roles. Its payment port writes a settled event before the
+upgrade. The target's shipped `createPlatformPostgresMigrationRunner` applies
+the same profile's packaged forwards.
+SIGKILL interrupts the first forward after its real SQL executes but before the
+ledger insert commits. The old exact ledger prefix must survive. The installed
+readiness evaluator refuses the harness-supplied target catalogue-tail
+requirement as `OPENLUP_E_SCHEMA_BEHIND/version_mismatch`; this is a supplied
+readiness observation, not a new starter serving guard. Resume completes the
+catalogue, checks its inventory and proves migration replay applies nothing.
+
+Execution switches target → predecessor → target on the unchanged upgraded
+schema. Both installed payment ports read retained events, make fresh writes
+and replay them; both delivery ports exercise late and early arrival evidence
+and replay. The named `subscription_monotonic_clamp` assertions require that
+no cycle moves earlier, no cycle or delivery stacks, a late arrival extends
+exactly once, and replay leaves the extension unchanged. The target's inventory
+and exact ledger are rechecked after each code switch.
+
+The receipt labels the separate **historical** 0.23-prefix invoicing backfill;
+that witness is not rerun or represented as adjacent-pair backfill. Later
+contraction and adjacent-pair backfill remain **PARTIAL** until a real retirement
+ships: the 0.41→0.42 pair has no object needed only by the older application.
+No destructive fixture or new migration admission grammar is introduced. A
+pair with identical catalogues records its schema-forward interruption as
+`not-applicable: no forward migrations in this pair`. It still must pass the
+cross-version reads, fresh writes, replay and named subscription checks to
+qualify; no interrupted-forward evidence is claimed for that pair.
+This evidence supplies no general rollback, hosted-service or stable-support
+guarantee.
+
+The installed qualified runner explicitly refuses PostgreSQL 17 as
+`qualified PostgreSQL installation refused: requires_qualified_postgresql_16_profile`.
+The historical legacy chain retains its original profile and execution path.
+Local exact-artifact rehearsals on 2026-11-14 passed the real one-forward
+0.39.0→0.40.0 pair and the no-forward 0.40.0→0.41.0 pair, including code rollback
+and the named subscription checks. These local results are separate from the
+first hosted qualification, which must remeasure the step's bound.
 
 ## Public outcome projection
 
@@ -121,7 +231,36 @@ named Git commit, so later working-tree edits cannot silently redefine that
 release set. Write the BOM outside the pack directory: the existing verifier
 requires that directory contain only its manifest and declared tarballs.
 
-The real BOM will be generated from the release tarballs of a published set.
+The same [generator](../../scripts/packages/generate-release-bom.ts) also exports
+`generateExactSetReleaseBom` for the post-publication qualification entry point.
+Its format version 4 binds the exact set version and tag commit, each package's
+registry SHA-512 and npm signature/provenance verification source and bundle hash.
+It hashes the canonical, name-sorted signature verification records produced before the
+BOM; it does not hash the final qualification receipt. The final receipt names
+the SHA-256 of the BOM's formatted JSON bytes, including the final newline.
+
+The composition is the provisional neutral-store PostgreSQL 16 + Node/OCI recipe.
+The BOM lists and hashes these extracted files in lexical order:
+`.dockerignore`, `.npmrc`, `Dockerfile`, `compose.yaml`, `installation/install.ts`,
+`lifecycle.mjs` and `package.json`. They define build context, dependency/build
+commands, service topology and launch commands, installation profile and lifecycle.
+The profile requires the Compose PostgreSQL 16 pin and `qualified-v2` installer;
+it does not substitute the job's separate PostgreSQL 17 application-test service.
+Other application files are covered by the starter content identity.
+
+The schema catalogue lists each packaged `sql/manifest.json` by package path,
+SHA-256 and zero-based position in package-name order (currently outbox, then
+platform). Hashing the entire manifest preserves its internal migration order
+and hashes. Each manifest must match the tagged source byte for byte in the
+installed package; missing, extra or altered manifests refuse qualification.
+The starter binding checks extraction mode, tag source revision, content hash
+and committed lock SHA-256 against the original target extraction and rehashes
+the extracted files. Locked package versions and integrities must match the
+closed verified set. Named refusals and deterministic/tamper cases are covered
+by the BOM witness below. The qualification job emits one BOM after its checks
+and retains it beside the receipt for 90 days. The schema stage leaves the overall
+receipt at FAIL with its completed schema result recorded separately; only the
+BOM step grants the final PASS after writing the BOM and its digest.
 
 The [BOM witness](../../scripts/packages/generate-release-bom.test.ts) also checks
 real npm archive payloads and member paths, public documentation and any tracked
@@ -129,12 +268,113 @@ starter files for the retained root-reference SKU. Synthetic refusal cases cover
 each carrier. An absent starter remains unqualified; the check does not infer
 starter evidence from its fixtures.
 
-This is not the dependency SBOM, an image or composed-application inventory, an
-npm publication receipt, a provenance attestation or a claim that any runtime
-proof passed. The producer's commit attribution remains process evidence; the
+The pack-based format version 1 and its existing CLI retain their original
+bytes and npm-only scope. The exact-set format also includes the application
+image name, Linux amd64 platform, OCI manifest digest and pinned Node base index
+digest. Version 4 also binds the two SBOMs described below. The pack-based
+format still supplies no dependency SBOM; neither BOM is an npm publication
+receipt or provenance attestation. A BOM is
+not itself evidence that runtime checks passed; the final receipt records those
+results. The producer's commit attribution remains process evidence; the
 BOM does not independently attest how those bytes were built. Existing per-package
 SBOM, provenance and [release gates](DEVELOPMENT_AND_RELEASE.md#releasing-a-package)
-retain their duties. No workflow, release asset upload or publication is changed.
+retain their duties. Version 3 historically lacked dependency SBOM bindings;
+version 4 adds them without incorporating the final receipt or attestation. No release-asset, stable-framework or supported-installation
+claim follows from a BOM.
+
+## Qualified application image
+
+The read-only qualification job builds one OCI archive from the original verified
+target extraction retained by the adjacent-set proof, after the schema step.
+The released Dockerfile is supplied on stdin with only its Node base reference
+replaced by the [owned mirror pin](../../config/ci-images.json). The extraction
+and lock stay unchanged; its `.dockerignore` excludes installed dependencies and
+build output. The image installs the locked registry packages and builds the
+released application, with the tag commit time as `SOURCE_DATE_EPOCH` and rewritten
+layer timestamps. The bundled Docker builder uses the containerd image store;
+no separate builder image or implicit scanner is pulled. Only authenticated
+GHCR base pulls are allowed; missing mirror access fails qualification.
+
+The exact-set BOM's version 4 image section binds the manifest digest computed
+from Skopeo's raw single OCI manifest, not a configuration ID or an index digest.
+The base image field identifies the pinned multi-platform Node index. The archive,
+BOM and receipt pass through a one-day workflow artifact. The existing 90-day
+qualification artifact keeps the BOM and receipt without the large archive.
+
+`publish-qualified-image` runs only after successful qualification. This is the
+only qualification job with job-scoped `packages: write`, `attestations: write`
+and `id-token: write`; it uses pinned first-party actions, shell/JQ and preinstalled
+Skopeo, Docker and GitHub CLI, with no checkout, npm or execution of
+archive contents. It checks the BOM hash against the receipt and recomputes the
+archive manifest digest before any write. Dispatch defaults to `skipped-dispatch`;
+only an explicit `publish_image: true` or a release-event run permits publication.
+The existing per-tag workflow concurrency serializes these runs. An existing
+version tag with a different digest refuses by name; ambiguous registry errors
+also refuse. A digest-preserving copy is followed by registry manifest readback.
+Any mismatch fails and no further publication steps run. A registry readback
+failure can occur after a copy; the failed receipt does not certify that tag.
+
+A separate 90-day `qualified-image-publication` artifact keeps the final receipt
+and BOM. The receipt includes the manifest digest, `published`, `skipped-dispatch`
+or `refused`, and the registry readback (null if unobserved). Organization owners
+must make the package public, link it to this repository and choose its retention
+policy. Source presence and local OCI-layout copy evidence establish neither GHCR
+activation nor a hosted qualification run. Running-image canary checks remain a
+separate obligation.
+
+### Dependency inventories and image provenance
+
+Added 2026-11-14. Historically, version 3 bound the image without an image SBOM
+or build attestation. Version 4 generates both CycloneDX inventories before the
+BOM: npm 11.19.0 runs `npm sbom --sbom-format cyclonedx --package-lock-only` in
+the verified target application, including development and optional dependencies
+in its locked set. The BOM hashes the exact SBOM bytes produced and retained in
+that run, including npm's serial number and timestamp. Every OpenLup component
+must match the verified package set's version and SHA-512; missing or differing
+components refuse by package name.
+
+Syft scans the final OCI archive, after rechecking its manifest digest. The
+scanner has no network or Docker socket and mounts only that archive read-only.
+The `sbom` section records each inventory's SHA-256 and tool name/version, the
+scanner image digest and the image inventory's manifest subject. The existing
+90-day qualification artifact retains both inventories alongside the BOM.
+These are dependency inventories, not vulnerability assessments or a guarantee
+that every runtime-loaded dependency is discoverable. The npm inventory includes
+locked dependencies even when the final image omits them; Syft inventories the
+final image's visible filesystem, including base-system software.
+
+The publication job issues provenance only after archive/BOM equality, immutable
+tag checks and registry readback pass. GitHub CLI verifies the newly issued
+bundle against the digest-addressed OCI subject, organization owner, expected
+workflow signer and certificate source repository. The verified statement must
+name precisely that image and the BOM's SHA-256 subject. A mismatch fails the
+job. The final receipt remains FAIL until verification passes and records its
+result and the detached bundle SHA-256. The 90-day publication artifact retains
+the bundle and verification JSON. Dispatch without publication skips issuance.
+The certificate describes this repository's trusted publication workflow; the
+released starter, lock, packages and release revision are bound separately by
+the BOM and its qualification receipt. No independent attestation of those
+materials is claimed.
+
+The added third-party inputs are inventoried here and in the existing controls:
+`actions/attest-build-provenance` v3.2.0 at
+`96278af6caaf10aea03fd8d33a09a777ca52d62f` (the publisher's action allowlist),
+and Syft v1.38.0 at
+`sha256:825cad3a952c87676a6d07e9a3bb05ac9c401d598360070e970aa46d54c1727e`
+(the CI image inventory and mirror list). Qualification uses the authenticated
+GHCR mirror through the existing bounded pull helper, without an upstream
+fallback or implicit BuildKit scanner download.
+
+A local 2026-11-14 rehearsal on the signature/provenance-verified 0.41.0 set
+passed npm inventory generation and named-package checks in 0.187 seconds
+(72 components), then Syft scanning in 5.312 seconds (3,451 components).
+It used the same pinned scanner and Node content from upstream locally because
+the new mirrors were not populated; it does not establish hosted mirror access.
+The local OCI manifest was
+`sha256:8457d5ec1d44c806e1baa617c061c1bdc3fa21a62b747c334a02880e777225a2`.
+Authentic image-attestation issuance and discovery remain hosted-only evidence,
+not established by offline mismatch fixtures or this rehearsal. No release-asset
+publication, stable-framework or supported-installation claim follows.
 
 ## Current neutrality and runtime limits
 

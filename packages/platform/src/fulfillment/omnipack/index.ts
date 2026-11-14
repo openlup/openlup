@@ -10,6 +10,7 @@ import { verifyOmnipackWebhookToken, type OmnipackWebhookRouteEvent } from "./om
 import { createReconciliationPagePort, reconciliationObservation } from "./reconciliation.js";
 import { dispatchEvidence, operationError } from "../dispatchProjection.js";
 import { correlationReference, digest, eventKind, observation, reference, refusal, timestamp, type OmnipackObservationCodecs } from "./observation.js";
+import { omnipackIntakeOrderIdentity } from "./intake.js";
 export { omnipackFulfillmentCapabilities } from "./capabilities.js";
 
 // Internal error projection: retain diagnostics without exposing a provider payload or cause.
@@ -67,6 +68,7 @@ export interface OmnipackFulfillmentAdapterConfig {
 /** No route, schedule, environment reader or default binding is installed. */
 export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdapterConfig): {
   capabilities: FulfillmentCapabilityDescriptor;
+  orderIdentity: typeof omnipackIntakeOrderIdentity;
   dispatch: FulfillmentDispatchPort;
   label: FulfillmentLabelPort;
   observation: FulfillmentObservationPort;
@@ -145,6 +147,7 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
   };
   return {
     capabilities,
+    orderIdentity: omnipackIntakeOrderIdentity,
     dispatch: {
       async prepare(request) {
         const failed = selectionFailure(request);
@@ -204,7 +207,13 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
             return { kind: "accepted" as const, externalRef, evidence: structuredClone(command.evidence),
               providerAttemptKey: `attempt:${proof}`, labelKey: `label:${proof}` };
           } catch (error) {
-            const detail = operationError(error instanceof OmnipackProviderError ? error : { code: "provider_dispatch_failed", status: null, retryable: true, mayHaveSucceeded: true });
+            const facts = error as { submissionAttempted?: boolean; responseBodyRead?: boolean } | null;
+            // Preserve the incumbent dispatch boundary: an unreadable rejection body
+            // is a network uncertainty, even when the transport received HTTP 400.
+            const detail = operationError(facts?.submissionAttempted && facts.responseBodyRead === false
+              ? { code: "network_error", status: null, retryable: false, mayHaveSucceeded: true,
+                submissionAttempted: true, responseBodyRead: false }
+              : error instanceof OmnipackProviderError ? error : { code: "provider_dispatch_failed", status: null, retryable: true, mayHaveSucceeded: true });
             return !detail.mayHaveSucceeded
               ? { kind: "not_dispatched" as const, effectMayHaveSucceeded: false as const, refusal: refusal("io_failure", "dispatch", detail.retryable), error: detail }
               : { kind: "unknown" as const, effectMayHaveSucceeded: true as const, refusal: refusal("io_failure", "dispatch", detail.retryable), error: detail };

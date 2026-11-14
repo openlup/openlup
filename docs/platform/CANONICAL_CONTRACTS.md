@@ -165,7 +165,8 @@ rebuilds and POSTs if the supplied evidence still matches current resolution.
 The host ledger is the durable guard, preserving its claim/begin/attempt/finalize state across eviction or restart.
 Credential, validation and request-construction
 failures before submission and definitive rejection are `not_dispatched`;
-an unreadable rejection body preserves the status-derived rejection. An unreadable
+at the reference-adapter boundary, an unreadable rejection body becomes network
+uncertainty. An unreadable
 successful acknowledgement, lost/malformed acknowledgement and ambiguous submission
 are `unknown`. Accepted
 results carry nonempty opaque proof keys derived from provider reference and
@@ -219,6 +220,19 @@ surrogates refuse visibly as `malformed / sync` before HTTP; the product worker
 counts per-SKU failures instead of silently dropping them. `pulledSkus`
 counts unique completed product reads; `providerCalls` adds the stock listing,
 excluding retry attempts.
+
+Native provider intake requires an adapter-owned `intake.occurrenceKey` and a
+closed nullable recovery classification: `provider_recovered`, `delivery_only`
+or `manual`. The first permits newer nonexception evidence; the second requires
+newer delivered evidence; manual and unknown classifications never heal.
+Historical null classifications remain unproven. Webhook receipts restore the
+first typed fact, receipt time, correlation, digest and tracking snapshot before
+ACK or effects. Polling retains current tracking snapshots for repeated status
+occurrences. Canonical delivered status alone never writes arrival: the existing
+tracking command is invoked once per admitted reference, so an empty reference
+list leaves arrival and alignment untouched while eligible hold healing remains
+independent. Tracking namespace serialization precedes reference mutation;
+arrival retains subscription, parcel and alignment-case lock order.
 
 
 The example passes M08's offline `runFulfillmentAdapterConformance` with injected
@@ -556,8 +570,22 @@ The CI-only [image inventory](../../config/ci-images.json) owns logical names,
 upstream repositories, tags, index digests and ordered public-registry sources
 for every mirrored image. It records four PostgreSQL images (the install-proof
 database, also used by raw pgTAP and managed-rail tests, the disposable test
-default, and two attribute-version witness pins) plus the starter browser image. No Supabase CLI, CLI-derived or managed-host image remains in hosted CI. The single mirror
-job reads typed owned pins from its own checkout, validates all of them before
+default, and two attribute-version witness pins), the starter Node base and the
+starter browser image. No Supabase CLI, CLI-derived or managed-host image remains
+in hosted CI. Exactly two workflow jobs hold `packages: write`: `mirror` in
+`mirror-ci-images.yml` and `publish-qualified-image` in `registry-tutorial.yml`.
+The latter verifies and copies an OCI archive only after qualification succeeds;
+it executes no candidate code, keeping installation code away from write tokens.
+The [writer-control witness](../../scripts/oss-published-tree-check.test.ts) applies
+its canonical subset unless workflow text has no `write` (case-insensitive,
+including comments and longer words), no double-quoted backslash escape and no
+YAML tag (`!`). Permission keys and values must be plain literals; values are
+exactly `read`, `write` or `none`. The complete qualification permission map must
+be exactly `contents: read` and `packages: read`.
+It refuses noncanonical workflow/job mappings, ambiguous permission syntax, anchors, aliases,
+merge keys, tabs, extra YAML documents and workflow/job defaults. Its publisher
+fingerprint includes inherited workflow execution settings as well as the job.
+The mirror job reads typed owned pins from its own checkout, validates all of them before
 any exec or registry call, and builds upstream sources and mirror targets itself.
 It runs only pinned first-party actions plus the repository script, re-resolves
 source digests, skips identical targets, refuses moved tags and two pins that
@@ -1373,7 +1401,7 @@ collectors and synthetic host data.
 
 Native dispatch acknowledgement takes the selected intake declaration as a SQL
 parameter, outside command evidence and retained acceptance JSON. Install the
-complete catalogue through `20261120100000_fulfillment_intake_channel.sql` before
+complete catalogue through `20261120110000_fulfillment_dispatch_outcomes.sql` before
 using the updated dispatch store. The four-argument `fulfillment_dispatch_finish`
 accepts only `push` or `poll`; its three-argument compatibility wrapper supplies
 `push`. Created acceptance replay preserves the original receipt and channel,

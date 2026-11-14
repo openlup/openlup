@@ -47,7 +47,7 @@ const owned = [
   "commerce_checkout_compensations",
   "fulfillment_stock_current", "fulfillment_inventory_reservations", "fulfillment_inventory_reservation_lines", "fulfillment_purchase_reservation_receipts",
   "fulfillment_provider_archetypes", "fulfillment_ports", "fulfillment_shipments", "shipment_external_refs", "fulfillment_shipment_operations",
-  "fulfillment_provider_attempts", "commerce_fulfillment_provider_commands", "commerce_fulfillment_provider_command_transitions",
+  "fulfillment_provider_attempts", "fulfillment_operator_attempts", "commerce_fulfillment_provider_commands", "commerce_fulfillment_provider_command_transitions",
   "fulfillment_dispatch_contexts", "fulfillment_dispatch_refs", "fulfillment_paid_handoffs", "fulfillment_observations", "fulfillment_stock_movements",
   "fulfillment_parcel_reservation_sets", "fulfillment_parcel_lines", "fulfillment_parcel_line_reservations",
   "fulfillment_operator_receipts", "fulfillment_operator_status_evidence",

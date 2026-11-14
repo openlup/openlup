@@ -1406,6 +1406,14 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261120110000_fulfillment_dispatch_outcomes.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261120120000_fulfillment_provider_intake.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/20261120140000_order_delivery_contact_correction.sql",
       "class": "public-output"
     },
@@ -4594,6 +4602,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261120110000_fulfillment_dispatch_outcomes.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261120120000_fulfillment_provider_intake.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20261120140000_order_delivery_contact_correction.sql",
       "class": "public-output"
     },
@@ -6622,11 +6638,19 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/fulfillment/native/commerceMutations.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/fulfillment/native/commerceReads.ts",
       "class": "public-output"
     },
     {
       "path": "packages/platform/src/fulfillment/native/deliveryContact.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/native/dispatchComposition.ts",
       "class": "public-output"
     },
     {
@@ -6639,6 +6663,10 @@
     },
     {
       "path": "packages/platform/src/fulfillment/native/parcelContact.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/native/providerIntake.ts",
       "class": "public-output"
     },
     {
@@ -6667,6 +6695,10 @@
     },
     {
       "path": "packages/platform/src/fulfillment/omnipack/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/omnipack/intake.ts",
       "class": "public-output"
     },
     {
@@ -12047,6 +12079,10 @@
     },
     {
       "path": "scripts/packages/consumer-evidence.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/distribution-cli-proof.test.ts",
       "class": "public-output"
     },
     {
@@ -29450,6 +29486,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/fixtures/fulfillmentDispatch/outcomes.sql",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/fixtures/m14ApplicationActor.ts",
       "class": "public-output"
     },
@@ -29546,6 +29586,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/fulfillmentDispatchPgtap.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/fulfillmentHostSeamRefusals.test.ts",
       "class": "public-output"
     },
@@ -29567,6 +29611,10 @@
     },
     {
       "path": "tests/postgres/fulfillmentPreparationBinding.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fulfillmentProviderIntake.test.ts",
       "class": "public-output"
     },
     {

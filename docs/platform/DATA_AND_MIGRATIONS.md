@@ -4241,3 +4241,35 @@ without explicit buyer facts can now reach those existing fallback branches.
 Preparation replay never rewrites its linked replacement, and later profile or
 address edits cannot change the buyer frozen by first capture. Historical orders
 and previously captured duties are not repaired or reselected.
+
+### Native dispatch outcomes and operator attempts
+
+The ordered `20261120110000_fulfillment_dispatch_outcomes.sql` forward adds a
+nullable neutral outcome to dispatch references and the private operator-attempt
+audit table. Old outcomes remain NULL. The forward preserves submitted identity
+while allowing unsubmitted shadow promotion and draft refresh across runs.
+The connected native profile captures/restores operator attempts as rows;
+operator attempts do not constitute command-ledger or acceptance proof.
+
+### Native provider intake evidence
+
+`20261120120000_fulfillment_provider_intake.sql` adds nullable carrier, service
+and public URL columns to existing tracking references and nullable occurrence,
+canonical status and recovery classification to existing status evidence. It
+creates no table, performs no backfill, and changes no table RLS or payload ACL.
+Historical nulls stay unknown. Existing finite capture/restore carries the full
+rows; the intake transfer witness asserts the added columns byte-for-byte.
+
+Closed server entrypoints persist first webhook envelopes, recorded correlation,
+status evidence, exact packed reservation consumption, reference readback,
+exception holds and scoped healing. SECURITY DEFINER entrypoints pin
+`pg_catalog, pg_temp`, revoke PUBLIC/browser execution and grant only the server
+role. Status and reference triggers recheck dispatched notices only after durable
+truth; delivered evidence suppresses late dispatched wording. The exception
+emitter replacement preserves its header, search path, owner and ACL while
+checking durable handoff or delivered state. Its before-hash is pinned from the
+preceding catalogue. No provider identifier convention or raw status mapping
+enters SQL. Missing typed receipts, associations or trusted hold scope require
+[manual resolution](../../packages/core/docs/guide/reference/limits.md#provider-intake-history).
+The intake regression suite uses real PostgreSQL on legacy and both qualified
+installations; this remains offline evidence.
