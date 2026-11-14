@@ -78,7 +78,11 @@ null provider time in native ingestion rather than projecting HTTP receipt time
 into its occurrence carrier. Resume a finalized SCA-required attempt through the
 persisted refusal path; ordinary readback cannot supply its missing event time.
 Let native result validation acknowledge superseded and unresolved events before
-attempt-specific recovery bookkeeping.
+attempt-specific recovery bookkeeping. Route by the evidence's committed attempt
+link; a matching handle finalized later cannot resolve an event whose link was
+recorded as null. Pass ingestion through the composed control before applying
+its result, so the renewal binding consumes the native ingestion receipt on each
+delivery rather than inferring attribution from provider metadata.
 
 Verified dispute events keep a distinct money outcome and original payment
 identity. Audit projection includes filtered event, refund-snapshot and

@@ -1765,7 +1765,10 @@ their existing path. Finalized SCA-required attempts resume through the persiste
 refusal owner using the durable execution key and prepared instant. Untimestamped
 ingress keeps native occurrence null and returns no occurrence instant, including
 on replay. Superseded and unresolved success events reach native exact-attempt
-validation and its acknowledgement path before recovery bookkeeping.
+validation and its acknowledgement path before recovery bookkeeping. This uses
+the event's durable attempt link, not the current remote handle: finalizing a
+matching handle after unresolved ingestion leaves that event unresolved on every
+redelivery, without business-state changes.
 
 The native rail supports the two reference payment providers; a third provider needs the provider-profile refactor.
 This composition selects card provider only. The second reference provider's portable

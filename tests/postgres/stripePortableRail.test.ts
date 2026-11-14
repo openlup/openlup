@@ -505,4 +505,39 @@ describe("reviewed native execution boundaries", () => {
       expect(await state()).toEqual(before); expect(requests).toHaveLength(calls);
     });
   });
+  describe("unresolved evidence redelivery after finalization", () => {
+    let event: ReturnType<typeof signed>, attemptId: string;
+    beforeEach(async () => {
+      await local.control.createIntent({ idempotencyKey: `${f.identity}:provider-intent`, targetKind: "subscription_cycle",
+        orderId: prepared.orderId, subscriptionId: f.subscription,
+        subscriptionCycleId: (await env.owner.query("SELECT subscription_cycle_id FROM public.commerce_orders WHERE id=$1", [prepared.orderId])).rows[0].subscription_cycle_id,
+        amountMinor: 200, currency: "XXX", metadata: {}, channelKey: rail.provider, at: AT });
+      const attempt = await local.control.prepareProviderAttempt({ idempotencyKey: `early:${f.operation}`, paymentIntentId: prepared.settlementIntentId,
+        provider: rail.provider, providerIdempotencyKey: `early-provider:${f.operation}`, providerRequestFingerprint: f.fingerprint,
+        providerFlow: "off_session_payment", paymentMethodRef: primary, requestPayload: {} });
+      attemptId = attempt.paymentAttemptId;
+      event = signed("payment_intent.succeeded", { id: `pi_early_${f.operation}`, amount: 200, amount_received: 200,
+        currency: "xxx", metadata: { paymentIntentId: prepared.settlementIntentId } }, `evt_early_${f.operation}`);
+    });
+    it("retains the unresolved ACK and immutable attribution after the same handle is finalized", async () => {
+      const before = await state(), calls = fake.calls.length;
+      const first = await local.ingress.receive(event);
+      expect(first).toMatchObject({ status: 200, data: { skipped: "result_attempt_mismatch" } });
+      expect(await state()).toEqual(before);
+      const evidence = (await env.owner.query("SELECT * FROM public.payment_provider_attempt_evidence WHERE provider_event_id=$1",
+        [`evt_early_${f.operation}`])).rows[0];
+      expect(evidence.payment_attempt_id).toBeNull();
+      await local.control.finalizeProviderAttempt({ idempotencyKey: `early-finalize:${f.operation}`, paymentIntentId: prepared.settlementIntentId,
+        paymentAttemptId: attemptId, providerIdempotencyKey: `early-provider:${f.operation}`, providerRequestFingerprint: f.fingerprint,
+        providerAttemptId: `pi_early_${f.operation}`, providerSessionId: `pi_early_${f.operation}`, attemptStatus: "processing",
+        nextActionKind: null, requestPayload: {}, responsePayload: { providerStatus: "processing" } });
+      expect((await local.readAttempt(prepared.settlementIntentId))!.paymentAttempt.providerAttemptId).toBe(`pi_early_${f.operation}`);
+      const finalized = await state();
+      expect(await local.ingress.receive(event)).toEqual(first);
+      expect(await local.ingress.receive(event)).toEqual(first);
+      expect(namedRefusals).toEqual(Array(3).fill("payment_control_result_attempt_unresolved"));
+      expect(await state()).toEqual(finalized); expect(fake.calls).toHaveLength(calls);
+      expect((await env.owner.query("SELECT * FROM public.payment_provider_attempt_evidence WHERE id=$1", [evidence.id])).rows[0]).toEqual(evidence);
+    });
+  });
 });

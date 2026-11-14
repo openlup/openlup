@@ -104,6 +104,9 @@ Untimestamped evidence retains a null native source occurrence and returns no
 occurrence instant, including on replay; HTTP receipt and database recording
 times remain separate. Superseded or unresolved success deliveries reach the
 native exact-attempt refusal and are acknowledged without financial effects.
+Attribution stays as recorded at ingestion: an unresolved event remains unresolved
+when redelivered after finalization, even if its remote handle now matches the
+active attempt. Finalization does not retroactively authorize that event.
 Search uses the exact local intent and at most two results. Multiple matches
 refuse; zero matches never authorize another charge. Absence auto-reopen stays off.
 Offline PostgreSQL witnesses establish this composition, not live activation.

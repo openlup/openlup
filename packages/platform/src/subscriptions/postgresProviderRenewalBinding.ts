@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { PaymentWebhookControlPort } from "../payments/verifiedIngress.js";
 import type { PaymentFailureClass } from "@openlup/core/payment";
 import { createPostgresRetryStore } from "./postgresRetryStore.js";
 import { nativeInstant } from "./nativeInstant.js";
@@ -14,7 +15,10 @@ export interface ProviderRenewalResultInput {
   resultStatus: "succeeded" | "failed" | "expired" | "refunded" | "partially_refunded" | "disputed";
   occurredAt: string; failureReason: string | null; failureClass?: PaymentFailureClass | null; failureClassDecidedBy?: string | null;
 }
-type ProviderRenewalWebhookControl = { applyPaymentResult?(input: ProviderRenewalResultInput): Promise<{ replayed: boolean }> };
+type ProviderRenewalWebhookControl = {
+  ingestPaymentEvent?: PaymentWebhookControlPort["ingestPaymentEvent"];
+  applyPaymentResult?(input: ProviderRenewalResultInput): Promise<{ replayed: boolean }>;
+};
 type ProviderRenewalWebhook = { providerEventId: string; providerPaymentId: string; rawPayload: Record<string, unknown> };
 type ProviderRenewalAttempt = { orderId: string; settlementStatus: string; amountMinor: number; currency: string;
   requestPayload: Record<string, unknown>; responsePayload: Record<string, unknown>;
@@ -56,7 +60,7 @@ export interface PostgresProviderRenewalBinding {
   paymentRails: { resolve(channelKey: string): RenewalPaymentRail | null };
   lifecycle: { failureHandoff: RenewalFailureHandoffPort; settlement: RenewalSettlementPort };
   retryPayments: NativeRetryDriverOptions["payments"];
-  composeWebhook<C extends ProviderRenewalWebhookControl>(event: ProviderRenewalWebhook, control: C): Omit<C, "applyPaymentResult"> & Required<ProviderRenewalWebhookControl>;
+  composeWebhook<C extends ProviderRenewalWebhookControl>(event: ProviderRenewalWebhook, control: C): Omit<C, "applyPaymentResult"> & { applyPaymentResult: NonNullable<ProviderRenewalWebhookControl["applyPaymentResult"]> };
 }
 
 /** Provider selection and existing native lifecycle owners, never another scheduler. */
@@ -309,17 +313,25 @@ export function createPostgresProviderRenewalBinding(input: {
       return observe(prepared.settlementIntentId, a?.paymentAttempt.providerAttemptId ?? null, true);
     },
   };
-  function composeWebhook<C extends ProviderRenewalWebhookControl>(event: ProviderRenewalWebhook, control: C): Omit<C, "applyPaymentResult"> & Required<ProviderRenewalWebhookControl> {
-    return { ...control, async applyPaymentResult(request) {
+  function composeWebhook<C extends ProviderRenewalWebhookControl>(event: ProviderRenewalWebhook, control: C): Omit<C, "applyPaymentResult"> & { applyPaymentResult: NonNullable<ProviderRenewalWebhookControl["applyPaymentResult"]> } {
+    let ingested: Awaited<ReturnType<PaymentWebhookControlPort["ingestPaymentEvent"]>> | undefined;
+    return { ...control, ...(control.ingestPaymentEvent ? { async ingestPaymentEvent(delivery: Parameters<PaymentWebhookControlPort["ingestPaymentEvent"]>[0]) {
+      ingested = await control.ingestPaymentEvent!(delivery);
+      return ingested;
+    } } : {}), async applyPaymentResult(request) {
       const op = (await db.query(`SELECT op.*,i.order_id FROM public.commerce_settlement_intents i
         JOIN public.subscription_renewal_operations op ON op.id=i.renewal_operation_id WHERE i.id=$1::uuid`, [request.paymentIntentId])).rows[0];
       if (request.resultStatus !== "succeeded" || !op) return control.applyPaymentResult!(request);
+      if (!ingested || ingested.paymentEventId !== request.paymentEventId || ingested.paymentIntentId !== request.paymentIntentId) {
+        throw new Error("payment_event_receipt_unavailable");
+      }
+      // Ingest owns immutable event attribution. A later finalized matching
+      // handle cannot resolve its null link. Let the result owner refuse it
+      // before attempt-specific bookkeeping and let ingress ACK that refusal.
+      if (ingested.paymentAttemptId === null) return control.applyPaymentResult!(request);
       const attempt = await payments.readAttempt(request.paymentIntentId, null);
-      if (!attempt) throw new Error("payment_control_result_active_attempt_not_found");
+      if (!attempt || ingested.paymentAttemptId !== attempt.paymentAttempt.id) return control.applyPaymentResult!(request);
       const a = attempt.paymentAttempt;
-      // Exact attempt attribution belongs to the landed result owner. A stale
-      // or unresolved remote handle must reach its named refusal and ACK path.
-      if (a.providerAttemptId !== event.providerPaymentId) return control.applyPaymentResult!(request);
       const receipt = subscriptionRecord((await db.query("SELECT public.commerce_checkout_payment_guidance_snapshot($1::uuid,$2::uuid,NULL::uuid) AS response",
         [op.order_id, request.paymentIntentId])).rows[0]?.response);
       if (receipt.historyComplete !== true) throw new Error("payment_event_receipt_unavailable");
