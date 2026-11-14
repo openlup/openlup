@@ -15,6 +15,8 @@ beforeAll(async () => {
 }, postgresSetupTimeoutMs);
 afterAll(() => resources.close(), postgresTeardownTimeoutMs);
 
+// Full-catalogue PostgreSQL restore/replay reached about 10 s on a hosted shard.
+// Keep this inherent database proof bounded at 30 s, about three times that cost.
 it("round-trips method references, receipts and frozen recovery authority with exact rows and replay", async () => {
   const f = await renewal(source.owner), original = await prepareOriginal(source.owner, f);
   await call(source.owner, "subscription_retry_apply_failure", [f.operation, `failure:${f.operation}`, failure()]);
@@ -49,4 +51,4 @@ it("round-trips method references, receipts and frozen recovery authority with e
   expect(await restore()).toEqual({ captureSha256: packet.sha256, replayed: true, neutralizedHistoricalHoldNotifications: 0 });
   expect(await createPostgresPaymentMethodStore(target.owner).upsert(replacement)).toEqual({ ...recorded, replayed: true });
   expect(await journeyCensus(target.owner)).toEqual(before);
-});
+}, 30_000);

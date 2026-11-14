@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { afterAll, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it } from "vitest";
 import { createPostgresPaymentMethodSetup, createPostgresPaymentWebhookControlPort, createPostgresPaymentWebhookMethodRefPort,
   createVerifiedPaymentIngress, consumePostgresPaymentMethodDelivery, createPostgresRecordedSubscriptionMethodReader,
   createPostgresPaymentMethodStore, paymentSchemaDescriptor } from "@openlup/platform/payments";
@@ -7,7 +7,7 @@ import type { VerifiedMethodEvidence } from "@openlup/platform/payments/contract
 import { createSelfServiceCommandFacade } from "@openlup/platform/account-support";
 import { createPostgresPurchaseRenewalWriter, NATIVE_SUBSCRIPTION_CAPABILITIES } from "@openlup/platform/subscriptions";
 import { storeJourneyResources, assertJourneyRuntime } from "../helpers/storeJourney.js";
-import { postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
+import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
 import { call, failure, prepareOriginal, renewal, request } from "./subscriptionNativeFixture.js";
 
 const AT = "2026-11-13T12:00:00.000Z";
@@ -15,6 +15,8 @@ const AT = "2026-11-13T12:00:00.000Z";
 const runtimeResources = storeJourneyResources();
 let installed: ReturnType<typeof runtimeResources.installation> | undefined;
 const installation = () => installed ??= runtimeResources.installation("method-runtime");
+// Install the qualified runtime as fixture setup, outside the ingress test budget.
+beforeAll(async () => { await installation(); }, postgresSetupTimeoutMs);
 afterAll(async () => { await runtimeResources.close(); }, postgresTeardownTimeoutMs);
 it("accepts method setup, account support and verified method ingress on the installed qualified-v2 runtime roles", async () => {
   const { runtime } = await installation();
