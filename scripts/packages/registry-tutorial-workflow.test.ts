@@ -255,6 +255,16 @@ describe("exact published-set qualification", () => {
     expect(Number.isFinite(Date.parse(receipt.startedAt))).toBe(true);
     for (const invalid of ["main", "openlup-core-v01.41.0", tag + "-preview.1", tag + "\n"]) expect(() => qualificationReceipt(invalid, commit, {})).toThrow("invalid core release tag");
     expect(() => qualificationReceipt(tag, "short", {})).toThrow("full SHA");
+    const initialization = spawnSync(process.execPath, ['--input-type=module', '-e', `
+      import { registerHooks } from 'node:module';
+      registerHooks({resolve(specifier, context, next) {
+        if (!['node:', 'file:', '.', '/'].some(prefix => specifier.startsWith(prefix))) throw Error('dependency required before root npm ci');
+        return next(specifier, context);
+      }});
+      const { qualificationReceipt } = await import(${JSON.stringify(new URL('./exact-set-qualification.mjs', import.meta.url).href)});
+      if (qualificationReceipt(${JSON.stringify(tag)}, ${JSON.stringify(commit)}).result !== 'FAIL') throw Error('receipt missing');
+    `], { cwd: ROOT, encoding: 'utf8' });
+    expect(initialization.status, initialization.stderr).toBe(0);
   });
 
   it.each([
@@ -311,6 +321,29 @@ describe("exact published-set qualification", () => {
       expect(qualification.indexOf('--canary')).toBeGreaterThan(qualification.indexOf('--bom'));
       expect(qualification.indexOf('--canary')).toBeLessThan(qualification.indexOf('name: Hand off the qualified image'));
     } finally { runner.mockRestore(); rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it.each([false, true])('resolves CLI recovery imports and refuses unfinished work (pending: %s)', pending => {
+    const directory = mkdtempSync(join(tmpdir(), 'qualification-canary-cli-')), path = join(directory, 'receipt.json');
+    const digest = 'sha256:' + 'c'.repeat(64), bytes = JSON.stringify({ image: { manifestDigest: digest } });
+    try {
+      writeFileSync(path + '.bom.json', bytes);
+      writeFileSync(path, JSON.stringify({ ...qualificationReceipt(tag, commit), result: 'PASS', upgrade: { result: 'PASS' }, schemaUpgrade: { result: 'PASS' },
+        image: { manifestDigest: digest }, bom: { sha256: createHash('sha256').update(bytes).digest('hex') } }));
+      // Keep the real import graph and CLI; replace only the external Docker/browser work.
+      const hook = join(directory, 'external-work.mjs');
+      writeFileSync(hook, `import { registerHooks } from 'node:module';
+registerHooks({load(url, context, next) {
+  const result = next(url, context);
+  if (!url.endsWith('/scripts/starter-browser-ci.mjs')) return result;
+  const source = String(result.source), start = source.indexOf('export async function runStarterImageCanary('), end = source.indexOf('export function parseArguments(');
+  return {...result, source: source.slice(0, start) + "export async function runStarterImageCanary(_app, _archive, _image, evidence) { ${pending ? 'await new Promise(() => {});' : ''} const { PORTABILITY_CONSUMER_PROOF } = await import('./packages/platform-cold-consumer.ts'); if (!PORTABILITY_CONSUMER_PROOF.includes('selected-row recovery PASS')) throw Error('missing recovery'); evidence.result = 'PASS'; }\\n" + source.slice(end)};
+}});`);
+      const result = spawnSync(process.execPath, ['--import', hook, join(ROOT, 'scripts/packages/exact-set-qualification.mjs'), tag, commit, path, '--canary'],
+        { cwd: ROOT, encoding: 'utf8', env: Reflect.get(process, 'env') });
+      expect(result.status, result.stderr).toBe(pending ? 1 : 0);
+      expect(JSON.parse(readFileSync(path, 'utf8'))).toMatchObject({ result: pending ? 'FAIL' : 'PASS', canary: { result: pending ? 'FAIL' : 'PASS' } });
+    } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
   it.each(['failure', 'cancelled', 'skipped'])("seals an interrupted canary (%s) without erasing completed schema evidence", outcome => {

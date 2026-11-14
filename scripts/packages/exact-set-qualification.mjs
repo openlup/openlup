@@ -383,5 +383,8 @@ export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = f
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const [tag, commit, receipt, mode] = process.argv.slice(2);
   if (process.argv.length !== 5 && !(process.argv.length === 6 && ['--upgrade', '--schema-upgrade', '--bom', '--canary'].includes(mode))) refuse('use release-tag full-tag-commit receipt-path');
-  await qualifyReleasedSet(tag, commit, receipt, mode === '--upgrade', mode === '--schema-upgrade', mode === '--bom', mode === '--canary');
+  // Finish module evaluation before recovery imports this module; incomplete work exits nonzero.
+  process.exitCode = 1;
+  Promise.resolve(qualifyReleasedSet(tag, commit, receipt, mode === '--upgrade', mode === '--schema-upgrade', mode === '--bom', mode === '--canary'))
+    .then(() => { process.exitCode = 0; }, error => { console.error(error); });
 }

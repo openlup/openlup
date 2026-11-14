@@ -326,7 +326,8 @@ pass before the archive is handed to this publication job.
 
 The read-only qualification job's `--canary` stage checks the BOM hash and image
 subject, loads that OCI archive and requires Docker's loaded manifest descriptor
-and configuration ID to match its manifest. It runs the extracted starter's
+to match, then reads the daemon's manifest to check its configuration digest.
+It runs the extracted starter's
 Compose services without building: mirror-pinned PostgreSQL 16, installation
 through `lifecycle.mjs install` using the packaged qualified profile, then the
 same loaded image's runtime. Compose uses the starter's existing bounded health
@@ -350,6 +351,18 @@ retain the receipt; no release asset is created. The write job's existing
 qualification dependency blocks image publication on a failed canary.
 This is development-preview qualification, not provider certification or stable
 support. The first-party demo store is separate adoption evidence.
+
+A local 2026-11-14 rehearsal on the qualified 0.41.0 set passed archive loading
+and identity, lifecycle installation/readiness (30.857 seconds), the existing
+purchase spec for both configurations (2.320 seconds) and selected-row recovery
+(1.281 seconds). Total time including cleanup was 38.480 seconds; four times
+that measurement rounded up sets the canary step's three-minute bound. The
+first hosted run must remeasure it. All four inventory-pinned images were
+already cached: Node from the organization mirror, PostgreSQL 16 and Syft from
+their recorded Docker upstreams, and the browser from its recorded Microsoft
+upstream. This local-only resolution exception changed no CI image source or
+credential and establishes no hosted mirror access. The exercised manifest was
+`sha256:8457d5ec1d44c806e1baa617c061c1bdc3fa21a62b747c334a02880e777225a2`.
 
 There is no stable maintenance line or previous stable major, so previous-major
 backports are not applicable. Maintenance evidence remains partial; backport

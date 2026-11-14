@@ -211,6 +211,8 @@ jobs:
         run: node scripts/packages/exact-set-qualification.mjs "$RELEASE_TAG" "$TAG_COMMIT" "$RUNNER_TEMP/exact-set-qualification.json" --bom
       - name: Exercise the BOM-bound archive before publication
         id: canary
+        # Local 0.41.0: 38.480s including cleanup; 4x rounded up. Remeasure first hosted run.
+        timeout-minutes: 3
         run: node scripts/packages/exact-set-qualification.mjs "$RELEASE_TAG" "$TAG_COMMIT" "$RUNNER_TEMP/exact-set-qualification.json" --canary
       - name: Hand off the qualified image and its BOM
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

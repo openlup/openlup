@@ -7,21 +7,28 @@ import { spawn, spawnSync } from 'node:child_process';
 import { EventEmitter, once } from 'node:events';
 import { createHash } from 'node:crypto';
 import pg from 'pg';
-import { assertCanaryImage, acquireStarterPostgres, browserArguments, capturePrivateValues, parseArguments, resolveBrowserImage, runBrowserGroups, scanPrivateOutput, withCleanup, withConnectionCleanup, writeBrowserFixtures, watchStarterHost } from './starter-browser-ci.mjs';
+import { assertCanaryImage, acquireStarterPostgres, browserArguments, canaryPurchasePattern, capturePrivateValues, parseArguments, resolveBrowserImage, runBrowserGroups, scanPrivateOutput, withCleanup, withConnectionCleanup, writeBrowserFixtures, watchStarterHost } from './starter-browser-ci.mjs';
 import { imageReference, readCiImage } from './ci-image-pull.mjs';
 import { browserJourneyGroups } from '../examples/neutral-store/browser-groups.mjs';
 
 const args = ['--manifest', '/tmp/packs/packages-manifest.json', '--expected-commit', 'a'.repeat(40)];
 
 describe('installed starter browser CI', () => {
+  it('selects the purchase from Playwright full titles including project and file', () => {
+    const purchase = new RegExp(canaryPurchasePattern);
+    for (const project of ['supplements', 'coffee']) expect(purchase.test(`${project} journey.spec.ts completes sandbox purchase through the installed engine`)).toBe(true);
+    expect(purchase.test('supplements journey.spec.ts en: shows checkout')).toBe(false);
+  });
   it('binds the loaded manifest and configuration separately to the archive subject', () => {
     const config = 'sha256:' + 'b'.repeat(64), manifest = JSON.stringify({ config: { digest: config } });
     const digest = 'sha256:' + createHash('sha256').update(manifest).digest('hex');
-    const loaded = { Id: config, Descriptor: { digest } };
-    expect(assertCanaryImage(manifest, digest, loaded)).toBe(config);
-    for (const [bytes, expected, image] of [[manifest + ' ', digest, loaded], [manifest, config, loaded],
-      [manifest, digest, { ...loaded, Id: digest }], [manifest, digest, { ...loaded, Descriptor: { digest: config } }]]) {
-      expect(() => assertCanaryImage(bytes, expected, image)).toThrow('starter_canary_image_identity_mismatch');
+    const loaded = { Id: digest, Descriptor: { digest } };
+    expect(assertCanaryImage(manifest, digest, loaded, manifest)).toBe(config);
+    expect(assertCanaryImage(manifest, digest, { ...loaded, Id: config }, manifest)).toBe(config);
+    for (const [bytes, expected, image, daemon] of [[manifest + ' ', digest, loaded, manifest], [manifest, config, loaded, manifest],
+      [manifest, digest, { ...loaded, Id: 'sha256:' + 'c'.repeat(64) }, manifest], [manifest, digest, { ...loaded, Descriptor: { digest: config } }, manifest],
+      [manifest, digest, loaded, JSON.stringify({ config: { digest } })]]) {
+      expect(() => assertCanaryImage(bytes, expected, image, daemon)).toThrow('starter_canary_image_identity_mismatch');
     }
   });
   afterEach(() => vi.unstubAllEnvs());
