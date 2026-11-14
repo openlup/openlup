@@ -8,7 +8,7 @@ import { createSelfServiceCommandFacade } from "@openlup/platform/account-suppor
 import { createPostgresPurchaseRenewalWriter, NATIVE_SUBSCRIPTION_CAPABILITIES } from "@openlup/platform/subscriptions";
 import { storeJourneyResources, assertJourneyRuntime } from "../helpers/storeJourney.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
-import { call, failure, prepareOriginal, renewal, request } from "./subscriptionNativeFixture.js";
+import { call, failure, prepareOriginal, renewal, request, retryDueAt } from "./subscriptionNativeFixture.js";
 
 const AT = "2026-11-13T12:00:00.000Z";
 
@@ -100,14 +100,15 @@ it.each(["admission", "freeze"] as const)("locks the token against concurrent re
   const token = (await runtime.query("SELECT id FROM public.commerce_checkout_recovery_tokens WHERE token_hash=$1", [hash])).rows[0].id;
   const authority = await call(runtime, "subscription_retry_authorize_recovery", [f.operation, token, reference, method.id, AT]);
   await call(runtime, "subscription_retry_schedule_recovery", [f.operation, `token-schedule:${f.operation}`, authority.id, AT]);
+  const dispatchAt = await retryDueAt(runtime, f.operation);
   if (phase === "freeze") await owner.query("UPDATE public.subscription_retry_obligations SET state='prepared' WHERE id=$1", [obligation.id]);
   const admission = await runtime.connect(), revocation = await runtime.connect(), methodBlocker = await owner.connect();
   let pending: Promise<unknown> | undefined, dispatchPending: Promise<unknown> | undefined;
   const admissionPid = (await admission.query("SELECT pg_backend_pid() AS pid")).rows[0].pid;
   const revocationPid = (await revocation.query("SELECT pg_backend_pid() AS pid")).rows[0].pid;
   const dispatch = () => phase === "admission"
-    ? call(admission, "subscription_retry_prepare", [f.operation, `token-dispatch:${f.operation}`, { ...request({ ...f, original }), paymentMethodRef: reference }, "2026-11-14T12:00:00Z"])
-    : call(admission, "payment_method_recovery_authority_freeze", [authority.id, f.operation, `token-dispatch:${f.operation}`, reference, "2026-11-14T12:00:00Z"]);
+    ? call(admission, "subscription_retry_prepare", [f.operation, `token-dispatch:${f.operation}`, { ...request({ ...f, original }), paymentMethodRef: reference }, dispatchAt])
+    : call(admission, "payment_method_recovery_authority_freeze", [authority.id, f.operation, `token-dispatch:${f.operation}`, reference, dispatchAt]);
   try {
     expect((await admission.query("SELECT current_user,rolsuper FROM pg_roles WHERE rolname=current_user")).rows)
       .toEqual([{ current_user: "transfer_runtime", rolsuper: false }]);
