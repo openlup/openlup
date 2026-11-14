@@ -197,7 +197,8 @@ describe("CI image mirror workflow controls", () => {
   const workflows = () => readdirSync(join(ROOT, ".github/workflows")).filter((name) => /\.ya?ml$/u.test(name))
     .map((name) => ({ name, source: readFileSync(join(ROOT, ".github/workflows", name), "utf8") }));
   const assertExactWriters = (sources: Array<{ name: string; source: string }>) => {
-    const writers = sources.flatMap(({ name, source }) => permissionBlocks(source)
+    // No write text means no write scope; every other workflow must pass the reader.
+    const writers = sources.filter(({ source }) => /write/iu.test(source)).flatMap(({ name, source }) => permissionBlocks(source)
       .filter(({ block }) => /\bpackages: write\b/u.test(block)).map((permission) => ({ name, ...permission })));
     expect(writers).toEqual([
       { name: "mirror-ci-images.yml", job: "mirror", block: "    permissions: {contents: read, packages: write}" },
@@ -206,6 +207,17 @@ describe("CI image mirror workflow controls", () => {
   };
 
   it("grants packages write in exactly the mirror and qualified-image publisher jobs across every workflow", () => assertExactWriters(workflows()));
+
+  it.each([
+    ["defaults: {run: {shell: bash}}\njobs:\n  planted:\n", "workflow/job defaults"],
+    ["jobs:\n  planted: {runs-on: ubuntu-24.04, steps: [{run: 'echo planted'}]}\n", "flow-form jobs"],
+    ["env: &shared {VALUE: x}\njobs:\n  planted:\n", "anchors, aliases and merge keys"],
+  ])("exempts non-writer syntax but refuses it in candidate writers: %s", (source, refusal) => {
+    expect(() => assertExactWriters([...workflows(), { name: "planted.yml", source }])).not.toThrow();
+    for (const candidate of ["# WrItE\n", "name: overwrite\n", "name: write-all\n", "permissions: {contents: write}\n", "permissions:\n  actions: write\n"]) {
+      expect(() => assertExactWriters([...workflows(), { name: "planted.yml", source: candidate + source }])).toThrow(refusal);
+    }
+  });
 
   it.each([
     "name: Planted\npermissions: write-all\njobs: {}\n",
@@ -250,7 +262,7 @@ describe("CI image mirror workflow controls", () => {
     ["jobs:\n  planted:\n    defaults: {run: {shell: bash}}\n", "workflow/job defaults"],
     ["name: Planted\n", "requires a final block jobs mapping"],
   ])("refuses unsupported workflow syntax by name: %s", (source, refusal) => {
-    expect(() => assertExactWriters([...workflows(), { name: "planted.yml", source }])).toThrow(refusal);
+    expect(() => assertExactWriters([...workflows(), { name: "planted.yml", source: `# write candidate\n${source}` }])).toThrow(refusal);
   });
 
   it("rejects another writer inside the qualified-image workflow", () => {

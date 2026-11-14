@@ -562,8 +562,10 @@ in hosted CI. Exactly two workflow jobs hold `packages: write`: `mirror` in
 `mirror-ci-images.yml` and `publish-qualified-image` in `registry-tutorial.yml`.
 The latter verifies and copies an OCI archive only after qualification succeeds;
 it executes no candidate code, keeping installation code away from write tokens.
-The [writer-control witness](../../scripts/oss-published-tree-check.test.ts) refuses
-noncanonical workflow/job mappings, ambiguous permission syntax, anchors, aliases,
+The [writer-control witness](../../scripts/oss-published-tree-check.test.ts) applies
+its canonical subset only when workflow text contains `write` (case-insensitive,
+including comments and longer words); workflows without that text are exempt.
+It refuses noncanonical workflow/job mappings, ambiguous permission syntax, anchors, aliases,
 merge keys, tabs, extra YAML documents and workflow/job defaults. Its publisher
 fingerprint includes inherited workflow execution settings as well as the job.
 The mirror job reads typed owned pins from its own checkout, validates all of them before
