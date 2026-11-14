@@ -114,6 +114,55 @@ and a fragment class while retaining that witness unchanged.
 This is file/dependency qualification on the neutral starter, with
 no SQL, database compatibility, browser/provider, rollback or support claim.
 
+## Released-pair schema compatibility
+
+The qualification job's separate schema step consumes both original installed
+applications retained by the adjacent-set starter proof. It checks their
+extraction identities, lock hashes, installed package versions and locked
+integrities against that proof's receipt. Runner, payment, delivery-alignment
+and readiness exports resolve inside those installations. The
+[existing schema proof](../../tests/postgres/m14ReleasedSchemaUpgrade.proof.ts)
+has an explicit released-pair mode; its no-argument historical execution and PR
+CI selection are unchanged. The step uses the job's mirror-only PostgreSQL 17
+service and a disposable database, then removes both retained installations.
+
+The predecessor's shipped runner installs its packaged legacy catalogue, and
+its payment port writes a settled event before the upgrade. The target's
+shipped `createPlatformPostgresMigrationRunner` applies its packaged forwards.
+SIGKILL interrupts the first forward after its real SQL executes but before the
+ledger insert commits. The old exact ledger prefix must survive. The installed
+readiness evaluator refuses the harness-supplied target catalogue-tail
+requirement as `OPENLUP_E_SCHEMA_BEHIND/version_mismatch`; this is a supplied
+readiness observation, not a new starter serving guard. Resume completes the
+catalogue, checks its inventory and proves migration replay applies nothing.
+
+Execution switches target → predecessor → target on the unchanged upgraded
+schema. Both installed payment ports read retained events, make fresh writes
+and replay them; both delivery ports exercise late and early arrival evidence
+and replay. The named `subscription_monotonic_clamp` assertions require that
+no cycle moves earlier, no cycle or delivery stacks, a late arrival extends
+exactly once, and replay leaves the extension unchanged. The target's inventory
+and exact ledger are rechecked after each code switch.
+
+The receipt labels the separate **historical** 0.23-prefix invoicing backfill;
+that witness is not rerun or represented as adjacent-pair backfill. Later
+contraction and adjacent-pair backfill remain **PARTIAL** until a real retirement
+ships: the 0.41→0.42 pair has no object needed only by the older application.
+No destructive fixture or new migration admission grammar is introduced. A
+pair with identical catalogues can demonstrate compatibility and no-op replay,
+but records **PARTIAL** interruption evidence and fails full qualification.
+This evidence supplies no general rollback, hosted-service or stable-support
+guarantee.
+
+Local execution on 2026-11-14 remains blocked: the published 0.40.0→0.41.0
+starters passed installation, provenance and application checks, but the
+predecessor's shipped legacy runner rejected its completed inventory on pinned
+PostgreSQL 17 with `platform migration inventory rejected: platform migration
+manifest: object inventory SHA-256 mismatch`. The additional 0.39.0→0.40.0
+rehearsal stopped at the same check. Neither run reached forward interruption
+or compatible code rollback. Schema-step qualification and its successful-run
+timing remain pending.
+
 ## Public outcome projection
 
 The [generated projection](OUTCOME_PROJECTION.md) derives its package entries,

@@ -138,3 +138,22 @@ This migration recipe provides no general upgrade guarantee. Verify the
 selected chain and application combination, including replay and refusal
 behavior. [Application file upgrades](./application-files.md) are a separate
 operation and execute no database work.
+
+The post-publication [released-pair qualification](https://github.com/openlup/openlup/blob/main/docs/platform/DISTRIBUTION_EVIDENCE.md#released-pair-schema-compatibility)
+uses both exact installed applications retained by the adjacent-set starter
+proof. Their shipped runners install the predecessor's packaged legacy
+catalogue and apply the target's packaged forwards. It kills a forward inside
+its transaction, asserts `OPENLUP_E_SCHEMA_BEHIND/version_mismatch` using the
+installed readiness evaluator with a supplied target catalogue-tail requirement,
+then resumes and checks no-op replay. Target, predecessor and target code run
+reads, fresh writes and replay against the unchanged upgraded schema. Named
+`subscription_monotonic_clamp` assertions check late-arrival extension, no
+earlier cycle and no stacked delivery or cycle across forward, code rollback
+and replay. See the retained receipt for the actual pair and execution result;
+an identical-catalogue pair cannot qualify the interruption requirement.
+
+The existing 0.23-prefix invoicing backfill proof remains **historical** and
+separate. Contraction and adjacent-pair backfill remain **PARTIAL** until a real
+retirement ships, because the 0.41→0.42 pair has no object needed only by the
+older application. This proof adds no destructive migration, down-migration or
+new admission grammar, and does not establish a general rollback guarantee.

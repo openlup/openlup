@@ -1,6 +1,7 @@
 import { existsSync, writeFileSync } from "node:fs";
 import { Pool } from "pg";
 import { checkServerIdentity } from "node:tls";
+import { pathToFileURL } from "node:url";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 
 const [mode, marker] = process.argv.slice(2);
@@ -10,7 +11,7 @@ if (!mode || !marker || !["inside", "between"].includes(mode)) {
 
 let payload = "";
 for await (const chunk of process.stdin) payload += String(chunk);
-const { database, installation } = JSON.parse(payload);
+const { database, installation, runnerPath } = JSON.parse(payload);
 const { connectionString } = database;
 if (typeof connectionString !== "string") throw new Error("database input unavailable");
 // JSON transport carries CA/verification settings; reconstruct the hostname check
@@ -26,6 +27,11 @@ const observedPool = {
     const client = await pool.connect();
     return {
       async query(sql: string, values?: unknown[]) {
+        // Released-pair mode parks after the real SQL, before its ledger insert.
+        if (runnerPath && mode === "inside" && sql.startsWith("INSERT INTO public.platform_schema_migrations")) {
+          writeFileSync(marker, "inside-forward-before-ledger");
+          await new Promise<never>(() => {});
+        }
         // Restricted admission inspects catalogue definitions first. Holding
         // the source-table lock earlier can block that inspection itself.
         if (installation && mode === "inside" && typeof sql === "string" && sql.includes("CREATE TABLE public.invoicing_cutover")) {
@@ -43,5 +49,9 @@ const observedPool = {
   },
 } as unknown as Pool;
 
-await createPostgresMigrationRunner({ connectionString }, { installation, poolFactory: () => observedPool }).apply();
+const runner = runnerPath
+  ? (await import(pathToFileURL(runnerPath).href)).createPlatformPostgresMigrationRunner({ connectionString },
+    { installation: { generation: "legacy" }, poolFactory: () => observedPool })
+  : createPostgresMigrationRunner({ connectionString }, { installation, poolFactory: () => observedPool });
+await runner.apply();
 throw new Error("released schema upgrade child unexpectedly completed");

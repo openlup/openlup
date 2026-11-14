@@ -1,9 +1,10 @@
 import installationInventory from "./current-installation-inventory.json" with { type: "json" };
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { Pool, type PoolConfig } from "pg";
 import assert from "node:assert/strict";
@@ -41,18 +42,184 @@ async function killed(child: ChildProcess) {
   assert.deepEqual(await exit, { code: null, signal: "SIGKILL" });
 }
 
-function startChild(database: PoolConfig, mode: "inside" | "between", marker: string, installation?: QualifiedAdminPostgresInstallation) {
+function startChild(database: PoolConfig, mode: "inside" | "between", marker: string, installation?: QualifiedAdminPostgresInstallation, runnerPath?: string) {
   const child = spawn(process.execPath, ["--import", "tsx", childPath, mode, marker],
     { env: { TMPDIR: dirname(marker) }, stdio: ["pipe", "pipe", "pipe"] });
-  child.stdin!.end(JSON.stringify({ database, installation }));
+  child.stdin!.end(JSON.stringify({ database, installation, runnerPath }));
   let output = "";
   child.stdout?.on("data", chunk => { output += String(chunk); });
   child.stderr?.on("data", chunk => { output += String(chunk); });
   return { child, output: () => output };
 }
 
+type ReleasedIdentity = { setVersion: string; tagCommit: string; extraction: { lockfileSha256: string; sourceRevision: string };
+  packages: { name: string; version: string; integrity: string }[] };
+type ReleasedApplication = { application: string; identity: ReleasedIdentity };
+export type ReleasedSchemaPair = { mode: "released-pair"; from: ReleasedApplication; to: ReleasedApplication; database: PoolConfig };
+type SubscriptionSnapshot = { nextCycleAt: string; cycles: number; deliveries: number };
+
+export function assertSubscriptionMonotonic(before: SubscriptionSnapshot, after: SubscriptionSnapshot) {
+  assert.ok(Date.parse(after.nextCycleAt) >= Date.parse(before.nextCycleAt), "subscription_monotonic_clamp: cycle moved earlier");
+  assert.equal(after.cycles, before.cycles, "subscription_monotonic_clamp: cycles stacked");
+  assert.equal(after.deliveries, before.deliveries, "subscription_monotonic_clamp: deliveries stacked");
+}
+
+async function releasedApplication(input: ReleasedApplication) {
+  assert.ok(input?.application && input.identity, "released_pair_requires_both_applications_and_identities");
+  const root = realpathSync(input.application), identity = input.identity;
+  for (let parent = dirname(root); ; parent = dirname(parent)) {
+    assert.ok(!existsSync(join(parent, "node_modules")), "released_pair_ancestor_dependencies");
+    if (parent === dirname(parent)) break;
+  }
+  const json = (path: string) => JSON.parse(readFileSync(path, "utf8"));
+  assert.match(identity.tagCommit, /^[a-f0-9]{40}$/u);
+  assert.deepEqual(json(join(root, ".starter-origin.json")), identity.extraction, "released_pair_extraction_mismatch");
+  assert.equal(identity.extraction.sourceRevision, identity.tagCommit);
+  assert.equal(sha256(readFileSync(join(root, "package-lock.json"))), identity.extraction.lockfileSha256, "released_pair_lock_mismatch");
+  const require = createRequire(join(root, "package.json"));
+  const resolveExport = (name: string) => {
+    const path = realpathSync(require.resolve(name));
+    assert.ok(path.startsWith(join(root, "node_modules") + sep), "released_pair_export_outside_application");
+    return path;
+  };
+  assert.deepEqual(identity.packages.map(p => p.name).sort(), ["@openlup/core", "@openlup/outbox", "@openlup/platform"]);
+  for (const pkg of identity.packages) {
+    assert.equal(pkg.version, identity.setVersion);
+    assert.partialDeepStrictEqual(json(resolveExport(pkg.name + "/package.json")), { name: pkg.name, version: identity.setVersion });
+    assert.equal(json(join(root, "package-lock.json")).packages["node_modules/" + pkg.name].integrity, pkg.integrity);
+  }
+  const runnerPath = resolveExport("@openlup/platform/migrations");
+  const load = (name: string) => import(pathToFileURL(resolveExport(name)).href);
+  const catalog = json(join(dirname(resolveExport("@openlup/platform/package.json")), "sql/manifest.json")).catalog;
+  return { root, runnerPath, units: [catalog.baseline, ...catalog.forward] as { file: string; sha256: string }[],
+    migrations: await load("@openlup/platform/migrations"), payments: await load("@openlup/platform/payments"),
+    fulfillment: await load("@openlup/platform/fulfillment"), readiness: await load("@openlup/core/readiness") };
+}
+
+async function runReleasedPair(input: ReleasedSchemaPair) {
+  assert.ok(input.from?.application && input.from.identity && input.to?.application && input.to.identity, "released_pair_requires_both_applications_and_identities");
+  const from = await releasedApplication(input.from), to = await releasedApplication(input.to);
+  assert.notEqual(from.root, to.root, "released_pair_requires_distinct_applications");
+  assert.notEqual(input.from.identity.setVersion, input.to.identity.setVersion);
+  assert.deepEqual(to.units.slice(0, from.units.length), from.units, "released_pair_catalogue_not_exact_prefix");
+  assert.ok(input.database?.connectionString, "released_pair_database_required");
+  const pool = new Pool(input.database), root = mkdtempSync(join(tmpdir(), "released-schema-pair-"));
+  let child: ChildProcess | undefined;
+  const runner = (app: typeof from) => app.migrations.createPlatformPostgresMigrationRunner(input.database,
+    { installation: { generation: "legacy" }, poolFactory: () => pool });
+  const ledger = async () => (await pool.query("SELECT catalog_path,sha256,position FROM public.platform_schema_migrations ORDER BY position")).rows;
+  const expected = to.units.map((unit, position) => ({ catalog_path: unit.file, sha256: unit.sha256, position }));
+  try {
+    assert.deepEqual((await runner(from).apply()).applied, from.units.map(unit => unit.file));
+    const retained = await fixture(pool), earlier = await fixture(pool);
+    const options = { dunningTemplateSlug: "payment_failed", recoveryUrlPath: "/recover", recoveryTemplateSlug: "payment_recovered" };
+    const payments = (app: typeof from) => app.payments.createPostgresPaymentTruthPort(executor(pool), options);
+    const paymentInput = async () => {
+      const order = randomUUID(), intent = randomUUID();
+      const db = await pool.connect();
+      try {
+        await db.query("BEGIN");
+        await db.query("INSERT INTO public.commerce_orders(id,client_id,currency_code,total_amount_minor) VALUES($1,$2,'XXX',900)", [order, retained.client]);
+        await db.query("INSERT INTO public.commerce_order_items(order_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor) VALUES($1,1,1,900,900)", [order]);
+        await db.query("COMMIT");
+      } catch (error) { await db.query("ROLLBACK"); throw error; } finally { db.release(); }
+      await pool.query("INSERT INTO public.commerce_settlement_intents(id,order_id,channel_key,amount_minor,currency_code,open_idempotency_key) VALUES($1,$2,'fixture',900,'XXX',$3)", [intent, order, `open-${intent}`]);
+      return { sourceEventId: `pair:${intent}`, idempotencyKey: `pair-${intent}`, settlementIntentId: intent,
+        outcome: "captured", amountMinor: 900, currency: "XXX", occurredAt: "2026-08-12T12:00:00Z", failure: null,
+        evidence: { sourceKind: "accepted_event", sourceReference: `pair:${intent}`, observedStatus: "captured",
+          observedAt: "2026-08-12T12:00:00Z", payloadFingerprint: "a".repeat(64) } };
+    };
+    const initialInput = await paymentInput(), initial = await payments(from).ingestEvent(initialInput);
+    assert.partialDeepStrictEqual(initial.event, { state: "settled", replayed: false });
+    const snapshot = async (subscription: string): Promise<SubscriptionSnapshot> => {
+      const row = (await pool.query(`SELECT next_cycle_at,
+        (SELECT count(*)::int FROM public.subscription_cycles WHERE subscription_id=s.id) AS cycles,
+        (SELECT count(*)::int FROM public.fulfillment_shipments f JOIN public.commerce_orders o ON o.id=f.order_id
+          JOIN public.subscription_cycles c ON c.id=o.subscription_cycle_id WHERE c.subscription_id=s.id) AS deliveries
+        FROM public.subscriptions s WHERE id=$1`, [subscription])).rows[0];
+      return { nextCycleAt: row.next_cycle_at.toISOString(), cycles: row.cycles, deliveries: row.deliveries };
+    };
+    const baseline = await Promise.all([retained, earlier].map(f => snapshot(f.subscription)));
+    const observed = [...baseline];
+    const invariant = async () => {
+      for (const [i, f] of [retained, earlier].entries()) {
+        const current = await snapshot(f.subscription);
+        assertSubscriptionMonotonic(observed[i]!, current); observed[i] = current;
+      }
+    };
+    const readiness = async () => {
+      const tail = to.units.at(-1)!.file, version = (await ledger()).at(-1)?.catalog_path ?? null;
+      return to.readiness.checkReadiness({ candidate: { artifact: input.to.identity.tagCommit, configuration: "released-pair",
+        environment: "qualification", database: "released-pair", schema: tail }, inventoryComplete: true,
+        loadedPackages: [{ name: "@openlup/core", version: input.to.identity.setVersion, kind: "kernel" }],
+        contributions: [{ manifest: { name: "@openlup/core", version: input.to.identity.setVersion, kind: "kernel",
+          emits: [], handles: [], schedules: [], routes: [], requiredPorts: [], env: [],
+          requiredSchema: { version: tail, migration: tail, objects: [{ kind: "table", name: "public.platform_schema_migrations" }] } },
+        handlers: [], schedules: [], routes: [] }], vocabulary: [], exemptions: [], bindings: { ports: {}, triggers: {}, routes: {}, env: {} },
+        schemaProbe: to.readiness.createSchemaProbe(executor(pool), async () => ({ database: "released-pair", version })) });
+    };
+    let interruption = false;
+    const pending = to.units.slice(from.units.length);
+    if (pending.length) {
+      const marker = join(root, "inside-marker");
+      const running = startChild(input.database, "inside", marker, undefined, to.runnerPath); child = running.child;
+      await waitUntil(() => existsSync(marker), "released forward SQL before ledger insert");
+      await killed(child); child = undefined;
+      assert.equal(running.output(), "");
+      assert.deepEqual(await ledger(), expected.slice(0, from.units.length));
+      const report = await readiness();
+      assert.partialDeepStrictEqual(report, { state: "unsatisfied" });
+      assert.ok(report.issues.some((issue: { code: string; observation: string }) => issue.code === "OPENLUP_E_SCHEMA_BEHIND" && issue.observation === "version_mismatch"));
+      await invariant();
+      interruption = true;
+    }
+    assert.deepEqual((await runner(to).apply()).applied, pending.map(unit => unit.file));
+    assert.deepEqual(await ledger(), expected);
+    assert.equal((await readiness()).state, "ready");
+    assert.deepEqual(await runner(to).apply(), { applied: [] });
+    await invariant();
+    // Code switches N → N−1 → N without changing the upgraded catalogue/ledger.
+    for (const f of [retained, earlier]) await openCase(pool, f);
+    for (const [phase, app] of [to, from, to].entries()) {
+      const port = payments(app), fresh = await paymentInput();
+      assert.partialDeepStrictEqual(await port.readEvent(initial.event.id), { event: { id: initial.event.id, state: "settled" } });
+      assert.partialDeepStrictEqual(await port.ingestEvent(initialInput), { event: { id: initial.event.id, replayed: true } });
+      const accepted = await port.ingestEvent(fresh);
+      assert.partialDeepStrictEqual(accepted.event, { state: "settled", replayed: false });
+      assert.partialDeepStrictEqual(await port.ingestEvent(fresh), { event: { id: accepted.event.id, replayed: true } });
+      for (const [i, f] of [retained, earlier].entries()) {
+        const arrival = app.fulfillment.createPostgresDeliveryAlignmentPort(executor(pool));
+        const event = { requestKey: `arrival-${phase}-${f.shipment}`, parcelRef: f.shipment,
+          deliveredAt: i === 0 ? "2026-09-04T12:00:00Z" : "2026-07-01T12:00:00Z", evidenceRef: `evidence:${f.shipment}` };
+        assert.partialDeepStrictEqual(await arrival.recordArrival(event), { disposition: "aligned", replayed: false });
+        const after = await snapshot(f.subscription);
+        assert.equal(after.nextCycleAt, i === 0 ? "2026-10-02T12:00:00.000Z" : baseline[i]!.nextCycleAt, "subscription_monotonic_clamp: unexpected extension");
+        assert.partialDeepStrictEqual(await arrival.recordArrival(event), { replayed: true });
+        assert.partialDeepStrictEqual(await arrival.recordArrival({ ...event, requestKey: `arrival-0-${f.shipment}` }), { replayed: true });
+        assert.deepEqual(await snapshot(f.subscription), after, "subscription_monotonic_clamp: replay stacked extension");
+      }
+      await invariant();
+      assert.deepEqual(await ledger(), expected);
+      assert.deepEqual((await runner(to).status()).pending, []);
+    }
+    return { result: interruption ? "PASS" : "PARTIAL", from: input.from.identity, to: input.to.identity,
+      catalogueSha256: { from: sha256(JSON.stringify(from.units)), to: sha256(JSON.stringify(to.units)) },
+      operations: ["payments.readEvent", "payments.ingestEvent", "fulfillment.recordArrival"], codeSequence: ["target", "predecessor", "target"],
+      forwardUnits: pending.length, insideUnitInterruption: interruption,
+      incompleteRefusal: interruption ? "OPENLUP_E_SCHEMA_BEHIND/version_mismatch" : null,
+      resume: interruption, replayApplied: 0, compatibleCodeRollback: true, subscriptionInvariant: "subscription_monotonic_clamp",
+      historicalBackfill: "0.23-prefix invoicing witness; separate historical proof, not executed here",
+      adjacentBackfill: "PARTIAL", contraction: "PARTIAL: no released old-only retirement" };
+  } finally {
+    if (child && child.exitCode === null && child.signalCode === null) await killed(child);
+    await closePostgres(undefined, pool);
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
 export async function runReleasedSchemaUpgradeProof(input: { database?: PoolConfig; previousApplicationPath?: string; requirePreviousApplication?: boolean;
-  installation?: QualifiedAdminPostgresInstallation; rolePrefix?: string } = {}) {
+  installation?: QualifiedAdminPostgresInstallation; rolePrefix?: string } | ReleasedSchemaPair = {}) {
+  if ("mode" in input) return runReleasedPair(input);
   if (!input.database && !await dockerAvailable()) throw new Error("Released schema upgrade requires PostgreSQL 16");
   const selected = input.installation ? selectPlatformMigrationManifest(JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")),
     "qualified-admin", { roleMode: input.installation.roleMode }) : manifest;
