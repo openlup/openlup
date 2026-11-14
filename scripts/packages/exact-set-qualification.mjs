@@ -47,7 +47,7 @@ export function proveNeutralStarterConsumer(checkout, input, packInstalled = und
       const sourceTests = readdirSync(join(starter, "test")).map(name => "test/" + name).filter(path => !copied.has(path)).sort();
       assert(sourceTests.length > 0, "Starter source-only tests are missing");
       run(process.execPath, ["--experimental-strip-types", "--test", ...sourceTests], starter);
-      run(process.execPath, [join(starter, "extract.mjs"), extracted]);
+      run(process.execPath, [join(starter, "extract.mjs"), extracted], temporary);
     }
     assert.equal(execute("git", ["rev-parse", "--show-toplevel"], extracted).trim(), realpathSync(extracted));
     for (let parent = dirname(extracted); ; parent = dirname(parent)) {

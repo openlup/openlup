@@ -28,7 +28,8 @@ entry point owns the shared `proveNeutralStarterConsumer` proof, re-exported by
 [the candidate consumer](../../scripts/packages/platform-cold-consumer.ts).
 Its explicit released-input mode installs the committed lock and shares the
 candidate's isolation, confinement and application assertions; candidate callers
-and their offline tarball installation remain unchanged.
+and their offline tarball installation remain unchanged. Candidate extraction
+starts in the existing temporary parent before creating the application directory.
 
 Before executing application checks, `npm audit signatures --json --include-attestations`
 verifies registry signatures and provenance. Every OpenLup package must have a
