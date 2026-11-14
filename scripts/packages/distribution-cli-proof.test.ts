@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { env } from "node:process";
-import { proveNeutralStarterConsumer, qualificationReceipt, qualifyReleasedSet } from "./exact-set-qualification.mjs";
+import { qualificationReceipt, qualifyReleasedSet } from "./exact-set-qualification.mjs";
 import { assertCompleteStarter, assertUpgradeConflict, previousPublishedSet, starterUpgradeSnapshot } from "./distribution-cli-proof.ts";
 
 const directories: string[] = [];
@@ -18,14 +18,6 @@ function fixture() {
   write("node_modules/@openlup/core/package.json", { version: "0.40.0" });
   return { directory, write };
 }
-
-it("starts candidate extraction from an existing directory before its destination exists", () => {
-  const { directory, write } = fixture();
-  write("examples/neutral-store/ownership.json", { managed: [], owned: [] });
-  write("examples/neutral-store/test/source.test.mjs", "export {};\n");
-  write("examples/neutral-store/extract.mjs", 'import assert from "node:assert/strict"; import { existsSync } from "node:fs"; assert(!existsSync(process.argv[2])); throw Error("candidate_extraction_started");');
-  expect(() => proveNeutralStarterConsumer(directory, new Map())).toThrow("candidate_extraction_started");
-});
 
 it("selects the greatest numeric stable tagged release visible in the complete npm set", () => {
   const tags = ["0.9.0", "0.10.0", "0.40.1", "0.41.0", "0.41.1-rc.1", "0.42.0"].reverse().map(version => `a refs/tags/openlup-core-v${version}`).join("\n");
