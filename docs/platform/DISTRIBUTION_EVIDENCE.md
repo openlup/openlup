@@ -51,8 +51,52 @@ extraction mode and content hash, committed lock SHA-256, each package SHA-512
 and provenance verification source, commands/results, runner image and times.
 A failed entry-point run retains its partial receipt and error. This supplies
 bounded exact-set qualification; it does not certify a full store, provider
-behavior, browser journeys, upgrade/recovery, public hosting, stable support or
+behavior, browser journeys, database upgrade/recovery, public hosting, stable support or
 a production deployment. Later proofs need their own executed evidence.
+
+## Interrupted adjacent-set starter upgrade
+
+The same qualification job adds one step using the existing
+[distribution CLI proof](../../scripts/packages/distribution-cli-proof.ts) in
+pair mode. Its no-pair mode retains the fixed published 0.35.0→0.36.0 witness
+and existing PR execution. Pair mode chooses the greatest stable core release
+tag below the target whose version appears in every publishable package's npm
+history. Missing complete predecessors refuse qualification. Both tag-bound
+starters reuse the exact-set extractor, lock checker, isolated install and npm
+signature/provenance checks above; older sources are labelled `reconstructed`.
+
+Managed snapshots are derived from each extracted `ownership.json`, excluding
+generated and owned paths. The proof customizes owned theme and fragment files,
+uses the target's installed public CLI for plan/apply, and checks the exact
+`current bytes match neither predecessor nor candidate` managed conflict before
+any writes. After reconciliation it SIGKILLs apply immediately after the first
+rename. The harness asserts `incomplete_application_upgrade` against target
+managed bytes and declared/installed package versions, then resumes and proves
+replay applies nothing. That refusal is a harness observation, not a CLI-added
+application serving guard. The CLI changes files only; the harness installs
+the target's separately regenerated, extractor-verified lock with `npm ci`,
+then reruns typecheck, build, application tests and development-loop checks.
+Owned customization bytes must remain identical.
+
+For 0.40.0→0.41.0 the only changing managed file is the extracted
+`package.json` with exact package pins. The kill therefore interrupts the CLI
+after that replacement, and resume recognizes it as already applied; dependency
+installation is still outstanding. The proof does not manufacture extra source
+changes to make this pair appear broader. The receipt retains both versions,
+extraction identities, package provenance, plan SHA-256, phase results and
+commands.
+
+The local 2026-11-14 0.40.0→0.41.0 run passed in 49.62 seconds on Node
+24.21.0/npm 11.19.0. Both extractions were reconstructed; old and upgraded apps
+each passed typecheck, build, 296 application tests and two development-loop
+tests. This is local evidence, not a hosted upgrade receipt. The step's
+four-minute bound is 4× that one successful measurement, rounded up; the first
+hosted run must remeasure it. An earlier attempt exposed the development-loop
+witness's fixed demo brand assumption; customization now changes theme colors
+and a fragment class while retaining that witness unchanged.
+
+This is file/dependency qualification on the neutral starter, with
+no SQL, database compatibility, browser/provider, rollback or support claim.
 
 ## Public outcome projection
 

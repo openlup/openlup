@@ -2,8 +2,8 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { isolatedConsumerEnv } from "./pack-manifest-input.ts";
 
 // Immutable published artifacts, independently read from the public registry.
@@ -55,7 +55,104 @@ function preparePublishedReleases(root: string): void {
   }
 }
 
-export function proveDistributionCliConsumer(consumer: string): void {
+/** Greatest stable core tag below the target visible in every package's npm history. */
+export function previousPublishedSet(target: string, tags: string, versions: string[][]): string {
+  const stable = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+  assert(stable.test(target) && versions.length > 0, "upgrade_pair_invalid");
+  const compare = (a: string, b: string) => {
+    const left = a.split(".").map(Number), right = b.split(".").map(Number);
+    return left[0] - right[0] || left[1] - right[1] || left[2] - right[2];
+  };
+  const candidates = [...tags.matchAll(/refs\/tags\/openlup-core-v([^\s^]+)/g)].map(match => match[1]);
+  const previous = candidates.filter(version => stable.test(version) && compare(version, target) < 0 && versions.every(list => list.includes(version))).sort(compare).at(-1);
+  assert(previous, "upgrade_pair_previous_unavailable");
+  return previous;
+}
+
+/** Source-mapped extraction has already materialized these managed paths. */
+export function starterUpgradeSnapshot(directory: string, version: string) {
+  const ownership = JSON.parse(readFileSync(join(directory, "ownership.json"), "utf8"));
+  const files = Object.fromEntries(ownership.managed.filter((path: string) => !ownership.generated.includes(path)).sort()
+    .map((path: string) => { assert(!ownership.owned.includes(path), "upgrade_snapshot_ownership_overlap"); return [path, readFileSync(join(directory, path), "utf8")]; }));
+  // A harness-only ordinal: neither snapshot admission nor this proof observes SQL.
+  return { version, schema: { min: 0, max: 0 }, files: files as Record<string, string> };
+}
+
+export function assertUpgradeConflict(report: { state: string; applied: string[]; conflicts: { path: string; reason: string }[] }, path: string): void {
+  assert.equal(report.state, "refused"); assert.deepEqual(report.applied, []);
+  assert.deepEqual(report.conflicts, [{ path, reason: "current bytes match neither predecessor nor candidate" }]);
+}
+
+/** Refuse serving a mixed file snapshot or a declared/installed package mismatch. */
+export function assertCompleteStarter(directory: string, snapshot: ReturnType<typeof starterUpgradeSnapshot>): void {
+  const matches = Object.entries(snapshot.files).every(([path, content]) => existsSync(join(directory, path)) && readFileSync(join(directory, path), "utf8") === content);
+  const dependencies = JSON.parse(readFileSync(join(directory, "package.json"), "utf8")).dependencies;
+  const installed = Object.entries(dependencies).filter(([name]) => name.startsWith("@openlup/")).every(([name, version]) =>
+    existsSync(join(directory, "node_modules", name, "package.json")) && JSON.parse(readFileSync(join(directory, "node_modules", name, "package.json"), "utf8")).version === version);
+  assert(matches && installed, "incomplete_application_upgrade");
+}
+
+type UpgradePair = { from: string; to: string; fromVersion: string; toVersion: string;
+  evidence: { planSha256?: string; customizations?: Record<string, string>; phases: { name: string; result: string }[] } };
+
+function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
+  const app = pair.from, from = starterUpgradeSnapshot(app, pair.fromVersion), to = starterUpgradeSnapshot(pair.to, pair.toVersion);
+  const phase = (name: string, action: () => void) => { const entry = { name, result: "FAIL" }; pair.evidence.phases.push(entry); action(); entry.result = "PASS"; };
+  const hash = (bytes: string | Buffer) => createHash("sha256").update(bytes).digest("hex");
+  const owned: Record<string, Buffer> = {};
+  phase("customize-owned", () => {
+    const ownership = JSON.parse(readFileSync(join(app, "ownership.json"), "utf8"));
+    for (const [path, before, after] of [
+      ["owned/store.config.ts", "#3d6657", "#663d57"],
+      ["owned/fragments.ts", "offer-intro", "adopter-offer-intro"],
+    ]) {
+      assert(ownership.owned.includes(path) && !Object.hasOwn(from.files, path) && !Object.hasOwn(to.files, path));
+      const original = readFileSync(join(app, path), "utf8"); assert(original.includes(before));
+      writeFileSync(join(app, path), original.replaceAll(before, after)); owned[path] = readFileSync(join(app, path));
+    }
+    pair.evidence.customizations = Object.fromEntries(Object.entries(owned).map(([path, bytes]) => [path, hash(bytes)]));
+    assertCompleteStarter(app, from);
+  });
+  const workspace = join(consumer, "distribution-cli-proof"); mkdirSync(workspace);
+  const executable = join(consumer, "node_modules/.bin/openlup");
+  for (const [name, snapshot] of [["from", from], ["to", to]] as const) writeFileSync(join(workspace, `${name}.json`), JSON.stringify(snapshot));
+  const options = ["--root", app, "--from", join(workspace, "from.json"), "--to", join(workspace, "to.json"), "--schema-version", "0", "--json"];
+  const run = (command: string, expected = 0) => {
+    const result = spawnSync(executable, ["upgrade", command, ...options], { cwd: app, env: isolatedConsumerEnv(), encoding: "utf8" });
+    assert.ifError(result.error); assert.equal(result.status, expected, result.stderr || result.stdout); assert.equal(result.stderr, "");
+    const report = JSON.parse(result.stdout); assert.equal(report.exitCode, expected); return report;
+  };
+  let plan: ReturnType<typeof run>;
+  phase("plan", () => { plan = run("plan"); pair.evidence.planSha256 = hash(JSON.stringify(plan)); assert.deepEqual(starterUpgradeSnapshot(app, pair.fromVersion), from, "planning wrote files"); });
+  const changed = plan.files.filter((file: { action: string }) => ["replace", "create"].includes(file.action));
+  assert(changed.length > 0, "upgrade_pair_has_no_replacements");
+  const conflict = changed.at(-1).path;
+  phase("managed-conflict", () => {
+    const original = existsSync(join(app, conflict)) ? readFileSync(join(app, conflict)) : null;
+    mkdirSync(dirname(join(app, conflict)), { recursive: true });
+    writeFileSync(join(app, conflict), "adopter-managed-divergence");
+    const before = starterUpgradeSnapshot(app, pair.fromVersion);
+    assertUpgradeConflict(run("apply", 1), conflict);
+    assert.deepEqual(starterUpgradeSnapshot(app, pair.fromVersion), before, "conflict wrote managed files");
+    if (original) writeFileSync(join(app, conflict), original); else rmSync(join(app, conflict));
+  });
+  phase("interrupt-and-refuse", () => {
+    const preload = join(workspace, "interrupt.mjs");
+    writeFileSync(preload, 'import { promises as fs } from "node:fs"; const rename = fs.rename.bind(fs); fs.rename = async (...args) => { await rename(...args); process.kill(process.pid, "SIGKILL"); await new Promise(() => {}); };');
+    const killed = spawnSync(process.execPath, ["--import", preload, executable, "upgrade", "apply", ...options], { cwd: app, env: isolatedConsumerEnv() });
+    assert.ifError(killed.error); assert.equal(killed.signal, "SIGKILL");
+    assert.equal(readFileSync(join(app, changed[0].path), "utf8"), to.files[changed[0].path]);
+    assert.throws(() => assertCompleteStarter(app, to), /incomplete_application_upgrade/);
+  });
+  phase("resume", () => { const resumed = run("apply"); assert(resumed.files.some((file: { action: string }) => file.action === "already-applied")); });
+  phase("replay", () => { assert.deepEqual(run("apply").applied, []); });
+  const checkOwned = () => { for (const [path, bytes] of Object.entries(owned)) assert.deepEqual(readFileSync(join(app, path)), bytes, `owned customization changed: ${path}`); };
+  checkOwned(); rmSync(workspace, { recursive: true, force: true });
+  return () => phase("installed-application-and-owned-bytes", () => { assertCompleteStarter(app, to); checkOwned(); });
+}
+
+export function proveDistributionCliConsumer(consumer: string, pair?: UpgradePair): void | (() => void) {
+  if (pair) return proveStarterPair(consumer, pair);
   const executable = join(consumer, "node_modules/.bin/openlup");
   const root = join(consumer, "distribution-cli-proof");
   mkdirSync(root);

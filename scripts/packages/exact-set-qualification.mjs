@@ -8,6 +8,7 @@ import { dirname, join, resolve } from 'node:path';
 import { env } from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { imageReference, readCiImage } from '../ci-image-pull.mjs';
+import { previousPublishedSet, proveDistributionCliConsumer } from './distribution-cli-proof.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const json = path => JSON.parse(readFileSync(path, 'utf8'));
@@ -56,13 +57,76 @@ export function qualificationReceipt(tag, commit, runnerImage = { image: env.Ima
   return { schemaVersion: 1, setVersion: tag.slice(14), tag, tagCommit: commit, runnerImage, startedAt: new Date().toISOString(), endedAt: null, result: 'FAIL', extraction: null, packages: [], checks: [] };
 }
 
-export function qualifyReleasedSet(tag, expectedCommit, receiptPath) {
-  const receipt = qualificationReceipt(tag, expectedCommit);
+function prepareReleasedStarter(receipt, temporary, run) {
+  const { tag, tagCommit: expectedCommit } = receipt;
+  assert.equal(run('git', ['rev-parse', `refs/tags/${tag}^{commit}`]).trim(), expectedCommit, 'release tag commit mismatch');
+  const archive = join(temporary, 'source.tar'), source = join(temporary, 'source'); mkdirSync(source);
+  run('git', ['archive', '--format=tar', `--output=${archive}`, `refs/tags/${tag}`]);
+  run('tar', ['-xf', archive, '-C', source]);
+  const starter = join(source, 'examples/neutral-store'), input = join(temporary, 'input'); mkdirSync(input);
+  const inventory = json(join(source, 'config/openlup-packages.json')).packages.filter(entry => entry.publish);
+  const application = json(join(starter, 'package.json'));
+  for (const section of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']) {
+    for (const name of Object.keys(application[section] ?? {})) if (name.startsWith('@openlup/')) application[section][name] = receipt.setVersion;
+  }
+  writeFileSync(join(input, 'package.json'), JSON.stringify(application));
+  run('npm', ['install', '--package-lock-only', '--ignore-scripts', '--no-audit', '--fund=false'], input);
+  const lockfile = join(input, 'package-lock.json'), lock = json(lockfile);
+  const packages = inventory.map(({ name, directory }) => {
+    const metadata = json(join(source, directory, 'package.json'));
+    assert.equal(metadata.version, receipt.setVersion, `${name}: source version mismatch`);
+    const entry = lock.packages[`node_modules/${name}`];
+    if (!entry || entry.version !== receipt.setVersion) refuse(`${name}: missing or mismatched locked package`);
+    return { name, version: receipt.setVersion, integrity: entry.integrity };
+  });
+  const manifest = join(input, 'manifest.json');
+  writeFileSync(manifest, JSON.stringify({ schemaVersion: 2, commit: expectedCommit, packages }));
+  const mode = readFileSync(join(starter, 'extract.mjs'), 'utf8').includes('const releasedExtractionSchemaVersion = 2;') ? 'released' : 'reconstructed';
+  const extracted = join(temporary, 'application');
+  run(process.execPath, [join(root, 'examples/neutral-store/extract.mjs'), extracted, '--source', starter,
+    '--mode', mode, '--set-version', receipt.setVersion, '--source-revision', expectedCommit, '--manifest', manifest, '--lockfile', lockfile,
+    ...(mode === 'reconstructed' ? ['--reason', 'Release tag predates versioned starter extraction.'] : [])]);
+  receipt.extraction = json(join(extracted, '.starter-origin.json'));
+  assert.equal(receipt.extraction.lockfileSha256, sha256(readFileSync(join(extracted, 'package-lock.json'))));
+  // Same Git independence, ancestor isolation and package confinement assertions as the candidate proof.
+  assert.equal(run('git', ['rev-parse', '--show-toplevel'], extracted).trim(), realpathSync(extracted));
+  assert.equal(json(join(extracted, 'package.json')).workspaces, undefined);
+  for (let parent = dirname(extracted); ; parent = dirname(parent)) {
+    assert(!existsSync(join(parent, 'node_modules')), 'Starter ancestor can supply dependencies');
+    if (parent === dirname(parent)) break;
+  }
+  run('git', ['ls-files', '--error-unmatch', 'package-lock.json'], extracted);
+  run('npm', ['ci', '--ignore-scripts', '--no-audit', '--fund=false'], extracted);
+  // npm 11.19's workspaces=false filter omits direct root edges. Audit the installed
+  // prefix from its isolated parent, without loading the starter's project .npmrc.
+  const audit = JSON.parse(run('npm', ['audit', 'signatures', '--json', '--include-attestations', '--prefix', extracted], temporary));
+  receipt.packages = verifiedReleasePackages(audit, packages, receipt.setVersion, expectedCommit);
+  for (const { name } of packages) {
+    const path = join(extracted, 'node_modules', name);
+    assert(lstatSync(path).isDirectory() && !lstatSync(path).isSymbolicLink() && realpathSync(path) === join(realpathSync(extracted), 'node_modules', name), `${name}: installed package escapes application`);
+  }
+  return extracted;
+}
+
+function checkReleasedStarter(extracted, run, extraction) {
+  for (const args of [['run', 'typecheck'], ['run', 'build'], ['test']]) process.stdout.write(run('npm', args, extracted));
+  process.stdout.write(run(process.execPath, ['--experimental-strip-types', '--test', 'browser/dev-loop.proof.ts'], extracted));
+  assert.equal(sha256(readFileSync(join(extracted, 'package-lock.json'))), extraction.lockfileSha256, 'qualification changed committed lock');
+}
+
+export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = false) {
+  const receipt = upgrade ? json(receiptPath) : qualificationReceipt(tag, expectedCommit);
+  if (upgrade) {
+    assert(receipt.result === 'PASS' && receipt.tag === tag && receipt.tagCommit === expectedCommit, 'exact-set qualification must pass first');
+    receipt.result = 'FAIL'; receipt.endedAt = null;
+    receipt.upgrade = { result: 'FAIL', startedAt: new Date().toISOString(), phases: [], checks: [] };
+    writeFileSync(receiptPath, JSON.stringify(receipt, null, 2) + '\n');
+  }
   const temporary = mkdtempSync(join(tmpdir(), 'openlup-exact-set-'));
   const environment = { ...env, npm_config_cache: join(temporary, 'cache'), npm_config_registry: 'https://registry.npmjs.org', npm_config_fetch_retries: '0' };
   for (const name of ['NODE_PATH', 'NODE_OPTIONS', 'npm_config_node_options', 'NPM_CONFIG_NODE_OPTIONS', 'NODE_TEST_CONTEXT']) delete environment[name];
   const run = (command, args, cwd = root) => {
-    const check = { command: [command, ...args], result: 'FAIL' }; receipt.checks.push(check);
+    const check = { command: [command, ...args], result: 'FAIL' }; (upgrade ? receipt.upgrade.checks : receipt.checks).push(check);
     const output = execFileSync(command, args, { cwd, env: environment, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
     check.result = 'PASS'; return output;
   };
@@ -70,62 +134,43 @@ export function qualifyReleasedSet(tag, expectedCommit, receiptPath) {
     if (env.OPENLUP_REGISTRY_READY !== undefined && env.OPENLUP_REGISTRY_READY !== 'true') refuse('published set not visible on npm');
     assert.equal(process.version, 'v24.21.0');
     assert.equal(run('npm', ['--version']).trim(), '11.19.0');
-    assert.equal(run('git', ['rev-parse', `refs/tags/${tag}^{commit}`]).trim(), expectedCommit, 'release tag commit mismatch');
-    const archive = join(temporary, 'source.tar'), source = join(temporary, 'source'); mkdirSync(source);
-    run('git', ['archive', '--format=tar', `--output=${archive}`, `refs/tags/${tag}`]);
-    run('tar', ['-xf', archive, '-C', source]);
-    const starter = join(source, 'examples/neutral-store'), input = join(temporary, 'input'); mkdirSync(input);
-    const inventory = json(join(source, 'config/openlup-packages.json')).packages.filter(entry => entry.publish);
-    const application = json(join(starter, 'package.json'));
-    for (const section of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']) {
-      for (const name of Object.keys(application[section] ?? {})) if (name.startsWith('@openlup/')) application[section][name] = receipt.setVersion;
+    if (upgrade) {
+      const versions = json(join(root, 'config/openlup-packages.json')).packages.filter(p => p.publish)
+        .map(p => JSON.parse(run('npm', ['view', p.name, 'versions', '--json'])));
+      const previous = previousPublishedSet(receipt.setVersion, run('git', ['ls-remote', '--tags', 'origin', 'refs/tags/openlup-core-v*']), versions);
+      const previousTag = `openlup-core-v${previous}`;
+      run('git', ['fetch', '--no-tags', '--depth=1', 'origin', `refs/tags/${previousTag}:refs/tags/${previousTag}`]);
+      const pair = receipt.upgrade;
+      pair.from = qualificationReceipt(previousTag, run('git', ['rev-parse', `${previousTag}^{commit}`]).trim());
+      pair.to = qualificationReceipt(tag, expectedCommit);
+      const applications = [pair.from, pair.to].map((release, index) => {
+        const directory = join(temporary, String(index)); mkdirSync(directory);
+        return prepareReleasedStarter(release, directory, run);
+      });
+      checkReleasedStarter(applications[0], run, pair.from.extraction);
+      pair.from.result = 'PASS'; pair.from.endedAt = new Date().toISOString();
+      const finish = proveDistributionCliConsumer(applications[1], { from: applications[0], to: applications[1], fromVersion: previous, toVersion: receipt.setVersion, evidence: pair });
+      // The target extraction already passed the extractor's complete lock checker.
+      // The CLI moved declarations; the harness moves the verified lock and installs.
+      assert.deepEqual(readFileSync(join(applications[0], 'package.json')), readFileSync(join(applications[1], 'package.json')), 'file upgrade must move exact dependency declarations');
+      writeFileSync(join(applications[0], 'package-lock.json'), readFileSync(join(applications[1], 'package-lock.json')));
+      run('npm', ['ci', '--ignore-scripts', '--no-audit', '--fund=false'], applications[0]);
+      checkReleasedStarter(applications[0], run, pair.to.extraction);
+      finish();
+      pair.to.result = 'PASS'; pair.to.endedAt = new Date().toISOString();
+      pair.result = 'PASS';
+    } else {
+      const extracted = prepareReleasedStarter(receipt, temporary, run);
+      receipt.postgresImage = imageReference(readCiImage('install-proof-postgres'));
+      if (!env.OPENLUP_QUALIFICATION_DATABASE_URL) refuse('qualification PostgreSQL connection required');
+      run(process.execPath, ['--input-type=module', '-e', "import pg from 'pg'; import { env } from 'node:process'; const pool = new pg.Pool({ connectionString: env.OPENLUP_QUALIFICATION_DATABASE_URL }); try { const {rows} = await pool.query('show server_version_num'); if (Math.floor(Number(rows[0].server_version_num) / 10000) !== 17) throw new Error('qualification requires PostgreSQL 17'); } finally { await pool.end(); }"], extracted);
+      checkReleasedStarter(extracted, run, receipt.extraction);
     }
-    writeFileSync(join(input, 'package.json'), JSON.stringify(application));
-    run('npm', ['install', '--package-lock-only', '--ignore-scripts', '--no-audit', '--fund=false'], input);
-    const lockfile = join(input, 'package-lock.json'), lock = json(lockfile);
-    const packages = inventory.map(({ name, directory }) => {
-      const metadata = json(join(source, directory, 'package.json'));
-      assert.equal(metadata.version, receipt.setVersion, `${name}: source version mismatch`);
-      const entry = lock.packages[`node_modules/${name}`];
-      if (!entry || entry.version !== receipt.setVersion) refuse(`${name}: missing or mismatched locked package`);
-      return { name, version: receipt.setVersion, integrity: entry.integrity };
-    });
-    const manifest = join(input, 'manifest.json');
-    writeFileSync(manifest, JSON.stringify({ schemaVersion: 2, commit: expectedCommit, packages }));
-    const mode = readFileSync(join(starter, 'extract.mjs'), 'utf8').includes('const releasedExtractionSchemaVersion = 2;') ? 'released' : 'reconstructed';
-    const extracted = join(temporary, 'application');
-    run(process.execPath, [join(root, 'examples/neutral-store/extract.mjs'), extracted, '--source', starter,
-      '--mode', mode, '--set-version', receipt.setVersion, '--source-revision', expectedCommit, '--manifest', manifest, '--lockfile', lockfile,
-      ...(mode === 'reconstructed' ? ['--reason', 'Release tag predates versioned starter extraction.'] : [])]);
-    receipt.extraction = json(join(extracted, '.starter-origin.json'));
-    assert.equal(receipt.extraction.lockfileSha256, sha256(readFileSync(join(extracted, 'package-lock.json'))));
-    // Same Git independence, ancestor isolation and package confinement assertions as the candidate proof.
-    assert.equal(run('git', ['rev-parse', '--show-toplevel'], extracted).trim(), realpathSync(extracted));
-    assert.equal(json(join(extracted, 'package.json')).workspaces, undefined);
-    for (let parent = dirname(extracted); ; parent = dirname(parent)) {
-      assert(!existsSync(join(parent, 'node_modules')), 'Starter ancestor can supply dependencies');
-      if (parent === dirname(parent)) break;
-    }
-    run('git', ['ls-files', '--error-unmatch', 'package-lock.json'], extracted);
-    run('npm', ['ci', '--ignore-scripts', '--no-audit', '--fund=false'], extracted);
-    // npm 11.19's workspaces=false filter omits direct root edges. Audit the installed
-    // prefix from its isolated parent, without loading the starter's project .npmrc.
-    const audit = JSON.parse(run('npm', ['audit', 'signatures', '--json', '--include-attestations', '--prefix', extracted], temporary));
-    receipt.packages = verifiedReleasePackages(audit, packages, receipt.setVersion, expectedCommit);
-    receipt.postgresImage = imageReference(readCiImage('install-proof-postgres'));
-    if (!env.OPENLUP_QUALIFICATION_DATABASE_URL) refuse('qualification PostgreSQL connection required');
-    run(process.execPath, ['--input-type=module', '-e', "import pg from 'pg'; import { env } from 'node:process'; const pool = new pg.Pool({ connectionString: env.OPENLUP_QUALIFICATION_DATABASE_URL }); try { const {rows} = await pool.query('show server_version_num'); if (Math.floor(Number(rows[0].server_version_num) / 10000) !== 17) throw new Error('qualification requires PostgreSQL 17'); } finally { await pool.end(); }"], extracted);
-    for (const { name } of packages) {
-      const path = join(extracted, 'node_modules', name);
-      assert(lstatSync(path).isDirectory() && !lstatSync(path).isSymbolicLink() && realpathSync(path) === join(realpathSync(extracted), 'node_modules', name), `${name}: installed package escapes application`);
-    }
-    for (const args of [['run', 'typecheck'], ['run', 'build'], ['test']]) process.stdout.write(run('npm', args, extracted));
-    process.stdout.write(run(process.execPath, ['--experimental-strip-types', '--test', 'browser/dev-loop.proof.ts'], extracted));
-    assert.equal(sha256(readFileSync(join(extracted, 'package-lock.json'))), receipt.extraction.lockfileSha256, 'qualification changed committed lock');
     receipt.result = 'PASS';
   } catch (error) { receipt.error = error.message; throw error; }
   finally {
     receipt.endedAt = new Date().toISOString();
+    if (upgrade) receipt.upgrade.endedAt = receipt.endedAt;
     mkdirSync(dirname(resolve(receiptPath)), { recursive: true });
     writeFileSync(receiptPath, JSON.stringify(receipt, null, 2) + '\n');
     rmSync(temporary, { recursive: true, force: true });
@@ -134,7 +179,7 @@ export function qualifyReleasedSet(tag, expectedCommit, receiptPath) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  const [tag, commit, receipt] = process.argv.slice(2);
-  if (process.argv.length !== 5) refuse('use release-tag full-tag-commit receipt-path');
-  qualifyReleasedSet(tag, commit, receipt);
+  const [tag, commit, receipt, mode] = process.argv.slice(2);
+  if (process.argv.length !== 5 && !(process.argv.length === 6 && mode === '--upgrade')) refuse('use release-tag full-tag-commit receipt-path');
+  qualifyReleasedSet(tag, commit, receipt, mode === '--upgrade');
 }
