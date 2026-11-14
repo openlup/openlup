@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 
+const releasedExtractionSchemaVersion = 2;
 /** Run this file from an exact downloaded source archive, not from an installed package. */
 const options = new Map();
 const [directory, ...extra] = process.argv.slice(2);
@@ -41,7 +42,8 @@ if (mode) {
   if (!/^[a-f0-9]{40}$/.test(revision ?? '')) refuse('source_revision_required');
   if (!options.has('--manifest') || !options.has('--lockfile')) refuse('inputs_required');
   if (mode === 'reconstructed' && !options.get('--reason')?.trim()) refuse('reconstruction_reason_required');
-  if (mode === 'released' && provenance.releasedExtractionSchemaVersion !== 2) refuse('reconstruction_required');
+  if (mode === 'released' && !(await readFile(resolve(source, 'extract.mjs'), 'utf8'))
+    .includes(`const releasedExtractionSchemaVersion = ${releasedExtractionSchemaVersion};`)) refuse('reconstruction_required');
   const tree = resolve(source, '../..');
   let verification = 'supplied';
   try { await lstat(resolve(tree, '.git')); verification = 'verified'; }
@@ -80,23 +82,47 @@ if (mode) {
     const canonical = value => JSON.stringify(value && typeof value === 'object' ? Object.entries(value).sort() : value);
     if (canonical(lock.packages[''][key]) !== canonical(application[key])) refuse('lock_root_mismatch', key);
   }
+  const aliasSpec = value => typeof value === 'string' ? value.match(/^npm:(@openlup\/[^@/]+)(?:@(.+))?$/) : null;
+  const aliases = new Map();
+  for (const [path, pkg] of Object.entries(lock.packages)) {
+    for (const section of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']) {
+      for (const [dependency, spec] of Object.entries(pkg[section] ?? {})) {
+        const alias = aliasSpec(spec);
+        if (!alias) continue;
+        const [, name, requested] = alias;
+        if (!expected.has(name)) refuse('lock_package_extra', name);
+        if (requested !== version) refuse('lock_package_mismatch', name);
+        let parent = path, installed;
+        while (!Object.hasOwn(lock.packages, installed = `${parent ? parent + '/' : ''}node_modules/${dependency}`)) {
+          if (!parent) refuse('lock_package_missing', name);
+          parent = parent.includes('/node_modules/') ? parent.slice(0, parent.lastIndexOf('/node_modules/')) : '';
+        }
+        if (aliases.has(installed) && aliases.get(installed) !== name) refuse('lock_package_mismatch', name);
+        aliases.set(installed, name);
+      }
+    }
+  }
   seen.clear();
   for (const [path, pkg] of Object.entries(lock.packages)) {
     if (!path) continue;
     let url;
     try { url = new URL(pkg.resolved); } catch { refuse('lock_non_registry', path); }
     if (pkg.link || url.origin !== 'https://registry.npmjs.org' || url.username || url.password || url.search || url.hash) refuse('lock_non_registry', path);
-    const name = path.match(/(?:^|\/)node_modules\/(@openlup\/[^/]+)$/)?.[1];
-    if (pkg.name?.startsWith('@openlup/') && pkg.name !== name) refuse('lock_package_mismatch', pkg.name);
+    const alias = aliasSpec(pkg.version);
+    const names = new Set([path.match(/(?:^|\/)node_modules\/(@openlup\/[^/]+)$/)?.[1],
+      pkg.name?.startsWith('@openlup/') ? pkg.name : undefined,
+      decodeURIComponent(url.pathname).match(/^\/(@openlup\/[^/]+)\/-\//)?.[1], alias?.[1], aliases.get(path)].filter(Boolean));
+    if (names.size > 1) refuse('lock_package_mismatch', [...names].join(', '));
+    const [name] = names;
     if (!name) continue;
     if (!expected.has(name)) refuse('lock_package_extra', name);
+    if ((alias?.[2] ?? pkg.version) !== version || pkg.integrity !== expected.get(name)) refuse('lock_package_mismatch', name);
     if (seen.has(name)) refuse('lock_package_duplicate', name);
-    if (pkg.version !== version || pkg.integrity !== expected.get(name)) refuse('lock_package_mismatch', name);
     if (pkg.resolved !== `https://registry.npmjs.org/${name}/-/${name.slice(9)}-${version}.tgz`) refuse('lock_non_registry', name);
     seen.add(name);
   }
   for (const name of expected.keys()) if (!seen.has(name)) refuse('lock_package_missing', name);
-  identity = { schemaVersion: 2, mode, setVersion: version, sourceRevision: revision, sourceRevisionVerification: verification,
+  identity = { schemaVersion: releasedExtractionSchemaVersion, mode, setVersion: version, sourceRevision: revision, sourceRevisionVerification: verification,
     ...(mode === 'reconstructed' ? { reason: options.get('--reason') } : {}), lockfileSha256: hash(lockBytes) };
 }
 for (const path of files) {

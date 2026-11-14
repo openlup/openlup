@@ -35,6 +35,11 @@ test('extract creates an independent repository and refuses to overwrite an exis
       assert.deepEqual(await readFile(resolve(target, file)),
         await readFile(resolve(root, ownership.sourceMappings?.[file] ?? file)), file);
     }
+    const candidateFiles = [...ownership.owned, ...ownership.managed, '.starter-origin.json'].sort();
+    const candidateContent = await Promise.all(candidateFiles.map(async path =>
+      [path, sha256(await readFile(resolve(target, path)))]));
+    // Frozen output of b037c43e9: includes every copied file, not only the identity.
+    assert.equal(sha256(JSON.stringify(candidateContent)), '547a549e1c194c41f9a281271839977bb51dd12521a0727440f06aa6fada1e69');
     for (const file of ownership.demoData) assert.ok(ownership.owned.includes(file), file);
     assert.ok(ownership.demoDataNote.includes('customer environment'));
     assert.ok(ownership.pageCopyRequiredFor.length > 0);
@@ -115,7 +120,8 @@ async function releasedFixture() {
   for (const name of names) await put(`packages/${name.slice(9)}/package.json`, { name, version });
   await put('examples/neutral-store/package.json', application);
   await put('examples/neutral-store/ownership.json', ownership);
-  await put('examples/neutral-store/starter-release.json', { kind: 'local-candidate', releasedExtractionSchemaVersion: 2 });
+  await put('examples/neutral-store/starter-release.json', { kind: 'local-candidate' });
+  await put('examples/neutral-store/extract.mjs', 'const releasedExtractionSchemaVersion = 2;\n');
   await put('examples/neutral-store/.gitignore', 'node_modules/\npackage-lock.json\n');
   await put('examples/neutral-store/copy.txt', 'fictional owned copy\n');
   await put('examples/neutral-store/README.template.md', 'Fixture application\n');
@@ -161,7 +167,7 @@ test('released extraction pins and commits registry artifacts with deterministic
 test('reconstruction requires an explicit reason and Git source identity must match HEAD', async () => {
   const f = await releasedFixture();
   try {
-    await f.put('examples/neutral-store/starter-release.json', { kind: 'local-candidate' });
+    await f.put('examples/neutral-store/extract.mjs', '// Earlier extractor without released identity support\n');
     const flags = f.args.map(value => value === 'released' ? 'reconstructed' : value);
     const app = f.run('old-source', [...flags, '--reason', 'Earlier development starter reconstructed with current extraction tooling']);
     const identity = JSON.parse(await readFile(resolve(app, '.starter-origin.json'), 'utf8'));
@@ -184,7 +190,7 @@ const refusals: [string, (f: ReleaseFixture) => Promise<unknown> | void, string?
   ['source_revision_required', f => { f.args[5] = 'short'; }],
   ['inputs_required', f => { f.args.splice(6, 2); }],
   ['reconstruction_reason_required', f => { f.args[1] = 'reconstructed'; }],
-  ['reconstruction_required', f => f.put('examples/neutral-store/starter-release.json', {})],
+  ['reconstruction_required', f => f.put('examples/neutral-store/extract.mjs', '// Earlier extractor\n')],
   ['source_package_version_mismatch', f => f.put('packages/core/package.json', { name: '@openlup/core', version: '0.40.0' }), '@openlup/core'],
   ['source_package_set_empty', f => f.put('config/openlup-packages.json', { packages: [] })],
   ['manifest_identity_mismatch', async f => { f.manifest.commit = 'b'.repeat(40); await f.put('manifest.json', f.manifest); }],
@@ -196,7 +202,7 @@ const refusals: [string, (f: ReleaseFixture) => Promise<unknown> | void, string?
   ['application_package_extra', f => f.put('examples/neutral-store/package.json', { ...f.application, dependencies: { '@openlup/extra': '*' } }), '@openlup/extra'],
   ['lock_format_invalid', async f => { f.lock.lockfileVersion = 1; await f.put('lock.json', f.lock); }],
   ['lock_root_mismatch', async f => { f.lock.packages['']!.dependencies = {}; await f.put('lock.json', f.lock); }, 'dependencies'],
-  ['lock_package_extra', async f => { f.lock.packages['node_modules/@openlup/extra'] = f.lock.packages['node_modules/@openlup/core']!; await f.put('lock.json', f.lock); }, '@openlup/extra'],
+  ['lock_package_extra', async f => { f.lock.packages['node_modules/@openlup/extra'] = { version: f.version, resolved: `https://registry.npmjs.org/@openlup/extra/-/extra-${f.version}.tgz` }; await f.put('lock.json', f.lock); }, '@openlup/extra'],
   ['lock_package_duplicate', async f => { f.lock.packages['node_modules/other/node_modules/@openlup/core'] = f.lock.packages['node_modules/@openlup/core']!; await f.put('lock.json', f.lock); }, '@openlup/core'],
   ['lock_package_missing', async f => { delete f.lock.packages['node_modules/@openlup/core']; await f.put('lock.json', f.lock); }, '@openlup/core'],
   ...['version', 'integrity'].map(key => ['lock_package_mismatch', async (f: ReleaseFixture) => {
@@ -208,7 +214,25 @@ const refusals: [string, (f: ReleaseFixture) => Promise<unknown> | void, string?
     f.lock.packages['node_modules/@openlup/core']!.resolved = resolved; await f.put('lock.json', f.lock);
   }] as [string, (f: ReleaseFixture) => Promise<void>]),
   ['lock_non_registry', async f => { f.lock.packages['node_modules/external'] = { resolved: 'file:external.tgz' }; await f.put('lock.json', f.lock); }],
-  ['lock_package_mismatch', async f => { f.lock.packages['node_modules/alias'] = { ...f.lock.packages['node_modules/@openlup/core'], name: '@openlup/core' }; await f.put('lock.json', f.lock); }, '@openlup/core'],
+  ['lock_package_duplicate', async f => { f.lock.packages['node_modules/alias'] = { ...f.lock.packages['node_modules/@openlup/core'], name: '@openlup/core' }; await f.put('lock.json', f.lock); }, '@openlup/core'],
+  ['lock_package_mismatch', async f => { f.lock.packages['node_modules/pg/node_modules/alias'] = {
+    version: '0.40.0', resolved: 'https://registry.npmjs.org/@openlup/core/-/core-0.40.0.tgz',
+  }; await f.put('lock.json', f.lock); }, '@openlup/core'],
+  ...['version', 'integrity'].map(key => ['lock_package_mismatch', async (f: ReleaseFixture) => {
+    f.lock.packages['node_modules/pg/node_modules/alias'] = { ...f.lock.packages['node_modules/@openlup/core'], [key]: undefined };
+    await f.put('lock.json', f.lock);
+  }, '@openlup/core'] as [string, (f: ReleaseFixture) => Promise<void>, string]),
+  ['lock_package_mismatch', async f => { f.lock.packages['node_modules/pg'] = {
+    resolved: 'https://registry.npmjs.org/pg/-/pg-8.0.0.tgz', dependencies: { alias: 'npm:@openlup/core@0.40.0' },
+  }; await f.put('lock.json', f.lock); }, '@openlup/core'],
+  ['lock_package_extra', async f => { f.lock.packages['node_modules/alias'] = {
+    version: f.version, resolved: `https://registry.npmjs.org/@openlup/extra/-/extra-${f.version}.tgz`,
+  }; await f.put('lock.json', f.lock); }, '@openlup/extra'],
+  ['lock_package_mismatch', async f => { f.lock.packages['node_modules/pg'] = {
+    resolved: 'https://registry.npmjs.org/pg/-/pg-8.0.0.tgz', dependencies: { alias: `npm:@openlup/core@${f.version}` },
+  }; f.lock.packages['node_modules/pg/node_modules/alias'] = {
+    version: f.version, resolved: 'https://registry.npmjs.org/other/-/other-1.0.0.tgz',
+  }; await f.put('lock.json', f.lock); }, '@openlup/core'],
 ];
 for (const [index, [code, mutate, detail]] of refusals.entries()) test(`released extraction refuses ${code} (${index + 1})`, async () => {
   const f = await releasedFixture();
@@ -218,6 +242,22 @@ for (const [index, [code, mutate, detail]] of refusals.entries()) test(`released
       const message = String((error as { stderr?: Buffer }).stderr);
       return message.includes(`starter_release_${code}`) && (!detail || message.includes(detail));
     });
+  } finally { await rm(f.directory, { recursive: true, force: true }); }
+});
+
+test('released extraction verifies nameless npm aliases, including hoisted dependencies and version specs', async () => {
+  const f = await releasedFixture();
+  try {
+    const core = f.lock.packages['node_modules/@openlup/core']!;
+    delete f.lock.packages['node_modules/@openlup/core'];
+    f.lock.packages['node_modules/alias'] = core;
+    f.lock.packages['node_modules/pg'] = { resolved: 'https://registry.npmjs.org/pg/-/pg-8.0.0.tgz',
+      dependencies: { alias: `npm:@openlup/core@${f.version}` } };
+    await f.put('lock.json', f.lock);
+    f.run('hoisted-alias');
+    core.version = `npm:@openlup/core@${f.version}`;
+    await f.put('lock.json', f.lock);
+    f.run('version-alias');
   } finally { await rm(f.directory, { recursive: true, force: true }); }
 });
 

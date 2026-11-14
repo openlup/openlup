@@ -21,24 +21,6 @@ The pure tests discriminate shared offer rules, client price tampering,
 authorization before a store call and missing checkout binding. The source
 release additionally tests independent extraction and the materialized test layout. They do not establish durable purchase or upgrade behavior.
 
-Released extraction is an offline identity check, described in the source
-[starter README](../README.md) in the source tree.
-The supplied public-registry lockfile and expected pack-manifest integrities
-must match the exact source package versions and supplied revision. The extractor
-commits the lockfile and content/lock hashes; it does not establish publication,
-installation or hosted qualification. Source predating this capability requires
-`reconstructed` mode and a reason, including the 0.41.0 to 0.42.0 development pair.
-Run the source-only offline extraction tests from `examples/neutral-store`:
-
-```sh
-node --experimental-strip-types --test test/extract.test.ts
-```
-
-The fixture locks and integrities test pins, named refusals, Git revision checks,
-reconstruction labels, candidate byte preservation and deterministic identities.
-They make no network request and do not qualify any released set. The historical
-execution records below continue to describe local candidates.
-
 The browser recipe follows every message link in both locales, exercises a
 browser cart across a reload, inspects a visible native refusal and requires a
 successful sandbox purchase through the installed binding. The purchase test

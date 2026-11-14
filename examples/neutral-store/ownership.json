@@ -176,7 +176,6 @@
     "playwright-report/",
     "test-results/"
   ],
-  "generatedNote": "Released extraction commits package-lock.json and .starter-origin.json. Both remain generated identities outside owned/managed upgrade snapshots; the upgrade CLI installs nothing. Candidate extraction continues to ignore its local lockfile.",
   "demoData": [
     "owned/acquisition-addresses.ts",
     "owned/demo-seed.ts",
