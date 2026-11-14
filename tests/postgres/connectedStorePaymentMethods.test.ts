@@ -5,7 +5,7 @@ import { restoreConnectedNativeStore } from "../../server/adapters/postgres/conn
 import { captureStoreJourney, journeyCensus, journeySelection, storeJourneyResources,
   type JourneyInstallation } from "../helpers/storeJourney.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
-import { call, failure, prepareOriginal, renewal, request } from "./subscriptionNativeFixture.js";
+import { call, failure, prepareOriginal, renewal, request, retryDueAt } from "./subscriptionNativeFixture.js";
 
 const resources = storeJourneyResources();
 let source: JourneyInstallation, target: JourneyInstallation;
@@ -35,7 +35,8 @@ it("round-trips method references, receipts and frozen recovery authority with e
   const token = (await source.owner.query("SELECT id FROM public.commerce_checkout_recovery_tokens WHERE token_hash=$1", [hash])).rows[0].id;
   const authority = await call(source.owner, "subscription_retry_authorize_recovery", [f.operation, token, replacement.reference, recorded.id, at]);
   await call(source.owner, "subscription_retry_schedule_recovery", [f.operation, "method:schedule", authority.id, at]);
-  await call(source.owner, "subscription_retry_prepare", [f.operation, "method:dispatch", { ...request({ ...f, original }), paymentMethodRef: replacement.reference }, "2026-11-14T12:00:00Z"]);
+  const dispatchAt = await retryDueAt(source.owner, f.operation);
+  await call(source.owner, "subscription_retry_prepare", [f.operation, "method:dispatch", { ...request({ ...f, original }), paymentMethodRef: replacement.reference }, dispatchAt]);
   const packet = await captureStoreJourney(source.owner, "method-source");
   const freshTarget = await captureStoreJourney(target.owner, "method-target");
   const before = await journeyCensus(source.owner);
