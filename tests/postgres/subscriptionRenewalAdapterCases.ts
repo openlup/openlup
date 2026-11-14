@@ -4,7 +4,10 @@ import { NATIVE_SUBSCRIPTION_CAPABILITIES,createPostgresRenewalStore,createPostg
 import type { RenewalFrozenSnapshot,RenewalDue,RenewalReadback } from '@openlup/platform/subscriptions/contracts';
 import { createPostgresRenewalSettlementPort } from '../../server/adapters/postgres/commerce/renewalSettlement.js';
 import type { RenewalSettlementPort } from '@openlup/platform/subscriptions/contracts';
-import { AT,call,failure,later,positive,prepareOriginal,renewal,request,unchangedIdentity } from './subscriptionNativeFixture.js';
+import { AT,call,failure,later,positive,prepareOriginal,renewal as nativeRenewal,sandboxRenewal,recordRenewalMethod,request,unchangedIdentity } from './subscriptionNativeFixture.js';
+async function renewal(...args:Parameters<typeof nativeRenewal>) {
+ const f=await nativeRenewal(...args); await recordRenewalMethod(args[0],f,'method-1'); return f;
+}
 export function registerAdapterCases(h:{pool:Pool}) {
  it('the P1 native store keeps the original snapshot, correlation, schedule and identity across mutable future-term edits and lease takeover',async()=>{
   const f=await renewal(h.pool),wire=f.snapshot;
@@ -134,7 +137,7 @@ export function registerAdapterCases(h:{pool:Pool}) {
  });
 
  it('receipt replay has zero durable side effects through prepared retry, later failure and re-offered exhaustion',async()=>{
-  const f=await renewal(h.pool),original=await prepareOriginal(h.pool,f),store=createPostgresRetryStore(h.pool);
+  const f=await sandboxRenewal(h.pool),original=await prepareOriginal(h.pool,f),store=createPostgresRetryStore(h.pool);
   const writes:string[]=[];
   const binding=createPostgresRetryLifecycleBinding({executor:h.pool,
    async withTransaction(work) {

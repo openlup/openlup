@@ -10,7 +10,10 @@ import { createM10RetryDriver } from "../../server/runtime/public-reference/m10R
 import { createPostgresRenewalSettlementPort } from "../../server/adapters/postgres/commerce/renewalSettlement.js";
 import { nativeHarness, openCase } from "../helpers/fulfillmentNative.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
-import { AT, call, failure, later, prepareOriginal, renewal, request, unchangedIdentity, type Renewal } from "./subscriptionNativeFixture.js";
+import { AT, call, failure, later, prepareOriginal, renewal as nativeRenewal, recordRenewalMethod, request, unchangedIdentity, type Renewal } from "./subscriptionNativeFixture.js";
+async function renewal(...args:Parameters<typeof nativeRenewal>) {
+ const f=await nativeRenewal(...args); await recordRenewalMethod(args[0],f,'frozen-method'); return f;
+}
 import { allPublicRows } from "./subscriptionStockWaitCases.js";
 
 const h = nativeHarness("m10-composition");
@@ -182,6 +185,7 @@ it("default off and unknown readiness refuse before database work or the shared 
 });
 it("subsequent failure replay after committed propagation has zero delta; interrupted propagation still completes", async () => {
   const f = await renewal(h.pool), original = await prepareOriginal(h.pool, f), store = createPostgresRetryStore(h.pool), b = bind(f);
+  await recordRenewalMethod(h.pool, f);
   const driver = createM10RetryDriver(b.retryOptions);
   await driver.propagateFailure(f.operation, `initial:${f.operation}`, failure());
   await store.prepare(f.operation, `prepare:${f.operation}`, request({ ...f, original }), later(24));
@@ -213,6 +217,7 @@ it("ordinary retries refuse a method different from the frozen mandate, then rec
 
 it("a committed retry preparation reconciles the exact attempt without executing again", async () => {
   const f = await renewal(h.pool), original = await prepareOriginal(h.pool, f), b = bind(f);
+  await recordRenewalMethod(h.pool, f);
   const store = createPostgresRetryStore(h.pool);
   await createM10RetryDriver(b.retryOptions).propagateFailure(f.operation, `failure:${f.operation}`, failure());
   const prepared = await store.prepare(f.operation, `prepare:${f.operation}`, request({ ...f, original }), later(24));

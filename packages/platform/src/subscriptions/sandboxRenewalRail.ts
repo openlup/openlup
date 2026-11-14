@@ -15,7 +15,9 @@ export function createPostgresSandboxRenewalRail(executor: SubscriptionQueryExec
   const now = options.now ?? (() => new Date().toISOString());
   async function operation(settlementIntentId: string) {
     const row = (await executor.query(`SELECT op.*,si.id AS intent_id,si.order_id,si.amount_minor,si.currency_code,
-      m.method_ref,m.health_state,s.client_id FROM public.subscription_renewal_operations op
+      CASE WHEN public.subscription_method_has_recorded_ref(s.id) THEN public.subscription_method_health_read(s.id)->>'provider_method_ref' ELSE m.method_ref END AS method_ref,
+      CASE WHEN public.subscription_method_has_recorded_ref(s.id) THEN public.subscription_method_health_read(s.id)->>'health_state' ELSE m.health_state END AS health_state,
+      CASE WHEN public.subscription_method_has_recorded_ref(s.id) THEN public.subscription_method_chargeable_unattended(s.id,now()) ELSE m.health_state='healthy' END AS method_authorized,s.client_id FROM public.subscription_renewal_operations op
       JOIN public.commerce_settlement_intents si ON si.renewal_operation_id=op.id
       JOIN public.subscriptions s ON s.id=op.subscription_id
       JOIN public.subscription_method_states m ON m.subscription_id=s.id
@@ -38,7 +40,7 @@ export function createPostgresSandboxRenewalRail(executor: SubscriptionQueryExec
         || input.amountMinor !== Number(op.amount_minor) || input.currency !== op.currency_code) throw new Error("subscription_sandbox_request_mismatch");
       // A stale method is known before the simulated dispatch, so it is an
       // explicit refusal rather than an indeterminate, permanently open attempt.
-      if (!op.external_attempt_ref && (input.paymentMethodRef !== op.method_ref || op.health_state !== "healthy")) return {
+      if (!op.external_attempt_ref && (input.paymentMethodRef !== op.method_ref || op.method_authorized !== true)) return {
         status: "failed" as const, externalAttemptRef: null,
         failure: { reason: "sandbox_method_unavailable", failureClass: "payment_method_unavailable" },
       };

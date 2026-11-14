@@ -1642,6 +1642,9 @@ PostgreSQL cases cover fresh/prefix installs, replay/conflict, unknown readback,
 lost acknowledgement, rollback, denied access, dunning/recovery, concurrency and
 later-only dates; this does not claim managed-store parity or host activation.
 
+The following paragraph describes the attempt-store prefix. The subsequent
+method-reference forward adds collection to that prefix as described below.
+
 The current native chain through `20261114100000_payment_provider_attempt_store.sql`
 adds `createPostgresPreparedAttemptPersistencePort`,
 `createPostgresProviderPaymentControlPort` and
@@ -1660,6 +1663,39 @@ omits generic dunning-case creation for that receipt. Rung and schedule come fro
 the receipt, with `payment_pending` retained on the cycle. Provider dunning case,
 notice and token handoff await attributed composition. A real provider renewal
 binding is not supplied at this stage; the starter still binds sandbox renewal.
+
+With `20261114110000_payment_method_refs.sql` installed, `methodSetup` is
+`supported`. Compose `createPostgresPaymentMethodSetup` with a host-authenticated
+principal, the selected adapter's `methodPort` and host-owned customer creation.
+It checks subscription ownership before provider I/O, reuses a recorded customer
+and preserves stable customer/setup keys. The account facade can select it as
+its `paymentMethod` lane with `paymentMethodSetup: { supported: true }`.
+No lane is selected by importing or installing the package.
+
+`createPostgresPaymentWebhookMethodRefPort` records reusable references;
+`consumePostgresPaymentMethodDelivery` applies lifecycle facts and schedules only
+eligible recorded retries before setup close. Method evidence uses
+`resolveMethodOwner`; saved-method money evidence uses the additive
+`resolveSavedMethodOwner`. Neither trusts adapter metadata as ownership.
+`createPostgresRecordedSubscriptionMethodReader` returns `method_ref_not_recorded`
+for historical labels or mirrors without recorded evidence. Scope repair is
+explicit and batch dry-run is the default. For native host-composed real history,
+missing recorded references block retries, recovery, reactivation, timed auto-resume
+and upcoming reminders until the host records refs with `payment_method_ref_upsert`.
+Original renewal charging keeps its previous method and mandate evidence behavior
+when no recorded reference exists, even with real-provider history. Once any
+reference row exists, every reader uses strict recorded authority, regardless of
+its status or active state. Account-support health and lifecycle admission follow
+the provider-history classification even without a reference. Setup keys are
+trimmed and must contain 8–180 characters. Explicit
+sandbox behavior is preserved; an initial captured
+checkout alone does not override a completed sandbox attachment/current terms. See the
+[method-history limits](../../docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
+for the schema and manual-path boundary. Collection, linking and scheduling do
+not settle money or alter subscription service. Expiring methods can remain
+chargeable until expiry; dispatched repair authority cannot be substituted.
+Offline PostgreSQL and fake-client witnesses establish this selected store path;
+provider activation and joined renewal composition remain separate.
 
 The additive provider recovery factories read bounded evidence and use the existing
 checkout admission owners: `createPostgresProviderPaymentRecoveryGuidancePort`,

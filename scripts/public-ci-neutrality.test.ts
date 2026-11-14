@@ -931,12 +931,15 @@ describe("neutrality scan reuse", () => {
 
 });
 
-it("keeps the managed, operations and R1 pins closed at exactly 17 paths and 22 tuples", () => {
-  expect(reviewedPinnedIntroductions).toHaveLength(17);
-  expect(new Set(reviewedPinnedIntroductions.map(([path]) => path)).size).toBe(17);
-  expect(reviewedPinnedIntroductions.flatMap(([, , counts]) => counts)).toHaveLength(22);
+it("keeps the managed, operations and payment pins closed at exactly 20 paths and 26 tuples", () => {
+  expect(reviewedPinnedIntroductions).toHaveLength(20);
+  expect(new Set(reviewedPinnedIntroductions.map(([path]) => path)).size).toBe(20);
+  expect(reviewedPinnedIntroductions.flatMap(([, , counts]) => counts)).toHaveLength(26);
+  const methodPins = [["tests/postgres/fixtures/paymentMethods/replayed.sql","039b65952dfacf1810f60e327dcab41b2d5df858a74d4b0ec76e03562e2dc41e",[["ui-14",0,6]]],["tests/postgres/fixtures/paymentMethods/subscription_switch.sql","cf453ffcae8f3a61375595e9241b0a430d43c6208f4d9b2585627c8f6e12c55e",[["ui-13",0,3]]],["tests/postgres/fixtures/paymentMethods/scope_repair.sql","e2dcc12ff8f76ec519bdb5444c83fb1e748b341c135cff1f3b92de1ea33cacc2",[["ui-13",0,10],["ui-14",0,1]]]];
+  const methodPaths = methodPins.map(([path]) => path);
+  expect(reviewedPinnedIntroductions.filter(([path]) => methodPaths.includes(path))).toEqual(methodPins);
   const paymentPaths = [paymentAttemptSql, paymentAttemptMirror];
-  const c94 = reviewedPinnedIntroductions.filter(([path]) => path !== operationsSql && !paymentPaths.includes(path) && path !== paymentAttemptFixture);
+  const c94 = reviewedPinnedIntroductions.filter(([path]) => path !== operationsSql && !paymentPaths.includes(path) && path !== paymentAttemptFixture && !methodPaths.includes(path));
   expect(c94).toHaveLength(13);
   expect(c94.flatMap(([, , counts]) => counts)).toHaveLength(15);
   const paymentPins = reviewedPinnedIntroductions.filter(([path]) => paymentPaths.includes(path));

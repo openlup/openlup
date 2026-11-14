@@ -4,7 +4,7 @@ export const paymentSchemaDescriptor = {
   settlement: "supported",
   laterOnlyCycle: "supported",
   preparedDurableStore: "supported",
-  methodSetup: "unsupported",
+  methodSetup: "supported",
   absenceReopen: "unsupported",
   cumulativeRefund: "unsupported",
 } as const;

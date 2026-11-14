@@ -3,7 +3,7 @@ import { expect,it } from 'vitest';
 import type { Pool,PoolClient } from 'pg';
 import { createPostgresSubscriptionCommands, createPostgresSubscriptionCommandStore, NATIVE_SUBSCRIPTION_CAPABILITIES, type SubscriptionQueryExecutor } from '@openlup/platform/subscriptions';
 import type { SubscriptionCommand, SubscriptionCommandReceipt } from '@openlup/platform/subscriptions/contracts';
-import { AT,call,failure,later,renewal,request } from './subscriptionNativeFixture.js';
+import { AT,call,failure,later,sandboxRenewal as renewal,request } from './subscriptionNativeFixture.js';
 export function registerCommandCases(h:{pool:Pool}) {
 async function fixture() {
  const f=await renewal(h.pool);await h.pool.query('DELETE FROM public.subscription_renewal_operations WHERE id=$1',[f.operation]);

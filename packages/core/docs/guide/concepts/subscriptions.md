@@ -118,6 +118,21 @@ return `deferred` before reservation/preparation, without a terminal refusal
 write. The operation stays claimed until lease expiry before the same schedule
 is offered again. Static terms refusals remain terminal.
 
+### Recorded-method recovery
+
+A fresh usable recorded method can accelerate an existing automatic retry.
+Exhausted or stopped work requires recorded token authority for the current
+case, cycle and retry rung. A method update alone cannot grant that authority
+or reset the retry budget. The host still supplies the recovery routes and
+provider composition.
+
+Before dispatch, repair authority may bind a different usable method. Dispatch
+freezes that binding. A later automatic rung reads its currently recorded usable
+method without changing the earlier dispatch binding. Collection, linking and
+scheduling neither settle money nor pause, resume or cancel service. Method
+health and setup processing are described under
+[saved payment methods](payments.md#saved-payment-methods).
+
 ## Timed pauses
 
 `createPostgresSubscriptionAutoResume` exposes `run(limit, now)` for a trusted
@@ -227,10 +242,12 @@ prevent automatic arrival alignment regardless of scheduled date.
 
 ## Native payment truth and review
 
-The native payment descriptor supports truth, settlement and later-only cycle
-alignment. Generic durable prepared-attempt storage, method setup, absence
-reopening and cumulative refunds remain unsupported; sandbox-attempt storage
-is a separate capability. Refunds settle money without cancelling service.
+The native payment descriptor supports truth, settlement, later-only cycle
+alignment, durable prepared-attempt storage and method setup with the complete
+installed database catalogue. Provider execution and method collection require
+explicit host bindings; sandbox-attempt storage is a separate capability. See
+the [payment capability limits](../reference/limits.md#purchase-composition-boundaries)
+for unsupported actions. Refunds settle money without cancelling service.
 A descriptor alone does not establish installed schema readiness.
 
 Capture against a cancelled order remains `captured` and `open` with

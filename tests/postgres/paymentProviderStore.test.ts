@@ -3,12 +3,12 @@ import type { PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { createPostgresProviderPaymentControlPort, createPostgresPaymentWebhookControlPort,
   createPostgresProviderExpiredCheckoutSafety, createPostgresProviderPaymentRecoveryGuidancePort,
-  createPostgresSandboxPaymentSimulator, executePreparedAttemptMechanism } from "@openlup/platform/payments";
+  createPostgresSandboxPaymentSimulator, createPostgresPaymentMethodStore, executePreparedAttemptMechanism } from "@openlup/platform/payments";
 import { createOutboxPaymentFailedEmailHandler } from "@openlup/platform/commerce/server";
 import type { OutboxEventRow, PaymentFailedEmailInput, TransactionalEmailPort } from "@openlup/platform/commerce";
 import type { PreparedAttemptFailurePolicy } from "@openlup/platform/payments/contracts";
 import { lifecycleInstallation, call, type LifecycleInstallation } from "./subscriptionLifecycleClosureFixture.js";
-import { renewal, prepareOriginal } from "./subscriptionNativeFixture.js";
+import { renewal, recordRenewalMethod, prepareOriginal } from "./subscriptionNativeFixture.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
 
 const AT = "2026-11-13T12:00:00.000Z";
@@ -594,6 +594,7 @@ it("records one attributed renewal failure before truth reuses its settlement an
 
 it.each([0, 1])("records a same-attempt expiry after decline at renewal sequence %s without another retry stage and replays it without writes", async sequence => {
   const f = await providerRenewal(); let a = f.a;
+  if (sequence === 1) await recordRenewalMethod(env.runtime, f.r, "method-primary");
   await result(f, `decline:${a.paymentAttemptId}`);
   if (sequence === 1) {
     const prepare = { ...f.prepare, idempotencyKey: `prepare:${f.intent}:1`, providerIdempotencyKey: `provider:${f.intent}:1` };
@@ -636,6 +637,9 @@ it.each([0, 1])("records a same-attempt expiry after decline at renewal sequence
 
 it("retains the 24/72/168/exhausted failure ladder and cross-writer duplicate absorption on immutable attempt receipts", async () => {
   const f = await providerRenewal(); let a = f.a;
+  await createPostgresPaymentMethodStore(env.runtime).upsert({ key: `ladder-method:${f.intent}`, clientId: f.r.client,
+    subscriptionId: f.subscription, provider: f.prepare.provider, methodKind: "card", customer: null,
+    reference: f.prepare.paymentMethodRef, mandate: null, status: "active", active: true, expiresAt: null, consent: {}, payload: {} });
   const times = [AT, "2026-11-14T12:00:00Z", "2026-11-17T12:00:00Z", "2026-11-24T12:00:00Z"];
   const next = ["2026-11-14T12:00:00Z", "2026-11-17T12:00:00Z", "2026-11-24T12:00:00Z", null];
   for (let sequence = 0; sequence < 4; sequence++) {
