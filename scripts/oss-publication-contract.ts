@@ -28,6 +28,7 @@ export const PUBLIC_EXECUTION_ENTRYPOINTS = [
   "scripts/packages/platform-cold-consumer.ts",
   "scripts/packages/application-upgrade-proof.ts",
   "scripts/packages/guide-tutorial.ts",
+  "scripts/packages/exact-set-qualification.mjs",
   "packages/core/scripts/api-contract.ts", "packages/core/scripts/core-package-consumer-smoke.ts",
   "packages/core/scripts/documentation-contract.ts", "packages/core/scripts/refuse-publish.ts",
   "packages/core/scripts/release-bundle.ts", "packages/core/scripts/release-check.ts", "packages/core/scripts/release-npm-checks.ts",

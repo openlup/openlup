@@ -16,7 +16,11 @@ expands that list.
 | Owned | Your identity, configuration, general copy, media, named presentation fragments and application agent instructions |
 | Managed | Starter host, pages, shared validation and data shapes, application checks, lifecycle wrapper and documentation |
 | Source only | Archive extraction tooling and package/compiler checks retained by the source release |
-| Generated | Local provenance, artifact identities, temporary installation lockfile and build or browser output |
+| Generated | Local provenance, artifact identities, installation lockfile and build or browser output |
+
+The candidate installation lockfile is ignored; released or reconstructed
+extraction commits its registry lockfile. Both remain generated and outside
+owned/managed upgrade snapshots.
 
 `demoData` is a subset of owned files; it does not make the fictional data safe
 for a customer environment. Replace its data, authority, policies and external

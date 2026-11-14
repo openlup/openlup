@@ -42,7 +42,8 @@ The composition root binds guest checkout, sandbox payment and customer
 subscription address and lifecycle changes through public native factories. Host and browser
 purchase/recovery proofs run on real PostgreSQL in both configurations. `./lifecycle up` installs
 the packaged PostgreSQL history and fictional catalogue before starting the UI.
-Final release pins and lockfile wait for the selected set.
+Default extraction retains local tarball pins; released extraction below selects
+an exact npm set and supplied lockfile.
 Review grants retain the native fixed thirty-day expiry, with no application time seam.
 The unchanged required purchase spec must run against installed PostgreSQL;
 the default database-less UI host cannot satisfy it. See [proof](docs/proof.md).
@@ -54,6 +55,84 @@ materializes `AGENTS.md` and `README.md` through `sourceMappings`. It creates an
 independent Git repository without ancestor lookup or workspace resolution.
 `lifecycle.mjs` binds the selected tarball names, equal set versions
 and SHA-256 identities to the candidate's exact `file:` references.
+
+For a released development-preview set, run from the matching source tree's root:
+
+```sh
+node examples/neutral-store/extract.mjs ../my-store --mode released \
+  --set-version <version> --source-revision <full-source-commit> \
+  --manifest ./pack-manifest.json --lockfile ./starter-package-lock.json
+```
+
+Supply the existing pack producer's v2 manifest (`schemaVersion: 2`, `commit`,
+`packages` with `name`, `version` and `integrity`; artifact filename/hash fields
+are retained). This is an explicit expected-integrity input, not a publication
+receipt. Its complete package set and revision must match the source inventory.
+Every source package must have the selected exact version. LockfileVersion 3
+(npm 11's default) and a `packages` map are required. Every map key must already
+be canonical: `""` or a `node_modules/<package>` path, optionally nested through
+further `node_modules/<package>` segments, with no trailing slash, `.`, `..`,
+empty segments, backslashes or percent-encoding. Keys must be unique after
+lower-casing.
+
+For every manifest package P, exactly `node_modules/<P>` must exist with version
+V, the expected sha512 integrity and the exact public-registry tarball URL for
+P@V. The root entry's dependency sections must match the extracted package.json,
+including its exact V pins. Every other non-root entry refuses if its key, name,
+resolved URL (also URL-decoded) or any dependency, optional-dependency,
+peer-dependency or dev-dependency key or value contains `@openlup/` or `%40openlup`,
+case-insensitively. Nested and aliased OpenLup copies are forbidden. All non-root
+entries must retain public `https://registry.npmjs.org` resolutions without links,
+credentials, query strings or fragments. Refusals use `starter_release_*` names.
+
+Prepare that lockfile in a separate copy of the application's `package.json`:
+replace every `@openlup/*` dependency with the exact set version and run
+`npm install --package-lock-only --ignore-scripts --registry=https://registry.npmjs.org`.
+Extraction itself performs no install and makes no registry request. It rewrites
+the application's package pins, removes the lockfile ignore and creates an initial
+Git commit including `package-lock.json` and `.starter-origin.json`, using the local
+identity `Starter extraction <starter@localhost>`. This establishes extraction
+identity; qualification on the actual public artifacts is separate evidence.
+
+The identity records mode, set version, supplied source revision, lockfile SHA-256
+and content SHA-256. The content digest is SHA-256 of UTF-8 JSON containing sorted
+`[relativePath, fileSha256]` pairs for every extracted owned/managed file, after
+rewrites; it excludes the lockfile, identity file and Git metadata. The revision
+must equal `git rev-parse HEAD` for a source checkout (recorded as `verified`);
+for an archive it is recorded as `supplied`. HEAD verification alone does not
+verify an archive's origin or establish that checkout files are unmodified.
+
+For source that predates released extraction, invoke this newer extractor with
+`--source <old-source-tree>/examples/neutral-store --mode reconstructed` and the
+same inputs plus `--reason <explanation>`. The output retains that reason and
+cannot claim original released-starter provenance. The 0.41.0 to 0.42.0 development
+comparison is a labelled reconstruction; a later released pair needs its own proof.
+Without release flags, candidate extraction preserves the copied bytes and legacy
+identity, ignores its generated local lockfile, and creates no initial commit.
+Both generated identity files stay outside owned/managed upgrade snapshots;
+the upgrade CLI installs nothing. These modes do not establish stable-framework
+or supported-installation status.
+
+Candidate extraction retains baseline mechanics, metadata and non-documentation
+file bytes; the extracted README, ownership and proof notes describe both modes.
+The committed released lockfile stays generated and outside upgrade snapshots;
+the upgrade CLI installs no dependencies. Install the exact public-registry set
+separately from its committed lockfile with `npm ci`.
+The extraction schema marker lives in the source-only extractor,
+and schema version 2 is recorded in the generated released identity.
+
+Run the source-only offline identity checks from `examples/neutral-store`:
+
+```sh
+node --experimental-strip-types --test test/extract.test.ts
+```
+
+These fixtures cover canonical lock keys, the exact OpenLup allowlist, forbidden
+OpenLup references in other entries, named refusals, Git source verification,
+reconstruction, every non-documentation candidate file's baseline bytes and
+deterministic hashes. Only `README.md`, `docs/proof.md` and `docs/ownership.md` are
+exempt from that byte comparison. These fixtures make no network request and do
+not qualify any released set.
 
 ## Run the local application
 
