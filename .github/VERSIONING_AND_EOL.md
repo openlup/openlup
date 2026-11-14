@@ -14,10 +14,6 @@ follows preview rules.
   upgrade proofs green. No current source checkout, private package, or preview
   release satisfies that gate.
 
-## The public compatibility contract
-
-Moved to [Versioning and stability](../packages/core/docs/guide/reference/stability.md#public-api).
-
 ## Stable semantic versioning
 
 Moved to [Versioning and stability](../packages/core/docs/guide/reference/stability.md#version-numbers).
@@ -932,17 +928,21 @@ jobs:
    stored npm token, and only this job has `id-token: write`.
 
 The separate [Guide tutorial against the npm registry](workflows/registry-tutorial.yml)
-workflow runs after a successful core publication. It uses the default-branch
-workflow, with only `contents: read`, and runs the default-branch checkout and
-reads the release tag's tutorial page after checking that tag's commit against
-the completed publication run. It accepts only a release event with an `openlup-core-v<version>` tag,
-then waits up to ten minutes for the matching package set and core's `latest`
-value on npm before running the guide tutorial against the registry and a
-disposable pinned PostgreSQL database. The registry tutorial remains advisory
-until its second green run: a failure produces a warning annotation and a step
-summary. A propagation timeout also warns and defers the tutorial. This workflow
-is not a required check and does not hold the publication run open or delay the
-next release dispatch.
+workflow runs trusted default-branch code after a successful core publication,
+checking the release tag's commit against the completed publication run. A
+maintainer may also dispatch it from the default branch for an existing core
+release tag. The tutorial reads the tagged page and waits up to ten minutes for
+the matching npm set; automatic runs also require core's `latest` to match.
+The tutorial is blocking after two green release runs: a failure fails its own
+workflow run and reports to the maintainer; a propagation timeout warns and
+defers the tutorial. It runs after publication and cannot affect it. The
+separate `exact-set-qualification` job reads the tagged starter as data,
+verifies and tests the exact locked npm set, and retains a blocking
+qualification result and a 90-day receipt. Both jobs have `contents: read`;
+qualification also has `packages: read` for the pinned PostgreSQL mirror. The
+[qualification owner](../docs/platform/DISTRIBUTION_EVIDENCE.md#exact-published-set-qualification)
+defines trust, evidence and support limits. This workflow adds no required PR
+check, does not hold publication open and does not delay the next dispatch.
 
 The packed-candidate tutorial in `install-packages` is blocking because its
 condition of two green merge-group runs on main has been met.

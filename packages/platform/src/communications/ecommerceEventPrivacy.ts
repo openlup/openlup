@@ -8,7 +8,10 @@ export function createEcommerceEventPrivacyContributor(): PersonalDataContributo
     {owner:id,resource:'communication-events.source-and-replay-fences',disposition:'retain' as const,reasonCode:'COMMERCIAL_FACT_AND_DEDUPLICATION',remote:false},
     {owner:id,resource:'communication-events.provider-history',disposition:'retain' as const,reasonCode:'PROVIDER_ERASURE_OWNER_REQUIRED',remote:true}];
   return {id,version,ownedResources:obligations.map(value=>value.resource),
-    async prepareErasure(){},
+    async prepareErasure(db){
+      // The receipts relation lock precedes subject row locks.
+      await db.query('SELECT public.communication_event_prepare_erasure()');
+    },
     async export(db,subject){
       const data=subject.contactId?(await db.query('SELECT public.communication_event_privacy($1::uuid,false) AS value',[subject.contactId])).rows[0]?.value:[];
       return {contributorId:id,version,data:data as PrivacyData,coverage:{complete:false,included:['local frozen event projections','replay fences'],unavailable:['provider event history','commercial source owners']},obligations};

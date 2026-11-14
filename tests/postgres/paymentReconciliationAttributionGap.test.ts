@@ -196,7 +196,7 @@ it.each([
 ])("retains $label handoff token, revocation, rung and notice identities on fresh advancement and replay", async ({ firstAt, nextAt }) => {
   const f = await fixture();
   const prior = (await env.owner.query(`INSERT INTO public.commerce_checkout_recovery_tokens(order_id,client_id,token_hash,expires_at)
-    VALUES($1,$2,$3,'2033-01-01T00:00Z') RETURNING id`, [f.order, f.client, createHash("sha256").update(randomUUID()).digest("hex")])).rows[0].id;
+    VALUES($1,$2,$3,now()+interval '30 days') RETURNING id`, [f.order, f.client, createHash("sha256").update(randomUUID()).digest("hex")])).rows[0].id;
   const first = await reconciliation().applyTerminalResult({ ...input(f), occurredAt: firstAt, checkedAt: firstAt });
   const caseId = first.subscriptionWebhookDunning!.caseId;
   expect((await env.owner.query("SELECT revoked_at IS NOT NULL revoked FROM public.commerce_checkout_recovery_tokens WHERE id=$1", [prior])).rows[0].revoked).toBe(true);

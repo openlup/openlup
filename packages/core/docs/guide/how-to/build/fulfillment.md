@@ -7,12 +7,12 @@ operator handlers.
 ## Choose the imports
 
 Use `@openlup/platform/fulfillment/native` for native bindings and stores; see
-its [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/api/fulfillment-native.api.md). Use
+its [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/packages/platform/api/fulfillment-native.api.md). Use
 `@openlup/platform/fulfillment` for dispatch composition and captures,
 `@openlup/platform/fulfillment/contracts` for request and port types, and
 `@openlup/platform/composition` for contribution composition. Consult the
-[API report](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/api/fulfillment.api.md), [contracts report](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/api/fulfillment-contracts.api.md)
-and [composition report](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/api/composition.api.md) for those inventories. Install the
+[API report](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/packages/platform/api/fulfillment.api.md), [contracts report](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/packages/platform/api/fulfillment-contracts.api.md)
+and [composition report](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/packages/platform/api/composition.api.md) for those inventories. Install the
 [complete selected catalogue](../../upgrade/database-migrations.md#check-application-compatibility),
 including the operator shipment routines, before selecting native commands.
 

@@ -2,13 +2,17 @@
   "current": {
     "profiles": {
       "legacy": {
-        "count": 136,
-        "exactTailCount": 26,
-        "objectInventorySha256": "94ce6fd5f71a84bfdd5d0c118571b2e57c09aa4a8231bf167c0fb27c8e8262a4",
+        "count": 137,
+        "exactTailCount": 27,
+        "objectInventorySha256": "79bb7a8cba026d059d8d6e4d7213f06593c9786c97d642b6620103b84410d366",
         "tail": [
           {
             "file": "db/platform/migrations/20261120100000_fulfillment_intake_channel.sql",
             "sha256": "5ce8ada91ed1b6634a9d17b54b82751502e6350e564945528f240e361dda5352"
+          },
+          {
+            "file": "db/platform/migrations/20261119200000_communication_event_prepare_erasure.sql",
+            "sha256": "f1400228a9bfb6d8ed75f1fed73f53c590c83f6a4fc76c226fef6fc54c965fe4"
           },
           {
             "file": "db/platform/migrations/20261114120000_payment_reconciliation_refund_evidence.sql",
@@ -553,13 +557,17 @@
         ]
       },
       "bootstrap": {
-        "count": 141,
-        "exactTailCount": 26,
-        "objectInventorySha256": "6f0545ff12268556489289bf2e7e04ca32138dd17e26fd04cebfc45c3b9ac004",
+        "count": 142,
+        "exactTailCount": 27,
+        "objectInventorySha256": "05c50fe5afd4e448a9121de467b5fd3d4c2ef503c70cea83635290b106bc9fb3",
         "tail": [
           {
             "file": "db/platform/migrations/20261120100000_fulfillment_intake_channel.sql",
             "sha256": "5ce8ada91ed1b6634a9d17b54b82751502e6350e564945528f240e361dda5352"
+          },
+          {
+            "file": "db/platform/migrations/20261119200000_communication_event_prepare_erasure.sql",
+            "sha256": "f1400228a9bfb6d8ed75f1fed73f53c590c83f6a4fc76c226fef6fc54c965fe4"
           },
           {
             "file": "db/platform/migrations/20261114120000_payment_reconciliation_refund_evidence.sql",
@@ -1124,13 +1132,17 @@
         ]
       },
       "separate": {
-        "count": 141,
-        "exactTailCount": 26,
-        "objectInventorySha256": "d695929c33a40e8e3f20601a6cffcafe7503308a2b1e6431add7a41a63ba7f63",
+        "count": 142,
+        "exactTailCount": 27,
+        "objectInventorySha256": "bed57b7773f021d29bf3fb8e2d5c05d6d785b2a9c30623d2a6bbaf19ab9440a3",
         "tail": [
           {
             "file": "db/platform/migrations/20261120100000_fulfillment_intake_channel.sql",
             "sha256": "5ce8ada91ed1b6634a9d17b54b82751502e6350e564945528f240e361dda5352"
+          },
+          {
+            "file": "db/platform/migrations/20261119200000_communication_event_prepare_erasure.sql",
+            "sha256": "f1400228a9bfb6d8ed75f1fed73f53c590c83f6a4fc76c226fef6fc54c965fe4"
           },
           {
             "file": "db/platform/migrations/20261114120000_payment_reconciliation_refund_evidence.sql",
@@ -1695,13 +1707,17 @@
         ]
       },
       "admin-managed": {
-        "count": 140,
-        "exactTailCount": 26,
-        "objectInventorySha256": "3255e46d3278a0f57d6cb8a8abb7b0f5993cd0930c514b3d4d9477107a4ea2bd",
+        "count": 141,
+        "exactTailCount": 27,
+        "objectInventorySha256": "93dbbb958bfefaf7615b1624055c6e79e2bb9ffd6f69a33e155c57bec226186d",
         "tail": [
           {
             "file": "db/platform/migrations/20261120100000_fulfillment_intake_channel.sql",
             "sha256": "5ce8ada91ed1b6634a9d17b54b82751502e6350e564945528f240e361dda5352"
+          },
+          {
+            "file": "db/platform/migrations/20261119200000_communication_event_prepare_erasure.sql",
+            "sha256": "f1400228a9bfb6d8ed75f1fed73f53c590c83f6a4fc76c226fef6fc54c965fe4"
           },
           {
             "file": "db/platform/migrations/20261114120000_payment_reconciliation_refund_evidence.sql",
@@ -2262,13 +2278,17 @@
         ]
       },
       "admin-operator": {
-        "count": 140,
-        "exactTailCount": 26,
-        "objectInventorySha256": "3a48264e0067f3698b8976e8e4cac9c9449aa6d60371a6999b6bf2d924019712",
+        "count": 141,
+        "exactTailCount": 27,
+        "objectInventorySha256": "92f565bad71d068c493049a353dd779a28f32776578f93ee75f277e4244c92c7",
         "tail": [
           {
             "file": "db/platform/migrations/20261120100000_fulfillment_intake_channel.sql",
             "sha256": "5ce8ada91ed1b6634a9d17b54b82751502e6350e564945528f240e361dda5352"
+          },
+          {
+            "file": "db/platform/migrations/20261119200000_communication_event_prepare_erasure.sql",
+            "sha256": "f1400228a9bfb6d8ed75f1fed73f53c590c83f6a4fc76c226fef6fc54c965fe4"
           },
           {
             "file": "db/platform/migrations/20261114120000_payment_reconciliation_refund_evidence.sql",
