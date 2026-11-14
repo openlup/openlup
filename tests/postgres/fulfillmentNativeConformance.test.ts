@@ -68,7 +68,7 @@ it('native G17 correlates a newly observed external ID and replays its atomic ac
  expect(await native.read(`observation-${f.shipment}`)).toEqual(before);
 });
 it('fresh full-catalogue install binds sparse assets, hashes and object inventory, then replays without changing history',async()=>{
- expect(FULFILLMENT_MIGRATIONS.map(unit=>unit.position)).toEqual([5,27,51,73,74,76]);
+ expect(FULFILLMENT_MIGRATIONS.map(unit=>unit.position)).toEqual([5,27,51,73,74,76,135]);
  for(const unit of FULFILLMENT_MIGRATIONS){const bytes=readFileSync(unit.catalogPath);expect(readFileSync(unit.url)).toEqual(bytes);expect(createHash('sha256').update(bytes).digest('hex')).toBe(unit.sha256);expect(units[unit.position]).toEqual({file:unit.catalogPath,sha256:unit.sha256});}
  const history=(await h.pool.query('SELECT * FROM public.platform_schema_migrations ORDER BY position')).rows;
  expect(history.map(({catalog_path,sha256,position})=>({file:catalog_path,sha256,position}))).toEqual(units.map((u,position)=>({...u,position})));
@@ -165,8 +165,9 @@ it.each([undefined, 'webhook', 'polling'] as const)('records %s ACK intake, pres
  expect((await other.read(requestKey))?.acceptance).toEqual(acceptance);
  expect((await h.pool.query("SELECT payload->>'channel' AS channel FROM public.fulfillment_shipment_operations WHERE idempotency_key=$1", [acceptance.labelKey])).rows).toEqual([{ channel: intakeMode === 'polling' ? 'poll' : 'push' }]);
  expect((await h.pool.query('SELECT count(*)::int AS count FROM public.fulfillment_provider_attempts WHERE attempt_key=$1', [acceptance.providerAttemptKey])).rows).toEqual([{ count: 1 }]);
- const acl = (await h.pool.query("SELECT has_function_privilege('service_role','public.fulfillment_dispatch_finish(uuid,jsonb,boolean,text)','EXECUTE') AS service, has_function_privilege('anon','public.fulfillment_dispatch_finish(uuid,jsonb,boolean,text)','EXECUTE') AS anon, has_function_privilege('authenticated','public.fulfillment_dispatch_finish(uuid,jsonb,boolean,text)','EXECUTE') AS authenticated")).rows[0];
- expect(acl).toEqual({ service: true, anon: false, authenticated: false });
+ // Legacy installation need not provision runtime roles; PUBLIC still has no execute.
+ const acl = (await h.pool.query("SELECT NOT EXISTS (SELECT 1 FROM aclexplode(coalesce(proacl,acldefault('f',proowner))) WHERE grantee=0 AND privilege_type='EXECUTE') AS no_public, prosecdef, proconfig FROM pg_proc WHERE oid='public.fulfillment_dispatch_finish(uuid,jsonb,boolean,text)'::regprocedure")).rows[0];
+ expect(acl).toEqual({ no_public: true, prosecdef: false, proconfig: ['search_path=pg_catalog'] });
 });
 
 
