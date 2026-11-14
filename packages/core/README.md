@@ -277,7 +277,7 @@ under `docs/guide/` if it exists; a guide without a detected source repository
 root refuses. `npm run docs:check -- --write` refreshes generated regions in
 `README.md`, `AGENTS.md` and the guide.
 
-The [repository neutrality checks](https://github.com/openlup/openlup/blob/openlup-core-v0.12.0/CONTRIBUTING.md#development-preview-checks)
+The [repository neutrality checks](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/CONTRIBUTING.md#development-preview-checks)
 reuse the source scanner through `./scripts/neutrality-tree-counts.ts` relative
 to this source package. This process interface reads JSON containing source paths,
 contents and a policy
@@ -288,7 +288,7 @@ export and changes no matcher or kernel behavior.
 Repository lint keeps this package's production source independent of configured
 provider SDKs and explicit industry contract names. Adopter adapters compose
 providers; generic ports can forward opaque extension data. See the
-[syntax scope and exceptions](https://github.com/openlup/openlup/blob/openlup-core-v0.12.0/CONTRIBUTING.md#development-preview-checks).
+[syntax scope and exceptions](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/CONTRIBUTING.md#development-preview-checks).
 
 The repository checker also calls the UI neutrality counting process with
 `--counts-json` to count its existing patterns over the supplied sources. Running that checker without
@@ -310,4 +310,4 @@ artifact evidence.
 
 ## Release notes
 
-Read [the changelog](CHANGELOG.md#0410) before upgrading the package set.
+Read [the changelog](CHANGELOG.md#0420) before upgrading the package set.

@@ -26,6 +26,8 @@ export function createNativeSubscriptionBinding(input: {
   settlement(db: SubscriptionQueryExecutor): RenewalSettlementPort;
   inventory: AutomaticRenewalRunDeps["inventory"];
   paymentRails: AutomaticRenewalRunDeps["paymentRails"];
+  /** Explicit provider lifecycle selection; the default sandbox binding stays separate. */
+  providerLifecycle?: { failureHandoff: AutomaticRenewalRunDeps["failureHandoff"]; settlement: RenewalSettlementPort };
   policy: AutomaticRenewalRunDeps["policy"];
   retry: Pick<NativeRetryDriverOptions, "readFrozenMandate" | "retryInput" | "payments" | "recoveredTemplate" | "retryCadence">;
   failureTemplate: string; recoveryPath: string | null;
@@ -45,13 +47,14 @@ export function createNativeSubscriptionBinding(input: {
     },
   }, input.executor, input.now);
   const stock = createPostgresStockWaitStore({ ...input, codec: input.codec });
-  const lifecycle = createPostgresRetryLifecycleBinding({ ...input, retryCadence: input.retry.retryCadence,
+  const lifecycle = input.providerLifecycle ?? createPostgresRetryLifecycleBinding({ ...input, retryCadence: input.retry.retryCadence,
     correlate: (wire) => input.codec.decode(wire).cycle,
   });
   const retry = createNativeRetryDriver({ ...input, ...input.retry,
     decode: input.codec.decode, validateInput: input.policy.validateInput, classifyFailure: input.policy.classifyFailure,
   });
-  const capabilities: SubscriptionCapabilities = Object.freeze({ ...NATIVE_SUBSCRIPTION_CAPABILITIES, stockRecovery: "selected" });
+  const capabilities: SubscriptionCapabilities = Object.freeze({ ...NATIVE_SUBSCRIPTION_CAPABILITIES, stockRecovery: "selected",
+    ...(input.providerLifecycle ? { preparedAttemptStore: { supported: true as const } } : {}) });
   const deps: AutomaticRenewalRunDeps = { store, settlement: lifecycle.settlement,
     failureHandoff: lifecycle.failureHandoff, paymentRails: input.paymentRails, policy: input.policy,
     workerId: input.workerId, now: input.now,

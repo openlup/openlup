@@ -75,7 +75,7 @@ For filesystem object storage, the default blob binder reads `BLOB_FS_ROOT` and
 `BLOB_FS_BASE_URL`; both must be set or the port stays unbound. Keep durable
 objects in the selected storage boundary separately from the built browser
 assets. `PLATFORM_BLOB` selects an allowed storage override for the bundle.
-The [configuration catalogue](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/config/environment-variables.json)
+The [configuration catalogue](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/config/environment-variables.json)
 records registered keys; each selected adapter owns its additional runtime
 inputs. Do not assume one deployment's environment is a package-wide contract.
 
