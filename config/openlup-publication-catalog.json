@@ -12026,6 +12026,10 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/packages/distribution-cli-proof.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/packages/distribution-cli-proof.ts",
       "class": "public-output"
     },
