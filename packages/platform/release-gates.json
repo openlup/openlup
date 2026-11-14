@@ -976,17 +976,17 @@
   },
   "pack": {
     "code": {
-      "maxPackedBytes": 2841549,
-      "maxFiles": 4828
+      "maxPackedBytes": 2663670,
+      "maxFiles": 4490
     },
     "docs": {
       "maxPackedBytes": 109679,
       "maxFiles": 8
     },
-    "maxPackedBytes": 3491340,
-    "maxUnpackedBytes": 16971313,
-    "maxFiles": 5004,
-    "capReason": "Per-part budget for the portable payments part; rows do not edit caps. Measured before this cap declaration: code 2491197 B packed / 4232 files; total 3110045 B packed / 14878816 B unpacked / 4387 files; docs 104456 B packed / 7 files. Forecast: +215040 B packed code and total; multiply those sums by 1.05 and round up. Derive unpacked and code/total file forecasts proportionally using 215040/2491197, then add 5% and round up. Docs use measured values plus 5%, rounded up. Preserve the released baseline and browser-entry limits.",
+    "maxPackedBytes": 3373607,
+    "maxUnpackedBytes": 16288207,
+    "maxFiles": 4655,
+    "capReason": "The owner approved tightening the portable payments part to ceil(measured x 1.05) after the 0.42.0 cold release-set check: code 2536828 B / 4276 files, total 3212959 B packed / 15512578 B unpacked / 4433 files. Against the measured bases of 2491197 B code and 3110045 B total, growth is 45631 B and 102914 B, both below 60% (129024 B) of the 215040 B forecast. Set code caps to 2663670 B / 4490 files and total caps to 3373607 B packed / 16288207 B unpacked / 4655 files. Preserve docs caps (109679 B / 8 files), browser-entry limits, the published 0.41.0 baseline and every other inherited limit.",
     "baseline": {
       "version": "0.41.0",
       "packedBytes": 3105325
