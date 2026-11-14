@@ -1,6 +1,6 @@
 // Required installed starter journeys; all private command output stays in memory.
-import { execFile, spawn } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
+import { execFile, execFileSync, spawn } from 'node:child_process';
+import { createHash, randomBytes } from 'node:crypto';
 import { once } from 'node:events';
 import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
@@ -16,6 +16,82 @@ import { browserJourneyGroups } from '../examples/neutral-store/browser-groups.m
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const execute = promisify(execFile);
+export const canaryPurchasePattern = 'completes sandbox purchase through the installed engine$';
+
+export function assertCanaryImage(manifest, expected, loaded, daemonManifest) {
+  const digest = 'sha256:' + createHash('sha256').update(manifest).digest('hex');
+  const config = JSON.parse(manifest).config.digest;
+  if (digest !== expected || loaded?.Descriptor?.digest !== expected || ![expected, config].includes(loaded?.Id)
+    || JSON.parse(daemonManifest).config.digest !== config) throw new Error('starter_canary_image_identity_mismatch');
+  return config;
+}
+
+/** The existing purchase spec and installed recovery witness, against the retained image. */
+export async function runStarterImageCanary(application, archive, imageDigest, evidence, {
+  command = (file, args, input) => execFileSync(file, args, { input, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024, stdio: ['pipe', 'pipe', 'pipe'] }),
+  pull = pullWithRetry, browserImage = resolveBrowserImage,
+} = {}) {
+  const started = performance.now(); let current = 'identity';
+  const run = (file, args, input) => {
+    try { return command(file, args, input); }
+    catch (error) { throw new Error(`starter_canary_${current}_${file}_failed_status_${error.status ?? 'unknown'}`); }
+  };
+  const phase = async (name, work) => {
+    const start = performance.now(); current = name; evidence[name] = { result: 'FAIL' };
+    try { await work(); evidence[name].result = 'PASS'; }
+    finally { evidence[name].durationMs = Math.round(performance.now() - start); }
+  };
+  try {
+    await withCleanup(async defer => {
+      const manifest = run('skopeo', ['inspect', '--raw', `oci-archive:${archive}`]);
+      if ('sha256:' + createHash('sha256').update(manifest).digest('hex') !== imageDigest) throw new Error('starter_canary_archive_mismatch');
+      run('docker', ['load', '--input', archive]);
+      // The containerd store addresses the loaded image by manifest, not configuration.
+      const loaded = JSON.parse(run('docker', ['image', 'inspect', imageDigest]))[0];
+      const config = assertCanaryImage(manifest, imageDigest, loaded,
+        run('skopeo', ['inspect', '--raw', `docker-daemon:${imageDigest}`]));
+      evidence.imageDigest = imageDigest; evidence.configDigest = config;
+      const postgres = readCiImage('test-postgres'); postgres.sources = postgres.sources.slice(0, 1);
+      const reference = await pull(postgres), browser = await browserImage();
+      const scratch = await mkdtemp(join(dirname(application), 'canary-'));
+      defer(() => rm(scratch, { recursive: true, force: true }));
+      const hosts = [], installations = [];
+      await phase('install', async () => {
+        for (const [index, id] of ['supplements', 'coffee'].entries()) {
+          const port = 4319 + index, baseURL = `http://127.0.0.1:${port}`;
+          const project = `canary-${randomBytes(6).toString('hex')}`, override = join(scratch, `${id}.yaml`);
+          const { applicationHealthcheck } = await import(pathToFileURL(join(application, 'host/healthcheck.ts')).href);
+          await writeFile(override, `services:\n  database:\n    image: ${reference}\n    pull_policy: never\n  installation:\n    image: ${imageDigest}\n    pull_policy: never\n  application:\n    image: ${imageDigest}\n    pull_policy: never\n    ports: !override ["127.0.0.1:${port}:${port}"]\n    command: ${JSON.stringify(['node', '--experimental-strip-types', 'lifecycle.mjs', 'serve-demo', '--configuration', id, '--port', String(port), '--listen', '0.0.0.0', '--database-url', 'postgresql://starter_runtime@database:5432/neutral_store'])}\n    healthcheck: ${JSON.stringify(applicationHealthcheck(baseURL, port))}\n`);
+          const compose = (args, input) => run('docker', ['compose', '--project-name', project, '--project-directory', application,
+            '-f', join(application, 'compose.yaml'), '-f', override, ...args], input);
+          defer(() => compose(['down', '--volumes', '--remove-orphans']));
+          compose(['up', '--wait', '--no-build', 'database']);
+          compose(['run', '--rm', '--no-deps', 'installation', 'node', 'lifecycle.mjs', 'install', '--configuration', id]);
+          compose(['up', '--wait', '--no-build', 'application']);
+          const state = JSON.parse(run('docker', ['inspect', compose(['ps', '-q', 'application']).trim()]))[0];
+          if (state.Image !== loaded.Id) throw new Error('starter_canary_running_image_mismatch');
+          hosts.push({ id, baseURL }); installations.push(compose);
+        }
+      });
+      await phase('journey', async () => {
+        await writeBrowserFixtures(application, hosts);
+        const name = `canary-browser-${randomBytes(6).toString('hex')}`;
+        defer(() => { if (run('docker', ['ps', '-aq', '--filter', `name=^${name}$`]).trim()) run('docker', ['rm', '-f', name]); });
+        const output = run('docker', [...browserArguments(application, browser, name), ...browserJourneyGroups.at(-1),
+          'journey.spec.ts', '--grep', canaryPurchasePattern]);
+        if (!/\b2 passed\b/u.test(output)) throw new Error('starter_canary_purchase_results_missing');
+      });
+      await phase('recovery', async () => {
+        const { PORTABILITY_CONSUMER_PROOF } = await import('./packages/portability-consumer-proof.ts');
+        const output = installations[0](['run', '--rm', '--no-deps', '-T', 'installation', 'node', '--input-type=module', '-',
+          'postgresql://starter_install@localhost/neutral_store?host=/var/run/postgresql'], PORTABILITY_CONSUMER_PROOF);
+        if (!output.includes('Portability installed canonical selected-row recovery PASS')) throw new Error('starter_canary_recovery_missing');
+        evidence.recovery.scope = 'Selected-row restore/readback, precision, replay/conflict and guarded-table refusal; not whole-store recovery.';
+      });
+    });
+    evidence.result = 'PASS';
+  } finally { evidence.durationMs = Math.round(performance.now() - started); }
+}
 
 export function parseArguments(args) {
   const result = {};

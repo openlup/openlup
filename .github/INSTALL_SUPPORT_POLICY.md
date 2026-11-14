@@ -53,7 +53,7 @@ with the complete database catalogue and host-owned configuration. The native
 [payment schema descriptor](../packages/platform/src/payments/schemaCapabilities.ts)
 supports the prepared store and payment-method setup; real-payment, method-setup
 and card-replacement actions remain unconfigured in this starter.
-The native rail supports the two reference payment providers; a third provider needs the provider-profile refactor.
+Native payment-provider support and its limits are listed in the [reader limits](../packages/core/docs/guide/reference/limits.md).
 The supplied portable composition covers the reference card provider only.
 Offline PostgreSQL witnesses do not establish live-provider qualification.
 
@@ -77,6 +77,17 @@ release asset or a support certificate. The tutorial is blocking for its own
 workflow run; PR admission is unchanged. See [distribution evidence](../docs/platform/DISTRIBUTION_EVIDENCE.md#exact-published-set-qualification)
 for the exact boundary and manual requalification entry. This bounded proof
 does not establish full installation, provider certification or stable support.
+
+Before application-image publication, qualification also loads the BOM-bound OCI
+archive, verifies its loaded manifest and configuration identities, and runs the
+starter's lifecycle installation on the mirrored PostgreSQL 16 composition.
+The existing sandbox purchase journey exercises that image; selected-row
+restore/readback reuses the installed recovery witness on the same installation.
+The receipt references the completed adjacent-set and schema-upgrade evidence
+without rerunning it. Results and durations are retained for 90 days. This is
+bounded preview evidence, not whole-store recovery or certification. A
+first-party demo store supplies separate adoption evidence; neither activates
+supported installation or stable maintenance.
 
 The starter host binds native store actions against a local demonstration
 PostgreSQL database. Without `publicOrigin`, it accepts only

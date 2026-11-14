@@ -282,6 +282,8 @@ export interface FulfillmentDispatchRequest {
     orderRef: string;
     orderNumber: string | null;
     parcelRef: string | null;
+    /** Native parcel ordinal; adapters own any provider-facing number format. */
+    parcelSequenceNo?: number;
     contactRevision: {
         schemaVersion: number;
         source: string;
@@ -1292,6 +1294,7 @@ export declare const omnipackIntakeOrderIdentity: {
     outboundOrderNumber: (order: {
         orderRef: string;
         orderNumber: string | null;
+        parcelSequenceNo?: number;
     }) => string;
 };
 ```

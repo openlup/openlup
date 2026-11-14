@@ -236,9 +236,25 @@ export function assertSbomPackages(sbom, packages) {
   for (const { name } of packages) if (!seen.has(name)) refuse(`sbom_package_missing: ${name}`);
 }
 
-export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = false, schema = false, bom = false) {
-  const receipt = upgrade || schema || bom ? json(receiptPath) : qualificationReceipt(tag, expectedCommit);
+export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = false, schema = false, bom = false, canary = false) {
+  const receipt = upgrade || schema || bom || canary ? json(receiptPath) : qualificationReceipt(tag, expectedCommit);
   const applicationsPath = resolve(receiptPath + '.applications');
+  if (canary) {
+    const qualified = receipt.result === 'PASS';
+    receipt.result = 'FAIL'; receipt.endedAt = null;
+    receipt.canary = { result: 'FAIL', startedAt: new Date().toISOString(), upgradeEvidence: ['upgrade', 'schemaUpgrade'] };
+    writeFileSync(receiptPath, JSON.stringify(receipt, null, 2) + '\n');
+    return (async () => { try {
+      assert(qualified && receipt.tag === tag && receipt.tagCommit === expectedCommit && receipt.upgrade?.result === 'PASS' && receipt.schemaUpgrade?.result === 'PASS', 'canary: qualification_incomplete_or_mismatched');
+      const bytes = readFileSync(receiptPath + '.bom.json'), bound = JSON.parse(bytes);
+      assert.equal(sha256(bytes), receipt.bom.sha256, 'canary: bom_hash_mismatch');
+      assert.equal(bound.image.manifestDigest, receipt.image.manifestDigest, 'canary: bom_image_mismatch');
+      const { runStarterImageCanary } = await import('../starter-browser-ci.mjs');
+      await runStarterImageCanary(join(applicationsPath, '1/application'), receiptPath + '.image.tar', bound.image.manifestDigest, receipt.canary);
+      receipt.result = 'PASS';
+    } catch (error) { receipt.error = error.message; throw error; }
+    finally { receipt.endedAt = receipt.canary.endedAt = new Date().toISOString(); writeFileSync(receiptPath, JSON.stringify(receipt, null, 2) + '\n'); } })();
+  }
   if (bom) {
     const qualified = receipt.result === 'FAIL';
     receipt.result = 'FAIL'; receipt.endedAt = null; delete receipt.bom; delete receipt.image; delete receipt.sbom;
@@ -283,7 +299,7 @@ export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = f
           database: { connectionString: url.toString() } });
         Object.assign(receipt.schemaUpgrade, proof);
         assert.equal(proof.result, 'PASS', 'released-pair schema compatibility failed');
-        // The BOM step grants the final PASS after binding these completed checks.
+        // The BOM step records provisional PASS; canary completion grants final qualification PASS.
       } catch (error) { receipt.error = error.message; throw error; }
       finally {
         try { if (admin) { try { await admin.query(`DROP DATABASE IF EXISTS ${database} WITH (FORCE)`); } finally { await admin.end(); } } }
@@ -366,6 +382,9 @@ export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = f
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const [tag, commit, receipt, mode] = process.argv.slice(2);
-  if (process.argv.length !== 5 && !(process.argv.length === 6 && ['--upgrade', '--schema-upgrade', '--bom'].includes(mode))) refuse('use release-tag full-tag-commit receipt-path');
-  await qualifyReleasedSet(tag, commit, receipt, mode === '--upgrade', mode === '--schema-upgrade', mode === '--bom');
+  if (process.argv.length !== 5 && !(process.argv.length === 6 && ['--upgrade', '--schema-upgrade', '--bom', '--canary'].includes(mode))) refuse('use release-tag full-tag-commit receipt-path');
+  // Finish module evaluation before recovery imports this module; incomplete work exits nonzero.
+  process.exitCode = 1;
+  Promise.resolve(qualifyReleasedSet(tag, commit, receipt, mode === '--upgrade', mode === '--schema-upgrade', mode === '--bom', mode === '--canary'))
+    .then(() => { process.exitCode = 0; }, error => { console.error(error); });
 }

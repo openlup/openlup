@@ -26,7 +26,8 @@ it('A2 earlier evidence, duplicate receipts and changed non-null arrival cannot 
  expect(await arrival(f.shipment,'2026-07-01T12:00:00Z')).toMatchObject({disposition:'aligned',nextCycleAt:'2026-08-29T12:00:00.000Z',replayed:false});
  const before=await cases(f.order);expect(await arrival(f.shipment,'2026-07-01T12:00:00Z')).toMatchObject({replayed:true});
  await h.pool.query("UPDATE public.fulfillment_shipments SET delivered_at='2026-12-01T12:00:00Z' WHERE id=$1",[f.shipment]);
- expect(await cases(f.order)).toEqual(before);expect((await schedule(h.pool,f.subscription)).next_cycle_at.toISOString()).toBe('2026-08-29T12:00:00.000Z');
+ const after=await cases(f.order);expect(after.map((row,i)=>({...row,updated_at:before[i].updated_at}))).toEqual(before);
+ expect(after.every((row,i)=>row.updated_at>before[i].updated_at)).toBe(true);expect((await schedule(h.pool,f.subscription)).next_cycle_at.toISOString()).toBe('2026-08-29T12:00:00.000Z');
  await expect(arrival(f.shipment,'2026-07-02T12:00:00Z')).rejects.toMatchObject({code:'23505'});
 });
 it('A3 an arrived ancestor cannot settle its undelivered unsuperseded replacement',async()=>{

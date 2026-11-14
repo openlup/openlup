@@ -28,12 +28,16 @@ function changedCommands(req: FulfillmentDispatchRequest): FulfillmentDispatchRe
   return [
     ...(["requestKey", "fulfillmentRef", "orderRef", "orderNumber", "parcelRef"] as const)
       .map(field => ({ ...structuredClone(req), [field]: "other" })),
+    { ...structuredClone(req), parcelSequenceNo: (req.parcelSequenceNo ?? 0) + 1 },
     ...(["schemaVersion", "source", "revision"] as const).map(field => ({ ...structuredClone(req),
       contactRevision: { ...req.contactRevision, [field]: field === "source" ? "other" : req.contactRevision[field] + 1 } })),
     ...(["name", "email", "phone", "line1", "city", "postalCode", "country"] as const)
       .map(field => ({ ...structuredClone(req), recipient: { ...req.recipient, [field]: "other" } })),
     ...(["skuRef", "productRef", "packRef", "quantity"] as const).map(field => ({ ...structuredClone(req),
       lines: [{ ...req.lines[0]!, [field]: field === "quantity" ? req.lines[0]!.quantity + 1 : "other" }] })),
+    ...(["lotRef", "expirationDate"] as const).flatMap(field => [undefined, null, field === "lotRef" ? "LOT-B" : "2027-03-01"]
+      .filter(value => value !== req.lines[0]![field]).map(value => ({ ...structuredClone(req),
+        lines: [{ ...req.lines[0]!, [field]: value }] }))),
     { ...structuredClone(req), lines: [...req.lines, ...req.lines] },
     ...(["providerRef", "carrierRef", "serviceRef"] as const)
       .map(field => ({ ...structuredClone(req), selection: { ...req.selection, [field]: "other" } })),
@@ -42,8 +46,7 @@ function changedCommands(req: FulfillmentDispatchRequest): FulfillmentDispatchRe
       address: { line1: "Point Street", city: "Point City", postalCode: "10001", country: "US" } } } },
   ];
 }
-function frozenRequest(): FulfillmentDispatchRequest {
-  const req = request();
+function frozenRequest(req = request()): FulfillmentDispatchRequest {
   for (const value of [req, req.contactRevision, req.recipient, req.lines, ...req.lines, req.selection]) Object.freeze(value);
   return req;
 }
@@ -199,9 +202,11 @@ it("refuses every request/evidence mismatch and requires fresh prepare for a con
     expect(f.fetchImpl).toHaveBeenCalledTimes(2);
   }
 });
-it("refuses same-wire different evidence after submission while preserving original cloned replay", async () => {
+it.each([[undefined, undefined], [null, null], ["LOT-FROZEN", "2027-02-01"]])("refuses changed commands and evidence after submission, preserving replay with lot/expiry %s/%s", async (lotRef, expirationDate) => {
   for (const change of ["revision", "source", "schemaVersion", "carrierRef"] as const) {
-    const f = fixture(); const req = frozenRequest(); const original = await prepare(f.adapter, req);
+    const f = fixture(); const base = request();
+    const req = frozenRequest({ ...base, lines: base.lines.map(line => ({ ...line, lotRef, expirationDate })) });
+    const original = await prepare(f.adapter, req);
     const result = await f.adapter.dispatch.dispatch(structuredClone(req), structuredClone(original));
     expect(result).toMatchObject({ kind: "accepted", evidence: original });
     for (const stale of changedCommands(req)) {
@@ -220,12 +225,14 @@ it("refuses same-wire different evidence after submission while preserving origi
     expect(f.fetchImpl).toHaveBeenCalledTimes(1); expect(f.credentials).toHaveBeenCalledTimes(1);
   }
 });
-it("refuses same-wire different evidence in flight while joining the original cloned replay", async () => {
+it.each([[undefined, undefined], [null, null], ["LOT-FROZEN", "2027-02-01"]])("refuses changed commands and evidence in flight, joining replay with lot/expiry %s/%s", async (lotRef, expirationDate) => {
   for (const change of ["revision", "source", "schemaVersion", "carrierRef"] as const) {
     let enter!: () => void, finish!: (response: Response) => void;
     const entered = new Promise<void>(resolve => { enter = resolve; });
     const f = fixture(() => { enter(); return new Promise<Response>(resolve => { finish = resolve; }); });
-    const req = frozenRequest(); const original = await prepare(f.adapter, req);
+    const base = request();
+    const req = frozenRequest({ ...base, lines: base.lines.map(line => ({ ...line, lotRef, expirationDate })) });
+    const original = await prepare(f.adapter, req);
     const first = f.adapter.dispatch.dispatch(structuredClone(req), structuredClone(original));
     await entered;
     for (const stale of changedCommands(req)) {

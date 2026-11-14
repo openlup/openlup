@@ -130,9 +130,11 @@ fingerprint refuses as `not_dispatchable`, phase `dispatch`, `retryable:false`.
 While retained, it permits no second POST. Recorded replay depends only on the
 fingerprint's submission record, complete evidence key and SHA-256 command digest,
 joining the in-flight result when necessary; later preparations cannot affect it.
-The digest covers request/order/fulfillment/parcel identity,
+The digest covers request/order/fulfillment/parcel identity and parcel sequence,
 contact revision, wire recipient fields, ordered line SKU/product/pack references
-and quantities, and provider/carrier/service/delivery-kind/point-ID selection.
+and quantities, optional lot/expiry, and provider/carrier/service/delivery-kind/point-ID
+selection. Lot/expiry omission uses host metadata; explicit null suppresses that
+value. The digest preserves this distinction.
 It excludes line titles, recipient line 2 and instructions, and pickup-point
 provider/name/address: the outbound codec forwards none of them to wire or evidence.
 Only the hash is retained in the in-memory submission record. Equivalent
