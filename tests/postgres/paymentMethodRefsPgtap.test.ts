@@ -531,7 +531,7 @@ async function sandboxCompatibilityFixture(channel: "sandbox" | "captured", init
     await control.finalizeProviderAttempt({ idempotencyKey: `finalize:${order}`, paymentIntentId: purchase.intent, paymentAttemptId: attempt.paymentAttemptId,
       providerIdempotencyKey: `provider:${order}`, providerRequestFingerprint: "e".repeat(64), providerAttemptId: `attempt:${order}`, providerSessionId: null,
       attemptStatus: "processing", nextActionKind: null, requestPayload: {}, responsePayload: {} });
-    await control.applyPaymentResult({ idempotencyKey: `result:${order}`, paymentIntentId: purchase.intent, paymentEventId: null, resultStatus: "succeeded", occurredAt: AT });
+    await control.applyPaymentResult({ idempotencyKey: `result:${order}`, paymentIntentId: purchase.intent, paymentEventId: null, resultStatus: "succeeded", occurredAt: AT, failureReason: null });
   } else await purchase.settle();
   await call(db, "subscription_declare_provisional_activation", [`declare:${order}`, order, 28]);
   const facts = { settlementChannelKey: "sandbox", authorizationRef: "sandbox-authorization", unattendedChargeAuthorizedAt: new Date().toISOString(),
@@ -547,8 +547,12 @@ async function sandboxCompatibilityFixture(channel: "sandbox" | "captured", init
   await db.query("UPDATE public.subscriptions SET next_cycle_at=now()+interval '4 days',updated_at=now()-interval '6 days',started_at='2026-01-01' WHERE id=$1", [subscription]);
   return { client, subscription, actor, source, sku, order, intent: purchase.intent };
 }
+type SandboxCompatibilityOutcome = {
+  reminder: boolean; reactivation: string; autoResume: string; authorizedTokenRevoked: boolean;
+  scheduled: boolean; scheduleReplay: boolean; retry: boolean; retryReplay: boolean; replayUnchanged: boolean;
+};
 async function sandboxCompatibilityOutcomes() {
-  const outcomes = [];
+  const outcomes: SandboxCompatibilityOutcome[] = [];
   for (const channel of ["sandbox", "captured"] as const) {
     await db.query("BEGIN");
     try {
