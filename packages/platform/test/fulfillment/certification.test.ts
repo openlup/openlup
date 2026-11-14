@@ -84,7 +84,7 @@ it.each(["baseline", "full"] as const)("rejects unreachable dispatch expectation
 
 it("requires an executed unknown replay even when unknown dispatch itself was compared", async () => {
   const subject = capturedSubject();
-  subject.fixtures.dispatch = subject.fixtures.dispatch.map(row => ({ ...row, replay: row.expectedDispatch?.kind === "unknown" ? false : row.replay }));
+  subject.fixtures.dispatch = subject.fixtures.dispatch.map(row => row.expectedPrepare.kind === "refused" ? row : ({ ...row, replay: row.expectedDispatch?.kind === "unknown" ? false : row.replay }));
   await expect(run([subject], { mode: "full" })).rejects.toThrow("full unknown replay required");
 });
 
@@ -97,5 +97,24 @@ it.each(["unknown", "not_dispatched"] as const)("rejects a %s discriminant with 
     return result.kind === kind && !input[1].commandFingerprint.endsWith(":mismatch")
       ? Object.assign(result, { effectMayHaveSucceeded: kind !== "unknown" }) : result;
   };
-  await expect(run([subject], { mode: "full" })).rejects.toThrow("dispatch fixture contradictory result");
+  await expect(run([subject], { mode: "full" })).rejects.toThrow("validation:fixtures");
+});
+
+it("audit 14 refuses non-array and empty subjects and records mode, profile, capabilities and its ledger", async () => {
+  for (const value of [[], { length: 1, *[Symbol.iterator]() {} }]) await expect(run(value as FulfillmentAdapterTestSubject[], { mode: "full" })).rejects.toThrow("full subjects required");
+  const forged = Object.assign([capturedSubject()], { map: () => [] });
+  await expect(run(forged, { mode: "full" })).rejects.toThrow("validation:subjects");
+  const proof = await run([capturedSubject()], { mode: "full" });
+  expect(proof.mode).toBe("full"); expect(proof.qualifications[0]).toMatchObject({ profile: "dispatch-only", capabilityDigest: expect.stringMatching(/^[a-f0-9]{64}$/), declarations: [{ capability: "courierPickup", declared: "unsupported", probe: "no_port" }] });
+  expect(proof.qualifications[0]!.ledger.some(row => row.capability === "dispatch" && row.role === "success")).toBe(true);
+});
+it("audit 6 snapshots options once and rejects hidden or accessor capability data", async () => {
+  const options = { get mode() { return "full" as const; } };
+  await expect(run([capturedSubject()], options)).rejects.toThrow("validation:uncloneable_data");
+  const value = capturedSubject(); Object.defineProperty(value.adapter.capabilities.operations, "labelCreate", { enumerable: false, value: { supported: true } });
+  await expect(run([value], { mode: "full" })).rejects.toThrow("validation:uncloneable_data");
+});
+it("audit 9 refuses a dispatch-only profile without the captured adapter brand", async () => {
+  const value = capturedSubject(); value.adapter = { ...value.adapter };
+  await expect(run([value], { mode: "full" })).rejects.toThrow("capability_not_certifiable:dispatch-only brand");
 });

@@ -6838,6 +6838,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/fulfillment/testing/schema.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/fulfillment/testing/scriptedFake.ts",
       "class": "public-output"
     },

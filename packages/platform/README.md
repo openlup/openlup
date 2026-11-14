@@ -3106,36 +3106,41 @@ refuse explicitly. No credentials or target activation are transferred. See the
 
 ### Offline fulfillment adapter certification
 
-`@openlup/platform/fulfillment/testing` exports the existing conformance runner,
-captured dispatch adapter and `createScriptedFulfillmentFake`. Adapter authors
-bind synthetic transport outcomes to their real adapter and provide independently
-expected fixtures. Use `{ mode: "full" }` for the named scenario checks; the default
-baseline mode preserves existing callers. Missing applicable fixtures fail full
-qualification. Supported dispatch needs compared `accepted` and `not_dispatched`
-results and an executed, compared `unknown` replay without a second provider call.
-Both profiles require a compared preparation refusal; refused preparations must
-omit `expectedDispatch` and `replay` in either mode. Supported label methods and
-stock/product sync methods require success/failure pairs. Sync fixtures are
-role-typed: `success: { input, expected }` and `failure: { input, throws }` exclude
-the opposite key. Mixed or contradictory roles are also rejected at runtime
-before either sync fixture is invoked. One credit rule classifies every operation
-from its declared result discriminant and checks the independent expectation.
-Success kinds such as `created` and `available` cannot carry `refusal`; refused
-or failed kinds cannot carry success payloads. Contradictions fail with a named
-`contradictory result` reason and earn neither role. Label void uses its declared
-`canProceed` boolean; sync methods require an observed contract-positive return
-or a throw matching the declared typed refusal. Paging expectations are narrowed
-to each slot's result kind, and positive `ensureProduct` expectations require
-`replayed: false`. Scenario claims additionally check dispatch witnesses and
-invocation-bound log or I/O-count deltas. Positive sync witnesses must include a stock snapshot,
-movement, addressable product pack or nonblank stocked SKU for the corresponding
-read. `ensureProduct` must return `{ replayed: false }`; skipped `null` and replayed
-results can be additional fixtures. `addProductPack` succeeds by returning `void`
-without throwing. Empty or rejected-only reads can be additional fixtures but
-cannot supply the required positive witness. Dispatch faults must
-occur within their indexed invocation, with provider-call counts proving the
-submission boundary. Status pairs execute in
-declared order and must preserve the expected older-after-newer result. The
-captured adapter selects `dispatch-only`, which requires dispatch as its sole
-supported operation and certifies only those dispatch and preparation checks.
+`@openlup/platform/fulfillment/testing` exports the conformance runner, captured
+adapter and scripted transport. One-argument calls retain baseline mode. Full mode
+snapshots data before execution, validates closed schemas and credits only the
+runner's invocation ledger: every supported certifiable capability needs an
+executed contract-positive success and typed failure. Each copied result must
+have the same kind as its independent fixture expectation and be deeply strictly
+equal. Missing expectations, malformed branches, proxies, accessors, hidden fields,
+reused scenario indices and empty positive witnesses fail qualification. Adapter
+calls receive fresh input copies; sync success and throwing failure roles are
+mutually exclusive. Unsupported cannot satisfy a supported operation's failure.
+
+Executed refusal probes cover non-PDF formats, label create/void, provider-side
+cancel, independent split, provider-owned reservations, snapshot-only stock
+movements and pickup-point/locker execution, with unchanged provider-call counts.
+Callable unsupported adapter operations also require refusal witnesses. Label
+probes invoke adapter methods; named native limits invoke platform code. With
+`snapshotOnly: true`, the runner executes the real stock-sync worker using its
+own isolated snapshot-only provider/store. It accepts no caller worker callback.
+
+The closed port-less list is `courierPickup`: unsupported records
+`{ capability: "courierPickup", declared: "unsupported", probe: "no_port" }`
+without a probe because no provider-reaching path exists. Supported fails with
+`capability_not_certifiable`; supported provider cancellation also refuses because
+its native path cannot demonstrate success. Pickup-point support needs its own
+adapter success/failure witnesses. A contract pin forces reconsideration when a
+courier-pickup port is added.
+
+Transport handles are read-only `fake.calls` snapshots backed by the fake's
+private log. Fault deltas belong to the indexed invocation; each claimed
+submission requires exactly one provider call, and a pre-submission refusal or
+replay requires zero. Status pairs execute in declared order using distinct
+scenario indices. Only a captured adapter's factory brand permits `dispatch-only`,
+which requires dispatch as its sole supported operation and earns no other
+capability certification. Evidence includes mode, derived profile, capability
+digest, ledger and port-less declarations. This validates data and recorded
+invocations; it does not attest remote execution or establish host locks, durable
+deduplication, cancellation races, replacement transactions or alignment.
 See [certify a fulfilment adapter offline](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/fulfillment.md#certify-a-fulfilment-adapter-offline).

@@ -865,10 +865,39 @@ observation ledger; neither initiates a replacement send.
 
 Adapter authors can use the experimental `@openlup/platform/fulfillment/testing`
 entry to [certify a fulfilment adapter offline](../../packages/core/docs/guide/how-to/build/fulfillment.md#certify-a-fulfilment-adapter-offline).
-Full mode requires capability-selected fixtures and explicit refusal probes.
-It binds transport faults to each indexed dispatch, checks submission I/O counts
-and executes status pairs in declared order; baseline callers retain their checks. Offline adapter evidence
-does not establish database locking, durable deduplication or replacement transactions.
+Full mode validates immutable snapshots of capabilities, fixtures and certification
+data before invoking an adapter. Closed schemas reject malformed branches, missing
+expectations, proxies, accessors and hidden fields. Results are copied before
+classification; only the runner's invocation ledger grants coverage. Supported
+certifiable capabilities require executed contract-positive success and typed
+failure witnesses, with matching kinds and deep strict equality to independent
+fixture expectations. Scenario indices are integers, in range and distinct;
+status tuples execute in declared order. The threat model is data validation and
+recorded invocation evidence, not remote attestation. Baseline mode remains the
+default and grants no full-coverage claim.
+
+Executed refusal probes cover non-PDF formats, label create/void, provider-side
+cancel, independent split, provider-owned reservations, snapshot-only movements
+and pickup-point/locker execution, each with unchanged provider-call counts.
+Callable unsupported adapter operations also need explicit refusal witnesses.
+Label probes invoke adapter methods; named native limits invoke platform code.
+The runner executes the real snapshot-only stock worker using its own isolated
+provider/store. Scripted fault evidence comes from the fake's private log via an
+authenticated read-only handle; each claimed submission requires exactly one
+provider call. Missing or malformed applicable fixtures fail qualification.
+
+The closed port-less list contains only `courierPickup`. Unsupported is recorded
+as `{ capability: "courierPickup", declared: "unsupported", probe: "no_port" }`
+without execution because the contract exposes no provider-reaching path.
+Supported fails with `capability_not_certifiable`; supported provider cancellation
+also refuses because its platform path cannot witness success. A contract test
+pins the port-less list. Pickup-point support needs adapter success/failure
+witnesses in addition to the native refusal probe. Only the captured adapter's
+factory brand permits the derived `dispatch-only` profile, with no other
+capability certification. Evidence includes mode, profile, a capability digest,
+the sanitized ledger and port-less declarations. Offline evidence does not
+establish database locking, durable deduplication, cancellation races, replacement
+transactions or delivery alignment.
 
 The fulfillment entry also exports its existing `parseOutboxPayload` helper.
 K4 reference email bindings reuse that same parser through the host runtime;

@@ -17,12 +17,25 @@ export class ScriptedFulfillmentTransportError extends Error {
   }
 }
 
+type Fault = { kind: ScriptedFulfillmentOutcome<unknown>["kind"] };
+const faultLogs = new WeakMap<object, readonly Fault[]>();
+/** Internal authenticated log reader. Caller arrays cannot supply transport evidence. */
+export function readScriptedFulfillmentFaultLog(handle: object): readonly Fault[] {
+  const log = faultLogs.get(handle);
+  if (!log) throw new Error("fulfillment_adapter_conformance:invalid_fault_log");
+  return log.map(row => ({ kind: row.kind }));
+}
+
 /** Per-operation FIFO. Inputs, credentials and response bodies are never logged. */
 export function createScriptedFulfillmentFake<Calls extends Record<string, unknown>>() {
   const queues = new Map<keyof Calls, ScriptedFulfillmentOutcome<Calls[keyof Calls]>[]>();
   const calls: { call: keyof Calls; kind: ScriptedFulfillmentOutcome<unknown>["kind"] }[] = [];
   return {
-    calls: calls as readonly { call: keyof Calls; kind: ScriptedFulfillmentOutcome<unknown>["kind"] }[],
+    get calls() {
+      const snapshot = Object.freeze(calls.map(row => Object.freeze({ ...row })));
+      faultLogs.set(snapshot, calls);
+      return snapshot;
+    },
     enqueue<K extends keyof Calls>(call: K, ...outcomes: ScriptedFulfillmentOutcome<Calls[K]>[]): void {
       const queue = queues.get(call) ?? [];
       queue.push(...outcomes); queues.set(call, queue);

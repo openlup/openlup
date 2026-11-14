@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
-import { expect, it, vi } from "vitest";
+import { expect, expectTypeOf, it, vi } from "vitest";
 import { runFulfillmentAdapterConformance, runFulfillmentDispatchWorker } from "../../../src/fulfillment/index.js";
 import { createScriptedFulfillmentFake } from "../../../src/fulfillment/testing/index.js";
 import type { FulfillmentAdapterTestSubject } from "../../../src/fulfillment/testing/index.js";
-import { runFulfillmentStockSyncWorker } from "../../../src/fulfillment/index.js";
+import * as capabilityReader from "../../../src/fulfillment/providerCapabilities.js";
+import { PORTLESS_CAPABILITIES } from "../../../src/fulfillment/testing/schema.js";
 import { createOmnipackFulfillmentAdapter } from "../../../src/fulfillment/omnipack/index.js";
 import type { DispatchEvidence, DispatchRecord, FulfillmentStorePort, FulfillmentAdapterConformanceSubject as Subject, FulfillmentDispatchRequest, FulfillmentObservation, FulfillmentRefusal } from "../../../src/fulfillment/contracts/index.js";
 
@@ -250,6 +251,13 @@ function fullSubject() {
   }
   dispatchRows.push({ input: { ...request(), recipient: { ...request().recipient, line1: "" } },
     expectedPrepare: { kind: "refused", refusal: refusal("not_dispatchable", "prepare") } });
+  const locker = { ...request(), requestKey: "locker", orderNumber: "LOCKER", selection: { ...request().selection, deliveryKind: "parcel-locker" as const, pickupPoint: { id: "POINT-A", provider: "point-provider", name: "Point", address: { line1: "Example", city: "Example", postalCode: "10001", country: "US" } } } };
+  const lockerBody = commandBody.replace('"ORDER-A"', '"LOCKER"').replace('"service":"SERVICE-A"', '"pickUpPoint":"POINT-A","service":"SERVICE-A"');
+  const lockerEvidence = { ...preparedEvidence, commandFingerprint: hash(lockerBody), transcript: { ...preparedEvidence.transcript!, deliveryKind: "parcel-locker" as const, pickupPointRef: "POINT-A" } };
+  const lockerHash = hash(JSON.stringify(["external-locker", lockerEvidence.commandFingerprint]));
+  dispatchRows.push({ input: locker, expectedPrepare: { kind: "prepared", evidence: lockerEvidence }, expectedDispatch: { kind: "accepted", externalRef: "external-locker", evidence: lockerEvidence, providerAttemptKey: `attempt:${lockerHash}`, labelKey: `label:${lockerHash}` } },
+    { input: { ...locker, selection: { ...locker.selection, pickupPoint: null } }, expectedPrepare: { kind: "refused", refusal: refusal("not_dispatchable", "prepare") } });
+  fake.enqueue("POST /orders", json({ orderId: "external-locker" }));
   value.fixtures.dispatch = dispatchRows;
   value.fixtures.label!.read = [{ input: [{ objectRef: "label-a", mediaType: "application/pdf", externalRef: "external-a" }], expected: { kind: "refused", refusal: refusal("unsupported", "dispatch") } }];
   const valid = value.fixtures.observation![0]!;
@@ -260,7 +268,7 @@ function fullSubject() {
     { input: [webhook(olderPayload)], expected: { kind: "verified", observation: { ...baseObservation, eventKey: olderKey,
       fact: { ...baseObservation.fact, factId: hash(olderKey), occurredAt: olderPayload.occurredAt,
         rawEvent: { ...baseObservation.fact.rawEvent, digest: hash(webhook(olderPayload).rawBody) } } } } },
-    { input: [{ ...webhook(webhookPayload), headers: { authorization: "Bearer incorrect-placeholder" } }], expected: { kind: "refused", refusal: refusal("untrusted", "verify") } }];
+    { input: [{ ...webhook(webhookPayload), headers: { authorization: "Bearer incorrect-placeholder" } }], expected: { kind: "refused", refusal: refusal("untrusted", "verify") } }, valid];
   const readbacks = [...value.fixtures.readback!];
   // Independent expected coarse exception envelopes, without inventing a LOST status.
   const exception = (primary: string, detail: string | null) => {
@@ -301,10 +309,10 @@ function fullSubject() {
     json({ _embedded: { stockItems: [{ sku: "SKU-A" }] } }), fail());
   fake.enqueue("GET /stock-movements", json({ _embedded: [{ sku: "SKU-A", quantity: -2, occurredAt: now, operationType: "order_shipped", warehouseDocumentNumber: "DOC-A", productLotNumber: "LOT-A", expirationDate: "2027-01-01" }] }), fail());
   fake.enqueue("GET /products/SKU-A", json({ packs: [{ ean: "0000000000012", quantity: 2 }] }), fail());
-  let movements = 0;
+
   value.certification = { profile: "adapter", dispatch: { addressBeforeSubmission: 6, addressAfterSubmission: 2,
     transport: { "transport-before-submission": { fixture: 3, calls: fake.calls }, "transport-after-submission": { fixture: 4, calls: fake.calls }, "http-failure": { fixture: 5, calls: fake.calls } } },
-    observation: { duplicate: [0, 1], outOfOrder: [0, 2], authenticationFailure: 3 }, exceptions: { returned: 2, lostCoarse: 3 },
+    observation: { duplicate: [0, 1], outOfOrder: [4, 2], authenticationFailure: 3 }, exceptions: { returned: 2, lostCoarse: 3 },
     paging: { full: { input: { page: 0, size: 2 }, expected: { kind: "page", rows: [pageResult, pageResult] } },
       short: { input: { page: 1, size: 2 }, expected: { kind: "page", rows: [pageResult] } }, empty: { input: { page: 2, size: 2 }, expected: { kind: "page", rows: [] } },
       exhausted: { input: { page: 3, size: 2 }, expected: { kind: "page_exhausted" } }, failure: { input: { page: 4, size: 2 }, expected: { kind: "failed", refusal: { reason: "io_failure", phase: "readback", retryable: true }, error: { code: "http_503", status: 503, retryable: true, mayHaveSucceeded: false } } } },
@@ -314,15 +322,7 @@ function fullSubject() {
       { operation: "getProductPacks", success: { input: ["SKU-A"], expected: [{ ean: "0000000000012", quantity: 2 }] }, failure: { input: ["SKU-A"], throws: { ...syncFailure, retryable: true } } },
       { operation: "addProductPack", success: { input: ["SKU-A", { ean: "0000000000012", quantity: 2 }], expected: undefined }, failure: { input: ["SKU-A", { ean: "invalid", quantity: 2 }], throws: { reason: "malformed", phase: "sync", retryable: false } } },
       { operation: "listStockedSkus", success: { input: [], expected: ["SKU-A"] }, failure: { input: [], throws: { ...syncFailure, retryable: true } } } ],
-    snapshotOnly: { readMovementCalls: () => movements, async invoke() {
-      const result = await runFulfillmentStockSyncWorker({ stockMovements: false, movementBatchSize: 1, now: () => new Date(now),
-        compatibility: { syncRunId: () => "sync-offline", timeZone: "UTC", staleEvidenceSku: "sentinel", currentKey: () => "current", snapshotKey: () => "snapshot", lowStockKey: () => "low", staleKey: () => "stale" },
-        provider: { getStock: async () => [], getStockMovements: async () => { movements += 1; return []; } }, port: {
-          readCursor: async () => null, recordCursor: async () => {}, readLocalInventoryStock: async () => [], readSkuInventoryClasses: async () => new Map(), readActiveReservations: async () => new Map(),
-          recordStockSnapshot: async () => ({ replayed: false, readBack: true }), recordProviderStockCurrent: async () => ({ replayed: false, readBack: true }),
-          recordMovement: async () => ({ replayed: false, readBack: true }), recordLowStockEvidence: async () => ({ replayed: false }), resolveLowStockEvidence: async () => ({ resolved: 0 }),
-        } }); return result.movementRefusal;
-    } },
+    snapshotOnly: true,
   };
   // Configure the real product write path for success and HTTP failure.
   fake.enqueue("POST /products/SKU-A/packs", json({}));
@@ -334,17 +334,17 @@ it("qualifies the real reference adapter offline with invocation-bound fixtures 
   const fixture = fullSubject();
   const proof = await runFulfillmentAdapterConformance([fixture.value], { mode: "full" });
   expect(proof.cases.at(-1)?.operation).toBe("full:adapter (offline; no durable host qualification)");
-  expect(proof.cases.filter(row => row.operation.startsWith("native refusal:"))).toHaveLength(8);
+  expect(proof.cases.filter(row => row.operation.startsWith("native refusal:"))).toHaveLength(6);
   fixture.fake.assertDrained();
-  expect(fixture.wire.filter(row => row.path === "/orders")).toHaveLength(4);
+  expect(fixture.wire.filter(row => row.path === "/orders")).toHaveLength(5);
   expect(fixture.wire.filter(row => row.path === "/fulfilments").slice(-5).map(row => row.query)).toEqual(["?page=0&size=2", "?page=1&size=2", "?page=2&size=2", "?page=3&size=2", "?page=4&size=2"]);
   expect(JSON.stringify(proof)).not.toMatch(/synthetic-credential|synthetic-signature/);
 });
 
 it("delivers status tuples explicitly even when fixture storage is oldest first", async () => {
   const fixture = fullSubject(), rows = fixture.value.fixtures.observation!;
-  fixture.value.fixtures.observation = [rows[2]!, rows[0]!, rows[1]!, rows[3]!];
-  fixture.value.certification!.observation = { duplicate: [1, 2], outOfOrder: [1, 0], authenticationFailure: 3 };
+  fixture.value.fixtures.observation = [rows[2]!, rows[0]!, rows[1]!, rows[3]!, rows[4]!];
+  fixture.value.certification!.observation = { duplicate: [1, 2], outOfOrder: [4, 0], authenticationFailure: 3 };
   const verify = fixture.value.adapter.observation!.verifyAndNormalize, delivered: (string | null)[] = [];
   fixture.value.adapter.observation!.verifyAndNormalize = async (...input) => {
     const result = await verify(...input);
@@ -357,8 +357,8 @@ it("delivers status tuples explicitly even when fixture storage is oldest first"
 
 it("fails full qualification when an adapter corrupts an older status after a newer one", async () => {
   const fixture = fullSubject(), rows = fixture.value.fixtures.observation!;
-  fixture.value.fixtures.observation = [rows[2]!, rows[0]!, rows[1]!, rows[3]!];
-  fixture.value.certification!.observation = { duplicate: [1, 2], outOfOrder: [1, 0], authenticationFailure: 3 };
+  fixture.value.fixtures.observation = [rows[2]!, rows[0]!, rows[1]!, rows[3]!, rows[4]!];
+  fixture.value.certification!.observation = { duplicate: [1, 2], outOfOrder: [4, 0], authenticationFailure: 3 };
   const verify = fixture.value.adapter.observation!.verifyAndNormalize;
   let latest = "";
   fixture.value.adapter.observation!.verifyAndNormalize = async (...input) => {
@@ -419,7 +419,7 @@ it.each(["address", "authentication", "exception"] as const)("rejects an unexecu
     kit.exceptions!.returned = -1;
   }
   await expect(runFulfillmentAdapterConformance([fixture.value], { mode: "full" })).rejects.toThrow(
-    scenario === "address" ? "full address before submission" : scenario === "authentication" ? "full authentication refusal" : "full returned coarse exception");
+    "validation:uncloneable_data");
 });
 
 it.each([
@@ -453,10 +453,12 @@ it.each(["observation", "readback", "sync"] as const)("rejects unsupported %s af
   fixture.value.readIoCount = () => count() + calls;
   if (operation === "observation") {
     fixture.value.adapter.capabilities.operations = { ...fixture.value.adapter.capabilities.operations, verifyObservation: { supported: false, reason: "not_implemented" } };
+    delete fixture.value.certification!.observation;
     fixture.value.fixtures.observation = [{ input: [webhook(webhookPayload)], expected: { kind: "refused", refusal: unsupported } }];
     fixture.value.adapter.observation!.verifyAndNormalize = async () => { calls++; return { kind: "refused", refusal: unsupported }; };
   } else if (operation === "readback") {
     fixture.value.adapter.capabilities.operations = { ...fixture.value.adapter.capabilities.operations, readback: { supported: false, reason: "not_implemented" } };
+    delete fixture.value.certification!.exceptions; delete fixture.value.certification!.paging;
     fixture.value.fixtures.readback = [{ input: [readInput("external-a")], expected: { kind: "unsupported", refusal: unsupported } }];
     fixture.value.adapter.readback!.read = async () => { calls++; return { kind: "unsupported", refusal: unsupported }; };
   } else {
@@ -472,7 +474,7 @@ it("requires distinct label-void success and refusal witnesses", async () => {
   fixture.value.adapter.capabilities.operations = { ...fixture.value.adapter.capabilities.operations, labelVoid: { supported: true } };
   fixture.value.adapter.label!.void = async () => contradictory;
   fixture.value.fixtures.label!.void = [{ input: [{ parcelRef: "parcel-a", document: null }], expected: contradictory }];
-  await expect(runFulfillmentAdapterConformance([fixture.value], { mode: "full" })).rejects.toThrow("label void contradictory result");
+  await expect(runFulfillmentAdapterConformance([fixture.value], { mode: "full" })).rejects.toThrow("validation:fixtures");
 });
 
 it("rejects status tuples that describe different inputs or shipments", async () => {
@@ -498,9 +500,9 @@ it("rejects status tuples that describe different inputs or shipments", async ()
 
 it.each([
   ["dispatch", (s: FulfillmentAdapterTestSubject) => { delete s.certification!.dispatch; }, "dispatch scenarios required"],
-  ["label", (s: FulfillmentAdapterTestSubject) => { s.fixtures.label!.read = []; }, "label read refusal fixture required"],
+  ["label", (s: FulfillmentAdapterTestSubject) => { s.fixtures.label!.read = []; }, "full unsupported labelRead refusal probe required"],
   ["observation", (s: FulfillmentAdapterTestSubject) => { delete s.certification!.observation; }, "observation scenarios required"],
-  ["chronology", (s: FulfillmentAdapterTestSubject) => { s.certification!.observation!.outOfOrder = [2, 0]; }, "out-of-order chronology"],
+  ["chronology", (s: FulfillmentAdapterTestSubject) => { s.certification!.observation!.outOfOrder = [2, 4]; }, "out-of-order chronology"],
   ["exception", (s: FulfillmentAdapterTestSubject) => { delete s.certification!.exceptions; }, "exception fixtures required"],
   ["paging", (s: FulfillmentAdapterTestSubject) => { delete s.certification!.paging; }, "numbered paging fixtures required"],
   ["sync", (s: FulfillmentAdapterTestSubject) => { s.certification!.stockSync = []; }, "stockSync witnesses required"],
@@ -516,9 +518,9 @@ it("rejects a refusal that calls the provider and a snapshot-only probe that cal
   label.value.adapter.label!.read = async input => { calls++; return read(input); };
   const count = label.value.readIoCount; label.value.readIoCount = () => count() + calls;
   await expect(runFulfillmentAdapterConformance([label.value], { mode: "full" })).rejects.toThrow("unsupported label before I/O");
-  const movement = fullSubject(); let movementCalls = 0;
-  movement.value.certification!.snapshotOnly = { readMovementCalls: () => movementCalls, async invoke() { movementCalls++; return { reason: "stock_movements_unsupported", phase: "sync", retryable: false }; } };
-  await expect(runFulfillmentAdapterConformance([movement.value], { mode: "full" })).rejects.toThrow("snapshot-only no movement I/O");
+  const movement = fullSubject();
+  Object.assign(movement.value.certification!, { snapshotOnly: { invoke: async () => refusal("stock_movements_unsupported", "sync"), readMovementCalls: () => 0 } });
+  await expect(runFulfillmentAdapterConformance([movement.value], { mode: "full" })).rejects.toThrow("validation:uncloneable_data");
 });
 
 
@@ -526,7 +528,7 @@ it("refuses false label-deletion confirmation and authentication refusal after p
   const label = fullSubject();
   label.value.adapter.label!.void = async () => ({ providerDeletion: "confirmed", labelDeleted: true, canProceed: true, refusal: refusal("unsupported", "dispatch") });
   label.value.fixtures.label!.void![0]!.expected = { providerDeletion: "confirmed", labelDeleted: true, canProceed: true, refusal: refusal("unsupported", "dispatch") };
-  await expect(runFulfillmentAdapterConformance([label.value], { mode: "full" })).rejects.toThrow("label void contradictory result");
+  await expect(runFulfillmentAdapterConformance([label.value], { mode: "full" })).rejects.toThrow("validation:fixtures");
   const auth = fullSubject(); let calls = 0;
   const verify = auth.value.adapter.observation!.verifyAndNormalize, count = auth.value.readIoCount;
   auth.value.readIoCount = () => count() + calls;
@@ -558,7 +560,7 @@ it.each([
     const result = await invoke(...args);
     return ++calls === baselineCalls + 1 ? expected : result;
   };
-  await expect(runFulfillmentAdapterConformance([subject], { mode: "full" })).rejects.toThrow(`full ${operation} ${shape.startsWith("rejected-with") ? "contradictory result" : "positive success required"}`);
+  await expect(runFulfillmentAdapterConformance([subject], { mode: "full" })).rejects.toThrow(shape.startsWith("rejected-with") ? "validation:fixtures" : `full ${operation} positive success required`);
 });
 
 it("allows a skipped ensureProduct fixture alongside a positive full witness", async () => {
@@ -592,8 +594,8 @@ it.each([
     };
     const hint = bypass === "always throws" ? "success did not return" : bypass === "always returns" ? "failure did not throw"
       : bypass === "mixed success" ? "success fixture role" : "failure fixture role";
-    await expect(runFulfillmentAdapterConformance([subject], { mode: "full" }), bypass).rejects.toThrow(`full ${operation} ${hint}`);
-    expect(calls - baselineCalls, bypass).toBe(bypass === "always throws" ? 1 : bypass === "always returns" ? 2 : 0);
+    await expect(runFulfillmentAdapterConformance([subject], { mode: "full" }), bypass).rejects.toThrow(bypass.startsWith("always") ? `full ${operation} ${hint}` : "validation:fixtures");
+    expect(calls, bypass).toBe(bypass === "always throws" ? baselineCalls + 1 : bypass === "always returns" ? baselineCalls + 2 : 0);
   }
 });
 
@@ -604,11 +606,11 @@ it.each(["create", "read"] as const)("rejects label %s success carrying refusal 
       const success = operation === "create" ? { kind: "created" as const, parcelRef: "parcel-a", document: null }
         : { kind: "available" as const, url: "https://labels.example.test/a", expiresAt: null };
       const contradictory = { ...success, refusal: unsupported };
-      Object.assign(value.adapter.capabilities.operations, { [operation === "create" ? "labelCreate" : "labelRead"]: { supported } });
+      Object.assign(value.adapter.capabilities.operations, { [operation === "create" ? "labelCreate" : "labelRead"]: { ...(supported ? { supported: true } : { supported: false, reason: "not_exposed" }) } });
       const rows = value.fixtures.label![operation]!;
       Object.assign(rows[0]!, { expected: source === "actual" ? success : contradictory });
       Object.assign(value.adapter.label!, { [operation]: async () => source === "expected" ? success : contradictory });
-      await expect(runFulfillmentAdapterConformance([value], { mode: "full" }), `${supported}/${source}`).rejects.toThrow(`label ${operation} contradictory result`);
+      await expect(runFulfillmentAdapterConformance([value], { mode: "full" }), `${supported}/${source}`).rejects.toThrow(source === "actual" ? `label ${operation} contradictory result` : "validation:fixtures");
     }
   }
 });
@@ -651,7 +653,7 @@ it.each(["prepare", "dispatch", "create", "read", "observation", "readback", "pa
       Object.assign(value.certification!.paging!.full, { expected: contradict(value.certification!.paging!.full.expected) });
       adapter.reconciliation!.readPage = async input => contradict(await invoke(input)) as never;
     }
-    await expect(runFulfillmentAdapterConformance([value], { mode: "full" }), direction).rejects.toThrow("contradictory result");
+    await expect(runFulfillmentAdapterConformance([value], { mode: "full" }), direction).rejects.toThrow("validation:fixtures");
   }
 });
 
@@ -661,7 +663,7 @@ it.each(["stockSync", "productSync"] as const)("rejects %s positive payloads car
   const contradictory = name === "stockSync" ? [{ kind: "rejected", itemIndex: 0, reason: "invalid_sku_ref", skuRef: "SKU-A", quantityKind: "snapshot" }]
     : { replayed: false, refusal: refusal("io_failure", "sync") };
   Object.assign(row.success, { expected: contradictory });
-  await expect(runFulfillmentAdapterConformance([value], { mode: "full" })).rejects.toThrow("contradictory result");
+  await expect(runFulfillmentAdapterConformance([value], { mode: "full" })).rejects.toThrow("validation:fixtures");
 });
 
 it("rejects a paging failure slot whose expected discriminant reports success", async () => {
@@ -684,7 +686,7 @@ it.each(["create", "read", "void"] as const)("qualifies supported label %s only 
       : { parcelRef: "label-success", document: null };
   Object.assign(rows[0]!, { expected: failed });
   Object.assign(value.fixtures.label!, { [operation]: [...rows, { input: [input], expected: success }] });
-  Object.assign(value.adapter.label!, { [operation]: async (received: unknown) => received === input ? success : failed });
+  Object.assign(value.adapter.label!, { [operation]: async (received: unknown) => JSON.stringify(received) === JSON.stringify(input) ? success : failed });
   await expect(runFulfillmentAdapterConformance([value], { mode: "full" })).resolves.toHaveProperty("subjects");
 });
 
@@ -698,4 +700,116 @@ it.each([["stockSync", "getStock"], ["productSync", "ensureProduct"]] as const)(
     throw { ...row.failure.throws, ...(name === "stockSync" ? { skuRef: "SKU-A", quantityKind: "snapshot" } : { replayed: false }) };
   };
   await expect(runFulfillmentAdapterConformance([value], { mode: "full" })).rejects.toThrow(`full ${operation} contradictory result`);
+});
+
+it("audit 1 and FK-r5B-1 refuse missing paging expectations before any adapter invocation", async () => {
+  const { value } = fullSubject(), prepare = vi.spyOn(value.adapter.dispatch, "prepare");
+  Reflect.deleteProperty(value.certification!.paging!.full, "expected");
+  await expect(runFulfillmentAdapterConformance([value], { mode: "full" })).rejects.toThrow("validation:fixtures");
+  expect(prepare).not.toHaveBeenCalled();
+});
+it.each(["expectedPrepare", "expectedDispatch"] as const)("audit 1 requires %s independently on every reachable dispatch slot", async key => {
+  const { value } = fullSubject(); Reflect.deleteProperty(value.fixtures.dispatch[0]!, key);
+  await expect(runFulfillmentAdapterConformance([value], { mode: "full" })).rejects.toThrow("validation:fixtures");
+});
+it("audit 2 never credits a label success appended after the label invocations", async () => {
+  const { value } = fullSubject(), read = value.adapter.readback!.read;
+  Object.assign(value.adapter.capabilities.operations, { labelCreate: { supported: true } });
+  const failed = { kind: "refused" as const, refusal: refusal("io_failure", "dispatch") };
+  value.fixtures.label!.create = [{ input: [request()], expected: failed }]; value.adapter.label!.create = async () => failed;
+  value.adapter.readback!.read = async input => { value.fixtures.label!.create = [...value.fixtures.label!.create!, { input: [request()], expected: { kind: "created", parcelRef: "unexecuted", document: null } }]; return read(input); };
+  await expect(runFulfillmentAdapterConformance([value], { mode: "full" })).rejects.toThrow("full labelCreate success and failure required");
+});
+it("audit 3 rejects a proxy outcome before classification and comparison", async () => {
+  const { value } = fullSubject(), dispatch = value.adapter.dispatch.dispatch;
+  value.adapter.dispatch.dispatch = async (...args) => new Proxy(await dispatch(...args), { has: () => false });
+  await expect(runFulfillmentAdapterConformance([value], { mode: "full" })).rejects.toThrow("validation:uncloneable_data");
+});
+it("audit 4 snapshots inputs and rejects live expectation getters", async () => {
+  const mutation = fullSubject(), prepare = mutation.value.adapter.dispatch.prepare;
+  mutation.value.certification!.dispatch!.addressBeforeSubmission = 1;
+  mutation.value.adapter.dispatch.prepare = async input => { const result = await prepare(input); input.recipient.city = ""; Object.assign(input, { lines: request().lines }); return result; };
+  await expect(runFulfillmentAdapterConformance([mutation.value], { mode: "full" })).rejects.toThrow("full address invalid with valid items");
+  const getter = fullSubject(); Object.defineProperty(getter.value.fixtures.label!.create![0], "expected", { enumerable: true, get: () => ({ kind: "created", parcelRef: "late", document: null }) });
+  await expect(runFulfillmentAdapterConformance([getter.value], { mode: "full" })).rejects.toThrow("validation:uncloneable_data");
+});
+it("audit 5 cannot credit an input getter that throws instead of invoking sync", async () => {
+  const { value } = fullSubject(), invoke = vi.spyOn(value.adapter.stockSync!, "getStock");
+  Object.defineProperty(value.certification!.stockSync![0]!.failure, "input", { enumerable: true, get() { throw refusal("io_failure", "sync"); } });
+  await expect(runFulfillmentAdapterConformance([value], { mode: "full" })).rejects.toThrow("validation:uncloneable_data"); expect(invoke).not.toHaveBeenCalled();
+});
+it.each(["cancel", "courierPickup"] as const)("audit 7 refuses supported %s without a certifiable success port", async capability => {
+  const { value } = fullSubject(); Object.assign(value.adapter.capabilities.operations, { [capability]: { supported: true } });
+  await expect(runFulfillmentAdapterConformance([value], { mode: "full" })).rejects.toThrow(`capability_not_certifiable:${capability}`);
+});
+it("audit 7 requires pickup witnesses and refuses exact absence without readback", async () => {
+  const pickup = fullSubject(); pickup.value.fixtures.dispatch = pickup.value.fixtures.dispatch.slice(0, 7);
+  await expect(runFulfillmentAdapterConformance([pickup.value], { mode: "full" })).rejects.toThrow("full pickupPoint success and failure required");
+  const absence = fullSubject(); Object.assign(absence.value.adapter.capabilities.operations, { exactAbsence: { supported: true }, readback: { supported: false, reason: "not_exposed" } });
+  await expect(runFulfillmentAdapterConformance([absence.value], { mode: "full" })).rejects.toThrow("capability_not_certifiable:exactAbsence without readback");
+});
+it.each([["verifyObservation", "observation"], ["readback", "readback"], ["syncStock", "stockSync"], ["syncProducts", "productSync"]] as const)("audit 8 requires an executed unsupported %s refusal", async (capability, fixtures) => {
+  const { value } = fullSubject(); Object.assign(value.adapter.capabilities.operations, { [capability]: { supported: false, reason: "not_exposed" } });
+  Reflect.deleteProperty(value.fixtures, fixtures);
+  await expect(runFulfillmentAdapterConformance([value], { mode: "full" })).rejects.toThrow(`full unsupported ${capability} refusal probe required`);
+});
+it("audit 10 rejects a snapshot-only callback in place of the runner's real worker probe", async () => {
+  const { value } = fullSubject(); Object.assign(value.certification!, { snapshotOnly: { invoke: async () => refusal("stock_movements_unsupported", "sync"), readMovementCalls: () => 0 } });
+  await expect(runFulfillmentAdapterConformance([value], { mode: "full" })).rejects.toThrow("validation:uncloneable_data");
+});
+it.each(["dispatch", "observation", "exceptions"] as const)("audit 11 prevents one slot serving two %s scenarios", async name => {
+  const { value } = fullSubject(), kit = value.certification!;
+  if (name === "dispatch") kit.dispatch!.transport["http-failure"].fixture = kit.dispatch!.transport["transport-after-submission"].fixture;
+  if (name === "observation") kit.observation!.outOfOrder = [kit.observation!.duplicate[0], kit.observation!.outOfOrder[1]];
+  if (name === "exceptions") kit.exceptions!.lostCoarse = kit.exceptions!.returned;
+  await expect(runFulfillmentAdapterConformance([value], { mode: "full" })).rejects.toThrow(`validation:scenario_indices:${name}`);
+});
+it("audit 11 requires exactly one submission rather than any positive I/O delta", async () => {
+  const { value } = fullSubject(), dispatch = value.adapter.dispatch.dispatch, count = value.readIoCount; let extra = 0;
+  value.readIoCount = () => count() + extra;
+  value.adapter.dispatch.dispatch = async (...args) => { const result = await dispatch(...args); if (args[0].requestKey === "after-send" && !args[1].commandFingerprint.endsWith(":mismatch") && extra === 0) extra++; return result; };
+  await expect(runFulfillmentAdapterConformance([value], { mode: "full" })).rejects.toThrow("transport-after-submission submission I/O");
+});
+it.each(["create", "read", "void", "reason", "phase", "nan", "missing-void-expectation"] as const)("audit 12 refuses malformed %s contract data", async shape => {
+  const { value } = fullSubject();
+  if (shape === "create" || shape === "read" || shape === "void") Object.assign(value.fixtures.label![shape]![0]!, { expected: shape === "void" ? { canProceed: true } : { kind: shape === "create" ? "created" : "available" } });
+  if (shape === "reason" || shape === "phase") Object.assign(value.certification!.stockSync![0]!.failure.throws, { [shape]: "unrecognized" });
+  if (shape === "nan") Object.assign(value.fixtures.dispatch[2]!.expectedDispatch!, { error: { code: "invalid", status: NaN, retryable: false, mayHaveSucceeded: false } });
+  if (shape === "missing-void-expectation") Reflect.deleteProperty(value.certification!.productSync!.find(row => row.operation === "addProductPack")!.success, "expected");
+  await expect(runFulfillmentAdapterConformance([value], { mode: "full" })).rejects.toThrow("validation:fixtures");
+});
+it("audit 12 refuses unmapped or unknown-only pages as positive success", async () => {
+  const { value } = fullSubject(), pages = value.certification!.paging!, read = value.adapter.reconciliation!.readPage;
+  const unknown = { kind: "unknown" as const, refusal: refusal("local_missing", "readback") }, expected = { kind: "page" as const, rows: [unknown, unknown] };
+  pages.full.expected = expected; value.adapter.reconciliation!.readPage = input => input.page === 0 ? Promise.resolve(expected) : read(input);
+  await expect(runFulfillmentAdapterConformance([value], { mode: "full" })).rejects.toThrow("full paging full positive success required");
+});
+it("audit 12 refuses unsupported as the failure witness of supported label creation", async () => {
+  const { value } = fullSubject(); Object.assign(value.adapter.capabilities.operations, { labelCreate: { supported: true } });
+  await expect(runFulfillmentAdapterConformance([value], { mode: "full" })).rejects.toThrow("label create supported_failure_unsupported");
+});
+it("audit 13 rejects a caller-forged fault log rather than trusting its entries", async () => {
+  const { value } = fullSubject(); const forged = [{ call: "submit", kind: "transport-after-submission" as const }]; value.certification!.dispatch!.transport["transport-after-submission"].calls = forged;
+  await expect(runFulfillmentAdapterConformance([value], { mode: "full" })).rejects.toThrow("invalid_fault_log");
+});
+it("pins the closed no-port list and the reference bundle's missing courier pickup port", () => {
+  expect(PORTLESS_CAPABILITIES).toEqual(["courierPickup"]);
+  expectTypeOf<Extract<keyof ReturnType<typeof createOmnipackFulfillmentAdapter> | keyof FulfillmentAdapterTestSubject["adapter"] | NonNullable<Parameters<typeof capabilityReader.readFulfillmentCapabilities>[2]>["operation"], typeof PORTLESS_CAPABILITIES[number]>>().toEqualTypeOf<never>();
+});
+it("rejects contradictory native refusal output without crediting platform code as adapter success", async () => {
+  const { value } = fullSubject(); const read = vi.spyOn(capabilityReader, "readFulfillmentCapabilities").mockReturnValueOnce({ kind: "refused", refusal: refusal("provider_cancel_unsupported", "selection"), descriptor: value.adapter.capabilities } as never);
+  try { await expect(runFulfillmentAdapterConformance([value], { mode: "full" })).rejects.toThrow("native provider_cancel_unsupported contradictory result"); } finally { read.mockRestore(); }
+});
+
+it("audit 12 never normalizes a legacy page fact into an equal current expectation", async () => {
+  const { value } = fullSubject(), read = value.adapter.reconciliation!.readPage;
+  value.adapter.reconciliation!.readPage = async input => {
+    const result = await read(input);
+    if (result.kind === "page") for (const row of result.rows) if (row.kind === "found") {
+      const { rawEvent, ...shared } = row.observation.fact;
+      row.observation.fact = { ...shared, schemaVersion: 0, rawEventReference: rawEvent.reference, rawEventSha256: rawEvent.digest } as never;
+    }
+    return result;
+  };
+  await expect(runFulfillmentAdapterConformance([value], { mode: "full" })).rejects.toThrow("full paging full contradictory result");
 });

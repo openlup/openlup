@@ -1,5 +1,4 @@
-import { expect, it, vi } from "vitest";
-import * as capabilityReader from "../../src/fulfillment/providerCapabilities.js";
+import { expect, it } from "vitest";
 import type { FulfillmentAdapterConformanceSubject as Subject, FulfillmentDispatchResult, FulfillmentReadbackResult, FulfillmentRefusal } from "../../src/fulfillment/contracts/index.js";
 import { runFulfillmentAdapterConformance as run } from "../../src/fulfillment/index.js";
 import { at, memoryStore, observation, profile, request } from "./fixtures.js";
@@ -92,7 +91,7 @@ it("rejects mismatched preparation I/O, leaked durable fields, false absence and
   const leak = subject(false); const prepare = leak.adapter.dispatch.prepare;
   leak.adapter.dispatch.prepare = async input => { const result = await prepare(input); if (result.kind === "prepared") Object.assign(result.evidence, { rawBody: "fixture-body" }); return result; };
   Object.assign(leak.fixtures.dispatch[0].expectedPrepare.kind === "prepared" && leak.fixtures.dispatch[0].expectedPrepare.evidence, { rawBody: "fixture-body" });
-  await expect(run([leak])).rejects.toThrow("durable secret redaction");
+  await expect(run([leak])).rejects.toThrow("validation:fixtures");
   const absence = subject(true); absence.adapter.capabilities.operations = { ...absence.adapter.capabilities.operations, exactAbsence: { supported: false, reason: "not_exposed" } };
   await expect(run([absence])).rejects.toThrow("unsupported exact absence");
   const collision = subject(true); const verify = collision.adapter.observation!.verifyAndNormalize;
@@ -112,12 +111,4 @@ it.each(["claim", "begin"] as const)("rejects contradictory optional-store %s re
     return store;
   };
   await expect(run([value])).rejects.toThrow(`${operation} contradictory result`);
-});
-
-it("rejects a native selection result carrying both union payloads", async () => {
-  const value = subject(false);
-  const contradictory = { kind: "refused" as const, refusal: { reason: "selection_required" as const, phase: "selection" as const, retryable: false }, descriptor: value.adapter.capabilities };
-  const read = vi.spyOn(capabilityReader, "readFulfillmentCapabilities").mockReturnValueOnce(contradictory);
-  try { await expect(run([value])).rejects.toThrow("selection contradictory result"); }
-  finally { read.mockRestore(); }
 });

@@ -14,7 +14,8 @@ export type FulfillmentTransportScenario = "transport-before-submission" | "tran
 
 /** Indices refer to independently expected baseline fixtures. Status pairs also execute explicitly in tuple order. */
 export interface FulfillmentAdapterCertificationScenarios {
-  profile: "adapter" | "dispatch-only";
+  /** Optional compatibility assertion; the runner derives the profile and checks the captured brand. */
+  profile?: "adapter" | "dispatch-only";
   /** A transportless captured adapter qualifies only its dispatch profile. */
   dispatch?: {
     /** Valid items and a blank required address field; preparation must refuse without provider I/O. */
@@ -22,7 +23,7 @@ export interface FulfillmentAdapterCertificationScenarios {
     addressAfterSubmission: number;
     transport: Record<FulfillmentTransportScenario, {
       fixture: number;
-      /** Live append-only log from the injected fake. Only entries appended during this indexed dispatch count. */
+      /** Authenticated read-only snapshot from the scripted fake; private log deltas prove the invocation. */
       calls: readonly { kind: ScriptedFulfillmentOutcome<unknown>["kind"] }[];
     }>;
   };
@@ -36,10 +37,10 @@ export interface FulfillmentAdapterCertificationScenarios {
   } };
   stockSync?: readonly SyncFixtures<FulfillmentStockSyncProvider>[];
   productSync?: readonly SyncFixtures<FulfillmentProductSyncProvider>[];
-  /** Invoke the real snapshot-only worker and return its movementRefusal.
-   * Count movement calls only: snapshot requests are allowed. This is a native
-   * declaration probe, not adapter or durable host certification. */
-  snapshotOnly?: { invoke(): Promise<FulfillmentRefusal | undefined>; readMovementCalls(): number };
+  /** The runner executes the real worker with its own isolated snapshot-only provider and store. */
+  snapshotOnly?: true;
+  dispatchRefusal?: { input: Parameters<FulfillmentAdapterConformanceSubject["adapter"]["dispatch"]["dispatch"]>; expected: Awaited<ReturnType<FulfillmentAdapterConformanceSubject["adapter"]["dispatch"]["dispatch"]>> };
+
 }
 
 /** Baseline callers need no certification fixtures. Full mode requires every applicable witness. */
@@ -48,3 +49,12 @@ export type FulfillmentAdapterTestSubject = FulfillmentAdapterConformanceSubject
   certification?: FulfillmentAdapterCertificationScenarios;
 };
 export interface FulfillmentConformanceOptions { mode: "baseline" | "full" }
+
+/** Sanitized invocation evidence; values and inputs remain private to the runner. */
+export interface FulfillmentQualification {
+  subjectId: string;
+  profile: "adapter" | "dispatch-only";
+  capabilityDigest: string;
+  ledger: readonly { capability: string; role: "success" | "failure" | "refusal" | "neutral"; slotId: string; ioDelta: number; faultLogDelta: readonly { kind: string }[] }[];
+  declarations: readonly { capability: "courierPickup"; declared: "unsupported"; probe: "no_port" }[];
+}

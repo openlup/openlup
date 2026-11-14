@@ -11231,9 +11231,12 @@ export declare function createSupabaseCommerceReturnsPort<Reason extends string 
 
 ```ts
 import type { FulfillmentAdapterConformanceEvidence } from "./contracts/index.js";
-import type { FulfillmentAdapterTestSubject, FulfillmentConformanceOptions } from "./testing/scenarios.js";
-/** Runner-independent offline proof using only adapter-owned fixtures. Throws on a violated contract. */
-export declare function runFulfillmentAdapterConformance(subjects: readonly FulfillmentAdapterTestSubject[], options?: FulfillmentConformanceOptions): Promise<FulfillmentAdapterConformanceEvidence>;
+import type { FulfillmentAdapterTestSubject, FulfillmentConformanceOptions, FulfillmentQualification } from "./testing/scenarios.js";
+/** Snapshot data once; only executed, independently compared invocations can enter the evidence ledger. */
+export declare function runFulfillmentAdapterConformance(subjects: readonly FulfillmentAdapterTestSubject[], options?: FulfillmentConformanceOptions): Promise<FulfillmentAdapterConformanceEvidence & {
+    mode: "baseline" | "full";
+    qualifications: readonly FulfillmentQualification[];
+}>;
 ```
 ## dist/fulfillment/bindings.d.ts
 
@@ -11246,6 +11249,8 @@ export declare function createFulfillmentServices(options: FulfillmentServicesOp
 
 ```ts
 import type { FulfillmentCapabilityDescriptor, FulfillmentDispatchPort, FulfillmentDispatchRequest } from "./contracts/index.js";
+/** Internal profile brand; capability declarations cannot select the captured profile. */
+export declare const isCapturedFulfillmentAdapter: (adapter: object) => boolean;
 /** Synthetic, host-owned captures only. No command is sent to a provider. */
 export interface CapturedFulfillmentCommand {
     request: FulfillmentDispatchRequest;
@@ -14737,7 +14742,8 @@ type SyncFixtures<P> = {
 export type FulfillmentTransportScenario = "transport-before-submission" | "transport-after-submission" | "http-failure";
 /** Indices refer to independently expected baseline fixtures. Status pairs also execute explicitly in tuple order. */
 export interface FulfillmentAdapterCertificationScenarios {
-    profile: "adapter" | "dispatch-only";
+    /** Optional compatibility assertion; the runner derives the profile and checks the captured brand. */
+    profile?: "adapter" | "dispatch-only";
     /** A transportless captured adapter qualifies only its dispatch profile. */
     dispatch?: {
         /** Valid items and a blank required address field; preparation must refuse without provider I/O. */
@@ -14745,7 +14751,7 @@ export interface FulfillmentAdapterCertificationScenarios {
         addressAfterSubmission: number;
         transport: Record<FulfillmentTransportScenario, {
             fixture: number;
-            /** Live append-only log from the injected fake. Only entries appended during this indexed dispatch count. */
+            /** Authenticated read-only snapshot from the scripted fake; private log deltas prove the invocation. */
             calls: readonly {
                 kind: ScriptedFulfillmentOutcome<unknown>["kind"];
             }[];
@@ -14772,12 +14778,11 @@ export interface FulfillmentAdapterCertificationScenarios {
     };
     stockSync?: readonly SyncFixtures<FulfillmentStockSyncProvider>[];
     productSync?: readonly SyncFixtures<FulfillmentProductSyncProvider>[];
-    /** Invoke the real snapshot-only worker and return its movementRefusal.
-     * Count movement calls only: snapshot requests are allowed. This is a native
-     * declaration probe, not adapter or durable host certification. */
-    snapshotOnly?: {
-        invoke(): Promise<FulfillmentRefusal | undefined>;
-        readMovementCalls(): number;
+    /** The runner executes the real worker with its own isolated snapshot-only provider and store. */
+    snapshotOnly?: true;
+    dispatchRefusal?: {
+        input: Parameters<FulfillmentAdapterConformanceSubject["adapter"]["dispatch"]["dispatch"]>;
+        expected: Awaited<ReturnType<FulfillmentAdapterConformanceSubject["adapter"]["dispatch"]["dispatch"]>>;
     };
 }
 /** Baseline callers need no certification fixtures. Full mode requires every applicable witness. */
@@ -14789,6 +14794,26 @@ export type FulfillmentAdapterTestSubject = FulfillmentAdapterConformanceSubject
 };
 export interface FulfillmentConformanceOptions {
     mode: "baseline" | "full";
+}
+/** Sanitized invocation evidence; values and inputs remain private to the runner. */
+export interface FulfillmentQualification {
+    subjectId: string;
+    profile: "adapter" | "dispatch-only";
+    capabilityDigest: string;
+    ledger: readonly {
+        capability: string;
+        role: "success" | "failure" | "refusal" | "neutral";
+        slotId: string;
+        ioDelta: number;
+        faultLogDelta: readonly {
+            kind: string;
+        }[];
+    }[];
+    declarations: readonly {
+        capability: "courierPickup";
+        declared: "unsupported";
+        probe: "no_port";
+    }[];
 }
 export {};
 ```
@@ -14816,16 +14841,22 @@ export declare class ScriptedFulfillmentTransportError extends Error {
     readonly submissionAttempted: boolean;
     constructor(kind: Exclude<ScriptedFulfillmentOutcome<never>["kind"], "success">, status?: number | undefined);
 }
+type Fault = {
+    kind: ScriptedFulfillmentOutcome<unknown>["kind"];
+};
+/** Internal authenticated log reader. Caller arrays cannot supply transport evidence. */
+export declare function readScriptedFulfillmentFaultLog(handle: object): readonly Fault[];
 /** Per-operation FIFO. Inputs, credentials and response bodies are never logged. */
 export declare function createScriptedFulfillmentFake<Calls extends Record<string, unknown>>(): {
-    calls: readonly {
+    readonly calls: readonly Readonly<{
         call: keyof Calls;
         kind: ScriptedFulfillmentOutcome<unknown>["kind"];
-    }[];
+    }>[];
     enqueue<K extends keyof Calls>(call: K, ...outcomes: ScriptedFulfillmentOutcome<Calls[K]>[]): void;
     invoke<K extends keyof Calls>(call: K): Promise<Calls[K]>;
     assertDrained(): void;
 };
+export {};
 ```
 ## dist/fulfillment/trackingProgress.d.ts
 

@@ -3,6 +3,10 @@ import type { DispatchEvidence, FulfillmentCapabilityDescriptor, FulfillmentDisp
 import { dispatchEvidence, reference } from "./dispatchProjection.js";
 import { readFulfillmentCapabilities } from "./providerCapabilities.js";
 
+const capturedAdapters = new WeakSet<object>();
+/** Internal profile brand; capability declarations cannot select the captured profile. */
+export const isCapturedFulfillmentAdapter = (adapter: object): boolean => capturedAdapters.has(adapter);
+
 /** Synthetic, host-owned captures only. No command is sent to a provider. */
 export interface CapturedFulfillmentCommand {
   request: FulfillmentDispatchRequest;
@@ -77,7 +81,9 @@ export function createCapturedFulfillmentAdapter(options: {
       return structuredClone(captured.result);
     },
   };
-  return { capabilities, dispatch, readSubmissionCount: () => submitted.size };
+  const adapter = { capabilities, dispatch, readSubmissionCount: () => submitted.size };
+  capturedAdapters.add(adapter);
+  return adapter;
 }
 
 function commandFingerprint(request: FulfillmentDispatchRequest): string {
