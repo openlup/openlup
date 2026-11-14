@@ -98,14 +98,26 @@ it.each(["admission", "freeze"] as const)("locks the token against concurrent re
   const hash = randomUUID().replaceAll("-", "").repeat(2);
   await runtime.query("SELECT public.dunning_lifecycle_issue_recovery_token($1,$2,now()+interval '30 days')", [obligation.case_id, hash]);
   const token = (await runtime.query("SELECT id FROM public.commerce_checkout_recovery_tokens WHERE token_hash=$1", [hash])).rows[0].id;
-  const authority = await call(runtime, "subscription_retry_authorize_recovery", [f.operation, token, reference, method.id, AT]);
-  await call(runtime, "subscription_retry_schedule_recovery", [f.operation, `token-schedule:${f.operation}`, authority.id, AT]);
+  const recoveryAt = (await runtime.query("SELECT now() AS at")).rows[0].at.toISOString();
+  const authority = await call(runtime, "subscription_retry_authorize_recovery", [f.operation, token, reference, method.id, recoveryAt]);
+  await call(runtime, "subscription_retry_schedule_recovery", [f.operation, `token-schedule:${f.operation}`, authority.id, recoveryAt]);
   const dispatchAt = await retryDueAt(runtime, f.operation);
   if (phase === "freeze") await owner.query("UPDATE public.subscription_retry_obligations SET state='prepared' WHERE id=$1", [obligation.id]);
   const admission = await runtime.connect(), revocation = await runtime.connect(), methodBlocker = await owner.connect();
   let pending: Promise<unknown> | undefined, dispatchPending: Promise<unknown> | undefined;
   const admissionPid = (await admission.query("SELECT pg_backend_pid() AS pid")).rows[0].pid;
   const revocationPid = (await revocation.query("SELECT pg_backend_pid() AS pid")).rows[0].pid;
+  // Observe the expected lock dependency, rather than merely the first blocker.
+  // Keep the existing 300-query bound; no elapsed-time delay or dispatch retry.
+  const blockedBy = async (pid: number, blocker: number) => {
+    let pids: number[] = [];
+    for (let n = 0; n < 300 && !pids.includes(blocker); n++) {
+      pids = (await owner.query(`SELECT pg_blocking_pids(a.pid) AS pids FROM pg_stat_activity a
+        WHERE a.pid=$1 AND a.wait_event_type='Lock'
+          AND EXISTS(SELECT 1 FROM pg_locks l WHERE l.pid=a.pid AND NOT l.granted)`, [pid])).rows[0]?.pids ?? [];
+    }
+    return pids;
+  };
   const dispatch = () => phase === "admission"
     ? call(admission, "subscription_retry_prepare", [f.operation, `token-dispatch:${f.operation}`, { ...request({ ...f, original }), paymentMethodRef: reference }, dispatchAt])
     : call(admission, "payment_method_recovery_authority_freeze", [authority.id, f.operation, `token-dispatch:${f.operation}`, reference, dispatchAt]);
@@ -117,13 +129,11 @@ it.each(["admission", "freeze"] as const)("locks the token against concurrent re
     const methodPid = (await methodBlocker.query("SELECT pg_backend_pid() AS pid")).rows[0].pid;
     await admission.query("BEGIN");
     dispatchPending = dispatch().catch(error => error);
-    let methodBlockers: number[] = [];
-    for (let n = 0; n < 300 && !methodBlockers.length; n++) methodBlockers = (await owner.query("SELECT pg_blocking_pids($1) AS pids", [admissionPid])).rows[0].pids;
+    const methodBlockers = await blockedBy(admissionPid, methodPid);
     expect(methodBlockers).toContain(methodPid);
     await revocation.query("BEGIN");
-    pending = revocation.query("UPDATE public.commerce_checkout_recovery_tokens SET revoked_at=$2 WHERE id=$1", [token, AT]).catch(error => error);
-    let blockers: number[] = [];
-    for (let n = 0; n < 300 && !blockers.length; n++) blockers = (await owner.query("SELECT pg_blocking_pids($1) AS pids", [revocationPid])).rows[0].pids;
+    pending = revocation.query("UPDATE public.commerce_checkout_recovery_tokens SET revoked_at=$2 WHERE id=$1", [token, dispatchAt]).catch(error => error);
+    let blockers = await blockedBy(revocationPid, admissionPid);
     expect(blockers).toContain(admissionPid);
     await methodBlocker.query("COMMIT");
     expect(await dispatchPending).not.toBeInstanceOf(Error);
@@ -131,8 +141,7 @@ it.each(["admission", "freeze"] as const)("locks the token against concurrent re
     expect(await pending).not.toBeInstanceOf(Error);
     // Reverse the order: admission must observe revocation after the lock releases.
     pending = dispatch().catch(error => error);
-    blockers = [];
-    for (let n = 0; n < 300 && !blockers.length; n++) blockers = (await owner.query("SELECT pg_blocking_pids($1) AS pids", [admissionPid])).rows[0].pids;
+    blockers = await blockedBy(admissionPid, revocationPid);
     expect(blockers).toContain(revocationPid);
     await revocation.query("COMMIT");
     expect(await pending).toMatchObject({ message: phase === "admission" ? "subscription_retry_method_mismatch" : "payment_method_recovery_authority_dispatch_mismatch" });

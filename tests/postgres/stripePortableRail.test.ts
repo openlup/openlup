@@ -41,7 +41,7 @@ beforeAll(async () => {
   await env.owner.query("INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from) VALUES($1,$1,'any',100,'2026-01-01')", [sku]);
   await env.owner.query(`INSERT INTO public.fulfillment_stock_current(source_key,sku,total_quantity,for_sale_quantity,reserved_unavailable_quantity,
     inventory_class,last_synced_at,stale_after,sync_run_id,idempotency_key,operation_fingerprint)
-    VALUES($1,$2,100,100,0,'sellable',$3,'2035-01-01','fixture',$2,$4)`, [source, sku, AT, "a".repeat(64)]);
+    VALUES($1,$2,100,100,0,'sellable',$3,greatest(now(),$3::timestamptz)+interval '1 year','fixture',$2,$4)`, [source, sku, AT, "a".repeat(64)]);
   const quote = { context: { mode: "subscription", cadenceDays: 28 }, lines: [{ sku, quantity: 2,
     unitPriceGross: { amountMinor: 100, currency: "XXX" }, lineSubtotalGross: { amountMinor: 200, currency: "XXX" } }], totalGross: { amountMinor: 200, currency: "XXX" } };
   const draft = { contractVersion: "commerce.v0", source: "commerce.order_draft.bff.v0", status: "draft", paymentStatus: "not_started",
