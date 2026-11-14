@@ -186,7 +186,17 @@ RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalo
   OR EXISTS(SELECT 1 FROM public.subscription_method_states WHERE subscription_id=p_subscription_id AND provider_kind IS NOT NULL)
   OR EXISTS(SELECT 1 FROM public.payment_provider_states WHERE subscription_id=p_subscription_id)
   OR EXISTS(SELECT 1 FROM public.commerce_settlement_intents i JOIN public.commerce_orders o ON o.id=i.order_id
-   JOIN public.subscription_cycles c ON c.id=o.subscription_cycle_id WHERE c.subscription_id=p_subscription_id AND i.channel_key<>'sandbox')
+   JOIN public.subscription_cycles c ON c.id=o.subscription_cycle_id WHERE c.subscription_id=p_subscription_id AND i.channel_key<>'sandbox'
+    -- A captured initial purchase can fund an explicitly sandbox renewal lane.
+    -- Only its completed attachment and current terms establish that lane; all
+    -- recorded provider and renewal evidence above/below still selects strict checks.
+    AND NOT (c.status='paid' AND c.renewal_operation_id IS NULL AND o.renewal_operation_id IS NULL AND EXISTS(
+     SELECT 1 FROM public.subscription_renewal_attachments attachment
+     JOIN public.subscription_activations activation ON activation.order_id=attachment.order_id
+     JOIN public.subscription_renewal_terms terms ON terms.subscription_id=attachment.subscription_id
+     WHERE attachment.order_id=o.id AND attachment.subscription_id=p_subscription_id AND attachment.completed_at IS NOT NULL
+      AND attachment.purchase_facts->>'settlementChannelKey'='sandbox' AND terms.settlement_channel_key='sandbox'
+      AND activation.subscription_id=p_subscription_id AND activation.state='active')))
   OR EXISTS(SELECT 1 FROM public.subscription_renewal_operations WHERE subscription_id=p_subscription_id AND cycle_snapshot->>'settlementChannelKey'<>'sandbox')
   OR EXISTS(SELECT 1 FROM public.subscription_retry_obligations o JOIN public.subscription_retry_receipts r ON r.obligation_id=o.id
    WHERE o.subscription_id=p_subscription_id AND r.kind='failure' AND r.input->>'provider' IS NOT NULL AND r.input->>'paymentAttemptId' IS NOT NULL);

@@ -1,7 +1,7 @@
 import type { Pool } from 'pg';
 import { randomUUID } from 'node:crypto';
 import { expect,it } from 'vitest';
-import { AT,alignmentInvariant,call,failure,later,positive,prepareOriginal,renewal,request,unchangedIdentity } from './subscriptionNativeFixture.js';
+import { AT,alignmentInvariant,call,failure,later,positive,prepareOriginal,sandboxRenewal as renewal,request,unchangedIdentity } from './subscriptionNativeFixture.js';
 export function registerRetryCases(h:{pool:Pool}) {
 async function declined(classification='temporary') {
  const f=await renewal(h.pool);const original=await prepareOriginal(h.pool,f);
@@ -9,6 +9,14 @@ async function declined(classification='temporary') {
  const row=await call(h.pool,'subscription_retry_apply_failure',[f.operation,key,input]);
  await call(h.pool,'subscription_retry_open_case',[f.operation,'failed','/recover']);
  return {...f,original,input,key,row};
+}
+// Positive simulator observations are fixture evidence; recovery still owns money.
+async function sandboxPositive(f:Awaited<ReturnType<typeof declined>>,key?:string,at=later(25)) {
+ const observation=positive(f,key,at),fingerprint='e'.repeat(64);
+ const attempt=await call(h.pool,'payment_simulator_begin_attempt',[`capture:${f.operation}`,f.original.settlementIntentId,fingerprint,{},at]);
+ const captured=await call(h.pool,'payment_simulator_record_observation',[attempt.id,`capture-observation:${f.operation}`,fingerprint,'captured',at]);
+ return {...observation,evidenceKey:`sandbox:${captured.id}`,sourceKind:'accepted_event',sourceReference:captured.id,
+  attemptRef:attempt.id,observedStatus:'captured',observedAt:at,payloadFingerprint:fingerprint};
 }
 it('F16 settles the original declined cycle, advances atomically, preserves keys and replays without another charge',async()=>{
  const f=await declined();
@@ -18,7 +26,7 @@ it('F16 settles the original declined cycle, advances atomically, preserves keys
  const prepared=await call(h.pool,'subscription_retry_prepare',[f.operation,key,input,later(24)]);
  expect(prepared).toMatchObject({execute:true,cycleId:f.original.cycleId,orderId:f.original.orderId,settlementIntentId:f.original.settlementIntentId,identityKey:f.identity,snapshot:f.snapshot});
  expect(await call(h.pool,'subscription_retry_prepare',[f.operation,key,input,later(24)])).toMatchObject({execute:false,replayed:true,request:input});
- const observation=positive(f,key),paidKey=`paid-${f.operation}`;
+ const observation=await sandboxPositive(f,key),paidKey=`paid-${f.operation}`;
  const paid=await call(h.pool,'subscription_retry_record_recovery',[f.operation,paidKey,observation]);
  expect(paid).toMatchObject({state:'recovered',next_retry_at:null});
  expect(await call(h.pool,'subscription_retry_record_recovery',[f.operation,paidKey,observation])).toEqual(paid);
@@ -73,7 +81,7 @@ it('uses the 24/72/168-hour ladder from each failure, and exhaustion remains ope
  await call(h.pool,'subscription_retry_schedule_recovery',[f.operation,`schedule-${f.operation}`,auth.id,later(now+1)]);
  const key=`authorized-${f.operation}`;
  await call(h.pool,'subscription_retry_prepare',[f.operation,key,request(f,4),later(now+1)]);
- await call(h.pool,'subscription_retry_record_recovery',[f.operation,`paid-${f.operation}`,positive(f,key,later(now+2))]);
+ await call(h.pool,'subscription_retry_record_recovery',[f.operation,`paid-${f.operation}`,await sandboxPositive(f,key,later(now+2))]);
  expect((await h.pool.query('SELECT next_cycle_number FROM public.subscription_renewal_terms WHERE subscription_id=$1',[f.subscription])).rows[0].next_cycle_number).toBe(3);
  await unchangedIdentity(h.pool,f);
 });
@@ -96,14 +104,14 @@ it('a class stop needs a consumed same-case token and durable healthy method evi
  expect(await call(h.pool,'subscription_retry_schedule_recovery',[f.operation,key,auth.id,later(1)])).toEqual(scheduled);
  const prepareKey=`recover-${f.operation}`;
  await call(h.pool,'subscription_retry_prepare',[f.operation,prepareKey,request(f),later(1)]);
- await call(h.pool,'subscription_retry_record_recovery',[f.operation,`paid-${f.operation}`,positive(f,prepareKey,later(2))]);
+ await call(h.pool,'subscription_retry_record_recovery',[f.operation,`paid-${f.operation}`,await sandboxPositive(f,prepareKey,later(2))]);
  expect((await h.pool.query('SELECT consumed_at FROM public.subscription_retry_recovery_authorizations WHERE id=$1',[auth.id])).rows[0].consumed_at).not.toBeNull();
  await unchangedIdentity(h.pool,f);
 });
 it('a verified late positive settles without re-executing or moving an already later schedule earlier',async()=>{
  const f=await declined();await h.pool.query("UPDATE public.subscriptions SET next_cycle_at='2027-06-01' WHERE id=$1",[f.subscription]);
  await expect(call(h.pool,'subscription_retry_record_recovery',[f.operation,'bad-money',{...positive(f),amountMinor:null}])).rejects.toThrow('positive_evidence');
- await call(h.pool,'subscription_retry_record_recovery',[f.operation,`paid-${f.operation}`,positive(f)]);
+ await call(h.pool,'subscription_retry_record_recovery',[f.operation,`paid-${f.operation}`,await sandboxPositive(f)]);
  expect((await h.pool.query('SELECT next_cycle_at FROM public.subscriptions WHERE id=$1',[f.subscription])).rows[0].next_cycle_at.toISOString()).toBe('2027-06-01T00:00:00.000Z');
  expect((await h.pool.query("SELECT * FROM public.subscription_retry_receipts WHERE obligation_id=$1 AND kind='prepare'",[f.row.id])).rows).toEqual([]);
  await unchangedIdentity(h.pool,f);

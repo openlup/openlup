@@ -1,3 +1,4 @@
+import { recordRenewalMethod } from "./subscriptionNativeFixture.js";
 /** Native notice real-driver diagnostics for delivery isolation and runtime prerequisites. */
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -451,6 +452,7 @@ it("dispatches real activation, lifecycle, renewal and pause-reminder sources th
   const external = (await runtime.query("SELECT external_ref FROM public.commerce_settlement_intents WHERE id=$1", [f.intent])).rows[0].external_ref;
   const activated = (await runtime.query("SELECT public.subscription_activate_from_captured_payment($1,$2::uuid,$3) AS result",
     [`activate:${f.order}`, f.order, createHash("sha256").update(String(external ?? f.intent)).digest("hex")])).rows[0].result;
+  await recordRenewalMethod(runtime, { client: f.client, subscription: activated.subscriptionId }, "notice-method");
   await admin.query("UPDATE public.subscriptions SET next_cycle_at=now()+interval '4 days',updated_at=now()-interval '6 days' WHERE id=$1", [activated.subscriptionId]);
   await admin.query("INSERT INTO public.subscription_method_states(subscription_id,health_state) VALUES($1,'healthy') ON CONFLICT(subscription_id) DO UPDATE SET health_state='healthy'", [activated.subscriptionId]);
   const paused = await fixture();

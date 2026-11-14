@@ -8,7 +8,7 @@ import { createOutboxPaymentFailedEmailHandler } from "@openlup/platform/commerc
 import type { OutboxEventRow, PaymentFailedEmailInput, TransactionalEmailPort } from "@openlup/platform/commerce";
 import type { PreparedAttemptFailurePolicy } from "@openlup/platform/payments/contracts";
 import { lifecycleInstallation, call, type LifecycleInstallation } from "./subscriptionLifecycleClosureFixture.js";
-import { renewal, prepareOriginal } from "./subscriptionNativeFixture.js";
+import { renewal, recordRenewalMethod, prepareOriginal } from "./subscriptionNativeFixture.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
 
 const AT = "2026-11-13T12:00:00.000Z";
@@ -594,6 +594,7 @@ it("records one attributed renewal failure before truth reuses its settlement an
 
 it.each([0, 1])("records a same-attempt expiry after decline at renewal sequence %s without another retry stage and replays it without writes", async sequence => {
   const f = await providerRenewal(); let a = f.a;
+  if (sequence === 1) await recordRenewalMethod(env.runtime, f.r, "method-primary");
   await result(f, `decline:${a.paymentAttemptId}`);
   if (sequence === 1) {
     const prepare = { ...f.prepare, idempotencyKey: `prepare:${f.intent}:1`, providerIdempotencyKey: `provider:${f.intent}:1` };

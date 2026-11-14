@@ -734,8 +734,12 @@ method row, preserving its provider/reference identity, and lock the recovery to
 through commit. Admission holds a shared lock on the exact method and rechecks
 usability after acquiring that lock. Driver selection and preparation both respect
 the quarantine deadline. Recorded provider state, settlement channels and frozen
-renewal channels select this path even when historical method refs are absent;
-a healthy legacy label cannot select sandbox compatibility for that work.
+renewal channels select this path even when historical method refs are absent.
+A completed sandbox attachment with current sandbox terms preserves the sandbox
+lane when only the initial paid checkout has a non-sandbox channel. Recorded
+references (including inactive rows), provider markers or state, non-sandbox
+renewal operations and provider retry evidence still select recorded authority;
+a healthy legacy label cannot override those facts.
 Reminder eligibility reads active-method facts through the bounded health reader
 under runtime privileges, independently of unattended chargeability.
 
@@ -748,12 +752,29 @@ composition; the existing sandbox case handoff remains selected separately.
 | Historical method state | Named result and manual path |
 | --- | --- |
 | Healthy label or mirror string with no reusable row | `method_ref_not_recorded` from the recorded-method reader; `subscription_missing_payment_method_ref` or `no_matching_method_ref` from scope repair. Obtain verified method evidence; no synthetic reference or automatic backfill is created. |
+| Host-composed native real history without a recorded reference | Retry preparation refuses `subscription_missing_payment_method_ref`; recovery authorization refuses `subscription_retry_recovery_not_authorized`; recorded lookup returns `method_ref_not_recorded`. The host records method refs with `payment_method_ref_upsert` using verified provider evidence; no automatic backfill or inference from a healthy label occurs. Existing tokens without recorded context need a new authorized recovery token. |
 | One usable same-client account method matching a mirror | Scope repair returns `repaired`; an already scoped method returns `no_op/already_subscription_scoped`. Batch repair defaults to dry-run and accepts 1–500 subscriptions. |
 | Cross-client, other-subscription, expired, revoked or ambiguous evidence | Scope repair returns `cross_client_candidate`, `wrong_subscription_owner`, `unusable_candidate` or `ambiguous_candidate`, without rebinding. Resolve the evidence manually. |
 | Unmatched or already processed setup delivery | Setup close returns `updated=false`; no payment effect is inferred. |
 | Existing checkout token without recorded recovery context | `recovery_not_ready`; record a new authorized recovery token instead of inferring purpose or redemption from revocation. |
 | No matching case or retry obligation | `case_not_found` or `recovery_not_ready`; a method update never reconstructs failed work. |
 | Previously dispatched authority | Preserve the recorded method and dispatch fence. Reconcile that attempt before a later rung can use another method. |
+
+### Upgrade native method authority
+
+For host-composed native subscriptions with real-provider history but no recorded
+references, retry, recovery, reactivation, auto-resume and upcoming reminders
+refuse or remain ineligible until the host records refs. Original renewal charging
+is unchanged. Sandbox subscriptions retain their previous behavior, including a
+completed sandbox renewal attachment whose initial paid checkout used a different
+channel, provided no recorded provider or real-renewal evidence selects authority.
+
+The host records method refs with `payment_method_ref_upsert` from verified
+provider evidence, then uses the scoped binding/repair path. Do not infer reusable
+references from legacy labels or financial success: there is no backfill. Obtain
+a new authorized recovery token when an old token lacks recorded context. A
+recorded inactive method continues to refuse until usable evidence is recorded;
+removing authority is not a compatibility fallback.
 
 Health is evaluated from recorded evidence on reads. `method_expiring` can still
 be chargeable until expiry; model-less cards and declared unattended methods

@@ -1679,7 +1679,11 @@ eligible recorded retries before setup close. Method evidence uses
 `resolveSavedMethodOwner`. Neither trusts adapter metadata as ownership.
 `createPostgresRecordedSubscriptionMethodReader` returns `method_ref_not_recorded`
 for historical labels or mirrors without recorded evidence. Scope repair is
-explicit and batch dry-run is the default. See the
+explicit and batch dry-run is the default. For native host-composed real history,
+missing recorded references block retries, recovery, reactivation, timed auto-resume
+and upcoming reminders until the host records refs with `payment_method_ref_upsert`.
+Original renewal charging and sandbox behavior are unchanged; an initial captured
+checkout alone does not override a completed sandbox attachment/current terms. See the
 [method-history limits](../../docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
 for the schema and manual-path boundary. Collection, linking and scheduling do
 not settle money or alter subscription service. Expiring methods can remain

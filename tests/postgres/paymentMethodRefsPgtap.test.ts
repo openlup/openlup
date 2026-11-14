@@ -1,4 +1,5 @@
-import { randomUUID } from "node:crypto";
+import { nativeNoticeOrder } from "./m19NoticeFixture.js";
+import { createHash, randomUUID } from "node:crypto";
 import { createPostgresProviderPaymentControlPort, createPostgresPaymentMethodStore, createPostgresPaymentMethodSetup, createPostgresPaymentWebhookControlPort,
   createPostgresPaymentWebhookMethodRefPort, createVerifiedPaymentIngress, consumePostgresPaymentMethodDelivery,
   applyPostgresPaymentMethodLifecycleEvent, schedulePostgresRetryOnDurableMethodUpdate, createPostgresRecordedSubscriptionMethodReader } from "@openlup/platform/payments";
@@ -16,6 +17,7 @@ import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, type 
 
 let container: PostgresContainer | undefined, pool: Pool, db: PoolClient;
 let originalHeaders: Record<string, unknown>[];
+let sandboxBefore: Awaited<ReturnType<typeof sandboxCompatibilityOutcomes>>;
 beforeAll(async () => {
   container = await runManagedCompatPostgres({ name: `method-native-pgtap-${process.pid}`, password: "synthetic-conformance" });
   pool = new Pool({ connectionString: container.connectionString.replace("postgres://postgres:", "postgres://supabase_admin:") });
@@ -23,7 +25,10 @@ beforeAll(async () => {
   await db.query("DROP SCHEMA auth CASCADE; DROP OWNED BY anon,authenticated,service_role CASCADE; DROP ROLE anon,authenticated,service_role; CREATE ROLE service_role");
   const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
   for (const unit of [manifest.baseline, ...manifest.forward]) {
-    if (unit.file.endsWith("20261114110000_payment_method_refs.sql")) originalHeaders = await headers();
+    if (unit.file.endsWith("20261114110000_payment_method_refs.sql")) {
+      originalHeaders = await headers();
+      sandboxBefore = await sandboxCompatibilityOutcomes();
+    }
     await db.query(readFileSync(unit.file, "utf8"));
   }
   await db.query("CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions; SET search_path=public,extensions");
@@ -300,11 +305,11 @@ it("consumes the provider owner's canonical failure once and replays its origina
 });
 
 
-async function methodRows() {
+async function methodRows(includeRecorded = true) {
   const rows: Record<string, unknown> = {};
   for (const table of ["subscriptions", "subscription_cycles", "subscription_renewal_operations", "subscription_retry_obligations",
     "subscription_retry_receipts", "subscription_retry_recovery_authorizations", "subscription_dunning_cases", "subscription_events",
-    "subscription_method_states", "payment_method_refs", "payment_method_ref_receipts", "payment_method_recovery_authorities", "commerce_checkout_recovery_tokens",
+    "subscription_method_states", ...(includeRecorded ? ["payment_method_refs", "payment_method_ref_receipts", "payment_method_recovery_authorities"] : []), "commerce_checkout_recovery_tokens",
     "commerce_orders", "commerce_settlement_intents", "commerce_settlement_transitions", "payment_provider_attempt_evidence", "fulfillment_inventory_reservations"]) {
     rows[table] = (await db.query(`SELECT to_jsonb(t) AS row,xmin::text AS version FROM public.${table} t ORDER BY to_jsonb(t)::text`)).rows;
   }
@@ -504,4 +509,145 @@ it("keeps a hard stop below rung four closed to a bare webhook and repairs it on
   expect((await db.query("SELECT retry_attempt,attempt_sequence FROM public.subscription_retry_obligations WHERE id=$1", [subject.obligation])).rows)
     .toEqual([{ retry_attempt: 1, attempt_sequence: 0 }]);
   expect((await db.query("SELECT count(*)::int AS n FROM public.subscription_events WHERE subscription_id=$1 AND event_type='subscription.retry_scheduled' AND payload->>'source'='subscription.payment_recovery'", [subject.subscription])).rows).toEqual([{ n: 1 }]);
+});
+
+// Execute identical public lifecycle requests before and after the method forward.
+// All identifiers are discarded from the comparison; observable verdicts remain.
+async function sandboxCompatibilityFixture(channel: "sandbox" | "captured") {
+  const purchase = await nativeNoticeOrder(db, db, undefined, "subscription", channel);
+  const { client, order, sku, variantId } = purchase, source = randomUUID();
+  await purchase.settle();
+  await call(db, "subscription_declare_provisional_activation", [`declare:${order}`, order, 28]);
+  const facts = { settlementChannelKey: "sandbox", authorizationRef: "sandbox-authorization", unattendedChargeAuthorizedAt: new Date().toISOString(),
+    payerAccountRef: null, methodRef: "compatibility-method", methodEvidenceRef: "sandbox-evidence", stockSourceKey: source,
+    templateId: "compatibility-template", cadenceDays: 28, currency: "XXX", lines: [{ lineOrdinal: 1, sku, quantity: 2, unitAmountMinor: 100 }],
+    shippingAmountMinor: 0, acquisitionRef: null };
+  await call(db, "subscription_register_renewal_purchase", [order, facts]);
+  const external = (await db.query("SELECT external_ref FROM public.commerce_settlement_intents WHERE id=$1", [purchase.intent])).rows[0].external_ref;
+  const activation = await call(db, "subscription_activate_from_captured_payment", [`activate:${order}`, order, createHash("sha256").update(external).digest("hex")]);
+  await call(db, "subscription_complete_renewal_attachment", [order]);
+  const subscription = String(activation.subscriptionId), actor = randomUUID();
+  await db.query("INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,is_addon,unit_price_minor,currency_code) VALUES($1,$2,2,0,false,100,'XXX')", [subscription, variantId]);
+  await db.query("UPDATE public.subscriptions SET next_cycle_at=now()+interval '4 days',updated_at=now()-interval '6 days',started_at='2026-01-01' WHERE id=$1", [subscription]);
+  return { client, subscription, actor, source, sku, order, intent: purchase.intent };
+}
+async function sandboxCompatibilityOutcomes() {
+  const outcomes = [];
+  for (const channel of ["sandbox", "captured"] as const) {
+    await db.query("BEGIN");
+    try {
+      const f = await sandboxCompatibilityFixture(channel);
+      await call(db, "dunning_lifecycle_renewal_reminder_enqueue", [500, 3 * 86400, 5 * 86400, 86400, 86400]);
+      const reminder = (await db.query("SELECT 1 FROM public.subscription_reminder_ledger WHERE subscription_id=$1 AND reminder_kind='renewal_due_soon'", [f.subscription])).rowCount === 1;
+      const command = (action: string, payload: unknown = {}) => call(db, "subscription_command_apply", [f.actor, f.client, `${action}:${f.subscription}`, f.subscription, action, payload]);
+      await command("cancel");
+      const reactivated = await command("reactivate", { confirmedChargeTiming: true });
+      await command("pause", { pausePreset: "2_weeks" });
+      const end = (await db.query("SELECT to_char(ends_at AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS ends_at FROM public.subscription_pause_windows WHERE subscription_id=$1 AND resumed_at IS NULL", [f.subscription])).rows[0].ends_at;
+      await call(db, "subscription_auto_resume_due", [500, end]);
+      const resumed = (await db.query("SELECT status,to_char(next_cycle_at AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS scheduled FROM public.subscriptions WHERE id=$1", [f.subscription])).rows[0];
+      const scheduled = resumed.scheduled;
+      const snapshot = { contractVersion: "platform.subscription.renewal.v1", subscriptionId: f.subscription, clientId: f.client, scheduledAt: scheduled,
+        cycleNumber: 1, currency: "XXX", stockSourceKey: f.source, settlementChannelKey: "sandbox", authorizationRef: "sandbox-authorization",
+        payerAccountRef: null, totalAmountMinor: 200, lines: [{ lineOrdinal: 1, sku: f.sku, quantity: 2, unitAmountMinor: 100 }] };
+      await db.query(`INSERT INTO public.fulfillment_stock_current(source_key,sku,total_quantity,for_sale_quantity,reserved_unavailable_quantity,inventory_class,
+        last_synced_at,stale_after,sync_run_id,idempotency_key,operation_fingerprint) VALUES($1,$2,10,10,0,'sellable',now(),'2030-01-01','compatibility',$3,$4)`, [f.source, f.sku, randomUUID(), "a".repeat(64)]);
+      const identity = await call(db, "subscription_renewal_identity", [f.subscription, scheduled]);
+      const claimed = await call(db, "subscription_claim_due_renewal", [identity, "b".repeat(64), snapshot, "compatibility", 300, scheduled]);
+      await call(db, "fulfillment_reserve_subscription_renewal", [claimed.operationId, claimed.claimToken, 900, scheduled]);
+      const original = await call(db, "commerce_prepare_subscription_renewal", [claimed.operationId, claimed.claimToken, scheduled]);
+      await call(db, "commerce_acknowledge_subscription_renewal_attempt", [claimed.operationId, "b".repeat(64), "compatibility-attempt", scheduled]);
+      const failed = await call(db, "subscription_retry_apply_failure", [claimed.operationId, `failed:${identity}`, failure(0, scheduled)]);
+      const opened = await call(db, "subscription_retry_open_case", [claimed.operationId, "failed", "/recover"]);
+      const due = failed.next_retry_at, tokenHash = randomUUID().replaceAll("-", "").repeat(2);
+      await call(db, "dunning_lifecycle_issue_recovery_token", [opened.caseId, tokenHash, "2030-01-01"]);
+      const token = (await db.query("SELECT id FROM public.commerce_checkout_recovery_tokens WHERE token_hash=$1", [tokenHash])).rows[0].id;
+      const auth = await call(db, "subscription_retry_authorize_recovery", [claimed.operationId, token, "compatibility-method", "sandbox-evidence", due]);
+      const authorizedTokenRevoked = (await db.query("SELECT revoked_at IS NOT NULL AS revoked FROM public.commerce_checkout_recovery_tokens WHERE id=$1", [token])).rows[0].revoked;
+      const scheduleArgs = [claimed.operationId, `schedule:${identity}`, auth.id, due];
+      const schedule = await call(db, "subscription_retry_schedule_recovery", scheduleArgs);
+      const scheduleReplay = await call(db, "subscription_retry_schedule_recovery", scheduleArgs);
+      const input = { paymentIntentId: original.settlementIntentId, orderRef: original.orderId, amountMinor: 200, currency: "XXX",
+        idempotencyKey: `execute:${identity}`, providerIdempotencyKey: `provider:${identity}`, providerRequestFingerprint: "c".repeat(64), paymentMethodRef: "compatibility-method" };
+      const prepared = await call(db, "subscription_retry_prepare", [claimed.operationId, `prepare:${identity}`, input, due]);
+      const before = await methodRows(false);
+      const replay = await call(db, "subscription_retry_prepare", [claimed.operationId, `prepare:${identity}`, input, due]);
+      outcomes.push({ reminder, reactivation: reactivated.status, autoResume: resumed.status, authorizedTokenRevoked,
+        scheduled: schedule.scheduled, scheduleReplay: JSON.stringify(scheduleReplay) === JSON.stringify(schedule), retry: prepared.execute,
+        retryReplay: replay.replayed && !replay.execute, replayUnchanged: JSON.stringify(await methodRows(false)) === JSON.stringify(before) });
+    } finally { await db.query("ROLLBACK"); }
+  }
+  return outcomes;
+}
+it("preserves identical sandbox retry, recovery, reactivation, auto-resume and reminder outcomes across the forward, including a captured initial checkout", async () => {
+  const expected = { reminder: true, reactivation: "applied", autoResume: "active", authorizedTokenRevoked: true,
+    scheduled: true, scheduleReplay: true, retry: true, retryReplay: true, replayUnchanged: true };
+  expect(sandboxBefore).toEqual([expected, expected]);
+  expect(await sandboxCompatibilityOutcomes()).toEqual(sandboxBefore);
+});
+it.each(["inactive_ref", "provider_marker", "provider_state", "real_renewal", "provider_retry"] as const)("retains strict authority for %s after a mixed sandbox attachment", async signal => {
+  await db.query("BEGIN");
+  try {
+    const f = await sandboxCompatibilityFixture("captured");
+    expect(await call(db, "subscription_method_uses_recorded_refs", [f.subscription])).toBe(false);
+    if (signal === "inactive_ref") {
+      const m = await method(f, `inactive:${f.subscription}`);
+      await call(db, "payment_method_ref_deactivate", [randomUUID(), m.id, "revoked", {}]);
+    } else if (signal === "provider_marker") await db.query("UPDATE public.subscription_method_states SET provider_kind='card_rail' WHERE subscription_id=$1", [f.subscription]);
+    else if (signal === "provider_state") {
+      // Installer-owned historical marker isolates this predicate independently of channel labels.
+      await db.query(`INSERT INTO public.payment_provider_states(id,target_kind,subscription_id,subscription_cycle_id)
+        SELECT $1,'subscription_cycle',$2,subscription_cycle_id FROM public.commerce_orders WHERE id=$3`, [f.intent, f.subscription, f.order]);
+    }
+    else {
+      const at = (await db.query("SELECT to_char(next_cycle_at AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS scheduled FROM public.subscriptions WHERE id=$1", [f.subscription])).rows[0].scheduled;
+      const identity = await call(db, "subscription_renewal_identity", [f.subscription, at]);
+      const snapshot = { contractVersion: "platform.subscription.renewal.v1", subscriptionId: f.subscription, scheduledAt: at, cycleNumber: 1,
+        currency: "XXX", totalAmountMinor: 200, settlementChannelKey: signal === "real_renewal" ? "card_rail" : "sandbox", lines: [{ sku: f.sku, quantity: 2, unitAmountMinor: 100 }] };
+      const claimed = await call(db, "subscription_claim_due_renewal", [identity, "d".repeat(64), snapshot, "compatibility", 300, at]);
+      if (signal === "provider_retry") {
+        // The provider receipt is durable independent evidence, even with sandbox channel labels.
+        const cycle = randomUUID(), order = randomUUID(), intent = randomUUID(), obligation = randomUUID();
+        await db.query("INSERT INTO public.subscription_cycles(id,subscription_id,scheduled_at,status) VALUES($1,$2,$3,'payment_pending')", [cycle, f.subscription, at]);
+        await db.query("INSERT INTO public.commerce_orders(id,client_id,currency_code,total_amount_minor,subscription_cycle_id) VALUES($1,$2,'XXX',200,$3)", [order, f.client, cycle]);
+        await db.query("INSERT INTO public.commerce_order_items(order_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor) VALUES($1,1,2,100,200)", [order]);
+        await db.query("INSERT INTO public.commerce_settlement_intents(id,order_id,channel_key,amount_minor,currency_code,open_idempotency_key,status) VALUES($1,$2,'sandbox',200,'XXX',$1::uuid::text,'failed')", [intent, order]);
+        await db.query(`INSERT INTO public.subscription_retry_obligations(id,renewal_operation_id,subscription_id,logical_cycle_number,scheduled_at,cycle_id,order_id,settlement_intent_id,identity_key,operation_fingerprint,cycle_snapshot)
+          VALUES($1,$2,$3,1,$4,$5,$6,$7,$8,$9,$10)`, [obligation, claimed.operationId, f.subscription, at, cycle, order, intent, identity, "d".repeat(64), snapshot]);
+        await db.query("INSERT INTO public.subscription_retry_receipts(obligation_id,receipt_key,kind,attempt_sequence,input,result) VALUES($1,$2,'failure',0,$3,'{}')", [obligation, randomUUID(), { provider: "card_rail", paymentAttemptId: randomUUID() }]);
+      }
+    }
+    expect(await call(db, "subscription_method_uses_recorded_refs", [f.subscription])).toBe(true);
+    const before = await methodRows();
+    expect(await call(db, "subscription_method_chargeable_unattended", [f.subscription])).toBe(false);
+    expect(await createPostgresRecordedSubscriptionMethodReader(db).read(f.subscription)).toEqual({ kind: "unavailable", reason: "method_ref_not_recorded" });
+    expect(await methodRows()).toEqual(before);
+  } finally { await db.query("ROLLBACK"); }
+});
+
+it("keeps real-history lifecycle refusals and reminder/auto-resume skips free of business effects", async () => {
+  await db.query("BEGIN");
+  try {
+    const f = await sandboxCompatibilityFixture("captured");
+    // Isolate producer selection from earlier independent fixtures in this transaction.
+    await db.query("UPDATE public.subscriptions SET status='cancelled' WHERE id<>$1", [f.subscription]);
+    await db.query("UPDATE public.subscription_method_states SET provider_kind='card_rail' WHERE subscription_id=$1", [f.subscription]);
+    let before = await methodRows();
+    await call(db, "dunning_lifecycle_renewal_reminder_enqueue", [500, 3 * 86400, 5 * 86400, 86400, 86400]);
+    expect((await db.query("SELECT id FROM public.subscription_reminder_ledger WHERE subscription_id=$1", [f.subscription])).rows).toEqual([]);
+    expect(await methodRows()).toEqual(before);
+    const command = (action: string, payload: unknown = {}) => call(db, "subscription_command_apply", [f.actor, f.client, `${action}:${f.subscription}`, f.subscription, action, payload]);
+    await command("cancel");
+    before = await methodRows();
+    expect(await command("reactivate", { confirmedChargeTiming: true })).toMatchObject({ status: "refused", reason: "subscription_command_payment_blocked" });
+    // The normal command refusal receipt is audit-only; all business/evidence rows retain xmin.
+    expect(await methodRows()).toEqual(before);
+    await db.query("UPDATE public.subscriptions SET status='active' WHERE id=$1", [f.subscription]);
+    await command("pause", { pausePreset: "2_weeks" });
+    const window = (await db.query("SELECT id,to_char(ends_at AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS ends_at FROM public.subscription_pause_windows WHERE subscription_id=$1 AND resumed_at IS NULL", [f.subscription])).rows[0];
+    before = await methodRows();
+    await call(db, "subscription_auto_resume_due", [500, window.ends_at]);
+    expect((await db.query("SELECT resumed_at FROM public.subscription_pause_windows WHERE id=$1", [window.id])).rows[0].resumed_at).toBeNull();
+    expect(await methodRows()).toEqual(before);
+  } finally { await db.query("ROLLBACK"); }
 });

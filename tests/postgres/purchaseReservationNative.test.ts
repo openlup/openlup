@@ -16,7 +16,7 @@ import { qualifiedPostgresStartupOptions } from "../../server/adapters/postgres/
 import { withIssuedPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady,
   postgresSetupTimeoutMs, postgresTeardownTimeoutMs, type PostgresContainer } from "../helpers/postgresContainer.js";
-import { AT, later, call, renewal, prepareOriginal, failure, request, positive } from "./subscriptionNativeFixture.js";
+import { AT, later, call, renewal, recordRenewalMethod, prepareOriginal, failure, request, positive } from "./subscriptionNativeFixture.js";
 
 const exec = promisify(execFile), name = `g4-native-${process.pid}`;
 const installation = { generation: "qualified-v2", roleMode: "installer-managed", bootstrapLogin: "postgres",
@@ -485,6 +485,7 @@ it("shares hard-hold accounting and stock locks with renewal and stock wait with
 });
 it("retry refuses to recommit stock spent by purchase and succeeds after its release", async () => {
   const f = await renewal(admin), original = await prepareOriginal(runtime, f);
+  await recordRenewalMethod(admin, f);
   await call(runtime, "subscription_retry_apply_failure", [f.operation, randomUUID(), failure()]);
   const sku = f.snapshot.lines[0].sku, id = (await admin.query("SELECT id FROM public.catalog_skus WHERE sku=$1", [sku])).rows[0].id;
   const s = { source: f.source, sku, id };

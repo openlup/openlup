@@ -7,7 +7,7 @@ import { createPostgresMigrationRunner } from "../../server/adapters/postgres/mi
 import { qualifiedPostgresStartupOptions, qualifiedAdminPostgresStartupOptions,
   type QualifiedPostgresInstallation, type QualifiedAdminPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
-import { AT, call, failure, later, prepareOriginal, renewal } from "./subscriptionNativeFixture.js";
+import { AT, call, failure, later, prepareOriginal, sandboxRenewal as renewal } from "./subscriptionNativeFixture.js";
 
 export const lifecycleForward = "db/platform/migrations/20261106100000_subscription_lifecycle_closure.sql";
 export const lifecycleProfiles = ["legacy", "qualified-v2", "qualified-admin"] as const;
