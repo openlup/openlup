@@ -1,11 +1,11 @@
-// The registry tutorial follows publication in its own read-only workflow.
+// The advisory tutorial and exact-set qualification follow publication independently of PR CI.
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
-import { assertReleaseProvenance, qualificationReceipt, qualifyReleasedSet, verifiedReleasePackages } from "./exact-set-qualification.mjs";
+import { assertReleaseProvenance, proveNeutralStarterConsumer, qualificationReceipt, qualifyReleasedSet, verifiedReleasePackages } from "./exact-set-qualification.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const workflow = readFileSync(join(ROOT, ".github/workflows/registry-tutorial.yml"), "utf8");
@@ -265,6 +265,37 @@ describe("exact published-set qualification", () => {
       expect(receipt).toMatchObject({ result: "FAIL", checks: [], packages: [], tag, tagCommit: commit });
       expect(Date.parse(receipt.endedAt)).toBeGreaterThanOrEqual(Date.parse(receipt.startedAt));
     } finally { vi.unstubAllEnvs(); rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("refuses a changed released lock or unknown input mode before installing or executing the application", () => {
+    const application = realpathSync(mkdtempSync(join(tmpdir(), "qualification-lock-"))), run = vi.fn((_name: string, _args: string[], _cwd: string) => application), verifyInstalled = vi.fn();
+    try {
+      writeFileSync(join(application, "package.json"), "{}");
+      writeFileSync(join(application, "package-lock.json"), "{}");
+      const input = { mode: "released", application, environment: {}, run, verifyInstalled, packages: [name], lockfileSha256: "unverified" };
+      expect(() => proveNeutralStarterConsumer(ROOT, input)).toThrow("lock changed before installation");
+      expect(run.mock.calls.every(call => call[0] !== "npm")).toBe(true);
+      expect(() => proveNeutralStarterConsumer(ROOT, { ...input, mode: "unknown" })).toThrow("Unknown starter consumer input mode");
+      expect(verifyInstalled).not.toHaveBeenCalled();
+    } finally { rmSync(application, { recursive: true, force: true }); }
+  });
+
+  it("parses successful npm audit bundles with each publishable package's own certificate and tag", () => {
+    const directory = mkdtempSync(join(tmpdir(), "qualification-certificates-"));
+    try {
+      const packages = JSON.parse(readFileSync(join(ROOT, "config/openlup-packages.json"), "utf8")).packages.filter((entry: { publish: boolean }) => entry.publish);
+      const verified = packages.map(({ name }: { name: string }, index: number) => {
+        const packageTag = `openlup-${name.slice(9)}-v${version}`, identity = signer.replace(tag, packageTag);
+        // Synthetic self-signed certificates exercise parsing/identity; npm owns cryptographic verification.
+        const certificate = execFileSync("openssl", ["req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256", "-nodes", "-keyout", join(directory, "key.pem"), "-subj", "/CN=fixture", "-addext", `subjectAltName=${identity}`, "-outform", "DER"], { stdio: ["ignore", "pipe", "ignore"] }).toString("base64");
+        const payload = JSON.stringify(statement()).replaceAll("openlup-core-v", `openlup-${name.slice(9)}-v`).replaceAll("%40openlup/core@", `%40openlup/${name.slice(9)}@`);
+        return { name, version, attestationBundles: [{ predicateType: "https://slsa.dev/provenance/v1", bundle: { verificationMaterial: index % 2 ? { x509CertificateChain: { certificates: [{ rawBytes: certificate }] } } : { certificate: { rawBytes: certificate } }, dsseEnvelope: { payload: Buffer.from(payload).toString("base64") } } }] };
+      });
+      const audit = JSON.parse(JSON.stringify({ invalid: [], missing: [], verified }));
+      expect(verifiedReleasePackages(audit, packages.map(({ name }: { name: string }) => ({ name, integrity })), version, commit)).toEqual(packages.map(({ name }: { name: string }) => ({ name, version, integrity, verificationSource: "npm audit signatures --json --include-attestations", provenanceSha256: expect.stringMatching(/^[a-f0-9]{64}$/) })));
+      audit.verified[1].attestationBundles[0].bundle.verificationMaterial = audit.verified[0].attestationBundles[0].bundle.verificationMaterial;
+      expect(() => verifiedReleasePackages(audit, packages.map(({ name }: { name: string }) => ({ name, integrity })), version, commit)).toThrow("signer mismatch");
+    } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
   it("accepts only the exact release subject, signer, repository, workflow, tag and commit", () => {

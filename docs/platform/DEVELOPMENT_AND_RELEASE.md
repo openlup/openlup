@@ -318,15 +318,22 @@ owns release permissions, setup, detailed refusals and recovery. The sequence is
 
 After a successful core publication, the separate
 [Guide tutorial against the npm registry](../../.github/workflows/registry-tutorial.yml)
-workflow waits for the matching package set and core's `latest` value on npm,
-then runs the guide tutorial against the registry. It runs trusted default-branch
-code and reads only the release tag's tutorial page, after checking the tag's
-commit against the completed publication run. It does not hold the
-publication run open or delay the next release dispatch, and is not a required
-check. The registry tutorial remains advisory until its second green run:
-a tutorial failure appears as a warning annotation and in the step summary.
-The packed-candidate tutorial in `install-packages` is blocking because its
-condition of two green merge-group runs on main has been met.
+workflow runs trusted default-branch code after checking the release tag's commit
+against the completed publication run. A maintainer can also dispatch it from
+the default branch for an existing core release tag. The advisory tutorial reads
+the tagged tutorial page and waits for the matching npm set; automatic runs also
+require core's `latest` to match. A separate exact-set qualification job reads
+the tagged starter as data, verifies and tests the locked released packages, and
+retains its own blocking result and receipt. That job also needs `packages: read`
+for the pinned PostgreSQL mirror. See the
+[qualification owner](DISTRIBUTION_EVIDENCE.md#exact-published-set-qualification)
+for trust, evidence and support limits.
+
+The workflow does not hold publication open or delay the next dispatch, and adds
+no required PR check. The registry tutorial remains advisory until its second
+green run: a tutorial failure appears as a warning annotation and in the step
+summary. The packed-candidate tutorial in `install-packages` is blocking because
+its condition of two green merge-group runs on main has been met.
 
 On partial release or package failure, stop for maintainer recovery. Do not
 retag, rewrite an immutable release or republish a version. A failed publish job
