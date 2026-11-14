@@ -34,9 +34,13 @@ describe("opt-in payment factory", () => {
     const result = await adapter.attemptPort.execute(request);
     expect(client.createPaymentIntent).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ amount: 2599, currency: "eur",
       metadata: { source: "openlup.payment-control", paymentIntentId: "intent-a", orderRef: "intent-a", providerRequestFingerprint: "host-fingerprint", providerFlow: "one_time_payment" } }), { idempotencyKey: "host-key" });
-    expect(result).toEqual({ outcome: { kind: "attempt", status: "requires_action" }, dispatch: { kind: "dispatched", providerPaymentRef: "pi_fixture" },
+    expect(result).toMatchObject({ outcome: { kind: "attempt", status: "requires_action" }, dispatch: { kind: "dispatched", providerPaymentRef: "pi_fixture" },
       handoff: { kind: "client-confirmed", payload: "transient_fixture" }, diagnostics: { webhookExpected: true, recoveryRequired: false } });
     expect(JSON.stringify(result.diagnostics)).not.toContain("transient_fixture");
+    expect(result.persistence).toMatchObject({ providerSessionId: "pi_fixture", nextActionKind: "sca_required",
+      requestPayload: { providerIdempotencyKey: "host-key", providerRequestFingerprint: "host-fingerprint", orderRef: "intent-a" },
+      responsePayload: { providerStatus: "requires_action" } });
+    expect(JSON.stringify(result.persistence)).not.toContain("transient_fixture");
   });
   it("validates host-declared currencies and refuses unsupported input before provider dispatch", async () => {
     const { adapter, client, config } = subject();
@@ -72,7 +76,7 @@ describe("opt-in payment factory", () => {
     const { adapter, client } = subject();
     const input = { ...request, purpose: "renewal-unattended" as const, storedMethod: { reference: "pm_fixture", mandate: {} } };
     client.createPaymentIntent.mockRejectedValueOnce({ type: "StripeCardError", code: "card_declined", decline_code: "insufficient_funds", message: "private prose" });
-    expect(await adapter.attemptPort.execute(input)).toEqual({ outcome: { kind: "decline", refusal: { code: "soft_retryable", hints: ["transient"] } },
+    expect(await adapter.attemptPort.execute(input)).toMatchObject({ outcome: { kind: "decline", refusal: { code: "soft_retryable", hints: ["transient"] } },
       dispatch: { kind: "unknown" }, diagnostics: { webhookExpected: false, recoveryRequired: false } });
     expect(client.createPaymentIntent.mock.calls[0][0]).toMatchObject({ offSession: true, paymentMethod: "pm_fixture" });
     const network = new Error("ambiguous transport"); client.createPaymentIntent.mockRejectedValueOnce(network);

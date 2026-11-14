@@ -101,7 +101,8 @@ export function createStripePaymentAdapter(config: StripePaymentAdapterConfig): 
           providerRequestFingerprint: input.fingerprint, paymentIntentId: input.intentRef,
           amountMinor: input.money.amountMinor, currency: input.money.currency,
           mode: input.purpose === "renewal-unattended" ? "subscription_cycle" : "one_time",
-          orderRef: input.intentRef,
+          orderRef: input.orderRef ?? input.intentRef,
+          clientId: input.clientId, customerRef: input.customerRef, saveForFutureUse: input.saveForFutureUse,
           providerFlow: input.purpose === "renewal-unattended" ? "off_session_payment" : "one_time_payment",
           paymentMethodRef: input.storedMethod?.reference,
         });
@@ -113,6 +114,10 @@ export function createStripePaymentAdapter(config: StripePaymentAdapterConfig): 
           dispatch: result.providerAttemptId ? { kind: "dispatched", providerPaymentRef: result.providerAttemptId } : { kind: "unknown" },
           ...(result.clientSecret ? { handoff: { kind: "client-confirmed", payload: result.clientSecret as TransientSecret } as const } : {}),
           diagnostics: { webhookExpected: result.webhookExpected === true, recoveryRequired: result.recoveryRequired === true },
+          persistence: { providerSessionId: result.providerSessionId, nextActionKind: result.nextActionKind,
+            requestPayload: result.requestPayload, responsePayload: result.responsePayload,
+            customerProviderRef: result.customerProviderRef, paymentMethodRef: result.paymentMethodRef,
+            ...(result.providerDecline ? { declineReason: result.providerDecline.code } : {}) },
         };
       },
     },

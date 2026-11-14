@@ -44,6 +44,16 @@ export interface PaymentExecutionEnvelope {
     | { kind: "unknown" };
   handoff?: PaymentMethodHandoff;
   diagnostics: Readonly<Record<string, string | number | boolean | null>>;
+  /** Redacted execution facts for the prepared-attempt owner; handoffs stay transient. */
+  persistence?: {
+    providerSessionId: string | null;
+    nextActionKind: string | null;
+    requestPayload: Record<string, unknown>;
+    responsePayload: Record<string, unknown>;
+    customerProviderRef?: string | null;
+    paymentMethodRef?: string | null;
+    declineReason?: string;
+  };
 }
 
 /** Host identity/key/fingerprint and configured integer-minor money pass verbatim.
@@ -59,6 +69,10 @@ export interface PaymentAttemptPort {
     money: { amountMinor: number; currency: string };
     mode: "live" | "test";
     purpose: "initial" | "renewal-unattended" | "recovery";
+    orderRef?: string;
+    clientId?: string;
+    customerRef?: string;
+    saveForFutureUse?: boolean;
     methodSelection?: { family: "card" | "wallet" | "bank-redirect" | "one-time-code"; channelRef?: string };
     /** Transient dispatch input only; never persist, audit, log or diagnose. */
     payer?: { email: string; name?: string };

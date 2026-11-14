@@ -2378,6 +2378,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/host/provider-portable.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/host/purchase-composition.ts",
       "class": "public-output"
     },
@@ -7934,6 +7938,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/payments/postgresProviderRail.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/payments/postgresProviderWebhook.ts",
       "class": "public-output"
     },
@@ -8819,6 +8827,10 @@
     },
     {
       "path": "packages/platform/src/subscriptions/postgresNoticeExtensions.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/postgresProviderRenewalBinding.ts",
       "class": "public-output"
     },
     {
@@ -29999,6 +30011,10 @@
     },
     {
       "path": "tests/postgres/storeJourneyTransfer.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/stripePortableRail.test.ts",
       "class": "public-output"
     },
     {

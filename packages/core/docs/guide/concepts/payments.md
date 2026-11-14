@@ -78,6 +78,26 @@ Keep only explicitly redacted diagnostics. See the
 [execution contract](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/src/payments/contracts/adapter.ts)
 and [idempotency](idempotency.md#idempotency-contract) before retrying an attempt.
 
+The 0.42.0 source candidate adds `createPostgresProviderPaymentRail` in
+`@openlup/platform/payments` and `createPostgresProviderRenewalBinding` in
+`@openlup/platform/subscriptions`. With the complete native catalogue, an
+explicit card provider host composition binds committed prepare/finalize, signed
+ingress, method registration, attributed dunning and refund evidence. Pass the
+renewal binding's `composeWebhook` into the payment rail and select its lifecycle
+and retry ports together. The default starter keeps its sandbox selection.
+
+card provider readback supplies no occurrence time. It remains ambiguous until
+timestamped evidence arrives; receipt time never becomes provider time. Verified
+webhooks retain the first receipt separately, settle the exact active attempt
+and complete native renewal/recovery bookkeeping with the same settlement key.
+Search uses the exact local intent and at most two results. Multiple matches
+refuse; zero matches never authorize another charge. Absence auto-reopen stays off.
+Offline PostgreSQL witnesses establish this composition, not live activation.
+Historical ingress without the durable receipt envelope refuses
+`payment_event_receipt_unavailable` before recovery bookkeeping. Inspect the
+original provider event and reconcile with verified time through the native
+control/reconciliation ports; never reconstruct missing facts from a healthy label.
+
 ## Saved payment methods
 
 With the complete native database catalogue installed, the host can select
@@ -97,6 +117,6 @@ Read-time method health and unattended chargeability are separate decisions.
 An expiring method can remain chargeable until expiry. A historical healthy
 label or mirror without recorded reusable evidence returns
 `method_ref_not_recorded`; sandbox method evidence supplies no provider method
-evidence. Provider collection and recorded health do not establish a complete
-provider renewal journey. The [starter limits](../reference/limits.md#purchase-composition-boundaries)
+evidence. Provider collection and recorded health alone do not establish a
+provider renewal journey; select the payment and renewal compositions together. The [starter limits](../reference/limits.md#purchase-composition-boundaries)
 describe its available payment actions.
