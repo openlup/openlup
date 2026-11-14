@@ -225,6 +225,37 @@ omits operation payloads. Your host owns retention and cleanup, including backup
 and transfer copies; these commands install no automatic TTL or purge. Replay
 preserves the original receipt.
 
+## Correct a delivery contact
+
+Install the complete selected catalogue through
+`20261120140000_order_delivery_contact_correction.sql`. Bind the native OMS
+`updateShippingAddress` behind the existing operator authorization. Read the
+current resolution with `createPostgresDeliveryContactReadPort` from
+`@openlup/platform/fulfillment/native`, then submit both `expectedRevision` and
+`expectedContactDigest` with a fresh command key. The digest comes from PostgreSQL;
+do not reconstruct it in the browser. Exact replay retains the original response.
+
+The explicit native latest-shipment response adds `deliveryContact` with baseline,
+effective contact, provenance, revision, digest and correction eligibility.
+Fulfillment detail remains null without a shipment; use the separate order reader.
+A pre-parcel correction freezes into the new parcel at creation. Creation captures
+only a recorded override or baseline; an order without canonical contact retains
+its existing explicit first-capture path. Historical missing
+baselines stay null and reads write nothing. A stale contact requires a fresh read;
+`lock_timeout` permits an unchanged retry. Submission-started and erased contacts
+refuse. `fulfillment_contact_not_recorded` requires an authorized manual review of
+the order's recorded destination; it does not infer a replacement contact.
+Register the parcel-contact privacy contributor for order contacts and retained
+correction responses as well as parcel contacts. Erasure retains payload-free fences.
+
+For checkout selection, inject normalized dictionary/accepted-catalogue options
+and canonical point lookup/search ports into `createDeliverySelectionBoundary`.
+A valid dictionary without an allowlist offers nothing. A malformed dictionary
+uses the accepted catalogue with optional narrowing. Excluded point sources do
+no I/O. Provider-selected transport remains unavailable wherever checkout or saved
+preferences require carrier/service strings. Correction makes no provider call,
+label acknowledgment, notification or subscription-cycle change.
+
 ## Record handoff and arrival accurately
 
 Handoff accepts packed or labelled parcels and consumes only frozen purchase or
@@ -258,7 +289,8 @@ arrival may extend the next subscription cycle.
 ## Protect parcel contacts
 
 Preparation keeps recipient and delivery-selection snapshots in the private
-parcel contact store, outside dispatch evidence and public commerce reads.
+parcel contact store, outside dispatch evidence and customer reads. The explicitly
+authorized native shipment projection exposes its contact comparison.
 Compose `createFulfillmentParcelContactPrivacyContributor` from
 `@openlup/platform/identity` in the identity privacy registry and require
 `fulfillment-parcel-contacts`, alongside identity and the subscription veto.

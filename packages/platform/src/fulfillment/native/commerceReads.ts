@@ -2,10 +2,17 @@ import type { FulfillmentCommerceReadPort, FulfillmentCommerceReadPolicy, Fulfil
 import { buildCommerceFulfillmentOrderDetailResponse, type CommerceFulfillmentOrderRow, type CommerceFulfillmentOperationRow, type CommerceFulfillmentOrderContextRow, type CommerceFulfillmentPaymentIntentRow, type CommerceFulfillmentInventoryReservationRow } from '../commerceFulfillmentReadModel.js';
 import type { z } from 'zod';
 import { createCommerceFulfillmentResponseSchemas, commerceFulfillmentShippingAddressSnapshotSchema, COMMERCE_FULFILLMENT_CONTRACT_VERSION } from '../handlerSchemas.js';
+import { createPostgresDeliveryContactReadPort, nativeDeliveryContactProjectionSchema, nativeDeliveryContactProjection } from './deliveryContact.js';
 
-export const nativeFulfillmentCommerceResponseSchemas = createCommerceFulfillmentResponseSchemas(
+const destinationResponseSchemas = createCommerceFulfillmentResponseSchemas(
   commerceFulfillmentShippingAddressSnapshotSchema.extend({ addressId: commerceFulfillmentShippingAddressSnapshotSchema.shape.addressId.nullable() }),
 );
+const nativeOrderSchema = destinationResponseSchemas.order.extend({ deliveryContact: nativeDeliveryContactProjectionSchema.nullable().default(null) });
+export const nativeFulfillmentCommerceResponseSchemas = {
+  order: nativeOrderSchema,
+  detail: destinationResponseSchemas.detail.extend({ order: nativeOrderSchema }),
+  list: destinationResponseSchemas.list.extend({ orders: nativeOrderSchema.array() }),
+};
 export type NativeFulfillmentCommerceOrder = z.infer<typeof nativeFulfillmentCommerceResponseSchemas.order>;
 export type NativeFulfillmentCommerceReadPort = FulfillmentCommerceReadPort<NativeFulfillmentCommerceOrder>;
 
@@ -92,12 +99,12 @@ export function createPostgresFulfillmentCommerceReadPort(input: {
       latestOperation = { id: String(op.id), fulfillment_order_id: String(shipment.id), operation_type: type,
         occurred_at: String(op.occurred_at), actor_user_id: typeof op.actor_user_id === 'string' ? op.actor_user_id : null, payload };
     }
-    return buildCommerceFulfillmentOrderDetailResponse({
+    const response = buildCommerceFulfillmentOrderDetailResponse({
       fulfillmentOrder: { id: String(shipment.id), order_id: String(order.id), client_id: null,
         status: shipment.status as CommerceFulfillmentOrderRow['status'], provider_kind: typeof tracking.providerKind === 'string' ? tracking.providerKind : null,
         shipping_address_snapshot: { addressId: null, clientId: destination.clientId, ...destination.address },
         created_at: String(shipment.created_at), updated_at: String(shipment.updated_at) },
-      responseSchemas: nativeFulfillmentCommerceResponseSchemas, hasShippingAddress: Boolean(destination),
+      responseSchemas: destinationResponseSchemas, hasShippingAddress: Boolean(destination),
       lines, latestOperation,
       orderContext: { id: String(order.id), status: order.status, mode: input.orderMode({ orderId: String(order.id), subscriptionCycleId: order.subscription_cycle_id as string | null,
           capturedMode: (record(draft.context).mode ?? null) as string | null }),
@@ -108,6 +115,16 @@ export function createPostgresFulfillmentCommerceReadPort(input: {
       shipmentRef: tracking.externalId ? { order_id: String(order.id), provider_tracking_id: String(tracking.externalId), active: true } : null,
       activeHoldCount: Number(facts.holds), subscriptionCycleStatus: (record(facts.cycle).status ?? null) as Parameters<typeof buildCommerceFulfillmentOrderDetailResponse>[0]['subscriptionCycleStatus'],
     }, input.policy);
+    const [current] = await rows(`SELECT id FROM public.fulfillment_shipments WHERE order_id=$1::uuid
+      ORDER BY sequence_no DESC,id DESC LIMIT 1`, [order.id]);
+    let deliveryContact = null;
+    if (current?.id === shipment.id && !input.destinations) {
+      const resolution = await createPostgresDeliveryContactReadPort(input.executor).resolve(String(order.id));
+      const refs = await rows(`SELECT status,external_ref FROM public.fulfillment_dispatch_refs WHERE shipment_id=$1::uuid
+        UNION ALL SELECT 'unknown',external_id FROM public.shipment_external_refs WHERE shipment_id=$1::uuid AND ref_role='dispatch'`, [shipment.id]);
+      deliveryContact = nativeDeliveryContactProjection(resolution, String(shipment.status), refs.map(ref => ({ status: String(ref.status), external_ref: typeof ref.external_ref === 'string' ? ref.external_ref : null })));
+    }
+    return nativeFulfillmentCommerceResponseSchemas.detail.parse({ ...response, order: { ...response.order, deliveryContact } });
   }
   return {
     async listCommerceFulfillmentOrders(request: FulfillmentOrdersListRequest) {

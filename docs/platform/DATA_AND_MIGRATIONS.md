@@ -477,6 +477,16 @@ equality cannot relink it. Dependent memberships, privacy receipts, history and
 credential/session disposition remain part of the full
 [M14 transfer outcome](plans/oss-m14-operations-portability.md).
 
+### Private delivery-contact transfer
+
+The finite native graph includes `fulfillment_order_contacts` and
+`fulfillment_contact_correction_receipts` after their order/client/shipment parents.
+Qualified restore preserves exact rows, retained responses and payload-free erasure
+markers; replay applies no correction, provider call or default selection. These
+private tables have RLS and only the existing service-role client-column census
+exception. They are outside the smaller compatible-row utility. The parcel-contact
+privacy contributor owns their export and erasure alongside parcel contacts.
+
 ## Human OMS admission
 
 `20261110160000_oms_human_operator_admission.sql` replaces only

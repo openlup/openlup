@@ -5071,6 +5071,74 @@
             "sha256": "47c8d02259408562ab525b431dbd5783a8954372f19f86db981d01659b21f0bc"
           }
         ]
+      },
+      {
+        "row": "fulfilment-f4-contact-correction",
+        "path": "db/platform/migrations/20261120140000_order_delivery_contact_correction.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.fulfillment_open_shipment(text,uuid,text,jsonb,timestamptz)",
+            "beforeSha256": "c63a30078ca6ace3f2c8734cc72c8faea92e173a7f6903714a7cad9fde0c78e4",
+            "searchPath": "public, pg_catalog"
+          },
+          {
+            "signature": "public.fulfillment_resolve_parcel_contact(uuid)",
+            "beforeSha256": "b4bc5331e732055d0ce641173e599d82e14de25c5fe754c161e9b0fb81e045ae",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_export_parcel_contacts(uuid)",
+            "beforeSha256": "7608a8783b32945937c3119d49ab8be0db08b8207f688950fe37ce667865ad44",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_erase_parcel_contacts(uuid)",
+            "beforeSha256": "f9ef86a6b44053a68fed05a52a05d0ef2f9318ebfb4ab289683d944d98600245",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.fulfillment_delivery_contact_resolution(jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_oms_resolve_delivery_contact_v1(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_oms_update_shipping_address(text,uuid,jsonb,uuid,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_capture_order_contact_for_shipment(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [
+          "INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('fulfillment_order_contacts', 'block', 'Recorded delivery contact history prevents lead absorption.');",
+          "INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('fulfillment_contact_correction_receipts', 'block', 'Recorded delivery contact history prevents lead absorption.');"
+        ],
+        "absorptionCensusTables": [
+          "public.fulfillment_order_contacts",
+          "public.fulfillment_contact_correction_receipts"
+        ],
+        "checkSupersets": [
+          {
+            "table": "public.commerce_order_operations",
+            "constraint": "commerce_order_operations_operation_type_check",
+            "column": "operation_type",
+            "values": [
+              "hold_created",
+              "hold_released",
+              "order_cancelled",
+              "order_refunded",
+              "replacement_shipment_requested",
+              "shipping_address_updated"
+            ]
+          }
+        ]
       }
     ]
   },
@@ -6960,6 +7028,52 @@
           "signature": "public.fulfillment_emit_shipment_reference_notice()",
           "beforeSha256": null,
           "afterSha256": "84ebe1f58da16f4cc30e38d16f653b41ac3e2495af45b1491471538633cd2ace"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261120140000_order_delivery_contact_correction.sql",
+      "sha256": "d3801993784629fefab839dbc89bfb1df3b906e4550cdd07029f7406cc416fd3",
+      "functions": [
+        {
+          "signature": "public.fulfillment_open_shipment(text,uuid,text,jsonb,timestamptz)",
+          "beforeSha256": "c63a30078ca6ace3f2c8734cc72c8faea92e173a7f6903714a7cad9fde0c78e4",
+          "afterSha256": "77b279d81ea933917a5e62944da38412f5060c081983b1ac81acf496e8da23d6"
+        },
+        {
+          "signature": "public.fulfillment_resolve_parcel_contact(uuid)",
+          "beforeSha256": "b4bc5331e732055d0ce641173e599d82e14de25c5fe754c161e9b0fb81e045ae",
+          "afterSha256": "d84dfd39eb4f62d0a97442499f725c55032f2c70e4bcba14bbd13373309a59f2"
+        },
+        {
+          "signature": "public.fulfillment_export_parcel_contacts(uuid)",
+          "beforeSha256": "7608a8783b32945937c3119d49ab8be0db08b8207f688950fe37ce667865ad44",
+          "afterSha256": "67985734c351747f8e0611090ec161ee3de37842cf8132287c518775b9530bf2"
+        },
+        {
+          "signature": "public.fulfillment_erase_parcel_contacts(uuid)",
+          "beforeSha256": "f9ef86a6b44053a68fed05a52a05d0ef2f9318ebfb4ab289683d944d98600245",
+          "afterSha256": "f40762ab02cd16fc7941574149fd9be7a691f37ebc625ab79c291b21c4bbd9aa"
+        },
+        {
+          "signature": "public.fulfillment_delivery_contact_resolution(jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "bb80832e596e684c781f93bea095f4f51653a9627601e0e642df08369a1cafb6"
+        },
+        {
+          "signature": "public.commerce_oms_resolve_delivery_contact_v1(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "332b9a240608832b9bf1e894e2166a413403cc36470858a5010234d98f806b0b"
+        },
+        {
+          "signature": "public.commerce_oms_update_shipping_address(text,uuid,jsonb,uuid,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "d3ddf50d72dbbe1a30be83a8c2e77726bfd00263e3efe7f70141684403e40e19"
+        },
+        {
+          "signature": "public.fulfillment_capture_order_contact_for_shipment(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "5b3d3eb4893fb08f825c89c12f7638fbba156124d961d24c92ebcce6a76a74c2"
         }
       ]
     }

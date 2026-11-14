@@ -32,7 +32,7 @@ const owned = [
   "payment_method_refs", "payment_method_ref_receipts", "payment_method_recovery_authorities",
   "payment_provider_reconciliation_runs", "payment_prepared_absence_reopens",
   "payment_dunning_case_attribution", "payment_refund_evidence",
-  "commerce_destinations", "commerce_destination_bindings", "fulfillment_parcel_contacts", "subscription_command_receipts", "subscription_quote_previews",
+  "commerce_destinations", "commerce_destination_bindings", "fulfillment_parcel_contacts", "fulfillment_order_contacts", "fulfillment_contact_correction_receipts", "subscription_command_receipts", "subscription_quote_previews",
   "customer_support_subscription_commands", "customer_support_subscription_audit_events",
   "platform_human_principals", "platform_human_memberships", "platform_human_membership_audit_events",
   "catalog_products", "catalog_product_document_revisions", "catalog_skus", "catalog_sku_identifiers",

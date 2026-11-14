@@ -970,6 +970,13 @@ and any artifact-cap change require their own approved scope.
 
 ## Shipping
 
+`createDeliverySelectionBoundary` uses normalized dictionary or accepted-catalogue
+options and injected canonical point sources. Valid dictionary options require an
+allowlist; catalogue fallback defaults to the declared set and permits narrowing
+only. Excluded sources perform no point I/O. Provider-selected transport remains
+refused by checkout/preference contracts that require non-null carrier/service.
+Adapters own decoding, provider identities and HTTP clients.
+
 Shipping handlers require injected host schemas; contracts are type-only with opaque provider/carrier strings.
 No vendor code, inventory import, activation or parity claim.
 `resolveThresholdShipping` evaluates configured delivery terms against product
@@ -2074,7 +2081,8 @@ reference-support availability establishes no provider activation or stable API.
 See [protecting parcel contacts](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/fulfillment.md#protect-parcel-contacts).
 
 Native preparation retains recipient and delivery-selection fields in the private
-parcel contact store, separate from dispatch evidence and public commerce reads.
+parcel contact store, separate from dispatch evidence and customer reads. The explicitly
+authorized native shipment projection exposes its contact comparison.
 Install the complete native catalogue before composing the preparation binding.
 When composing privacy operations, register
 `createFulfillmentParcelContactPrivacyContributor` from `./identity`
@@ -2083,6 +2091,29 @@ Keep the identity contributor and subscription veto. Erasure removes the contact
 payload and leaves a marker that prevents legacy inference from recreating it;
 finite native-store transfer carries both live contacts and erasure markers.
 See the [privacy owner](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/concepts/personal-data.md#personal-data-coverage).
+
+## Native delivery-contact correction
+
+After installing the complete catalogue through
+`20261120140000_order_delivery_contact_correction.sql`, the native commerce OMS
+port composes operator shipping-address correction. Authorization remains in the
+existing OMS handler. `createPostgresDeliveryContactReadPort` from
+`./fulfillment/native` supplies a nonmutating order-scoped resolution, including
+before parcel creation. Submit its exact revision and PostgreSQL digest together.
+Exact replay returns the retained response; stale expectations, started submission,
+missing historical contact and erasure refuse. A correction updates only private
+contact authority, the operational revision and `shipping_address_updated` audit.
+
+`nativeFulfillmentCommerceResponseSchemas` adds the existing `deliveryContact`
+projection to the latest native shipment. It compares recorded baseline with
+effective contact and carries provenance, revision, digest and eligibility.
+Older explicit shipments and custom destination readers have a null projection.
+The native response schemas also accept older payloads without `deliveryContact`,
+normalizing its absence to null. Orders without shipments still
+return null detail. Managed schemas and other native reader limits are unchanged.
+The privacy contributor exports/erases private order contacts and correction
+responses; finite native transfer carries their rows and payload-free erasure fences.
+See the [composition recipe](../core/docs/guide/how-to/build/fulfillment.md#correct-a-delivery-contact).
 
 ## Fulfillment stock evidence replay
 

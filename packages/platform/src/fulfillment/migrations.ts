@@ -9,4 +9,5 @@ export const FULFILLMENT_MIGRATIONS = [
   { position: 136, catalogPath: "db/platform/migrations/20261120100000_fulfillment_intake_channel.sql", sha256: "5ce8ada91ed1b6634a9d17b54b82751502e6350e564945528f240e361dda5352", url: new URL("../../sql/20261120100000_fulfillment_intake_channel.sql", import.meta.url) },
   { position: 137, catalogPath: "db/platform/migrations/20261120110000_fulfillment_dispatch_outcomes.sql", sha256: "7ba87709cff775a4c8d7b1b12f4213544ea9a5db82218b6a87a0ce7f2fb9c54d", url: new URL("../../sql/20261120110000_fulfillment_dispatch_outcomes.sql", import.meta.url) },
   { position: 138, catalogPath: "db/platform/migrations/20261120120000_fulfillment_provider_intake.sql", sha256: "4475906787dd245c8fef91a150aa32868a888c19edbcaf896a5d3d0519a1f288", url: new URL("../../sql/20261120120000_fulfillment_provider_intake.sql", import.meta.url) },
+  { position: 139, catalogPath: "db/platform/migrations/20261120140000_order_delivery_contact_correction.sql", sha256: "d3801993784629fefab839dbc89bfb1df3b906e4550cdd07029f7406cc416fd3", url: new URL("../../sql/20261120140000_order_delivery_contact_correction.sql", import.meta.url) },
 ] as const;

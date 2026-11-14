@@ -1414,6 +1414,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261120140000_order_delivery_contact_correction.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4606,6 +4610,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261120140000_order_delivery_contact_correction.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -6635,6 +6643,10 @@
     },
     {
       "path": "packages/platform/src/fulfillment/native/commerceReads.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/native/deliveryContact.ts",
       "class": "public-output"
     },
     {
@@ -8690,6 +8702,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/shipping/deliverySelectionBoundary.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/shipping/deliverySelectionHandler.ts",
       "class": "public-output"
     },
@@ -9934,6 +9950,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/fulfillment/deliveryContactProjection.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/fulfillment/dispatchRecovery.test.ts",
       "class": "public-output"
     },
@@ -11103,6 +11123,10 @@
     },
     {
       "path": "packages/platform/test/shipping/deliveryConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/shipping/deliverySelectionBoundary.test.ts",
       "class": "public-output"
     },
     {
@@ -29462,6 +29486,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/fixtures/fulfillmentContactCorrection.sql",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/fixtures/fulfillmentDispatch/outcomes.sql",
       "class": "public-output"
     },
@@ -29550,7 +29578,15 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/fulfillmentContactCorrectionPgtap.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/fulfillmentDeliveryAlignment.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fulfillmentDeliveryContactCorrection.test.ts",
       "class": "public-output"
     },
     {

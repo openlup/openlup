@@ -1408,16 +1408,18 @@ no quantity-coverage override is applied.
     original stored order-mode value.
 10. **FR11 — Orders without shipments:** fulfillment detail returns null when no
     shipment exists and does not provide an order-contact display or fallback.
-11. **FR12 — Contact provenance:** delivery-contact resolution scope labels are
-    not part of this fulfillment projection.
-12. **FR13 — Contact revision:** this projection does not expose a revision for
-    operator contact corrections.
-13. **FR14 — Contact digest:** this projection does not expose a contact digest
-    for identifying or fencing a correction.
-14. **FR15 — Contact comparison:** baseline-versus-effective contact comparison
-    is not available through this projection.
-15. **FR16 — Contact correction scope:** this reader supplies no correction target,
-    correction action or legacy contact-resolution fence.
+11. **FR12 — Contact provenance:** the explicit native latest-shipment response
+    exposes parcel, order-override, baseline and bounded legacy provenance.
+12. **FR13 — Contact revision:** accepted corrections increment once; exact
+    command replay returns the original retained result and revision.
+13. **FR14 — Contact digest:** PostgreSQL computes the digest from the exact
+    resolved JSONB. Corrections fence both revision and digest under locks.
+14. **FR15 — Contact comparison:** recorded checkout baseline and effective
+    contact remain separate; an unavailable historical baseline stays null.
+15. **FR16 — Contact correction scope:** the authorized native OMS correction
+    selects the latest parcel, or an order override before creation. Draft references
+    without external proof remain editable; submission, terminal status, malformed
+    canonical contact and erased contact refuse. Reads perform no capture.
 16. **FR17 — Unavailable required facts:** native projection errors fail closed
     when order, payment, destination, line or operation facts cannot be expressed;
     selected rows are never silently omitted from a page.
@@ -1425,6 +1427,24 @@ no quantity-coverage override is applied.
     shipment destination resolution instead of a non-null order saved-address
     pointer; a resolved destination can therefore satisfy this gate without a
     saved-address record.
+
+`createPostgresDeliveryContactReadPort` provides the separate order-scoped
+resolution before a shipment exists. Older explicit shipment responses and custom destination readers carry no
+latest-parcel contact projection. Managed schemas and FR11 remain unchanged.
+The [PostgreSQL witness](../../tests/postgres/fulfillmentDeliveryContactCorrection.test.ts)
+covers missing historical evidence, retained replay, erasure and correction races.
+Creation freezes recorded overrides/baselines only; absent canonical contact is
+left to the existing explicit preparation/resolution path.
+The correction records only `shipping_address_updated`: no provider request,
+notification, label acknowledgment or subscription alignment follows it.
+
+`createDeliverySelectionBoundary` consumes normalized adapter options. A valid
+dictionary requires an allowlist; an accepted catalogue defaults to its declared
+set and an allowlist only narrows it. Injected point sources supply canonical
+validation evidence; excluded sources receive no lookup or search call.
+Dictionary decoding and point HTTP clients belong to adapters. Checkout options
+and saved preferences still require carrier/service strings; provider-selected
+transport cannot be substituted with invented values.
 
 The [verified ingress](../../packages/platform/src/fulfillment/verifiedIngress.ts)
 and [reconciliation worker](../../packages/platform/src/fulfillment/providerReconciliationWorker.ts)

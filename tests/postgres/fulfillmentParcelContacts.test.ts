@@ -190,6 +190,17 @@ it('carries live private contacts and payload-free erasure markers through finit
     const live = await fixture(source.owner, null), erased = await fixture(source.owner, null);
     for (const f of [live, erased]) await source.runtime.query('SELECT public.fulfillment_capture_parcel_contact($1,$2)', [f.shipment, { ...frozen(), contactEmail: 'retained-parcel@example.test' }]);
     await source.runtime.query('SELECT public.fulfillment_erase_parcel_contacts($1)', [erased.client]);
+    const orderContacts: string[] = [];
+    for (const shouldErase of [false, true]) {
+      const f = await fixture(source.owner, null), actor = randomUUID();
+      await source.owner.query("INSERT INTO public.commerce_operators(id,label) VALUES($1,'Synthetic operator')", [actor]);
+      await source.owner.query('UPDATE public.commerce_orders SET metadata=$2 WHERE id=$1', [f.order, { runtimeFinalize: { deliveryContact: frozen() } }]);
+      await source.owner.query('DELETE FROM public.fulfillment_shipments WHERE id=$1', [f.shipment]);
+      await source.runtime.query('SELECT public.commerce_oms_update_shipping_address($1,$2,$3,$4)', [`transfer-${randomUUID()}`, f.order,
+        { recipientName: 'Corrected recipient', contactEmail: 'retained-parcel@example.test', contactPhone: '+00002', line1: 'Corrected 2', city: 'Example', postalCode: '00002', country: 'ZZ' }, actor]);
+      if (shouldErase) await source.runtime.query('SELECT public.fulfillment_erase_parcel_contacts($1)', [f.client]);
+      orderContacts.push(f.client);
+    }
     const packet = await captureStoreJourney(source.owner, 'parcel-contact-source'), freshTarget = await captureStoreJourney(target.owner, 'parcel-contact-target');
     const contacts = packet.owned.find(table => table.table === 'fulfillment_parcel_contacts');
     expect(contacts?.rows).toHaveLength(2); expect(JSON.stringify(contacts)).toContain('retained-parcel@example.test');
@@ -197,6 +208,14 @@ it('carries live private contacts and payload-free erasure markers through finit
     const read = async (db: typeof source.owner) => (await db.query('SELECT shipment_id,client_id,contact,captured_at,erased_at FROM public.fulfillment_parcel_contacts ORDER BY shipment_id')).rows;
     expect(await read(target.owner)).toEqual(await read(source.owner));
     expect((await read(target.owner)).find(row => row.shipment_id === erased.shipment)).toMatchObject({ contact: {} });
+    for (const table of ['fulfillment_order_contacts','fulfillment_contact_correction_receipts']) {
+      const rows = async (db: typeof source.owner) => (await db.query(`SELECT to_jsonb(t) AS row FROM public.${table} t ORDER BY to_jsonb(t)::text`)).rows;
+      expect(await rows(target.owner)).toEqual(await rows(source.owner));
+      expect(JSON.stringify(await rows(target.owner))).toContain('retained-parcel@example.test');
+      const marker = (await target.owner.query(`SELECT to_jsonb(t) AS row FROM public.${table} t WHERE client_id=$1`, [orderContacts[1]])).rows[0].row;
+      expect(marker.erased_at).not.toBeNull();
+      expect(marker[table === 'fulfillment_order_contacts' ? 'contact' : 'response_payload']).toBeNull();
+    }
     expect(await restoreConnectedNativeStore({ owner: target.owner, installation: journeySelection, packet, freshTarget })).toMatchObject({ replayed: true });
   } finally { await resources.close(); }
 }, 125_000);

@@ -1,5 +1,6 @@
 import type {
   AdminCommerceOrderHoldResponse,
+  AdminCommerceOrderUpdateShippingAddressResponse,
   AdminCommerceOrderMarkRefundedResponse,
 } from "../../oms/omsContracts.js";
 import {
@@ -47,7 +48,33 @@ export function createPostgresCommerceOmsPort(
       }));
     },
     addNote: unsupported,
-    updateShippingAddress: unsupported,
+    async updateShippingAddress(request): Promise<AdminCommerceOrderUpdateShippingAddressResponse> {
+      try {
+        const { rows } = await executor.query('SELECT public.commerce_oms_update_shipping_address($1::text,$2::uuid,$3::jsonb,$4::uuid,$5::jsonb) AS value', [
+          request.idempotencyKey, request.orderId, JSON.stringify(request.address), request.actorUserId,
+          JSON.stringify({ ...(request.metadata ?? {}), _deliveryContactExpectedRevision: request.expectedRevision, _deliveryContactExpectedDigest: request.expectedContactDigest }),
+        ]);
+        return rows[0]?.value as AdminCommerceOrderUpdateShippingAddressResponse;
+      } catch (error) {
+        const value = object(error), code = value.code;
+        const text = [value.message, value.details, value.hint].filter(Boolean).join(' ');
+        if (code === '55P03') throw new CommerceOmsConflictError('Commerce OMS request could not take its locks', { code, reason: 'lock_timeout' });
+        const reasons: Record<string, string> = {
+          commerce_oms_delivery_contact_stale_revision: 'delivery_contact_stale_revision',
+          commerce_oms_delivery_contact_submission_started: 'delivery_contact_submission_started',
+          commerce_oms_shipping_address_missing_shipping_address: 'missing_shipping_address',
+          commerce_oms_shipping_address_locked_after_label: 'address_locked_after_label',
+          commerce_oms_shipping_address_idempotency_conflict: 'idempotency_conflict',
+          fulfillment_contact_erased: 'fulfillment_contact_erased', fulfillment_contact_not_recorded: 'fulfillment_contact_not_recorded',
+        };
+        const reason = Object.entries(reasons).find(([message]) => text.includes(message))?.[1];
+        if (reason) throw new CommerceOmsConflictError('Commerce OMS shipping address update blocked', { code, reason });
+        if (code === '23505' || /(?:commerce_oms_|commerce_order_).*(?:conflict|already|not_found|invalid_status)/.test(text)) {
+          throw new CommerceOmsConflictError('Commerce OMS hold conflict', { code });
+        }
+        throw new CommerceOmsPersistenceError('Commerce OMS RPC failed', { code });
+      }
+    },
     async requestReplacementShipment(request) {
       if (!replacement) return unsupported();
       try { return await replacement.requestReplacementShipment(request); }
