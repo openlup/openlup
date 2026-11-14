@@ -260,7 +260,8 @@ closed verified set. Named refusals and deterministic/tamper cases are covered
 by the BOM witness below. The qualification job emits one BOM after its checks
 and retains it beside the receipt for 90 days. The schema stage leaves the overall
 receipt at FAIL with its completed schema result recorded separately; only the
-BOM step grants the final PASS after writing the BOM and its digest.
+BOM step records a provisional PASS after writing the BOM and its digest.
+Canary completion grants the final qualification PASS.
 
 The [BOM witness](../../scripts/packages/generate-release-bom.test.ts) also checks
 real npm archive payloads and member paths, public documentation and any tracked
@@ -319,8 +320,58 @@ and BOM. The receipt includes the manifest digest, `published`, `skipped-dispatc
 or `refused`, and the registry readback (null if unobserved). Organization owners
 must make the package public, link it to this repository and choose its retention
 policy. Source presence and local OCI-layout copy evidence establish neither GHCR
-activation nor a hosted qualification run. Running-image canary checks remain a
-separate obligation.
+activation nor a hosted qualification run. The running-image canary below must
+pass before the archive is handed to this publication job.
+
+### Exact-artifact canary
+
+The read-only qualification job's `--canary` stage checks the BOM hash and image
+subject, loads that OCI archive and requires Docker's loaded manifest descriptor
+to match, then reads the daemon's manifest to check its configuration digest.
+It runs the extracted starter's
+Compose services without building: mirror-pinned PostgreSQL 16, installation
+through `lifecycle.mjs install` using the packaged qualified profile, then the
+same loaded image's runtime. Compose uses the starter's existing bounded health
+check against `/api/config`. Both example configurations have isolated databases.
+
+The [existing browser runner](../../scripts/starter-browser-ci.mjs) uses its
+mirror-pinned browser and existing purchase group, narrowed to the sandbox
+purchase spec. It must observe two purchases, one per configuration. The
+[installed recovery witness](../../scripts/packages/platform-cold-consumer.ts)
+then runs through the installation image against the first database: selected-row
+restore/readback, exact integer/microsecond preservation, idempotent replay,
+conflict refusal and guarded-table refusal. This proves neither a complete
+store backup nor package/schema rollback. The completed `upgrade` and
+`schemaUpgrade` sections remain separate evidence, referenced without rerunning
+their steps.
+
+The receipt's `canary` section records image/configuration identities, install,
+journey and recovery results and durations. A failed or interrupted stage cannot
+retain a final PASS. The existing 90-day qualification and publication artifacts
+retain the receipt; no release asset is created. The write job's existing
+qualification dependency blocks image publication on a failed canary. Compose
+cleanup runs on success and failure; the job's existing `always()` cleanup also
+removes containers and volumes labelled with a `canary-*` Compose project after
+cancellation or a step timeout.
+This is development-preview qualification, not provider certification or stable
+support. The first-party demo store is separate adoption evidence.
+
+A local 2026-11-14 rehearsal on the qualified 0.41.0 set passed archive loading
+and identity, lifecycle installation/readiness (30.857 seconds), the existing
+purchase spec for both configurations (2.320 seconds) and selected-row recovery
+(1.281 seconds). Total time including cleanup was 38.480 seconds; four times
+that measurement rounded up sets the canary step's three-minute bound. The
+first hosted run must remeasure it. All four inventory-pinned images were
+already cached: Node from the organization mirror, PostgreSQL 16 and Syft from
+their recorded Docker upstreams, and the browser from its recorded Microsoft
+upstream. This local-only resolution exception changed no CI image source or
+credential and establishes no hosted mirror access. The exercised manifest was
+`sha256:8457d5ec1d44c806e1baa617c061c1bdc3fa21a62b747c334a02880e777225a2`.
+
+There is no stable maintenance line or previous stable major, so previous-major
+backports are not applicable. Maintenance evidence remains partial; backport
+automation follows explicit owner stable activation under the
+[maintenance policy](../../.github/VERSIONING_AND_EOL.md#support-window).
 
 ### Dependency inventories and image provenance
 
