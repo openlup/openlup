@@ -1406,6 +1406,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261120110000_fulfillment_dispatch_outcomes.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4590,6 +4594,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261120110000_fulfillment_dispatch_outcomes.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -6614,7 +6622,15 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/fulfillment/native/commerceMutations.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/fulfillment/native/commerceReads.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/native/dispatchComposition.ts",
       "class": "public-output"
     },
     {
@@ -29426,6 +29442,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/fixtures/fulfillmentDispatch/outcomes.sql",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/fixtures/m14ApplicationActor.ts",
       "class": "public-output"
     },
@@ -29511,6 +29531,10 @@
     },
     {
       "path": "tests/postgres/fulfillmentDeliveryAlignment.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fulfillmentDispatchPgtap.test.ts",
       "class": "public-output"
     },
     {

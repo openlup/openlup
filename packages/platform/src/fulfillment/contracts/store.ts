@@ -5,6 +5,12 @@ export interface DispatchRecord {
   status: "draft" | "submitting" | "created" | "uncertain" | "failed" | "cancel_requested" | "cancelled";
   evidence: DispatchEvidence; replayed: boolean;
   acceptance?: Extract<FulfillmentDispatchResult, { kind: "accepted" }> | null;
+  /** Closed neutral diagnostics. Historical references retain null. */
+  outcome?: {
+    classification: 'failed' | 'uncertain'; code: string; status: number | null;
+    retryable: boolean; mayHaveSucceeded: boolean;
+    submissionAttempted?: boolean; responseBodyRead?: boolean;
+  } | null;
 }
 export interface FulfillmentStorePort {
   read(requestKey: string): Promise<DispatchRecord | null>;
