@@ -62,6 +62,19 @@ the affected claim. A generated package-set BOM binds artifact identities; it
 does not establish installation, publication, provenance or support evidence.
 See [distribution evidence](../docs/platform/DISTRIBUTION_EVIDENCE.md).
 
+Added 2026-11-14: a separate blocking exact-set qualification job now follows
+publication in the [registry workflow](workflows/registry-tutorial.yml).
+It installs the exact npm set into the source-tag starter through the trusted
+extractor, commits and uses its lock, verifies npm signatures/provenance against
+the package release tags and source commit, then typechecks, builds and runs
+application and development-loop tests. Older starter sources are explicitly
+labelled reconstructed. An invisible or unattested set fails qualification.
+The receipt is retained as one workflow artifact for 90 days; it is not a
+release asset or a support certificate. The tutorial remains advisory, and
+PR admission is unchanged. See [distribution evidence](../docs/platform/DISTRIBUTION_EVIDENCE.md#exact-published-set-qualification)
+for the exact boundary and manual requalification entry. This bounded proof
+does not establish full installation, provider certification or stable support.
+
 The starter host binds native store actions against a local demonstration
 PostgreSQL database. Without `publicOrigin`, it accepts only
 `127.0.0.1:<listening-port>` and `localhost:<listening-port>` as Host authorities;

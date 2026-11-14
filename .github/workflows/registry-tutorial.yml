@@ -1,6 +1,6 @@
 # Runs separately after publication so the tutorial never holds a publication run open.
 # workflow_run executes trusted default-branch workflow and runner code. Only the
-# release tag's tutorial page is read, after checking its commit against the completed run.
+# release tag's tutorial and starter source are read as data after validating its commit.
 # Publish Packages handles release: published. For a release run, head_branch is the
 # release tag and head_sha is its commit; refuse other events and malformed tags.
 # Only this repository's own release runs qualify: the head repository must be
@@ -13,25 +13,35 @@ on:
   workflow_run:
     workflows: [Publish Packages]
     types: [completed]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Published openlup-core-vMAJOR.MINOR.PATCH tag
+        required: true
+        type: string
 
 permissions: {}
 
 concurrency:
-  group: registry-tutorial-${{ github.event.workflow_run.head_branch }}
+  group: registry-tutorial-${{ inputs.release_tag || github.event.workflow_run.head_branch }}
   cancel-in-progress: false
 
 jobs:
   registry-tutorial:
     name: Guide tutorial against the npm registry (advisory)
-    if: ${{ github.repository == 'openlup/openlup' && github.event.workflow_run.repository.full_name == 'openlup/openlup' && github.event.workflow_run.head_repository.full_name == 'openlup/openlup' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'release' && startsWith(github.event.workflow_run.head_branch, 'openlup-core-v') }}
+    if: ${{ github.repository == 'openlup/openlup' && ((github.event_name == 'workflow_dispatch' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)) || (github.event_name == 'workflow_run' && github.event.workflow_run.repository.full_name == 'openlup/openlup' && github.event.workflow_run.head_repository.full_name == 'openlup/openlup' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'release' && startsWith(github.event.workflow_run.head_branch, 'openlup-core-v'))) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
       contents: read
+    outputs:
+      ready: ${{ steps.registry.outputs.ready }}
+      tag: ${{ steps.release.outputs.tag }}
+      commit: ${{ steps.release.outputs.commit }}
     steps:
       - name: Validate the core release tag
         env:
-          RELEASE_TAG: ${{ github.event.workflow_run.head_branch }}
+          RELEASE_TAG: ${{ inputs.release_tag || github.event.workflow_run.head_branch }}
         run: |
           [[ "$RELEASE_TAG" =~ ^openlup-core-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || { echo '::error::Expected an openlup-core-vMAJOR.MINOR.PATCH release tag'; exit 1; }
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -43,33 +53,39 @@ jobs:
           node-version: 24.21.0
           package-manager-cache: false
       - name: Read the release's tutorial page
+        id: release
         env:
-          RELEASE_TAG: ${{ github.event.workflow_run.head_branch }}
+          RELEASE_TAG: ${{ inputs.release_tag || github.event.workflow_run.head_branch }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           git fetch --no-tags --depth=1 origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
-          if [ "$(git rev-list -n 1 "refs/tags/$RELEASE_TAG")" != "$HEAD_SHA" ]; then
+          commit="$(git rev-list -n 1 "refs/tags/$RELEASE_TAG")"
+          if [ -n "$HEAD_SHA" ] && [ "$commit" != "$HEAD_SHA" ]; then
             echo '::error::Release tag commit does not match the completed publication run'
             exit 1
           fi
+          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
           git show "refs/tags/$RELEASE_TAG:packages/core/docs/guide/start/tutorial.md" > "$RUNNER_TEMP/tutorial.md"
       - name: Wait for the published set on npm
         id: registry
         timeout-minutes: 11
         env:
-          RELEASE_TAG: ${{ github.event.workflow_run.head_branch }}
+          RELEASE_TAG: ${{ inputs.release_tag || github.event.workflow_run.head_branch }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           version="${RELEASE_TAG##*-v}"
           # The publishable package set is stable, so use the trusted default-branch inventory.
           packages="$(node -p 'require("./config/openlup-packages.json").packages.filter(entry => entry.publish).map(entry => entry.name).join(" ")')"
           specs=""
           for package in $packages; do specs="$specs $package@$version"; done
+          if [ "$EVENT_NAME" != workflow_dispatch ]; then specs="$specs @openlup/core"; fi
           deadline=$((SECONDS + 600))
           delay=5
           while (( SECONDS < deadline )); do
             ready=true
-            # The page reads core's latest version; also wait for that dist-tag to catch up.
-            for spec in $specs @openlup/core; do
+            # Automatic tutorial runs also require core's latest dist-tag to catch up.
+            for spec in $specs; do
               remaining=$((deadline - SECONDS))
               if (( remaining <= 0 )); then ready=false; break; fi
               if ! observed="$(timeout "$remaining" npm view "$spec" version --registry=https://registry.npmjs.org --fetch-retries=0 --fetch-timeout=10000)" || [ "$observed" != "$version" ]; then
@@ -112,3 +128,68 @@ jobs:
       - name: Remove the package-proof PostgreSQL service
         if: always() && steps.postgres.outcome != 'skipped'
         run: docker rm -f install-proof-postgres
+
+  exact-set-qualification:
+    name: exact-set-qualification
+    needs: registry-tutorial
+    if: ${{ always() && (github.repository == 'openlup/openlup' && ((github.event_name == 'workflow_dispatch' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)) || (github.event_name == 'workflow_run' && github.event.workflow_run.repository.full_name == 'openlup/openlup' && github.event.workflow_run.head_repository.full_name == 'openlup/openlup' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'release' && startsWith(github.event.workflow_run.head_branch, 'openlup-core-v')))) }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: read
+    env:
+      RELEASE_TAG: ${{ needs.registry-tutorial.outputs.tag }}
+      TAG_COMMIT: ${{ needs.registry-tutorial.outputs.commit }}
+      OPENLUP_REGISTRY_READY: ${{ needs.registry-tutorial.outputs.ready }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24.21.0
+          package-manager-cache: false
+      - name: Refuse an invisible published set
+        run: |
+          if [ "$OPENLUP_REGISTRY_READY" != true ]; then
+            node scripts/packages/exact-set-qualification.mjs "$RELEASE_TAG" "$TAG_COMMIT" "$RUNNER_TEMP/exact-set-qualification.json"
+          fi
+      - name: Initialize the qualification receipt
+        run: node --input-type=module -e 'import { env } from "node:process"; import { writeFileSync } from "node:fs"; import { qualificationReceipt } from "./scripts/packages/exact-set-qualification.mjs"; writeFileSync(env.RUNNER_TEMP + "/exact-set-qualification.json", JSON.stringify(qualificationReceipt(env.RELEASE_TAG, env.TAG_COMMIT)));'
+      - name: Read the validated release tag
+        run: |
+          git fetch --no-tags --depth=1 origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          test "$(git rev-list -n 1 "refs/tags/$RELEASE_TAG")" = "$TAG_COMMIT"
+      - name: Authenticate GitHub Container Registry pulls
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_ACTOR: ${{ github.actor }}
+        run: echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
+      - name: Start mirror-only qualification PostgreSQL
+        id: postgres
+        run: |
+          image="$(node --input-type=module -e 'import { readCiImage, pullWithRetry } from "./scripts/ci-image-pull.mjs"; const image = readCiImage("install-proof-postgres"); image.sources = image.sources.slice(0, 1); console.log(await pullWithRetry(image));')"
+          container="$(docker run --pull=never --detach --name exact-set-postgres --env POSTGRES_HOST_AUTH_METHOD=trust --publish 127.0.0.1::5432 "$image")"
+          echo "container=$container" >> "$GITHUB_OUTPUT"
+          echo "port=$(docker port "$container" 5432/tcp | cut -d: -f2)" >> "$GITHUB_OUTPUT"
+      - name: Qualify the exact published set
+        # Local 0.41.0: 25.816s; 4x rounded up to minutes. Remeasure the first hosted run.
+        timeout-minutes: 2
+        env:
+          OPENLUP_QUALIFICATION_DATABASE_URL: postgresql://postgres@127.0.0.1:${{ steps.postgres.outputs.port }}/postgres
+        run: node scripts/packages/exact-set-qualification.mjs "$RELEASE_TAG" "$TAG_COMMIT" "$RUNNER_TEMP/exact-set-qualification.json"
+      - name: Seal an incomplete qualification receipt
+        if: always()
+        run: node --input-type=module -e 'import { env } from "node:process"; import { existsSync, readFileSync, writeFileSync } from "node:fs"; const p = env.RUNNER_TEMP + "/exact-set-qualification.json"; if (existsSync(p)) { const r = JSON.parse(readFileSync(p)); if (!r.endedAt) { r.endedAt = new Date().toISOString(); r.error = "Qualification did not complete; inspect job steps"; writeFileSync(p, JSON.stringify(r, null, 2)); } }'
+      - name: Retain the qualification receipt
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: exact-set-qualification
+          path: ${{ runner.temp }}/exact-set-qualification.json
+          if-no-files-found: error
+          retention-days: 90
+      - name: Remove qualification PostgreSQL
+        if: always() && steps.postgres.outputs.container != ''
+        run: docker rm -f exact-set-postgres

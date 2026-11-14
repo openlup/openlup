@@ -5,6 +5,55 @@ Status: historical record, 2026-11-09.
 Status: development-preview source tooling. No complete release outcome or
 supported installation is claimed.
 
+## Exact published-set qualification
+
+Added 2026-11-14. The post-publication
+[`exact-set-qualification`](../../.github/workflows/registry-tutorial.yml) job
+is blocking for its qualification result. It follows the existing advisory
+registry tutorial job and consumes that job's bounded visibility result; an
+invisible set fails qualification rather than being deferred. The tutorial's
+`--advisory` flag and PR `install-proof` remain unchanged. A maintainer can also
+use `workflow_dispatch` on the default branch with an existing
+`openlup-core-vMAJOR.MINOR.PATCH` tag; historical qualification does not require
+that version to remain npm's `latest`.
+
+The trusted default-branch [entry point](../../scripts/packages/exact-set-qualification.mjs)
+archives the validated tag as data and calls the trusted starter extractor.
+Extraction is `released` when the tagged source includes versioned extraction,
+or `reconstructed` with a recorded reason for older tags. Its recorded source
+revision is the tag commit. The npm lock is generated for that exact set and
+committed by extraction, then installed with `npm ci --ignore-scripts` in an
+independent application without ancestor/workspace dependency resolution.
+
+Before executing application checks, `npm audit signatures --json --include-attestations`
+verifies registry signatures and provenance. Every OpenLup package must have a
+verified provenance subject matching its locked SHA-512, this repository's
+release workflow certificate identity, its package release tag and the same
+source commit. Registry metadata alone is insufficient; missing or mismatched
+provenance refuses the named package. This uses retained npm provenance rather
+than the publisher's seven-day pack artifacts, allowing later requalification
+without changing publication. PostgreSQL uses the digest-pinned GHCR mirror
+with job-scoped GitHub token authentication and no upstream fallback. The
+installed application checks the PostgreSQL major, typechecks, builds, runs its
+application tests and runs the existing development-loop HTTP proof.
+
+The local 2026-11-14 run against published 0.41.0, source commit
+`699157a61f5be9befc268225bb5e8b1539a8ec0a`, passed in 25.816 seconds with
+Node 24.21.0/npm 11.19.0 and the same pinned PostgreSQL 17 content available
+locally under its upstream digest. It recorded reconstructed extraction,
+verified all three package provenances, and passed typecheck, build, 296
+application tests and two development-loop tests. This is local evidence,
+not a hosted qualification receipt. The qualification step's two-minute bound
+is 4× that measurement rounded up; the first hosted run must remeasure it.
+
+One JSON workflow artifact, retained for 90 days, records the set/tag/commit,
+extraction mode and content hash, committed lock SHA-256, each package SHA-512
+and provenance verification source, commands/results, runner image and times.
+A failed entry-point run retains its partial receipt and error. This supplies
+bounded exact-set qualification; it does not certify a full store, provider
+behavior, browser journeys, upgrade/recovery, public hosting, stable support or
+a production deployment. Later proofs need their own executed evidence.
+
 ## Public outcome projection
 
 The [generated projection](OUTCOME_PROJECTION.md) derives its package entries,

@@ -395,6 +395,10 @@ independently of the required `test` job in a separate checkout and installation
 The packed-candidate guide tutorial runs after the package gates as a blocking
 step: its condition of two green merge-group runs on main has been met.
 The separate registry tutorial remains advisory until its second green run.
+The post-publication `exact-set-qualification` job independently blocks its own
+qualification result, verifies the exact npm set against release provenance,
+and retains a 90-day receipt. It adds no PR admission job; see
+[distribution evidence](docs/platform/DISTRIBUTION_EVIDENCE.md#exact-published-set-qualification).
 
 After package proof succeeds, `install-browser` runs the starter's installed
 PostgreSQL browser journeys in four parallel shards through
