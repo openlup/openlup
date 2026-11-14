@@ -23,7 +23,7 @@ export async function renewal(pool:Db,availability=10,lines=1,subscription=rando
   await pool.query("INSERT INTO public.catalog_skus(id,product_id,sku,title) VALUES($1,$1,$2,'Fixture')",[id,sku]);
   await pool.query('INSERT INTO public.subscription_renewal_term_lines(subscription_id,line_ordinal,sku,quantity,unit_amount_minor) VALUES($1,$2,$3,2,100)',[subscription,n,sku]);
   await pool.query(`INSERT INTO public.fulfillment_stock_current(source_key,sku,total_quantity,for_sale_quantity,reserved_unavailable_quantity,
-  inventory_class,last_synced_at,stale_after,sync_run_id,idempotency_key,operation_fingerprint) VALUES($1,$2,$3,$3,0,'sellable',$4,'2027-12-01','fixture',$2,$5)`,[source,sku,availability,AT,'a'.repeat(64)]);
+  inventory_class,last_synced_at,stale_after,sync_run_id,idempotency_key,operation_fingerprint) VALUES($1,$2,$3,$3,0,'sellable',$4,now()+interval '1 year','fixture',$2,$5)`,[source,sku,availability,AT,'a'.repeat(64)]);
   basket.push({lineOrdinal:n,sku,quantity:2,unitAmountMinor:100});
  }
  const snapshot={contractVersion:'platform.subscription.renewal.v1',subscriptionId:subscription,clientId:client,scheduledAt:AT,cycleNumber:2,

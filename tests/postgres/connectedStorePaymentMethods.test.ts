@@ -31,7 +31,7 @@ it("round-trips method references, receipts and frozen recovery authority with e
   const recorded = await methods.upsert(replacement);
   await source.owner.query("UPDATE public.payment_method_refs SET consent_snapshot=consent_snapshot||jsonb_build_object('opaque',9007199254740993::bigint) WHERE id=$1", [recorded.id]);
   const hash = randomUUID().replaceAll("-", "").repeat(2), at = "2026-11-13T12:00:00Z";
-  await call(source.owner, "dunning_lifecycle_issue_recovery_token", [obligation.case_id, hash, "2027-11-13T00:00:00Z"]);
+  await source.owner.query("SELECT public.dunning_lifecycle_issue_recovery_token($1,$2,now()+interval '30 days')", [obligation.case_id, hash]);
   const token = (await source.owner.query("SELECT id FROM public.commerce_checkout_recovery_tokens WHERE token_hash=$1", [hash])).rows[0].id;
   const authority = await call(source.owner, "subscription_retry_authorize_recovery", [f.operation, token, replacement.reference, recorded.id, at]);
   await call(source.owner, "subscription_retry_schedule_recovery", [f.operation, "method:schedule", authority.id, at]);
