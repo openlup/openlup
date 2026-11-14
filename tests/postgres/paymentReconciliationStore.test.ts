@@ -162,11 +162,56 @@ it("keeps the worker default off and requires watchdog, age and exact absence pr
   await age(f, "2026-11-13T11:45:00Z");
   await expect(port().reopenPreparedAttemptAfterAbsence(reopen(f))).rejects.toThrow("prepared_attempt_absence_reopen_too_fresh");
   await age(f);
+  const request = reopen(f);
+  const readState = async () => (await db.query(`SELECT s.provider_attempt_sequence,
+    (SELECT COALESCE(jsonb_agg(to_jsonb(r)), '[]'::jsonb) FROM public.payment_provider_receipts r
+      WHERE r.scope='commerce.payment_attempt.prepared_absence_reopen' AND r.idempotency_key=$3) AS receipts,
+    (SELECT COALESCE(jsonb_agg(to_jsonb(r) ORDER BY r.id), '[]'::jsonb) FROM public.payment_prepared_absence_reopens r
+      WHERE r.payment_attempt_id=$2 OR r.idempotency_key=$3) AS reopens,
+    jsonb_build_object(
+      'retry', (SELECT to_jsonb(r) FROM public.subscription_retry_obligations r WHERE r.cycle_id=s.subscription_cycle_id),
+      'cycle', (SELECT to_jsonb(c) FROM public.subscription_cycles c WHERE c.id=s.subscription_cycle_id),
+      'order', (SELECT to_jsonb(o) FROM public.commerce_orders o WHERE o.id=$4),
+      'providerState', to_jsonb(s)-'provider_attempt_sequence'-'updated_at',
+      'dispatch', (SELECT jsonb_agg(jsonb_build_object('id', a.id, 'provider_attempt_id', a.provider_attempt_id,
+        'provider_session_id', a.provider_session_id, 'next_action_kind', a.next_action_kind,
+        'request_payload', a.request_payload) ORDER BY a.id)
+        FROM public.payment_provider_attempts a WHERE a.settlement_intent_id=$1)
+    ) AS retry_dispatch,
+    to_jsonb(s) AS provider_state,
+    (SELECT jsonb_agg(to_jsonb(a) ORDER BY a.id) FROM public.payment_provider_attempts a WHERE a.settlement_intent_id=$1) AS attempts
+    FROM public.payment_provider_states s WHERE s.id=$1`, [f.intent, f.attempt, request.idempotencyKey, f.order])).rows[0];
+  const before = await readState();
   const observed = await Promise.allSettled([port().reopenPreparedAttemptAfterAbsence(reopen(f)), port().reopenPreparedAttemptAfterAbsence(reopen(f))]);
-  expect(observed.filter(x => x.status === "fulfilled")).toHaveLength(1);
-  expect(observed.find(x => x.status === "rejected")).toMatchObject({ reason: { message: "prepared_attempt_absence_reopen_attempt_not_prepared" } });
+  const applied = observed.filter(x => x.status === "fulfilled" && x.value.replayed === false);
+  expect(applied).toHaveLength(1);
+  for (const outcome of observed) {
+    if (outcome === applied[0]) continue;
+    if (outcome.status === "fulfilled") {
+      expect(outcome.value).toEqual({ replayed: true });
+    } else {
+      expect(outcome.reason).toMatchObject({ message: "prepared_attempt_absence_reopen_attempt_not_prepared" });
+      if ("code" in outcome.reason) expect(outcome.reason.code).toBe("22023");
+    }
+  }
+  const settled = await readState();
+  expect(settled.receipts).toHaveLength(1);
+  expect(settled.receipts[0]).toMatchObject({ status: "completed", metadata: { paymentAttemptId: f.attempt } });
+  expect(settled.reopens).toHaveLength(1);
+  expect(settled.reopens[0]).toMatchObject({ payment_attempt_id: f.attempt, idempotency_key: request.idempotencyKey });
+  expect(settled.provider_attempt_sequence).toBe(before.provider_attempt_sequence + 1);
+  expect(settled.retry_dispatch).toEqual(before.retry_dispatch);
   expect(await port().reopenPreparedAttemptAfterAbsence(reopen(f))).toEqual({ replayed: true });
   expect((await db.query("SELECT provider_attempt_sequence FROM public.payment_provider_states WHERE id=$1", [f.intent])).rows[0].provider_attempt_sequence).toBe(1);
+  const stored = settled.receipts[0].response_payload;
+  expect(stored.preparedAttemptReopen.replayed).toBe(false);
+  const replay = (await env.runtime.query(
+    "SELECT public.commerce_payment_control_reopen_prepared_attempt_after_absence($1,$2::uuid,$3::uuid,$4::uuid,$5,$6::timestamptz,$7::timestamptz,$8::jsonb) AS response",
+    [request.idempotencyKey, request.paymentAttemptId, request.expectedPaymentIntentId, request.expectedSubscriptionCycleId,
+      request.operatorRef, request.absenceCheckedAt, request.nextRetryAt, JSON.stringify(request.absenceEvidence)],
+  )).rows[0].response;
+  expect(replay).toEqual({ ...stored, preparedAttemptReopen: { ...stored.preparedAttemptReopen, replayed: true } });
+  expect(await readState()).toEqual(settled);
 });
 
 it("retains the interactive exact predecessor, sensitive-evidence refusal and canonical replay", async () => {
