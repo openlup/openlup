@@ -93,6 +93,7 @@ const registryPath = "config/reviewed-platform-forwards.json";
 const operationsSql = "packages/platform/sql/20260814010000_platform_control_plane.sql";
 const paymentAttemptSql = "db/platform/migrations/20261114100000_payment_provider_attempt_store.sql";
 const paymentAttemptMirror = "packages/platform/sql/20261114100000_payment_provider_attempt_store.sql";
+const providerProfilePaths = ["db/platform/migrations/20261121090000_payment_provider_profiles.sql", "packages/platform/sql/20261121090000_payment_provider_profiles.sql"];
 const paymentAttemptFixture = "tests/postgres/fixtures/paymentProvider/durability.sql";
 const refundRail = "supabase/migrations/20261024185000_provider_refund_evidence.sql";
 const refundFixture = `scripts/fixtures/reviewed-m10/${refundRail}`;
@@ -173,6 +174,10 @@ describe("tree-wide neutrality ratchet", () => {
     "db/platform/migrations/20261024185000_provider_refund_evidence.sql",
     "packages/platform/sql/20261024185000_provider_refund_evidence.sql",
     "db/platform/migrations/20261114100001_payment_provider_attempt_store.sql",
+    "db/platform/migrations/20261114110000_payment_method_refs.sql",
+    "packages/platform/sql/20261114110000_payment_method_refs.sql",
+    "db/platform/migrations/20261121090001_payment_provider_profiles.sql",
+    "packages/platform/sql/20261121090001_payment_provider_profiles.sql",
     "packages/platform/sql/20261114120001_payment_reconciliation_refund_evidence.sql",
     "scripts/fixtures/reviewed-m10/db/platform/migrations/example.sql",
     "tests/postgres/fixtures/paymentProvider/another.sql",
@@ -185,7 +190,6 @@ describe("tree-wide neutrality ratchet", () => {
 
   it.each([
     "20261114100000_payment_provider_attempt_store.sql",
-    "20261114110000_payment_method_refs.sql",
     "20261114120000_payment_reconciliation_refund_evidence.sql",
   ])("admits the N6 native and package path class for %s without granting an unpinned introduction", name => {
     for (const prefix of ["db/platform/migrations/", "packages/platform/sql/"]) {
@@ -931,10 +935,10 @@ describe("neutrality scan reuse", () => {
 
 });
 
-it("keeps the payment and managed pins closed at exactly 25 paths and 34 tuples", () => {
-  expect(reviewedPinnedIntroductions).toHaveLength(25);
-  expect(new Set(reviewedPinnedIntroductions.map(([path]) => path)).size).toBe(25);
-  expect(reviewedPinnedIntroductions.flatMap(([, , counts]) => counts)).toHaveLength(34);
+it("keeps the payment and managed pins closed at exactly 27 paths and 38 tuples", () => {
+  expect(reviewedPinnedIntroductions).toHaveLength(27);
+  expect(new Set(reviewedPinnedIntroductions.map(([path]) => path)).size).toBe(27);
+  expect(reviewedPinnedIntroductions.flatMap(([, , counts]) => counts)).toHaveLength(38);
   const portablePaymentWitness = "tests/postgres/stripePortableRail.test.ts";
   expect(reviewedPinnedIntroductions.filter(([path]) => path === portablePaymentWitness)).toEqual([
     [portablePaymentWitness, "98f85b2f79092329224af5771f83110884582276eb5679ead1d1cbc4e096e057", [["ui-13", 0, 3]]],
@@ -946,7 +950,7 @@ it("keeps the payment and managed pins closed at exactly 25 paths and 34 tuples"
   const methodPaths = methodPins.map(([path]) => path);
   expect(reviewedPinnedIntroductions.filter(([path]) => methodPaths.includes(path))).toEqual(methodPins);
   const reconciliationPaths = reconciliationPins.map(([path]) => path);
-  const c94 = reviewedPinnedIntroductions.filter(([path]) => path !== operationsSql && !paymentPaths.includes(path) && path !== paymentAttemptFixture && path !== portablePaymentWitness && !reconciliationPaths.includes(path) && !methodPaths.includes(path));
+  const c94 = reviewedPinnedIntroductions.filter(([path]) => !providerProfilePaths.includes(path) && path !== operationsSql && !paymentPaths.includes(path) && path !== paymentAttemptFixture && path !== portablePaymentWitness && !reconciliationPaths.includes(path) && !methodPaths.includes(path));
   expect(c94).toHaveLength(13);
   expect(c94.flatMap(([, , counts]) => counts)).toHaveLength(15);
   const paymentPins = reviewedPinnedIntroductions.filter(([path]) => paymentPaths.includes(path));
@@ -973,3 +977,18 @@ it("refuses regenerated C94 counts below their pin without writing the baseline"
   expect(result.output).toContain(`pinned introduction baseline count mismatch: "${refundRail}"`);
   expect(readFileSync(join(root, baselinePath))).toEqual(before);
 }, 15_000);
+
+it("pins only the two declaration carriers to final bytes and one occurrence per category",()=>{
+  const sources=new Map(providerProfilePaths.map(path=>[path,readFileSync(join(sourceRoot,path))]));
+  const rows=neutralityIncreases({},scanSnapshots(sources).rows);
+  expect(rows).toHaveLength(4);
+  expect(unreviewedPinnedIntroductionIncreases(rows,sources)).toEqual([]);
+  expect(sources.get(providerProfilePaths[0]!)).toEqual(sources.get(providerProfilePaths[1]!));
+  for(const path of providerProfilePaths){
+    expect(reviewedPinnedIntroductions.filter(([p])=>p===path)).toEqual([[path,hash(sources.get(path)!),[["ui-13",0,1],["ui-14",0,1]]]]);
+    const changed=new Map(sources);changed.set(path,Buffer.concat([sources.get(path)!,Buffer.from("\n")]));
+    expect(unreviewedPinnedIntroductionIncreases(rows,changed)).toEqual(rows.filter(row=>row.path===hash(path)));
+    const extra=rows.filter(row=>row.path===hash(path)).map(row=>({...row,after:2}));
+    expect(unreviewedPinnedIntroductionIncreases(extra,sources)).toEqual(extra);
+  }
+});

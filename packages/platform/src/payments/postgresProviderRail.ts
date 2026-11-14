@@ -37,6 +37,8 @@ export function createPostgresProviderPaymentRail(input: {
   executor: PaymentProviderExecutor;
   adapter: PaymentAdapter;
   mode: "live" | "test";
+  /** Optional host-selected protocol labels; omission preserves the original composition. */
+  executionFlows?: Readonly<{ oneTime: string; unattended: string }>;
   truth: PostgresPaymentTruthOptions;
   resolveMethodOwner: NonNullable<Parameters<typeof createVerifiedPaymentIngress>[0]["resolveMethodOwner"]>;
   resolveSavedMethodOwner: NonNullable<Parameters<typeof createVerifiedPaymentIngress>[0]["resolveSavedMethodOwner"]>;
@@ -59,7 +61,9 @@ export function createPostgresProviderPaymentRail(input: {
     async execute(request: Parameters<PaymentAttemptPort["execute"]>[0]) {
       input.adapter.attemptPort.validateInput(request);
       if (request.mode !== input.mode) throw new Error("payment_provider_mode_mismatch");
-      const flow = request.purpose === "renewal-unattended" ? "off_session_payment" : "one_time_payment";
+      const flow = request.purpose === "renewal-unattended"
+        ? input.executionFlows?.unattended ?? "off_session_payment"
+        : input.executionFlows?.oneTime ?? "one_time_payment";
       // Explicit allowlist: payer, customer authorization and returned handoffs
       // never become request identity, persisted payloads or diagnostics.
       const requestPayload = { orderRef: request.orderRef ?? request.intentRef, clientId: request.clientId ?? null,
