@@ -16,6 +16,8 @@ export type { NativeRenewalPurchaseFacts, SandboxMethodHealth } from "./nativePu
 export { createPostgresSandboxRenewalRail, createSandboxRenewalPolicy } from "./sandboxRenewalRail.js";
 export type { SandboxRenewalScenario } from "./sandboxRenewalRail.js";
 export { createNativeSubscriptionBinding } from "./nativeSubscriptionBinding.js";
+export { createPostgresProviderRenewalBinding } from "./postgresProviderRenewalBinding.js";
+export type { PostgresProviderRenewalBinding, ProviderRenewalPaymentPorts, ProviderRenewalResultInput } from "./postgresProviderRenewalBinding.js";
 export { createNativeRetryDriver } from "./nativeRetryDriver.js";
 export type { NativeRetryDriverOptions } from "./nativeRetryDriver.js";
 export { nativeSubscriptionSchema } from "./nativeSubscriptionSchema.js";

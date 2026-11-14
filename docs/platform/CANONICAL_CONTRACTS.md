@@ -1490,9 +1490,12 @@ the financial transition. The receipt owns the rung and schedule; the cycle
 stays `payment_pending`. An expiry after that attempt's decline records the
 escalation without another retry stage. The reconciliation/refund forward adds
 attributed dunning case handoff, canonical observation replay and named historical
-refusals. A real provider renewal binding is not yet supplied. The subscription descriptor retains its separate composition
-limits. N1 retry recovery is selected while stock recovery remains
-unavailable. One executor stays default off with mandatory delivery admission.
+refusals. `createPostgresProviderPaymentRail` and
+`createPostgresProviderRenewalBinding` supply explicit card provider composition over
+these owners. Select its webhook control, renewal lifecycle and retry ports
+together. The native binding advertises the prepared store only when that
+provider lifecycle is selected; its default callers retain the sandbox path.
+The native binding also selects stock recovery. One executor stays default off with mandatory delivery admission.
 Host-selected M04 descriptors carry recorded
 lifecycle facts; copy, recipient, consent and delivery remain host/M04-owned.
 See the [architecture boundary](ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts).
