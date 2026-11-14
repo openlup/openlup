@@ -72,7 +72,7 @@ existing host identity, transport and transaction seams. Accounting collection
 has an independent binding; fulfillment no longer constructs or awaits it.
 
 Host status-map, normalized-fact and current-parcel facades delegate to core
-fulfillment while retaining host names and private provider traces. Browser
+fulfillment while retaining host names; provider status translation stays in adapters. Browser
 inventories exclude platform fulfillment.
 
 The root automatic-renewal decorator retains its static terms gate and an
@@ -891,8 +891,8 @@ operator shipment commands separately retain label URLs and raw provider inputs
 as durable operator-only evidence. Label URLs can appear in operator operation
 payloads; full requests stay in private receipts under host retention policy.
 These records are not customer-facing tracking facts. Reference status-map, normalized-fact and current-parcel facades delegate to
-`@openlup/core/fulfillment`; the status facade adds only private provider trace
-metadata. Account order UI imports progress values and types directly from core.
+`@openlup/core/fulfillment`; the shared status facade and generated JSON carry
+only the neutral core map. Adapter-owned dictionaries retain provider translation. Account order UI imports progress values and types directly from core.
 Browser graphs declare only core fulfillment modules and exclude platform
 fulfillment, the reference preparation binding and the account order screens.
 The order-management status ladder/queue pair remains host-owned.
