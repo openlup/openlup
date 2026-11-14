@@ -12,10 +12,22 @@ The source recipe does not grant deployment or publication rights.
 
 Released extraction selects one exact public npm package set. It checks the
 source package versions and revision against the supplied v2 pack manifest, then
-verifies the supplied npm v3 lockfile's application pins, complete OpenLup package
-set, versions, sha512 integrities and public-registry resolutions. The manifest
-is an expected-integrity input, not signed publication evidence. Extraction
-performs no dependency installation or network request.
+requires lockfileVersion 3 (npm 11's default) and a `packages` map. Keys must
+already be canonical: `""` or `node_modules/<package>` paths, optionally nested
+through more `node_modules/<package>` segments, without trailing slashes, `.`,
+`..`, empty segments, backslashes or percent-encoding. Keys must be unique after
+lower-casing.
+
+Every manifest package P must occur at exactly `node_modules/<P>` with version
+V, the expected sha512 integrity and the exact public-registry tarball URL for
+P@V. Root dependency sections must match the extracted package.json and its
+exact V pins. Every other non-root entry refuses an `@openlup/` or `%40openlup`
+reference, case-insensitively, in its key, name, resolved URL (also URL-decoded)
+or any dependencies/optionalDependencies/peerDependencies/devDependencies value.
+Nested and aliased OpenLup copies are forbidden. All non-root entries require
+public-registry resolutions without links, credentials, query strings or
+fragments. The manifest is an expected-integrity input, not signed publication
+evidence. Extraction performs no dependency installation or network request.
 
 The initial application commit includes `package-lock.json` and
 `.starter-origin.json`. The identity records mode, set version, source revision,

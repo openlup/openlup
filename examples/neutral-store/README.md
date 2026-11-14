@@ -68,10 +68,22 @@ Supply the existing pack producer's v2 manifest (`schemaVersion: 2`, `commit`,
 `packages` with `name`, `version` and `integrity`; artifact filename/hash fields
 are retained). This is an explicit expected-integrity input, not a publication
 receipt. Its complete package set and revision must match the source inventory.
-Every source package must have the selected exact version. The supplied npm v3
-lockfile must describe the extracted application's dependencies with those exact
-versions and public `https://registry.npmjs.org` resolutions. Missing, extra,
-duplicate, version or integrity mismatches refuse with `starter_release_*` names.
+Every source package must have the selected exact version. LockfileVersion 3
+(npm 11's default) and a `packages` map are required. Every map key must already
+be canonical: `""` or a `node_modules/<package>` path, optionally nested through
+further `node_modules/<package>` segments, with no trailing slash, `.`, `..`,
+empty segments, backslashes or percent-encoding. Keys must be unique after
+lower-casing.
+
+For every manifest package P, exactly `node_modules/<P>` must exist with version
+V, the expected sha512 integrity and the exact public-registry tarball URL for
+P@V. The root entry's dependency sections must match the extracted package.json,
+including its exact V pins. Every other non-root entry refuses if its key, name,
+resolved URL (also URL-decoded) or any dependency, optional-dependency,
+peer-dependency or dev-dependency value contains `@openlup/` or `%40openlup`,
+case-insensitively. Nested and aliased OpenLup copies are forbidden. All non-root
+entries must retain public `https://registry.npmjs.org` resolutions without links,
+credentials, query strings or fragments. Refusals use `starter_release_*` names.
 
 Prepare that lockfile in a separate copy of the application's `package.json`:
 replace every `@openlup/*` dependency with the exact set version and run
@@ -115,7 +127,8 @@ Run the source-only offline identity checks from `examples/neutral-store`:
 node --experimental-strip-types --test test/extract.test.ts
 ```
 
-These fixtures cover named lock refusals, npm aliases, Git source verification,
+These fixtures cover canonical lock keys, the exact OpenLup allowlist, forbidden
+OpenLup references in other entries, named refusals, Git source verification,
 reconstruction, every non-documentation candidate file's baseline bytes and
 deterministic hashes. Only `README.md`, `docs/proof.md` and `docs/ownership.md` are
 exempt from that byte comparison. These fixtures make no network request and do
