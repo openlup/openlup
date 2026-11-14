@@ -542,11 +542,11 @@ for (const generation of lifecycleProfiles) describe(`operator parcel journeys o
   });
   it('refuses historical missing associations, mode and canonical contact without reconstructing facts', async () => {
     const old = await subject(h.owner);
-    await expect(h.runtime.query('SELECT public.fulfillment_dispatch_read_candidate($1,$2)', [old.shipment, 'warehouse'])).rejects.toThrow('dispatch_reservations_not_recorded');
+    await expect(h.runtime.query('SELECT public.fulfillment_native_dispatch_read_candidate($1,$2)', [old.shipment, 'warehouse'])).rejects.toThrow('dispatch_reservations_not_recorded');
     expect((await h.owner.query('SELECT * FROM public.fulfillment_parcel_reservation_sets WHERE shipment_id=$1', [old.shipment])).rows).toEqual([]);
     const f = await dispatchSubject();
     await h.owner.query("UPDATE public.commerce_orders SET metadata=metadata#-'{orderDraftSnapshot,context,mode}' WHERE id=$1", [f.order]);
-    await expect(h.runtime.query('SELECT public.fulfillment_dispatch_read_candidate($1,$2)', [f.shipment, 'warehouse'])).rejects.toThrow('order_mode_unproven');
+    await expect(h.runtime.query('SELECT public.fulfillment_native_dispatch_read_candidate($1,$2)', [f.shipment, 'warehouse'])).rejects.toThrow('order_mode_unproven');
     await h.owner.query("UPDATE public.commerce_orders SET metadata=jsonb_set(metadata,'{orderDraftSnapshot,context,mode}','\"one_time\"') WHERE id=$1", [f.order]);
     await h.owner.query('DELETE FROM public.fulfillment_parcel_contacts WHERE shipment_id=$1', [f.shipment]);
     expect(await selected(f).binding.services.runDispatch()).toMatchObject({ providerCalls: 0 });

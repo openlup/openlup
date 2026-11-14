@@ -7,7 +7,7 @@ export function createPostgresFulfillmentDispatchComposition(db: PgExecutor, sel
   if (!selection.portKey.trim() || !selection.providerRef.trim()) throw new Error('fulfillment_dispatch_selection_required');
   const readAuthoritative = async (tx: PgExecutor, ref: string) => {
     const row = await nativeCall<(Pick<FulfillmentDispatchRequest, 'requestKey' | 'fulfillmentRef' | 'orderRef' | 'orderNumber' | 'parcelRef' | 'lines'> & { contact?: unknown; recovery?: boolean }) | null>(
-      tx, 'fulfillment_dispatch_read_candidate', [ref, selection.providerRef]);
+      tx, 'fulfillment_native_dispatch_read_candidate', [ref, selection.providerRef]);
     if (!row) return { candidate: null, withheld: true };
     // Recovery is identity-only; the worker recognizes persisted proof before preparation.
     const candidate = applyParcelContact({ ...row, lines: row.lines ?? [] } as FulfillmentDispatchRequest, row.contact);
@@ -16,7 +16,7 @@ export function createPostgresFulfillmentDispatchComposition(db: PgExecutor, sel
   return {
     readAuthoritative,
     async listCandidates(limit: number) {
-      const { rows } = await db.query('SELECT shipment_id FROM public.fulfillment_dispatch_candidate_ids($1,$2,$3)', [selection.portKey, selection.providerRef, limit]);
+      const { rows } = await db.query('SELECT shipment_id FROM public.fulfillment_native_dispatch_candidate_ids($1,$2,$3)', [selection.portKey, selection.providerRef, limit]);
       const candidates: FulfillmentDispatchRequest[] = [];
       for (const row of rows) {
         try {

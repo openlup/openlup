@@ -219,7 +219,7 @@ BEGIN
  RETURN jsonb_build_object('contractVersion','commerce.fulfillment.v0','fulfillmentOrderId',parcel.id,'orderId',parcel.order_id,'status',parcel.status,'replayed',false);
 END; $$;
 
-CREATE FUNCTION public.fulfillment_dispatch_candidate_ids(p_port_key text,p_provider_key text,p_limit integer)
+CREATE FUNCTION public.fulfillment_native_dispatch_candidate_ids(p_port_key text,p_provider_key text,p_limit integer)
 RETURNS TABLE(shipment_id uuid) LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE candidate record; prepared jsonb; emitted integer:=0;
 BEGIN
@@ -234,7 +234,7 @@ BEGIN
   ORDER BY s.created_at,s.id
  LOOP
   BEGIN
-   prepared:=public.fulfillment_dispatch_read_candidate(candidate.id,p_provider_key);
+   prepared:=public.fulfillment_native_dispatch_read_candidate(candidate.id,p_provider_key);
   EXCEPTION WHEN invalid_parameter_value THEN CONTINUE;
   END;
   IF prepared IS NULL THEN CONTINUE; END IF;
@@ -285,7 +285,7 @@ END; $$;
 
 
 
-CREATE FUNCTION public.fulfillment_dispatch_read_candidate(p_shipment_id uuid,p_provider_key text)
+CREATE FUNCTION public.fulfillment_native_dispatch_read_candidate(p_shipment_id uuid,p_provider_key text)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE parcel public.fulfillment_shipments; purchase public.commerce_orders; ref public.fulfillment_dispatch_refs;
  contact jsonb; resolution jsonb; lines jsonb; candidate jsonb;
@@ -323,10 +323,10 @@ REVOKE ALL ON FUNCTION public.fulfillment_dispatch_claim(text,uuid,uuid,text,tex
 REVOKE ALL ON FUNCTION public.fulfillment_record_provider_attempt(text,uuid,jsonb,text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.fulfillment_dispatch_finish(uuid,jsonb,boolean,text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.fulfillment_operator_create_order(text,uuid,text,uuid,jsonb) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.fulfillment_dispatch_candidate_ids(text,text,integer) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.fulfillment_native_dispatch_candidate_ids(text,text,integer) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.fulfillment_native_dispatch_begin(uuid,text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.fulfillment_dispatch_mark_stale_submissions_uncertain(timestamptz) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.fulfillment_dispatch_read_candidate(uuid,text) FROM PUBLIC;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.fulfillment_dispatch_outcome(jsonb), public.fulfillment_record_operator_attempt(text,uuid,text,text,jsonb,jsonb,text,uuid,jsonb), public.fulfillment_dispatch_claim(text,uuid,uuid,text,text,jsonb), public.fulfillment_record_provider_attempt(text,uuid,jsonb,text), public.fulfillment_dispatch_finish(uuid,jsonb,boolean,text), public.fulfillment_operator_create_order(text,uuid,text,uuid,jsonb), public.fulfillment_dispatch_candidate_ids(text,text,integer), public.fulfillment_native_dispatch_begin(uuid,text), public.fulfillment_dispatch_mark_stale_submissions_uncertain(timestamptz), public.fulfillment_dispatch_read_candidate(uuid,text) FROM anon;'; END IF; END; $$;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.fulfillment_dispatch_outcome(jsonb), public.fulfillment_record_operator_attempt(text,uuid,text,text,jsonb,jsonb,text,uuid,jsonb), public.fulfillment_dispatch_claim(text,uuid,uuid,text,text,jsonb), public.fulfillment_record_provider_attempt(text,uuid,jsonb,text), public.fulfillment_dispatch_finish(uuid,jsonb,boolean,text), public.fulfillment_operator_create_order(text,uuid,text,uuid,jsonb), public.fulfillment_dispatch_candidate_ids(text,text,integer), public.fulfillment_native_dispatch_begin(uuid,text), public.fulfillment_dispatch_mark_stale_submissions_uncertain(timestamptz), public.fulfillment_dispatch_read_candidate(uuid,text) FROM authenticated;'; END IF; END; $$;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.fulfillment_dispatch_outcome(jsonb), public.fulfillment_record_operator_attempt(text,uuid,text,text,jsonb,jsonb,text,uuid,jsonb), public.fulfillment_dispatch_finish(uuid,jsonb,boolean,text), public.fulfillment_operator_create_order(text,uuid,text,uuid,jsonb), public.fulfillment_dispatch_candidate_ids(text,text,integer), public.fulfillment_native_dispatch_begin(uuid,text), public.fulfillment_dispatch_mark_stale_submissions_uncertain(timestamptz), public.fulfillment_dispatch_read_candidate(uuid,text) TO service_role;'; END IF; END; $$;
+REVOKE ALL ON FUNCTION public.fulfillment_native_dispatch_read_candidate(uuid,text) FROM PUBLIC;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.fulfillment_dispatch_outcome(jsonb), public.fulfillment_record_operator_attempt(text,uuid,text,text,jsonb,jsonb,text,uuid,jsonb), public.fulfillment_dispatch_claim(text,uuid,uuid,text,text,jsonb), public.fulfillment_record_provider_attempt(text,uuid,jsonb,text), public.fulfillment_dispatch_finish(uuid,jsonb,boolean,text), public.fulfillment_operator_create_order(text,uuid,text,uuid,jsonb), public.fulfillment_native_dispatch_candidate_ids(text,text,integer), public.fulfillment_native_dispatch_begin(uuid,text), public.fulfillment_dispatch_mark_stale_submissions_uncertain(timestamptz), public.fulfillment_native_dispatch_read_candidate(uuid,text) FROM anon;'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.fulfillment_dispatch_outcome(jsonb), public.fulfillment_record_operator_attempt(text,uuid,text,text,jsonb,jsonb,text,uuid,jsonb), public.fulfillment_dispatch_claim(text,uuid,uuid,text,text,jsonb), public.fulfillment_record_provider_attempt(text,uuid,jsonb,text), public.fulfillment_dispatch_finish(uuid,jsonb,boolean,text), public.fulfillment_operator_create_order(text,uuid,text,uuid,jsonb), public.fulfillment_native_dispatch_candidate_ids(text,text,integer), public.fulfillment_native_dispatch_begin(uuid,text), public.fulfillment_dispatch_mark_stale_submissions_uncertain(timestamptz), public.fulfillment_native_dispatch_read_candidate(uuid,text) FROM authenticated;'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.fulfillment_dispatch_outcome(jsonb), public.fulfillment_record_operator_attempt(text,uuid,text,text,jsonb,jsonb,text,uuid,jsonb), public.fulfillment_dispatch_finish(uuid,jsonb,boolean,text), public.fulfillment_operator_create_order(text,uuid,text,uuid,jsonb), public.fulfillment_native_dispatch_candidate_ids(text,text,integer), public.fulfillment_native_dispatch_begin(uuid,text), public.fulfillment_dispatch_mark_stale_submissions_uncertain(timestamptz), public.fulfillment_native_dispatch_read_candidate(uuid,text) TO service_role;'; END IF; END; $$;

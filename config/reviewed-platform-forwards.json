@@ -4918,7 +4918,7 @@
             "searchPath": "pg_catalog, pg_temp"
           },
           {
-            "signature": "public.fulfillment_dispatch_candidate_ids(text,text,integer)",
+            "signature": "public.fulfillment_native_dispatch_candidate_ids(text,text,integer)",
             "searchPath": "pg_catalog, pg_temp"
           },
           {
@@ -4930,7 +4930,7 @@
             "searchPath": "pg_catalog"
           },
           {
-            "signature": "public.fulfillment_dispatch_read_candidate(uuid,text)",
+            "signature": "public.fulfillment_native_dispatch_read_candidate(uuid,text)",
             "searchPath": "pg_catalog, pg_temp"
           }
         ],
@@ -6686,7 +6686,7 @@
     },
     {
       "path": "db/platform/migrations/20261120110000_fulfillment_dispatch_outcomes.sql",
-      "sha256": "14a52c2498bc40663af5e5138002d42ca0ad05c4dd6339c6ccae6704111e1625",
+      "sha256": "b71934139e50693fb512126e026430932e2b823d75b35227e1b353a6396eea6a",
       "functions": [
         {
           "signature": "public.fulfillment_dispatch_claim(text,uuid,uuid,text,text,jsonb)",
@@ -6719,9 +6719,9 @@
           "afterSha256": "5c84df3aca9ff0346a934f689e86b043b345fa3900b207d780ec3f86142f838d"
         },
         {
-          "signature": "public.fulfillment_dispatch_candidate_ids(text,text,integer)",
+          "signature": "public.fulfillment_native_dispatch_candidate_ids(text,text,integer)",
           "beforeSha256": null,
-          "afterSha256": "315f62c9469ad2a052425d4157f9fd7f0bd6cd8ca8ac0a439c09fde421183a73"
+          "afterSha256": "9f138263b8de7514b5e7f43e18081324ce7699a7d548d9fd039b4f4adf3be1c5"
         },
         {
           "signature": "public.fulfillment_native_dispatch_begin(uuid,text)",
@@ -6734,9 +6734,9 @@
           "afterSha256": "6c5cb692d81dff3e0a306664251526e55d7be09402868d0f52bfe9168a62ed1b"
         },
         {
-          "signature": "public.fulfillment_dispatch_read_candidate(uuid,text)",
+          "signature": "public.fulfillment_native_dispatch_read_candidate(uuid,text)",
           "beforeSha256": null,
-          "afterSha256": "97e35300a445fdb5f4a1a0c19e966b0b7fdc51582d7512b9961db3af88c497d7"
+          "afterSha256": "9f25b2c5f3c316d8197357fca8251cddc3bd40946175a696e25cf884a8a6e768"
         }
       ]
     }
