@@ -943,7 +943,10 @@ workflow run and reports to the maintainer; a propagation timeout warns and
 defers the tutorial. It runs after publication and cannot affect it. The
 separate `exact-set-qualification` job reads the tagged starter as data,
 verifies and tests the exact locked npm set, and retains a blocking
-qualification result and a 90-day receipt. Both jobs have `contents: read`;
+qualification result and a 90-day receipt. A dispatch with `publish_image: false`
+skips the publisher job, so no write token is minted; its retained qualification
+receipt is the run's receipt, with no separate publication receipt. Both jobs have
+`contents: read`;
 qualification also has `packages: read` for the pinned PostgreSQL mirror. The
 [qualification owner](../docs/platform/DISTRIBUTION_EVIDENCE.md#exact-published-set-qualification)
 defines trust, evidence and support limits. This workflow adds no required PR

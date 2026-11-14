@@ -302,13 +302,16 @@ The base image field identifies the pinned multi-platform Node index. The archiv
 BOM and receipt pass through a one-day workflow artifact. The existing 90-day
 qualification artifact keeps the BOM and receipt without the large archive.
 
-`publish-qualified-image` runs only after successful qualification. This is the
+`publish-qualified-image` runs only after successful qualification and only for
+a release-event run or an explicit `publish_image: true` dispatch. This is the
 only qualification job with job-scoped `packages: write`, `attestations: write`
 and `id-token: write`; it uses pinned first-party actions, shell/JQ and preinstalled
 Skopeo, Docker and GitHub CLI, with no checkout, npm or execution of
 archive contents. It checks the BOM hash against the receipt and recomputes the
-archive manifest digest before any write. Dispatch defaults to `skipped-dispatch`;
-only an explicit `publish_image: true` or a release-event run permits publication.
+archive manifest digest before any write. With `publish_image: false` (the default),
+the publisher job is skipped and no write token is minted. That run retains the
+qualification job's receipt, with no separate publication receipt. The in-script
+`PUBLISH_IMAGE` guard remains a second layer.
 The existing per-tag workflow concurrency serializes these runs. An existing
 version tag with a different digest refuses by name; ambiguous registry errors
 also refuse. A digest-preserving copy is followed by registry manifest readback.
@@ -316,10 +319,11 @@ Any mismatch fails and no further publication steps run. A registry readback
 failure can occur after a copy; the failed receipt does not certify that tag.
 
 A separate 90-day `qualified-image-publication` artifact keeps the final receipt
-and BOM. The receipt includes the manifest digest, `published`, `skipped-dispatch`
-or `refused`, and the registry readback (null if unobserved). Organization owners
-must make the package public, link it to this repository and choose its retention
-policy. Source presence and local OCI-layout copy evidence establish neither GHCR
+and BOM when the publisher job runs. The receipt includes the manifest digest,
+`published` or `refused`, and the registry readback (null if unobserved). The
+defensive shell guard can record `skipped-dispatch` if reached with publishing
+disabled. Organization owners must make the package public, link it to this
+repository and choose its retention policy. Source presence and local OCI-layout copy evidence establish neither GHCR
 activation nor a hosted qualification run. The running-image canary below must
 pass before the archive is handed to this publication job.
 
