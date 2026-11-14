@@ -47,12 +47,15 @@ required to certify reproduction on a full install that does not exist. The
 stable support obligation activates only for a release that names a supported
 BOM and artifacts; until then no install is supported.
 
-The portable rail takes sandbox payments only. Real money currently runs only
-on the managed rail. A portable real-money store without vendor lock-in is not
-yet available; payment contracts and optional adapter source do not close that
-gap. The portable [payment schema descriptor](../packages/platform/src/payments/schemaCapabilities.ts)
-still refuses the durable prepared store, payment-method setup and other named
-operations.
+The starter selects sandbox payments. The native rail can compose the reference
+card provider through the explicit [host composition](../examples/neutral-store/host/provider-portable.ts),
+with the complete database catalogue and host-owned configuration. The native
+[payment schema descriptor](../packages/platform/src/payments/schemaCapabilities.ts)
+supports the prepared store and payment-method setup; real-payment, method-setup
+and card-replacement actions remain unconfigured in this starter.
+The native rail supports the two reference payment providers; a third provider needs the provider-profile refactor.
+The supplied portable composition covers the reference card provider only.
+Offline PostgreSQL witnesses do not establish live-provider qualification.
 
 The [public outcome projection](../docs/platform/OUTCOME_PROJECTION.md) is
 generated from existing public package instruments. It is partial: witness
@@ -82,9 +85,9 @@ provisional activation is read through its owned order companion, with no
 subscription association invented before activation completes. See the
 [native account boundary](../packages/platform/README.md#native-account-persistence-reads).
 
-The portable rail takes sandbox payments only; real money currently runs only
-on the managed rail. No supported, stable or production-ready store deployment
-is claimed.
+The default sandbox selection and the explicit provider host composition have
+separate configuration requirements. No supported, stable or production-ready
+store deployment is claimed.
 
 No hosting account or resource is supplied. Root `ui-*` counts remain shrink-only
 reference-source debt. New neutral presentation is constrained to system fonts;

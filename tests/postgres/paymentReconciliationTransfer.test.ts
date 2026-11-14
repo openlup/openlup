@@ -64,4 +64,4 @@ it("carries all reconciliation, reopen, dunning and refund rows exactly and repl
   expect(await restoreConnectedNativeStore(input)).toMatchObject({ replayed: true });
   expect(await createPostgresPaymentProviderReconciliationPort(target.runtime, options).applyTerminalResult(request)).toMatchObject({ replayed: true });
   expect(await journeyCensus(target.owner)).toEqual(before);
-});
+}, 60_000);

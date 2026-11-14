@@ -54,7 +54,7 @@ missing evidence must not be guessed into a full refund.
 The payment transitions exported from `@openlup/core/payment`
 (`transitionPaymentIntent`, `transitionPaymentAttempt`,
 `applyProviderPaymentEvent`) and the
-[verified evidence contracts](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/src/payments/contracts/evidence.ts)
+[verified evidence contracts](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/packages/platform/src/payments/contracts/evidence.ts)
 define these separate boundaries. Other commerce domains have their own status
 types; do not substitute payment statuses for them.
 
@@ -75,8 +75,45 @@ A redirect or client-confirmation handoff tells the host how to continue the
 interaction, not whether money settled. Client-confirmation payloads and customer
 authorization are transient secrets: do not persist, log or fingerprint them.
 Keep only explicitly redacted diagnostics. See the
-[execution contract](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/src/payments/contracts/adapter.ts)
+[execution contract](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/packages/platform/src/payments/contracts/adapter.ts)
 and [idempotency](idempotency.md#idempotency-contract) before retrying an attempt.
+
+The 0.42.0 source candidate adds `createPostgresProviderPaymentRail` in
+`@openlup/platform/payments` and `createPostgresProviderRenewalBinding` in
+`@openlup/platform/subscriptions`. With the complete native catalogue, an
+explicit card provider host composition binds committed prepare/finalize, signed
+ingress, method registration, attributed dunning and refund evidence. Pass the
+renewal binding's `composeWebhook` into the payment rail and select its lifecycle
+and retry ports together. The default starter keeps its sandbox selection.
+
+Before original renewal dispatch, any recorded method makes the addressed
+reference strict: it must be the subscription's current active recorded method,
+belong to the client and match the recorded customer. Method refusals precede
+provider admission and I/O. Original renewals without a recorded reference retain
+their existing path; this does not create or reconstruct a method row.
+
+A finalized `requires_action` attempt replays its persisted SCA refusal through
+the renewal refusal owner, using the original execution key and durable prepared
+instant. It records one failure rung and attributed case without another provider
+call. The card provider readback supplies no occurrence time. Other unresolved
+attempts remain ambiguous until
+timestamped evidence arrives; receipt time never becomes provider time. Verified
+webhooks retain the first receipt separately, settle the exact active attempt
+and complete native renewal/recovery bookkeeping with the same settlement key.
+Untimestamped evidence retains a null native source occurrence and returns no
+occurrence instant, including on replay; HTTP receipt and database recording
+times remain separate. Superseded or unresolved success deliveries reach the
+native exact-attempt refusal and are acknowledged without financial effects.
+Attribution stays as recorded at ingestion: an unresolved event remains unresolved
+when redelivered after finalization, even if its remote handle now matches the
+active attempt. Finalization does not retroactively authorize that event.
+Search uses the exact local intent and at most two results. Multiple matches
+refuse; zero matches never authorize another charge. Absence auto-reopen stays off.
+Offline PostgreSQL witnesses establish this composition, not live activation.
+Historical ingress without the durable receipt envelope refuses
+`payment_event_receipt_unavailable` before recovery bookkeeping. Inspect the
+original provider event and reconcile with verified time through the native
+control/reconciliation ports; never reconstruct missing facts from a healthy label.
 
 ## Saved payment methods
 
@@ -97,6 +134,6 @@ Read-time method health and unattended chargeability are separate decisions.
 An expiring method can remain chargeable until expiry. A historical healthy
 label or mirror without recorded reusable evidence returns
 `method_ref_not_recorded`; sandbox method evidence supplies no provider method
-evidence. Provider collection and recorded health do not establish a complete
-provider renewal journey. The [starter limits](../reference/limits.md#purchase-composition-boundaries)
+evidence. Provider collection and recorded health alone do not establish a
+provider renewal journey; select the payment and renewal compositions together. The [starter limits](../reference/limits.md#purchase-composition-boundaries)
 describe its available payment actions.

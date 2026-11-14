@@ -29,29 +29,29 @@ contracts as the template for your implementation:
 
 | Class | Contract and construction | Offline check |
 | --- | --- | --- |
-| Email | Bind a guarded email transport; see the [communications API report](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/api/communications.api.md). | Check transport acceptance and refusal behavior with communications conformance. |
-| Marketing | Implement neutral profile, consent-readback and erasure ports from the [communications contracts report](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/api/communications-contracts.api.md). Keep consent push separate. | Communications conformance covers marketing sync; consent push needs separate checks. |
-| Payments | Implement the payment contract and declare capabilities from the [payments contracts report](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/api/payments-contracts.api.md). | Use the conformance runner and fixtures in the [payments API report](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/api/payments.api.md). Import `runPaymentAdapterConformance` and `createScriptedPaymentFake` from `@openlup/platform/payments/testing` for offline adapter checks. |
-| Fulfillment | Implement the operations you declare in the [fulfillment contracts report](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/api/fulfillment-contracts.api.md). | Use the conformance runner with adapter-owned fixtures from the [fulfillment API report](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/api/fulfillment.api.md). |
-| Ecommerce events | Implement `EcommerceEventsPort` from the [communications contracts report](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/api/communications-contracts.api.md), independently of profile and consent support. Declare the selected scope and qualification, keep the source, profile and mapping identity on retry, and recheck local authority before each effect. | Communications conformance covers email and marketing sync only; prove event acceptance, refusal without effects, replay and uncertain acceptance with your own offline sink. A passing offline check does not qualify a live account. |
+| Email | Bind a guarded email transport; see the [communications API report](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/packages/platform/api/communications.api.md). | Check transport acceptance and refusal behavior with communications conformance. |
+| Marketing | Implement neutral profile, consent-readback and erasure ports from the [communications contracts report](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/packages/platform/api/communications-contracts.api.md). Keep consent push separate. | Communications conformance covers marketing sync; consent push needs separate checks. |
+| Payments | Implement the payment contract and declare capabilities from the [payments contracts report](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/packages/platform/api/payments-contracts.api.md). | Use the conformance runner and fixtures in the [payments API report](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/packages/platform/api/payments.api.md). Import `runPaymentAdapterConformance` and `createScriptedPaymentFake` from `@openlup/platform/payments/testing` for offline adapter checks. |
+| Fulfillment | Implement the operations you declare in the [fulfillment contracts report](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/packages/platform/api/fulfillment-contracts.api.md). | Use the conformance runner with adapter-owned fixtures from the [fulfillment API report](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/packages/platform/api/fulfillment.api.md). |
+| Ecommerce events | Implement `EcommerceEventsPort` from the [communications contracts report](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/packages/platform/api/communications-contracts.api.md), independently of profile and consent support. Declare the selected scope and qualification, keep the source, profile and mapping identity on retry, and recheck local authority before each effect. | Communications conformance covers email and marketing sync only; prove event acceptance, refusal without effects, replay and uncertain acceptance with your own offline sink. A passing offline check does not qualify a live account. |
 
 Opt-in templates cover email, marketing, payments and fulfillment. Default
 wiring selects none of them. Find their protocol-specific entries in the
 [installed package export
-map](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/package.json).
+map](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/packages/platform/package.json).
 Keep their imports in your server composition. The neutral communications and
 browser contracts entries do not export provider factories. Consult the [package
 capability
-reference](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/AGENTS.md#subpath-maturity)
+reference](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/packages/platform/AGENTS.md#subpath-maturity)
 for the declared selection boundary.
 
 ### Card and wallet payment template
 
 Construct `createStripePaymentAdapter` from the card/wallet protocol entry listed
-in the installed export map. Its [configuration and capability declarations](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/README.md#opt-in-payment-example)
+in the installed export map. Its [configuration and capability declarations](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/packages/platform/README.md#opt-in-payment-example)
 own the exact public surface. Inject a structural client, `webhookSigningSecrets`,
 explicit `mode` and a nonempty `supportedCurrencies` array of canonical currency
-codes. The [card adapter configuration](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/README.md#opt-in-payment-example)
+codes. The [card adapter configuration](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/packages/platform/README.md#opt-in-payment-example)
 owns the currency shape and `toleranceSeconds` default; `clock` returns UTC seconds. Your host constructs the SDK, associates stored methods with
 customers and confirms unattended requests. Interactive offers use the declared
 card/wallet flow. Construction performs no provider I/O.
@@ -60,6 +60,29 @@ The adapter copies and freezes your currency list; the exported descriptor's
 list is empty. Cancellation is available only when your client implements it.
 Exact absence, refund creation and separate authorization/capture are
 unavailable. Establish account-specific readiness before live use.
+
+For portable PostgreSQL, the 0.42.0 source example
+`examples/neutral-store/host/provider-portable.ts` (`composeStripePortableRail`)
+binds the neutral factory to the native payment and renewal owners. Keep its
+webhook control, renewal lifecycle and retry ports together. Supply authenticated
+method ownership, SDK requests, customer creation, a population lease, readiness,
+inventory and frozen execution inputs from your host. Purchase execution forwards
+`orderRef`, `orderMode`, `clientId`, `customerRef` and `saveForFutureUse`; persist only its
+redacted `persistence` facts. The browser confirms interactive requests.
+This example is not selected by the starter and supplies no portable composition
+for the second reference provider.
+
+Keep the execution-time recorded-method check in the renewal binding: a healthy
+replacement does not authorize a stale addressed reference or customer. Preserve
+null provider time in native ingestion rather than projecting HTTP receipt time
+into its occurrence carrier. Resume a finalized SCA-required attempt through the
+persisted refusal path; ordinary readback cannot supply its missing event time.
+Let native result validation acknowledge superseded and unresolved events before
+attempt-specific recovery bookkeeping. Route by the evidence's committed attempt
+link; a matching handle finalized later cannot resolve an event whose link was
+recorded as null. Pass ingestion through the composed control before applying
+its result, so the renewal binding consumes the native ingestion receipt on each
+delivery rather than inferring attribution from provider metadata.
 
 Verified dispute events keep a distinct money outcome and original payment
 identity. Audit projection includes filtered event, refund-snapshot and
@@ -71,7 +94,7 @@ becomes an invented lifecycle timestamp.
 ### Bank redirect and code payment template
 
 Construct `createTpayPaymentAdapter` from the bank/code protocol entry in that
-map; consult its [configuration and capability declarations](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/README.md#opt-in-bank-and-code-payment-example)
+map; consult its [configuration and capability declarations](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/packages/platform/README.md#opt-in-bank-and-code-payment-example)
 for the public surface. Supply
 `http: { baseUrl, clientId, clientSecret, fetchImpl, timeoutMs? }`,
 `urls: { notificationUrl, successUrl, errorUrl }`, `modelOActivationEnabled`,
@@ -82,7 +105,7 @@ access policy. Both root and resolved certificates must be valid at verification
 
 Verify notifications over original bytes. Only signed protected-header `iat`
 supplies provider time; absent time stays null. Notification age and clock skew
-use the defaults in the [bank/code adapter contract](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/README.md#opt-in-bank-and-code-payment-example).
+use the defaults in the [bank/code adapter contract](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/packages/platform/README.md#opt-in-bank-and-code-payment-example).
 The age allowance is an assumption, not a verified provider schedule. Both
 limits must be finite and nonnegative and apply only with a signed issue time; a time outside
 the window refuses as `stale`. Receipt time checks freshness without inventing
@@ -123,7 +146,7 @@ certificates and raw bodies. Missing failure provenance stays absent.
 
 ### Reuse existing payment bindings
 
-For an existing binding, inspect the [reference-support inventory](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/README.md#reference-support-surface)
+For an existing binding, inspect the [reference-support inventory](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/packages/platform/README.md#reference-support-surface)
 and its linked API reports before selecting a helper. Infer types from the
 functions where no separate type is exported. Reuse the same
 `ProviderAttemptPreDispatchError` constructor across wrappers so `instanceof`
@@ -134,7 +157,7 @@ these helpers does not widen the neutral adapter's capabilities or activate a pr
 ### Node email protocol template
 
 The Node-only email template composes the neutral runtime operations listed in
-the [communications API report](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/api/communications.api.md).
+the [communications API report](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/packages/platform/api/communications.api.md).
 Select its protocol-specific entry through the installed export map above. Types
 stay on the neutral entries.
 
@@ -172,7 +195,7 @@ contract before choosing a retry horizon.
 For this protocol template, signatures accept bare or `v1,` members and literal
 keys or canonical base64 keys prefixed with `whsec_`. Supply a UTC-seconds
 clock; the template enforces a bounded timestamp window, including its
-endpoints. See the [maintainer protocol limits](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/docs/platform/CANONICAL_CONTRACTS.md#opt-in-node-protocol-adapter)
+endpoints. See the [maintainer protocol limits](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/docs/platform/CANONICAL_CONTRACTS.md#opt-in-node-protocol-adapter)
 for the exact window. This policy is separate from the standard Auth verifier. The receiver defaults to
 non-production. Lookup/apply failures return a fixed HTTP 500 response for
 retry; attempt telemetry cannot overturn a successful observation. Unsupported
@@ -192,7 +215,7 @@ chain, select an account, environment and fixed live cutoff, and keep commerce
 and export claims in separate invocations with disjoint allowlists. Importing
 these entries installs no route, schedule or provider effect and performs no
 historical backfill. Retention, authority and recovery are described in the
-[event source and dispatch contract](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/docs/platform/CANONICAL_CONTRACTS.md#ecommerce-event-export).
+[event source and dispatch contract](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/docs/platform/CANONICAL_CONTRACTS.md#ecommerce-event-export).
 
 ### Singleton marketing template
 
@@ -248,4 +271,4 @@ a release or support tier, or authorization to perform live operations. Follow
 [adapter conformance](adapter-conformance.md) to run the communications example
 and check your implementation. Keep the adapter in your application's source or
 propose it upstream through the [contribution
-process](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/CONTRIBUTING.md#contribute-existing-adopter-code-then-refactor).
+process](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/CONTRIBUTING.md#contribute-existing-adopter-code-then-refactor).

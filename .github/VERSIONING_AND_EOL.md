@@ -14,10 +14,6 @@ follows preview rules.
   upgrade proofs green. No current source checkout, private package, or preview
   release satisfies that gate.
 
-## The public compatibility contract
-
-Moved to [Versioning and stability](../packages/core/docs/guide/reference/stability.md#public-api).
-
 ## Stable semantic versioning
 
 Moved to [Versioning and stability](../packages/core/docs/guide/reference/stability.md#version-numbers).
@@ -938,9 +934,10 @@ reads the release tag's tutorial page after checking that tag's commit against
 the completed publication run. It accepts only a release event with an `openlup-core-v<version>` tag,
 then waits up to ten minutes for the matching package set and core's `latest`
 value on npm before running the guide tutorial against the registry and a
-disposable pinned PostgreSQL database. The registry tutorial remains advisory
-until its second green run: a failure produces a warning annotation and a step
-summary. A propagation timeout also warns and defers the tutorial. This workflow
+disposable pinned PostgreSQL database. The registry tutorial is blocking after
+two green release runs: a failed tutorial fails that workflow run, which reports
+to the maintainer. It runs after publication and cannot affect that publication.
+A propagation timeout still warns and defers the tutorial. This workflow
 is not a required check and does not hold the publication run open or delay the
 next release dispatch.
 
