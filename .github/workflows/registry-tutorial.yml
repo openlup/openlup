@@ -250,7 +250,7 @@ jobs:
 
   publish-qualified-image:
     needs: exact-set-qualification
-    if: ${{ needs.exact-set-qualification.result == 'success' }}
+    if: ${{ needs.exact-set-qualification.result == 'success' && (github.event_name == 'workflow_run' || inputs.publish_image) }}
     runs-on: ubuntu-24.04
     permissions: {packages: write, attestations: write, id-token: write}
     steps:
