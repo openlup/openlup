@@ -1549,6 +1549,8 @@ DECLARE
   v_occurred_at timestamptz;
   v_latest_local_write timestamptz;
   v_checkout_kind text;
+  v_tuple_provider text;
+  v_policy record;
   v_reconciliation_status text;
   v_audit_payload jsonb;
   v_response jsonb;
@@ -1572,16 +1574,23 @@ BEGIN
     RAISE EXCEPTION 'interactive_prepared_attempt_reopen_sensitive_evidence' USING ERRCODE = '22023';
   END IF;
 
+  -- Bind early trusted validation when the attempt has an interactive profile.
+  -- Missing/unsupported attempts retain the original early tuple refusal order.
+  SELECT a.provider INTO v_tuple_provider
+    FROM public.payment_provider_attempts a
+   WHERE a.id = p_payment_attempt_id
+     AND (SELECT interactive FROM public.payment_provider_profile(a.provider));
+
   IF p_reopen_mode = 'trusted_pre_dispatch' THEN
     IF p_dispatch_state <> 'not_dispatched'
       OR NOT (
         (
           p_phase = 'oauth'
-          AND p_reason_code IN (SELECT unnest(policy.trusted_oauth_codes) FROM public.payment_provider_profile(NULL) policy)
+          AND p_reason_code IN (SELECT unnest(policy.trusted_oauth_codes) FROM public.payment_provider_profile(v_tuple_provider) policy)
         )
         OR (
           p_phase = 'transaction_dispatch'
-          AND p_reason_code IN (SELECT unnest(policy.trusted_dispatch_codes) FROM public.payment_provider_profile(NULL) policy)
+          AND p_reason_code IN (SELECT unnest(policy.trusted_dispatch_codes) FROM public.payment_provider_profile(v_tuple_provider) policy)
         )
       )
       OR p_operator_ref IS NOT NULL
@@ -1596,7 +1605,7 @@ BEGIN
   ELSIF p_reopen_mode = 'trusted_provider_refusal' THEN
     IF p_dispatch_state <> 'refused'
       OR p_phase <> 'response_decode'
-      OR p_reason_code NOT IN (SELECT policy.trusted_refusal_code FROM public.payment_provider_profile(NULL) policy WHERE policy.trusted_refusal_code IS NOT NULL)
+      OR p_reason_code NOT IN (SELECT policy.trusted_refusal_code FROM public.payment_provider_profile(v_tuple_provider) policy WHERE policy.trusted_refusal_code IS NOT NULL)
       OR p_operator_ref IS NOT NULL
       OR p_absence_checked_at IS NOT NULL
       OR v_evidence <> '{}'::jsonb
@@ -1719,8 +1728,21 @@ BEGIN
   IF v_attempt.status <> 'created' THEN
     RAISE EXCEPTION 'interactive_prepared_attempt_reopen_attempt_not_prepared' USING ERRCODE = '22023';
   END IF;
-  IF NOT (SELECT interactive FROM public.payment_provider_profile(v_attempt.provider)) THEN
+  SELECT * INTO v_policy FROM public.payment_provider_profile(v_attempt.provider);
+  IF NOT v_policy.interactive THEN
     RAISE EXCEPTION 'interactive_prepared_attempt_reopen_provider_not_supported' USING ERRCODE = '22023';
+  END IF;
+  IF p_reopen_mode = 'trusted_pre_dispatch' AND NOT (
+    (p_phase = 'oauth' AND p_reason_code = ANY(v_policy.trusted_oauth_codes))
+    OR (p_phase = 'transaction_dispatch' AND p_reason_code = ANY(v_policy.trusted_dispatch_codes))
+  ) THEN
+    RAISE EXCEPTION 'interactive_prepared_attempt_reopen_invalid_trusted_pre_dispatch_evidence'
+      USING ERRCODE = '22023';
+  END IF;
+  IF p_reopen_mode = 'trusted_provider_refusal'
+    AND p_reason_code IS DISTINCT FROM v_policy.trusted_refusal_code THEN
+    RAISE EXCEPTION 'interactive_prepared_attempt_reopen_invalid_provider_refusal_evidence'
+      USING ERRCODE = '22023';
   END IF;
   IF v_attempt.provider_attempt_id IS NOT NULL OR v_attempt.provider_session_id IS NOT NULL THEN
     RAISE EXCEPTION 'interactive_prepared_attempt_reopen_provider_ref_exists' USING ERRCODE = '22023';

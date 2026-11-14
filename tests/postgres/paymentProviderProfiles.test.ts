@@ -3,7 +3,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { PoolClient } from "pg";
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { nativeStoreFunctionDefinitions, sqlStatements } from "../../scripts/reviewed-platform-forward.js";
 import type { PaymentProviderProfile } from "@openlup/platform/payments/contracts";
 import { lifecycleInstallation, type LifecycleInstallation } from "./subscriptionLifecycleClosureFixture.js";
@@ -43,8 +43,10 @@ let env: LifecycleInstallation, owner: PoolClient, runtime: PoolClient, at: stri
 let profiles: PaymentProviderProfile[];
 const third: { policy: PaymentProviderProfile; paid: Fixture; claim: Fixture; renewal: Fixture; interactive: Fixture; inline: Fixture }[] = [];
 let genericBefore: unknown;
+let handoffDDL: string;
+let referenceFixture: Fixture;
 type Fixture = { client: string; intent: string; attempt: string; order: string; cycle: string | null; subscription: string | null; provider: string; event: string; key: string };
-type Probe = { fn: string; args: unknown[]; types: string[]; expected?: string; kind?: string };
+type Probe = { fn: string; args: unknown[]; types: string[]; expected?: string; kind?: string; handoffFault?: string };
 type Case = { group: string; name: string; subscription?: boolean; state?: "paid" | "failed" | "prepared"; expected?: string; kind?: string; early?: boolean; change?: (f: Fixture, p: Probe) => Promise<void>; args?: (f: Fixture) => unknown[] };
 const prepare = "payment_provider_attempt_prepare", truth = "payment_provider_assert_truth", result = "payment_provider_result_apply";
 const stale = "commerce_payment_reconciliation_claim_stale_attempts", prepared = "commerce_payment_reconciliation_claim_prepared_attempts";
@@ -237,6 +239,24 @@ cases.push({group:refund,name:"non_advancing_snapshot",state:"paid",change:async
 for(const [mode,code]of [["trusted_pre_dispatch","invalid_trusted_pre_dispatch_evidence"],["trusted_provider_refusal","invalid_provider_refusal_evidence"],["manual_provider_absence","invalid_manual_absence_evidence"]])cases.push({group:interactive,name:`tuple_before_replay_${mode}`,state:"prepared",early:true,expected:`interactive_prepared_attempt_reopen_${code}`,change:async(f,p)=>{
   await conflict(f,"commerce.payment_attempt.interactive_prepared_reopen");p.args[6]=mode;p.args[8]="wrong-phase";
 }});
+cases.push({group:prepare,name:"skipped_subscription",subscription:true,state:"failed",change:async f=>{
+  await update("subscriptions",f,"status='cancelled'");
+}});
+for(const status of ["failed","expired","refunded","partially_refunded","disputed"])cases.push({group:result,name:`returned_${status}`,state:["refunded","partially_refunded","disputed"].includes(status)?"paid":undefined,change:async(_f,p)=>{p.args[2]=null;p.args[3]=status;}});
+cases.push({group:record,name:"ignored_snapshot",state:"paid",change:async(f,p)=>{
+  if(profiles.find(policy=>policy.provider===f.provider)?.refund_kind==="cumulative-snapshot"){
+    const e=(await owner.query("SELECT public.payment_provider_event_ingest($1,$2,'payment.refunded',$3,$4,$5,12999,'XXX',true,(SELECT payload FROM public.payment_provider_attempt_evidence WHERE id=$6)) value",[f.provider,f.key+":prior",`charge_${f.attempt}`,f.intent,f.attempt,f.event])).rows[0].value.paymentEvent.id;
+    await owner.query("SELECT public.payment_refund_evidence_record($1,$2,3000,'XXX')",[e,`charge_${f.attempt}`]);
+  }
+}});
+const caughtRefusals=[...predecessors[pins.findIndex(pin=>pin.signature.startsWith(`public.${result}(`))]!.matchAll(/IF SQLERRM NOT IN \(([^)]+)\)/gu)].flatMap(m=>[...m[1]!.matchAll(/'([^']+)'/gu)].map(v=>v[1]!));
+for(const code of caughtRefusals)cases.push({group:result,name:`caught_${code}`,change:async(f,p)=>{
+  p.args[0]=`provider-webhook:${f.provider}:${f.key}:apply`;p.args[3]="failed";p.handoffFault=code;
+  await event(f,"event_type='payment.failed'");
+}});
+for(const status of ["sent_to_provider","requires_action"])cases.push({group:stale,name:`returned_${status}`,change:async f=>{
+  await attempt(f,"status=$2",[status]);await state(f,"status='requires_action'");
+}});
 for(const group of [prepare,truth,result,stale,prepared,record,financial,refund,renewal,interactive])cases.push({group,name:"valid",state:group===refund||group===record||group===financial?"paid":group===prepare?"failed":group===renewal||group===interactive||group===prepared?"prepared":undefined,subscription:group===renewal});
 const matrix = cases.flatMap((c,index)=>["snapshot","delta","unprofiled"].map(label=>({label,c,index,key:`${index}:${label}`})));
 const probes = new Map<string,Probe>();
@@ -245,14 +265,15 @@ function callSQL(p: Probe) {
   const fn=p.fn===interactive?"commerce_payment_control_reopen_interactive_prepared_attempt":p.fn;
   return `SELECT to_jsonb(value) AS value FROM public.${fn}(${p.types.map((t,i)=>`$${i+1}::${t}`).join(",")}) value`;
 }
-function normalized(value: unknown): unknown {
+function normalized(value: unknown, clock?: number): unknown {
+  if(typeof value==="string"&&/^\d{4}-\d\d-\d\dT/u.test(value)&&Date.parse(value)===clock)return "<transaction-time>";
   if(typeof value==="string")return value.replace(/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/giu,"<uuid>");
-  if(Array.isArray(value))return value.map(normalized);
-  if(value&&typeof value==="object")return Object.fromEntries(Object.entries(value).map(([k,v])=>[k,normalized(v)]));
+  if(Array.isArray(value))return value.map(v=>normalized(v,clock));
+  if(value&&typeof value==="object")return Object.fromEntries(Object.entries(value).map(([k,v])=>[k,normalized(v,clock)]));
   return value;
 }
-async function observe(p: Probe) {
-  try {return {rows:normalized((await runtime.query(callSQL(p),p.args)).rows)};}
+async function observe(p: Probe, clock?: number) {
+  try {return {rows:normalized((await runtime.query(callSQL(p),p.args)).rows,clock)};}
   catch(error){const e=error as {code:string;message:string};return {error:{code:e.code,message:e.message}};}
 }
 beforeAll(async()=>{
@@ -313,25 +334,7 @@ beforeAll(async()=>{
     probes.set(key,p);
   }
   genericBefore=await genericDefinitions();
-  const additions=profiles.map((p,index)=>({...p,provider:index===0?"example-snapshot":"example-session",
-    ...(p.refund_kind==="cumulative-snapshot"?{refund_operation_path:["exampleSnapshot","chargeId"],refund_amount_path:["exampleSnapshot","amountRefundedMinor"],refund_ignored_kind:"ignored_example_snapshot"}:{}),
-  }));
-  const amended=replace(profileDDL).replace("\n )\n SELECT * FROM declarations",",\n"+additions.map(p=>"  ("+Object.values(p).map(literal).join(",")+")").join(",\n")+"\n )\n SELECT * FROM declarations");
-  expect(amended).not.toBe(replace(profileDDL));
-  await owner.query(amended);
-  for(const policy of additions){
-    const make=async(subscription=false,finalized=true):Promise<Fixture>=>(await owner.query("SELECT pg_temp.reconciliation_fixture($1,$2,$3) f",[policy.provider,subscription,finalized])).rows[0].f;
-    const paid=await make(),claim=await make(),renewalFixture=await make(true,false),interactiveFixture=await make(false,false),inline=await make();
-    await owner.query("SELECT pg_temp.provider_apply($1,$2,NULL,'succeeded',$3,NULL)",[`third:${paid.intent}`,paid.intent,at]);
-    await owner.query("SELECT pg_temp.provider_apply($1,$2,NULL,'failed',$3,NULL)",[`third-failed:${inline.intent}`,inline.intent,at]);
-    await attempt(claim,"provider_session_id='session-reference'");
-    for(const f of [claim,renewalFixture,interactiveFixture]){await attempt(f,"created_at=$2,updated_at=$2",[old]);await state(f,"created_at=$2,updated_at=$2",[old]);}
-    await attempt(interactiveFixture,"request_payload=request_payload||'{\"source\":\"commerce.runtime.provider-attempt.prepare.v0\"}'");
-    await state(interactiveFixture,"metadata=metadata||'{\"checkoutKind\":\"one_time\"}'");
-    await update("commerce_orders",interactiveFixture,"metadata=metadata||'{\"runtimeFinalize\":{\"checkoutKind\":\"one_time\",\"source\":\"commerce.runtime.hidden.v0\"}}'");
-    third.push({policy,paid,claim,renewal:renewalFixture,interactive:interactiveFixture,inline});
-  }
-  await owner.query("SELECT * FROM public.commerce_payment_reconciliation_claim_prepared_attempts($1,900,500,'third-watchdog')",[at]);
+  handoffDDL=(await owner.query("SELECT pg_get_functiondef('public.payment_reconciliation_open_dunning_from_failed_result(text,uuid,text,text,timestamptz,text,uuid,text,text)'::regprocedure) body")).rows[0].body;
   const withoutWatchdog=matrix.filter(m=>m.c.name==="watchdog_evidence_missing").map(m=>probes.get(m.key)!.args[1]);
   await owner.query("DELETE FROM public.payment_provider_reconciliation_runs WHERE payment_attempt_id=ANY($1::uuid[])",[withoutWatchdog]);
   await owner.query(`ALTER TABLE public.subscriptions ADD CONSTRAINT subscriptions_status_check ${subscriptionCheck} NOT VALID`);
@@ -345,7 +348,7 @@ it("pins every preimage and proves the ten bodies and generic TypeScript contain
   for(const [i,pin]of pins.entries()){
     expect(createHash("sha256").update(predecessors[i]!).digest("hex")).toBe(pin.beforeSha256);
     expect(replacements[i]).not.toMatch(forbidden);
-    expect([...replacements[i]!.matchAll(/RAISE EXCEPTION '([^']+)'/gu)].map(m=>m[1])).toEqual([...predecessors[i]!.matchAll(/RAISE EXCEPTION '([^']+)'/gu)].map(m=>m[1]));
+    expect([...new Set([...replacements[i]!.matchAll(/RAISE EXCEPTION '([^']+)'/gu)].map(m=>m[1]))]).toEqual([...new Set([...predecessors[i]!.matchAll(/RAISE EXCEPTION '([^']+)'/gu)].map(m=>m[1]))]);
   }
   const visit=(path:string)=>{for(const item of readdirSync(path,{withFileTypes:true})){const child=join(path,item.name);if(item.isDirectory()){if(!knownNames.includes(item.name))visit(child);}else if(/\.tsx?$/u.test(child))expect(readFileSync(child,"utf8"),child).not.toMatch(forbidden);}};
   visit("packages/platform/src/payments");
@@ -364,22 +367,43 @@ it("matches all SQL fields to the independent adapter declarations and preserves
 });
 it.each(matrix)("preserves $label $c.group $c.name against its before-hash body",async({key,c})=>{
   const p=probes.get(key)!;
-  await owner.query(oldDDL);
-  await runtime.query("BEGIN; SAVEPOINT profile_case");
+  const probe=async(ddl:string)=>{
+    await owner.query(ddl);
+    await runtime.query("BEGIN");
+    try{
+      const clock=Date.parse((await runtime.query("SELECT transaction_timestamp() at")).rows[0].at);
+      return await observe(p,clock);
+    }finally{await runtime.query("ROLLBACK");}
+  };
   try{
-    const before=await observe(p);
-    await runtime.query("ROLLBACK TO SAVEPOINT profile_case");
-    await owner.query(newDDL);
-    const after=await observe(p);
+    if(p.handoffFault){
+      // Synthetic callee fault isolates the five existing catch-to-result mappings,
+      // matching the native dunning attribution boundary witnesses.
+      await owner.query(handoffDDL.replace(/BEGIN/iu,`BEGIN RAISE EXCEPTION '${p.handoffFault}' USING ERRCODE='55000';`));
+    }
+    const before=await probe(oldDDL),after=await probe(newDDL);
     expect(after).toEqual(before);
+    const codes=executed.get(c.group)??new Set<string>();
+    const collect=(value:unknown)=>{if(typeof value==="string")codes.add(value);else if(Array.isArray(value))value.forEach(collect);else if(value&&typeof value==="object")Object.values(value).forEach(collect);};
+    collect(after.rows);
     if(after.error){
       expect(after.error.code).toMatch(/^(?:22023|23505|55000)$/u);
-      const codes=executed.get(c.group)??new Set<string>();codes.add(after.error.message);executed.set(c.group,codes);
+      codes.add(after.error.message);
       if(p.expected)expect(after.error.message).toBe(p.expected);
     }else if(p.expected)throw Error(`Expected ${p.expected}, got ${JSON.stringify(after)}`);
+    executed.set(c.group,codes);
     if((c.name==="valid"||c.name==="inline_admission"||c.name==="historical_no_state"||c.name.startsWith("trusted_")||p.kind)&&!p.expected)expect(after.error).toBeUndefined();
     if(p.kind)expect(after.rows).toMatchObject([{value:{paymentResult:{kind:p.kind}}}]);
-  }finally{await runtime.query("ROLLBACK");await owner.query(newDDL);}
+    if(c.name==="skipped_subscription")expect(after.rows).toMatchObject([{value:{paymentAttemptAdmission:{status:"skipped_not_chargeable",reason:"payment_control_subscription_not_chargeable"}}}]);
+    if(p.handoffFault)expect(after.rows).toMatchObject([{value:{subscriptionWebhookDunning:{opened:false,reason:p.handoffFault}}}]);
+    if((c.group===stale||c.group===prepared)&&c.name==="valid"){
+      expect(third).toEqual([]);
+      expect(after.rows).toBeInstanceOf(Array);
+      const providers=(after.rows as {value:{provider:string}}[]).map(row=>row.value.provider);
+      expect(new Set(providers)).toEqual(new Set(profiles.map(policy=>policy.provider)));
+      expect(providers).not.toContain("unprofiled-provider");
+    }
+  }finally{await runtime.query("ROLLBACK");await owner.query(newDDL);if(p.handoffFault)await owner.query(handoffDDL);}
 });
 
 function literal(value:unknown):string {
@@ -389,9 +413,41 @@ function literal(value:unknown):string {
   return "'"+String(value).replaceAll("'","''")+"'";
 }
 async function genericDefinitions(){return (await owner.query("SELECT oid::regprocedure::text signature,pg_get_functiondef(oid) body FROM pg_proc WHERE oid=ANY(SELECT to_regprocedure(unnest($1::text[]))) ORDER BY 1",[pins.map(p=>p.signature)])).rows;}
-it("adds two policy variants by declarations only and executes claims, refunds and reopen through the runtime role",async()=>{
+describe("declaration-only extension",()=>{
+beforeAll(async()=>{
+  const additions=profiles.map((p,index)=>({...p,provider:index===0?"example-snapshot":"example-session",
+    ...(p.interactive?{trusted_oauth_codes:["example_oauth_unavailable"],trusted_dispatch_codes:["example_dispatch_unavailable"],trusted_refusal_code:"example_request_refused"}:{}),
+    ...(p.refund_kind==="cumulative-snapshot"?{refund_operation_path:["exampleSnapshot","chargeId"],refund_amount_path:["exampleSnapshot","amountRefundedMinor"],refund_ignored_kind:"ignored_example_snapshot"}:{}),
+  }));
+  additions.push({...additions.find(policy=>policy.interactive)!,provider:"example-empty",trusted_oauth_codes:[],trusted_dispatch_codes:[],trusted_refusal_code:null});
+  const amended=replace(profileDDL).replace("\n )\n SELECT * FROM declarations",",\n"+additions.map(p=>"  ("+Object.values(p).map(literal).join(",")+")").join(",\n")+"\n )\n SELECT * FROM declarations");
+  expect(amended).not.toBe(replace(profileDDL));
+  await owner.query(amended);
+  for(const policy of additions){
+    const make=async(subscription=false,finalized=true):Promise<Fixture>=>(await owner.query("SELECT pg_temp.reconciliation_fixture($1,$2,$3) f",[policy.provider,subscription,finalized])).rows[0].f;
+    const paid=await make(),claim=await make(),renewalFixture=await make(true,false),interactiveFixture=await make(false,false),inline=await make();
+    await owner.query("SELECT pg_temp.provider_apply($1,$2,NULL,'succeeded',$3,NULL)",[`third:${paid.intent}`,paid.intent,at]);
+    await owner.query("SELECT pg_temp.provider_apply($1,$2,NULL,'failed',$3,NULL)",[`third-failed:${inline.intent}`,inline.intent,at]);
+    await attempt(claim,"provider_session_id='session-reference'");
+    for(const f of [claim,renewalFixture,interactiveFixture]){await attempt(f,"created_at=$2,updated_at=$2",[old]);await state(f,"created_at=$2,updated_at=$2",[old]);}
+    await attempt(interactiveFixture,"request_payload=request_payload||'{\"source\":\"commerce.runtime.provider-attempt.prepare.v0\"}'");
+    await state(interactiveFixture,"metadata=metadata||'{\"checkoutKind\":\"one_time\"}'");
+    await update("commerce_orders",interactiveFixture,"metadata=metadata||'{\"runtimeFinalize\":{\"checkoutKind\":\"one_time\",\"source\":\"commerce.runtime.hidden.v0\"}}'");
+    third.push({policy,paid,claim,renewal:renewalFixture,interactive:interactiveFixture,inline});
+  }
+  await owner.query("SELECT * FROM public.commerce_payment_reconciliation_claim_prepared_attempts($1,900,500,'third-watchdog')",[at]);
+  const reference=profiles.find(policy=>policy.interactive)!;
+  // The existing one-time fixtures remain prepared after each rolled-back call.
+  referenceFixture=(await owner.query("SELECT pg_temp.reconciliation_fixture($1,false,false) f",[reference.provider])).rows[0].f as Fixture;
+  await attempt(referenceFixture,"request_payload=request_payload||'{\"source\":\"commerce.runtime.provider-attempt.prepare.v0\"}'");
+  await state(referenceFixture,"metadata=metadata||'{\"checkoutKind\":\"one_time\"}'");
+  await update("commerce_orders",referenceFixture,"metadata=metadata||'{\"runtimeFinalize\":{\"checkoutKind\":\"one_time\",\"source\":\"commerce.runtime.hidden.v0\"}}'");
+},postgresSetupTimeoutMs);
+it("adds three policy variants by declarations only and executes claims, refunds and reopen through the runtime role",async()=>{
   expect(await genericDefinitions()).toEqual(genericBefore);
+  const claimedPrepared=(await runtime.query("SELECT * FROM public.commerce_payment_reconciliation_claim_prepared_attempts($1,900,500,'third-runtime-prepared')",[at])).rows;
   for(const f of third){
+    expect(claimedPrepared).toEqual(expect.arrayContaining([{...claimedPrepared.find(row=>row.payment_attempt_id===f.interactive.attempt),provider:f.policy.provider,payment_attempt_id:f.interactive.attempt}]));
     const declared=(await runtime.query("SELECT * FROM public.payment_provider_profile($1)",[f.policy.provider])).rows;
     expect(declared).toEqual([f.policy]);
     const claimed=(await runtime.query("SELECT * FROM public.commerce_payment_reconciliation_claim_stale_attempts($1,900,500,$2)",[at,`third-claim:${f.claim.intent}`])).rows.find(r=>r.payment_intent_id===f.claim.intent);
@@ -410,15 +466,65 @@ it("adds two policy variants by declarations only and executes claims, refunds a
     expect((await runtime.query("SELECT public.payment_provider_attempt_prepare($1,$2,$3,$4,$5,$6,NULL,$7) value",[`third-inline:${inline.intent}`,inline.intent,f.policy.provider,`next:${inline.intent}`,"b".repeat(64),f.policy.one_time_flow,request])).rows[0].value.paymentAttempt.replayed).toBe(false);
     const r=f.renewal;
     expect((await runtime.query("SELECT public.commerce_payment_control_reopen_prepared_attempt_after_absence($1,$2,$3,$4,'operator.fixture',$5,$5,'{\"providerAbsenceConfirmed\":true}') value",[`third-reopen:${r.intent}`,r.attempt,r.intent,r.cycle,at])).rows[0].value.preparedAttemptReopen.replayed).toBe(false);
-    if(f.policy.interactive){const i=f.interactive;expect((await runtime.query("SELECT public.commerce_payment_control_reopen_interactive_prepared_attempt($1,$2,$3,$4,NULL,NULL,'trusted_pre_dispatch','not_dispatched','oauth',$5,NULL,NULL,'{}') value",[`third-interactive:${i.intent}`,i.attempt,i.intent,i.order,f.policy.trusted_oauth_codes[0]])).rows[0].value.interactivePreparedAttemptReopen.replayed).toBe(false);}
+    if(f.policy.interactive&&f.policy.trusted_oauth_codes.length){await runtime.query("BEGIN");try{const i=f.interactive;expect((await runtime.query("SELECT public.commerce_payment_control_reopen_interactive_prepared_attempt($1,$2,$3,$4,NULL,NULL,'trusted_pre_dispatch','not_dispatched','oauth',$5,NULL,NULL,'{}') value",[`third-interactive:${i.intent}`,i.attempt,i.intent,i.order,f.policy.trusted_oauth_codes[0]])).rows[0].value.interactivePreparedAttemptReopen.replayed).toBe(false);}finally{await runtime.query("ROLLBACK");}}
   }
   expect(await genericDefinitions()).toEqual(genericBefore);
 });
 
-it("executes every directly named refusal from all ten pinned functions",()=>{
+it("binds distinct and empty trusted lists to the attempt profile before replay",async()=>{
+  const reference=profiles.find(policy=>policy.interactive)!,distinct=third.find(f=>f.policy.provider==="example-session")!,empty=third.find(f=>f.policy.provider==="example-empty")!;
+  for(const [phase,field] of [["oauth","trusted_oauth_codes"],["transaction_dispatch","trusted_dispatch_codes"],["response_decode","trusted_refusal_code"]] as const){
+    const code=(policy:PaymentProviderProfile)=>{const value=policy[field];return Array.isArray(value)?value[0]!:value!;};
+    for(const [fixture,reason,accepted] of [[referenceFixture,code(distinct.policy),false],[distinct.interactive,code(reference),false],[distinct.interactive,code(distinct.policy),true],[empty.interactive,code(reference),false],[empty.interactive,code(distinct.policy),false]] as const){
+      const mode=phase==="response_decode"?"trusted_provider_refusal":"trusted_pre_dispatch";
+      const invalid=`interactive_prepared_attempt_reopen_invalid_${phase==="response_decode"?"provider_refusal":"trusted_pre_dispatch"}_evidence`;
+      const p:Probe={fn:interactive,types:pins.at(-1)!.signature.split("(")[1]!.slice(0,-1).split(","),args:[`cross-profile:${fixture.intent}:${phase}:${reason}`,fixture.attempt,fixture.intent,fixture.order,null,null,mode,phase==="response_decode"?"refused":"not_dispatched",phase,reason,null,null,{}]};
+      await runtime.query("BEGIN");
+      try{const observed=await observe(p);if(accepted)expect(observed.rows).toMatchObject([{value:{interactivePreparedAttemptReopen:{replayed:false}}}]);else expect(observed.error).toEqual({code:"22023",message:invalid});}finally{await runtime.query("ROLLBACK");}
+      if(!accepted){
+        // Invalid foreign tuples still refuse before a conflicting receipt/replay.
+        await owner.query("INSERT INTO public.payment_provider_receipts(scope,idempotency_key,request_fingerprint,status,response_payload) VALUES('commerce.payment_attempt.interactive_prepared_reopen',$1,'different','completed','{}') ON CONFLICT DO NOTHING",[p.args[0]]);
+        expect((await observe(p)).error).toEqual({code:"22023",message:invalid});
+      }
+    }
+  }
+  expect(await genericDefinitions()).toEqual(genericBefore);
+});
+});
+
+// Closed codes authored by the ten bodies: direct JSON status/reason fields,
+// kind/observation assignments, admitted result statuses, caught refusal reasons,
+// and the status columns returned by claim/evidence functions. Passthrough IDs,
+// money, timestamps and opaque evidence are not policy/result codes.
+function returnedCodes(source:string,fn:string):string[]{
+  const codes=new Set<string>();
+  const literals=(part:string)=>[...part.matchAll(/'([^']+)'/gu)].map(m=>m[1]!);
+  for(const m of source.matchAll(/'(?:status|reason|kind|attemptStatus|paymentAttemptStatus|paymentIntentStatus)'\s*,\s*'([^']+)'/gu))codes.add(m[1]!);
+  for(const m of source.matchAll(/\b(?:kind|observation)\s*:=\s*'([^']+)'/gu))codes.add(m[1]!);
+  for(const m of source.matchAll(/(?:p_result_status NOT IN|IF SQLERRM NOT IN)\s*\(([^)]+)\)/gu))literals(m[1]!).forEach(code=>codes.add(code));
+  if(fn===record){
+    const statuses=source.match(/CASE WHEN observation='cumulative-snapshot' AND prior>=p_amount THEN ('[^']+' ELSE '[^']+') END/u);
+    expect(statuses).not.toBeNull();literals(statuses![1]!).forEach(code=>codes.add(code));
+  }
+  if(fn===stale||fn===prepared){
+    for(const m of source.matchAll(/\b[ai]\.status (?:IN\s*\(([^)]+)\)|=\s*('([^']+)'))/gu))literals(m[1]??m[2]!).forEach(code=>codes.add(code));
+  }
+  if(fn===renewal){
+    expect(source).toContain("'cycleStatus', v_cycle.status");
+    const status=source.match(/v_cycle\.status <> '([^']+)'/u);expect(status).not.toBeNull();codes.add(status![1]!);
+  }
+  return [...codes].sort();
+}
+it("executes every named refusal and returned result code from all ten pinned functions",()=>{
   const missing=pins.flatMap((pin,index)=>{
-    const codes=[...new Set([...predecessors[index]!.matchAll(/RAISE EXCEPTION '([^']+)'/gu)].map(m=>m[1]!))];
-    const seen=executed.get(pin.signature.split(".")[1]!.split("(")[0]!);
+    const fn=pin.signature.split(".")[1]!.split("(")[0]!;
+    const returns=returnedCodes(predecessors[index]!,fn);
+    // The only dynamic kind in the new body comes from declaration data.
+    const afterReturns=returnedCodes(replacements[index]!,fn);
+    if(fn===refund)afterReturns.push(...profiles.flatMap(policy=>policy.refund_ignored_kind?[policy.refund_ignored_kind]:[]));
+    expect([...new Set(afterReturns)].sort()).toEqual(returns);
+    const codes=[...new Set([...predecessors[index]!.matchAll(/RAISE EXCEPTION '([^']+)'/gu)].map(m=>m[1]!)),...returns];
+    const seen=executed.get(fn);
     return codes.filter(code=>!seen?.has(code)).map(code=>({signature:pin.signature,code}));
   });
   expect(missing).toEqual([]);

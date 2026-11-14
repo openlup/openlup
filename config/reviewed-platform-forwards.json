@@ -6857,7 +6857,7 @@
     },
     {
       "path": "db/platform/migrations/20261121090000_payment_provider_profiles.sql",
-      "sha256": "b64dfa73ab2b146c0a350440bcb8c8674b1df716b0ee8cf4270f61460aa0300f",
+      "sha256": "4cd2bad61a1285df77e5fa200326910bb9ce364efd30f2d76ee1c36f13863844",
       "functions": [
         {
           "signature": "public.payment_provider_attempt_prepare(text,uuid,text,text,text,text,text,jsonb)",
@@ -6907,7 +6907,7 @@
         {
           "signature": "public.commerce_payment_reopen_interactive_sealed_v1(text,uuid,uuid,uuid,uuid,uuid,text,text,text,text,text,timestamptz,jsonb)",
           "beforeSha256": "4f6cc69c44ab60625ade46cf61846b2199c7008e6c7bcd7967369c8f2fb7b775",
-          "afterSha256": "220d691bf0d180b33b3c1b9ac5b8dec4e1df3f8c9c90ec0d618ab06122e7ae7b"
+          "afterSha256": "28467a7d05692e66afca069f93eca3ac288fafbf3ac01aed5d39bacc1644ebad"
         },
         {
           "signature": "public.payment_provider_profile(text)",

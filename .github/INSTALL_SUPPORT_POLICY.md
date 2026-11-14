@@ -53,7 +53,7 @@ with the complete database catalogue and host-owned configuration. The native
 [payment schema descriptor](../packages/platform/src/payments/schemaCapabilities.ts)
 supports the prepared store and payment-method setup; real-payment, method-setup
 and card-replacement actions remain unconfigured in this starter.
-The native rail supports the two reference payment providers; a third provider needs the provider-profile refactor.
+The native rail uses provider profiles; a third provider is added by a declaration plus an adapter.
 The supplied portable composition covers the reference card provider only.
 Offline PostgreSQL witnesses do not establish live-provider qualification.
 
