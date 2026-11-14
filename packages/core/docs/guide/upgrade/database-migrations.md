@@ -139,7 +139,7 @@ selected chain and application combination, including replay and refusal
 behavior. [Application file upgrades](./application-files.md) are a separate
 operation and execute no database work.
 
-The post-publication [released-pair qualification](https://github.com/openlup/openlup/blob/main/docs/platform/DISTRIBUTION_EVIDENCE.md#released-pair-schema-compatibility)
+The post-publication released-pair qualification
 uses both exact installed applications retained by the adjacent-set starter
 proof. Their shipped runners install the predecessor's packaged legacy
 catalogue and apply the target's packaged forwards. It kills a forward inside
