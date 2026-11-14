@@ -43,6 +43,7 @@ type Installation = { owner: Pool; ownerUrl: string; runtime: Pool; restore: Poo
 let targetNumber = 0;
 let source: Installation, target: Installation, pristine: ConnectedNativeStoreCapture, packet: ConnectedNativeStoreCapture;
 let graph: Awaited<ReturnType<typeof fixture>>, successor: string, prunedHold: string, retainedHold: string, erased: string;
+let historicalReferences: { pruned: string; retained: string };
 let purchaseHold: PurchaseReservationInput, purchaseHoldId: string;
 let retainedCancellation: { idempotencyKey: string; orderId: string; reason: string };
 let identity: Awaited<ReturnType<typeof identityFixture>>;
@@ -461,6 +462,13 @@ beforeAll(async () => {
   // Capture the new event's delivery receipt as well, so later dispatcher replay
   // does not create a new obligation on an otherwise identical restored graph.
   await dispatchNotices(source);
+  historicalReferences = { pruned: (await fixture(source.owner)).shipment, retained: (await fixture(source.owner)).shipment };
+  for (const shipment of Object.values(historicalReferences)) {
+    await source.owner.query("UPDATE public.fulfillment_shipments SET status='handed_over',handed_over_at='2026-08-02T03:04:05.123456Z' WHERE id=$1", [shipment]);
+    await source.owner.query("INSERT INTO public.shipment_external_refs(shipment_id,ref_role,external_id,recorded_at) VALUES($1,'tracking',$2,'2026-08-02T03:04:06.654321Z')", [shipment, `historical-tracking:${shipment}`]);
+    await source.owner.query("INSERT INTO public.shipment_external_refs(shipment_id,ref_role,external_id,recorded_at) VALUES($1,'label',$2,'2026-08-02T03:04:06.654321Z')", [shipment, `historical-label:${shipment}`]);
+  }
+  await source.owner.query("DELETE FROM public.outbox_events WHERE event_type='commerce.shipment.dispatched' AND idempotency_key=$1", [`shipment_dispatched:${historicalReferences.pruned}`]);
   packet = await capture(source.owner, "owned-existing-source");
 }, postgresSetupTimeoutMs);
 // Each case owns a fresh qualified target and can run without another case.
@@ -839,6 +847,46 @@ it("bounds customer-linked purchase facts, method events and method state in tra
   await expect(restore(oversized)).rejects.toMatchObject({ code: "limit_exceeded" });
   expect(await census(target.owner)).toEqual(Object.fromEntries([...pristine.compatible.tables, ...pristine.owned].map(table => [table.table, [...table.rows].sort()])));
 }, 55_000);
+
+it("restores historical references with an exact source outbox, preserving the retained notice once", async () => {
+  const before = await census(source.owner);
+  expect(before.shipment_external_refs).toEqual(expect.arrayContaining(Object.values(historicalReferences).map(shipment =>
+    expect.stringContaining(`historical-tracking:${shipment}`))));
+  const notices = before.outbox_events.map(row => JSON.parse(row) as { event_type: string; idempotency_key: string });
+  expect(notices.filter(row => row.event_type === "commerce.shipment.dispatched" && row.idempotency_key === `shipment_dispatched:${historicalReferences.pruned}`)).toHaveLength(0);
+  expect(notices.filter(row => row.event_type === "commerce.shipment.dispatched" && row.idempotency_key === `shipment_dispatched:${historicalReferences.retained}`)).toHaveLength(1);
+  expect(await restore()).toMatchObject({ replayed: false, neutralizedHistoricalHoldNotifications: 1 });
+  expect(await census(target.owner)).toEqual(before);
+  expect((await restore()).replayed).toBe(true);
+  expect((await census(target.owner)).outbox_events).toEqual(before.outbox_events);
+});
+
+it.each(["aggregate_type='shipment'", "aggregate_id='00000000-0000-0000-0000-000000000001'",
+    "payload=payload||'{\"unexpected\":true}'::jsonb", "metadata=metadata||'{\"unexpected\":true}'::jsonb",
+    "status='processed'", "attempts=1", "processed_at=transaction_timestamp()", "error='synthetic conflict'",
+    "created_at=transaction_timestamp()-interval '1 microsecond'", "available_at=transaction_timestamp()+interval '1 microsecond'", "xmin"])("refuses a restore-created reference notice with a mismatched fence: %s", async change => {
+    const before = await census(target.owner);
+    const connect = target.owner.connect.bind(target.owner);
+    let injected = false;
+    const observed = { async connect() {
+      const db = await connect();
+      return { async query(sql: string, values?: unknown[]) {
+        const result = await db.query(sql, values);
+        if (!injected && /^INSERT INTO public\."shipment_external_refs"/u.test(sql)) {
+          // A subtransaction writes a distinct xmin without changing notice data.
+          if (change === "xmin") await db.query("SAVEPOINT reference_notice_xmin");
+          injected = (await db.query(`UPDATE public.outbox_events SET ${change === "xmin" ? "attempts=0" : change} WHERE event_type='commerce.shipment.dispatched' AND idempotency_key=$1 RETURNING id`,
+            [`shipment_dispatched:${historicalReferences.pruned}`])).rowCount === 1;
+          if (change === "xmin") await db.query("RELEASE SAVEPOINT reference_notice_xmin");
+        }
+        return result;
+      }, release: (destroy?: boolean) => db.release(destroy) };
+    } } as unknown as Pool;
+    await expect(restoreConnectedNativeStore({ owner: observed, installation: selection, packet, freshTarget: pristine }), change)
+      .rejects.toMatchObject({ code: "target_conflict", table: "outbox_events", message: "postgres_transfer_target_conflict:outbox_events" });
+    expect(injected, change).toBe(true);
+    expect(await census(target.owner)).toEqual(before);
+});
 
 it("restores writer-produced renewal data and pending duties, then renews through the restricted runtime", async () => {
   await restore();
