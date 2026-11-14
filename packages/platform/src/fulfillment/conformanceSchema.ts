@@ -1,8 +1,8 @@
 import { isDeepStrictEqual, types } from "node:util";
 import { z } from "zod";
-import { parseFulfillmentFact } from "../normalizedFulfillmentFacts.js";
-import { FULFILLMENT_REFUSAL_REASONS } from "../contracts/dispatch.js";
-import type { FulfillmentDispatchPort, FulfillmentLabelPort, FulfillmentObservationPort, FulfillmentReadbackPort, FulfillmentObservationPagePort, FulfillmentStockSyncProvider, FulfillmentProductSyncProvider, FulfillmentRefusal } from "../contracts/index.js";
+import { parseFulfillmentFact } from "./normalizedFulfillmentFacts.js";
+import { FULFILLMENT_REFUSAL_REASONS } from "./contracts/dispatch.js";
+import type { FulfillmentDispatchPort, FulfillmentLabelPort, FulfillmentObservationPort, FulfillmentReadbackPort, FulfillmentObservationPagePort, FulfillmentStockSyncProvider, FulfillmentProductSyncProvider, FulfillmentRefusal } from "./contracts/index.js";
 type Returned<M extends (...args: never[]) => unknown> = Awaited<ReturnType<M>>;
 type ResultTypes = {
   prepare: Returned<FulfillmentDispatchPort["prepare"]>; dispatch: Returned<FulfillmentDispatchPort["dispatch"]>;

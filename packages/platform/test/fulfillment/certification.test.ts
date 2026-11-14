@@ -5,7 +5,7 @@ import type { FulfillmentAdapterTestSubject } from "../../src/fulfillment/testin
 import type { FulfillmentAdapterConformanceSubject } from "../../src/fulfillment/contracts/index.js";
 import { FULFILLMENT_REFUSAL_REASONS } from "../../src/fulfillment/contracts/dispatch.js";
 import { isCapturedFulfillmentAdapter } from "../../src/fulfillment/capturedAdapter.js";
-import { refusal } from "../../src/fulfillment/testing/schema.js";
+import { refusal } from "../../src/fulfillment/conformanceSchema.js";
 import { request } from "./fixtures.js";
 
 it("types every sync slot with mutually exclusive success and failure roles", () => {

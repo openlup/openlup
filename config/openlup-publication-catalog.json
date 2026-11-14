@@ -6526,6 +6526,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/fulfillment/conformanceScenarios.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/conformanceSchema.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/fulfillment/contracts/alignment.ts",
       "class": "public-output"
     },
@@ -6854,6 +6862,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/fulfillment/scriptedFulfillmentFake.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/fulfillment/shipmentsOverviewHandler.ts",
       "class": "public-output"
     },
@@ -6867,10 +6879,6 @@
     },
     {
       "path": "packages/platform/src/fulfillment/testing/scenarios.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/src/fulfillment/testing/schema.ts",
       "class": "public-output"
     },
     {

@@ -2,15 +2,15 @@ import { createHash } from "node:crypto";
 import { isDeepStrictEqual, types } from "node:util";
 import { z } from "zod";
 import type { FulfillmentAdapterConformanceEvidence, FulfillmentAdapterConformanceSubject, FulfillmentCapabilityDescriptor, FulfillmentRefusal } from "./contracts/index.js";
-import type { FulfillmentAdapterTestSubject, FulfillmentConformanceOptions, FulfillmentQualification } from "./testing/scenarios.js";
+import type { FulfillmentAdapterTestSubject, FulfillmentConformanceOptions, FulfillmentQualification } from "./conformanceScenarios.js";
 import { dispatchEvidence, dispatchResult, operationError, reference, safeDiagnosticCode } from "./dispatchProjection.js";
 import { projectObservation, projectPollEvidence } from "./observationProjection.js";
 import { isCapturedFulfillmentAdapter } from "./capturedAdapter.js";
 import { readFulfillmentCapabilities } from "./providerCapabilities.js";
 import { runFulfillmentDispatchWorker } from "./providerDispatchWorker.js";
 import { runFulfillmentStockSyncWorker } from "./providerStockSyncWorker.js";
-import { readScriptedFulfillmentFaultLog } from "./testing/scriptedFake.js";
-import { PORTLESS_CAPABILITIES, subjectSchema, snapshot, freeze, results, refusal, requireFact, field, method, settled, invokeData, type Operation } from "./testing/schema.js";
+import { readScriptedFulfillmentFaultLog } from "./scriptedFulfillmentFake.js";
+import { PORTLESS_CAPABILITIES, subjectSchema, snapshot, freeze, results, refusal, requireFact, field, method, settled, invokeData, type Operation } from "./conformanceSchema.js";
 
 type Subject = FulfillmentAdapterConformanceSubject & Pick<FulfillmentAdapterTestSubject, "adapter" | "certification">;
 type Capability = keyof FulfillmentCapabilityDescriptor["operations"];

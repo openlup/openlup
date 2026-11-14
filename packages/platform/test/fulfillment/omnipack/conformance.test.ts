@@ -4,7 +4,7 @@ import { runFulfillmentAdapterConformance, runFulfillmentDispatchWorker } from "
 import { createScriptedFulfillmentFake } from "../../../src/fulfillment/testing/index.js";
 import type { FulfillmentAdapterTestSubject } from "../../../src/fulfillment/testing/index.js";
 import * as capabilityReader from "../../../src/fulfillment/providerCapabilities.js";
-import { PORTLESS_CAPABILITIES } from "../../../src/fulfillment/testing/schema.js";
+import { PORTLESS_CAPABILITIES } from "../../../src/fulfillment/conformanceSchema.js";
 import { createOmnipackFulfillmentAdapter } from "../../../src/fulfillment/omnipack/index.js";
 import type { DispatchEvidence, DispatchRecord, FulfillmentStorePort, FulfillmentAdapterConformanceSubject as Subject, FulfillmentDispatchRequest, FulfillmentObservation, FulfillmentRefusal } from "../../../src/fulfillment/contracts/index.js";
 
