@@ -8,6 +8,7 @@ import { runFulfillmentDispatchWorker } from "./providerDispatchWorker.js";
 type Subject = FulfillmentAdapterConformanceSubject;
 type DispatchWitness = {
   result: NonNullable<Subject["fixtures"]["dispatch"][number]["expectedDispatch"]>;
+  replayed: boolean;
   ioDelta: number;
   faults: Map<string, readonly { kind: string }[]>;
 };
@@ -39,7 +40,10 @@ export async function runFulfillmentAdapterConformance(subjects: readonly Fulfil
       requireSame(prepared, fixture.expectedPrepare, "prepare fixture");
       requireFact(subject.readIoCount() === before, "prepare before I/O");
       assertDurable(prepared, subject);
-      if (prepared.kind === "refused") { passed("dispatch refused before I/O"); continue; }
+      if (prepared.kind === "refused") {
+        requireFact(fixture.expectedDispatch === undefined && fixture.replay === undefined, "refused preparation cannot declare dispatch or replay");
+        passed("dispatch refused before I/O"); continue;
+      }
       requireFact(caps.operations.dispatch.supported, "unsupported dispatch refuses");
       requireSame(prepared.evidence, dispatchEvidence(prepared.evidence), "prepared evidence allowlist");
       requireFact(prepared.evidence.providerRef === fixture.input.selection.providerRef, "prepared provider identity");
@@ -54,8 +58,8 @@ export async function runFulfillmentAdapterConformance(subjects: readonly Fulfil
         .map(([name, scenario]) => ({ name, calls: scenario.calls, start: scenario.calls.length }));
       const dispatchCalls = subject.readIoCount();
       const result = await adapter.dispatch.dispatch(fixture.input, prepared.evidence);
-      dispatchWitnesses.set(index, { result, ioDelta: subject.readIoCount() - dispatchCalls,
-        faults: new Map(faults.map(({ name, calls, start }) => [name, calls.slice(start)])) });
+      const witness: DispatchWitness = { result, replayed: false, ioDelta: subject.readIoCount() - dispatchCalls,
+        faults: new Map(faults.map(({ name, calls, start }) => [name, calls.slice(start)])) };
       requireSame(result, fixture.expectedDispatch, "dispatch fixture");
       requireSame(result, dispatchResult(result), "dispatch allowlist");
       assertDurable(result, subject);
@@ -67,7 +71,9 @@ export async function runFulfillmentAdapterConformance(subjects: readonly Fulfil
         const calls = subject.readIoCount();
         requireSame(await adapter.dispatch.dispatch(fixture.input, prepared.evidence), result, "dispatch replay");
         requireFact(subject.readIoCount() === calls, "replay no second I/O");
+        witness.replayed = true;
       }
+      dispatchWitnesses.set(index, witness);
       passed(`dispatch ${result.kind}, fingerprint, mismatch and replay`);
     }
     for (const operation of ["create", "read", "void"] as const) {
@@ -239,8 +245,9 @@ async function checkFull(subject: FulfillmentAdapterTestSubject, dispatchWitness
   };
   const dispatch = fixtures.dispatch;
   if (caps.operations.dispatch.supported) {
-    pair(dispatch, row => row.expectedDispatch?.kind === "accepted", row => row.expectedDispatch?.kind === "not_dispatched", "dispatch");
-    requireFact(dispatch.some(row => row.expectedDispatch?.kind === "unknown" && row.replay), "full unknown replay required");
+    const witnessed = [...dispatchWitnesses.values()];
+    pair(witnessed, row => row.result.kind === "accepted", row => row.result.kind === "not_dispatched", "dispatch");
+    requireFact(witnessed.some(row => row.result.kind === "unknown" && row.replayed), "full unknown replay required");
   }
   requireFact(dispatch.some(row => row.expectedPrepare.kind === "refused"), "full preparation refusal required");
   if (kit!.profile === "dispatch-only") {
@@ -275,7 +282,7 @@ async function checkFull(subject: FulfillmentAdapterTestSubject, dispatchWitness
   if (caps.operations.dispatch.supported) {
     requireFact(Boolean(kit!.dispatch), "full dispatch scenarios required");
     const scenarios = kit!.dispatch!;
-    const before = dispatch[scenarios.addressBeforeSubmission];
+    const before = dispatch.find((_row, index) => index === scenarios.addressBeforeSubmission);
     requireFact(before?.expectedPrepare.kind === "refused" && before.expectedPrepare.refusal.reason === "not_dispatchable", "full address before submission");
     requireFact(before.input.lines.length > 0 && before.input.lines.every(line => Boolean(line.skuRef.trim()) && Number.isFinite(line.quantity) && line.quantity > 0)
       && [before.input.recipient.line1, before.input.recipient.city, before.input.recipient.postalCode, before.input.recipient.country].some(value => !value.trim()), "full address invalid with valid items");
@@ -297,7 +304,7 @@ async function checkFull(subject: FulfillmentAdapterTestSubject, dispatchWitness
   if (caps.operations.verifyObservation.supported) {
     const rows = fixtures.observation ?? [], scenarios = kit!.observation;
     requireFact(Boolean(scenarios), "full observation scenarios required");
-    const verified = (index: number) => { const result = rows[index]?.expected; requireFact(result?.kind === "verified", "full verified status required"); return result.observation; };
+    const verified = (index: number) => { const result = rows.find((_row, position) => position === index)?.expected; requireFact(result?.kind === "verified", "full verified status required"); return result.observation; };
     const a = verified(scenarios!.duplicate[0]), b = verified(scenarios!.duplicate[1]);
     requireSame(a, b, "full duplicate status");
     requireSame(rows[scenarios!.duplicate[0]]!.input, rows[scenarios!.duplicate[1]]!.input, "full duplicate input");
@@ -308,7 +315,7 @@ async function checkFull(subject: FulfillmentAdapterTestSubject, dispatchWitness
     for (const pair of [scenarios!.duplicate, scenarios!.outOfOrder]) {
       for (const index of pair) await observe(index);
     }
-    const auth = rows[scenarios!.authenticationFailure]?.expected;
+    const auth = rows.find((_row, index) => index === scenarios!.authenticationFailure)?.expected;
     requireFact(auth?.kind === "refused" && auth.refusal.reason === "untrusted" && auth.refusal.phase === "verify", "full authentication refusal");
     passed("adapter status:duplicate, out-of-order chronology and authentication refusal");
   }
@@ -317,7 +324,7 @@ async function checkFull(subject: FulfillmentAdapterTestSubject, dispatchWitness
     pair(rows, row => row.expected.kind === "found", row => row.expected.kind === "unknown", "readback");
     requireFact(Boolean(kit!.exceptions), "full exception fixtures required");
     for (const name of ["returned", "lostCoarse"] as const) {
-      const result = rows[kit!.exceptions![name]]?.expected;
+      const result = rows.find((_row, index) => index === kit!.exceptions![name])?.expected;
       requireFact(result?.kind === "found" && result.observation.fact.canonicalStatus === "exception", `full ${name} coarse exception`);
       passed(`adapter exception:${name}`);
     }

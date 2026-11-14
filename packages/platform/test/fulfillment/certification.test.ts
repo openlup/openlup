@@ -39,3 +39,36 @@ it("retains baseline callers and fails full qualification on omitted fixtures or
   const inflated = capturedSubject(); inflated.adapter.capabilities.operations = { ...inflated.adapter.capabilities.operations, pickupPoint: { supported: true } };
   await expect(run([inflated], { mode: "full" })).rejects.toThrow("dispatch-only capability profile");
 });
+
+it("rejects unknown replay declared on a preparation refusal instead of an executed replay", async () => {
+  const subject = capturedSubject(), rows = subject.fixtures.dispatch;
+  const unknown = rows.find(row => row.expectedDispatch?.kind === "unknown")!;
+  subject.fixtures.dispatch = rows.map(row => row.expectedPrepare.kind === "refused"
+    ? { ...row, expectedDispatch: unknown.expectedDispatch, replay: true }
+    : { ...row, replay: row === unknown ? false : row.replay });
+  await expect(run([subject], { mode: "full" })).rejects.toThrow("refused preparation cannot declare dispatch or replay");
+});
+
+it("rejects a dispatch-only adapter that refuses every preparation despite declared dispatch outcomes", async () => {
+  const subject = capturedSubject();
+  const refused = { kind: "refused" as const, refusal: { reason: "not_dispatchable" as const, phase: "prepare" as const, retryable: false } };
+  const prepare = subject.adapter.dispatch.prepare;
+  subject.adapter.dispatch.prepare = input => input.selection.providerRef ? Promise.resolve(refused) : prepare(input);
+  subject.fixtures.dispatch = subject.fixtures.dispatch.map(row => ({ ...row, expectedPrepare: refused }));
+  await expect(run([subject], { mode: "full" })).rejects.toThrow("refused preparation cannot declare dispatch or replay");
+});
+
+it.each(["baseline", "full"] as const)("rejects unreachable dispatch expectations and replay flags in %s mode", async mode => {
+  for (const declaration of ["expectedDispatch", "replay"] as const) {
+    const subject = capturedSubject(), rows = subject.fixtures.dispatch;
+    subject.fixtures.dispatch = rows.map(row => row.expectedPrepare.kind === "refused"
+      ? { ...row, ...(declaration === "expectedDispatch" ? { expectedDispatch: rows[0]!.expectedDispatch } : { replay: true }) } : row);
+    await expect(run([subject], { mode })).rejects.toThrow("refused preparation cannot declare dispatch or replay");
+  }
+});
+
+it("requires an executed unknown replay even when unknown dispatch itself was compared", async () => {
+  const subject = capturedSubject();
+  subject.fixtures.dispatch = subject.fixtures.dispatch.map(row => ({ ...row, replay: row.expectedDispatch?.kind === "unknown" ? false : row.replay }));
+  await expect(run([subject], { mode: "full" })).rejects.toThrow("full unknown replay required");
+});

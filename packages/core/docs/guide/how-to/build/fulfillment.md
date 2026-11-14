@@ -231,8 +231,13 @@ export async function certify(adapterSubject: FulfillmentAdapterTestSubject) {
 ```
 
 Supply `FulfillmentAdapterTestSubject.certification` with profile `adapter`.
-Every supported callable operation needs success and failure witnesses. Dispatch
-scenarios index the subject's dispatch fixtures: address refusal before submission,
+Supported dispatch requires compared `accepted` and `not_dispatched` results,
+plus an `unknown` result whose replay was invoked, compared and made no second
+provider call. Both profiles require a compared preparation refusal. In either
+mode, a refused preparation must omit `expectedDispatch` and `replay`: dispatch
+will not run for that fixture. Supported label create/read/void methods require
+success and refusal pairs. Dispatch scenarios index the subject's executed
+baseline array entries: address refusal before submission,
 definitive rejection after submission, transport failures before and after
 submission, and HTTP 5xx. Bind the scripted fault at the actual boundary: a
 before-submission script injected into fetch has already crossed that boundary.
@@ -251,14 +256,17 @@ order, comparing each actual result with its independent expectation, including
 the older occurrence delivered after the newer one. Duplicate inputs must match.
 Authentication may be
 a token check; passing it does not establish body-signature verification.
-Readback includes unknown versus authoritative absence, returned parcels and a
-coarse exception representing loss recovery input. It does not manufacture an
+Readback requires compared found and unknown results, including a local-missing
+unknown result; authoritative absence is required when declared supported.
+Returned parcels and loss recovery input each require a coarse exception.
+The kit does not manufacture an
 unknown provider status into a loss event or start a replacement. Numbered page
 fixtures cover full, short, empty, exhausted and failing pages. A cursor-based
 provider maps its cursors to sequential page numbers inside its adapter; the
 public page port carries no opaque cursor and this kit adds none.
 
-Supply success/failure pairs for each stock and product sync method. The
+Supply success/failure pairs for each supported stock and product sync method;
+stock movements are required unless `stockMovements: false` is declared. The
 `snapshotOnly` callback invokes the real snapshot-only worker and returns its
 movement refusal; its counter counts only movement calls. Native selection probes
 invoke the shipped refusal paths for non-PDF labels, label creation/voiding,
@@ -268,9 +276,12 @@ adapter metadata flags. Unsupported label methods must also be invoked through
 the actual adapter with no provider call. Full qualification fails if an applicable
 fixture is missing; it never silently skips one.
 
-The transportless captured adapter can qualify profile `dispatch-only`, proving
-accepted, refused and unknown dispatch/replay. It earns no label, observation,
-readback or sync certification. Existing one-argument calls retain baseline mode;
+The transportless captured adapter can qualify profile `dispatch-only` only when
+dispatch is its sole supported operation. It proves compared `accepted` and
+`not_dispatched` results, an executed `unknown` replay and a preparation refusal.
+Accepted and not-dispatched replays are checked when requested by their fixtures.
+It earns no label, observation, readback or sync certification.
+Existing one-argument calls retain baseline mode;
 opt into full mode explicitly when qualifying an adapter.
 
 Offline evidence establishes adapter results and the named native refusal

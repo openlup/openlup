@@ -398,6 +398,29 @@ it("rejects the missing-items fixture as an address witness", async () => {
   await expect(runFulfillmentAdapterConformance([fixture.value], { mode: "full" })).rejects.toThrow("address invalid with valid items");
 });
 
+it.each(["address", "authentication", "exception"] as const)("rejects an unexecuted %s expectation outside the baseline array entries", async scenario => {
+  const fixture = fullSubject(), { fixtures } = fixture.value, kit = fixture.value.certification!;
+  if (scenario === "address") {
+    const rows = [...fixtures.dispatch];
+    rows[-1] = { ...rows[6]!, input: { ...request(), requestKey: "never-prepared", recipient: { ...request().recipient, line1: "" } } };
+    fixtures.dispatch = rows;
+    kit.dispatch!.addressBeforeSubmission = -1;
+  } else if (scenario === "authentication") {
+    const rows = [...fixtures.observation!];
+    rows[-1] = { ...rows[3]!, input: rows[0]!.input };
+    rows[3] = rows[0]!;
+    fixtures.observation = rows;
+    kit.observation!.authenticationFailure = -1;
+  } else {
+    const rows = [...fixtures.readback!];
+    rows[-1] = { ...rows[2]!, input: [readInput("external-missing")] };
+    fixtures.readback = rows;
+    kit.exceptions!.returned = -1;
+  }
+  await expect(runFulfillmentAdapterConformance([fixture.value], { mode: "full" })).rejects.toThrow(
+    scenario === "address" ? "full address before submission" : scenario === "authentication" ? "full authentication refusal" : "full returned coarse exception");
+});
+
 it.each([
   ["address-rejected", "address after submission I/O"],
   ["after-send", "transport-after-submission submission I/O"],
