@@ -49,7 +49,8 @@ function exactFixture(schema = true, major = 16) {
   f.put("application/package-lock.json", { packages: Object.fromEntries(packages.map(pkg => [`node_modules/${pkg.name}`, pkg])) });
   const extraction = { schemaVersion: 2, mode: "released", setVersion: "0.36.0", sourceRevision: commit, contentSha256: digest(JSON.stringify(paths.sort().map(path => [path, digest(readFileSync(join(application, path)))]))), lockfileSha256: digest(readFileSync(join(application, "package-lock.json"))) };
   f.put("application/.starter-origin.json", extraction);
-  const evidence = { setVersion: "0.36.0", tag: "openlup-core-v0.36.0", tagCommit: commit, packages, extraction, image: { name: "ghcr.io/openlup/neutral-store-starter", platform: "linux/amd64", manifestDigest: "sha256:" + "c".repeat(64), baseImageDigest: readCiImage("starter-node").digest } };
+  const sbom = { packages: { sha256: digest("package SBOM"), tool: { name: "npm", version: "11.19.0" } }, image: { sha256: digest("image SBOM"), subjectDigest: "sha256:" + "c".repeat(64), tool: { name: "syft", version: "1.38.0", imageDigest: readCiImage("qualification-syft").digest } } };
+  const evidence = { sbom, setVersion: "0.36.0", tag: "openlup-core-v0.36.0", tagCommit: commit, packages, extraction, image: { name: "ghcr.io/openlup/neutral-store-starter", platform: "linux/amd64", manifestDigest: "sha256:" + "c".repeat(64), baseImageDigest: readCiImage("starter-node").digest } };
   return { ...f, application, evidence, bom: () => generateExactSetReleaseBom(f.root, application, evidence) };
 }
 
@@ -70,13 +71,24 @@ describe("release-set BOM", () => {
 
   it("binds the exact set deterministically, preserving catalogue order without circular receipt inputs", () => {
     const f = exactFixture(), bom = f.bom();
-    expect(bom).toMatchObject({ formatVersion: 3, image: f.evidence.image, tagCommit: f.evidence.tagCommit, starter: { mode: "released", contentSha256: f.evidence.extraction.contentSha256, lockfileSha256: f.evidence.extraction.lockfileSha256 }, composition: { postgresMajor: 16 }, schemaCatalogue: { entries: [{ position: 0, path: "@openlup/outbox/sql/manifest.json" }] } });
+    expect(bom).toMatchObject({ formatVersion: 4, sbom: f.evidence.sbom, image: f.evidence.image, tagCommit: f.evidence.tagCommit, starter: { mode: "released", contentSha256: f.evidence.extraction.contentSha256, lockfileSha256: f.evidence.extraction.lockfileSha256 }, composition: { postgresMajor: 16 }, schemaCatalogue: { entries: [{ position: 0, path: "@openlup/outbox/sql/manifest.json" }] } });
     f.evidence.packages.reverse();
     Object.assign(f.evidence.image, { publishResult: "published", registryReadback: "ignored detached result" });
     Object.assign(f.evidence, { bom: { sha256: "f".repeat(64) }, endedAt: "ignored final receipt data" });
     expect(JSON.stringify(f.bom())).toBe(JSON.stringify(bom));
     expect(JSON.stringify(bom)).not.toMatch(/receipt|endedAt|application\/|sboms/u);
     expect(bom.verificationSha256).toBe(createHash("sha256").update(JSON.stringify(bom.packages)).digest("hex"));
+  });
+
+  it.each(["missing", "hash", "subject", "tool", "version", "scanner"])("refuses SBOM %s substitution", kind => {
+    const f = exactFixture();
+    if (kind === "missing") Reflect.deleteProperty(f.evidence, "sbom");
+    if (kind === "hash") f.evidence.sbom.packages.sha256 = "short";
+    if (kind === "subject") f.evidence.sbom.image.subjectDigest = "sha256:" + "d".repeat(64);
+    if (kind === "tool") f.evidence.sbom.image.tool.name = "other";
+    if (kind === "version") f.evidence.sbom.image.tool.version = "other";
+    if (kind === "scanner") f.evidence.sbom.image.tool.imageDigest = "sha256:" + "d".repeat(64);
+    expect(() => f.bom()).toThrow("sbom_identity_mismatch");
   });
 
   it.each(["missing", "name", "platform", "manifestDigest", "baseImageDigest"])("refuses %s image identity", field => {
@@ -86,10 +98,10 @@ describe("release-set BOM", () => {
     expect(() => f.bom()).toThrow("image_identity_mismatch");
   });
 
-  it("keeps a failed BOM attempt failed and removes a stale final digest", () => {
+  it("keeps a failed BOM attempt failed and removes a stale final digest", async () => {
     const f = exactFixture(), path = join(f.root, "receipt.json");
     f.put("receipt.json", { ...f.evidence, result: "FAIL", upgrade: { result: "PASS" }, schemaUpgrade: { result: "PASS" }, bom: { sha256: "stale" } });
-    expect(() => qualifyReleasedSet(f.evidence.tag, "wrong", path, false, false, true)).toThrow("qualification_incomplete_or_mismatched");
+    await expect(qualifyReleasedSet(f.evidence.tag, "wrong", path, false, false, true)).rejects.toThrow("qualification_incomplete_or_mismatched");
     expect(JSON.parse(readFileSync(path, "utf8"))).toMatchObject({ result: "FAIL", endedAt: expect.any(String) });
     expect(JSON.parse(readFileSync(path, "utf8"))).not.toHaveProperty("bom");
   });
