@@ -96,7 +96,7 @@ it.each(["admission", "freeze"] as const)("locks the token against concurrent re
     subscriptionId: f.subscription, provider: "card_rail", methodKind: "card", customer: null, reference, mandate: null,
     status: "active", active: true, expiresAt: null, consent: { recoveryCaseId: obligation.case_id }, payload: {} });
   const hash = randomUUID().replaceAll("-", "").repeat(2);
-  await call(runtime, "dunning_lifecycle_issue_recovery_token", [obligation.case_id, hash, "2099-11-13T00:00:00Z"]);
+  await runtime.query("SELECT public.dunning_lifecycle_issue_recovery_token($1,$2,now()+interval '30 days')", [obligation.case_id, hash]);
   const token = (await runtime.query("SELECT id FROM public.commerce_checkout_recovery_tokens WHERE token_hash=$1", [hash])).rows[0].id;
   const authority = await call(runtime, "subscription_retry_authorize_recovery", [f.operation, token, reference, method.id, AT]);
   await call(runtime, "subscription_retry_schedule_recovery", [f.operation, `token-schedule:${f.operation}`, authority.id, AT]);

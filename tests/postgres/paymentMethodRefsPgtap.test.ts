@@ -139,7 +139,7 @@ it("keeps setup ingress retryable after a concrete method write failure and clos
       if (fail) {
         // Storage's active/expiry invariant refuses this write; no mock persistence result.
         await store().upsert({ key: "invalid-pipeline", clientId: f.client, subscriptionId: f.subscription, provider: event.provider,
-          methodKind: "card", customer: null, reference: "invalid", mandate: null, status: "active", active: true, expiresAt: "2020-01-01T00:00:00Z", consent: {}, payload: {} });
+          methodKind: "card", customer: null, reference: "invalid", mandate: null, status: "active", active: true, expiresAt: (await db.query("SELECT now()-interval '1 day' AS at")).rows[0].at.toISOString(), consent: {}, payload: {} });
       }
       return createPostgresPaymentWebhookMethodRefPort(db).upsertFromWebhook(event);
     } }, afterProcessed: async ({ event }) => consumePostgresPaymentMethodDelivery(db, event) });
@@ -197,7 +197,7 @@ async function declined() {
 }
 async function authorize(f: Awaited<ReturnType<typeof declined>>, m: { id: string; reference: string }) {
   const hash = randomUUID().replaceAll("-", "").repeat(2);
-  await call(db, "dunning_lifecycle_issue_recovery_token", [f.caseId, hash, "2027-11-13T00:00:00Z"]);
+  await db.query("SELECT public.dunning_lifecycle_issue_recovery_token($1,$2,now()+interval '30 days')", [f.caseId, hash]);
   const token = (await db.query("SELECT id FROM public.commerce_checkout_recovery_tokens WHERE token_hash=$1", [hash])).rows[0].id;
   return call(db, "subscription_retry_authorize_recovery", [f.operation, token, m.reference, m.id, AT]);
 }
@@ -206,7 +206,7 @@ it("accelerates only a fresh usable automatic slot, never a stopped/exhausted cy
   const f = await declined(), m = await method(f);
   const event = { provider: "card_rail", providerEventId: randomUUID(), providerPaymentId: "setup", eventType: "setup.succeeded" as const, occurredAt: AT, rawPayload: {},
     reusableMethod: { clientId: f.client, subscriptionId: f.subscription, providerMethodRef: m.reference, methodKind: "card", status: "active" as const } };
-  await db.query("UPDATE public.payment_method_refs SET updated_at='2020-01-01T00:00:00Z' WHERE id=$1", [m.id]);
+  await db.query("UPDATE public.payment_method_refs SET updated_at=(SELECT opened_at-interval '1 day' FROM public.subscription_dunning_cases WHERE id=$2) WHERE id=$1", [m.id, f.caseId]);
   expect(await schedulePostgresRetryOnDurableMethodUpdate(db, event)).toEqual({ outcome: "not_scheduled", reason: "recovery_not_ready" });
   await db.query("UPDATE public.payment_method_refs SET updated_at=now() WHERE id=$1", [m.id]);
   expect(await schedulePostgresRetryOnDurableMethodUpdate(db, event)).toEqual({ outcome: "scheduled", reason: "ready" });
@@ -222,7 +222,7 @@ it("rebinds undispatched authority, clears quarantine, preserves rung/counters a
   const f = await declined(), a = await method(f, "repair-a", { recoveryCaseId: f.caseId });
   const first = await authorize(f, a);
   expect(await call(db, "subscription_retry_schedule_recovery", [f.operation, "schedule-a", first.id, AT])).toMatchObject({ scheduled: true });
-  await db.query("UPDATE public.subscription_retry_obligations SET renewal_quarantined_until='2027-01-01',renewal_row_error_key='stale',renewal_row_error_count=3 WHERE id=$1", [f.obligation]);
+  await db.query("UPDATE public.subscription_retry_obligations SET renewal_quarantined_until=now()+interval '1 day',renewal_row_error_key='stale',renewal_row_error_count=3 WHERE id=$1", [f.obligation]);
   const b = await method(f, "repair-b", { recoveryCaseId: f.caseId }), second = await authorize(f, b);
   expect(await call(db, "subscription_retry_schedule_recovery", [f.operation, "schedule-b", second.id, AT])).toMatchObject({ scheduled: true });
   expect((await db.query("SELECT retry_attempt,attempt_sequence,method_recovery_authority_id,renewal_quarantined_until,renewal_row_error_key,renewal_row_error_count FROM public.subscription_retry_obligations WHERE id=$1", [f.obligation])).rows[0])
@@ -230,9 +230,9 @@ it("rebinds undispatched authority, clears quarantine, preserves rung/counters a
   const input = { ...request(f), paymentMethodRef: b.reference };
   const dispatchAt = await retryDueAt(db, f.operation);
   // Expired authority cannot dispatch even when its method remains active.
-  await db.query("UPDATE public.commerce_checkout_recovery_tokens SET created_at='2019-01-01T00:00:00Z',expires_at='2020-01-01T00:00:00Z' WHERE id=$1", [second.token_id]);
+  await db.query("UPDATE public.commerce_checkout_recovery_tokens SET created_at=$2::timestamptz-interval '2 days',expires_at=$2::timestamptz-interval '1 day' WHERE id=$1", [second.token_id, dispatchAt]);
   await expect(call(db, "subscription_retry_prepare", [f.operation, "expired-prepare", input, dispatchAt])).rejects.toThrow("subscription_retry_method_mismatch");
-  await db.query("UPDATE public.commerce_checkout_recovery_tokens SET expires_at='2027-11-13T00:00:00Z' WHERE id=$1", [second.token_id]);
+  await db.query("UPDATE public.commerce_checkout_recovery_tokens SET expires_at=$2::timestamptz+interval '30 days' WHERE id=$1", [second.token_id, dispatchAt]);
   expect(await call(db, "subscription_retry_prepare", [f.operation, "prepare-b", input, dispatchAt])).toMatchObject({ execute: true, attemptSequence: 1 });
   expect((await db.query("SELECT dispatch_key FROM public.payment_method_recovery_authorities WHERE id=$1", [second.id])).rows[0].dispatch_key).toBe("prepare-b");
   expect(await call(db, "subscription_retry_prepare", [f.operation, "prepare-b", input, dispatchAt])).toMatchObject({ execute: false, replayed: true });
@@ -327,7 +327,7 @@ it("refuses historical provider work without reusable refs or recorded recovery 
       amountMinor: f.snapshot.totalAmountMinor, currency: "XXX", metadata: {}, channelKey: "fixture", at: AT });
   await db.query("INSERT INTO public.subscription_method_states(subscription_id,health_state,method_ref,method_kind) VALUES($1,'healthy','legacy-ref','card')", [f.subscription]);
   const token = randomUUID();
-  await db.query("INSERT INTO public.commerce_checkout_recovery_tokens(id,token_hash,order_id,client_id,expires_at) VALUES($1,$2,$3,$4,'2027-11-13')",
+  await db.query("INSERT INTO public.commerce_checkout_recovery_tokens(id,token_hash,order_id,client_id,expires_at) VALUES($1,$2,$3,$4,now()+interval '30 days')",
     [token, randomUUID().replaceAll("-", "").repeat(2), f.original.orderId, f.client]);
   // The original renewal prepared above has real provider history but no ref.
   // Its mandate read keeps the pre-forward authority while retry/recovery refuse.
@@ -397,7 +397,7 @@ it("uses the current recorded method after a repaired attempt soft-fails and the
     async readOutcome() { return { operationId: f.operation, requestFingerprint: "f".repeat(64), status: "processing", disposition: "ambiguous" } as never; } },
   classifyFailure: () => "soft_retryable", failureTemplate: "failed", recoveredTemplate: "recovered", recoveryPath: "/recover" });
   const due = await retryDueAt(db, f.operation);
-  await db.query("UPDATE public.subscription_retry_obligations SET renewal_quarantined_until='2099-11-13T00:00:00Z' WHERE id=$1", [f.obligation]);
+  await db.query("UPDATE public.subscription_retry_obligations SET renewal_quarantined_until=$2::timestamptz+interval '1 day' WHERE id=$1", [f.obligation, due]);
   const quarantined = await call(db, "subscription_retry_read", [f.operation]);
   expect(await driver.run(due, 500)).not.toContainEqual(expect.objectContaining({ operationId: f.operation }));
   expect(executed).toEqual([]);
@@ -485,7 +485,7 @@ it.each(["settlement", "frozen"] as const)("refuses historical %s provider-chann
   await db.query("UPDATE public.subscription_renewal_operations SET cycle_snapshot=jsonb_set(cycle_snapshot,'{settlementChannelKey}',to_jsonb($2::text)) WHERE id=$1", [f.operation, context === "frozen" ? "card_rail" : "sandbox"]);
   await db.query("INSERT INTO public.subscription_method_states(subscription_id,health_state,method_ref) VALUES($1,'healthy','historical-channel-method')", [f.subscription]);
   const token = randomUUID();
-  await db.query("INSERT INTO public.commerce_checkout_recovery_tokens(id,token_hash,order_id,client_id,expires_at) VALUES($1,$2,$3,$4,'2099-11-13')",
+  await db.query("INSERT INTO public.commerce_checkout_recovery_tokens(id,token_hash,order_id,client_id,expires_at) VALUES($1,$2,$3,$4,now()+interval '30 days')",
     [token, randomUUID().replaceAll("-", "").repeat(2), f.original.orderId, f.client]);
   const before = await methodRows();
   expect(await call(db, "subscription_method_uses_recorded_refs", [f.subscription])).toBe(true);
@@ -549,7 +549,7 @@ async function sandboxCompatibilityFixture(channel: "sandbox" | "captured", init
   await call(db, "subscription_complete_renewal_attachment", [order]);
   const subscription = String(activation.subscriptionId), actor = randomUUID();
   await db.query("INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,is_addon,unit_price_minor,currency_code) VALUES($1,$2,2,0,false,100,'XXX')", [subscription, variantId]);
-  await db.query("UPDATE public.subscriptions SET next_cycle_at=now()+interval '4 days',updated_at=now()-interval '6 days',started_at='2026-01-01' WHERE id=$1", [subscription]);
+  await db.query("UPDATE public.subscriptions SET next_cycle_at=now()+interval '4 days',updated_at=now()-interval '6 days',started_at=now()-interval '1 year' WHERE id=$1", [subscription]);
   return { client, subscription, actor, source, sku, order, intent: purchase.intent };
 }
 type SandboxCompatibilityOutcome = {
@@ -576,7 +576,7 @@ async function sandboxCompatibilityOutcomes() {
         cycleNumber: 1, currency: "XXX", stockSourceKey: f.source, settlementChannelKey: "sandbox", authorizationRef: "sandbox-authorization",
         payerAccountRef: null, totalAmountMinor: 200, lines: [{ lineOrdinal: 1, sku: f.sku, quantity: 2, unitAmountMinor: 100 }] };
       await db.query(`INSERT INTO public.fulfillment_stock_current(source_key,sku,total_quantity,for_sale_quantity,reserved_unavailable_quantity,inventory_class,
-        last_synced_at,stale_after,sync_run_id,idempotency_key,operation_fingerprint) VALUES($1,$2,10,10,0,'sellable',now(),'2030-01-01','compatibility',$3,$4)`, [f.source, f.sku, randomUUID(), "a".repeat(64)]);
+        last_synced_at,stale_after,sync_run_id,idempotency_key,operation_fingerprint) VALUES($1,$2,10,10,0,'sellable',now(),$5::timestamptz+interval '30 days','compatibility',$3,$4)`, [f.source, f.sku, randomUUID(), "a".repeat(64), scheduled]);
       const identity = await call(db, "subscription_renewal_identity", [f.subscription, scheduled]);
       const claimed = await call(db, "subscription_claim_due_renewal", [identity, "b".repeat(64), snapshot, "compatibility", 300, scheduled]);
       await call(db, "fulfillment_reserve_subscription_renewal", [claimed.operationId, claimed.claimToken, 900, scheduled]);
@@ -585,7 +585,7 @@ async function sandboxCompatibilityOutcomes() {
       const failed = await call(db, "subscription_retry_apply_failure", [claimed.operationId, `failed:${identity}`, failure(0, scheduled)]);
       const opened = await call(db, "subscription_retry_open_case", [claimed.operationId, "failed", "/recover"]);
       const due = failed.next_retry_at, tokenHash = randomUUID().replaceAll("-", "").repeat(2);
-      await call(db, "dunning_lifecycle_issue_recovery_token", [opened.caseId, tokenHash, "2030-01-01"]);
+      await db.query("SELECT public.dunning_lifecycle_issue_recovery_token($1,$2,$3::timestamptz+interval '30 days')", [opened.caseId, tokenHash, due]);
       const token = (await db.query("SELECT id FROM public.commerce_checkout_recovery_tokens WHERE token_hash=$1", [tokenHash])).rows[0].id;
       const auth = await call(db, "subscription_retry_authorize_recovery", [claimed.operationId, token, "compatibility-method", "sandbox-evidence", due]);
       const authorizedTokenRevoked = (await db.query("SELECT revoked_at IS NOT NULL AS revoked FROM public.commerce_checkout_recovery_tokens WHERE id=$1", [token])).rows[0].revoked;
@@ -768,13 +768,14 @@ it("selects only the newest open case for a durable method update", async () => 
 
 it("writes a published future expiry and retains it on a digits-only native lifecycle refresh", async () => {
   const f = await subject(), m = await method(f, randomUUID(), { recurringModel: "O", source: "rail_webhook" });
-  expect(await applyPostgresPaymentMethodLifecycleEvent(db, lifecycle(m.reference, "method_updated", { schemeLabel: "visa", lastDigits: "8210", expiresAt: "2029-11-30T23:59:59.999Z" })))
+  const expiresAt = (await db.query("SELECT now()+interval '1 year' AS at")).rows[0].at.toISOString();
+  expect(await applyPostgresPaymentMethodLifecycleEvent(db, lifecycle(m.reference, "method_updated", { schemeLabel: "visa", lastDigits: "8210", expiresAt: expiresAt })))
     .toEqual({ outcome: "metadata_refreshed", reason: null });
   const read = () => db.query("SELECT expires_at,active,consent_snapshot FROM public.payment_method_refs WHERE id=$1", [m.id]);
-  expect((await read()).rows[0]).toMatchObject({ expires_at: new Date("2029-11-30T23:59:59.999Z"), active: true,
-    consent_snapshot: { source: "rail_webhook", recurringModel: "O", methodScheme: "visa", methodLastDigits: "8210", methodExpiresAt: "2029-11-30T23:59:59.999Z" } });
+  expect((await read()).rows[0]).toMatchObject({ expires_at: new Date(expiresAt), active: true,
+    consent_snapshot: { source: "rail_webhook", recurringModel: "O", methodScheme: "visa", methodLastDigits: "8210", methodExpiresAt: expiresAt } });
   await applyPostgresPaymentMethodLifecycleEvent(db, { ...lifecycle(m.reference), replacement: { schemeLabel: null, lastDigits: "0001", expiresAt: null } });
-  expect((await read()).rows[0].expires_at).toEqual(new Date("2029-11-30T23:59:59.999Z"));
+  expect((await read()).rows[0].expires_at).toEqual(new Date(expiresAt));
 });
 
 it("selects strict authority for provider delivery evidence linked to an initial intent without a provider-state row", async () => {
