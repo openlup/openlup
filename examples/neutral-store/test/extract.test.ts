@@ -140,6 +140,9 @@ async function releasedFixture() {
 test('released extraction pins and commits registry artifacts with deterministic content and lock identities', async () => {
   const f = await releasedFixture();
   try {
+    for (const path of ['node_modules/pg', 'node_modules/pg/node_modules/@types/node'])
+      f.lock.packages[path] = { version: '1.0.0', resolved: 'https://registry.npmjs.org/other/-/other-1.0.0.tgz' };
+    await f.put('lock.json', f.lock);
     const first = f.run(), second = f.run('second');
     const identity = JSON.parse(await readFile(resolve(first, '.starter-origin.json'), 'utf8'));
     assert.equal(identity.mode, 'released'); assert.equal(identity.setVersion, f.version);
@@ -187,7 +190,7 @@ test('reconstruction requires an explicit reason and Git source identity must ma
 });
 
 type ReleaseFixture = Awaited<ReturnType<typeof releasedFixture>>;
-const refusals: [string, (f: ReleaseFixture) => Promise<unknown> | void, string?][] = [
+const refusals: [string, (f: ReleaseFixture) => Promise<unknown> | void, string?, string?][] = [
   ['set_version_required', f => { f.args[3] = '^0.41.0'; }],
   ['source_revision_required', f => { f.args[5] = 'short'; }],
   ['inputs_required', f => { f.args.splice(6, 2); }],
@@ -202,10 +205,23 @@ const refusals: [string, (f: ReleaseFixture) => Promise<unknown> | void, string?
   ['manifest_package_mismatch', async f => { f.manifest.packages[0]!.integrity = 'sha256-invalid'; await f.put('manifest.json', f.manifest); }, '@openlup/core'],
   ['manifest_package_missing', async f => { f.manifest.packages.shift(); await f.put('manifest.json', f.manifest); }, '@openlup/core'],
   ['application_package_extra', f => f.put('examples/neutral-store/package.json', { ...f.application, dependencies: { '@openlup/extra': '*' } }), '@openlup/extra'],
-  ['lock_format_invalid', async f => { f.lock.lockfileVersion = 1; await f.put('lock.json', f.lock); }],
+  ...[1, 2, 4].map(value => ['lock_format_invalid', async (f: ReleaseFixture) => {
+    f.lock.lockfileVersion = value; await f.put('lock.json', f.lock);
+  }] as [string, (f: ReleaseFixture) => Promise<void>]),
+  ...[undefined, null, []].map(packages => ['lock_format_invalid', (f: ReleaseFixture) => f.put('lock.json', { ...f.lock, packages })] as [string, (f: ReleaseFixture) => Promise<void>]),
+  ...['node_modules/@openlup/core/', 'node_modules/./pg', 'node_modules/../pg', 'node_modules//pg',
+    'node_modules/pg/node_modules/..', 'node_modules/pg\\alias', 'node_modules/%70g', 'pg', 'node_modules/pg/alias']
+    .map(path => ['lock_path_invalid', async (f: ReleaseFixture) => {
+      f.lock.packages[path] = { ...f.lock.packages['node_modules/@openlup/core'], integrity: 'arbitrary' };
+      await f.put('lock.json', f.lock);
+    }, path, path.endsWith('/core/') ? 'trailing slash' : undefined] as [string, (f: ReleaseFixture) => Promise<void>, string, string?]),
+  ['lock_path_duplicate', async f => {
+    for (const name of ['pg', 'PG']) f.lock.packages[`node_modules/${name}`] = { resolved: 'https://registry.npmjs.org/pg/-/pg-8.0.0.tgz' };
+    await f.put('lock.json', f.lock);
+  }, 'node_modules/PG'],
   ['lock_root_mismatch', async f => { f.lock.packages['']!.dependencies = {}; await f.put('lock.json', f.lock); }, 'dependencies'],
   ['lock_package_extra', async f => { f.lock.packages['node_modules/@openlup/extra'] = { version: f.version, resolved: `https://registry.npmjs.org/@openlup/extra/-/extra-${f.version}.tgz` }; await f.put('lock.json', f.lock); }, '@openlup/extra'],
-  ['lock_package_duplicate', async f => { f.lock.packages['node_modules/other/node_modules/@openlup/core'] = f.lock.packages['node_modules/@openlup/core']!; await f.put('lock.json', f.lock); }, '@openlup/core'],
+  ['lock_package_extra', async f => { f.lock.packages['node_modules/other/node_modules/@openlup/core'] = f.lock.packages['node_modules/@openlup/core']!; await f.put('lock.json', f.lock); }, '@openlup/core'],
   ['lock_package_missing', async f => { delete f.lock.packages['node_modules/@openlup/core']; await f.put('lock.json', f.lock); }, '@openlup/core'],
   ...['version', 'integrity'].map(key => ['lock_package_mismatch', async (f: ReleaseFixture) => {
     f.lock.packages['node_modules/@openlup/core']![key] = 'wrong'; await f.put('lock.json', f.lock);
@@ -216,27 +232,42 @@ const refusals: [string, (f: ReleaseFixture) => Promise<unknown> | void, string?
     f.lock.packages['node_modules/@openlup/core']!.resolved = resolved; await f.put('lock.json', f.lock);
   }] as [string, (f: ReleaseFixture) => Promise<void>]),
   ['lock_non_registry', async f => { f.lock.packages['node_modules/external'] = { resolved: 'file:external.tgz' }; await f.put('lock.json', f.lock); }],
-  ['lock_package_duplicate', async f => { f.lock.packages['node_modules/alias'] = { ...f.lock.packages['node_modules/@openlup/core'], name: '@openlup/core' }; await f.put('lock.json', f.lock); }, '@openlup/core'],
-  ['lock_package_mismatch', async f => { f.lock.packages['node_modules/pg/node_modules/alias'] = {
+  ['lock_package_extra', async f => { f.lock.packages['node_modules/alias'] = { ...f.lock.packages['node_modules/@openlup/core'], name: '@openlup/core' }; await f.put('lock.json', f.lock); }, 'node_modules/alias'],
+  ['lock_package_extra', async f => { f.lock.packages['node_modules/pg/node_modules/alias'] = {
     version: '0.40.0', resolved: 'https://registry.npmjs.org/@openlup/core/-/core-0.40.0.tgz',
-  }; await f.put('lock.json', f.lock); }, '@openlup/core'],
-  ...['version', 'integrity'].map(key => ['lock_package_mismatch', async (f: ReleaseFixture) => {
+  }; await f.put('lock.json', f.lock); }, 'node_modules/pg/node_modules/alias', 'nameless alias'],
+  ...['version', 'integrity'].map(key => ['lock_package_extra', async (f: ReleaseFixture) => {
     f.lock.packages['node_modules/pg/node_modules/alias'] = { ...f.lock.packages['node_modules/@openlup/core'], [key]: undefined };
     await f.put('lock.json', f.lock);
-  }, '@openlup/core'] as [string, (f: ReleaseFixture) => Promise<void>, string]),
-  ['lock_package_mismatch', async f => { f.lock.packages['node_modules/pg'] = {
+  }, 'node_modules/pg/node_modules/alias'] as [string, (f: ReleaseFixture) => Promise<void>, string]),
+  ['lock_package_extra', async f => { f.lock.packages['node_modules/pg'] = {
     resolved: 'https://registry.npmjs.org/pg/-/pg-8.0.0.tgz', dependencies: { alias: 'npm:@openlup/core@0.40.0' },
-  }; await f.put('lock.json', f.lock); }, '@openlup/core'],
+  }; await f.put('lock.json', f.lock); }, 'node_modules/pg'],
   ['lock_package_extra', async f => { f.lock.packages['node_modules/alias'] = {
     version: f.version, resolved: `https://registry.npmjs.org/@openlup/extra/-/extra-${f.version}.tgz`,
-  }; await f.put('lock.json', f.lock); }, '@openlup/extra'],
-  ['lock_package_mismatch', async f => { f.lock.packages['node_modules/pg'] = {
+  }; await f.put('lock.json', f.lock); }, 'node_modules/alias'],
+  ['lock_package_extra', async f => { f.lock.packages['node_modules/pg'] = {
     resolved: 'https://registry.npmjs.org/pg/-/pg-8.0.0.tgz', dependencies: { alias: `npm:@openlup/core@${f.version}` },
   }; f.lock.packages['node_modules/pg/node_modules/alias'] = {
     version: f.version, resolved: 'https://registry.npmjs.org/other/-/other-1.0.0.tgz',
-  }; await f.put('lock.json', f.lock); }, '@openlup/core'],
+  }; await f.put('lock.json', f.lock); }, 'node_modules/pg'],
+  ['lock_package_extra', async f => { f.lock.packages['node_modules/pg'] = {
+    resolved: 'https://registry.npmjs.org/pg/-/pg-8.0.0.tgz', dependencies: { alias: `NPM:@openlup/core@${f.version}` },
+  }; f.lock.packages['node_modules/pg/node_modules/alias'] = {
+    version: f.version, integrity: 'arbitrary', resolved: 'https://registry.npmjs.org/other/-/other-1.0.0.tgz',
+  }; await f.put('lock.json', f.lock); }, 'node_modules/pg', 'uppercase alias'],
+  ...['dependencies', 'optionalDependencies', 'peerDependencies', 'devDependencies'].map(section =>
+    ['lock_package_extra', async (f: ReleaseFixture) => {
+      f.lock.packages['node_modules/pg'] = { resolved: 'https://registry.npmjs.org/pg/-/pg-8.0.0.tgz', [section]: { alias: 'NPM:%40OpEnLuP%2fcore@0.41.0' } };
+      await f.put('lock.json', f.lock);
+    }, 'node_modules/pg'] as [string, (f: ReleaseFixture) => Promise<void>, string]),
+  ...[{ name: '@OpEnLuP/core' }, { resolved: 'https://registry.npmjs.org/%2540%6fpenlup%252fcore/-/core.tgz' }]
+    .map(fields => ['lock_package_extra', async (f: ReleaseFixture) => {
+      f.lock.packages['node_modules/alias'] = { version: '1.0.0', resolved: 'https://registry.npmjs.org/other/-/other-1.0.0.tgz', ...fields };
+      await f.put('lock.json', f.lock);
+    }, 'node_modules/alias'] as [string, (f: ReleaseFixture) => Promise<void>, string]),
 ];
-for (const [index, [code, mutate, detail]] of refusals.entries()) test(`released extraction refuses ${code} (${index + 1})`, async () => {
+for (const [index, [code, mutate, detail, label]] of refusals.entries()) test(`released extraction refuses ${code} (${label ?? index + 1})`, async () => {
   const f = await releasedFixture();
   try {
     await mutate(f);
@@ -247,19 +278,19 @@ for (const [index, [code, mutate, detail]] of refusals.entries()) test(`released
   } finally { await rm(f.directory, { recursive: true, force: true }); }
 });
 
-test('released extraction verifies nameless npm aliases, including hoisted dependencies and version specs', async () => {
+test('an alias cannot replace the canonical entry and is forbidden even alongside it', async () => {
   const f = await releasedFixture();
   try {
     const core = f.lock.packages['node_modules/@openlup/core']!;
     delete f.lock.packages['node_modules/@openlup/core'];
     f.lock.packages['node_modules/alias'] = core;
-    f.lock.packages['node_modules/pg'] = { resolved: 'https://registry.npmjs.org/pg/-/pg-8.0.0.tgz',
-      dependencies: { alias: `npm:@openlup/core@${f.version}` } };
     await f.put('lock.json', f.lock);
-    f.run('hoisted-alias');
-    core.version = `npm:@openlup/core@${f.version}`;
+    assert.throws(() => f.run(), error => String((error as { stderr?: Buffer }).stderr)
+      .includes('starter_release_lock_package_missing: @openlup/core'));
+    f.lock.packages['node_modules/@openlup/core'] = core;
     await f.put('lock.json', f.lock);
-    f.run('version-alias');
+    assert.throws(() => f.run(), error => String((error as { stderr?: Buffer }).stderr)
+      .includes('starter_release_lock_package_extra: node_modules/alias'));
   } finally { await rm(f.directory, { recursive: true, force: true }); }
 });
 
