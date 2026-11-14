@@ -82,7 +82,7 @@ export async function runStarterImageCanary(application, archive, imageDigest, e
         if (!/\b2 passed\b/u.test(output)) throw new Error('starter_canary_purchase_results_missing');
       });
       await phase('recovery', async () => {
-        const { PORTABILITY_CONSUMER_PROOF } = await import('./packages/platform-cold-consumer.ts');
+        const { PORTABILITY_CONSUMER_PROOF } = await import('./packages/portability-consumer-proof.ts');
         const output = installations[0](['run', '--rm', '--no-deps', '-T', 'installation', 'node', '--input-type=module', '-',
           'postgresql://starter_install@localhost/neutral_store?host=/var/run/postgresql'], PORTABILITY_CONSUMER_PROOF);
         if (!output.includes('Portability installed canonical selected-row recovery PASS')) throw new Error('starter_canary_recovery_missing');

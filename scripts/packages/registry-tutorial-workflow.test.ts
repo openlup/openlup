@@ -341,7 +341,7 @@ registerHooks({load(url, context, next) {
   const result = next(url, context);
   if (!url.endsWith('/scripts/starter-browser-ci.mjs')) return result;
   const source = String(result.source), start = source.indexOf('export async function runStarterImageCanary('), end = source.indexOf('export function parseArguments(');
-  return {...result, source: source.slice(0, start) + "export async function runStarterImageCanary(_app, _archive, _image, evidence) { ${pending ? 'await new Promise(() => {});' : ''} const { PORTABILITY_CONSUMER_PROOF } = await import('./packages/platform-cold-consumer.ts'); if (!PORTABILITY_CONSUMER_PROOF.includes('selected-row recovery PASS')) throw Error('missing recovery'); evidence.result = 'PASS'; }\\n" + source.slice(end)};
+  return {...result, source: source.slice(0, start) + "export async function runStarterImageCanary(_app, _archive, _image, evidence) { ${pending ? 'await new Promise(() => {});' : ''} const { PORTABILITY_CONSUMER_PROOF } = await import('./packages/portability-consumer-proof.ts'); if (!PORTABILITY_CONSUMER_PROOF.includes('selected-row recovery PASS')) throw Error('missing recovery'); evidence.result = 'PASS'; }\\n" + source.slice(end)};
 }});`);
       const result = spawnSync(process.execPath, ['--import', hook, join(ROOT, 'scripts/packages/exact-set-qualification.mjs'), tag, commit, path, '--canary'],
         { cwd: ROOT, encoding: 'utf8', env: Reflect.get(process, 'env') });
