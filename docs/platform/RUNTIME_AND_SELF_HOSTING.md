@@ -1087,8 +1087,8 @@ requires a host-owned operator session and order identity; the existing detail
 endpoint remains responsible for authorization. The page reads only on explicit
 interaction and reports unavailable reads without claiming delivery. Its neutral
 client projects status and tracking text only; it exposes no address, raw operation
-payload, signed-label link or mutation. Commerce list/detail and overview require
-host read callbacks; [native parity boundaries](ARCHITECTURE_AND_EXTENSIONS.md#native-parity-boundaries)
+payload, signed-label link or mutation. Commerce list/detail select the existing reduced native reader with host policy
+and authorization. Overview requires a host reader over host-owned overview data; [native parity boundaries](ARCHITECTURE_AND_EXTENSIONS.md#native-parity-boundaries)
 describe their shared typed refusal.
 
 Reference payment composition now calls the experimental vendor-subpath

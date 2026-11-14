@@ -45,6 +45,7 @@ export function applyFrozenParcel(candidate: FulfillmentDispatchRequest, value: 
   const point = record(selection.pickupPoint), address = record(point.address);
   const providerRef = text(selection.providerKind) ?? text(selection.providerRef);
   return { ...candidate,
+    parcelSequenceNo: Number(payload.sequenceNo),
     contactRevision: { schemaVersion: Number(contact.schemaVersion), source: required(contact.source), revision: Number(contact.revision) },
     recipient: { name: required(contact.recipientName), email: text(contact.contactEmail), phone: required(contact.contactPhone),
       line1: required(contact.line1), line2: text(contact.line2), city: required(contact.city), postalCode: required(contact.postalCode), country: required(contact.country),
@@ -53,6 +54,6 @@ export function applyFrozenParcel(candidate: FulfillmentDispatchRequest, value: 
       deliveryKind: selection.deliveryKind === 'parcel-locker' || selection.kind === 'parcel-locker' ? 'parcel-locker' : 'courier',
       pickupPoint: Object.keys(point).length ? { id: required(point.id ?? point.pointId), provider: required(point.provider), name: required(point.name),
         address: { line1: required(address.line1), postalCode: required(address.postalCode), city: required(address.city), country: required(address.country) } } : null },
-    lines: Array.isArray(payload.lines) ? payload.lines.map(raw => { const line = record(raw); return { skuRef: required(line.sku), title: text(line.title), quantity: Number(line.quantity), productRef: null, packRef: null }; }) : candidate.lines,
+    lines: Array.isArray(payload.lines) ? payload.lines.map(raw => { const line = record(raw); return { skuRef: required(line.sku), title: text(line.title), quantity: Number(line.quantity), productRef: null, packRef: null, lotRef: text(line.lotRef), expirationDate: text(line.expirationDate) }; }) : candidate.lines,
   };
 }

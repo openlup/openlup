@@ -11693,6 +11693,8 @@ export interface FulfillmentDispatchRequest {
     orderRef: string;
     orderNumber: string | null;
     parcelRef: string | null;
+    /** Native parcel ordinal; adapters own any provider-facing number format. */
+    parcelSequenceNo?: number;
     contactRevision: {
         schemaVersion: number;
         source: string;
@@ -13844,6 +13846,11 @@ export declare const FULFILLMENT_MIGRATIONS: readonly [{
     readonly catalogPath: "db/platform/migrations/20261120120000_fulfillment_provider_intake.sql";
     readonly sha256: "4475906787dd245c8fef91a150aa32868a888c19edbcaf896a5d3d0519a1f288";
     readonly url: URL;
+}, {
+    readonly position: 139;
+    readonly catalogPath: "db/platform/migrations/20261120130000_fulfillment_alignment_arrival_chronology.sql";
+    readonly sha256: "26b428443a2dea5aec852ddf4c6960b354f89e1d1c9ff8064705bebe2d80e04f";
+    readonly url: URL;
 }];
 ```
 ## dist/fulfillment/nativeUnsupported.d.ts
@@ -13855,7 +13862,8 @@ import type { FulfillmentReplacementPort } from './contracts/replacement.js';
 import type { FulfillmentOperatorMutationPort } from './contracts/operator.js';
 import type { FulfillmentCustomerAlignmentRowsReader } from './contracts/customerAlignment.js';
 export declare const FULFILLMENT_NATIVE_UNSUPPORTED: FulfillmentNativeUnsupported;
-/** Deliberately has no executor: unsupported native parity can never make a partial write. */
+/** Explicit native operator, commerce and customer-row readers can replace selected methods.
+ * Deliberately has no executor: unsupported native parity can never make a partial write. */
 export declare function createNativeUnsupportedFulfillmentPorts(): FulfillmentReplacementPort & FulfillmentOperatorMutationPort & FulfillmentCommerceReadPort & FulfillmentShipmentsOverviewPort & {
     readCustomerAlignmentRows: FulfillmentCustomerAlignmentRowsReader;
 };
