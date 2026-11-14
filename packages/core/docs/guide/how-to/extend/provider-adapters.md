@@ -72,6 +72,14 @@ redacted `persistence` facts. The browser confirms interactive requests.
 This example is not selected by the starter and supplies no portable composition
 for the second reference provider.
 
+Keep the execution-time recorded-method check in the renewal binding: a healthy
+replacement does not authorize a stale addressed reference or customer. Preserve
+null provider time in native ingestion rather than projecting HTTP receipt time
+into its occurrence carrier. Resume a finalized SCA-required attempt through the
+persisted refusal path; ordinary readback cannot supply its missing event time.
+Let native result validation acknowledge superseded and unresolved events before
+attempt-specific recovery bookkeeping.
+
 Verified dispute events keep a distinct money outcome and original payment
 identity. Audit projection includes filtered event, refund-snapshot and
 failure-provenance facts, excluding raw bodies, handoffs and authorization.

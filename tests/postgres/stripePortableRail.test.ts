@@ -1,6 +1,7 @@
 import { createHmac, randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { createPostgresProviderPaymentRail, createPostgresPaymentMethodStore, createPostgresPaymentMethodSetup } from "@openlup/platform/payments";
+import { createPostgresProviderPaymentRail, createPostgresPaymentMethodStore, createPostgresPaymentMethodSetup,
+  createPostgresPaymentWebhookControlPort } from "@openlup/platform/payments";
 import { createStripePaymentAdapter, type StripePaymentAdapterConfig } from "@openlup/platform/payments/stripe";
 import { createScriptedPaymentFake } from "@openlup/platform/payments/testing";
 import { activateNativePurchaseWithRenewal, createNativeRenewalCodec, createNativeSubscriptionBinding,
@@ -174,6 +175,10 @@ it("registers a SetupIntent replacement before scheduling the recovery retry", a
 it("recovers with the recorded replacement and retains committed accepted-event evidence", async () => {
   remote = payment("pi_recovery", "succeeded"); fake.enqueue("create", { kind: "success", value: remote }); fake.enqueue("read", { kind: "success", value: remote });
   expect(await binding.services.run()).toMatchObject({ retries: [{ status: "awaiting_provider" }] });
+  const dispatch = (await env.owner.query(`SELECT r.input FROM public.subscription_retry_receipts r
+    JOIN public.subscription_retry_obligations o ON o.id=r.obligation_id
+    WHERE o.subscription_id=$1 AND r.kind='prepare' ORDER BY r.attempt_sequence DESC LIMIT 1`, [subscriptionId])).rows[0].input;
+  expect(requests.at(-1)).toMatchObject({ paymentMethod: "pm_replacement", key: dispatch.providerIdempotencyKey });
   const intent = (await env.owner.query("SELECT settlement_intent_id FROM public.subscription_retry_obligations WHERE subscription_id=$1", [subscriptionId])).rows[0].settlement_intent_id;
   const event = signed("payment_intent.succeeded", { ...remote, amount_received: 200,
     metadata: { paymentIntentId: intent, clientId, subscriptionId } });
@@ -197,6 +202,7 @@ it("recovers with the recorded replacement and retains committed accepted-event 
   expect((await env.owner.query("SELECT status FROM public.subscriptions WHERE id=$1", [subscriptionId])).rows).toEqual([{ status: "active" }]);
   fake.assertDrained();
 });
+
 it("observes a cumulative partial refund without cancelling or pausing service", async () => {
   const intent = (await env.owner.query("SELECT settlement_intent_id FROM public.subscription_retry_obligations WHERE subscription_id=$1", [subscriptionId])).rows[0].settlement_intent_id;
   const result = await rail.ingress.receive(signed("charge.refunded", { id: "ch_recovery", payment_intent: "pi_recovery", amount: 200,
@@ -345,5 +351,158 @@ describe("exact local-intent search after uncertain dispatch", () => {
     expect(await rail.ingress.receive(event)).toMatchObject({ status: 200, data: { replayed: true } });
     expect(await createPostgresRetryStore(env.runtime).read(fixture.operation)).toMatchObject({ state: "recovered", retryAttempt: 1 });
     fake.assertDrained();
+  });
+});
+
+describe("reviewed native execution boundaries", () => {
+  let f: Awaited<ReturnType<typeof renewalFixture>>, prepared: { settlementIntentId: string; orderId: string };
+  let local: ReturnType<typeof createPostgresProviderPaymentRail>, selected: ReturnType<typeof createPostgresProviderRenewalBinding>;
+  let primary: string;
+  const namedRefusals: string[] = [];
+  function compose(paymentRail = local) {
+    const dialect = { ...codec, decode: (wire: Record<string, unknown>) => ({ ...wire, cycle: f.snapshot.cycle,
+      settlementChannelKey: rail.provider }) as unknown as ReturnType<typeof codec.decode>,
+      readback: (wire: Record<string, unknown>) => wire as unknown as ReturnType<typeof codec.readback> };
+    return createPostgresProviderRenewalBinding({ enabled: true, channelKey: rail.provider, executor: env.runtime,
+      withTransaction: transaction, paymentRail, codec: dialect, truth, now: () => time,
+      settlement: db => createPostgresRenewalSettlementPort(db, dialect, transaction), search: async () => [] });
+  }
+  const input = () => ({ cycleIdempotencyKey: f.identity, executionIdempotencyKey: `review:${f.operation}`,
+    externalIdempotencyKey: `review-provider:${f.operation}`, requestFingerprint: f.fingerprint,
+    paymentIntentId: prepared.settlementIntentId, orderId: prepared.orderId, orderRef: prepared.orderId, clientId: f.client,
+    amountMinor: 200, currency: "XXX", mode: "subscription" as const, flow: "off_session" as const,
+    customerRef: "cus_primary", paymentMethodRef: primary, recurringModel: null, payer: null });
+  async function state() {
+    return (await env.owner.query(`SELECT jsonb_build_array(
+      (SELECT to_jsonb(i) FROM public.commerce_settlement_intents i WHERE id=$1),
+      (SELECT to_jsonb(o) FROM public.subscription_renewal_operations o WHERE id=$2),
+      (SELECT jsonb_agg(to_jsonb(a) ORDER BY id) FROM public.payment_provider_attempts a WHERE settlement_intent_id=$1),
+      (SELECT jsonb_agg(to_jsonb(r) ORDER BY scope,idempotency_key) FROM public.payment_provider_receipts r WHERE metadata->>'paymentIntentId'=$1::text),
+      (SELECT jsonb_agg(to_jsonb(o)) FROM public.subscription_retry_obligations o WHERE renewal_operation_id=$2)) AS value`,
+    [prepared.settlementIntentId, f.operation])).rows[0].value;
+  }
+  beforeEach(async () => {
+    f = await renewalFixture(env.owner, 10, 1, randomUUID(), true, rail.provider); primary = `pm_review_${f.subscription}`;
+    await createPostgresPaymentMethodStore(env.runtime).upsert({ key: `review-method:${f.subscription}`, clientId: f.client,
+      subscriptionId: f.subscription, provider: rail.provider, methodKind: "card", customer: "cus_primary", reference: primary,
+      mandate: null, status: "active", active: true, expiresAt: null, consent: {}, payload: {} });
+    await call(env.runtime, "fulfillment_reserve_subscription_renewal", [f.operation, f.token, 900, AT]);
+    prepared = await call(env.runtime, "commerce_prepare_subscription_renewal", [f.operation, f.token, AT]);
+    namedRefusals.length = 0;
+    local = createPostgresProviderPaymentRail({ executor: env.runtime, adapter: rail.adapter, mode: rail.mode, truth,
+      resolveMethodOwner: async () => null, resolveSavedMethodOwner: async () => null,
+      composeWebhook: (event, control) => selected.composeWebhook(event, { ...control, async applyPaymentResult(request) {
+        try { return await control.applyPaymentResult!(request); }
+        catch (error) { namedRefusals.push((error as Error).message); throw error; }
+      } }) });
+    selected = compose();
+  });
+  describe.each([
+    { kind: "inactive", reason: "payment_method_revoked" },
+    { kind: "unrecorded", reason: "missing_provider_method_ref" },
+    { kind: "foreign", reason: "payment_method_cross_client" },
+    { kind: "customer", reason: "payment_method_invalid" },
+  ])("addressed method $kind", ({ kind, reason }) => {
+    let request: ReturnType<typeof input>;
+    beforeEach(async () => {
+      request = input();
+      if (kind === "inactive") {
+        const old = await createPostgresPaymentMethodStore(env.runtime).read(rail.provider, primary);
+        await createPostgresPaymentMethodStore(env.runtime).upsert({ key: `replacement:${f.subscription}`, clientId: f.client,
+          subscriptionId: f.subscription, provider: rail.provider, methodKind: "card", customer: "cus_primary", reference: `${primary}_new`,
+          mandate: null, status: "active", active: true, expiresAt: null, consent: {}, payload: {} });
+        await call(env.runtime, "payment_method_ref_deactivate", [`deactivate:${f.subscription}`, old!.id, "replaced", {}]);
+      } else if (kind === "unrecorded") request.paymentMethodRef = `${primary}_absent`;
+      else if (kind === "foreign") request.paymentMethodRef = "pm_replacement";
+      else request.customerRef = "cus_wrong";
+    });
+    it("refuses before admission, mutation or provider I/O", async () => {
+      const before = await state(), calls = requests.length;
+      await expect(selected.rail.execute(request)).rejects.toThrow(reason);
+      expect(requests).toHaveLength(calls); expect(await state()).toEqual(before);
+    });
+  });
+  describe("original renewal without a recorded ref", () => {
+    beforeEach(async () => { await env.owner.query("DELETE FROM public.payment_method_refs WHERE subscription_id=$1", [f.subscription]); });
+    it("preserves the original dispatch path without inferring a recorded row", async () => {
+      fake.enqueue("create", { kind: "success", value: { ...payment(`pi_${f.operation}`, "processing"), payment_method: primary } });
+      expect(await selected.rail.execute(input())).toMatchObject({ status: "pending" });
+      expect(requests.at(-1)).toMatchObject({ paymentMethod: primary, customer: "cus_primary" });
+      expect((await env.owner.query("SELECT count(*)::int n FROM public.payment_method_refs WHERE subscription_id=$1", [f.subscription])).rows[0].n).toBe(0);
+    });
+  });
+  describe("untimestamped native ingress", () => {
+    let event: ReturnType<typeof signed>;
+    beforeEach(async () => {
+      await local.control.createIntent({ idempotencyKey: `${f.identity}:provider-intent`, targetKind: "subscription_cycle",
+        orderId: prepared.orderId, subscriptionId: f.subscription,
+        subscriptionCycleId: (await env.owner.query("SELECT subscription_cycle_id FROM public.commerce_orders WHERE id=$1", [prepared.orderId])).rows[0].subscription_cycle_id,
+        amountMinor: 200, currency: "XXX", metadata: {}, channelKey: rail.provider, at: AT });
+      event = signed("payment_intent.succeeded", { id: `pi_${f.operation}`, amount: 200, amount_received: 200,
+        currency: "xxx", metadata: { paymentIntentId: prepared.settlementIntentId } }, `evt_${f.operation}`, null);
+    });
+    it("keeps native source and returned occurrence absent across receipt-time redelivery", async () => {
+      expect(await local.ingress.receive(event)).toMatchObject({ status: 200 });
+      const row = (await env.owner.query("SELECT * FROM public.payment_provider_attempt_evidence WHERE provider_event_id=$1", [`evt_${f.operation}`])).rows[0];
+      expect(row.source_evidence.observedAt).toBeNull();
+      expect(row.payload.openlupReceipt.receivedAt).toBe(event.receivedAt);
+      const replay = await createPostgresPaymentWebhookControlPort(env.runtime, truth).ingestPaymentEvent({
+        provider: rail.provider, providerEventId: row.provider_event_id, eventType: "payment.succeeded", providerPaymentId: row.provider_payment_id,
+        paymentIntentId: prepared.settlementIntentId, amountMinor: 200, currency: "XXX", rawPayload: row.payload,
+        occurredAt: new Date(Date.parse(event.receivedAt) + 60_000).toISOString() });
+      expect(replay).toMatchObject({ replayed: true }); expect(replay.occurredAt).toBeUndefined();
+      expect((await env.owner.query("SELECT source_evidence FROM public.payment_provider_attempt_evidence WHERE id=$1", [row.id])).rows[0].source_evidence).toEqual(row.source_evidence);
+    });
+  });
+  describe("finalized SCA interruption", () => {
+    beforeEach(async () => {
+      fake.enqueue("create", { kind: "success", value: { ...payment(`pi_${f.operation}`, "requires_action"), payment_method: primary } });
+      const interrupted = compose({ ...local, control: { ...local.control, async applyPaymentResult() { throw new Error("synthetic_before_failure_apply"); } } });
+      await expect(interrupted.rail.execute(input())).rejects.toThrow("synthetic_before_failure_apply");
+    });
+    it("replays the persisted refusal once without provider readback or another dispatch", async () => {
+      const before = fake.calls.length;
+      const request = { settlementIntentId: prepared.settlementIntentId, orderId: prepared.orderId, subscriptionId: f.subscription,
+        amountMinor: 200, currency: "XXX", externalAttemptRef: `pi_${f.operation}` };
+      const untouched = await state();
+      await expect(compose().rail.readOutcome({ ...request, externalAttemptRef: "pi_wrong" })).rejects.toThrow("subscription_renewal_provider_attempt_conflict");
+      expect(await state()).toEqual(untouched);
+      const first = await compose().rail.readOutcome(request);
+      expect(first).toMatchObject({ status: "failed", disposition: "observed", reason: "off_session_sca_required" });
+      const preparedInstantMatches = (await env.owner.query(`SELECT created_at=$2::timestamptz AS matches
+        FROM public.payment_provider_attempts WHERE settlement_intent_id=$1`, [prepared.settlementIntentId, first.occurredAt])).rows[0].matches;
+      expect(preparedInstantMatches).toBe(true);
+      time = new Date(Date.parse(time) + 60_000).toISOString();
+      expect(await compose().rail.readOutcome(request)).toMatchObject({ status: "failed", disposition: "observed",
+        occurredAt: first.occurredAt, firstRecordedAt: first.firstRecordedAt, verifiedEvidenceRef: first.verifiedEvidenceRef });
+      expect(fake.calls).toHaveLength(before);
+      expect(await createPostgresRetryStore(env.runtime).read(f.operation)).toMatchObject({ retryAttempt: 1, caseId: expect.any(String) });
+      expect((await env.owner.query("SELECT failure_class FROM public.payment_provider_attempts WHERE settlement_intent_id=$1",
+        [prepared.settlementIntentId])).rows).toEqual([{ failure_class: "sca_required" }]);
+      expect((await env.owner.query(`SELECT count(*)::int n FROM public.payment_dunning_case_attribution a
+        JOIN public.subscription_dunning_cases c ON c.id=a.case_id WHERE c.subscription_id=$1`, [f.subscription])).rows[0].n).toBe(1);
+    });
+  });
+  describe.each(["superseded", "unresolved"])("%s success delivery", kind => {
+    let event: ReturnType<typeof signed>;
+    beforeEach(async () => {
+      fake.enqueue("create", { kind: "success", value: { ...payment(`pi_${f.operation}`, "processing"), payment_method: primary } });
+      await selected.rail.execute(input());
+      await local.control.applyPaymentResult({ idempotencyKey: `review-decline:${f.operation}`, paymentIntentId: prepared.settlementIntentId,
+        paymentEventId: null, resultStatus: "failed", occurredAt: time, failureReason: "declined" });
+      await local.control.prepareProviderAttempt({ idempotencyKey: `review-next:${f.operation}`, paymentIntentId: prepared.settlementIntentId,
+        provider: rail.provider, providerIdempotencyKey: `review-next-provider:${f.operation}`, providerRequestFingerprint: f.fingerprint,
+        providerFlow: "off_session_payment", paymentMethodRef: primary, requestPayload: {} });
+      event = signed("payment_intent.succeeded", { id: kind === "superseded" ? `pi_${f.operation}` : `pi_unknown_${f.operation}`,
+        amount: 200, amount_received: 200, currency: "xxx", metadata: { paymentIntentId: prepared.settlementIntentId } });
+    });
+    it("reaches exact-attempt refusal and ACK on every delivery with no business mutation", async () => {
+      const before = await state(), calls = requests.length;
+      expect(await local.ingress.receive(event)).toMatchObject({ status: 200, data: { skipped: "result_attempt_mismatch" } });
+      expect(await local.ingress.receive(event)).toMatchObject({ status: 200, data: { skipped: "result_attempt_mismatch" } });
+      expect(namedRefusals).toEqual([`payment_control_result_attempt_${kind === "superseded" ? "mismatch" : "unresolved"}`,
+        `payment_control_result_attempt_${kind === "superseded" ? "mismatch" : "unresolved"}`]);
+      expect(await state()).toEqual(before); expect(requests).toHaveLength(calls);
+    });
   });
 });

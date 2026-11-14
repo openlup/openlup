@@ -1758,6 +1758,15 @@ First receipt and provider time remain separate. Reconciliation results retain
 their committed `reconciliationId`. A synchronous decline retains its nullable
 remote handle and consumes the existing failure rung before attributed dunning.
 
+Original renewal dispatch checks the addressed method and customer against the
+current recorded authority whenever any method reference exists. A healthy
+replacement never authorizes the stale input; no-ref original renewals retain
+their existing path. Finalized SCA-required attempts resume through the persisted
+refusal owner using the durable execution key and prepared instant. Untimestamped
+ingress keeps native occurrence null and returns no occurrence instant, including
+on replay. Superseded and unresolved success events reach native exact-attempt
+validation and its acknowledgement path before recovery bookkeeping.
+
 The native rail supports the two reference payment providers; a third provider needs the provider-profile refactor.
 This composition selects card provider only. The second reference provider's portable
 composition and live-provider qualification remain follow-up work. Existing

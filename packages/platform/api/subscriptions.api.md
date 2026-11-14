@@ -2119,6 +2119,7 @@ type ProviderRenewalAttempt = {
         provider: string;
         status: string;
         providerAttemptId: string | null;
+        idempotencyKey?: string;
     };
 };
 export interface ProviderRenewalPaymentPorts {

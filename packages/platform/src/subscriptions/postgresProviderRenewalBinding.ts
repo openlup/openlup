@@ -6,6 +6,7 @@ import { subscriptionRecord, type NativeRenewalCodec, type SubscriptionQueryExec
 import type { RenewalExecutionRequest, RenewalPaymentEvidence, RenewalPaymentRail, RenewalSettlementPort } from "./contracts/renewal.js";
 import type { RenewalFailureHandoffPort } from "./contracts/dunning.js";
 import type { NativeRetryDriverOptions } from "./nativeRetryDriver.js";
+import { replayRenewalAttempt } from "./renewalCycleRefusalMechanism.js";
 
 /** The subscription owner consumes only these injected payment facts. */
 export interface ProviderRenewalResultInput {
@@ -17,7 +18,7 @@ type ProviderRenewalWebhookControl = { applyPaymentResult?(input: ProviderRenewa
 type ProviderRenewalWebhook = { providerEventId: string; providerPaymentId: string; rawPayload: Record<string, unknown> };
 type ProviderRenewalAttempt = { orderId: string; settlementStatus: string; amountMinor: number; currency: string;
   requestPayload: Record<string, unknown>; responsePayload: Record<string, unknown>;
-  paymentAttempt: { id: string; paymentId: string; provider: string; status: string; providerAttemptId: string | null } };
+  paymentAttempt: { id: string; paymentId: string; provider: string; status: string; providerAttemptId: string | null; idempotencyKey?: string } };
 export interface ProviderRenewalPaymentPorts {
   provider: string; mode: "live" | "test";
   control: {
@@ -83,9 +84,10 @@ export function createPostgresProviderRenewalBinding(input: {
       WHERE i.id=$1::uuid`, [intent])).rows[0];
     if (!row) throw new Error("subscription_renewal_prepared_artifacts_missing");
     const frozen = input.codec.decode(subscriptionRecord(row.cycle_snapshot));
-    if (frozen.cycle.status !== "correlated") throw new Error("subscription_renewal_cycle_correlation_required");
+    const cycle = frozen.cycle;
+    if (cycle.status !== "correlated") throw new Error("subscription_renewal_cycle_correlation_required");
     if (frozen.settlementChannelKey !== input.channelKey) throw new Error("settlement_channel_not_configured");
-    return { row, frozen };
+    return { row, frozen, cycle };
   }
   async function handoff(intent: string, attempt: string) {
     const failure = (await db.query(`SELECT r.input FROM public.subscription_retry_receipts r
@@ -109,6 +111,24 @@ export function createPostgresProviderRenewalBinding(input: {
         || request.cycleIdempotencyKey !== row.identity_key || request.requestFingerprint !== row.operation_fingerprint
         || request.amountMinor !== Number(row.amount_minor) || request.currency !== row.currency_code
         || request.mode !== "subscription" || request.flow !== "off_session") throw new Error("subscription_renewal_provider_request_mismatch");
+      const authority = (await db.query(`SELECT public.subscription_method_has_recorded_ref($1::uuid) AS recorded,
+        public.subscription_method_chargeable_unattended($1::uuid,now()) AS chargeable,
+        public.subscription_method_health_read($1::uuid) AS current,
+        public.payment_method_ref_read($2,$3) AS addressed`, [row.subscription_id, payments.provider, request.paymentMethodRef])).rows[0];
+      // Original renewals with no recorded ref retain their existing authority.
+      // Once any ref exists, validate the addressed ref, not merely a healthy replacement.
+      if (authority?.recorded === true) {
+        const method = authority.addressed == null ? null : subscriptionRecord(authority.addressed);
+        const current = authority.current == null ? null : subscriptionRecord(authority.current);
+        if (!method) throw new Error("missing_provider_method_ref");
+        if (method.client_id !== row.client_id) throw new Error("payment_method_cross_client");
+        if (method.status === "inactive" || method.status === "revoked") throw new Error("payment_method_revoked");
+        if (method.status === "pending_verification") throw new Error("payment_method_requires_action");
+        if (method.active !== true) throw new Error("missing_provider_method_ref");
+        if (method.status !== "active" || method.subscription_id !== row.subscription_id || authority.chargeable !== true
+          || current?.payment_method_ref_id !== method.id || current?.provider_kind !== payments.provider
+          || method.provider_customer_ref !== (request.customerRef ?? null)) throw new Error("payment_method_invalid");
+      }
       const admitted = await payments.control.createIntent({ idempotencyKey: `${String(row.identity_key)}:provider-intent`,
         targetKind: "subscription_cycle", orderId: request.orderId, subscriptionId: String(row.subscription_id),
         subscriptionCycleId: String(row.subscription_cycle_id), amountMinor: request.amountMinor, currency: request.currency,
@@ -157,12 +177,54 @@ export function createPostgresProviderRenewalBinding(input: {
     },
   };
   async function observe(intent: string, remote: string | null, retry: boolean): Promise<RenewalPaymentEvidence> {
-    const { row } = await operation(intent), attempt = await payments.readAttempt(intent);
+    const { row, frozen, cycle } = await operation(intent), attempt = await payments.readAttempt(intent);
     if (!attempt || attempt.paymentAttempt.provider !== payments.provider) throw new Error("payment_control_result_active_attempt_not_found");
     const a = attempt.paymentAttempt, checkedAt = nativeInstant(input.now());
     const empty: RenewalPaymentEvidence = { operationId: String(row.id), requestFingerprint: String(row.operation_fingerprint),
       status: "unknown", disposition: "ambiguous", eventKey: "", verifiedEvidenceRef: "", externalAttemptRef: remote,
       occurredAt: null, observedAt: checkedAt, firstRecordedAt: checkedAt, amountMinor: null, currency: null, reason: null };
+    if (a.status === "requires_action") {
+      if (remote && a.providerAttemptId && a.providerAttemptId !== remote) throw new Error("subscription_renewal_provider_attempt_conflict");
+      const executionKey = a.idempotencyKey, providerKey = attempt.requestPayload.providerIdempotencyKey;
+      const fingerprint = attempt.requestPayload.providerRequestFingerprint;
+      if (!executionKey || typeof providerKey !== "string" || typeof fingerprint !== "string") throw new Error("payment_provider_attempt_readback_invalid");
+      const method = attempt.requestPayload.storedMethod;
+      const methodRef = method && typeof method === "object" ? subscriptionRecord(method).reference : null;
+      await replayRenewalAttempt({ now: input.now, chargeFailurePropagation: {
+        async recordBlockedPreflightAttempt() { throw new Error("subscription_renewal_provider_result_required"); },
+        async readDurableAttemptInstant(request) {
+          if (request.attemptIdempotencyKey !== executionKey) throw new Error("payment_provider_attempt_readback_invalid");
+          const history = subscriptionRecord((await db.query("SELECT public.commerce_checkout_payment_guidance_snapshot($1::uuid,$2::uuid,NULL::uuid) AS response",
+            [row.order_id, intent])).rows[0]?.response);
+          const attempts = history.attempts as { id: string; createdAt: string }[];
+          const at = attempts?.find(value => value.id === a.id)?.createdAt;
+          return at ? nativeInstant(at) : null;
+        },
+        async applyFailedResult(failure) {
+          const result = await payments.control.applyPaymentResult({ idempotencyKey: failure.idempotencyKey,
+            paymentIntentId: intent, paymentEventId: null, resultStatus: "failed", occurredAt: failure.occurredAt,
+            failureReason: failure.failureReason, failureClass: "sca_required", failureClassDecidedBy: failure.failureClassification.decidedBy });
+          return { replayed: result.replayed, paymentAttemptId: a.id };
+        },
+        async readCycleRetryState() {
+          const obligation = await createPostgresRetryStore(db).read(String(row.id));
+          return { rowPresent: obligation !== null, retryAttempt: obligation?.retryAttempt ?? null, nextRetryAt: obligation?.nextRetryAt ?? null };
+        },
+        async openDunningCase() { return { status: "opened", caseId: (await handoff(intent, a.id)).caseId }; },
+      } }, { subscriptionId: String(row.subscription_id), nextCycleAt: frozen.scheduledAt,
+        providerKind: payments.provider, providerMethodRef: typeof methodRef === "string" ? methodRef : null }, {
+        cycleId: String(row.subscription_cycle_id), cycleNumber: cycle.logicalCycleNumber,
+        orderId: String(row.order_id), paymentIntentId: intent, executionIdempotencyKey: executionKey,
+        providerIdempotencyKey: providerKey, providerRequestFingerprint: fingerprint, providerKind: payments.provider,
+      }, "requires_action", { scaReason: "off_session_sca_required", defaultNow: input.now, unacknowledgedReason: status => `provider_attempt_${status}`,
+        failure: { resolveClassification: () => ({ failureClass: "sca_required", decidedBy: "execution" }),
+          recordKey: key => `${key}:blocked`, applyKey: key => `${key}:result`, dunningKey: key => `${key}:dunning`,
+          preparedSuffix: "", blockedSuffix: "", dunningFailureKey: "subscription_dunning_failed_attempt_unattributed",
+          // Native ports require a recorded rung and throw named refusals;
+          // they do not produce the hosted logger-only outcomes.
+          logBelowRetry: () => undefined, logRejected: () => undefined, logUnavailable: () => undefined } });
+      return observe(intent, remote, retry);
+    }
     if (a.status === "failed") {
       const receipt = (await db.query(`SELECT r.receipt_key,r.input FROM public.subscription_retry_receipts r
         JOIN public.subscription_retry_obligations o ON o.id=r.obligation_id WHERE o.renewal_operation_id=$1::uuid
@@ -255,6 +317,9 @@ export function createPostgresProviderRenewalBinding(input: {
       const attempt = await payments.readAttempt(request.paymentIntentId, null);
       if (!attempt) throw new Error("payment_control_result_active_attempt_not_found");
       const a = attempt.paymentAttempt;
+      // Exact attempt attribution belongs to the landed result owner. A stale
+      // or unresolved remote handle must reach its named refusal and ACK path.
+      if (a.providerAttemptId !== event.providerPaymentId) return control.applyPaymentResult!(request);
       const receipt = subscriptionRecord((await db.query("SELECT public.commerce_checkout_payment_guidance_snapshot($1::uuid,$2::uuid,NULL::uuid) AS response",
         [op.order_id, request.paymentIntentId])).rows[0]?.response);
       if (receipt.historyComplete !== true) throw new Error("payment_event_receipt_unavailable");

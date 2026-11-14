@@ -86,10 +86,24 @@ ingress, method registration, attributed dunning and refund evidence. Pass the
 renewal binding's `composeWebhook` into the payment rail and select its lifecycle
 and retry ports together. The default starter keeps its sandbox selection.
 
-card provider readback supplies no occurrence time. It remains ambiguous until
+Before original renewal dispatch, any recorded method makes the addressed
+reference strict: it must be the subscription's current active recorded method,
+belong to the client and match the recorded customer. Method refusals precede
+provider admission and I/O. Original renewals without a recorded reference retain
+their existing path; this does not create or reconstruct a method row.
+
+A finalized `requires_action` attempt replays its persisted SCA refusal through
+the renewal refusal owner, using the original execution key and durable prepared
+instant. It records one failure rung and attributed case without another provider
+call. The card provider readback supplies no occurrence time. Other unresolved
+attempts remain ambiguous until
 timestamped evidence arrives; receipt time never becomes provider time. Verified
 webhooks retain the first receipt separately, settle the exact active attempt
 and complete native renewal/recovery bookkeeping with the same settlement key.
+Untimestamped evidence retains a null native source occurrence and returns no
+occurrence instant, including on replay; HTTP receipt and database recording
+times remain separate. Superseded or unresolved success deliveries reach the
+native exact-attempt refusal and are acknowledged without financial effects.
 Search uses the exact local intent and at most two results. Multiple matches
 refuse; zero matches never authorize another charge. Absence auto-reopen stays off.
 Offline PostgreSQL witnesses establish this composition, not live activation.

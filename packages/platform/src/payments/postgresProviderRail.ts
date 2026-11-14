@@ -92,8 +92,8 @@ export function createPostgresProviderPaymentRail(input: {
         const at = evidence?.providerOccurredAt;
         // Receipt time still records receipt. Missing provider time cannot become
         // a financial/lifecycle assertion; retain the evidence for manual repair.
-        if (!at) return { paymentControlPort: { ingestPaymentEvent: webhook.ingestPaymentEvent } };
         event.rawPayload.openlupReceipt = { receivedAt: event.occurredAt };
+        if (!at) return { paymentControlPort: { ingestPaymentEvent: webhook.ingestPaymentEvent } };
         const selected = input.composeWebhook?.(event, webhook) ?? webhook;
         return { paymentControlPort: { ...selected, ingestPaymentEvent: delivery => selected.ingestPaymentEvent({ ...delivery, occurredAt: at }) },
           methodRefPort: methods, afterProcessed: ({ event: delivery }) => consumePostgresPaymentMethodDelivery(input.executor, delivery) };
