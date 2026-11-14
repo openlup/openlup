@@ -281,6 +281,7 @@ export function validateReviewedPinnedIntroductions(entries) {
       && path !== "tests/postgres/fixtures/paymentMethods/scope_repair.sql"
       && path !== "tests/postgres/fixtures/paymentReconciliation/setup.sql"
       && path !== "tests/postgres/fixtures/paymentReconciliation/evidence.sql"
+      && path !== "tests/postgres/stripePortableRail.test.ts"
       && !nativePaymentIntroductionPaths.has(path)
       && !/^(?:scripts\/fixtures\/reviewed-m10\/supabase\/migrations\/|supabase\/migrations\/)[^/]+\.sql$/.test(path)) {
       throw new Error(`unsupported pinned introduction path: ${label(path)}`);
