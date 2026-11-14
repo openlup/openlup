@@ -195,6 +195,8 @@ jobs:
           OPENLUP_QUALIFICATION_DATABASE_URL="postgresql://postgres@127.0.0.1:$(docker port "$container" 5432/tcp | cut -d: -f2)/postgres"
           export OPENLUP_QUALIFICATION_DATABASE_URL
           node scripts/packages/exact-set-qualification.mjs "$RELEASE_TAG" "$TAG_COMMIT" "$RUNNER_TEMP/exact-set-qualification.json" --schema-upgrade
+      - name: Bind the exact-set release BOM
+        run: node scripts/packages/exact-set-qualification.mjs "$RELEASE_TAG" "$TAG_COMMIT" "$RUNNER_TEMP/exact-set-qualification.json" --bom
       - name: Seal an incomplete qualification receipt
         if: always()
         env:
@@ -205,7 +207,9 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: exact-set-qualification
-          path: ${{ runner.temp }}/exact-set-qualification.json
+          path: |
+            ${{ runner.temp }}/exact-set-qualification.json
+            ${{ runner.temp }}/exact-set-qualification.json.bom.json
           if-no-files-found: error
           retention-days: 90
       - name: Remove qualification PostgreSQL
