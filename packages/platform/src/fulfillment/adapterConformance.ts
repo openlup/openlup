@@ -3,8 +3,8 @@ import { isDeepStrictEqual, types } from "node:util";
 import { z } from "zod";
 import type { FulfillmentAdapterConformanceEvidence, FulfillmentAdapterConformanceSubject, FulfillmentCapabilityDescriptor, FulfillmentRefusal } from "./contracts/index.js";
 import type { FulfillmentAdapterTestSubject, FulfillmentConformanceOptions, FulfillmentQualification } from "./testing/scenarios.js";
-import { dispatchEvidence, dispatchResult } from "./dispatchProjection.js";
-import { projectObservation } from "./observationProjection.js";
+import { dispatchEvidence, dispatchResult, operationError, reference, safeDiagnosticCode } from "./dispatchProjection.js";
+import { projectObservation, projectPollEvidence } from "./observationProjection.js";
 import { isCapturedFulfillmentAdapter } from "./capturedAdapter.js";
 import { readFulfillmentCapabilities } from "./providerCapabilities.js";
 import { runFulfillmentDispatchWorker } from "./providerDispatchWorker.js";
@@ -58,10 +58,10 @@ export async function runFulfillmentAdapterConformance(subjects: readonly Subjec
     const witness = async <O extends Operation>(slot: Slot & { op: O }): Promise<z.output<(typeof results)[O]>> => {
       const method = ports[slot.op]; requireFact(method, `${slot.label} port required`);
       const input = snapshot(slot.input), before = io(), faultsBefore = slot.faults ? readScriptedFulfillmentFaultLog(slot.faults).length : 0;
-      let returned = true, raw: unknown, pending: unknown;
-      try { pending = method(...input); } catch (error) { returned = false; raw = error; }
-      if (returned) { const outcome = await settled(pending, raw => ({ returned: true, value: snapshot(raw) }), raw => ({ returned: false, value: snapshot(raw) })); returned = outcome.returned; raw = outcome.value; }
-      const value = snapshot(raw), ioDelta = io() - before, faultLogDelta = slot.faults ? readScriptedFulfillmentFaultLog(slot.faults).slice(faultsBefore) : [];
+      let returned = true, value: unknown, pending: unknown;
+      try { pending = method(...input); } catch (error) { returned = false; value = snapshot(error); }
+      if (returned) { const outcome = await settled(pending, raw => ({ returned: true, value: snapshot(raw) }), raw => ({ returned: false, value: snapshot(raw) })); returned = outcome.returned; value = outcome.value; }
+      const ioDelta = io() - before, faultLogDelta = slot.faults ? readScriptedFulfillmentFaultLog(slot.faults).slice(faultsBefore) : [];
       requireFact(ioDelta >= 0, "validation:io_count_regressed");
       const expectedThrow = Object.hasOwn(slot, "throws");
       requireFact(returned !== expectedThrow, `${slot.label} ${expectedThrow ? "failure did not throw" : "success did not return"}`);
@@ -69,6 +69,8 @@ export async function runFulfillmentAdapterConformance(subjects: readonly Subjec
       if (expectedThrow) {
         const thrown = refusal.extend({ providerFailure: z.boolean().optional(), status: z.number().int().nullable().optional(), code: z.string().nullable().optional(), providerError: z.strictObject({ operation: z.enum(["get_stock", "get_stock_movements"]), status: z.number().int().nullable(), code: z.string(), retryable: z.boolean() }).optional() }).safeParse(value);
         requireFact(thrown.success, `${slot.label} contradictory result: typed failure required`);
+        if (thrown.data.code != null) same(thrown.data.code, safeDiagnosticCode(thrown.data.code), "sync diagnostic allowlist");
+        if (thrown.data.providerError) same(thrown.data.providerError.code, safeDiagnosticCode(thrown.data.providerError.code), "sync diagnostic allowlist");
         actual = { reason: thrown.data.reason, phase: thrown.data.phase, retryable: thrown.data.retryable }; expected = slot.throws;
       } else {
         const checked = results[slot.op].safeParse(value), expectedChecked = results[slot.op].safeParse(slot.expected);
@@ -79,7 +81,12 @@ export async function runFulfillmentAdapterConformance(subjects: readonly Subjec
       for (const row of readbacks) {
         if (row.kind === "absent") requireFact(caps.operations.exactAbsence.supported, "unsupported exact absence refuses");
         if (row.kind === "found") same(row.observation, projectObservation(row.observation, subject.approveTrackingUrl, subject.observationCodecs), "readback observation allowlist");
+        if (row.kind === "unmapped") same(row.evidence, projectPollEvidence(row.evidence), "poll evidence allowlist");
+        if (row.kind === "found" || row.kind === "unmapped") same(row.externalRef, reference(row.externalRef), "readback reference allowlist");
+        if (row.kind === "absent") for (const ref of [row.scope.providerRef, row.scope.externalRef]) same(ref, reference(ref), "absence reference allowlist");
       }
+      if (!expectedThrow && slot.op === "observation") { const result = actual as z.output<typeof results.observation>; if (result.kind === "verified") same(result.observation, projectObservation(result.observation, subject.approveTrackingUrl, subject.observationCodecs), "observation allowlist"); }
+      if (!expectedThrow && slot.op === "page") { const result = actual as z.output<typeof results.page>; if (result.kind === "failed" && result.error) same(result.error, operationError(result.error), "page error allowlist"); }
       const classify = (value: unknown): { kind: string; role: Entry["role"] } => {
         if (expectedThrow) return { kind: "refused", role: "failure" };
         if (slot.op === "void") return { kind: (value as { canProceed: boolean }).canProceed ? "voided" : "refused", role: (value as { canProceed: boolean }).canProceed ? "success" : "failure" };
@@ -91,6 +98,10 @@ export async function runFulfillmentAdapterConformance(subjects: readonly Subjec
       };
       const credit = classify(actual); requireFact(credit.kind === classify(expected).kind, `${slot.label} result kind mismatch`); same(actual, expected, slot.label);
       requireFact(!slot.positive || credit.role === "success", `${slot.label} positive success required`);
+      if (!expectedThrow && slot.op === "create") { const result = actual as z.output<typeof results.create>; if (result.kind === "created" && result.document) same(result.document.externalRef, reference(result.document.externalRef), "label reference allowlist"); }
+      if (!expectedThrow && (slot.op === "getStock" || slot.op === "getStockMovements")) for (const row of actual as z.output<typeof results.getStockMovements>) if (!("kind" in row)) for (const ref of [row.providerRef, row.skuRef, row.sourceRevision, ...("operationType" in row ? [row.operationType, row.documentRef, row.lotRef] : [])]) same(ref, reference(ref), "sync reference allowlist");
+      if (!expectedThrow && slot.op === "getProductPacks") for (const row of actual as z.output<typeof results.getProductPacks>) same(row.ean, reference(row.ean), "product reference allowlist");
+      if (!expectedThrow && slot.op === "listStockedSkus") for (const ref of actual as string[]) same(ref, reference(ref), "product reference allowlist");
       const reason = expectedThrow ? (actual as FulfillmentRefusal).reason : (actual as { refusal?: FulfillmentRefusal } | null)?.refusal?.reason;
       const supported = caps.operations[(operationCapabilities[slot.capability as keyof typeof operationCapabilities] ?? slot.capability) as Capability]?.supported;
       requireFact(!(mode === "full" && supported && ((credit.role === "failure" && reason === "unsupported") || (slot.op === "page" && readbacks.some(row => "refusal" in row && row.refusal.reason === "unsupported")))), `${slot.label} supported_failure_unsupported`);
@@ -127,7 +138,6 @@ export async function runFulfillmentAdapterConformance(subjects: readonly Subjec
       const row = fixtures.observation![index]!;
       const result = await witness({ op: "observation", capability: "verifyObservation", slotId, input: row.input, expected: row.expected, zero: !caps.operations.verifyObservation.supported && mode === "full" ? "unsupported observation before I/O" : undefined, label: "observation fixture" });
       if (result.kind === "verified") {
-        same(result.observation, projectObservation(result.observation, subject.approveTrackingUrl, subject.observationCodecs), "observation allowlist");
         const value = result.observation, identity = { provider: value.fact.providerKind, reference: value.fact.fulfillmentReference, kind: value.eventKind, outcome: value.fact.canonicalStatus, occurredAt: value.fact.occurredAt };
         if (events.has(value.eventKey)) same(events.get(value.eventKey), identity, "eventKey includes outcome and occurrence"); events.set(value.eventKey, identity);
         if (retry) await witness({ op: "observation", capability: "observationReplay", slotId: `${slotId}:retry`, input: row.input, expected: row.expected, label: "observation exact retry" });

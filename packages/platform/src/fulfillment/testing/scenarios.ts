@@ -45,7 +45,12 @@ export interface FulfillmentAdapterCertificationScenarios {
 
 /** Baseline callers need no certification fixtures. Full mode requires every applicable witness. */
 export type FulfillmentAdapterTestSubject = Omit<FulfillmentAdapterConformanceSubject, "fixtures"> & {
-  fixtures: Omit<FulfillmentAdapterConformanceSubject["fixtures"], "dispatch"> & {
+  fixtures: Omit<FulfillmentAdapterConformanceSubject["fixtures"], "dispatch" | "label"> & {
+    label?: Omit<NonNullable<FulfillmentAdapterConformanceSubject["fixtures"]["label"]>, "void"> & {
+      void?: readonly { input: Parameters<NonNullable<FulfillmentAdapterConformanceSubject["adapter"]["label"]>["void"]>;
+        expected: Omit<Awaited<ReturnType<NonNullable<FulfillmentAdapterConformanceSubject["adapter"]["label"]>["void"]>>, "canProceed" | "refusal"> &
+          ({ canProceed: true; refusal?: never } | { canProceed: false; refusal: FulfillmentRefusal }) }[];
+    };
     dispatch: readonly ({
       input: FulfillmentAdapterConformanceSubject["fixtures"]["dispatch"][number]["input"];
     } & (

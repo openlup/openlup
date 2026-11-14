@@ -826,6 +826,48 @@ it("applies the direct-readback observation allowlist to nested page rows", asyn
   paging.full.expected = expected; value.adapter.reconciliation!.readPage = input => input.page === 0 ? Promise.resolve(expected) : read(input);
   await expect(runFulfillmentAdapterConformance([value], { mode: "full" })).rejects.toThrow("readback observation allowlist");
 });
+it.each(["noncanonical-status", "email-correlation", "phone-correlation"])("rejects an unmapped page row with %s before full qualification", async shape => {
+  const { value } = fullSubject(), paging = value.certification!.paging!, read = value.adapter.reconciliation!.readPage;
+  const found = paging.full.expected.rows[0]!; if (found.kind !== "found") throw Error("Expected found row");
+  const evidence = { eventKey: "unmapped-event", correlation: { ...found.observation.correlation, externalRef: shape === "email-correlation" ? email : shape === "phone-correlation" ? phone : "external-a" },
+    providerStatus: { primary: shape === "noncanonical-status" ? "Awaiting address review" : "unmapped_status", subStatus: null } };
+  const expected = { kind: "page" as const, rows: [found, { kind: "unmapped" as const, externalRef: "external-a", evidence }] };
+  value.sensitiveValues = []; // Exercise the shared projection independently of caller-supplied plants.
+  paging.full.expected = expected; value.adapter.reconciliation!.readPage = input => input.page === 0 ? Promise.resolve(expected) : read(input);
+  await expect(runFulfillmentAdapterConformance([value], { mode: "full" })).rejects.toThrow("poll evidence allowlist");
+});
+it("projects verified observation replays before granting invocation credit", async () => {
+  const { value } = fullSubject(), verify = value.adapter.observation!.verifyAndNormalize; let calls = 0;
+  value.adapter.observation!.verifyAndNormalize = async input => { const result = await verify(input); if (++calls === 2 && result.kind === "verified") result.observation.providerStatus = { primary: "Awaiting address review", subStatus: null }; return result; };
+  await expect(runFulfillmentAdapterConformance([value], { mode: "full" })).rejects.toThrow("observation allowlist");
+});
+it("projects provider errors on failed pages before granting invocation credit", async () => {
+  const { value } = fullSubject(), paging = value.certification!.paging!, read = value.adapter.reconciliation!.readPage;
+  const expected = { ...paging.failure.expected, error: { ...paging.failure.expected.error!, code: "Awaiting address review" } };
+  paging.failure.expected = expected; value.adapter.reconciliation!.readPage = input => input.page === 4 ? Promise.resolve(expected) : read(input);
+  await expect(runFulfillmentAdapterConformance([value], { mode: "full" })).rejects.toThrow("page error allowlist");
+});
+it.each(["readback", "label", "stock", "movement", "pack", "sku", "diagnostic"] as const)("rejects private provider strings in the %s result branch", async branch => {
+  const { value } = fullSubject(); value.sensitiveValues = [];
+  let error = "";
+  if (branch === "readback") {
+    const row = value.fixtures.readback![0]!; Object.assign(row.expected, { externalRef: email });
+    value.adapter.readback!.read = async () => row.expected; error = "readback reference allowlist";
+  } else if (branch === "label") {
+    Object.assign(value.adapter.capabilities.operations, { labelCreate: { supported: true } });
+    const result = { kind: "created" as const, parcelRef: "parcel-a", document: { objectRef: "labels/a.pdf", mediaType: "application/pdf" as const, externalRef: email } };
+    Object.assign(value.fixtures.label!.create![0]!, { expected: result }); value.adapter.label!.create = async () => result; error = "label reference allowlist";
+  } else if (branch === "diagnostic") {
+    const get = value.adapter.stockSync!.getStock; value.adapter.stockSync!.getStock = async () => { try { return await get(); } catch (cause) { throw Object.assign(cause as object, { code: email }); } }; error = "sync diagnostic allowlist";
+  } else {
+    const operation = branch === "stock" ? "getStock" : branch === "movement" ? "getStockMovements" : branch === "pack" ? "getProductPacks" : "listStockedSkus";
+    const row = [...value.fixtures.stockSync!, ...value.fixtures.productSync!].find(row => row.operation === operation)!;
+    const expected = branch === "sku" ? [email] : (row.expected as object[]).map(item => ({ ...item, [branch === "pack" ? "ean" : branch === "movement" ? "lotRef" : "skuRef"]: email }));
+    Object.assign(row, { expected }); Object.assign(branch === "stock" || branch === "movement" ? value.adapter.stockSync! : value.adapter.productSync!, { [operation]: async () => expected });
+    error = branch === "stock" || branch === "movement" ? "sync reference allowlist" : "product reference allowlist";
+  }
+  await expect(runFulfillmentAdapterConformance([value], { mode: "full" })).rejects.toThrow(error);
+});
 it("rejects shared-memory webhook inputs before any adapter invocation", async () => {
   const { value } = fullSubject(), row = value.fixtures.observation![0]!, prepare = vi.spyOn(value.adapter.dispatch, "prepare");
   row.input[0].rawBody = new Uint8Array(new SharedArrayBuffer(row.input[0].rawBody.length));

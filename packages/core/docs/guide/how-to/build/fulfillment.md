@@ -282,6 +282,8 @@ parcel reference and document field, available labels need a URL and expiry fiel
 and label void needs its complete boolean branch. Unsupported cannot serve as the
 failure witness for a supported operation, including paged readback and replay.
 Page rows follow the direct-readback absence-capability and observation checks.
+Unmapped evidence uses the shared poll projection; observation replays and nested
+provider references and diagnostics pass their shared privacy helpers before credit.
 Sync success returns a positive
 snapshot, movement, addressable product pack, nonblank SKU, `{ replayed: false }`
 for product creation, or `undefined` for a pack write. Sync failures use

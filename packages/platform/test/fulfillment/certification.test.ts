@@ -21,6 +21,9 @@ it("types every sync slot with mutually exclusive success and failure roles", ()
   expectTypeOf<Ensure["success"]["expected"]["replayed"]>().toEqualTypeOf<false>();
   expectTypeOf<NonNullable<Kit["paging"]>["failure"]["expected"]["kind"]>().toEqualTypeOf<"failed">();
   expectTypeOf<NonNullable<Kit["paging"]>["exhausted"]["expected"]["kind"]>().toEqualTypeOf<"page_exhausted">();
+  type Void = NonNullable<NonNullable<FulfillmentAdapterTestSubject["fixtures"]["label"]>["void"]>[number]["expected"];
+  expectTypeOf<{ canProceed: true; providerDeletion: "unconfirmed"; labelDeleted: false; refusal: { reason: "unsupported"; phase: "dispatch"; retryable: false } }>().not.toExtend<Void>();
+  expectTypeOf<Extract<Void, { canProceed: true }>["refusal"]>().toEqualTypeOf<undefined>();
 });
 
 function capturedSubject(): Omit<FulfillmentAdapterTestSubject, "fixtures"> & Pick<FulfillmentAdapterConformanceSubject, "fixtures"> {
