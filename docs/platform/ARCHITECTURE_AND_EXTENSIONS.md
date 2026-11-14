@@ -863,6 +863,55 @@ observation ledger; neither initiates a replacement send.
 
 ## Fulfillment contracts
 
+Adapter authors can use the experimental `@openlup/platform/fulfillment/testing`
+entry to [certify a fulfilment adapter offline](../../packages/core/docs/guide/how-to/build/fulfillment.md#certify-a-fulfilment-adapter-offline).
+The kit certifies adapter behaviour against honestly built data fixtures; deliberate
+accessor, proxy or intrinsic manipulation to defeat the caller's own certification
+is outside its threat model. Snapshots, closed schemas and captured intrinsics
+reduce accidental misuse; they are not an attestation. Full mode validates copied
+capabilities, fixtures and certification data before invoking an adapter. Missing,
+malformed or contradictory fixtures and contract-violating adapter results refuse.
+Descriptor and buffer checks mitigate accidental proxy, accessor, hidden-field and
+shared-memory misuse. Results are copied before
+classification; only the runner's invocation ledger grants coverage. Methods,
+I/O counters, projection callbacks and optional host-store probes are captured
+once and invoked through a captured intrinsic. Native promise checks and captured
+`then` handling mitigate accidental thenable and constructor/species redirection. Callback
+and store results, including thrown failures, are copied before use. Supported
+certifiable capabilities require executed contract-positive success and typed
+failure witnesses, with matching kinds and deep strict equality to independent
+fixture expectations. Scenario indices are integers, in range and distinct;
+status tuples execute in declared order. Baseline mode remains the
+default and grants no full-coverage claim.
+
+Executed refusal probes cover non-PDF formats, label create/void, provider-side
+cancel, independent split, provider-owned reservations, snapshot-only movements
+and pickup-point/locker execution, each with unchanged provider-call counts.
+Callable unsupported adapter operations also need explicit refusal witnesses.
+Label probes invoke adapter methods; named native limits invoke platform code.
+The runner executes the real snapshot-only stock worker using its own isolated
+provider/store. Scripted fault evidence comes from the fake's private log via an
+authenticated read-only handle. Enqueue copies and validates each closed outcome
+envelope once; injected transports construct responses from captured data.
+Paging uses the readback capability guard, including every nested absence and
+observation row; replay and preparation use their operation's capability guard.
+Each claimed submission requires exactly one
+provider call. Missing or malformed applicable fixtures fail qualification.
+
+The closed port-less list contains only `courierPickup`. Unsupported is recorded
+as `{ capability: "courierPickup", declared: "unsupported", probe: "no_port" }`
+without execution because the contract exposes no provider-reaching path.
+Supported fails with `capability_not_certifiable`; supported provider cancellation
+also refuses because its platform path cannot witness success. A contract test
+pins the port-less list. Pickup-point support needs adapter success/failure
+witnesses in addition to the native refusal probe. Only the captured adapter's
+factory brand, bound to its deeply frozen dispatch port and exact invoked methods,
+permits the derived `dispatch-only` profile, with no other
+capability certification. Evidence includes mode, profile, a capability digest,
+the sanitized ledger and port-less declarations. Offline evidence does not
+establish database locking, durable deduplication, cancellation races, replacement
+transactions or delivery alignment.
+
 The fulfillment entry also exports its existing `parseOutboxPayload` helper.
 K4 reference email bindings reuse that same parser through the host runtime;
 paid handoff retains the identical schema parsing, issue paths and 300-character
@@ -875,7 +924,7 @@ subpath: the status canon, actual-evidence tracking progress, current-parcel
 selection/attribution and parsers narrowed to the canonical status union. Its
 [local sources](../../packages/core/src/fulfillment/index.ts) have no I/O or platform
 dependency. Generic core fact types retain their names; narrowed aliases use the
-`Canonical` prefix. Platform fulfillment lives at three existing-package subpaths:
+`Canonical` prefix. Platform fulfillment retains its existing-package subpaths:
 `@openlup/platform/fulfillment`, `/fulfillment/contracts` and the opt-in
 `/fulfillment/omnipack` example. `@openlup/platform/fulfillment` keeps compatibility
 re-exports of the core presentation, and `/fulfillment/contracts` re-exports the

@@ -81,6 +81,7 @@ for package policy definitions and release boundaries.
 | `./fulfillment` | capability | experimental |
 | `./fulfillment/contracts` | capability | experimental |
 | `./fulfillment/native` | capability | experimental |
+| `./fulfillment/testing` | capability | experimental |
 | `./http` | rail | experimental |
 | `./identity` | capability | experimental |
 | `./identity/contracts` | capability | experimental |

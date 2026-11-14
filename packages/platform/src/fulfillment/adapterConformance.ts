@@ -1,177 +1,307 @@
-import type { FulfillmentAdapterConformanceEvidence, FulfillmentAdapterConformanceSubject, FulfillmentRefusal } from "./contracts/index.js";
-import { dispatchEvidence, dispatchResult } from "./dispatchProjection.js";
-import { projectObservation } from "./observationProjection.js";
+import { createHash } from "node:crypto";
+import { isDeepStrictEqual, types } from "node:util";
+import { z } from "zod";
+import type { FulfillmentAdapterConformanceEvidence, FulfillmentAdapterConformanceSubject, FulfillmentCapabilityDescriptor, FulfillmentRefusal } from "./contracts/index.js";
+import type { FulfillmentAdapterTestSubject, FulfillmentConformanceOptions, FulfillmentQualification } from "./conformanceScenarios.js";
+import { dispatchEvidence, dispatchResult, operationError, reference, safeDiagnosticCode } from "./dispatchProjection.js";
+import { projectObservation, projectPollEvidence } from "./observationProjection.js";
+import { isCapturedFulfillmentAdapter } from "./capturedAdapter.js";
 import { readFulfillmentCapabilities } from "./providerCapabilities.js";
 import { runFulfillmentDispatchWorker } from "./providerDispatchWorker.js";
+import { runFulfillmentStockSyncWorker } from "./providerStockSyncWorker.js";
+import { readScriptedFulfillmentFaultLog } from "./scriptedFulfillmentFake.js";
+import { PORTLESS_CAPABILITIES, subjectSchema, snapshot, freeze, results, refusal, requireFact, field, method, settled, invokeData, type Operation } from "./conformanceSchema.js";
 
-type Subject = FulfillmentAdapterConformanceSubject;
-/** Runner-independent offline proof using only adapter-owned fixtures. Throws on a violated contract. */
-export async function runFulfillmentAdapterConformance(subjects: readonly FulfillmentAdapterConformanceSubject[]): Promise<FulfillmentAdapterConformanceEvidence> {
-  const evidence: { subjectId: string; providerRef: string }[] = [];
-  const cases: { subjectId: string; operation: string; passed: true }[] = [];
-  for (const subject of subjects) {
-    const { adapter, fixtures } = subject;
-    const caps = adapter.capabilities;
-    const passed = (operation: string) => { cases.push({ subjectId: subject.subjectId, operation, passed: true }); };
-    requireFact(caps.defaultOff === true, "default-off");
-    requireFact(readFulfillmentCapabilities([caps], null).kind === "refused", "selection_required");
-    const first = fixtures.dispatch[0];
-    requireFact(Boolean(first), "dispatch fixture required");
-    const disabled = readFulfillmentCapabilities([{ ...caps, selected: false }], first.input.selection);
-    requireFact(disabled.kind === "refused" && disabled.refusal.reason === "disabled", "disabled selection");
-    const missing = await adapter.dispatch.prepare({ ...first.input, selection: { ...first.input.selection, providerRef: null } });
-    requireFact(missing.kind === "refused" && missing.refusal.reason === "selection_required", "adapter selection_required");
-    passed("default-off and selection_required");
-    for (const fixture of fixtures.dispatch) {
-      const before = subject.readIoCount();
-      const prepared = await adapter.dispatch.prepare(fixture.input);
-      requireSame(prepared, fixture.expectedPrepare, "prepare fixture");
-      requireFact(subject.readIoCount() === before, "prepare before I/O");
-      assertDurable(prepared, subject);
+type Subject = FulfillmentAdapterConformanceSubject & Pick<FulfillmentAdapterTestSubject, "adapter" | "certification">;
+type Capability = keyof FulfillmentCapabilityDescriptor["operations"];
+type Entry = FulfillmentQualification["ledger"][number] & { kind: string; value: unknown; input: unknown[]; replay?: boolean };
+const operationCapabilities = { selection: "dispatch", preparation: "dispatch", mismatch: "dispatch", replay: "dispatch", observationReplay: "verifyObservation" } as const;
+type Slot = { op: Operation; input: unknown[]; capability: Capability | keyof typeof operationCapabilities | `native:${string}`; slotId: string; label: string; zero?: string; replay?: boolean; faults?: object; positive?: boolean } & ({ expected: unknown; throws?: never } | { throws: FulfillmentRefusal; expected?: never });
+const same = (actual: unknown, expected: unknown, label: string) => requireFact(isDeepStrictEqual(actual, expected), label);
+const unsupported = (phase: FulfillmentRefusal["phase"]): FulfillmentRefusal => ({ reason: "unsupported", phase, retryable: false });
+const transportNames = ["transport-before-submission", "transport-after-submission", "http-failure"] as const;
+/** Snapshot data once; only executed, independently compared invocations can enter the evidence ledger. */
+export async function runFulfillmentAdapterConformance(subjects: readonly Subject[], options: FulfillmentConformanceOptions = { mode: "baseline" }): Promise<FulfillmentAdapterConformanceEvidence & { mode: "baseline" | "full"; qualifications: readonly FulfillmentQualification[] }> {
+  const mode = z.strictObject({ mode: z.enum(["baseline", "full"]) }).parse(snapshot(options)).mode;
+  requireFact(Array.isArray(subjects) && !types.isProxy(subjects) && subjects.length > 0, "full subjects required: nonempty array");
+  requireFact(Reflect.ownKeys(subjects).every(key => typeof key === "string" && (key === "length" || /^(0|[1-9][0-9]*)$/.test(key)) && !Object.getOwnPropertyDescriptor(subjects, key)?.get), "validation:subjects");
+  const subjectList = Array.from({ length: subjects.length }, (_, index) => field(subjects, index)!);
+  const preparedSubjects = subjectList.map((subject: Subject) => {
+    requireFact(!types.isProxy(subject), "validation:subject_proxy");
+    const adapter = field(subject, "adapter"), certification = field(subject, "certification");
+    const data = { subjectId: field(subject, "subjectId"), capabilities: field(adapter, "capabilities"), sensitiveValues: field(subject, "sensitiveValues"), fixtures: field(subject, "fixtures"), ...(certification ? { certification } : {}) };
+    const frozen = snapshot(data), checked = subjectSchema.safeParse(frozen);
+    requireFact(checked.success, `validation:fixtures ${checked.success ? "" : checked.error.message}`);
+    const dispatch = field(adapter, "dispatch"), prepare = field(dispatch, "prepare"), submit = field(dispatch, "dispatch");
+    const profile: "adapter" | "dispatch-only" = isCapturedFulfillmentAdapter(adapter, dispatch, prepare, submit) ? "dispatch-only" : "adapter";
+    requireFact(!frozen.certification?.profile || frozen.certification.profile === profile, "capability_not_certifiable:dispatch-only brand");
+    const ports: Partial<Record<Operation, (...args: unknown[]) => Promise<unknown>>> = { prepare: method(dispatch, "prepare", prepare) as (...args: unknown[]) => Promise<unknown>, dispatch: method(dispatch, "dispatch", submit) as (...args: unknown[]) => Promise<unknown> };
+    for (const [op, port, name] of [["create", field(adapter, "label"), "create"], ["read", field(adapter, "label"), "read"], ["void", field(adapter, "label"), "void"], ["observation", field(adapter, "observation"), "verifyAndNormalize"], ["readback", field(adapter, "readback"), "read"], ["page", field(adapter, "reconciliation"), "readPage"], ...["getStock", "getStockMovements"].map(op => [op, field(adapter, "stockSync"), op] as const), ...["ensureProduct", "getProductPacks", "addProductPack", "listStockedSkus"].map(op => [op, field(adapter, "productSync"), op] as const)] as const) {
+      if (port) ports[op as Operation] = method(port as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>, name);
+    }
+    const logs = new Map<number, object>();
+    for (const name of transportNames) { const scenario = frozen.certification?.dispatch?.transport[name]; if (scenario) { const handle = field(field(field(field(certification!, "dispatch")!, "transport"), name), "calls"); readScriptedFulfillmentFaultLog(handle); logs.set(scenario.fixture, handle); } }
+    if (mode === "full") validateFull(frozen, profile);
+    const codecs = field(subject, "observationCodecs"), store = field(subject, "store");
+    const policy = <T>(owner: T, key: keyof T, schema: z.ZodType) => { const invoke = method(owner, key); return invoke === undefined ? undefined : (value: string) => schema.parse(snapshot((invoke as (value: string) => unknown)(value))); };
+    const safeSubject = { ...freeze(frozen), adapter: { capabilities: frozen.capabilities, dispatch: { prepare: ports.prepare as typeof prepare, dispatch: ports.dispatch as typeof submit } }, readIoCount: method(subject, "readIoCount"),
+      approveTrackingUrl: policy(subject, "approveTrackingUrl", z.boolean()), observationCodecs: codecs ? { approveReference: policy(codecs, "approveReference", z.boolean()), trackingUrl: policy(codecs, "trackingUrl", z.string().nullable()) } : undefined,
+      store: store ? { ...freeze(snapshot(Object.fromEntries(["claim", "remappedClaim", "mappedAttemptKey", "remappedAttemptKey", "request", "remappedRequest"].map(key => [key, field(store, key as keyof typeof store)])))), create: method(store, "create") } : undefined } as Subject;
+    return { subject: safeSubject, ports, profile, logs, count: safeSubject.readIoCount };
+  });
+  const evidence: FulfillmentAdapterConformanceEvidence["subjects"][number][] = [], cases: FulfillmentAdapterConformanceEvidence["cases"][number][] = [], qualifications: FulfillmentQualification[] = [];
+  for (const { subject, ports, profile, logs, count } of preparedSubjects) {
+    const { fixtures, certification: kit } = subject, caps = subject.adapter.capabilities, ledger: Entry[] = [];
+    const passed = (operation: string) => cases.push({ subjectId: subject.subjectId, operation, passed: true });
+    const io = () => { const value = count(); requireFact(Number.isSafeInteger(value) && value >= 0, "validation:io_count"); return value; };
+    // This is the ONLY credit site. Arguments, methods and expectations are resolved outside the call's try block.
+    const witness = async <O extends Operation>(slot: Slot & { op: O }): Promise<z.output<(typeof results)[O]>> => {
+      const method = ports[slot.op]; requireFact(method, `${slot.label} port required`);
+      const input = snapshot(slot.input), before = io(), faultsBefore = slot.faults ? readScriptedFulfillmentFaultLog(slot.faults).length : 0;
+      let returned = true, value: unknown, pending: unknown;
+      try { pending = method(...input); } catch (error) { returned = false; value = snapshot(error); }
+      if (returned) { const outcome = await settled(pending, raw => ({ returned: true, value: snapshot(raw) }), raw => ({ returned: false, value: snapshot(raw) })); returned = outcome.returned; value = outcome.value; }
+      const ioDelta = io() - before, faultLogDelta = slot.faults ? readScriptedFulfillmentFaultLog(slot.faults).slice(faultsBefore) : [];
+      requireFact(ioDelta >= 0, "validation:io_count_regressed");
+      const expectedThrow = Object.hasOwn(slot, "throws");
+      requireFact(returned !== expectedThrow, `${slot.label} ${expectedThrow ? "failure did not throw" : "success did not return"}`);
+      let actual: unknown, expected: unknown;
+      if (expectedThrow) {
+        const thrown = refusal.extend({ providerFailure: z.boolean().optional(), status: z.number().int().nullable().optional(), code: z.string().nullable().optional(), providerError: z.strictObject({ operation: z.enum(["get_stock", "get_stock_movements"]), status: z.number().int().nullable(), code: z.string(), retryable: z.boolean() }).optional() }).safeParse(value);
+        requireFact(thrown.success, `${slot.label} contradictory result: typed failure required`);
+        if (thrown.data.code != null) same(thrown.data.code, safeDiagnosticCode(thrown.data.code), "sync diagnostic allowlist");
+        if (thrown.data.providerError) same(thrown.data.providerError.code, safeDiagnosticCode(thrown.data.providerError.code), "sync diagnostic allowlist");
+        actual = { reason: thrown.data.reason, phase: thrown.data.phase, retryable: thrown.data.retryable }; expected = slot.throws;
+      } else {
+        const checked = results[slot.op].safeParse(value), expectedChecked = results[slot.op].safeParse(slot.expected);
+        requireFact(checked.success && expectedChecked.success, `${slot.label} contradictory result: validation`);
+        actual = value; expected = slot.expected;
+      }
+      const readbacks = slot.op === "page" && (actual as z.output<typeof results.page>).kind === "page" ? (actual as Extract<z.output<typeof results.page>, { kind: "page" }>).rows : slot.op === "readback" ? [actual as z.output<typeof results.readback>] : [];
+      for (const row of readbacks) {
+        if (row.kind === "absent") requireFact(caps.operations.exactAbsence.supported, "unsupported exact absence refuses");
+        if (row.kind === "found") same(row.observation, projectObservation(row.observation, subject.approveTrackingUrl, subject.observationCodecs), "readback observation allowlist");
+        if (row.kind === "unmapped") same(row.evidence, projectPollEvidence(row.evidence), "poll evidence allowlist");
+        if (row.kind === "found" || row.kind === "unmapped") same(row.externalRef, reference(row.externalRef), "readback reference allowlist");
+        if (row.kind === "absent") for (const ref of [row.scope.providerRef, row.scope.externalRef]) same(ref, reference(ref), "absence reference allowlist");
+      }
+      if (!expectedThrow && slot.op === "observation") { const result = actual as z.output<typeof results.observation>; if (result.kind === "verified") same(result.observation, projectObservation(result.observation, subject.approveTrackingUrl, subject.observationCodecs), "observation allowlist"); }
+      if (!expectedThrow && slot.op === "page") { const result = actual as z.output<typeof results.page>; if (result.kind === "failed" && result.error) same(result.error, operationError(result.error), "page error allowlist"); }
+      const classify = (value: unknown): { kind: string; role: Entry["role"] } => {
+        if (expectedThrow) return { kind: "refused", role: "failure" };
+        if (slot.op === "void") return { kind: (value as { canProceed: boolean }).canProceed ? "voided" : "refused", role: (value as { canProceed: boolean }).canProceed ? "success" : "failure" };
+        if (slot.op === "addProductPack") return { kind: "written", role: "success" };
+        if (slot.op === "ensureProduct") return { kind: value === null ? "skipped" : (value as { replayed: boolean }).replayed ? "replayed" : "created", role: value !== null && !(value as { replayed: boolean }).replayed ? "success" : "neutral" };
+        if (Array.isArray(value)) { const positive = value.some(row => typeof row === "string" ? row.trim() : slot.op === "getProductPacks" ? row.ean.trim() && row.quantity > 0 : row.kind !== "rejected"); return { kind: positive ? "populated" : "empty", role: positive ? "success" : "neutral" }; }
+        const record = value as { kind: string; rows?: { kind: string }[] }, kind = record.kind;
+        return { kind, role: ["refused", "not_dispatched", "unknown", "unsupported", "failed"].includes(kind) ? "failure" : kind === "page" && !record.rows!.some(row => row.kind === "found" || row.kind === "absent") ? "neutral" : "success" };
+      };
+      const credit = classify(actual); requireFact(credit.kind === classify(expected).kind, `${slot.label} result kind mismatch`); same(actual, expected, slot.label);
+      requireFact(!slot.positive || credit.role === "success", `${slot.label} positive success required`);
+      if (!expectedThrow && slot.op === "create") { const result = actual as z.output<typeof results.create>; if (result.kind === "created" && result.document) same(result.document.externalRef, reference(result.document.externalRef), "label reference allowlist"); }
+      if (!expectedThrow && (slot.op === "getStock" || slot.op === "getStockMovements")) for (const row of actual as z.output<typeof results.getStockMovements>) if (!("kind" in row)) for (const ref of [row.providerRef, row.skuRef, row.sourceRevision, ...("operationType" in row ? [row.operationType, row.documentRef, row.lotRef] : [])]) same(ref, reference(ref), "sync reference allowlist");
+      if (!expectedThrow && slot.op === "getProductPacks") for (const row of actual as z.output<typeof results.getProductPacks>) same(row.ean, reference(row.ean), "product reference allowlist");
+      if (!expectedThrow && slot.op === "listStockedSkus") for (const ref of actual as string[]) same(ref, reference(ref), "product reference allowlist");
+      const reason = expectedThrow ? (actual as FulfillmentRefusal).reason : (actual as { refusal?: FulfillmentRefusal } | null)?.refusal?.reason;
+      const supported = caps.operations[(operationCapabilities[slot.capability as keyof typeof operationCapabilities] ?? slot.capability) as Capability]?.supported;
+      requireFact(!(mode === "full" && supported && ((credit.role === "failure" && reason === "unsupported") || (slot.op === "page" && readbacks.some(row => "refusal" in row && row.refusal.reason === "unsupported")))), `${slot.label} supported_failure_unsupported`);
+      if (supported === false && slot.op !== "native" && slot.capability !== "selection" && slot.capability !== "preparation" && !(mode === "baseline" && slot.op === "read" && caps.labelReadOwner === "host_storage" && credit.kind === "available")) requireFact(credit.role === "failure" && reason === "unsupported", `unsupported ${slot.capability} explicit refusal`);
+      requireFact(!slot.zero || ioDelta === 0, slot.zero ?? "zero I/O");
+      if (mode === "full" && reason === "untrusted") requireFact(ioDelta === 0, "authentication refusal before I/O");
+      if (!(slot.op === "read" && credit.kind === "available")) assertDurable(actual, subject);
+      if (slot.op === "prepare" && credit.kind === "prepared") { const value = actual as z.output<typeof results.prepare>;
+        if (value.kind === "prepared") { same(value.evidence, dispatchEvidence(value.evidence), "prepared evidence allowlist"); same(value.evidence.contactRevision, (slot.input[0] as Subject["fixtures"]["dispatch"][number]["input"]).contactRevision, "prepared contact identity"); requireFact(value.evidence.providerRef === (slot.input[0] as Subject["fixtures"]["dispatch"][number]["input"]).selection.providerRef, "prepared provider identity"); }
+      }
+      if (slot.op === "dispatch") same(actual, dispatchResult(actual as Parameters<typeof dispatchResult>[0]), "dispatch allowlist");
+      ledger.push({ capability: slot.capability, role: supported === false && credit.role === "failure" ? "refusal" : credit.role, slotId: slot.slotId, ioDelta, faultLogDelta, kind: credit.kind, value: actual, input: slot.input, replay: slot.replay });
+      return actual as z.output<(typeof results)[O]>;
+    };
+    const first = fixtures.dispatch[0]!;
+    await witness({ op: "prepare", capability: "selection", slotId: "selection", input: [{ ...first.input, selection: { ...first.input.selection, providerRef: null } }], expected: { kind: "refused", refusal: { reason: "selection_required", phase: "selection", retryable: false } }, zero: "selection refusal before I/O", label: "adapter selection_required" }); passed("default-off and selection_required");
+    for (const [index, row] of fixtures.dispatch.entries()) {
+      const prepared = await witness({ op: "prepare", capability: row.input.selection.deliveryKind === "parcel-locker" && row.expectedPrepare.kind === "refused" ? "pickupPoint" : "preparation", slotId: kit?.dispatch?.addressBeforeSubmission === index ? "prepare:addressBefore" : `prepare:${index}`, input: [row.input], expected: row.expectedPrepare, zero: "prepare before I/O", label: "prepare fixture" });
       if (prepared.kind === "refused") { passed("dispatch refused before I/O"); continue; }
       requireFact(caps.operations.dispatch.supported, "unsupported dispatch refuses");
-      requireSame(prepared.evidence, dispatchEvidence(prepared.evidence), "prepared evidence allowlist");
-      requireFact(prepared.evidence.providerRef === fixture.input.selection.providerRef, "prepared provider identity");
-      requireSame(prepared.evidence.contactRevision, fixture.input.contactRevision, "prepared contact identity");
-      const mismatch = await adapter.dispatch.dispatch(fixture.input, { ...prepared.evidence, commandFingerprint: `${prepared.evidence.commandFingerprint}:mismatch` });
-      requireSame(mismatch, { kind: "not_dispatched", effectMayHaveSucceeded: false,
-        refusal: { reason: "not_dispatchable", phase: "dispatch", retryable: false } }, "mismatched preparation refusal");
-      requireFact(subject.readIoCount() === before, "mismatch before I/O");
-      requireFact(fixture.expectedDispatch !== undefined, "dispatch expected result");
-      const result = await adapter.dispatch.dispatch(fixture.input, prepared.evidence);
-      requireSame(result, fixture.expectedDispatch, "dispatch fixture");
-      requireSame(result, dispatchResult(result), "dispatch allowlist");
-      assertDurable(result, subject);
-      if (result.kind === "accepted") {
-        requireSame(result.evidence, prepared.evidence, "dispatch fingerprint identity");
-        requireFact(result.externalRef.length > 0 && result.providerAttemptKey.length > 0 && result.labelKey.length > 0, "accepted proof before local ACK");
-      } else requireFact(result.kind === "unknown" ? result.effectMayHaveSucceeded : !result.effectMayHaveSucceeded, "unknown versus refused");
-      if (fixture.replay) {
-        const calls = subject.readIoCount();
-        requireSame(await adapter.dispatch.dispatch(fixture.input, prepared.evidence), result, "dispatch replay");
-        requireFact(subject.readIoCount() === calls, "replay no second I/O");
-      }
+      await witness({ op: "dispatch", capability: "mismatch", slotId: `mismatch:${index}`, input: [row.input, { ...prepared.evidence, commandFingerprint: `${prepared.evidence.commandFingerprint}:mismatch` }], expected: { kind: "not_dispatched", effectMayHaveSucceeded: false, refusal: { reason: "not_dispatchable", phase: "dispatch", retryable: false } }, zero: "mismatch before I/O", label: "mismatched preparation refusal" });
+      const result = await witness({ op: "dispatch", capability: row.input.selection.deliveryKind === "parcel-locker" ? "pickupPoint" : "dispatch", slotId: kit?.dispatch?.addressAfterSubmission === index ? "dispatch:addressAfter" : transportNames.find(name => kit?.dispatch?.transport[name].fixture === index) ? `dispatch:${transportNames.find(name => kit?.dispatch?.transport[name].fixture === index)}` : `dispatch:${index}`, input: [row.input, prepared.evidence], expected: row.expectedDispatch, faults: logs.get(index), label: "dispatch fixture" });
+      if (result.kind === "accepted") same(result.evidence, prepared.evidence, "dispatch fingerprint identity");
+      if (row.replay) await witness({ op: "dispatch", capability: "replay", slotId: `replay:${index}`, input: [row.input, prepared.evidence], expected: row.expectedDispatch, zero: "replay no second I/O", replay: true, label: "dispatch replay" });
       passed(`dispatch ${result.kind}, fingerprint, mismatch and replay`);
     }
-    for (const operation of ["create", "read", "void"] as const) {
-      const supported = caps.operations[operation === "create" ? "labelCreate" : operation === "read" ? "labelRead" : "labelVoid"].supported;
-      const rows = fixtures.label?.[operation] ?? [];
-      if (supported) requireFact(Boolean(adapter.label) && rows.length > 0, `label ${operation} fixture`);
-      if (rows.length) requireFact(Boolean(adapter.label), "label port required");
-      for (const fixture of rows) {
-        const before = subject.readIoCount();
-        const result = operation === "create" ? await adapter.label!.create((fixture as NonNullable<Subject["fixtures"]["label"]>["create"] extends readonly (infer F)[] | undefined ? F : never).input[0])
-          : operation === "read" ? await adapter.label!.read((fixture as NonNullable<NonNullable<Subject["fixtures"]["label"]>["read"]>[number]).input[0])
-          : await adapter.label!.void((fixture as NonNullable<NonNullable<Subject["fixtures"]["label"]>["void"]>[number]).input[0]);
-        requireSame(result, fixture.expected, `label ${operation}`);
-        if (!supported && !(operation === "read" && caps.labelReadOwner === "host_storage")) {
-          requireFact("refusal" in result && result.refusal?.reason === "unsupported", `unsupported label ${operation}`);
-          requireFact(subject.readIoCount() === before, "unsupported label before I/O");
-        }
-        if (!(operation === "read" && "kind" in result && result.kind === "available")) assertDurable(result, subject);
-        passed(`label ${operation}`);
-      }
+    for (const op of ["create", "read", "void"] as const) {
+      const capability = ({ create: "labelCreate", read: "labelRead", void: "labelVoid" } as const)[op], supported = caps.operations[capability].supported;
+      if (supported) requireFact(fixtures.label?.[op]?.length, `label ${op} fixture`);
+      for (const [i, row] of (fixtures.label?.[op] ?? []).entries()) { await witness({ op, capability, slotId: `label:${op}:${i}`, input: row.input, expected: row.expected, zero: !supported && (mode === "full" || caps.labelReadOwner !== "host_storage" || op !== "read") ? "unsupported label before I/O" : undefined, label: `label ${op}` }); passed(`label ${op}`); }
     }
-    if (caps.operations.verifyObservation.supported) requireFact(Boolean(adapter.observation) && Boolean(fixtures.observation?.length), "observation fixtures required");
-    const events = new Map<string, { identity: string; occurredAt: string | null }>();
-    for (const fixture of fixtures.observation ?? []) {
-      requireFact(Boolean(adapter.observation), "observation port required");
-      const result = await adapter.observation!.verifyAndNormalize(...fixture.input);
-      requireSame(result, fixture.expected, "observation fixture"); assertDurable(result, subject);
-      if (!caps.operations.verifyObservation.supported) requireFact(result.kind === "refused" && result.refusal.reason === "unsupported", "unsupported observation");
+    const events = new Map<string, unknown>();
+    const observe = async (index: number, slotId: string, retry: boolean) => {
+      const row = fixtures.observation![index]!;
+      const result = await witness({ op: "observation", capability: "verifyObservation", slotId, input: row.input, expected: row.expected, zero: !caps.operations.verifyObservation.supported && mode === "full" ? "unsupported observation before I/O" : undefined, label: "observation fixture" });
       if (result.kind === "verified") {
-        requireSame(result.observation, projectObservation(result.observation, subject.approveTrackingUrl, subject.observationCodecs), "observation allowlist");
-        const observation = result.observation;
-        const identity = stable({ provider: observation.fact.providerKind, reference: observation.fact.fulfillmentReference,
-          kind: observation.eventKind, outcome: observation.fact.canonicalStatus, occurredAt: observation.fact.occurredAt });
-        const previous = events.get(observation.eventKey);
-        if (previous) requireFact(previous.identity === identity, "eventKey includes outcome and occurrence");
-        events.set(observation.eventKey, { identity, occurredAt: observation.fact.occurredAt });
-        const replay = await adapter.observation!.verifyAndNormalize(...fixture.input);
-        requireSame(replay, result, "observation exact retry");
+        const value = result.observation, identity = { provider: value.fact.providerKind, reference: value.fact.fulfillmentReference, kind: value.eventKind, outcome: value.fact.canonicalStatus, occurredAt: value.fact.occurredAt };
+        if (events.has(value.eventKey)) same(events.get(value.eventKey), identity, "eventKey includes outcome and occurrence"); events.set(value.eventKey, identity);
+        if (retry) await witness({ op: "observation", capability: "observationReplay", slotId: `${slotId}:retry`, input: row.input, expected: row.expected, label: "observation exact retry" });
       }
-      passed("observation identity, replay and redaction");
-    }
-    if (caps.operations.readback.supported) requireFact(Boolean(adapter.readback) && Boolean(fixtures.readback?.length), "readback fixtures required");
-    for (const fixture of fixtures.readback ?? []) {
-      requireFact(Boolean(adapter.readback), "readback port required");
-      const result = await adapter.readback!.read(...fixture.input);
-      requireSame(result, fixture.expected, "readback fixture"); assertDurable(result, subject);
-      if (!caps.operations.readback.supported) requireFact(result.kind === "unsupported", "unsupported readback");
-      if (fixture.localMissing) requireFact(result.kind === "unknown" && result.refusal.reason === "local_missing", "local missing is never absence");
-      if (result.kind === "absent") {
-        requireFact(caps.operations.exactAbsence.supported, "unsupported exact absence refuses");
-        const { mode: _mode, ...scope } = fixture.input[0];
-        requireSame(result.scope, scope, "absence scope");
-        requireFact(result.proof.kind === "authoritative_exact_lookup" && /^evidence:.+/.test(result.proof.evidenceRef) && Number.isFinite(Date.parse(result.proof.checkedAt)), "absence proof");
-      }
-      if (result.kind === "found") requireFact(result.externalRef === fixture.input[0].externalRef || fixture.input[0].externalRef === null, "found identity");
+    };
+    if (caps.operations.verifyObservation.supported) requireFact(fixtures.observation?.length, "observation fixtures required");
+    for (const [i] of (fixtures.observation ?? []).entries()) { await observe(i, kit?.observation?.authenticationFailure === i ? "observation:auth" : `observation:${i}`, true); passed("observation identity, replay and redaction"); }
+    if (caps.operations.readback.supported) requireFact(fixtures.readback?.length, "readback fixtures required");
+    for (const [i, row] of (fixtures.readback ?? []).entries()) {
+      const result = await witness({ op: "readback", capability: "readback", slotId: kit?.exceptions?.returned === i ? "exception:returned" : kit?.exceptions?.lostCoarse === i ? "exception:lostCoarse" : `readback:${i}`, input: row.input, expected: row.expected, zero: !caps.operations.readback.supported && mode === "full" ? "unsupported readback before I/O" : undefined, label: "readback fixture" });
+      if (row.localMissing) requireFact(result.kind === "unknown" && result.refusal.reason === "local_missing", "local missing is never absence");
+      if (result.kind === "absent") { const { mode: _mode, ...scope } = row.input[0]; same(result.scope, scope, "absence scope"); }
+      if (result.kind === "found") requireFact(result.externalRef === row.input[0].externalRef || row.input[0].externalRef === null, "found identity");
       passed(`readback ${result.kind}`);
     }
     for (const name of ["stockSync", "productSync"] as const) {
-      const supported = caps.operations[name === "stockSync" ? "syncStock" : "syncProducts"].supported;
-      const port = adapter[name]; const rows = fixtures[name] ?? [];
-      if (supported) requireFact(Boolean(port) && rows.length > 0, `${name} fixtures required`);
-      for (const fixture of rows) {
-        requireFact(Boolean(port), `${name} port required`);
-        let returned: unknown;
-        try {
-          // Dispatch a typed fixture tuple to its adapter-owned operation.
-          const method = (port as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>)[fixture.operation];
-          returned = await method.apply(port, fixture.input);
-        } catch (error) {
-          const refusal = error as FulfillmentRefusal;
-          requireFact(refusal.reason === "unsupported" && refusal.phase === "sync" && refusal.retryable === false, "typed unsupported sync refusal");
-          returned = { kind: "refused", refusal };
-        }
-        requireSame(returned, fixture.expected, `${name} ${fixture.operation}`); assertDurable(returned, subject);
-        if (!supported) requireFact(typeof returned === "object" && returned !== null && "kind" in returned && returned.kind === "refused", "unsupported sync");
-        passed(`${name} ${fixture.operation}`);
+      const capability = name === "stockSync" ? "syncStock" : "syncProducts", supported = caps.operations[capability].supported;
+      if (supported) requireFact(fixtures[name]?.length, `${name} fixtures required`);
+      for (const [i, row] of (fixtures[name] ?? []).entries()) { const expected = row.expected as { kind?: string; refusal?: FulfillmentRefusal } | null;
+        await witness({ op: row.operation, capability, slotId: `${name}:${i}`, input: row.input, ...(expected?.kind === "refused" ? { throws: expected.refusal! } : { expected: row.expected }), zero: !supported && mode === "full" ? "unsupported sync before I/O" : undefined, label: `${name} ${row.operation}` }); passed(`${name} ${row.operation}`);
       }
     }
+    if (mode === "full") {
+      if (profile === "adapter") {
+        if (kit!.dispatchRefusal) await witness({ op: "dispatch", capability: "dispatch", slotId: "unsupportedDispatch", ...kit!.dispatchRefusal, zero: "unsupported dispatch before I/O", label: "unsupported dispatch" });
+        for (const [operation, reason] of [["cancel", "provider_cancel_unsupported"], ["independentSplit", "independent_split_unsupported"], ["reservations", "provider_reservations_unsupported"], ["pickupPointDelivery", "pickup_point_delivery_unsupported"]] as const) {
+          ports.native = async () => readFulfillmentCapabilities([caps], first.input.selection, { operation });
+          await witness({ op: "native", capability: operation === "cancel" ? "cancel" : operation === "pickupPointDelivery" && !caps.operations.pickupPoint.supported ? "pickupPoint" : `native:${operation}`, slotId: `native:${operation}`, input: [], expected: { kind: "refused", refusal: { reason, phase: "selection", retryable: false } }, zero: `native ${reason} before I/O`, label: `native ${reason}` }); passed(`native refusal:${reason}`);
+        }
+        ports.native = async () => readFulfillmentCapabilities([caps], first.input.selection, { format: "application/zpl" });
+        await witness({ op: "native", capability: "native:format", slotId: "native:format", input: [], expected: { kind: "refused", refusal: { reason: "label_format_unsupported", phase: "selection", retryable: false } }, zero: "native format before I/O", label: "native label_format_unsupported" }); passed("native refusal:label_format_unsupported");
+        if (kit!.observation) for (const name of ["duplicate", "outOfOrder"] as const) for (const [i, index] of kit!.observation[name].entries()) await observe(index, `${name}:${i}`, false);
+        for (const name of ["stockSync", "productSync"] as const) for (const row of (kit![name] ?? []) as NonNullable<NonNullable<FulfillmentAdapterTestSubject["certification"]>[typeof name]>) for (const role of ["success", "failure"] as const) await witness({ op: row.operation, capability: name === "stockSync" ? "syncStock" : "syncProducts", slotId: `full:${row.operation}:${role}`, ...row[role], positive: role === "success", label: `full ${row.operation}` });
+        if (kit!.paging) for (const name of ["full", "short", "empty", "exhausted", "failure"] as const) await witness({ op: "page", capability: "readback", slotId: `paging:${name}`, input: [kit!.paging[name].input], expected: kit!.paging[name].expected, positive: name === "full" || name === "short", label: `full paging ${name}` });
+        if (caps.operations.exactAbsence.supported) for (const kind of ["absent", "unknown"] as const) {
+          const row = fixtures.readback?.find(row => row.expected.kind === kind); requireFact(row, "full authoritative absence and failure required");
+          await witness({ op: "readback", capability: "exactAbsence", slotId: `exactAbsence:${kind}`, input: row.input, expected: row.expected, label: "exactAbsence fixture" });
+        }
+        if (!caps.operations.exactAbsence.supported) await witness({ op: "readback", capability: "exactAbsence", slotId: "exactAbsence:refusal", input: [{ ...fixtures.readback![0]!.input[0], externalRef: null }], expected: { kind: "unsupported", refusal: unsupported("readback") }, zero: "unsupported exactAbsence before I/O", label: "exactAbsence refusal" });
+        if (kit!.snapshotOnly) { let movementCalls = 0;
+          ports.native = async () => { const result = await runFulfillmentStockSyncWorker({ stockMovements: false, movementBatchSize: 1, now: () => new Date("2026-01-01T00:00:00Z"), compatibility: { syncRunId: () => "offline", timeZone: "UTC", staleEvidenceSku: "sentinel", currentKey: () => "current", snapshotKey: () => "snapshot", lowStockKey: () => "low", staleKey: () => "stale" }, provider: { getStock: async () => [], getStockMovements: async () => { movementCalls++; return []; } }, port: { readCursor: async () => null, recordCursor: async () => {}, readLocalInventoryStock: async () => [], readSkuInventoryClasses: async () => new Map(), readActiveReservations: async () => new Map(), recordStockSnapshot: async () => ({ replayed: false, readBack: true }), recordProviderStockCurrent: async () => ({ replayed: false, readBack: true }), recordMovement: async () => ({ replayed: false, readBack: true }), recordLowStockEvidence: async () => ({ replayed: false }), resolveLowStockEvidence: async () => ({ resolved: 0 }) } }); requireFact(movementCalls === 0, "snapshot-only no movement I/O"); return { kind: "refused", refusal: result.movementRefusal }; };
+          await witness({ op: "native", capability: "native:movements", slotId: "native:movements", input: [], expected: { kind: "refused", refusal: { reason: "stock_movements_unsupported", phase: "sync", retryable: false } }, zero: "snapshot-only provider I/O", label: "full snapshot-only refusal" }); passed("native refusal:stock_movements_unsupported");
+        }
+      }
+      checkFull(caps, freeze(ledger), profile); passed(profile === "adapter" ? "full:adapter (offline; no durable host qualification)" : "full:dispatch-only (no other capability certified)");
+    }
     if (subject.store) { await checkStore(subject); passed("store G14 replay, own-key remap and one-remap bound"); }
-    assertDurable({ subjectId: subject.subjectId, providerRef: caps.providerRef }, subject);
-    evidence.push({ subjectId: subject.subjectId, providerRef: caps.providerRef });
+    assertDurable({ subjectId: subject.subjectId, providerRef: caps.providerRef }, subject); evidence.push({ subjectId: subject.subjectId, providerRef: caps.providerRef });
+    qualifications.push({ subjectId: subject.subjectId, profile, capabilityDigest: createHash("sha256").update(JSON.stringify(caps)).digest("hex"), ledger: ledger.map(({ capability, role, slotId, ioDelta, faultLogDelta }) => ({ capability, role, slotId, ioDelta, faultLogDelta })), declarations: PORTLESS_CAPABILITIES.filter(capability => !caps.operations[capability].supported).map(capability => ({ capability, declared: "unsupported", probe: "no_port" })) });
   }
-  return { subjects: evidence, cases };
+  return { subjects: evidence, cases, mode, qualifications };
 }
 
+function validateFull(data: { capabilities: FulfillmentCapabilityDescriptor; fixtures: Subject["fixtures"]; certification?: FulfillmentAdapterTestSubject["certification"] }, profile: string): void {
+  const { capabilities: caps, fixtures, certification: kit } = data;
+  requireFact(kit, "full certification fixtures required");
+  for (const capability of [...PORTLESS_CAPABILITIES, "cancel"] as const) requireFact(!caps.operations[capability].supported, `capability_not_certifiable:${capability}`);
+  if (profile === "adapter") {
+  requireFact(!caps.operations.exactAbsence.supported || caps.operations.readback.supported, "capability_not_certifiable:exactAbsence without readback");
+  for (const [capability, rows] of [["labelCreate", fixtures.label?.create], ["labelRead", fixtures.label?.read], ["labelVoid", fixtures.label?.void], ["verifyObservation", fixtures.observation], ["readback", fixtures.readback], ["syncStock", fixtures.stockSync], ["syncProducts", fixtures.productSync]] as const) {
+    if (!caps.operations[capability].supported) requireFact(rows?.length, `full unsupported ${capability} refusal probe required`);
+  }
+  }
+  const indices = (values: number[], length: number, label: string) => requireFact(values.every(value => Number.isInteger(value) && value >= 0 && value < length) && new Set(values).size === values.length, `validation:scenario_indices:${label}`);
+  if (kit.dispatch) {
+    const scenarios = kit.dispatch;
+    indices([scenarios.addressBeforeSubmission, scenarios.addressAfterSubmission, ...transportNames.map(name => scenarios.transport[name].fixture)], fixtures.dispatch.length, "dispatch");
+    const before = fixtures.dispatch[scenarios.addressBeforeSubmission]!;
+    requireFact(before.expectedPrepare.kind === "refused" && before.expectedPrepare.refusal.reason === "not_dispatchable", "full address before submission");
+    requireFact(before.input.lines.length && before.input.lines.every(line => line.skuRef.trim() && line.quantity > 0) && [before.input.recipient.line1, before.input.recipient.city, before.input.recipient.postalCode, before.input.recipient.country].some(value => !value.trim()), "full address invalid with valid items");
+  }
+  if (kit.observation) {
+    indices([...kit.observation.duplicate, ...kit.observation.outOfOrder, kit.observation.authenticationFailure], fixtures.observation?.length ?? 0, "observation");
+    same(fixtures.observation![kit.observation.duplicate[0]]!.input, fixtures.observation![kit.observation.duplicate[1]]!.input, "full duplicate input");
+  }
+  if (kit.exceptions) indices([kit.exceptions.returned, kit.exceptions.lostCoarse], fixtures.readback?.length ?? 0, "exceptions");
+  if (profile === "dispatch-only") { requireFact(caps.operations.dispatch.supported && Object.entries(caps.operations).every(([key, value]) => key === "dispatch" || !value.supported), "dispatch-only capability profile"); return; }
+  if (caps.operations.dispatch.supported) requireFact(kit.dispatch, "full dispatch scenarios required");
+  if (caps.operations.verifyObservation.supported) requireFact(kit.observation, "full observation scenarios required");
+  if (caps.operations.readback.supported) { requireFact(kit.exceptions, "full exception fixtures required"); requireFact(kit.paging, "full numbered paging fixtures required"); }
+  for (const name of ["stockSync", "productSync"] as const) if (caps.operations[name === "stockSync" ? "syncStock" : "syncProducts"].supported) {
+    const ops = name === "stockSync" ? ["getStock", ...(caps.stockMovements === false ? [] : ["getStockMovements"])] : ["ensureProduct", "getProductPacks", "addProductPack", "listStockedSkus"];
+    requireFact(ops.every(op => kit[name]?.filter(row => row.operation === op).length === 1), `full ${name} witnesses required`);
+  }
+  if (caps.operations.syncStock.supported || caps.stockMovements === false) requireFact(kit.snapshotOnly, "full snapshot-only refusal probe required");
+}
+/** Pure coverage and scenario checks. Only recorded invocations are visible here. */
+function checkFull(caps: FulfillmentCapabilityDescriptor, ledger: readonly Entry[], profile: string): void {
+  const entries = (capability: string) => ledger.filter(row => row.capability === capability);
+  const slot = (id: string) => { const row = ledger.find(row => row.slotId === id); requireFact(row, `full scenario_witness_missing:${id}`); return row; };
+  const success = (row: Entry) => row.role === "success", failure = (row: Entry) => row.role === "failure";
+  for (const [capability, declared] of Object.entries(caps.operations)) {
+    if (PORTLESS_CAPABILITIES.some(value => value === capability) || (profile === "dispatch-only" && capability !== "dispatch")) continue;
+    const rows = entries(capability);
+    if (declared.supported) requireFact(rows.some(row => success(row) && (capability !== "dispatch" || row.kind === "accepted")) && rows.some(row => failure(row) && (capability !== "dispatch" || row.kind === "not_dispatched")), `full ${capability} success and failure required`);
+    else requireFact(rows.some(row => row.role === "refusal" && row.ioDelta === 0), `full unsupported ${capability} refusal probe required`);
+  }
+  requireFact(ledger.some(row => row.slotId.startsWith("prepare:") && row.kind === "refused"), "full preparation refusal required");
+  if (caps.operations.dispatch.supported) requireFact(ledger.some(row => row.slotId.startsWith("replay:") && row.kind === "unknown" && row.replay), "full unknown replay required");
+  if (profile === "dispatch-only") return;
+  if (caps.operations.dispatch.supported) {
+    requireFact(slot("prepare:addressBefore").kind === "refused", "full address before submission");
+    const after = slot("dispatch:addressAfter"), result = after.value as z.output<typeof results.dispatch>;
+    requireFact(result.kind === "not_dispatched" && result.error?.submissionAttempted === true && result.error.mayHaveSucceeded === false, "full address after submission"); requireFact(after.ioDelta === 1, "full address after submission I/O");
+    for (const name of transportNames) { const row = slot(`dispatch:${name}`), result = row.value as z.output<typeof results.dispatch>, uncertain = name !== "transport-before-submission";
+      requireFact(row.faultLogDelta.length === 1 && row.faultLogDelta[0]!.kind === name, `full ${name} injected fault required for dispatch invocation`);
+      requireFact(result.kind === (uncertain ? "unknown" : "not_dispatched") && result.error?.mayHaveSucceeded === uncertain && result.error.submissionAttempted === uncertain, `full ${name} uncertainty`);
+      requireFact(row.ioDelta === (uncertain ? 1 : 0), `full ${name} submission I/O`); if (name === "http-failure") requireFact((result.error?.status ?? 0) >= 500, "full HTTP 5xx");
+    }
+  }
+  if (caps.operations.verifyObservation.supported) {
+    const observed = (id: string) => { const row = slot(id), value = row.value as z.output<typeof results.observation>; requireFact(value.kind === "verified", "full verified status required"); return value.observation; };
+    same(observed("duplicate:0"), observed("duplicate:1"), "full duplicate status"); const newer = observed("outOfOrder:0"), older = observed("outOfOrder:1");
+    requireFact(newer.eventKey !== older.eventKey && Date.parse(newer.fact.occurredAt ?? "") > Date.parse(older.fact.occurredAt ?? ""), "full out-of-order chronology supplied");
+    same({ correlation: newer.correlation, provider: newer.fact.providerKind, fulfillment: newer.fact.fulfillmentReference }, { correlation: older.correlation, provider: older.fact.providerKind, fulfillment: older.fact.fulfillmentReference }, "full out-of-order same shipment");
+    const auth = slot("observation:auth").value as z.output<typeof results.observation>; requireFact(auth.kind === "refused" && auth.refusal.reason === "untrusted" && auth.refusal.phase === "verify", "full authentication refusal");
+  }
+  if (caps.operations.readback.supported) { for (const name of ["returned", "lostCoarse"] as const) { const result = slot(`exception:${name}`).value as z.output<typeof results.readback>; requireFact(result.kind === "found" && result.observation.fact.canonicalStatus === "exception", `full ${name} coarse exception`); }
+    requireFact(entries("readback").some(row => row.kind === "unknown" && (row.value as { refusal: FulfillmentRefusal }).refusal.reason === "local_missing"), "full unknown versus absent");
+    for (const name of ["full", "short", "empty"] as const) { const row = slot(`paging:${name}`), result = row.value as z.output<typeof results.page>, size = (row.input[0] as { size: number }).size;
+      requireFact(result.kind === "page" && (name === "full" ? result.rows.length === size : name === "empty" ? result.rows.length === 0 : result.rows.length > 0 && result.rows.length < size), `full paging ${name} shape`); }
+  }
+}
 async function checkStore(subject: Subject): Promise<void> {
   const fixture = subject.store!;
-  const store = await fixture.create();
+  type Store = Awaited<ReturnType<typeof fixture.create>>;
+  const create = () => invokeData(() => fixture.create(), raw => Object.fromEntries((["read", "readCandidate", "prepare", "claim", "recordProviderAttempt", "begin", "finalize", "acknowledge", "markStaleSubmissionsUncertain", "readMappedAttempts"] as const).map(key => {
+    const invoke = method(raw as Store, key) as (...args: unknown[]) => Promise<unknown>;
+    return [key, (...args: unknown[]) => invokeData(() => invoke(...snapshot(args)), snapshot)];
+  })) as unknown as Store);
+  const store = await create();
   const first = await store.claim(fixture.claim);
-  requireFact(first.kind === "claimed", "store initial claim");
+  requireFact(storeResult("claim", first, subject).kind === "claimed", "store initial claim");
   const replay = await store.claim(fixture.claim);
-  requireFact(replay.kind === "claimed" && replay.record.replayed, "store same-key claim replay");
+  requireFact(storeResult("claim", replay, subject).kind === "claimed" && replay.kind === "claimed" && replay.record.replayed, "store same-key claim replay");
   const attempt = () => store.recordProviderAttempt(fixture.mappedAttemptKey, fixture.claim.fulfillmentRef, fixture.claim.evidence, fixture.claim.mode, "recorded");
-  requireFact(!(await attempt()).replayed && (await attempt()).replayed, "G14 same key replays");
+  requireFact(storeResult("attempt", await attempt(), subject).kind === "recorded" && storeResult("attempt", await attempt(), subject).kind === "replayed", "G14 same key replays");
   requireFact(fixture.mappedAttemptKey !== fixture.remappedAttemptKey, "G14 remap own key");
   requireFact(fixture.claim.requestKey === fixture.remappedClaim.requestKey && fixture.claim.evidence.commandFingerprint !== fixture.remappedClaim.evidence.commandFingerprint, "draft remap fixture");
   const remap = await store.claim(fixture.remappedClaim);
-  requireFact(remap.kind === "claimed", "draft re-claim");
+  requireFact(storeResult("claim", remap, subject).kind === "claimed", "draft re-claim");
   const row = await store.read(fixture.claim.requestKey);
-  requireSame(row?.evidence, fixture.remappedClaim.evidence, "atomic remap fingerprint and evidence");
+  same(row?.evidence, fixture.remappedClaim.evidence, "atomic remap fingerprint and evidence");
   assertDurable(row, subject);
-  requireFact(!(await store.recordProviderAttempt(fixture.remappedAttemptKey, fixture.claim.fulfillmentRef, fixture.remappedClaim.evidence, fixture.claim.mode, "recorded")).replayed, "G14 new mapped attempt");
+  requireFact(storeResult("attempt", await store.recordProviderAttempt(fixture.remappedAttemptKey, fixture.claim.fulfillmentRef, fixture.remappedClaim.evidence, fixture.claim.mode, "recorded"), subject).kind === "recorded", "G14 new mapped attempt");
   const attempts = await store.readMappedAttempts();
   requireFact(attempts.length === 2, "G14 no duplicate durable attempts");
-  requireSame(attempts.map(row => row.attemptKey).sort(), [fixture.mappedAttemptKey, fixture.remappedAttemptKey].sort(), "G14 durable remap identity");
+  same(attempts.map(row => row.attemptKey).sort(), [fixture.mappedAttemptKey, fixture.remappedAttemptKey].sort(), "G14 durable remap identity");
   for (const attempt of attempts) {
-    requireSame(attempt.preparedEvidence, dispatchEvidence(attempt.preparedEvidence), "G14 sanitized evidence only");
+    same(attempt.preparedEvidence, dispatchEvidence(attempt.preparedEvidence), "G14 sanitized evidence only");
     assertDurable(attempt, subject);
   }
   const stale = await store.begin({ dispatchRef: row!.dispatchRef, commandFingerprint: fixture.claim.evidence.commandFingerprint });
-  requireFact(stale.kind === "refused", "stale prepared command refuses");
+  requireFact(storeResult("begin", stale, subject).kind === "refused", "stale prepared command refuses");
   let claims = 0; let calls = 0; let reads = 0;
   const bounded = await runFulfillmentDispatchWorker({
-    store: { ...await fixture.create(), async read() { return null; }, async readCandidate() { reads += 1; return reads === 1 ? fixture.request : fixture.remappedRequest; },
+    store: { ...await create(), async read() { return null; }, async readCandidate() { reads += 1; return reads === 1 ? fixture.request : fixture.remappedRequest; },
       async claim() { claims += 1; return { kind: "refused", refusal: { reason: "contact_stale", phase: "claim", retryable: true } }; } },
-    provider: { prepare: request => subject.adapter.dispatch.prepare(request), async dispatch() { calls += 1; throw new Error("unexpected dispatch"); } },
+    provider: { prepare: request => invokeData(() => subject.adapter.dispatch.prepare(snapshot(request)), raw => snapshot(raw) as Awaited<ReturnType<Subject["adapter"]["dispatch"]["prepare"]>>), async dispatch() { calls += 1; throw new Error("unexpected dispatch"); } },
     listCandidates: async () => [fixture.request], config: { mode: "stage", batchLimit: 1 },
     keys: { request: () => fixture.claim.requestKey, mappedAttempt: (_key, index) => index === 0 ? fixture.mappedAttemptKey : fixture.remappedAttemptKey,
       acceptance: () => ({ providerAttemptKey: "fixture-attempt", labelKey: "fixture-label" }) },
   });
-  requireFact(claims === 2 && calls === 0 && !bounded.ok, "one-remap limit before I/O");
+  requireFact(storeResult("worker", bounded, subject).kind === "refused" && claims === 2 && calls === 0, "one-remap limit before I/O");
 }
 function assertDurable(value: unknown, subject: Subject): void {
   const text = JSON.stringify(value) ?? "";
@@ -186,10 +316,13 @@ function assertDurable(value: unknown, subject: Subject): void {
   };
   visit(value);
 }
-function stable(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(stable).join(",")}]`;
-  if (value && typeof value === "object") return `{${Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, child]) => `${JSON.stringify(key)}:${stable(child)}`).join(",")}}`;
-  return JSON.stringify(value);
+// Optional platform-store probes assert their own contracts; they grant no adapter coverage.
+function storeResult(operation: string, value: unknown, subject: Subject): { kind: string } {
+  const result = snapshot(value) as Record<string, unknown>; assertDurable(result, subject);
+  if (operation === "claim" || operation === "begin") {
+    const kind = result.kind; requireFact(typeof kind === "string" && (kind === "refused" || kind === (operation === "claim" ? "claimed" : "begun")), `${operation} contradictory result`);
+    requireFact(kind === "refused" ? Object.keys(result).every(key => ["kind", "refusal"].includes(key)) && refusal.safeParse(result.refusal).success : !Object.hasOwn(result, "refusal") && Boolean(result.record), `${operation} contradictory result`); return { kind };
+  }
+  if (operation === "attempt") { requireFact(typeof result.replayed === "boolean" && Object.keys(result).every(key => key === "replayed"), "attempt contradictory result"); return { kind: result.replayed ? "replayed" : "recorded" }; }
+  requireFact(typeof result.ok === "boolean" && !Object.hasOwn(result, "refusal"), "worker contradictory result"); return { kind: result.ok ? "completed" : "refused" };
 }
-function requireSame(actual: unknown, expected: unknown, label: string): void { requireFact(stable(actual) === stable(expected), label); }
-function requireFact(value: boolean, label: string): asserts value { if (!value) throw new Error(`fulfillment_adapter_conformance:${label}`); }
