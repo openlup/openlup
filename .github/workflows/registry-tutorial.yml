@@ -243,9 +243,11 @@ jobs:
           if-no-files-found: error
           retention-days: 90
       - name: Remove qualification PostgreSQL
-        if: always() && steps.postgres.outputs.container != ''
+        if: always()
         run: |
-          docker rm -f exact-set-postgres
+          docker ps -a --filter label=com.docker.compose.project --format '{{.ID}} {{.Label "com.docker.compose.project"}}' | awk '$2 ~ /^canary-/ {print $1}' | xargs -r docker rm -fv
+          docker volume ls --filter label=com.docker.compose.project --format '{{.Name}} {{.Label "com.docker.compose.project"}}' | awk '$2 ~ /^canary-/ {print $1}' | xargs -r docker volume rm
+          docker ps -aq --filter name=^exact-set-postgres$ | xargs -r docker rm -f
           rm -rf "$RUNNER_TEMP/exact-set-qualification.json.applications"
 
   publish-qualified-image:

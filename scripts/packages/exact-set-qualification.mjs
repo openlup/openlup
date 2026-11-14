@@ -299,7 +299,7 @@ export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = f
           database: { connectionString: url.toString() } });
         Object.assign(receipt.schemaUpgrade, proof);
         assert.equal(proof.result, 'PASS', 'released-pair schema compatibility failed');
-        // The BOM step grants the final PASS after binding these completed checks.
+        // The BOM step records provisional PASS; canary completion grants final qualification PASS.
       } catch (error) { receipt.error = error.message; throw error; }
       finally {
         try { if (admin) { try { await admin.query(`DROP DATABASE IF EXISTS ${database} WITH (FORCE)`); } finally { await admin.end(); } } }

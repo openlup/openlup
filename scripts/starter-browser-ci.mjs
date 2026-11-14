@@ -27,14 +27,17 @@ export function assertCanaryImage(manifest, expected, loaded, daemonManifest) {
 }
 
 /** The existing purchase spec and installed recovery witness, against the retained image. */
-export async function runStarterImageCanary(application, archive, imageDigest, evidence) {
-  const started = performance.now();
+export async function runStarterImageCanary(application, archive, imageDigest, evidence, {
+  command = (file, args, input) => execFileSync(file, args, { input, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024, stdio: ['pipe', 'pipe', 'pipe'] }),
+  pull = pullWithRetry, browserImage = resolveBrowserImage,
+} = {}) {
+  const started = performance.now(); let current = 'identity';
   const run = (file, args, input) => {
-    try { return execFileSync(file, args, { input, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024, stdio: ['pipe', 'pipe', 'pipe'] }); }
-    catch { throw new Error('starter_canary_command_failed'); }
+    try { return command(file, args, input); }
+    catch (error) { throw new Error(`starter_canary_${current}_${file}_failed_status_${error.status ?? 'unknown'}`); }
   };
   const phase = async (name, work) => {
-    const start = performance.now(); evidence[name] = { result: 'FAIL' };
+    const start = performance.now(); current = name; evidence[name] = { result: 'FAIL' };
     try { await work(); evidence[name].result = 'PASS'; }
     finally { evidence[name].durationMs = Math.round(performance.now() - start); }
   };
@@ -49,7 +52,7 @@ export async function runStarterImageCanary(application, archive, imageDigest, e
         run('skopeo', ['inspect', '--raw', `docker-daemon:${imageDigest}`]));
       evidence.imageDigest = imageDigest; evidence.configDigest = config;
       const postgres = readCiImage('test-postgres'); postgres.sources = postgres.sources.slice(0, 1);
-      const reference = await pullWithRetry(postgres), browser = await resolveBrowserImage();
+      const reference = await pull(postgres), browser = await browserImage();
       const scratch = await mkdtemp(join(dirname(application), 'canary-'));
       defer(() => rm(scratch, { recursive: true, force: true }));
       const hosts = [], installations = [];

@@ -247,6 +247,10 @@ describe("exact published-set qualification", () => {
     expect(step(qualification, "Qualify the exact published set")).toContain("timeout-minutes: 2");
     expect(qualification).not.toMatch(/secrets\.|continue-on-error|sleep|while|npm publish|release upload/);
     expect(step(qualification, "Retain the qualification receipt")).toContain('if: always()');
+    const cleanup = step(qualification, 'Remove qualification PostgreSQL');
+    expect(cleanup).toContain('if: always()\n');
+    for (const [list, field, remove] of [['ps -a', 'ID', 'rm -fv'], ['volume ls', 'Name', 'volume rm']])
+      expect(script(cleanup)).toContain(`docker ${list} --filter label=com.docker.compose.project --format '{{.${field}}} {{.Label "com.docker.compose.project"}}' | awk '$2 ~ /^canary-/ {print $1}' | xargs -r docker ${remove}`);
   });
 
   it("records a failed-by-default receipt and refuses malformed released inputs", () => {

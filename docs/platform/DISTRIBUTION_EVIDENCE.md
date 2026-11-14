@@ -260,7 +260,8 @@ closed verified set. Named refusals and deterministic/tamper cases are covered
 by the BOM witness below. The qualification job emits one BOM after its checks
 and retains it beside the receipt for 90 days. The schema stage leaves the overall
 receipt at FAIL with its completed schema result recorded separately; only the
-BOM step grants the final PASS after writing the BOM and its digest.
+BOM step records a provisional PASS after writing the BOM and its digest.
+Canary completion grants the final qualification PASS.
 
 The [BOM witness](../../scripts/packages/generate-release-bom.test.ts) also checks
 real npm archive payloads and member paths, public documentation and any tracked
@@ -348,7 +349,10 @@ The receipt's `canary` section records image/configuration identities, install,
 journey and recovery results and durations. A failed or interrupted stage cannot
 retain a final PASS. The existing 90-day qualification and publication artifacts
 retain the receipt; no release asset is created. The write job's existing
-qualification dependency blocks image publication on a failed canary.
+qualification dependency blocks image publication on a failed canary. Compose
+cleanup runs on success and failure; the job's existing `always()` cleanup also
+removes containers and volumes labelled with a `canary-*` Compose project after
+cancellation or a step timeout.
 This is development-preview qualification, not provider certification or stable
 support. The first-party demo store is separate adoption evidence.
 

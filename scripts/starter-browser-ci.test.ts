@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -7,7 +7,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { EventEmitter, once } from 'node:events';
 import { createHash } from 'node:crypto';
 import pg from 'pg';
-import { assertCanaryImage, acquireStarterPostgres, browserArguments, canaryPurchasePattern, capturePrivateValues, parseArguments, resolveBrowserImage, runBrowserGroups, scanPrivateOutput, withCleanup, withConnectionCleanup, writeBrowserFixtures, watchStarterHost } from './starter-browser-ci.mjs';
+import { assertCanaryImage, acquireStarterPostgres, browserArguments, canaryPurchasePattern, capturePrivateValues, parseArguments, resolveBrowserImage, runStarterImageCanary, runBrowserGroups, scanPrivateOutput, withCleanup, withConnectionCleanup, writeBrowserFixtures, watchStarterHost } from './starter-browser-ci.mjs';
 import { imageReference, readCiImage } from './ci-image-pull.mjs';
 import { browserJourneyGroups } from '../examples/neutral-store/browser-groups.mjs';
 
@@ -30,6 +30,38 @@ describe('installed starter browser CI', () => {
       [manifest, digest, loaded, JSON.stringify({ config: { digest } })]]) {
       expect(() => assertCanaryImage(bytes, expected, image, daemon)).toThrow('starter_canary_image_identity_mismatch');
     }
+  });
+  it.each([
+    ['PASS', '', ''], ['archive', 'identity', 'starter_canary_archive_mismatch'],
+    ['running', 'install', 'starter_canary_running_image_mismatch'], ['purchase', 'journey', 'starter_canary_purchase_results_missing'],
+    ['recovery', 'recovery', 'starter_canary_recovery_missing'], ['command', 'install', 'starter_canary_install_docker_failed_status_23'],
+  ])('drives the real image canary: %s', async (mode, failed, error) => {
+    const app = await mkdtemp(join(tmpdir(), 'canary-driver-')), calls: string[][] = [];
+    const config = 'sha256:' + 'b'.repeat(64), manifest = JSON.stringify({ config: { digest: config } });
+    const digest = 'sha256:' + createHash('sha256').update(manifest).digest('hex'), evidence = { result: 'FAIL' };
+    const command = (file: string, args: string[]) => {
+      calls.push([file, ...args]);
+      if (file === 'skopeo') return mode === 'archive' ? manifest + ' ' : manifest;
+      if (args[0] === 'image') return JSON.stringify([{ Id: config, Descriptor: { digest } }]);
+      if (args[0] === 'inspect') return JSON.stringify([{ Image: mode === 'running' ? digest : config }]);
+      if (args[0] === 'run') return mode === 'purchase' ? '1 passed' : '2 passed';
+      if (mode === 'command' && args.includes('up')) throw Object.assign(new Error('private output'), { status: 23 });
+      return args.includes('--input-type=module') && mode !== 'recovery' ? 'Portability installed canonical selected-row recovery PASS' : '';
+    };
+    try {
+      await mkdir(join(app, 'host')); await copyFile('examples/neutral-store/host/healthcheck.ts', join(app, 'host/healthcheck.ts'));
+      const work = runStarterImageCanary(app, 'retained.tar', digest, evidence, { command,
+        pull: async () => imageReference(readCiImage('test-postgres')), browserImage: async () => imageReference(readCiImage('starter-browser')) });
+      if (error) await expect(work).rejects.toThrow(new Error(error)); else await work;
+      expect(evidence).toMatchObject(mode === 'PASS' ? { result: 'PASS', imageDigest: digest, configDigest: config,
+        install: { result: 'PASS' }, journey: { result: 'PASS' }, recovery: { result: 'PASS' } }
+        : { result: 'FAIL', ...(failed === 'identity' ? {} : { [failed]: { result: 'FAIL' } }) });
+      const projects = (verb: string) => calls.filter(args => args.includes('compose') && args.includes(verb)).map(args => args[args.indexOf('--project-name') + 1]);
+      expect(projects('down')).toEqual([...new Set(projects('up'))].reverse());
+      for (const args of calls.filter(args => args.includes('down'))) expect(args.slice(-3)).toEqual(['down', '--volumes', '--remove-orphans']);
+      if (mode === 'archive') expect(calls.map(args => args[0])).toEqual(['skopeo']);
+      else expect(projects('down')).toHaveLength(['running', 'command'].includes(mode) ? 1 : 2);
+    } finally { await rm(app, { recursive: true, force: true }); }
   });
   afterEach(() => vi.unstubAllEnvs());
   it.each(['postgres_supplements', 'install_coffee', 'seed_supplements', 'runtime', 'host_coffee', 'cancelled'])('stops after an early group fails during %s', async phase => {
