@@ -4,10 +4,11 @@ import { execFileSync } from 'node:child_process';
 import { createHash, X509Certificate } from 'node:crypto';
 import { cpSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { env } from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { imageReference, readCiImage } from '../ci-image-pull.mjs';
+import { normalizeReleaseSbom } from '../../packages/core/scripts/release-bundle.ts';
+import { imageReference, pullWithRetry, readCiImage } from '../ci-image-pull.mjs';
 import { previousPublishedSet, proveDistributionCliConsumer } from './distribution-cli-proof.ts';
 import { assertInstalledPackages, isolatedConsumerEnv } from './pack-manifest-input.ts';
 import { generateExactSetReleaseBom } from './generate-release-bom.ts';
@@ -205,23 +206,61 @@ export function buildQualifiedImage(application, commit, archive) {
   return { name, platform: 'linux/amd64', manifestDigest: `sha256:${sha256(raw)}`, baseImageDigest: base.digest };
 }
 
+/** Inventory the verified lock and the same single-manifest archive that the BOM binds. */
+export async function qualifiedSboms(application, commit, archive, image, packages, output) {
+  const npmVersion = execFileSync('npm', ['--version'], { encoding: 'utf8' }).trim();
+  assert.equal(npmVersion, '11.19.0');
+  const raw = execFileSync('npm', ['sbom', '--sbom-format', 'cyclonedx', '--package-lock-only'], { cwd: application, maxBuffer: 32 * 1024 * 1024 });
+  const timestamp = new Date(Number(execFileSync('git', ['show', '-s', '--format=%ct', commit], { cwd: root, encoding: 'utf8' }).trim()) * 1000).toISOString();
+  const sbom = normalizeReleaseSbom(JSON.parse(raw), json(join(application, 'package.json')), basename(application), timestamp);
+  assertSbomPackages(sbom, packages);
+  const packageBytes = JSON.stringify(sbom, null, 2) + '\n';
+  writeFileSync(output + '.packages.cdx.json', packageBytes);
+  assert.equal('sha256:' + sha256(execFileSync('skopeo', ['inspect', '--raw', `oci-archive:${archive}`])), image.manifestDigest, 'sbom_image_digest_mismatch');
+  const scanner = readCiImage('qualification-syft'); scanner.sources = scanner.sources.slice(0, 1);
+  const reference = await pullWithRetry(scanner);
+  const scan = args => execFileSync('docker', ['run', '--rm', '--pull=never', '--network=none', '--mount', `type=bind,src=${resolve(archive)},dst=/image.tar,readonly`, reference, ...args], { maxBuffer: 32 * 1024 * 1024 });
+  const version = JSON.parse(scan(['version', '-o', 'json'])).version;
+  assert.equal('v' + version, scanner.tag, 'sbom_scanner_version_mismatch');
+  const imageBytes = scan(['scan', 'oci-archive:/image.tar', '-o', 'cyclonedx-json']);
+  assert.equal(JSON.parse(imageBytes).bomFormat, 'CycloneDX', 'sbom_image_format_mismatch');
+  writeFileSync(output + '.image.cdx.json', imageBytes);
+  return { packages: { sha256: sha256(packageBytes), tool: { name: 'npm', version: npmVersion } },
+    image: { sha256: sha256(imageBytes), subjectDigest: image.manifestDigest, tool: { name: 'syft', version, imageDigest: scanner.digest } } };
+}
+
+export function assertSbomPackages(sbom, packages) {
+  const seen = new Set();
+  for (const component of sbom.components ?? []) {
+    const identity = decodeURIComponent(component.purl ?? '').replace(/^pkg:npm\//u, '');
+    const name = component.group === '@openlup' ? component.group + '/' + component.name : component.name?.startsWith('@openlup/') ? component.name : identity.slice(0, identity.lastIndexOf('@'));
+    if (!name?.startsWith('@openlup/')) continue;
+    const expected = packages.find(pkg => pkg.name === name);
+    if (!expected || component.purl !== `pkg:npm/%40openlup/${name.slice(9)}@${expected.version}` || component.version !== expected.version || !component.hashes?.some(hash => hash.alg === 'SHA-512' && hash.content === Buffer.from(expected.integrity.slice(7), 'base64').toString('hex'))) refuse(`sbom_package_mismatch: ${name}`);
+    seen.add(name);
+  }
+  for (const { name } of packages) if (!seen.has(name)) refuse(`sbom_package_missing: ${name}`);
+}
+
 export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = false, schema = false, bom = false) {
   const receipt = upgrade || schema || bom ? json(receiptPath) : qualificationReceipt(tag, expectedCommit);
   const applicationsPath = resolve(receiptPath + '.applications');
   if (bom) {
     const qualified = receipt.result === 'FAIL';
-    receipt.result = 'FAIL'; receipt.endedAt = null; delete receipt.bom; delete receipt.image;
+    receipt.result = 'FAIL'; receipt.endedAt = null; delete receipt.bom; delete receipt.image; delete receipt.sbom;
     writeFileSync(receiptPath, JSON.stringify(receipt, null, 2) + '\n');
-    try {
+    const run = async () => { try {
       assert(qualified && receipt.upgrade?.result === 'PASS' && receipt.schemaUpgrade?.result === 'PASS' && receipt.tag === tag && receipt.tagCommit === expectedCommit, 'release-bom: qualification_incomplete_or_mismatched');
       const application = join(applicationsPath, '1/application');
       receipt.image = { ...buildQualifiedImage(application, expectedCommit, receiptPath + '.image.tar'), publishResult: 'refused', registryReadback: null };
+      receipt.sbom = await qualifiedSboms(application, expectedCommit, receiptPath + '.image.tar', receipt.image, receipt.packages, receiptPath);
       const bytes = JSON.stringify(generateExactSetReleaseBom(root, application, receipt), null, 2) + '\n';
       writeFileSync(receiptPath + '.bom.json', bytes);
       receipt.bom = { sha256: sha256(bytes) }; receipt.result = 'PASS';
     } catch (error) { receipt.error = error.message; throw error; }
     finally { receipt.endedAt = new Date().toISOString(); writeFileSync(receiptPath, JSON.stringify(receipt, null, 2) + '\n'); }
-    return receipt;
+    return receipt; };
+    return run();
   }
   if (schema) {
     const started = receipt.result === 'FAIL' && receipt.schemaUpgrade?.result === 'FAIL' && receipt.schemaUpgrade.startedAt;

@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
-import { assertReleaseProvenance, buildQualifiedImage, proveNeutralStarterConsumer, qualificationReceipt, qualifyReleasedSet, verifiedReleasePackages } from "./exact-set-qualification.mjs";
+import { assertReleaseProvenance, assertSbomPackages, buildQualifiedImage, proveNeutralStarterConsumer, qualificationReceipt, qualifyReleasedSet, verifiedReleasePackages } from "./exact-set-qualification.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const workflow = readFileSync(join(ROOT, ".github/workflows/registry-tutorial.yml"), "utf8");
@@ -366,8 +366,8 @@ describe("qualified image publication", () => {
   it("isolates writes from candidate execution and defaults dispatch to verification only", () => {
     expect(publish).toContain("needs: exact-set-qualification");
     expect(publish).toContain("if: ${{ needs.exact-set-qualification.result == 'success' }}");
-    expect(permissionBlocks(publish)).toEqual(["    permissions: {packages: write}\n"]);
-    expect(publish).not.toMatch(/checkout@|setup-node@|npm |id-token|attestations|timeout|sleep|retry/u);
+    expect(permissionBlocks(publish)).toEqual(["    permissions: {packages: write, attestations: write, id-token: write}\n"]);
+    expect(publish).not.toMatch(/checkout@|setup-node@|npm |timeout|sleep|retry/u);
     expect(workflow).toContain("type: boolean\n        default: false");
     expect(publish).toContain("github.event_name == 'workflow_run' || inputs.publish_image == true");
     expect(body).toContain('skopeo copy --preserve-digests');
@@ -380,7 +380,7 @@ describe("qualified image publication", () => {
   it.each(["published", "existing", "skipped-dispatch", "archive-mismatch", "tag-move", "readback-mismatch", "denied", "bom-mismatch"])("checks archive, immutable tag and registry equality: %s", mode => {
     const directory = mkdtempSync(join(tmpdir(), "qualified-image-")), input = join(directory, "qualified-image"); mkdirSync(input);
     const manifest = '{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json"}', digest = "sha256:" + createHash("sha256").update(manifest).digest("hex");
-    const bom = JSON.stringify({ formatVersion: 3, kind: "openlup-exact-set-bom", setVersion: "0.41.0", image: { name: "ghcr.io/openlup/neutral-store-starter", platform: "linux/amd64", manifestDigest: digest } });
+    const bom = JSON.stringify({ formatVersion: 4, kind: "openlup-exact-set-bom", setVersion: "0.41.0", image: { name: "ghcr.io/openlup/neutral-store-starter", platform: "linux/amd64", manifestDigest: digest } });
     writeFileSync(join(input, "exact-set-qualification.json.bom.json"), bom);
     writeFileSync(join(input, "exact-set-qualification.json"), JSON.stringify({ result: "PASS", image: { manifestDigest: digest }, bom: { sha256: mode === "bom-mismatch" ? "wrong" : createHash("sha256").update(bom).digest("hex") } }));
     writeFileSync(join(directory, "skopeo"), `#!/bin/bash
@@ -395,17 +395,55 @@ case "$1" in
     else echo 'manifest unknown' >&2; exit 1; fi;;
 esac
 `); chmodSync(join(directory, "skopeo"), 0o700);
+    writeFileSync(join(directory, "docker"), "#!/bin/bash\ncat >/dev/null\n"); chmodSync(join(directory, "docker"), 0o700);
     try {
-      const env = { ...Reflect.get(process, "env"), PATH: directory + ":" + Reflect.get(process, "env").PATH, RUNNER_TEMP: directory, RELEASE_TAG: "openlup-core-v0.41.0", PUBLISH_IMAGE: String(mode !== "skipped-dispatch"), GHCR_TOKEN: "synthetic", GHCR_ACTOR: "fixture", MODE: mode,
+      const env = { ...Reflect.get(process, "env"), PATH: directory + ":" + Reflect.get(process, "env").PATH, RUNNER_TEMP: directory, RELEASE_TAG: "openlup-core-v0.41.0", PUBLISH_IMAGE: String(mode !== "skipped-dispatch"), GHCR_TOKEN: "synthetic", GHCR_ACTOR: "fixture", GITHUB_OUTPUT: join(directory, "output"), MODE: mode,
         ARCHIVE_MANIFEST: mode === "archive-mismatch" ? "altered" : manifest, READBACK_MANIFEST: mode === "readback-mismatch" ? "altered" : manifest, REGISTRY_MANIFEST: mode === "tag-move" ? "altered" : manifest };
       const run = spawnSync("bash", ["-e", "-o", "pipefail", "-c", body], { env, encoding: "utf8" });
       const success = ["published", "existing", "skipped-dispatch"].includes(mode), receipt = JSON.parse(readFileSync(join(input, "exact-set-qualification.json"), "utf8"));
       expect(run.status, run.stderr).toBe(success ? 0 : 1);
       expect(receipt.image.publishResult).toBe(success ? mode === "skipped-dispatch" ? mode : "published" : "refused");
-      expect(receipt.result).toBe(success ? "PASS" : "FAIL");
+      expect(receipt.result).toBe(mode === "skipped-dispatch" ? "PASS" : "FAIL");
+      expect(receipt.image.attestation.result).toBe(mode === "skipped-dispatch" ? mode : "FAIL");
       expect(existsSync(join(directory, "pushed"))).toBe(["published", "existing", "readback-mismatch"].includes(mode));
       if (success && mode !== "skipped-dispatch") expect(receipt.image.registryReadback).toBe(digest);
       if (mode === "tag-move") expect(run.stdout).toContain("qualified_image_tag_move_refused");
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+});
+
+// npm 11 CycloneDX response shape; fixture values are synthetic.
+describe("locked package SBOM identity", () => {
+  const pkg = { name: "@openlup/core", version: "0.41.0", integrity: "sha512-" + Buffer.alloc(64, 1).toString("base64") };
+  it.each(["valid", "version", "integrity", "extra", "missing"])("checks %s OpenLup components by name", kind => {
+    const component = { name: "core", version: kind === "version" ? "0.40.0" : pkg.version, purl: "pkg:npm/%40openlup/core@0.41.0", hashes: [{ alg: "SHA-512", content: Buffer.alloc(64, kind === "integrity" ? 2 : 1).toString("hex") }] };
+    const sbom = { components: kind === "missing" ? [] : [component, ...(kind === "extra" ? [{ ...component, purl: "pkg:npm/%40openlup/extra@0.41.0" }] : [])] };
+    if (kind === "valid") expect(() => assertSbomPackages(sbom, [pkg])).not.toThrow();
+    else expect(() => assertSbomPackages(sbom, [pkg])).toThrow(kind === "extra" ? "@openlup/extra" : "@openlup/core");
+  });
+});
+
+// Projection of gh 2.103.3 verifying sigstore@2.1.0 with the CLI repository bundle fixture.
+// Subject, source and signer values are replaced with synthetic qualification identities.
+describe("image attestation verification", () => {
+  it.each(["valid", "subject", "signer", "source", "unverified"])("refuses %s verification mismatches and retains the detached bundle hash", kind => {
+    const directory = mkdtempSync(join(tmpdir(), "image-attestation-")), input = join(directory, "qualified-image"); mkdirSync(input);
+    const digest = "a".repeat(64), receipt = join(input, "exact-set-qualification.json"), bundle = join(directory, "bundle.json");
+    writeFileSync(receipt, JSON.stringify({ result: "FAIL", image: {} })); writeFileSync(bundle, "synthetic bundle");
+    writeFileSync(receipt + ".bom.json", JSON.stringify({ image: { manifestDigest: "sha256:" + digest } }));
+    const fixture = [{ verificationResult: { statement: { predicateType: "https://slsa.dev/provenance/v1", subject: [{ name: "ghcr.io/openlup/neutral-store-starter", digest: { sha256: kind === "subject" ? "b".repeat(64) : digest } }] }, signature: { certificate: {
+      sourceRepositoryURI: kind === "source" ? "https://github.com/other/repository" : "https://github.com/openlup/openlup",
+      buildSignerURI: "https://github.com/openlup/openlup/.github/workflows/" + (kind === "signer" ? "other.yml" : "registry-tutorial.yml") + "@refs/heads/main",
+    } } } }];
+    writeFileSync(join(directory, "response.json"), JSON.stringify(fixture));
+    writeFileSync(join(directory, "gh"), '#!/bin/bash\n[ "$1 $2" = "attestation verify" ] || exit 1\nprintf "%s\\n" "$@" > "$RUNNER_TEMP/arguments"\n[ "$MODE" != unverified ] || exit 1\ncat "$RUNNER_TEMP/response.json"\n'); chmodSync(join(directory, "gh"), 0o700);
+    try {
+      const env = { ...Reflect.get(process, "env"), PATH: directory + ":" + Reflect.get(process, "env").PATH, RUNNER_TEMP: directory, BUNDLE_PATH: bundle, MODE: kind };
+      const result = spawnSync("bash", ["-e", "-o", "pipefail", "-c", script(step(job(workflow, "publish-qualified-image"), "Verify the issued image attestation"))], { env, encoding: "utf8" });
+      expect(result.status, result.stderr).toBe(kind === "valid" ? 0 : 1);
+      expect(JSON.parse(readFileSync(receipt, "utf8"))).toMatchObject({ result: kind === "valid" ? "PASS" : "FAIL", image: { attestation: { result: kind === "valid" ? "PASS" : "FAIL", bundleSha256: createHash("sha256").update("synthetic bundle").digest("hex") } } });
+      expect(readFileSync(join(directory, "arguments"), "utf8")).toContain("--owner\nopenlup\n--bundle\n");
+      expect(readFileSync(join(directory, "arguments"), "utf8")).toContain("--signer-workflow\nopenlup/openlup/.github/workflows/registry-tutorial.yml\n");
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 });

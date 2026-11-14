@@ -207,7 +207,7 @@ describe("CI image mirror workflow controls", () => {
     });
     expect(writers).toEqual([
       { name: "mirror-ci-images.yml", job: "mirror", block: "    permissions: {contents: read, packages: write}" },
-      { name: "registry-tutorial.yml", job: "publish-qualified-image", block: "    permissions: {packages: write}" },
+      { name: "registry-tutorial.yml", job: "publish-qualified-image", block: "    permissions: {packages: write, attestations: write, id-token: write}" },
     ]);
   };
 
@@ -290,22 +290,23 @@ describe("CI image mirror workflow controls", () => {
   const assertPublisherControls = (source: string) => {
     const writer = workflowJob("publish-qualified-image", source);
     expect(writer).toContain("    needs: exact-set-qualification\n    if: ${{ needs.exact-set-qualification.result == 'success' }}\n");
-    expect(permissionBlocks(source).filter(({ job }) => job === "publish-qualified-image")).toEqual([{ job: "publish-qualified-image", block: "    permissions: {packages: write}" }]);
+    expect(permissionBlocks(source).filter(({ job }) => job === "publish-qualified-image")).toEqual([{ job: "publish-qualified-image", block: "    permissions: {packages: write, attestations: write, id-token: write}" }]);
     // No checkout at all: downloaded data is verified, never executed. Only these
     // full-SHA first-party actions may run alongside the reviewed shell program.
     expect([...writer.matchAll(/uses: ([^@\n]+)@([^\s#]+)/gu)].map((match) => [match[1], match[2]])).toEqual([
       ["actions/download-artifact", "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c"],
+      ["actions/attest-build-provenance", "96278af6caaf10aea03fd8d33a09a777ca52d62f"],
       ["actions/upload-artifact", "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"],
     ]);
     expect(writer).not.toMatch(/\b(?:npm|npx|node)\b|actions\/checkout|secrets\.|^\s*(?:shell|container|services):/mu);
     const runs = writer.match(/^ {6}(?:- | {2})run:.*\n(?: {10}[^\n]*\n|\n)*/gmu) ?? [];
-    expect(runs).toHaveLength(1);
+    expect(runs).toHaveLength(2);
     expect(runs[0]).not.toContain("${{");
     // Seal the reviewed skopeo + shell/jq writer, including env and alternate YAML
     // run forms; shell allowlists cannot prove that candidate code stays inert.
     // Canonical workflow keys precede jobs, so this also seals inherited env,
     // permissions, triggers and concurrency. Defaults are refused above.
-    expect(createHash("sha256").update(source.split("\njobs:\n")[0]! + writer).digest("hex")).toBe("1298858d7c58df090e72f213917a6d50a438c64a88ef24ac1eb6a5adddef28ff");
+    expect(createHash("sha256").update(source.split("\njobs:\n")[0]! + writer).digest("hex")).toBe("0e553428a9de0610a137d84050113db154fc85305f1e4452adf902bea4569350");
   };
   it("publishes only successful qualification data without executing candidate code", () => assertPublisherControls(qualification));
   it.each([
@@ -320,11 +321,15 @@ describe("CI image mirror workflow controls", () => {
     expect(() => assertPublisherControls(qualification.replace(before, after))).toThrow();
   });
   it.each([
+    ["permissions: {packages: write, attestations: write, id-token: write}", "permissions: {packages: write}"],
+    ["actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f", "actions/attest-build-provenance@v3.2.0"],
+    [qualification.match(/      - name: Verify the issued image attestation\n[\s\S]*?(?=      - name: Retain the final image publication receipt)/u)![0], ""],
+    ["gh attestation verify ", "echo unverified "],
     ["needs: exact-set-qualification", "needs: registry-tutorial"],
     ["needs.exact-set-qualification.result == 'success'", "always()"],
-    ["permissions: {packages: write}", "permissions: write-all"],
-    ["permissions: {packages: write}", "permissions:\n      packages: write"],
-    ["permissions: {packages: write}", "permissions: {packages: write, contents: read}"],
+    ["permissions: {packages: write, attestations: write, id-token: write}", "permissions: write-all"],
+    ["permissions: {packages: write, attestations: write, id-token: write}", "permissions:\n      packages: write"],
+    ["permissions: {packages: write, attestations: write, id-token: write}", "permissions: {packages: write, contents: read}"],
     ["actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c", "actions/download-artifact@v8"],
     ["actions/download-artifact@", "attacker/download-artifact@"],
     ["    steps:\n", '    steps:\n      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1\n        with: {ref: "${{ github.event.pull_request.head.sha }}"}\n'],
