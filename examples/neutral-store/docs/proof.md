@@ -16,6 +16,41 @@ Run from the independent application's root with its exact selected artifacts.
 Use the application's own installation, resource and verification authority.
 The source recipe does not grant deployment or publication rights.
 
+## Released extraction identity
+
+Released extraction selects one exact public npm package set. It checks the
+source package versions and revision against the supplied v2 pack manifest, then
+requires lockfileVersion 3 (npm 11's default) and a `packages` map. Keys must
+already be canonical: `""` or `node_modules/<package>` paths, optionally nested
+through more `node_modules/<package>` segments, without trailing slashes, `.`,
+`..`, empty segments, backslashes or percent-encoding. Keys must be unique after
+lower-casing.
+
+Every manifest package P must occur at exactly `node_modules/<P>` with version
+V, the expected sha512 integrity and the exact public-registry tarball URL for
+P@V. Root dependency sections must match the extracted package.json and its
+exact V pins. Every other non-root entry refuses an `@openlup/` or `%40openlup`
+reference, case-insensitively, in its key, name, resolved URL (also URL-decoded)
+or any dependencies/optionalDependencies/peerDependencies/devDependencies key or value.
+Nested and aliased OpenLup copies are forbidden. All non-root entries require
+public-registry resolutions without links, credentials, query strings or
+fragments. The manifest is an expected-integrity input, not signed publication
+evidence. Extraction performs no dependency installation or network request.
+
+The initial application commit includes `package-lock.json` and
+`.starter-origin.json`. The identity records mode, set version, source revision,
+lockfile SHA-256 and a content SHA-256 over sorted owned/managed path and file-hash
+pairs, excluding the lockfile and identity itself. A Git source revision must
+match HEAD; an archive's revision is recorded as supplied. HEAD verification does
+not establish working-tree cleanliness or archive provenance.
+
+Source predating released extraction requires `reconstructed` mode and an
+explicit reason, retained in the identity; it cannot claim original released
+starter provenance. In a released or reconstructed application, run `npm ci`
+against the committed registry lockfile before the focused checks below. Record
+the identity and actual installed-artifact results separately: extraction does
+not establish a supported or stable installation, or successful purchase behavior.
+
 ## Focused checks
 
 ```sh

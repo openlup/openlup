@@ -19,11 +19,13 @@ them out of the application's copied source inventory. `./lifecycle ownership`
 reads the inventory, while verify/upgrade delegate to the installed CLI.
 
 During candidate work, the three `.tgz` files and `artifacts/identity.json` are
-ignored local inputs. Final release preparation must replace candidate `file:`
-pins with one exact published set, remove the candidate lockfile ignore, move
-`package-lock.json` from generated to managed and commit the independent app's
-registry lockfile. Until then the generated candidate lockfile is ignored and
-used for reproducible local `npm ci`, not presented as final release pins.
+ignored local inputs; the generated candidate lockfile is also ignored and used
+for reproducible local `npm ci`, not presented as final release pins. Released
+extraction replaces candidate `file:` pins with one exact public npm set, removes
+the lockfile ignore and commits the supplied registry `package-lock.json` with
+`.starter-origin.json`. Both remain generated, outside owned/managed upgrade
+snapshots; do not move the lockfile to managed. The upgrade CLI installs no
+dependencies. Install the selected set separately with `npm ci`.
 The source archive, npm publication and an application deployment are different
 delivery boundaries; this starter authorizes none of them implicitly.
 
