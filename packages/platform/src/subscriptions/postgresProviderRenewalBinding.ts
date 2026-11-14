@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import type { createPostgresPaymentWebhookControlPort } from "@openlup/platform/payments";
 import type { PaymentFailureClass } from "@openlup/core/payment";
 import { createPostgresRetryStore } from "./postgresRetryStore.js";
 import { nativeInstant } from "./nativeInstant.js";
@@ -15,7 +14,12 @@ export interface ProviderRenewalResultInput {
   resultStatus: "succeeded" | "failed" | "expired" | "refunded" | "partially_refunded" | "disputed";
   occurredAt: string; failureReason: string | null; failureClass?: PaymentFailureClass | null; failureClassDecidedBy?: string | null;
 }
-type ProviderRenewalWebhookIngest = ReturnType<typeof createPostgresPaymentWebhookControlPort>["ingestPaymentEvent"];
+// Structural ingress boundary: delivery and complete receipt pass through unchanged.
+type ProviderRenewalWebhookIngest = (input: ProviderRenewalWebhook & {
+  provider: string; occurredAt: string;
+  eventType: "payment.succeeded" | "payment.failed" | "payment.refunded" | "payment.requires_action" | "payment.disputed"
+    | "setup.succeeded" | "setup.failed" | "setup.requires_action";
+}) => Promise<{ paymentEventId: string; paymentIntentId: string | null; paymentAttemptId: string | null }>;
 type ProviderRenewalWebhookControl = {
   ingestPaymentEvent?: ProviderRenewalWebhookIngest;
   applyPaymentResult?(input: ProviderRenewalResultInput): Promise<{ replayed: boolean }>;

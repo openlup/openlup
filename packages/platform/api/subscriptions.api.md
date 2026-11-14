@@ -2080,7 +2080,6 @@ export {};
 ## dist/subscriptions/postgresProviderRenewalBinding.d.ts
 
 ```ts
-import type { createPostgresPaymentWebhookControlPort } from "@openlup/platform/payments";
 import type { PaymentFailureClass } from "@openlup/core/payment";
 import { type NativeRenewalCodec, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 import type { RenewalPaymentRail, RenewalSettlementPort } from "./contracts/renewal.js";
@@ -2097,7 +2096,15 @@ export interface ProviderRenewalResultInput {
     failureClass?: PaymentFailureClass | null;
     failureClassDecidedBy?: string | null;
 }
-type ProviderRenewalWebhookIngest = ReturnType<typeof createPostgresPaymentWebhookControlPort>["ingestPaymentEvent"];
+type ProviderRenewalWebhookIngest = (input: ProviderRenewalWebhook & {
+    provider: string;
+    occurredAt: string;
+    eventType: "payment.succeeded" | "payment.failed" | "payment.refunded" | "payment.requires_action" | "payment.disputed" | "setup.succeeded" | "setup.failed" | "setup.requires_action";
+}) => Promise<{
+    paymentEventId: string;
+    paymentIntentId: string | null;
+    paymentAttemptId: string | null;
+}>;
 type ProviderRenewalWebhookControl = {
     ingestPaymentEvent?: ProviderRenewalWebhookIngest;
     applyPaymentResult?(input: ProviderRenewalResultInput): Promise<{
