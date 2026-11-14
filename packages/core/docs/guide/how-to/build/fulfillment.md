@@ -238,7 +238,8 @@ do not reconstruct it in the browser. Exact replay retains the original response
 The explicit native latest-shipment response adds `deliveryContact` with baseline,
 effective contact, provenance, revision, digest and correction eligibility.
 Fulfillment detail remains null without a shipment; use the separate order reader.
-A pre-parcel correction freezes into the new parcel at creation. Creation captures
+A pre-parcel correction takes precedence over the original contact when operator
+creation validates the destination, then freezes into the new parcel. Creation captures
 only a recorded override or baseline; an order without canonical contact retains
 its existing explicit first-capture path. Historical missing
 baselines stay null and reads write nothing. A stale contact requires a fresh read;

@@ -5095,6 +5095,11 @@
             "signature": "public.fulfillment_erase_parcel_contacts(uuid)",
             "beforeSha256": "f9ef86a6b44053a68fed05a52a05d0ef2f9318ebfb4ab289683d944d98600245",
             "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_operator_create_order(text,uuid,text,uuid,jsonb)",
+            "beforeSha256": "f8e08d933aed7ed4289b76f26abd6203ccbeb97a6460b6a033a6df4e76c640a4",
+            "searchPath": "pg_catalog, pg_temp"
           }
         ],
         "createdFunctions": [
@@ -7033,7 +7038,7 @@
     },
     {
       "path": "db/platform/migrations/20261120140000_order_delivery_contact_correction.sql",
-      "sha256": "d3801993784629fefab839dbc89bfb1df3b906e4550cdd07029f7406cc416fd3",
+      "sha256": "8a614c86d51742703b5f3f89d50ac9ec1f1b323ab33b2bd5ea9cd79d32a1f783",
       "functions": [
         {
           "signature": "public.fulfillment_open_shipment(text,uuid,text,jsonb,timestamptz)",
@@ -7054,6 +7059,11 @@
           "signature": "public.fulfillment_erase_parcel_contacts(uuid)",
           "beforeSha256": "f9ef86a6b44053a68fed05a52a05d0ef2f9318ebfb4ab289683d944d98600245",
           "afterSha256": "f40762ab02cd16fc7941574149fd9be7a691f37ebc625ab79c291b21c4bbd9aa"
+        },
+        {
+          "signature": "public.fulfillment_operator_create_order(text,uuid,text,uuid,jsonb)",
+          "beforeSha256": "f8e08d933aed7ed4289b76f26abd6203ccbeb97a6460b6a033a6df4e76c640a4",
+          "afterSha256": "f5a6c7f8c8ccc723805c0b4ea94ea21304e3f4b8661b2473ef38780b2ef00cd9"
         },
         {
           "signature": "public.fulfillment_delivery_contact_resolution(jsonb)",

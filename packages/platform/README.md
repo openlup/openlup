@@ -2103,6 +2103,8 @@ before parcel creation. Submit its exact revision and PostgreSQL digest together
 Exact replay returns the retained response; stale expectations, started submission,
 missing historical contact and erasure refuse. A correction updates only private
 contact authority, the operational revision and `shipping_address_updated` audit.
+Operator creation validates that resolved contact, so a valid pre-parcel correction
+can repair an incomplete original destination before the new parcel captures it.
 
 `nativeFulfillmentCommerceResponseSchemas` adds the existing `deliveryContact`
 projection to the latest native shipment. It compares recorded baseline with

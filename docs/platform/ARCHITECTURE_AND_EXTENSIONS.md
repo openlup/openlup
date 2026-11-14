@@ -1433,7 +1433,8 @@ resolution before a shipment exists. Older explicit shipment responses and custo
 latest-parcel contact projection. Managed schemas and FR11 remain unchanged.
 The [PostgreSQL witness](../../tests/postgres/fulfillmentDeliveryContactCorrection.test.ts)
 covers missing historical evidence, retained replay, erasure and correction races.
-Creation freezes recorded overrides/baselines only; absent canonical contact is
+Operator creation validates the resolved contact, giving a recorded pre-parcel
+correction precedence over the original contact. Creation freezes recorded overrides/baselines only; absent canonical contact is
 left to the existing explicit preparation/resolution path.
 The correction records only `shipping_address_updated`: no provider request,
 notification, label acknowledgment or subscription alignment follows it.

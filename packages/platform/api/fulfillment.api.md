@@ -2626,7 +2626,7 @@ export declare const FULFILLMENT_MIGRATIONS: readonly [{
 }, {
     readonly position: 139;
     readonly catalogPath: "db/platform/migrations/20261120140000_order_delivery_contact_correction.sql";
-    readonly sha256: "d3801993784629fefab839dbc89bfb1df3b906e4550cdd07029f7406cc416fd3";
+    readonly sha256: "8a614c86d51742703b5f3f89d50ac9ec1f1b323ab33b2bd5ea9cd79d32a1f783";
     readonly url: URL;
 }];
 ```

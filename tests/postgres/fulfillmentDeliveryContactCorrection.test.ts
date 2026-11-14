@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createNativeFulfillmentBinding, createPostgresDeliveryContactReadPort } from '@openlup/platform/fulfillment/native';
+import { createNativeFulfillmentBinding, createPostgresDeliveryContactReadPort, createPostgresFulfillmentCommerceMutationPort } from '@openlup/platform/fulfillment/native';
 import { createPostgresFulfillmentDispatchStore } from '@openlup/platform/fulfillment';
 import { createPostgresCommerceOmsPort } from '@openlup/platform/commerce/server/postgres';
 import { createPostgresDestinationPort } from '@openlup/platform/commerce/server/destinations';
@@ -81,6 +81,46 @@ for (const generation of lifecycleProfiles) describe(`delivery contact correctio
     expect((await resolve(f.order)).scope).toBe('parcel');
     const captured = await h.runtime.query('SELECT public.fulfillment_capture_parcel_contact($1,$2) AS value', [shipment, baseline]);
     expect(captured.rows[0].value).toEqual({ replayed: true, contact: applied.deliveryContact });
+  });
+  async function operatorSubject() {
+    const f = await subject(true, false), product = randomUUID(), skuId = randomUUID(), sku = randomUUID(), source = randomUUID();
+    await h.owner.query('UPDATE public.commerce_orders SET metadata=metadata||$2::jsonb WHERE id=$1', [f.order, {
+      runtimeFinalize: { deliveryContact: { ...baseline, line1: null } }, orderDraftSnapshot: { context: { mode: 'one_time' } },
+    }]);
+    await h.owner.query("INSERT INTO public.catalog_products(id,slug,name) VALUES($1::uuid,$1::text,'Unit')", [product]);
+    await h.owner.query("INSERT INTO public.catalog_skus(id,product_id,sku,title) VALUES($1,$2,$3,'Unit')", [skuId, product, sku]);
+    const item = (await h.owner.query('UPDATE public.commerce_order_items SET sku_id=$2 WHERE order_id=$1 RETURNING id', [f.order, skuId])).rows[0].id;
+    await h.owner.query("INSERT INTO public.commerce_settlement_intents(order_id,channel_key,status,amount_minor,currency_code,open_idempotency_key,settled_at) VALUES($1::uuid,'sandbox','settled',900,'XXX',$1::text,now())", [f.order]);
+    await h.owner.query("INSERT INTO public.fulfillment_stock_current(source_key,sku,total_quantity,for_sale_quantity,reserved_unavailable_quantity,inventory_class,last_synced_at,stale_after,sync_run_id,idempotency_key,operation_fingerprint) VALUES($1,$2,100,100,0,'sellable',now(),now()+interval '1 day',$1,$1,repeat('a',64))", [source, sku]);
+    await h.runtime.query("SELECT public.fulfillment_reserve_purchase_order_items($1,$2,$3,$4,'succeeded',now()+interval '1 day','{}',now())", [
+      `reserve-${randomUUID()}`, f.order, source, JSON.stringify([{ orderItemId: item, skuId, quantity: 1 }]),
+    ]);
+    const port = createPostgresFulfillmentCommerceMutationPort(h.runtime, { portKey: 'fixture-port', providerRef: 'warehouse-a', stockSourceKey: source });
+    const create = () => port.createCommerceFulfillmentOrder({ idempotencyKey: `operator-create-${f.order}`, orderId: f.order, actorUserId: f.actor });
+    return { ...f, create };
+  }
+  it('operator creation refuses an incomplete original, then captures the resolved pre-parcel correction', async () => {
+    const f = await operatorSubject(), before = await raw(f.order);
+    await expect(f.create()).rejects.toMatchObject({ code: '22023', message: 'commerce_fulfillment_delivery_contact_invalid' });
+    expect(await raw(f.order)).toEqual(before);
+    expect((await h.owner.query('SELECT id FROM public.fulfillment_shipments WHERE order_id=$1', [f.order])).rows).toEqual([]);
+    const applied = await correct(f), created = await f.create();
+    expect(created).toMatchObject({ orderId: f.order, replayed: false });
+    if (!('fulfillmentOrderId' in created)) throw new Error('Expected native operator creation');
+    expect((await h.owner.query('SELECT contact FROM public.fulfillment_parcel_contacts WHERE shipment_id=$1', [created.fulfillmentOrderId])).rows)
+      .toEqual([{ contact: applied.deliveryContact }]);
+    expect(await resolve(f.order)).toMatchObject({ scope: 'parcel', baseline: { ...baseline, line1: null }, contact: applied.deliveryContact });
+    expect((await h.runtime.query('SELECT public.fulfillment_native_dispatch_read_candidate($1,$2) AS value', [created.fulfillmentOrderId, 'warehouse-a'])).rows[0].value.contact)
+      .toEqual(applied.deliveryContact);
+    expect(await f.create()).toMatchObject({ fulfillmentOrderId: created.fulfillmentOrderId, replayed: true });
+  });
+  it('operator creation refuses an erased pre-parcel correction without capturing personal data', async () => {
+    const f = await operatorSubject(); await correct(f);
+    await h.runtime.query('SELECT public.fulfillment_erase_parcel_contacts($1)', [f.client]);
+    const before = await raw(f.order);
+    await expect(f.create()).rejects.toMatchObject({ code: '55000', message: 'fulfillment_contact_erased' });
+    expect(await raw(f.order)).toEqual(before);
+    expect((await h.owner.query('SELECT id FROM public.fulfillment_shipments WHERE order_id=$1', [f.order])).rows).toEqual([]);
   });
   it('leaves an order without canonical contact uncaptured at creation and preserves its explicit first capture', async () => {
     const f = await subject(false, false);

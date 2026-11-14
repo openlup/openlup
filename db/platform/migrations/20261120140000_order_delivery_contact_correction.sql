@@ -235,6 +235,60 @@ BEGIN
  RETURN public.fulfillment_capture_parcel_contact(p_shipment_id,contact);
 END; $$;
 
+CREATE OR REPLACE FUNCTION public.fulfillment_operator_create_order(p_key text,p_order_id uuid,p_port_key text,p_actor_id uuid,p_metadata jsonb)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE purchase public.commerce_orders; parcel public.fulfillment_shipments; destination jsonb; address jsonb; customer public.clients;
+ contact jsonb; resolution jsonb; mode text; created jsonb;
+BEGIN
+ IF p_key IS NULL OR length(btrim(p_key))<8 OR p_order_id IS NULL THEN
+  RAISE EXCEPTION 'commerce_fulfillment_invalid_input' USING ERRCODE='22023'; END IF;
+ -- Replay remains first-write: return the recorded parcel and its current status.
+ SELECT * INTO parcel FROM public.fulfillment_shipments WHERE create_idempotency_key=p_key OR (order_id=p_order_id AND sequence_no=0) LIMIT 1;
+ IF FOUND THEN RETURN jsonb_build_object('contractVersion','commerce.fulfillment.v0','fulfillmentOrderId',parcel.id,'orderId',parcel.order_id,'status',parcel.status,'replayed',true); END IF;
+ SELECT * INTO purchase FROM public.commerce_orders WHERE id=p_order_id FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'commerce_fulfillment_order_not_found' USING ERRCODE='22023'; END IF;
+ -- A concurrent creator may have committed while this call waited for the order.
+ SELECT * INTO parcel FROM public.fulfillment_shipments WHERE order_id=p_order_id AND sequence_no=0;
+ IF FOUND THEN RETURN jsonb_build_object('contractVersion','commerce.fulfillment.v0','fulfillmentOrderId',parcel.id,'orderId',parcel.order_id,'status',parcel.status,'replayed',true); END IF;
+ IF purchase.status NOT IN ('paid','fulfillment_pending') THEN RAISE EXCEPTION 'commerce_fulfillment_order_not_fulfillable' USING ERRCODE='22023'; END IF;
+ IF purchase.client_id IS NULL THEN RAISE EXCEPTION 'commerce_fulfillment_missing_client' USING ERRCODE='22023'; END IF;
+ mode:=purchase.metadata#>>'{orderDraftSnapshot,context,mode}';
+ IF NOT public.fulfillment_order_mode_proven(mode) THEN RAISE EXCEPTION 'commerce_fulfillment_order_mode_unproven' USING ERRCODE='22023'; END IF;
+ destination:=public.commerce_read_destination('order',purchase.id); address:=destination->'address';
+ SELECT * INTO customer FROM public.clients WHERE id=purchase.client_id;
+ IF NOT EXISTS(SELECT 1 FROM public.fulfillment_order_contacts WHERE order_id=purchase.id)
+  AND NOT (purchase.metadata ? 'deliveryContactOverride') AND NOT (coalesce(purchase.metadata->'runtimeFinalize','{}') ? 'deliveryContact')
+  AND purchase.metadata ? 'channelOrderSnapshot' AND jsonb_typeof(purchase.metadata->'channelOrderSnapshot') IS DISTINCT FROM 'object' THEN
+  RAISE EXCEPTION 'commerce_fulfillment_delivery_contact_invalid' USING ERRCODE='22023'; END IF;
+ -- Use the same effective authority as reads, including a pre-parcel correction.
+ BEGIN
+  contact:=(public.commerce_oms_resolve_delivery_contact_v1(purchase.id))->'contact';
+ EXCEPTION WHEN invalid_parameter_value THEN
+  IF SQLERRM='fulfillment_contact_not_recorded' THEN
+   RAISE EXCEPTION 'commerce_fulfillment_delivery_contact_invalid' USING ERRCODE='22023'; END IF;
+  RAISE;
+ END;
+ resolution:=public.fulfillment_delivery_contact_resolve(jsonb_build_object('frozenContactPresent',true,'frozenContact',contact));
+ IF NOT coalesce((resolution->>'destinationComplete')::boolean,false) THEN RAISE EXCEPTION 'commerce_fulfillment_delivery_contact_invalid' USING ERRCODE='22023'; END IF;
+ contact:=resolution->'contact';
+ IF NOT EXISTS(SELECT 1 FROM public.commerce_settlement_intents WHERE order_id=purchase.id AND status='settled') THEN
+  RAISE EXCEPTION 'commerce_fulfillment_payment_not_succeeded' USING ERRCODE='22023'; END IF;
+ IF EXISTS(SELECT 1 FROM public.commerce_order_holds WHERE order_id=purchase.id AND status='active') THEN RAISE EXCEPTION 'commerce_fulfillment_active_hold' USING ERRCODE='22023'; END IF;
+ IF mode='subscription_cycle' AND NOT EXISTS(SELECT 1 FROM public.subscription_cycles WHERE id=purchase.subscription_cycle_id AND status='paid') THEN
+  RAISE EXCEPTION 'commerce_fulfillment_subscription_cycle_not_paid' USING ERRCODE='22023'; END IF;
+ IF NOT EXISTS(SELECT 1 FROM public.commerce_order_items WHERE order_id=purchase.id) THEN RAISE EXCEPTION 'commerce_fulfillment_missing_order_items' USING ERRCODE='22023'; END IF;
+ IF EXISTS(SELECT 1 FROM public.commerce_order_items oi LEFT JOIN public.catalog_skus cs ON cs.id=oi.sku_id WHERE oi.order_id=purchase.id AND cs.id IS NULL) THEN
+  RAISE EXCEPTION 'commerce_fulfillment_missing_catalog_sku' USING ERRCODE='22023'; END IF;
+ created:=public.fulfillment_create_shipment(p_key,purchase.id,p_port_key,coalesce(p_metadata,'{}')||jsonb_build_object('actorId',p_actor_id),now());
+ SELECT * INTO parcel FROM public.fulfillment_shipments WHERE id=(created#>>'{shipment,id}')::uuid;
+ -- The canonical opener captures only the new parcel's recorded reservation generation.
+ IF NOT public.fulfillment_parcel_reservations_covered(parcel.id) THEN
+  RAISE EXCEPTION 'commerce_fulfillment_missing_inventory_reservation' USING ERRCODE='22023'; END IF;
+ PERFORM public.commerce_read_destination('shipment',parcel.id);
+ PERFORM public.fulfillment_capture_parcel_contact(parcel.id,contact);
+ RETURN jsonb_build_object('contractVersion','commerce.fulfillment.v0','fulfillmentOrderId',parcel.id,'orderId',parcel.order_id,'status',parcel.status,'replayed',false);
+END; $$;
+
 ALTER TABLE public.commerce_order_operations DROP CONSTRAINT commerce_order_operations_operation_type_check;
 ALTER TABLE public.commerce_order_operations ADD CONSTRAINT commerce_order_operations_operation_type_check CHECK (operation_type IN ('hold_created','hold_released','order_cancelled','order_refunded','replacement_shipment_requested','shipping_address_updated'));
 
