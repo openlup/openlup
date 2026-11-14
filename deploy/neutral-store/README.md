@@ -124,9 +124,14 @@ The Edge check requires zero runtime imports/configuration hooks in starter and
 recipe source, including recipe prose. Generated dependencies/artifacts/build
 output and test instruments are excluded. Pure tests plant imports and hooks
 and require refusal. This is a bounded source check, not a general code analyser.
-System fonts remain the presentation choice. Portable payments are sandbox only;
-real money runs only on the managed rail for now. No supported, stable or
-production-ready deployment is claimed.
+System fonts remain the presentation choice. This starter selects sandbox payments.
+The native rail can compose the reference card provider through the explicit
+[host composition](../../examples/neutral-store/host/provider-portable.ts), with
+the complete database catalogue and host-owned configuration. Real-payment,
+method-setup and card-replacement actions remain unconfigured in this starter.
+The native rail supports the two reference payment providers; a third provider needs the provider-profile refactor.
+The supplied portable composition covers the reference card provider only.
+No supported, stable or production-ready deployment is claimed.
 
 ## Current limits
 

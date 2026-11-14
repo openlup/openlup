@@ -2,13 +2,13 @@
 
 > OpenLup is a development preview, and plans are not release commitments: the order and scope of everything below may change. Read the [README status section](README.md#status-development-preview) before relying on any capability.
 
-Last updated: 2026-11-13 · npm set: 0.40.0
+Last updated: 2026-11-14 · npm set: 0.42.0
 
 ## Current status
 
 | Field | Value |
 | --- | --- |
-| Latest npm set | 0.40.0 |
+| Latest npm set | 0.42.0 |
 | Status | development preview |
 | Stable-framework gate (P1-SF) | open |
 
@@ -22,7 +22,7 @@ Last updated: 2026-11-13 · npm set: 0.40.0
 | m04-communications | M04 Communications and triggers | shipped | 0.17.0 | Consent and preferences, Polish and English default content, rendering, transport with explicit egress admission, delivery receipts, observations and reconciliation. Provider clients, copy, schedules and activation stay with the application, and a captured or accepted message is never reported as delivered. |
 | m05-catalog-pricing | M05 Catalogue, offers, pricing, promotions and builder | shipped | 0.19.0 | Catalogue contracts and drafts, media, fixed bundles, price authority and quotes, subscription pricing policy, promotion eligibility and a post-discount free-shipping threshold. Lifecycle contracts include no catalogue publisher, and promotion codes are not available on the portable rail. |
 | m06-stock-delivery-selection | M06 Stock, reservations and delivery selection | shipped | 0.20.0 | Stock ledger, available-to-promise, reservations, demand forecasting, shipping selection, addresses and flat-rate shipping. On the portable rail this module provides no stock adjustment; saved address writes are available in 0.39.0. |
-| m07-payments | M07 Payments and durable money truth | shipped | 0.21.0 | Prepared payment attempts, verified provider evidence, payment truth, reconciliation and repair, plus opt-in example payment adapters. A browser return never proves payment and a refund never cancels a subscription; the current source preview adds explicitly composed native method setup; cumulative refunds remain unavailable on the portable rail. |
+| m07-payments | M07 Payments and durable money truth | shipped | 0.21.0 | Prepared payment attempts, verified provider evidence, payment truth, reconciliation and repair, plus opt-in example payment adapters. A browser return never proves payment and a refund never cancels a subscription. Native method setup and cumulative refund evidence are supported on the portable rail with the complete installed database catalogue and explicit host/provider composition. |
 | m08-fulfillment | M08 Fulfillment and physical delivery | shipped | 0.22.0 | Paid handoff, fenced dispatch, tracking observations, recovery, product and stock sync and delivery alignment, plus an opt-in warehouse adapter example. A late delivery extends the next cycle and never stacks deliveries, and an undelivered replacement is never reported as delivered. |
 | m09-invoicing | M09 Invoices, corrections and settlements | shipped | 0.24.0 | Invoice issue, correction and reversal workers, seller details frozen at the first claim, payout links, PDF checks and owned invoice reads. Nothing is activated by default, and no fiscal provider or country-specific accounting acceptance is claimed. |
 | m10-subscriptions | M10 Subscriptions, renewal and dunning | shipped | 0.26.0 | Activation, cadence, renewal scheduling, payment retries, dunning and repair, subscription commands and stock-wait handling. A refund does not cancel a subscription, and multi-cycle prepaid subscriptions are not available. |
@@ -38,6 +38,7 @@ Last updated: 2026-11-13 · npm set: 0.40.0
 | reference-communications | Reference email and marketing-sync composition | shipped | 0.40.0 | Opt-in reference composition for transactional email and marketing sync, with explicit scope and qualification requirements. Sandbox and offline proof only; activation with a real account requires separate qualification. |
 | adapter-recipes | Adapter wiring recipes | shipped | 0.40.0 | Recipes for transactional delivery, marketing refusals and frozen event replay. Sandbox and offline proof only; the recipes activate no route, job or flow, and activation with a real account requires separate qualification. |
 | reader-guide | Packaged reader guide | shipped | 0.40.0 | The reader guide ships inside @openlup/core and covers installation, composition, extension, operation, upgrades and current limits. It documents the development preview and does not establish a stable API or upgrade guarantee. |
+| payments-testing-kit | Payment adapter testing kit | shipped | 0.41.0 | An offline conformance runner and a scripted fake provider for payment adapters. A passing run does not qualify a provider. |
 
 ## M19a: working store
 
@@ -112,11 +113,12 @@ Last updated: 2026-11-13 · npm set: 0.40.0
 
 | ID | Name | Status | Release | Summary |
 | --- | --- | --- | --- | --- |
-| n6-portable-real-money | N6: real payments on the portable rail | planned | 0.42.0 | In progress for 0.42.0: real payments on the portable rail, with a real provider adapter and a generic prepared-attempt and evidence store, including payment-method setup, cumulative refunds and card replacement. Until it lands, real money runs only on the managed rail, so a portable real-money store without vendor lock-in is not available. Catalogue and catalogue management follow N6, then fulfilment. |
+| n6-portable-real-money | N6: real payments on the portable rail | shipped | 0.42.0 | A prepared-attempt and evidence store, recorded payment-method references with setup and recovery authority, reconciliation, attributed dunning handoff, evidence-gated cumulative refunds and card replacement. The reference card-provider composition runs on the portable rail with the complete installed database catalogue and explicit host/provider composition. Proof is limited to fake clients and offline checks; the starter still selects sandbox payments. The native rail supports the two reference payment providers; a third provider needs the provider-profile refactor. Native subscriptions with real-provider history but no recorded method references refuse retry and recovery until the host records the references. |
+| fulfilment-portable | Fulfilment and shipping on the portable rail | planned | 0.43.0 | In progress: a neutral fulfilment and shipping provider port with declared capabilities and named refusals, an offline adapter testing kit, and native dispatch, intake, reconciliation and arrival on the portable rail. The included warehouse adapter is a reference example; other providers plug in behind the same port. |
 | hostability-providers | Hostability and provider portability | planned | - | Hosted runs and provider portability: a Neon receipt, Neon to Amazon RDS transfer and recovery, an independent PaaS candidate with Netlify first, a hosted database connection and a Vercel host for the neutral store, and a checkout attempt limiter that survives restarts. The providers in scope are Vercel, Netlify, AWS and Neon. Until then no hosted claim is made, and the neutral store runs on its local demonstration database. |
 | promotions-codes-schedule | Promotions: codes and acquisition schedule | planned | - | Promotion codes with a code catalogue, claims and limits, an operator code center and a checkout code card, plus an acquisition schedule writer with a command line. Device evidence for eligibility is decided together with a retention and erasure design. Until then, promotion codes are not available on the portable rail. |
 | a5-market-adapters | A5 market adapters | planned | - | An example company and customer lookup adapter built on Polish public registries (VAT whitelist, GUS/CEIDG), after the company-identity and invoicing ports are frozen. Data provenance, freshness, licence and fallback are settled first, and other market adapters can follow the same pattern. |
-| p1-sf-stable-framework | P1-SF stable framework | planned | - | The stable-framework gate needs a versioned release and bill of materials, a thin adopter application, public extension and conformance contracts, upgrade tools, and passing installation, compatibility, provenance and independent-adopter evidence. An npm latest tag does not close it, and until it closes OpenLup remains a development preview. |
+| p1-sf-stable-framework | P1-SF stable framework | planned | - | In progress: exact-set qualification after publication, an extracted starter from npm, adjacent-release upgrade proofs, a release bill of materials, digest-bound images with provenance and SBOMs, and a first-party demo store built from npm alone as adoption evidence. The stable claim still needs a later owner activation; OpenLup remains a development preview. |
 
 ## Providers and adapters
 
@@ -134,8 +136,8 @@ Last updated: 2026-11-13 · npm set: 0.40.0
 | netlify | Netlify (independent PaaS candidate) | no | portable | Candidate only, not yet measured. It is evaluated in the hostability round. |
 | resend | Resend email | yes | portable and managed | Opt-in adapter on the communications entry with offline conformance. No provider-account evidence. |
 | klaviyo | Klaviyo marketing sync | yes | portable and managed | Opt-in adapter with offline conformance only; account verification is pending. |
-| stripe | Stripe payments | yes | managed | Opt-in example adapter with an injected client. Refund creation and split authorization and capture are not available, some hosted paths are not observed, and real money runs only on the managed rail. |
-| tpay | Tpay payments | yes | managed | Opt-in example adapter with simulator evidence only. Real settlement and provider readback are not verified. |
+| stripe | Stripe payments | yes | portable and managed | Opt-in injected-client adapter with a reference card-provider composition on the portable rail. Fake-client and offline proof only; no production qualification. Refund creation and split authorization and capture remain unavailable. |
+| tpay | Tpay payments | yes | managed | Opt-in example adapter with offline conformance proof only; no production qualification. No supplied portable composition; provider-account readiness awaits TEST readback. |
 | omnipack | OmniPack warehouse fulfillment | yes | managed | Opt-in, default-off example with offline conformance. Exact absence, label create and void and cancellation are not available, and some dispatch and reconciliation paths have not been exercised. |
 | polish-company-registries | Polish company registries (VAT whitelist, GUS/CEIDG) | no | portable and managed | Not packaged. A packaged example lookup adapter comes in the A5 adapter round. |
 | external-channels | External sales channels (normalized import) | yes | portable and managed | Normalized ingest contracts and bindings. Real marketplace connectors are not planned in the current programme. No real connector ships, and conversion to a physical order refuses on the portable rail. |
@@ -151,7 +153,7 @@ Last updated: 2026-11-13 · npm set: 0.40.0
 | deferred-multi-cycle-prepaid | Multi-cycle prepaid subscriptions | deferred | - | Subscriptions paid in advance for several cycles are not available. |
 | deferred-partner-conversion | Partner conversion, export and deletion | deferred | - | Converting a partner inquiry into a customer, and exporting or deleting partner data, are not built. |
 | deferred-portable-lot-tracking | Lot and location tracking on the portable rail | deferred | - | The portable rail does not record lots, locations or stock movements. Stock holds, release, expiry and stock accounting work. |
-| deferred-catalogue-publication | Catalogue publication workflow | deferred | - | Creating, activating and withdrawing variants with publication to product pages is planned in the catalogue and catalogue-management round after N6, before fulfilment; no release is scheduled. Catalogue drafts and administration work. |
+| deferred-catalogue-publication | Catalogue publication workflow | deferred | - | Creating, activating and withdrawing variants with publication to product pages is planned in the catalogue and catalogue-management round after the current payments, fulfilment and P1-SF rounds; no release is scheduled. Catalogue drafts and administration work. |
 | deferred-operator-contact-edits | Operator contact edits and order notes on the portable rail | deferred | - | Operator changes to a customer's email, phone and account link, order notes and order address corrections refuse by name on the portable rail. |
 | deferred-rich-order-reports | Rich order projections and reports on the portable rail | deferred | - | Rich operator order projections, analytics, document guidance, saved draft resume and commercial reports refuse by name on the portable rail. Reduced order reads work. |
 | deferred-portable-social-sign-in | Social sign-in on the portable rail | deferred | - | Customer sign-in with a social account is not provided on the portable rail. Email magic links and one-time codes work. |

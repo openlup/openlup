@@ -68,6 +68,8 @@ export interface FulfillmentServicesOptions {
         mode: DispatchRecord['mode'];
         batchLimit: number;
     };
+    /** Pure SHA-256 of the actual adapter command; never resolves credentials or performs I/O. */
+    shadowCommandFingerprint?: (request: FulfillmentDispatchRequest) => string;
     now?: () => Date;
 }
 /** Import and construction are inert. Every invocation checks activation before any worker. */
@@ -115,6 +117,20 @@ export interface FulfillmentCapabilityDescriptor {
     };
     ownsDeliveredNotification: boolean;
     stockAuthority: "local_atp" | "external_stock_master_with_local_reservations";
+    /** Omitted intake preserves webhook/push acknowledgement evidence. */
+    intakeMode?: "webhook" | "polling";
+    /** Only local reservations with finished-picking consumption are admitted. */
+    inventory?: {
+        reservationOwner: "local" | "provider";
+        consumption: "finished_picking" | "provider_managed";
+    };
+    /** Omitted means movement reads are required; false selects snapshot-only sync. */
+    stockMovements?: boolean;
+    independentSplits?: boolean;
+    /** Independent of warehouse role; omitted retains the existing role rule. */
+    transportSelection?: "merchant" | "provider";
+    /** MIME formats; only application/pdf is admitted by the native label contract. */
+    labelFormats?: readonly string[];
     labelReadOwner: "host_storage" | "adapter" | "none";
     actionPolicy: {
         providerSpecificAdminActions: boolean;
@@ -255,7 +271,7 @@ export interface FulfillmentSelection {
     pickupPoint: PickupPoint | null;
 }
 export interface FulfillmentRefusal {
-    reason: "not_dispatchable" | "selection_required" | "provider_mismatch" | "carrier_service_required" | "disabled" | "not_ready" | "unsupported" | "withheld" | "claim_conflict" | "contact_stale" | "stock_contention" | "local_missing" | "io_failure" | "malformed" | "untrusted" | "unsupported_event" | "stale" | "missing_correlation";
+    reason: "dispatch_reservations_not_recorded" | "order_mode_unproven" | "payment_not_succeeded" | "subscription_cycle_not_paid" | "not_dispatchable" | "selection_required" | "provider_mismatch" | "carrier_service_required" | "disabled" | "not_ready" | "unsupported" | "withheld" | "claim_conflict" | "contact_stale" | "stock_contention" | "local_missing" | "io_failure" | "malformed" | "untrusted" | "unsupported_event" | "stale" | "missing_correlation" | "provider_reservations_unsupported" | "stock_consumption_policy_unsupported" | "stock_movements_unsupported" | "independent_split_unsupported" | "pickup_point_delivery_unsupported" | "label_create_unsupported" | "label_void_unsupported" | "provider_cancel_unsupported" | "label_format_unsupported";
     phase: "selection" | "prepare" | "claim" | "begin" | "dispatch" | "acknowledge" | "verify" | "normalize" | "apply" | "readback" | "sync";
     retryable: boolean;
 }
@@ -342,7 +358,8 @@ export type FulfillmentDispatchResult = ({
     externalRef: string;
     evidence: DispatchEvidence;
     providerAttemptKey: string;
-    labelKey: string;
+    labelKey: string; /** Neutral alias; when supplied, must equal labelKey byte-for-byte. */
+    receiptKey?: string;
     recovery?: {
         source: "persisted_acceptance";
         proof: "persisted_external_ref";
@@ -475,7 +492,7 @@ export interface FulfillmentTrackingReference {
 /** Durable normalized envelope. eventKey, not the receivedAt-bearing fact fingerprint, deduplicates retries. */
 export interface FulfillmentObservation {
     fact: NormalizedFulfillmentFact<CanonicalLocalFulfillmentStatus>;
-    eventKind: "shipment.accepted" | "order.processing_started" | "order.picked" | "order.shipped" | "order.delivered" | "parcel.exception" | "parcel.cancelled";
+    eventKind: "shipment.accepted" | "shipment.preparing" | "shipment.packed" | "shipment.in_transit" | "shipment.delivered" | "order.processing_started" | "order.picked" | "order.shipped" | "order.delivered" | "parcel.exception" | "parcel.cancelled";
     eventKey: string;
     firstReceivedAt: string;
     correlation: {
@@ -490,7 +507,9 @@ export interface FulfillmentObservation {
     /** Original provider status tokens; canonical status does not identify an occurrence. */
     providerStatus?: {
         primary: string | null;
-        subStatus: string | null;
+        subStatus: string | null; /** Neutral aliases; legacy fields remain the compatibility carrier. */
+        code?: string | null;
+        detailCode?: string | null;
     };
     diagnostics?: {
         redactedFieldCount?: number;
@@ -834,6 +853,16 @@ export interface DispatchRecord {
     acceptance?: Extract<FulfillmentDispatchResult, {
         kind: "accepted";
     }> | null;
+    /** Closed neutral diagnostics. Historical references retain null. */
+    outcome?: {
+        classification: 'failed' | 'uncertain';
+        code: string;
+        status: number | null;
+        retryable: boolean;
+        mayHaveSucceeded: boolean;
+        submissionAttempted?: boolean;
+        responseBodyRead?: boolean;
+    } | null;
 }
 export interface FulfillmentStorePort {
     read(requestKey: string): Promise<DispatchRecord | null>;
@@ -951,6 +980,8 @@ export interface SyncCursor {
     /** G15: successful sellable coverage gaps; legacy absent values read as []. */
     coverageGapSkus?: readonly string[];
     refusal: FulfillmentRefusal | null;
+    /** Snapshot-only sync diagnostic; independent of snapshot success/failure. */
+    movementRefusal?: FulfillmentRefusal;
     /** Per-entry bounded diagnostics and run evidence in the existing cursor JSON, never raw errors. */
     syncRunId?: string;
     counts?: {
@@ -1138,6 +1169,18 @@ export interface FulfillmentProductSyncPort {
     }>;
 }
 export {};
+```
+## dist/fulfillment/native/commerceMutations.d.ts
+
+```ts
+import type { FulfillmentOperatorMutationPort } from '../contracts/operator.js';
+import { type PgExecutor } from '../postgresDispatchStore.js';
+/** Host-authorized local obligations and audit attempts; creation never contacts a provider. */
+export declare function createPostgresFulfillmentCommerceMutationPort(db: PgExecutor, input: {
+    portKey: string;
+    providerRef: string;
+    stockSourceKey: string;
+}): Pick<FulfillmentOperatorMutationPort, 'createCommerceFulfillmentOrder' | 'recordCommerceFulfillmentProviderAttempt' | 'cancelCommerceFulfillmentOrder'>;
 ```
 ## dist/fulfillment/native/commerceReads.d.ts
 
@@ -1507,6 +1550,26 @@ export declare function createPostgresFulfillmentCommerceReadPort(input: {
 }): NativeFulfillmentCommerceReadPort;
 export {};
 ```
+## dist/fulfillment/native/dispatchComposition.d.ts
+
+```ts
+import type { FulfillmentDispatchRequest } from '../contracts/dispatch.js';
+import { type PgExecutor } from '../postgresDispatchStore.js';
+/** Native recorded facts only. Structural row refusals withhold that row, never the rest of a batch. */
+export declare function createPostgresFulfillmentDispatchComposition(db: PgExecutor, selection: {
+    portKey: string;
+    providerRef: string;
+}): {
+    readAuthoritative: (tx: PgExecutor, ref: string) => Promise<{
+        candidate: null;
+        withheld: boolean;
+    } | {
+        candidate: FulfillmentDispatchRequest;
+        withheld: boolean;
+    }>;
+    listCandidates(limit: number): Promise<FulfillmentDispatchRequest[]>;
+};
+```
 ## dist/fulfillment/native/index.d.ts
 
 ```ts
@@ -1536,7 +1599,14 @@ export declare function createNativeFulfillmentBinding(input: {
             withheld: boolean;
         }>;
     };
-    services: Omit<FulfillmentServicesOptions, 'enabled' | 'store'>;
+    /** Opt in to recorded native candidates, preparation and final admission. */
+    nativeDispatch?: {
+        portKey: string;
+        providerRef: string;
+    };
+    services: Omit<FulfillmentServicesOptions, 'enabled' | 'store' | 'listCandidates'> & {
+        listCandidates?: FulfillmentServicesOptions['listCandidates'];
+    };
     version: string;
     requiredSchema: RequiredSchema;
 }): {
@@ -1578,6 +1648,8 @@ export declare function createNativeFulfillmentBinding(input: {
 export { createPostgresFulfillmentCommerceReadPort, nativeFulfillmentCommerceResponseSchemas, type NativeFulfillmentCommerceOrder, type NativeFulfillmentCommerceReadPort } from "./commerceReads.js";
 export { createPostgresFulfillmentOperatorPort, createPostgresParcelReservationConsumption } from "./operatorMutations.js";
 export { createPostgresFulfillmentShipmentCommandPort } from './shipmentCommands.js';
+export { createPostgresFulfillmentCommerceMutationPort } from './commerceMutations.js';
+export { createPostgresFulfillmentDispatchComposition } from './dispatchComposition.js';
 ```
 ## dist/fulfillment/native/operatorMutations.d.ts
 
@@ -1620,7 +1692,7 @@ export {};
 ## dist/fulfillment/postgresDispatchStore.d.ts
 
 ```ts
-import type { FulfillmentDispatchRequest, FulfillmentStorePort } from './contracts/index.js';
+import type { FulfillmentCapabilityDescriptor, FulfillmentDispatchRequest, FulfillmentStorePort } from './contracts/index.js';
 import type { createFulfillmentCommandLedger } from './providerCommandLedger.js';
 /** Caller supplies a driver and its selected host preparation/data boundary. */
 export interface PgExecutor {
@@ -1633,6 +1705,10 @@ export declare function createPostgresFulfillmentDispatchStore(db: PgExecutor, h
     /** Synchronize authoritative withholding/contact revision on prepare and every source edit. */
     prepare(fulfillmentRef: string): ReturnType<FulfillmentStorePort['prepare']>;
     readCandidate(fulfillmentRef: string): Promise<FulfillmentDispatchRequest | null>;
+    /** Selected descriptor declaration; omitted preserves push. Requires the intake-channel SQL forward. */
+    intakeMode?: FulfillmentCapabilityDescriptor['intakeMode'];
+    /** Selected native commerce composition adds its recorded-parcel admission fence. */
+    begin?: FulfillmentStorePort['begin'];
 }): FulfillmentStorePort & {
     commandLedger: ReturnType<typeof createFulfillmentCommandLedger>;
 };

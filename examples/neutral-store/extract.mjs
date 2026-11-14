@@ -106,7 +106,7 @@ if (mode) {
     try { url = new URL(pkg.resolved); decoded = decodeURIComponent(pkg.resolved); } catch { refuse('lock_non_registry', path); }
     if (pkg.link || url.origin !== 'https://registry.npmjs.org' || url.username || url.password || url.search || url.hash) refuse('lock_non_registry', path);
     if (!allowed.has(path) && [path, pkg.name, pkg.resolved, decoded,
-      ...sections.flatMap(section => Object.values(pkg[section] ?? {}))]
+      ...sections.flatMap(section => Object.entries(pkg[section] ?? {}).flat())]
       .some(value => typeof value === 'string' && /@openlup\/|%40openlup/i.test(value))) refuse('lock_package_extra', path);
   }
   identity = { schemaVersion: releasedExtractionSchemaVersion, mode, setVersion: version, sourceRevision: revision, sourceRevisionVerification: verification,

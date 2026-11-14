@@ -183,10 +183,11 @@ bearer; its local fixture establishes no hosted revocation guarantee.
 | `./fulfillment/omnipack` | Opt-in Node fulfillment example with injected I/O; default-off. |
 | `./payments/testing` | Experimental offline adapter conformance runner and scripted transport fake; development preview. |
 | `./payments` | Experimental prepared-attempt ordering with injected persistence, execution and failure policy; contracts at `./payments/contracts`. |
-| `./fulfillment`, `./fulfillment/contracts` | [Experimental fulfillment services, contracts and status canon](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#fulfillment-contracts). |
-| `./fulfillment/native` | Experimental `createNativeFulfillmentBinding` locked dispatch-preparation binding; the host supplies authoritative facts, a capability-local transaction lane and contribution composition. |
+| `./fulfillment`, `./fulfillment/contracts` | [Experimental fulfillment services, capability declarations/refusals and status canon](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#fulfillment-contracts). |
+| `./fulfillment/native` | Experimental `createNativeFulfillmentBinding` with selected `nativeDispatch` or explicit host preparation; requires a capability-local transaction lane and contribution composition. Optional `shadowCommandFingerprint` preserves actual adapter command identity. |
 | `./fulfillment/native` (operator transactions) | Experimental `createPostgresFulfillmentOperatorPort` for replacement and complete cancellation, with authenticated actor and explicit provider/stock-source binding; `createPostgresParcelReservationConsumption` supplies exact parcel stock consumption. Install the complete catalogue and retain the [legacy cancellation limits](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#native-parity-boundaries). |
 | `./fulfillment/native` (shipment commands) | Experimental `createPostgresFulfillmentShipmentCommandPort` records label evidence, handoff and tracking atomically with server actor and durable replay evidence. Handoff consumes only frozen parcel reservation IDs. Compose `withAccountingInvoiceShadowTrigger` from `./invoicing` after the committed command, using host channel policy and fail-soft accounting. [Historical limits](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#native-parity-boundaries). |
+| `./fulfillment/native` (local commerce) | `createPostgresFulfillmentCommerceMutationPort` composes local creation, private operator-attempt audit and cancellation. `createPostgresFulfillmentDispatchComposition` supplies recorded native candidate/preparation reads. Install the complete catalogue through the dispatch-outcome forward; authenticate operators in the host. |
 | `./fulfillment/native` (commerce projection) | Experimental reduced `createPostgresFulfillmentCommerceReadPort`; requires the existing eligibility policy and explicit order-mode mapping. Its default destination reader calls the nonmutating shipment view through the supplied executor; an optional injected reader wins. Select `nativeFulfillmentCommerceResponseSchemas` explicitly when composing served commerce handlers; managed schemas remain the default. The preparation reader does not supply that boundary. [Limits](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#native-commerce-read-projection). |
 | `./subscriptions`, `./subscriptions/contracts` | Default-off, incomplete; [experimental subscription contracts and renewal port](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts). |
 | `./invoicing`, `./invoicing/contracts` | Default-off invoicing contracts and independent duty collection; no provider activation. |
@@ -1448,6 +1449,16 @@ policy and composes only declared port capabilities and refusals. Read the
 installed `./payments/contracts` or `./fulfillment/contracts` declarations and
 their maturity before binding; an exported adapter does not activate a provider.
 
+Fulfillment descriptors optionally declare intake, reservation ownership,
+consumption, movement support, split support, transport selection and label MIME
+formats. Omitted fields preserve existing defaults. Native services refuse
+unsupported declarations before host/store/provider work. Use
+`readFulfillmentCapabilities` with an optional operation/format probe for the
+[documented execution limits](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/reference/limits.md#fulfillment-execution-limits).
+The native binding forwards `capability.intakeMode`; standalone dispatch-store
+hosts pass it in the store options. Snapshot-only stock workers take
+`stockMovements: false` and return a separate movement refusal.
+
 ## Job-run ledger SQL
 
 See [the ledger install-path constraint](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/upgrade/database-migrations.md#select-the-complete-catalogue).
@@ -1736,6 +1747,44 @@ composition. Historical intents are never backfilled; missing handles stay in
 flight and do not prove absence. Install the complete selected migration chain
 before composing these ports. Offline PostgreSQL proof does not activate a
 provider account or qualify a complete hosted payment journey.
+
+The 0.42.0 source candidate also adds `createPostgresProviderPaymentRail` from
+`@openlup/platform/payments` and `createPostgresProviderRenewalBinding` from
+`@openlup/platform/subscriptions`. These supersede the uncomposed checkpoints
+above for an explicitly selected card provider host. The
+[server example](../../examples/neutral-store/host/provider-portable.ts) binds the
+renewal webhook control, lifecycle and retry ports together; the starter does
+not select it. Supply host authentication, client construction, mode policy,
+population lease, inventory, readiness and frozen execution inputs.
+
+The neutral factory forwards customer, client, order and save-card facts and
+returns redacted `persistence` facts beside transient handoff. A committed prepare
+precedes the provider call. Replays and uncertain replies never dispatch again.
+Use independently committed executor calls for payment execution; never enclose
+the provider call in a database transaction. `controlFor` binds result application
+to a host transaction after provider I/O.
+card provider readback supplies no provider occurrence time, so signed evidence completes
+native renewal bookkeeping with the payment owner's existing settlement key.
+First receipt and provider time remain separate. Reconciliation results retain
+their committed `reconciliationId`. A synchronous decline retains its nullable
+remote handle and consumes the existing failure rung before attributed dunning.
+
+Original renewal dispatch checks the addressed method and customer against the
+current recorded authority whenever any method reference exists. A healthy
+replacement never authorizes the stale input; no-ref original renewals retain
+their existing path. Finalized SCA-required attempts resume through the persisted
+refusal owner using the durable execution key and prepared instant. Untimestamped
+ingress keeps native occurrence null and returns no occurrence instant, including
+on replay. Superseded and unresolved success events reach native exact-attempt
+validation and its acknowledgement path before recovery bookkeeping. This uses
+the event's durable attempt link, not the current remote handle: finalizing a
+matching handle after unresolved ingestion leaves that event unresolved on every
+redelivery, without business-state changes.
+
+The native rail supports the two reference payment providers; a third provider needs the provider-profile refactor.
+This composition selects card provider only. The second reference provider's portable
+composition and live-provider qualification remain follow-up work. Existing
+managed exports and the default sandbox bindings remain available.
 
 The source preview's `createPostgresSandboxPaymentSimulator` requires the complete
 native chain through `20261101222000_sandbox_payment_attempts.sql`. Its server
@@ -2046,6 +2095,13 @@ clears `resolved_at`, preserving identity, first-seen time and historical resolv
 metadata. Mismatches, including legacy 0.22.0 whole-input fingerprints, still
 raise `23505`; no rewrite is supplied. See the [migration owner](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/upgrade/database-migrations.md#select-the-complete-catalogue)
 for upgrade and operational-dependency proof.
+
+The updated fulfillment dispatch store also requires the complete catalogue
+through `20261120110000_fulfillment_dispatch_outcomes.sql` (canonical position 137).
+Its explicit intake parameter defaults to push through the legacy SQL wrapper;
+polling descriptors record poll evidence. Existing receipts, acceptance keys and
+replay remain unchanged. `receiptKey` is an optional byte-equal `labelKey` alias;
+neutral observation status/event aliases retain legacy fields and event keys.
 
 ## Subscription contracts and renewal port
 
@@ -2644,13 +2700,16 @@ Invoicing exports explicit `createInvoiceServices`, `InvoiceServices` and inert
 SQL wrappers persist it for eligible obligations. `InvoiceSellerRevision` is also
 available from the type-only contracts entry. Legacy obligations keep fallback.
 
-For the prepared `0.41.0` set, read the [adjacent-release migration and known
-limitations](CHANGELOG.md#0410) before selecting optional services. This set
-adds the experimental `./payments/testing` subpath for payment adapter authors:
-the existing conformance runner, a provider-neutral scripted transport fake and
-optional offline safety scenarios. `runPaymentAdapterConformance` now takes the
-named `PaymentAdapterTestSubject[]`, so existing callers compile and run
-unchanged. The set adds no schema migration.
+For the prepared `0.42.0` set, read the [adjacent-release migration and known
+limitations](CHANGELOG.md#0420) before selecting optional services. This set
+adds native provider-attempt persistence, recorded payment-method references,
+reconciliation, attributed dunning and evidence-gated refunds, plus explicit
+card reference provider composition over those native owners. Install schema
+migration slots 42–44 through `20261114120000_payment_reconciliation_refund_evidence.sql`
+before selecting the new bindings. Real-provider lifecycle history without a
+recorded method reference fails closed; the host registers verified references
+with `payment_method_ref_upsert`, without automatic backfill. The original
+renewal evidence lane and explicit sandbox lane retain the limits in the notes.
 Apply the complete selected migration catalogue before composing the new native
 bindings. Experimental
 marketing uses browser-safe `./marketing`, type-only browser-safe
@@ -2697,7 +2756,7 @@ Adopters must not activate unselected or unready invoicing; installation and
 inert contributions register no runner, worker, route or schedule.
 M06 managed-host proof classes remain pending in the
 [M06 parity ledger](https://github.com/openlup/openlup/blob/main/docs/platform/plans/oss-m06-stock-reservations-delivery.md#parity-pending-rows).
-Size comparison uses the published `0.40.0` tarball. Preparation and offline
+Size comparison uses the published `0.41.0` tarball. Preparation and offline
 adapter evidence grant no publication or provider-account certification.
 
 The set requires Zod `^4.6.6` for GHSA-mrhx-c7xc-m3w5.

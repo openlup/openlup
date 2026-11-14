@@ -16,6 +16,7 @@ const claim = z.object({ payment_attempt_id: z.guid(), payment_intent_id: z.guid
 const paymentResult = z.object({ paymentIntentId: z.guid(), paymentAttemptId: z.guid(), paymentId: z.guid(), orderId: z.guid(),
   status: z.string(), kind: z.string(), replayed: z.boolean() });
 const applied = z.object({ paymentReconciliationApply: z.object({ paymentResult, correctionStatus: z.enum(["corrected", "ignored"]),
+  paymentReconciliation: z.object({ id: z.guid() }),
   replayed: z.boolean(), subscriptionWebhookDunning: z.object({ opened: z.boolean(), replayed: z.boolean(),
     caseId: z.guid().nullable().optional() }).nullable().optional() }) });
 
@@ -45,7 +46,7 @@ export function createPostgresPaymentProviderReconciliationPort(
           input.localStatus, input.providerStatus, input.correctionStatus, input.checkedAt, JSON.stringify(input.payload)],
       )).rows[0]?.response);
       if (!parsed.success) throw new Error("payment_reconciliation_evidence_readback_invalid");
-      return { replayed: false };
+      return { replayed: false, reconciliationId: parsed.data.paymentReconciliation.id };
     },
     async applyTerminalResult(input) {
       const parsed = applied.safeParse((await db.query(
@@ -57,7 +58,7 @@ export function createPostgresPaymentProviderReconciliationPort(
       )).rows[0]?.response);
       if (!parsed.success) throw new Error("payment_reconciliation_apply_readback_invalid");
       const body = parsed.data.paymentReconciliationApply;
-      return { ...body, subscriptionWebhookDunning: body.subscriptionWebhookDunning
+      return { ...body, reconciliationId: body.paymentReconciliation.id, subscriptionWebhookDunning: body.subscriptionWebhookDunning
         ? { ...body.subscriptionWebhookDunning, caseId: body.subscriptionWebhookDunning.caseId ?? null } : null };
     },
     async reopenPreparedAttemptAfterAbsence(input) {

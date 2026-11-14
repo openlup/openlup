@@ -8,7 +8,7 @@ explains that boundary.
 ## What this package owns
 
 The subscription entry owns cycle planning, edit windows, lifecycle changes,
-payment recording and retry decisions. See the [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/core/api/subscription.api.md)
+payment recording and retry decisions. See the [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/packages/core/api/subscription.api.md)
 for the runtime functions and model contracts.
 
 Mutation functions return `SubscriptionEngineResult<T>`: either `ok: true` with

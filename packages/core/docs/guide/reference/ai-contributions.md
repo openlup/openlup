@@ -25,5 +25,5 @@ prepare a contribution, these rules explain what you remain responsible for.
    repeated submission is treated as abuse.
 
 For sign-off, submission and review procedures, follow the
-[AI contribution policy](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/.github/AI_CONTRIBUTION_POLICY.md#admission-native-review-and-dco)
-and [contribution instructions](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/CONTRIBUTING.md#deliver-a-change).
+[AI contribution policy](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/.github/AI_CONTRIBUTION_POLICY.md#admission-native-review-and-dco)
+and [contribution instructions](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/CONTRIBUTING.md#deliver-a-change).

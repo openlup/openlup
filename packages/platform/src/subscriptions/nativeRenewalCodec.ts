@@ -25,7 +25,7 @@ const snapshotSchema = z.object({
     agreementPolicy: z.literal("lock_until_edit"), proration: z.literal("none") }).strict(),
   orderSnapshot: z.object({ shippingAddressRef: ref.nullable(), shippingQuoteRef: z.union([ref, z.object({ kind: z.literal("zero_shipping"), shippingAmountMinor: z.literal(0) }).strict(),
     z.object({ kind: z.literal("retained_shipping"), shippingAmountMinor: whole, terms: renewalShippingTermsSchema.nullable() }).strict()]).nullable(), acquisitionRef: ref.nullable(), lines: basket }).strict(),
-  stockSourceKey: ref, settlementChannelKey: z.literal("sandbox"), authorizationRef: ref, payerAccountRef: ref.nullable(),
+  stockSourceKey: ref, settlementChannelKey: ref, authorizationRef: ref, payerAccountRef: ref.nullable(),
   unattendedChargeAuthorizedAt: z.iso.datetime(),
 }).strict();
 function validate(snapshot: RenewalFrozenSnapshot) {

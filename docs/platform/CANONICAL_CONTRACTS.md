@@ -165,7 +165,8 @@ rebuilds and POSTs if the supplied evidence still matches current resolution.
 The host ledger is the durable guard, preserving its claim/begin/attempt/finalize state across eviction or restart.
 Credential, validation and request-construction
 failures before submission and definitive rejection are `not_dispatched`;
-an unreadable rejection body preserves the status-derived rejection. An unreadable
+at the reference-adapter boundary, an unreadable rejection body becomes network
+uncertainty. An unreadable
 successful acknowledgement, lost/malformed acknowledgement and ambiguous submission
 are `unknown`. Accepted
 results carry nonempty opaque proof keys derived from provider reference and
@@ -1385,6 +1386,29 @@ collectors and synthetic host data.
 
 ## Fulfillment observation and sync execution
 
+Native dispatch acknowledgement takes the selected intake declaration as a SQL
+parameter, outside command evidence and retained acceptance JSON. Install the
+complete catalogue through `20261120110000_fulfillment_dispatch_outcomes.sql` before
+using the updated dispatch store. The four-argument `fulfillment_dispatch_finish`
+accepts only `push` or `poll`; its three-argument compatibility wrapper supplies
+`push`. Created acceptance replay preserves the original receipt and channel,
+including after a descriptor changes. No historical evidence is relabelled.
+
+Accepted dispatch `receiptKey` is an optional byte-equal alias of required
+`labelKey`. Omission retains the legacy projection exactly; mismatches refuse
+before persistence. Neutral observation status aliases `code` and `detailCode`
+coexist with `primary` and `subStatus`. Neutral shipment event kinds coexist with
+legacy order event kinds. Keep eventKey, fact identity and stored receipt bytes;
+never generate a new event key merely to adopt the neutral vocabulary.
+
+Snapshot-only synchronization (`stockMovements: false`) records successful stock
+snapshots independently of its `movementRefusal` diagnostic. It skips movement
+I/O, retains the prior movement watermark and never fabricates movement evidence.
+An omitted flag retains the existing movement-read failure boundary. Inventory
+ownership, independent splits, standalone delivery, label execution, remote cancel
+and document-format limits are explicit
+[capability refusals](../../packages/core/docs/guide/reference/limits.md#fulfillment-execution-limits).
+
 The [fulfillment contract owner](ARCHITECTURE_AND_EXTENSIONS.md#fulfillment-contracts)
 explains G15–G17: consecutive-success coverage confirmation, timed local stock
 lines and inline host persistence. Ingress persists eventKey receipts before
@@ -1504,9 +1528,12 @@ the financial transition. The receipt owns the rung and schedule; the cycle
 stays `payment_pending`. An expiry after that attempt's decline records the
 escalation without another retry stage. The reconciliation/refund forward adds
 attributed dunning case handoff, canonical observation replay and named historical
-refusals. A real provider renewal binding is not yet supplied. The subscription descriptor retains its separate composition
-limits. N1 retry recovery is selected while stock recovery remains
-unavailable. One executor stays default off with mandatory delivery admission.
+refusals. `createPostgresProviderPaymentRail` and
+`createPostgresProviderRenewalBinding` supply explicit card provider composition over
+these owners. Select its webhook control, renewal lifecycle and retry ports
+together. The native binding advertises the prepared store only when that
+provider lifecycle is selected; its default callers retain the sandbox path.
+The native binding also selects stock recovery. One executor stays default off with mandatory delivery admission.
 Host-selected M04 descriptors carry recorded
 lifecycle facts; copy, recipient, consent and delivery remain host/M04-owned.
 See the [architecture boundary](ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts).

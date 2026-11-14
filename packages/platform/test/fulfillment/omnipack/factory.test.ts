@@ -263,8 +263,8 @@ it("retains exact selection refusals and rejects missing host product metadata",
   expect(await fixture(undefined, { resolveProduct: async () => null }).adapter.dispatch.prepare(request())).toMatchObject({ refusal: { reason: "not_dispatchable" } });
   expect(f.fetchImpl).not.toHaveBeenCalled();
 });
-it("maps definitive rejection to non-submission and drops provider prose and error plants", async () => {
-  for (const reply of [() => jsonResponse({ ...plants, code: "PRIVATE_PROVIDER_CODE", message: "recipient@example.test" }, 400), () => unreadableResponse(400)]) {
+it("maps readable definitive rejection to non-submission and drops provider prose and error plants", async () => {
+  for (const reply of [() => jsonResponse({ ...plants, code: "PRIVATE_PROVIDER_CODE", message: "recipient@example.test" }, 400)]) {
     const f = fixture(reply); const req = request(); const evidence = await prepare(f.adapter, req);
     const result = await f.adapter.dispatch.dispatch(req, evidence);
     expect(result).toEqual({ kind: "not_dispatched", effectMayHaveSucceeded: false, refusal: { reason: "io_failure", phase: "dispatch", retryable: false },
@@ -1051,7 +1051,7 @@ function seamLedger(req: FulfillmentDispatchRequest) {
       trace.push("finalize");
       const result = JSON.parse(values[1] as string) as FulfillmentDispatchResult;
       finalized.push(result); record!.status = result.kind === "unknown" ? "uncertain" : "failed"; response = record;
-    } else if (sql.includes("UPDATE public.fulfillment_dispatch_refs")) return { rows: [] };
+    } else if (sql.includes("fulfillment_dispatch_mark_stale_submissions_uncertain")) response = 0;
     else throw Error("Unexpected native operation");
     return { rows: [{ response: structuredClone(response) }] };
   });
@@ -1121,11 +1121,11 @@ it.each([
 });
 it.each([
   { name: "read 400", reply: () => jsonResponse(plants, 400), status: 400, read: true, kind: "not_dispatched" },
-  { name: "unreadable 400", reply: () => unreadableResponse(400), status: 400, read: false, kind: "not_dispatched" },
+  { name: "unreadable 400", reply: () => unreadableResponse(400), status: null, read: false, kind: "unknown" },
   { name: "read 422", reply: () => jsonResponse(plants, 422), status: 422, read: true, kind: "not_dispatched" },
-  { name: "unreadable 422", reply: () => unreadableResponse(422), status: 422, read: false, kind: "not_dispatched" },
+  { name: "unreadable 422", reply: () => unreadableResponse(422), status: null, read: false, kind: "unknown" },
   { name: "unreadable success", reply: () => unreadableResponse(), status: null, read: false, kind: "unknown" },
-])("preserves $name facts through typed results and native finalize without changing classification", async ({ reply, status, read, kind }) => {
+])("preserves $name facts through typed results and native finalize with incumbent unreadable-body uncertainty", async ({ reply, status, read, kind }) => {
   const f = fixture(reply), req = request(), ledger = seamLedger(req);
   const result = await f.adapter.dispatch.dispatch(req, await prepare(f.adapter, req));
   const error = { code: status ? `http_${status}` : "network_error", status, retryable: false,

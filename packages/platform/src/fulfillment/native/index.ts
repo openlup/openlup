@@ -1,7 +1,9 @@
 import { createFulfillmentServices, createPostgresFulfillmentDispatchStore } from '../index.js';
-import type { FulfillmentDispatchRequest, FulfillmentServicesOptions } from '../contracts/index.js';
+import type { FulfillmentDispatchRequest, FulfillmentServicesOptions, FulfillmentStorePort } from '../contracts/index.js';
 import type { RequiredSchema } from '@openlup/core/readiness';
 import { applyParcelContact, parcelContact, applyFrozenParcel } from './parcelContact.js';
+import { createPostgresFulfillmentDispatchComposition } from './dispatchComposition.js';
+import { nativeCall } from '../postgresDispatchStore.js';
 
 type Executor = { query(sql: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }> };
 type Attribution = { fulfillmentRef: string; actorUserId: string; idempotencyKey: string };
@@ -17,14 +19,21 @@ export function createNativeFulfillmentBinding(input: {
     /** Read authoritative contact/selection/withholding using this locked transaction only. */
     readAuthoritative(db: Executor, fulfillmentRef: string): Promise<{ candidate: FulfillmentDispatchRequest | null; withheld: boolean }>;
   };
-  services: Omit<FulfillmentServicesOptions, 'enabled' | 'store'>;
+  /** Opt in to recorded native candidates, preparation and final admission. */
+  nativeDispatch?: { portKey: string; providerRef: string };
+  services: Omit<FulfillmentServicesOptions, 'enabled' | 'store' | 'listCandidates'> & {
+    listCandidates?: FulfillmentServicesOptions['listCandidates'];
+  };
   version: string;
   requiredSchema: RequiredSchema;
 }) {
-  const { transactions, preparation } = input;
-  const bound = typeof transactions?.run === 'function' && typeof preparation?.readAuthoritative === 'function';
+  const { transactions } = input;
   const run = <T>(work: (db: Executor) => Promise<T>) => transactions!.run(gateway => work(gateway as Executor));
   const executor: Executor = { query: (sql, values) => run(db => db.query(sql, values)) };
+  const native = input.nativeDispatch ? createPostgresFulfillmentDispatchComposition(executor, input.nativeDispatch) : null;
+  const preparation = native ?? input.preparation;
+  const listCandidates = native?.listCandidates ?? input.services.listCandidates;
+  const bound = typeof transactions?.run === 'function' && typeof preparation?.readAuthoritative === 'function' && typeof listCandidates === 'function';
   async function lock(db: Executor, ref: string) {
     await db.query("SELECT pg_advisory_xact_lock(hashtextextended('native-dispatch|' || $1::uuid::text,0))", [ref]);
     const { rows } = await db.query('SELECT id, order_id, replaces_shipment_id FROM public.fulfillment_shipments WHERE id=$1 FOR UPDATE', [ref]);
@@ -76,10 +85,12 @@ export function createNativeFulfillmentBinding(input: {
     return synchronize(db, ref, shipment.order_id, shipment.replaces_shipment_id, false, readContact);
   });
   const store = bound ? createPostgresFulfillmentDispatchStore(executor, {
+    intakeMode: input.services.capability?.intakeMode,
+    ...(native ? { begin: (v: { dispatchRef: string; commandFingerprint: string }) => nativeCall<Awaited<ReturnType<FulfillmentStorePort['begin']>>>(executor, 'fulfillment_native_dispatch_begin', [v.dispatchRef, v.commandFingerprint]) } : {}),
     async prepare(ref) { const { disposition, contactRevision } = await readPrepared(ref); return { disposition, contactRevision }; },
     async readCandidate(ref) { return (await readPrepared(ref, true)).candidate; },
   }) : null;
-  const services = createFulfillmentServices({ ...input.services, enabled: input.enabled, store });
+  const services = createFulfillmentServices({ ...input.services, listCandidates: listCandidates ?? (async () => []), enabled: input.enabled, store });
   async function whenReady<T>(work: () => Promise<T>) {
     const state = await services.readiness();
     if (!state.ready) return 'kind' in state.refusal ? state.refusal : { kind: 'refused' as const, refusal: state.refusal };
@@ -114,3 +125,5 @@ export { createPostgresFulfillmentCommerceReadPort, nativeFulfillmentCommerceRes
 export { createPostgresFulfillmentOperatorPort, createPostgresParcelReservationConsumption } from "./operatorMutations.js";
 
 export { createPostgresFulfillmentShipmentCommandPort } from './shipmentCommands.js';
+export { createPostgresFulfillmentCommerceMutationPort } from './commerceMutations.js';
+export { createPostgresFulfillmentDispatchComposition } from './dispatchComposition.js';

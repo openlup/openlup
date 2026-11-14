@@ -543,6 +543,16 @@ export interface PaymentExecutionEnvelope {
     };
     handoff?: PaymentMethodHandoff;
     diagnostics: Readonly<Record<string, string | number | boolean | null>>;
+    /** Redacted execution facts for the prepared-attempt owner; handoffs stay transient. */
+    persistence?: {
+        providerSessionId: string | null;
+        nextActionKind: string | null;
+        requestPayload: Record<string, unknown>;
+        responsePayload: Record<string, unknown>;
+        customerProviderRef?: string | null;
+        paymentMethodRef?: string | null;
+        declineReason?: string;
+    };
 }
 /** Host identity/key/fingerprint and configured integer-minor money pass verbatim.
  * Missing adapter-required input must refuse before dispatch with exact
@@ -560,6 +570,12 @@ export interface PaymentAttemptPort {
         };
         mode: "live" | "test";
         purpose: "initial" | "renewal-unattended" | "recovery";
+        /** Purchase context; unattended renewal always uses subscription_cycle. */
+        orderMode?: "one_time" | "subscription_cycle";
+        orderRef?: string;
+        clientId?: string;
+        customerRef?: string;
+        saveForFutureUse?: boolean;
         methodSelection?: {
             family: "card" | "wallet" | "bank-redirect" | "one-time-code";
             channelRef?: string;
@@ -1119,6 +1135,7 @@ export interface PaymentProviderReconciliationPort {
         payload: Record<string, unknown>;
     }): Promise<{
         replayed: boolean;
+        reconciliationId?: string;
     }>;
     applyTerminalResult(input: {
         idempotencyKey: string;
@@ -1156,6 +1173,7 @@ export interface PaymentProviderReconciliationPort {
         payload: Record<string, unknown>;
     }): Promise<{
         replayed: boolean;
+        reconciliationId?: string;
         paymentResult: {
             paymentIntentId: string;
             paymentAttemptId: string;
@@ -1669,6 +1687,8 @@ export { createPostgresPaymentMethodStore, createPostgresPaymentWebhookMethodRef
 export { createPostgresPaymentMethodSetup } from "./postgresMethodSetup.js";
 export { createPostgresRecordedSubscriptionMethodReader } from "./postgresSubscriptionMethod.js";
 export { createPostgresPaymentProviderReconciliationPort } from "./postgresPaymentProviderReconciliation.js";
+export { createPostgresProviderPaymentRail } from "./postgresProviderRail.js";
+export type { PostgresProviderPaymentRail, PostgresProviderAttemptSnapshot } from "./postgresProviderRail.js";
 ```
 ## dist/payments/paymentMethodLifecycle.d.ts
 
@@ -2050,6 +2070,63 @@ export declare function createPostgresProviderPaymentControlPort(db: PaymentProv
     prepareProviderAttempt(input: import("./contracts/preparedAttempt.js").PreparedAttemptPrepareInput<string>): Promise<import("./contracts/preparedAttempt.js").PreparedAttemptPersistenceResult<string>>;
     finalizeProviderAttempt(input: import("./contracts/preparedAttempt.js").PreparedAttemptFinalizeInput<string>): Promise<import("./contracts/preparedAttempt.js").PreparedAttemptPersistenceResult<string>>;
 };
+```
+## dist/payments/postgresProviderRail.d.ts
+
+```ts
+import type { PaymentAdapter, PaymentAttemptPort, PaymentExecutionEnvelope } from "./contracts/adapter.js";
+import type { PaymentIngressPort } from "./contracts/evidence.js";
+import type { PreparedAttemptPersistenceResult } from "./contracts/preparedAttempt.js";
+import type { PostgresPaymentTruthOptions } from "./contracts/truth.js";
+import { createPostgresProviderPaymentControlPort } from "./postgresProviderControl.js";
+import type { PaymentProviderExecutor } from "./postgresPreparedAttempt.js";
+import { createPostgresPaymentProviderReconciliationPort } from "./postgresPaymentProviderReconciliation.js";
+import { createVerifiedPaymentIngress, type PaymentWebhookControlPort, type NormalizedProviderPaymentWebhook } from "./verifiedIngress.js";
+export interface PostgresProviderAttemptSnapshot {
+    orderId: string;
+    intentStatus: string;
+    settlementStatus: string;
+    amountMinor: number;
+    currency: string;
+    requestPayload: Record<string, unknown>;
+    responsePayload: Record<string, unknown>;
+    paymentAttempt: {
+        id: string;
+        paymentIntentId: string;
+        paymentId: string;
+        provider: string;
+        status: string;
+        providerAttemptId: string | null;
+        providerSessionId: string | null;
+        idempotencyKey: string;
+    };
+}
+export interface PostgresProviderPaymentRail {
+    provider: string;
+    mode: "live" | "test";
+    adapter: PaymentAdapter;
+    control: ReturnType<typeof createPostgresProviderPaymentControlPort>;
+    controlFor(executor: PaymentProviderExecutor): ReturnType<typeof createPostgresProviderPaymentControlPort>;
+    reconciliation: ReturnType<typeof createPostgresPaymentProviderReconciliationPort>;
+    readAttempt(intentId: string, attemptId?: string | null): Promise<PostgresProviderAttemptSnapshot | null>;
+    execute(request: Parameters<PaymentAttemptPort["execute"]>[0]): Promise<{
+        execution: PaymentExecutionEnvelope;
+        attempt: PreparedAttemptPersistenceResult;
+    }>;
+    ingress: PaymentIngressPort;
+}
+/** Explicit host selection; no SDK construction, provider call or automatic reopen. */
+export declare function createPostgresProviderPaymentRail(input: {
+    /** Independently committed calls; never execute a provider inside a host transaction. */
+    executor: PaymentProviderExecutor;
+    adapter: PaymentAdapter;
+    mode: "live" | "test";
+    truth: PostgresPaymentTruthOptions;
+    resolveMethodOwner: NonNullable<Parameters<typeof createVerifiedPaymentIngress>[0]["resolveMethodOwner"]>;
+    resolveSavedMethodOwner: NonNullable<Parameters<typeof createVerifiedPaymentIngress>[0]["resolveSavedMethodOwner"]>;
+    /** Select the native renewal result owner for this host's subscription population. */
+    composeWebhook?: (event: NormalizedProviderPaymentWebhook, control: PaymentWebhookControlPort) => PaymentWebhookControlPort;
+}): PostgresProviderPaymentRail;
 ```
 ## dist/payments/postgresProviderWebhook.d.ts
 

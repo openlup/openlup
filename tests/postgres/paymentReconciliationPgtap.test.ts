@@ -10,6 +10,7 @@ beforeAll(async () => {
   pool = new Pool({ connectionString: container.connectionString.replace("postgres://postgres:", "postgres://supabase_admin:") });
   db = await pool.connect();
   await db.query("DROP SCHEMA auth CASCADE; DROP OWNED BY anon,authenticated,service_role CASCADE; DROP ROLE anon,authenticated,service_role");
+  await db.query("CREATE ROLE service_role NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS");
   const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
   for (const unit of [manifest.baseline, ...manifest.forward]) await db.query(readFileSync(unit.file, "utf8"));
   await db.query("CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions; SET search_path=public,extensions");
@@ -18,12 +19,12 @@ beforeAll(async () => {
 }, postgresSetupTimeoutMs);
 afterAll(async () => { db?.release(); await closePostgres(container, pool); }, postgresTeardownTimeoutMs);
 
-it("executes the native cumulative refund and absence-reopen assertions through pgTAP", async () => {
+it.each([['paymentReconciliation/evidence.sql', 35], ['communicationEventErasure.sql', 8]] as const)("executes native %s through pgTAP", async (file, count) => {
   try {
-    const response = await db.query(readFileSync("tests/postgres/fixtures/paymentReconciliation/evidence.sql", "utf8"));
+    const response = await db.query(readFileSync(`tests/postgres/fixtures/${file}`, "utf8"));
     const results = Array.isArray(response) ? response : [response];
     const lines = results.flatMap(result => result.rows.flatMap((row: Record<string, unknown>) => Object.values(row).filter((value): value is string => typeof value === "string")));
     expect(lines.filter(line => /^(?:not ok|# Looks like)/u.test(line))).toEqual([]);
-    expect(lines.filter(line => /^ok \d+/u.test(line)).length).toBeGreaterThanOrEqual(35);
+    expect(lines.filter(line => /^ok \d+/u.test(line)).length).toBeGreaterThanOrEqual(count);
   } finally { await db.query("ROLLBACK"); }
 });

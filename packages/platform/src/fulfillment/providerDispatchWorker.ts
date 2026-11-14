@@ -146,7 +146,8 @@ export async function runFulfillmentDispatchWorker(input: {
         result.ok = false; result.failures += 1; result.reason ??= response.error?.code ?? response.refusal.reason; continue;
       }
       // All ACK paths use the original host keys, ignoring adapter key fields.
-      const acceptance = { ...response, evidence, ...input.keys.acceptance(mappedCandidate.fulfillmentRef) };
+      const keys = input.keys.acceptance(mappedCandidate.fulfillmentRef);
+      const acceptance = { ...response, evidence, ...keys, ...(response.receiptKey !== undefined ? { receiptKey: keys.labelKey } : {}) };
       try {
         const ack = await input.store.acknowledge({ dispatchRef: dispatchRef.dispatchRef, acceptance });
         if (ack.replayed) result.replayed += 1;
