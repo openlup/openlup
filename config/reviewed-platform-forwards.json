@@ -4866,6 +4866,19 @@
         "dataStatements": []
       },
       {
+        "row": "communication-event-erasure-preparation",
+        "path": "db/platform/migrations/20261119200000_communication_event_prepare_erasure.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.communication_event_prepare_erasure()",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
         "row": "fulfilment-fn-intake-channel",
         "path": "db/platform/migrations/20261120100000_fulfillment_intake_channel.sql",
         "replacedFunctions": [
@@ -6593,6 +6606,17 @@
           "signature": "public.payment_prepared_absence_reopen_due(uuid,timestamptz,text)",
           "beforeSha256": null,
           "afterSha256": "d5a9587ef53ea738fd02743e0b81e7fa5734cf209501405a948cbb6d5f25ab1e"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261119200000_communication_event_prepare_erasure.sql",
+      "sha256": "f1400228a9bfb6d8ed75f1fed73f53c590c83f6a4fc76c226fef6fc54c965fe4",
+      "functions": [
+        {
+          "signature": "public.communication_event_prepare_erasure()",
+          "beforeSha256": null,
+          "afterSha256": "54ff095b1feb4a5b88a86edec2ea38d4e43a52b87ea595e3b21b8a04630e0381"
         }
       ]
     },

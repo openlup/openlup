@@ -1398,6 +1398,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261119200000_communication_event_prepare_erasure.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/20261120100000_fulfillment_intake_channel.sql",
       "class": "public-output"
     },
@@ -4575,6 +4579,10 @@
     },
     {
       "path": "packages/platform/sql/20261114120000_payment_reconciliation_refund_evidence.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261119200000_communication_event_prepare_erasure.sql",
       "class": "public-output"
     },
     {
@@ -29282,6 +29290,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/communicationEcommerceErasure.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/communicationEcommerceEvents.test.ts",
       "class": "public-output"
     },
@@ -29399,6 +29411,10 @@
     },
     {
       "path": "tests/postgres/feedbackMediaAuthority.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/communicationEventErasure.sql",
       "class": "public-output"
     },
     {

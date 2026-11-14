@@ -2096,7 +2096,7 @@ raise `23505`; no rewrite is supplied. See the [migration owner](https://github.
 for upgrade and operational-dependency proof.
 
 The updated fulfillment dispatch store also requires the complete catalogue
-through `20261120100000_fulfillment_intake_channel.sql` (canonical position 135).
+through `20261120100000_fulfillment_intake_channel.sql` (canonical position 136).
 Its explicit intake parameter defaults to push through the legacy SQL wrapper;
 polling descriptors record poll evidence. Existing receipts, acceptance keys and
 replay remain unchanged. `receiptKey` is an optional byte-equal `labelKey` alias;
