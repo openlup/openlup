@@ -6686,7 +6686,7 @@
     },
     {
       "path": "db/platform/migrations/20261120110000_fulfillment_dispatch_outcomes.sql",
-      "sha256": "e632c09b8522ac8eb40257414b358fc871ca245513499505be09bb8d35840040",
+      "sha256": "a1259d24598db1d89352473ad585778ab7884e345ce525e351415f8326de6655",
       "functions": [
         {
           "signature": "public.fulfillment_dispatch_claim(text,uuid,uuid,text,text,jsonb)",
