@@ -2,10 +2,22 @@
   "current": {
     "profiles": {
       "legacy": {
-        "count": 135,
-        "exactTailCount": 25,
-        "objectInventorySha256": "2113a2e8ab35937055fe62743af11a252c6e0cc316edc90a9fee2a9de0ca6261",
+        "count": 138,
+        "exactTailCount": 28,
+        "objectInventorySha256": "f985485a88f6b439d8c0c5c3d4fd2b89ec5689c3bdba0d519d52ba2c188a729a",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261120110000_fulfillment_dispatch_outcomes.sql",
+            "sha256": "7ba87709cff775a4c8d7b1b12f4213544ea9a5db82218b6a87a0ce7f2fb9c54d"
+          },
+          {
+            "file": "db/platform/migrations/20261120100000_fulfillment_intake_channel.sql",
+            "sha256": "5ce8ada91ed1b6634a9d17b54b82751502e6350e564945528f240e361dda5352"
+          },
+          {
+            "file": "db/platform/migrations/20261119200000_communication_event_prepare_erasure.sql",
+            "sha256": "f1400228a9bfb6d8ed75f1fed73f53c590c83f6a4fc76c226fef6fc54c965fe4"
+          },
           {
             "file": "db/platform/migrations/20261114120000_payment_reconciliation_refund_evidence.sql",
             "sha256": "53e6675a8346accaf31805d03118940df09c5dfc1cc063578af53714d2abcc5f"
@@ -549,10 +561,22 @@
         ]
       },
       "bootstrap": {
-        "count": 140,
-        "exactTailCount": 25,
-        "objectInventorySha256": "5f587520006098800628e79f24e5d4f6b4d773424d505b08ea1ebe31f52e026f",
+        "count": 143,
+        "exactTailCount": 28,
+        "objectInventorySha256": "bf1faf77b7b3bbb237da11cd76ef76b7984590538c366e5a0ffa24bd78498acd",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261120110000_fulfillment_dispatch_outcomes.sql",
+            "sha256": "7ba87709cff775a4c8d7b1b12f4213544ea9a5db82218b6a87a0ce7f2fb9c54d"
+          },
+          {
+            "file": "db/platform/migrations/20261120100000_fulfillment_intake_channel.sql",
+            "sha256": "5ce8ada91ed1b6634a9d17b54b82751502e6350e564945528f240e361dda5352"
+          },
+          {
+            "file": "db/platform/migrations/20261119200000_communication_event_prepare_erasure.sql",
+            "sha256": "f1400228a9bfb6d8ed75f1fed73f53c590c83f6a4fc76c226fef6fc54c965fe4"
+          },
           {
             "file": "db/platform/migrations/20261114120000_payment_reconciliation_refund_evidence.sql",
             "sha256": "53e6675a8346accaf31805d03118940df09c5dfc1cc063578af53714d2abcc5f"
@@ -1116,10 +1140,22 @@
         ]
       },
       "separate": {
-        "count": 140,
-        "exactTailCount": 25,
-        "objectInventorySha256": "be5a8344688b16c3e8a68066fa83fe79f3bbe38ced20f34e3e764abf151db32a",
+        "count": 143,
+        "exactTailCount": 28,
+        "objectInventorySha256": "920794fca090ba588778949644d5c80d12740711e35441b9f396a5af2c391108",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261120110000_fulfillment_dispatch_outcomes.sql",
+            "sha256": "7ba87709cff775a4c8d7b1b12f4213544ea9a5db82218b6a87a0ce7f2fb9c54d"
+          },
+          {
+            "file": "db/platform/migrations/20261120100000_fulfillment_intake_channel.sql",
+            "sha256": "5ce8ada91ed1b6634a9d17b54b82751502e6350e564945528f240e361dda5352"
+          },
+          {
+            "file": "db/platform/migrations/20261119200000_communication_event_prepare_erasure.sql",
+            "sha256": "f1400228a9bfb6d8ed75f1fed73f53c590c83f6a4fc76c226fef6fc54c965fe4"
+          },
           {
             "file": "db/platform/migrations/20261114120000_payment_reconciliation_refund_evidence.sql",
             "sha256": "53e6675a8346accaf31805d03118940df09c5dfc1cc063578af53714d2abcc5f"
@@ -1683,10 +1719,22 @@
         ]
       },
       "admin-managed": {
-        "count": 139,
-        "exactTailCount": 25,
-        "objectInventorySha256": "4906a57bdeccd80ea4c5700cb99b6605a025fe6130e3287b4143b3608b15d3d3",
+        "count": 142,
+        "exactTailCount": 28,
+        "objectInventorySha256": "3acc9a4f7a1ef071a14ba774e41a9994ff0c5982d0e4d27e7e98989c1c52da40",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261120110000_fulfillment_dispatch_outcomes.sql",
+            "sha256": "7ba87709cff775a4c8d7b1b12f4213544ea9a5db82218b6a87a0ce7f2fb9c54d"
+          },
+          {
+            "file": "db/platform/migrations/20261120100000_fulfillment_intake_channel.sql",
+            "sha256": "5ce8ada91ed1b6634a9d17b54b82751502e6350e564945528f240e361dda5352"
+          },
+          {
+            "file": "db/platform/migrations/20261119200000_communication_event_prepare_erasure.sql",
+            "sha256": "f1400228a9bfb6d8ed75f1fed73f53c590c83f6a4fc76c226fef6fc54c965fe4"
+          },
           {
             "file": "db/platform/migrations/20261114120000_payment_reconciliation_refund_evidence.sql",
             "sha256": "53e6675a8346accaf31805d03118940df09c5dfc1cc063578af53714d2abcc5f"
@@ -2246,10 +2294,22 @@
         ]
       },
       "admin-operator": {
-        "count": 139,
-        "exactTailCount": 25,
-        "objectInventorySha256": "8e681f3352d40623e677e7d696706c1932cef6180814e1334c4bab1f5e401ec4",
+        "count": 142,
+        "exactTailCount": 28,
+        "objectInventorySha256": "b4e4b140550bfb0817064a6334a860eafcf32bf3264d2b990af156e91dbabc15",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261120110000_fulfillment_dispatch_outcomes.sql",
+            "sha256": "7ba87709cff775a4c8d7b1b12f4213544ea9a5db82218b6a87a0ce7f2fb9c54d"
+          },
+          {
+            "file": "db/platform/migrations/20261120100000_fulfillment_intake_channel.sql",
+            "sha256": "5ce8ada91ed1b6634a9d17b54b82751502e6350e564945528f240e361dda5352"
+          },
+          {
+            "file": "db/platform/migrations/20261119200000_communication_event_prepare_erasure.sql",
+            "sha256": "f1400228a9bfb6d8ed75f1fed73f53c590c83f6a4fc76c226fef6fc54c965fe4"
+          },
           {
             "file": "db/platform/migrations/20261114120000_payment_reconciliation_refund_evidence.sql",
             "sha256": "53e6675a8346accaf31805d03118940df09c5dfc1cc063578af53714d2abcc5f"
@@ -2809,7 +2869,7 @@
         ]
       }
     },
-    "connectedTableCount": 147
+    "connectedTableCount": 148
   },
   "historical": {}
 }

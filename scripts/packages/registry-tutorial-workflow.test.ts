@@ -1,4 +1,4 @@
-// The advisory tutorial and exact-set qualification follow publication independently of PR CI.
+// The blocking tutorial and exact-set qualification follow publication independently of PR CI.
 import { execFileSync, spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -24,11 +24,11 @@ const SETUP_NODE = "uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5b
 const REGISTRY_GATE = "if: ${{ github.repository == 'openlup/openlup' && ((github.event_name == 'workflow_dispatch' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)) || (github.event_name == 'workflow_run' && github.event.workflow_run.repository.full_name == 'openlup/openlup' && github.event.workflow_run.head_repository.full_name == 'openlup/openlup' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'release' && startsWith(github.event.workflow_run.head_branch, 'openlup-core-v'))) }}";
 const REGISTRY_READY = "        if: steps.registry.outputs.ready == 'true'";
 const REGISTRY_CLEANUP = "        if: always() && steps.postgres.outcome != 'skipped'";
-const REGISTRY_STEP = "Guide tutorial against the npm registry (advisory)";
+const REGISTRY_STEP = "Guide tutorial against the npm registry";
 const REGISTRY_WAIT = "Wait for the published set on npm";
 const RELEASE_PAGE = "Read the release's tutorial page";
 
-describe("the advisory registry tutorial after publication", () => {
+describe("the blocking registry tutorial after publication", () => {
   const tutorial = job(workflow, "registry-tutorial");
   const wait = script(step(tutorial, REGISTRY_WAIT));
 
@@ -137,7 +137,7 @@ describe("the advisory registry tutorial after publication", () => {
     }
   });
 
-  it("uses the existing PostgreSQL pin, readiness probe and cleanup around the verbatim advisory runner", () => {
+  it("uses the existing PostgreSQL pin, readiness probe and cleanup around the verbatim blocking runner", () => {
     const candidateWorkflow = readFileSync(join(ROOT, ".github/workflows/published-tree-ci.yml"), "utf8");
     const startName = "Start the pinned package-proof PostgreSQL service";
     const start = step(tutorial, startName);
@@ -148,10 +148,13 @@ describe("the advisory registry tutorial after publication", () => {
     expect(readFileSync(join(ROOT, "scripts/packages/platform-cold-consumer.ts"), "utf8")).toContain(readiness);
     expect(start).toContain(`docker exec "$container" sh -c '${readiness}'`);
     expect(step(tutorial, "Remove the package-proof PostgreSQL service").trimEnd()).toBe(`${REGISTRY_CLEANUP}\n        run: docker rm -f install-proof-postgres`);
-    expect(step(tutorial, REGISTRY_STEP)).toBe(`${REGISTRY_READY}\n        timeout-minutes: 4\n        env:\n          OPENLUP_PROOF_SERVICE_PORT: \${{ steps.postgres.outputs.port }}\n        run: node --experimental-strip-types scripts/packages/guide-tutorial.ts --advisory --registry --page "$RUNNER_TEMP/tutorial.md" --database-url "postgresql://postgres@127.0.0.1:$OPENLUP_PROOF_SERVICE_PORT/postgres"\n`);
+    expect(step(tutorial, REGISTRY_STEP)).toBe(`${REGISTRY_READY}\n        timeout-minutes: 4\n        env:\n          OPENLUP_PROOF_SERVICE_PORT: \${{ steps.postgres.outputs.port }}\n        run: node --experimental-strip-types scripts/packages/guide-tutorial.ts --registry --page "$RUNNER_TEMP/tutorial.md" --database-url "postgresql://postgres@127.0.0.1:$OPENLUP_PROOF_SERVICE_PORT/postgres"\n`);
     const advisoryComment = "      # --advisory reports a failed tutorial as a warning and exits 0. Remove it after two green\n      # merge-group runs on main to make the step blocking (documentation programme, decision D4).\n";
     expect(candidateWorkflow).not.toContain(advisoryComment);
-    expect(tutorial).toContain(advisoryComment);
+    expect(tutorial).not.toContain(advisoryComment);
+    expect(tutorial).not.toContain("--advisory");
+    expect(workflow).not.toContain("(advisory)");
+    expect(tutorial).toContain(`    name: ${REGISTRY_STEP}\n`);
     const candidate = step(candidateWorkflow, "Guide tutorial against the packed candidate");
     expect(candidate).toContain("run: node --experimental-strip-types scripts/packages/guide-tutorial.ts --page");
     expect(candidate).not.toContain("--advisory");
@@ -215,7 +218,8 @@ console.log(answer.version);
     expect(result.status, result.stderr).toBe(0);
     expect(result.output).toBe("");
     expect(result.stdout).toContain("::warning title=Guide tutorial::");
-    expect(result.summary).toContain("Guide tutorial: deferred (advisory)");
+    expect(result.summary).toContain("Guide tutorial: deferred");
+    expect(result.summary).not.toContain("(advisory)");
     expect(result.summary).toContain("0.13.1 was not visible on npm within 10 minutes.");
     expect(result.requests).toEqual([]);
     expect(step(tutorial, "Start the pinned package-proof PostgreSQL service")).toContain(REGISTRY_READY);

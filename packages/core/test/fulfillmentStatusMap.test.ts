@@ -32,3 +32,13 @@ describe("contributed status canon (W1)", () => {
     expect(phaseIndexForStep("cancelled")).toBe(0);
   });
 });
+
+
+it("prefers canonical packed while retaining every historical packing alias", () => {
+  expect(CANONICAL_LOCAL_FULFILLMENT_STATUSES).toContain("packed");
+  expect(stepForToken("packed")).toBe("packing");
+  for (const alias of ["picked", "in_fulfillment", "ready_for_packing", "awaiting_courier", "ready_for_pickup"]) {
+    expect(stepForToken(alias)).toBe(stepForToken("packed"));
+  }
+  for (const stage of FULFILLMENT_STATUS_MAP.stages) expect(stage).not.toHaveProperty("providers");
+});

@@ -1509,6 +1509,8 @@ export type { NativeRenewalPurchaseFacts, SandboxMethodHealth } from "./nativePu
 export { createPostgresSandboxRenewalRail, createSandboxRenewalPolicy } from "./sandboxRenewalRail.js";
 export type { SandboxRenewalScenario } from "./sandboxRenewalRail.js";
 export { createNativeSubscriptionBinding } from "./nativeSubscriptionBinding.js";
+export { createPostgresProviderRenewalBinding } from "./postgresProviderRenewalBinding.js";
+export type { PostgresProviderRenewalBinding, ProviderRenewalPaymentPorts, ProviderRenewalResultInput } from "./postgresProviderRenewalBinding.js";
 export { createNativeRetryDriver } from "./nativeRetryDriver.js";
 export type { NativeRetryDriverOptions } from "./nativeRetryDriver.js";
 export { nativeSubscriptionSchema } from "./nativeSubscriptionSchema.js";
@@ -1715,6 +1717,11 @@ export declare function createNativeSubscriptionBinding(input: {
     settlement(db: SubscriptionQueryExecutor): RenewalSettlementPort;
     inventory: AutomaticRenewalRunDeps["inventory"];
     paymentRails: AutomaticRenewalRunDeps["paymentRails"];
+    /** Explicit provider lifecycle selection; the default sandbox binding stays separate. */
+    providerLifecycle?: {
+        failureHandoff: AutomaticRenewalRunDeps["failureHandoff"];
+        settlement: RenewalSettlementPort;
+    };
     policy: AutomaticRenewalRunDeps["policy"];
     retry: Pick<NativeRetryDriverOptions, "readFrozenMandate" | "retryInput" | "payments" | "recoveredTemplate" | "retryCadence">;
     failureTemplate: string;
@@ -2068,6 +2075,226 @@ export declare function createPostgresLifecycleMessages(options: NativeLifecycle
         stale: number;
     }>;
 };
+export {};
+```
+## dist/subscriptions/postgresProviderRenewalBinding.d.ts
+
+```ts
+import type { PaymentFailureClass } from "@openlup/core/payment";
+import { type NativeRenewalCodec, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+import type { RenewalPaymentRail, RenewalSettlementPort } from "./contracts/renewal.js";
+import type { RenewalFailureHandoffPort } from "./contracts/dunning.js";
+import type { NativeRetryDriverOptions } from "./nativeRetryDriver.js";
+/** The subscription owner consumes only these injected payment facts. */
+export interface ProviderRenewalResultInput {
+    idempotencyKey: string;
+    paymentIntentId: string;
+    paymentEventId: string | null;
+    resultStatus: "succeeded" | "failed" | "expired" | "refunded" | "partially_refunded" | "disputed";
+    occurredAt: string;
+    failureReason: string | null;
+    failureClass?: PaymentFailureClass | null;
+    failureClassDecidedBy?: string | null;
+}
+type ProviderRenewalWebhookIngest = (input: ProviderRenewalWebhook & {
+    provider: string;
+    occurredAt: string;
+    eventType: "payment.succeeded" | "payment.failed" | "payment.refunded" | "payment.requires_action" | "payment.disputed" | "setup.succeeded" | "setup.failed" | "setup.requires_action";
+}) => Promise<{
+    paymentEventId: string;
+    paymentIntentId: string | null;
+    paymentAttemptId: string | null;
+}>;
+type ProviderRenewalWebhookControl = {
+    ingestPaymentEvent?: ProviderRenewalWebhookIngest;
+    applyPaymentResult?(input: ProviderRenewalResultInput): Promise<{
+        replayed: boolean;
+    }>;
+};
+type ProviderRenewalWebhook = {
+    providerEventId: string;
+    providerPaymentId: string;
+    rawPayload: Record<string, unknown>;
+};
+type ProviderRenewalAttempt = {
+    orderId: string;
+    settlementStatus: string;
+    amountMinor: number;
+    currency: string;
+    requestPayload: Record<string, unknown>;
+    responsePayload: Record<string, unknown>;
+    paymentAttempt: {
+        id: string;
+        paymentId: string;
+        provider: string;
+        status: string;
+        providerAttemptId: string | null;
+        idempotencyKey?: string;
+    };
+};
+export interface ProviderRenewalPaymentPorts {
+    provider: string;
+    mode: "live" | "test";
+    control: {
+        createIntent(input: {
+            idempotencyKey: string;
+            targetKind: "subscription_cycle";
+            orderId: string;
+            subscriptionId: string;
+            subscriptionCycleId: string;
+            amountMinor: number;
+            currency: string;
+            metadata: Record<string, unknown>;
+            channelKey: string;
+            at: string;
+        }): Promise<{
+            id: string;
+        }>;
+        applyPaymentResult(input: ProviderRenewalResultInput): Promise<{
+            replayed: boolean;
+        }>;
+    };
+    controlFor(executor: SubscriptionQueryExecutor): ProviderRenewalPaymentPorts["control"];
+    readAttempt(intentId: string, attemptId?: string | null): Promise<ProviderRenewalAttempt | null>;
+    execute(input: {
+        attemptRef: string;
+        intentRef: string;
+        fingerprint: string;
+        providerIdempotencyKey: string;
+        money: {
+            amountMinor: number;
+            currency: string;
+        };
+        mode: "live" | "test";
+        purpose: "renewal-unattended";
+        orderRef: string;
+        clientId: string;
+        customerRef?: string;
+        storedMethod: {
+            reference: string;
+            mandate: {
+                recurringModel: string | null;
+            };
+        };
+    }): Promise<{
+        attempt: {
+            paymentAttemptId: string;
+        };
+        execution: {
+            outcome: {
+                kind: "attempt";
+                status: string;
+            } | {
+                kind: "decline";
+                refusal: {
+                    code: PaymentFailureClass;
+                };
+            };
+            dispatch: {
+                kind: "dispatched";
+                providerPaymentRef: string;
+            } | {
+                kind: "unknown" | "notDispatched";
+            };
+            persistence?: {
+                declineReason?: string;
+            };
+        };
+    }>;
+    adapter: {
+        readbackPort: {
+            readPayment(input: {
+                identity: {
+                    provider: string;
+                    intentRef: string;
+                    attemptRef: string;
+                    providerPaymentRef: string;
+                };
+                expectedMoney: {
+                    amountMinor: number;
+                    currency: string;
+                };
+                purpose: "recovery";
+            }): Promise<{
+                kind: "succeeded" | "failed" | "pending";
+                observedMoney: {
+                    amountMinor: number;
+                    currency: string;
+                };
+                providerOccurredAt: string | null;
+            } | {
+                kind: "unknown" | "unsupported" | "absent";
+            }>;
+        };
+    };
+    reconciliation: {
+        recordEvidence(input: {
+            idempotencyKey: string;
+            provider: string;
+            providerPaymentId: string | null;
+            paymentIntentId: string;
+            paymentAttemptId: string;
+            localStatus: string;
+            providerStatus: string;
+            correctionStatus: "observed";
+            checkedAt: string;
+            payload: Record<string, unknown>;
+        }): Promise<{
+            reconciliationId?: string;
+        }>;
+        applyTerminalResult(input: {
+            idempotencyKey: string;
+            expectedOrderId: string;
+            expectedPaymentIntentId: string;
+            expectedPaymentAttemptId: string;
+            expectedPaymentId: string;
+            provider: string;
+            providerPaymentId: string;
+            localStatus: string;
+            providerStatus: string;
+            resultStatus: "succeeded" | "failed";
+            occurredAt: string;
+            failureReason: string | null;
+            checkedAt: string;
+            payload: Record<string, unknown>;
+        }): Promise<unknown>;
+    };
+}
+export interface PostgresProviderRenewalBinding {
+    rail: RenewalPaymentRail;
+    paymentRails: {
+        resolve(channelKey: string): RenewalPaymentRail | null;
+    };
+    lifecycle: {
+        failureHandoff: RenewalFailureHandoffPort;
+        settlement: RenewalSettlementPort;
+    };
+    retryPayments: NativeRetryDriverOptions["payments"];
+    composeWebhook<C extends ProviderRenewalWebhookControl>(event: ProviderRenewalWebhook, control: C): Omit<C, "applyPaymentResult"> & {
+        applyPaymentResult: NonNullable<ProviderRenewalWebhookControl["applyPaymentResult"]>;
+    };
+}
+/** Provider selection and existing native lifecycle owners, never another scheduler. */
+export declare function createPostgresProviderRenewalBinding(input: {
+    enabled?: boolean;
+    channelKey: string;
+    executor: SubscriptionQueryExecutor;
+    withTransaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
+    paymentRail: ProviderRenewalPaymentPorts;
+    codec: NativeRenewalCodec;
+    settlement(db: SubscriptionQueryExecutor): RenewalSettlementPort;
+    truth: {
+        dunningTemplateSlug: string;
+        recoveryUrlPath: string;
+        recoveryTemplateSlug: string;
+    };
+    /** Exact local-intent lookup; zero matches never proves provider absence. */
+    search(input: {
+        localIntentId: string;
+        limit: 2;
+    }): Promise<readonly string[]>;
+    now(): string;
+}): PostgresProviderRenewalBinding;
 export {};
 ```
 ## dist/subscriptions/postgresRenewalSettlement.d.ts
