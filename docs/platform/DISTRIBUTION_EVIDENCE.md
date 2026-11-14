@@ -114,6 +114,63 @@ and a fragment class while retaining that witness unchanged.
 This is file/dependency qualification on the neutral starter, with
 no SQL, database compatibility, browser/provider, rollback or support claim.
 
+## Released-pair schema compatibility
+
+The qualification job's separate schema step consumes both original installed
+applications retained by the adjacent-set starter proof. It checks their
+extraction identities, lock hashes, installed package versions and locked
+integrities against that proof's receipt. Runner, payment, delivery-alignment
+and readiness exports resolve inside those installations. The
+[existing schema proof](../../tests/postgres/m14ReleasedSchemaUpgrade.proof.ts)
+has an explicit released-pair mode; its no-argument historical execution and PR
+CI selection are unchanged. The schema step uses the existing digest-pinned
+PostgreSQL 16 mirror in a separate disposable container; the rest of the job
+keeps its PostgreSQL 17 service. It removes both retained installations afterward.
+Before image acquisition or container setup, the schema step records its start
+and FAIL in the receipt. Final sealing requires a successful schema step and
+schema result; setup failure, interruption or a skipped schema step cannot retain
+the preceding upgrade's PASS.
+
+The predecessor's shipped runner installs its packaged `qualified-v2` catalogue,
+using the starter bootstrap's installer-managed profile with distinct install,
+runtime and restore roles. Its payment port writes a settled event before the
+upgrade. The target's shipped `createPlatformPostgresMigrationRunner` applies
+the same profile's packaged forwards.
+SIGKILL interrupts the first forward after its real SQL executes but before the
+ledger insert commits. The old exact ledger prefix must survive. The installed
+readiness evaluator refuses the harness-supplied target catalogue-tail
+requirement as `OPENLUP_E_SCHEMA_BEHIND/version_mismatch`; this is a supplied
+readiness observation, not a new starter serving guard. Resume completes the
+catalogue, checks its inventory and proves migration replay applies nothing.
+
+Execution switches target → predecessor → target on the unchanged upgraded
+schema. Both installed payment ports read retained events, make fresh writes
+and replay them; both delivery ports exercise late and early arrival evidence
+and replay. The named `subscription_monotonic_clamp` assertions require that
+no cycle moves earlier, no cycle or delivery stacks, a late arrival extends
+exactly once, and replay leaves the extension unchanged. The target's inventory
+and exact ledger are rechecked after each code switch.
+
+The receipt labels the separate **historical** 0.23-prefix invoicing backfill;
+that witness is not rerun or represented as adjacent-pair backfill. Later
+contraction and adjacent-pair backfill remain **PARTIAL** until a real retirement
+ships: the 0.41→0.42 pair has no object needed only by the older application.
+No destructive fixture or new migration admission grammar is introduced. A
+pair with identical catalogues records its schema-forward interruption as
+`not-applicable: no forward migrations in this pair`. It still must pass the
+cross-version reads, fresh writes, replay and named subscription checks to
+qualify; no interrupted-forward evidence is claimed for that pair.
+This evidence supplies no general rollback, hosted-service or stable-support
+guarantee.
+
+The installed qualified runner explicitly refuses PostgreSQL 17 as
+`qualified PostgreSQL installation refused: requires_qualified_postgresql_16_profile`.
+The historical legacy chain retains its original profile and execution path.
+Local exact-artifact rehearsals on 2026-11-14 passed the real one-forward
+0.39.0→0.40.0 pair and the no-forward 0.40.0→0.41.0 pair, including code rollback
+and the named subscription checks. These local results are separate from the
+first hosted qualification, which must remeasure the step's bound.
+
 ## Public outcome projection
 
 The [generated projection](OUTCOME_PROJECTION.md) derives its package entries,
