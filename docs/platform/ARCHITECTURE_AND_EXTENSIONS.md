@@ -2026,11 +2026,13 @@ composition. Initial
 method health is healthy only with the registered sandbox method evidence;
 `writer.transitionMethod()` records later missing, pending, unchargeable or
 healthy states with immutable event identity and expected-state comparison.
-Legacy sandbox renewal terms without recorded provider authority retain their
-previous method-state behavior. All native health/evidence readers select the
-recorded classification when any reference row or provider evidence exists,
-including inactive references and provider history linked through an initial order. New
-purchase completion always writes the method state atomically with its terms.
+Original renewal charging retains its previous method and mandate evidence
+behavior when no recorded reference exists, even with real-provider history.
+Once any reference row exists, every native reader selects strict recorded
+authority, including inactive, revoked or expired references. Account-support
+health and lifecycle admission also select recorded authority for provider
+history without a reference, including evidence linked through an initial order.
+New purchase completion always writes the method state atomically with its terms.
 A financial decline alone does not assert that a method disappeared. Recovery
 composition must exercise an actual unhealthy state, repair it with fresh method
 evidence, then authorize recovery; service stays active throughout.

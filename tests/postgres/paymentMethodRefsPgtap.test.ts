@@ -327,6 +327,12 @@ it("refuses historical provider work without reusable refs or recorded recovery 
   const token = randomUUID();
   await db.query("INSERT INTO public.commerce_checkout_recovery_tokens(id,token_hash,order_id,client_id,expires_at) VALUES($1,$2,$3,$4,'2027-11-13')",
     [token, randomUUID().replaceAll("-", "").repeat(2), f.original.orderId, f.client]);
+  // The original renewal prepared above has real provider history but no ref.
+  // Its mandate read keeps the pre-forward authority while retry/recovery refuse.
+  expect((await db.query("SELECT id FROM public.payment_method_refs WHERE subscription_id=$1", [f.subscription])).rows).toEqual([]);
+  expect(await createPostgresRenewalStore(db, createNativeRenewalCodec()).readMandateEvidence({ subscriptionId: f.subscription, scheduledAt: f.snapshot.scheduledAt, scheduledInstant: Date.parse(f.snapshot.scheduledAt) }))
+    .toMatchObject({ authorized: true, authorizationRef: "frozen-mandate" });
+  expect(await createPostgresPurchaseRenewalWriter(db).readMethod(f.subscription)).toBeNull();
   const before = await methodRows();
   expect(await call(db, "subscription_method_uses_recorded_refs", [f.subscription])).toBe(true);
   expect(await createPostgresRecordedSubscriptionMethodReader(db).read(f.subscription)).toEqual({ kind: "unavailable", reason: "method_ref_not_recorded" });
@@ -669,7 +675,15 @@ it("selects strict authority for an initial purchase's one-time provider state a
     const state = (await db.query("SELECT target_kind,subscription_id,subscription_cycle_id,active_attempt_id FROM public.payment_provider_states WHERE id=$1", [f.intent])).rows[0];
     expect(state).toMatchObject({ target_kind: "one_time_order", subscription_id: null, subscription_cycle_id: null, active_attempt_id: expect.any(String) });
     expect(await call(db, "subscription_method_uses_recorded_refs", [f.subscription])).toBe(true);
-    expect(await createPostgresPurchaseRenewalWriter(db).readMethod(f.subscription)).toMatchObject({ healthState: "method_missing", methodRef: null });
+    expect(await call(db, "subscription_method_has_recorded_ref", [f.subscription])).toBe(false);
+    // Original renewal evidence remains legacy until a recorded row exists.
+    expect(await createPostgresPurchaseRenewalWriter(db).readMethod(f.subscription)).toMatchObject({ healthState: "healthy", methodRef: "compatibility-method" });
+    const at = (await db.query("SELECT to_char(next_cycle_at AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS at FROM public.subscriptions WHERE id=$1", [f.subscription])).rows[0].at;
+    expect(await createPostgresRenewalStore(db, createNativeRenewalCodec()).readMandateEvidence({ subscriptionId: f.subscription, scheduledAt: at, scheduledInstant: Date.parse(at) }))
+      .toMatchObject({ authorized: true });
+    const principal = randomUUID();
+    await db.query("UPDATE public.clients SET principal_id=$2 WHERE id=$1", [f.client, principal]);
+    expect((await accountMethodSources({ ...f, principal }).readPaymentEvidence([f.subscription])).get(f.subscription)?.healthState).toBe("method_missing");
     const before = await methodRows();
     expect(await call(db, "subscription_method_chargeable_unattended", [f.subscription])).toBe(false);
     expect(await createPostgresRecordedSubscriptionMethodReader(db).read(f.subscription)).toEqual({ kind: "unavailable", reason: "method_ref_not_recorded" });
@@ -697,6 +711,7 @@ it.each(["revoked", "expired", "expiring"] as const)("all native readers retain 
     if (status === "revoked") await call(db, "payment_method_ref_deactivate", [randomUUID(), m.id, "revoked", {}]);
     else await db.query("UPDATE public.payment_method_refs SET expires_at=now()+$2::interval WHERE id=$1", [m.id, status === "expired" ? "-1 second" : "10 days"]);
     expect(await call(db, "subscription_method_uses_recorded_refs", [f.subscription])).toBe(true);
+    expect(await call(db, "subscription_method_has_recorded_ref", [f.subscription])).toBe(true);
     expect((await sources.readPaymentEvidence([f.subscription])).get(f.subscription)?.healthState).toBe(status === "revoked" ? "method_missing" : "method_expiring");
     expect(await writer.readMethod(f.subscription)).toMatchObject({ healthState: status === "revoked" ? "method_missing" : "method_expiring", methodRef: status === "revoked" ? null : m.reference });
     const at = (await db.query("SELECT to_char(next_cycle_at AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS at FROM public.subscriptions WHERE id=$1", [f.subscription])).rows[0].at;

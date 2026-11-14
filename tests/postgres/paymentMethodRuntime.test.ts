@@ -5,7 +5,7 @@ import { createPostgresPaymentMethodSetup, createPostgresPaymentWebhookControlPo
   createPostgresPaymentMethodStore, paymentSchemaDescriptor } from "@openlup/platform/payments";
 import type { VerifiedMethodEvidence } from "@openlup/platform/payments/contracts";
 import { createSelfServiceCommandFacade } from "@openlup/platform/account-support";
-import { NATIVE_SUBSCRIPTION_CAPABILITIES } from "@openlup/platform/subscriptions";
+import { createPostgresPurchaseRenewalWriter, NATIVE_SUBSCRIPTION_CAPABILITIES } from "@openlup/platform/subscriptions";
 import { storeJourneyResources, assertJourneyRuntime } from "../helpers/storeJourney.js";
 import { postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
 import { call, failure, prepareOriginal, renewal, request } from "./subscriptionNativeFixture.js";
@@ -24,10 +24,11 @@ it("accepts method setup, account support and verified method ingress on the ins
   await runtime.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,$2)", [principal, `${principal}@example.invalid`]);
   const client = (await runtime.query("INSERT INTO public.clients(email,principal_id,acquisition_source,lifecycle_stage) VALUES($1,$2,'synthetic','customer') RETURNING id", [`${principal}@example.invalid`, principal])).rows[0].id;
   await runtime.query("INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at) VALUES($1,$2,28,$3)", [subscription, client, AT]);
+  expect(await call(runtime, "subscription_method_has_recorded_ref", [subscription])).toBe(false);
   const trace: string[] = [];
   const lane = createPostgresPaymentMethodSetup(runtime, { enabled: () => true, ensureCustomer: async input => { trace.push(input.idempotencyKey); return "runtime-customer"; },
     methodPort: { async setupMethod(input) { trace.push(input.idempotencyKey); return { kind: "ready", setupRef: "runtime-setup", handoff: { kind: "client-confirmed", payload: "transient" as never }, replayed: false }; } } });
-  expect(await lane.execute(randomUUID(), { subscriptionId: subscription, idempotencyKey: "foreign" })).toMatchObject({ kind: "forbidden" });
+  expect(await lane.execute(randomUUID(), { subscriptionId: subscription, idempotencyKey: "foreign-key" })).toMatchObject({ kind: "forbidden" });
   expect(trace).toEqual([]);
   const unavailable = { supported: false, refusalCode: "host_binding_required" } as const;
   const facade = createSelfServiceCommandFacade({ context: { principalId: principal, clientId: client, graph: "native" },
@@ -37,9 +38,9 @@ it("accepts method setup, account support and verified method ingress on the ins
       subscriptions: { ...NATIVE_SUBSCRIPTION_CAPABILITIES, genericBundleCommands: { supported: false, refusalCode: "native_generic_bundle_commands_unsupported" }, commandBoundReceipts: { supported: false, refusalCode: "native_command_bound_receipts_unsupported" } },
       communicationGifts: { supported: false, refusalCode: "unsupported_preference" } }, paymentMethod: lane });
   expect(facade.capabilities.paymentMethodSetup).toEqual({ supported: true });
-  expect(await facade.paymentMethod.execute(principal, { subscriptionId: subscription, idempotencyKey: "runtime" })).toMatchObject({ kind: "ready" });
-  expect(trace).toEqual([`account-card-customer:${subscription}:runtime`, `account-card-setup:${subscription}:runtime`]);
-  await expect(facade.paymentMethod.execute(randomUUID(), { subscriptionId: subscription, idempotencyKey: "foreign" })).rejects.toThrow("customer_principal_mismatch");
+  expect(await facade.paymentMethod.execute(principal, { subscriptionId: subscription, idempotencyKey: "runtime-key" })).toMatchObject({ kind: "ready" });
+  expect(trace).toEqual([`account-card-customer:${subscription}:runtime-key`, `account-card-setup:${subscription}:runtime-key`]);
+  await expect(facade.paymentMethod.execute(randomUUID(), { subscriptionId: subscription, idempotencyKey: "foreign-key" })).rejects.toThrow("customer_principal_mismatch");
   const evidence: VerifiedMethodEvidence = { provider: "card_rail", providerEventId: randomUUID(), fingerprint: "b".repeat(64), providerOccurredAt: AT,
     kind: "method", outcome: "registered", methodRef: "runtime-method", setupRef: "runtime-setup", intentRef: null,
     reusableMethod: { providerCustomerRef: "runtime-customer", providerMethodRef: "runtime-method", methodKind: "card", status: "active", consentSnapshot: { source: "setup" } } };
@@ -75,6 +76,10 @@ it("accepts method setup, account support and verified method ingress on the ins
   expect((await runtime.query("SELECT reminder_kind FROM public.subscription_reminder_ledger WHERE subscription_id=$1", [subscription])).rows)
     .toEqual([{ reminder_kind: "renewal_due_soon" }]);
   expect(await call(runtime, "dunning_lifecycle_renewal_reminder_enqueue", [100, 259200, 432000, 432000, 86400])).toMatchObject({ enqueued: 0 });
+  await call(runtime, "payment_method_ref_deactivate", [randomUUID(), recorded!.id, "revoked", {}]);
+  expect(await call(runtime, "subscription_method_has_recorded_ref", [subscription])).toBe(true);
+  expect(await createPostgresPurchaseRenewalWriter(runtime).readMethod(subscription)).toMatchObject({ healthState: "method_missing", methodRef: null });
+  expect((await runtime.query("SELECT has_function_privilege('anon','public.subscription_method_has_recorded_ref(uuid)','EXECUTE') AS allowed")).rows[0].allowed).toBe(false);
   await assertJourneyRuntime(runtime);
 });
 

@@ -1682,9 +1682,12 @@ for historical labels or mirrors without recorded evidence. Scope repair is
 explicit and batch dry-run is the default. For native host-composed real history,
 missing recorded references block retries, recovery, reactivation, timed auto-resume
 and upcoming reminders until the host records refs with `payment_method_ref_upsert`.
-The original renewal transaction is unchanged; all health readers use recorded
-authority when present, including initial-order provider evidence and references
-in any state. Setup keys are trimmed and must contain 8–180 characters. Explicit
+Original renewal charging keeps its previous method and mandate evidence behavior
+when no recorded reference exists, even with real-provider history. Once any
+reference row exists, every reader uses strict recorded authority, regardless of
+its status or active state. Account-support health and lifecycle admission follow
+the provider-history classification even without a reference. Setup keys are
+trimmed and must contain 8–180 characters. Explicit
 sandbox behavior is preserved; an initial captured
 checkout alone does not override a completed sandbox attachment/current terms. See the
 [method-history limits](../../docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)

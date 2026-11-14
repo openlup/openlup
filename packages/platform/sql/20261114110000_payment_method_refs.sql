@@ -180,9 +180,15 @@ RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog,
  SELECT to_jsonb(m)||jsonb_build_object('open_case_id',(SELECT id FROM public.subscription_dunning_cases WHERE subscription_id=m.subscription_id AND status='open' ORDER BY opened_at DESC LIMIT 1))
  FROM public.payment_method_refs m WHERE provider_kind=p_provider_kind AND provider_method_ref=p_provider_method_ref;
 $$;
+-- Original renewal reads need row existence independently of lifecycle history.
+-- Inactive references retain recorded authority; the table stays private.
+CREATE FUNCTION public.subscription_method_has_recorded_ref(p_subscription_id uuid)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.payment_method_refs WHERE subscription_id=p_subscription_id);
+$$;
 CREATE FUNCTION public.subscription_method_uses_recorded_refs(p_subscription_id uuid)
 RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
- SELECT EXISTS(SELECT 1 FROM public.payment_method_refs WHERE subscription_id=p_subscription_id)
+ SELECT public.subscription_method_has_recorded_ref(p_subscription_id)
   OR EXISTS(SELECT 1 FROM public.subscription_method_states WHERE subscription_id=p_subscription_id AND provider_kind IS NOT NULL)
   OR EXISTS(SELECT 1 FROM public.payment_provider_states provider
    JOIN public.commerce_settlement_intents intent ON intent.id=provider.id
@@ -1934,6 +1940,7 @@ REVOKE ALL ON FUNCTION public.payment_control_mark_setup_event_processed(uuid) F
 REVOKE ALL ON FUNCTION public.payment_method_ref_repair_subscription_scope(text,uuid,timestamptz,text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.payment_method_ref_repair_subscription_scope_batch(integer,boolean,text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.subscription_try_schedule_recovery_retry(uuid,text,timestamptz,text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.subscription_method_has_recorded_ref(uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.subscription_method_uses_recorded_refs(uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.payment_method_ref_for_subscription_read(uuid,text,timestamptz) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.payment_method_recovery_authority_read(uuid) FROM PUBLIC;
@@ -1947,4 +1954,4 @@ DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'CREATE POLICY payment_method_refs_absorption_census ON public.payment_method_refs FOR SELECT TO service_role USING (true);'; END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT SELECT (client_id) ON TABLE public.payment_method_recovery_authorities TO service_role;'; END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'CREATE POLICY payment_method_recovery_authorities_absorption_census ON public.payment_method_recovery_authorities FOR SELECT TO service_role USING (true);'; END IF; END; $$;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.payment_method_ref_upsert(text,uuid,uuid,text,text,text,text,text,text,boolean,timestamptz,jsonb,jsonb),public.payment_method_ref_deactivate(text,uuid,text,jsonb),public.payment_method_ref_switch_active(text,uuid,uuid),public.payment_method_ref_link_subscription_mirror(text,uuid,uuid),public.subscription_method_chargeable_unattended(uuid,timestamptz),public.subscription_method_health_read(uuid),public.payment_method_ref_read(text,text),public.payment_method_setup_resolve_owner(uuid,uuid),public.payment_control_mark_setup_event_processed(uuid),public.payment_method_ref_repair_subscription_scope(text,uuid,timestamptz,text),public.payment_method_ref_repair_subscription_scope_batch(integer,boolean,text),public.subscription_try_schedule_recovery_retry(uuid,text,timestamptz,text),public.subscription_method_uses_recorded_refs(uuid),public.payment_method_ref_for_subscription_read(uuid,text,timestamptz),public.payment_method_recovery_authority_read(uuid),public.payment_method_recovery_authority_bind(uuid,uuid,text,text,timestamptz),public.payment_method_recovery_authority_record(uuid,uuid),public.payment_method_recovery_authority_freeze(uuid,uuid,text,text,timestamptz) TO service_role;'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.payment_method_ref_upsert(text,uuid,uuid,text,text,text,text,text,text,boolean,timestamptz,jsonb,jsonb),public.payment_method_ref_deactivate(text,uuid,text,jsonb),public.payment_method_ref_switch_active(text,uuid,uuid),public.payment_method_ref_link_subscription_mirror(text,uuid,uuid),public.subscription_method_chargeable_unattended(uuid,timestamptz),public.subscription_method_health_read(uuid),public.payment_method_ref_read(text,text),public.payment_method_setup_resolve_owner(uuid,uuid),public.payment_control_mark_setup_event_processed(uuid),public.payment_method_ref_repair_subscription_scope(text,uuid,timestamptz,text),public.payment_method_ref_repair_subscription_scope_batch(integer,boolean,text),public.subscription_try_schedule_recovery_retry(uuid,text,timestamptz,text),public.subscription_method_has_recorded_ref(uuid),public.subscription_method_uses_recorded_refs(uuid),public.payment_method_ref_for_subscription_read(uuid,text,timestamptz),public.payment_method_recovery_authority_read(uuid),public.payment_method_recovery_authority_bind(uuid,uuid,text,text,timestamptz),public.payment_method_recovery_authority_record(uuid,uuid),public.payment_method_recovery_authority_freeze(uuid,uuid,text,text,timestamptz) TO service_role;'; END IF; END; $$;

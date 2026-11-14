@@ -26,9 +26,9 @@ export const subscriptionCorrelationJoin = `LEFT JOIN public.subscription_activa
  LEFT JOIN public.subscription_cycles ac ON ac.id=o.subscription_cycle_id`;
 const SNAPSHOT_SQL = `SELECT s.id AS subscription_id,s.client_id,s.cadence_days,s.template_version,o.id AS activation_order_id,to_char(s.next_cycle_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS scheduled_at,t.*,
  to_char(t.unattended_charge_authorized_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS unattended_charge_authorized_at,
- ${subscriptionCorrelationSql},CASE WHEN public.subscription_method_uses_recorded_refs(s.id)
+ ${subscriptionCorrelationSql},CASE WHEN public.subscription_method_has_recorded_ref(s.id)
   THEN public.subscription_method_health_read(s.id)->>'health_state' ELSE m.health_state END AS health_state,
- CASE WHEN public.subscription_method_uses_recorded_refs(s.id) THEN public.subscription_method_chargeable_unattended(s.id,now())
+ CASE WHEN public.subscription_method_has_recorded_ref(s.id) THEN public.subscription_method_chargeable_unattended(s.id,now())
   ELSE m.health_state IS NULL OR m.health_state='healthy' END AS method_authorized,public.subscription_renewal_purchase_terms(s.id) AS purchase_facts,
  (SELECT e.payload->'linePricing' FROM public.subscription_events e WHERE e.subscription_id=s.id
   AND e.event_type IN ('subscription.starter_graduated','subscription.customer_self_service.update_package_template',

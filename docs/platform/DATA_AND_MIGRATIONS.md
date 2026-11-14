@@ -766,10 +766,17 @@ composition; the existing sandbox case handoff remains selected separately.
 
 For host-composed native subscriptions with real-provider history but no recorded
 references, retry, recovery, reactivation, auto-resume and upcoming reminders
-refuse or remain ineligible until the host records refs. Original renewal charging
-uses the same execution transaction; its method-evidence readers now consistently
-select recorded health when authority exists. Sandbox subscriptions retain their
-previous behavior, including a
+refuse or remain ineligible until the host records refs. Edits and order-now use
+the same lifecycle classification. Original renewal charging retains its previous
+method and mandate evidence behavior when no recorded reference exists, including
+subscriptions with real-provider history. Once any reference row exists, every
+reader uses recorded authority, including inactive, revoked or expired rows;
+there is no fallback to legacy evidence. The bounded service-only
+`subscription_method_has_recorded_ref` reader supplies this existence check
+without granting access to the private method table. Account-support health follows the
+lifecycle classification even without a reference, so it reports missing method
+health for real history. Sandbox subscriptions retain their previous behavior,
+including a
 completed sandbox renewal attachment whose initial paid checkout used a different
 channel, provided no recorded provider or real-renewal evidence selects authority.
 

@@ -4745,6 +4745,10 @@
             "searchPath": "pg_catalog, pg_temp"
           },
           {
+            "signature": "public.subscription_method_has_recorded_ref(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
             "signature": "public.subscription_method_uses_recorded_refs(uuid)",
             "searchPath": "pg_catalog, pg_temp"
           },
@@ -6241,7 +6245,7 @@
     },
     {
       "path": "db/platform/migrations/20261114110000_payment_method_refs.sql",
-      "sha256": "0ca298c25d7faf4a4fc528d0e9f78340d754a0f9cfdc0dade37dc0800f98c526",
+      "sha256": "958efcc2c06df5626ba5a6010dc5d1e2aac2ba66fd015af2aeb5e25621e420f3",
       "functions": [
         {
           "signature": "public.subscription_command_preview(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
@@ -6386,7 +6390,7 @@
         {
           "signature": "public.subscription_method_uses_recorded_refs(uuid)",
           "beforeSha256": null,
-          "afterSha256": "bd3207c28207a792221131af13a2245878aad23515a4d111c0039f9ed751005f"
+          "afterSha256": "3238ebd0d0e06eff2040342811488a03a50e9a1f123b65548b7a718ae25b3374"
         },
         {
           "signature": "public.payment_method_ref_for_subscription_read(uuid,text,timestamptz)",
@@ -6412,6 +6416,11 @@
           "signature": "public.payment_method_recovery_authority_freeze(uuid,uuid,text,text,timestamptz)",
           "beforeSha256": null,
           "afterSha256": "4d83a4eeb76ad414fdf9e97eb217e94b2a7e3b1f1bc51c5d668e96b4980c0f13"
+        },
+        {
+          "signature": "public.subscription_method_has_recorded_ref(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "1377ab27cefba4cb3e6421538466f5a930f633b67f5819bbd0b1a0b7975b075b"
         }
       ]
     }
