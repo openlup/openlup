@@ -3074,7 +3074,12 @@ qualification. Supported dispatch needs compared `accepted` and `not_dispatched`
 results and an executed, compared `unknown` replay without a second provider call.
 Both profiles require a compared preparation refusal; refused preparations must
 omit `expectedDispatch` and `replay` in either mode. Supported label methods and
-stock/product sync methods require success/failure pairs. Dispatch faults must
+stock/product sync methods require success/failure pairs. Positive sync witnesses must include a stock snapshot,
+movement, addressable product pack or nonblank stocked SKU for the corresponding
+read. `ensureProduct` must return `{ replayed: false }`; skipped `null` and replayed
+results can be additional fixtures. `addProductPack` succeeds by returning `void`
+without throwing. Empty or rejected-only reads can be additional fixtures but
+cannot supply the required positive witness. Dispatch faults must
 occur within their indexed invocation, with provider-call counts proving the
 submission boundary. Status pairs execute in
 declared order and must preserve the expected older-after-newer result. The

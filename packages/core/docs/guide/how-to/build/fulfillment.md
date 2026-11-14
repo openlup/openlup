@@ -266,7 +266,12 @@ provider maps its cursors to sequential page numbers inside its adapter; the
 public page port carries no opaque cursor and this kit adds none.
 
 Supply success/failure pairs for each supported stock and product sync method;
-stock movements are required unless `stockMovements: false` is declared. The
+stock movements are required unless `stockMovements: false` is declared. Positive sync witnesses must include a stock snapshot,
+movement, addressable product pack or nonblank stocked SKU for the corresponding
+read. `ensureProduct` must return `{ replayed: false }`; skipped `null` and replayed
+results can be additional fixtures. `addProductPack` succeeds by returning `void`
+without throwing. Empty or rejected-only reads can be additional fixtures but
+cannot supply the required positive witness. The
 `snapshotOnly` callback invokes the real snapshot-only worker and returns its
 movement refusal; its counter counts only movement calls. Native selection probes
 invoke the shipped refusal paths for non-PDF labels, label creation/voiding,

@@ -297,9 +297,10 @@ function fullSubject() {
     { kind: "http-failure", status: 503, response: new Response("{}", { status: 503 }) });
   const syncFailure = { reason: "io_failure" as const, phase: "sync" as const, retryable: false };
   const fail = () => ({ kind: "http-failure" as const, status: 503, response: new Response("{}", { status: 503 }) });
-  fake.enqueue("GET /stock", json({}), fail(), json({}), fail());
-  fake.enqueue("GET /stock-movements", json({}), fail());
-  fake.enqueue("GET /products/SKU-A", json({ packs: [] }), fail());
+  fake.enqueue("GET /stock", json({ _embedded: { stockItems: [{ sku: "SKU-A", totalQuantity: 5, forSaleQuantity: 3, faultyQuantity: 2 }] } }), fail(),
+    json({ _embedded: { stockItems: [{ sku: "SKU-A" }] } }), fail());
+  fake.enqueue("GET /stock-movements", json({ _embedded: [{ sku: "SKU-A", quantity: -2, occurredAt: now, operationType: "order_shipped", warehouseDocumentNumber: "DOC-A", productLotNumber: "LOT-A", expirationDate: "2027-01-01" }] }), fail());
+  fake.enqueue("GET /products/SKU-A", json({ packs: [{ ean: "0000000000012", quantity: 2 }] }), fail());
   let movements = 0;
   value.certification = { profile: "adapter", dispatch: { addressBeforeSubmission: 6, addressAfterSubmission: 2,
     transport: { "transport-before-submission": { fixture: 3, calls: fake.calls }, "transport-after-submission": { fixture: 4, calls: fake.calls }, "http-failure": { fixture: 5, calls: fake.calls } } },
@@ -307,12 +308,12 @@ function fullSubject() {
     paging: { full: { input: { page: 0, size: 2 }, expected: { kind: "page", rows: [pageResult, pageResult] } },
       short: { input: { page: 1, size: 2 }, expected: { kind: "page", rows: [pageResult] } }, empty: { input: { page: 2, size: 2 }, expected: { kind: "page", rows: [] } },
       exhausted: { input: { page: 3, size: 2 }, expected: { kind: "page_exhausted" } }, failure: { input: { page: 4, size: 2 }, expected: { kind: "failed", refusal: { reason: "io_failure", phase: "readback", retryable: true }, error: { code: "http_503", status: 503, retryable: true, mayHaveSucceeded: false } } } },
-    stockSync: [ { operation: "getStock", success: { input: [], expected: [] }, failure: { input: [], throws: { ...syncFailure, retryable: true } } },
-      { operation: "getStockMovements", success: { input: [], expected: [] }, failure: { input: [], throws: { ...syncFailure, retryable: true } } } ],
+    stockSync: [ { operation: "getStock", success: { input: [], expected: [{ ...syncIdentity, skuRef: "SKU-A", quantityKind: "snapshot", totalQuantity: 5, forSaleQuantity: 3, reservedOrUnavailableQuantity: 2 }] }, failure: { input: [], throws: { ...syncFailure, retryable: true } } },
+      { operation: "getStockMovements", success: { input: [], expected: [{ ...syncIdentity, skuRef: "SKU-A", quantityKind: "movement", quantity: -2, occurredAt: now, operationType: "order_shipped", documentRef: "DOC-A", lotRef: "LOT-A", expirationDate: "2027-01-01" }] }, failure: { input: [], throws: { ...syncFailure, retryable: true } } } ],
     productSync: [ { operation: "ensureProduct", success: { input: ["SKU-A"], expected: { replayed: false } }, failure: { input: ["SKU-A"], throws: syncFailure } },
-      { operation: "getProductPacks", success: { input: ["SKU-A"], expected: [] }, failure: { input: ["SKU-A"], throws: { ...syncFailure, retryable: true } } },
+      { operation: "getProductPacks", success: { input: ["SKU-A"], expected: [{ ean: "0000000000012", quantity: 2 }] }, failure: { input: ["SKU-A"], throws: { ...syncFailure, retryable: true } } },
       { operation: "addProductPack", success: { input: ["SKU-A", { ean: "0000000000012", quantity: 2 }], expected: undefined }, failure: { input: ["SKU-A", { ean: "invalid", quantity: 2 }], throws: { reason: "malformed", phase: "sync", retryable: false } } },
-      { operation: "listStockedSkus", success: { input: [], expected: [] }, failure: { input: [], throws: { ...syncFailure, retryable: true } } } ],
+      { operation: "listStockedSkus", success: { input: [], expected: ["SKU-A"] }, failure: { input: [], throws: { ...syncFailure, retryable: true } } } ],
     snapshotOnly: { readMovementCalls: () => movements, async invoke() {
       const result = await runFulfillmentStockSyncWorker({ stockMovements: false, movementBatchSize: 1, now: () => new Date(now),
         compatibility: { syncRunId: () => "sync-offline", timeZone: "UTC", staleEvidenceSku: "sentinel", currentKey: () => "current", snapshotKey: () => "snapshot", lowStockKey: () => "low", staleKey: () => "stale" },
@@ -531,4 +532,39 @@ it("refuses false label-deletion confirmation and authentication refusal after p
   auth.value.readIoCount = () => count() + calls;
   auth.value.adapter.observation!.verifyAndNormalize = async input => { const result = await verify(input); if (result.kind === "refused") calls++; return result; };
   await expect(runFulfillmentAdapterConformance([auth.value], { mode: "full" })).rejects.toThrow("authentication refusal before I/O");
+});
+
+it.each([
+  ["productSync", "ensureProduct", null, "skipped"],
+  ["productSync", "ensureProduct", { replayed: true }, "replayed"],
+  ["stockSync", "getStock", [], "empty"],
+  ["stockSync", "getStock", [{ kind: "rejected", itemIndex: 0, reason: "invalid_sku_ref" }], "rejected-only"],
+  ["stockSync", "getStock", [{ kind: "rejected", itemIndex: 0, reason: "invalid_sku_ref", skuRef: "SKU-A", quantityKind: "snapshot" }], "rejected-with-stock-fields"],
+  ["stockSync", "getStockMovements", [], "empty"],
+  ["stockSync", "getStockMovements", [{ kind: "rejected", itemIndex: 0, reason: "invalid_sku_ref" }], "rejected-only"],
+  ["stockSync", "getStockMovements", [{ kind: "rejected", itemIndex: 0, reason: "invalid_sku_ref", skuRef: "SKU-A", quantityKind: "movement" }], "rejected-with-movement-fields"],
+  ["productSync", "getProductPacks", [], "empty"],
+  ["productSync", "getProductPacks", [{ ean: " ", quantity: 1 }], "unaddressable"],
+  ["productSync", "listStockedSkus", [], "empty"],
+  ["productSync", "listStockedSkus", [" "], "unaddressable"],
+] as const)("rejects %s.%s with %j as the only positive witness (%s)", async (name, operation, expected) => {
+  const fixture = fullSubject(), subject = fixture.value;
+  const row = subject.certification![name]!.find(row => row.operation === operation)!;
+  Object.assign(row.success, { expected });
+  const port = subject.adapter[name] as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>;
+  const invoke = port[operation]!, baselineCalls = subject.fixtures[name]!.filter(row => row.operation === operation).length;
+  let calls = 0;
+  port[operation] = async (...args) => {
+    const result = await invoke(...args);
+    return ++calls === baselineCalls + 1 ? expected : result;
+  };
+  await expect(runFulfillmentAdapterConformance([subject], { mode: "full" })).rejects.toThrow(`full ${operation} positive success required`);
+});
+
+it("allows a skipped ensureProduct fixture alongside a positive full witness", async () => {
+  const fixture = fullSubject(), subject = fixture.value, ensure = subject.adapter.productSync!.ensureProduct;
+  subject.adapter.productSync!.ensureProduct = sku => sku === "skip" ? Promise.resolve(null) : ensure(sku);
+  subject.fixtures.productSync = [...subject.fixtures.productSync!, { operation: "ensureProduct", input: ["skip"], expected: null }];
+  await expect(runFulfillmentAdapterConformance([subject], { mode: "full" })).resolves.toHaveProperty("subjects");
+  fixture.fake.assertDrained();
 });

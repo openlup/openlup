@@ -365,6 +365,11 @@ async function checkFull(subject: FulfillmentAdapterTestSubject, dispatchWitness
         }
         requireFact("expected" in fixture, `full ${operation} did not throw`);
         requireSame(actual, fixture.expected, `full ${operation} success`); assertDurable(actual, subject);
+        if (operation === "ensureProduct") requireFact(actual !== null && typeof actual === "object" && "replayed" in actual && actual.replayed === false, `full ${operation} positive success required`);
+        if (operation === "getStock" || operation === "getStockMovements") requireFact(Array.isArray(actual) && actual.some(item => item && !("kind" in item && item.kind === "rejected") && typeof item.skuRef === "string" && item.skuRef.trim()
+          && item.quantityKind === (operation === "getStock" ? "snapshot" : "movement")), `full ${operation} positive success required`);
+        if (operation === "getProductPacks") requireFact(Array.isArray(actual) && actual.some(item => item && typeof item.ean === "string" && item.ean.trim()), `full ${operation} positive success required`);
+        if (operation === "listStockedSkus") requireFact(Array.isArray(actual) && actual.some(sku => typeof sku === "string" && sku.trim()), `full ${operation} positive success required`);
       }
       passed(`adapter ${name}.${operation}:success and failure`);
     }
