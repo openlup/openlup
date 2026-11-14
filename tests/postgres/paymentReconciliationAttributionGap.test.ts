@@ -3,7 +3,7 @@ import { afterAll, beforeAll, expect, it } from "vitest";
 import { createPostgresProviderPaymentControlPort, createPostgresPaymentWebhookControlPort,
   createPostgresPaymentProviderReconciliationPort } from "@openlup/platform/payments";
 import { lifecycleInstallation, type LifecycleInstallation } from "./subscriptionLifecycleClosureFixture.js";
-import { AT as preparedAt, call, renewal } from "./subscriptionNativeFixture.js";
+import { AT as preparedAt, call, recordRenewalMethod, renewal } from "./subscriptionNativeFixture.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
 
 const AT = "2032-01-01T12:00:00.000Z";
@@ -16,6 +16,7 @@ const reconciliation = () => createPostgresPaymentProviderReconciliationPort(env
 
 async function fixture() {
   const f = await renewal(env.owner, 10, 1, randomUUID(), true);
+  await recordRenewalMethod(env.owner, f, "method-primary");
   await call(env.owner, "fulfillment_reserve_subscription_renewal", [f.operation, f.token, 900, preparedAt]);
   const original = await call(env.owner, "commerce_prepare_subscription_renewal", [f.operation, f.token, preparedAt]);
   const cycle = (await env.owner.query("SELECT subscription_cycle_id FROM public.commerce_orders WHERE id=$1", [original.orderId])).rows[0].subscription_cycle_id as string;
