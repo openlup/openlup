@@ -4,6 +4,14 @@ Status: historical record, 2026-11-13.
 
 Status: proof recipe with bounded base-candidate execution evidence below.
 
+The later 0.42.0 source adds an opt-in [card provider server composition](../host/provider-portable.ts).
+The [native PostgreSQL witness](../../../tests/postgres/stripePortableRail.test.ts)
+uses an offline client and the installed runtime role for purchase, capture,
+renewal, attributed decline, replacement and recovery, plus cumulative refunds
+and dispatch uncertainty. The dated sandbox evidence below retains its original
+scope; the default starter still selects sandbox payments. No live provider
+qualification or portable composition for the second reference provider follows.
+
 Run from the independent application's root with its exact selected artifacts.
 Use the application's own installation, resource and verification authority.
 The source recipe does not grant deployment or publication rights.
@@ -23,7 +31,7 @@ V, the expected sha512 integrity and the exact public-registry tarball URL for
 P@V. Root dependency sections must match the extracted package.json and its
 exact V pins. Every other non-root entry refuses an `@openlup/` or `%40openlup`
 reference, case-insensitively, in its key, name, resolved URL (also URL-decoded)
-or any dependencies/optionalDependencies/peerDependencies/devDependencies value.
+or any dependencies/optionalDependencies/peerDependencies/devDependencies key or value.
 Nested and aliased OpenLup copies are forbidden. All non-root entries require
 public-registry resolutions without links, credentials, query strings or
 fragments. The manifest is an expected-integrity input, not signed publication

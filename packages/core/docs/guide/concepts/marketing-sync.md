@@ -117,6 +117,6 @@ completion must not remove the local tombstone or enable profile recreation.
 
 The separate newsletter bridge also refuses `skipped/unsupported`; selecting
 marketing sync does not enable newsletter work. See the
-[neutral marketing contracts](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/src/communications/contracts/marketingSync.ts)
+[neutral marketing contracts](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/packages/platform/src/communications/contracts/marketingSync.ts)
 for result shapes and [idempotency](idempotency.md#idempotency-contract) for handler retry
 boundaries.

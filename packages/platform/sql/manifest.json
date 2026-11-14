@@ -542,9 +542,17 @@
       {
         "file": "db/platform/migrations/20261114120000_payment_reconciliation_refund_evidence.sql",
         "sha256": "53e6675a8346accaf31805d03118940df09c5dfc1cc063578af53714d2abcc5f"
+      },
+      {
+        "file": "db/platform/migrations/20261119200000_communication_event_prepare_erasure.sql",
+        "sha256": "f1400228a9bfb6d8ed75f1fed73f53c590c83f6a4fc76c226fef6fc54c965fe4"
+      },
+      {
+        "file": "db/platform/migrations/20261120100000_fulfillment_intake_channel.sql",
+        "sha256": "5ce8ada91ed1b6634a9d17b54b82751502e6350e564945528f240e361dda5352"
       }
     ],
-    "objectInventorySha256": "2113a2e8ab35937055fe62743af11a252c6e0cc316edc90a9fee2a9de0ca6261",
+    "objectInventorySha256": "79bb7a8cba026d059d8d6e4d7213f06593c9786c97d642b6620103b84410d366",
     "qualified": {
       "baseline": {
         "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1106,14 +1114,22 @@
         {
           "file": "db/platform/migrations/20261114120000_payment_reconciliation_refund_evidence.sql",
           "sha256": "53e6675a8346accaf31805d03118940df09c5dfc1cc063578af53714d2abcc5f"
+        },
+        {
+          "file": "db/platform/migrations/20261119200000_communication_event_prepare_erasure.sql",
+          "sha256": "f1400228a9bfb6d8ed75f1fed73f53c590c83f6a4fc76c226fef6fc54c965fe4"
+        },
+        {
+          "file": "db/platform/migrations/20261120100000_fulfillment_intake_channel.sql",
+          "sha256": "5ce8ada91ed1b6634a9d17b54b82751502e6350e564945528f240e361dda5352"
         }
       ],
       "objectInventorySha256": {
         "bootstrapMigrator": {
-          "withRestore": "5f587520006098800628e79f24e5d4f6b4d773424d505b08ea1ebe31f52e026f"
+          "withRestore": "05c50fe5afd4e448a9121de467b5fd3d4c2ef503c70cea83635290b106bc9fb3"
         },
         "separateMigrator": {
-          "withRestore": "be5a8344688b16c3e8a68066fa83fe79f3bbe38ced20f34e3e764abf151db32a"
+          "withRestore": "bed57b7773f021d29bf3fb8e2d5c05d6d785b2a9c30623d2a6bbaf19ab9440a3"
         }
       }
     },
@@ -1674,11 +1690,19 @@
         {
           "file": "db/platform/migrations/20261114120000_payment_reconciliation_refund_evidence.sql",
           "sha256": "53e6675a8346accaf31805d03118940df09c5dfc1cc063578af53714d2abcc5f"
+        },
+        {
+          "file": "db/platform/migrations/20261119200000_communication_event_prepare_erasure.sql",
+          "sha256": "f1400228a9bfb6d8ed75f1fed73f53c590c83f6a4fc76c226fef6fc54c965fe4"
+        },
+        {
+          "file": "db/platform/migrations/20261120100000_fulfillment_intake_channel.sql",
+          "sha256": "5ce8ada91ed1b6634a9d17b54b82751502e6350e564945528f240e361dda5352"
         }
       ],
       "objectInventorySha256": {
-        "installerManaged": "4906a57bdeccd80ea4c5700cb99b6605a025fe6130e3287b4143b3608b15d3d3",
-        "operatorProvisioned": "8e681f3352d40623e677e7d696706c1932cef6180814e1334c4bab1f5e401ec4"
+        "installerManaged": "93dbbb958bfefaf7615b1624055c6e79e2bb9ffd6f69a33e155c57bec226186d",
+        "operatorProvisioned": "92f565bad71d068c493049a353dd779a28f32776578f93ee75f277e4244c92c7"
       }
     }
   },
@@ -2357,6 +2381,16 @@
       "file": "20261114120000_payment_reconciliation_refund_evidence.sql",
       "source": "db/platform/migrations/20261114120000_payment_reconciliation_refund_evidence.sql",
       "sha256": "53e6675a8346accaf31805d03118940df09c5dfc1cc063578af53714d2abcc5f"
+    },
+    {
+      "file": "20261119200000_communication_event_prepare_erasure.sql",
+      "source": "db/platform/migrations/20261119200000_communication_event_prepare_erasure.sql",
+      "sha256": "f1400228a9bfb6d8ed75f1fed73f53c590c83f6a4fc76c226fef6fc54c965fe4"
+    },
+    {
+      "file": "20261120100000_fulfillment_intake_channel.sql",
+      "source": "db/platform/migrations/20261120100000_fulfillment_intake_channel.sql",
+      "sha256": "5ce8ada91ed1b6634a9d17b54b82751502e6350e564945528f240e361dda5352"
     },
     {
       "file": "q2_00000000000000_platform_baseline.sql",

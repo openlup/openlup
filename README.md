@@ -45,10 +45,6 @@ its own brand, catalog, policies and provider composition.
 *Velipet's English storefront. Application-specific branding and content;
 not the generic OpenLup reference profile.*
 
-
-## The gap OpenLup addresses
-Moved to [Subscriptions](packages/core/docs/guide/concepts/subscriptions.md).
-
 ## Is OpenLup for you?
 
 Read the [overview](packages/core/docs/guide/start/README.md) for application ownership, package choices and next steps.
@@ -95,9 +91,6 @@ nextRetryAttemptAt(failedAt, 3, cadence); // null: the retry budget is exhausted
 This calculates a time; it does not schedule work, persist state or charge.
 Continue with the [example explanation](packages/core/docs/guide/start/tutorial.md#calculate-a-retry-time)
 and the [database tutorial](packages/core/docs/guide/start/tutorial.md).
-
-### Evaluate the source reference
-Moved to [Evaluation boundaries](packages/core/docs/guide/reference/limits.md#evaluation-boundaries).
 
 ## Packages and architecture
 

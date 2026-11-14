@@ -9,10 +9,6 @@ availability, a passing test or a hosted installation. Use the
 [subscription reference](SUBSCRIPTION_REFERENCE.md) for the bounded disposable
 profile and [canonical contracts](CANONICAL_CONTRACTS.md) for public invariants.
 
-## Installed subscription boundary
-
-Moved to [Subscriptions](../../packages/core/docs/guide/concepts/subscriptions.md#installed-subscription-boundary).
-
 ## Choose the right layer
 
 Moved to [Subscriptions](../../packages/core/docs/guide/concepts/subscriptions.md#choose-the-right-layer).

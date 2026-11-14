@@ -169,3 +169,27 @@ it("retains definitive versus ambiguous outcomes and fails closed on unclassifie
     expect(await f.run()).toMatchObject({ providerCalls: 0 }); expect(f.calls()).toBe(1);
   }
 });
+
+
+it("keeps the neutral receipt alias on host keys through acceptance and local repair", async () => {
+  const f = fixture(), dispatch = f.provider.dispatch, finalize = f.store.finalize, acknowledge = f.store.acknowledge;
+  f.provider.dispatch = async (request, evidence) => {
+    const response = await dispatch(request, evidence);
+    return response.kind === "accepted" ? { ...response, receiptKey: response.labelKey } : response;
+  };
+  f.store.finalize = async input => {
+    const record = await finalize(input);
+    if (input.result.kind === "accepted") f.record().acceptance = input.result;
+    return record;
+  };
+  f.store.acknowledge = async input => {
+    expect(input.acceptance.receiptKey).toBe(f.keys.acceptance().labelKey);
+    expect(input.acceptance.labelKey).toBe(input.acceptance.receiptKey);
+    return acknowledge(input);
+  };
+  f.failAck();
+  expect(await f.run()).toMatchObject({ ok: false, providerCalls: 1 });
+  expect(f.record().acceptance).toMatchObject({ receiptKey: f.keys.acceptance().labelKey, labelKey: f.keys.acceptance().labelKey });
+  expect(await f.run()).toMatchObject({ ok: true, providerCalls: 0 });
+  expect(f.calls()).toBe(1);
+});
