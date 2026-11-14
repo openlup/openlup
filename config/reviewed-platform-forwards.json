@@ -4980,6 +4980,70 @@
             ]
           }
         ]
+      },
+      {
+        "row": "N6-R5",
+        "path": "db/platform/migrations/20261121090000_payment_provider_profiles.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.payment_provider_attempt_prepare(text,uuid,text,text,text,text,text,jsonb)",
+            "beforeSha256": "32a796357656910c9886789c49c72b1dfd2dcbc021de766a653c8c363191587b",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.payment_provider_assert_truth(uuid,text,bigint,text,timestamptz,jsonb)",
+            "beforeSha256": "582c9451047f03bc0069cdb5491bf4b8274d84652547bbb624b59ef8bbdc35d2",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.payment_provider_result_apply(text,uuid,uuid,text,timestamptz,text,text,text,text,text,text)",
+            "beforeSha256": "68065292f5b861697f7ea64e076d9048145122f30cae09ae9777c245a2bea644",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_payment_reconciliation_claim_stale_attempts(timestamptz,integer,integer,text)",
+            "beforeSha256": "9b1e745d36ba7095bc724ed62e04ba95742de55722cf4145245d4cc21a96c772",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_payment_reconciliation_claim_prepared_attempts(timestamptz,integer,integer,text)",
+            "beforeSha256": "45d4f74759ca8177b820ccdcf6d04a488960e6b3523ecc15c58ef51832035b5d",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.payment_refund_evidence_record(uuid,text,bigint,text)",
+            "beforeSha256": "a0bcea1a8af73d9aeeb004bf4de39e4c5ef9a9a59330d2499a1c20ee012cfba6",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_order_provider_refund_evidence(uuid)",
+            "beforeSha256": "0e1de9e956b8238f87480303bfd3da050003cbaf1bbf277cf82a3ac082f013c7",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.payment_refund_apply_result(text,uuid,uuid,text,timestamptz,text,text,text)",
+            "beforeSha256": "35a8d5c2b664e9b00fe297bc8927c731634b5b0649a9f0f75dbc78ad96ba92f0",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_payment_control_reopen_prepared_attempt_after_absence(text,uuid,uuid,uuid,text,timestamptz,timestamptz,jsonb)",
+            "beforeSha256": "ed2d3fbc368ad461a9c7242d5668c35164613938024ada6c9b72281ea6be0aaa",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_payment_reopen_interactive_sealed_v1(text,uuid,uuid,uuid,uuid,uuid,text,text,text,text,text,timestamptz,jsonb)",
+            "beforeSha256": "4f6cc69c44ab60625ade46cf61846b2199c7008e6c7bcd7967369c8f2fb7b775",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.payment_provider_profile(text)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -6788,6 +6852,67 @@
           "signature": "public.fulfillment_native_dispatch_read_candidate(uuid,text)",
           "beforeSha256": null,
           "afterSha256": "fd773e592645b07fa836e16a8e83e43f31ab72d44e47badc1c8e824f47744eae"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261121090000_payment_provider_profiles.sql",
+      "sha256": "b64dfa73ab2b146c0a350440bcb8c8674b1df716b0ee8cf4270f61460aa0300f",
+      "functions": [
+        {
+          "signature": "public.payment_provider_attempt_prepare(text,uuid,text,text,text,text,text,jsonb)",
+          "beforeSha256": "32a796357656910c9886789c49c72b1dfd2dcbc021de766a653c8c363191587b",
+          "afterSha256": "62d79901ee8051339d3e68ff7bf59fb53b01371e871329b9855ee4f38ca80d82"
+        },
+        {
+          "signature": "public.payment_provider_assert_truth(uuid,text,bigint,text,timestamptz,jsonb)",
+          "beforeSha256": "582c9451047f03bc0069cdb5491bf4b8274d84652547bbb624b59ef8bbdc35d2",
+          "afterSha256": "9e519978cb8dde920d2096a2785b69c5b4a5357f5b457e1d1b6027a1b69457e3"
+        },
+        {
+          "signature": "public.payment_provider_result_apply(text,uuid,uuid,text,timestamptz,text,text,text,text,text,text)",
+          "beforeSha256": "68065292f5b861697f7ea64e076d9048145122f30cae09ae9777c245a2bea644",
+          "afterSha256": "aeecd0b187a4092af82e363e52d99fdb45a7e664247e0fef3d35189d16803912"
+        },
+        {
+          "signature": "public.commerce_payment_reconciliation_claim_stale_attempts(timestamptz,integer,integer,text)",
+          "beforeSha256": "9b1e745d36ba7095bc724ed62e04ba95742de55722cf4145245d4cc21a96c772",
+          "afterSha256": "faab2d54d688a4ded2402bc0f5b54c74ea4f7782848658a38f9e67a4f0b3eda5"
+        },
+        {
+          "signature": "public.commerce_payment_reconciliation_claim_prepared_attempts(timestamptz,integer,integer,text)",
+          "beforeSha256": "45d4f74759ca8177b820ccdcf6d04a488960e6b3523ecc15c58ef51832035b5d",
+          "afterSha256": "e89f94f337239c573ea50e807f33593ba08c5980ad2a14ca1dc035304890d802"
+        },
+        {
+          "signature": "public.payment_refund_evidence_record(uuid,text,bigint,text)",
+          "beforeSha256": "a0bcea1a8af73d9aeeb004bf4de39e4c5ef9a9a59330d2499a1c20ee012cfba6",
+          "afterSha256": "8423ad53128560e62e57651fef7e80ac1056db771891d7fb29543c030d5fd056"
+        },
+        {
+          "signature": "public.commerce_order_provider_refund_evidence(uuid)",
+          "beforeSha256": "0e1de9e956b8238f87480303bfd3da050003cbaf1bbf277cf82a3ac082f013c7",
+          "afterSha256": "7022466860d04f2259babe6b229126e5f7cc9c98adf9c4ea87d40246ce15d066"
+        },
+        {
+          "signature": "public.payment_refund_apply_result(text,uuid,uuid,text,timestamptz,text,text,text)",
+          "beforeSha256": "35a8d5c2b664e9b00fe297bc8927c731634b5b0649a9f0f75dbc78ad96ba92f0",
+          "afterSha256": "d8c0b0e5842cbdd68c63ba1d99f22b2bb1b6885cf56ac3068c9248d33bc298cb"
+        },
+        {
+          "signature": "public.commerce_payment_control_reopen_prepared_attempt_after_absence(text,uuid,uuid,uuid,text,timestamptz,timestamptz,jsonb)",
+          "beforeSha256": "ed2d3fbc368ad461a9c7242d5668c35164613938024ada6c9b72281ea6be0aaa",
+          "afterSha256": "391acd98184a584fd988509605d75083219d3bd4b8f386b9d854fd0da075e204"
+        },
+        {
+          "signature": "public.commerce_payment_reopen_interactive_sealed_v1(text,uuid,uuid,uuid,uuid,uuid,text,text,text,text,text,timestamptz,jsonb)",
+          "beforeSha256": "4f6cc69c44ab60625ade46cf61846b2199c7008e6c7bcd7967369c8f2fb7b775",
+          "afterSha256": "220d691bf0d180b33b3c1b9ac5b8dec4e1df3f8c9c90ec0d618ab06122e7ae7b"
+        },
+        {
+          "signature": "public.payment_provider_profile(text)",
+          "beforeSha256": null,
+          "afterSha256": "9419ee413d8920b19a4bb5f76b98af6befd5ad067e96773bd44ce21243cf6837"
         }
       ]
     }

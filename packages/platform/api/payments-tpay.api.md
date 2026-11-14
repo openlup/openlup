@@ -478,6 +478,7 @@ export type { PostgresPaymentTruthOptions } from "./truth.js";
 export type { ActivePaymentActionAuthority, CheckoutActivePaymentActionResolver, CheckoutRecoveryPaymentResolver, CheckoutRecoveryPaymentResolution, PaymentRecoveryAction, PaymentRepairMethodPort } from "./repair.js";
 export type { PaymentServicesOptions, PaymentServices } from "./repair.js";
 export type { SandboxPaymentOutcome, SandboxMethodFacts, SandboxPaymentObservation, SandboxPaymentAttempt, SandboxPaymentSimulator, SandboxPaymentSimulatorOptions } from "./sandbox.js";
+export type { PaymentProviderProfile } from "./providerProfile.js";
 ```
 ## dist/payments/contracts/preparedAttempt.d.ts
 
@@ -550,6 +551,34 @@ export interface PreparedAttemptExecutionResult<R extends PaymentExecutionBaseRe
         paymentAttemptId: string;
         status: PaymentAttemptStatus;
     };
+}
+```
+## dist/payments/contracts/providerProfile.d.ts
+
+```ts
+/** Closed native policy data. Evidence paths and codes are opaque compatibility values. */
+export interface PaymentProviderProfile {
+    readonly provider: string;
+    readonly initial_flow: string | null;
+    readonly one_time_flow: string | null;
+    readonly requires_attempt_truth: boolean;
+    readonly readback_reference_order: "attempt-intent-session" | "session-attempt-intent";
+    readonly claim_stale: boolean;
+    readonly claim_prepared: boolean;
+    readonly refund_kind: "cumulative-snapshot" | "event-delta";
+    readonly refund_event_type: string | null;
+    readonly refund_operation_path: readonly string[] | null;
+    readonly refund_amount_path: readonly string[] | null;
+    readonly refund_event_money_original: boolean;
+    readonly refund_full_evidence: boolean;
+    readonly refund_status_match: boolean;
+    readonly refund_ignore_old: boolean;
+    readonly refund_ignored_kind: string | null;
+    readonly renewal_absence: boolean;
+    readonly interactive: boolean;
+    readonly trusted_oauth_codes: readonly string[];
+    readonly trusted_dispatch_codes: readonly string[];
+    readonly trusted_refusal_code: string | null;
 }
 ```
 ## dist/payments/contracts/reconciliation.d.ts
@@ -1364,6 +1393,7 @@ export interface TpayTransientProviderInput {
 ## dist/payments/tpay/index.d.ts
 
 ```ts
+export { tpayPaymentProviderProfile } from "./providerProfile.js";
 import type { PaymentAdapter } from "../contracts/index.js";
 export { tpayPaymentCapabilities } from "./capabilities.js";
 import { type TpayJwsCertificateResolver } from "./webhookJwsVerifier.js";
@@ -1493,6 +1523,15 @@ export declare class ProviderAttemptPreDispatchError extends Error {
     withPaymentAttempt(paymentAttemptId: string): this;
     withRetryCount(retryCount: number): this;
 }
+```
+## dist/payments/tpay/providerProfile.d.ts
+
+```ts
+import type { PaymentProviderProfile } from "../contracts/providerProfile.js";
+/** Native policy declaration; this does not supply a portable composition. */
+export declare const tpayPaymentProviderProfile: Readonly<PaymentProviderProfile & {
+    provider: "tpay";
+}>;
 ```
 ## dist/payments/tpay/tpayCreateTransactionInput.d.ts
 

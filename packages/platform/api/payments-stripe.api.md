@@ -478,6 +478,7 @@ export type { PostgresPaymentTruthOptions } from "./truth.js";
 export type { ActivePaymentActionAuthority, CheckoutActivePaymentActionResolver, CheckoutRecoveryPaymentResolver, CheckoutRecoveryPaymentResolution, PaymentRecoveryAction, PaymentRepairMethodPort } from "./repair.js";
 export type { PaymentServicesOptions, PaymentServices } from "./repair.js";
 export type { SandboxPaymentOutcome, SandboxMethodFacts, SandboxPaymentObservation, SandboxPaymentAttempt, SandboxPaymentSimulator, SandboxPaymentSimulatorOptions } from "./sandbox.js";
+export type { PaymentProviderProfile } from "./providerProfile.js";
 ```
 ## dist/payments/contracts/preparedAttempt.d.ts
 
@@ -550,6 +551,34 @@ export interface PreparedAttemptExecutionResult<R extends PaymentExecutionBaseRe
         paymentAttemptId: string;
         status: PaymentAttemptStatus;
     };
+}
+```
+## dist/payments/contracts/providerProfile.d.ts
+
+```ts
+/** Closed native policy data. Evidence paths and codes are opaque compatibility values. */
+export interface PaymentProviderProfile {
+    readonly provider: string;
+    readonly initial_flow: string | null;
+    readonly one_time_flow: string | null;
+    readonly requires_attempt_truth: boolean;
+    readonly readback_reference_order: "attempt-intent-session" | "session-attempt-intent";
+    readonly claim_stale: boolean;
+    readonly claim_prepared: boolean;
+    readonly refund_kind: "cumulative-snapshot" | "event-delta";
+    readonly refund_event_type: string | null;
+    readonly refund_operation_path: readonly string[] | null;
+    readonly refund_amount_path: readonly string[] | null;
+    readonly refund_event_money_original: boolean;
+    readonly refund_full_evidence: boolean;
+    readonly refund_status_match: boolean;
+    readonly refund_ignore_old: boolean;
+    readonly refund_ignored_kind: string | null;
+    readonly renewal_absence: boolean;
+    readonly interactive: boolean;
+    readonly trusted_oauth_codes: readonly string[];
+    readonly trusted_dispatch_codes: readonly string[];
+    readonly trusted_refusal_code: string | null;
 }
 ```
 ## dist/payments/contracts/reconciliation.d.ts
@@ -1261,6 +1290,7 @@ export interface PaymentProviderRecoveryProvider {
 ## dist/payments/stripe/index.d.ts
 
 ```ts
+export { stripePaymentProviderProfile } from "./providerProfile.js";
 import type { PaymentAdapter, PaymentAdapterCapabilities } from "../contracts/index.js";
 import { type StripeSandboxClient } from "./stripeSandboxPaymentExecutionAdapter.js";
 import { type StripePaymentIntentReader } from "./stripePaymentReconciliationProvider.js";
@@ -1362,6 +1392,15 @@ export declare function evidenceRecord(value: unknown): Record<string, unknown>;
 export declare function serializeFailureEvidence(input: PaymentFailureEvidence): PaymentFailureEvidence;
 /** Persist beside legacy fields; never merge the diagnostic codes into them. */
 export declare function failureEvidencePayload(evidence: PaymentFailureEvidence | null | undefined): Record<string, unknown>;
+```
+## dist/payments/stripe/providerProfile.d.ts
+
+```ts
+import type { PaymentProviderProfile } from "../contracts/providerProfile.js";
+/** Native policy declaration; the adapter still owns protocol translation. */
+export declare const stripePaymentProviderProfile: Readonly<PaymentProviderProfile & {
+    provider: "stripe";
+}>;
 ```
 ## dist/payments/stripe/stripeFailureEvidence.d.ts
 
