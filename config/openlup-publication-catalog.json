@@ -1410,6 +1410,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261120120000_fulfillment_provider_intake.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/20261121090000_payment_provider_profiles.sql",
       "class": "public-output"
     },
@@ -4602,6 +4606,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261120120000_fulfillment_provider_intake.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20261121090000_payment_provider_profiles.sql",
       "class": "public-output"
     },
@@ -6654,6 +6662,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/fulfillment/native/providerIntake.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/fulfillment/native/shipmentCommands.ts",
       "class": "public-output"
     },
@@ -6679,6 +6691,10 @@
     },
     {
       "path": "packages/platform/src/fulfillment/omnipack/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/omnipack/intake.ts",
       "class": "public-output"
     },
     {
@@ -12187,6 +12203,10 @@
     },
     {
       "path": "scripts/packages/platform-migration-projection.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/portability-consumer-proof.ts",
       "class": "public-output"
     },
     {
@@ -29579,6 +29599,10 @@
     },
     {
       "path": "tests/postgres/fulfillmentPreparationBinding.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fulfillmentProviderIntake.test.ts",
       "class": "public-output"
     },
     {

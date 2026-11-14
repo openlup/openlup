@@ -6,7 +6,8 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
-import { assertReleaseProvenance, buildQualifiedImage, proveNeutralStarterConsumer, qualificationReceipt, qualifyReleasedSet, verifiedReleasePackages } from "./exact-set-qualification.mjs";
+import { assertReleaseProvenance, assertSbomPackages, buildQualifiedImage, proveNeutralStarterConsumer, qualificationReceipt, qualifyReleasedSet, verifiedReleasePackages } from "./exact-set-qualification.mjs";
+import * as browserRunner from "../starter-browser-ci.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const workflow = readFileSync(join(ROOT, ".github/workflows/registry-tutorial.yml"), "utf8");
@@ -250,6 +251,10 @@ describe("exact published-set qualification", () => {
     expect(step(qualification, "Qualify the exact published set")).toContain("timeout-minutes: 2");
     expect(qualification).not.toMatch(/secrets\.|continue-on-error|sleep|while|npm publish|release upload/);
     expect(step(qualification, "Retain the qualification receipt")).toContain('if: always()');
+    const cleanup = step(qualification, 'Remove qualification PostgreSQL');
+    expect(cleanup).toContain('if: always()\n');
+    for (const [list, field, remove] of [['ps -a', 'ID', 'rm -fv'], ['volume ls', 'Name', 'volume rm']])
+      expect(script(cleanup)).toContain(`docker ${list} --filter label=com.docker.compose.project --format '{{.${field}}} {{.Label "com.docker.compose.project"}}' | awk '$2 ~ /^canary-/ {print $1}' | xargs -r docker ${remove}`);
   });
 
   it("records a failed-by-default receipt and refuses malformed released inputs", () => {
@@ -258,6 +263,16 @@ describe("exact published-set qualification", () => {
     expect(Number.isFinite(Date.parse(receipt.startedAt))).toBe(true);
     for (const invalid of ["main", "openlup-core-v01.41.0", tag + "-preview.1", tag + "\n"]) expect(() => qualificationReceipt(invalid, commit, {})).toThrow("invalid core release tag");
     expect(() => qualificationReceipt(tag, "short", {})).toThrow("full SHA");
+    const initialization = spawnSync(process.execPath, ['--input-type=module', '-e', `
+      import { registerHooks } from 'node:module';
+      registerHooks({resolve(specifier, context, next) {
+        if (!['node:', 'file:', '.', '/'].some(prefix => specifier.startsWith(prefix))) throw Error('dependency required before root npm ci');
+        return next(specifier, context);
+      }});
+      const { qualificationReceipt } = await import(${JSON.stringify(new URL('./exact-set-qualification.mjs', import.meta.url).href)});
+      if (qualificationReceipt(${JSON.stringify(tag)}, ${JSON.stringify(commit)}).result !== 'FAIL') throw Error('receipt missing');
+    `], { cwd: ROOT, encoding: 'utf8' });
+    expect(initialization.status, initialization.stderr).toBe(0);
   });
 
   it.each([
@@ -266,11 +281,11 @@ describe("exact published-set qualification", () => {
     ["", "PASS", "cancelled"], ["", "PASS", "success"],
   ])("seals schema setup %s / result %s / outcome %s without retaining an earlier PASS", async (stop, result, outcome) => {
     const directory = mkdtempSync(join(tmpdir(), "qualification-schema-")), path = join(directory, "exact-set-qualification.json");
-    const env = { ...Reflect.get(process, "env"), RUNNER_TEMP: directory, SCHEMA_OUTCOME: outcome };
+    const env = { ...Reflect.get(process, "env"), RUNNER_TEMP: directory, SCHEMA_OUTCOME: outcome, CANARY_OUTCOME: "success" };
     const schema = step(qualification, "Qualify released-pair schema compatibility and code rollback");
     const seal = step(qualification, "Seal an incomplete qualification receipt");
     try {
-      writeFileSync(path, JSON.stringify({ ...qualificationReceipt(tag, commit), result: "PASS", endedAt: new Date(0).toISOString(), upgrade: { result: "PASS" }, ...(result ? { schemaUpgrade: { result } } : {}) }));
+      writeFileSync(path, JSON.stringify({ ...qualificationReceipt(tag, commit), result: "PASS", endedAt: new Date(0).toISOString(), upgrade: { result: "PASS" }, canary: { result: "PASS" }, ...(result ? { schemaUpgrade: { result } } : {}) }));
       expect(schema).toContain("id: schema"); expect(seal).toContain("SCHEMA_OUTCOME: ${{ steps.schema.outcome }}");
       if (stop) {
         const prefix = script(schema).split(stop)[0]!.replace(/^image=.*$/mu, "image=fixture");
@@ -288,6 +303,65 @@ describe("exact published-set qualification", () => {
       expect(receipt.result).toBe(result === "PASS" && outcome === "success" ? "PASS" : "FAIL");
       expect(receipt.endedAt).toBeTruthy();
       if (receipt.schemaUpgrade) expect(receipt.schemaUpgrade.result).toBe(receipt.result);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it.each(['PASS', 'failure', 'wrong-bom', 'wrong-image', 'missing-upgrade'])("retains canary %s, referencing completed upgrade evidence without rerunning it", async mode => {
+    const directory = mkdtempSync(join(tmpdir(), 'qualification-canary-')), path = join(directory, 'receipt.json');
+    const digest = 'sha256:' + 'c'.repeat(64), bytes = JSON.stringify({ image: { manifestDigest: digest } });
+    const upgrade = { result: 'PASS', checks: ['retained'] }, schemaUpgrade = { result: 'PASS', checks: ['retained'] };
+    const runner = vi.spyOn(browserRunner, 'runStarterImageCanary').mockImplementation(async (_app, _archive, _image, evidence) => {
+      if (mode === 'failure') throw new Error('purchase failed');
+      evidence.result = 'PASS';
+    });
+    try {
+      writeFileSync(path + '.bom.json', bytes);
+      writeFileSync(path, JSON.stringify({ ...qualificationReceipt(tag, commit), result: 'PASS', upgrade: mode === 'missing-upgrade' ? null : upgrade, schemaUpgrade,
+        image: { manifestDigest: mode === 'wrong-image' ? 'wrong' : digest }, bom: { sha256: mode === 'wrong-bom' ? 'wrong' : createHash('sha256').update(bytes).digest('hex') } }));
+      const work = qualifyReleasedSet(tag, commit, path, false, false, false, true);
+      if (mode === 'PASS') await work; else await expect(work).rejects.toThrow();
+      const receipt = JSON.parse(readFileSync(path, 'utf8'));
+      expect(receipt).toMatchObject({ result: mode === 'PASS' ? 'PASS' : 'FAIL', canary: { result: mode === 'PASS' ? 'PASS' : 'FAIL', upgradeEvidence: ['upgrade', 'schemaUpgrade'], endedAt: expect.any(String) }, schemaUpgrade });
+      if (mode !== 'missing-upgrade') expect(receipt.upgrade).toEqual(upgrade);
+      expect(runner).toHaveBeenCalledTimes(['PASS', 'failure'].includes(mode) ? 1 : 0);
+      const canary = step(qualification, 'Exercise the BOM-bound archive before publication');
+      expect(canary).toContain('--canary');
+      expect(qualification.indexOf('--canary')).toBeGreaterThan(qualification.indexOf('--bom'));
+      expect(qualification.indexOf('--canary')).toBeLessThan(qualification.indexOf('name: Hand off the qualified image'));
+    } finally { runner.mockRestore(); rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it.each([false, true])('resolves CLI recovery imports and refuses unfinished work (pending: %s)', pending => {
+    const directory = mkdtempSync(join(tmpdir(), 'qualification-canary-cli-')), path = join(directory, 'receipt.json');
+    const digest = 'sha256:' + 'c'.repeat(64), bytes = JSON.stringify({ image: { manifestDigest: digest } });
+    try {
+      writeFileSync(path + '.bom.json', bytes);
+      writeFileSync(path, JSON.stringify({ ...qualificationReceipt(tag, commit), result: 'PASS', upgrade: { result: 'PASS' }, schemaUpgrade: { result: 'PASS' },
+        image: { manifestDigest: digest }, bom: { sha256: createHash('sha256').update(bytes).digest('hex') } }));
+      // Keep the real import graph and CLI; replace only the external Docker/browser work.
+      const hook = join(directory, 'external-work.mjs');
+      writeFileSync(hook, `import { registerHooks } from 'node:module';
+registerHooks({load(url, context, next) {
+  const result = next(url, context);
+  if (!url.endsWith('/scripts/starter-browser-ci.mjs')) return result;
+  const source = String(result.source), start = source.indexOf('export async function runStarterImageCanary('), end = source.indexOf('export function parseArguments(');
+  return {...result, source: source.slice(0, start) + "export async function runStarterImageCanary(_app, _archive, _image, evidence) { ${pending ? 'await new Promise(() => {});' : ''} const { PORTABILITY_CONSUMER_PROOF } = await import('./packages/portability-consumer-proof.ts'); if (!PORTABILITY_CONSUMER_PROOF.includes('selected-row recovery PASS')) throw Error('missing recovery'); evidence.result = 'PASS'; }\\n" + source.slice(end)};
+}});`);
+      const result = spawnSync(process.execPath, ['--import', hook, join(ROOT, 'scripts/packages/exact-set-qualification.mjs'), tag, commit, path, '--canary'],
+        { cwd: ROOT, encoding: 'utf8', env: Reflect.get(process, 'env') });
+      expect(result.status, result.stderr).toBe(pending ? 1 : 0);
+      expect(JSON.parse(readFileSync(path, 'utf8'))).toMatchObject({ result: pending ? 'FAIL' : 'PASS', canary: { result: pending ? 'FAIL' : 'PASS' } });
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it.each(['failure', 'cancelled', 'skipped'])("seals an interrupted canary (%s) without erasing completed schema evidence", outcome => {
+    const directory = mkdtempSync(join(tmpdir(), 'qualification-canary-seal-')), path = join(directory, 'exact-set-qualification.json');
+    try {
+      writeFileSync(path, JSON.stringify({ result: 'PASS', endedAt: new Date(0).toISOString(), schemaUpgrade: { result: 'PASS' }, canary: { result: 'PASS' } }));
+      const result = spawnSync('node', ['--input-type=module', '-e', step(qualification, 'Seal an incomplete qualification receipt').split("        run: node --input-type=module -e '")[1]!.trim().slice(0, -1)],
+        { env: { ...Reflect.get(process, 'env'), RUNNER_TEMP: directory, SCHEMA_OUTCOME: 'success', CANARY_OUTCOME: outcome } });
+      expect(result.status).toBe(0);
+      expect(JSON.parse(readFileSync(path, 'utf8'))).toMatchObject({ result: 'FAIL', schemaUpgrade: { result: 'PASS' }, canary: { result: 'FAIL' } });
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
@@ -370,8 +444,8 @@ describe("qualified image publication", () => {
   it("isolates writes from candidate execution and defaults dispatch to verification only", () => {
     expect(publish).toContain("needs: exact-set-qualification");
     expect(publish).toContain("if: ${{ needs.exact-set-qualification.result == 'success' }}");
-    expect(permissionBlocks(publish)).toEqual(["    permissions: {packages: write}\n"]);
-    expect(publish).not.toMatch(/checkout@|setup-node@|npm |id-token|attestations|timeout|sleep|retry/u);
+    expect(permissionBlocks(publish)).toEqual(["    permissions: {packages: write, attestations: write, id-token: write}\n"]);
+    expect(publish).not.toMatch(/checkout@|setup-node@|npm |timeout|sleep|retry/u);
     expect(workflow).toContain("type: boolean\n        default: false");
     expect(publish).toContain("github.event_name == 'workflow_run' || inputs.publish_image == true");
     expect(body).toContain('skopeo copy --preserve-digests');
@@ -384,7 +458,7 @@ describe("qualified image publication", () => {
   it.each(["published", "existing", "skipped-dispatch", "archive-mismatch", "tag-move", "readback-mismatch", "denied", "bom-mismatch"])("checks archive, immutable tag and registry equality: %s", mode => {
     const directory = mkdtempSync(join(tmpdir(), "qualified-image-")), input = join(directory, "qualified-image"); mkdirSync(input);
     const manifest = '{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json"}', digest = "sha256:" + createHash("sha256").update(manifest).digest("hex");
-    const bom = JSON.stringify({ formatVersion: 3, kind: "openlup-exact-set-bom", setVersion: "0.41.0", image: { name: "ghcr.io/openlup/neutral-store-starter", platform: "linux/amd64", manifestDigest: digest } });
+    const bom = JSON.stringify({ formatVersion: 4, kind: "openlup-exact-set-bom", setVersion: "0.41.0", image: { name: "ghcr.io/openlup/neutral-store-starter", platform: "linux/amd64", manifestDigest: digest } });
     writeFileSync(join(input, "exact-set-qualification.json.bom.json"), bom);
     writeFileSync(join(input, "exact-set-qualification.json"), JSON.stringify({ result: "PASS", image: { manifestDigest: digest }, bom: { sha256: mode === "bom-mismatch" ? "wrong" : createHash("sha256").update(bom).digest("hex") } }));
     writeFileSync(join(directory, "skopeo"), `#!/bin/bash
@@ -399,17 +473,55 @@ case "$1" in
     else echo 'manifest unknown' >&2; exit 1; fi;;
 esac
 `); chmodSync(join(directory, "skopeo"), 0o700);
+    writeFileSync(join(directory, "docker"), "#!/bin/bash\ncat >/dev/null\n"); chmodSync(join(directory, "docker"), 0o700);
     try {
-      const env = { ...Reflect.get(process, "env"), PATH: directory + ":" + Reflect.get(process, "env").PATH, RUNNER_TEMP: directory, RELEASE_TAG: "openlup-core-v0.41.0", PUBLISH_IMAGE: String(mode !== "skipped-dispatch"), GHCR_TOKEN: "synthetic", GHCR_ACTOR: "fixture", MODE: mode,
+      const env = { ...Reflect.get(process, "env"), PATH: directory + ":" + Reflect.get(process, "env").PATH, RUNNER_TEMP: directory, RELEASE_TAG: "openlup-core-v0.41.0", PUBLISH_IMAGE: String(mode !== "skipped-dispatch"), GHCR_TOKEN: "synthetic", GHCR_ACTOR: "fixture", GITHUB_OUTPUT: join(directory, "output"), MODE: mode,
         ARCHIVE_MANIFEST: mode === "archive-mismatch" ? "altered" : manifest, READBACK_MANIFEST: mode === "readback-mismatch" ? "altered" : manifest, REGISTRY_MANIFEST: mode === "tag-move" ? "altered" : manifest };
       const run = spawnSync("bash", ["-e", "-o", "pipefail", "-c", body], { env, encoding: "utf8" });
       const success = ["published", "existing", "skipped-dispatch"].includes(mode), receipt = JSON.parse(readFileSync(join(input, "exact-set-qualification.json"), "utf8"));
       expect(run.status, run.stderr).toBe(success ? 0 : 1);
       expect(receipt.image.publishResult).toBe(success ? mode === "skipped-dispatch" ? mode : "published" : "refused");
-      expect(receipt.result).toBe(success ? "PASS" : "FAIL");
+      expect(receipt.result).toBe(mode === "skipped-dispatch" ? "PASS" : "FAIL");
+      expect(receipt.image.attestation.result).toBe(mode === "skipped-dispatch" ? mode : "FAIL");
       expect(existsSync(join(directory, "pushed"))).toBe(["published", "existing", "readback-mismatch"].includes(mode));
       if (success && mode !== "skipped-dispatch") expect(receipt.image.registryReadback).toBe(digest);
       if (mode === "tag-move") expect(run.stdout).toContain("qualified_image_tag_move_refused");
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+});
+
+// npm 11 CycloneDX response shape; fixture values are synthetic.
+describe("locked package SBOM identity", () => {
+  const pkg = { name: "@openlup/core", version: "0.41.0", integrity: "sha512-" + Buffer.alloc(64, 1).toString("base64") };
+  it.each(["valid", "version", "integrity", "hash-missing", "extra", "missing"])("checks %s OpenLup components by name", kind => {
+    const component = { name: pkg.name, version: kind === "version" ? "0.40.0" : pkg.version, hashes: kind === "hash-missing" ? [] : [{ alg: "SHA-512", content: Buffer.alloc(64, kind === "integrity" ? 2 : 1).toString("hex") }] };
+    const sbom = { components: kind === "missing" ? [] : [component, ...(kind === "extra" ? [{ ...component, name: "@openlup/extra" }] : [])] };
+    if (kind === "valid") expect(() => assertSbomPackages(sbom, [pkg])).not.toThrow();
+    else expect(() => assertSbomPackages(sbom, [pkg])).toThrow(kind === "extra" ? "@openlup/extra" : "@openlup/core");
+  });
+});
+
+// Projection of gh 2.103.3 verifying sigstore@2.1.0 with the CLI repository bundle fixture.
+// Subject, source and signer values are replaced with synthetic qualification identities.
+describe("image attestation verification", () => {
+  it.each(["valid", "subject", "signer", "source", "unverified"])("refuses %s verification mismatches and retains the detached bundle hash", kind => {
+    const directory = mkdtempSync(join(tmpdir(), "image-attestation-")), input = join(directory, "qualified-image"); mkdirSync(input);
+    const digest = "a".repeat(64), receipt = join(input, "exact-set-qualification.json"), bundle = join(directory, "bundle.json");
+    writeFileSync(receipt, JSON.stringify({ result: "FAIL", image: {} })); writeFileSync(bundle, "synthetic bundle");
+    writeFileSync(receipt + ".bom.json", JSON.stringify({ image: { manifestDigest: "sha256:" + digest } }));
+    const fixture = [{ verificationResult: { statement: { predicateType: "https://slsa.dev/provenance/v1", subject: [{ name: "ghcr.io/openlup/neutral-store-starter", digest: { sha256: kind === "subject" ? "b".repeat(64) : digest } }] }, signature: { certificate: {
+      sourceRepositoryURI: kind === "source" ? "https://github.com/other/repository" : "https://github.com/openlup/openlup",
+      buildSignerURI: "https://github.com/openlup/openlup/.github/workflows/" + (kind === "signer" ? "other.yml" : "registry-tutorial.yml") + "@refs/heads/main",
+    } } } }];
+    writeFileSync(join(directory, "response.json"), JSON.stringify(fixture));
+    writeFileSync(join(directory, "gh"), '#!/bin/bash\n[ "$1 $2" = "attestation verify" ] || exit 1\nprintf "%s\\n" "$@" > "$RUNNER_TEMP/arguments"\n[ "$MODE" != unverified ] || exit 1\ncat "$RUNNER_TEMP/response.json"\n'); chmodSync(join(directory, "gh"), 0o700);
+    try {
+      const env = { ...Reflect.get(process, "env"), PATH: directory + ":" + Reflect.get(process, "env").PATH, RUNNER_TEMP: directory, BUNDLE_PATH: bundle, MODE: kind };
+      const result = spawnSync("bash", ["-e", "-o", "pipefail", "-c", script(step(job(workflow, "publish-qualified-image"), "Verify the issued image attestation"))], { env, encoding: "utf8" });
+      expect(result.status, result.stderr).toBe(kind === "valid" ? 0 : 1);
+      expect(JSON.parse(readFileSync(receipt, "utf8"))).toMatchObject({ result: kind === "valid" ? "PASS" : "FAIL", image: { attestation: { result: kind === "valid" ? "PASS" : "FAIL", bundleSha256: createHash("sha256").update("synthetic bundle").digest("hex") } } });
+      expect(readFileSync(join(directory, "arguments"), "utf8")).toContain("--owner\nopenlup\n--bundle\n");
+      expect(readFileSync(join(directory, "arguments"), "utf8")).toContain("--signer-workflow\nopenlup/openlup/.github/workflows/registry-tutorial.yml\n");
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 });

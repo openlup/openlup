@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { env } from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { imageReference, readCiImage } from '../ci-image-pull.mjs';
+import { imageReference, pullWithRetry, readCiImage } from '../ci-image-pull.mjs';
 import { previousPublishedSet, proveDistributionCliConsumer } from './distribution-cli-proof.ts';
 import { assertInstalledPackages, isolatedConsumerEnv } from './pack-manifest-input.ts';
 import { generateExactSetReleaseBom } from './generate-release-bom.ts';
@@ -205,23 +205,72 @@ export function buildQualifiedImage(application, commit, archive) {
   return { name, platform: 'linux/amd64', manifestDigest: `sha256:${sha256(raw)}`, baseImageDigest: base.digest };
 }
 
-export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = false, schema = false, bom = false) {
-  const receipt = upgrade || schema || bom ? json(receiptPath) : qualificationReceipt(tag, expectedCommit);
+/** Inventory the verified lock and the same single-manifest archive that the BOM binds. */
+export async function qualifiedSboms(application, archive, image, packages, output) {
+  const npmVersion = execFileSync('npm', ['--version'], { encoding: 'utf8' }).trim();
+  assert.equal(npmVersion, '11.19.0');
+  const packageBytes = execFileSync('npm', ['sbom', '--sbom-format', 'cyclonedx', '--package-lock-only'], { cwd: application, maxBuffer: 32 * 1024 * 1024 });
+  assertSbomPackages(JSON.parse(packageBytes), packages);
+  writeFileSync(output + '.packages.cdx.json', packageBytes);
+  assert.equal('sha256:' + sha256(execFileSync('skopeo', ['inspect', '--raw', `oci-archive:${archive}`])), image.manifestDigest, 'sbom_image_digest_mismatch');
+  const scanner = readCiImage('qualification-syft'); scanner.sources = scanner.sources.slice(0, 1);
+  const reference = await pullWithRetry(scanner);
+  const scan = args => execFileSync('docker', ['run', '--rm', '--pull=never', '--network=none', '--mount', `type=bind,src=${resolve(archive)},dst=/image.tar,readonly`, reference, ...args], { maxBuffer: 32 * 1024 * 1024 });
+  const version = JSON.parse(scan(['version', '-o', 'json'])).version;
+  assert.equal('v' + version, scanner.tag, 'sbom_scanner_version_mismatch');
+  const imageBytes = scan(['scan', 'oci-archive:/image.tar', '-o', 'cyclonedx-json']);
+  assert.equal(JSON.parse(imageBytes).bomFormat, 'CycloneDX', 'sbom_image_format_mismatch');
+  writeFileSync(output + '.image.cdx.json', imageBytes);
+  return { packages: { sha256: sha256(packageBytes), tool: { name: 'npm', version: npmVersion } },
+    image: { sha256: sha256(imageBytes), subjectDigest: image.manifestDigest, tool: { name: 'syft', version, imageDigest: scanner.digest } } };
+}
+
+export function assertSbomPackages(sbom, packages) {
+  const seen = new Set();
+  for (const { name, version, hashes } of sbom.components ?? []) {
+    if (!name?.startsWith('@openlup/')) continue;
+    const expected = packages.find(pkg => pkg.name === name);
+    if (!expected || version !== expected.version || !hashes?.some(hash => hash.alg === 'SHA-512' && hash.content === Buffer.from(expected.integrity.slice(7), 'base64').toString('hex'))) refuse(`sbom_package_mismatch: ${name}`);
+    seen.add(name);
+  }
+  for (const { name } of packages) if (!seen.has(name)) refuse(`sbom_package_missing: ${name}`);
+}
+
+export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = false, schema = false, bom = false, canary = false) {
+  const receipt = upgrade || schema || bom || canary ? json(receiptPath) : qualificationReceipt(tag, expectedCommit);
   const applicationsPath = resolve(receiptPath + '.applications');
+  if (canary) {
+    const qualified = receipt.result === 'PASS';
+    receipt.result = 'FAIL'; receipt.endedAt = null;
+    receipt.canary = { result: 'FAIL', startedAt: new Date().toISOString(), upgradeEvidence: ['upgrade', 'schemaUpgrade'] };
+    writeFileSync(receiptPath, JSON.stringify(receipt, null, 2) + '\n');
+    return (async () => { try {
+      assert(qualified && receipt.tag === tag && receipt.tagCommit === expectedCommit && receipt.upgrade?.result === 'PASS' && receipt.schemaUpgrade?.result === 'PASS', 'canary: qualification_incomplete_or_mismatched');
+      const bytes = readFileSync(receiptPath + '.bom.json'), bound = JSON.parse(bytes);
+      assert.equal(sha256(bytes), receipt.bom.sha256, 'canary: bom_hash_mismatch');
+      assert.equal(bound.image.manifestDigest, receipt.image.manifestDigest, 'canary: bom_image_mismatch');
+      const { runStarterImageCanary } = await import('../starter-browser-ci.mjs');
+      await runStarterImageCanary(join(applicationsPath, '1/application'), receiptPath + '.image.tar', bound.image.manifestDigest, receipt.canary);
+      receipt.result = 'PASS';
+    } catch (error) { receipt.error = error.message; throw error; }
+    finally { receipt.endedAt = receipt.canary.endedAt = new Date().toISOString(); writeFileSync(receiptPath, JSON.stringify(receipt, null, 2) + '\n'); } })();
+  }
   if (bom) {
     const qualified = receipt.result === 'FAIL';
-    receipt.result = 'FAIL'; receipt.endedAt = null; delete receipt.bom; delete receipt.image;
+    receipt.result = 'FAIL'; receipt.endedAt = null; delete receipt.bom; delete receipt.image; delete receipt.sbom;
     writeFileSync(receiptPath, JSON.stringify(receipt, null, 2) + '\n');
-    try {
+    const run = async () => { try {
       assert(qualified && receipt.upgrade?.result === 'PASS' && receipt.schemaUpgrade?.result === 'PASS' && receipt.tag === tag && receipt.tagCommit === expectedCommit, 'release-bom: qualification_incomplete_or_mismatched');
       const application = join(applicationsPath, '1/application');
       receipt.image = { ...buildQualifiedImage(application, expectedCommit, receiptPath + '.image.tar'), publishResult: 'refused', registryReadback: null };
+      receipt.sbom = await qualifiedSboms(application, receiptPath + '.image.tar', receipt.image, receipt.packages, receiptPath);
       const bytes = JSON.stringify(generateExactSetReleaseBom(root, application, receipt), null, 2) + '\n';
       writeFileSync(receiptPath + '.bom.json', bytes);
       receipt.bom = { sha256: sha256(bytes) }; receipt.result = 'PASS';
     } catch (error) { receipt.error = error.message; throw error; }
     finally { receipt.endedAt = new Date().toISOString(); writeFileSync(receiptPath, JSON.stringify(receipt, null, 2) + '\n'); }
-    return receipt;
+    return receipt; };
+    return run();
   }
   if (schema) {
     const started = receipt.result === 'FAIL' && receipt.schemaUpgrade?.result === 'FAIL' && receipt.schemaUpgrade.startedAt;
@@ -250,7 +299,7 @@ export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = f
           database: { connectionString: url.toString() } });
         Object.assign(receipt.schemaUpgrade, proof);
         assert.equal(proof.result, 'PASS', 'released-pair schema compatibility failed');
-        // The BOM step grants the final PASS after binding these completed checks.
+        // The BOM step records provisional PASS; canary completion grants final qualification PASS.
       } catch (error) { receipt.error = error.message; throw error; }
       finally {
         try { if (admin) { try { await admin.query(`DROP DATABASE IF EXISTS ${database} WITH (FORCE)`); } finally { await admin.end(); } } }
@@ -333,6 +382,9 @@ export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = f
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const [tag, commit, receipt, mode] = process.argv.slice(2);
-  if (process.argv.length !== 5 && !(process.argv.length === 6 && ['--upgrade', '--schema-upgrade', '--bom'].includes(mode))) refuse('use release-tag full-tag-commit receipt-path');
-  await qualifyReleasedSet(tag, commit, receipt, mode === '--upgrade', mode === '--schema-upgrade', mode === '--bom');
+  if (process.argv.length !== 5 && !(process.argv.length === 6 && ['--upgrade', '--schema-upgrade', '--bom', '--canary'].includes(mode))) refuse('use release-tag full-tag-commit receipt-path');
+  // Finish module evaluation before recovery imports this module; incomplete work exits nonzero.
+  process.exitCode = 1;
+  Promise.resolve(qualifyReleasedSet(tag, commit, receipt, mode === '--upgrade', mode === '--schema-upgrade', mode === '--bom', mode === '--canary'))
+    .then(() => { process.exitCode = 0; }, error => { console.error(error); });
 }

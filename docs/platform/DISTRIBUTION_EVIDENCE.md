@@ -233,7 +233,7 @@ requires that directory contain only its manifest and declared tarballs.
 
 The same [generator](../../scripts/packages/generate-release-bom.ts) also exports
 `generateExactSetReleaseBom` for the post-publication qualification entry point.
-Its format version 3 binds the exact set version and tag commit, each package's
+Its format version 4 binds the exact set version and tag commit, each package's
 registry SHA-512 and npm signature/provenance verification source and bundle hash.
 It hashes the canonical, name-sorted signature verification records produced before the
 BOM; it does not hash the final qualification receipt. The final receipt names
@@ -260,7 +260,8 @@ closed verified set. Named refusals and deterministic/tamper cases are covered
 by the BOM witness below. The qualification job emits one BOM after its checks
 and retains it beside the receipt for 90 days. The schema stage leaves the overall
 receipt at FAIL with its completed schema result recorded separately; only the
-BOM step grants the final PASS after writing the BOM and its digest.
+BOM step records a provisional PASS after writing the BOM and its digest.
+Canary completion grants the final qualification PASS.
 
 The [BOM witness](../../scripts/packages/generate-release-bom.test.ts) also checks
 real npm archive payloads and member paths, public documentation and any tracked
@@ -271,14 +272,15 @@ starter evidence from its fixtures.
 The pack-based format version 1 and its existing CLI retain their original
 bytes and npm-only scope. The exact-set format also includes the application
 image name, Linux amd64 platform, OCI manifest digest and pinned Node base index
-digest. Neither format supplies a dependency SBOM, npm publication receipt or
-provenance attestation. A BOM is
+digest. Version 4 also binds the two SBOMs described below. The pack-based
+format still supplies no dependency SBOM; neither BOM is an npm publication
+receipt or provenance attestation. A BOM is
 not itself evidence that runtime checks passed; the final receipt records those
 results. The producer's commit attribution remains process evidence; the
 BOM does not independently attest how those bytes were built. Existing per-package
 SBOM, provenance and [release gates](DEVELOPMENT_AND_RELEASE.md#releasing-a-package)
-retain their duties. SBOMs and detached image attestations need later
-qualification evidence. No release-asset, stable-framework or supported-installation
+retain their duties. Version 3 historically lacked dependency SBOM bindings;
+version 4 adds them without incorporating the final receipt or attestation. No release-asset, stable-framework or supported-installation
 claim follows from a BOM.
 
 ## Qualified application image
@@ -294,15 +296,16 @@ layer timestamps. The bundled Docker builder uses the containerd image store;
 no separate builder image or implicit scanner is pulled. Only authenticated
 GHCR base pulls are allowed; missing mirror access fails qualification.
 
-The exact-set BOM's version 3 image section binds the manifest digest computed
+The exact-set BOM's version 4 image section binds the manifest digest computed
 from Skopeo's raw single OCI manifest, not a configuration ID or an index digest.
 The base image field identifies the pinned multi-platform Node index. The archive,
 BOM and receipt pass through a one-day workflow artifact. The existing 90-day
 qualification artifact keeps the BOM and receipt without the large archive.
 
 `publish-qualified-image` runs only after successful qualification. This is the
-only job with job-scoped `packages: write`; it uses pinned first-party artifact
-actions, shell/JQ and preinstalled Skopeo, with no checkout, npm or execution of
+only qualification job with job-scoped `packages: write`, `attestations: write`
+and `id-token: write`; it uses pinned first-party actions, shell/JQ and preinstalled
+Skopeo, Docker and GitHub CLI, with no checkout, npm or execution of
 archive contents. It checks the BOM hash against the receipt and recomputes the
 archive manifest digest before any write. Dispatch defaults to `skipped-dispatch`;
 only an explicit `publish_image: true` or a release-event run permits publication.
@@ -317,8 +320,112 @@ and BOM. The receipt includes the manifest digest, `published`, `skipped-dispatc
 or `refused`, and the registry readback (null if unobserved). Organization owners
 must make the package public, link it to this repository and choose its retention
 policy. Source presence and local OCI-layout copy evidence establish neither GHCR
-activation nor a hosted qualification run. Image SBOMs, image attestations and
-running-image canary checks remain separate obligations.
+activation nor a hosted qualification run. The running-image canary below must
+pass before the archive is handed to this publication job.
+
+### Exact-artifact canary
+
+The read-only qualification job's `--canary` stage checks the BOM hash and image
+subject, loads that OCI archive and requires Docker's loaded manifest descriptor
+to match, then reads the daemon's manifest to check its configuration digest.
+It runs the extracted starter's
+Compose services without building: mirror-pinned PostgreSQL 16, installation
+through `lifecycle.mjs install` using the packaged qualified profile, then the
+same loaded image's runtime. Compose uses the starter's existing bounded health
+check against `/api/config`. Both example configurations have isolated databases.
+
+The [existing browser runner](../../scripts/starter-browser-ci.mjs) uses its
+mirror-pinned browser and existing purchase group, narrowed to the sandbox
+purchase spec. It must observe two purchases, one per configuration. The
+[installed recovery witness](../../scripts/packages/platform-cold-consumer.ts)
+then runs through the installation image against the first database: selected-row
+restore/readback, exact integer/microsecond preservation, idempotent replay,
+conflict refusal and guarded-table refusal. This proves neither a complete
+store backup nor package/schema rollback. The completed `upgrade` and
+`schemaUpgrade` sections remain separate evidence, referenced without rerunning
+their steps.
+
+The receipt's `canary` section records image/configuration identities, install,
+journey and recovery results and durations. A failed or interrupted stage cannot
+retain a final PASS. The existing 90-day qualification and publication artifacts
+retain the receipt; no release asset is created. The write job's existing
+qualification dependency blocks image publication on a failed canary. Compose
+cleanup runs on success and failure; the job's existing `always()` cleanup also
+removes containers and volumes labelled with a `canary-*` Compose project after
+cancellation or a step timeout.
+This is development-preview qualification, not provider certification or stable
+support. The first-party demo store is separate adoption evidence.
+
+A local 2026-11-14 rehearsal on the qualified 0.41.0 set passed archive loading
+and identity, lifecycle installation/readiness (30.857 seconds), the existing
+purchase spec for both configurations (2.320 seconds) and selected-row recovery
+(1.281 seconds). Total time including cleanup was 38.480 seconds; four times
+that measurement rounded up sets the canary step's three-minute bound. The
+first hosted run must remeasure it. All four inventory-pinned images were
+already cached: Node from the organization mirror, PostgreSQL 16 and Syft from
+their recorded Docker upstreams, and the browser from its recorded Microsoft
+upstream. This local-only resolution exception changed no CI image source or
+credential and establishes no hosted mirror access. The exercised manifest was
+`sha256:8457d5ec1d44c806e1baa617c061c1bdc3fa21a62b747c334a02880e777225a2`.
+
+There is no stable maintenance line or previous stable major, so previous-major
+backports are not applicable. Maintenance evidence remains partial; backport
+automation follows explicit owner stable activation under the
+[maintenance policy](../../.github/VERSIONING_AND_EOL.md#support-window).
+
+### Dependency inventories and image provenance
+
+Added 2026-11-14. Historically, version 3 bound the image without an image SBOM
+or build attestation. Version 4 generates both CycloneDX inventories before the
+BOM: npm 11.19.0 runs `npm sbom --sbom-format cyclonedx --package-lock-only` in
+the verified target application, including development and optional dependencies
+in its locked set. The BOM hashes the exact SBOM bytes produced and retained in
+that run, including npm's serial number and timestamp. Every OpenLup component
+must match the verified package set's version and SHA-512; missing or differing
+components refuse by package name.
+
+Syft scans the final OCI archive, after rechecking its manifest digest. The
+scanner has no network or Docker socket and mounts only that archive read-only.
+The `sbom` section records each inventory's SHA-256 and tool name/version, the
+scanner image digest and the image inventory's manifest subject. The existing
+90-day qualification artifact retains both inventories alongside the BOM.
+These are dependency inventories, not vulnerability assessments or a guarantee
+that every runtime-loaded dependency is discoverable. The npm inventory includes
+locked dependencies even when the final image omits them; Syft inventories the
+final image's visible filesystem, including base-system software.
+
+The publication job issues provenance only after archive/BOM equality, immutable
+tag checks and registry readback pass. GitHub CLI verifies the newly issued
+bundle against the digest-addressed OCI subject, organization owner, expected
+workflow signer and certificate source repository. The verified statement must
+name precisely that image and the BOM's SHA-256 subject. A mismatch fails the
+job. The final receipt remains FAIL until verification passes and records its
+result and the detached bundle SHA-256. The 90-day publication artifact retains
+the bundle and verification JSON. Dispatch without publication skips issuance.
+The certificate describes this repository's trusted publication workflow; the
+released starter, lock, packages and release revision are bound separately by
+the BOM and its qualification receipt. No independent attestation of those
+materials is claimed.
+
+The added third-party inputs are inventoried here and in the existing controls:
+`actions/attest-build-provenance` v3.2.0 at
+`96278af6caaf10aea03fd8d33a09a777ca52d62f` (the publisher's action allowlist),
+and Syft v1.38.0 at
+`sha256:825cad3a952c87676a6d07e9a3bb05ac9c401d598360070e970aa46d54c1727e`
+(the CI image inventory and mirror list). Qualification uses the authenticated
+GHCR mirror through the existing bounded pull helper, without an upstream
+fallback or implicit BuildKit scanner download.
+
+A local 2026-11-14 rehearsal on the signature/provenance-verified 0.41.0 set
+passed npm inventory generation and named-package checks in 0.187 seconds
+(72 components), then Syft scanning in 5.312 seconds (3,451 components).
+It used the same pinned scanner and Node content from upstream locally because
+the new mirrors were not populated; it does not establish hosted mirror access.
+The local OCI manifest was
+`sha256:8457d5ec1d44c806e1baa617c061c1bdc3fa21a62b747c334a02880e777225a2`.
+Authentic image-attestation issuance and discovery remain hosted-only evidence,
+not established by offline mismatch fixtures or this rehearsal. No release-asset
+publication, stable-framework or supported-installation claim follows.
 
 ## Current neutrality and runtime limits
 

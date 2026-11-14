@@ -78,6 +78,17 @@ workflow run; PR admission is unchanged. See [distribution evidence](../docs/pla
 for the exact boundary and manual requalification entry. This bounded proof
 does not establish full installation, provider certification or stable support.
 
+Before application-image publication, qualification also loads the BOM-bound OCI
+archive, verifies its loaded manifest and configuration identities, and runs the
+starter's lifecycle installation on the mirrored PostgreSQL 16 composition.
+The existing sandbox purchase journey exercises that image; selected-row
+restore/readback reuses the installed recovery witness on the same installation.
+The receipt references the completed adjacent-set and schema-upgrade evidence
+without rerunning it. Results and durations are retained for 90 days. This is
+bounded preview evidence, not whole-store recovery or certification. A
+first-party demo store supplies separate adoption evidence; neither activates
+supported installation or stable maintenance.
+
 The starter host binds native store actions against a local demonstration
 PostgreSQL database. Without `publicOrigin`, it accepts only
 `127.0.0.1:<listening-port>` and `localhost:<listening-port>` as Host authorities;
