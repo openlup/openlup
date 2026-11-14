@@ -185,14 +185,12 @@ it("keeps the worker default off and requires watchdog, age and exact absence pr
   const observed = await Promise.allSettled([port().reopenPreparedAttemptAfterAbsence(reopen(f)), port().reopenPreparedAttemptAfterAbsence(reopen(f))]);
   const applied = observed.filter(x => x.status === "fulfilled" && x.value.replayed === false);
   expect(applied).toHaveLength(1);
-  for (const outcome of observed) {
-    if (outcome === applied[0]) continue;
-    if (outcome.status === "fulfilled") {
-      expect(outcome.value).toEqual({ replayed: true });
-    } else {
-      expect(outcome.reason).toMatchObject({ message: "prepared_attempt_absence_reopen_attempt_not_prepared" });
-      if ("code" in outcome.reason) expect(outcome.reason.code).toBe("22023");
-    }
+  const other = observed.find(x => x !== applied[0]);
+  expect(other).toBeDefined();
+  if (other?.status === "fulfilled") {
+    expect(other.value).toEqual({ replayed: true });
+  } else {
+    expect(other?.reason).toMatchObject({ message: "prepared_attempt_absence_reopen_attempt_not_prepared", code: "22023" });
   }
   const settled = await readState();
   expect(settled.receipts).toHaveLength(1);
