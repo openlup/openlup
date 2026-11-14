@@ -865,19 +865,23 @@ observation ledger; neither initiates a replacement send.
 
 Adapter authors can use the experimental `@openlup/platform/fulfillment/testing`
 entry to [certify a fulfilment adapter offline](../../packages/core/docs/guide/how-to/build/fulfillment.md#certify-a-fulfilment-adapter-offline).
-Full mode validates immutable snapshots of capabilities, fixtures and certification
-data before invoking an adapter. Closed schemas reject malformed branches, missing
-expectations, proxies, accessors, hidden fields and shared-memory buffers/views. Results are copied before
+The kit certifies adapter behaviour against honestly built data fixtures; deliberate
+accessor, proxy or intrinsic manipulation to defeat the caller's own certification
+is outside its threat model. Snapshots, closed schemas and captured intrinsics
+reduce accidental misuse; they are not an attestation. Full mode validates copied
+capabilities, fixtures and certification data before invoking an adapter. Missing,
+malformed or contradictory fixtures and contract-violating adapter results refuse.
+Descriptor and buffer checks mitigate accidental proxy, accessor, hidden-field and
+shared-memory misuse. Results are copied before
 classification; only the runner's invocation ledger grants coverage. Methods,
 I/O counters, projection callbacks and optional host-store probes are captured
-once and invoked through a captured intrinsic. Native promise handling ignores
-own `then` overrides; thenables and constructor/species overrides refuse. Callback
+once and invoked through a captured intrinsic. Native promise checks and captured
+`then` handling mitigate accidental thenable and constructor/species redirection. Callback
 and store results, including thrown failures, are copied before use. Supported
 certifiable capabilities require executed contract-positive success and typed
 failure witnesses, with matching kinds and deep strict equality to independent
 fixture expectations. Scenario indices are integers, in range and distinct;
-status tuples execute in declared order. The threat model is data validation and
-recorded invocation evidence, not remote attestation. Baseline mode remains the
+status tuples execute in declared order. Baseline mode remains the
 default and grants no full-coverage claim.
 
 Executed refusal probes cover non-PDF formats, label create/void, provider-side

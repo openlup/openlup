@@ -47,6 +47,13 @@ capability declaration does not activate an adapter or install an execution path
 | Label MIME format other than PDF | `label_format_unsupported` | Use `application/pdf`; label return types remain unchanged. |
 | Nullable carrier/service in saved customer preferences | Required string validation; `carrier_service_required` for merchant-selected dispatch | Use explicit provider-selected native parcel transport; saved preferences cannot store null transport. |
 
+Offline fulfilment adapter certification uses honestly built data fixtures and
+rejects missing, malformed or contradictory fixtures and contract-violating
+adapter results. Deliberate use of accessors, proxies or overridden intrinsics to
+defeat the caller's own certification is outside the threat model. Snapshots,
+closed schemas and captured intrinsics reduce accidental misuse; they are not an
+attestation. See [offline adapter certification](../how-to/build/fulfillment.md#certify-a-fulfilment-adapter-offline).
+
 ## Pure contract limits
 
 Core's catalogue identifier schemas validate bounded shapes. They do not prove

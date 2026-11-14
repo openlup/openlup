@@ -223,12 +223,19 @@ These local witnesses establish no deployed-target or provider qualification.
 
 ## Certify a fulfilment adapter offline
 
+The kit certifies adapter behaviour against honestly built data fixtures. It
+rejects missing, malformed or contradictory fixtures and contract-violating
+adapter results. A caller deliberately using accessors, proxies or overridden
+intrinsics to defeat their own certification is outside the threat model.
+Snapshots, closed schemas and captured intrinsics reduce accidental misuse;
+they are not an attestation.
+
 For adapter authors using this development preview, the experimental
 `@openlup/platform/fulfillment/testing` entry re-exports the existing runner and
 captured dispatch adapter. `createScriptedFulfillmentFake` supplies per-operation
 FIFO scripts with `enqueue`, `invoke`, `calls` and `assertDrained`. Enqueue copies
-data and validates each closed outcome envelope once; accessors and shared memory
-refuse. Construct transport responses from copied body/status data at the injected
+data and validates each closed outcome envelope once. Descriptor and buffer checks
+reduce accidental accessor and shared-memory misuse. Construct transport responses from copied body/status data at the injected
 fetch boundary. It records only operation keys and outcome kinds. Use neutral operation keys; keep credentials,
 raw captures and customer data out of scripts and expectations. The kit bundles
 no capture corpus and makes no network calls, timers or retries.
@@ -255,16 +262,17 @@ export async function certify(adapterSubject: FulfillmentAdapterTestSubject) {
 Supply `FulfillmentAdapterTestSubject.certification` and opt into `{ mode: "full" }`.
 The runner reads the mode once and snapshots capabilities, fixtures and certification
 data before any adapter call. One closed schema validates these copies. Inputs,
-expectations and results are data: proxies, accessors, hidden properties,
-unknown fields, contradictory branches, shared-memory buffers/views and malformed values fail validation.
+expectations and results are data: unknown fields, contradictory branches and
+malformed values fail validation. Descriptor and buffer checks mitigate accidental
+use of proxies, accessors, hidden properties and shared-memory buffers/views.
 Each invocation receives a fresh input copy; its outcome is copied before it is
 classified or compared. An expectation must exist independently before the call.
 Methods, I/O counters, URL/reference callbacks and optional host-store probes are
 captured once and invoked through a captured intrinsic. Return native promises;
-thenables and promise constructor/species overrides refuse. A native promise's
-own `then` override is ignored. Callback/store results, including thrown failures, are copied before use;
-result iterators, serialization hooks, accessors and proxies cannot supply evidence.
-This is a data-validation and invocation-evidence boundary, not remote attestation.
+native-promise checks and captured `then` handling mitigate accidental thenable
+and constructor/species redirection. Callback/store results, including thrown
+failures, are copied before use to reduce accidental iterator, serialization-hook
+and accessor misuse.
 
 Only the runner's invocation ledger grants coverage. A supported capability needs
 an executed contract-positive success and an executed typed failure or refusal.

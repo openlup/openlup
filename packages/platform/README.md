@@ -3107,14 +3107,22 @@ refuse explicitly. No credentials or target activation are transferred. See the
 
 ### Offline fulfillment adapter certification
 
+The kit certifies adapter behaviour against honestly built data fixtures. It
+rejects missing, malformed or contradictory fixtures and contract-violating
+adapter results. A caller deliberately using accessors, proxies or overridden
+intrinsics to defeat their own certification is outside the threat model.
+Snapshots, closed schemas and captured intrinsics reduce accidental misuse;
+they are not an attestation.
+
 `@openlup/platform/fulfillment/testing` exports the conformance runner, captured
 adapter and scripted transport. One-argument calls retain baseline mode. Full mode
 snapshots data before execution, validates closed schemas and credits only the
 runner's invocation ledger: every supported certifiable capability needs an
 executed contract-positive success and typed failure. Each copied result must
 have the same kind as its independent fixture expectation and be deeply strictly
-equal. Missing expectations, malformed branches, proxies, accessors, hidden fields,
-reused scenario indices and empty positive witnesses fail qualification. Adapter
+equal. Missing expectations, malformed branches, reused scenario indices and
+empty positive witnesses fail qualification. Descriptor-based snapshots mitigate
+accidental proxy, accessor and hidden-field misuse. Adapter
 calls receive fresh input copies; sync success and throwing failure roles are
 mutually exclusive. Unsupported cannot satisfy a supported operation's failure.
 
