@@ -10,3 +10,8 @@ financial customer messaging uses `commerce.order.refund_processed`, gated by
 accepted same-currency evidence. Historical unattributed attempts and dunning
 cases retain named refusal paths. Refund creation and provider activation are
 outside this change.
+
+A correlated failed webhook hands off dunning independently of its financial
+result kind. If the direct result committed first, the handoff uses its original
+attempt-bound failure receipt; duplicate delivery does not repeat money, retry
+stages, recovery authority or notices.

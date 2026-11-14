@@ -255,3 +255,106 @@ it.each(["recovered", "cancelled", "paused", "expired"])("refuses late-link rede
   expect(await call(env.runtime, "subscription_retry_authorize_recovery", [f.operation, token.id, "method-primary", "usable-method-evidence", token.redeem_at]))
     .toMatchObject({ token_id: token.id, retry_attempt: 1 });
 });
+
+const handoffOrders = ["direct-result-first", "webhook-first", "already-handed-off"] as const;
+type HandoffOrder = typeof handoffOrders[number] | "unattributed-case";
+const handoffFixtures = new Map<HandoffOrder, { f: Fixture; eventId: string; request: Parameters<NonNullable<ReturnType<typeof createPostgresPaymentWebhookControlPort>["applyPaymentResult"]>>[0] }>();
+beforeAll(async () => {
+  const hook = createPostgresPaymentWebhookControlPort(env.runtime, options);
+  for (const order of [...handoffOrders, "unattributed-case"] as const) {
+    const f = await fixture(), eventId = `separate-handoff:${f.intent}`;
+    const event = await hook.ingestPaymentEvent({ provider: "card_rail", providerEventId: eventId,
+      providerPaymentId: `pi_${f.a.paymentAttemptId}`, eventType: "payment.failed", paymentIntentId: f.intent,
+      amountMinor: 0, currency: "XXX", occurredAt: AT, rawPayload: {} });
+    handoffFixtures.set(order, { f, eventId, request: { idempotencyKey: `provider-webhook:card_rail:${eventId}:apply`,
+      paymentIntentId: f.intent, paymentEventId: event.paymentEventId, resultStatus: "failed", occurredAt: AT, failureReason: "declined" } });
+  }
+}, postgresSetupTimeoutMs);
+function directFailure(f: Fixture) {
+  return { idempotencyKey: `direct-failure:${f.intent}`, paymentIntentId: f.intent, paymentEventId: null,
+    resultStatus: "failed" as const, occurredAt: AT, failureReason: "declined", failureClass: "soft_retryable" };
+}
+async function handoffRows(f: Fixture) {
+  return (await env.owner.query(`SELECT jsonb_build_object('business',jsonb_build_array(
+    (SELECT to_jsonb(o) FROM public.subscription_retry_obligations o WHERE cycle_id=$1),
+    (SELECT jsonb_agg(to_jsonb(r) ORDER BY r.id) FROM public.subscription_retry_receipts r JOIN public.subscription_retry_obligations o ON o.id=r.obligation_id WHERE o.cycle_id=$1),
+    (SELECT jsonb_agg(to_jsonb(c) ORDER BY c.id) FROM public.subscription_dunning_cases c WHERE cycle_id=$1),
+    (SELECT jsonb_agg(to_jsonb(a) ORDER BY a.case_id) FROM public.payment_dunning_case_attribution a JOIN public.subscription_dunning_cases c ON c.id=a.case_id WHERE c.cycle_id=$1),
+    (SELECT jsonb_agg(to_jsonb(a) ORDER BY a.id) FROM public.payment_method_recovery_authorities a WHERE cycle_id=$1),
+    (SELECT jsonb_agg(to_jsonb(n) ORDER BY n.id) FROM public.subscription_dunning_notifications n WHERE case_id IN (SELECT id FROM public.subscription_dunning_cases WHERE cycle_id=$1)),
+    (SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM public.commerce_checkout_recovery_tokens t WHERE order_id=$2)),
+    'audit',jsonb_build_array(
+    (SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM public.payment_provider_transitions t WHERE settlement_intent_id=$3),
+    (SELECT jsonb_agg(to_jsonb(e) ORDER BY e.id) FROM public.payment_provider_attempt_evidence e WHERE settlement_intent_id=$3),
+    (SELECT jsonb_agg(to_jsonb(r) ORDER BY r.scope,r.idempotency_key) FROM public.payment_provider_receipts r WHERE metadata->>'paymentIntentId'=$3::text OR metadata->>'failedPaymentAttemptId'=$4::text),
+    (SELECT jsonb_agg(to_jsonb(e) ORDER BY e.id) FROM public.subscription_events e WHERE subscription_id=$5))) state`,
+  [f.cycle, f.order, f.intent, f.a.paymentAttemptId, f.subscription])).rows[0].state;
+}
+async function webhookReceipt(key: string) {
+  return (await env.owner.query("SELECT response_payload FROM public.payment_provider_receipts WHERE scope='commerce.payment_result.apply' AND idempotency_key=$1", [key])).rows[0].response_payload;
+}
+it.each(handoffOrders)("preserves separate failure/handoff ordering: %s", async order => {
+  const { f, request } = handoffFixtures.get(order)!, direct = directFailure(f);
+  const hook = createPostgresPaymentWebhookControlPort(env.runtime, options);
+  if (order !== "webhook-first") {
+    expect(await control().applyPaymentResult(direct)).toMatchObject({ kind: "state_changed", replayed: false });
+    expect((await env.owner.query("SELECT count(*)::integer n FROM public.subscription_dunning_cases WHERE cycle_id=$1", [f.cycle])).rows[0].n).toBe(0);
+    const before = await handoffRows(f);
+    await expect(call(env.runtime, "payment_reconciliation_open_dunning_from_failed_result", [`foreign-event:${f.intent}`, f.intent,
+      handoffFixtures.get("webhook-first")!.eventId, "declined", AT, null, f.a.paymentAttemptId, "dunning", "/recover"]))
+      .rejects.toMatchObject({ code: "55000", message: "subscription_dunning_failed_attempt_unattributed" });
+    expect(await handoffRows(f)).toEqual(before);
+  }
+  if (order === "already-handed-off") await observe(f, `earlier-handoff:${f.intent}`);
+  const beforeWebhook = await handoffRows(f);
+  expect(await hook.applyPaymentResult!(request)).toEqual({ replayed: false });
+  const receipt = await webhookReceipt(request.idempotencyKey);
+  expect(receipt).toMatchObject({ paymentResult: { kind: order === "webhook-first" ? "state_changed" : "ignored_duplicate_terminal_failure" },
+    subscriptionWebhookDunning: { opened: true, replayed: order === "already-handed-off", retryAttempt: 1 } });
+  if (order === "already-handed-off") expect((await handoffRows(f)).business).toEqual(beforeWebhook.business);
+  if (order === "webhook-first") {
+    const beforeDirect = await handoffRows(f);
+    expect(await control().applyPaymentResult(direct)).toMatchObject({ kind: "ignored_duplicate_terminal_failure", replayed: false });
+    expect((await handoffRows(f)).business).toEqual(beforeDirect.business);
+  }
+  const originalKey = (order === "webhook-first" ? request.idempotencyKey : direct.idempotencyKey) + ":truth";
+  const original = (await env.owner.query(`SELECT r.id,r.receipt_key FROM public.subscription_retry_receipts r
+    JOIN public.subscription_retry_obligations o ON o.id=r.obligation_id WHERE o.cycle_id=$1 AND r.kind='failure'`, [f.cycle])).rows;
+  expect(original).toEqual([{ id: expect.any(String), receipt_key: originalKey }]);
+  const caseId = receipt.subscriptionWebhookDunning.caseId;
+  expect((await env.owner.query("SELECT failed_payment_attempt_id,failure_receipt_id FROM public.payment_dunning_case_attribution WHERE case_id=$1", [caseId])).rows)
+    .toEqual([{ failed_payment_attempt_id: f.a.paymentAttemptId, failure_receipt_id: original[0].id }]);
+  expect((await env.owner.query(`SELECT
+    (SELECT count(*)::integer FROM public.commerce_settlement_transitions WHERE intent_id=$1 AND outcome='failed') financial,
+    (SELECT count(*)::integer FROM public.subscription_dunning_cases WHERE cycle_id=$2) cases,
+    (SELECT retry_attempt FROM public.subscription_retry_obligations WHERE cycle_id=$2 AND case_id=$3) rung`, [f.intent, f.cycle, caseId])).rows[0])
+    .toEqual({ financial: 1, cases: 1, rung: 1 });
+  expect((await env.owner.query("SELECT payload ? 'retryFailureKey' has_key FROM public.payment_provider_transitions WHERE idempotency_key=$1", [request.idempotencyKey + ":payment_result"])).rows)
+    .toEqual([{ has_key: order === "webhook-first" }]);
+  expect((await env.owner.query(`SELECT a.case_id,a.purpose,a.revoked_at,t.revoked_at token_revoked
+    FROM public.payment_method_recovery_authorities a JOIN public.commerce_checkout_recovery_tokens t ON t.id=a.token_id WHERE a.cycle_id=$1`, [f.cycle])).rows)
+    .toEqual([{ case_id: caseId, purpose: "repair_payment", revoked_at: null, token_revoked: null }]);
+  expect((await env.owner.query("SELECT recipient_kind,retry_attempt FROM public.subscription_dunning_notifications WHERE case_id=$1 ORDER BY recipient_kind", [caseId])).rows)
+    .toEqual([{ recipient_kind: "customer", retry_attempt: 1 }, { recipient_kind: "operator", retry_attempt: 1 }]);
+  expect((await env.owner.query("SELECT status,recovery_url_path FROM public.subscription_dunning_notifications WHERE case_id=$1 AND recipient_kind='customer'", [caseId])).rows)
+    .toEqual([{ status: "queued", recovery_url_path: expect.stringMatching(/^\/recover\?token=rcv_/u) }]);
+  const before = { original: await snapshot(f), handoff: await handoffRows(f) };
+  expect(await hook.applyPaymentResult!(request)).toEqual({ replayed: true });
+  expect(await control().applyPaymentResult(direct)).toMatchObject({ replayed: true });
+  expect({ original: await snapshot(f), handoff: await handoffRows(f) }).toEqual(before);
+});
+it("keeps a webhook's named attribution refusal sticky after an ignored financial result", async () => {
+  const { f, request } = handoffFixtures.get("unattributed-case")!;
+  await control().applyPaymentResult(directFailure(f));
+  await call(env.owner, "subscription_retry_open_case", [f.operation, "dunning", "/recover"]);
+  const hook = createPostgresPaymentWebhookControlPort(env.runtime, options);
+  expect(await hook.applyPaymentResult!(request)).toEqual({ replayed: false });
+  const refused = await webhookReceipt(request.idempotencyKey);
+  expect(refused).toMatchObject({ paymentResult: { kind: "ignored_duplicate_terminal_failure" },
+    subscriptionWebhookDunning: { opened: false, reason: "subscription_dunning_case_unattributed" } });
+  await env.owner.query("UPDATE public.subscription_cycles SET status='paid' WHERE id=$1", [f.cycle]);
+  const before = { original: await snapshot(f), handoff: await handoffRows(f) };
+  expect(await hook.applyPaymentResult!(request)).toEqual({ replayed: true });
+  expect(await webhookReceipt(request.idempotencyKey)).toEqual(refused);
+  expect({ original: await snapshot(f), handoff: await handoffRows(f) }).toEqual(before);
+});

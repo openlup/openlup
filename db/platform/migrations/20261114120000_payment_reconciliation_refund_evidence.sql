@@ -790,9 +790,15 @@ BEGIN
   AND r.result->>'retry_attempt' ~ '^[1-9][0-9]{0,8}$'
   AND EXISTS(SELECT 1 FROM public.payment_provider_transitions t WHERE t.settlement_intent_id=i.id
    AND t.payment_attempt_id=a.id AND t.transition_kind='business_result' AND t.to_status='failed'
-   AND t.reason NOT LIKE 'ignored%' AND t.payload->>'retryFailureKey'=r.receipt_key
-   AND (p_provider_event_id IS NULL OR t.provider_event_id IN
-    (SELECT id FROM public.payment_provider_attempt_evidence WHERE provider_event_id=p_provider_event_id AND payment_attempt_id=a.id)));
+   AND t.reason NOT LIKE 'ignored%' AND t.payload->>'retryFailureKey'=r.receipt_key)
+  -- Correlate this delivery independently of the original failure's receipt.
+  -- A duplicate webhook transition does not repeat the original truth key.
+  AND (p_provider_event_id IS NULL OR EXISTS(
+   SELECT 1 FROM public.payment_provider_transitions observed
+   JOIN public.payment_provider_attempt_evidence e ON e.id=observed.provider_event_id
+   WHERE observed.settlement_intent_id=i.id AND observed.payment_attempt_id=a.id
+    AND observed.transition_kind='business_result' AND observed.to_status='failed'
+    AND e.provider_event_id=p_provider_event_id AND e.settlement_intent_id=i.id AND e.payment_attempt_id=a.id));
  IF p_failed_payment_attempt_id IS NULL OR rung_count<>1 THEN
   RAISE EXCEPTION 'subscription_dunning_failed_attempt_unattributed' USING ERRCODE='55000'; END IF;
  SELECT * INTO failure FROM public.subscription_retry_receipts r WHERE r.obligation_id=obligation.id AND r.kind='failure'
@@ -2071,7 +2077,7 @@ BEGIN
   CASE WHEN retry_result IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('retryObligationId',retry_result->>'id',
    'retryAttempt',retry_result->'retry_attempt','nextRetryAt',retry_result->'next_retry_at','retryFailureKey',p_idempotency_key||':truth') END);
  answer:=jsonb_build_object('contractVersion','commerce.v0','paymentResult',jsonb_build_object('paymentIntentId',i.id,'paymentAttemptId',a.id,'paymentId',s.payment_id,'orderId',o.id,'status',p_result_status,'kind',kind,'idempotencyKey',p_idempotency_key,'replayed',false));
- IF p_result_status='failed' AND p_payment_event_id IS NOT NULL AND kind NOT LIKE 'ignored%'
+ IF p_result_status='failed' AND p_payment_event_id IS NOT NULL
   AND p_idempotency_key='provider-webhook:'||e.provider||':'||e.provider_event_id||':apply' THEN
   BEGIN
    handoff:=public.payment_reconciliation_open_dunning_from_failed_result(
