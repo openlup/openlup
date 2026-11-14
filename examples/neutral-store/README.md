@@ -465,6 +465,14 @@ source evidence to the native recovery owner. An ambiguous prepared attempt is
 read again after restart and never dispatched again. This is local simulation;
 it does not qualify a real payment method or provider.
 
+The opt-in [card provider server composition](host/provider-portable.ts) shows the native
+provider rail with the complete catalogue. The host selects and authenticates
+its payment ingress and method setup, then passes the returned subscription
+ports to its single native binding. It preserves frozen money, method authority,
+prepared-attempt replay and attributed dunning. The starter does not select it;
+its real-payment actions retain their unconfigured refusals. Offline
+PostgreSQL proof does not activate a provider or qualify a live account.
+
 The account response adds a narrow `renewal` projection from owned action,
 payment, alignment and frozen/retained charge facts. Charge dates are distinct
 from promised arrival; unavailable arrival promises remain explicitly unavailable.

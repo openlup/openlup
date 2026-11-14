@@ -4,6 +4,14 @@ Status: historical record, 2026-11-13.
 
 Status: proof recipe with bounded base-candidate execution evidence below.
 
+The later 0.42.0 source adds an opt-in [card provider server composition](../host/provider-portable.ts).
+The [native PostgreSQL witness](../../../tests/postgres/stripePortableRail.test.ts)
+uses an offline client and the installed runtime role for purchase, capture,
+renewal, attributed decline, replacement and recovery, plus cumulative refunds
+and dispatch uncertainty. The dated sandbox evidence below retains its original
+scope; the default starter still selects sandbox payments. No live provider
+qualification or portable composition for the second reference provider follows.
+
 Run from the independent application's root with its exact selected artifacts.
 Use the application's own installation, resource and verification authority.
 The source recipe does not grant deployment or publication rights.

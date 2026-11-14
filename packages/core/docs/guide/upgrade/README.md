@@ -79,8 +79,9 @@ Each finding includes an observation, cause, fix and recheck instruction.
 ## Per-release notes
 
 Each release's notes are the packages' changelogs, linked at the release tag:
-[core](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/core/CHANGELOG.md),
-[outbox](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/outbox/CHANGELOG.md)
-and [platform](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/CHANGELOG.md).
-[Upgrading to 0.41.0](v0-41-0.md) and [Upgrading to 0.40.0](v0-40-0.md) each gather
+[core](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/packages/core/CHANGELOG.md),
+[outbox](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/packages/outbox/CHANGELOG.md)
+and [platform](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/packages/platform/CHANGELOG.md).
+[Upgrading to 0.42.0](v0-42-0.md), [Upgrading to 0.41.0](v0-41-0.md) and
+[Upgrading to 0.40.0](v0-40-0.md) each gather
 that release's notes and API report changes.

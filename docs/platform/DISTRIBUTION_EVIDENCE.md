@@ -94,7 +94,9 @@ system fonts only; the root reference's existing font choices are not transferre
 Node/OCI rollback and portable-Postgres Vercel recipes await the starter's own
 documented entry and exercised evidence; they are not delivered by these tools.
 
-The portable rail takes sandbox payments only. Real money currently runs only
-on the managed rail, so a portable real-money store without vendor lock-in is
-not yet available. Read the [install policy](../../.github/INSTALL_SUPPORT_POLICY.md)
+The 0.42.0 source candidate supplies explicit card provider composition on portable
+PostgreSQL, exercised with an offline client and installed runtime roles.
+The starter still selects sandbox payments. A portable composition for the
+second reference provider and live-provider qualification remain separate.
+The native rail supports the two reference payment providers; a third provider needs the provider-profile refactor. Read the [install policy](../../.github/INSTALL_SUPPORT_POLICY.md)
 before relying on any preview profile.

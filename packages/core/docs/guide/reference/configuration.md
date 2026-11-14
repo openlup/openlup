@@ -25,5 +25,5 @@ Find configuration keys read by package source: names from the configuration inv
 | `OPERATOR_IDENTITY_AUDIENCE` | platform | server-runtime | none | no |
 | `PLATFORM_BLOB` | platform | server-runtime | none | no |
 
-4 package-read keys omitted because their names are provider-specific. Complete list: [configuration keys](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/config/environment-variables.json) and [platform API reports](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/api/).
+4 package-read keys omitted because their names are provider-specific. Complete list: [configuration keys](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/config/environment-variables.json) and [platform API reports](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/packages/platform/api/).
 <!-- /generated:configuration-keys -->
