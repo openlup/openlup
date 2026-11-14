@@ -323,7 +323,7 @@ describe("CI image mirror workflow controls", () => {
   it.each([
     ["permissions: {packages: write, attestations: write, id-token: write}", "permissions: {packages: write}"],
     ["actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f", "actions/attest-build-provenance@v3.2.0"],
-    [qualification.match(/      - name: Verify the issued image attestation\n[\s\S]*?(?=      - name: Retain the final image publication receipt)/u)![0], ""],
+    [qualification.match(/ {6}- name: Verify the issued image attestation\n[\s\S]*?(?= {6}- name: Retain the final image publication receipt)/u)![0], ""],
     ["gh attestation verify ", "echo unverified "],
     ["needs: exact-set-qualification", "needs: registry-tutorial"],
     ["needs.exact-set-qualification.result == 'success'", "always()"],

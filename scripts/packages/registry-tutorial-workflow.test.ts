@@ -415,9 +415,9 @@ esac
 // npm 11 CycloneDX response shape; fixture values are synthetic.
 describe("locked package SBOM identity", () => {
   const pkg = { name: "@openlup/core", version: "0.41.0", integrity: "sha512-" + Buffer.alloc(64, 1).toString("base64") };
-  it.each(["valid", "version", "integrity", "extra", "missing"])("checks %s OpenLup components by name", kind => {
-    const component = { name: "core", version: kind === "version" ? "0.40.0" : pkg.version, purl: "pkg:npm/%40openlup/core@0.41.0", hashes: [{ alg: "SHA-512", content: Buffer.alloc(64, kind === "integrity" ? 2 : 1).toString("hex") }] };
-    const sbom = { components: kind === "missing" ? [] : [component, ...(kind === "extra" ? [{ ...component, purl: "pkg:npm/%40openlup/extra@0.41.0" }] : [])] };
+  it.each(["valid", "version", "integrity", "hash-missing", "extra", "missing"])("checks %s OpenLup components by name", kind => {
+    const component = { name: pkg.name, version: kind === "version" ? "0.40.0" : pkg.version, hashes: kind === "hash-missing" ? [] : [{ alg: "SHA-512", content: Buffer.alloc(64, kind === "integrity" ? 2 : 1).toString("hex") }] };
+    const sbom = { components: kind === "missing" ? [] : [component, ...(kind === "extra" ? [{ ...component, name: "@openlup/extra" }] : [])] };
     if (kind === "valid") expect(() => assertSbomPackages(sbom, [pkg])).not.toThrow();
     else expect(() => assertSbomPackages(sbom, [pkg])).toThrow(kind === "extra" ? "@openlup/extra" : "@openlup/core");
   });

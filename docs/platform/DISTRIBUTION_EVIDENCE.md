@@ -328,8 +328,8 @@ Added 2026-11-14. Historically, version 3 bound the image without an image SBOM
 or build attestation. Version 4 generates both CycloneDX inventories before the
 BOM: npm 11.19.0 runs `npm sbom --sbom-format cyclonedx --package-lock-only` in
 the verified target application, including development and optional dependencies
-in its locked set. The existing release-bundle normalizer removes the volatile
-serial number and uses the source commit timestamp. Every OpenLup component
+in its locked set. The BOM hashes the exact SBOM bytes produced and retained in
+that run, including npm's serial number and timestamp. Every OpenLup component
 must match the verified package set's version and SHA-512; missing or differing
 components refuse by package name.
 
