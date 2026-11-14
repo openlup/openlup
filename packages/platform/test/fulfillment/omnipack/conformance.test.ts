@@ -270,6 +270,7 @@ function fullSubject() {
   const baseObservation = expectedObservation("provider_webhook", webhook(webhookPayload).rawBody);
   value.fixtures.observation = [valid, valid,
     { input: [webhook(olderPayload)], expected: { kind: "verified", observation: { ...baseObservation, eventKey: olderKey,
+      intake: { occurredAt: olderPayload.occurredAt, occurrenceKey: hash(JSON.stringify(["delivered", olderPayload.occurredAt])), recovery: null },
       fact: { ...baseObservation.fact, factId: hash(olderKey), occurredAt: olderPayload.occurredAt,
         rawEvent: { ...baseObservation.fact.rawEvent, digest: hash(webhook(olderPayload).rawBody) } } } } },
     { input: [{ ...webhook(webhookPayload), headers: { authorization: "Bearer incorrect-placeholder" } }], expected: { kind: "refused", refusal: refusal("untrusted", "verify") } }, valid];
@@ -280,6 +281,7 @@ function fullSubject() {
     const eventKey = hash(JSON.stringify(["external-a", "parcel-a", null, primary, detail, now]));
     const raw = { ...readbackRawEvidence, event: "parcel.exception", providerStatus };
     const observation: FulfillmentObservation = { ...expectedObservation("provider_reconciliation", JSON.stringify(raw)), providerStatus, eventKey, eventKind: "parcel.exception",
+      intake: { occurredAt: now, occurrenceKey: hash(JSON.stringify([primary, now])), recovery: primary === "returned_to_sender" ? "manual" : "delivery_only" },
       fact: { ...expectedObservation("provider_reconciliation", JSON.stringify(raw)).fact, factId: eventKey, canonicalStatus: "exception" } };
     return { kind: "found" as const, externalRef: "external-a", createdAt: null, updatedAt: now, observation };
   };
@@ -344,6 +346,23 @@ it("qualifies the real reference adapter offline with invocation-bound fixtures 
   expect(fixture.wire.filter(row => row.path === "/orders")).toHaveLength(5);
   expect(fixture.wire.filter(row => row.path === "/fulfilments").slice(-5).map(row => row.query)).toEqual(["?page=0&size=2", "?page=1&size=2", "?page=2&size=2", "?page=3&size=2", "?page=4&size=2"]);
   expect(JSON.stringify(proof)).not.toMatch(/synthetic-credential|synthetic-signature/);
+});
+
+it.each(["fixture", "adapter"] as const)("rejects an unknown recovery classification in %s intake evidence", async target => {
+  const { value } = fullSubject();
+  if (target === "fixture") {
+    const expected = value.fixtures.observation![0]!.expected;
+    if (expected.kind !== "verified") throw new Error("expected_verified");
+    Object.assign(expected.observation.intake!, { recovery: "automatic" });
+  } else {
+    const verify = value.adapter.observation!.verifyAndNormalize;
+    value.adapter.observation!.verifyAndNormalize = async input => {
+      const result = await verify(input);
+      if (result.kind === "verified") Object.assign(result.observation.intake!, { recovery: "automatic" });
+      return result;
+    };
+  }
+  await expect(runFulfillmentAdapterConformance([value], { mode: "full" })).rejects.toThrow(target === "fixture" ? "validation:fixtures" : "observation fixture contradictory result: validation");
 });
 
 it("requires an explicit unsupported label-read refusal in full mode even with host storage", async () => {

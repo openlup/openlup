@@ -50,6 +50,7 @@ const poll = { correlation, eventKey: token, providerStatus: z.strictObject({ pr
 const fact = z.custom<ReturnType<typeof parseFulfillmentFact>>(value => { try { return isDeepStrictEqual(value, parseFulfillmentFact(value)); } catch { return false; } }, "fact must already match the current contract");
 const observation = z.strictObject({ ...poll, fact, eventKind: z.enum(["shipment.accepted", "shipment.preparing", "shipment.packed", "shipment.in_transit",
   "shipment.delivered", "order.processing_started", "order.picked", "order.shipped", "order.delivered", "parcel.exception", "parcel.cancelled"]), firstReceivedAt: s,
+  intake: z.strictObject({ occurredAt: nullable.optional(), occurrenceKey: token, recovery: z.enum(["provider_recovered", "delivery_only", "manual"]).nullable() }).optional(),
   trackingRefs: z.array(z.strictObject({ trackingNumber: token, carrierRef: nullable, serviceRef: nullable, publicUrl: nullable })) });
 const refused = z.strictObject({ kind: z.literal("refused"), refusal });
 const dispatchCommon = { error: error.optional(), redactedFieldCount: count.optional() };
