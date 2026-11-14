@@ -326,4 +326,3 @@ function baseEvent(): NormalizedProviderPaymentWebhook {
     reusableMethod: null,
   };
 }
-
