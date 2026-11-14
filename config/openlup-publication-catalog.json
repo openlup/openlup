@@ -12006,6 +12006,10 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/packages/exact-set-qualification.mjs",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/packages/generate-release-bom-cli.ts",
       "class": "public-output"
     },
