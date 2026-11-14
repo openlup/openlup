@@ -1371,6 +1371,29 @@ collectors and synthetic host data.
 
 ## Fulfillment observation and sync execution
 
+Native dispatch acknowledgement takes the selected intake declaration as a SQL
+parameter, outside command evidence and retained acceptance JSON. Install the
+complete catalogue through `20261120100000_fulfillment_intake_channel.sql` before
+using the updated dispatch store. The four-argument `fulfillment_dispatch_finish`
+accepts only `push` or `poll`; its three-argument compatibility wrapper supplies
+`push`. Created acceptance replay preserves the original receipt and channel,
+including after a descriptor changes. No historical evidence is relabelled.
+
+Accepted dispatch `receiptKey` is an optional byte-equal alias of required
+`labelKey`. Omission retains the legacy projection exactly; mismatches refuse
+before persistence. Neutral observation status aliases `code` and `detailCode`
+coexist with `primary` and `subStatus`. Neutral shipment event kinds coexist with
+legacy order event kinds. Keep eventKey, fact identity and stored receipt bytes;
+never generate a new event key merely to adopt the neutral vocabulary.
+
+Snapshot-only synchronization (`stockMovements: false`) records successful stock
+snapshots independently of its `movementRefusal` diagnostic. It skips movement
+I/O, retains the prior movement watermark and never fabricates movement evidence.
+An omitted flag retains the existing movement-read failure boundary. Inventory
+ownership, independent splits, standalone delivery, label execution, remote cancel
+and document-format limits are explicit
+[capability refusals](../../packages/core/docs/guide/reference/limits.md#fulfillment-execution-limits).
+
 The [fulfillment contract owner](ARCHITECTURE_AND_EXTENSIONS.md#fulfillment-contracts)
 explains G15–G17: consecutive-success coverage confirmation, timed local stock
 lines and inline host persistence. Ingress persists eventKey receipts before

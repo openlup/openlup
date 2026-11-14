@@ -19,6 +19,8 @@ export interface SyncCursor {
   /** G15: successful sellable coverage gaps; legacy absent values read as []. */
   coverageGapSkus?: readonly string[];
   refusal: FulfillmentRefusal | null;
+  /** Snapshot-only sync diagnostic; independent of snapshot success/failure. */
+  movementRefusal?: FulfillmentRefusal;
   /** Per-entry bounded diagnostics and run evidence in the existing cursor JSON, never raw errors. */
   syncRunId?: string;
   counts?: { checked: number; updated: number; movements: number; rejected: number; failures: number; providerCalls: number; readBacks: number };
