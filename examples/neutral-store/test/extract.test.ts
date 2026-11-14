@@ -272,6 +272,9 @@ const refusals: [string, (f: ReleaseFixture) => Promise<unknown> | void, string?
       f.lock.packages['node_modules/pg'] = { resolved: 'https://registry.npmjs.org/pg/-/pg-8.0.0.tgz', [section]: { alias: 'NPM:%40OpEnLuP%2fcore@0.41.0' } };
       await f.put('lock.json', f.lock);
     }, 'node_modules/pg'] as [string, (f: ReleaseFixture) => Promise<void>, string]),
+  ['lock_package_extra', async f => { f.lock.packages['node_modules/pg'] = {
+    resolved: 'https://registry.npmjs.org/pg/-/pg-8.0.0.tgz', dependencies: { '@openlup/extra': '0.42.0' },
+  }; await f.put('lock.json', f.lock); }, 'node_modules/pg', 'dependency name'],
   ...[{ name: '@OpEnLuP/core' }, { resolved: 'https://registry.npmjs.org/%2540%6fpenlup%252fcore/-/core.tgz' }]
     .map(fields => ['lock_package_extra', async (f: ReleaseFixture) => {
       f.lock.packages['node_modules/alias'] = { version: '1.0.0', resolved: 'https://registry.npmjs.org/other/-/other-1.0.0.tgz', ...fields };

@@ -31,7 +31,7 @@ V, the expected sha512 integrity and the exact public-registry tarball URL for
 P@V. Root dependency sections must match the extracted package.json and its
 exact V pins. Every other non-root entry refuses an `@openlup/` or `%40openlup`
 reference, case-insensitively, in its key, name, resolved URL (also URL-decoded)
-or any dependencies/optionalDependencies/peerDependencies/devDependencies value.
+or any dependencies/optionalDependencies/peerDependencies/devDependencies key or value.
 Nested and aliased OpenLup copies are forbidden. All non-root entries require
 public-registry resolutions without links, credentials, query strings or
 fragments. The manifest is an expected-integrity input, not signed publication

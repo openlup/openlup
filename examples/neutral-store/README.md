@@ -80,7 +80,7 @@ V, the expected sha512 integrity and the exact public-registry tarball URL for
 P@V. The root entry's dependency sections must match the extracted package.json,
 including its exact V pins. Every other non-root entry refuses if its key, name,
 resolved URL (also URL-decoded) or any dependency, optional-dependency,
-peer-dependency or dev-dependency value contains `@openlup/` or `%40openlup`,
+peer-dependency or dev-dependency key or value contains `@openlup/` or `%40openlup`,
 case-insensitively. Nested and aliased OpenLup copies are forbidden. All non-root
 entries must retain public `https://registry.npmjs.org` resolutions without links,
 credentials, query strings or fragments. Refusals use `starter_release_*` names.
