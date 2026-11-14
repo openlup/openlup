@@ -123,12 +123,15 @@ integrities against that proof's receipt. Runner, payment, delivery-alignment
 and readiness exports resolve inside those installations. The
 [existing schema proof](../../tests/postgres/m14ReleasedSchemaUpgrade.proof.ts)
 has an explicit released-pair mode; its no-argument historical execution and PR
-CI selection are unchanged. The step uses the job's mirror-only PostgreSQL 17
-service and a disposable database, then removes both retained installations.
+CI selection are unchanged. The schema step uses the existing digest-pinned
+PostgreSQL 16 mirror in a separate disposable container; the rest of the job
+keeps its PostgreSQL 17 service. It removes both retained installations afterward.
 
-The predecessor's shipped runner installs its packaged legacy catalogue, and
-its payment port writes a settled event before the upgrade. The target's
-shipped `createPlatformPostgresMigrationRunner` applies its packaged forwards.
+The predecessor's shipped runner installs its packaged `qualified-v2` catalogue,
+using the starter bootstrap's installer-managed profile with distinct install,
+runtime and restore roles. Its payment port writes a settled event before the
+upgrade. The target's shipped `createPlatformPostgresMigrationRunner` applies
+the same profile's packaged forwards.
 SIGKILL interrupts the first forward after its real SQL executes but before the
 ledger insert commits. The old exact ledger prefix must survive. The installed
 readiness evaluator refuses the harness-supplied target catalogue-tail
@@ -149,19 +152,20 @@ that witness is not rerun or represented as adjacent-pair backfill. Later
 contraction and adjacent-pair backfill remain **PARTIAL** until a real retirement
 ships: the 0.41→0.42 pair has no object needed only by the older application.
 No destructive fixture or new migration admission grammar is introduced. A
-pair with identical catalogues can demonstrate compatibility and no-op replay,
-but records **PARTIAL** interruption evidence and fails full qualification.
+pair with identical catalogues records its schema-forward interruption as
+`not-applicable: no forward migrations in this pair`. It still must pass the
+cross-version reads, fresh writes, replay and named subscription checks to
+qualify; no interrupted-forward evidence is claimed for that pair.
 This evidence supplies no general rollback, hosted-service or stable-support
 guarantee.
 
-Local execution on 2026-11-14 remains blocked: the published 0.40.0→0.41.0
-starters passed installation, provenance and application checks, but the
-predecessor's shipped legacy runner rejected its completed inventory on pinned
-PostgreSQL 17 with `platform migration inventory rejected: platform migration
-manifest: object inventory SHA-256 mismatch`. The additional 0.39.0→0.40.0
-rehearsal stopped at the same check. Neither run reached forward interruption
-or compatible code rollback. Schema-step qualification and its successful-run
-timing remain pending.
+The installed qualified runner explicitly refuses PostgreSQL 17 as
+`qualified PostgreSQL installation refused: requires_qualified_postgresql_16_profile`.
+The historical legacy chain retains its original profile and execution path.
+Local exact-artifact rehearsals on 2026-11-14 passed the real one-forward
+0.39.0→0.40.0 pair and the no-forward 0.40.0→0.41.0 pair, including code rollback
+and the named subscription checks. These local results are separate from the
+first hosted qualification, which must remeasure the step's bound.
 
 ## Public outcome projection
 

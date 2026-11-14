@@ -9,7 +9,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { Pool, type PoolConfig } from "pg";
 import assert from "node:assert/strict";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
-import type { QualifiedAdminPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
+import type { QualifiedAdminPostgresInstallation, QualifiedPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { createPostgresDeliveryAlignmentPort } from "@openlup/platform/fulfillment";
 import { createPostgresPaymentTruthPort } from "@openlup/platform/payments";
@@ -42,7 +42,7 @@ async function killed(child: ChildProcess) {
   assert.deepEqual(await exit, { code: null, signal: "SIGKILL" });
 }
 
-function startChild(database: PoolConfig, mode: "inside" | "between", marker: string, installation?: QualifiedAdminPostgresInstallation, runnerPath?: string) {
+function startChild(database: PoolConfig, mode: "inside" | "between", marker: string, installation?: QualifiedAdminPostgresInstallation | QualifiedPostgresInstallation, runnerPath?: string) {
   const child = spawn(process.execPath, ["--import", "tsx", childPath, mode, marker],
     { env: { TMPDIR: dirname(marker) }, stdio: ["pipe", "pipe", "pipe"] });
   child.stdin!.end(JSON.stringify({ database, installation, runnerPath }));
@@ -90,7 +90,7 @@ async function releasedApplication(input: ReleasedApplication) {
   }
   const runnerPath = resolveExport("@openlup/platform/migrations");
   const load = (name: string) => import(pathToFileURL(resolveExport(name)).href);
-  const catalog = json(join(dirname(resolveExport("@openlup/platform/package.json")), "sql/manifest.json")).catalog;
+  const catalog = json(join(dirname(resolveExport("@openlup/platform/package.json")), "sql/manifest.json")).catalog.qualified;
   return { root, runnerPath, units: [catalog.baseline, ...catalog.forward] as { file: string; sha256: string }[],
     migrations: await load("@openlup/platform/migrations"), payments: await load("@openlup/platform/payments"),
     fulfillment: await load("@openlup/platform/fulfillment"), readiness: await load("@openlup/core/readiness") };
@@ -103,13 +103,24 @@ async function runReleasedPair(input: ReleasedSchemaPair) {
   assert.notEqual(input.from.identity.setVersion, input.to.identity.setVersion);
   assert.deepEqual(to.units.slice(0, from.units.length), from.units, "released_pair_catalogue_not_exact_prefix");
   assert.ok(input.database?.connectionString, "released_pair_database_required");
-  const pool = new Pool(input.database), root = mkdtempSync(join(tmpdir(), "released-schema-pair-"));
+  const admin = new Pool(input.database), root = mkdtempSync(join(tmpdir(), "released-schema-pair-"));
+  const installation: QualifiedPostgresInstallation = { generation: "qualified-v2", roleMode: "installer-managed",
+    bootstrapLogin: new URL(input.database.connectionString).username, migrationLogin: `schema_install_${process.pid}`,
+    runtimeLogin: `schema_runtime_${process.pid}`, restoreLogin: `schema_restore_${process.pid}` };
+  const roles = [installation.migrationLogin, installation.runtimeLogin, installation.restoreLogin!];
+  const password = randomBytes(32).toString("hex"), url = new URL(input.database.connectionString);
+  url.username = installation.migrationLogin; url.password = password;
+  const database = { ...input.database, connectionString: url.toString(), options: from.migrations.qualifiedPostgresStartupOptions(installation) };
+  const pool = new Pool(database);
   let child: ChildProcess | undefined;
-  const runner = (app: typeof from) => app.migrations.createPlatformPostgresMigrationRunner(input.database,
-    { installation: { generation: "legacy" }, poolFactory: () => pool });
+  const runner = (app: typeof from) => app.migrations.createPlatformPostgresMigrationRunner(database,
+    { installation, poolFactory: () => pool });
   const ledger = async () => (await pool.query("SELECT catalog_path,sha256,position FROM public.platform_schema_migrations ORDER BY position")).rows;
   const expected = to.units.map((unit, position) => ({ catalog_path: unit.file, sha256: unit.sha256, position }));
   try {
+    // Same public profile and distinct install/runtime/restore roles as the starter bootstrap.
+    for (const [i, role] of roles.entries()) await admin.query(`CREATE ROLE ${role} LOGIN ${i === 0 ? `INHERIT SUPERUSER PASSWORD '${password}'` : "NOINHERIT NOSUPERUSER"} NOCREATEROLE NOCREATEDB NOREPLICATION NOBYPASSRLS`);
+    await admin.query((await admin.query("SELECT format('ALTER DATABASE %I OWNER TO %I', current_database(), $1::text) AS sql", [installation.migrationLogin])).rows[0].sql);
     assert.deepEqual((await runner(from).apply()).applied, from.units.map(unit => unit.file));
     const retained = await fixture(pool), earlier = await fixture(pool);
     const options = { dunningTemplateSlug: "payment_failed", recoveryUrlPath: "/recover", recoveryTemplateSlug: "payment_recovered" };
@@ -162,7 +173,7 @@ async function runReleasedPair(input: ReleasedSchemaPair) {
     const pending = to.units.slice(from.units.length);
     if (pending.length) {
       const marker = join(root, "inside-marker");
-      const running = startChild(input.database, "inside", marker, undefined, to.runnerPath); child = running.child;
+      const running = startChild(database, "inside", marker, installation, to.runnerPath); child = running.child;
       await waitUntil(() => existsSync(marker), "released forward SQL before ledger insert");
       await killed(child); child = undefined;
       assert.equal(running.output(), "");
@@ -202,10 +213,11 @@ async function runReleasedPair(input: ReleasedSchemaPair) {
       assert.deepEqual(await ledger(), expected);
       assert.deepEqual((await runner(to).status()).pending, []);
     }
-    return { result: interruption ? "PASS" : "PARTIAL", from: input.from.identity, to: input.to.identity,
+    return { result: "PASS", profile: installation.generation, postgresMajor: Math.floor(Number((await pool.query("SHOW server_version_num")).rows[0].server_version_num) / 10000),
+      from: input.from.identity, to: input.to.identity,
       catalogueSha256: { from: sha256(JSON.stringify(from.units)), to: sha256(JSON.stringify(to.units)) },
       operations: ["payments.readEvent", "payments.ingestEvent", "fulfillment.recordArrival"], codeSequence: ["target", "predecessor", "target"],
-      forwardUnits: pending.length, insideUnitInterruption: interruption,
+      forwardUnits: pending.length, insideUnitInterruption: interruption ? true : "not-applicable: no forward migrations in this pair",
       incompleteRefusal: interruption ? "OPENLUP_E_SCHEMA_BEHIND/version_mismatch" : null,
       resume: interruption, replayApplied: 0, compatibleCodeRollback: true, subscriptionInvariant: "subscription_monotonic_clamp",
       historicalBackfill: "0.23-prefix invoicing witness; separate historical proof, not executed here",
@@ -213,6 +225,12 @@ async function runReleasedPair(input: ReleasedSchemaPair) {
   } finally {
     if (child && child.exitCode === null && child.signalCode === null) await killed(child);
     await closePostgres(undefined, pool);
+    try {
+      await admin.query((await admin.query("SELECT format('ALTER DATABASE %I OWNER TO %I', current_database(), current_user) AS sql")).rows[0].sql);
+      for (const role of roles) if ((await admin.query("SELECT 1 FROM pg_roles WHERE rolname=$1", [role])).rowCount) {
+        await admin.query(`DROP OWNED BY ${role} CASCADE`); await admin.query(`DROP ROLE ${role}`);
+      }
+    } finally { await admin.end(); }
     rmSync(root, { recursive: true, force: true });
   }
 }

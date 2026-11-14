@@ -28,13 +28,13 @@ const observedPool = {
     return {
       async query(sql: string, values?: unknown[]) {
         // Released-pair mode parks after the real SQL, before its ledger insert.
-        if (runnerPath && mode === "inside" && sql.startsWith("INSERT INTO public.platform_schema_migrations")) {
+        if (runnerPath && mode === "inside" && typeof sql === "string" && sql.startsWith("INSERT INTO public.platform_schema_migrations")) {
           writeFileSync(marker, "inside-forward-before-ledger");
           await new Promise<never>(() => {});
         }
         // Restricted admission inspects catalogue definitions first. Holding
         // the source-table lock earlier can block that inspection itself.
-        if (installation && mode === "inside" && typeof sql === "string" && sql.includes("CREATE TABLE public.invoicing_cutover")) {
+        if (!runnerPath && installation && mode === "inside" && typeof sql === "string" && sql.includes("CREATE TABLE public.invoicing_cutover")) {
           writeFileSync(marker, "admitted-before-backfill");
           while (!existsSync(`${marker}.release`)) await new Promise(resolve => setTimeout(resolve, 25));
         }
@@ -51,7 +51,7 @@ const observedPool = {
 
 const runner = runnerPath
   ? (await import(pathToFileURL(runnerPath).href)).createPlatformPostgresMigrationRunner({ connectionString },
-    { installation: { generation: "legacy" }, poolFactory: () => observedPool })
+    { installation, poolFactory: () => observedPool })
   : createPostgresMigrationRunner({ connectionString }, { installation, poolFactory: () => observedPool });
 await runner.apply();
 throw new Error("released schema upgrade child unexpectedly completed");

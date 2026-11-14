@@ -196,7 +196,7 @@ export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = f
   if (schema) {
     assert(receipt.result === 'PASS' && receipt.upgrade?.result === 'PASS' && receipt.tag === tag && receipt.tagCommit === expectedCommit, 'adjacent-set qualification must pass first');
     receipt.result = 'FAIL'; receipt.endedAt = null;
-    receipt.schemaUpgrade = { result: 'FAIL', startedAt: new Date().toISOString() };
+    receipt.schemaUpgrade = { result: 'FAIL', startedAt: new Date().toISOString(), postgresImage: imageReference(readCiImage('test-postgres')) };
     writeFileSync(receiptPath, JSON.stringify(receipt, null, 2) + '\n');
     const run = async () => {
       let admin;
@@ -211,7 +211,7 @@ export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = f
         const { default: pg } = await import('pg'), { tsImport } = await import('tsx/esm/api');
         const { runReleasedSchemaUpgradeProof } = await tsImport('../../tests/postgres/m14ReleasedSchemaUpgrade.proof.ts', import.meta.url);
         admin = new pg.Pool({ connectionString: env.OPENLUP_QUALIFICATION_DATABASE_URL });
-        assert.equal(Math.floor(Number((await admin.query('SHOW server_version_num')).rows[0].server_version_num) / 10000), 17);
+        assert.equal(Math.floor(Number((await admin.query('SHOW server_version_num')).rows[0].server_version_num) / 10000), 16);
         await admin.query(`CREATE DATABASE ${database}`);
         const url = new URL(env.OPENLUP_QUALIFICATION_DATABASE_URL); url.pathname = '/' + database;
         const proof = await runReleasedSchemaUpgradeProof({ mode: 'released-pair',
@@ -219,7 +219,7 @@ export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = f
           to: { application: join(applicationsPath, '1/application'), identity: receipt.upgrade.to },
           database: { connectionString: url.toString() } });
         Object.assign(receipt.schemaUpgrade, proof);
-        if (proof.result !== 'PASS') refuse('released pair has no forward suffix; interruption evidence remains PARTIAL');
+        assert.equal(proof.result, 'PASS', 'released-pair schema compatibility failed');
         receipt.result = 'PASS';
       } catch (error) { receipt.error = error.message; throw error; }
       finally {
