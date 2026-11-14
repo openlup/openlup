@@ -266,7 +266,17 @@ provider maps its cursors to sequential page numbers inside its adapter; the
 public page port carries no opaque cursor and this kit adds none.
 
 Supply success/failure pairs for each supported stock and product sync method;
-stock movements are required unless `stockMovements: false` is declared. Positive sync witnesses must include a stock snapshot,
+stock movements are required unless `stockMovements: false` is declared. A
+`success` fixture has `{ input, expected }` and a `failure` fixture has
+`{ input, throws }`, where `throws` is the declared typed sync refusal. The types
+exclude the opposite key; the runner also rejects mixed or contradictory roles
+before invoking either fixture, including for untyped JavaScript callers.
+One local credit rule checks each observed invocation against its slot: success
+must return the expected contract-positive value; failure must throw the declared
+typed refusal. A matching refusal cannot satisfy a success slot, and a returned
+value cannot satisfy a failure slot. Other scenario claims use compared executed
+results, dispatch witnesses and invocation-bound log or I/O-count deltas.
+Positive sync witnesses must include a stock snapshot,
 movement, addressable product pack or nonblank stocked SKU for the corresponding
 read. `ensureProduct` must return `{ replayed: false }`; skipped `null` and replayed
 results can be additional fixtures. `addProductPack` succeeds by returning `void`

@@ -568,3 +568,31 @@ it("allows a skipped ensureProduct fixture alongside a positive full witness", a
   await expect(runFulfillmentAdapterConformance([subject], { mode: "full" })).resolves.toHaveProperty("subjects");
   fixture.fake.assertDrained();
 });
+
+it.each([
+  ["stockSync", "getStock"], ["stockSync", "getStockMovements"],
+  ["productSync", "ensureProduct"], ["productSync", "getProductPacks"],
+  ["productSync", "addProductPack"], ["productSync", "listStockedSkus"],
+] as const)("binds %s.%s credit to its fixture role and observed invocation", async (name, operation) => {
+  for (const bypass of ["mixed success", "mixed failure", "return-only failure", "always throws", "always returns"] as const) {
+    const fixture = fullSubject(), subject = fixture.value;
+    const row = subject.certification![name]!.find(row => row.operation === operation)!;
+    const positive = row.success.expected, negative = row.failure.throws;
+    // Simulate untyped JavaScript, including mixed keys whose value is undefined.
+    if (bypass === "mixed success") Object.assign(row.success, { throws: negative });
+    if (bypass === "mixed failure" || bypass === "return-only failure") Object.assign(row.failure, { expected: positive });
+    if (bypass === "return-only failure") Reflect.deleteProperty(row.failure, "throws");
+    const port = subject.adapter[name] as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>;
+    const invoke = port[operation]!, baselineCalls = subject.fixtures[name]!.filter(row => row.operation === operation).length;
+    let calls = 0;
+    port[operation] = async (...args) => {
+      if (++calls <= baselineCalls) return invoke(...args);
+      if (bypass === "mixed success" || bypass === "always throws") throw negative;
+      return positive;
+    };
+    const hint = bypass === "always throws" ? "success did not return" : bypass === "always returns" ? "failure did not throw"
+      : bypass === "mixed success" ? "success fixture role" : "failure fixture role";
+    await expect(runFulfillmentAdapterConformance([subject], { mode: "full" }), bypass).rejects.toThrow(`full ${operation} ${hint}`);
+    expect(calls - baselineCalls, bypass).toBe(bypass === "always throws" ? 1 : bypass === "always returns" ? 2 : 0);
+  }
+});

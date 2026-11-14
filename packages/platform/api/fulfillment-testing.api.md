@@ -1209,18 +1209,21 @@ export type { FulfillmentAdapterCertificationScenarios, FulfillmentAdapterTestSu
 ```ts
 import type { FulfillmentAdapterConformanceSubject, FulfillmentObservationPagePort, FulfillmentProductSyncProvider, FulfillmentRefusal, FulfillmentStockSyncProvider } from "../contracts/index.js";
 import type { ScriptedFulfillmentOutcome } from "./scriptedFake.js";
-type MethodFixture<M extends (...args: never[]) => unknown> = {
+type SuccessFixture<M extends (...args: never[]) => unknown> = {
     input: Parameters<M>;
-} & ({
     expected: Awaited<ReturnType<M>>;
-} | {
+    throws?: never;
+};
+type FailureFixture<M extends (...args: never[]) => unknown> = {
+    input: Parameters<M>;
     throws: FulfillmentRefusal;
-});
+    expected?: never;
+};
 type SyncFixtures<P> = {
     [K in keyof P]: P[K] extends (...args: never[]) => unknown ? {
         operation: K;
-        success: MethodFixture<P[K]>;
-        failure: MethodFixture<P[K]>;
+        success: SuccessFixture<P[K]>;
+        failure: FailureFixture<P[K]>;
     } : never;
 }[keyof P];
 export type FulfillmentTransportScenario = "transport-before-submission" | "transport-after-submission" | "http-failure";

@@ -3074,7 +3074,14 @@ qualification. Supported dispatch needs compared `accepted` and `not_dispatched`
 results and an executed, compared `unknown` replay without a second provider call.
 Both profiles require a compared preparation refusal; refused preparations must
 omit `expectedDispatch` and `replay` in either mode. Supported label methods and
-stock/product sync methods require success/failure pairs. Positive sync witnesses must include a stock snapshot,
+stock/product sync methods require success/failure pairs. Sync fixtures are
+role-typed: `success: { input, expected }` and `failure: { input, throws }` exclude
+the opposite key. Mixed or contradictory roles are also rejected at runtime
+before either fixture is invoked. One local credit rule requires an observed
+return of the expected contract-positive value for success, or an observed throw
+matching the declared typed sync refusal for failure. Other scenario claims use
+compared executed results, dispatch witnesses and invocation-bound log or
+I/O-count deltas. Positive sync witnesses must include a stock snapshot,
 movement, addressable product pack or nonblank stocked SKU for the corresponding
 read. `ensureProduct` must return `{ replayed: false }`; skipped `null` and replayed
 results can be additional fixtures. `addProductPack` succeeds by returning `void`

@@ -234,6 +234,29 @@ function stable(value: unknown): string {
 function requireSame(actual: unknown, expected: unknown, label: string): void { requireFact(stable(actual) === stable(expected), label); }
 function requireFact(value: boolean, label: string): asserts value { if (!value) throw new Error(`fulfillment_adapter_conformance:${label}`); }
 
+type InvocationOutcome = { kind: "returned"; value: unknown } | { kind: "threw"; error: unknown };
+/** The sole credit rule for role-slotted method fixtures; union-result scenarios use compared invocation witnesses. */
+function creditSyncInvocation(operation: string, role: "success" | "failure", fixture: { expected?: unknown; throws?: FulfillmentRefusal },
+  outcome: InvocationOutcome, subject: Subject): void {
+  if (role === "failure") {
+    requireFact(outcome.kind === "threw", `full ${operation} failure did not throw`);
+    const refusal = outcome.error as FulfillmentRefusal | null | undefined;
+    requireSame({ reason: refusal?.reason, phase: refusal?.phase, retryable: refusal?.retryable }, fixture.throws, `full ${operation} failure`);
+    assertDurable(fixture.throws, subject);
+    return;
+  }
+  requireFact(outcome.kind === "returned", `full ${operation} success did not return`);
+  const actual = outcome.value;
+  requireSame(actual, fixture.expected, `full ${operation} success`); assertDurable(actual, subject);
+  const positive = operation === "ensureProduct" ? actual !== null && typeof actual === "object" && "replayed" in actual && actual.replayed === false
+    : operation === "getStock" || operation === "getStockMovements" ? Array.isArray(actual) && actual.some(item => item && !("kind" in item && item.kind === "rejected") && typeof item.skuRef === "string" && item.skuRef.trim()
+      && item.quantityKind === (operation === "getStock" ? "snapshot" : "movement"))
+      : operation === "getProductPacks" ? Array.isArray(actual) && actual.some(item => item && typeof item.ean === "string" && item.ean.trim())
+        : operation === "listStockedSkus" ? Array.isArray(actual) && actual.some(sku => typeof sku === "string" && sku.trim())
+          : operation === "addProductPack" && actual === undefined;
+  requireFact(positive, `full ${operation} positive success required`);
+}
+
 async function checkFull(subject: FulfillmentAdapterTestSubject, dispatchWitnesses: ReadonlyMap<number, DispatchWitness>,
   observe: (index: number) => Promise<NonNullable<Subject["fixtures"]["observation"]>[number]["expected"]>, passed: (operation: string) => void): Promise<void> {
   const kit = subject.certification;
@@ -351,25 +374,19 @@ async function checkFull(subject: FulfillmentAdapterTestSubject, dispatchWitness
     for (const operation of operations) {
       const row = rows!.find(row => row.operation === operation);
       requireFact(Boolean(row?.success) && Boolean(row?.failure), `full ${name}.${operation} success and failure required`);
-      requireFact("expected" in row!.success, `full ${name}.${operation} success cannot throw`);
-      requireFact("throws" in row!.failure, `full ${name}.${operation} typed failure required`);
-      for (const fixture of [row!.success, row!.failure]) {
-        let actual: unknown;
+      // Validate both roles before either call, including keys supplied by untyped JavaScript.
+      requireFact("expected" in row!.success && !("throws" in row!.success), `full ${operation} success fixture role`);
+      requireFact("throws" in row!.failure && !("expected" in row!.failure), `full ${operation} failure fixture role`);
+      requireFact(row!.failure.throws?.phase === "sync" && typeof row!.failure.throws.reason === "string" && Boolean(row!.failure.throws.reason)
+        && typeof row!.failure.throws.retryable === "boolean", `full ${operation} typed failure required`);
+      for (const [role, fixture] of [["success", row!.success], ["failure", row!.failure]] as const) {
+        let outcome: InvocationOutcome;
         try {
-          actual = await (port as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>)[operation]!.apply(port, fixture.input);
+          outcome = { kind: "returned", value: await (port as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>)[operation]!.apply(port, fixture.input) };
         } catch (error) {
-          requireFact("throws" in fixture, `full ${operation} unexpected throw`);
-          const failure = error as FulfillmentRefusal;
-          requireSame({ reason: failure?.reason, phase: failure?.phase, retryable: failure?.retryable }, fixture.throws, `full ${operation} failure`);
-          continue;
+          outcome = { kind: "threw", error };
         }
-        requireFact("expected" in fixture, `full ${operation} did not throw`);
-        requireSame(actual, fixture.expected, `full ${operation} success`); assertDurable(actual, subject);
-        if (operation === "ensureProduct") requireFact(actual !== null && typeof actual === "object" && "replayed" in actual && actual.replayed === false, `full ${operation} positive success required`);
-        if (operation === "getStock" || operation === "getStockMovements") requireFact(Array.isArray(actual) && actual.some(item => item && !("kind" in item && item.kind === "rejected") && typeof item.skuRef === "string" && item.skuRef.trim()
-          && item.quantityKind === (operation === "getStock" ? "snapshot" : "movement")), `full ${operation} positive success required`);
-        if (operation === "getProductPacks") requireFact(Array.isArray(actual) && actual.some(item => item && typeof item.ean === "string" && item.ean.trim()), `full ${operation} positive success required`);
-        if (operation === "listStockedSkus") requireFact(Array.isArray(actual) && actual.some(sku => typeof sku === "string" && sku.trim()), `full ${operation} positive success required`);
+        creditSyncInvocation(operation, role, fixture, outcome, subject);
       }
       passed(`adapter ${name}.${operation}:success and failure`);
     }

@@ -1,8 +1,19 @@
 import { createHash } from "node:crypto";
-import { expect, it } from "vitest";
+import { expect, expectTypeOf, it } from "vitest";
 import { createCapturedFulfillmentAdapter, runFulfillmentAdapterConformance as run } from "../../src/fulfillment/testing/index.js";
 import type { FulfillmentAdapterTestSubject } from "../../src/fulfillment/testing/index.js";
 import { request } from "./fixtures.js";
+
+it("types every sync slot with mutually exclusive success and failure roles", () => {
+  type Kit = NonNullable<FulfillmentAdapterTestSubject["certification"]>;
+  type Row = NonNullable<Kit["stockSync"]>[number] | NonNullable<Kit["productSync"]>[number];
+  type AcceptsMixed<R extends Row> = R extends Row ? {
+    input: R["success"]["input"]; expected: R["success"]["expected"]; throws: R["failure"]["throws"];
+  } extends R["success"] | R["failure"] ? true : false : never;
+  expectTypeOf<AcceptsMixed<Row>>().toEqualTypeOf<false>();
+  expectTypeOf<Row["success"]>().not.toExtend<Row["failure"]>();
+  expectTypeOf<Row["failure"]>().not.toExtend<Row["success"]>();
+});
 
 function capturedSubject(): FulfillmentAdapterTestSubject {
   const canonical = (value: unknown): string => Array.isArray(value) ? `[${value.map(canonical).join(",")}]`
