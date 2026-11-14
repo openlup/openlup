@@ -1,10 +1,36 @@
-# Local starter image build and rollback
+# Starter application images and local rollback
 
 Status: development-preview quickstart. Both image-only and local data-bearing
 application-image rollback have been exercised. Neither
 configuration health nor image rollback establishes a complete live store.
 The binder remains application-owned at
 [host/bindings.ts](../../examples/neutral-store/host/bindings.ts).
+
+## Qualified published sets
+
+The post-publication [qualification workflow](../../.github/workflows/registry-tutorial.yml)
+builds one Linux amd64 OCI archive from the verified target extraction and its
+unchanged registry lock. It substitutes the digest-pinned Node 24.21.0 base from
+the organization mirror into the released Dockerfile without editing the extraction.
+The source tag's commit time fixes `SOURCE_DATE_EPOCH`; implicit provenance and
+SBOM generation are disabled. The BOM records the application manifest digest,
+platform, image name and base index digest. This is a registry manifest identity;
+the local rollback proof below continues to report configuration IDs.
+
+A separate job publishes the retained archive as
+`ghcr.io/openlup/neutral-store-starter:<set-version>` with digest preservation.
+It verifies archive/BOM equality, refuses an existing tag with another digest,
+and requires registry readback equality. Use the BOM's
+`ghcr.io/openlup/neutral-store-starter@sha256:<manifest-hex>` reference when selecting
+a qualified image. Manual dispatch builds and verifies but skips publishing unless
+`publish_image` is explicitly true; release-event qualification publishes.
+The final receipt records `published`, `skipped-dispatch` or `refused` and the
+registry readback (null when none was observed). A published image does not prove
+a hosted store, data migration, rollback or stable support. See
+[distribution evidence](../../docs/platform/DISTRIBUTION_EVIDENCE.md#qualified-application-image)
+for the permission boundary, retention and activation limits.
+
+## Prepare a local source proof
 
 Prerequisites: Node 24.21.0, npm 11.19.0, local Docker with Compose supporting
 scratch list replacement, and an exact source checkout with matching locally
@@ -59,7 +85,8 @@ the two records, unchanged seeded catalogue counts and an identical applied-ledg
 row count and SHA-256 content hash, including execution timestamps.
 
 Each phase prints its running `sha256:` image ID, ledger observations and row
-counts. These are local OCI configuration digests, not registry manifest digests.
+counts. These local OCI configuration digests describe this source proof; qualified
+published sets use the manifest digest recorded in their BOM.
 A and B must differ and restored A must equal the original exactly. The final
 result records the operation, command keys, references and unchanged package-input
 hashes. The proof refuses a non-local Docker context. Runs share an exclusive
@@ -97,9 +124,14 @@ The Edge check requires zero runtime imports/configuration hooks in starter and
 recipe source, including recipe prose. Generated dependencies/artifacts/build
 output and test instruments are excluded. Pure tests plant imports and hooks
 and require refusal. This is a bounded source check, not a general code analyser.
-System fonts remain the presentation choice. Portable payments are sandbox only;
-real money runs only on the managed rail for now. No supported, stable or
-production-ready deployment is claimed.
+System fonts remain the presentation choice. This starter selects sandbox payments.
+The native rail can compose the reference card provider through the explicit
+[host composition](../../examples/neutral-store/host/provider-portable.ts), with
+the complete database catalogue and host-owned configuration. Real-payment,
+method-setup and card-replacement actions remain unconfigured in this starter.
+The native rail supports the two reference payment providers; a third provider needs the provider-profile refactor.
+The supplied portable composition covers the reference card provider only.
+No supported, stable or production-ready deployment is claimed.
 
 ## Current limits
 

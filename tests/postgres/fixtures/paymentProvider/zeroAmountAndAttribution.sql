@@ -15,7 +15,7 @@ SELECT public.payment_provider_attempt_record(
   'dz-attempt-key-0001', (SELECT intent_id FROM _dz), 'card_rail', 'pi_declined', 'ps_dz',
   'processing', NULL, '{}'::jsonb, '{}'::jsonb);
 INSERT INTO public.fulfillment_inventory_reservations(purchase_order_id,operation_fingerprint,source_key,status,expires_at)
-SELECT 'd0000000-0000-0000-0000-000000000d01',repeat('a',64),'fixture','held','2032-01-01T00:00:00Z'::timestamptz FROM generate_series(1,2);
+SELECT 'd0000000-0000-0000-0000-000000000d01',repeat('a',64),'fixture','held',now()+interval '1 day' FROM generate_series(1,2);
 CREATE TEMP TABLE _dze AS
 SELECT
   (e -> 'paymentEvent' ->> 'id')::uuid AS event_id,

@@ -1,6 +1,6 @@
 # Runs separately after publication so the tutorial never holds a publication run open.
 # workflow_run executes trusted default-branch workflow and runner code. Only the
-# release tag's tutorial page is read, after checking its commit against the completed run.
+# release tag's tutorial and starter source are read as data after validating its commit.
 # Publish Packages handles release: published. For a release run, head_branch is the
 # release tag and head_sha is its commit; refuse other events and malformed tags.
 # Only this repository's own release runs qualify: the head repository must be
@@ -13,25 +13,39 @@ on:
   workflow_run:
     workflows: [Publish Packages]
     types: [completed]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Published openlup-core-vMAJOR.MINOR.PATCH tag
+        required: true
+        type: string
+      publish_image:
+        description: Publish the qualified image (refuses moving an existing tag)
+        type: boolean
+        default: false
 
 permissions: {}
 
 concurrency:
-  group: registry-tutorial-${{ github.event.workflow_run.head_branch }}
+  group: registry-tutorial-${{ inputs.release_tag || github.event.workflow_run.head_branch }}
   cancel-in-progress: false
 
 jobs:
   registry-tutorial:
-    name: Guide tutorial against the npm registry (advisory)
-    if: ${{ github.repository == 'openlup/openlup' && github.event.workflow_run.repository.full_name == 'openlup/openlup' && github.event.workflow_run.head_repository.full_name == 'openlup/openlup' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'release' && startsWith(github.event.workflow_run.head_branch, 'openlup-core-v') }}
+    name: Guide tutorial against the npm registry
+    if: ${{ github.repository == 'openlup/openlup' && ((github.event_name == 'workflow_dispatch' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)) || (github.event_name == 'workflow_run' && github.event.workflow_run.repository.full_name == 'openlup/openlup' && github.event.workflow_run.head_repository.full_name == 'openlup/openlup' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'release' && startsWith(github.event.workflow_run.head_branch, 'openlup-core-v'))) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
       contents: read
+    outputs:
+      ready: ${{ steps.registry.outputs.ready }}
+      tag: ${{ steps.release.outputs.tag }}
+      commit: ${{ steps.release.outputs.commit }}
     steps:
       - name: Validate the core release tag
         env:
-          RELEASE_TAG: ${{ github.event.workflow_run.head_branch }}
+          RELEASE_TAG: ${{ inputs.release_tag || github.event.workflow_run.head_branch }}
         run: |
           [[ "$RELEASE_TAG" =~ ^openlup-core-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || { echo '::error::Expected an openlup-core-vMAJOR.MINOR.PATCH release tag'; exit 1; }
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -43,33 +57,39 @@ jobs:
           node-version: 24.21.0
           package-manager-cache: false
       - name: Read the release's tutorial page
+        id: release
         env:
-          RELEASE_TAG: ${{ github.event.workflow_run.head_branch }}
+          RELEASE_TAG: ${{ inputs.release_tag || github.event.workflow_run.head_branch }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           git fetch --no-tags --depth=1 origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
-          if [ "$(git rev-list -n 1 "refs/tags/$RELEASE_TAG")" != "$HEAD_SHA" ]; then
+          commit="$(git rev-list -n 1 "refs/tags/$RELEASE_TAG")"
+          if [ -n "$HEAD_SHA" ] && [ "$commit" != "$HEAD_SHA" ]; then
             echo '::error::Release tag commit does not match the completed publication run'
             exit 1
           fi
+          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
           git show "refs/tags/$RELEASE_TAG:packages/core/docs/guide/start/tutorial.md" > "$RUNNER_TEMP/tutorial.md"
       - name: Wait for the published set on npm
         id: registry
         timeout-minutes: 11
         env:
-          RELEASE_TAG: ${{ github.event.workflow_run.head_branch }}
+          RELEASE_TAG: ${{ inputs.release_tag || github.event.workflow_run.head_branch }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           version="${RELEASE_TAG##*-v}"
           # The publishable package set is stable, so use the trusted default-branch inventory.
           packages="$(node -p 'require("./config/openlup-packages.json").packages.filter(entry => entry.publish).map(entry => entry.name).join(" ")')"
           specs=""
           for package in $packages; do specs="$specs $package@$version"; done
+          if [ "$EVENT_NAME" != workflow_dispatch ]; then specs="$specs @openlup/core"; fi
           deadline=$((SECONDS + 600))
           delay=5
           while (( SECONDS < deadline )); do
             ready=true
-            # The page reads core's latest version; also wait for that dist-tag to catch up.
-            for spec in $specs @openlup/core; do
+            # Automatic tutorial runs also require core's latest dist-tag to catch up.
+            for spec in $specs; do
               remaining=$((deadline - SECONDS))
               if (( remaining <= 0 )); then ready=false; break; fi
               if ! observed="$(timeout "$remaining" npm view "$spec" version --registry=https://registry.npmjs.org --fetch-retries=0 --fetch-timeout=10000)" || [ "$observed" != "$version" ]; then
@@ -89,7 +109,7 @@ jobs:
             if (( delay < 30 )); then delay=$((delay + 5)); fi
           done
           echo '::warning title=Guide tutorial::Published set not visible on npm within 10 minutes; registry tutorial deferred.'
-          echo '### Guide tutorial: deferred (advisory)' >> "$GITHUB_STEP_SUMMARY"
+          echo '### Guide tutorial: deferred' >> "$GITHUB_STEP_SUMMARY"
           echo "The published set $version was not visible on npm within 10 minutes." >> "$GITHUB_STEP_SUMMARY"
       - name: Start the pinned package-proof PostgreSQL service
         id: postgres
@@ -101,14 +121,208 @@ jobs:
           echo "container=$container" >> "$GITHUB_OUTPUT"
           echo "port=$(docker port "$container" 5432/tcp | cut -d: -f2)" >> "$GITHUB_OUTPUT"
           docker exec "$container" sh -c 'for i in $(seq 1 30); do pg_isready -h 127.0.0.1 -U postgres -t 1 && exit 0; sleep 1; done; exit 1'
-      # --advisory reports a failed tutorial as a warning and exits 0. Remove it after two green
-      # merge-group runs on main to make the step blocking (documentation programme, decision D4).
-      - name: Guide tutorial against the npm registry (advisory)
+      - name: Guide tutorial against the npm registry
         if: steps.registry.outputs.ready == 'true'
         timeout-minutes: 4
         env:
           OPENLUP_PROOF_SERVICE_PORT: ${{ steps.postgres.outputs.port }}
-        run: node --experimental-strip-types scripts/packages/guide-tutorial.ts --advisory --registry --page "$RUNNER_TEMP/tutorial.md" --database-url "postgresql://postgres@127.0.0.1:$OPENLUP_PROOF_SERVICE_PORT/postgres"
+        run: node --experimental-strip-types scripts/packages/guide-tutorial.ts --registry --page "$RUNNER_TEMP/tutorial.md" --database-url "postgresql://postgres@127.0.0.1:$OPENLUP_PROOF_SERVICE_PORT/postgres"
       - name: Remove the package-proof PostgreSQL service
         if: always() && steps.postgres.outcome != 'skipped'
         run: docker rm -f install-proof-postgres
+
+  exact-set-qualification:
+    name: exact-set-qualification
+    outputs: {tag: "${{ needs.registry-tutorial.outputs.tag }}"}
+    needs: registry-tutorial
+    if: ${{ always() && (github.repository == 'openlup/openlup' && ((github.event_name == 'workflow_dispatch' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)) || (github.event_name == 'workflow_run' && github.event.workflow_run.repository.full_name == 'openlup/openlup' && github.event.workflow_run.head_repository.full_name == 'openlup/openlup' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'release' && startsWith(github.event.workflow_run.head_branch, 'openlup-core-v')))) }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: read
+    env:
+      RELEASE_TAG: ${{ needs.registry-tutorial.outputs.tag }}
+      TAG_COMMIT: ${{ needs.registry-tutorial.outputs.commit }}
+      OPENLUP_REGISTRY_READY: ${{ needs.registry-tutorial.outputs.ready }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24.21.0
+          package-manager-cache: false
+      - name: Refuse an invisible published set
+        run: |
+          if [ "$OPENLUP_REGISTRY_READY" != true ]; then
+            node scripts/packages/exact-set-qualification.mjs "$RELEASE_TAG" "$TAG_COMMIT" "$RUNNER_TEMP/exact-set-qualification.json"
+          fi
+      - name: Initialize the qualification receipt
+        run: node --input-type=module -e 'import { env } from "node:process"; import { writeFileSync } from "node:fs"; import { qualificationReceipt } from "./scripts/packages/exact-set-qualification.mjs"; writeFileSync(env.RUNNER_TEMP + "/exact-set-qualification.json", JSON.stringify(qualificationReceipt(env.RELEASE_TAG, env.TAG_COMMIT)));'
+      - name: Read the validated release tag
+        run: |
+          git fetch --no-tags --depth=1 origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          test "$(git rev-list -n 1 "refs/tags/$RELEASE_TAG")" = "$TAG_COMMIT"
+      - name: Authenticate GitHub Container Registry pulls
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_ACTOR: ${{ github.actor }}
+        run: echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
+      - name: Enable OCI export with the bundled Docker builder
+        run: |
+          sudo mkdir -p /etc/docker
+          sudo sh -c 'test -f /etc/docker/daemon.json || echo "{}" > /etc/docker/daemon.json'
+          sudo cat /etc/docker/daemon.json | jq '.features["containerd-snapshotter"] = true' > "$RUNNER_TEMP/docker.json"
+          sudo cp "$RUNNER_TEMP/docker.json" /etc/docker/daemon.json
+          sudo systemctl restart docker
+      - name: Start mirror-only qualification PostgreSQL
+        id: postgres
+        run: |
+          image="$(node --input-type=module -e 'import { readCiImage, pullWithRetry } from "./scripts/ci-image-pull.mjs"; const image = readCiImage("install-proof-postgres"); image.sources = image.sources.slice(0, 1); console.log(await pullWithRetry(image));')"
+          container="$(docker run --pull=never --detach --name exact-set-postgres --env POSTGRES_HOST_AUTH_METHOD=trust --publish 127.0.0.1::5432 "$image")"
+          echo "container=$container" >> "$GITHUB_OUTPUT"
+          echo "port=$(docker port "$container" 5432/tcp | cut -d: -f2)" >> "$GITHUB_OUTPUT"
+      - name: Qualify the exact published set
+        # Local 0.41.0: 25.816s; 4x rounded up to minutes. Remeasure the first hosted run.
+        timeout-minutes: 2
+        env:
+          OPENLUP_QUALIFICATION_DATABASE_URL: postgresql://postgres@127.0.0.1:${{ steps.postgres.outputs.port }}/postgres
+        run: node scripts/packages/exact-set-qualification.mjs "$RELEASE_TAG" "$TAG_COMMIT" "$RUNNER_TEMP/exact-set-qualification.json"
+      - name: Qualify interrupted adjacent-set starter upgrade
+        # Local shared-proof 0.40.0→0.41.0: 65.08s on Node 24.21.0/npm 11.19.0; 4x rounded up. Remeasure first hosted run.
+        timeout-minutes: 5
+        run: node scripts/packages/exact-set-qualification.mjs "$RELEASE_TAG" "$TAG_COMMIT" "$RUNNER_TEMP/exact-set-qualification.json" --upgrade
+      - name: Qualify released-pair schema compatibility and code rollback
+        id: schema
+        # Local 0.39.0→0.40.0: 32.951s; 0.40.0→0.41.0: 32.884s; 4x rounded up. Remeasure first hosted run.
+        timeout-minutes: 3
+        run: |
+          node --input-type=module -e 'import { env } from "node:process"; import { readFileSync, writeFileSync } from "node:fs"; const p = env.RUNNER_TEMP + "/exact-set-qualification.json"; const r = JSON.parse(readFileSync(p)); r.result = "FAIL"; r.endedAt = null; r.schemaUpgrade = { result: "FAIL", startedAt: new Date().toISOString() }; writeFileSync(p, JSON.stringify(r, null, 2));'
+          image="$(node --input-type=module -e 'import { readCiImage, pullWithRetry } from "./scripts/ci-image-pull.mjs"; const image = readCiImage("test-postgres"); image.sources = image.sources.slice(0, 1); console.log(await pullWithRetry(image));')"
+          container="$(docker run --pull=never --detach --name exact-set-schema-postgres --env POSTGRES_HOST_AUTH_METHOD=trust --publish 127.0.0.1::5432 "$image")"
+          trap 'docker rm -fv "$container"' EXIT
+          OPENLUP_QUALIFICATION_DATABASE_URL="postgresql://postgres@127.0.0.1:$(docker port "$container" 5432/tcp | cut -d: -f2)/postgres"
+          export OPENLUP_QUALIFICATION_DATABASE_URL
+          node scripts/packages/exact-set-qualification.mjs "$RELEASE_TAG" "$TAG_COMMIT" "$RUNNER_TEMP/exact-set-qualification.json" --schema-upgrade
+      - name: Bind the exact-set release BOM
+        run: node scripts/packages/exact-set-qualification.mjs "$RELEASE_TAG" "$TAG_COMMIT" "$RUNNER_TEMP/exact-set-qualification.json" --bom
+      - name: Hand off the qualified image and its BOM
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qualified-image
+          path: |
+            ${{ runner.temp }}/exact-set-qualification.json.image.tar
+            ${{ runner.temp }}/exact-set-qualification.json.bom.json
+            ${{ runner.temp }}/exact-set-qualification.json.*.cdx.json
+            ${{ runner.temp }}/exact-set-qualification.json
+          if-no-files-found: error
+          retention-days: 1
+      - name: Seal an incomplete qualification receipt
+        if: always()
+        env:
+          SCHEMA_OUTCOME: ${{ steps.schema.outcome }}
+        run: node --input-type=module -e 'import { env } from "node:process"; import { existsSync, readFileSync, writeFileSync } from "node:fs"; const p = env.RUNNER_TEMP + "/exact-set-qualification.json"; if (existsSync(p)) { const r = JSON.parse(readFileSync(p)); if (!r.endedAt || r.schemaUpgrade?.result !== "PASS" || env.SCHEMA_OUTCOME !== "success") { r.result = "FAIL"; r.endedAt = new Date().toISOString(); if (r.schemaUpgrade) { r.schemaUpgrade.result = "FAIL"; r.schemaUpgrade.endedAt = r.endedAt; } r.error ??= "Qualification did not complete; inspect job steps"; writeFileSync(p, JSON.stringify(r, null, 2)); } }'
+      - name: Retain the qualification receipt
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: exact-set-qualification
+          path: |
+            ${{ runner.temp }}/exact-set-qualification.json
+            ${{ runner.temp }}/exact-set-qualification.json.bom.json
+            ${{ runner.temp }}/exact-set-qualification.json.*.cdx.json
+          if-no-files-found: error
+          retention-days: 90
+      - name: Remove qualification PostgreSQL
+        if: always() && steps.postgres.outputs.container != ''
+        run: |
+          docker rm -f exact-set-postgres
+          rm -rf "$RUNNER_TEMP/exact-set-qualification.json.applications"
+
+  publish-qualified-image:
+    needs: exact-set-qualification
+    if: ${{ needs.exact-set-qualification.result == 'success' }}
+    runs-on: ubuntu-24.04
+    permissions: {packages: write, attestations: write, id-token: write}
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: qualified-image
+          path: ${{ runner.temp }}/qualified-image
+      - name: Verify and publish the qualified archive
+        id: publish
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+          GHCR_ACTOR: ${{ github.actor }}
+          RELEASE_TAG: ${{ needs.exact-set-qualification.outputs.tag }}
+          PUBLISH_IMAGE: ${{ github.event_name == 'workflow_run' || inputs.publish_image == true }}
+        run: |
+          cd "$RUNNER_TEMP/qualified-image"
+          receipt=exact-set-qualification.json
+          bom="$receipt.bom.json"
+          archive="$receipt.image.tar"
+          result=refused; readback=''
+          finish() {
+            jq --arg result "$result" --arg readback "$readback" '.image.attestation = {result: (if $result == "skipped-dispatch" then "skipped-dispatch" else "FAIL" end), bundleSha256: null} | .image.publishResult = $result | .image.registryReadback = (if $readback == "" then null else $readback end) | if $result != "skipped-dispatch" then .result = "FAIL" else . end' "$receipt" > "$RUNNER_TEMP/final.json"
+            mv "$RUNNER_TEMP/final.json" "$receipt"
+          }
+          trap finish EXIT
+          version="${RELEASE_TAG#openlup-core-v}"
+          digest="$(jq -er --arg v "$version" 'select(.formatVersion == 4 and .kind == "openlup-exact-set-bom" and .setVersion == $v and (.setVersion | test("^0\\.[0-9]+\\.[0-9]+$")) and .image.name == "ghcr.io/openlup/neutral-store-starter" and .image.platform == "linux/amd64") | .image.manifestDigest | select(test("^sha256:[a-f0-9]{64}$"))' "$bom")"
+          test "$(sha256sum "$bom" | cut -d' ' -f1)" = "$(jq -er '.bom.sha256' "$receipt")"
+          test "$digest" = "$(jq -er 'select(.result == "PASS") | .image.manifestDigest' "$receipt")"
+          skopeo inspect --raw "oci-archive:$archive" > "$RUNNER_TEMP/manifest"
+          test "$digest" = "sha256:$(sha256sum "$RUNNER_TEMP/manifest" | cut -d' ' -f1)" || { echo '::error::qualified_image_archive_digest_mismatch'; exit 1; }
+          if [ "$PUBLISH_IMAGE" != true ]; then result=skipped-dispatch; exit 0; fi
+          echo "$GHCR_TOKEN" | skopeo login --authfile "$RUNNER_TEMP/ghcr-auth.json" --username "$GHCR_ACTOR" --password-stdin ghcr.io
+          echo "$GHCR_TOKEN" | docker login ghcr.io --username "$GHCR_ACTOR" --password-stdin
+          export REGISTRY_AUTH_FILE="$RUNNER_TEMP/ghcr-auth.json"
+          target="ghcr.io/openlup/neutral-store-starter:$version"
+          if skopeo inspect --raw "docker://$target" > "$RUNNER_TEMP/manifest" 2> "$RUNNER_TEMP/inspect-error"; then
+            readback="sha256:$(sha256sum "$RUNNER_TEMP/manifest" | cut -d' ' -f1)"
+            test "$readback" = "$digest" || { echo "::error::qualified_image_tag_move_refused: $target"; exit 1; }
+          else
+            grep -Eiq 'manifest unknown|manifest_unknown|name unknown|name_unknown' "$RUNNER_TEMP/inspect-error" || { cat "$RUNNER_TEMP/inspect-error"; exit 1; }
+          fi
+          skopeo copy --preserve-digests "oci-archive:$archive" "docker://$target"
+          skopeo inspect --raw "docker://$target" > "$RUNNER_TEMP/manifest"
+          readback="sha256:$(sha256sum "$RUNNER_TEMP/manifest" | cut -d' ' -f1)"
+          test "$readback" = "$digest" || { echo '::error::qualified_image_registry_digest_mismatch'; exit 1; }
+          result=published
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - name: Attest the published image
+        id: attest
+        if: steps.publish.outputs.digest != ''
+        uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f # v3.2.0
+        with:
+          subject-name: ghcr.io/openlup/neutral-store-starter
+          subject-digest: ${{ steps.publish.outputs.digest }}
+          push-to-registry: true
+      - name: Verify the issued image attestation
+        if: steps.publish.outputs.digest != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUNDLE_PATH: ${{ steps.attest.outputs.bundle-path }}
+        run: |
+          cd "$RUNNER_TEMP/qualified-image"
+          receipt=exact-set-qualification.json; result=FAIL; bundleHash=''
+          finish() {
+            jq --arg result "$result" --arg hash "$bundleHash" '.image.attestation = {result: $result, bundleSha256: $hash} | .result = $result' "$receipt" > "$RUNNER_TEMP/final.json"
+            mv "$RUNNER_TEMP/final.json" "$receipt"
+          }
+          trap finish EXIT
+          cp "$BUNDLE_PATH" "$receipt.attestation.json"
+          bundleHash="$(sha256sum "$receipt.attestation.json" | cut -d' ' -f1)"
+          digest="$(jq -er '.image.manifestDigest' "$receipt.bom.json")"
+          gh attestation verify "oci://ghcr.io/openlup/neutral-store-starter@$digest" --owner openlup --bundle "$receipt.attestation.json" --signer-workflow openlup/openlup/.github/workflows/registry-tutorial.yml --format json > "$receipt.verification.json"
+          jq -e --arg digest "${digest#sha256:}" 'length == 1 and all(.[]; .verificationResult as $v | $v.statement.predicateType == "https://slsa.dev/provenance/v1" and $v.statement.subject == [{name: "ghcr.io/openlup/neutral-store-starter", digest: {sha256: $digest}}] and $v.signature.certificate.sourceRepositoryURI == "https://github.com/openlup/openlup" and ($v.signature.certificate.buildSignerURI | startswith("https://github.com/openlup/openlup/.github/workflows/registry-tutorial.yml@refs/heads/")))' "$receipt.verification.json" || { echo '::error::qualified_image_attestation_mismatch'; exit 1; }
+          result=PASS
+      - name: Retain the final image publication receipt
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qualified-image-publication
+          path: ${{ runner.temp }}/qualified-image/*.json
+          if-no-files-found: error
+          retention-days: 90

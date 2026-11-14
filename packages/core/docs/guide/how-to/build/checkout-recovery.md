@@ -7,11 +7,12 @@ authentication, routes, screens, localized messages, transport and schedules.
 Commerce factories below use `@openlup/platform/commerce/server` in Node.
 Install the complete native PostgreSQL catalogue. For maturity, consult the
 [platform capability
-reference](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/release-gates.json).
+reference](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/packages/platform/release-gates.json).
 The native payment execution and recreation bindings described here use the
 sandbox simulator. Their public query executors are structural and require no
-database-driver types merely to import or compose these factories. Other payment
-channels retain `native_prepared_attempt_store_unsupported`.
+database-driver types merely to import or compose these factories. Unconfigured
+provider actions retain `native_prepared_attempt_store_unsupported`. The 0.42.0
+source supplies a separate explicit card provider composition; see [provider adapters](../extend/provider-adapters.md#card-and-wallet-payment-template).
 
 Recovery covers one-time purchases and eligible provisional initial subscription
 checkouts, before a live subscription exists. Orders with a non-null
@@ -77,7 +78,7 @@ Invoke `enqueue(limit, now)` with a UTC timestamp. It queues first and final
 reminders for eligible pending checkouts, excluding recent payment activity and
 known capture. The payload’s first/final content labels do not change when
 you change the offsets; use the content contract in the
-[API report](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/api/communications-contracts.api.md) rather than inferring labels from timing. Supply localized copy through
+[API report](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/packages/platform/api/communications-contracts.api.md) rather than inferring labels from timing. Supply localized copy through
 `createCheckoutRecoveryContentFactory` from
 `@openlup/platform/communications/contracts`.
 
@@ -314,7 +315,7 @@ History probes a bounded number of attempts and evidence members, returning
 attempts newest first. Overflow, contradictory proof or an oversized envelope
 drops that attempt’s whole proof set and marks history incomplete. Observation
 records and truth/readback source envelopes have bounded sizes; consult the
-[API report](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/api/commerce-server-postgres.api.md) and its linked implementation
+[API report](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/packages/platform/api/commerce-server-postgres.api.md) and its linked implementation
 for the limits. Only correlated identity/outcome fields are projected; raw
 source envelopes, request keys, token hashes and opaque authorization/method
 references are excluded. Native states map to the Core attempt vocabulary and
@@ -331,7 +332,7 @@ or malformed data; a snapshot with dead authority carries null guidance.
 
 Opt in with `X-Payment-Recovery-Guidance: 1` and preserve the legacy response
 without it, as in the [status-handler
-composition](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/server/domains/commerce/commercePaymentStatusHandler.ts).
+composition](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/server/domains/commerce/commercePaymentStatusHandler.ts).
 
 Render returned actions without inferring method-specific advice: native
 observations prove generic refusal, with method, operation and advice unknown.

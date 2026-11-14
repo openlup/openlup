@@ -11,7 +11,11 @@ on memory: `node_modules/@openlup/core/docs/guide/README.md`. Its page
 archives, run the local demonstration, edit and refresh, customize the
 configuration and upgrade the files this application manages.
 
-After importing the package archives and installing dependencies, build and
+Candidate extraction uses local package archives; import them before installing
+dependencies. Released or reconstructed extraction uses exact public npm pins;
+install from its committed registry lockfile with `npm ci` (see `docs/proof.md`).
+
+After installing dependencies, build and
 serve the database-free demonstration with the `build` and `start` package
 scripts; on macOS and Linux the `dev` script runs the watched edit loop.
 

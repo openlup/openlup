@@ -4,6 +4,13 @@ Status: historical record, 2026-11-11.
 
 Releases moved verbatim out of the packed `CHANGELOG.md`, which keeps the current release and the two previous ones.
 
+## [0.39.0]
+
+- Publishable on the npm `latest` dist-tag as `0.39.0`, from tag
+  `openlup-core-v0.39.0`.
+
+- Republish unchanged Core runtime, exports and SQL with the complete `0.39.0`
+  package set.
 ## [0.38.0]
 
 - Publishable on the npm `latest` dist-tag as `0.38.0`, from tag

@@ -47,7 +47,7 @@ describe("CI image mirror planning and digest preservation", () => {
 
   it("validates the owned pins and refuses duplicates, mutable or unsafe refs", () => {
     const config = JSON.parse(readFileSync("config/ci-images.json", "utf8"));
-    expect(ownedImages(config).map(({ name }) => name)).toEqual(["install-proof-postgres", "test-postgres", "test-postgres-16-attver", "test-postgres-17-attver", "starter-browser"]);
+    expect(ownedImages(config).map(({ name }) => name)).toEqual(["install-proof-postgres", "test-postgres", "test-postgres-16-attver", "test-postgres-17-attver", "starter-node", "qualification-syft", "starter-browser"]);
     for (const images of [[config.images[0], config.images[0]], [{ ...config.images[0], digest: "TODO" }],
       [{ ...config.images[0], sources: ["evil.test/library/postgres"] }], [{ ...config.images[0], tag: "16; echo unsafe" }]]) {
       expect(() => ownedImages({ images })).toThrow("invalid or duplicate");

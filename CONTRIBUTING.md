@@ -199,7 +199,8 @@ The separate [CI image mirror](.github/workflows/mirror-ci-images.yml) runs in
 from `main`. Its single job reads only the committed
 [image inventory](config/ci-images.json): four PostgreSQL images (the install-proof
 database, also used by pgTAP and managed-rail tests, the test harness default, and
-two attribute-version witness pins) plus the starter browser image.
+two attribute-version witness pins), the starter Node base and the starter browser
+image.
 Every pin is validated before the first registry request. No Supabase CLI or
 derived image set takes part.
 The reviewed-batch gate and shared PostgreSQL test helper read these JSON pins
@@ -287,10 +288,25 @@ resolution preserves that spelling and always verifies the pinned digest.
 The script resolves upstream tags to digests, copies complete indexes to
 `ghcr.io/openlup/<upstream-repository>:<tag>` (slashes retained), skips identical
 target tags, refuses conflicting tags and verifies the digest after copying.
-Only the mirror job receives `packages: write`: it reads owned pins from its own
+Exactly two jobs receive `packages: write`: `mirror` in `mirror-ci-images.yml`
+and `publish-qualified-image` in `registry-tutorial.yml`. The publisher runs only
+after successful qualification, verifies and copies the downloaded OCI archive,
+and executes no candidate code. This split keeps installation code away from a
+write token. The mirror reads owned pins from its own
 checkout, refuses a missing digest or two pins that would write different digests
 to one target, and runs only SHA-pinned first-party actions plus the
 dependency-free repository script. A moved tag is refused.
+The writer-control witness exempts a workflow only when its text has no `write`
+(case-insensitive, including comments and longer words), no backslash escape in a
+double-quoted scalar and no YAML tag (`!`). Every other workflow uses the canonical
+subset, with plain literal permission keys and `read`, `write` or `none` values;
+remove quotes, escapes and tags from permissions. For candidate writers, it accepts plain
+block jobs and single-line or block permission maps, including blank lines until
+dedent. It refuses anchors, aliases, merge keys, tabs, extra YAML documents and
+workflow/job defaults in candidate writers.
+The publisher fingerprint also seals workflow environment, permissions, triggers
+and concurrency; workflow keys must precede jobs. The qualification job's complete
+permission map must be exactly `contents: read` and `packages: read`.
 The token reaches login through environment and stdin after validation and resolution,
 immediately before copying; a `finally` block removes the temporary registry
 credentials.
@@ -394,7 +410,21 @@ independently of the required `test` job in a separate checkout and installation
 
 The packed-candidate guide tutorial runs after the package gates as a blocking
 step: its condition of two green merge-group runs on main has been met.
-The separate registry tutorial remains advisory until its second green run.
+The separate registry tutorial runs trusted default-branch code after a
+successful core publication, checking the release tag's commit against the
+completed publication run. A maintainer may also dispatch it from the default
+branch for an existing core release tag. It waits up to ten minutes for the
+matching npm set; automatic runs also require core's `latest` to match. The
+tutorial is blocking after two green release runs: a failure fails its own
+workflow run and reports to the maintainer; a propagation timeout warns and
+defers the tutorial. It runs after publication and cannot affect it. The
+separate `exact-set-qualification` job verifies and tests the exact locked npm
+set against release provenance and retains a blocking qualification result
+and a 90-day receipt. Both jobs have `contents: read`; qualification also has
+`packages: read` for the pinned PostgreSQL mirror. See the
+[qualification owner](docs/platform/DISTRIBUTION_EVIDENCE.md#exact-published-set-qualification)
+for trust, evidence and support limits. The workflow adds no required PR check,
+does not hold publication open and does not delay the next dispatch.
 
 After package proof succeeds, `install-browser` runs the starter's installed
 PostgreSQL browser journeys in four parallel shards through

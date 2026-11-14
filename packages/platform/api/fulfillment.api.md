@@ -461,7 +461,7 @@ export interface FulfillmentSelection {
     pickupPoint: PickupPoint | null;
 }
 export interface FulfillmentRefusal {
-    reason: "dispatch_reservations_not_recorded" | "order_mode_unproven" | "payment_not_succeeded" | "subscription_cycle_not_paid" | "not_dispatchable" | "selection_required" | "provider_mismatch" | "carrier_service_required" | "disabled" | "not_ready" | "unsupported" | "withheld" | "claim_conflict" | "contact_stale" | "stock_contention" | "local_missing" | "io_failure" | "malformed" | "untrusted" | "unsupported_event" | "stale" | "missing_correlation" | "provider_reservations_unsupported" | "stock_consumption_policy_unsupported" | "stock_movements_unsupported" | "independent_split_unsupported" | "pickup_point_delivery_unsupported" | "label_create_unsupported" | "label_void_unsupported" | "provider_cancel_unsupported" | "label_format_unsupported";
+    reason: "dispatch_reservations_not_recorded" | "order_mode_unproven" | "payment_not_succeeded" | "subscription_cycle_not_paid" | "not_dispatchable" | "selection_required" | "provider_mismatch" | "carrier_service_required" | "disabled" | "not_ready" | "unsupported" | "withheld" | "claim_conflict" | "contact_stale" | "stock_contention" | "local_missing" | "io_failure" | "malformed" | "untrusted" | "unsupported_event" | "stale" | "missing_correlation" | "provider_reservations_unsupported" | "stock_consumption_policy_unsupported" | "stock_movements_unsupported" | "independent_split_unsupported" | "pickup_point_delivery_unsupported" | "label_create_unsupported" | "label_void_unsupported" | "provider_cancel_unsupported" | "label_format_unsupported" | "provider_proof_requires_acknowledgement" | "succeeded_provider_attempt_exists" | "replacement_dispatch_not_composed";
     phase: "selection" | "prepare" | "claim" | "begin" | "dispatch" | "acknowledge" | "verify" | "normalize" | "apply" | "readback" | "sync";
     retryable: boolean;
 }
@@ -2611,22 +2611,22 @@ export declare const FULFILLMENT_MIGRATIONS: readonly [{
     readonly sha256: "6d132dec2820047f4e337bcf752b3d884600ccc12de03887fe6d6aa5575bc1db";
     readonly url: URL;
 }, {
-    readonly position: 135;
+    readonly position: 136;
     readonly catalogPath: "db/platform/migrations/20261120100000_fulfillment_intake_channel.sql";
     readonly sha256: "5ce8ada91ed1b6634a9d17b54b82751502e6350e564945528f240e361dda5352";
     readonly url: URL;
 }, {
-    readonly position: 136;
+    readonly position: 137;
     readonly catalogPath: "db/platform/migrations/20261120110000_fulfillment_dispatch_outcomes.sql";
     readonly sha256: "7ba87709cff775a4c8d7b1b12f4213544ea9a5db82218b6a87a0ce7f2fb9c54d";
     readonly url: URL;
 }, {
-    readonly position: 137;
+    readonly position: 138;
     readonly catalogPath: "db/platform/migrations/20261120120000_fulfillment_provider_intake.sql";
     readonly sha256: "4475906787dd245c8fef91a150aa32868a888c19edbcaf896a5d3d0519a1f288";
     readonly url: URL;
 }, {
-    readonly position: 138;
+    readonly position: 139;
     readonly catalogPath: "db/platform/migrations/20261120130000_fulfillment_alignment_arrival_chronology.sql";
     readonly sha256: "26b428443a2dea5aec852ddf4c6960b354f89e1d1c9ff8064705bebe2d80e04f";
     readonly url: URL;
