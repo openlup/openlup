@@ -570,8 +570,22 @@ The CI-only [image inventory](../../config/ci-images.json) owns logical names,
 upstream repositories, tags, index digests and ordered public-registry sources
 for every mirrored image. It records four PostgreSQL images (the install-proof
 database, also used by raw pgTAP and managed-rail tests, the disposable test
-default, and two attribute-version witness pins) plus the starter browser image. No Supabase CLI, CLI-derived or managed-host image remains in hosted CI. The single mirror
-job reads typed owned pins from its own checkout, validates all of them before
+default, and two attribute-version witness pins), the starter Node base and the
+starter browser image. No Supabase CLI, CLI-derived or managed-host image remains
+in hosted CI. Exactly two workflow jobs hold `packages: write`: `mirror` in
+`mirror-ci-images.yml` and `publish-qualified-image` in `registry-tutorial.yml`.
+The latter verifies and copies an OCI archive only after qualification succeeds;
+it executes no candidate code, keeping installation code away from write tokens.
+The [writer-control witness](../../scripts/oss-published-tree-check.test.ts) applies
+its canonical subset unless workflow text has no `write` (case-insensitive,
+including comments and longer words), no double-quoted backslash escape and no
+YAML tag (`!`). Permission keys and values must be plain literals; values are
+exactly `read`, `write` or `none`. The complete qualification permission map must
+be exactly `contents: read` and `packages: read`.
+It refuses noncanonical workflow/job mappings, ambiguous permission syntax, anchors, aliases,
+merge keys, tabs, extra YAML documents and workflow/job defaults. Its publisher
+fingerprint includes inherited workflow execution settings as well as the job.
+The mirror job reads typed owned pins from its own checkout, validates all of them before
 any exec or registry call, and builds upstream sources and mirror targets itself.
 It runs only pinned first-party actions plus the repository script, re-resolves
 source digests, skips identical targets, refuses moved tags and two pins that
