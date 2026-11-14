@@ -82,6 +82,7 @@ export const FULFILLMENT_STATUS_MAP = {
       localStatus: ["picking", "packed"],
       omsFulfillmentStatus: ["packed"],
       orderStatus: [],
+      // Prefer canonical packed; retain historical display aliases for compatibility.
       aliasTokens: ["picked", "in_fulfillment", "ready_for_packing", "awaiting_courier", "ready_for_pickup"],
       effects: { stock: "consumed", handover: false, customerEmail: false },
     },

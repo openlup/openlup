@@ -13,7 +13,9 @@ export function projectCorrelation(value: FulfillmentObservation["correlation"],
 }
 
 export function projectProviderStatus(value: NonNullable<FulfillmentObservation["providerStatus"]>, privacy = durableStrings()): NonNullable<FulfillmentObservation["providerStatus"]> {
-  return { primary: privacy.token(value.primary), subStatus: privacy.token(value.subStatus) };
+  return { primary: privacy.token(value.primary), subStatus: privacy.token(value.subStatus),
+    ...(value.code !== undefined ? { code: privacy.token(value.code) } : {}),
+    ...(value.detailCode !== undefined ? { detailCode: privacy.token(value.detailCode) } : {}) };
 }
 export type PollEvidence = Pick<FulfillmentObservation, "correlation" | "eventKey" | "providerStatus" | "diagnostics">;
 function pollEvidence(value: PollEvidence, privacy: Privacy, codecs: FulfillmentObservationCodecs = {}): PollEvidence {

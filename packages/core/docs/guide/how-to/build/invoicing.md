@@ -17,7 +17,7 @@ the matching capability descriptor. It returns `disabled` unless enabled is
 exactly true, and `selection_required` for missing or mismatched selection.
 These refusals precede host calls. A ready result describes declared operations;
 your host still owns fiscal validation. Consult the
-[package selection reference](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/AGENTS.md#subpath-maturity)
+[package selection reference](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/packages/platform/AGENTS.md#subpath-maturity)
 for the capability boundary.
 
 Bind an `InvoiceProviderPort`, an `InvoiceStorePort` and `InvoiceHostPorts`.
@@ -116,7 +116,7 @@ Keep earlier unknown duties visible for an admitted adapter or operator.
 ## Adapt existing invoice callbacks
 
 For a callback-based invoice host, select the mapping, allocation, payment-read
-and handler helpers from the [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/api/invoicing.api.md).
+and handler helpers from the [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/packages/platform/api/invoicing.api.md).
 Supply saved facts, fiscal presentation policy, selected provider readers and
 fenced host callbacks as required by the chosen helper. Reversal handlers use
 a bounded timeout; account for that deadline in your host callbacks.

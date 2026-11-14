@@ -318,22 +318,24 @@ owns release permissions, setup, detailed refusals and recovery. The sequence is
 
 After a successful core publication, the separate
 [Guide tutorial against the npm registry](../../.github/workflows/registry-tutorial.yml)
-workflow runs trusted default-branch code after checking the release tag's commit
-against the completed publication run. A maintainer can also dispatch it from
-the default branch for an existing core release tag. The advisory tutorial reads
-the tagged tutorial page and waits for the matching npm set; automatic runs also
-require core's `latest` to match. A separate exact-set qualification job reads
-the tagged starter as data, verifies and tests the locked released packages, and
-retains its own blocking result and receipt. That job also needs `packages: read`
-for the pinned PostgreSQL mirror. See the
+workflow runs trusted default-branch code after checking the release tag's
+commit against the completed publication run. A maintainer may also dispatch
+it from the default branch for an existing core release tag. The tutorial
+reads the tagged page and waits up to ten minutes for the matching npm set;
+automatic runs also require core's `latest` to match. The tutorial is blocking
+after two green release runs: a failure fails its own workflow run and reports
+to the maintainer; a propagation timeout warns and defers the tutorial. It runs
+after publication and cannot affect it. The separate `exact-set-qualification`
+job reads the tagged starter as data, verifies and tests the exact locked npm
+set, and retains a blocking qualification result and a 90-day receipt. Both
+jobs have `contents: read`; qualification also has `packages: read` for the
+pinned PostgreSQL mirror. See the
 [qualification owner](DISTRIBUTION_EVIDENCE.md#exact-published-set-qualification)
-for trust, evidence and support limits.
+for trust, evidence and support limits. This workflow adds no required PR
+check, does not hold publication open and does not delay the next dispatch.
 
-The workflow does not hold publication open or delay the next dispatch, and adds
-no required PR check. The registry tutorial remains advisory until its second
-green run: a tutorial failure appears as a warning annotation and in the step
-summary. The packed-candidate tutorial in `install-packages` is blocking because
-its condition of two green merge-group runs on main has been met.
+The packed-candidate tutorial in `install-packages` is blocking because its
+condition of two green merge-group runs on main has been met.
 
 On partial release or package failure, stop for maintainer recovery. Do not
 retag, rewrite an immutable release or republish a version. A failed publish job
@@ -352,11 +354,12 @@ The source-preview descendant check retains its strict snapshot equality.
 
 ### Core release preparation
 
-The prepared `0.41.0` set republishes Core with unchanged runtime, exports and
-SQL; its reader guide lists Platform's new experimental `./payments/testing`
-subpath. Upgrade all packages together and read
-[the set notes](../../packages/core/CHANGELOG.md#0410); Core introduces no schema migration.
-Size comparison uses the published `0.40.0` tarball; releases before `0.39.0`
+The prepared `0.42.0` set republishes Core with unchanged runtime, exports and
+SQL; its reader guide adds the native payments upgrade notes, including
+Platform's schema migration slots 42–44 and recorded-method requirements.
+Upgrade all packages together and read
+[the set notes](../../packages/core/CHANGELOG.md#0420); Core introduces no schema migration.
+Size comparison uses the published `0.41.0` tarball; releases before `0.40.0`
 remain in the source-only `CHANGELOG-HISTORY.md`. Preparation establishes no
 npm publication.
 
@@ -370,11 +373,11 @@ types for Zod's standard `URL` declaration; Core adds no runtime Node import.
 
 The reviewed release workflow owns provenance-backed publication; direct directory publishing refuses. New API and shipped SQL require the next minor set.
 
-The prepared `0.41.0` set republishes Outbox with unchanged runtime, exports and
-SQL, and an exact `@openlup/core@0.41.0` peer. Upgrade the complete set together;
-no Outbox schema migration is introduced. Read [0.41.0 notes](../../packages/outbox/CHANGELOG.md#0410).
-Releases before `0.39.0` are retained in the source-only `CHANGELOG-HISTORY.md`.
-Size comparison uses the published `0.40.0` tarball; preparation grants no
+The prepared `0.42.0` set republishes Outbox with unchanged runtime, exports and
+SQL, and an exact `@openlup/core@0.42.0` peer. Upgrade the complete set together;
+no Outbox schema migration is introduced. Read [0.42.0 notes](../../packages/outbox/CHANGELOG.md#0420).
+Releases before `0.40.0` are retained in the source-only `CHANGELOG-HISTORY.md`.
+Size comparison uses the published `0.41.0` tarball; preparation grants no
 publication or installation proof.
 
 ## Cutting an optional source preview

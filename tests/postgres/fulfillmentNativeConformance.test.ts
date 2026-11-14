@@ -68,7 +68,7 @@ it('native G17 correlates a newly observed external ID and replays its atomic ac
  expect(await native.read(`observation-${f.shipment}`)).toEqual(before);
 });
 it('fresh full-catalogue install binds sparse assets, hashes and object inventory, then replays without changing history',async()=>{
- expect(FULFILLMENT_MIGRATIONS.map(unit=>unit.position)).toEqual([5,27,51,73,74,76]);
+ expect(FULFILLMENT_MIGRATIONS.map(unit=>unit.position)).toEqual([5,27,51,73,74,76,136,137]);
  for(const unit of FULFILLMENT_MIGRATIONS){const bytes=readFileSync(unit.catalogPath);expect(readFileSync(unit.url)).toEqual(bytes);expect(createHash('sha256').update(bytes).digest('hex')).toBe(unit.sha256);expect(units[unit.position]).toEqual({file:unit.catalogPath,sha256:unit.sha256});}
  const history=(await h.pool.query('SELECT * FROM public.platform_schema_migrations ORDER BY position')).rows;
  expect(history.map(({catalog_path,sha256,position})=>({file:catalog_path,sha256,position}))).toEqual(units.map((u,position)=>({...u,position})));
@@ -101,7 +101,8 @@ it('durable command/dispatch fences, G14/remap, atomic paid/accepted ACK, G15–
  expect(await native.begin({dispatchRef:a.record.dispatchRef,commandFingerprint:evidence.commandFingerprint})).toMatchObject({kind:'refused',refusal:{reason:'contact_stale'}});
  expect(await native.claim({...input,evidence:next})).toMatchObject({kind:'claimed',record:{evidence:next}});
  await native.recordProviderAttempt(`remapped-${f.shipment}`,f.shipment,next,'live','recorded');
- await expect(native.recordProviderAttempt(`mapped-${f.shipment}`,f.shipment,next,'live','recorded')).rejects.toMatchObject({code:'23505'});
+ expect(await native.recordProviderAttempt(`mapped-${f.shipment}`,f.shipment,next,'live','recorded')).toEqual({replayed:true});
+ await expect(native.recordProviderAttempt(`mapped-${f.shipment}`,f.shipment,{...next,providerRef:'other'},'live','recorded')).rejects.toMatchObject({code:'23505'});
  await h.pool.query("INSERT INTO public.commerce_order_holds(order_id,reason,status,idempotency_key) VALUES($1,'manual_support','active',$2)",[f.order,`hold-${f.order}`]);
  expect(await native.begin({dispatchRef:a.record.dispatchRef,commandFingerprint:next.commandFingerprint})).toMatchObject({kind:'refused',refusal:{reason:'not_dispatchable'}});
  await h.pool.query("UPDATE public.commerce_order_holds SET status='released',released_at=now() WHERE order_id=$1",[f.order]);
@@ -136,4 +137,66 @@ it('durable command/dispatch fences, G14/remap, atomic paid/accepted ACK, G15–
  expect(await spine.localPersistence.recordObservation(obs)).toEqual({replayed:false});expect(await spine.localPersistence.recordObservation({...obs,firstReceivedAt:'2026-10-22T00:00:00Z'})).toEqual({replayed:true});expect(await spine.localPersistence.readLocalFulfillmentState(f.shipment)).toMatchObject({latestStatusOccurredAt:null});await spine.localPersistence.recordStatusEvidence({fulfillmentRef:f.shipment},obs);await spine.localPersistence.markProcessed(obs.eventKey,{status:'processed'});await spine.localPersistence.markProcessed(obs.eventKey,{status:'processed'});expect(await spine.localPersistence.readLocalFulfillmentState(f.shipment)).toMatchObject({status:'created',latestStatusOccurredAt:obs.fact.occurredAt});expect((await h.pool.query('SELECT first_received_at FROM public.fulfillment_observations WHERE event_key=$1',[obs.eventKey])).rows[0].first_received_at.toISOString()).toBe(obs.firstReceivedAt);
  const stock=createPostgresFulfillmentStockSyncPort(executor(h.pool),{sourceKey:'fixture-stock',async readLocalInventoryStock(){return [];}});const cursor={status:'succeeded' as const,lastStockSyncedAt:'2026-10-21T12:00:00Z',lastMovementOccurredAt:null,continuation:{nextRef:'opaque-next',startLocalDate:null,endLocalDate:null},coverageGapSkus:['sku-a'],refusal:null};await stock.recordCursor(cursor);expect(await stock.readCursor()).toEqual({...cursor,lastStockSyncedAt:'2026-10-21T12:00:00.000Z'});
  const movement={requestKey:'fixture-movement',movement:{providerRef:'warehouse-a',syncRunId:'run-a',collectedAt:'2026-10-21T12:00:00Z',sourceRevision:null,revisionSource:'collection' as const,skuRef:'sku-a',quantityKind:'movement' as const,quantity:2,occurredAt:null,operationType:null,documentRef:null,lotRef:null,expirationDate:null}};expect(await stock.recordMovement(movement)).toEqual({replayed:false,readBack:true});expect(await stock.recordMovement(movement)).toEqual({replayed:true,readBack:true});await expect(stock.recordMovement({...movement,movement:{...movement.movement,quantity:3}})).rejects.toMatchObject({code:'23505'});
+});
+
+it.each([undefined, 'webhook', 'polling'] as const)('records %s ACK intake, preserves legacy replay across configuration changes and rolls back invalid channels', async intakeMode => {
+ const f = await fixture(h.pool);
+ await h.pool.query("INSERT INTO public.fulfillment_dispatch_contexts(shipment_id,contact_revision,provider_ref) VALUES($1,$2,'warehouse-a')", [f.shipment, revision]);
+ const host = { prepare: async () => ({ disposition: 'ready' as const, contactRevision: 1 }), readCandidate: async () => null };
+ const native = createPostgresFulfillmentDispatchStore(executor(h.pool), { ...host, intakeMode });
+ const requestKey = `intake-${f.shipment}`;
+ const claimed = await native.claim({ requestKey, fulfillmentRef: f.shipment, orderRef: f.order, parcelRef: null, mode: 'live', evidence });
+ if (claimed.kind !== 'claimed') throw new Error('intake fixture claim refused');
+ const dispatchRef = claimed.record.dispatchRef;
+ await native.begin({ dispatchRef, commandFingerprint: evidence.commandFingerprint });
+ const acceptance = { kind: 'accepted' as const, externalRef: `external-${f.shipment}`, evidence, providerAttemptKey: `accepted-${f.shipment}`, labelKey: `receipt-${f.shipment}` };
+ for (const invalid of [null, '', 'webhook', 'polling']) {
+  await expect(h.pool.query('SELECT public.fulfillment_dispatch_finish($1,$2,true,$3)', [dispatchRef, JSON.stringify(acceptance), invalid])).rejects.toMatchObject({ code: '22023' });
+  expect((await native.read(requestKey))?.status).toBe('submitting');
+  expect((await h.pool.query('SELECT id FROM public.fulfillment_shipment_operations WHERE idempotency_key=$1', [acceptance.labelKey])).rows).toEqual([]);
+ }
+ await expect(h.pool.query('SELECT public.fulfillment_dispatch_finish($1,$2,true,$3)', [dispatchRef, JSON.stringify({ ...acceptance, receiptKey: 'different' }), 'push'])).rejects.toMatchObject({ code: '22023' });
+ // The original signature remains callable and is explicitly the default push witness.
+ if (intakeMode === undefined) await h.pool.query('SELECT public.fulfillment_dispatch_finish($1,$2,true)', [dispatchRef, JSON.stringify(acceptance)]);
+ else expect(await native.acknowledge({ dispatchRef, acceptance })).toMatchObject({ acknowledged: true, replayed: false });
+ const retained = await native.read(requestKey);
+ expect(retained).toMatchObject({ status: 'created', acceptance });
+ const other = createPostgresFulfillmentDispatchStore(executor(h.pool), { ...host, intakeMode: intakeMode === 'polling' ? 'webhook' : 'polling' });
+ expect(await other.acknowledge({ dispatchRef, acceptance })).toMatchObject({ acknowledged: true, replayed: true });
+ expect((await other.read(requestKey))?.acceptance).toEqual(acceptance);
+ expect((await h.pool.query("SELECT payload->>'channel' AS channel FROM public.fulfillment_shipment_operations WHERE idempotency_key=$1", [acceptance.labelKey])).rows).toEqual([{ channel: intakeMode === 'polling' ? 'poll' : 'push' }]);
+ expect((await h.pool.query('SELECT count(*)::int AS count FROM public.fulfillment_provider_attempts WHERE attempt_key=$1', [acceptance.providerAttemptKey])).rows).toEqual([{ count: 1 }]);
+ // Legacy installation need not provision runtime roles; PUBLIC still has no execute.
+ const acl = (await h.pool.query("SELECT NOT EXISTS (SELECT 1 FROM aclexplode(coalesce(proacl,acldefault('f',proowner))) WHERE grantee=0 AND privilege_type='EXECUTE') AS no_public, prosecdef, proconfig FROM pg_proc WHERE oid='public.fulfillment_dispatch_finish(uuid,jsonb,boolean,text)'::regprocedure")).rows[0];
+ expect(acl).toEqual({ no_public: true, prosecdef: false, proconfig: ['search_path=pg_catalog'] });
+});
+
+
+it('dispatches a captured nullable transport selection with the selected polling descriptor', async () => {
+ const { createNativeFulfillmentBinding } = await import('@openlup/platform/fulfillment/native');
+ const { createPostgresFulfillmentTransactionLane } = await import('../../server/adapters/postgres/dataGateway.js');
+ const { profile, request } = await import('../helpers/fulfillmentComposition.js');
+ const f = await fixture(h.pool), original = request();
+ const candidate = { ...original, requestKey: `nullable-${f.shipment}`, fulfillmentRef: f.shipment, orderRef: f.order,
+  selection: { ...original.selection, carrierRef: null, serviceRef: null } };
+ const proof = { ...evidence, contactRevision: candidate.contactRevision };
+ const lane = createPostgresFulfillmentTransactionLane({ connectionString: 'fixture-unused' }, { poolFactory: () => h.pool });
+ let submissions = 0;
+ const binding = createNativeFulfillmentBinding({ enabled: true, transactions: lane,
+  preparation: { async readAuthoritative() { return { candidate, withheld: false }; } },
+  services: { selection: candidate.selection, capability: { ...profile(), transportSelection: 'provider', intakeMode: 'polling' },
+   provider: { async prepare(value) { expect(value.selection).toEqual(candidate.selection); return { kind: 'prepared', evidence: proof }; },
+    async dispatch(value, prepared) { submissions += 1; expect(value.selection).toEqual(candidate.selection); return { kind: 'accepted', evidence: prepared, externalRef: `nullable-${f.shipment}`, providerAttemptKey: `attempt-${f.shipment}`, labelKey: `receipt-${f.shipment}` }; } },
+   readiness: async () => ({ ready: true }), listCandidates: async () => [candidate],
+   keys: { request: value => value.requestKey, mappedAttempt: (key, index) => `${key}:mapped:${index}`,
+    acceptance: () => ({ providerAttemptKey: `attempt-${f.shipment}`, labelKey: `receipt-${f.shipment}` }) },
+   config: { mode: 'live', batchLimit: 1 } },
+  version: 'fixture', requiredSchema: { version: 'fixture', migration: 'fixture', objects: [] } });
+ expect(await binding.services.runDispatch()).toMatchObject({ ok: true, providerCalls: 1 });
+ expect(submissions).toBe(1);
+ const captured = (await h.pool.query('SELECT contact FROM public.fulfillment_parcel_contacts WHERE shipment_id=$1', [f.shipment])).rows[0].contact;
+ expect(captured.selectedDelivery).toMatchObject({ carrierKind: null, service: null });
+ expect((await h.pool.query("SELECT payload->>'channel' AS channel FROM public.fulfillment_shipment_operations WHERE idempotency_key=$1", [`receipt-${f.shipment}`])).rows).toEqual([{ channel: 'poll' }]);
+ expect(await binding.services.runDispatch()).toMatchObject({ ok: true, providerCalls: 0 });
+ expect(submissions).toBe(1);
 });

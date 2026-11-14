@@ -72,7 +72,7 @@ existing host identity, transport and transaction seams. Accounting collection
 has an independent binding; fulfillment no longer constructs or awaits it.
 
 Host status-map, normalized-fact and current-parcel facades delegate to core
-fulfillment while retaining host names and private provider traces. Browser
+fulfillment while retaining host names; provider status translation stays in adapters. Browser
 inventories exclude platform fulfillment.
 
 The root automatic-renewal decorator retains its static terms gate and an
@@ -891,11 +891,41 @@ operator shipment commands separately retain label URLs and raw provider inputs
 as durable operator-only evidence. Label URLs can appear in operator operation
 payloads; full requests stay in private receipts under host retention policy.
 These records are not customer-facing tracking facts. Reference status-map, normalized-fact and current-parcel facades delegate to
-`@openlup/core/fulfillment`; the status facade adds only private provider trace
-metadata. Account order UI imports progress values and types directly from core.
+`@openlup/core/fulfillment`; the shared status facade and generated JSON carry
+only the neutral core map. Adapter-owned dictionaries retain provider translation. Account order UI imports progress values and types directly from core.
 Browser graphs declare only core fulfillment modules and exclude platform
 fulfillment, the reference preparation binding and the account order screens.
 The order-management status ladder/queue pair remains host-owned.
+
+The optional capability declarations separate provider behavior from warehouse role:
+
+| Declaration | Default and native admission |
+| --- | --- |
+| `intakeMode` | Omitted or `webhook` records `push`; `polling` records `poll`. The native binding passes the selected descriptor to its dispatch store. |
+| `inventory` | Omitted means local reservations and `finished_picking` consumption. Provider ownership refuses `provider_reservations_unsupported`; another consumption policy refuses `stock_consumption_policy_unsupported`. |
+| `stockMovements` | Omitted retains movement reads. Pass explicit `false` to the stock worker for snapshots with a separate `stock_movements_unsupported` diagnostic. No movement writes are added. |
+| `independentSplits` | Independent allocations refuse `independent_split_unsupported`; multiple tracking references still describe one commitment. |
+| `transportSelection` | Omitted retains the warehouse carrier/service requirement. Explicit `provider` admits null native parcel carrier/service; explicit `merchant` requires both for every role. Saved customer preferences still require strings. |
+| `labelFormats` | Omitted declares `application/pdf`. Other MIME declarations or requests refuse `label_format_unsupported`; the PDF document return type is unchanged. |
+
+`readFulfillmentCapabilities(profiles, selection, request?)` also accepts native
+execution probes. `request.operation` values `pickupPointDelivery`, `labelCreate`,
+`labelVoid`, `cancel` and `reservations` return the named limits in the
+[reader limits](../../packages/core/docs/guide/reference/limits.md#fulfillment-execution-limits).
+`independentSplit` probes the split refusal; `labelRead` with `request.format`
+probes the PDF boundary. Existing adapter operation flags are reused: pickup-point
+support declares selection data, not standalone booking. These probes do not call
+an adapter or replace its existing refusal results. Selection/activation/readiness
+checks run first; unsupported inventory declarations refuse before host readiness,
+store access, candidate listing or provider I/O.
+
+Dispatch acceptance may include neutral `receiptKey` alongside required legacy
+`labelKey`; both must be byte-equal. Legacy acceptance bytes remain unchanged when
+the alias is omitted. Observation status may include `code`/`detailCode` alongside
+legacy `primary`/`subStatus`; neutral event kinds `shipment.preparing`,
+`shipment.packed`, `shipment.in_transit` and `shipment.delivered` are also accepted.
+Adapters retain occurrence identity and event keys; aliases never rewrite receipts.
+Provider payload translation stays in adapter-owned code.
 
 Adopters may supply the optional local, opaque, shadow-only command fingerprint through `runFulfillmentDispatchWorker.shadowCommandFingerprint` (validated as lowercase 64-hex) and read the optional `submissionAttempted` / `responseBodyRead` dispatch facts, while the package's D6 classification remains the default.
 
@@ -929,7 +959,8 @@ finalize ledger remains the double-dispatch guard. Provider idempotency is not
 established by the donor evidence. See the [example contract](CANONICAL_CONTRACTS.md#opt-in-fulfillment-example)
 for resolution consistency and refusal phases.
 Proven pre-submission failures and definitive HTTP rejections are
-non-submissions even if the rejection body is unreadable; successful statuses
+non-submissions when the rejection body is readable. At the reference-adapter
+boundary, an unreadable rejection body becomes network uncertainty; successful statuses
 without a readable acknowledgement and ambiguous POSTs stay unknown without retry. Accepted provider
 proof keys are opaque and deterministic; host keys remain worker-owned. Configured
 product paths cannot change the HTTPS origin or carry credentials. Observations
@@ -1031,15 +1062,15 @@ and selected capability checks still apply.
 Dispatch results retain neutral typed error code, HTTP status, retryability and
 ambiguity. Local failures retain a machine cause/SQLSTATE under their stage;
 unstructured exception prose is omitted. Redirect refusal remains conservative
-and names `redirect_refused`; a definitive unreadable 400 remains a rejection.
+and names `redirect_refused`; an unreadable rejection body becomes network
+uncertainty at the reference-adapter boundary, including HTTP 400.
 After acceptance, failed ACK finalization retains `dispatch_acceptance_write_failed`,
 a safe ACK cause and the external reference with ambiguity. Recovery ACK metadata
 names the persisted external-reference proof and `noProviderPost`. The native
 store reads back the original acceptance JSON so a created ACK replays exactly,
 including recovery metadata. Native accepted-result JSON persists this evidence;
-the existing SQL finish operation discards non-accepted result detail, so durable
-rejected/unknown error retention remains a gap at that store boundary. No SQL or
-command-ledger authority is changed by these TypeScript projections.
+the selected dispatch composition also retains closed neutral failed/uncertain
+outcomes. Historical outcomes remain NULL; raw provider prose is not persisted.
 The separate createFulfillmentCommandLedger protocol delegates atomic fenced
 operations to a durable store; it does not keep lease/retry state locally. The
 host supplies keys, actual-command fingerprints, candidate selection, paid truth
@@ -1232,6 +1263,18 @@ activate a route or change the unsupported-port factory. The existing commerce
 eligibility function remains injected, and the host explicitly maps captured
 order-mode values instead of the reader choosing application policy.
 
+Selected native dispatch retains a nullable closed `outcome` on dispatch references:
+classification, machine code, HTTP status, retryability, uncertainty and available
+submission/body-read facts. Provider prose and raw transport payloads stay in the
+adapter. Failed or uncertain references are not automatic retry candidates;
+accepted proof repairs locally before contact, payment or hold admission. Old
+references retain NULL diagnostics. Unsubmitted drafts may refresh across runs
+and promote from shadow while preserving parcel/provider identity. Submitted
+identity and mode cannot be downgraded. Operator attempts use a separate private
+first-write audit table; they confer no command or acceptance proof. Its opaque
+request/response/error/metadata may contain personal data; authorized operators
+and hosts own retention and access, including connected transfer copies.
+
 ### Native parity boundaries
 Evidence: historical record, 2026-11-13. Not reader guidance.
 
@@ -1242,11 +1285,11 @@ Evidence: historical record, 2026-11-13. Not reader guidance.
 | Legacy parcel reservations | A parcel created before association capture cancels with `reservations_not_recorded` and released count 0; reservations are not released automatically | The operator corrects stock by hand |
 | Legacy paid-order mode | Provider-confirmed paid cancellation refuses with `commerce_fulfillment_provider_cancel_order_mode_unproven` when no mode was recorded | The operator handles cancellation by hand or outside this path; cycle, renewal, activation and email defaults do not supply mode |
 | Label, handoff and tracking evidence | `createPostgresFulfillmentShipmentCommandPort` commits each command with server actor, replay evidence and a convertible shipment operation; handoff consumes the frozen parcel set once | Authenticated administrator; configured provider/tracking evidence; accounting wrapper after committed handoff |
-| Other operator lifecycle mutations | `createCommerceFulfillmentOrder` and `recordCommerceFulfillmentProviderAttempt` still return `native_unsupported`; the shipment command port covers label, handoff and tracking only | Separate explicitly authorized host callbacks for creation and provider-attempt recording |
+| Local creation and operator attempts | `createPostgresFulfillmentCommerceMutationPort` composes strict local creation, first-write operator-attempt audit and existing cancellation | Authenticated operator, selected native port and stock binding; install the complete catalogue |
 | Legacy handoff stock | A parcel without a recorded reservation set hands off with `reservationDisposition: "reservations_not_recorded"` and `consumedReservationCount: 0`; parent stock is never reconstructed | The operator corrects stock by hand |
 | Historical tracking namespace | A number on another order without recorded provider identity refuses with `tracking_reference_unattributed` and the conflicting order reference. Rarely, the same number at a different carrier produces a false refusal. Same-order reuse records the supplied provider identity; there is no backfill | The operator checks the referenced order through authorized reads and resolves the carrier/reference evidence by hand before retrying |
 | Commerce orders list/detail and shipments overview | No equivalent native commerce read | Host read callbacks for orders list, detail and shipments overview; payment status passes through the existing payments projection using core payment-intent statuses |
-| Dispatch preparation writer | Explicit host preparation binding synchronizes revision, provider and withholding under the shipment lock, including authoritative edits | Required host reader/edit closures and transaction lane; disabled, capability-selection/readiness and unsupported-dispatch refusals precede the shared typed refusal for an absent binding, all before any worker |
+| Dispatch preparation writer | Selected `nativeDispatch` composes recorded candidates, locked contact preparation and final commerce admission; explicit host preparation remains available | Transaction lane, selected adapter, keys and readiness; disabled and capability refusals precede all worker writes |
 | Enforcing delivery alignment | The [host admission decorator](../../server/runtime/subscription/deliveryAlignmentRenewalStore.ts) preserves static terms and captured cases, skips off/no-case admission and obtains one-use schedule receipts before new cycles. Native denials return non-terminal `deferred` results, leaving claims retryable at the same schedule after lease expiry; static refusals remain terminal | A host that composes the native automatic-renewal runner must wrap its store port with the decorator; until it does, native delivery-alignment mode stays off or shadow. No runner composer, factory or production entrypoint is supplied |
 
 Install the complete native catalogue before selecting the operator port. Its

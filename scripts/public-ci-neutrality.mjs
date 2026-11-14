@@ -233,6 +233,7 @@ export function neutralityIncreases(baseline, current) {
 // Exact category/before/after tuples and whole-file pins apply on any base.
 // Adding an entry requires the control review and coordinator read in CONTRIBUTING.md.
 export const reviewedPinnedIntroductions = [
+  ["tests/postgres/stripePortableRail.test.ts","98f85b2f79092329224af5771f83110884582276eb5679ead1d1cbc4e096e057",[["ui-13",0,3]]],
   ["tests/postgres/fixtures/paymentMethods/replayed.sql","039b65952dfacf1810f60e327dcab41b2d5df858a74d4b0ec76e03562e2dc41e",[["ui-14",0,6]]],
   ["tests/postgres/fixtures/paymentMethods/subscription_switch.sql","cf453ffcae8f3a61375595e9241b0a430d43c6208f4d9b2585627c8f6e12c55e",[["ui-13",0,3]]],
   ["tests/postgres/fixtures/paymentMethods/scope_repair.sql","e2dcc12ff8f76ec519bdb5444c83fb1e748b341c135cff1f3b92de1ea33cacc2",[["ui-13",0,10],["ui-14",0,1]]],
@@ -280,6 +281,7 @@ export function validateReviewedPinnedIntroductions(entries) {
       && path !== "tests/postgres/fixtures/paymentMethods/scope_repair.sql"
       && path !== "tests/postgres/fixtures/paymentReconciliation/setup.sql"
       && path !== "tests/postgres/fixtures/paymentReconciliation/evidence.sql"
+      && path !== "tests/postgres/stripePortableRail.test.ts"
       && !nativePaymentIntroductionPaths.has(path)
       && !/^(?:scripts\/fixtures\/reviewed-m10\/supabase\/migrations\/|supabase\/migrations\/)[^/]+\.sql$/.test(path)) {
       throw new Error(`unsupported pinned introduction path: ${label(path)}`);
