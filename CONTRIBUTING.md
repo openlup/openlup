@@ -296,14 +296,17 @@ write token. The mirror reads owned pins from its own
 checkout, refuses a missing digest or two pins that would write different digests
 to one target, and runs only SHA-pinned first-party actions plus the
 dependency-free repository script. A moved tag is refused.
-The writer-control witness applies its canonical subset only to workflows whose
-text contains `write` (case-insensitive, including comments and longer words).
-Workflows without that text are exempt. For candidate writers, it accepts plain
+The writer-control witness exempts a workflow only when its text has no `write`
+(case-insensitive, including comments and longer words), no backslash escape in a
+double-quoted scalar and no YAML tag (`!`). Every other workflow uses the canonical
+subset, with plain literal permission keys and `read`, `write` or `none` values;
+remove quotes, escapes and tags from permissions. For candidate writers, it accepts plain
 block jobs and single-line or block permission maps, including blank lines until
 dedent. It refuses anchors, aliases, merge keys, tabs, extra YAML documents and
 workflow/job defaults in candidate writers.
 The publisher fingerprint also seals workflow environment, permissions, triggers
-and concurrency; workflow keys must precede jobs.
+and concurrency; workflow keys must precede jobs. The qualification job's complete
+permission map must be exactly `contents: read` and `packages: read`.
 The token reaches login through environment and stdin after validation and resolution,
 immediately before copying; a `finally` block removes the temporary registry
 credentials.

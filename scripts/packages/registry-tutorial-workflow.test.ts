@@ -238,7 +238,6 @@ describe("exact published-set qualification", () => {
   it("shares the trust gates, refuses absent visibility, authenticates mirror-only pulls and retains one receipt for 90 days", () => {
     expect(qualification).toContain("needs: registry-tutorial");
     expect(qualification).toContain(REGISTRY_GATE.replace("if: ${{ ", "if: ${{ always() && (").replace(" }}", ") }}"));
-    expect(permissionBlocks(qualification)).toEqual(["    permissions:\n      contents: read\n      packages: read\n"]);
     expect(qualification).toContain('if [ "$OPENLUP_REGISTRY_READY" != true ]; then');
     expect(qualification).toContain('image.sources = image.sources.slice(0, 1)');
     expect(qualification.indexOf('docker login ghcr.io')).toBeLessThan(qualification.indexOf('pullWithRetry(image)'));

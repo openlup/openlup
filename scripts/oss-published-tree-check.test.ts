@@ -98,7 +98,7 @@ describe("CI image mirror workflow controls", () => {
       expect(line, "workflow anchors, aliases and merge keys are refused; write explicit mappings").not.toMatch(/(?:^|[\s{[,])[&*](?!&(?:\s|$))[^\s,[\]{}]+|<<["']?\s*:/u);
       expect(line, "workflow documents/directives are refused; use one document").not.toMatch(/^(?:---|\.\.\.)(?:\s|$)|^%/u);
       if (permissionIndent !== undefined && indent > permissionIndent) {
-        expect(line, "permission block entries must be plain scope: read/write/none").toMatch(new RegExp(`^ {${permissionIndent + 2}}[a-z][a-z-]*: (?:read|write|none)$`, "u"));
+        expect(line, "permission block entries must be plain scope: read/write/none; remove quotes, escapes and tags").toMatch(new RegExp(`^ {${permissionIndent + 2}}[a-z][a-z-]*: (?:read|write|none)$`, "u"));
         blocks[blocks.length - 1]!.block += `\n${line}`;
         continue;
       }
@@ -120,7 +120,7 @@ describe("CI image mirror workflow controls", () => {
         }
         expect(key, "workflow/job defaults are refused; use explicit step settings").not.toBe("defaults");
         if (key === "permissions") {
-          expect(value, "permissions must be a single-line plain map or block map").toMatch(/^(?:\{(?:[a-z][a-z-]*: (?:read|write|none)(?:, [a-z][a-z-]*: (?:read|write|none))*)?\})?$/u);
+          expect(value, "permissions must be a single-line plain map or block map; use literal scope keys and read/write/none, without quotes, escapes or tags").toMatch(/^(?:\{(?:[a-z][a-z-]*: (?:read|write|none)(?:, [a-z][a-z-]*: (?:read|write|none))*)?\})?$/u);
           blocks.push({ job: root === "jobs" ? job : "", block: line });
           if (!value) permissionIndent = indent;
         }
@@ -197,9 +197,14 @@ describe("CI image mirror workflow controls", () => {
   const workflows = () => readdirSync(join(ROOT, ".github/workflows")).filter((name) => /\.ya?ml$/u.test(name))
     .map((name) => ({ name, source: readFileSync(join(ROOT, ".github/workflows", name), "utf8") }));
   const assertExactWriters = (sources: Array<{ name: string; source: string }>) => {
-    // No write text means no write scope; every other workflow must pass the reader.
-    const writers = sources.filter(({ source }) => /write/iu.test(source)).flatMap(({ name, source }) => permissionBlocks(source)
-      .filter(({ block }) => /\bpackages: write\b/u.test(block)).map((permission) => ({ name, ...permission })));
+    // Exempt only text without write, double-quoted escapes or tags; otherwise require plain permissions.
+    const writers = sources.filter(({ source }) => /write|"(?:[^"\\]|\\.)*\\|!/iu.test(source)).flatMap(({ name, source }) => {
+      const permissions = permissionBlocks(source);
+      if (name === "registry-tutorial.yml") expect(permissions.filter(({ job }) => job === "exact-set-qualification")).toEqual([
+        { job: "exact-set-qualification", block: "    permissions:\n      contents: read\n      packages: read" },
+      ]);
+      return permissions.filter(({ block }) => /\bpackages: write\b/u.test(block)).map((permission) => ({ name, ...permission }));
+    });
     expect(writers).toEqual([
       { name: "mirror-ci-images.yml", job: "mirror", block: "    permissions: {contents: read, packages: write}" },
       { name: "registry-tutorial.yml", job: "publish-qualified-image", block: "    permissions: {packages: write}" },
@@ -207,6 +212,16 @@ describe("CI image mirror workflow controls", () => {
   };
 
   it("grants packages write in exactly the mirror and qualified-image publisher jobs across every workflow", () => assertExactWriters(workflows()));
+
+  it("refuses an encoded write scope in an otherwise exempt workflow", () => {
+    const source = 'jobs:\n  planted:\n    permissions:\n      packages: "w\\u0072ite"\n';
+    expect(() => assertExactWriters([...workflows(), { name: "planted.yml", source }])).toThrow("plain scope: read/write/none; remove quotes, escapes and tags");
+  });
+  it("refuses qualification write scopes after a blank line", () => {
+    const sources = workflows().map(({ name, source }) => ({ name, source: name === "registry-tutorial.yml"
+      ? source.replace("      packages: read\n", "      packages: read\n\n      id-token: write\n") : source }));
+    expect(() => assertExactWriters(sources)).toThrow();
+  });
 
   it.each([
     ["defaults: {run: {shell: bash}}\njobs:\n  planted:\n", "workflow/job defaults"],

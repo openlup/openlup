@@ -563,8 +563,11 @@ in hosted CI. Exactly two workflow jobs hold `packages: write`: `mirror` in
 The latter verifies and copies an OCI archive only after qualification succeeds;
 it executes no candidate code, keeping installation code away from write tokens.
 The [writer-control witness](../../scripts/oss-published-tree-check.test.ts) applies
-its canonical subset only when workflow text contains `write` (case-insensitive,
-including comments and longer words); workflows without that text are exempt.
+its canonical subset unless workflow text has no `write` (case-insensitive,
+including comments and longer words), no double-quoted backslash escape and no
+YAML tag (`!`). Permission keys and values must be plain literals; values are
+exactly `read`, `write` or `none`. The complete qualification permission map must
+be exactly `contents: read` and `packages: read`.
 It refuses noncanonical workflow/job mappings, ambiguous permission syntax, anchors, aliases,
 merge keys, tabs, extra YAML documents and workflow/job defaults. Its publisher
 fingerprint includes inherited workflow execution settings as well as the job.
