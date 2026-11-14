@@ -209,6 +209,9 @@ jobs:
           node scripts/packages/exact-set-qualification.mjs "$RELEASE_TAG" "$TAG_COMMIT" "$RUNNER_TEMP/exact-set-qualification.json" --schema-upgrade
       - name: Bind the exact-set release BOM
         run: node scripts/packages/exact-set-qualification.mjs "$RELEASE_TAG" "$TAG_COMMIT" "$RUNNER_TEMP/exact-set-qualification.json" --bom
+      - name: Exercise the BOM-bound archive before publication
+        id: canary
+        run: node scripts/packages/exact-set-qualification.mjs "$RELEASE_TAG" "$TAG_COMMIT" "$RUNNER_TEMP/exact-set-qualification.json" --canary
       - name: Hand off the qualified image and its BOM
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -224,7 +227,8 @@ jobs:
         if: always()
         env:
           SCHEMA_OUTCOME: ${{ steps.schema.outcome }}
-        run: node --input-type=module -e 'import { env } from "node:process"; import { existsSync, readFileSync, writeFileSync } from "node:fs"; const p = env.RUNNER_TEMP + "/exact-set-qualification.json"; if (existsSync(p)) { const r = JSON.parse(readFileSync(p)); if (!r.endedAt || r.schemaUpgrade?.result !== "PASS" || env.SCHEMA_OUTCOME !== "success") { r.result = "FAIL"; r.endedAt = new Date().toISOString(); if (r.schemaUpgrade) { r.schemaUpgrade.result = "FAIL"; r.schemaUpgrade.endedAt = r.endedAt; } r.error ??= "Qualification did not complete; inspect job steps"; writeFileSync(p, JSON.stringify(r, null, 2)); } }'
+          CANARY_OUTCOME: ${{ steps.canary.outcome }}
+        run: node --input-type=module -e 'import { env } from "node:process"; import { existsSync, readFileSync, writeFileSync } from "node:fs"; const p = env.RUNNER_TEMP + "/exact-set-qualification.json"; if (existsSync(p)) { const r = JSON.parse(readFileSync(p)); if (!r.endedAt || r.schemaUpgrade?.result !== "PASS" || env.SCHEMA_OUTCOME !== "success" || r.canary?.result !== "PASS" || env.CANARY_OUTCOME !== "success") { r.result = "FAIL"; r.endedAt = new Date().toISOString(); if (r.schemaUpgrade && (r.schemaUpgrade.result !== "PASS" || env.SCHEMA_OUTCOME !== "success")) { r.schemaUpgrade.result = "FAIL"; r.schemaUpgrade.endedAt = r.endedAt; } if (r.canary && env.CANARY_OUTCOME !== "success") { r.canary.result = "FAIL"; r.canary.endedAt = r.endedAt; } r.error ??= "Qualification did not complete; inspect job steps"; writeFileSync(p, JSON.stringify(r, null, 2)); } }'
       - name: Retain the qualification receipt
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

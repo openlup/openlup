@@ -199,8 +199,8 @@ The separate [CI image mirror](.github/workflows/mirror-ci-images.yml) runs in
 from `main`. Its single job reads only the committed
 [image inventory](config/ci-images.json): four PostgreSQL images (the install-proof
 database, also used by pgTAP and managed-rail tests, the test harness default, and
-two attribute-version witness pins), the starter Node base and the starter browser
-image.
+two attribute-version witness pins), the starter Node base, the starter browser
+image and the qualification Syft scanner (`qualification-syft`).
 Every pin is validated before the first registry request. No Supabase CLI or
 derived image set takes part.
 The reviewed-batch gate and shared PostgreSQL test helper read these JSON pins

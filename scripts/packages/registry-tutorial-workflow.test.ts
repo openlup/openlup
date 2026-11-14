@@ -7,6 +7,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import { assertReleaseProvenance, assertSbomPackages, buildQualifiedImage, proveNeutralStarterConsumer, qualificationReceipt, qualifyReleasedSet, verifiedReleasePackages } from "./exact-set-qualification.mjs";
+import * as browserRunner from "../starter-browser-ci.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const workflow = readFileSync(join(ROOT, ".github/workflows/registry-tutorial.yml"), "utf8");
@@ -262,11 +263,11 @@ describe("exact published-set qualification", () => {
     ["", "PASS", "cancelled"], ["", "PASS", "success"],
   ])("seals schema setup %s / result %s / outcome %s without retaining an earlier PASS", async (stop, result, outcome) => {
     const directory = mkdtempSync(join(tmpdir(), "qualification-schema-")), path = join(directory, "exact-set-qualification.json");
-    const env = { ...Reflect.get(process, "env"), RUNNER_TEMP: directory, SCHEMA_OUTCOME: outcome };
+    const env = { ...Reflect.get(process, "env"), RUNNER_TEMP: directory, SCHEMA_OUTCOME: outcome, CANARY_OUTCOME: "success" };
     const schema = step(qualification, "Qualify released-pair schema compatibility and code rollback");
     const seal = step(qualification, "Seal an incomplete qualification receipt");
     try {
-      writeFileSync(path, JSON.stringify({ ...qualificationReceipt(tag, commit), result: "PASS", endedAt: new Date(0).toISOString(), upgrade: { result: "PASS" }, ...(result ? { schemaUpgrade: { result } } : {}) }));
+      writeFileSync(path, JSON.stringify({ ...qualificationReceipt(tag, commit), result: "PASS", endedAt: new Date(0).toISOString(), upgrade: { result: "PASS" }, canary: { result: "PASS" }, ...(result ? { schemaUpgrade: { result } } : {}) }));
       expect(schema).toContain("id: schema"); expect(seal).toContain("SCHEMA_OUTCOME: ${{ steps.schema.outcome }}");
       if (stop) {
         const prefix = script(schema).split(stop)[0]!.replace(/^image=.*$/mu, "image=fixture");
@@ -284,6 +285,42 @@ describe("exact published-set qualification", () => {
       expect(receipt.result).toBe(result === "PASS" && outcome === "success" ? "PASS" : "FAIL");
       expect(receipt.endedAt).toBeTruthy();
       if (receipt.schemaUpgrade) expect(receipt.schemaUpgrade.result).toBe(receipt.result);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it.each(['PASS', 'failure', 'wrong-bom', 'wrong-image', 'missing-upgrade'])("retains canary %s, referencing completed upgrade evidence without rerunning it", async mode => {
+    const directory = mkdtempSync(join(tmpdir(), 'qualification-canary-')), path = join(directory, 'receipt.json');
+    const digest = 'sha256:' + 'c'.repeat(64), bytes = JSON.stringify({ image: { manifestDigest: digest } });
+    const upgrade = { result: 'PASS', checks: ['retained'] }, schemaUpgrade = { result: 'PASS', checks: ['retained'] };
+    const runner = vi.spyOn(browserRunner, 'runStarterImageCanary').mockImplementation(async (_app, _archive, _image, evidence) => {
+      if (mode === 'failure') throw new Error('purchase failed');
+      evidence.result = 'PASS';
+    });
+    try {
+      writeFileSync(path + '.bom.json', bytes);
+      writeFileSync(path, JSON.stringify({ ...qualificationReceipt(tag, commit), result: 'PASS', upgrade: mode === 'missing-upgrade' ? null : upgrade, schemaUpgrade,
+        image: { manifestDigest: mode === 'wrong-image' ? 'wrong' : digest }, bom: { sha256: mode === 'wrong-bom' ? 'wrong' : createHash('sha256').update(bytes).digest('hex') } }));
+      const work = qualifyReleasedSet(tag, commit, path, false, false, false, true);
+      if (mode === 'PASS') await work; else await expect(work).rejects.toThrow();
+      const receipt = JSON.parse(readFileSync(path, 'utf8'));
+      expect(receipt).toMatchObject({ result: mode === 'PASS' ? 'PASS' : 'FAIL', canary: { result: mode === 'PASS' ? 'PASS' : 'FAIL', upgradeEvidence: ['upgrade', 'schemaUpgrade'], endedAt: expect.any(String) }, schemaUpgrade });
+      if (mode !== 'missing-upgrade') expect(receipt.upgrade).toEqual(upgrade);
+      expect(runner).toHaveBeenCalledTimes(['PASS', 'failure'].includes(mode) ? 1 : 0);
+      const canary = step(qualification, 'Exercise the BOM-bound archive before publication');
+      expect(canary).toContain('--canary');
+      expect(qualification.indexOf('--canary')).toBeGreaterThan(qualification.indexOf('--bom'));
+      expect(qualification.indexOf('--canary')).toBeLessThan(qualification.indexOf('name: Hand off the qualified image'));
+    } finally { runner.mockRestore(); rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it.each(['failure', 'cancelled', 'skipped'])("seals an interrupted canary (%s) without erasing completed schema evidence", outcome => {
+    const directory = mkdtempSync(join(tmpdir(), 'qualification-canary-seal-')), path = join(directory, 'exact-set-qualification.json');
+    try {
+      writeFileSync(path, JSON.stringify({ result: 'PASS', endedAt: new Date(0).toISOString(), schemaUpgrade: { result: 'PASS' }, canary: { result: 'PASS' } }));
+      const result = spawnSync('node', ['--input-type=module', '-e', step(qualification, 'Seal an incomplete qualification receipt').split("        run: node --input-type=module -e '")[1]!.trim().slice(0, -1)],
+        { env: { ...Reflect.get(process, 'env'), RUNNER_TEMP: directory, SCHEMA_OUTCOME: 'success', CANARY_OUTCOME: outcome } });
+      expect(result.status).toBe(0);
+      expect(JSON.parse(readFileSync(path, 'utf8'))).toMatchObject({ result: 'FAIL', schemaUpgrade: { result: 'PASS' }, canary: { result: 'FAIL' } });
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 

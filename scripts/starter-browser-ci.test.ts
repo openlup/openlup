@@ -5,14 +5,25 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { spawn, spawnSync } from 'node:child_process';
 import { EventEmitter, once } from 'node:events';
+import { createHash } from 'node:crypto';
 import pg from 'pg';
-import { acquireStarterPostgres, browserArguments, capturePrivateValues, parseArguments, resolveBrowserImage, runBrowserGroups, scanPrivateOutput, withCleanup, withConnectionCleanup, writeBrowserFixtures, watchStarterHost } from './starter-browser-ci.mjs';
+import { assertCanaryImage, acquireStarterPostgres, browserArguments, capturePrivateValues, parseArguments, resolveBrowserImage, runBrowserGroups, scanPrivateOutput, withCleanup, withConnectionCleanup, writeBrowserFixtures, watchStarterHost } from './starter-browser-ci.mjs';
 import { imageReference, readCiImage } from './ci-image-pull.mjs';
 import { browserJourneyGroups } from '../examples/neutral-store/browser-groups.mjs';
 
 const args = ['--manifest', '/tmp/packs/packages-manifest.json', '--expected-commit', 'a'.repeat(40)];
 
 describe('installed starter browser CI', () => {
+  it('binds the loaded manifest and configuration separately to the archive subject', () => {
+    const config = 'sha256:' + 'b'.repeat(64), manifest = JSON.stringify({ config: { digest: config } });
+    const digest = 'sha256:' + createHash('sha256').update(manifest).digest('hex');
+    const loaded = { Id: config, Descriptor: { digest } };
+    expect(assertCanaryImage(manifest, digest, loaded)).toBe(config);
+    for (const [bytes, expected, image] of [[manifest + ' ', digest, loaded], [manifest, config, loaded],
+      [manifest, digest, { ...loaded, Id: digest }], [manifest, digest, { ...loaded, Descriptor: { digest: config } }]]) {
+      expect(() => assertCanaryImage(bytes, expected, image)).toThrow('starter_canary_image_identity_mismatch');
+    }
+  });
   afterEach(() => vi.unstubAllEnvs());
   it.each(['postgres_supplements', 'install_coffee', 'seed_supplements', 'runtime', 'host_coffee', 'cancelled'])('stops after an early group fails during %s', async phase => {
     const started: number[] = [], released: number[] = [];

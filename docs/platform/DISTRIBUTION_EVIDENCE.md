@@ -319,8 +319,42 @@ and BOM. The receipt includes the manifest digest, `published`, `skipped-dispatc
 or `refused`, and the registry readback (null if unobserved). Organization owners
 must make the package public, link it to this repository and choose its retention
 policy. Source presence and local OCI-layout copy evidence establish neither GHCR
-activation nor a hosted qualification run. Running-image canary checks remain a
-separate obligation.
+activation nor a hosted qualification run. The running-image canary below must
+pass before the archive is handed to this publication job.
+
+### Exact-artifact canary
+
+The read-only qualification job's `--canary` stage checks the BOM hash and image
+subject, loads that OCI archive and requires Docker's loaded manifest descriptor
+and configuration ID to match its manifest. It runs the extracted starter's
+Compose services without building: mirror-pinned PostgreSQL 16, installation
+through `lifecycle.mjs install` using the packaged qualified profile, then the
+same loaded image's runtime. Compose uses the starter's existing bounded health
+check against `/api/config`. Both example configurations have isolated databases.
+
+The [existing browser runner](../../scripts/starter-browser-ci.mjs) uses its
+mirror-pinned browser and existing purchase group, narrowed to the sandbox
+purchase spec. It must observe two purchases, one per configuration. The
+[installed recovery witness](../../scripts/packages/platform-cold-consumer.ts)
+then runs through the installation image against the first database: selected-row
+restore/readback, exact integer/microsecond preservation, idempotent replay,
+conflict refusal and guarded-table refusal. This proves neither a complete
+store backup nor package/schema rollback. The completed `upgrade` and
+`schemaUpgrade` sections remain separate evidence, referenced without rerunning
+their steps.
+
+The receipt's `canary` section records image/configuration identities, install,
+journey and recovery results and durations. A failed or interrupted stage cannot
+retain a final PASS. The existing 90-day qualification and publication artifacts
+retain the receipt; no release asset is created. The write job's existing
+qualification dependency blocks image publication on a failed canary.
+This is development-preview qualification, not provider certification or stable
+support. The first-party demo store is separate adoption evidence.
+
+There is no stable maintenance line or previous stable major, so previous-major
+backports are not applicable. Maintenance evidence remains partial; backport
+automation follows explicit owner stable activation under the
+[maintenance policy](../../.github/VERSIONING_AND_EOL.md#support-window).
 
 ### Dependency inventories and image provenance
 

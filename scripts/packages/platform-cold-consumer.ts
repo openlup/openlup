@@ -1681,7 +1681,10 @@ try {
 
 /** Selected-row recovery from installed bytes against the already-owned canonical database. */
 export function provePortabilityPostgres(consumer: string, connectionString: string): void {
-  consumerNode(consumer, `
+  consumerNode(consumer, PORTABILITY_CONSUMER_PROOF, [connectionString]);
+}
+
+export const PORTABILITY_CONSUMER_PROOF = `
 import assert from "node:assert/strict";
 import {randomUUID} from "node:crypto";
 import pg from "pg";
@@ -1742,8 +1745,7 @@ try{
  assert.deepEqual((await client.query("SELECT relname,relacl::text FROM pg_class WHERE relnamespace='public'::regnamespace ORDER BY relname")).rows,acl.rows);
  console.log("Portability installed canonical selected-row recovery PASS (trigger-free renewal line, exact replay/conflict/precision, guarded subscription/event/outbox refusal when installed)");
 }finally{await client.query("DELETE FROM public.outbox_events WHERE id=$1",[id]);await client.query("DELETE FROM public.subscription_renewal_terms WHERE subscription_id=$1",[parent]);await client.query("DELETE FROM public.subscription_events WHERE subscription_id=$1",[parent]);await client.end();}
-`, [connectionString]);
-}
+`;
 
 /** Runs wholly inside the installed consumer; canonical expectations arrive as inert JSON. */
 const PLATFORM_MIGRATION_CONSUMER_PROOF = String.raw`
