@@ -126,6 +126,10 @@ has an explicit released-pair mode; its no-argument historical execution and PR
 CI selection are unchanged. The schema step uses the existing digest-pinned
 PostgreSQL 16 mirror in a separate disposable container; the rest of the job
 keeps its PostgreSQL 17 service. It removes both retained installations afterward.
+Before image acquisition or container setup, the schema step records its start
+and FAIL in the receipt. Final sealing requires a successful schema step and
+schema result; setup failure, interruption or a skipped schema step cannot retain
+the preceding upgrade's PASS.
 
 The predecessor's shipped runner installs its packaged `qualified-v2` catalogue,
 using the starter bootstrap's installer-managed profile with distinct install,

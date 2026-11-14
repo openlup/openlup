@@ -256,6 +256,38 @@ describe("exact published-set qualification", () => {
     expect(() => qualificationReceipt(tag, "short", {})).toThrow("full SHA");
   });
 
+  it.each([
+    ["image=", undefined, "failure"], ["container=", undefined, "failure"],
+    ["", undefined, "skipped"], ["", undefined, "success"], ["", "FAIL", "success"], ["", "PASS", "failure"],
+    ["", "PASS", "cancelled"], ["", "PASS", "success"],
+  ])("seals schema setup %s / result %s / outcome %s without retaining an earlier PASS", async (stop, result, outcome) => {
+    const directory = mkdtempSync(join(tmpdir(), "qualification-schema-")), path = join(directory, "exact-set-qualification.json");
+    const env = { ...Reflect.get(process, "env"), RUNNER_TEMP: directory, SCHEMA_OUTCOME: outcome };
+    const schema = step(qualification, "Qualify released-pair schema compatibility and code rollback");
+    const seal = step(qualification, "Seal an incomplete qualification receipt");
+    try {
+      writeFileSync(path, JSON.stringify({ ...qualificationReceipt(tag, commit), result: "PASS", endedAt: new Date(0).toISOString(), upgrade: { result: "PASS" }, ...(result ? { schemaUpgrade: { result } } : {}) }));
+      expect(schema).toContain("id: schema"); expect(seal).toContain("SCHEMA_OUTCOME: ${{ steps.schema.outcome }}");
+      if (stop) {
+        // Stop at the fallible pull/start operation, without accessing Docker or the network.
+        const prefix = script(schema).split(stop)[0]!.replace(/^image=.*$/mu, "image=fixture");
+        expect(spawnSync("bash", ["-e", "-c", prefix + "\nexit 23"], { cwd: ROOT, env }).status).toBe(23);
+        expect(JSON.parse(readFileSync(path, "utf8"))).toMatchObject({ result: "FAIL", endedAt: null, schemaUpgrade: { result: "FAIL", startedAt: expect.any(String) } });
+        if (stop === "image=") {
+          vi.stubEnv("OPENLUP_QUALIFICATION_DATABASE_URL", undefined);
+          try { await expect(qualifyReleasedSet(tag, commit, path, false, true)).rejects.toThrow("qualification PostgreSQL connection required"); }
+          finally { vi.unstubAllEnvs(); }
+        }
+      }
+      const sealed = spawnSync("bash", ["-e", "-c", seal.split("        run: ")[1]!], { cwd: ROOT, env, encoding: "utf8" });
+      expect(sealed.status, sealed.stderr).toBe(0);
+      const receipt = JSON.parse(readFileSync(path, "utf8"));
+      expect(receipt.result).toBe(result === "PASS" && outcome === "success" ? "PASS" : "FAIL");
+      expect(receipt.endedAt).toBeTruthy();
+      if (receipt.schemaUpgrade) expect(receipt.schemaUpgrade.result).toBe(receipt.result);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("refuses invisible sets before any command and retains the failed receipt", () => {
     const directory = mkdtempSync(join(tmpdir(), "qualification-receipt-")), path = join(directory, "receipt.json");
     vi.stubEnv("OPENLUP_REGISTRY_READY", "false");

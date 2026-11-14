@@ -194,9 +194,10 @@ export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = f
   const receipt = upgrade || schema ? json(receiptPath) : qualificationReceipt(tag, expectedCommit);
   const applicationsPath = resolve(receiptPath + '.applications');
   if (schema) {
-    assert(receipt.result === 'PASS' && receipt.upgrade?.result === 'PASS' && receipt.tag === tag && receipt.tagCommit === expectedCommit, 'adjacent-set qualification must pass first');
+    const started = receipt.result === 'FAIL' && receipt.schemaUpgrade?.result === 'FAIL' && receipt.schemaUpgrade.startedAt;
+    assert((receipt.result === 'PASS' || started) && receipt.upgrade?.result === 'PASS' && receipt.tag === tag && receipt.tagCommit === expectedCommit, 'adjacent-set qualification must pass first');
     receipt.result = 'FAIL'; receipt.endedAt = null;
-    receipt.schemaUpgrade = { result: 'FAIL', startedAt: new Date().toISOString(), postgresImage: imageReference(readCiImage('test-postgres')) };
+    receipt.schemaUpgrade = { result: 'FAIL', startedAt: receipt.schemaUpgrade?.startedAt ?? new Date().toISOString(), postgresImage: imageReference(readCiImage('test-postgres')) };
     writeFileSync(receiptPath, JSON.stringify(receipt, null, 2) + '\n');
     const run = async () => {
       let admin;
