@@ -641,7 +641,7 @@ owns immutable simulated outcomes. The runtime has function execution only,
 with no direct access to either table. The forward explicitly revokes all table
 privileges from PUBLIC, anon, authenticated and service_role, removing
 creation-time default grants to those recipients; it does not enable RLS.
-Real PSP support remains unavailable. Install the
+This simulator forward alone supplies no real provider storage. Install the
 complete selected chain, including its exact inventory; this forward alone is
 not an installer. Earlier migration bytes and approvals stay unchanged.
 
@@ -649,6 +649,70 @@ The same forward adds `payment_truth_events.review_required_at` and a new
 consistency CHECK, preserving every existing CHECK and the `open|settled` state
 vocabulary. Existing OMS captured-truth visibility is preserved.
 `commerce_record_settlement` and its later-only schedule rule remain unchanged.
+
+The appended `20261114100000_payment_provider_attempt_store.sql` adds private
+provider lifecycle, attempt, immutable ingress, replay receipt and transition
+relations. Its service functions implement explicit intent admission, durable
+preparation, same-row acknowledgement and exact-attempt result application.
+Preparation commits before provider execution; ingress commits before application.
+An unresolved attempt or exact durable success fences another dispatch. Aggregate
+locks precede payment children, including the existing settlement and truth
+entry points. Financial effects and dunning recovery retain their existing owners.
+Sandbox dispatch and observation keep their native order-then-intent fence,
+leaving the subscription and renewal-operation roots free so lifecycle commands
+reach their existing `NOWAIT` busy refusal before the sandbox transaction commits.
+All five new tables have RLS and no runtime table privileges; service-role
+execution uses pinned function paths. Capture and restore carry their rows and
+restore the active-attempt pointer after its referenced attempt.
+
+For the first failure of a provider subscription-cycle attempt with recorded renewal correlation,
+application first calls `subscription_retry_apply_failure` under
+`<apply-key>:truth`. Its immutable failure receipt binds the provider attempt,
+payment, cycle, sequence, classification and observation times to the resulting
+rung and schedule. Truth reuses `<apply-key>:truth:settlement`, or the original
+renewal outcome's settlement transition when that same original attempt was
+already refused under another key; it does not open
+the generic dunning case on this path. The cycle remains `payment_pending`, and
+the retry obligation owns scheduling. At this stage no provider dunning case,
+notice or token handoff is composed. Attributed dunning and a real provider
+renewal binding require later composition; the starter still binds sandbox
+renewals only. Other truth routes and sandbox failure handoff are unchanged.
+The service-only `payment_provider_retry_failure_recorded` lookup returns only
+whether the intent, receipt key and exact attempt match that recorded context.
+It keeps invoker truth routes from reading private provider tables directly;
+browser roles retain neither lookup execution nor raw-table access.
+
+If pause wins after local renewal preparation and before provider preparation,
+not-chargeable cleanup uses the renewal outcome owner to release committed
+renewal stock, and the purchase-reservation owner to release order holds.
+Initial payment expiry compensates the provisional activation through checkout
+compensation before expiring the order. An automatic initial-checkout sweep
+that wins cancellation also terminalizes its provider lifecycle and settlement
+intent; waiting preparation refuses before creating an attempt. Preparation
+that wins first fences the sweep through its committed attempt.
+Manual unpaid-order cancellation terminalizes both provider intent and payment
+lifecycle, refusing later preparation under fresh keys. The first recoverable
+one-time or initial-subscription decline mints a native checkout recovery token
+and queues its payment-failed notice with a three-minute claim delay. A lost
+inline-recovery response replays its durable attempt using the recorded
+transition, nonce and rail without requiring fresh purchase or method context.
+
+| Historical data | Result and manual path |
+| --- | --- |
+| Native intent without a recorded provider lifecycle or attempt | No automatic backfill or inferred payment identity. Inspect the provider object and admit complete authority explicitly before preparing a fresh attempt. |
+| Unlinked or superseded event | Ingress remains durable; application returns `payment_control_result_attempt_unresolved` or `payment_control_result_attempt_mismatch`, with no business effects. Resolve attribution through operator recovery. |
+| Prepared attempt with no provider handle | Keep the attempt in flight. Missing local handles do not prove provider absence or authorize redispatch. |
+| Settled intent without provider correlation | Preserve settlement and historical evidence. No synthetic provider history is created. |
+| Recorded provider renewal operation without logical-cycle or exact prepared-attempt correlation | Refuse application without financial or retry effects. Resolve the missing correlation explicitly; native counters and the current active pointer cannot reconstruct it. |
+| Same-attempt expiry escalation | An expiry after a decline on the same renewal attempt records the escalation and does not consume an extra retry stage. |
+| Method health without a recorded provider reference | Health supplies no charging authority. Record provider method authority through the selected method store before execution. |
+
+Only `paymentSchemaDescriptor.preparedDurableStore` is enabled by this forward.
+Method setup, absence reopening and cumulative refund remain separate capabilities;
+absence auto-reopen stays off. A refund never pauses or cancels a subscription.
+The [native witnesses](../../tests/postgres/paymentProviderStore.test.ts) and
+[pgTAP twins](../../tests/postgres/paymentProviderStorePgtap.test.ts) exercise the
+installed store without contacting a payment provider.
 
 List payments awaiting operator review:
 
@@ -1309,7 +1373,7 @@ graduates only unedited starter terms, is not contributed. It belongs to the
 subscription domain (M10 area) and is unreachable from M11 code; the adopter
 keeps its own managed SQL.
 
-**Named bounded debt C94 — M10 reviewed packet vocabulary.** The frozen managed
+**Named bounded debt C94 — reviewed SQL vocabulary.** The frozen managed
 SQL retains provider nouns inherited from that rail. The neutrality baseline
 records the scanner's exact counts for the six existing managed fixtures and the
 registry's pinned refund COMMENT: dunning continuity (`ui-13`: 2, `ui-14`: 3),
@@ -1318,20 +1382,33 @@ and refund parity (each `ui-13`: 7), and the registry (`ui-13`: 1).
 Each landing PR (P3b, P5, F17) adds only its own rail keys together with the files,
 using these exact pinned counts per category. Any present baseline key for an
 allowance path must contain exactly its pinned category counts, including during
-regeneration; adding a key without the file refuses. No native,
-TypeScript, package or documentation allowance is added. This is vocabulary
-debt for the frozen packet, not provider activation or portable-contract parity;
+regeneration; adding a key without the file refuses. The N6 native payment
+slots 42–44 and their package mirrors retain the two reference payment adapters'
+names in three ported predicates: inline-flow admission, historical channel
+routing and a refund-amount rule. Each row adds only its own whole-file SHA-256
+pins, exact counts and baseline keys with its files. R1's attempt-store slot and
+mirror each pin `ui-13` 0→4 and `ui-14` 0→3. Its unchanged characterization fixture,
+`tests/postgres/fixtures/paymentProvider/durability.sql`, pins `ui-13` 0→6 and
+`ui-14` 0→5 with its own whole-file digest and baseline key. This fixture keeps
+the same names until the provider-profile refactor removes them together with
+the predicates; a third provider needs that refactor. Every other test or
+fixture path remains refused by this extension. No other native
+or package SQL path is admitted beyond these six paths and the existing
+operations compatibility carrier; TypeScript and documentation remain outside
+this allowance. This is vocabulary debt, not provider activation or portable-contract parity;
 future neutral replacements must lower it. The [neutrality owner](../../CONTRIBUTING.md#package-policy-and-release-checks)
 owns the ratchet. Its `reviewedPinnedIntroductions` allowance is a closed list of
-exactly 13 paths (six fixture/rail pairs and the registry), grouping the two
-dunning categories per path. Each SQL pin requires the complete file's SHA-256
+17 paths and 22 tuples: six managed fixture/rail pairs and the registry
+(13 paths/15 tuples), the operations package SQL carrier (one path/tuple), and
+R1's native slot, mirror and characterization witness (three paths/six tuples).
+Each SQL pin requires the complete file's SHA-256
 and exact category and before/after counts, on any base. The registry instead
 pins the exact refund COMMENT text because later approvals edit unrelated
 registry data; extra counted vocabulary still refuses. The allowance filters
 measured-base increases and parent-baseline raises, including regeneration;
 candidate counts must still fit the baseline. Changed bytes, another path even
 with the same digest, another category or count, and unrelated increases refuse.
-No native rail, TypeScript, package or documentation path can enter this list.
+Other native or package SQL paths, TypeScript and documentation cannot enter this list.
 Adding any further entry is a control change reviewed under the
 [native review floors](../../CONTRIBUTING.md#native-review-and-accountability). The six rail-path entries can be retired after
 the F17 PR lands and the base carries the counts.

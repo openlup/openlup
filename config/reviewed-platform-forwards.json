@@ -4484,6 +4484,131 @@
             "sha256": "46f068638500fc06d265d14ce3a7c9dec091417979fa1b0fd51ba4911ac19623"
           }
         ]
+      },
+      {
+        "row": "n6-payment-attempts",
+        "path": "db/platform/migrations/20261114100000_payment_provider_attempt_store.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.payment_simulator_begin_attempt(text,uuid,text,jsonb,timestamptz)",
+            "beforeSha256": "d0dff73e4cf8f7ec392685badcd4ca08230cb2ec2572fdbfc65c0ea66404112e",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.payment_simulator_record_observation(uuid,text,text,text,timestamptz)",
+            "beforeSha256": "5a87e7bbaa9582c0ee42b52160c3ca31954fdfb693ec57790e0386bb15901629",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.payment_truth_ingest_event(text,text,text,uuid,text,bigint,text,timestamptz,text,text,jsonb,text,text,text)",
+            "beforeSha256": "fbdc1b2ced87cc3df98f3b0e1cf01dee2437e035a46b757817ead5ef8b944803",
+            "searchPath": "public, pg_catalog"
+          },
+          {
+            "signature": "public.payment_truth_apply_terminal(uuid,text,text,timestamptz,text,text,jsonb,text,text,text)",
+            "beforeSha256": "de7b4757b57b5469d8dc39abbae13def6f8223d66c4ec08a7cdd484948998744",
+            "searchPath": "public, pg_catalog"
+          },
+          {
+            "signature": "public.payment_truth_record_reconciliation(uuid,text,text,text,text,timestamptz,text,text,jsonb,text,text,text)",
+            "beforeSha256": "4727ba8bf99cdfbe8af3ea40671cc69e55c5da6385f3e2c352445ccd12e61cc8",
+            "searchPath": "public, pg_catalog"
+          },
+          {
+            "signature": "public.commerce_record_settlement(text,uuid,text,text,jsonb,timestamptz)",
+            "beforeSha256": "da2d65de325a94fc3535b67be243d4c0e472ff175fa1b8ea2419089fea1b59c6",
+            "searchPath": "public, pg_catalog"
+          },
+          {
+            "signature": "public.commerce_cancel_abandoned_purchase_checkout(text,uuid,text,timestamptz)",
+            "beforeSha256": "778ee6094bc0fd59e3fd73693fd7c2c1f68c07f921ebcd3a89774753cb3c6d44",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.oms_cancel_unpaid_order_owned(text,uuid,text,uuid,jsonb,timestamptz)",
+            "beforeSha256": "e08aad49b02ed5f7b70b94fffce805e6703df7e8ea82ced705599321dce50282",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_sweep_expired_checkouts(integer,jsonb,timestamptz)",
+            "beforeSha256": "8c6780c6e96c4f7fc5d4a87766c34df20120eb8f7c118f14cebd65e1c1eafa8d",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_checkout_recovery_payment_blocked(uuid,integer,timestamptz)",
+            "beforeSha256": "e95c7b0dd1577c147c43041a3b57f4c5e368e2cf33e39537b2c040a4912319d0",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_initial_checkout_abandonment_safe(uuid)",
+            "beforeSha256": "e10c9b045406badf2e11e41adb2f75e700fc13ba978c57e4a5c896de37c29b7d",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_checkout_recovery_attempt_begin(text,uuid,uuid,uuid,text,jsonb,timestamptz)",
+            "beforeSha256": "ddad32e56daac3a8284c4cfc7124e8b68c11667873b7c6a0ec5b8f88e728cb52",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_checkout_inline_retry_begin(text,uuid,uuid,uuid,uuid,text,jsonb,timestamptz)",
+            "beforeSha256": "eae0ddf33504b3e86ab47425d1c80c09f12a43e53d21ab6aa7a72ce6eb3539a0",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_prepare_expired_checkout_recovery(text,uuid,uuid,bigint,timestamptz)",
+            "beforeSha256": "c0525d4523e1a247f927644622b3e7f80379649545e41d824bf88bd77e46ae4f",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_checkout_payment_guidance_snapshot(uuid,uuid,uuid)",
+            "beforeSha256": "a18c02a841b3322369ae49745ac354228a97df351b2b7db796721a1370240d1d",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.payment_provider_lock_aggregate(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.payment_provider_attempt_read(uuid,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.payment_provider_intent_create(text,text,uuid,uuid,uuid,bigint,text,jsonb,text,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.payment_provider_attempt_prepare(text,uuid,text,text,text,text,text,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.payment_provider_attempt_record(text,uuid,text,text,text,text,text,jsonb,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.payment_provider_attempt_finalize(text,uuid,uuid,text,text,text,text,text,text,jsonb,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.payment_provider_event_ingest(text,text,text,text,uuid,uuid,integer,text,boolean,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.payment_provider_retry_failure_recorded(uuid,text,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.payment_provider_assert_truth(uuid,text,bigint,text,timestamptz,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.payment_provider_result_apply(text,uuid,uuid,text,timestamptz,text,text,text,text,text,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -5801,6 +5926,137 @@
           "signature": "public.communication_event_privacy(uuid,boolean)",
           "beforeSha256": null,
           "afterSha256": "6ed4f3250a493ec5825800e3c7c30ba9015315663c90c415476504e6cd3c9e28"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261114100000_payment_provider_attempt_store.sql",
+      "sha256": "e99f59e7146ee5cdd57c9b24c60ba7951db264d332d24a9c84b3bb1e9de61511",
+      "functions": [
+        {
+          "signature": "public.payment_simulator_begin_attempt(text,uuid,text,jsonb,timestamptz)",
+          "beforeSha256": "d0dff73e4cf8f7ec392685badcd4ca08230cb2ec2572fdbfc65c0ea66404112e",
+          "afterSha256": "c8b90ddd69697d7304a041af937968e6e18e2d5eb52e2ee72e8ea9c023624fb1"
+        },
+        {
+          "signature": "public.payment_simulator_record_observation(uuid,text,text,text,timestamptz)",
+          "beforeSha256": "5a87e7bbaa9582c0ee42b52160c3ca31954fdfb693ec57790e0386bb15901629",
+          "afterSha256": "f0e59a6acfe36658785f92725e47993910158c544f5855a1112afcdd0a0297ed"
+        },
+        {
+          "signature": "public.payment_truth_ingest_event(text,text,text,uuid,text,bigint,text,timestamptz,text,text,jsonb,text,text,text)",
+          "beforeSha256": "fbdc1b2ced87cc3df98f3b0e1cf01dee2437e035a46b757817ead5ef8b944803",
+          "afterSha256": "060f27e5db822281fc8fa8f1117920a9f8b2aa46699fc0afa21edda32e14b3bf"
+        },
+        {
+          "signature": "public.payment_truth_apply_terminal(uuid,text,text,timestamptz,text,text,jsonb,text,text,text)",
+          "beforeSha256": "de7b4757b57b5469d8dc39abbae13def6f8223d66c4ec08a7cdd484948998744",
+          "afterSha256": "5f940847d9d512a375dd872c996f4f639d7b88f6fae32ed9e27494a467c80224"
+        },
+        {
+          "signature": "public.payment_truth_record_reconciliation(uuid,text,text,text,text,timestamptz,text,text,jsonb,text,text,text)",
+          "beforeSha256": "4727ba8bf99cdfbe8af3ea40671cc69e55c5da6385f3e2c352445ccd12e61cc8",
+          "afterSha256": "271778e60e00e13bea7e8eaafafc5989208b5a6996067768970f9889a9a3dfbb"
+        },
+        {
+          "signature": "public.commerce_record_settlement(text,uuid,text,text,jsonb,timestamptz)",
+          "beforeSha256": "da2d65de325a94fc3535b67be243d4c0e472ff175fa1b8ea2419089fea1b59c6",
+          "afterSha256": "a964ca16e50e8903d6da680679362bba260f581cfa35493480afd2cf7d2cfe02"
+        },
+        {
+          "signature": "public.commerce_cancel_abandoned_purchase_checkout(text,uuid,text,timestamptz)",
+          "beforeSha256": "778ee6094bc0fd59e3fd73693fd7c2c1f68c07f921ebcd3a89774753cb3c6d44",
+          "afterSha256": "a29844aa6210281d99a5152eecc407e9c0cae9aefb30311bedf9b8662541cb87"
+        },
+        {
+          "signature": "public.oms_cancel_unpaid_order_owned(text,uuid,text,uuid,jsonb,timestamptz)",
+          "beforeSha256": "e08aad49b02ed5f7b70b94fffce805e6703df7e8ea82ced705599321dce50282",
+          "afterSha256": "d71351af48eff53204c70d094f0e33aaf39e47a58921a6d78d9e28a1424d42be"
+        },
+        {
+          "signature": "public.commerce_sweep_expired_checkouts(integer,jsonb,timestamptz)",
+          "beforeSha256": "8c6780c6e96c4f7fc5d4a87766c34df20120eb8f7c118f14cebd65e1c1eafa8d",
+          "afterSha256": "ce96946134198d67ffb94cfc739354dd7b24be5cbe5a42a680fa20ce3b3b647b"
+        },
+        {
+          "signature": "public.commerce_checkout_recovery_payment_blocked(uuid,integer,timestamptz)",
+          "beforeSha256": "e95c7b0dd1577c147c43041a3b57f4c5e368e2cf33e39537b2c040a4912319d0",
+          "afterSha256": "0744eff441a121e85e9610eed2d7c42577b4bc90c1382d67c6431d5bd4aa4f74"
+        },
+        {
+          "signature": "public.commerce_initial_checkout_abandonment_safe(uuid)",
+          "beforeSha256": "e10c9b045406badf2e11e41adb2f75e700fc13ba978c57e4a5c896de37c29b7d",
+          "afterSha256": "2726af43d028ceac9f2cf8f6f883b50d05a875ec6447d707419f65c6410aa5ff"
+        },
+        {
+          "signature": "public.commerce_checkout_recovery_attempt_begin(text,uuid,uuid,uuid,text,jsonb,timestamptz)",
+          "beforeSha256": "ddad32e56daac3a8284c4cfc7124e8b68c11667873b7c6a0ec5b8f88e728cb52",
+          "afterSha256": "480205cd216e15f40999f607042dfe80acfa2f2be369e0f22bb1f53f09f5c472"
+        },
+        {
+          "signature": "public.commerce_checkout_inline_retry_begin(text,uuid,uuid,uuid,uuid,text,jsonb,timestamptz)",
+          "beforeSha256": "eae0ddf33504b3e86ab47425d1c80c09f12a43e53d21ab6aa7a72ce6eb3539a0",
+          "afterSha256": "8505136ab9564ae6373f29e4839026900e8dab106f255429f954230eda1f25a3"
+        },
+        {
+          "signature": "public.commerce_prepare_expired_checkout_recovery(text,uuid,uuid,bigint,timestamptz)",
+          "beforeSha256": "c0525d4523e1a247f927644622b3e7f80379649545e41d824bf88bd77e46ae4f",
+          "afterSha256": "a21673bcb74d855843ff7e9d8df8dcccb179706c3ac550d21d64cf846f3a8e21"
+        },
+        {
+          "signature": "public.commerce_checkout_payment_guidance_snapshot(uuid,uuid,uuid)",
+          "beforeSha256": "a18c02a841b3322369ae49745ac354228a97df351b2b7db796721a1370240d1d",
+          "afterSha256": "db5be5aeb6d565a530fff06543b794c32c2d64d4fbe91243f271d93e2e68ddb9"
+        },
+        {
+          "signature": "public.payment_provider_lock_aggregate(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "9189c25760046f3a8201c03b6a3ed7044dbaf81c9295ec19bf035957a70a4ca0"
+        },
+        {
+          "signature": "public.payment_provider_attempt_read(uuid,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "cdb0211acf93e4046b9361cd17111f7b55d48b14814d3df2df243f42aa82221f"
+        },
+        {
+          "signature": "public.payment_provider_intent_create(text,text,uuid,uuid,uuid,bigint,text,jsonb,text,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "caa3d272344921102a17373406a3812d3df390e0c28d4d3c9a3bd55d6017b75a"
+        },
+        {
+          "signature": "public.payment_provider_attempt_prepare(text,uuid,text,text,text,text,text,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "32a796357656910c9886789c49c72b1dfd2dcbc021de766a653c8c363191587b"
+        },
+        {
+          "signature": "public.payment_provider_attempt_record(text,uuid,text,text,text,text,text,jsonb,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "b294d2a99c708ced08a1e6e8c4fa87e59811882de7f33da8555673ad4e2c7856"
+        },
+        {
+          "signature": "public.payment_provider_attempt_finalize(text,uuid,uuid,text,text,text,text,text,text,jsonb,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "2d4c5edb42f0f66d6ffd23312916a1ddd58344660c584e95faeaa6e3bf3c2660"
+        },
+        {
+          "signature": "public.payment_provider_event_ingest(text,text,text,text,uuid,uuid,integer,text,boolean,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "d4f13b80b8c114a54062b27941585e8bed31429aa9ed3d728e87783180135e8a"
+        },
+        {
+          "signature": "public.payment_provider_retry_failure_recorded(uuid,text,text)",
+          "beforeSha256": null,
+          "afterSha256": "44e752f78d8538fbefb4774eb7822c093e8e2165b27359c1f6c4b576a8d5294e"
+        },
+        {
+          "signature": "public.payment_provider_assert_truth(uuid,text,bigint,text,timestamptz,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "582c9451047f03bc0069cdb5491bf4b8274d84652547bbb624b59ef8bbdc35d2"
+        },
+        {
+          "signature": "public.payment_provider_result_apply(text,uuid,uuid,text,timestamptz,text,text,text,text,text,text)",
+          "beforeSha256": null,
+          "afterSha256": "096b7b34cce901bad47c121c3a68707d83d636dc39a7b1acf2f8b11da581853e"
         }
       ]
     }

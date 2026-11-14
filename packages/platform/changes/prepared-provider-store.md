@@ -1,0 +1,11 @@
+- Add native durable provider attempts, immutable verified ingress, replay receipts and separate payment identities. Preparation commits before provider execution; acknowledgement finalizes the same row, and unresolved or superseded attribution refuses before settlement effects.
+- Add PostgreSQL persistence, webhook and recovery evidence factories. Enable only the prepared durable store capability; method setup, absence reopening and cumulative refund retain their existing limits. Historical rows are never reconstructed automatically.
+- Record correlated provider renewal failures as immutable attempt-bound retry receipts before financial truth ingestion. Reuse one settlement transition and retain native obligation scheduling; provider dunning case, notice, token handoff and real renewal binding await later composition.
+- Record an expiry after a decline on the same renewal attempt as a replay-safe escalation, retaining the existing failure receipt, retry stage and schedule.
+
+Migration: install the complete selected native chain through `20261114100000_payment_provider_attempt_store.sql` before composing the ports. Hosts provide recorded provider authority and verified adapters. A refund does not pause or cancel a subscription; offline evidence does not activate a provider or a hosted journey.
+
+Unpaid-order cancellation terminalizes provider payment authority. Recoverable
+one-time and initial-subscription declines include a live checkout recovery
+token in the delayed payment-failed notice. Inline response-loss replay reads
+the durable transition without fresh method or purchase context.

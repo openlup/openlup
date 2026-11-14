@@ -855,8 +855,8 @@ Evidence (historical record, 2026-11-13):
 The [PostgreSQL witness](../../tests/postgres/checkoutRecoveryWaves.test.ts)
 exercises legacy and both qualified runtime profiles. It does not establish a
 running scheduler, browser journey, network delivery, real-provider prepared
-storage or expired-order recreation. The current native payment attempt store
-remains sandbox-only. Starter bindings and recreation consumers are separate
+storage or expired-order recreation. At that historical checkpoint, the native payment attempt store
+was sandbox-only; the appended prepared provider store now supplies durable preparation. Starter bindings and recreation consumers are separate
 obligations.
 
 ## Operator order payment links
@@ -926,7 +926,7 @@ cover legacy and both qualified runtimes.
 
 | Profile limit | Current refusal | Closure |
 | --- | --- | --- |
-| Native real-provider attempt persistence and recovery evidence | `native_prepared_attempt_store_unsupported`; recreation is qualified only for the sandbox owner | N6 portable real-money payment-owner round, with its own SQL admission and provider evidence |
+| Native provider attempt persistence and recovery evidence | Available after installing the complete chain through `20261114100000_payment_provider_attempt_store.sql` and explicitly recording the provider lifecycle; missing local evidence remains unavailable | Use the provider persistence and evidence readers described in [the data owner](DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories). Provider journey activation and method authority require their own composition. |
 
 ## Atomic checkout payment guidance
 

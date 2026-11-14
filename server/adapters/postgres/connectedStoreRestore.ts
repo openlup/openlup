@@ -250,6 +250,8 @@ const order = [
   "subscription_reminder_ledger", "transactional_delivery_receipts",
   "subscription_notice_refusals",
   "payment_simulator_attempts", "payment_simulator_observations",
+  "payment_provider_states", "payment_provider_attempts", "payment_provider_attempt_evidence",
+  "payment_provider_receipts", "payment_provider_transitions",
   "payment_truth_events", "payment_truth_reconciliation_evidence", "subscription_renewal_outcomes", "outbox_events", "communication_event_bindings", "communication_event_receipts", "communication_event_erasures", "communication_native_sync_state", "outbox_dormant_event_types",
   "communication_recipient_consents", "communication_native_sends", "communication_native_observations",
   "customer_account_consent_events", "customer_account_consent_sync_targets",
@@ -378,6 +380,11 @@ export async function restoreConnectedNativeStore(input: {
           else if (table === "subscription_cycles") await client.query(`SELECT public.subscription_cycle_import_retained_row(p.id,p.subscription_id,
             p.scheduled_at,p.status,p.created_at,p.updated_at,p.renewal_operation_id,p.renewal_operation_fingerprint)
             FROM pg_catalog.jsonb_populate_record(NULL::public.subscription_cycles,$1::jsonb) p`, [row]);
+          else if (table === "payment_provider_states") {
+            const staged = (await client.query<{ value: string }>(`SELECT pg_catalog.jsonb_set(
+              $1::jsonb,'{active_attempt_id}','null'::jsonb)::pg_catalog.text AS value`, [row])).rows[0]!.value;
+            await insert(client, rows, staged);
+          }
           else if (table === "payment_simulator_attempts") {
             // Immediate cyclic FKs and the state/pointer CHECK require staging
             // both fields together. No writer can observe this locked transaction.
@@ -402,6 +409,15 @@ export async function restoreConnectedNativeStore(input: {
               .includes(String((JSON.parse(row) as Record<string, unknown>).event_type))) fail("unsupported_table", table);
             await insert(client, rows, row);
           }
+        }
+        if (table === "payment_provider_attempts") for (const state of source.get("payment_provider_states")!.rows) {
+          const updated = await client.query(`UPDATE public.payment_provider_states s
+            SET active_attempt_id=x.active_attempt_id
+            FROM pg_catalog.jsonb_populate_record(NULL::public.payment_provider_states,$1::jsonb) x
+            WHERE s.id=x.id AND s.active_attempt_id IS NULL
+              AND (pg_catalog.to_jsonb(s)-'active_attempt_id')=(pg_catalog.to_jsonb(x)-'active_attempt_id')
+            RETURNING s.id`, [state]);
+          if (updated.rows.length !== 1) fail("target_conflict", "payment_provider_states");
         }
         if (table === "payment_simulator_observations") for (const attempt of source.get("payment_simulator_attempts")!.rows) {
           const updated = await client.query(`UPDATE public.payment_simulator_attempts a

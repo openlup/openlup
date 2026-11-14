@@ -11,6 +11,13 @@ export { runExecutionConformance, runDurableEventConformance } from "./eventConf
 export { runPaymentAdapterConformance } from "./adapterConformance.js";
 
 export { createPostgresPaymentTruthPort } from "./postgresPaymentTruth.js";
+export { createPostgresPreparedAttemptPersistencePort } from "./postgresPreparedAttempt.js";
+export { createPostgresPaymentWebhookControlPort } from "./postgresProviderWebhook.js";
+export { createPostgresProviderPaymentControlPort } from "./postgresProviderControl.js";
+export { createPostgresProviderPaymentRecoveryGuidancePort, createPostgresProviderExpiredCheckoutSafety } from "./providerRecoveryReaders.js";
+export { createPostgresProviderCheckoutRecoveryAttemptPort, createPostgresProviderInlineRecoveryAttemptPort } from "./providerRecoveryAttempts.js";
+export type { ProviderCheckoutMethod } from "./providerRecoveryAttempts.js";
+export type { ProviderPaymentIntentInput, ProviderPaymentAttemptInput, ProviderPaymentResultInput } from "./postgresProviderControl.js";
 export { PAYMENT_MIGRATIONS } from "./sql.js";
 export { paymentSchemaDescriptor } from "./schemaCapabilities.js";
 

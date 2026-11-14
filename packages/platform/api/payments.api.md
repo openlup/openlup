@@ -1641,6 +1641,13 @@ export { verifyPaymentAttemptNow } from "./paymentVerifyNowService.js";
 export { runExecutionConformance, runDurableEventConformance } from "./eventConformanceRunner.js";
 export { runPaymentAdapterConformance } from "./adapterConformance.js";
 export { createPostgresPaymentTruthPort } from "./postgresPaymentTruth.js";
+export { createPostgresPreparedAttemptPersistencePort } from "./postgresPreparedAttempt.js";
+export { createPostgresPaymentWebhookControlPort } from "./postgresProviderWebhook.js";
+export { createPostgresProviderPaymentControlPort } from "./postgresProviderControl.js";
+export { createPostgresProviderPaymentRecoveryGuidancePort, createPostgresProviderExpiredCheckoutSafety } from "./providerRecoveryReaders.js";
+export { createPostgresProviderCheckoutRecoveryAttemptPort, createPostgresProviderInlineRecoveryAttemptPort } from "./providerRecoveryAttempts.js";
+export type { ProviderCheckoutMethod } from "./providerRecoveryAttempts.js";
+export type { ProviderPaymentIntentInput, ProviderPaymentAttemptInput, ProviderPaymentResultInput } from "./postgresProviderControl.js";
 export { PAYMENT_MIGRATIONS } from "./sql.js";
 export { paymentSchemaDescriptor } from "./schemaCapabilities.js";
 export { createCheckoutActivePaymentActionResolver } from "./checkoutActivePaymentActionResolver.js";
@@ -1830,6 +1837,105 @@ interface PgQueryExecutor {
 export declare function createPostgresPaymentTruthPort(executor: PgQueryExecutor, options: PostgresPaymentTruthOptions): PaymentTruthPort;
 export {};
 ```
+## dist/payments/postgresPreparedAttempt.d.ts
+
+```ts
+import type { PreparedAttemptPersistencePort } from "./contracts/preparedAttempt.js";
+export interface PaymentProviderExecutor {
+    query(sql: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+/** Direct PostgreSQL persistence; each call completes before provider execution. */
+export declare function createPostgresPreparedAttemptPersistencePort(db: PaymentProviderExecutor): PreparedAttemptPersistencePort;
+export declare function decodeProviderAttempt(value: unknown): {
+    paymentAttemptId: string;
+    status: "requires_action" | "blocked_preflight" | "failed" | "cancelled" | "created" | "expired" | "processing" | "succeeded" | "sent_to_provider";
+    replayed: boolean;
+    providerAttemptId: string | null;
+    providerSessionId: string | null;
+    nextActionKind: string | null;
+};
+```
+## dist/payments/postgresProviderControl.d.ts
+
+```ts
+import type { PostgresPaymentTruthOptions } from "./contracts/truth.js";
+import { type PaymentProviderExecutor } from "./postgresPreparedAttempt.js";
+export interface ProviderPaymentIntentInput {
+    idempotencyKey: string;
+    targetKind: "one_time_order" | "subscription_cycle";
+    orderId: string;
+    subscriptionId?: string | null;
+    subscriptionCycleId?: string | null;
+    amountMinor: number;
+    currency: string;
+    metadata: Record<string, unknown>;
+    channelKey: string;
+    at: string;
+}
+export interface ProviderPaymentAttemptInput {
+    idempotencyKey: string;
+    paymentIntentId: string;
+    provider: string;
+    providerAttemptId: string | null;
+    providerSessionId: string | null;
+    attemptStatus: "blocked_preflight" | "sent_to_provider" | "requires_action" | "processing";
+    nextActionKind: string | null;
+    requestPayload: Record<string, unknown>;
+    responsePayload: Record<string, unknown>;
+}
+export interface ProviderPaymentResultInput {
+    idempotencyKey: string;
+    paymentIntentId: string;
+    paymentEventId: string | null;
+    resultStatus: "succeeded" | "failed" | "expired" | "refunded" | "partially_refunded" | "disputed";
+    occurredAt: string;
+    failureReason: string | null;
+    failureClass?: string | null;
+    failureClassDecidedBy?: string | null;
+}
+/** Explicit lifecycle admission; historical native intents are never backfilled. */
+export declare function createPostgresProviderPaymentControlPort(db: PaymentProviderExecutor, options: PostgresPaymentTruthOptions): {
+    createIntent(input: ProviderPaymentIntentInput): Promise<{
+        id: string;
+        paymentId: string;
+        orderId: string;
+        status: string;
+        amountMinor: number;
+        currency: string;
+        replayed: boolean;
+    }>;
+    recordAttempt(input: ProviderPaymentAttemptInput): Promise<{
+        id: string;
+        paymentIntentId: string;
+        status: "requires_action" | "blocked_preflight" | "processing" | "sent_to_provider";
+        provider: string;
+        idempotencyKey: string;
+        replayed: boolean;
+    }>;
+    applyPaymentResult(input: ProviderPaymentResultInput): Promise<{
+        replayed: boolean;
+        paymentIntentId: string;
+        paymentAttemptId: string;
+        paymentId: string;
+        orderId: string;
+        status: string;
+        kind: string;
+    }>;
+    prepareProviderAttempt(input: import("./contracts/preparedAttempt.js").PreparedAttemptPrepareInput<string>): Promise<import("./contracts/preparedAttempt.js").PreparedAttemptPersistenceResult<string>>;
+    finalizeProviderAttempt(input: import("./contracts/preparedAttempt.js").PreparedAttemptFinalizeInput<string>): Promise<import("./contracts/preparedAttempt.js").PreparedAttemptPersistenceResult<string>>;
+};
+```
+## dist/payments/postgresProviderWebhook.d.ts
+
+```ts
+import type { PostgresPaymentTruthOptions } from "./contracts/truth.js";
+import type { PaymentProviderExecutor } from "./postgresPreparedAttempt.js";
+import type { PaymentWebhookControlPort } from "./verifiedIngress.js";
+/** Verified ingress is persisted independently of result application. */
+export declare function createPostgresPaymentWebhookControlPort(db: PaymentProviderExecutor, options: PostgresPaymentTruthOptions): PaymentWebhookControlPort;
+```
 ## dist/payments/postgresSandboxPaymentSimulator.d.ts
 
 ```ts
@@ -1852,6 +1958,134 @@ import type { PreparedAttemptExecutionInput, PreparedAttemptExecutionResult, Pre
 export declare function executePreparedAttemptMechanism<I extends PaymentExecutionBaseInput, R extends PaymentExecutionBaseResult & {
     nextActionKind: N | null;
 }, P extends string, N extends string, E extends Error>(input: PreparedAttemptExecutionInput<I, R, P, N>, policy: PreparedAttemptFailurePolicy<E, N>): Promise<PreparedAttemptExecutionResult<R>>;
+```
+## dist/payments/providerRecoveryAttempts.d.ts
+
+```ts
+import type { PreparedAttemptPrepareInput } from "./contracts/preparedAttempt.js";
+import { type PaymentProviderExecutor } from "./postgresPreparedAttempt.js";
+/** The host supplies recorded provider authority and the enriched request. */
+export type ProviderCheckoutMethod = Omit<PreparedAttemptPrepareInput, "idempotencyKey" | "paymentIntentId">;
+/** Token admission and preparation commit together, before any provider call. */
+export declare function createPostgresProviderCheckoutRecoveryAttemptPort(db: PaymentProviderExecutor, now?: () => Date): {
+    begin(input: {
+        order: {
+            orderId: string;
+            totalMinor: number;
+            currency: string;
+        };
+        clientId: string;
+        recoveryTokenId: string;
+        paymentIntentId: string;
+        idempotencyKey: string;
+        method: ProviderCheckoutMethod;
+    }): Promise<{
+        status: "failed" | "paid" | "expired" | "processing";
+        failureReason: null;
+        paymentAttemptId: string;
+        replayed: boolean;
+        providerAttemptId: string | null;
+        providerSessionId: string | null;
+        nextActionKind: string | null;
+        orderId: string;
+        paymentIntentId: string;
+        clientId: string;
+    }>;
+};
+/** Exact predecessor admission shares the existing atomic checkout transition. */
+export declare function createPostgresProviderInlineRecoveryAttemptPort(db: PaymentProviderExecutor, methodKeyFor: (request: Record<string, unknown>) => string | null, now?: () => Date): {
+    assertExecutionRail(rail: string): void;
+    readPreviousMethod(input: {
+        orderId: string;
+        paymentIntentId: string;
+        paymentAttemptId: string;
+        executionRail: string;
+    }): Promise<string | null>;
+    begin(input: {
+        method: ProviderCheckoutMethod;
+        request: {
+            orderId: string;
+            clientId: string;
+            paymentIntentId: string;
+            expectedPaymentAttemptId: string;
+            retryRequestId: string;
+            executionRail: string;
+            methodKey: string;
+        };
+        admission: {
+            replayOnly: boolean;
+            purchaseContext: "one_time" | "subscription_initial" | null;
+            previousMethodKey: string | null;
+            actions: readonly string[];
+            restriction: string | null;
+        };
+    }): Promise<{
+        status: "failed" | "paid" | "expired" | "processing";
+        failureReason: null;
+        paymentAttemptId: string;
+        replayed: boolean;
+        providerAttemptId: string | null;
+        providerSessionId: string | null;
+        nextActionKind: string | null;
+        orderId: string;
+        paymentIntentId: string;
+        clientId: string;
+        executionRail: string;
+    }>;
+};
+```
+## dist/payments/providerRecoveryReaders.d.ts
+
+```ts
+import type { PaymentRecoveryEvidence } from "@openlup/core/payment";
+import type { ExpiredPaymentSafetyOrder } from "./expiredCheckoutSafety.js";
+import type { PaymentProviderExecutor } from "./postgresPreparedAttempt.js";
+/** Uses the same bounded atomic snapshot and host-selected evidence normalizer. */
+export declare function createPostgresProviderPaymentRecoveryGuidancePort(db: PaymentProviderExecutor, normalize: (input: {
+    provider: string;
+    evidence: unknown[];
+}) => PaymentRecoveryEvidence | null): {
+    getGuidanceSnapshot(input: {
+        orderId: string;
+        paymentIntentId: string;
+        recoveryTokenId?: string;
+    }): Promise<{
+        purchaseContext: "one_time" | "subscription_initial" | null;
+        subscriptionActivationStatus: "active" | "not_applicable";
+        attempts: {
+            id: string;
+            status: "requires_action" | "blocked_preflight" | "failed" | "cancelled" | "created" | "expired" | "processing" | "succeeded" | "sent_to_provider";
+            provider: string;
+            providerFlow: string | null;
+            evidence: PaymentRecoveryEvidence | null;
+        }[];
+        eligible: boolean;
+        tokenAuthorized: boolean;
+        observedSuccess: boolean;
+        historyComplete: boolean;
+        orderId: string;
+        clientId: string;
+        orderStatus: string;
+        paymentIntentId: string;
+        intentStatus: "requires_action" | "failed" | "cancelled" | "created" | "expired" | "refunded" | "processing" | "partially_refunded" | "disputed" | "succeeded";
+        paymentAttemptId: string | null;
+        attemptStatus: "requires_action" | "blocked_preflight" | "failed" | "cancelled" | "created" | "expired" | "processing" | "succeeded" | "sent_to_provider" | null;
+        provider: string | null;
+        providerPaymentId: string | null;
+        updatedAt: string;
+        failureReason: string | null;
+        orderMode: "one_time" | "subscription_cycle";
+        activationState: "active" | "compensated" | "provisional" | null;
+        subscriptionId: string | null;
+        subscriptionStatus: string | null;
+        paidAt: string | null;
+        hasExactGap: boolean;
+    } | null>;
+};
+/** Missing handles and local absence never establish provider absence. */
+export declare function createPostgresProviderExpiredCheckoutSafety(db: PaymentProviderExecutor): {
+    verifyPriorPayment(order: ExpiredPaymentSafetyOrder): Promise<"safe" | "paid" | "unavailable">;
+};
 ```
 ## dist/payments/sandboxCheckoutRecoveryPay.d.ts
 
@@ -1954,12 +2188,12 @@ export declare function normalizeSandboxPaymentRecoveryEvidence(input: {
 ## dist/payments/schemaCapabilities.d.ts
 
 ```ts
-/** Direct truth graph only; unsupported operations require a separate store. */
+/** Installed native payment capabilities; provider composition remains explicit. */
 export declare const paymentSchemaDescriptor: {
     readonly truth: "supported";
     readonly settlement: "supported";
     readonly laterOnlyCycle: "supported";
-    readonly preparedDurableStore: "unsupported";
+    readonly preparedDurableStore: "supported";
     readonly methodSetup: "unsupported";
     readonly absenceReopen: "unsupported";
     readonly cumulativeRefund: "unsupported";

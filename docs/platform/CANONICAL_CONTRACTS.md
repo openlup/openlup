@@ -763,8 +763,9 @@ one additive native unit extends those prefix counts to legacy 92, qualified 96
 and restricted 95, with separate reference digests for all five installation
 shapes. It preserves every earlier migration identity and existing state CHECK;
 its additive review marker distinguishes terminal cancelled capture from work
-awaiting reconciliation. The new attempt/readback factory is sandbox-only;
-generic prepared-provider storage and real PSP qualification remain unavailable.
+awaiting reconciliation. At that historical checkpoint, the new attempt/readback factory was sandbox-only.
+The appended prepared provider store now supplies durable preparation; real PSP
+qualification remains a separate obligation.
 Class data and feature pins may accompany SQL in its feature pull request; a local manifest entry alone grants no delivery or release authority.
 
 The G4 purchase-hold forward appends the same native forward path/hash to all three
@@ -1481,8 +1482,16 @@ Accepted prices lock until edit with no proration; only future agreement changes
 An existing claim, cycle or order keeps its frozen snapshot and money. Preview
 and apply are separate transactions; apply commits terms, event and receipt
 atomically. Private introductory cadence and acquisition policy remain host-owned.
-Multi-cycle prepaid and M07 prepared-store parity retain named unsupported
-capabilities; N1 retry recovery is selected while stock recovery remains
+Multi-cycle prepaid retains its named unsupported capability. The dedicated
+native payment store supports durable preparation, immutable ingress and exact
+attempt correlation. The first failure of each correlated provider renewal
+attempt records one immutable attempt-bound retry receipt before truth reuses
+the financial transition. The receipt owns the rung and schedule; the cycle
+stays `payment_pending`. An expiry
+after that attempt's decline records the escalation without another retry stage.
+Provider dunning case, notice and token handoff await attributed composition,
+and a real provider renewal binding is not yet supplied. The subscription descriptor retains its separate composition
+limits. N1 retry recovery is selected while stock recovery remains
 unavailable. One executor stays default off with mandatory delivery admission.
 Host-selected M04 descriptors carry recorded
 lifecycle facts; copy, recipient, consent and delivery remain host/M04-owned.
