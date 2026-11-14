@@ -1,19 +1,108 @@
-/** Released-input counterpart of proveNeutralStarterConsumer; no candidate packing or workspace imports. */
+/** Qualify a published set through the shared starter consumer proof. */
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { createHash, X509Certificate } from 'node:crypto';
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { env } from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { imageReference, readCiImage } from '../ci-image-pull.mjs';
 import { previousPublishedSet, proveDistributionCliConsumer } from './distribution-cli-proof.ts';
+import { assertInstalledPackages, isolatedConsumerEnv } from './pack-manifest-input.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const json = path => JSON.parse(readFileSync(path, 'utf8'));
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 const refuse = detail => { throw new Error(`exact-set-qualification: ${detail}`); };
+
+/** Required dependencies remain explicit inputs even when npm will refuse their platform. */
+export function starterDependencyMatchesPlatform(manifest, optional, target) {
+  return !optional || ["os", "cpu", "libc"].every(key => {
+    if (key === "libc" && target.os !== "linux") return true;
+    const constraint = manifest[key];
+    if (constraint === undefined) return true;
+    const values = typeof constraint === "string" ? [constraint] : constraint;
+    return (values.length === 1 && values[0] === "any") || (!values.includes("!" + target[key]) &&
+      (values.every(value => value.startsWith("!")) || values.includes(target[key] ?? "")));
+  });
+}
+
+/** One starter proof for locally packed candidates and verified, committed released locks. */
+export function proveNeutralStarterConsumer(checkout, input, packInstalled = undefined) {
+  const started = performance.now();
+  const released = "mode" in input ? input : undefined, starter = join(checkout, "examples/neutral-store");
+  const temporary = mkdtempSync(join(tmpdir(), "openlup-neutral-starter-"));
+  const extracted = released?.application ?? join(temporary, "application");
+  const environment = released?.environment ?? { ...isolatedConsumerEnv(), npm_config_cache: join(temporary, "cache") };
+  delete environment.NODE_TEST_CONTEXT;
+  const execute = released?.run ?? ((name, args, cwd) => execFileSync(name, args, { cwd, env: environment, encoding: "utf8", timeout: 120_000, maxBuffer: 8 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] }));
+  const run = (name, args, cwd = extracted) => process.stdout.write(execute(name, args, cwd));
+  const lockHash = () => sha256(readFileSync(join(extracted, "package-lock.json")));
+  try {
+    if (released) assert.equal(released.mode, "released", "Unknown starter consumer input mode");
+    if (!released) {
+      // Copied tests run once, in the extracted application below; the source run keeps the rest.
+      const ownership = JSON.parse(readFileSync(join(starter, "ownership.json"), "utf8"));
+      const copied = new Set([...ownership.owned, ...ownership.managed]);
+      const sourceTests = readdirSync(join(starter, "test")).map(name => "test/" + name).filter(path => !copied.has(path)).sort();
+      assert(sourceTests.length > 0, "Starter source-only tests are missing");
+      run(process.execPath, ["--experimental-strip-types", "--test", ...sourceTests], starter);
+      run(process.execPath, [join(starter, "extract.mjs"), extracted]);
+    }
+    assert.equal(execute("git", ["rev-parse", "--show-toplevel"], extracted).trim(), realpathSync(extracted));
+    for (let parent = dirname(extracted); ; parent = dirname(parent)) {
+      assert(!lstatSync(join(parent, "node_modules"), { throwIfNoEntry: false }), "Starter ancestor can supply dependencies");
+      if (parent === dirname(parent)) break;
+    }
+    const metadata = JSON.parse(readFileSync(join(extracted, "package.json"), "utf8"));
+    assert.equal(metadata.workspaces, undefined);
+    if (released) {
+      run("git", ["ls-files", "--error-unmatch", "package-lock.json"]);
+      assert.equal(lockHash(), released.lockfileSha256, "Released starter lock changed before installation");
+      run("npm", ["ci", "--ignore-scripts", "--no-audit", "--fund=false"]);
+    } else {
+      assert(packInstalled, "Candidate starter needs locked dependency tarballs");
+      const localPacks = ["core", "outbox", "platform"].map(name => {
+        const pack = input.get("@openlup/" + name);
+        assert(pack, "Starter needs the complete locally packed set");
+        const bytes = readFileSync(pack.path);
+        assert.equal(createHash("sha256").update(bytes).digest("hex"), pack.sha256);
+        const target = join(extracted, "artifacts", "openlup-" + name + ".tgz");
+        writeFileSync(target, bytes);
+        return target;
+      });
+      // Every selected dependency comes from the root's already locked ordinary install.
+      // Supplying its complete installed closure as tarballs avoids registry metadata resolution.
+      const dependencies = new Set();
+      const platform = { os: process.platform, cpu: process.arch, libc: process.platform === "linux"
+        ? ((process.report.getReport()).header.glibcVersionRuntime ? "glibc" : "musl") : undefined };
+      const collect = (name, optional = false) => {
+        if (dependencies.has(name) || name.startsWith("@openlup/")) return;
+        const directory = join(checkout, "node_modules", name);
+        assert(lstatSync(directory, { throwIfNoEntry: false })?.isDirectory(), "Missing locked starter dependency: " + name);
+        const dependency = JSON.parse(readFileSync(join(directory, "package.json"), "utf8"));
+        if (!starterDependencyMatchesPlatform(dependency, optional, platform)) return;
+        dependencies.add(name);
+        for (const child of Object.keys(dependency.dependencies ?? {})) collect(child);
+        for (const child of Object.keys(dependency.optionalDependencies ?? {})) {
+          if (lstatSync(join(checkout, "node_modules", child), { throwIfNoEntry: false })) collect(child, true);
+        }
+      };
+      for (const name of [...Object.keys(metadata.dependencies), ...Object.keys(metadata.devDependencies), "zod"]) collect(name);
+      localPacks.push(...[...dependencies].sort().map(packInstalled));
+      run("npm", ["install", "--offline", "--ignore-scripts", "--legacy-peer-deps", "--no-audit", "--fund=false", "--no-save", ...localPacks]);
+    }
+    assertInstalledPackages(extracted, released?.packages ?? ["@openlup/core", "@openlup/outbox", "@openlup/platform"]);
+    released?.verifyInstalled();
+    for (const args of [["test"], ["run", "typecheck"], ["run", "build"]]) run("npm", args);
+    run(process.execPath, ["--experimental-strip-types", "--test", "browser/dev-loop.proof.ts"]);
+    if (released) assert.equal(lockHash(), released.lockfileSha256, "qualification changed committed lock");
+    console.log((released ? "Neutral starter released consumer PASS: " : "Neutral starter required cold-consumer addition PASS: ") + ((performance.now() - started) / 1000).toFixed(3) + " seconds");
+  } finally {
+    rmSync(temporary, { recursive: true, force: true });
+  }
+}
 
 // Consume ONLY npm audit signatures' successfully verified bundles, never a raw registry attestation.
 export function verifiedReleasePackages(audit, packages, version, commit) {
@@ -88,30 +177,18 @@ function prepareReleasedStarter(receipt, temporary, run) {
     ...(mode === 'reconstructed' ? ['--reason', 'Release tag predates versioned starter extraction.'] : [])]);
   receipt.extraction = json(join(extracted, '.starter-origin.json'));
   assert.equal(receipt.extraction.lockfileSha256, sha256(readFileSync(join(extracted, 'package-lock.json'))));
-  // Same Git independence, ancestor isolation and package confinement assertions as the candidate proof.
-  assert.equal(run('git', ['rev-parse', '--show-toplevel'], extracted).trim(), realpathSync(extracted));
-  assert.equal(json(join(extracted, 'package.json')).workspaces, undefined);
-  for (let parent = dirname(extracted); ; parent = dirname(parent)) {
-    assert(!existsSync(join(parent, 'node_modules')), 'Starter ancestor can supply dependencies');
-    if (parent === dirname(parent)) break;
-  }
-  run('git', ['ls-files', '--error-unmatch', 'package-lock.json'], extracted);
-  run('npm', ['ci', '--ignore-scripts', '--no-audit', '--fund=false'], extracted);
-  // npm 11.19's workspaces=false filter omits direct root edges. Audit the installed
-  // prefix from its isolated parent, without loading the starter's project .npmrc.
-  const audit = JSON.parse(run('npm', ['audit', 'signatures', '--json', '--include-attestations', '--prefix', extracted], temporary));
-  receipt.packages = verifiedReleasePackages(audit, packages, receipt.setVersion, expectedCommit);
-  for (const { name } of packages) {
-    const path = join(extracted, 'node_modules', name);
-    assert(lstatSync(path).isDirectory() && !lstatSync(path).isSymbolicLink() && realpathSync(path) === join(realpathSync(extracted), 'node_modules', name), `${name}: installed package escapes application`);
-  }
-  return extracted;
+  return { application: extracted, packages };
 }
 
-function checkReleasedStarter(extracted, run, extraction) {
-  for (const args of [['run', 'typecheck'], ['run', 'build'], ['test']]) process.stdout.write(run('npm', args, extracted));
-  process.stdout.write(run(process.execPath, ['--experimental-strip-types', '--test', 'browser/dev-loop.proof.ts'], extracted));
-  assert.equal(sha256(readFileSync(join(extracted, 'package-lock.json'))), extraction.lockfileSha256, 'qualification changed committed lock');
+function checkReleasedStarter(receipt, input, temporary, run, environment) {
+  const { application, packages } = input;
+  proveNeutralStarterConsumer(root, { mode: 'released', application, environment, run,
+    lockfileSha256: receipt.extraction.lockfileSha256, packages: packages.map(({ name }) => name), verifyInstalled() {
+      // Audit from the isolated parent: the project's workspaces=false omits root edges.
+      const audit = JSON.parse(run('npm', ['audit', 'signatures', '--json', '--include-attestations', '--prefix', application], temporary));
+      receipt.packages = verifiedReleasePackages(audit, packages, receipt.setVersion, receipt.tagCommit);
+    }
+  });
 }
 
 export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = false) {
@@ -143,28 +220,31 @@ export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = f
       const pair = receipt.upgrade;
       pair.from = qualificationReceipt(previousTag, run('git', ['rev-parse', `${previousTag}^{commit}`]).trim());
       pair.to = qualificationReceipt(tag, expectedCommit);
-      const applications = [pair.from, pair.to].map((release, index) => {
+      const releases = [pair.from, pair.to];
+      const inputs = releases.map((release, index) => {
         const directory = join(temporary, String(index)); mkdirSync(directory);
-        return prepareReleasedStarter(release, directory, run);
+        const input = prepareReleasedStarter(release, directory, run);
+        checkReleasedStarter(release, input, directory, run, environment);
+        return input;
       });
-      checkReleasedStarter(applications[0], run, pair.from.extraction);
+      const applications = inputs.map(input => input.application);
       pair.from.result = 'PASS'; pair.from.endedAt = new Date().toISOString();
       const finish = proveDistributionCliConsumer(applications[1], { from: applications[0], to: applications[1], fromVersion: previous, toVersion: receipt.setVersion, evidence: pair });
       // The target extraction already passed the extractor's complete lock checker.
       // The CLI moved declarations; the harness moves the verified lock and installs.
       assert.deepEqual(readFileSync(join(applications[0], 'package.json')), readFileSync(join(applications[1], 'package.json')), 'file upgrade must move exact dependency declarations');
       writeFileSync(join(applications[0], 'package-lock.json'), readFileSync(join(applications[1], 'package-lock.json')));
-      run('npm', ['ci', '--ignore-scripts', '--no-audit', '--fund=false'], applications[0]);
-      checkReleasedStarter(applications[0], run, pair.to.extraction);
+      checkReleasedStarter(pair.to, { ...inputs[1], application: applications[0] }, temporary, run, environment);
       finish();
       pair.to.result = 'PASS'; pair.to.endedAt = new Date().toISOString();
       pair.result = 'PASS';
     } else {
-      const extracted = prepareReleasedStarter(receipt, temporary, run);
+      const input = prepareReleasedStarter(receipt, temporary, run);
+      checkReleasedStarter(receipt, input, temporary, run, environment);
+      const extracted = input.application;
       receipt.postgresImage = imageReference(readCiImage('install-proof-postgres'));
       if (!env.OPENLUP_QUALIFICATION_DATABASE_URL) refuse('qualification PostgreSQL connection required');
       run(process.execPath, ['--input-type=module', '-e', "import pg from 'pg'; import { env } from 'node:process'; const pool = new pg.Pool({ connectionString: env.OPENLUP_QUALIFICATION_DATABASE_URL }); try { const {rows} = await pool.query('show server_version_num'); if (Math.floor(Number(rows[0].server_version_num) / 10000) !== 17) throw new Error('qualification requires PostgreSQL 17'); } finally { await pool.end(); }"], extracted);
-      checkReleasedStarter(extracted, run, receipt.extraction);
     }
     receipt.result = 'PASS';
   } catch (error) { receipt.error = error.message; throw error; }

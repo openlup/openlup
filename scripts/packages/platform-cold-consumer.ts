@@ -21,6 +21,8 @@ import { POSTGRES_PROOF_IMAGE } from "./outbox-disposable-postgres.ts";
 import { imageReference, readCiImage } from "../ci-image-pull.mjs";
 import { proveApplicationUpgradePostgres } from "./application-upgrade-proof.ts";
 import { proveDistributionCliConsumer, proveDistributionCliPostgres } from "./distribution-cli-proof.ts";
+import { proveNeutralStarterConsumer } from "./exact-set-qualification.mjs";
+export { proveNeutralStarterConsumer, starterDependencyMatchesPlatform } from "./exact-set-qualification.mjs";
 
 export const RISK_WORKFLOW_PROOFS = ["admin", "NodeNext", "Bundler", "isolation"] as const;
 
@@ -2152,84 +2154,6 @@ if (${JSON.stringify(phase)} === "selection") {
 
 export function platformConsumerInstallArgs(packages: string[], sdkPresent = false): string[] {
   return ["install", ...(sdkPresent ? ["--prefer-offline", "--min-release-age=3"] : ["--offline"]), "--ignore-scripts", "--omit=optional", "--legacy-peer-deps", "--no-audit", "--fund=false", ...packages];
-}
-
-/** Required dependencies remain explicit inputs even when npm will refuse their platform. */
-export function starterDependencyMatchesPlatform(manifest: { os?: string | string[]; cpu?: string | string[]; libc?: string | string[] }, optional: boolean, target: { os: string; cpu: string; libc?: string }): boolean {
-  return !optional || (["os", "cpu", "libc"] as const).every(key => {
-    if (key === "libc" && target.os !== "linux") return true;
-    const constraint = manifest[key];
-    if (constraint === undefined) return true;
-    const values = typeof constraint === "string" ? [constraint] : constraint;
-    return (values.length === 1 && values[0] === "any") || (!values.includes("!" + target[key]) &&
-      (values.every(value => value.startsWith("!")) || values.includes(target[key] ?? "")));
-  });
-}
-
-/** Starter source/extraction witness in the existing required cold consumer. No browser download. */
-export function proveNeutralStarterConsumer(checkout: string, packs: ReadonlyMap<string, { path: string; sha256: string }>, packInstalled: (name: string) => string): void {
-  const started = performance.now();
-  const starter = join(checkout, "examples/neutral-store");
-  const extracted = mkdtempSync(join(tmpdir(), "openlup-neutral-starter-"));
-  const environment = isolatedConsumerEnv();
-  environment.npm_config_cache = mkdtempSync(join(tmpdir(), "openlup-neutral-starter-cache-"));
-  delete environment.NODE_TEST_CONTEXT;
-  const run = (name: string, args: string[], cwd = extracted) => process.stdout.write(command(name, args, cwd, environment));
-  try {
-    // Copied tests run once, in the extracted application below; the source run keeps the rest.
-    const ownership = JSON.parse(readFileSync(join(starter, "ownership.json"), "utf8")) as { owned: string[]; managed: string[] };
-    const copied = new Set([...ownership.owned, ...ownership.managed]);
-    const sourceTests = readdirSync(join(starter, "test")).map(name => "test/" + name).filter(path => !copied.has(path)).sort();
-    assert(sourceTests.length > 0, "Starter source-only tests are missing");
-    run(process.execPath, ["--experimental-strip-types", "--test", ...sourceTests], starter);
-    run(process.execPath, [join(starter, "extract.mjs"), extracted]);
-    assert.equal(command("git", ["rev-parse", "--show-toplevel"], extracted, environment).trim(), realpathSync(extracted));
-    for (let parent = dirname(extracted); ; parent = dirname(parent)) {
-      assert(!lstatSync(join(parent, "node_modules"), { throwIfNoEntry: false }), "Starter ancestor can supply dependencies");
-      if (parent === dirname(parent)) break;
-    }
-    const metadata = JSON.parse(readFileSync(join(extracted, "package.json"), "utf8"));
-    assert.equal(metadata.workspaces, undefined);
-    const localPacks: string[] = [];
-    for (const name of ["core", "outbox", "platform"]) {
-      const pack = packs.get("@openlup/" + name);
-      assert(pack, "Starter needs the complete locally packed set");
-      const bytes = readFileSync(pack.path);
-      assert.equal(createHash("sha256").update(bytes).digest("hex"), pack.sha256);
-      const target = join(extracted, "artifacts", "openlup-" + name + ".tgz");
-      writeFileSync(target, bytes);
-      localPacks.push(target);
-    }
-    // Every selected dependency comes from the root's already locked ordinary install.
-    // Supplying its complete installed closure as tarballs avoids registry metadata resolution.
-    const dependencies = new Set<string>();
-    const platform = { os: process.platform, cpu: process.arch, libc: process.platform === "linux"
-      ? ((process.report.getReport() as { header: { glibcVersionRuntime?: string } }).header.glibcVersionRuntime ? "glibc" : "musl") : undefined };
-    const collect = (name: string, optional = false): void => {
-      if (dependencies.has(name) || name.startsWith("@openlup/")) return;
-      const directory = join(checkout, "node_modules", name);
-      assert(lstatSync(directory, { throwIfNoEntry: false })?.isDirectory(), "Missing locked starter dependency: " + name);
-      const dependency = JSON.parse(readFileSync(join(directory, "package.json"), "utf8"));
-      if (!starterDependencyMatchesPlatform(dependency, optional, platform)) return;
-      dependencies.add(name);
-      for (const child of Object.keys(dependency.dependencies ?? {})) collect(child);
-      for (const child of Object.keys(dependency.optionalDependencies ?? {})) {
-        if (lstatSync(join(checkout, "node_modules", child), { throwIfNoEntry: false })) collect(child, true);
-      }
-    };
-    for (const name of [...Object.keys(metadata.dependencies), ...Object.keys(metadata.devDependencies), "zod"]) collect(name);
-    localPacks.push(...[...dependencies].sort().map(packInstalled));
-    run("npm", ["install", "--offline", "--ignore-scripts", "--legacy-peer-deps", "--no-audit", "--fund=false", "--no-save", ...localPacks]);
-    assertInstalledPackages(extracted, ["@openlup/core", "@openlup/outbox", "@openlup/platform"]);
-    run("npm", ["test"]);
-    run("npm", ["run", "typecheck"]);
-    run("npm", ["run", "build"]);
-    run(process.execPath, ["--experimental-strip-types", "--test", "browser/dev-loop.proof.ts"]);
-    console.log("Neutral starter required cold-consumer addition PASS: " + ((performance.now() - started) / 1000).toFixed(3) + " seconds");
-  } finally {
-    rmSync(extracted, { recursive: true, force: true });
-    rmSync(environment.npm_config_cache, { recursive: true, force: true });
-  }
 }
 
 export function runPlatformColdConsumer(checkout = root, environment = processEnvironment): void {

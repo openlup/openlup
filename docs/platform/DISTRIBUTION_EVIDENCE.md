@@ -23,7 +23,12 @@ Extraction is `released` when the tagged source includes versioned extraction,
 or `reconstructed` with a recorded reason for older tags. Its recorded source
 revision is the tag commit. The npm lock is generated for that exact set and
 committed by extraction, then installed with `npm ci --ignore-scripts` in an
-independent application without ancestor/workspace dependency resolution.
+independent application without ancestor/workspace dependency resolution. The
+entry point owns the shared `proveNeutralStarterConsumer` proof, re-exported by
+[the candidate consumer](../../scripts/packages/platform-cold-consumer.ts).
+Its explicit released-input mode installs the committed lock and shares the
+candidate's isolation, confinement and application assertions; candidate callers
+and their offline tarball installation remain unchanged.
 
 Before executing application checks, `npm audit signatures --json --include-attestations`
 verifies registry signatures and provenance. Every OpenLup package must have a
@@ -44,7 +49,10 @@ locally under its upstream digest. It recorded reconstructed extraction,
 verified all three package provenances, and passed typecheck, build, 296
 application tests and two development-loop tests. This is local evidence,
 not a hosted qualification receipt. The qualification step's two-minute bound
-is 4× that measurement rounded up; the first hosted run must remeasure it.
+is 4× that measurement rounded up; the first hosted run must remeasure it. The
+shared-proof follow-up on the same date passed against that set in 27.814
+seconds, with all three provenances, 296 application tests and two development-loop
+tests passing. The existing two-minute bound still covers 4× the follow-up.
 
 One JSON workflow artifact, retained for 90 days, records the set/tag/commit,
 extraction mode and content hash, committed lock SHA-256, each package SHA-512
