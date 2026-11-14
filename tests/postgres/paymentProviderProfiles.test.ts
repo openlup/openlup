@@ -15,6 +15,8 @@ const registry = JSON.parse(readFileSync("config/reviewed-platform-forwards.json
 const entry = registry.nativeStoreForwardClass.slots.find((s: { path: string }) => s.path === slot);
 type Pin = { signature: string; beforeSha256: string };
 const pins: Pin[] = entry.replacedFunctions;
+const attemptTable=sqlStatements(readFileSync("db/platform/migrations/20261114100000_payment_provider_attempt_store.sql","utf8"),true).find(statement=>statement.startsWith("CREATE TABLE public.payment_provider_attempts ("))!;
+const attemptStatuses=[...attemptTable.match(/CHECK \(status IN \(([^)]+)\)\)/u)![1]!.matchAll(/'([^']+)'/gu)].map(m=>m[1]!);
 const expectedBefore = [
   "32a796357656910c9886789c49c72b1dfd2dcbc021de766a653c8c363191587b",
   "582c9451047f03bc0069cdb5491bf4b8274d84652547bbb624b59ef8bbdc35d2",
@@ -249,6 +251,12 @@ cases.push({group:record,name:"ignored_snapshot",state:"paid",change:async(f,p)=
     await owner.query("SELECT public.payment_refund_evidence_record($1,$2,3000,'XXX')",[e,`charge_${f.attempt}`]);
   }
 }});
+for(const status of ["refunded","disputed"])cases.push({group:refund,name:`returned_${status}`,state:"paid",change:async(_f,p)=>{p.args[2]=null;p.args[3]=status;}});
+cases.push({group:prepared,name:"returned_requires_action",state:"prepared",change:async f=>{await state(f,"status='requires_action'");}});
+for(const status of attemptStatuses)cases.push({group:prepare,name:`returned_attempt_${status}`,state:"failed",change:async(_f,p)=>{
+  const id=(await owner.query(callSQL(p),p.args)).rows[0].value.paymentAttempt.id;
+  await owner.query("UPDATE public.payment_provider_attempts SET status=$2 WHERE id=$1",[id,status]);
+}});
 const caughtRefusals=[...predecessors[pins.findIndex(pin=>pin.signature.startsWith(`public.${result}(`))]!.matchAll(/IF SQLERRM NOT IN \(([^)]+)\)/gu)].flatMap(m=>[...m[1]!.matchAll(/'([^']+)'/gu)].map(v=>v[1]!));
 for(const code of caughtRefusals)cases.push({group:result,name:`caught_${code}`,change:async(f,p)=>{
   p.args[0]=`provider-webhook:${f.provider}:${f.key}:apply`;p.args[3]="failed";p.handoffFault=code;
@@ -275,6 +283,16 @@ function normalized(value: unknown, clock?: number): unknown {
 async function observe(p: Probe, clock?: number) {
   try {return {rows:normalized((await runtime.query(callSQL(p),p.args)).rows,clock)};}
   catch(error){const e=error as {code:string;message:string};return {error:{code:e.code,message:e.message}};}
+}
+// End each transaction before replacing pg_proc: otherwise this runtime backend
+// can retain the earlier executable function version until transaction end.
+async function observeDefinition(p:Probe,ddl:string){
+  await owner.query(ddl);
+  await runtime.query("BEGIN");
+  try{
+    const clock=(await runtime.query("SELECT transaction_timestamp() at")).rows[0].at.getTime();
+    return await observe(p,clock);
+  }finally{await runtime.query("ROLLBACK");}
 }
 beforeAll(async()=>{
   env=await lifecycleInstallation("qualified-v2");owner=await env.owner.connect();runtime=await env.runtime.connect();
@@ -367,21 +385,13 @@ it("matches all SQL fields to the independent adapter declarations and preserves
 });
 it.each(matrix)("preserves $label $c.group $c.name against its before-hash body",async({key,c})=>{
   const p=probes.get(key)!;
-  const probe=async(ddl:string)=>{
-    await owner.query(ddl);
-    await runtime.query("BEGIN");
-    try{
-      const clock=Date.parse((await runtime.query("SELECT transaction_timestamp() at")).rows[0].at);
-      return await observe(p,clock);
-    }finally{await runtime.query("ROLLBACK");}
-  };
   try{
     if(p.handoffFault){
       // Synthetic callee fault isolates the five existing catch-to-result mappings,
       // matching the native dunning attribution boundary witnesses.
       await owner.query(handoffDDL.replace(/BEGIN/iu,`BEGIN RAISE EXCEPTION '${p.handoffFault}' USING ERRCODE='55000';`));
     }
-    const before=await probe(oldDDL),after=await probe(newDDL);
+    const before=await observeDefinition(p,oldDDL),after=await observeDefinition(p,newDDL);
     expect(after).toEqual(before);
     const codes=executed.get(c.group)??new Set<string>();
     const collect=(value:unknown)=>{if(typeof value==="string")codes.add(value);else if(Array.isArray(value))value.forEach(collect);else if(value&&typeof value==="object")Object.values(value).forEach(collect);};
@@ -392,7 +402,7 @@ it.each(matrix)("preserves $label $c.group $c.name against its before-hash body"
       if(p.expected)expect(after.error.message).toBe(p.expected);
     }else if(p.expected)throw Error(`Expected ${p.expected}, got ${JSON.stringify(after)}`);
     executed.set(c.group,codes);
-    if((c.name==="valid"||c.name==="inline_admission"||c.name==="historical_no_state"||c.name.startsWith("trusted_")||p.kind)&&!p.expected)expect(after.error).toBeUndefined();
+    if((c.name==="valid"||c.name==="inline_admission"||c.name==="historical_no_state"||c.name.startsWith("trusted_")||c.name.startsWith("returned_")||c.name.startsWith("caught_")||c.name==="skipped_subscription"||c.name==="ignored_snapshot"||p.kind)&&!p.expected)expect(after.error).toBeUndefined();
     if(p.kind)expect(after.rows).toMatchObject([{value:{paymentResult:{kind:p.kind}}}]);
     if(c.name==="skipped_subscription")expect(after.rows).toMatchObject([{value:{paymentAttemptAdmission:{status:"skipped_not_chargeable",reason:"payment_control_subscription_not_chargeable"}}}]);
     if(p.handoffFault)expect(after.rows).toMatchObject([{value:{subscriptionWebhookDunning:{opened:false,reason:p.handoffFault}}}]);
@@ -443,6 +453,19 @@ beforeAll(async()=>{
   await state(referenceFixture,"metadata=metadata||'{\"checkoutKind\":\"one_time\"}'");
   await update("commerce_orders",referenceFixture,"metadata=metadata||'{\"runtimeFinalize\":{\"checkoutKind\":\"one_time\",\"source\":\"commerce.runtime.hidden.v0\"}}'");
 },postgresSetupTimeoutMs);
+it("executes distinct before/after claim bodies in separate transactions",async()=>{
+  for(const fn of [stale,prepared]){
+    const p:Probe={fn,types:["timestamptz","integer","integer","text"],args:[at,900,500,`third-body-control:${fn}`]};
+    try{
+      const before=await observeDefinition(p,oldDDL),after=await observeDefinition(p,newDDL);
+      expect(before.error).toBeUndefined();expect(after.error).toBeUndefined();
+      const ids=(rows:unknown)=>new Set((rows as {value:{provider:string}}[]).map(row=>row.value.provider));
+      expect(ids(before.rows)).toEqual(new Set(profiles.map(policy=>policy.provider)));
+      expect(ids(after.rows)).toEqual(new Set([...profiles,...third.map(f=>f.policy)].map(policy=>policy.provider)));
+      expect((after.rows as unknown[]).length).toBe((before.rows as unknown[]).length+third.length*(fn===stale?1:2));
+    }finally{await owner.query(newDDL);}
+  }
+});
 it("adds three policy variants by declarations only and executes claims, refunds and reopen through the runtime role",async()=>{
   expect(await genericDefinitions()).toEqual(genericBefore);
   const claimedPrepared=(await runtime.query("SELECT * FROM public.commerce_payment_reconciliation_claim_prepared_attempts($1,900,500,'third-runtime-prepared')",[at])).rows;
@@ -499,9 +522,16 @@ it("binds distinct and empty trusted lists to the attempt profile before replay"
 function returnedCodes(source:string,fn:string):string[]{
   const codes=new Set<string>();
   const literals=(part:string)=>[...part.matchAll(/'([^']+)'/gu)].map(m=>m[1]!);
-  for(const m of source.matchAll(/'(?:status|reason|kind|attemptStatus|paymentAttemptStatus|paymentIntentStatus)'\s*,\s*'([^']+)'/gu))codes.add(m[1]!);
-  for(const m of source.matchAll(/\b(?:kind|observation)\s*:=\s*'([^']+)'/gu))codes.add(m[1]!);
+  const responses=[...source.matchAll(/(?:RETURN|(?:v_response|answer)\s*:=)\s*jsonb_build_object\([\s\S]*?;/giu)].map(m=>m[0]).join("\n");
+  for(const m of responses.matchAll(/'(?:status|reason|kind|attemptStatus|paymentAttemptStatus|paymentIntentStatus)'\s*,\s*'([^']+)'/gu))codes.add(m[1]!);
+  for(const m of source.matchAll(/\b(?:kind|observation)(?:\s+text)?\s*:=\s*'([^']+)'/gu))codes.add(m[1]!);
   for(const m of source.matchAll(/(?:p_result_status NOT IN|IF SQLERRM NOT IN)\s*\(([^)]+)\)/gu))literals(m[1]!).forEach(code=>codes.add(code));
+  if(fn===prepare){
+    expect(source).toContain("'status', v_attempt.status");attemptStatuses.forEach(code=>codes.add(code));
+  }
+  if(fn===refund){
+    const statuses=source.match(/s\.status NOT IN \(([^)]+)\)/u);expect(statuses).not.toBeNull();literals(statuses![1]!).forEach(code=>codes.add(code));
+  }
   if(fn===record){
     const statuses=source.match(/CASE WHEN observation='cumulative-snapshot' AND prior>=p_amount THEN ('[^']+' ELSE '[^']+') END/u);
     expect(statuses).not.toBeNull();literals(statuses![1]!).forEach(code=>codes.add(code));
@@ -527,5 +557,5 @@ it("executes every named refusal and returned result code from all ten pinned fu
     const seen=executed.get(fn);
     return codes.filter(code=>!seen?.has(code)).map(code=>({signature:pin.signature,code}));
   });
-  expect(missing).toEqual([]);
+  expect(missing,JSON.stringify(missing)).toEqual([]);
 });
