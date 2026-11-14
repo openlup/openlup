@@ -31,6 +31,11 @@ security and critical-defect fixes for six months after the current major’s
 release. Older minors and majors receive no fixes. Preview trains never count
 as a previous stable major; the published window is advance end-of-life notice.
 
+There is no stable maintenance line yet. Previous-major backports are not
+applicable because no stable major exists. Backport automation follows explicit
+owner activation of the stable channel; maintenance evidence remains partial
+until then. The project maintainer remains accountable through [SECURITY.md](../SECURITY.md).
+
 ## Exceptional cessation
 
 Moved to [Versioning and stability](../packages/core/docs/guide/reference/stability.md#exceptional-cessation).
