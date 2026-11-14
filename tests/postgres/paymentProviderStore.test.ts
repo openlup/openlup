@@ -327,7 +327,7 @@ it.each(["failed", "expired"] as const)("preserves the distinct %s one-time orde
 it("withdraws an already-sending decline notice on recovery while retaining the dunning owner", async () => {
   const f = await fixture("card_rail", true, "planned"), a = await prepared(f); await result(f, `decline:${f.intent}`);
   const notices = await env.owner.query(`UPDATE public.subscription_dunning_notifications SET status='sending',claim_token=gen_random_uuid(),
-    lease_expires_at='2026-11-13T13:00:00Z' WHERE case_id IN (SELECT id FROM public.subscription_dunning_cases WHERE cycle_id=$1) AND notification_kind='payment_failed' RETURNING id`, [f.cycle]);
+    lease_expires_at=now()+interval '1 hour' WHERE case_id IN (SELECT id FROM public.subscription_dunning_cases WHERE cycle_id=$1) AND notification_kind='payment_failed' RETURNING id`, [f.cycle]);
   expect(notices.rowCount).toBeGreaterThan(0);
   const e = await event(f, a.paymentAttemptId, "payment.succeeded", 100);
   await result(f, `recovered:${f.intent}`, "succeeded", e.paymentEventId);

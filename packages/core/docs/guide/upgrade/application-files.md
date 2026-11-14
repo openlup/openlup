@@ -84,3 +84,22 @@ caller-supplied numbers. It certifies neither a real database upgrade or
 backfill nor dependency provenance, runtime behavior or a rollback path.
 Perform [database migration](./database-migrations.md) and application checks
 separately before resuming service.
+
+The published-set qualification also exercises the neutral starter from the
+previous complete published set through the target release's public upgrade
+CLI. Managed snapshots come from each starter's ownership inventory. The check
+customizes owned theme and fragment files, refuses a divergent managed file,
+interrupts apply with a process kill, resumes with identical snapshots and
+requires replay to make no changes. A harness check refuses incomplete file
+or declared-versus-installed dependency state; this is not an automatic serving
+guard added to the application by the CLI.
+
+The harness then installs the target's exact dependencies using a regenerated,
+verified lock and checks typechecking, build, application tests and the local
+development loop. Owned customization bytes must survive. The receipt names
+both versions, extraction identities, the plan digest and phase results. The
+previous set is the greatest stable core release tag below the target visible
+in every package's npm version history. Historical starters are explicitly
+labelled reconstructed. This proves only the checked neutral-starter file and
+dependency transition; it provides no SQL migration, browser/provider coverage,
+rollback guarantee or stable/support claim.

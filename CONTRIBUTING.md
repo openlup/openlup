@@ -394,7 +394,21 @@ independently of the required `test` job in a separate checkout and installation
 
 The packed-candidate guide tutorial runs after the package gates as a blocking
 step: its condition of two green merge-group runs on main has been met.
-The separate registry tutorial remains advisory until its second green run.
+The separate registry tutorial runs trusted default-branch code after a
+successful core publication, checking the release tag's commit against the
+completed publication run. A maintainer may also dispatch it from the default
+branch for an existing core release tag. It waits up to ten minutes for the
+matching npm set; automatic runs also require core's `latest` to match. The
+tutorial is blocking after two green release runs: a failure fails its own
+workflow run and reports to the maintainer; a propagation timeout warns and
+defers the tutorial. It runs after publication and cannot affect it. The
+separate `exact-set-qualification` job verifies and tests the exact locked npm
+set against release provenance and retains a blocking qualification result
+and a 90-day receipt. Both jobs have `contents: read`; qualification also has
+`packages: read` for the pinned PostgreSQL mirror. See the
+[qualification owner](docs/platform/DISTRIBUTION_EVIDENCE.md#exact-published-set-qualification)
+for trust, evidence and support limits. The workflow adds no required PR check,
+does not hold publication open and does not delay the next dispatch.
 
 After package proof succeeds, `install-browser` runs the starter's installed
 PostgreSQL browser journeys in four parallel shards through

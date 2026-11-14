@@ -103,7 +103,7 @@ export interface PaymentProviderReconciliationPort {
     correctionStatus: "observed" | "corrected" | "ignored" | "failed";
     checkedAt: string;
     payload: Record<string, unknown>;
-  }): Promise<{ replayed: boolean }>;
+  }): Promise<{ replayed: boolean; reconciliationId?: string }>;
   applyTerminalResult(input: {
     idempotencyKey: string;
     expectedOrderId: string;
@@ -137,6 +137,7 @@ export interface PaymentProviderReconciliationPort {
     payload: Record<string, unknown>;
   }): Promise<{
     replayed: boolean;
+    reconciliationId?: string;
     paymentResult: {
       paymentIntentId: string;
       paymentAttemptId: string;

@@ -279,7 +279,7 @@ async function mediaFixture() {
   const store = await OrderReviewMediaObjectStore.create(sourceRoot), grant = `review-grant:${randomUUID()}`;
   const subject = `client:${graph.client}`;
   await source.owner.query("INSERT INTO public.subscriber_profiles(subject_reference,revision,fingerprint) VALUES($1,1,$2)", [subject, "a".repeat(64)]);
-  await source.owner.query("INSERT INTO public.subscriber_review_access_grants(order_id,kind,grant_reference,expires_at) VALUES($1,'review_request',$2,'2999-01-01')", [graph.order, grant]);
+  await source.owner.query("INSERT INTO public.subscriber_review_access_grants(order_id,kind,grant_reference,expires_at) VALUES($1,'review_request',$2,now()+interval '30 days')", [graph.order, grant]);
   await source.owner.query(`INSERT INTO public.subscriber_retention_intents(idempotency_key,subject_reference,subscription_id,source_reference,
     access_grant_reference,kind,template_reference,fingerprint,expected_revision,recipient_fingerprint,control_key,status,delivery_reference,attempt_count)
     VALUES($1,$2,$3,$4,$5,'review_request','retained.review','${"b".repeat(64)}',1,'${"c".repeat(64)}','retained.review','accepted','retained-delivery',1)`,

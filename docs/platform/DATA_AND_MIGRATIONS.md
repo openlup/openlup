@@ -674,8 +674,9 @@ renewal outcome's settlement transition when that same original attempt was
 already refused under another key; it does not open
 the generic dunning case on this path. The cycle remains `payment_pending`, and
 the retry obligation owns scheduling. The reconciliation/refund forward below
-adds attributed case handoff. A real provider renewal binding still requires
-later composition; the starter binds sandbox renewals only. Other truth routes and sandbox failure handoff are unchanged.
+adds attributed case handoff. `createPostgresProviderRenewalBinding` composes
+these owners for explicitly selected card provider execution; the starter continues to
+bind sandbox renewals by default. Other truth routes and sandbox failure handoff are unchanged.
 The service-only `payment_provider_retry_failure_recorded` lookup returns only
 whether the intent, receipt key and exact attempt match that recorded context.
 It keeps invoker truth routes from reading private provider tables directly;

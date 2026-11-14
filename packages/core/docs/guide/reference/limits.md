@@ -17,13 +17,13 @@ refusals while running it.
 The opt-in subscription reference does not demonstrate automatic renewals,
 fulfillment, failed-renewal recovery or the complete late-delivery journey.
 A renewal date is a planned charge date, not a delivery promise. Follow its
-[local evaluation recipe](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/docs/platform/SUBSCRIPTION_REFERENCE.md)
+[local evaluation recipe](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/docs/platform/SUBSCRIPTION_REFERENCE.md)
 for setup and buyer/account verification.
 
 To evaluate a source reference, choose an immutable release tag and follow that
 revision's README and release notes, including its toolchain and test
 prerequisites. A source build does not start a complete commerce application.
-See the [install support policy](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/.github/INSTALL_SUPPORT_POLICY.md)
+See the [install support policy](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/.github/INSTALL_SUPPORT_POLICY.md)
 for the installation boundary.
 
 ## Fulfillment execution limits
@@ -77,12 +77,13 @@ shadow, review or enforcement policy; a result alone authorizes no order or paym
 Starting the starter host without a runtime database connection leaves its
 native actions unbound. Its lifecycle supplies that connection for the local
 demonstration database; configuration health alone does not establish live
-operations. The [local image quickstart](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/deploy/neutral-store/README.md)
+operations. The [local image quickstart](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/deploy/neutral-store/README.md)
 does not establish rollback after a schema or package upgrade. Follow the
 [database upgrade procedure](../upgrade/database-migrations.md) for that boundary.
 
-Portable payment execution is sandbox-only; real-money execution uses the
-managed rail. Provider-neutral contracts do not supply every payment rail.
+The 0.42.0 source composition supplies an explicitly selected card provider payment
+rail on portable PostgreSQL. The default starter still selects sandbox payments.
+The second reference provider has no supplied portable composition.
 Self-hosting and provider integrations require application composition:
 [compose the host](../how-to/operate/self-host.md) and
 [bind a provider adapter](../how-to/extend/provider-adapters.md).
@@ -96,7 +97,7 @@ paid orders awaiting subscription activation.
 ## Starter refusal responses
 
 The app’s `/limits` and `/ograniczenia` pages and unavailable-action buttons use the
-[canonical limits table](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/examples/neutral-store/shared/limits.ts).
+[canonical limits table](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/examples/neutral-store/shared/limits.ts).
 A visible refusal button displays the code and explanation locally; it does not submit an operation.
 API refusals return an object such as `{"ok":false,"code":"host_binding_required"}`.
 Unknown operations return HTTP 404; other action refusals normally return HTTP 409 unless the handler supplies another status.
@@ -168,6 +169,7 @@ address tuple returns `starter_acquisition_seed_conflict` and rolls back.
 | --- | --- | --- |
 | Take real payments, set up a payment method or replace a card in the starter | The starter binds sandbox attempts only. The native provider store and method-setup lane require a complete installed database catalogue and explicit host composition; installing them does not enable these starter actions. | `native_prepared_attempt_store_unsupported` |
 | Use native cumulative refunds or absence reopening | These installed native capabilities are supported with the complete catalogue and explicit host/provider composition. Absence auto-reopen stays off by default. The starter remains sandbox-only; refund creation and live-provider activation are separate. Refund evidence does not cancel subscription service. | —; host composition required |
+| Add another native payment provider | The native rail supports the two reference payment providers; a third provider needs the provider-profile refactor. The supplied portable composition selects card provider only. | —; follow-up required |
 | Use an email address alone to access an existing purchase | Guest checkout is available, but existing-order access needs an owned customer session or an admitted recovery link. A recovery link grants no account or subscription-command access. | `customer_session_required` for account actions; `starter_recovery_unavailable` for unavailable recovery authority |
 | Change the address of a parcel already in flight through the customer action | The destination change applies from the next parcel; the parcel in flight keeps its address. | —; result `applied_from_next_parcel` |
 
@@ -235,7 +237,7 @@ days within the accepted range; checkout bounds line count and units per line
 within the configured total. Stock and unit prices fit PostgreSQL integers, with
 positive prices for every offered mode. Tax legal-basis text and the trimmed,
 nonempty legal revision have bounded lengths. Consult the
-[maintainer configuration limits](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/examples/neutral-store/docs/limits.md#interim-subscription-mode-price)
+[maintainer configuration limits](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/examples/neutral-store/docs/limits.md#interim-subscription-mode-price)
 for exact values. Configuration outside these bounds refuses before startup.
 
 ## Paid-order message capture
