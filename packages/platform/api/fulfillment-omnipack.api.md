@@ -506,6 +506,7 @@ export interface FulfillmentObservation {
     trackingRefs: readonly FulfillmentTrackingReference[];
     /** Adapter-owned occurrence identity and closed recovery policy; no raw status interpretation in stores. */
     intake?: {
+        occurredAt?: string | null;
         occurrenceKey: string;
         recovery: "provider_recovered" | "delivery_only" | "manual" | null;
     };
@@ -1218,6 +1219,7 @@ export declare const omnipackFulfillmentCapabilities: Readonly<FulfillmentCapabi
 import type { FulfillmentCapabilityDescriptor, FulfillmentDispatchPort, FulfillmentDispatchRequest, FulfillmentLabelPort, FulfillmentObservationPort, FulfillmentReadbackPort, FulfillmentObservationPagePort, FulfillmentStockSyncProvider, FulfillmentProductSyncProvider } from "../contracts/index.js";
 import { type OmnipackWebhookRouteEvent } from "./omnipackWebhookPayload.js";
 import { type OmnipackObservationCodecs } from "./observation.js";
+import { omnipackIntakeOrderIdentity } from "./intake.js";
 export { omnipackFulfillmentCapabilities } from "./capabilities.js";
 /** Node-only, explicit construction. Secrets are supplied per call, never retained as values. */
 export interface OmnipackFulfillmentAdapterConfig {
@@ -1262,6 +1264,7 @@ export interface OmnipackFulfillmentAdapterConfig {
 /** No route, schedule, environment reader or default binding is installed. */
 export declare function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdapterConfig): {
     capabilities: FulfillmentCapabilityDescriptor;
+    orderIdentity: typeof omnipackIntakeOrderIdentity;
     dispatch: FulfillmentDispatchPort;
     label: FulfillmentLabelPort;
     observation: FulfillmentObservationPort;
@@ -1269,6 +1272,27 @@ export declare function createOmnipackFulfillmentAdapter(config: OmnipackFulfill
     reconciliation: FulfillmentObservationPagePort;
     stockSync: FulfillmentStockSyncProvider;
     productSync: FulfillmentProductSyncProvider;
+};
+```
+## dist/fulfillment/omnipack/intake.d.ts
+
+```ts
+import type { FulfillmentObservation } from "../contracts/index.js";
+import { type NormalizedProviderStatus } from "./omnipackStatusVocabulary.js";
+/** The provider's normalized primary status and original occurrence bytes own status dedupe. */
+export declare function intakeFacts(status: NormalizedProviderStatus, occurredAt: string | null): NonNullable<FulfillmentObservation["intake"]>;
+export declare function reconciliationIntake(status: string | null, occurredAt: string | null): {
+    occurredAt?: string | null;
+    occurrenceKey: string;
+    recovery: "provider_recovered" | "delivery_only" | "manual" | null;
+} | undefined;
+/** Same outbound identity as dispatch; only recorded native order associations may resolve the fallback. */
+export declare const omnipackIntakeOrderIdentity: {
+    merchantOrderRef: (number: string) => string | null;
+    outboundOrderNumber: (order: {
+        orderRef: string;
+        orderNumber: string | null;
+    }) => string;
 };
 ```
 ## dist/fulfillment/omnipack/mappers.d.ts

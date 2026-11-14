@@ -26,6 +26,11 @@ export interface NativeFulfillmentProviderIntakeOptions {
     acceptance(ref: string): { providerAttemptKey: string; labelKey: string };
     exception(ref: string, occurrence: string): string;
   };
+  /** Adapter-owned outbound identity translation; SQL resolves recorded associations only. */
+  orderIdentity?: {
+    merchantOrderRef(orderNumber: string): string | null;
+    outboundOrderNumber(order: { orderRef: string; orderNumber: string | null }): string | null;
+  };
   accounting?: { issue(ref: string): Promise<void>; classify: Poll['lifecycle']['invoiceFailure'] };
 }
 
@@ -64,8 +69,14 @@ export function createPostgresFulfillmentProviderIntake(input: NativeFulfillment
   const readState = (ref: string) => call<State | null>('fulfillment_intake_read_state', [ref]);
   const read = async (evidence: Evidence) => {
     if ('fact' in evidence && evidence.fact.providerKind !== provider) throw new Error('fulfillment_observation_provider_mismatch');
-    return call<(DispatchRecord & { acceptance?: Parameters<import('../contracts/index.js').FulfillmentStorePort['acknowledge']>[0]['acceptance'] }) | null>(
-      'fulfillment_intake_find_dispatch', [provider, evidence.correlation]);
+    const record = await call<(DispatchRecord & { orderNumber: string | null; matchedBy: 'provider' | 'native' | 'merchant'; acceptance?: Parameters<import('../contracts/index.js').FulfillmentStorePort['acknowledge']>[0]['acceptance'] }) | null>(
+      'fulfillment_intake_find_dispatch', [provider, { ...evidence.correlation,
+        merchantOrderRef: evidence.correlation.orderNumber ? input.orderIdentity?.merchantOrderRef(evidence.correlation.orderNumber) ?? null : null }]);
+    if (record && record.matchedBy !== 'merchant' && evidence.correlation.orderNumber !== null) {
+      const expected = input.orderIdentity ? input.orderIdentity.outboundOrderNumber(record) : record.orderNumber;
+      if (expected === null || evidence.correlation.orderNumber !== expected) throw new Error('fulfillment_observation_correlation_conflict');
+    }
+    return record;
   };
   const findDispatchRef = async (evidence: Evidence): Promise<Ref | null> => {
     const record = await read(evidence);
@@ -107,7 +118,7 @@ export function createPostgresFulfillmentProviderIntake(input: NativeFulfillment
       }]);
       // Preserve the independent reference write/readback before the existing command transaction.
       const tracking = await call<{ replayed: boolean }>('fulfillment_operator_record_tracking', [request.idempotencyKey, request.fulfillmentOrderId, {
-        status: request.status, providerTrackingId: request.trackingNumber, rawEvent: { occurredAt: request.observation.fact.occurredAt },
+        status: request.status, providerTrackingId: request.trackingNumber, rawEvent: { occurredAt: request.observation.intake?.occurredAt ?? null },
       }, null]);
       return { replayed: tracking.replayed, readBack: reference.readBack };
     },
@@ -117,8 +128,10 @@ export function createPostgresFulfillmentProviderIntake(input: NativeFulfillment
     return message === 'commerce_fulfillment_not_found' ? 'fulfillment_not_found'
       : message === 'commerce_fulfillment_stock_consumed_requires_label' ? 'stock_consumed_requires_label' : null;
   };
+  const supersededCause = (error: unknown) => (error as { message?: string })?.message?.includes('tracking_after_delivered_forbidden')
+    ? 'tracking_after_delivered_forbidden' : null;
   const classifyFailure: Ingress['lifecycle']['classifyFailure'] = error => (error as { code?: string })?.code === '55P03' ? 'stock_contention'
-    : stateConflict(error) ? 'state_conflict' : 'other';
+    : supersededCause(error) ? 'state_conflict' : 'other';
   const poll: Omit<Poll, 'provider' | 'checkpoint' | 'pageSize'> = {
     localPersistence: {
       readLocalFulfillmentStatus: async ref => (await readState(ref))?.status ?? null,
@@ -164,7 +177,7 @@ export function createPostgresFulfillmentProviderIntake(input: NativeFulfillment
             if (observation.fact.canonicalStatus === 'exception') await recordProviderException(ref, observation);
             return status;
           },
-          effects, keys: input.keys, classifyFailure, supersededCause: stateConflict,
+          effects, keys: input.keys, classifyFailure, supersededCause,
           annotateStockContention: (key, ref) => call('fulfillment_intake_annotate_stock_contention', [key, ref]),
           ...(input.accounting ? { issueAccountingInvoice: async (ref: string) => { try { await input.accounting!.issue(ref); } catch { /* Webhook accounting is fail-soft after committed physical effects. */ } } } : {}),
         },

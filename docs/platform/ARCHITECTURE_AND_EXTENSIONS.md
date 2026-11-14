@@ -1248,7 +1248,7 @@ and reconciliation workers with native observation, dispatch ACK, shipment
 commands and job-run ledger. Each SQL call commits before provider or accounting
 I/O. The reference adapter owns status-occurrence and recovery translation into
 closed neutral facts. The native store never interprets provider status tokens
-or replacement-number conventions. Recorded associations own correlation.
+or replacement-number conventions. Recorded associations own correlation. Provider identity has precedence; merchant fallback selects the newest recorded dispatch and repairs acceptance only through ACK. Adapter-owned `orderIdentity` codecs translate outbound numbering. Original occurrence bytes in `intake.occurredAt` remain separate from normalized facts for arrival admission.
 Webhook replay restores its first durable envelope; polling effects use each
 current page snapshot while status evidence deduplicates by occurrence.
 Packing consumes frozen reservations from accepted dispatch commitments without

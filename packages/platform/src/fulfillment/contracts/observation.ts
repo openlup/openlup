@@ -17,7 +17,7 @@ export interface FulfillmentObservation {
   correlation: { orderRef: string | null; fulfillmentRef: string | null; externalRef: string | null; orderNumber: string | null; providerFulfillmentRef: string | null; parcelRef: string | null };
   trackingRefs: readonly FulfillmentTrackingReference[];
   /** Adapter-owned occurrence identity and closed recovery policy; no raw status interpretation in stores. */
-  intake?: { occurrenceKey: string; recovery: "provider_recovered" | "delivery_only" | "manual" | null };
+  intake?: { /** Original adapter-projected occurrence bytes; absence is unproven chronology. */ occurredAt?: string | null; occurrenceKey: string; recovery: "provider_recovered" | "delivery_only" | "manual" | null };
   /** Original provider status tokens; canonical status does not identify an occurrence. */
   providerStatus?: { primary: string | null; subStatus: string | null; /** Neutral aliases; legacy fields remain the compatibility carrier. */ code?: string | null; detailCode?: string | null };
   diagnostics?: { redactedFieldCount?: number; admission?: { rejectedTrackingRefs: number; rejectedTrackingUrls: number }; refusal?: FulfillmentRefusal; stockContention?: { sqlState: "55P03"; phase: "provider_stock_consumed"; retryable: true }; annotation?: "recorded" | "failed"; recoveredPickedReceipt?: { receiptRef: string; closed: boolean } };

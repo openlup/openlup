@@ -26,30 +26,51 @@ END;
 $$;
 
 CREATE FUNCTION public.fulfillment_intake_find_dispatch(p_provider text,p_correlation jsonb) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
-DECLARE ref public.fulfillment_dispatch_refs; matches integer;
+DECLARE ref public.fulfillment_dispatch_refs; matches integer; match_kind text;
 BEGIN
- -- Native UUID text is compared only to recorded native identity. Provider ids stay text.
+ -- Provider identity has precedence. Merchant lookup uses recorded order/dispatch foreign keys only.
  SELECT count(*) INTO matches FROM public.fulfillment_dispatch_refs d
  WHERE d.evidence->>'providerRef'=p_provider AND d.mode<>'shadow' AND (
-  d.shipment_id::text=p_correlation->>'fulfillmentRef' OR
   (d.external_ref IS NOT NULL AND d.external_ref=p_correlation->>'externalRef') OR
   (d.parcel_ref IS NOT NULL AND d.parcel_ref=p_correlation->>'providerFulfillmentRef'));
- IF matches=0 THEN RETURN NULL; END IF;
- IF matches<>1 THEN RAISE EXCEPTION 'fulfillment_observation_correlation_conflict' USING ERRCODE='23505'; END IF;
- SELECT * INTO ref FROM public.fulfillment_dispatch_refs d
- WHERE d.evidence->>'providerRef'=p_provider AND d.mode<>'shadow' AND (
-  d.shipment_id::text=p_correlation->>'fulfillmentRef' OR
-  (d.external_ref IS NOT NULL AND d.external_ref=p_correlation->>'externalRef') OR
-  (d.parcel_ref IS NOT NULL AND d.parcel_ref=p_correlation->>'providerFulfillmentRef'));
- IF (p_correlation->>'fulfillmentRef' IS NOT NULL AND p_correlation->>'fulfillmentRef'<>ref.shipment_id::text)
-  OR (p_correlation->>'orderRef' IS NOT NULL AND p_correlation->>'orderRef'<>ref.order_id::text)
+ IF matches>1 THEN RAISE EXCEPTION 'fulfillment_observation_correlation_conflict' USING ERRCODE='23505'; END IF;
+ IF matches=1 THEN
+  SELECT * INTO ref FROM public.fulfillment_dispatch_refs d
+  WHERE d.evidence->>'providerRef'=p_provider AND d.mode<>'shadow' AND (
+   (d.external_ref IS NOT NULL AND d.external_ref=p_correlation->>'externalRef') OR
+   (d.parcel_ref IS NOT NULL AND d.parcel_ref=p_correlation->>'providerFulfillmentRef'));
+  match_kind:='provider';
+ ELSE
+  SELECT * INTO ref FROM public.fulfillment_dispatch_refs d
+  WHERE d.evidence->>'providerRef'=p_provider AND d.mode<>'shadow' AND d.shipment_id::text=p_correlation->>'fulfillmentRef';
+  IF FOUND THEN match_kind:='native';
+  ELSE
+   SELECT count(*) INTO matches FROM public.commerce_orders o
+   WHERE o.metadata->>'orderNumber'=p_correlation->>'orderNumber'
+    OR (o.id::text=p_correlation->>'merchantOrderRef' AND NOT EXISTS(
+      SELECT 1 FROM public.commerce_orders numbered WHERE numbered.metadata->>'orderNumber'=p_correlation->>'orderNumber'));
+   IF matches>1 THEN RAISE EXCEPTION 'fulfillment_observation_correlation_conflict' USING ERRCODE='23505'; END IF;
+   -- Native parcel creation owns immutable association chronology; dispatch update time is mutable.
+   SELECT d.* INTO ref FROM public.fulfillment_dispatch_refs d JOIN public.commerce_orders o ON o.id=d.order_id
+    JOIN public.fulfillment_shipments shipment ON shipment.id=d.shipment_id
+   WHERE d.evidence->>'providerRef'=p_provider AND d.mode<>'shadow'
+    AND (o.metadata->>'orderNumber'=p_correlation->>'orderNumber'
+      OR (o.id::text=p_correlation->>'merchantOrderRef' AND NOT EXISTS(
+        SELECT 1 FROM public.commerce_orders numbered WHERE numbered.metadata->>'orderNumber'=p_correlation->>'orderNumber')))
+   ORDER BY shipment.created_at DESC,d.id DESC LIMIT 1;
+   IF NOT FOUND THEN RETURN NULL; END IF;
+   SELECT CASE WHEN o.metadata->>'orderNumber'=p_correlation->>'orderNumber' THEN 'merchant' ELSE 'native' END
+    INTO match_kind FROM public.commerce_orders o WHERE o.id=ref.order_id;
+  END IF;
+ END IF;
+ IF (p_correlation->>'fulfillmentRef' IS NOT NULL AND p_correlation->>'fulfillmentRef' IS DISTINCT FROM ref.shipment_id::text)
+  OR (p_correlation->>'orderRef' IS NOT NULL AND p_correlation->>'orderRef' IS DISTINCT FROM ref.order_id::text)
   OR (p_correlation->>'parcelRef' IS NOT NULL AND p_correlation->>'parcelRef' IS DISTINCT FROM ref.parcel_ref)
-  OR (p_correlation->>'externalRef' IS NOT NULL AND ref.external_ref IS NOT NULL AND p_correlation->>'externalRef'<>ref.external_ref)
-  OR (p_correlation->>'providerFulfillmentRef' IS NOT NULL AND ref.parcel_ref IS NOT NULL AND p_correlation->>'providerFulfillmentRef'<>ref.parcel_ref)
-  OR (p_correlation->>'orderNumber' IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.commerce_orders o
-      WHERE o.id=ref.order_id AND o.metadata->>'orderNumber'=p_correlation->>'orderNumber')) THEN
+  OR (p_correlation->>'externalRef' IS NOT NULL AND ref.external_ref IS NOT NULL AND p_correlation->>'externalRef' IS DISTINCT FROM ref.external_ref)
+  OR (p_correlation->>'providerFulfillmentRef' IS NOT NULL AND ref.parcel_ref IS NOT NULL AND p_correlation->>'providerFulfillmentRef' IS DISTINCT FROM ref.parcel_ref) THEN
   RAISE EXCEPTION 'fulfillment_observation_correlation_conflict' USING ERRCODE='23505'; END IF;
- RETURN public.fulfillment_dispatch_read(ref)||jsonb_build_object('acceptance',ref.acceptance);
+ RETURN public.fulfillment_dispatch_read(ref)||jsonb_build_object('acceptance',ref.acceptance,'matchedBy',match_kind,
+  'orderNumber',(SELECT o.metadata->>'orderNumber' FROM public.commerce_orders o WHERE o.id=ref.order_id));
 END;
 $$;
 
@@ -66,7 +87,7 @@ CREATE FUNCTION public.fulfillment_intake_heal_exception(p_key text,p_shipment u
 DECLARE candidate public.commerce_order_holds; latest public.fulfillment_operator_status_evidence; proof public.fulfillment_operator_status_evidence; healed integer:=0;
 BEGIN
  SELECT * INTO proof FROM public.fulfillment_operator_status_evidence WHERE shipment_id=p_shipment AND event_key=p_key;
- IF NOT FOUND OR proof.occurred_at IS NULL OR proof.canonical_status NOT IN ('provider_received','picking','packed','in_transit','delivered') THEN
+ IF NOT FOUND OR proof.occurred_at IS NULL OR proof.canonical_status IS NULL OR proof.canonical_status NOT IN ('provider_received','picking','packed','in_transit','delivered') THEN
   RETURN jsonb_build_object('released',0); END IF;
  SELECT * INTO latest FROM public.fulfillment_operator_status_evidence WHERE shipment_id=p_shipment AND canonical_status='exception'
  ORDER BY occurred_at DESC NULLS LAST,created_at DESC,id DESC LIMIT 1;
@@ -92,7 +113,7 @@ CREATE FUNCTION public.fulfillment_intake_record_status(p_key text,p_dispatch uu
 DECLARE dispatch public.fulfillment_dispatch_refs; prior public.fulfillment_operator_status_evidence; occurrence text:=p_evidence#>>'{intake,occurrenceKey}'; classification text:=p_evidence#>>'{intake,recovery}'; answer jsonb;
 BEGIN
  SELECT * INTO dispatch FROM public.fulfillment_dispatch_refs WHERE id=p_dispatch AND shipment_id=p_shipment;
- IF NOT FOUND OR dispatch.evidence->>'providerRef' IS DISTINCT FROM p_evidence#>>'{fact,providerKind}' THEN
+ IF NOT FOUND OR dispatch.evidence->>'providerRef' IS NULL OR dispatch.evidence->>'providerRef' IS DISTINCT FROM p_evidence#>>'{fact,providerKind}' THEN
   RAISE EXCEPTION 'fulfillment_status_evidence_correlation' USING ERRCODE='22023'; END IF;
  IF p_status IS DISTINCT FROM p_evidence#>>'{fact,canonicalStatus}' OR occurrence IS NULL OR btrim(occurrence)='' OR p_status IS NULL OR p_status NOT IN ('provider_received','picking','packed','in_transit','delivered','exception','cancelled')
   OR (classification IS NOT NULL AND classification NOT IN ('provider_recovered','delivery_only','manual')) THEN

@@ -506,6 +506,7 @@ export interface FulfillmentObservation {
     trackingRefs: readonly FulfillmentTrackingReference[];
     /** Adapter-owned occurrence identity and closed recovery policy; no raw status interpretation in stores. */
     intake?: {
+        occurredAt?: string | null;
         occurrenceKey: string;
         recovery: "provider_recovered" | "delivery_only" | "manual" | null;
     };

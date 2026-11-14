@@ -4,7 +4,7 @@ import { createPostgresFulfillmentProviderIntake } from '@openlup/platform/fulfi
 import { createPostgresPlatformJobRunLedger } from '@openlup/platform/job-ledger';
 import type { PlatformJobRunLedgerPort } from '@openlup/platform/job-ledger';
 import type { FulfillmentCapabilityDescriptor, FulfillmentObservation, FulfillmentReconciliationObservation } from '@openlup/platform/fulfillment/contracts';
-import { fixture } from '../helpers/fulfillmentNative.js';
+import { fixture, openCase, replacement } from '../helpers/fulfillmentNative.js';
 import { lifecycleInstallation, lifecycleProfiles, type LifecycleInstallation } from './subscriptionLifecycleClosureFixture.js';
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from '../helpers/postgresContainer.js';
 import { captureStoreJourney, storeJourneyResources, journeySelection } from '../helpers/storeJourney.js';
@@ -25,6 +25,10 @@ const keys = {
   acceptance: (ref: string) => ({ providerAttemptKey: `intake:accept:${ref}`, labelKey: `intake:receipt:${ref}` }),
   exception: (ref: string, occurrence: string) => `intake:exception:${ref}:${occurrence}`,
 };
+const adapterOrderIdentity = {
+  merchantOrderRef: (number: string) => number,
+  outboundOrderNumber: (order: { orderRef: string; orderNumber: string | null }) => order.orderNumber ?? order.orderRef,
+};
 const invocation = { triggerKind: 'scheduler' as const, invocationSource: 'offline-native-witness' };
 const verification = { rawBody: new Uint8Array([123, 125]), headers: {}, receivedAt: at };
 type Intake = ReturnType<typeof createPostgresFulfillmentProviderIntake>;
@@ -34,23 +38,25 @@ for (const profile of lifecycleProfiles) describe(`native provider intake on ${p
   afterAll(async () => { await h?.close(); }, postgresTeardownTimeoutMs);
   async function subject(reservations = true, accepted = true) {
     const f = await fixture(h.owner), external = `external:${randomUUID()}`, dispatch = randomUUID();
+    const orderNumber = `ORDER-${f.order}`;
+    await h.owner.query("UPDATE public.commerce_orders SET metadata=jsonb_build_object('orderNumber',$2::text) WHERE id=$1", [f.order, orderNumber]);
     const evidence = { commandFingerprint: 'a'.repeat(64), providerRef: 'warehouse-a', contactRevision: { schemaVersion: 1, source: 'fixture', revision: 1 }, carrierRef: null, serviceRef: null };
     await h.owner.query("INSERT INTO public.fulfillment_dispatch_refs(id,request_key,shipment_id,order_id,external_ref,mode,status,evidence,acceptance) VALUES($1,$2,$3,$4,$5,'live',$6,$7,$8)",
       [dispatch, `dispatch:${f.shipment}`, f.shipment, f.order, external, accepted ? 'created' : 'submitting', evidence,
         accepted ? { kind: 'accepted', externalRef: external, evidence, ...keys.acceptance(f.shipment) } : null]);
     if (accepted) await h.owner.query("INSERT INTO public.shipment_external_refs(shipment_id,ref_role,external_id) VALUES($1,'dispatch',$2)", [f.shipment, external]);
     if (reservations) await h.owner.query('INSERT INTO public.fulfillment_parcel_reservation_sets(shipment_id,order_id) VALUES($1,$2)', [f.shipment, f.order]);
-    return { ...f, external, dispatch };
+    return { ...f, external, dispatch, orderNumber };
   }
   type Subject = Awaited<ReturnType<typeof subject>>;
   function observation(f: Subject, status: FulfillmentObservation['fact']['canonicalStatus'] = 'in_transit', time: string | null = at, numbers: string[] = [`TRACK-${f.shipment}`]): FulfillmentObservation {
     const event = randomUUID();
     return { eventKey: event, eventKind: status === 'delivered' ? 'shipment.delivered' : status === 'packed' ? 'shipment.packed' : status === 'exception' ? 'parcel.exception' : 'shipment.in_transit',
       firstReceivedAt: at, fact: { schemaVersion: 1, mapperVersion: 'fixture-v1', factId: event, providerKind: 'warehouse-a', fulfillmentReference: f.external,
-        canonicalStatus: status, provenance: { source: 'provider_webhook', authority: 'provider_asserted' }, occurredAt: time, receivedAt: at,
+        canonicalStatus: status, provenance: { source: 'provider_webhook', authority: 'provider_asserted' }, occurredAt: time === null ? null : new Date(time).toISOString(), receivedAt: at,
         rawEvent: { reference: `evidence:${randomUUID()}`, digestAlgorithm: 'sha256', digest: 'a'.repeat(64) } },
-      correlation: { orderRef: null, fulfillmentRef: null, parcelRef: null, externalRef: f.external, orderNumber: null, providerFulfillmentRef: null },
-      intake: { occurrenceKey: createHash('sha256').update(JSON.stringify([status, time])).digest('hex'), recovery: status === 'exception' ? 'provider_recovered' : null },
+      correlation: { orderRef: null, fulfillmentRef: null, parcelRef: null, externalRef: f.external, orderNumber: f.orderNumber, providerFulfillmentRef: null },
+      intake: { occurredAt: time, occurrenceKey: createHash('sha256').update(JSON.stringify([status, time])).digest('hex'), recovery: status === 'exception' ? 'provider_recovered' : null },
       trackingRefs: numbers.map(trackingNumber => ({ trackingNumber, carrierRef: 'carrier', serviceRef: 'service', publicUrl: `https://tracking.example.invalid/${trackingNumber}` })) };
   }
   function compose(obs: FulfillmentObservation, options: Partial<Parameters<typeof createPostgresFulfillmentProviderIntake>[0]> = {}) {
@@ -58,7 +64,7 @@ for (const profile of lifecycleProfiles) describe(`native provider intake on ${p
       capability, observation: { verifyAndNormalize: async () => ({ kind: 'verified', observation: obs }) }, pages: { readPage: async () => ({ kind: 'page', rows: [row(obs)] }) },
       codecs: { normalizeCarrier: ({ carrierRef }) => carrierRef, approveTrackingUrl: value => new URL(value).hostname === 'tracking.example.invalid', publicUrl: () => null }, keys, ...options });
   }
-  const row = (obs: FulfillmentObservation): FulfillmentReconciliationObservation => ({ kind: 'found', observation: obs, externalRef: obs.correlation.externalRef ?? '', createdAt: null, updatedAt: obs.fact.occurredAt });
+  const row = (obs: FulfillmentObservation): FulfillmentReconciliationObservation => ({ kind: 'found', observation: obs, externalRef: obs.correlation.externalRef ?? '', createdAt: null, updatedAt: obs.intake?.occurredAt ?? null });
   const state = async (f: Subject) => (await h.owner.query('SELECT status,handed_over_at,delivered_at FROM public.fulfillment_shipments WHERE id=$1', [f.shipment])).rows[0];
   const proofs = (f: Subject) => h.owner.query('SELECT * FROM public.fulfillment_operator_status_evidence WHERE shipment_id=$1', [f.shipment]);
   const notices = (f: Subject, event = 'commerce.shipment.dispatched') => h.owner.query('SELECT * FROM public.outbox_events WHERE aggregate_id=$1 AND event_type=$2', [f.order, event]);
@@ -97,11 +103,80 @@ for (const profile of lifecycleProfiles) describe(`native provider intake on ${p
     await h.owner.query("UPDATE public.fulfillment_dispatch_refs SET parcel_ref='recorded-parcel:2' WHERE id=$1", [f.dispatch]);
     const recorded = { ...obs, correlation: { ...obs.correlation, providerFulfillmentRef: 'recorded-parcel:2' } };
     expect(await compose(recorded).ingest(verification)).toMatchObject({ kind: 'processed' });
+    for (const source of ['provider_reference', 'native_reference'] as const) {
+      const only = observation(f, 'picking'); only.correlation.externalRef = null;
+      if (source === 'provider_reference') only.correlation.providerFulfillmentRef = 'recorded-parcel:2';
+      else only.correlation.fulfillmentRef = f.shipment;
+      expect(await compose(only).ingest(verification)).toMatchObject({ kind: 'processed' });
+    }
     const wrong = observation(f, 'picking'); wrong.correlation.fulfillmentRef = (await subject()).shipment;
     const before = await census(f); await expect(compose(wrong).ingest(verification)).rejects.toThrow('correlation_conflict'); expect(await census(f)).toEqual(before);
     const unknown = observation(f, 'picking'); unknown.correlation.externalRef = randomUUID(); unknown.correlation.orderNumber = 'number-R2';
     unknown.correlation.providerFulfillmentRef = 'unrecorded-R2';
     expect(await compose(unknown).ingest(verification)).toMatchObject({ kind: 'ignored' }); expect(await census(f)).toEqual(before);
+  });
+  it.each(['webhook', 'polling', 'unmapped'] as const)('repairs an interrupted ACK from the recorded merchant order through %s without resubmission', async channel => {
+    const f = await subject(true, false), obs = observation(f, 'picking');
+    await h.owner.query('UPDATE public.fulfillment_dispatch_refs SET external_ref=NULL,parcel_ref=NULL WHERE id=$1', [f.dispatch]);
+    const before = await state(f), calls: string[] = [];
+    const db = { query: async (sql: string, values?: unknown[]) => { calls.push(sql); return h.runtime.query(sql, values); } };
+    const native = compose(obs, { db, ...(channel === 'unmapped' ? { pages: { readPage: async () => ({ kind: 'page' as const, rows: [{ kind: 'unmapped' as const, externalRef: f.external, evidence: { eventKey: obs.eventKey, correlation: obs.correlation } }] }) } } : {}) });
+    if (channel === 'webhook') expect(await native.ingest(verification)).toMatchObject({ kind: 'processed' });
+    else expect(await native.reconcile(job())).toMatchObject({ status: 200, result: { quarantined: channel === 'unmapped' ? 1 : 0 } });
+    expect((await h.owner.query('SELECT status,external_ref,acceptance FROM public.fulfillment_dispatch_refs WHERE id=$1', [f.dispatch])).rows[0]).toMatchObject({ status: 'created', external_ref: f.external, acceptance: { externalRef: f.external } });
+    expect(calls.filter(sql => sql.includes('fulfillment_dispatch_finish'))).toHaveLength(1);
+    expect(calls.some(sql => /dispatch_begin|dispatch_claim|enqueue_provider_command/u.test(sql))).toBe(false);
+    expect(await state(f)).toEqual(before);
+  });
+  it('merchant fallback selects the newest recorded dispatch with a deterministic tie-break and refuses contradictory provider identity', async () => {
+    const f = await subject(), obs = observation(f, 'picking');
+    const newer = randomUUID(), parcel = await replacement(h.owner, f);
+    await h.owner.query("UPDATE public.fulfillment_shipments SET created_at='2026-11-01T00:00:00Z' WHERE id=$1", [f.shipment]);
+    await h.owner.query("INSERT INTO public.fulfillment_dispatch_refs(id,request_key,shipment_id,order_id,mode,status,evidence) SELECT $2::uuid,$2::text,$3::uuid,order_id,mode,'submitting',evidence FROM public.fulfillment_dispatch_refs WHERE id=$1", [f.dispatch, newer, parcel]);
+    const read = async () => (await h.runtime.query('SELECT public.fulfillment_intake_find_dispatch($1,$2) AS value', ['warehouse-a', obs.correlation])).rows[0].value;
+    // The provider identity wins over a newer merchant association.
+    expect(await read()).toMatchObject({ dispatchRef: f.dispatch, matchedBy: 'provider' });
+    obs.correlation.externalRef = 'new-provider-reference';
+    expect(await read()).toMatchObject({ dispatchRef: newer, matchedBy: 'merchant' });
+    await h.owner.query('UPDATE public.fulfillment_shipments SET created_at=(SELECT created_at FROM public.fulfillment_shipments WHERE id=$2) WHERE id=$1', [f.shipment, parcel]);
+    obs.correlation.externalRef = null;
+    expect(await read()).toMatchObject({ dispatchRef: [f.dispatch, newer].sort().at(-1), matchedBy: 'merchant' });
+    await h.owner.query("UPDATE public.fulfillment_shipments SET created_at='2026-11-01T00:00:00Z' WHERE id=$1", [f.shipment]);
+    obs.correlation.externalRef = 'new-provider-reference';
+    await h.owner.query('UPDATE public.fulfillment_dispatch_refs SET external_ref=$2 WHERE id=$1', [newer, 'contradictory-reference']);
+    const before = await census(f);
+    await expect(compose(obs).ingest(verification)).rejects.toThrow('correlation_conflict');
+    expect(await compose(obs).reconcile(job())).toMatchObject({ status: 502, result: { failures: 1 } });
+    expect(await census(f)).toEqual(before);
+  });
+  it('ambiguous recorded merchant identities refuse without ACK, evidence or physical effects', async () => {
+    const f = await subject(true, false), other = await subject(true, false), obs = observation(f, 'picking');
+    await h.owner.query("UPDATE public.commerce_orders SET metadata=jsonb_build_object('orderNumber',$2::text) WHERE id=$1", [other.order, f.orderNumber]);
+    await h.owner.query('UPDATE public.fulfillment_dispatch_refs SET external_ref=NULL WHERE id=ANY($1::uuid[])', [[f.dispatch, other.dispatch]]);
+    const before = [await census(f), await census(other)];
+    await expect(compose(obs).ingest(verification)).rejects.toThrow('correlation_conflict');
+    expect(await compose(obs).reconcile(job())).toMatchObject({ status: 502, result: { failures: 1 } });
+    expect([await census(f), await census(other)]).toEqual(before);
+    expect((await h.owner.query('SELECT acceptance FROM public.fulfillment_dispatch_refs WHERE id=ANY($1::uuid[])', [[f.dispatch, other.dispatch]])).rows).toEqual([{ acceptance: null }, { acceptance: null }]);
+  });
+  it.each(['webhook', 'polling'] as const)('compares the actual outbound order identity with missing metadata through %s', async channel => {
+    const f = await subject(), obs = observation(f, 'picking');
+    await h.owner.query("UPDATE public.commerce_orders SET metadata='{}' WHERE id=$1", [f.order]);
+    obs.correlation.orderNumber = f.order;
+    const native = () => compose(obs, { orderIdentity: adapterOrderIdentity });
+    if (channel === 'webhook') expect(await native().ingest(verification)).toMatchObject({ kind: 'processed' });
+    else expect(await native().reconcile(job())).toMatchObject({ status: 200, result: { quarantined: 0 } });
+    // The same outbound fallback can repair a lost ACK using only recorded order/dispatch associations.
+    await h.owner.query("UPDATE public.fulfillment_dispatch_refs SET external_ref=NULL,parcel_ref=NULL,acceptance=NULL,status='submitting' WHERE id=$1", [f.dispatch]);
+    obs.eventKey = randomUUID(); obs.fact = { ...obs.fact, factId: obs.eventKey };
+    if (channel === 'webhook') expect(await native().ingest(verification)).toMatchObject({ kind: 'processed' });
+    else expect(await native().reconcile(job())).toMatchObject({ status: 200, result: { quarantined: 0 } });
+    const before = await census(f), wrong = observation(f, 'picking'); wrong.correlation.orderNumber = randomUUID();
+    await expect(compose(wrong, { orderIdentity: adapterOrderIdentity }).ingest(verification)).rejects.toThrow('correlation_conflict');
+    // A known order UUID is still contradictory when the outbound command used a recorded merchant number.
+    await h.owner.query("UPDATE public.commerce_orders SET metadata=jsonb_build_object('orderNumber',$2::text) WHERE id=$1", [f.order, f.orderNumber]);
+    await expect(native().ingest(verification)).rejects.toThrow('correlation_conflict');
+    expect(await census(f)).toEqual(before);
   });
   it('historical exact dispatch with no external reference stays unfinished; polling quarantines', async () => {
     const f = await subject(), obs = observation(f, 'picking');
@@ -174,14 +249,71 @@ for (const profile of lifecycleProfiles) describe(`native provider intake on ${p
     expect(refs).toEqual(['REF-ONE', 'REF-TWO'].map(external_id => ({ external_id, carrier_ref: 'carrier', service_ref: 'service', public_url: `https://tracking.example.invalid/${external_id}` })));
     expect(await compose(revised).reconcile(request)).toMatchObject({ result: { trackingRefs: 0, readBacks: 2 } });
   });
-  it('retains the committed reference when the independent tracking command refuses a terminal regression', async () => {
+  it('settles terminal tracking regression as superseded while retaining the independent reference', async () => {
     const f = await subject(), first = observation(f, 'delivered', at, [`FIRST-${f.shipment}`]);
     await compose(first).ingest(verification);
     const next = observation(f, 'in_transit', later, [`LATER-${f.shipment}`]);
-    await expect(compose(next).ingest(verification)).rejects.toThrow('tracking_after_delivered_forbidden');
+    expect(await compose(next).ingest(verification)).toMatchObject({ kind: 'superseded', supersededCause: 'tracking_after_delivered_forbidden' });
+    expect((await h.owner.query('SELECT outcome FROM public.fulfillment_observations WHERE event_key=$1', [next.eventKey])).rows[0].outcome).toEqual({ status: 'processed', supersededCause: 'tracking_after_delivered_forbidden' });
+    expect(await compose(next).ingest(verification)).toMatchObject({ kind: 'superseded', replayed: true });
+    await expect(compose(next).commands!.recordCommerceFulfillmentTrackingEvent({ idempotencyKey: randomUUID(), fulfillmentOrderId: f.shipment, actorUserId: randomUUID(), status: 'in_transit' })).rejects.toMatchObject({ details: { code: 'tracking_after_delivered_forbidden' } });
     expect((await h.owner.query("SELECT external_id FROM public.shipment_external_refs WHERE shipment_id=$1 AND external_id=$2", [f.shipment, `LATER-${f.shipment}`])).rows).toHaveLength(1);
     expect(await state(f)).toMatchObject({ status: 'delivered' });
     expect(new Date((await state(f)).delivered_at).toISOString()).toBe(at);
+  });
+  it.each(['stock_consumed_requires_label', 'fulfillment_not_found'] as const)('keeps %s retryable on webhook while polling quarantines it', async reason => {
+    const f = await subject(), obs = observation(f), before = await state(f);
+    const db = { query: async (sql: string, values?: unknown[]) => {
+      if (sql.includes('fulfillment_intake_consume_packed')) {
+        if (reason === 'fulfillment_not_found') return h.runtime.query(sql, [values![0], randomUUID()]);
+        await h.owner.query("DELETE FROM public.shipment_external_refs WHERE shipment_id=$1 AND ref_role='dispatch'", [f.shipment]);
+      }
+      return h.runtime.query(sql, values);
+    } };
+    await expect(compose(obs, { db }).ingest(verification)).rejects.toThrow(reason);
+    expect((await h.owner.query('SELECT outcome FROM public.fulfillment_observations WHERE event_key=$1', [obs.eventKey])).rows[0].outcome).toBeNull();
+    expect(await state(f)).toEqual(before);
+    expect(await compose(obs, { db }).reconcile(job())).toMatchObject({ status: 200, result: { stateConflicts: 1, quarantined: 1 } });
+    expect(await state(f)).toEqual(before);
+    if (reason === 'stock_consumed_requires_label') await h.owner.query("INSERT INTO public.shipment_external_refs(shipment_id,ref_role,external_id) VALUES($1,'dispatch',$2)", [f.shipment, f.external]);
+    expect(await compose(obs).ingest(verification)).toMatchObject({ kind: 'processed', replayed: true });
+  });
+  it.each(['webhook', 'polling'] as const)('preserves original delivery bytes and the resulting cycle extension through %s', async channel => {
+    for (const raw of ['2026-11-10T12:00:00+0200', '2026-11-10T12:00Z', '2026-11-10T12:00:00', '2026-11-10T12:00:00+02:00']) {
+      const f = await subject(); await openCase(h.owner, f);
+      const obs = observation(f, 'delivered', raw), native = compose(obs);
+      const before = (await h.owner.query('SELECT now() AS t,next_cycle_at FROM public.subscriptions WHERE id=$1', [f.subscription])).rows[0];
+      if (channel === 'webhook') expect(await native.ingest(verification)).toMatchObject({ kind: 'processed' });
+      else expect(await native.reconcile(job())).toMatchObject({ status: 200, result: { trackingRefs: 1 } });
+      const parcel = await state(f), delivered = new Date(parcel.delivered_at);
+      if (raw.endsWith('+02:00')) expect(delivered.toISOString()).toBe('2026-11-10T10:00:00.000Z');
+      else expect(delivered.getTime()).toBeGreaterThanOrEqual(new Date(before.t).getTime());
+      const rawEvent = (await h.owner.query("SELECT command#>'{request,rawEvent}' AS raw_event FROM public.fulfillment_operator_receipts WHERE kind='tracking' AND command->>'shipmentId'=$1", [f.shipment])).rows[0].raw_event;
+      expect(rawEvent.occurredAt).toBe(raw);
+      const next = (await h.owner.query('SELECT next_cycle_at,status FROM public.subscriptions WHERE id=$1', [f.subscription])).rows[0];
+      expect(next).toEqual({ status: 'active', next_cycle_at: new Date(Math.max(new Date(before.next_cycle_at).getTime(), delivered.getTime() + 28 * 86400000)) });
+      const after = await census(f);
+      if (channel === 'webhook') await native.ingest(verification); else await native.reconcile(job());
+      expect(await census(f)).toEqual(after);
+      expect((await h.owner.query('SELECT next_cycle_at,status FROM public.subscriptions WHERE id=$1', [f.subscription])).rows[0]).toEqual(next);
+    }
+  });
+  it('missing provider classification refuses even when both nullable identity operands are NULL', async () => {
+    const f = await subject(), obs = observation(f, 'picking');
+    await h.owner.query("UPDATE public.fulfillment_dispatch_refs SET evidence=evidence-'providerRef' WHERE id=$1", [f.dispatch]);
+    const before = await census(f);
+    await expect(h.runtime.query('SELECT public.fulfillment_intake_record_status($1,$2,$3,$4,$5)',
+      [obs.eventKey, f.dispatch, f.shipment, 'picking', { ...obs, fact: { ...obs.fact, providerKind: null } }])).rejects.toThrow('fulfillment_status_evidence_correlation');
+    expect(await census(f)).toEqual(before);
+  });
+  it('historical NULL proof classification cannot release a scoped hold', async () => {
+    const f = await subject(), exception = observation(f, 'exception', earlier, []), legacy = observation(f, 'picking', later, []);
+    await compose(exception).reconcile(job());
+    await h.runtime.query('SELECT public.fulfillment_intake_record_observation($1,$2,$3,$4)', [legacy.eventKey, f.shipment, legacy, at]);
+    await h.owner.query('INSERT INTO public.fulfillment_operator_status_evidence(event_key,shipment_id,occurred_at) VALUES($1,$2,$3)', [legacy.eventKey, f.shipment, later]);
+    const before = await census(f);
+    expect((await h.runtime.query("SELECT public.fulfillment_intake_heal_exception($1,$2,'{}') AS value", [legacy.eventKey, f.shipment])).rows[0].value).toEqual({ released: 0 });
+    expect(await census(f)).toEqual(before); expect(before.holds[0].status).toBe('active');
   });
   it('stale status skips effects and off-track known/unmapped evidence skips ACK and quarantine alarms', async () => {
     const f = await subject(), obs = observation(f, 'picking', later, []); await compose(obs).reconcile(job());

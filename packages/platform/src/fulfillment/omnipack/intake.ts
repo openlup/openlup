@@ -5,6 +5,7 @@ import { normalizeStatus, type NormalizedProviderStatus } from "./omnipackStatus
 /** The provider's normalized primary status and original occurrence bytes own status dedupe. */
 export function intakeFacts(status: NormalizedProviderStatus, occurredAt: string | null): NonNullable<FulfillmentObservation["intake"]> {
   return {
+    occurredAt,
     occurrenceKey: createHash("sha256").update(JSON.stringify([status, occurredAt])).digest("hex"),
     recovery: status === "suspended" ? "provider_recovered" : status === "shipping_failed" ? "delivery_only"
       : ["returned_to_sender", "cancelled"].includes(status) ? "manual" : null,
@@ -15,3 +16,9 @@ export function reconciliationIntake(status: string | null, occurredAt: string |
   const normalized = normalizeStatus(status);
   return normalized ? intakeFacts(normalized, occurredAt) : undefined;
 }
+
+/** Same outbound identity as dispatch; only recorded native order associations may resolve the fallback. */
+export const omnipackIntakeOrderIdentity = {
+  merchantOrderRef: (number: string): string | null => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(number) ? number.toLowerCase() : null,
+  outboundOrderNumber: (order: { orderRef: string; orderNumber: string | null }): string => order.orderNumber ?? order.orderRef,
+};

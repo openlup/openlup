@@ -40,7 +40,7 @@ function expectedObservation(source: "provider_webhook" | "provider_reconciliati
     fulfillmentReference: source === "provider_webhook" ? "parcel-a" : "fulfillment-a", canonicalStatus: "delivered",
     provenance: { source, authority: "provider_asserted" }, occurredAt: now, receivedAt: now,
     rawEvent: { reference: evidenceRef, digestAlgorithm: "sha256", digest: hash(raw) } },
-    eventKind: "order.delivered", eventKey, firstReceivedAt: now, intake: { occurrenceKey: hash(JSON.stringify(["delivered", now])), recovery: null },
+    eventKind: "order.delivered", eventKey, firstReceivedAt: now, intake: { occurredAt: now, occurrenceKey: hash(JSON.stringify(["delivered", now])), recovery: null },
     correlation: { orderRef: null, fulfillmentRef: source === "provider_webhook" ? null : "fulfillment-a",
       externalRef: "external-a", orderNumber: null, providerFulfillmentRef: "parcel-a", parcelRef: null }, trackingRefs, diagnostics: { redactedFieldCount: 1, admission: { rejectedTrackingRefs: 0, rejectedTrackingUrls: 1 } } };
 }
@@ -50,7 +50,7 @@ const readbackRawEvidence = { provider: "omnipack", event: "order.delivered", pr
   trackingReferences: [{ provider: "omnipack", trackingNumber: "TRACK-A", trackingUrl: signedUrl, carrier: null, carrierKind: null, service: null }], shippingMethods: [] };
 const syncIdentity = { providerRef: "omnipack", syncRunId: "sync-a", collectedAt: now, sourceRevision: null, revisionSource: "collection" as const };
 
-function subject(): { value: Subject; calls: { method: string; path: string; body: BodyInit | null | undefined }[] } {
+function subject(): { value: Subject; orderIdentity: ReturnType<typeof createOmnipackFulfillmentAdapter>['orderIdentity']; calls: { method: string; path: string; body: BodyInit | null | undefined }[] } {
   const calls: { method: string; path: string; body: BodyInit | null | undefined }[] = [];
   let readbacks = 0;
   const fetchImpl: typeof fetch = async (url, init) => {
@@ -108,7 +108,7 @@ function subject(): { value: Subject; calls: { method: string; path: string; bod
         { operation: "listStockedSkus", input: [], expected: ["SKU-A"] },
       ],
     } };
-  return { value, calls };
+  return { value, calls, orderIdentity: adapter.orderIdentity };
 }
 
 it("passes M08 offline conformance with replay, refusals and redacted provider evidence", async () => {
@@ -223,6 +223,36 @@ it.each([
   expect(value.kind).toBe('found');
   if (value.kind !== 'found') throw new Error('expected_found');
   expect(value.observation.fact.canonicalStatus).toBe(canonical);
-  expect(value.observation.intake).toEqual({ occurrenceKey: hash(JSON.stringify([normalized, now])), recovery });
+  expect(value.observation.intake).toEqual({ occurredAt: now, occurrenceKey: hash(JSON.stringify([normalized, now])), recovery });
   expect(value.observation.providerStatus).toEqual({ primary: status, subStatus: null });
+});
+
+it.each(["2026-11-10T12:00:00+0200", "2026-11-10T12:00Z", "2026-11-10T12:00:00", "2026-11-10T12:00:00+02:00"])('keeps original webhook occurrence bytes %s independently of the normalized fact', async occurredAt => {
+  const { value } = subject();
+  const verified = await value.adapter.observation!.verifyAndNormalize(webhook({ ...webhookPayload, occurredAt }));
+  expect(verified.kind).toBe('verified');
+  if (verified.kind !== 'verified') throw new Error('expected_verified');
+  expect(verified.observation.intake?.occurredAt).toBe(occurredAt);
+  expect(verified.observation.fact.occurredAt).toBe(new Date(occurredAt).toISOString());
+});
+
+it.each(["2026-11-10T12:00:00+0200", "2026-11-10T12:00Z", "2026-11-10T12:00:00", "2026-11-10T12:00:00+02:00"])('retains polling chronology admission for %s', async updatedAt => {
+  const { reconciliationObservation } = await import('../../../src/fulfillment/omnipack/reconciliation.js');
+  const value = reconciliationObservation({ provider: 'omnipack', providerOrderId: 'external-a', fulfilmentNumber: 'parcel-a', orderNumber: null,
+    status: 'delivered', subStatus: null, createdAt: null, updatedAt, externalNumber: null, items: [], trackingNumbers: [], trackingReferences: [] },
+  { clock: () => now, mintEvidenceReference: () => evidenceRef, approveTrackingUrl: () => false });
+  if (value.kind !== 'found') throw new Error('expected_found');
+  expect(value.observation.intake?.occurredAt).toBe(['2026-11-10T12:00Z', '2026-11-10T12:00:00'].includes(updatedAt) ? null : updatedAt);
+});
+
+it.each([null, 'ORDER-A'])('correlates the actual outbound merchant number when the stored number is %s', async orderNumber => {
+  const fixture = subject(), input = { ...request(), orderRef: '00000000-0000-4000-8000-000000000001', orderNumber };
+  const prepared = await fixture.value.adapter.dispatch.prepare(input);
+  if (prepared.kind !== 'prepared') throw new Error('expected_prepared');
+  expect(await fixture.value.adapter.dispatch.dispatch(input, prepared.evidence)).toMatchObject({ kind: 'accepted' });
+  const body = JSON.parse(fixture.calls.find(call => call.method === 'POST')!.body as string);
+  expect(body.orderNumber).toBe(orderNumber ?? input.orderRef);
+  expect(fixture.orderIdentity.outboundOrderNumber(input)).toBe(body.orderNumber);
+  expect(fixture.orderIdentity.merchantOrderRef(body.orderNumber)).toBe(orderNumber === null ? input.orderRef : null);
+  expect(fixture.orderIdentity.merchantOrderRef(`${input.orderRef}-R2`)).toBeNull();
 });

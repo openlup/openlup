@@ -138,6 +138,22 @@ finishes without replacing pagination metadata. This native composition resets
 a fatal zero-scan failure to zero; the generic page helper retains its existing
 pre-traversal retry rule. Sequential cursor translation belongs to the adapter.
 
+Pass the selected adapter's `orderIdentity` mapping to native intake when its
+outbound merchant identity differs from the stored number. This optional mapping translates an echoed outbound
+merchant number into a native order lookup reference and computes the expected
+outbound number from the recorded order identity. Correlation tries provider
+references first, then the newest recorded merchant-order dispatch. A new
+provider reference can repair an interrupted acceptance through the existing ACK
+operation; intake never submits another order. Contradictory identities refuse.
+
+Keep original occurrence bytes in `intake.occurredAt`, separately from the
+normalized fact. Tracking passes those bytes to the existing arrival writer:
+explicit-zone values with seconds supply delivery time; compact offsets, minute
+precision, missing zones and missing original evidence use receipt time. Webhook retries retain
+those original bytes with the first envelope. A terminal tracking regression is
+settled as superseded; unfinished prerequisites keep the webhook retryable.
+Historical status evidence with null classification cannot prove recovery.
+
 Polling applies current page snapshots, so revised tracking can take effect for
 a repeated status occurrence. Stored chronology is checked before status and
 physical effects; off-track rows retain eligible evidence without ACK or effects.

@@ -6,6 +6,8 @@ import { FULFILLMENT_STATUS_MAP } from "./statusMap.js";
 
 type Privacy = ReturnType<typeof durableStrings>;
 const timestamp = z.iso.datetime({ offset: true });
+const originalOccurrence = z.string().regex(/^\d{4}-\d{2}-\d{2}[Tt ]/u)
+  .refine(value => Number.isFinite(Date.parse(value)));
 export function projectCorrelation(value: FulfillmentObservation["correlation"], privacy = durableStrings(), codecs: FulfillmentObservationCodecs = {}): FulfillmentObservation["correlation"] {
   const token = (value: string | null) => privacy.token(value, text => admittedReference(text, codecs.approveReference));
   return { orderRef: value.orderRef, fulfillmentRef: value.fulfillmentRef, externalRef: token(value.externalRef),
@@ -78,6 +80,7 @@ export function projectObservation(value: FulfillmentObservation, approveTrackin
       return projected ? [projected] : [];
     }),
     ...(value.intake ? { intake: {
+      ...(value.intake.occurredAt !== undefined ? { occurredAt: value.intake.occurredAt === null ? null : originalOccurrence.parse(value.intake.occurredAt) } : {}),
       occurrenceKey: reference(value.intake.occurrenceKey) ?? (() => { throw new Error("fulfillment_occurrence_key_invalid"); })(),
       recovery: value.intake.recovery === null || ["provider_recovered", "delivery_only", "manual"].includes(value.intake.recovery)
         ? value.intake.recovery : (() => { throw new Error("fulfillment_recovery_classification_invalid"); })(),

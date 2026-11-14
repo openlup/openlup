@@ -11917,6 +11917,7 @@ export interface FulfillmentObservation {
     trackingRefs: readonly FulfillmentTrackingReference[];
     /** Adapter-owned occurrence identity and closed recovery policy; no raw status interpretation in stores. */
     intake?: {
+        occurredAt?: string | null;
         occurrenceKey: string;
         recovery: "provider_recovered" | "delivery_only" | "manual" | null;
     };
@@ -13841,7 +13842,7 @@ export declare const FULFILLMENT_MIGRATIONS: readonly [{
 }, {
     readonly position: 137;
     readonly catalogPath: "db/platform/migrations/20261120120000_fulfillment_provider_intake.sql";
-    readonly sha256: "bf3b9143ddf376f7e8ff3e5e248a3d95a549bcf93ee5cee36a6cf80b834eb735";
+    readonly sha256: "4e51eb577d3f0ecd0d8f89d0639d80106f435c895f847546ab2a58d14c4b8995";
     readonly url: URL;
 }];
 ```

@@ -506,6 +506,7 @@ export interface FulfillmentObservation {
     trackingRefs: readonly FulfillmentTrackingReference[];
     /** Adapter-owned occurrence identity and closed recovery policy; no raw status interpretation in stores. */
     intake?: {
+        occurredAt?: string | null;
         occurrenceKey: string;
         recovery: "provider_recovered" | "delivery_only" | "manual" | null;
     };
@@ -1777,6 +1778,14 @@ export interface NativeFulfillmentProviderIntakeOptions {
             labelKey: string;
         };
         exception(ref: string, occurrence: string): string;
+    };
+    /** Adapter-owned outbound identity translation; SQL resolves recorded associations only. */
+    orderIdentity?: {
+        merchantOrderRef(orderNumber: string): string | null;
+        outboundOrderNumber(order: {
+            orderRef: string;
+            orderNumber: string | null;
+        }): string | null;
     };
     accounting?: {
         issue(ref: string): Promise<void>;
