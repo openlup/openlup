@@ -1410,6 +1410,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261121090000_payment_provider_profiles.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4595,6 +4599,10 @@
     },
     {
       "path": "packages/platform/sql/20261120110000_fulfillment_dispatch_outcomes.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261121090000_payment_provider_profiles.sql",
       "class": "public-output"
     },
     {
@@ -7870,6 +7878,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/payments/contracts/providerProfile.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/payments/contracts/reconciliation.ts",
       "class": "public-output"
     },
@@ -8054,6 +8066,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/payments/stripe/providerProfile.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/payments/stripe/stripeFailureEvidence.ts",
       "class": "public-output"
     },
@@ -8123,6 +8139,10 @@
     },
     {
       "path": "packages/platform/src/payments/tpay/providerAttemptFailureDiagnostic.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/tpay/providerProfile.ts",
       "class": "public-output"
     },
     {
@@ -29915,6 +29935,10 @@
     },
     {
       "path": "tests/postgres/paymentMethodRuntime.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/paymentProviderProfiles.test.ts",
       "class": "public-output"
     },
     {
