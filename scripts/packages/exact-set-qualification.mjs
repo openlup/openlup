@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { createHash, X509Certificate } from 'node:crypto';
-import { lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { env } from 'node:process';
@@ -10,6 +10,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { imageReference, readCiImage } from '../ci-image-pull.mjs';
 import { previousPublishedSet, proveDistributionCliConsumer } from './distribution-cli-proof.ts';
 import { assertInstalledPackages, isolatedConsumerEnv } from './pack-manifest-input.ts';
+import { generateExactSetReleaseBom } from './generate-release-bom.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const json = path => JSON.parse(readFileSync(path, 'utf8'));
@@ -190,8 +191,63 @@ function proveReleasedStarter(receipt, input, temporary, run, environment) {
   });
 }
 
-export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = false) {
-  const receipt = upgrade ? json(receiptPath) : qualificationReceipt(tag, expectedCommit);
+export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = false, schema = false, bom = false) {
+  const receipt = upgrade || schema || bom ? json(receiptPath) : qualificationReceipt(tag, expectedCommit);
+  const applicationsPath = resolve(receiptPath + '.applications');
+  if (bom) {
+    const qualified = receipt.result === 'FAIL';
+    receipt.result = 'FAIL'; receipt.endedAt = null; delete receipt.bom;
+    writeFileSync(receiptPath, JSON.stringify(receipt, null, 2) + '\n');
+    try {
+      assert(qualified && receipt.upgrade?.result === 'PASS' && receipt.schemaUpgrade?.result === 'PASS' && receipt.tag === tag && receipt.tagCommit === expectedCommit, 'release-bom: qualification_incomplete_or_mismatched');
+      const bytes = JSON.stringify(generateExactSetReleaseBom(root, join(applicationsPath, '1/application'), receipt), null, 2) + '\n';
+      writeFileSync(receiptPath + '.bom.json', bytes);
+      receipt.bom = { sha256: sha256(bytes) }; receipt.result = 'PASS';
+    } catch (error) { receipt.error = error.message; throw error; }
+    finally { receipt.endedAt = new Date().toISOString(); writeFileSync(receiptPath, JSON.stringify(receipt, null, 2) + '\n'); }
+    return receipt;
+  }
+  if (schema) {
+    const started = receipt.result === 'FAIL' && receipt.schemaUpgrade?.result === 'FAIL' && receipt.schemaUpgrade.startedAt;
+    assert((receipt.result === 'PASS' || started) && receipt.upgrade?.result === 'PASS' && receipt.tag === tag && receipt.tagCommit === expectedCommit, 'adjacent-set qualification must pass first');
+    receipt.result = 'FAIL'; receipt.endedAt = null;
+    receipt.schemaUpgrade = { result: 'FAIL', startedAt: receipt.schemaUpgrade?.startedAt ?? new Date().toISOString(), postgresImage: imageReference(readCiImage('test-postgres')) };
+    writeFileSync(receiptPath, JSON.stringify(receipt, null, 2) + '\n');
+    const run = async () => {
+      let admin;
+      const database = 'qualification_schema_' + process.pid;
+      try {
+        assert(env.OPENLUP_QUALIFICATION_DATABASE_URL, 'qualification PostgreSQL connection required');
+        assert.equal(process.version, 'v24.21.0');
+        assert.equal(execFileSync('npm', ['--version'], { encoding: 'utf8' }).trim(), '11.19.0');
+        execFileSync('npm', ['ci', '--prefer-offline', '--no-audit', '--fund=false'], { cwd: root, stdio: 'inherit' });
+        execFileSync('npm', ['run', 'pretest'], { cwd: root, stdio: 'inherit' });
+        const { default: pg } = await import('pg'), { tsImport } = await import('tsx/esm/api');
+        const { runReleasedSchemaUpgradeProof } = await tsImport('../../tests/postgres/m14ReleasedSchemaUpgrade.proof.ts', import.meta.url);
+        admin = new pg.Pool({ connectionString: env.OPENLUP_QUALIFICATION_DATABASE_URL });
+        assert.equal(Math.floor(Number((await admin.query('SHOW server_version_num')).rows[0].server_version_num) / 10000), 16);
+        await admin.query(`CREATE DATABASE ${database}`);
+        const url = new URL(env.OPENLUP_QUALIFICATION_DATABASE_URL); url.pathname = '/' + database;
+        const proof = await runReleasedSchemaUpgradeProof({ mode: 'released-pair',
+          from: { application: join(applicationsPath, 'previous'), identity: receipt.upgrade.from },
+          to: { application: join(applicationsPath, '1/application'), identity: receipt.upgrade.to },
+          database: { connectionString: url.toString() } });
+        Object.assign(receipt.schemaUpgrade, proof);
+        assert.equal(proof.result, 'PASS', 'released-pair schema compatibility failed');
+        // The BOM step grants the final PASS after binding these completed checks.
+      } catch (error) { receipt.error = error.message; throw error; }
+      finally {
+        try { if (admin) { try { await admin.query(`DROP DATABASE IF EXISTS ${database} WITH (FORCE)`); } finally { await admin.end(); } } }
+        catch (error) { receipt.result = receipt.schemaUpgrade.result = 'FAIL'; receipt.error = error.message; throw error; }
+        finally {
+          receipt.endedAt = receipt.schemaUpgrade.endedAt = new Date().toISOString();
+          writeFileSync(receiptPath, JSON.stringify(receipt, null, 2) + '\n');
+        }
+      }
+      return receipt;
+    };
+    return run();
+  }
   if (upgrade) {
     assert(receipt.result === 'PASS' && receipt.tag === tag && receipt.tagCommit === expectedCommit, 'exact-set qualification must pass first');
     receipt.result = 'FAIL'; receipt.endedAt = null;
@@ -227,6 +283,7 @@ export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = f
         return input;
       });
       const applications = inputs.map(input => input.application);
+      cpSync(applications[0], join(temporary, 'previous'), { recursive: true });
       pair.from.result = 'PASS'; pair.from.endedAt = new Date().toISOString();
       const finish = proveDistributionCliConsumer(applications[1], { from: applications[0], to: applications[1], fromVersion: previous, toVersion: receipt.setVersion, evidence: pair });
       // The target extraction already passed the extractor's complete lock checker.
@@ -245,6 +302,7 @@ export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = f
       if (!env.OPENLUP_QUALIFICATION_DATABASE_URL) refuse('qualification PostgreSQL connection required');
       run(process.execPath, ['--input-type=module', '-e', "import pg from 'pg'; import { env } from 'node:process'; const pool = new pg.Pool({ connectionString: env.OPENLUP_QUALIFICATION_DATABASE_URL }); try { const {rows} = await pool.query('show server_version_num'); if (Math.floor(Number(rows[0].server_version_num) / 10000) !== 17) throw new Error('qualification requires PostgreSQL 17'); } finally { await pool.end(); }"], extracted);
     }
+    if (upgrade) renameSync(temporary, applicationsPath);
     receipt.result = 'PASS';
   } catch (error) { receipt.error = error.message; throw error; }
   finally {
@@ -259,6 +317,6 @@ export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = f
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const [tag, commit, receipt, mode] = process.argv.slice(2);
-  if (process.argv.length !== 5 && !(process.argv.length === 6 && mode === '--upgrade')) refuse('use release-tag full-tag-commit receipt-path');
-  qualifyReleasedSet(tag, commit, receipt, mode === '--upgrade');
+  if (process.argv.length !== 5 && !(process.argv.length === 6 && ['--upgrade', '--schema-upgrade', '--bom'].includes(mode))) refuse('use release-tag full-tag-commit receipt-path');
+  await qualifyReleasedSet(tag, commit, receipt, mode === '--upgrade', mode === '--schema-upgrade', mode === '--bom');
 }

@@ -55,7 +55,8 @@ shared-proof follow-up on the same date passed against that set in 27.814
 seconds, with all three provenances, 296 application tests and two development-loop
 tests passing. The existing two-minute bound still covers 4× the follow-up.
 
-One JSON workflow artifact, retained for 90 days, records the set/tag/commit,
+One workflow artifact, retained for 90 days, contains the qualification receipt
+and the [exact-set BOM](#package-set-bom). The receipt records the set/tag/commit,
 extraction mode and content hash, committed lock SHA-256, each package SHA-512
 and provenance verification source, commands/results, runner image and times.
 A failed entry-point run retains its partial receipt and error. This supplies
@@ -113,6 +114,64 @@ and a fragment class while retaining that witness unchanged.
 
 This is file/dependency qualification on the neutral starter, with
 no SQL, database compatibility, browser/provider, rollback or support claim.
+
+## Released-pair schema compatibility
+
+The qualification job's separate schema step consumes both original installed
+applications retained by the adjacent-set starter proof. It checks their
+extraction identities, lock hashes, installed package versions and locked
+integrities against that proof's receipt. Runner, payment, delivery-alignment
+and readiness exports resolve inside those installations. The
+[existing schema proof](../../tests/postgres/m14ReleasedSchemaUpgrade.proof.ts)
+has an explicit released-pair mode; its no-argument historical execution and PR
+CI selection are unchanged. The schema step uses the existing digest-pinned
+PostgreSQL 16 mirror in a separate disposable container; the rest of the job
+keeps its PostgreSQL 17 service. Cleanup removes both retained installations
+after the BOM has checked the original installed target.
+Before image acquisition or container setup, the schema step records its start
+and FAIL in the receipt. Final sealing requires a successful schema step and
+schema result; setup failure, interruption or a skipped schema step cannot retain
+the preceding upgrade's PASS.
+
+The predecessor's shipped runner installs its packaged `qualified-v2` catalogue,
+using the starter bootstrap's installer-managed profile with distinct install,
+runtime and restore roles. Its payment port writes a settled event before the
+upgrade. The target's shipped `createPlatformPostgresMigrationRunner` applies
+the same profile's packaged forwards.
+SIGKILL interrupts the first forward after its real SQL executes but before the
+ledger insert commits. The old exact ledger prefix must survive. The installed
+readiness evaluator refuses the harness-supplied target catalogue-tail
+requirement as `OPENLUP_E_SCHEMA_BEHIND/version_mismatch`; this is a supplied
+readiness observation, not a new starter serving guard. Resume completes the
+catalogue, checks its inventory and proves migration replay applies nothing.
+
+Execution switches target → predecessor → target on the unchanged upgraded
+schema. Both installed payment ports read retained events, make fresh writes
+and replay them; both delivery ports exercise late and early arrival evidence
+and replay. The named `subscription_monotonic_clamp` assertions require that
+no cycle moves earlier, no cycle or delivery stacks, a late arrival extends
+exactly once, and replay leaves the extension unchanged. The target's inventory
+and exact ledger are rechecked after each code switch.
+
+The receipt labels the separate **historical** 0.23-prefix invoicing backfill;
+that witness is not rerun or represented as adjacent-pair backfill. Later
+contraction and adjacent-pair backfill remain **PARTIAL** until a real retirement
+ships: the 0.41→0.42 pair has no object needed only by the older application.
+No destructive fixture or new migration admission grammar is introduced. A
+pair with identical catalogues records its schema-forward interruption as
+`not-applicable: no forward migrations in this pair`. It still must pass the
+cross-version reads, fresh writes, replay and named subscription checks to
+qualify; no interrupted-forward evidence is claimed for that pair.
+This evidence supplies no general rollback, hosted-service or stable-support
+guarantee.
+
+The installed qualified runner explicitly refuses PostgreSQL 17 as
+`qualified PostgreSQL installation refused: requires_qualified_postgresql_16_profile`.
+The historical legacy chain retains its original profile and execution path.
+Local exact-artifact rehearsals on 2026-11-14 passed the real one-forward
+0.39.0→0.40.0 pair and the no-forward 0.40.0→0.41.0 pair, including code rollback
+and the named subscription checks. These local results are separate from the
+first hosted qualification, which must remeasure the step's bound.
 
 ## Public outcome projection
 
@@ -172,7 +231,36 @@ named Git commit, so later working-tree edits cannot silently redefine that
 release set. Write the BOM outside the pack directory: the existing verifier
 requires that directory contain only its manifest and declared tarballs.
 
-The real BOM will be generated from the release tarballs of a published set.
+The same [generator](../../scripts/packages/generate-release-bom.ts) also exports
+`generateExactSetReleaseBom` for the post-publication qualification entry point.
+Its format version 2 binds the exact set version and tag commit, each package's
+registry SHA-512 and npm signature/provenance verification source and bundle hash.
+It hashes the canonical, name-sorted signature verification records produced before the
+BOM; it does not hash the final qualification receipt. The final receipt names
+the SHA-256 of the BOM's formatted JSON bytes, including the final newline.
+
+The composition is the provisional neutral-store PostgreSQL 16 + Node/OCI recipe.
+The BOM lists and hashes these extracted files in lexical order:
+`.dockerignore`, `.npmrc`, `Dockerfile`, `compose.yaml`, `installation/install.ts`,
+`lifecycle.mjs` and `package.json`. They define build context, dependency/build
+commands, service topology and launch commands, installation profile and lifecycle.
+The profile requires the Compose PostgreSQL 16 pin and `qualified-v2` installer;
+it does not substitute the job's separate PostgreSQL 17 application-test service.
+Other application files are covered by the starter content identity.
+
+The schema catalogue lists each packaged `sql/manifest.json` by package path,
+SHA-256 and zero-based position in package-name order (currently outbox, then
+platform). Hashing the entire manifest preserves its internal migration order
+and hashes. Each manifest must match the tagged source byte for byte in the
+installed package; missing, extra or altered manifests refuse qualification.
+The starter binding checks extraction mode, tag source revision, content hash
+and committed lock SHA-256 against the original target extraction and rehashes
+the extracted files. Locked package versions and integrities must match the
+closed verified set. Named refusals and deterministic/tamper cases are covered
+by the BOM witness below. The qualification job emits one BOM after its checks
+and retains it beside the receipt for 90 days. The schema stage leaves the overall
+receipt at FAIL with its completed schema result recorded separately; only the
+BOM step grants the final PASS after writing the BOM and its digest.
 
 The [BOM witness](../../scripts/packages/generate-release-bom.test.ts) also checks
 real npm archive payloads and member paths, public documentation and any tracked
@@ -180,12 +268,16 @@ starter files for the retained root-reference SKU. Synthetic refusal cases cover
 each carrier. An absent starter remains unqualified; the check does not infer
 starter evidence from its fixtures.
 
-This is not the dependency SBOM, an image or composed-application inventory, an
-npm publication receipt, a provenance attestation or a claim that any runtime
-proof passed. The producer's commit attribution remains process evidence; the
+The pack-based format version 1 and its existing CLI retain their original
+bytes and npm-only scope. Neither format supplies a dependency SBOM, image
+manifest identity, npm publication receipt or provenance attestation. A BOM is
+not itself evidence that runtime checks passed; the final receipt records those
+results. The producer's commit attribution remains process evidence; the
 BOM does not independently attest how those bytes were built. Existing per-package
 SBOM, provenance and [release gates](DEVELOPMENT_AND_RELEASE.md#releasing-a-package)
-retain their duties. No workflow, release asset upload or publication is changed.
+retain their duties. Images, SBOMs and detached image attestations need later
+qualification evidence. This change makes no release-asset, publication,
+stable-framework or supported-installation claim.
 
 ## Current neutrality and runtime limits
 

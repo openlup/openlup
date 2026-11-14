@@ -181,17 +181,37 @@ jobs:
         # Local shared-proof 0.40.0→0.41.0: 65.08s on Node 24.21.0/npm 11.19.0; 4x rounded up. Remeasure first hosted run.
         timeout-minutes: 5
         run: node scripts/packages/exact-set-qualification.mjs "$RELEASE_TAG" "$TAG_COMMIT" "$RUNNER_TEMP/exact-set-qualification.json" --upgrade
+      - name: Qualify released-pair schema compatibility and code rollback
+        id: schema
+        # Local 0.39.0→0.40.0: 32.951s; 0.40.0→0.41.0: 32.884s; 4x rounded up. Remeasure first hosted run.
+        timeout-minutes: 3
+        run: |
+          node --input-type=module -e 'import { env } from "node:process"; import { readFileSync, writeFileSync } from "node:fs"; const p = env.RUNNER_TEMP + "/exact-set-qualification.json"; const r = JSON.parse(readFileSync(p)); r.result = "FAIL"; r.endedAt = null; r.schemaUpgrade = { result: "FAIL", startedAt: new Date().toISOString() }; writeFileSync(p, JSON.stringify(r, null, 2));'
+          image="$(node --input-type=module -e 'import { readCiImage, pullWithRetry } from "./scripts/ci-image-pull.mjs"; const image = readCiImage("test-postgres"); image.sources = image.sources.slice(0, 1); console.log(await pullWithRetry(image));')"
+          container="$(docker run --pull=never --detach --name exact-set-schema-postgres --env POSTGRES_HOST_AUTH_METHOD=trust --publish 127.0.0.1::5432 "$image")"
+          trap 'docker rm -fv "$container"' EXIT
+          OPENLUP_QUALIFICATION_DATABASE_URL="postgresql://postgres@127.0.0.1:$(docker port "$container" 5432/tcp | cut -d: -f2)/postgres"
+          export OPENLUP_QUALIFICATION_DATABASE_URL
+          node scripts/packages/exact-set-qualification.mjs "$RELEASE_TAG" "$TAG_COMMIT" "$RUNNER_TEMP/exact-set-qualification.json" --schema-upgrade
+      - name: Bind the exact-set release BOM
+        run: node scripts/packages/exact-set-qualification.mjs "$RELEASE_TAG" "$TAG_COMMIT" "$RUNNER_TEMP/exact-set-qualification.json" --bom
       - name: Seal an incomplete qualification receipt
         if: always()
-        run: node --input-type=module -e 'import { env } from "node:process"; import { existsSync, readFileSync, writeFileSync } from "node:fs"; const p = env.RUNNER_TEMP + "/exact-set-qualification.json"; if (existsSync(p)) { const r = JSON.parse(readFileSync(p)); if (!r.endedAt) { r.endedAt = new Date().toISOString(); r.error = "Qualification did not complete; inspect job steps"; writeFileSync(p, JSON.stringify(r, null, 2)); } }'
+        env:
+          SCHEMA_OUTCOME: ${{ steps.schema.outcome }}
+        run: node --input-type=module -e 'import { env } from "node:process"; import { existsSync, readFileSync, writeFileSync } from "node:fs"; const p = env.RUNNER_TEMP + "/exact-set-qualification.json"; if (existsSync(p)) { const r = JSON.parse(readFileSync(p)); if (!r.endedAt || r.schemaUpgrade?.result !== "PASS" || env.SCHEMA_OUTCOME !== "success") { r.result = "FAIL"; r.endedAt = new Date().toISOString(); if (r.schemaUpgrade) { r.schemaUpgrade.result = "FAIL"; r.schemaUpgrade.endedAt = r.endedAt; } r.error ??= "Qualification did not complete; inspect job steps"; writeFileSync(p, JSON.stringify(r, null, 2)); } }'
       - name: Retain the qualification receipt
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: exact-set-qualification
-          path: ${{ runner.temp }}/exact-set-qualification.json
+          path: |
+            ${{ runner.temp }}/exact-set-qualification.json
+            ${{ runner.temp }}/exact-set-qualification.json.bom.json
           if-no-files-found: error
           retention-days: 90
       - name: Remove qualification PostgreSQL
         if: always() && steps.postgres.outputs.container != ''
-        run: docker rm -f exact-set-postgres
+        run: |
+          docker rm -f exact-set-postgres
+          rm -rf "$RUNNER_TEMP/exact-set-qualification.json.applications"
