@@ -29,7 +29,7 @@ payloads require the `account-support` contributor and an explicit retention
 decision; clearing the contact profile does not clear that ledger. Native
 billing data requires `customer-billing`: editable billing profiles erase while
 frozen invoice buyer components remain under invoice retention. Native parcel
-preparation requires `fulfillment-parcel-contacts`: private contact payloads
+preparation requires `fulfillment-parcel-contacts`: private parcel and order contacts and retained correction responses
 erase while payload-free erasure markers remain. A composed `risk` contributor
 exports declared resources and retains facts only under an explicit policy;
 missing policy or ownership blocks erasure. These obligations do not disappear
@@ -46,10 +46,10 @@ Require `customer-billing` even when no invoice reader is selected: native
 first-duty capture can freeze buyer components, including shipping fallback.
 Account-event exports include owned ledger payloads and report unavailable
 access; an absent retention decision refuses erasure. Parcel-contact export
-includes erasure markers and their pseudonymous retention disposition. Erased
+includes corrected order contacts, retained correction responses and erasure markers and their pseudonymous retention disposition. Erased
 parcel contacts cannot be reconstructed by preparation or legacy inference;
-replacement resolution refuses them as invalid frozen contacts. Public commerce
-reads and dispatch evidence do not expose those private snapshots. A risk contributor declares assessment/evidence/hash, blocklist, review/hold,
+replacement resolution refuses them as invalid frozen contacts. The explicit authorized native shipment projection exposes its contact comparison;
+customer reads and dispatch evidence do not expose those private snapshots. A risk contributor declares assessment/evidence/hash, blocklist, review/hold,
 case-event and replay obligations through supplied read/policy ports; it adds
 no retention period or remote-provider operation.
 

@@ -70,6 +70,30 @@ it('reads full native facts under the actual restricted login with stable repeat
   await owner.query("INSERT INTO public.fulfillment_provider_attempts(attempt_key,shipment_id,provider_kind,mode,evidence,status,created_at) VALUES($1,$2,'sandbox','stage',$3,'recorded',now()+interval '1 second')", [randomUUID(), f.shipment, { attempt: 'opaque' }]);
   expect(await port().getCommerceFulfillmentOrderDetail({ orderId: f.order })).toEqual(first);
 });
+it('adds only the latest native parcel contact comparison while preserving order-without-shipment null', async () => {
+  const f = await fixture(), actor = randomUUID();
+  await owner.query('INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,$2)', [actor, `${actor}@example.invalid`]);
+  await owner.query("INSERT INTO public.commerce_operators(id,label) VALUES($1,'Synthetic operator')", [actor]);
+  const contact = { schemaVersion: 1, source: 'checkout', revision: 1, recipientName: 'Initial', contactEmail: 'initial@example.test',
+    contactPhone: '+00001', line1: 'Initial 1', line2: null, city: 'Example', postalCode: '00001', country: 'ZZ', selectedDelivery: null, deliveryInstructions: null, courierInstructions: null };
+  await owner.query("UPDATE public.commerce_orders SET metadata=metadata||jsonb_build_object('runtimeFinalize',jsonb_build_object('deliveryContact',$2::jsonb)) WHERE id=$1", [f.order, contact]);
+  await runtime.query('SELECT public.fulfillment_capture_parcel_contact($1,$2)', [f.shipment, contact]);
+  expect(await port().getCommerceFulfillmentOrderDetail({ orderId: f.order })).toMatchObject({ order: { deliveryContact: { baseline: contact, effective: contact, scope: 'parcel', revision: 1, frozen: false, correctionAllowed: true } } });
+  await owner.query('UPDATE public.fulfillment_parcel_contacts SET contact=$2 WHERE shipment_id=$1', [f.shipment, { ...contact, recipientName: '  ', contactEmail: '', line1: '  Initial 1  ', line2: '' }]);
+  expect(await port().getCommerceFulfillmentOrderDetail({ orderId: f.order })).toMatchObject({ order: { deliveryContact: {
+    effective: { recipientName: null, contactEmail: null, line1: 'Initial 1', line2: null }, baseline: contact, correctionAllowed: true,
+  } } });
+  const corrected = { recipientName: 'Corrected', contactEmail: 'corrected@example.test', contactPhone: '+00002', line1: 'Corrected 2', city: 'Example', postalCode: '00002', country: 'ZZ' };
+  await runtime.query('SELECT public.commerce_oms_update_shipping_address($1,$2,$3,$4)', [`read-correction-${randomUUID()}`, f.order, corrected, actor]);
+  expect(await port().getCommerceFulfillmentOrderDetail({ orderId: f.order })).toMatchObject({ order: { deliveryContact: { baseline: contact, effective: { line1: corrected.line1, revision: 2 }, revision: 2 }, shippingAddress: { line1: 'Synthetic street' } } });
+  const next = randomUUID();
+  await owner.query("INSERT INTO public.fulfillment_shipments(id,order_id,port_key,provider_type,create_idempotency_key,sequence_no,replaces_shipment_id,replacement_reason) VALUES($1::uuid,$2,'read-port','3pl',$1::uuid::text,1,$3,'lost')", [next, f.order, f.shipment]);
+  expect(await port().getCommerceFulfillmentOrderDetail({ fulfillmentOrderId: f.shipment })).toMatchObject({ order: { deliveryContact: null } });
+  const absent = await fixture();
+  await owner.query('DELETE FROM public.fulfillment_shipment_operations WHERE shipment_id=$1', [absent.shipment]);
+  await owner.query('DELETE FROM public.fulfillment_shipments WHERE id=$1', [absent.shipment]);
+  expect(await port().getCommerceFulfillmentOrderDetail({ orderId: absent.order })).toBeNull();
+});
 it('filters status before paging and reports the unpaged shipment total', async () => {
   const one = await fixture('packed'), two = await fixture('packed');
   await owner.query("UPDATE public.fulfillment_shipments SET created_at=$2,updated_at=$3 WHERE id=$1", [one.shipment, '2026-01-01T00:00:00Z', '2026-03-01T00:00:00Z']);

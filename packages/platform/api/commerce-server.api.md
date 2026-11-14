@@ -13816,6 +13816,11 @@ export declare const FULFILLMENT_MIGRATIONS: readonly [{
     readonly catalogPath: "db/platform/migrations/20261120100000_fulfillment_intake_channel.sql";
     readonly sha256: "5ce8ada91ed1b6634a9d17b54b82751502e6350e564945528f240e361dda5352";
     readonly url: URL;
+}, {
+    readonly position: 137;
+    readonly catalogPath: "db/platform/migrations/20261120140000_order_delivery_contact_correction.sql";
+    readonly sha256: "d3801993784629fefab839dbc89bfb1df3b906e4550cdd07029f7406cc416fd3";
+    readonly url: URL;
 }];
 ```
 ## dist/fulfillment/nativeUnsupported.d.ts
@@ -18881,6 +18886,32 @@ export declare function addressRow(clientId: string, input: CustomerAddressUpser
 export declare function findCanonicalAddressId(store: CustomerAddressReadStore, clientId: string, input: CustomerAddressUpsertRequest, canonicalAddressKey: (input: CanonicalAddressInput) => string): Promise<string | null>;
 export declare function clearDefaultAddress(store: CustomerAddressReadStore, clientId: string, kind: string): Promise<void>;
 ```
+## dist/shipping/deliverySelectionBoundary.d.ts
+
+```ts
+import type { DeliverySelectionPort } from './deliverySelectionPort.js';
+import type { PickupPointSearchPort } from './pickupPointSearchPort.js';
+import type { DeliveryOption, PickupPoint } from './contracts/index.js';
+/** Adapters decode their own dictionary and supply normalized options and point I/O. */
+export declare function createDeliverySelectionBoundary(input: {
+    dictionary: {
+        valid: boolean;
+        options: readonly DeliveryOption[];
+    };
+    acceptedCatalog: readonly DeliveryOption[];
+    allowedCarriers: ReadonlySet<string>;
+    fallbackValidation: DeliverySelectionPort['validatePickupPoint'];
+    pointSources?: Readonly<Record<string, {
+        getById(id: string): Promise<PickupPoint | null>;
+        search: PickupPointSearchPort['searchPickupPoints'];
+    }>>;
+}): {
+    source: 'dictionary' | 'static_accepted_catalog';
+    enabledCarriers: string[];
+    port: DeliverySelectionPort;
+    searchPort: PickupPointSearchPort;
+};
+```
 ## dist/shipping/deliverySelectionHandler.d.ts
 
 ```ts
@@ -18944,6 +18975,7 @@ export {};
 export type { DeliverySelectionSummaryKind, DeliverySelectionSummary, DeliverySelectionSourceKey, DeliverySelectionSources, DeliverySelectionEvidence, } from "./contracts/delivery.js";
 export type { DeliverySelectionPort } from "./deliverySelectionPort.js";
 export type { PickupPointSearchPort } from "./pickupPointSearchPort.js";
+export { createDeliverySelectionBoundary } from './deliverySelectionBoundary.js';
 export type { DeliverySelectionSchemas } from "./handlerSchemas.js";
 export { createDeliveryOptionsHandler, createPickupPointSearchHandler, createPickupPointValidationHandler, DELIVERY_SELECTION_CONTRACT_VERSION, PICKUP_POINT_SEARCH_CONTRACT_VERSION, } from "./deliverySelectionHandler.js";
 export { summarizeDeliverySelection } from "./deliverySelectionSummary.js";

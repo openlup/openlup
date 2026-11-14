@@ -366,6 +366,8 @@ creates no notification or mutation.
 | Look up public tracking | The operation refuses even though authorized operator shipment reads and evidence commands are available. | `starter_tracking_access_unavailable` |
 | Confirm an undelivered replacement as delivered | There is no separate replacement-arrival confirmation control. An undelivered replacement remains outstanding; a delivered tracking event must record actual arrival. | —; no separate attestation control |
 | Hand off a historical parcel without recorded reservation associations | No current stock is acquired as a substitute; inspect the handoff result. | —; result `reservationDisposition: "reservations_not_recorded"` |
+| Correct a historical order with no usable recorded delivery contact | An authorized operator must review the recorded destination and resolve the missing source through its owning manual process; reads and refused corrections write nothing. [Contact correction](../how-to/build/fulfillment.md#correct-a-delivery-contact). | `fulfillment_contact_not_recorded` |
+| Correct a contact after erasure | Retained payload-free markers prevent response replay or personal-data restoration. | `fulfillment_contact_erased` |
 | Automatically purge stored label URLs and raw shipment payloads | No automatic retention cleanup is supplied. The application owner must control retention and authorized cleanup, including copies and backups. URL expiry does not delete stored evidence. | —; owner-managed cleanup |
 
 Read the exact parcel and confirm each label, handoff or tracking action.

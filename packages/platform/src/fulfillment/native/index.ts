@@ -51,18 +51,29 @@ export function createNativeFulfillmentBinding(input: {
       || typeof withheld !== 'boolean') throw new Error('fulfillment_preparation_identity_invalid');
     // Operational revision and withholding remain authoritative host facts.
     // Only an explicit source edit can reroute an existing context.
-    const pinned = { schemaVersion: revision.schemaVersion, source: revision.source, revision: revision.revision };
+    let pinned = { schemaVersion: revision.schemaVersion, source: revision.source, revision: revision.revision };
     await db.query(`INSERT INTO public.fulfillment_dispatch_contexts(shipment_id,contact_revision,provider_ref,withheld)
       VALUES($1,$2,$3,$4) ON CONFLICT(shipment_id) DO UPDATE
       SET contact_revision=EXCLUDED.contact_revision,${sourceEdit ? 'provider_ref=EXCLUDED.provider_ref,' : ''}withheld=EXCLUDED.withheld`,
     [ref, JSON.stringify(pinned), provider, withheld]);
-    // The capture command keeps preparation metadata-only. Candidate reads require
-    // its retained payload, including a previously inferred contact.
+    // Ordinary first capture is immutable. A correction supplies payload and
+    // revision together before this transaction can return to claim or begin.
     const captured = await db.query('SELECT public.fulfillment_capture_parcel_contact($1::uuid,$2::jsonb) AS value', [ref, JSON.stringify(parcelContact(candidate))]);
     const contact = captured.rows[0]?.value as { erased?: boolean; contact?: unknown };
     if (contact?.erased) {
       await db.query('DELETE FROM public.fulfillment_dispatch_contexts WHERE shipment_id=$1', [ref]);
       return { candidate: null, disposition: 'withheld' as const, contactRevision: null };
+    }
+    const source = (contact?.contact as { source?: unknown } | undefined)?.source;
+    if (source === 'oms_parcel_correction' || source === 'oms_order_override') {
+      candidate = applyParcelContact(candidate, contact.contact);
+      const corrected = candidate.contactRevision;
+      if (!Number.isSafeInteger(corrected.revision) || corrected.revision < 1
+        || !Number.isSafeInteger(corrected.schemaVersion) || corrected.schemaVersion < 1 || !corrected.source.trim()) {
+        throw new Error('fulfillment_preparation_identity_invalid');
+      }
+      pinned = { schemaVersion: corrected.schemaVersion, source: corrected.source, revision: corrected.revision };
+      await db.query('UPDATE public.fulfillment_dispatch_contexts SET contact_revision=$2::jsonb WHERE shipment_id=$1::uuid', [ref, JSON.stringify(pinned)]);
     }
     let frozen: FulfillmentDispatchRequest | null = null;
     if (readContact) {
@@ -115,3 +126,4 @@ export { createPostgresFulfillmentCommerceReadPort, nativeFulfillmentCommerceRes
 export { createPostgresFulfillmentOperatorPort, createPostgresParcelReservationConsumption } from "./operatorMutations.js";
 
 export { createPostgresFulfillmentShipmentCommandPort } from './shipmentCommands.js';
+export { createPostgresDeliveryContactReadPort } from './deliveryContact.js';

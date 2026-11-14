@@ -4,6 +4,7 @@ export type {
 } from "./contracts/delivery.js";
 export type { DeliverySelectionPort } from "./deliverySelectionPort.js";
 export type { PickupPointSearchPort } from "./pickupPointSearchPort.js";
+export { createDeliverySelectionBoundary } from './deliverySelectionBoundary.js';
 export type { DeliverySelectionSchemas } from "./handlerSchemas.js";
 export {
   createDeliveryOptionsHandler, createPickupPointSearchHandler, createPickupPointValidationHandler,
