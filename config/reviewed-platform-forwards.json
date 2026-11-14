@@ -5058,6 +5058,35 @@
             "sha256": "47c8d02259408562ab525b431dbd5783a8954372f19f86db981d01659b21f0bc"
           }
         ]
+      },
+      {
+        "row": "fulfilment-f3-alignment",
+        "path": "db/platform/migrations/20261120130000_fulfillment_alignment_arrival_chronology.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.subscription_delivery_alignment_on_delivery()",
+            "searchPath": "pg_catalog",
+            "beforeSha256": "fd46c8e3c8bd9305dbb58529f9be656da3928f5f19a4cf10f39c598f3062b6ae"
+          },
+          {
+            "signature": "public.fulfillment_read_replacement_preparation(uuid)",
+            "searchPath": "pg_catalog, pg_temp",
+            "beforeSha256": "6897bf7df987b6690118a11e1950e8fd83acda652da4bd5bf9d4850e6f48def0"
+          },
+          {
+            "signature": "public.fulfillment_native_dispatch_refusal(uuid,text)",
+            "searchPath": "pg_catalog, pg_temp",
+            "beforeSha256": "1ea0eeb24715e319bc67d06dc984572708346c34c9c574f977847b322a558aaf"
+          },
+          {
+            "signature": "public.fulfillment_intake_find_dispatch(text,jsonb)",
+            "searchPath": "pg_catalog, pg_temp",
+            "beforeSha256": "c7f835d875a46cc468865d96abeb8c159c1b90a40fc3f6993aa6ab031ad754f1"
+          }
+        ],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -6936,6 +6965,32 @@
           "signature": "public.fulfillment_emit_shipment_reference_notice()",
           "beforeSha256": null,
           "afterSha256": "84ebe1f58da16f4cc30e38d16f653b41ac3e2495af45b1491471538633cd2ace"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261120130000_fulfillment_alignment_arrival_chronology.sql",
+      "sha256": "26b428443a2dea5aec852ddf4c6960b354f89e1d1c9ff8064705bebe2d80e04f",
+      "functions": [
+        {
+          "signature": "public.subscription_delivery_alignment_on_delivery()",
+          "beforeSha256": "fd46c8e3c8bd9305dbb58529f9be656da3928f5f19a4cf10f39c598f3062b6ae",
+          "afterSha256": "7a7bc2bd0e926b7d4c4be060fc14937cabc4b4b057607dccf54b864502aad21f"
+        },
+        {
+          "signature": "public.fulfillment_read_replacement_preparation(uuid)",
+          "beforeSha256": "6897bf7df987b6690118a11e1950e8fd83acda652da4bd5bf9d4850e6f48def0",
+          "afterSha256": "dd1fe6debd5f99b20c7b61afddff2f3e69cb062f0ea9215de6989eb7074d2f6a"
+        },
+        {
+          "signature": "public.fulfillment_native_dispatch_refusal(uuid,text)",
+          "beforeSha256": "1ea0eeb24715e319bc67d06dc984572708346c34c9c574f977847b322a558aaf",
+          "afterSha256": "c8f5f7904e869f1c3dc289c801281ba705cc54eaea577ab209cb1fe015d3fe0a"
+        },
+        {
+          "signature": "public.fulfillment_intake_find_dispatch(text,jsonb)",
+          "beforeSha256": "c7f835d875a46cc468865d96abeb8c159c1b90a40fc3f6993aa6ab031ad754f1",
+          "afterSha256": "78adccb90e813d3db3e480233fb761550cac155a4151474c99fe9d5e9bafada0"
         }
       ]
     }

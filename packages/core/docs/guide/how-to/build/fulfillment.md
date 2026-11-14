@@ -225,6 +225,39 @@ omits operation payloads. Your host owns retention and cleanup, including backup
 and transfer copies; these commands install no automatic TTL or purge. Replay
 preserves the original receipt.
 
+## Bind replacement and customer alignment
+
+Install the complete catalogue through
+`20261120130000_fulfillment_alignment_arrival_chronology.sql`. Select
+`createPostgresFulfillmentOperatorPort(executor, { providerRef, stockSourceKey })`
+and bind its `requestReplacementShipment` to the replacement handler. The host
+authenticates the actor and supplies the stock binding. Creation commits a queued
+parcel with fresh counted reservations, frozen contact, destination and lines;
+it performs no dispatch, arrival confirmation or notification. Same-key replay
+returns that parcel. A second request waits until the previous replacement was
+handed over.
+
+Select the existing `nativeDispatch` composition for replacement dispatch. Each
+parcel gets its own preparation, claim, submission and acceptance identity.
+Optional frozen line lot/expiry fields remain dispatch data; this adds no lot or
+location management. Adapters own number formatting from `parcelSequenceNo`;
+customer order numbers remain unchanged. Keep the adapter's `orderIdentity`
+bound to intake for echoed replacement numbers.
+
+Bind `createPostgresCustomerAlignmentRowsReader(executor)` as
+`readCustomerAlignmentRows`, then pass it and the current next-cycle map to
+`readFulfillmentDelay`. The reader returns only protected/aligned rows, newest
+update first, with string dates. The mapper hides historical aligned rows when
+the current schedule advances. Absence means no current banner. Authorize the
+subscription IDs before reading. Do not substitute the account-support reader,
+which uses a different ordering.
+
+Select `createPostgresFulfillmentCommerceReadPort` for reduced list/detail using
+the existing policy and order-mode mapping. `getShipmentsOverview` still requires
+host-owned overview data and returns `host_binding_required` when unbound. Keep
+`createNativeUnsupportedFulfillmentPorts` as the inert fallback for unbound
+surfaces. See the [execution limits](../../reference/limits.md#fulfillment-execution-limits).
+
 ## Record handoff and arrival accurately
 
 Handoff accepts packed or labelled parcels and consumes only frozen purchase or
@@ -254,6 +287,14 @@ Delivered replay may repair arrival earlier, never later, without repeating
 delivery alignment. Confirm a replacement's arrival only when it reached the
 customer. A label or in-transit observation is not arrival evidence; a late actual
 arrival may extend the next subscription cycle.
+
+The delivery trigger processes a changed non-null arrival timestamp. Earlier
+tracking repair updates a still-protected case; later tracking replay is ignored.
+All unsuperseded parcels must arrive before settlement. The target is the maximum
+parcel arrival plus cadence, clamped to the existing next cycle; replay and repair
+never add repeated cadence or move the cycle earlier. A settled case retains its
+aligned target even when later evidence changes a parcel timestamp. Never call
+replacement confirmation automatically or attest to an undelivered parcel.
 
 ## Protect parcel contacts
 

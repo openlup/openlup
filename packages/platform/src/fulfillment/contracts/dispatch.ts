@@ -19,6 +19,8 @@ export interface FulfillmentDispatchRequest {
   orderRef: string;
   orderNumber: string | null;
   parcelRef: string | null;
+  /** Native parcel ordinal; adapters own any provider-facing number format. */
+  parcelSequenceNo?: number;
   contactRevision: { schemaVersion: number; source: string; revision: number };
   recipient: { name: string | null; email: string | null; phone: string | null; line1: string; line2: string | null; city: string; postalCode: string; country: string; deliveryInstructions: string | null; courierInstructions: string | null };
   lines: readonly { skuRef: string; title: string | null; quantity: number; productRef: string | null; packRef: string | null; lotRef?: string | null; expirationDate?: string | null }[];

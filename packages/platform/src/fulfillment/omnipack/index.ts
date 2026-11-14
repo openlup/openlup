@@ -4,7 +4,7 @@ import type { DispatchEvidence, FulfillmentCapabilityDescriptor, FulfillmentDisp
   FulfillmentLabelPort, FulfillmentObservationPort, FulfillmentReadbackPort, FulfillmentObservationPagePort, FulfillmentStockSyncProvider, FulfillmentProductSyncProvider, FulfillmentRefusal } from "../contracts/index.js";
 import { createOmnipackClient, OmnipackProviderError } from "./client.js";
 import { omnipackFulfillmentCapabilities } from "./capabilities.js";
-import { buildOmnipackDispatchCommand, serializeOmnipackDispatchPayload, stableDispatchHash } from "./omnipackDispatchPayload.js";
+import { buildOmnipackDispatchCommand, serializeOmnipackDispatchPayload, stableDispatchHash, providerOrderNumberFor } from "./omnipackDispatchPayload.js";
 import { mapOmnipackWebhookPayload } from "./mappers.js";
 import { verifyOmnipackWebhookToken, type OmnipackWebhookRouteEvent } from "./omnipackWebhookPayload.js";
 import { createReconciliationPagePort, reconciliationObservation } from "./reconciliation.js";
@@ -126,11 +126,11 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
     for (const line of request.lines) {
       const metadata = await config.resolveProduct(line);
       if (!metadata) throw Error();
-      lines.push({ sku: line.skuRef, quantity: line.quantity, productSnapshot: { lotNumber: metadata.lotNumber, expirationDate: metadata.expirationDate } });
+      lines.push({ sku: line.skuRef, quantity: line.quantity, productSnapshot: { lotNumber: line.lotRef === undefined ? metadata.lotNumber : line.lotRef, expirationDate: line.expirationDate === undefined ? metadata.expirationDate : line.expirationDate } });
     }
     if (stableDispatchHash(request) !== requestDigest) throw Error();
     const command = buildOmnipackDispatchCommand({
-      orderId: request.orderRef, orderNumber: request.orderNumber,
+      orderId: request.orderRef, orderNumber: providerOrderNumberFor(request.orderNumber, request.parcelSequenceNo ?? 0),
       deliveryContact: { revision: request.contactRevision.revision, recipientName: request.recipient.name,
         contactEmail: request.recipient.email, contactPhone: request.recipient.phone, line1: request.recipient.line1,
         city: request.recipient.city, postalCode: request.recipient.postalCode, country: request.recipient.country,

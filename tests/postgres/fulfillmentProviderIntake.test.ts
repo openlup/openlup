@@ -281,11 +281,13 @@ for (const profile of lifecycleProfiles) describe(`native provider intake on ${p
     expect(observed).toBe(true); expect((await notices(f)).rows).toHaveLength(1);
   });
   it('delivered evidence without references keeps arrival/alignment untouched and independently heals an eligible hold', async () => {
+    await h.owner.query("SELECT public.subscription_delivery_alignment_set_mode('auto_align')");
     const f = await subject(), exception = observation(f, 'exception', earlier, []);
     const first = await compose(exception).reconcile(job()); expect(first).toMatchObject({ result: { exceptions: 1 } });
     await h.owner.query("UPDATE public.fulfillment_shipments SET status='handed_over',handed_over_at=$2 WHERE id=$1", [f.shipment, earlier]);
     const beforeAlignment = (await h.owner.query('SELECT * FROM public.subscription_delivery_alignment_cases WHERE subscription_id=$1 ORDER BY id', [f.subscription])).rows;
     const beforeCycle = (await h.owner.query('SELECT next_cycle_at,status FROM public.subscriptions WHERE id=$1', [f.subscription])).rows;
+    expect(beforeAlignment).toEqual([expect.objectContaining({state:'protected'})]);
     const delivered = observation(f, 'delivered', at, []);
     expect(await compose(delivered).ingest(verification)).toMatchObject({ kind: 'processed', trackingRefs: 0, trackingReadBacks: 0 });
     expect(await state(f)).toMatchObject({ status: 'handed_over', delivered_at: null });
@@ -294,6 +296,7 @@ for (const profile of lifecycleProfiles) describe(`native provider intake on ${p
     expect((await h.owner.query('SELECT * FROM public.subscription_delivery_alignment_cases WHERE subscription_id=$1 ORDER BY id', [f.subscription])).rows).toEqual(beforeAlignment);
     expect((await h.owner.query('SELECT next_cycle_at,status FROM public.subscriptions WHERE id=$1', [f.subscription])).rows).toEqual(beforeCycle);
     expect((await notices(f)).rows).toHaveLength(0);
+    expect((await h.runtime.query('SELECT public.subscription_delivery_alignment_admit_renewal($1,$2,now()) AS value', [f.subscription, beforeCycle[0].next_cycle_at])).rows[0].value).toMatchObject({allowed:false,state:'protected'});
     expect(await compose(delivered).ingest(verification)).toMatchObject({ kind: 'processed', trackingRefs: 0 }); expect((await state(f)).delivered_at).toBeNull();
     expect(await compose(observation(f, 'delivered', later, ['LATER-REF'])).ingest(verification)).toMatchObject({ kind: 'processed' }); expect((await state(f)).status).toBe('delivered');
     expect((await notices(f)).rows).toHaveLength(0); expect((await notices(f, 'commerce.shipment.delivered')).rows).toHaveLength(1);

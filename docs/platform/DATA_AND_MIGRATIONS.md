@@ -4262,3 +4262,17 @@ enters SQL. Missing typed receipts, associations or trusted hold scope require
 [manual resolution](../../packages/core/docs/guide/reference/limits.md#provider-intake-history).
 The intake regression suite uses real PostgreSQL on legacy and both qualified
 installations; this remains offline evidence.
+
+### Native replacement arrival composition
+
+`20261120130000_fulfillment_alignment_arrival_chronology.sql` replaces the
+delivery trigger function without changing its binding, invoker rights, fixed
+search path or ACL. It processes changed non-null arrival timestamps; the existing
+subscription-before-case locks and monotonic schedule clamp remain in place.
+The replacement preparation reader carries frozen optional lot/expiry values and
+parcel sequence. Native dispatch admission selects replacements through the same
+per-parcel reservation and submission fences as originals. Intake returns the
+recorded parcel sequence to the adapter's outbound-identity codec. Each replaced
+function has its own before/after pin; no table or capture/restore membership is
+added. The [fulfillment recipe](../../packages/core/docs/guide/how-to/build/fulfillment.md#bind-replacement-and-customer-alignment)
+owns host composition.
