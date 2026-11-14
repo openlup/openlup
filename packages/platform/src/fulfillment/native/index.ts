@@ -76,6 +76,7 @@ export function createNativeFulfillmentBinding(input: {
     return synchronize(db, ref, shipment.order_id, shipment.replaces_shipment_id, false, readContact);
   });
   const store = bound ? createPostgresFulfillmentDispatchStore(executor, {
+    intakeMode: input.services.capability?.intakeMode,
     async prepare(ref) { const { disposition, contactRevision } = await readPrepared(ref); return { disposition, contactRevision }; },
     async readCandidate(ref) { return (await readPrepared(ref, true)).candidate; },
   }) : null;

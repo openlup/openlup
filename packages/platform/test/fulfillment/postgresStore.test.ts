@@ -11,3 +11,18 @@ it('forwards durable operations through the injected executor, projects evidence
  const lines=[{skuRef:'sku-a',quantity:{onHand:4,reserved:1,unavailable:0,safetyStock:1},fulfillable:true,locationStatus:'active' as const,lotStatus:null,expiresAt:null}];const readLocalInventoryStock=vi.fn(async()=>lines);const stock=createPostgresFulfillmentStockSyncPort(db,{sourceKey:'native-a',readLocalInventoryStock});const at='2026-10-21T12:00:00Z';expect(await stock.readLocalInventoryStock(at)).toBe(lines);expect(readLocalInventoryStock).toHaveBeenCalledWith(at);
  expect(Object.keys(createPostgresDeliveryAlignmentPort(db))).toEqual(['read','recordArrival']);
 });
+
+it.each([undefined, 'webhook', 'polling'] as const)('threads %s intake outside retained acceptance and validates receipt alias bytes', async intakeMode => {
+ const query = vi.fn(async (_sql: string, _values?: unknown[]) => ({ rows: [{ response: { acknowledged: true } }] }));
+ const store = createPostgresFulfillmentDispatchStore({ query }, { intakeMode, prepare: vi.fn(), readCandidate: vi.fn() });
+ const evidence = { commandFingerprint: 'a'.repeat(64), contactRevision: { schemaVersion: 1, source: 'host', revision: 1 }, providerRef: 'warehouse-a', carrierRef: null, serviceRef: null };
+ const legacy = { kind: 'accepted' as const, externalRef: 'external-a', evidence, providerAttemptKey: 'attempt-a', labelKey: 'receipt-a' };
+ await store.acknowledge({ dispatchRef: 'dispatch-a', acceptance: legacy });
+ expect(JSON.parse(String(query.mock.calls[0][1]?.[1]))).toEqual(legacy);
+ expect(query.mock.calls[0][1]?.slice(2)).toEqual([true, intakeMode === 'polling' ? 'poll' : 'push']);
+ await store.finalize({ dispatchRef: 'dispatch-a', result: { ...legacy, receiptKey: legacy.labelKey } });
+ expect(JSON.parse(String(query.mock.calls[1][1]?.[1]))).toEqual({ ...legacy, receiptKey: legacy.labelKey });
+ expect(query.mock.calls[1][1]?.slice(2)).toEqual([false, intakeMode === 'polling' ? 'poll' : 'push']);
+ expect(() => store.acknowledge({ dispatchRef: 'dispatch-a', acceptance: { ...legacy, receiptKey: 'Receipt-a' } })).toThrow('fulfillment_dispatch_receipt_key_conflict');
+ expect(query).toHaveBeenCalledTimes(2);
+});

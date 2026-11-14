@@ -89,6 +89,7 @@ export function shadowDispatchEvidence(request: FulfillmentDispatchRequest, comm
       deliveryKind: request.selection.deliveryKind, pickupPointRef: request.selection.pickupPoint?.id ?? null } });
 }
 export function dispatchResult(result: FulfillmentDispatchResult): FulfillmentDispatchResult {
+  if (result.kind === "accepted" && result.receiptKey !== undefined && result.receiptKey !== result.labelKey) throw new Error("fulfillment_dispatch_receipt_key_conflict");
   const privacy = durableStrings(result.redactedFieldCount);
   const externalRef = result.kind === "accepted" ? privacy.token(result.externalRef) ?? "redacted" : null;
   const refusal = result.kind !== "accepted" ? { reason: (privacy.token(result.refusal.reason) ?? "malformed") as typeof result.refusal.reason,
@@ -96,7 +97,7 @@ export function dispatchResult(result: FulfillmentDispatchResult): FulfillmentDi
   const redactions = privacy.redactedFieldCount ? { redactedFieldCount: privacy.redactedFieldCount } : {};
   const error = result.error ? { error: operationError({ ...result.error, mayHaveSucceeded: result.kind !== "not_dispatched" }) } : {};
   switch (result.kind) {
-    case "accepted": return { kind: "accepted", externalRef: externalRef!, providerAttemptKey: result.providerAttemptKey, labelKey: result.labelKey, ...redactions, evidence: dispatchEvidence(result.evidence), ...error,
+    case "accepted": return { kind: "accepted", externalRef: externalRef!, providerAttemptKey: result.providerAttemptKey, labelKey: result.labelKey, ...(result.receiptKey !== undefined ? { receiptKey: result.receiptKey } : {}), ...redactions, evidence: dispatchEvidence(result.evidence), ...error,
       ...(result.recovery ? { recovery: { source: "persisted_acceptance", proof: "persisted_external_ref", noProviderPost: true } } : {}) };
     case "not_dispatched": return { kind: "not_dispatched", effectMayHaveSucceeded: false, refusal: refusal!, ...redactions, ...error };
     case "unknown": return { kind: "unknown", effectMayHaveSucceeded: true, refusal: refusal!, ...redactions, ...error };

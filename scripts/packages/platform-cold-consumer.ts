@@ -1323,6 +1323,14 @@ assert.equal(calls,1); assert.equal(result.handoff.payload,"transient_fixture");
 assert(!JSON.stringify(result.diagnostics).includes("transient_fixture"));
 await assert.rejects(() => configured.attemptPort.execute({...input,mode:"live"}));
 assert.equal(calls,1); assert.equal(configured.absencePort,undefined);
+const nativePayments = await import("@openlup/platform/payments");
+const nativeSubscriptions = await import("@openlup/platform/subscriptions");
+const nativeRail = nativePayments.createPostgresProviderPaymentRail({ executor: { query: forbidden }, adapter: configured, mode: "test",
+ truth: { dunningTemplateSlug: "failed", recoveryUrlPath: "/recover", recoveryTemplateSlug: "recovered" },
+ resolveMethodOwner: async () => null, resolveSavedMethodOwner: async () => null });
+assert.equal(typeof nativeRail.ingress.receive,"function");
+assert.equal(typeof nativeSubscriptions.createPostgresProviderRenewalBinding,"function");
+assert.equal(calls,1); assert(!JSON.stringify(result.persistence).includes("transient_fixture"));
 const second = await import("@openlup/platform/payments/tpay");
 const secondFactory = "create" + "T" + "payPaymentAdapter";
 const secondCapabilities = "t" + "payPaymentCapabilities";

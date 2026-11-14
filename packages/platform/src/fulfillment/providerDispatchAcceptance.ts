@@ -10,6 +10,7 @@ export function acknowledgeAcceptedDispatch(input: {
     ...(input.record.acceptance ? dispatchResult(input.record.acceptance) : {}),
     ...(input.record.status === "uncertain" ? { recovery: { source: "persisted_acceptance" as const, proof: "persisted_external_ref" as const, noProviderPost: true as const } } : {}),
     kind: "accepted", externalRef: input.record.externalRef, evidence: dispatchEvidence(input.record.evidence), ...input.keys,
+    ...(input.record.acceptance?.receiptKey !== undefined ? { receiptKey: input.keys.labelKey } : {}),
   } });
 }
 
