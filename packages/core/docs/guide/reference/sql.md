@@ -154,6 +154,7 @@ Find the SQL files each package ships, listed by file name. This is an inventory
 | [`20261119200000_communication_event_prepare_erasure.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/packages/platform/sql/20261119200000_communication_event_prepare_erasure.sql) |
 | [`20261120100000_fulfillment_intake_channel.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/packages/platform/sql/20261120100000_fulfillment_intake_channel.sql) |
 | [`20261120110000_fulfillment_dispatch_outcomes.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/packages/platform/sql/20261120110000_fulfillment_dispatch_outcomes.sql) |
+| [`20261120120000_fulfillment_provider_intake.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/packages/platform/sql/20261120120000_fulfillment_provider_intake.sql) |
 | [`q2_00000000000000_platform_baseline.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/packages/platform/sql/q2_00000000000000_platform_baseline.sql) |
 | [`q2_20260810180001_self_host_actor_auth.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/packages/platform/sql/q2_20260810180001_self_host_actor_auth.sql) |
 | [`q2_20260816140000_acquisition_case_foundation.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/packages/platform/sql/q2_20260816140000_acquisition_case_foundation.sql) |

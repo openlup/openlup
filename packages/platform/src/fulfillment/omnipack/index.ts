@@ -10,6 +10,7 @@ import { verifyOmnipackWebhookToken, type OmnipackWebhookRouteEvent } from "./om
 import { createReconciliationPagePort, reconciliationObservation } from "./reconciliation.js";
 import { dispatchEvidence, operationError } from "../dispatchProjection.js";
 import { correlationReference, digest, eventKind, observation, reference, refusal, timestamp, type OmnipackObservationCodecs } from "./observation.js";
+import { omnipackIntakeOrderIdentity } from "./intake.js";
 export { omnipackFulfillmentCapabilities } from "./capabilities.js";
 
 // Internal error projection: retain diagnostics without exposing a provider payload or cause.
@@ -67,6 +68,7 @@ export interface OmnipackFulfillmentAdapterConfig {
 /** No route, schedule, environment reader or default binding is installed. */
 export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdapterConfig): {
   capabilities: FulfillmentCapabilityDescriptor;
+  orderIdentity: typeof omnipackIntakeOrderIdentity;
   dispatch: FulfillmentDispatchPort;
   label: FulfillmentLabelPort;
   observation: FulfillmentObservationPort;
@@ -145,6 +147,7 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
   };
   return {
     capabilities,
+    orderIdentity: omnipackIntakeOrderIdentity,
     dispatch: {
       async prepare(request) {
         const failed = selectionFailure(request);

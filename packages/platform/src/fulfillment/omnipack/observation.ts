@@ -8,6 +8,7 @@ import type { OmnipackWebhookEvidence } from "./mappers.js";
 import type { OmnipackTrackingReferenceEvidence } from "./trackingReferences.js";
 import { buildProviderEventId, EVENT_TO_STATUS, type OmnipackWebhookRouteEvent } from "./omnipackWebhookPayload.js";
 import { localStatusFor } from "./omnipackStatusVocabulary.js";
+import { intakeFacts } from "./intake.js";
 
 export const refusal = (reason: FulfillmentRefusal["reason"], phase: FulfillmentRefusal["phase"], retryable = false): FulfillmentRefusal => ({ reason, phase, retryable });
 export const digest = (bytes: string | Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
@@ -73,7 +74,7 @@ export function observation(input: {
     ["provider_received", "picking", "packed", "in_transit", "delivered", "exception", "cancelled"].includes(value) });
   return projectObservation({ fact, eventKind: input.event, eventKey: key, firstReceivedAt: input.receivedAt,
     correlation: { orderRef: null, fulfillmentRef: reference(input.fulfillmentRef), externalRef: evidence.providerOrderId, orderNumber: evidence.orderNumber, providerFulfillmentRef: evidence.fulfilmentNumber, parcelRef: null },
-    trackingRefs: normalizedTracking.trackingRefs, diagnostics: { admission: {
+    trackingRefs: normalizedTracking.trackingRefs, intake: intakeFacts(EVENT_TO_STATUS[input.event as OmnipackWebhookRouteEvent], evidence.occurredAt), diagnostics: { admission: {
       rejectedTrackingRefs, rejectedTrackingUrls: evidence.rejectedTrackingUrls ?? normalizedTracking.rejectedTrackingUrls,
     } } }, input.approveTrackingUrl, codecs);
 }

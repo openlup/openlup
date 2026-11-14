@@ -221,6 +221,19 @@ counts per-SKU failures instead of silently dropping them. `pulledSkus`
 counts unique completed product reads; `providerCalls` adds the stock listing,
 excluding retry attempts.
 
+Native provider intake requires an adapter-owned `intake.occurrenceKey` and a
+closed nullable recovery classification: `provider_recovered`, `delivery_only`
+or `manual`. The first permits newer nonexception evidence; the second requires
+newer delivered evidence; manual and unknown classifications never heal.
+Historical null classifications remain unproven. Webhook receipts restore the
+first typed fact, receipt time, correlation, digest and tracking snapshot before
+ACK or effects. Polling retains current tracking snapshots for repeated status
+occurrences. Canonical delivered status alone never writes arrival: the existing
+tracking command is invoked once per admitted reference, so an empty reference
+list leaves arrival and alignment untouched while eligible hold healing remains
+independent. Tracking namespace serialization precedes reference mutation;
+arrival retains subscription, parcel and alignment-case lock order.
+
 
 The example passes M08's offline `runFulfillmentAdapterConformance` with injected
 fake HTTP and synthetic sensitive-value plants in the

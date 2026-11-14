@@ -27,7 +27,7 @@ export async function verifyAndNormalizeFulfillmentObservation(input: {
   verification: Parameters<FulfillmentObservationPort["verifyAndNormalize"]>[0];
   localPersistence: {
     /** G17: atomic insert by eventKey; retries keep the first stored firstReceivedAt. */
-    recordObservation(observation: FulfillmentObservation): Promise<{ replayed: boolean; receiptId?: string }>;
+    recordObservation(observation: FulfillmentObservation): Promise<{ replayed: boolean; receiptId?: string; observation?: FulfillmentObservation }>;
     /** Idempotent; only called after completion or a classified superseding conflict. */
     markProcessed(eventKey: string, outcome: { status: "processed" | "ignored"; refusal?: FulfillmentRefusal; supersededCause?: string }): Promise<void>;
   };
@@ -57,10 +57,11 @@ export async function verifyAndNormalizeFulfillmentObservation(input: {
         ...(counts.rejectedCorrelationRefs ? { rejectedCorrelationRefs: counts.rejectedCorrelationRefs } : {}),
       } } : {}) };
   }
-  const observation = projectObservation(verified.observation, input.approveTrackingUrl, input.observationCodecs);
+  let observation = projectObservation(verified.observation, input.approveTrackingUrl, input.observationCodecs);
   counts.rejectedTrackingRefs = observation.diagnostics?.admission?.rejectedTrackingRefs ?? 0;
   counts.rejectedTrackingUrls = observation.diagnostics?.admission?.rejectedTrackingUrls ?? 0;
   const inbound = await input.localPersistence.recordObservation(observation);
+  observation = inbound.observation ?? observation;
   const receiptId = inbound.receiptId ?? observation.eventKey;
   const ref = await input.lifecycle.findDispatchRef(observation);
   if (!ref) {
