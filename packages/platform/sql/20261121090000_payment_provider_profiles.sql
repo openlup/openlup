@@ -1,5 +1,6 @@
--- Immutable provider policies. NULL enumerates declarations for early tuple validation;
--- any other identifier resolves exactly one declaration or the generic fallback.
+-- Immutable provider policies. NULL enumerates declarations; other identifiers
+-- resolve one declaration or the generic fallback. The fallback retains legacy
+-- early-validation codes; trusted lists alone never opt a provider into reopening.
 CREATE FUNCTION public.payment_provider_profile(p_provider text)
 RETURNS TABLE (
  provider text,
@@ -33,11 +34,15 @@ RETURNS TABLE (
    'event-delta',NULL::text,NULL::text[],NULL::text[],false,false,false,false,NULL::text,
    true,true,ARRAY['tpay_oauth_failed','tpay_oauth_timeout','tpay_oauth_invalid_response'],
    ARRAY['tpay_request_encode_failed','tpay_request_deadline_exhausted'],'tpay_request_refused')
+ ), fallback_trust(provider,trusted_oauth_codes,trusted_dispatch_codes,trusted_refusal_code) AS (VALUES
+  (NULL::text,ARRAY['tpay_oauth_failed','tpay_oauth_timeout','tpay_oauth_invalid_response'],
+   ARRAY['tpay_request_encode_failed','tpay_request_deadline_exhausted'],'tpay_request_refused')
  )
  SELECT * FROM declarations WHERE p_provider IS NULL OR provider=p_provider
  UNION ALL
  SELECT p_provider,NULL,NULL,false,'attempt-intent-session',false,false,
-  'event-delta',NULL,NULL,NULL,false,false,false,false,NULL,false,false,ARRAY[]::text[],ARRAY[]::text[],NULL
+  'event-delta',NULL,NULL,NULL,false,false,false,false,NULL,false,false,trust.trusted_oauth_codes,trust.trusted_dispatch_codes,trust.trusted_refusal_code
+ FROM fallback_trust trust
  WHERE p_provider IS NOT NULL AND NOT EXISTS(SELECT 1 FROM declarations WHERE provider=p_provider);
 $$;
 
@@ -1580,6 +1585,7 @@ BEGIN
     FROM public.payment_provider_attempts a
    WHERE a.id = p_payment_attempt_id
      AND (SELECT interactive FROM public.payment_provider_profile(a.provider));
+  v_tuple_provider := COALESCE(v_tuple_provider, '');
 
   IF p_reopen_mode = 'trusted_pre_dispatch' THEN
     IF p_dispatch_state <> 'not_dispatched'

@@ -35,6 +35,12 @@ const predecessors = pins.map(pin => {
   const source = readFileSync(owner.path, "utf8");
   return sqlStatements(source, true).filter(s => nativeStoreFunctionDefinitions(Buffer.from(s), [pin.signature], true).has(pin.signature)).at(-1)!;
 });
+const historicalDefinition=(signature:string)=>{
+  const unit=registry.nativeStoreForwards.filter((f:{path:string;functions:Pin[]})=>f.path<slot&&f.functions.some(fn=>fn.signature===signature)).at(-1);
+  return sqlStatements(readFileSync(unit.path,"utf8"),true).filter(statement=>nativeStoreFunctionDefinitions(Buffer.from(statement),[signature],true).has(signature)).at(-1)!;
+};
+const handoffSource=historicalDefinition("public.payment_reconciliation_open_dunning_from_failed_result(text,uuid,text,text,timestamptz,text,uuid,text,text)");
+const financialSource=historicalDefinition("public.payment_refund_readback(uuid)");
 const replacements = pins.map(pin => statements.find(s => nativeStoreFunctionDefinitions(Buffer.from(s), [pin.signature], true).has(pin.signature))!);
 const replace = (s: string) => s.replace(/^CREATE(?: OR REPLACE)? FUNCTION/u, "CREATE OR REPLACE FUNCTION");
 const oldDDL = predecessors.map(replace).join("\n"), newDDL = replacements.join("\n");
@@ -47,8 +53,9 @@ const third: { policy: PaymentProviderProfile; paid: Fixture; claim: Fixture; re
 let genericBefore: unknown;
 let handoffDDL: string;
 let referenceFixture: Fixture;
+const unsupportedInteractive:Fixture[]=[];
 type Fixture = { client: string; intent: string; attempt: string; order: string; cycle: string | null; subscription: string | null; provider: string; event: string; key: string };
-type Probe = { fn: string; args: unknown[]; types: string[]; expected?: string; kind?: string; handoffFault?: string };
+type Probe = { fn: string; args: unknown[]; types: string[]; expected?: string; kind?: string; handoffFault?: string; handoffReason?: string };
 type Case = { group: string; name: string; subscription?: boolean; state?: "paid" | "failed" | "prepared"; expected?: string; kind?: string; early?: boolean; change?: (f: Fixture, p: Probe) => Promise<void>; args?: (f: Fixture) => unknown[] };
 const prepare = "payment_provider_attempt_prepare", truth = "payment_provider_assert_truth", result = "payment_provider_result_apply";
 const stale = "commerce_payment_reconciliation_claim_stale_attempts", prepared = "commerce_payment_reconciliation_claim_prepared_attempts";
@@ -230,9 +237,9 @@ cases.push({group:truth,name:"historical_no_state",change:async(f,p)=>{
   if(profiles.some(policy=>policy.provider===f.provider))p.expected="payment_control_result_active_attempt_not_found";
 }});
 cases.push({group:truth,name:"missing_intent",expected:"payment_control_result_active_attempt_not_found",change:async(_f,p)=>{p.args[0]=randomUUID();}});
-cases.push({group:refund,name:"non_advancing_snapshot",state:"paid",change:async(f,p)=>{
+for(const group of [refund,result])cases.push({group,name:"non_advancing_snapshot",state:"paid",change:async(f,p)=>{
   const profile=profiles.find(policy=>policy.provider===f.provider);
-  p.kind=profile?.refund_ignored_kind??"state_changed";
+  p.kind=profile?.refund_ignored_kind??"state_changed";p.args[3]="partially_refunded";
   if(profile?.refund_kind==="cumulative-snapshot"){
     const e=(await owner.query("SELECT public.payment_provider_event_ingest($1,$2,'payment.refunded',$3,$4,$5,12999,'XXX',true,(SELECT jsonb_set(payload,$6::text[],'12999') FROM public.payment_provider_attempt_evidence WHERE id=$7)) value",[f.provider,f.key+":prior",`charge_${f.attempt}`,f.intent,f.attempt,profile.refund_amount_path,f.event])).rows[0].value.paymentEvent.id;
     await owner.query("SELECT public.payment_refund_evidence_record($1,$2,12999,'XXX')",[e,`charge_${f.attempt}`]);
@@ -256,6 +263,16 @@ cases.push({group:prepared,name:"returned_requires_action",state:"prepared",chan
 for(const status of attemptStatuses)cases.push({group:prepare,name:`returned_attempt_${status}`,state:"failed",change:async(_f,p)=>{
   const id=(await owner.query(callSQL(p),p.args)).rows[0].value.paymentAttempt.id;
   await owner.query("UPDATE public.payment_provider_attempts SET status=$2 WHERE id=$1",[id,status]);
+}});
+for(const [reason,subscription] of [["not_subscription_cycle",false],["not_dunning_eligible",true]] as const)cases.push({group:result,name:`returned_${reason}`,subscription,change:async(f,p)=>{
+  p.args[0]=`provider-webhook:${f.provider}:${f.key}:apply`;p.args[3]="failed";p.handoffReason=reason;
+  await event(f,"event_type='payment.failed'");
+}});
+for(const amount of [3000,12999])cases.push({group:financial,name:`returned_evidence_${amount}`,state:"paid",change:async f=>{
+  const profile=profiles.find(policy=>policy.provider===f.provider);
+  if(profile?.refund_kind==="cumulative-snapshot")await event(f,"payload=jsonb_set(payload,$2::text[],$3::jsonb)",[profile.refund_amount_path,String(amount)]);
+  else await event(f,"amount_minor=$2",[amount]);
+  await owner.query("SELECT public.payment_refund_evidence_record($1,$2,$3,'XXX')",[f.event,`charge_${f.attempt}`,amount]);
 }});
 const caughtRefusals=[...predecessors[pins.findIndex(pin=>pin.signature.startsWith(`public.${result}(`))]!.matchAll(/IF SQLERRM NOT IN \(([^)]+)\)/gu)].flatMap(m=>[...m[1]!.matchAll(/'([^']+)'/gu)].map(v=>v[1]!));
 for(const code of caughtRefusals)cases.push({group:result,name:`caught_${code}`,change:async(f,p)=>{
@@ -321,7 +338,7 @@ beforeAll(async()=>{
       await owner.query("SELECT * FROM public.commerce_payment_reconciliation_claim_prepared_attempts($1,900,500,$2)",[at,`watchdog:${f.key}`]);
     }
     let payload:unknown={},amount=12999;
-    const isRefund=[refund,record,financial].includes(c.group);
+    const isRefund=[refund,record,financial].includes(c.group)||(c.group===result&&c.name==="non_advancing_snapshot");
     if(isRefund){
       amount=3000;
       if(label==="snapshot")payload=(await owner.query("SELECT pg_temp.refund_input($1,$2,3000) f",[f,f.key])).rows[0].f.rawPayload;
@@ -405,7 +422,7 @@ it.each(matrix)("preserves $label $c.group $c.name against its before-hash body"
     if((c.name==="valid"||c.name==="inline_admission"||c.name==="historical_no_state"||c.name.startsWith("trusted_")||c.name.startsWith("returned_")||c.name.startsWith("caught_")||c.name==="skipped_subscription"||c.name==="ignored_snapshot"||p.kind)&&!p.expected)expect(after.error).toBeUndefined();
     if(p.kind)expect(after.rows).toMatchObject([{value:{paymentResult:{kind:p.kind}}}]);
     if(c.name==="skipped_subscription")expect(after.rows).toMatchObject([{value:{paymentAttemptAdmission:{status:"skipped_not_chargeable",reason:"payment_control_subscription_not_chargeable"}}}]);
-    if(p.handoffFault)expect(after.rows).toMatchObject([{value:{subscriptionWebhookDunning:{opened:false,reason:p.handoffFault}}}]);
+    if(p.handoffFault||p.handoffReason)expect(after.rows).toMatchObject([{value:{subscriptionWebhookDunning:{opened:false,reason:p.handoffFault??p.handoffReason}}}]);
     if((c.group===stale||c.group===prepared)&&c.name==="valid"){
       expect(third).toEqual([]);
       expect(after.rows).toBeInstanceOf(Array);
@@ -430,7 +447,7 @@ beforeAll(async()=>{
     ...(p.refund_kind==="cumulative-snapshot"?{refund_operation_path:["exampleSnapshot","chargeId"],refund_amount_path:["exampleSnapshot","amountRefundedMinor"],refund_ignored_kind:"ignored_example_snapshot"}:{}),
   }));
   additions.push({...additions.find(policy=>policy.interactive)!,provider:"example-empty",trusted_oauth_codes:[],trusted_dispatch_codes:[],trusted_refusal_code:null});
-  const amended=replace(profileDDL).replace("\n )\n SELECT * FROM declarations",",\n"+additions.map(p=>"  ("+Object.values(p).map(literal).join(",")+")").join(",\n")+"\n )\n SELECT * FROM declarations");
+  const amended=replace(profileDDL).replace("\n ), fallback_trust",",\n"+additions.map(p=>"  ("+Object.values(p).map(literal).join(",")+")").join(",\n")+"\n ), fallback_trust");
   expect(amended).not.toBe(replace(profileDDL));
   await owner.query(amended);
   for(const policy of additions){
@@ -446,6 +463,9 @@ beforeAll(async()=>{
     third.push({policy,paid,claim,renewal:renewalFixture,interactive:interactiveFixture,inline});
   }
   await owner.query("SELECT * FROM public.commerce_payment_reconciliation_claim_prepared_attempts($1,900,500,'third-watchdog')",[at]);
+  for(const provider of [profiles.find(policy=>!policy.interactive)!.provider,"unprofiled-provider"]){
+    unsupportedInteractive.push((await owner.query("SELECT pg_temp.reconciliation_fixture($1,false,false) f",[provider])).rows[0].f);
+  }
   const reference=profiles.find(policy=>policy.interactive)!;
   // The existing one-time fixtures remain prepared after each rolled-back call.
   referenceFixture=(await owner.query("SELECT pg_temp.reconciliation_fixture($1,false,false) f",[reference.provider])).rows[0].f as Fixture;
@@ -498,18 +518,25 @@ it("binds distinct and empty trusted lists to the attempt profile before replay"
   const reference=profiles.find(policy=>policy.interactive)!,distinct=third.find(f=>f.policy.provider==="example-session")!,empty=third.find(f=>f.policy.provider==="example-empty")!;
   for(const [phase,field] of [["oauth","trusted_oauth_codes"],["transaction_dispatch","trusted_dispatch_codes"],["response_decode","trusted_refusal_code"]] as const){
     const code=(policy:PaymentProviderProfile)=>{const value=policy[field];return Array.isArray(value)?value[0]!:value!;};
-    for(const [fixture,reason,accepted] of [[referenceFixture,code(distinct.policy),false],[distinct.interactive,code(reference),false],[distinct.interactive,code(distinct.policy),true],[empty.interactive,code(reference),false],[empty.interactive,code(distinct.policy),false]] as const){
+    for(const [fixture,reason,accepted] of [[referenceFixture,code(distinct.policy),false],...unsupportedInteractive.map(f=>[f,code(distinct.policy),false] as const),[distinct.interactive,code(reference),false],[distinct.interactive,code(distinct.policy),true],[empty.interactive,code(reference),false],[empty.interactive,code(distinct.policy),false]] as const){
       const mode=phase==="response_decode"?"trusted_provider_refusal":"trusted_pre_dispatch";
       const invalid=`interactive_prepared_attempt_reopen_invalid_${phase==="response_decode"?"provider_refusal":"trusted_pre_dispatch"}_evidence`;
       const p:Probe={fn:interactive,types:pins.at(-1)!.signature.split("(")[1]!.slice(0,-1).split(","),args:[`cross-profile:${fixture.intent}:${phase}:${reason}`,fixture.attempt,fixture.intent,fixture.order,null,null,mode,phase==="response_decode"?"refused":"not_dispatched",phase,reason,null,null,{}]};
       await runtime.query("BEGIN");
       try{const observed=await observe(p);if(accepted)expect(observed.rows).toMatchObject([{value:{interactivePreparedAttemptReopen:{replayed:false}}}]);else expect(observed.error).toEqual({code:"22023",message:invalid});}finally{await runtime.query("ROLLBACK");}
+      if(!accepted&&[referenceFixture,...unsupportedInteractive].includes(fixture)){
+        try{expect(await observeDefinition(p,newDDL)).toEqual(await observeDefinition(p,oldDDL));}finally{await owner.query(newDDL);}
+      }
       if(!accepted){
         // Invalid foreign tuples still refuse before a conflicting receipt/replay.
         await owner.query("INSERT INTO public.payment_provider_receipts(scope,idempotency_key,request_fingerprint,status,response_payload) VALUES('commerce.payment_attempt.interactive_prepared_reopen',$1,'different','completed','{}') ON CONFLICT DO NOTHING",[p.args[0]]);
         expect((await observe(p)).error).toEqual({code:"22023",message:invalid});
       }
     }
+  }
+  for(const f of unsupportedInteractive){
+    const p:Probe={fn:interactive,types:pins.at(-1)!.signature.split("(")[1]!.slice(0,-1).split(","),args:[`legacy-unsupported:${f.intent}`,f.attempt,f.intent,f.order,null,null,"trusted_pre_dispatch","not_dispatched","oauth",reference.trusted_oauth_codes[0],null,null,{}]};
+    try{const before=await observeDefinition(p,oldDDL),after=await observeDefinition(p,newDDL);expect(after).toEqual(before);expect(after.error?.message).toBe("interactive_prepared_attempt_reopen_provider_not_supported");}finally{await owner.query(newDDL);}
   }
   expect(await genericDefinitions()).toEqual(genericBefore);
 });
@@ -526,6 +553,14 @@ function returnedCodes(source:string,fn:string):string[]{
   for(const m of responses.matchAll(/'(?:status|reason|kind|attemptStatus|paymentAttemptStatus|paymentIntentStatus)'\s*,\s*'([^']+)'/gu))codes.add(m[1]!);
   for(const m of source.matchAll(/\b(?:kind|observation)(?:\s+text)?\s*:=\s*'([^']+)'/gu))codes.add(m[1]!);
   for(const m of source.matchAll(/(?:p_result_status NOT IN|IF SQLERRM NOT IN)\s*\(([^)]+)\)/gu))literals(m[1]!).forEach(code=>codes.add(code));
+  if(fn===result){
+    // These are returned directly through the existing helper/delegate paths.
+    returnedCodes(handoffSource,"handoff").forEach(code=>codes.add(code));
+    returnedCodes(predecessors[pins.findIndex(pin=>pin.signature.startsWith(`public.${refund}(`))]!,refund).forEach(code=>codes.add(code));
+  }
+  if(fn===financial){
+    for(const m of financialSource.matchAll(/'(?:refundEvidenceVersion|amountSource)'\s*,\s*'([^']+)'/gu))codes.add(m[1]!);
+  }
   if(fn===prepare){
     expect(source).toContain("'status', v_attempt.status");attemptStatuses.forEach(code=>codes.add(code));
   }
