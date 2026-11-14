@@ -180,8 +180,8 @@ jobs:
           OPENLUP_QUALIFICATION_DATABASE_URL: postgresql://postgres@127.0.0.1:${{ steps.postgres.outputs.port }}/postgres
         run: node scripts/packages/exact-set-qualification.mjs "$RELEASE_TAG" "$TAG_COMMIT" "$RUNNER_TEMP/exact-set-qualification.json"
       - name: Qualify interrupted adjacent-set starter upgrade
-        # Local 0.40.0→0.41.0: 49.62s on Node 24.21.0/npm 11.19.0; 4x rounded up. Remeasure first hosted run.
-        timeout-minutes: 4
+        # Local shared-proof 0.40.0→0.41.0: 65.08s on Node 24.21.0/npm 11.19.0; 4x rounded up. Remeasure first hosted run.
+        timeout-minutes: 5
         run: node scripts/packages/exact-set-qualification.mjs "$RELEASE_TAG" "$TAG_COMMIT" "$RUNNER_TEMP/exact-set-qualification.json" --upgrade
       - name: Seal an incomplete qualification receipt
         if: always()

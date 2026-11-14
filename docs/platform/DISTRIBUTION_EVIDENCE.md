@@ -72,6 +72,8 @@ tag below the target whose version appears in every publishable package's npm
 history. Missing complete predecessors refuse qualification. Both tag-bound
 starters reuse the exact-set extractor, lock checker, isolated install and npm
 signature/provenance checks above; older sources are labelled `reconstructed`.
+The shared released-input consumer proof checks both extracted applications,
+including the target application that supplies the installed upgrade CLI.
 
 Managed snapshots are derived from each extracted `ownership.json`, excluding
 generated and owned paths. The proof customizes owned theme and fragment files,
@@ -82,8 +84,10 @@ rename. The harness asserts `incomplete_application_upgrade` against target
 managed bytes and declared/installed package versions, then resumes and proves
 replay applies nothing. That refusal is a harness observation, not a CLI-added
 application serving guard. The CLI changes files only; the harness installs
-the target's separately regenerated, extractor-verified lock with `npm ci`,
-then reruns typecheck, build, application tests and development-loop checks.
+the target's separately regenerated, extractor-verified lock through that same
+shared consumer proof. It runs `npm ci`, typecheck, build, application tests and
+development-loop checks on the upgraded application, including package
+confinement, installed provenance and unchanged target-lock assertions.
 Owned customization bytes must remain identical.
 
 For 0.40.0→0.41.0 the only changing managed file is the extracted
@@ -97,9 +101,12 @@ commands.
 The local 2026-11-14 0.40.0→0.41.0 run passed in 49.62 seconds on Node
 24.21.0/npm 11.19.0. Both extractions were reconstructed; old and upgraded apps
 each passed typecheck, build, 296 application tests and two development-loop
-tests. This is local evidence, not a hosted upgrade receipt. The step's
-four-minute bound is 4× that one successful measurement, rounded up; the first
-hosted run must remeasure it. An earlier attempt exposed the development-loop
+tests. The shared-proof follow-up on the same date passed in 65.08 seconds;
+both baseline extractions and the upgraded application each passed all shared
+checks, including 296 application tests and two development-loop tests. This is
+local evidence, not a hosted upgrade receipt. The step's five-minute bound is
+4× the follow-up measurement, rounded up; the first hosted run must remeasure
+it. An earlier attempt exposed the development-loop
 witness's fixed demo brand assumption; customization now changes theme colors
 and a fragment class while retaining that witness unchanged.
 

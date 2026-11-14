@@ -176,11 +176,10 @@ function prepareReleasedStarter(receipt, temporary, run) {
     '--mode', mode, '--set-version', receipt.setVersion, '--source-revision', expectedCommit, '--manifest', manifest, '--lockfile', lockfile,
     ...(mode === 'reconstructed' ? ['--reason', 'Release tag predates versioned starter extraction.'] : [])]);
   receipt.extraction = json(join(extracted, '.starter-origin.json'));
-  assert.equal(receipt.extraction.lockfileSha256, sha256(readFileSync(join(extracted, 'package-lock.json'))));
   return { application: extracted, packages };
 }
 
-function checkReleasedStarter(receipt, input, temporary, run, environment) {
+function proveReleasedStarter(receipt, input, temporary, run, environment) {
   const { application, packages } = input;
   proveNeutralStarterConsumer(root, { mode: 'released', application, environment, run,
     lockfileSha256: receipt.extraction.lockfileSha256, packages: packages.map(({ name }) => name), verifyInstalled() {
@@ -224,7 +223,7 @@ export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = f
       const inputs = releases.map((release, index) => {
         const directory = join(temporary, String(index)); mkdirSync(directory);
         const input = prepareReleasedStarter(release, directory, run);
-        checkReleasedStarter(release, input, directory, run, environment);
+        proveReleasedStarter(release, input, directory, run, environment);
         return input;
       });
       const applications = inputs.map(input => input.application);
@@ -234,13 +233,13 @@ export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = f
       // The CLI moved declarations; the harness moves the verified lock and installs.
       assert.deepEqual(readFileSync(join(applications[0], 'package.json')), readFileSync(join(applications[1], 'package.json')), 'file upgrade must move exact dependency declarations');
       writeFileSync(join(applications[0], 'package-lock.json'), readFileSync(join(applications[1], 'package-lock.json')));
-      checkReleasedStarter(pair.to, { ...inputs[1], application: applications[0] }, temporary, run, environment);
+      proveReleasedStarter(pair.to, { ...inputs[1], application: applications[0] }, temporary, run, environment);
       finish();
       pair.to.result = 'PASS'; pair.to.endedAt = new Date().toISOString();
       pair.result = 'PASS';
     } else {
       const input = prepareReleasedStarter(receipt, temporary, run);
-      checkReleasedStarter(receipt, input, temporary, run, environment);
+      proveReleasedStarter(receipt, input, temporary, run, environment);
       const extracted = input.application;
       receipt.postgresImage = imageReference(readCiImage('install-proof-postgres'));
       if (!env.OPENLUP_QUALIFICATION_DATABASE_URL) refuse('qualification PostgreSQL connection required');
