@@ -288,7 +288,11 @@ resolution preserves that spelling and always verifies the pinned digest.
 The script resolves upstream tags to digests, copies complete indexes to
 `ghcr.io/openlup/<upstream-repository>:<tag>` (slashes retained), skips identical
 target tags, refuses conflicting tags and verifies the digest after copying.
-Only the mirror job receives `packages: write`: it reads owned pins from its own
+Exactly two jobs receive `packages: write`: `mirror` in `mirror-ci-images.yml`
+and `publish-qualified-image` in `registry-tutorial.yml`. The publisher runs only
+after successful qualification, verifies and copies the downloaded OCI archive,
+and executes no candidate code. This split keeps installation code away from a
+write token. The mirror reads owned pins from its own
 checkout, refuses a missing digest or two pins that would write different digests
 to one target, and runs only SHA-pinned first-party actions plus the
 dependency-free repository script. A moved tag is refused.

@@ -558,8 +558,11 @@ for every mirrored image. It records four PostgreSQL images (the install-proof
 database, also used by raw pgTAP and managed-rail tests, the disposable test
 default, and two attribute-version witness pins), the starter Node base and the
 starter browser image. No Supabase CLI, CLI-derived or managed-host image remains
-in hosted CI. The single mirror
-job reads typed owned pins from its own checkout, validates all of them before
+in hosted CI. Exactly two workflow jobs hold `packages: write`: `mirror` in
+`mirror-ci-images.yml` and `publish-qualified-image` in `registry-tutorial.yml`.
+The latter verifies and copies an OCI archive only after qualification succeeds;
+it executes no candidate code, keeping installation code away from write tokens.
+The mirror job reads typed owned pins from its own checkout, validates all of them before
 any exec or registry call, and builds upstream sources and mirror targets itself.
 It runs only pinned first-party actions plus the repository script, re-resolves
 source digests, skips identical targets, refuses moved tags and two pins that

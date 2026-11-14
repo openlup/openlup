@@ -81,7 +81,7 @@ describe("queue completion trust boundary", () => {
 
 describe("CI image mirror workflow controls", () => {
   const mirror = readFileSync(join(ROOT, ".github/workflows/mirror-ci-images.yml"), "utf8");
-  const permissionBlocks = (source: string) => [...source.matchAll(/^( *)permissions:([^\n]*)\n((?:\1 +[^\n]*\n)*)/gmu)].map(([block]) => block.trimEnd());
+  const permissionBlocks = (source: string) => [...source.matchAll(/^( *)["']?permissions["']? *:([^\n]*)\n((?:\1 +[^\n]*\n)*)/gmu)].map(([block]) => block.trimEnd());
   const firstPartyActions = [
     ["actions/checkout", "3d3c42e5aac5ba805825da76410c181273ba90b1"],
     ["actions/setup-node", "249970729cb0ef3589644e2896645e5dc5ba9c38"],
@@ -148,13 +148,16 @@ describe("CI image mirror workflow controls", () => {
 
   const workflows = () => readdirSync(join(ROOT, ".github/workflows")).filter((name) => /\.ya?ml$/u.test(name))
     .map((name) => ({ name, source: readFileSync(join(ROOT, ".github/workflows", name), "utf8") }));
-  const assertSoleWriter = (sources: Array<{ name: string; source: string }>) => {
+  const assertExactWriters = (sources: Array<{ name: string; source: string }>) => {
     const writers = sources.flatMap(({ name, source }) => permissionBlocks(source)
-      .filter((block) => /permissions: *write-all\b|\bpackages: *write\b/u.test(block)).map((block) => ({ name, block })));
-    expect(writers).toEqual([{ name: "mirror-ci-images.yml", block: "    permissions: {contents: read, packages: write}" }]);
+      .filter((block) => /\bwrite-all\b|["']?packages["']? *: *["']?write\b/u.test(block)).map((block) => ({ name, block })));
+    expect(writers).toEqual([
+      { name: "mirror-ci-images.yml", block: "    permissions: {contents: read, packages: write}" },
+      { name: "registry-tutorial.yml", block: "    permissions: {packages: write}" },
+    ]);
   };
 
-  it("grants packages write in exactly the mirror job across every workflow", () => assertSoleWriter(workflows()));
+  it("grants packages write in exactly the mirror and qualified-image publisher jobs across every workflow", () => assertExactWriters(workflows()));
 
   it.each([
     "name: Planted\npermissions: write-all\njobs: {}\n",
@@ -162,8 +165,56 @@ describe("CI image mirror workflow controls", () => {
     "name: Planted\njobs:\n  planted:\n    permissions: { packages: write }\n",
     "name: Planted\njobs:\n  planted:\n    permissions: {packages: write}\n",
     "name: Planted\npermissions:\n  contents: read\n  packages: write\njobs: {}\n",
-  ])("rejects a second writer in alternate permission spelling: %s", (source) => {
-    expect(() => assertSoleWriter([...workflows(), { name: "planted.yml", source }])).toThrow();
+    'name: Planted\njobs:\n  planted:\n    "permissions": { "packages" : "write" }\n',
+  ])("rejects a third writer in alternate permission spelling: %s", (source) => {
+    expect(() => assertExactWriters([...workflows(), { name: "planted.yml", source }])).toThrow();
+  });
+
+  it("rejects another writer inside the qualified-image workflow", () => {
+    const sources = workflows().map(({ name, source }) => ({ name, source: name === "registry-tutorial.yml"
+      ? `${source}\n  planted:\n    permissions: {packages: write}\n` : source }));
+    expect(() => assertExactWriters(sources)).toThrow();
+  });
+
+  const qualification = readFileSync(join(ROOT, ".github/workflows/registry-tutorial.yml"), "utf8");
+  const assertPublisherControls = (source: string) => {
+    const writer = workflowJob("publish-qualified-image", source);
+    expect(writer).toContain("    needs: exact-set-qualification\n    if: ${{ needs.exact-set-qualification.result == 'success' }}\n");
+    expect(permissionBlocks(writer)).toEqual(["    permissions: {packages: write}"]);
+    // No checkout at all: downloaded data is verified, never executed. Only these
+    // full-SHA first-party actions may run alongside the reviewed shell program.
+    expect([...writer.matchAll(/uses: ([^@\n]+)@([^\s#]+)/gu)].map((match) => [match[1], match[2]])).toEqual([
+      ["actions/download-artifact", "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c"],
+      ["actions/upload-artifact", "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"],
+    ]);
+    expect(writer).not.toMatch(/\b(?:npm|npx|node)\b|actions\/checkout|secrets\.|^\s*(?:shell|container|services):/mu);
+    const runs = writer.match(/^ {6}(?:- | {2})run:.*\n(?: {10}[^\n]*\n|\n)*/gmu) ?? [];
+    expect(runs).toHaveLength(1);
+    expect(runs[0]).not.toContain("${{");
+    // Seal the reviewed skopeo + shell/jq writer, including env and alternate YAML
+    // run forms; shell allowlists cannot prove that candidate code stays inert.
+    expect(createHash("sha256").update(writer).digest("hex")).toBe("2a42aca8ccfcdf43a4b42874846b106bd1c3e57c1ce79ce5cd4fdd73378cc527");
+  };
+  it("publishes only successful qualification data without executing candidate code", () => assertPublisherControls(qualification));
+  it.each([
+    ["needs: exact-set-qualification", "needs: registry-tutorial"],
+    ["needs.exact-set-qualification.result == 'success'", "always()"],
+    ["permissions: {packages: write}", "permissions: write-all"],
+    ["permissions: {packages: write}", "permissions:\n      packages: write"],
+    ["permissions: {packages: write}", "permissions: {packages: write, contents: read}"],
+    ["actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c", "actions/download-artifact@v8"],
+    ["actions/download-artifact@", "attacker/download-artifact@"],
+    ["    steps:\n", '    steps:\n      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1\n        with: {ref: "${{ github.event.pull_request.head.sha }}"}\n'],
+    ["run: |", "run: npm ci"], ["run: |", "run: npx candidate"], ["run: |", "run: node candidate.mjs"],
+    ["run: |", "run: >"],
+    ["run: |", "run: |\n          echo '${{ github.event.head_commit.message }}'"],
+    ["run: |", "run: |\n          bash candidate.sh"],
+    ["run: |", "shell: bash candidate.sh {0}\n        run: |"],
+    ["    steps:\n", "    steps:\n      - run: echo '${{ github.event.head_commit.message }}'\n"],
+  ])("refuses an unsafe publisher substitution %s → %s", (before, after) => {
+    const writer = workflowJob("publish-qualified-image", qualification);
+    expect(writer).toContain(before);
+    expect(() => assertPublisherControls(qualification.replace(writer, writer.replace(before, after)))).toThrow();
   });
 });
 
