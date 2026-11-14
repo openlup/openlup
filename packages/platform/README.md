@@ -2682,13 +2682,16 @@ Invoicing exports explicit `createInvoiceServices`, `InvoiceServices` and inert
 SQL wrappers persist it for eligible obligations. `InvoiceSellerRevision` is also
 available from the type-only contracts entry. Legacy obligations keep fallback.
 
-For the prepared `0.41.0` set, read the [adjacent-release migration and known
-limitations](CHANGELOG.md#0410) before selecting optional services. This set
-adds the experimental `./payments/testing` subpath for payment adapter authors:
-the existing conformance runner, a provider-neutral scripted transport fake and
-optional offline safety scenarios. `runPaymentAdapterConformance` now takes the
-named `PaymentAdapterTestSubject[]`, so existing callers compile and run
-unchanged. The set adds no schema migration.
+For the prepared `0.42.0` set, read the [adjacent-release migration and known
+limitations](CHANGELOG.md#0420) before selecting optional services. This set
+adds native provider-attempt persistence, recorded payment-method references,
+reconciliation, attributed dunning and evidence-gated refunds, plus explicit
+card reference provider composition over those native owners. Install schema
+migration slots 42–44 through `20261114120000_payment_reconciliation_refund_evidence.sql`
+before selecting the new bindings. Real-provider lifecycle history without a
+recorded method reference fails closed; the host registers verified references
+with `payment_method_ref_upsert`, without automatic backfill. The original
+renewal evidence lane and explicit sandbox lane retain the limits in the notes.
 Apply the complete selected migration catalogue before composing the new native
 bindings. Experimental
 marketing uses browser-safe `./marketing`, type-only browser-safe
@@ -2735,7 +2738,7 @@ Adopters must not activate unselected or unready invoicing; installation and
 inert contributions register no runner, worker, route or schedule.
 M06 managed-host proof classes remain pending in the
 [M06 parity ledger](https://github.com/openlup/openlup/blob/main/docs/platform/plans/oss-m06-stock-reservations-delivery.md#parity-pending-rows).
-Size comparison uses the published `0.40.0` tarball. Preparation and offline
+Size comparison uses the published `0.41.0` tarball. Preparation and offline
 adapter evidence grant no publication or provider-account certification.
 
 The set requires Zod `^4.6.6` for GHSA-mrhx-c7xc-m3w5.

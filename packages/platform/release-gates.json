@@ -988,8 +988,8 @@
     "maxFiles": 5004,
     "capReason": "Per-part budget for the portable payments part; rows do not edit caps. Measured before this cap declaration: code 2491197 B packed / 4232 files; total 3110045 B packed / 14878816 B unpacked / 4387 files; docs 104456 B packed / 7 files. Forecast: +215040 B packed code and total; multiply those sums by 1.05 and round up. Derive unpacked and code/total file forecasts proportionally using 215040/2491197, then add 5% and round up. Docs use measured values plus 5%, rounded up. Preserve the released baseline and browser-entry limits.",
     "baseline": {
-      "version": "0.40.0",
-      "packedBytes": 3090858
+      "version": "0.41.0",
+      "packedBytes": 3105325
     },
     "browserEntries": {
       "./catalog/contracts": 4096,

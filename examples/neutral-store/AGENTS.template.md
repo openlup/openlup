@@ -65,17 +65,17 @@ This application is an unpublished local demonstration. It has no authority to
 publish, deploy, use credentials or create paid resources. Its fictional data
 must never be connected to a customer environment by changing a URL.
 
-Prepare the selected artifacts and dependencies as described in the [starter guide](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/core/docs/guide/how-to/build/customize-the-starter.md).
+Prepare the selected artifacts and dependencies as described in the [starter guide](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/packages/core/docs/guide/how-to/build/customize-the-starter.md).
 For the local UI edit loop, run `npm run dev` and refresh the browser after a
-successful build or host restart. See the [starter guide](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/core/docs/guide/how-to/build/customize-the-starter.md) for supported platforms
+successful build or host restart. See the [starter guide](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/packages/core/docs/guide/how-to/build/customize-the-starter.md) for supported platforms
 and limits. `npm run build` then `npm start` remains the ordinary one-shot preview.
 
 | Task | Application-relative route | Existing verification route |
 | --- | --- | --- |
-| Brand, copy, media, offer or cadence | `owned/store.config.ts`, `owned/copy.ts`, `public/media/`; start at [customization](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/core/docs/guide/how-to/build/customize-the-starter.md) | `npm test`, `npm run typecheck`, `npm run build`; add new media to `ownership.json` |
+| Brand, copy, media, offer or cadence | `owned/store.config.ts`, `owned/copy.ts`, `public/media/`; start at [customization](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/packages/core/docs/guide/how-to/build/customize-the-starter.md) | `npm test`, `npm run typecheck`, `npm run build`; add new media to `ownership.json` |
 | Product, offer or checkout presentation | The three functions in `owned/fragments.ts` | Typecheck and build, then relevant browser proof |
 | Minimum-unit validation | Owned input, the shared `shared/offer.ts` validator and `test/offer.test.ts` | Relevant offer tests; preserve browser/host parity |
-| New route or whole-page change | [Changes that need a page copy](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/core/docs/guide/how-to/build/customize-the-starter.md#change-a-page-or-add-a-route), `ownership.json` | Existing route tests and applicable bilingual browser proof; explain maintenance ownership |
+| New route or whole-page change | [Changes that need a page copy](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/packages/core/docs/guide/how-to/build/customize-the-starter.md#change-a-page-or-add-a-route), `ownership.json` | Existing route tests and applicable bilingual browser proof; explain maintenance ownership |
 | Unavailable action or integration error | `docs/limits.md`, `host/bindings.ts`, relevant composition and installed package contract | Follow the existing witness in [proof guidance](docs/proof.md); do not invent a success |
 
 The configuration is one typed input, and `shared/offer.ts` is the single

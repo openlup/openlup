@@ -347,11 +347,12 @@ The source-preview descendant check retains its strict snapshot equality.
 
 ### Core release preparation
 
-The prepared `0.41.0` set republishes Core with unchanged runtime, exports and
-SQL; its reader guide lists Platform's new experimental `./payments/testing`
-subpath. Upgrade all packages together and read
-[the set notes](../../packages/core/CHANGELOG.md#0410); Core introduces no schema migration.
-Size comparison uses the published `0.40.0` tarball; releases before `0.39.0`
+The prepared `0.42.0` set republishes Core with unchanged runtime, exports and
+SQL; its reader guide adds the native payments upgrade notes, including
+Platform's schema migration slots 42–44 and recorded-method requirements.
+Upgrade all packages together and read
+[the set notes](../../packages/core/CHANGELOG.md#0420); Core introduces no schema migration.
+Size comparison uses the published `0.41.0` tarball; releases before `0.40.0`
 remain in the source-only `CHANGELOG-HISTORY.md`. Preparation establishes no
 npm publication.
 
@@ -365,11 +366,11 @@ types for Zod's standard `URL` declaration; Core adds no runtime Node import.
 
 The reviewed release workflow owns provenance-backed publication; direct directory publishing refuses. New API and shipped SQL require the next minor set.
 
-The prepared `0.41.0` set republishes Outbox with unchanged runtime, exports and
-SQL, and an exact `@openlup/core@0.41.0` peer. Upgrade the complete set together;
-no Outbox schema migration is introduced. Read [0.41.0 notes](../../packages/outbox/CHANGELOG.md#0410).
-Releases before `0.39.0` are retained in the source-only `CHANGELOG-HISTORY.md`.
-Size comparison uses the published `0.40.0` tarball; preparation grants no
+The prepared `0.42.0` set republishes Outbox with unchanged runtime, exports and
+SQL, and an exact `@openlup/core@0.42.0` peer. Upgrade the complete set together;
+no Outbox schema migration is introduced. Read [0.42.0 notes](../../packages/outbox/CHANGELOG.md#0420).
+Releases before `0.40.0` are retained in the source-only `CHANGELOG-HISTORY.md`.
+Size comparison uses the published `0.41.0` tarball; preparation grants no
 publication or installation proof.
 
 ## Cutting an optional source preview
