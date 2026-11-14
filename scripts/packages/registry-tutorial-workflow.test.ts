@@ -267,6 +267,21 @@ describe("exact published-set qualification", () => {
     } finally { vi.unstubAllEnvs(); rmSync(directory, { recursive: true, force: true }); }
   });
 
+  it("extracts a candidate from an existing working directory before requiring package tarballs", () => {
+    const checkout = mkdtempSync(join(tmpdir(), "qualification-candidate-")), starter = join(checkout, "examples/neutral-store");
+    try {
+      mkdirSync(join(starter, "test"), { recursive: true });
+      writeFileSync(join(starter, "ownership.json"), JSON.stringify({ owned: [], managed: [] }));
+      writeFileSync(join(starter, "test/source.test.mjs"), 'import { test } from "node:test"; test("source fixture", () => {});');
+      writeFileSync(join(starter, "extract.mjs"), `import { mkdirSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { argv } from "node:process";
+const target = argv[2]; mkdirSync(target); writeFileSync(target + "/package.json", "{}");
+execFileSync("git", ["init", "--quiet", target]);`);
+      expect(() => proveNeutralStarterConsumer(checkout, new Map())).toThrow("Candidate starter needs locked dependency tarballs");
+    } finally { rmSync(checkout, { recursive: true, force: true }); }
+  });
+
   it("refuses a changed released lock or unknown input mode before installing or executing the application", () => {
     const application = realpathSync(mkdtempSync(join(tmpdir(), "qualification-lock-"))), run = vi.fn((_name: string, _args: string[], _cwd: string) => application), verifyInstalled = vi.fn();
     try {
