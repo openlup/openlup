@@ -111,7 +111,11 @@ Pass untouched request bytes, headers and receipt time to `ingest`. The selected
 adapter authenticates before parsing and translates status, occurrence identity
 and recovery policy into `intake` facts. Native intake retains the first durable
 webhook envelope and restores it before correlation, ACK or effects. Correlation
-uses recorded dispatch associations, with contradictory references refused. It
+uses provider identity first. Without a provider match, every recorded merchant,
+adapter-mapped order and native parcel association must name the same order;
+ambiguity refuses as `fulfillment_observation_correlation_conflict` before ACK or
+effects. Parcel ordering applies only within that order, and all matches check
+the adapter's outbound order identity. Contradictory references also refuse. It
 never parses merchant-number suffixes or treats provider identifiers as native
 UUIDs. Old receipts without a typed fact/evidence pointer require manual recovery.
 
@@ -141,8 +145,9 @@ pre-traversal retry rule. Sequential cursor translation belongs to the adapter.
 Pass the selected adapter's `orderIdentity` mapping to native intake when its
 outbound merchant identity differs from the stored number. This optional mapping translates an echoed outbound
 merchant number into a native order lookup reference and computes the expected
-outbound number from the recorded order identity. Correlation tries provider
-references first, then the newest recorded merchant-order dispatch. A new
+outbound number from the recorded order identity. After provider lookup, all
+recorded fallback associations must agree on one order before selecting its
+newest parcel, or its explicitly named native parcel. A new
 provider reference can repair an interrupted acceptance through the existing ACK
 operation; intake never submits another order. Contradictory identities refuse.
 

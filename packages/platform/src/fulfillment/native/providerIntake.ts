@@ -72,7 +72,7 @@ export function createPostgresFulfillmentProviderIntake(input: NativeFulfillment
     const record = await call<(DispatchRecord & { orderNumber: string | null; matchedBy: 'provider' | 'native' | 'merchant'; acceptance?: Parameters<import('../contracts/index.js').FulfillmentStorePort['acknowledge']>[0]['acceptance'] }) | null>(
       'fulfillment_intake_find_dispatch', [provider, { ...evidence.correlation,
         merchantOrderRef: evidence.correlation.orderNumber ? input.orderIdentity?.merchantOrderRef(evidence.correlation.orderNumber) ?? null : null }]);
-    if (record && record.matchedBy !== 'merchant' && evidence.correlation.orderNumber !== null) {
+    if (record && evidence.correlation.orderNumber !== null) {
       const expected = input.orderIdentity ? input.orderIdentity.outboundOrderNumber(record) : record.orderNumber;
       if (expected === null || evidence.correlation.orderNumber !== expected) throw new Error('fulfillment_observation_correlation_conflict');
     }

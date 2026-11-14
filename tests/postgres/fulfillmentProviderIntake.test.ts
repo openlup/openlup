@@ -127,6 +127,11 @@ for (const profile of lifecycleProfiles) describe(`native provider intake on ${p
     expect(calls.filter(sql => sql.includes('fulfillment_dispatch_finish'))).toHaveLength(1);
     expect(calls.some(sql => /dispatch_begin|dispatch_claim|enqueue_provider_command/u.test(sql))).toBe(false);
     expect(await state(f)).toEqual(before);
+    const accepted = (await h.owner.query('SELECT * FROM public.fulfillment_dispatch_refs WHERE id=$1', [f.dispatch])).rows;
+    if (channel === 'webhook') expect(await native.ingest(verification)).toMatchObject({ kind: 'processed', replayed: true });
+    else expect(await native.reconcile(job())).toMatchObject({ status: 200 });
+    expect((await h.owner.query('SELECT * FROM public.fulfillment_dispatch_refs WHERE id=$1', [f.dispatch])).rows).toEqual(accepted);
+    expect((await h.owner.query("SELECT * FROM public.shipment_external_refs WHERE shipment_id=$1 AND ref_role='dispatch'", [f.shipment])).rows).toHaveLength(1);
   });
   it('merchant fallback selects the newest recorded dispatch with a deterministic tie-break and refuses contradictory provider identity', async () => {
     const f = await subject(), obs = observation(f, 'picking');
@@ -159,6 +164,55 @@ for (const profile of lifecycleProfiles) describe(`native provider intake on ${p
     expect([await census(f), await census(other)]).toEqual(before);
     expect((await h.owner.query('SELECT acceptance FROM public.fulfillment_dispatch_refs WHERE id=ANY($1::uuid[])', [[f.dispatch, other.dispatch]])).rows).toEqual([{ acceptance: null }, { acceptance: null }]);
   });
+  it.each(['merchant-mapped', 'merchant-merchant', 'native-merchant', 'provider-provider'] as const)(
+    'refuses every cross-order %s association before ACK or effects on webhook and both polling paths', async collision => {
+      const f = await subject(true, false), other = await subject(true, false), obs = observation(f, 'delivered');
+      await h.owner.query("UPDATE public.fulfillment_dispatch_refs SET external_ref=NULL,parcel_ref=NULL,status='uncertain' WHERE id=ANY($1::uuid[])", [[f.dispatch, other.dispatch]]);
+      if (collision === 'merchant-mapped') {
+        await h.owner.query("UPDATE public.commerce_orders SET metadata='{}' WHERE id=$1", [f.order]);
+        obs.correlation.orderNumber = f.order;
+      }
+      await h.owner.query("UPDATE public.commerce_orders SET metadata=jsonb_build_object('orderNumber',$2::text) WHERE id=$1", [other.order, obs.correlation.orderNumber]);
+      if (collision === 'native-merchant') obs.correlation.fulfillmentRef = f.shipment;
+      if (collision === 'provider-provider') {
+        await h.owner.query('UPDATE public.fulfillment_dispatch_refs SET external_ref=$2 WHERE id=$1', [f.dispatch, f.external]);
+        obs.correlation.providerFulfillmentRef = `parcel:${other.shipment}`;
+        await h.owner.query('UPDATE public.fulfillment_dispatch_refs SET parcel_ref=$2 WHERE id=$1', [other.dispatch, obs.correlation.providerFulfillmentRef]);
+      }
+      const snapshot = async () => ({ orders: [await census(f), await census(other)],
+        dispatches: (await h.owner.query('SELECT * FROM public.fulfillment_dispatch_refs WHERE order_id=ANY($1::uuid[]) ORDER BY id', [[f.order, other.order]])).rows,
+        stock: (await h.owner.query('SELECT * FROM public.fulfillment_inventory_reservations WHERE purchase_order_id=ANY($1::uuid[]) ORDER BY id', [[f.order, other.order]])).rows,
+        cycles: (await h.owner.query('SELECT * FROM public.subscriptions WHERE id=ANY($1::uuid[]) ORDER BY id', [[f.subscription, other.subscription]])).rows,
+        outbox: (await h.owner.query('SELECT * FROM public.outbox_events WHERE aggregate_id=ANY($1::uuid[]) ORDER BY id', [[f.order, other.order]])).rows });
+      const before = await snapshot(), calls: string[] = [], errors: string[] = [];
+      const db = { query: async (sql: string, values?: unknown[]) => {
+        calls.push(sql);
+        try { return await h.runtime.query(sql, values); }
+        catch (error) { errors.push((error as Error).message); throw error; }
+      } };
+      const native = compose(obs, { db, orderIdentity: adapterOrderIdentity });
+      await expect(native.ingest(verification)).rejects.toThrow('fulfillment_observation_correlation_conflict');
+      expect(await native.reconcile(job())).toMatchObject({ status: 502, result: { failures: 1 } });
+      const unmapped = compose(obs, { db, orderIdentity: adapterOrderIdentity, pages: { readPage: async () => ({ kind: 'page', rows: [
+        { kind: 'unmapped', externalRef: f.external, evidence: { eventKey: obs.eventKey, correlation: obs.correlation } },
+      ] }) } });
+      expect(await unmapped.reconcile(job())).toMatchObject({ status: 502, result: { failures: 1 } });
+      expect(errors).toEqual(Array(3).fill('fulfillment_observation_correlation_conflict'));
+      expect(calls.some(sql => /fulfillment_dispatch_finish|fulfillment_intake_record_status|fulfillment_intake_consume_packed|fulfillment_operator_hand_off|fulfillment_intake_record_tracking|fulfillment_operator_record_tracking/u.test(sql))).toBe(false);
+      expect(await snapshot()).toEqual(before);
+    });
+  it.each(['webhook', 'polling'] as const)('checks outbound identity even for a single merchant match through %s', async channel => {
+    const f = await subject(true, false), obs = observation(f, 'delivered');
+    await h.owner.query('UPDATE public.fulfillment_dispatch_refs SET external_ref=NULL WHERE id=$1', [f.dispatch]);
+    const before = await census(f), calls: string[] = [];
+    const native = compose(obs, { db: { query: async (sql: string, values?: unknown[]) => { calls.push(sql); return h.runtime.query(sql, values); } },
+      orderIdentity: { ...adapterOrderIdentity, outboundOrderNumber: () => 'different-outbound-identity' } });
+    if (channel === 'webhook') await expect(native.ingest(verification)).rejects.toThrow('fulfillment_observation_correlation_conflict');
+    else expect(await native.reconcile(job())).toMatchObject({ status: 502, result: { failures: 1 } });
+    expect(calls.some(sql => /fulfillment_dispatch_finish|fulfillment_intake_record_status/u.test(sql))).toBe(false);
+    expect(await census(f)).toEqual(before);
+    expect((await h.owner.query('SELECT acceptance FROM public.fulfillment_dispatch_refs WHERE id=$1', [f.dispatch])).rows).toEqual([{ acceptance: null }]);
+  });
   it.each(['webhook', 'polling'] as const)('compares the actual outbound order identity with missing metadata through %s', async channel => {
     const f = await subject(), obs = observation(f, 'picking');
     await h.owner.query("UPDATE public.commerce_orders SET metadata='{}' WHERE id=$1", [f.order]);
@@ -171,6 +225,11 @@ for (const profile of lifecycleProfiles) describe(`native provider intake on ${p
     obs.eventKey = randomUUID(); obs.fact = { ...obs.fact, factId: obs.eventKey };
     if (channel === 'webhook') expect(await native().ingest(verification)).toMatchObject({ kind: 'processed' });
     else expect(await native().reconcile(job())).toMatchObject({ status: 200, result: { quarantined: 0 } });
+    const accepted = (await h.owner.query('SELECT * FROM public.fulfillment_dispatch_refs WHERE id=$1', [f.dispatch])).rows;
+    if (channel === 'webhook') expect(await native().ingest(verification)).toMatchObject({ kind: 'processed', replayed: true });
+    else expect(await native().reconcile(job())).toMatchObject({ status: 200, result: { quarantined: 0 } });
+    expect((await h.owner.query('SELECT * FROM public.fulfillment_dispatch_refs WHERE id=$1', [f.dispatch])).rows).toEqual(accepted);
+    expect((await h.owner.query("SELECT * FROM public.shipment_external_refs WHERE shipment_id=$1 AND ref_role='dispatch'", [f.shipment])).rows).toHaveLength(1);
     const before = await census(f), wrong = observation(f, 'picking'); wrong.correlation.orderNumber = randomUUID();
     await expect(compose(wrong, { orderIdentity: adapterOrderIdentity }).ingest(verification)).rejects.toThrow('correlation_conflict');
     // A known order UUID is still contradictory when the outbound command used a recorded merchant number.

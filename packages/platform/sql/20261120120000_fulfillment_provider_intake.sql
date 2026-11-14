@@ -26,42 +26,39 @@ END;
 $$;
 
 CREATE FUNCTION public.fulfillment_intake_find_dispatch(p_provider text,p_correlation jsonb) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
-DECLARE ref public.fulfillment_dispatch_refs; matches integer; match_kind text;
+DECLARE ref public.fulfillment_dispatch_refs; matches integer; selected_id uuid; match_kind text;
 BEGIN
  -- Provider identity has precedence. Merchant lookup uses recorded order/dispatch foreign keys only.
- SELECT count(*) INTO matches FROM public.fulfillment_dispatch_refs d
+ SELECT count(*),(array_agg(d.id))[1] INTO matches,selected_id FROM public.fulfillment_dispatch_refs d
  WHERE d.evidence->>'providerRef'=p_provider AND d.mode<>'shadow' AND (
   (d.external_ref IS NOT NULL AND d.external_ref=p_correlation->>'externalRef') OR
   (d.parcel_ref IS NOT NULL AND d.parcel_ref=p_correlation->>'providerFulfillmentRef'));
  IF matches>1 THEN RAISE EXCEPTION 'fulfillment_observation_correlation_conflict' USING ERRCODE='23505'; END IF;
  IF matches=1 THEN
-  SELECT * INTO ref FROM public.fulfillment_dispatch_refs d
-  WHERE d.evidence->>'providerRef'=p_provider AND d.mode<>'shadow' AND (
-   (d.external_ref IS NOT NULL AND d.external_ref=p_correlation->>'externalRef') OR
-   (d.parcel_ref IS NOT NULL AND d.parcel_ref=p_correlation->>'providerFulfillmentRef'));
+  SELECT * INTO ref FROM public.fulfillment_dispatch_refs WHERE id=selected_id;
   match_kind:='provider';
  ELSE
-  SELECT * INTO ref FROM public.fulfillment_dispatch_refs d
-  WHERE d.evidence->>'providerRef'=p_provider AND d.mode<>'shadow' AND d.shipment_id::text=p_correlation->>'fulfillmentRef';
-  IF FOUND THEN match_kind:='native';
-  ELSE
-   SELECT count(*) INTO matches FROM public.commerce_orders o
+  -- Count every recorded association before choosing a parcel within the single admitted order.
+  -- Keep numbered orders without a dispatch in the ambiguity check, as in order lookup.
+  WITH candidates AS (
+   SELECT o.id AS order_id,d.id,d.shipment_id,shipment.created_at
+   FROM public.commerce_orders o LEFT JOIN public.fulfillment_dispatch_refs d
+    ON d.order_id=o.id AND d.evidence->>'providerRef'=p_provider AND d.mode<>'shadow'
+   LEFT JOIN public.fulfillment_shipments shipment ON shipment.id=d.shipment_id
    WHERE o.metadata->>'orderNumber'=p_correlation->>'orderNumber'
-    OR (o.id::text=p_correlation->>'merchantOrderRef' AND NOT EXISTS(
-      SELECT 1 FROM public.commerce_orders numbered WHERE numbered.metadata->>'orderNumber'=p_correlation->>'orderNumber'));
-   IF matches>1 THEN RAISE EXCEPTION 'fulfillment_observation_correlation_conflict' USING ERRCODE='23505'; END IF;
-   -- Native parcel creation owns immutable association chronology; dispatch update time is mutable.
-   SELECT d.* INTO ref FROM public.fulfillment_dispatch_refs d JOIN public.commerce_orders o ON o.id=d.order_id
-    JOIN public.fulfillment_shipments shipment ON shipment.id=d.shipment_id
-   WHERE d.evidence->>'providerRef'=p_provider AND d.mode<>'shadow'
-    AND (o.metadata->>'orderNumber'=p_correlation->>'orderNumber'
-      OR (o.id::text=p_correlation->>'merchantOrderRef' AND NOT EXISTS(
-        SELECT 1 FROM public.commerce_orders numbered WHERE numbered.metadata->>'orderNumber'=p_correlation->>'orderNumber')))
-   ORDER BY shipment.created_at DESC,d.id DESC LIMIT 1;
-   IF NOT FOUND THEN RETURN NULL; END IF;
-   SELECT CASE WHEN o.metadata->>'orderNumber'=p_correlation->>'orderNumber' THEN 'merchant' ELSE 'native' END
-    INTO match_kind FROM public.commerce_orders o WHERE o.id=ref.order_id;
-  END IF;
+    OR o.id::text=p_correlation->>'merchantOrderRef'
+    OR d.shipment_id::text=p_correlation->>'fulfillmentRef'
+  )
+  SELECT count(DISTINCT c.order_id),
+   (array_agg(c.id ORDER BY (c.shipment_id::text=p_correlation->>'fulfillmentRef') DESC NULLS LAST,
+    c.created_at DESC NULLS LAST,c.id DESC NULLS LAST))[1]
+   INTO matches,selected_id FROM candidates c;
+  IF matches>1 THEN RAISE EXCEPTION 'fulfillment_observation_correlation_conflict' USING ERRCODE='23505'; END IF;
+  IF selected_id IS NULL THEN RETURN NULL; END IF;
+  SELECT * INTO ref FROM public.fulfillment_dispatch_refs WHERE id=selected_id;
+  SELECT CASE WHEN ref.shipment_id::text=p_correlation->>'fulfillmentRef' THEN 'native'
+   WHEN o.metadata->>'orderNumber'=p_correlation->>'orderNumber' THEN 'merchant' ELSE 'native' END
+   INTO match_kind FROM public.commerce_orders o WHERE o.id=ref.order_id;
  END IF;
  IF (p_correlation->>'fulfillmentRef' IS NOT NULL AND p_correlation->>'fulfillmentRef' IS DISTINCT FROM ref.shipment_id::text)
   OR (p_correlation->>'orderRef' IS NOT NULL AND p_correlation->>'orderRef' IS DISTINCT FROM ref.order_id::text)

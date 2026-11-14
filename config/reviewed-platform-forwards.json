@@ -6860,7 +6860,7 @@
     },
     {
       "path": "db/platform/migrations/20261120120000_fulfillment_provider_intake.sql",
-      "sha256": "4e51eb577d3f0ecd0d8f89d0639d80106f435c895f847546ab2a58d14c4b8995",
+      "sha256": "4475906787dd245c8fef91a150aa32868a888c19edbcaf896a5d3d0519a1f288",
       "functions": [
         {
           "signature": "public.fulfillment_emit_shipment_exception_notification()",
@@ -6875,7 +6875,7 @@
         {
           "signature": "public.fulfillment_intake_find_dispatch(text,jsonb)",
           "beforeSha256": null,
-          "afterSha256": "5343270abd982741d685fb4dfdba3a17e8fa0d4e43ae02df39caf090a35fcfca"
+          "afterSha256": "c7f835d875a46cc468865d96abeb8c159c1b90a40fc3f6993aa6ab031ad754f1"
         },
         {
           "signature": "public.fulfillment_intake_read_state(uuid)",
