@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { lstatSync, readFileSync, realpathSync } from "node:fs";
 import { join, sep } from "node:path";
 import { parsePackagesConfig } from "./package-manifest-policy.ts";
+import { readCiImage } from "../ci-image-pull.mjs";
 import { assertInstalledPackages, readPackManifest } from "./pack-manifest-input.ts";
 
 const hash = (bytes: string | Buffer) => createHash("sha256").update(bytes).digest("hex");
@@ -39,12 +40,15 @@ type ExactSetEvidence = {
   setVersion: string; tag: string; tagCommit: string;
   extraction: { mode: string; setVersion: string; sourceRevision: string; contentSha256: string; lockfileSha256: string };
   packages: { name: string; version: string; integrity: string; verificationSource: string; provenanceSha256: string }[];
+  image: { name: string; platform: string; manifestDigest: string; baseImageDigest: string };
 };
 
 /** Bind pre-existing signature verification to the original installed target, never the final receipt. */
 export function generateExactSetReleaseBom(root: string, application: string, evidence: ExactSetEvidence) {
   const refuse = (reason: string): never => { throw new Error(`release-bom: ${reason}`); };
-  const { setVersion, tag, tagCommit } = evidence;
+  const { setVersion, tag, tagCommit, image } = evidence;
+  if (image?.name !== "ghcr.io/openlup/neutral-store-starter" || image.platform !== "linux/amd64"
+    || !/^sha256:[a-f0-9]{64}$/u.test(image.manifestDigest) || image.baseImageDigest !== readCiImage("starter-node").digest) refuse("image_identity_mismatch");
   if (!/^0\.\d+\.\d+$/u.test(setVersion) || tag !== `openlup-core-v${setVersion}` || !/^[a-f0-9]{40}$/u.test(tagCommit)) refuse("set_identity_mismatch");
   const read = (path: string) => {
     try { return execFileSync("git", ["show", `${tagCommit}:${path}`], { cwd: root, stdio: ["ignore", "pipe", "pipe"] }); }
@@ -88,7 +92,7 @@ export function generateExactSetReleaseBom(root: string, application: string, ev
     return [{ path: `${pkg.name}/sql/manifest.json`, sha256: hash(bytes) }];
   }).map((entry, position) => ({ position, ...entry }));
   if (!entries.length) refuse("schema_catalogue_missing");
-  return { formatVersion: 2, kind: "openlup-exact-set-bom", setVersion, tag, tagCommit, posture: "development-preview", packages,
+  return { formatVersion: 3, kind: "openlup-exact-set-bom", image: { name: image.name, platform: image.platform, manifestDigest: image.manifestDigest, baseImageDigest: image.baseImageDigest }, setVersion, tag, tagCommit, posture: "development-preview", packages,
     verificationSha256: hash(JSON.stringify(packages)), starter,
     composition: { profile: "neutral-store-postgresql-node-oci", postgresMajor: 16, files, sha256: hash(JSON.stringify(files)) },
     schemaCatalogue: { entries, sha256: hash(JSON.stringify(entries)) } };

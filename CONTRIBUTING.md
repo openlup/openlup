@@ -199,7 +199,8 @@ The separate [CI image mirror](.github/workflows/mirror-ci-images.yml) runs in
 from `main`. Its single job reads only the committed
 [image inventory](config/ci-images.json): four PostgreSQL images (the install-proof
 database, also used by pgTAP and managed-rail tests, the test harness default, and
-two attribute-version witness pins) plus the starter browser image.
+two attribute-version witness pins), the starter Node base and the starter browser
+image.
 Every pin is validated before the first registry request. No Supabase CLI or
 derived image set takes part.
 The reviewed-batch gate and shared PostgreSQL test helper read these JSON pins
@@ -287,10 +288,25 @@ resolution preserves that spelling and always verifies the pinned digest.
 The script resolves upstream tags to digests, copies complete indexes to
 `ghcr.io/openlup/<upstream-repository>:<tag>` (slashes retained), skips identical
 target tags, refuses conflicting tags and verifies the digest after copying.
-Only the mirror job receives `packages: write`: it reads owned pins from its own
+Exactly two jobs receive `packages: write`: `mirror` in `mirror-ci-images.yml`
+and `publish-qualified-image` in `registry-tutorial.yml`. The publisher runs only
+after successful qualification, verifies and copies the downloaded OCI archive,
+and executes no candidate code. This split keeps installation code away from a
+write token. The mirror reads owned pins from its own
 checkout, refuses a missing digest or two pins that would write different digests
 to one target, and runs only SHA-pinned first-party actions plus the
 dependency-free repository script. A moved tag is refused.
+The writer-control witness exempts a workflow only when its text has no `write`
+(case-insensitive, including comments and longer words), no backslash escape in a
+double-quoted scalar and no YAML tag (`!`). Every other workflow uses the canonical
+subset, with plain literal permission keys and `read`, `write` or `none` values;
+remove quotes, escapes and tags from permissions. For candidate writers, it accepts plain
+block jobs and single-line or block permission maps, including blank lines until
+dedent. It refuses anchors, aliases, merge keys, tabs, extra YAML documents and
+workflow/job defaults in candidate writers.
+The publisher fingerprint also seals workflow environment, permissions, triggers
+and concurrency; workflow keys must precede jobs. The qualification job's complete
+permission map must be exactly `contents: read` and `packages: read`.
 The token reaches login through environment and stdin after validation and resolution,
 immediately before copying; a `finally` block removes the temporary registry
 credentials.
