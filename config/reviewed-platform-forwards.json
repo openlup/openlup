@@ -6686,7 +6686,7 @@
     },
     {
       "path": "db/platform/migrations/20261120110000_fulfillment_dispatch_outcomes.sql",
-      "sha256": "a1259d24598db1d89352473ad585778ab7884e345ce525e351415f8326de6655",
+      "sha256": "ae49a029d8d72200b0ba9f0f82a9d9aa80207f566ba8f815c9596e916bd9264b",
       "functions": [
         {
           "signature": "public.fulfillment_dispatch_claim(text,uuid,uuid,text,text,jsonb)",
@@ -6701,7 +6701,7 @@
         {
           "signature": "public.fulfillment_dispatch_finish(uuid,jsonb,boolean,text)",
           "beforeSha256": "791b8b5b33351e05859c7b02f05b20dd166ee241595aec142a33039ca3ba7a7e",
-          "afterSha256": "91d7454531d302fcfa5b40ee2799789273fe132d60c920894d4f7516eb6cf3e4"
+          "afterSha256": "c5ba7f6304c2749a52b9cd2afa1f4fdfeee2d6ff9319c2e0fae65e589e995650"
         },
         {
           "signature": "public.fulfillment_dispatch_outcome(jsonb)",

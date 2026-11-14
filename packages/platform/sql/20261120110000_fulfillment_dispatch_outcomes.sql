@@ -19,7 +19,7 @@ ALTER TABLE public.fulfillment_operator_attempts ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.fulfillment_operator_attempts FROM PUBLIC;
 
 ALTER TABLE public.fulfillment_shipment_operations DROP CONSTRAINT fulfillment_shipment_operations_operation_type_check;
-ALTER TABLE public.fulfillment_shipment_operations ADD CONSTRAINT fulfillment_shipment_operations_operation_type_check CHECK (operation_type IN ('shipment_created','shipment_advanced','evidence_recorded','shipment_cancelled','shipment_exception_raised','order_routed','provider_attempt_recorded'));
+ALTER TABLE public.fulfillment_shipment_operations ADD CONSTRAINT fulfillment_shipment_operations_operation_type_check CHECK (operation_type IN ('shipment_created','shipment_advanced','evidence_recorded','shipment_cancelled','shipment_exception_raised','order_routed','provider_attempt_recorded')) NOT VALID;
 
 CREATE FUNCTION public.fulfillment_dispatch_outcome(p_result jsonb)
 RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog AS $$
@@ -146,7 +146,7 @@ BEGIN
     PERFORM public.fulfillment_supersede_no_effect_commands(v_ref.shipment_id,v_ref.evidence->>'providerRef');
     PERFORM public.fulfillment_record_provider_attempt(p_result->>'providerAttemptKey',v_ref.shipment_id,v_ref.evidence,v_ref.mode);
     IF btrim(COALESCE(p_result->>'labelKey',''))='' OR p_result->>'labelKey'=p_result->>'providerAttemptKey' THEN RAISE EXCEPTION 'fulfillment_dispatch_ack_keys_invalid' USING ERRCODE='22023'; END IF;
-    -- A 3pl accepts an outbound command; it does not create a label owned by
+    -- An external dispatcher accepts a command; it does not create a label owned by
     -- this kernel. Its native commitment is dispatch evidence, which also
     -- fences local cancellation. The host's label ACK key stays the receipt key.
     PERFORM public.fulfillment_record_evidence(p_result->>'labelKey',v_ref.shipment_id,p_intake_channel,'dispatch',p_result->>'externalRef','{}'::jsonb,now());
@@ -313,39 +313,6 @@ REVOKE ALL ON FUNCTION public.fulfillment_dispatch_candidate_ids(text,text,integ
 REVOKE ALL ON FUNCTION public.fulfillment_native_dispatch_begin(uuid,text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.fulfillment_dispatch_mark_stale_submissions_uncertain(timestamptz) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.fulfillment_dispatch_read_candidate(uuid,text) FROM PUBLIC;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN
- EXECUTE 'REVOKE ALL ON FUNCTION public.fulfillment_dispatch_outcome(jsonb) FROM anon;';
- EXECUTE 'REVOKE ALL ON FUNCTION public.fulfillment_record_operator_attempt(text,uuid,text,text,jsonb,jsonb,text,uuid,jsonb) FROM anon;';
- EXECUTE 'REVOKE ALL ON FUNCTION public.fulfillment_dispatch_claim(text,uuid,uuid,text,text,jsonb) FROM anon;';
- EXECUTE 'REVOKE ALL ON FUNCTION public.fulfillment_record_provider_attempt(text,uuid,jsonb,text) FROM anon;';
- EXECUTE 'REVOKE ALL ON FUNCTION public.fulfillment_dispatch_finish(uuid,jsonb,boolean,text) FROM anon;';
- EXECUTE 'REVOKE ALL ON FUNCTION public.fulfillment_operator_create_order(text,uuid,text,uuid,jsonb) FROM anon;';
- EXECUTE 'REVOKE ALL ON FUNCTION public.fulfillment_dispatch_candidate_ids(text,text,integer) FROM anon;';
- EXECUTE 'REVOKE ALL ON FUNCTION public.fulfillment_native_dispatch_begin(uuid,text) FROM anon;';
- EXECUTE 'REVOKE ALL ON FUNCTION public.fulfillment_dispatch_mark_stale_submissions_uncertain(timestamptz) FROM anon;';
- EXECUTE 'REVOKE ALL ON FUNCTION public.fulfillment_dispatch_read_candidate(uuid,text) FROM anon;';
-END IF; END; $$;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN
- EXECUTE 'REVOKE ALL ON FUNCTION public.fulfillment_dispatch_outcome(jsonb) FROM authenticated;';
- EXECUTE 'REVOKE ALL ON FUNCTION public.fulfillment_record_operator_attempt(text,uuid,text,text,jsonb,jsonb,text,uuid,jsonb) FROM authenticated;';
- EXECUTE 'REVOKE ALL ON FUNCTION public.fulfillment_dispatch_claim(text,uuid,uuid,text,text,jsonb) FROM authenticated;';
- EXECUTE 'REVOKE ALL ON FUNCTION public.fulfillment_record_provider_attempt(text,uuid,jsonb,text) FROM authenticated;';
- EXECUTE 'REVOKE ALL ON FUNCTION public.fulfillment_dispatch_finish(uuid,jsonb,boolean,text) FROM authenticated;';
- EXECUTE 'REVOKE ALL ON FUNCTION public.fulfillment_operator_create_order(text,uuid,text,uuid,jsonb) FROM authenticated;';
- EXECUTE 'REVOKE ALL ON FUNCTION public.fulfillment_dispatch_candidate_ids(text,text,integer) FROM authenticated;';
- EXECUTE 'REVOKE ALL ON FUNCTION public.fulfillment_native_dispatch_begin(uuid,text) FROM authenticated;';
- EXECUTE 'REVOKE ALL ON FUNCTION public.fulfillment_dispatch_mark_stale_submissions_uncertain(timestamptz) FROM authenticated;';
- EXECUTE 'REVOKE ALL ON FUNCTION public.fulfillment_dispatch_read_candidate(uuid,text) FROM authenticated;';
-END IF; END; $$;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
- EXECUTE 'GRANT EXECUTE ON FUNCTION public.fulfillment_dispatch_outcome(jsonb) TO service_role;';
- EXECUTE 'GRANT EXECUTE ON FUNCTION public.fulfillment_record_operator_attempt(text,uuid,text,text,jsonb,jsonb,text,uuid,jsonb) TO service_role;';
- EXECUTE 'GRANT EXECUTE ON FUNCTION public.fulfillment_dispatch_claim(text,uuid,uuid,text,text,jsonb) TO service_role;';
- EXECUTE 'GRANT EXECUTE ON FUNCTION public.fulfillment_record_provider_attempt(text,uuid,jsonb,text) TO service_role;';
- EXECUTE 'GRANT EXECUTE ON FUNCTION public.fulfillment_dispatch_finish(uuid,jsonb,boolean,text) TO service_role;';
- EXECUTE 'GRANT EXECUTE ON FUNCTION public.fulfillment_operator_create_order(text,uuid,text,uuid,jsonb) TO service_role;';
- EXECUTE 'GRANT EXECUTE ON FUNCTION public.fulfillment_dispatch_candidate_ids(text,text,integer) TO service_role;';
- EXECUTE 'GRANT EXECUTE ON FUNCTION public.fulfillment_native_dispatch_begin(uuid,text) TO service_role;';
- EXECUTE 'GRANT EXECUTE ON FUNCTION public.fulfillment_dispatch_mark_stale_submissions_uncertain(timestamptz) TO service_role;';
- EXECUTE 'GRANT EXECUTE ON FUNCTION public.fulfillment_dispatch_read_candidate(uuid,text) TO service_role;';
-END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.fulfillment_dispatch_outcome(jsonb), public.fulfillment_record_operator_attempt(text,uuid,text,text,jsonb,jsonb,text,uuid,jsonb), public.fulfillment_dispatch_claim(text,uuid,uuid,text,text,jsonb), public.fulfillment_record_provider_attempt(text,uuid,jsonb,text), public.fulfillment_dispatch_finish(uuid,jsonb,boolean,text), public.fulfillment_operator_create_order(text,uuid,text,uuid,jsonb), public.fulfillment_dispatch_candidate_ids(text,text,integer), public.fulfillment_native_dispatch_begin(uuid,text), public.fulfillment_dispatch_mark_stale_submissions_uncertain(timestamptz), public.fulfillment_dispatch_read_candidate(uuid,text) FROM anon;'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.fulfillment_dispatch_outcome(jsonb), public.fulfillment_record_operator_attempt(text,uuid,text,text,jsonb,jsonb,text,uuid,jsonb), public.fulfillment_dispatch_claim(text,uuid,uuid,text,text,jsonb), public.fulfillment_record_provider_attempt(text,uuid,jsonb,text), public.fulfillment_dispatch_finish(uuid,jsonb,boolean,text), public.fulfillment_operator_create_order(text,uuid,text,uuid,jsonb), public.fulfillment_dispatch_candidate_ids(text,text,integer), public.fulfillment_native_dispatch_begin(uuid,text), public.fulfillment_dispatch_mark_stale_submissions_uncertain(timestamptz), public.fulfillment_dispatch_read_candidate(uuid,text) FROM authenticated;'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.fulfillment_dispatch_outcome(jsonb), public.fulfillment_record_operator_attempt(text,uuid,text,text,jsonb,jsonb,text,uuid,jsonb), public.fulfillment_dispatch_claim(text,uuid,uuid,text,text,jsonb), public.fulfillment_record_provider_attempt(text,uuid,jsonb,text), public.fulfillment_dispatch_finish(uuid,jsonb,boolean,text), public.fulfillment_operator_create_order(text,uuid,text,uuid,jsonb), public.fulfillment_dispatch_candidate_ids(text,text,integer), public.fulfillment_native_dispatch_begin(uuid,text), public.fulfillment_dispatch_mark_stale_submissions_uncertain(timestamptz), public.fulfillment_dispatch_read_candidate(uuid,text) TO service_role;'; END IF; END; $$;
