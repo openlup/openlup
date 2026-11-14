@@ -164,6 +164,52 @@ BEGIN
 END;
 $$;
 
+-- Checkout snapshots record one_time/subscription; recorded cycle mode retains its paid-cycle fence.
+CREATE FUNCTION public.fulfillment_order_mode_proven(p_mode text)
+RETURNS boolean LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog AS $$
+ SELECT coalesce(p_mode IN ('one_time','subscription','subscription_cycle'),false);
+$$;
+
+CREATE FUNCTION public.fulfillment_parcel_reservations_covered(p_shipment_id uuid)
+RETURNS boolean LANGUAGE sql SECURITY INVOKER SET search_path = pg_catalog AS $$
+ SELECT EXISTS(SELECT 1 FROM public.fulfillment_parcel_reservation_sets WHERE shipment_id=p_shipment_id)
+ AND EXISTS(SELECT 1 FROM public.fulfillment_parcel_lines WHERE shipment_id=p_shipment_id)
+ AND NOT EXISTS(SELECT 1 FROM public.fulfillment_parcel_lines line WHERE line.shipment_id=p_shipment_id AND
+  coalesce((SELECT sum(a.quantity) FROM public.fulfillment_parcel_line_reservations a JOIN public.fulfillment_inventory_reservations r ON r.id=a.reservation_id
+   WHERE a.line_id=line.id AND r.status IN ('held','committed')),0)<line.quantity);
+$$;
+
+-- Both callers hold the parcel lock. This is refusal evidence only, never acceptance proof.
+CREATE FUNCTION public.fulfillment_native_dispatch_refusal(p_shipment_id uuid,p_provider_key text)
+RETURNS text LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE parcel public.fulfillment_shipments; purchase public.commerce_orders; contact jsonb; resolution jsonb;
+BEGIN
+ SELECT * INTO parcel FROM public.fulfillment_shipments WHERE id=p_shipment_id;
+ SELECT * INTO purchase FROM public.commerce_orders WHERE id=parcel.order_id;
+ IF EXISTS(SELECT 1 FROM public.fulfillment_dispatch_refs WHERE shipment_id=parcel.id AND external_ref IS NOT NULL) THEN
+  RETURN 'provider_proof_requires_acknowledgement'; END IF;
+ IF EXISTS(SELECT 1 FROM public.fulfillment_operator_attempts WHERE shipment_id=parcel.id AND provider_key=p_provider_key AND status='succeeded') THEN
+  RETURN 'succeeded_provider_attempt_exists'; END IF;
+ -- Native originals are sequence zero; the first replacement is sequence one.
+ IF parcel.replaces_shipment_id IS NOT NULL OR parcel.sequence_no>0 THEN RETURN 'replacement_dispatch_not_composed'; END IF;
+ IF NOT public.fulfillment_parcel_reservations_covered(parcel.id) THEN RETURN 'dispatch_reservations_not_recorded'; END IF;
+ IF NOT public.fulfillment_order_mode_proven(purchase.metadata#>>'{orderDraftSnapshot,context,mode}') THEN RETURN 'order_mode_unproven'; END IF;
+ IF NOT EXISTS(SELECT 1 FROM public.fulfillment_parcel_contacts c WHERE c.shipment_id=parcel.id AND c.erased_at IS NULL AND jsonb_typeof(c.contact)='object')
+  OR EXISTS(SELECT 1 FROM public.identity_privacy_erasures WHERE client_id=purchase.client_id) THEN RETURN 'not_dispatchable'; END IF;
+ IF NOT EXISTS(SELECT 1 FROM public.commerce_settlement_intents WHERE order_id=purchase.id AND status='settled') THEN RETURN 'payment_not_succeeded'; END IF;
+ IF purchase.metadata#>>'{orderDraftSnapshot,context,mode}'='subscription_cycle'
+  AND NOT EXISTS(SELECT 1 FROM public.subscription_cycles WHERE id=purchase.subscription_cycle_id AND status='paid') THEN RETURN 'subscription_cycle_not_paid'; END IF;
+ IF purchase.status NOT IN ('paid','fulfillment_pending') OR parcel.status NOT IN ('created','label_pending')
+  OR NOT EXISTS(SELECT 1 FROM public.fulfillment_ports WHERE port_key=parcel.port_key AND routable)
+  OR EXISTS(SELECT 1 FROM public.commerce_order_holds WHERE order_id=purchase.id AND status='active')
+  OR EXISTS(SELECT 1 FROM public.fulfillment_dispatch_refs WHERE shipment_id=parcel.id AND status<>'draft') THEN RETURN 'not_dispatchable'; END IF;
+ contact:=public.fulfillment_resolve_parcel_contact(parcel.id);
+ resolution:=public.fulfillment_delivery_contact_resolve(jsonb_build_object('frozenContactPresent',true,'frozenContact',contact));
+ IF NOT coalesce((resolution->>'carrierComplete')::boolean,false) OR
+  coalesce(contact#>>'{selectedDelivery,providerKind}',contact#>>'{selectedDelivery,providerRef}') IS DISTINCT FROM p_provider_key THEN RETURN 'not_dispatchable'; END IF;
+ RETURN NULL;
+END; $$;
+
 CREATE FUNCTION public.fulfillment_operator_create_order(p_key text,p_order_id uuid,p_port_key text,p_actor_id uuid,p_metadata jsonb)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE purchase public.commerce_orders; parcel public.fulfillment_shipments; destination jsonb; address jsonb; customer public.clients;
@@ -182,7 +228,7 @@ BEGIN
  IF purchase.status NOT IN ('paid','fulfillment_pending') THEN RAISE EXCEPTION 'commerce_fulfillment_order_not_fulfillable' USING ERRCODE='22023'; END IF;
  IF purchase.client_id IS NULL THEN RAISE EXCEPTION 'commerce_fulfillment_missing_client' USING ERRCODE='22023'; END IF;
  mode:=purchase.metadata#>>'{orderDraftSnapshot,context,mode}';
- IF mode IS NULL OR mode NOT IN ('one_time','subscription_cycle') THEN RAISE EXCEPTION 'commerce_fulfillment_order_mode_unproven' USING ERRCODE='22023'; END IF;
+ IF NOT public.fulfillment_order_mode_proven(mode) THEN RAISE EXCEPTION 'commerce_fulfillment_order_mode_unproven' USING ERRCODE='22023'; END IF;
  destination:=public.commerce_read_destination('order',purchase.id); address:=destination->'address';
  SELECT * INTO customer FROM public.clients WHERE id=purchase.client_id;
  IF NOT (purchase.metadata ? 'deliveryContactOverride') AND NOT (coalesce(purchase.metadata->'runtimeFinalize','{}') ? 'deliveryContact')
@@ -210,9 +256,7 @@ BEGIN
  created:=public.fulfillment_create_shipment(p_key,purchase.id,p_port_key,coalesce(p_metadata,'{}')||jsonb_build_object('actorId',p_actor_id),now());
  SELECT * INTO parcel FROM public.fulfillment_shipments WHERE id=(created#>>'{shipment,id}')::uuid;
  -- The canonical opener captures only the new parcel's recorded reservation generation.
- IF EXISTS(SELECT 1 FROM public.fulfillment_parcel_lines line WHERE line.shipment_id=parcel.id AND
-  coalesce((SELECT sum(a.quantity) FROM public.fulfillment_parcel_line_reservations a JOIN public.fulfillment_inventory_reservations r ON r.id=a.reservation_id
-   WHERE a.line_id=line.id AND r.status IN ('held','committed')),0)<line.quantity) THEN
+ IF NOT public.fulfillment_parcel_reservations_covered(parcel.id) THEN
   RAISE EXCEPTION 'commerce_fulfillment_missing_inventory_reservation' USING ERRCODE='22023'; END IF;
  PERFORM public.commerce_read_destination('shipment',parcel.id);
  PERFORM public.fulfillment_capture_parcel_contact(parcel.id,contact);
@@ -255,11 +299,7 @@ BEGIN
  SELECT * INTO ref FROM public.fulfillment_dispatch_refs WHERE id=p_id FOR UPDATE;
  IF ref.status<>'draft' THEN RETURN public.fulfillment_dispatch_begin(p_id,p_fingerprint); END IF;
  SELECT * INTO purchase FROM public.commerce_orders WHERE id=ref.order_id FOR UPDATE;
- IF NOT EXISTS(SELECT 1 FROM public.fulfillment_parcel_reservation_sets WHERE shipment_id=ref.shipment_id) THEN reason:='dispatch_reservations_not_recorded';
- ELSIF purchase.metadata#>>'{orderDraftSnapshot,context,mode}' IS NULL OR purchase.metadata#>>'{orderDraftSnapshot,context,mode}' NOT IN ('one_time','subscription_cycle') THEN reason:='order_mode_unproven';
- ELSIF NOT EXISTS(SELECT 1 FROM public.fulfillment_parcel_contacts c WHERE c.shipment_id=ref.shipment_id AND c.erased_at IS NULL AND jsonb_typeof(c.contact)='object') OR EXISTS(SELECT 1 FROM public.identity_privacy_erasures WHERE client_id=purchase.client_id) THEN reason:='not_dispatchable';
- ELSIF NOT EXISTS(SELECT 1 FROM public.commerce_settlement_intents WHERE order_id=ref.order_id AND status='settled') THEN reason:='payment_not_succeeded';
- ELSIF purchase.metadata#>>'{orderDraftSnapshot,context,mode}'='subscription_cycle' AND NOT EXISTS(SELECT 1 FROM public.subscription_cycles WHERE id=purchase.subscription_cycle_id AND status='paid') THEN reason:='subscription_cycle_not_paid'; END IF;
+ reason:=public.fulfillment_native_dispatch_refusal(ref.shipment_id,ref.evidence->>'providerRef');
  IF reason IS NOT NULL THEN RETURN jsonb_build_object('kind','refused','refusal',jsonb_build_object('reason',reason,'phase','begin','retryable',false)); END IF;
  UPDATE public.fulfillment_dispatch_refs SET outcome=NULL WHERE id=p_id;
  RETURN public.fulfillment_dispatch_begin(p_id,p_fingerprint);
@@ -277,18 +317,10 @@ BEGIN
 END; $$;
 
 
-
-
-
-
-
-
-
-
 CREATE FUNCTION public.fulfillment_native_dispatch_read_candidate(p_shipment_id uuid,p_provider_key text)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE parcel public.fulfillment_shipments; purchase public.commerce_orders; ref public.fulfillment_dispatch_refs;
- contact jsonb; resolution jsonb; lines jsonb; candidate jsonb;
+ contact jsonb; lines jsonb; candidate jsonb; reason text;
 BEGIN
  PERFORM pg_advisory_xact_lock(hashtextextended('native-dispatch|'||p_shipment_id::text,0));
  SELECT * INTO parcel FROM public.fulfillment_shipments WHERE id=p_shipment_id FOR UPDATE;
@@ -301,14 +333,9 @@ BEGIN
   -- ACK repair needs identity only. It precedes all contact preparation and admission.
   RETURN candidate||jsonb_build_object('recovery',true);
  END IF;
- IF NOT EXISTS(SELECT 1 FROM public.fulfillment_parcel_reservation_sets WHERE shipment_id=parcel.id) THEN
-  RAISE EXCEPTION 'dispatch_reservations_not_recorded' USING ERRCODE='22023'; END IF;
- IF purchase.metadata#>>'{orderDraftSnapshot,context,mode}' IS NULL OR purchase.metadata#>>'{orderDraftSnapshot,context,mode}' NOT IN ('one_time','subscription_cycle') THEN
-  RAISE EXCEPTION 'order_mode_unproven' USING ERRCODE='22023'; END IF;
+ reason:=public.fulfillment_native_dispatch_refusal(parcel.id,p_provider_key);
+ IF reason IS NOT NULL THEN RAISE EXCEPTION '%',reason USING ERRCODE='22023'; END IF;
  contact:=public.fulfillment_resolve_parcel_contact(parcel.id);
- resolution:=public.fulfillment_delivery_contact_resolve(jsonb_build_object('frozenContactPresent',true,'frozenContact',contact));
- IF NOT coalesce((resolution->>'carrierComplete')::boolean,false) OR
-  coalesce(contact#>>'{selectedDelivery,providerKind}',contact#>>'{selectedDelivery,providerRef}') IS DISTINCT FROM p_provider_key THEN RETURN NULL; END IF;
  SELECT jsonb_agg(jsonb_build_object('skuRef',sku,'title',title,'quantity',quantity,
   'productRef',product_snapshot->>'productRef','packRef',product_snapshot->>'packRef',
   'lotRef',product_snapshot->>'lotNumber','expirationDate',product_snapshot->>'expirationDate') ORDER BY id) INTO lines
@@ -317,6 +344,9 @@ BEGIN
  RETURN candidate||jsonb_build_object('contact',contact,'lines',lines);
 END; $$;
 
+REVOKE ALL ON FUNCTION public.fulfillment_order_mode_proven(text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.fulfillment_parcel_reservations_covered(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.fulfillment_native_dispatch_refusal(uuid,text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.fulfillment_dispatch_outcome(jsonb) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.fulfillment_record_operator_attempt(text,uuid,text,text,jsonb,jsonb,text,uuid,jsonb) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.fulfillment_dispatch_claim(text,uuid,uuid,text,text,jsonb) FROM PUBLIC;
@@ -327,6 +357,6 @@ REVOKE ALL ON FUNCTION public.fulfillment_native_dispatch_candidate_ids(text,tex
 REVOKE ALL ON FUNCTION public.fulfillment_native_dispatch_begin(uuid,text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.fulfillment_dispatch_mark_stale_submissions_uncertain(timestamptz) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.fulfillment_native_dispatch_read_candidate(uuid,text) FROM PUBLIC;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.fulfillment_dispatch_outcome(jsonb), public.fulfillment_record_operator_attempt(text,uuid,text,text,jsonb,jsonb,text,uuid,jsonb), public.fulfillment_dispatch_claim(text,uuid,uuid,text,text,jsonb), public.fulfillment_record_provider_attempt(text,uuid,jsonb,text), public.fulfillment_dispatch_finish(uuid,jsonb,boolean,text), public.fulfillment_operator_create_order(text,uuid,text,uuid,jsonb), public.fulfillment_native_dispatch_candidate_ids(text,text,integer), public.fulfillment_native_dispatch_begin(uuid,text), public.fulfillment_dispatch_mark_stale_submissions_uncertain(timestamptz), public.fulfillment_native_dispatch_read_candidate(uuid,text) FROM anon;'; END IF; END; $$;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.fulfillment_dispatch_outcome(jsonb), public.fulfillment_record_operator_attempt(text,uuid,text,text,jsonb,jsonb,text,uuid,jsonb), public.fulfillment_dispatch_claim(text,uuid,uuid,text,text,jsonb), public.fulfillment_record_provider_attempt(text,uuid,jsonb,text), public.fulfillment_dispatch_finish(uuid,jsonb,boolean,text), public.fulfillment_operator_create_order(text,uuid,text,uuid,jsonb), public.fulfillment_native_dispatch_candidate_ids(text,text,integer), public.fulfillment_native_dispatch_begin(uuid,text), public.fulfillment_dispatch_mark_stale_submissions_uncertain(timestamptz), public.fulfillment_native_dispatch_read_candidate(uuid,text) FROM authenticated;'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.fulfillment_order_mode_proven(text), public.fulfillment_parcel_reservations_covered(uuid), public.fulfillment_native_dispatch_refusal(uuid,text), public.fulfillment_dispatch_outcome(jsonb), public.fulfillment_record_operator_attempt(text,uuid,text,text,jsonb,jsonb,text,uuid,jsonb), public.fulfillment_dispatch_claim(text,uuid,uuid,text,text,jsonb), public.fulfillment_record_provider_attempt(text,uuid,jsonb,text), public.fulfillment_dispatch_finish(uuid,jsonb,boolean,text), public.fulfillment_operator_create_order(text,uuid,text,uuid,jsonb), public.fulfillment_native_dispatch_candidate_ids(text,text,integer), public.fulfillment_native_dispatch_begin(uuid,text), public.fulfillment_dispatch_mark_stale_submissions_uncertain(timestamptz), public.fulfillment_native_dispatch_read_candidate(uuid,text) FROM anon;'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.fulfillment_order_mode_proven(text), public.fulfillment_parcel_reservations_covered(uuid), public.fulfillment_native_dispatch_refusal(uuid,text), public.fulfillment_dispatch_outcome(jsonb), public.fulfillment_record_operator_attempt(text,uuid,text,text,jsonb,jsonb,text,uuid,jsonb), public.fulfillment_dispatch_claim(text,uuid,uuid,text,text,jsonb), public.fulfillment_record_provider_attempt(text,uuid,jsonb,text), public.fulfillment_dispatch_finish(uuid,jsonb,boolean,text), public.fulfillment_operator_create_order(text,uuid,text,uuid,jsonb), public.fulfillment_native_dispatch_candidate_ids(text,text,integer), public.fulfillment_native_dispatch_begin(uuid,text), public.fulfillment_dispatch_mark_stale_submissions_uncertain(timestamptz), public.fulfillment_native_dispatch_read_candidate(uuid,text) FROM authenticated;'; END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.fulfillment_dispatch_outcome(jsonb), public.fulfillment_record_operator_attempt(text,uuid,text,text,jsonb,jsonb,text,uuid,jsonb), public.fulfillment_dispatch_finish(uuid,jsonb,boolean,text), public.fulfillment_operator_create_order(text,uuid,text,uuid,jsonb), public.fulfillment_native_dispatch_candidate_ids(text,text,integer), public.fulfillment_native_dispatch_begin(uuid,text), public.fulfillment_dispatch_mark_stale_submissions_uncertain(timestamptz), public.fulfillment_native_dispatch_read_candidate(uuid,text) TO service_role;'; END IF; END; $$;

@@ -383,11 +383,12 @@ for (const generation of lifecycleProfiles) describe(`operator parcel journeys o
   });
   const commerce = (f: Subject) => createPostgresFulfillmentCommerceMutationPort(h.runtime, { portKey: `f1-${f.order}`, providerRef: 'warehouse', stockSourceKey: f.source });
   const creation = (f: Subject, key = `create-${f.order}`) => commerce(f).createCommerceFulfillmentOrder({ idempotencyKey: key, orderId: f.order, actorUserId: f.actor });
-  async function dispatchSubject() {
+  async function dispatchSubject(mode = 'one_time') {
     const f = await subject(h.owner, false);
     await h.owner.query("UPDATE public.commerce_orders SET metadata=metadata||$2::jsonb WHERE id=$1", [f.order, { deliveryContactOverride: contact() }]);
     await reserve(h.runtime, f);
     await h.owner.query("INSERT INTO public.fulfillment_ports(port_key,provider_type,routable) VALUES($1,'3pl',true)", [`f1-${f.order}`]);
+    await h.owner.query("UPDATE public.commerce_orders SET metadata=jsonb_set(metadata,'{orderDraftSnapshot,context,mode}',to_jsonb($2::text)) WHERE id=$1", [f.order, mode]);
     const created = await creation(f);
     if (!('fulfillmentOrderId' in created)) throw new Error('Expected native creation');
     f.shipment = created.fulfillmentOrderId;
@@ -452,6 +453,109 @@ for (const generation of lifecycleProfiles) describe(`operator parcel journeys o
     if (gap === 'contact') await h.owner.query("UPDATE public.commerce_orders SET metadata=jsonb_set(metadata,'{deliveryContactOverride}','null') WHERE id=$1", [f.order]);
     await expect(creation(f)).rejects.toMatchObject({ code: '22023' });
     expect((await h.owner.query('SELECT id FROM public.fulfillment_shipments WHERE order_id=$1', [f.order])).rows).toEqual([]);
+  });
+  it('creates and dispatches a paid initial subscription without requiring a renewal cycle', async () => {
+    const f = await dispatchSubject('subscription'), run = selected(f);
+    expect(await creation(f)).toMatchObject({ fulfillmentOrderId: f.shipment, replayed: true });
+    expect(await run.binding.services.runDispatch()).toMatchObject({ ok: true, providerCalls: 1 });
+    expect(await readRef(f)).toMatchObject({ status: 'created', external_ref: `external-${f.shipment}` });
+    expect(run.calls()).toBe(1);
+  });
+  it.each([null, 'unknown', 'subscription_cycle'])('refuses creation for unproven or unpaid cycle mode %s', async mode => {
+    const f = await subject(h.owner, false);
+    await reserve(h.runtime, f);
+    await h.owner.query("INSERT INTO public.fulfillment_ports(port_key,provider_type,routable) VALUES($1,'3pl',true)", [`f1-${f.order}`]);
+    await h.owner.query("UPDATE public.commerce_orders SET metadata=jsonb_set(metadata,'{orderDraftSnapshot,context,mode}',$2::jsonb)||$3::jsonb WHERE id=$1",
+      [f.order, JSON.stringify(mode), { deliveryContactOverride: contact() }]);
+    if (mode === 'subscription_cycle') await withhold(f, 'unpaid_cycle');
+    await expect(creation(f)).rejects.toThrow(mode === 'subscription_cycle' ? 'subscription_cycle_not_paid' : 'order_mode_unproven');
+    expect((await h.owner.query('SELECT id FROM public.fulfillment_shipments WHERE order_id=$1', [f.order])).rows).toEqual([]);
+    expect((await h.owner.query('SELECT id FROM public.fulfillment_dispatch_refs WHERE order_id=$1', [f.order])).rows).toEqual([]);
+  });
+  it.each(['failed', 'other_provider'] as const)('does not treat a %s operator attempt as same-provider success', async attempt => {
+    const f = await dispatchSubject(), run = selected(f);
+    await commerce(f).recordCommerceFulfillmentProviderAttempt({ idempotencyKey: `attempt-${randomUUID()}`, fulfillmentOrderId: f.shipment!, actorUserId: f.actor,
+      providerKind: attempt === 'failed' ? 'warehouse' : 'other', status: attempt === 'failed' ? 'failed' : 'succeeded', requestPayload: {} });
+    expect(await run.binding.services.runDispatch()).toMatchObject({ ok: true, providerCalls: 1 });
+    expect(run.calls()).toBe(1);
+  });
+  const refusalCases = [
+    ['succeeded_attempt', 'succeeded_provider_attempt_exists'],
+    ['missing_links', 'dispatch_reservations_not_recorded'],
+    ['partial_coverage', 'dispatch_reservations_not_recorded'],
+    ['inactive_coverage', 'dispatch_reservations_not_recorded'],
+    ['missing_mode', 'order_mode_unproven'],
+    ['unknown_mode', 'order_mode_unproven'],
+    ['unpaid_cycle', 'subscription_cycle_not_paid'],
+  ] as const;
+  async function withhold(f: Subject, gap: typeof refusalCases[number][0]) {
+    if (gap === 'succeeded_attempt') await commerce(f).recordCommerceFulfillmentProviderAttempt({ idempotencyKey: `attempt-${randomUUID()}`,
+      fulfillmentOrderId: f.shipment!, actorUserId: f.actor, providerKind: 'warehouse', status: 'succeeded', requestPayload: {} });
+    if (gap === 'missing_links') await h.owner.query('DELETE FROM public.fulfillment_parcel_line_reservations WHERE line_id IN (SELECT id FROM public.fulfillment_parcel_lines WHERE shipment_id=$1)', [f.shipment]);
+    if (gap === 'partial_coverage') await h.owner.query('UPDATE public.fulfillment_parcel_line_reservations SET quantity=1 WHERE line_id IN (SELECT id FROM public.fulfillment_parcel_lines WHERE shipment_id=$1)', [f.shipment]);
+    if (gap === 'inactive_coverage') await h.owner.query("UPDATE public.fulfillment_inventory_reservations SET status='consumed',expires_at=NULL WHERE purchase_order_id=$1", [f.order]);
+    if (gap === 'missing_mode') await h.owner.query("UPDATE public.commerce_orders SET metadata=metadata#-'{orderDraftSnapshot,context,mode}' WHERE id=$1", [f.order]);
+    if (gap === 'unknown_mode' || gap === 'unpaid_cycle') await h.owner.query("UPDATE public.commerce_orders SET metadata=jsonb_set(metadata,'{orderDraftSnapshot,context,mode}',to_jsonb($2::text)) WHERE id=$1", [f.order, gap === 'unknown_mode' ? 'unknown' : 'subscription_cycle']);
+    if (gap === 'unpaid_cycle') {
+      const subscription = randomUUID(), cycle = randomUUID();
+      await h.owner.query("INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at) VALUES($1,$2,28,'2026-12-01T00:00:00Z')", [subscription, f.client]);
+      await h.owner.query("INSERT INTO public.subscription_cycles(id,subscription_id,scheduled_at,status) VALUES($1,$2,'2026-11-01T00:00:00Z','payment_pending')", [cycle, subscription]);
+      await h.owner.query('UPDATE public.commerce_orders SET subscription_cycle_id=$2 WHERE id=$1', [f.order, cycle]);
+    }
+
+  }
+  it.each(refusalCases)('withholds %s from selection and authoritative read without dispatch writes', async (gap, reason) => {
+    const f = await dispatchSubject(), run = selected(f);
+    await withhold(f, gap);
+    await expect(h.runtime.query('SELECT public.fulfillment_native_dispatch_read_candidate($1,$2)', [f.shipment, 'warehouse'])).rejects.toThrow(reason);
+    expect((await h.runtime.query('SELECT shipment_id FROM public.fulfillment_native_dispatch_candidate_ids($1,$2,1)', [`f1-${f.order}`, 'warehouse'])).rows).toEqual([]);
+    expect(await run.binding.services.runDispatch()).toMatchObject({ ok: true, providerCalls: 0 });
+    expect(run.calls()).toBe(0); expect(await readRef(f)).toBeUndefined();
+    expect((await h.owner.query('SELECT id FROM public.fulfillment_provider_attempts WHERE shipment_id=$1', [f.shipment])).rows).toEqual([]);
+    if (gap.includes('coverage') || gap === 'missing_links') expect((await h.owner.query('SELECT shipment_id FROM public.fulfillment_parcel_reservation_sets WHERE shipment_id=$1', [f.shipment])).rows).toHaveLength(1);
+  });
+  it.each(refusalCases)('refuses %s recorded after selection at locked begin without submission writes', async (gap, reason) => {
+    const f = await dispatchSubject(); let before: unknown, refusal: unknown;
+    const run = selected(f, 'stage', { query: async (sql, values, execute) => {
+      if (!sql.includes('fulfillment_native_dispatch_begin')) return execute(sql, values);
+      await withhold(f, gap); before = await readRef(f);
+      const result = await execute(sql, values); refusal = result.rows[0].response;
+      return result;
+    } });
+    expect(await run.binding.services.runDispatch()).toMatchObject({ ok: false, providerCalls: 0 });
+    expect(refusal).toMatchObject({ kind: 'refused', refusal: { reason, phase: 'begin', retryable: false } });
+    expect(run.calls()).toBe(0); expect(await readRef(f)).toEqual(before);
+    expect(await readRef(f)).toMatchObject({ status: 'draft', external_ref: null, outcome: null });
+    expect(await selected(f).binding.services.runDispatch()).toMatchObject({ providerCalls: 0 });
+  });
+  it('withholds a natively created replacement that inherits the original dispatch port', async () => {
+    const f = await dispatchSubject();
+    await h.owner.query("UPDATE public.fulfillment_shipments SET status='in_transit' WHERE id=$1", [f.shipment]);
+    const result = await replace(f);
+    if (!('replacement' in result)) throw new Error('Expected replacement');
+    const replacement = { ...f, shipment: result.replacement.fulfillmentOrderId }, run = selected(replacement);
+    expect(result.replacement).toMatchObject({ sequenceNo: 1, replacesFulfillmentOrderId: f.shipment, status: 'created' });
+    await expect(h.runtime.query('SELECT public.fulfillment_native_dispatch_read_candidate($1,$2)', [replacement.shipment, 'warehouse'])).rejects.toThrow('replacement_dispatch_not_composed');
+    expect(await run.binding.services.runDispatch()).toMatchObject({ providerCalls: 0 });
+    expect(run.calls()).toBe(0); expect(await readRef(replacement)).toBeUndefined();
+    // A historical draft may predate this native composition; begin must still refuse it.
+    const fingerprint = 'a'.repeat(64);
+    const { rows } = await h.owner.query("INSERT INTO public.fulfillment_dispatch_refs(request_key,shipment_id,order_id,mode,evidence) VALUES($1,$2,$3,'stage',$4) RETURNING id",
+      [`replacement-${replacement.shipment}`, replacement.shipment, f.order, { providerRef: 'warehouse', commandFingerprint: fingerprint }]);
+    const before = await readRef(replacement);
+    expect((await h.runtime.query('SELECT public.fulfillment_native_dispatch_begin($1,$2) AS value', [rows[0].id, fingerprint])).rows[0].value)
+      .toMatchObject({ kind: 'refused', refusal: { reason: 'replacement_dispatch_not_composed', phase: 'begin' } });
+    expect(await readRef(replacement)).toEqual(before); expect(run.calls()).toBe(0);
+  });
+  it('refuses an external reference on a draft instead of authorizing another submission', async () => {
+    const f = await dispatchSubject(); await selected(f, 'shadow').binding.services.runDispatch();
+    await h.owner.query("UPDATE public.fulfillment_dispatch_refs SET external_ref='external-proof' WHERE shipment_id=$1", [f.shipment]);
+    const before = await readRef(f), run = selected(f);
+    expect(await run.binding.services.runDispatch()).toMatchObject({ providerCalls: 0 });
+    await expect(h.runtime.query('SELECT public.fulfillment_native_dispatch_read_candidate($1,$2)', [f.shipment, 'warehouse'])).rejects.toThrow('provider_proof_requires_acknowledgement');
+    expect((await h.runtime.query('SELECT public.fulfillment_native_dispatch_begin($1,$2) AS value', [before.id, before.evidence.commandFingerprint])).rows[0].value)
+      .toMatchObject({ kind: 'refused', refusal: { reason: 'provider_proof_requires_acknowledgement' } });
+    expect(await readRef(f)).toEqual(before); expect(run.calls()).toBe(0);
   });
   it('persists actual shadow command identity, promotes once, refreshes across runs and never downgrades submitted state', async () => {
     const f = await dispatchSubject(), shadow = selected(f, 'shadow');
@@ -518,6 +622,9 @@ for (const generation of lifecycleProfiles) describe(`operator parcel journeys o
     expect(await readRef(f)).toMatchObject({ status: 'uncertain', external_ref: `external-${f.shipment}` });
     await h.owner.query('DELETE FROM public.fulfillment_parcel_contacts WHERE shipment_id=$1', [f.shipment]);
     await h.owner.query("INSERT INTO public.commerce_order_holds(order_id,reason,status,idempotency_key) VALUES($1::uuid,'manual_support','active',$1::text)", [f.order]);
+    await withhold(f, 'succeeded_attempt');
+    await withhold(f, 'missing_links');
+    await withhold(f, 'unknown_mode');
     refuseAck = false;
     expect(await run.binding.services.runDispatch()).toMatchObject({ ok: true, providerCalls: 0 });
     expect(await readRef(f)).toMatchObject({ status: 'created', outcome: null }); expect(run.calls()).toBe(1);

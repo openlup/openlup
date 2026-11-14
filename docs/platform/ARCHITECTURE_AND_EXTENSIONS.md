@@ -959,7 +959,8 @@ finalize ledger remains the double-dispatch guard. Provider idempotency is not
 established by the donor evidence. See the [example contract](CANONICAL_CONTRACTS.md#opt-in-fulfillment-example)
 for resolution consistency and refusal phases.
 Proven pre-submission failures and definitive HTTP rejections are
-non-submissions even if the rejection body is unreadable; successful statuses
+non-submissions when the rejection body is readable. At the reference-adapter
+boundary, an unreadable rejection body becomes network uncertainty; successful statuses
 without a readable acknowledgement and ambiguous POSTs stay unknown without retry. Accepted provider
 proof keys are opaque and deterministic; host keys remain worker-owned. Configured
 product paths cannot change the HTTPS origin or carry credentials. Observations
@@ -1061,15 +1062,15 @@ and selected capability checks still apply.
 Dispatch results retain neutral typed error code, HTTP status, retryability and
 ambiguity. Local failures retain a machine cause/SQLSTATE under their stage;
 unstructured exception prose is omitted. Redirect refusal remains conservative
-and names `redirect_refused`; a definitive unreadable 400 remains a rejection.
+and names `redirect_refused`; an unreadable rejection body becomes network
+uncertainty at the reference-adapter boundary, including HTTP 400.
 After acceptance, failed ACK finalization retains `dispatch_acceptance_write_failed`,
 a safe ACK cause and the external reference with ambiguity. Recovery ACK metadata
 names the persisted external-reference proof and `noProviderPost`. The native
 store reads back the original acceptance JSON so a created ACK replays exactly,
 including recovery metadata. Native accepted-result JSON persists this evidence;
-the existing SQL finish operation discards non-accepted result detail, so durable
-rejected/unknown error retention remains a gap at that store boundary. No SQL or
-command-ledger authority is changed by these TypeScript projections.
+the selected dispatch composition also retains closed neutral failed/uncertain
+outcomes. Historical outcomes remain NULL; raw provider prose is not persisted.
 The separate createFulfillmentCommandLedger protocol delegates atomic fenced
 operations to a durable store; it does not keep lease/retry state locally. The
 host supplies keys, actual-command fingerprints, candidate selection, paid truth

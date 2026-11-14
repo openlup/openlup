@@ -165,7 +165,8 @@ rebuilds and POSTs if the supplied evidence still matches current resolution.
 The host ledger is the durable guard, preserving its claim/begin/attempt/finalize state across eviction or restart.
 Credential, validation and request-construction
 failures before submission and definitive rejection are `not_dispatched`;
-an unreadable rejection body preserves the status-derived rejection. An unreadable
+at the reference-adapter boundary, an unreadable rejection body becomes network
+uncertainty. An unreadable
 successful acknowledgement, lost/malformed acknowledgement and ambiguous submission
 are `unknown`. Accepted
 results carry nonempty opaque proof keys derived from provider reference and
@@ -1373,7 +1374,7 @@ collectors and synthetic host data.
 
 Native dispatch acknowledgement takes the selected intake declaration as a SQL
 parameter, outside command evidence and retained acceptance JSON. Install the
-complete catalogue through `20261120100000_fulfillment_intake_channel.sql` before
+complete catalogue through `20261120110000_fulfillment_dispatch_outcomes.sql` before
 using the updated dispatch store. The four-argument `fulfillment_dispatch_finish`
 accepts only `push` or `poll`; its three-argument compatibility wrapper supplies
 `push`. Created acceptance replay preserves the original receipt and channel,

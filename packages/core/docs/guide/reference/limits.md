@@ -39,6 +39,7 @@ capability declaration does not activate an adapter or install an execution path
 | Independent split allocations | `independent_split_unsupported` | Multiple tracking references may describe one commitment; resolve independent allocations through host operations. |
 | Standalone pickup-point or locker booking/delivery | `pickup_point_delivery_unsupported` | Existing adapter pickup-point selection data remains accepted. |
 | Historical dispatch without recorded reservations or order mode | `dispatch_reservations_not_recorded` or `order_mode_unproven`; batch selection withholds unpreparable rows | Authorized manual repair; no backfill or inferred acceptance. |
+| Native replacement dispatch | `replacement_dispatch_not_composed`; unsubmitted parcels with a predecessor or a positive sequence are withheld | Replacement dispatch is not yet composed natively; accepted-proof recovery remains available. |
 | Historical failed/uncertain dispatch | Old diagnostic `outcome` remains NULL; no automatic resubmission | Inspect recorded proof and use authorized provider readback/manual recovery. |
 | Native label creation | `label_create_unsupported` | Bind a separately authorized host label workflow. |
 | Native label void | `label_void_unsupported` | Bind a separately authorized host cleanup workflow. |
