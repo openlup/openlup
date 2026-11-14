@@ -10530,6 +10530,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/payments/postgresMethodParity.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/payments/postgresPaymentTruth.test.ts",
       "class": "public-output"
     },
