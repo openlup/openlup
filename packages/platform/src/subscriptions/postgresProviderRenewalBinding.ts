@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { PaymentWebhookControlPort } from "../payments/verifiedIngress.js";
+import type { createPostgresPaymentWebhookControlPort } from "@openlup/platform/payments";
 import type { PaymentFailureClass } from "@openlup/core/payment";
 import { createPostgresRetryStore } from "./postgresRetryStore.js";
 import { nativeInstant } from "./nativeInstant.js";
@@ -15,8 +15,9 @@ export interface ProviderRenewalResultInput {
   resultStatus: "succeeded" | "failed" | "expired" | "refunded" | "partially_refunded" | "disputed";
   occurredAt: string; failureReason: string | null; failureClass?: PaymentFailureClass | null; failureClassDecidedBy?: string | null;
 }
+type ProviderRenewalWebhookIngest = ReturnType<typeof createPostgresPaymentWebhookControlPort>["ingestPaymentEvent"];
 type ProviderRenewalWebhookControl = {
-  ingestPaymentEvent?: PaymentWebhookControlPort["ingestPaymentEvent"];
+  ingestPaymentEvent?: ProviderRenewalWebhookIngest;
   applyPaymentResult?(input: ProviderRenewalResultInput): Promise<{ replayed: boolean }>;
 };
 type ProviderRenewalWebhook = { providerEventId: string; providerPaymentId: string; rawPayload: Record<string, unknown> };
@@ -314,8 +315,8 @@ export function createPostgresProviderRenewalBinding(input: {
     },
   };
   function composeWebhook<C extends ProviderRenewalWebhookControl>(event: ProviderRenewalWebhook, control: C): Omit<C, "applyPaymentResult"> & { applyPaymentResult: NonNullable<ProviderRenewalWebhookControl["applyPaymentResult"]> } {
-    let ingested: Awaited<ReturnType<PaymentWebhookControlPort["ingestPaymentEvent"]>> | undefined;
-    return { ...control, ...(control.ingestPaymentEvent ? { async ingestPaymentEvent(delivery: Parameters<PaymentWebhookControlPort["ingestPaymentEvent"]>[0]) {
+    let ingested: Awaited<ReturnType<ProviderRenewalWebhookIngest>> | undefined;
+    return { ...control, ...(control.ingestPaymentEvent ? { async ingestPaymentEvent(delivery: Parameters<ProviderRenewalWebhookIngest>[0]) {
       ingested = await control.ingestPaymentEvent!(delivery);
       return ingested;
     } } : {}), async applyPaymentResult(request) {
