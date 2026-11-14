@@ -25,6 +25,7 @@ export const NATIVE_SUBSCRIPTION_CAPABILITIES = Object.freeze({
   multiCyclePrepaid: Object.freeze({ supported: false, refusalCode: "multi_cycle_prepaid_unsupported" }),
   genericBundleCommands: Object.freeze({ supported: true }),
   commandBoundReceipts: Object.freeze({ supported: true }),
+  // The explicit provider lifecycle overrides this unselected default in the native binding.
   preparedAttemptStore: Object.freeze({ supported: false, refusalCode: "native_prepared_attempt_store_unsupported" }),
   retryRecovery: "selected",
   // Native stock adapters exist; selection requires passing real-PG evidence.

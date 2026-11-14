@@ -73,8 +73,8 @@ export const nativeLimits: readonly NativeLimit[] = [
   {
     id: 'N6', actions: ['realPayment', 'setupPaymentMethod', 'replaceCard'], code: 'native_prepared_attempt_store_unsupported',
     explanation: {
-      en: 'Sandbox payments only. Real PSP attempts, method setup, card replacement, cumulative refunds and absence reopen are unsupported on this rail.',
-      pl: 'Wyłącznie płatności testowe. Ta ścieżka nie obsługuje rzeczywistych prób PSP, konfiguracji metod, zmiany karty, zwrotów skumulowanych ani wznowienia po braku próby.',
+      en: 'This starter selects sandbox payments. Native card provider payments and method setup require the complete database catalogue and explicit host composition; these starter actions remain unconfigured.',
+      pl: 'Ten starter wybiera płatności testowe. Natywne płatności kartą i konfiguracja metod wymagają pełnego katalogu bazy i jawnej kompozycji hosta; te akcje startera pozostają nieskonfigurowane.',
     },
   },
   {

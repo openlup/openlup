@@ -60,8 +60,9 @@ operations. The [local image quickstart](https://github.com/openlup/openlup/blob
 does not establish rollback after a schema or package upgrade. Follow the
 [database upgrade procedure](../upgrade/database-migrations.md) for that boundary.
 
-Portable payment execution is sandbox-only; real-money execution uses the
-managed rail. Provider-neutral contracts do not supply every payment rail.
+The 0.42.0 source composition supplies an explicitly selected card provider payment
+rail on portable PostgreSQL. The default starter still selects sandbox payments.
+The second reference provider has no supplied portable composition.
 Self-hosting and provider integrations require application composition:
 [compose the host](../how-to/operate/self-host.md) and
 [bind a provider adapter](../how-to/extend/provider-adapters.md).
@@ -147,6 +148,7 @@ address tuple returns `starter_acquisition_seed_conflict` and rolls back.
 | --- | --- | --- |
 | Take real payments, set up a payment method or replace a card in the starter | The starter binds sandbox attempts only. The native provider store and method-setup lane require a complete installed database catalogue and explicit host composition; installing them does not enable these starter actions. | `native_prepared_attempt_store_unsupported` |
 | Use native cumulative refunds or absence reopening | These installed native capabilities are supported with the complete catalogue and explicit host/provider composition. Absence auto-reopen stays off by default. The starter remains sandbox-only; refund creation and live-provider activation are separate. Refund evidence does not cancel subscription service. | —; host composition required |
+| Add another native payment provider | The native rail supports the two reference payment providers; a third provider needs the provider-profile refactor. The supplied portable composition selects card provider only. | —; follow-up required |
 | Use an email address alone to access an existing purchase | Guest checkout is available, but existing-order access needs an owned customer session or an admitted recovery link. A recovery link grants no account or subscription-command access. | `customer_session_required` for account actions; `starter_recovery_unavailable` for unavailable recovery authority |
 | Change the address of a parcel already in flight through the customer action | The destination change applies from the next parcel; the parcel in flight keeps its address. | —; result `applied_from_next_parcel` |
 

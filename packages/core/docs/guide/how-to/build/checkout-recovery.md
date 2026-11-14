@@ -10,8 +10,9 @@ Install the complete native PostgreSQL catalogue. For maturity, consult the
 reference](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/release-gates.json).
 The native payment execution and recreation bindings described here use the
 sandbox simulator. Their public query executors are structural and require no
-database-driver types merely to import or compose these factories. Other payment
-channels retain `native_prepared_attempt_store_unsupported`.
+database-driver types merely to import or compose these factories. Unconfigured
+provider actions retain `native_prepared_attempt_store_unsupported`. The 0.42.0
+source supplies a separate explicit card provider composition; see [provider adapters](../extend/provider-adapters.md#card-and-wallet-payment-template).
 
 Recovery covers one-time purchases and eligible provisional initial subscription
 checkouts, before a live subscription exists. Orders with a non-null

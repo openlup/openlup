@@ -1737,6 +1737,44 @@ flight and do not prove absence. Install the complete selected migration chain
 before composing these ports. Offline PostgreSQL proof does not activate a
 provider account or qualify a complete hosted payment journey.
 
+The 0.42.0 source candidate also adds `createPostgresProviderPaymentRail` from
+`@openlup/platform/payments` and `createPostgresProviderRenewalBinding` from
+`@openlup/platform/subscriptions`. These supersede the uncomposed checkpoints
+above for an explicitly selected card provider host. The
+[server example](../../examples/neutral-store/host/provider-portable.ts) binds the
+renewal webhook control, lifecycle and retry ports together; the starter does
+not select it. Supply host authentication, client construction, mode policy,
+population lease, inventory, readiness and frozen execution inputs.
+
+The neutral factory forwards customer, client, order and save-card facts and
+returns redacted `persistence` facts beside transient handoff. A committed prepare
+precedes the provider call. Replays and uncertain replies never dispatch again.
+Use independently committed executor calls for payment execution; never enclose
+the provider call in a database transaction. `controlFor` binds result application
+to a host transaction after provider I/O.
+card provider readback supplies no provider occurrence time, so signed evidence completes
+native renewal bookkeeping with the payment owner's existing settlement key.
+First receipt and provider time remain separate. Reconciliation results retain
+their committed `reconciliationId`. A synchronous decline retains its nullable
+remote handle and consumes the existing failure rung before attributed dunning.
+
+Original renewal dispatch checks the addressed method and customer against the
+current recorded authority whenever any method reference exists. A healthy
+replacement never authorizes the stale input; no-ref original renewals retain
+their existing path. Finalized SCA-required attempts resume through the persisted
+refusal owner using the durable execution key and prepared instant. Untimestamped
+ingress keeps native occurrence null and returns no occurrence instant, including
+on replay. Superseded and unresolved success events reach native exact-attempt
+validation and its acknowledgement path before recovery bookkeeping. This uses
+the event's durable attempt link, not the current remote handle: finalizing a
+matching handle after unresolved ingestion leaves that event unresolved on every
+redelivery, without business-state changes.
+
+The native rail supports the two reference payment providers; a third provider needs the provider-profile refactor.
+This composition selects card provider only. The second reference provider's portable
+composition and live-provider qualification remain follow-up work. Existing
+managed exports and the default sandbox bindings remain available.
+
 The source preview's `createPostgresSandboxPaymentSimulator` requires the complete
 native chain through `20261101222000_sandbox_payment_attempts.sql`. Its server
 commands use the existing `sandbox` settlement channel only. The host authorizes

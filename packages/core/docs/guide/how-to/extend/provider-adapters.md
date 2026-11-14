@@ -61,6 +61,29 @@ list is empty. Cancellation is available only when your client implements it.
 Exact absence, refund creation and separate authorization/capture are
 unavailable. Establish account-specific readiness before live use.
 
+For portable PostgreSQL, the 0.42.0 source example
+`examples/neutral-store/host/provider-portable.ts` (`composeStripePortableRail`)
+binds the neutral factory to the native payment and renewal owners. Keep its
+webhook control, renewal lifecycle and retry ports together. Supply authenticated
+method ownership, SDK requests, customer creation, a population lease, readiness,
+inventory and frozen execution inputs from your host. Purchase execution forwards
+`orderRef`, `orderMode`, `clientId`, `customerRef` and `saveForFutureUse`; persist only its
+redacted `persistence` facts. The browser confirms interactive requests.
+This example is not selected by the starter and supplies no portable composition
+for the second reference provider.
+
+Keep the execution-time recorded-method check in the renewal binding: a healthy
+replacement does not authorize a stale addressed reference or customer. Preserve
+null provider time in native ingestion rather than projecting HTTP receipt time
+into its occurrence carrier. Resume a finalized SCA-required attempt through the
+persisted refusal path; ordinary readback cannot supply its missing event time.
+Let native result validation acknowledge superseded and unresolved events before
+attempt-specific recovery bookkeeping. Route by the evidence's committed attempt
+link; a matching handle finalized later cannot resolve an event whose link was
+recorded as null. Pass ingestion through the composed control before applying
+its result, so the renewal binding consumes the native ingestion receipt on each
+delivery rather than inferring attribution from provider metadata.
+
 Verified dispute events keep a distinct money outcome and original payment
 identity. Audit projection includes filtered event, refund-snapshot and
 failure-provenance facts, excluding raw bodies, handoffs and authorization.

@@ -244,8 +244,9 @@ attempt history stay private.
 Token pay uses the explicit synthetic method registry. Native admission follows
 the latest owned recovery descendant and refuses expired or revoked authority,
 renewals, terminal orders and unresolved attempts. A new explicit retry can
-dispatch another attempt on the same pending replacement. Real payment
-execution, method setup and card replacement refuse with
+dispatch another attempt on the same pending replacement. The default starter
+leaves real payment execution, method setup and card replacement unconfigured;
+these actions refuse with
 `native_prepared_attempt_store_unsupported`.
 
 A fresh dispatched sandbox attempt can issue a continuation cookie binding the
