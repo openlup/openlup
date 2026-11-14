@@ -6388,6 +6388,11 @@
           "afterSha256": "d24d36c1adf80466d90ba4017c407ead716137ebe7d6d6a81290a907e09ac0e7"
         },
         {
+          "signature": "public.subscription_method_has_recorded_ref(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "1377ab27cefba4cb3e6421538466f5a930f633b67f5819bbd0b1a0b7975b075b"
+        },
+        {
           "signature": "public.subscription_method_uses_recorded_refs(uuid)",
           "beforeSha256": null,
           "afterSha256": "3238ebd0d0e06eff2040342811488a03a50e9a1f123b65548b7a718ae25b3374"
@@ -6416,11 +6421,6 @@
           "signature": "public.payment_method_recovery_authority_freeze(uuid,uuid,text,text,timestamptz)",
           "beforeSha256": null,
           "afterSha256": "4d83a4eeb76ad414fdf9e97eb217e94b2a7e3b1f1bc51c5d668e96b4980c0f13"
-        },
-        {
-          "signature": "public.subscription_method_has_recorded_ref(uuid)",
-          "beforeSha256": null,
-          "afterSha256": "1377ab27cefba4cb3e6421538466f5a930f633b67f5819bbd0b1a0b7975b075b"
         }
       ]
     }
