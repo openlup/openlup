@@ -391,7 +391,7 @@ describe("reviewed native execution boundaries", () => {
     namedRefusals.length = 0;
     local = createPostgresProviderPaymentRail({ executor: env.runtime, adapter: rail.adapter, mode: rail.mode, truth,
       resolveMethodOwner: async () => null, resolveSavedMethodOwner: async () => null,
-      composeWebhook: (event, control) => selected.composeWebhook(event, { ...control, async applyPaymentResult(request) {
+      composeWebhook: (event, control) => selected.composeWebhook(event, { ...control, async applyPaymentResult(request: Parameters<NonNullable<typeof control.applyPaymentResult>>[0]) {
         try { return await control.applyPaymentResult!(request); }
         catch (error) { namedRefusals.push((error as Error).message); throw error; }
       } }) });

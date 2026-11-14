@@ -937,7 +937,7 @@ it("keeps the payment and managed pins closed at exactly 25 paths and 34 tuples"
   expect(reviewedPinnedIntroductions.flatMap(([, , counts]) => counts)).toHaveLength(34);
   const portablePaymentWitness = "tests/postgres/stripePortableRail.test.ts";
   expect(reviewedPinnedIntroductions.filter(([path]) => path === portablePaymentWitness)).toEqual([
-    [portablePaymentWitness, "2243aee56fdde94572f27373ed7e433261548def501657fd3246d27a919a6172", [["ui-13", 0, 3]]],
+    [portablePaymentWitness, "8d653047c335d6c7d4004391a457b9ba16b66990355a3afeef99c896d3964d8a", [["ui-13", 0, 3]]],
   ]);
   const paymentPaths = [paymentAttemptSql, paymentAttemptMirror];
   const reconciliationPins = [["db/platform/migrations/20261114120000_payment_reconciliation_refund_evidence.sql","53e6675a8346accaf31805d03118940df09c5dfc1cc063578af53714d2abcc5f",[["ui-13",0,9],["ui-14",0,5]]],["packages/platform/sql/20261114120000_payment_reconciliation_refund_evidence.sql","53e6675a8346accaf31805d03118940df09c5dfc1cc063578af53714d2abcc5f",[["ui-13",0,9],["ui-14",0,5]]],["tests/postgres/fixtures/paymentReconciliation/setup.sql","8a17e1de319f07597dc2ca606800c08b9fcf5fba2e7231c06c21fd50ed6bca20",[["ui-13",0,4],["ui-14",0,2]]],["tests/postgres/fixtures/paymentReconciliation/evidence.sql","e55fa02a9d000143617a73fad40f1e760125bc3aebf6192476015d145f69d95c",[["ui-13",0,1]]]];
