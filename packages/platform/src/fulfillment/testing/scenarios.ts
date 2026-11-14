@@ -1,0 +1,1 @@
+export type { FulfillmentAdapterCertificationScenarios, FulfillmentAdapterTestSubject, FulfillmentConformanceOptions, FulfillmentQualification, FulfillmentTransportScenario } from "../conformanceScenarios.js";

@@ -3105,3 +3105,52 @@ rewriting them. Legacy installations are capture sources. The smaller compatible
 row utility is unchanged; managed-source nonempty profiles without a typed path
 refuse explicitly. No credentials or target activation are transferred. See the
 [data owner](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#customer-billing-profile-and-invoice-buyer-data).
+
+### Offline fulfillment adapter certification
+
+The kit certifies adapter behaviour against honestly built data fixtures. It
+rejects missing, malformed or contradictory fixtures and contract-violating
+adapter results. A caller deliberately using accessors, proxies or overridden
+intrinsics to defeat their own certification is outside the threat model.
+Snapshots, closed schemas and captured intrinsics reduce accidental misuse;
+they are not an attestation.
+
+`@openlup/platform/fulfillment/testing` exports the conformance runner, captured
+adapter and scripted transport. One-argument calls retain baseline mode. Full mode
+snapshots data before execution, validates closed schemas and credits only the
+runner's invocation ledger: every supported certifiable capability needs an
+executed contract-positive success and typed failure. Each copied result must
+have the same kind as its independent fixture expectation and be deeply strictly
+equal. Missing expectations, malformed branches, reused scenario indices and
+empty positive witnesses fail qualification. Descriptor-based snapshots mitigate
+accidental proxy, accessor and hidden-field misuse. Adapter
+calls receive fresh input copies; sync success and throwing failure roles are
+mutually exclusive. Unsupported cannot satisfy a supported operation's failure.
+
+Executed refusal probes cover non-PDF formats, label create/void, provider-side
+cancel, independent split, provider-owned reservations, snapshot-only stock
+movements and pickup-point/locker execution, with unchanged provider-call counts.
+Callable unsupported adapter operations also require refusal witnesses. Label
+probes invoke adapter methods; named native limits invoke platform code. With
+`snapshotOnly: true`, the runner executes the real stock-sync worker using its
+own isolated snapshot-only provider/store. It accepts no caller worker callback.
+
+The closed port-less list is `courierPickup`: unsupported records
+`{ capability: "courierPickup", declared: "unsupported", probe: "no_port" }`
+without a probe because no provider-reaching path exists. Supported fails with
+`capability_not_certifiable`; supported provider cancellation also refuses because
+its native path cannot demonstrate success. Pickup-point support needs its own
+adapter success/failure witnesses. A contract pin forces reconsideration when a
+courier-pickup port is added.
+
+Transport handles are read-only `fake.calls` snapshots backed by the fake's
+private log. Fault deltas belong to the indexed invocation; each claimed
+submission requires exactly one provider call, and a pre-submission refusal or
+replay requires zero. Status pairs execute in declared order using distinct
+scenario indices. Only a captured adapter's factory brand permits `dispatch-only`,
+which requires dispatch as its sole supported operation and earns no other
+capability certification. Evidence includes mode, derived profile, capability
+digest, ledger and port-less declarations. This validates data and recorded
+invocations; it does not attest remote execution or establish host locks, durable
+deduplication, cancellation races, replacement transactions or alignment.
+See [certify a fulfilment adapter offline](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/fulfillment.md#certify-a-fulfilment-adapter-offline).

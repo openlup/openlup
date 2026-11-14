@@ -294,3 +294,138 @@ settlement or reservation associations refuses or withholds the row. Failed and
 uncertain outcomes remain durable and do not cause a second provider call.
 Accepted proof can repair locally even when current contact is unavailable.
 These local witnesses establish no deployed-target or provider qualification.
+
+## Certify a fulfilment adapter offline
+
+The kit certifies adapter behaviour against honestly built data fixtures. It
+rejects missing, malformed or contradictory fixtures and contract-violating
+adapter results. A caller deliberately using accessors, proxies or overridden
+intrinsics to defeat their own certification is outside the threat model.
+Snapshots, closed schemas and captured intrinsics reduce accidental misuse;
+they are not an attestation.
+
+For adapter authors using this development preview, the experimental
+`@openlup/platform/fulfillment/testing` entry re-exports the existing runner and
+captured dispatch adapter. `createScriptedFulfillmentFake` supplies per-operation
+FIFO scripts with `enqueue`, `invoke`, `calls` and `assertDrained`. Enqueue copies
+data and validates each closed outcome envelope once. Descriptor and buffer checks
+reduce accidental accessor and shared-memory misuse. Construct transport responses from copied body/status data at the injected
+fetch boundary. It records only operation keys and outcome kinds. Use neutral operation keys; keep credentials,
+raw captures and customer data out of scripts and expectations. The kit bundles
+no capture corpus and makes no network calls, timers or retries.
+
+```ts
+import {
+  createScriptedFulfillmentFake,
+  runFulfillmentAdapterConformance,
+} from "@openlup/platform/fulfillment/testing";
+import type { FulfillmentAdapterTestSubject } from "@openlup/platform/fulfillment/testing";
+
+const fake = createScriptedFulfillmentFake<{ submit: { body: string; status: number } }>();
+fake.enqueue("submit", { kind: "success", value: { body: "{}", status: 200 } });
+// Consume this illustrative script; in an adapter bind invoke at its injected fetch boundary.
+const captured = await fake.invoke("submit");
+new Response(captured.body, { status: captured.status });
+fake.assertDrained();
+
+export async function certify(adapterSubject: FulfillmentAdapterTestSubject) {
+  return runFulfillmentAdapterConformance([adapterSubject], { mode: "full" });
+}
+```
+
+Supply `FulfillmentAdapterTestSubject.certification` and opt into `{ mode: "full" }`.
+The runner reads the mode once and snapshots capabilities, fixtures and certification
+data before any adapter call. One closed schema validates these copies. Inputs,
+expectations and results are data: unknown fields, contradictory branches and
+malformed values fail validation. Descriptor and buffer checks mitigate accidental
+use of proxies, accessors, hidden properties and shared-memory buffers/views.
+Each invocation receives a fresh input copy; its outcome is copied before it is
+classified or compared. An expectation must exist independently before the call.
+Methods, I/O counters, URL/reference callbacks and optional host-store probes are
+captured once and invoked through a captured intrinsic. Return native promises;
+native-promise checks and captured `then` handling mitigate accidental thenable
+and constructor/species redirection. Callback/store results, including thrown
+failures, are copied before use to reduce accidental iterator, serialization-hook
+and accessor misuse.
+
+Only the runner's invocation ledger grants coverage. A supported capability needs
+an executed contract-positive success and an executed typed failure or refusal.
+The actual and independent expected results must have the same kind and be deeply
+strictly equal. A discriminant alone is insufficient: created labels need a
+parcel reference and document field, available labels need a URL and expiry field,
+and label void needs its complete boolean branch. Unsupported cannot serve as the
+failure witness for a supported operation, including paged readback and replay.
+Page rows follow the direct-readback absence-capability and observation checks.
+Unmapped evidence uses the shared poll projection; observation replays and nested
+provider references and diagnostics pass their shared privacy helpers before credit.
+Sync success returns a positive
+snapshot, movement, addressable product pack, nonblank SKU, `{ replayed: false }`
+for product creation, or `undefined` for a pack write. Sync failures use
+`{ input, throws }`; successes use `{ input, expected }`. Mixed roles fail validation.
+Empty, skipped, replay-only and rejected-only results may be additional baseline
+fixtures but cannot supply positive coverage. Full or short pages containing only
+unknown or unmapped rows cannot supply a positive page witness.
+
+Supported dispatch requires compared accepted and definite non-dispatch results,
+an executed unknown replay without a second submission, and a preparation refusal.
+Refused preparations must omit `expectedDispatch` and `replay` in either mode.
+Dispatch scenarios use distinct integer indices into the validated fixture array:
+invalid address with valid items before submission, address rejection after
+submission, transport failure before and after submission, and HTTP 5xx. Bind the
+fake at the actual adapter boundary; a before-submission fault injected into fetch
+has already crossed that boundary. Supply a read-only `fake.calls` snapshot as the
+transport handle. The runner authenticates it against the fake's private log and
+reads only the delta around that dispatch. Caller arrays earn no fault evidence.
+Before-submission witnesses require zero provider calls; each claimed submission
+requires exactly one. Replays require zero additional calls.
+
+Observation scenarios use distinct indices for the duplicate pair, newer-then-older
+pair and authentication refusal. Duplicate inputs and results must match. The
+runner invokes each pair in tuple order and compares both outcomes, preserving
+same-shipment occurrence time and identity. Token authentication proves only the
+configured token check. Readback requires found and unknown witnesses, including
+local missing data; exact absence additionally needs its own authoritative absence
+and failure invocations. Returned and lost-coarse exceptions use separate slots;
+neither starts recovery or manufactures a loss event. Numbered paging covers full,
+short, empty, exhausted and failed pages. Cursor providers map cursors to sequential
+numbers inside their adapter; the public page port has no opaque cursor.
+
+The required executed refusal probes cover non-PDF label formats, label creation
+and voiding, provider-side cancellation, independent splits, provider-owned
+reservations, stock movements in snapshot-only mode, and pickup-point/locker
+execution. Each refusal requires an unchanged provider-call count. Label refusals
+execute the adapter methods. The other named native limits execute the platform
+paths; they do not certify provider cancellation or successful split workflows.
+Set `snapshotOnly: true`: the runner itself calls `runFulfillmentStockSyncWorker`
+with an isolated snapshot-only provider/store and checks that movements were never
+requested. Caller-supplied worker callbacks are rejected. Unsupported callable
+observation, readback, sync, dispatch and label operations also need explicit
+refusal witnesses. A missing or malformed applicable fixture fails full mode.
+
+The closed port-less list currently contains only `courierPickup`. When unsupported,
+evidence records `{ capability: "courierPickup", declared: "unsupported", probe:
+"no_port" }`; no probe is required because the contract has no provider-reaching
+path. Declared support fails with `capability_not_certifiable`. A contract pin test
+requires revisiting this list when a port is added. Supported provider cancellation
+also fails by that name because its native path only refuses. Pickup-point delivery
+support needs adapter dispatch success and failure witnesses in addition to the
+native execution-limit probe.
+
+Only adapters branded by `createCapturedFulfillmentAdapter` can use `dispatch-only`.
+The factory deeply freezes the adapter, its capabilities, dispatch port and method
+slots. Qualification checks the exact factory-created port and methods it invokes;
+copies or replacement methods cannot inherit the narrower profile.
+The runner derives the profile and checks any supplied profile assertion. Dispatch
+must be that adapter's sole supported operation; its qualification covers only
+preparation and dispatch, and earns no other capability certification. Other
+adapters use the adapter profile. Evidence records mode, derived profile, capability
+digest, sanitized invocation ledger and port-less declarations, without inputs,
+raw outcomes, credentials or transient URLs. Existing one-argument calls retain
+baseline mode, with shared data validation and no full-coverage claim.
+Baseline mode also retains available host-storage label reads when adapter label
+reading is unsupported; full mode requires an executed unsupported refusal.
+
+Offline evidence does not certify database locks, durable deduplication,
+cancellation races, replacement transactions or delivery alignment. Those require
+real PostgreSQL host witnesses. No replacement is confirmed unless it reached
+the customer.
