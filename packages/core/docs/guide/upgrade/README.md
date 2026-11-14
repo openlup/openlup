@@ -85,3 +85,18 @@ and [platform](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/pack
 [Upgrading to 0.42.0](v0-42-0.md), [Upgrading to 0.41.0](v0-41-0.md) and
 [Upgrading to 0.40.0](v0-40-0.md) each gather
 that release's notes and API report changes.
+
+## Preparing for native provider profiles
+
+The unreleased 0.43.0 source candidate replaces native provider identity
+predicates with immutable profile data. Apply the complete selected catalogue,
+including `20261121090000_payment_provider_profiles.sql`, through your existing
+migration runner. Do not replace historical slots or rewrite stored payment
+identity, evidence, receipts or payloads. Installing packages alone applies no SQL.
+
+The two reference profiles preserve existing preparation, claims, refund and
+reopening rules. Arbitrary admitted providers retain generic behavior; claims and
+reopening require an explicit profile declaration. A third provider needs its
+profile declaration plus adapter. The second reference provider's portable
+composition remains unsupported. Absence auto-reopen stays off by default;
+provider activation and live qualification remain separate.

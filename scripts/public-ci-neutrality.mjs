@@ -222,21 +222,18 @@ export function neutralityIncreases(baseline, current) {
   }
   return increases;
 }
-// Bounded debt C94 retains 13 managed paths/15 tuples; M14 adds one exact
-// unchanged package SQL carrier. N6 R1 adds its native payment slot and mirror
-// and unchanged durability witness (three paths/six tuples). Reconciliation adds
-// its slot, mirror and two exact SQL fixtures (four paths/seven tuples), preserving the two
-// reference payment adapters' names until the provider-profile refactor. Only
-// slots 42–44, their package mirrors and the exact payment witnesses below may join this
-// path class; each row adds its own pins. Method-ledger witnesses add three paths
-// and four tuples under the same bounded debt.
+// Bounded historical vocabulary retains the original managed/native slots and
+// characterization witnesses below with their exact bytes and count tuples.
+// The historical native path class covers only the two introduction slots and
+// their mirrors; witness eligibility remains exact. The separately reviewed
+// declaration pair adds policy data only, never provider predicates.
 // Exact category/before/after tuples and whole-file pins apply on any base.
 // The two exact profile-declaration carriers below were approved separately.
 // Historical slots and donor witnesses retain their unchanged pins.
 // Adding an entry requires the control review and coordinator read in CONTRIBUTING.md.
 export const reviewedPinnedIntroductions = [
-  ["packages/platform/sql/20261121090000_payment_provider_profiles.sql","b64dfa73ab2b146c0a350440bcb8c8674b1df716b0ee8cf4270f61460aa0300f",[["ui-13",0,1],["ui-14",0,1]]],
   ["db/platform/migrations/20261121090000_payment_provider_profiles.sql","b64dfa73ab2b146c0a350440bcb8c8674b1df716b0ee8cf4270f61460aa0300f",[["ui-13",0,1],["ui-14",0,1]]],
+  ["packages/platform/sql/20261121090000_payment_provider_profiles.sql","b64dfa73ab2b146c0a350440bcb8c8674b1df716b0ee8cf4270f61460aa0300f",[["ui-13",0,1],["ui-14",0,1]]],
   ["tests/postgres/stripePortableRail.test.ts","98f85b2f79092329224af5771f83110884582276eb5679ead1d1cbc4e096e057",[["ui-13",0,3]]],
   ["tests/postgres/fixtures/paymentMethods/replayed.sql","039b65952dfacf1810f60e327dcab41b2d5df858a74d4b0ec76e03562e2dc41e",[["ui-14",0,6]]],
   ["tests/postgres/fixtures/paymentMethods/subscription_switch.sql","cf453ffcae8f3a61375595e9241b0a430d43c6208f4d9b2585627c8f6e12c55e",[["ui-13",0,3]]],
