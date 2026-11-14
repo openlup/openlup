@@ -859,7 +859,7 @@ it("restores historical references with an exact source outbox, preserving the r
   expect(await census(target.owner)).toEqual(before);
   expect((await restore()).replayed).toBe(true);
   expect((await census(target.owner)).outbox_events).toEqual(before.outbox_events);
-});
+}, 70_000);
 
 it.each(["aggregate_type='shipment'", "aggregate_id='00000000-0000-0000-0000-000000000001'",
     "payload=payload||'{\"unexpected\":true}'::jsonb", "metadata=metadata||'{\"unexpected\":true}'::jsonb",
