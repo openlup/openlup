@@ -4883,6 +4883,78 @@
         ],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "fulfilment-f1-dispatch",
+        "path": "db/platform/migrations/20261120110000_fulfillment_dispatch_outcomes.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.fulfillment_dispatch_claim(text,uuid,uuid,text,text,jsonb)",
+            "searchPath": "pg_catalog",
+            "beforeSha256": "0ead8068812afd9d1418ff6cb986f15a083b845aea6dfc904f78a11710770bd7"
+          },
+          {
+            "signature": "public.fulfillment_record_provider_attempt(text,uuid,jsonb,text)",
+            "searchPath": "pg_catalog",
+            "beforeSha256": "6c853d51bab54072e30fcf12e3c058f2d981c735a816072d940eef9c3e3321f8"
+          },
+          {
+            "signature": "public.fulfillment_dispatch_finish(uuid,jsonb,boolean,text)",
+            "searchPath": "pg_catalog",
+            "beforeSha256": "791b8b5b33351e05859c7b02f05b20dd166ee241595aec142a33039ca3ba7a7e"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.fulfillment_dispatch_outcome(jsonb)",
+            "searchPath": "pg_catalog"
+          },
+          {
+            "signature": "public.fulfillment_record_operator_attempt(text,uuid,text,text,jsonb,jsonb,text,uuid,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_operator_create_order(text,uuid,text,uuid,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_dispatch_candidate_ids(text,text,integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_native_dispatch_begin(uuid,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_dispatch_mark_stale_submissions_uncertain(timestamptz)",
+            "searchPath": "pg_catalog"
+          },
+          {
+            "signature": "public.fulfillment_dispatch_read_candidate(uuid,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "existingTableStatements": [
+          "ALTER TABLE public.fulfillment_dispatch_refs ADD COLUMN outcome jsonb;"
+        ],
+        "checkSupersets": [
+          {
+            "table": "public.fulfillment_shipment_operations",
+            "constraint": "fulfillment_shipment_operations_operation_type_check",
+            "column": "operation_type",
+            "values": [
+              "shipment_created",
+              "shipment_advanced",
+              "evidence_recorded",
+              "shipment_cancelled",
+              "shipment_exception_raised",
+              "order_routed",
+              "provider_attempt_recorded"
+            ]
+          }
+        ]
       }
     ]
   },
@@ -6609,6 +6681,62 @@
           "signature": "public.fulfillment_dispatch_finish(uuid,jsonb,boolean,text)",
           "beforeSha256": null,
           "afterSha256": "791b8b5b33351e05859c7b02f05b20dd166ee241595aec142a33039ca3ba7a7e"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261120110000_fulfillment_dispatch_outcomes.sql",
+      "sha256": "e632c09b8522ac8eb40257414b358fc871ca245513499505be09bb8d35840040",
+      "functions": [
+        {
+          "signature": "public.fulfillment_dispatch_claim(text,uuid,uuid,text,text,jsonb)",
+          "beforeSha256": "0ead8068812afd9d1418ff6cb986f15a083b845aea6dfc904f78a11710770bd7",
+          "afterSha256": "6fc0fc2ee4edeaab7b87d9a42d56532e36fb28cf2d1aa7395613f2f0752bc548"
+        },
+        {
+          "signature": "public.fulfillment_record_provider_attempt(text,uuid,jsonb,text)",
+          "beforeSha256": "6c853d51bab54072e30fcf12e3c058f2d981c735a816072d940eef9c3e3321f8",
+          "afterSha256": "22590c13945500a3cdbf614a8f7a4e8dfb3bd14c9f438fc8dd98a39747d5a13f"
+        },
+        {
+          "signature": "public.fulfillment_dispatch_finish(uuid,jsonb,boolean,text)",
+          "beforeSha256": "791b8b5b33351e05859c7b02f05b20dd166ee241595aec142a33039ca3ba7a7e",
+          "afterSha256": "91d7454531d302fcfa5b40ee2799789273fe132d60c920894d4f7516eb6cf3e4"
+        },
+        {
+          "signature": "public.fulfillment_dispatch_outcome(jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "fc4aeead1283beb1940625eb7b11be7e26146ddc0a1f03e7ae5f3aca791ff990"
+        },
+        {
+          "signature": "public.fulfillment_record_operator_attempt(text,uuid,text,text,jsonb,jsonb,text,uuid,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "7bdb6ef2184e634071dffd7515972bac2a68a0a2e7fc8569204f9eae89b92b43"
+        },
+        {
+          "signature": "public.fulfillment_operator_create_order(text,uuid,text,uuid,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "5c84df3aca9ff0346a934f689e86b043b345fa3900b207d780ec3f86142f838d"
+        },
+        {
+          "signature": "public.fulfillment_dispatch_candidate_ids(text,text,integer)",
+          "beforeSha256": null,
+          "afterSha256": "6a64dbacf786ee92c85aca03e442f91cfc82764b115ee46d4bdf1e6511e0a487"
+        },
+        {
+          "signature": "public.fulfillment_native_dispatch_begin(uuid,text)",
+          "beforeSha256": null,
+          "afterSha256": "3b94bc59b5a1f057526282029d872f199b238f7cd85df4a6877a08285503f235"
+        },
+        {
+          "signature": "public.fulfillment_dispatch_mark_stale_submissions_uncertain(timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "6c5cb692d81dff3e0a306664251526e55d7be09402868d0f52bfe9168a62ed1b"
+        },
+        {
+          "signature": "public.fulfillment_dispatch_read_candidate(uuid,text)",
+          "beforeSha256": null,
+          "afterSha256": "97e35300a445fdb5f4a1a0c19e966b0b7fdc51582d7512b9961db3af88c497d7"
         }
       ]
     }
