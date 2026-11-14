@@ -27,19 +27,15 @@ const observedPool = {
     const client = await pool.connect();
     return {
       async query(sql: string, values?: unknown[]) {
-        // Released-pair mode parks after the real SQL, before its ledger insert.
-        if (runnerPath && mode === "inside" && typeof sql === "string" && sql.startsWith("INSERT INTO public.platform_schema_migrations")) {
-          writeFileSync(marker, "inside-forward-before-ledger");
-          await new Promise<never>(() => {});
-        }
         // Restricted admission inspects catalogue definitions first. Holding
         // the source-table lock earlier can block that inspection itself.
         if (!runnerPath && installation && mode === "inside" && typeof sql === "string" && sql.includes("CREATE TABLE public.invoicing_cutover")) {
           writeFileSync(marker, "admitted-before-backfill");
           while (!existsSync(`${marker}.release`)) await new Promise(resolve => setTimeout(resolve, 25));
         }
-        if (mode === "between" && sql === "BEGIN" && ++begun === 2) {
-          writeFileSync(marker, "after-first-commit");
+        if ((mode === "between" && sql === "BEGIN" && ++begun === 2)
+          || (runnerPath && mode === "inside" && typeof sql === "string" && sql.startsWith("INSERT INTO public.platform_schema_migrations"))) {
+          writeFileSync(marker, mode === "between" ? "after-first-commit" : "inside-forward-before-ledger");
           await new Promise<never>(() => {});
         }
         return client.query(sql, values);

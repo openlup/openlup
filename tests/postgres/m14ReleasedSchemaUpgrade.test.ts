@@ -1,9 +1,8 @@
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { env } from "node:process";
 import { qualificationReceipt, qualifyReleasedSet } from "../../scripts/packages/exact-set-qualification.mjs";
 import { assertSubscriptionMonotonic, runReleasedSchemaUpgradeProof, type ReleasedSchemaPair } from "./m14ReleasedSchemaUpgrade.proof.js";
 
@@ -20,44 +19,30 @@ it.each([
     .toThrow("subscription_monotonic_clamp: " + reason);
 });
 
-it("requires both released application roots and identities before database work", async () => {
-  await expect(runReleasedSchemaUpgradeProof({ mode: "released-pair" } as ReleasedSchemaPair))
-    .rejects.toThrow("released_pair_requires_both_applications_and_identities");
-});
-
-it("refuses schema qualification without a passing adjacent-set receipt", () => {
-  const root = mkdtempSync(join(tmpdir(), "released-pair-receipt-")), path = join(root, "receipt.json");
-  const tag = "openlup-core-v0.41.0", commit = "a".repeat(40), receipt = qualificationReceipt(tag, commit);
-  receipt.result = "PASS";
+it.each([
+  ["missing applications", "released_pair_requires_both_applications_and_identities"],
+  ["extraction", "released_pair_extraction_mismatch"], ["lock", "released_pair_lock_mismatch"],
+  ["adjacent receipt", "adjacent-set qualification must pass first"],
+  ["database setup", "qualification PostgreSQL connection required"],
+])("refuses %s before executing application/database work: %s", async (kind, reason) => {
+  const application = mkdtempSync(join(tmpdir(), "released-pair-refusal-")), path = join(application, "receipt.json");
+  const tag = "openlup-core-v0.41.0", commit = "a".repeat(40);
+  const extraction = { sourceRevision: commit, lockfileSha256: createHash("sha256").update("{}").digest("hex") };
+  const identity = { setVersion: "0.40.0", tagCommit: commit, extraction, packages: [] };
   try {
-    writeFileSync(path, JSON.stringify(receipt));
-    expect(() => qualifyReleasedSet(tag, commit, path, false, true)).toThrow("adjacent-set qualification must pass first");
-  } finally { rmSync(root, { recursive: true, force: true }); }
-});
-
-it("persists FAIL when schema setup refuses after the adjacent-set proof passed", async () => {
-  const root = mkdtempSync(join(tmpdir(), "released-pair-setup-")), path = join(root, "receipt.json");
-  const tag = "openlup-core-v0.41.0", commit = "a".repeat(40), previous = env.OPENLUP_QUALIFICATION_DATABASE_URL;
-  const receipt = Object.assign(qualificationReceipt(tag, commit), { result: "PASS", upgrade: { result: "PASS" } });
-  try {
-    delete env.OPENLUP_QUALIFICATION_DATABASE_URL;
-    writeFileSync(path, JSON.stringify(receipt));
-    await expect(qualifyReleasedSet(tag, commit, path, false, true)).rejects.toThrow("qualification PostgreSQL connection required");
-    expect(JSON.parse(readFileSync(path, "utf8"))).toMatchObject({ result: "FAIL", schemaUpgrade: { result: "FAIL", endedAt: expect.any(String) } });
-  } finally {
-    if (previous !== undefined) env.OPENLUP_QUALIFICATION_DATABASE_URL = previous;
-    rmSync(root, { recursive: true, force: true });
-  }
-});
-
-it.each(["extraction", "lock"])("refuses altered released %s identity before importing application code", async kind => {
-  const application = mkdtempSync(join(tmpdir(), "released-pair-tamper-"));
-  const extraction = { sourceRevision: "a".repeat(40), lockfileSha256: createHash("sha256").update("{}").digest("hex") };
-  const identity = { setVersion: "0.40.0", tagCommit: extraction.sourceRevision, extraction, packages: [] };
-  try {
-    writeFileSync(join(application, ".starter-origin.json"), JSON.stringify(kind === "extraction" ? {} : extraction));
-    writeFileSync(join(application, "package-lock.json"), "altered lock bytes");
-    await expect(runReleasedSchemaUpgradeProof({ mode: "released-pair", from: { application, identity }, to: { application, identity }, database: {} }))
-      .rejects.toThrow(kind === "extraction" ? "released_pair_extraction_mismatch" : "released_pair_lock_mismatch");
-  } finally { rmSync(application, { recursive: true, force: true }); }
+    if (kind === "adjacent receipt" || kind === "database setup") {
+      vi.stubEnv("OPENLUP_QUALIFICATION_DATABASE_URL", undefined);
+      writeFileSync(path, JSON.stringify({ ...qualificationReceipt(tag, commit), result: "PASS",
+        ...(kind === "database setup" ? { upgrade: { result: "PASS" } } : {}) }));
+      await expect(async () => qualifyReleasedSet(tag, commit, path, false, true)).rejects.toThrow(reason);
+      if (kind === "database setup") expect(JSON.parse(readFileSync(path, "utf8")))
+        .toMatchObject({ result: "FAIL", schemaUpgrade: { result: "FAIL", endedAt: expect.any(String) } });
+    } else {
+      writeFileSync(join(application, ".starter-origin.json"), JSON.stringify(kind === "extraction" ? {} : extraction));
+      writeFileSync(join(application, "package-lock.json"), "altered lock bytes");
+      await expect(runReleasedSchemaUpgradeProof((kind === "missing applications" ? { mode: "released-pair" } :
+        { mode: "released-pair", from: { application, identity }, to: { application, identity }, database: {} }) as ReleasedSchemaPair))
+        .rejects.toThrow(reason);
+    }
+  } finally { vi.unstubAllEnvs(); rmSync(application, { recursive: true, force: true }); }
 });

@@ -269,7 +269,6 @@ describe("exact published-set qualification", () => {
       writeFileSync(path, JSON.stringify({ ...qualificationReceipt(tag, commit), result: "PASS", endedAt: new Date(0).toISOString(), upgrade: { result: "PASS" }, ...(result ? { schemaUpgrade: { result } } : {}) }));
       expect(schema).toContain("id: schema"); expect(seal).toContain("SCHEMA_OUTCOME: ${{ steps.schema.outcome }}");
       if (stop) {
-        // Stop at the fallible pull/start operation, without accessing Docker or the network.
         const prefix = script(schema).split(stop)[0]!.replace(/^image=.*$/mu, "image=fixture");
         expect(spawnSync("bash", ["-e", "-c", prefix + "\nexit 23"], { cwd: ROOT, env }).status).toBe(23);
         expect(JSON.parse(readFileSync(path, "utf8"))).toMatchObject({ result: "FAIL", endedAt: null, schemaUpgrade: { result: "FAIL", startedAt: expect.any(String) } });

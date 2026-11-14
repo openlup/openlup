@@ -65,7 +65,6 @@ export function assertSubscriptionMonotonic(before: SubscriptionSnapshot, after:
 }
 
 async function releasedApplication(input: ReleasedApplication) {
-  assert.ok(input?.application && input.identity, "released_pair_requires_both_applications_and_identities");
   const root = realpathSync(input.application), identity = input.identity;
   for (let parent = dirname(root); ; parent = dirname(parent)) {
     assert.ok(!existsSync(join(parent, "node_modules")), "released_pair_ancestor_dependencies");
@@ -118,7 +117,6 @@ async function runReleasedPair(input: ReleasedSchemaPair) {
   const ledger = async () => (await pool.query("SELECT catalog_path,sha256,position FROM public.platform_schema_migrations ORDER BY position")).rows;
   const expected = to.units.map((unit, position) => ({ catalog_path: unit.file, sha256: unit.sha256, position }));
   try {
-    // Same public profile and distinct install/runtime/restore roles as the starter bootstrap.
     for (const [i, role] of roles.entries()) await admin.query(`CREATE ROLE ${role} LOGIN ${i === 0 ? `INHERIT SUPERUSER PASSWORD '${password}'` : "NOINHERIT NOSUPERUSER"} NOCREATEROLE NOCREATEDB NOREPLICATION NOBYPASSRLS`);
     await admin.query((await admin.query("SELECT format('ALTER DATABASE %I OWNER TO %I', current_database(), $1::text) AS sql", [installation.migrationLogin])).rows[0].sql);
     assert.deepEqual((await runner(from).apply()).applied, from.units.map(unit => unit.file));
@@ -169,8 +167,7 @@ async function runReleasedPair(input: ReleasedSchemaPair) {
         handlers: [], schedules: [], routes: [] }], vocabulary: [], exemptions: [], bindings: { ports: {}, triggers: {}, routes: {}, env: {} },
         schemaProbe: to.readiness.createSchemaProbe(executor(pool), async () => ({ database: "released-pair", version })) });
     };
-    let interruption = false;
-    const pending = to.units.slice(from.units.length);
+    const pending = to.units.slice(from.units.length), interruption = pending.length > 0;
     if (pending.length) {
       const marker = join(root, "inside-marker");
       const running = startChild(database, "inside", marker, installation, to.runnerPath); child = running.child;
@@ -182,14 +179,12 @@ async function runReleasedPair(input: ReleasedSchemaPair) {
       assert.partialDeepStrictEqual(report, { state: "unsatisfied" });
       assert.ok(report.issues.some((issue: { code: string; observation: string }) => issue.code === "OPENLUP_E_SCHEMA_BEHIND" && issue.observation === "version_mismatch"));
       await invariant();
-      interruption = true;
     }
     assert.deepEqual((await runner(to).apply()).applied, pending.map(unit => unit.file));
     assert.deepEqual(await ledger(), expected);
     assert.equal((await readiness()).state, "ready");
     assert.deepEqual(await runner(to).apply(), { applied: [] });
     await invariant();
-    // Code switches N → N−1 → N without changing the upgraded catalogue/ledger.
     for (const f of [retained, earlier]) await openCase(pool, f);
     for (const [phase, app] of [to, from, to].entries()) {
       const port = payments(app), fresh = await paymentInput();

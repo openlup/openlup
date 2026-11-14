@@ -220,7 +220,6 @@ export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = f
         assert(env.OPENLUP_QUALIFICATION_DATABASE_URL, 'qualification PostgreSQL connection required');
         assert.equal(process.version, 'v24.21.0');
         assert.equal(execFileSync('npm', ['--version'], { encoding: 'utf8' }).trim(), '11.19.0');
-        // Mark FAIL before setup too: a dependency/build failure cannot retain U1's PASS.
         execFileSync('npm', ['ci', '--prefer-offline', '--no-audit', '--fund=false'], { cwd: root, stdio: 'inherit' });
         execFileSync('npm', ['run', 'pretest'], { cwd: root, stdio: 'inherit' });
         const { default: pg } = await import('pg'), { tsImport } = await import('tsx/esm/api');
@@ -284,7 +283,6 @@ export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = f
         return input;
       });
       const applications = inputs.map(input => input.application);
-      // Retain the original installed predecessor before the file/dependency upgrade.
       cpSync(applications[0], join(temporary, 'previous'), { recursive: true });
       pair.from.result = 'PASS'; pair.from.endedAt = new Date().toISOString();
       const finish = proveDistributionCliConsumer(applications[1], { from: applications[0], to: applications[1], fromVersion: previous, toVersion: receipt.setVersion, evidence: pair });
