@@ -25,9 +25,10 @@ it('repairs a protected case earlier without shifting or stacking the cycle thro
   const before = await schedule(h.pool, f.subscription);
   await track(earlier);
   const parcel = (await h.pool.query('SELECT delivered_at FROM public.fulfillment_shipments WHERE id=$1', [f.shipment])).rows[0];
-  const c = (await h.pool.query('SELECT state,delivered_at FROM public.subscription_delivery_alignment_cases WHERE predecessor_order_id=$1', [f.order])).rows[0];
+  const c = (await h.pool.query('SELECT state,delivered_at FROM public.subscription_delivery_alignment_cases WHERE predecessor_order_id=$1 AND shipment_id=$2', [f.order, f.shipment])).rows[0];
   expect(parcel.delivered_at.toISOString()).toBe(earlier);
   expect(c).toEqual({ state: 'protected', delivered_at: new Date(earlier) });
+  expect((await h.pool.query('SELECT state FROM public.subscription_delivery_alignment_cases WHERE predecessor_order_id=$1', [f.order])).rows.every(row => row.state === 'protected')).toBe(true);
   expect(await schedule(h.pool, f.subscription)).toEqual(before);
   // Later evidence is ignored by the admitted writer; it never adds a cadence.
   await track(new Date(clock - 2 * 86400000).toISOString());
