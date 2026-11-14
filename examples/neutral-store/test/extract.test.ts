@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { access, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
-import { resolve, dirname } from 'node:path';
+import { access, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { resolve, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync, spawn } from 'node:child_process';
 import { once } from 'node:events';
@@ -19,34 +19,52 @@ test('extract creates an independent repository and refuses to overwrite an exis
   await mkdir(dirname(scratch), { recursive: true });
   const target = await mkdtemp(scratch);
   try {
-    execFileSync(process.execPath, ['extract.mjs', target], { cwd: root, stdio: 'pipe' });
+    const stdout = execFileSync(process.execPath, ['extract.mjs', target], { cwd: root, encoding: 'utf8', stdio: 'pipe' });
+    assert.equal(stdout, `Created independent application: ${relative(root, target)}\n`
+      + 'Read README.md before installing. Local candidates are not published releases.\n');
     const gitRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: target, encoding: 'utf8' }).trim();
     assert.equal(gitRoot, target);
     const manifest = JSON.parse(await readFile(resolve(target, 'package.json'), 'utf8'));
     assert.equal(manifest.private, true);
     assert.equal(manifest.workspaces, undefined);
     assert.ok((await readFile(resolve(target, 'AGENTS.md'), 'utf8')).includes('owned/store.config.ts'));
-    const ownership = JSON.parse(await readFile(resolve(target, 'ownership.json'), 'utf8'));
+    const ownership = JSON.parse(await readFile(resolve(root, 'ownership.json'), 'utf8'));
     assert.equal(ownership.schemaVersion, 1);
     assert.equal(new Set([...ownership.owned, ...ownership.managed]).size,
       ownership.owned.length + ownership.managed.length);
+    const candidateDocumentation = ['README.md', 'docs/proof.md', 'docs/ownership.md'];
+    const candidateFiles = [];
+    for (const file of await readdir(target, { recursive: true })) {
+      if (file === '.git' || file.startsWith('.git/')) continue;
+      if ((await stat(resolve(target, file))).isFile()) candidateFiles.push(file);
+    }
+    assert.deepEqual(candidateFiles.sort(), [...ownership.owned, ...ownership.managed, '.starter-origin.json'].sort());
+    // Candidate copies follow this revision's sources, including ownership mappings.
     for (const file of [...ownership.owned, ...ownership.managed]) {
       assert.ok((await stat(resolve(target, file))).isFile(), file);
+      if (candidateDocumentation.includes(file)) continue;
       assert.deepEqual(await readFile(resolve(target, file)),
         await readFile(resolve(root, ownership.sourceMappings?.[file] ?? file)), file);
     }
-    const candidateDocumentation = ['README.md', 'docs/proof.md', 'docs/ownership.md'];
-    const candidateFiles = [...ownership.owned, ...ownership.managed, '.starter-origin.json']
-      .filter(path => !candidateDocumentation.includes(path)).sort();
-    const candidateContent = await Promise.all(candidateFiles.map(async path =>
-      [path, sha256(await readFile(resolve(target, path)))]));
-    // Frozen non-documentation output of b037c43e9, including metadata and identity.
-    assert.equal(sha256(JSON.stringify(candidateContent)), '49908e5041582a081addb9f7d663e104655296c74387f743f921c55c64dae2c9');
+    for (const [name, specifier] of Object.entries(manifest.dependencies)) {
+      if (name.startsWith('@openlup/')) assert.match(specifier as string, /^file:artifacts\/.+\.tgz$/);
+    }
     for (const file of ownership.demoData) assert.ok(ownership.owned.includes(file), file);
     assert.ok(ownership.demoDataNote.includes('customer environment'));
     assert.ok(ownership.pageCopyRequiredFor.length > 0);
     assert.ok(ownership.pageCopyRule.includes('managed to owned'));
     for (const file of ownership.sourceOnly) await assert.rejects(access(resolve(target, file)));
+    const provenance = JSON.parse(await readFile(resolve(root, 'starter-release.json'), 'utf8'));
+    const candidateIdentity = { schemaVersion: 1, kind: provenance.kind,
+      setVersion: provenance.setVersion, sourceRevision: provenance.sourceRevision };
+    assert.deepEqual(JSON.parse(await readFile(resolve(target, '.starter-origin.json'), 'utf8')), candidateIdentity);
+    assert.equal(await readFile(resolve(target, '.starter-origin.json'), 'utf8'), JSON.stringify(candidateIdentity, null, 2) + '\n');
+    assert.throws(() => execFileSync('git', ['rev-parse', '--verify', 'HEAD'], { cwd: target, stdio: 'pipe' }));
+    assert.equal(execFileSync('git', ['branch', '--show-current'], { cwd: target, encoding: 'utf8' }).trim(), 'main');
+    assert.equal(execFileSync('git', ['ls-files'], { cwd: target, encoding: 'utf8' }), '');
+    assert.match(await readFile(resolve(target, '.gitignore'), 'utf8'), /^package-lock\.json$/m);
+    assert.equal(execFileSync('git', ['check-ignore', 'package-lock.json'], { cwd: target, encoding: 'utf8' }), 'package-lock.json\n');
+    await assert.rejects(access(resolve(target, 'package-lock.json')));
     // Runtime editor witnesses need selected package artifacts; the raw archive test phase remains dependency-free.
     assert.ok(ownership.sourceOnly.includes('test/editor-contracts.test.ts'));
     assert.ok(ownership.sourceOnly.includes('test/editor-mail.test.ts'));
@@ -80,13 +98,6 @@ test('extract creates an independent repository and refuses to overwrite an exis
     assert.ok((await stat(resolve(target, 'lifecycle'))).mode & 0o100);
     const displayed = execFileSync(process.execPath, ['lifecycle.mjs', 'ownership'], { cwd: target, encoding: 'utf8' });
     assert.deepEqual(JSON.parse(displayed), ownership);
-    assert.deepEqual(JSON.parse(await readFile(resolve(target, '.starter-origin.json'), 'utf8')),
-      { schemaVersion: 1, kind: 'local-candidate', setVersion: null, sourceRevision: null });
-    assert.equal(await readFile(resolve(target, '.starter-origin.json'), 'utf8'), JSON.stringify(
-      { schemaVersion: 1, kind: 'local-candidate', setVersion: null, sourceRevision: null }, null, 2) + '\n');
-    assert.throws(() => execFileSync('git', ['rev-parse', '--verify', 'HEAD'], { cwd: target, stdio: 'pipe' }));
-    assert.match(await readFile(resolve(target, '.gitignore'), 'utf8'), /^package-lock\.json$/m);
-    await assert.rejects(access(resolve(target, 'package-lock.json')));
     await writeFile(resolve(target, 'owner.txt'), 'keep me');
     assert.throws(() => execFileSync(process.execPath, ['extract.mjs', target], { cwd: root, stdio: 'pipe' }));
     assert.equal(await readFile(resolve(target, 'owner.txt'), 'utf8'), 'keep me');
