@@ -1,11 +1,12 @@
 // The blocking tutorial and exact-set qualification follow publication independently of PR CI.
+import { createHash } from "node:crypto";
 import { execFileSync, spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
-import { assertReleaseProvenance, proveNeutralStarterConsumer, qualificationReceipt, qualifyReleasedSet, verifiedReleasePackages } from "./exact-set-qualification.mjs";
+import { assertReleaseProvenance, buildQualifiedImage, proveNeutralStarterConsumer, qualificationReceipt, qualifyReleasedSet, verifiedReleasePackages } from "./exact-set-qualification.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const workflow = readFileSync(join(ROOT, ".github/workflows/registry-tutorial.yml"), "utf8");
@@ -44,7 +45,7 @@ describe("the blocking registry tutorial after publication", () => {
     expect(conditions(tutorial)).toEqual([`    ${REGISTRY_GATE}`, REGISTRY_READY, REGISTRY_READY, REGISTRY_CLEANUP]);
     expect(permissionBlocks(tutorial)).toEqual(["    permissions:\n      contents: read\n"]);
     expect(tutorial).not.toMatch(/secrets\.|github\.token|id-token|environment:|strategy:|needs:|continue-on-error|npm (?:ci|install)\b/u);
-    expect([...workflow.split("\njobs:\n")[1]!.matchAll(/^ {2}([a-z][a-z-]*):$/gmu)].map(match => match[1])).toEqual(["registry-tutorial", "exact-set-qualification"]);
+    expect([...workflow.split("\njobs:\n")[1]!.matchAll(/^ {2}([a-z][a-z-]*):$/gmu)].map(match => match[1])).toEqual(["registry-tutorial", "exact-set-qualification", "publish-qualified-image"]);
     expect(tutorial).toContain("    timeout-minutes: 20\n");
     expect(stepTexts(tutorial)[1]).toBe(CHECKOUT);
     expect(stepTexts(tutorial)[2]).toBe(SETUP_NODE);
@@ -241,7 +242,6 @@ describe("exact published-set qualification", () => {
   it("shares the trust gates, refuses absent visibility, authenticates mirror-only pulls and retains one receipt for 90 days", () => {
     expect(qualification).toContain("needs: registry-tutorial");
     expect(qualification).toContain(REGISTRY_GATE.replace("if: ${{ ", "if: ${{ always() && (").replace(" }}", ") }}"));
-    expect(permissionBlocks(qualification)).toEqual(["    permissions:\n      contents: read\n      packages: read\n"]);
     expect(qualification).toContain('if [ "$OPENLUP_REGISTRY_READY" != true ]; then');
     expect(qualification).toContain('image.sources = image.sources.slice(0, 1)');
     expect(qualification.indexOf('docker login ghcr.io')).toBeLessThan(qualification.indexOf('pullWithRetry(image)'));
@@ -362,5 +362,54 @@ execFileSync("git", ["init", "--quiet", target]);`);
     for (const audit of [{ invalid: [], missing: [], verified: [] }, { invalid: [], missing: [], verified: [{ name, version, attestationBundles: [{ predicateType: "https://slsa.dev/provenance/v1" }] }] }, { invalid: [{ name }], missing: [] }, { invalid: [], missing: [{ name }] }]) {
       expect(() => verifiedReleasePackages(audit, [{ name, integrity }], version, commit)).toThrow(name);
     }
+  });
+});
+
+describe("qualified image publication", () => {
+  const publish = job(workflow, "publish-qualified-image"), body = script(step(publish, "Verify and publish the qualified archive"));
+  it("isolates writes from candidate execution and defaults dispatch to verification only", () => {
+    expect(publish).toContain("needs: exact-set-qualification");
+    expect(publish).toContain("if: ${{ needs.exact-set-qualification.result == 'success' }}");
+    expect(permissionBlocks(publish)).toEqual(["    permissions: {packages: write}\n"]);
+    expect(publish).not.toMatch(/checkout@|setup-node@|npm |id-token|attestations|timeout|sleep|retry/u);
+    expect(workflow).toContain("type: boolean\n        default: false");
+    expect(publish).toContain("github.event_name == 'workflow_run' || inputs.publish_image == true");
+    expect(body).toContain('skopeo copy --preserve-digests');
+  });
+  it.each(["FROM node:latest\n", "FROM node:24.21.0-bookworm-slim AS application\nFROM alpine:latest\n"])("refuses unqualified bases before building", dockerfile => {
+    const application = mkdtempSync(join(tmpdir(), "qualified-base-"));
+    try { writeFileSync(join(application, "Dockerfile"), dockerfile); expect(() => buildQualifiedImage(application, "unused", "unused")).toThrow("qualified_image_base_unexpected"); }
+    finally { rmSync(application, { recursive: true, force: true }); }
+  });
+  it.each(["published", "existing", "skipped-dispatch", "archive-mismatch", "tag-move", "readback-mismatch", "denied", "bom-mismatch"])("checks archive, immutable tag and registry equality: %s", mode => {
+    const directory = mkdtempSync(join(tmpdir(), "qualified-image-")), input = join(directory, "qualified-image"); mkdirSync(input);
+    const manifest = '{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json"}', digest = "sha256:" + createHash("sha256").update(manifest).digest("hex");
+    const bom = JSON.stringify({ formatVersion: 3, kind: "openlup-exact-set-bom", setVersion: "0.41.0", image: { name: "ghcr.io/openlup/neutral-store-starter", platform: "linux/amd64", manifestDigest: digest } });
+    writeFileSync(join(input, "exact-set-qualification.json.bom.json"), bom);
+    writeFileSync(join(input, "exact-set-qualification.json"), JSON.stringify({ result: "PASS", image: { manifestDigest: digest }, bom: { sha256: mode === "bom-mismatch" ? "wrong" : createHash("sha256").update(bom).digest("hex") } }));
+    writeFileSync(join(directory, "skopeo"), `#!/bin/bash
+case "$1" in
+  login) cat >/dev/null;;
+  copy) touch "$RUNNER_TEMP/pushed";;
+  inspect)
+    if [[ "$3" == oci-archive:* ]]; then printf '%s' "$ARCHIVE_MANIFEST";
+    elif [ -f "$RUNNER_TEMP/pushed" ]; then printf '%s' "$READBACK_MANIFEST";
+    elif [ "$MODE" = denied ]; then echo unauthorized >&2; exit 1;
+    elif [[ "$MODE" == existing || "$MODE" == tag-move ]]; then printf '%s' "$REGISTRY_MANIFEST";
+    else echo 'manifest unknown' >&2; exit 1; fi;;
+esac
+`); chmodSync(join(directory, "skopeo"), 0o700);
+    try {
+      const env = { ...Reflect.get(process, "env"), PATH: directory + ":" + Reflect.get(process, "env").PATH, RUNNER_TEMP: directory, RELEASE_TAG: "openlup-core-v0.41.0", PUBLISH_IMAGE: String(mode !== "skipped-dispatch"), GHCR_TOKEN: "synthetic", GHCR_ACTOR: "fixture", MODE: mode,
+        ARCHIVE_MANIFEST: mode === "archive-mismatch" ? "altered" : manifest, READBACK_MANIFEST: mode === "readback-mismatch" ? "altered" : manifest, REGISTRY_MANIFEST: mode === "tag-move" ? "altered" : manifest };
+      const run = spawnSync("bash", ["-e", "-o", "pipefail", "-c", body], { env, encoding: "utf8" });
+      const success = ["published", "existing", "skipped-dispatch"].includes(mode), receipt = JSON.parse(readFileSync(join(input, "exact-set-qualification.json"), "utf8"));
+      expect(run.status, run.stderr).toBe(success ? 0 : 1);
+      expect(receipt.image.publishResult).toBe(success ? mode === "skipped-dispatch" ? mode : "published" : "refused");
+      expect(receipt.result).toBe(success ? "PASS" : "FAIL");
+      expect(existsSync(join(directory, "pushed"))).toBe(["published", "existing", "readback-mismatch"].includes(mode));
+      if (success && mode !== "skipped-dispatch") expect(receipt.image.registryReadback).toBe(digest);
+      if (mode === "tag-move") expect(run.stdout).toContain("qualified_image_tag_move_refused");
+    } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 });

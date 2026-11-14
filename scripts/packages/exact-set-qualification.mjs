@@ -191,16 +191,32 @@ function proveReleasedStarter(receipt, input, temporary, run, environment) {
   });
 }
 
+/** Build only the verified extraction; the original Dockerfile remains in its content identity. */
+export function buildQualifiedImage(application, commit, archive) {
+  const base = readCiImage('starter-node'), name = 'ghcr.io/openlup/neutral-store-starter';
+  const original = readFileSync(join(application, 'Dockerfile'), 'utf8');
+  assert(original.startsWith('FROM node:24.21.0-bookworm-slim AS application\n') && original.match(/^FROM /gmu).length === 1, 'qualified_image_base_unexpected');
+  const epoch = execFileSync('git', ['show', '-s', '--format=%ct', commit], { cwd: root, encoding: 'utf8' }).trim();
+  execFileSync('docker', ['buildx', 'build', '--platform', 'linux/amd64', '--provenance=false', '--sbom=false',
+    '--build-arg', `SOURCE_DATE_EPOCH=${epoch}`, '--output', `type=oci,dest=${archive},rewrite-timestamp=true`, '--file', '-', application],
+    { input: original.replace(/^FROM \S+/u, `FROM ${imageReference(base)}`), stdio: ['pipe', 'inherit', 'inherit'] });
+  const raw = execFileSync('skopeo', ['inspect', '--raw', `oci-archive:${archive}`]);
+  assert.equal(JSON.parse(raw).mediaType, 'application/vnd.oci.image.manifest.v1+json', 'qualified_image_requires_single_manifest');
+  return { name, platform: 'linux/amd64', manifestDigest: `sha256:${sha256(raw)}`, baseImageDigest: base.digest };
+}
+
 export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = false, schema = false, bom = false) {
   const receipt = upgrade || schema || bom ? json(receiptPath) : qualificationReceipt(tag, expectedCommit);
   const applicationsPath = resolve(receiptPath + '.applications');
   if (bom) {
     const qualified = receipt.result === 'FAIL';
-    receipt.result = 'FAIL'; receipt.endedAt = null; delete receipt.bom;
+    receipt.result = 'FAIL'; receipt.endedAt = null; delete receipt.bom; delete receipt.image;
     writeFileSync(receiptPath, JSON.stringify(receipt, null, 2) + '\n');
     try {
       assert(qualified && receipt.upgrade?.result === 'PASS' && receipt.schemaUpgrade?.result === 'PASS' && receipt.tag === tag && receipt.tagCommit === expectedCommit, 'release-bom: qualification_incomplete_or_mismatched');
-      const bytes = JSON.stringify(generateExactSetReleaseBom(root, join(applicationsPath, '1/application'), receipt), null, 2) + '\n';
+      const application = join(applicationsPath, '1/application');
+      receipt.image = { ...buildQualifiedImage(application, expectedCommit, receiptPath + '.image.tar'), publishResult: 'refused', registryReadback: null };
+      const bytes = JSON.stringify(generateExactSetReleaseBom(root, application, receipt), null, 2) + '\n';
       writeFileSync(receiptPath + '.bom.json', bytes);
       receipt.bom = { sha256: sha256(bytes) }; receipt.result = 'PASS';
     } catch (error) { receipt.error = error.message; throw error; }

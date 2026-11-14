@@ -233,7 +233,7 @@ requires that directory contain only its manifest and declared tarballs.
 
 The same [generator](../../scripts/packages/generate-release-bom.ts) also exports
 `generateExactSetReleaseBom` for the post-publication qualification entry point.
-Its format version 2 binds the exact set version and tag commit, each package's
+Its format version 3 binds the exact set version and tag commit, each package's
 registry SHA-512 and npm signature/provenance verification source and bundle hash.
 It hashes the canonical, name-sorted signature verification records produced before the
 BOM; it does not hash the final qualification receipt. The final receipt names
@@ -269,15 +269,56 @@ each carrier. An absent starter remains unqualified; the check does not infer
 starter evidence from its fixtures.
 
 The pack-based format version 1 and its existing CLI retain their original
-bytes and npm-only scope. Neither format supplies a dependency SBOM, image
-manifest identity, npm publication receipt or provenance attestation. A BOM is
+bytes and npm-only scope. The exact-set format also includes the application
+image name, Linux amd64 platform, OCI manifest digest and pinned Node base index
+digest. Neither format supplies a dependency SBOM, npm publication receipt or
+provenance attestation. A BOM is
 not itself evidence that runtime checks passed; the final receipt records those
 results. The producer's commit attribution remains process evidence; the
 BOM does not independently attest how those bytes were built. Existing per-package
 SBOM, provenance and [release gates](DEVELOPMENT_AND_RELEASE.md#releasing-a-package)
-retain their duties. Images, SBOMs and detached image attestations need later
-qualification evidence. This change makes no release-asset, publication,
-stable-framework or supported-installation claim.
+retain their duties. SBOMs and detached image attestations need later
+qualification evidence. No release-asset, stable-framework or supported-installation
+claim follows from a BOM.
+
+## Qualified application image
+
+The read-only qualification job builds one OCI archive from the original verified
+target extraction retained by the adjacent-set proof, after the schema step.
+The released Dockerfile is supplied on stdin with only its Node base reference
+replaced by the [owned mirror pin](../../config/ci-images.json). The extraction
+and lock stay unchanged; its `.dockerignore` excludes installed dependencies and
+build output. The image installs the locked registry packages and builds the
+released application, with the tag commit time as `SOURCE_DATE_EPOCH` and rewritten
+layer timestamps. The bundled Docker builder uses the containerd image store;
+no separate builder image or implicit scanner is pulled. Only authenticated
+GHCR base pulls are allowed; missing mirror access fails qualification.
+
+The exact-set BOM's version 3 image section binds the manifest digest computed
+from Skopeo's raw single OCI manifest, not a configuration ID or an index digest.
+The base image field identifies the pinned multi-platform Node index. The archive,
+BOM and receipt pass through a one-day workflow artifact. The existing 90-day
+qualification artifact keeps the BOM and receipt without the large archive.
+
+`publish-qualified-image` runs only after successful qualification. This is the
+only job with job-scoped `packages: write`; it uses pinned first-party artifact
+actions, shell/JQ and preinstalled Skopeo, with no checkout, npm or execution of
+archive contents. It checks the BOM hash against the receipt and recomputes the
+archive manifest digest before any write. Dispatch defaults to `skipped-dispatch`;
+only an explicit `publish_image: true` or a release-event run permits publication.
+The existing per-tag workflow concurrency serializes these runs. An existing
+version tag with a different digest refuses by name; ambiguous registry errors
+also refuse. A digest-preserving copy is followed by registry manifest readback.
+Any mismatch fails and no further publication steps run. A registry readback
+failure can occur after a copy; the failed receipt does not certify that tag.
+
+A separate 90-day `qualified-image-publication` artifact keeps the final receipt
+and BOM. The receipt includes the manifest digest, `published`, `skipped-dispatch`
+or `refused`, and the registry readback (null if unobserved). Organization owners
+must make the package public, link it to this repository and choose its retention
+policy. Source presence and local OCI-layout copy evidence establish neither GHCR
+activation nor a hosted qualification run. Image SBOMs, image attestations and
+running-image canary checks remain separate obligations.
 
 ## Current neutrality and runtime limits
 
