@@ -237,3 +237,19 @@ it("preserves typed admission retryability without copying arbitrary error field
   expect(f.cursor()).toMatchObject({ refusal: { reason: "not_ready", phase: "sync", retryable: true } });
   expect(JSON.stringify(f.cursor())).not.toContain("private-value");
 });
+
+it("runs snapshots without movement I/O and retains the prior watermark with a separate refusal", async () => {
+  const f = fixture(), watermark = "2026-10-20T12:00:00.000Z";
+  f.setCursor({ status: "succeeded", lastStockSyncedAt: at, lastMovementOccurredAt: watermark,
+    continuation: { nextRef: null, startLocalDate: null, endLocalDate: null }, refusal: null });
+  f.input.stockMovements = false;
+  f.input.provider.getStockMovements = async () => { throw new Error("movement I/O forbidden"); };
+  f.input.port.recordMovement = async () => { throw new Error("movement persistence forbidden"); };
+  const movementRefusal = { reason: "stock_movements_unsupported", phase: "sync", retryable: false };
+  expect(await run(f.input)).toMatchObject({ ok: true, checked: 1, updated: 2, providerCalls: 1, movements: 0, lastMovementOccurredAt: watermark, movementRefusal });
+  expect(f.snapshots).toHaveLength(1);
+  expect(f.cursor()).toMatchObject({ status: "succeeded", lastStockSyncedAt: at, lastMovementOccurredAt: watermark, refusal: null, movementRefusal });
+  f.fail(true);
+  expect(await run(f.input)).toMatchObject({ ok: false, movementRefusal, refusal: { reason: "io_failure" } });
+  expect(f.cursor()).toMatchObject({ status: "failed", lastMovementOccurredAt: watermark, movementRefusal });
+});

@@ -762,7 +762,8 @@ execution; invoicing cannot delay, stop or roll back those obligations.
 The inert [M08 fulfillment binding](../../server/runtime/public-reference/m08FulfillmentBinding.ts)
 selects one transaction lane, dispatch store, provider and readiness observer.
 Activation is default-off and checked before worker invocation, including the
-worker's stale-submission writes. The host supplies an authoritative reader
+worker's stale-submission writes. Select `nativeDispatch: { portKey, providerRef }` for recorded native candidate
+and preparation composition, or supply an authoritative host reader
 using the locked transaction and routes every contact, selection or withholding
 edit through `editAuthoritative`, with actor and idempotency attribution and
 host-owned authorization/replay receipts. The writer locks the native dispatch
@@ -794,8 +795,8 @@ refused operations and reservation-expiry recovery are unchanged. Enforcing
 new-cycle inserts require the successful exact-schedule admission and consume
 its receipt once.
 Host status-map, normalized-fact and current-parcel facades delegate to
-`@openlup/core/fulfillment` with their existing names; the status facade retains
-private provider trace metadata. Account order UI imports core progress helpers
+`@openlup/core/fulfillment` with their existing names. The shared status facade
+and generated JSON contain only the core map; adapters own provider translation. Account order UI imports core progress helpers
 and types. The subscription browser inventory declares only the parsed core
 fulfillment modules. The default and subscription client and SSR graphs, identity
 clients for both auth providers, and installed core browser consumer exclude

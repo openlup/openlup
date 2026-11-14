@@ -10,6 +10,17 @@ export interface FulfillmentCapabilityDescriptor {
   readiness: { ready: true } | { ready: false; refusal: FulfillmentRefusal };
   ownsDeliveredNotification: boolean;
   stockAuthority: "local_atp" | "external_stock_master_with_local_reservations";
+  /** Omitted intake preserves webhook/push acknowledgement evidence. */
+  intakeMode?: "webhook" | "polling";
+  /** Only local reservations with finished-picking consumption are admitted. */
+  inventory?: { reservationOwner: "local" | "provider"; consumption: "finished_picking" | "provider_managed" };
+  /** Omitted means movement reads are required; false selects snapshot-only sync. */
+  stockMovements?: boolean;
+  independentSplits?: boolean;
+  /** Independent of warehouse role; omitted retains the existing role rule. */
+  transportSelection?: "merchant" | "provider";
+  /** MIME formats; only application/pdf is admitted by the native label contract. */
+  labelFormats?: readonly string[];
   labelReadOwner: "host_storage" | "adapter" | "none";
   actionPolicy: { providerSpecificAdminActions: boolean; genericAdminActions: boolean; mutationSurface: "none" | "local_only" | "provider_adapter" };
 }

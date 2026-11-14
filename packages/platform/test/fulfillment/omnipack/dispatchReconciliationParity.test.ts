@@ -50,6 +50,7 @@ function nativeDispatchFixture(capture: (sink: string, value: unknown) => void, 
   let acceptance: Extract<FulfillmentDispatchResult, { kind: "accepted" }> | undefined, failAck = Boolean(ackError);
   const native = createPostgresFulfillmentDispatchStore({ async query(statement, values = []) {
     let result: unknown;
+    if (statement.includes("fulfillment_dispatch_mark_stale_submissions_uncertain")) return { rows: [{ response: 0 }] };
     if (statement.startsWith("UPDATE")) return { rows: [] };
     if (statement.startsWith("SELECT public.fulfillment_dispatch_read")) {
       const record = await memory.read(String(values[0]));
@@ -171,7 +172,7 @@ it.each([
   { name: "503", status: 503, code: "FAKE_PROVIDER_DOWN", ambiguous: true },
   { name: "timeout", status: null, code: "network_error", ambiguous: true },
   { name: "redirect", status: null, code: "redirect_refused", ambiguous: true },
-  { name: "broken-400-body", status: 400, code: "http_400", ambiguous: false },
+  { name: "broken-400-body", status: null, code: "network_error", ambiguous: true },
 ])("dispatch-$name keeps typed error detail and fences repeated invocations", async spec => {
   const f = dispatchFixture(adapter(async (_url, init) => {
     if (spec.name === "timeout") return new Promise<Response>((_resolve, reject) => init.signal!.addEventListener("abort", () => reject(new DOMException("scripted timeout", "AbortError")), { once: true }));
@@ -182,7 +183,7 @@ it.each([
   expect(await f.run()).toMatchObject({ ok: false, providerCalls: 1, reason: spec.code });
   expect(f.writes[0]).toEqual({ kind: spec.ambiguous ? "unknown" : "not_dispatched", effectMayHaveSucceeded: spec.ambiguous,
     refusal: { reason: "io_failure", phase: "dispatch", retryable: false }, error: { code: spec.code, status: spec.status, retryable: false, mayHaveSucceeded: spec.ambiguous, submissionAttempted: true,
-      ...(spec.status !== null ? { responseBodyRead: spec.name !== "broken-400-body" } : {}) } });
+      ...(spec.status !== null || spec.name === "broken-400-body" ? { responseBodyRead: spec.name !== "broken-400-body" } : {}) } });
   expect(await f.run()).toMatchObject({ providerCalls: 0 }); expect(f.http).toHaveBeenCalledTimes(1);
 });
 it("shadow-null builds locally and readiness does not require a provider", async () => {
@@ -348,6 +349,7 @@ it.each([
     orderRef: req.orderRef, parcelRef: req.parcelRef, mode, status: "draft", externalRef: null, evidence: legacy, replayed: true };
   const attempts = new Map([[keys.mappedAttempt(keys.request(), 0), structuredClone(legacy)]]);
   const query = vi.fn(async (statement: string, values: unknown[] = []) => {
+    if (statement.includes("fulfillment_dispatch_mark_stale_submissions_uncertain")) return { rows: [{ response: 0 }] };
     if (statement.startsWith("UPDATE")) return { rows: [] };
     let response: unknown;
     if (statement.startsWith("SELECT public.fulfillment_dispatch_read")) response = structuredClone(record);
