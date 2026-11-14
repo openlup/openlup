@@ -762,7 +762,8 @@ execution; invoicing cannot delay, stop or roll back those obligations.
 The inert [M08 fulfillment binding](../../server/runtime/public-reference/m08FulfillmentBinding.ts)
 selects one transaction lane, dispatch store, provider and readiness observer.
 Activation is default-off and checked before worker invocation, including the
-worker's stale-submission writes. The host supplies an authoritative reader
+worker's stale-submission writes. Select `nativeDispatch: { portKey, providerRef }` for recorded native candidate
+and preparation composition, or supply an authoritative host reader
 using the locked transaction and routes every contact, selection or withholding
 edit through `editAuthoritative`, with actor and idempotency attribution and
 host-owned authorization/replay receipts. The writer locks the native dispatch

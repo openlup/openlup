@@ -10,6 +10,7 @@ CREATE TABLE public.fulfillment_operator_attempts (
  status text NOT NULL CHECK (status IN ('recorded','succeeded','failed')),
  payload jsonb NOT NULL DEFAULT '{}',
  error jsonb,
+ metadata jsonb NOT NULL DEFAULT '{}',
  actor_type text NOT NULL,
  actor_id uuid,
  created_at timestamptz NOT NULL DEFAULT now(),
@@ -52,8 +53,8 @@ BEGIN
   OR p_actor_id IS NULL OR p_status IS NULL OR p_status NOT IN ('recorded','succeeded','failed')
   OR jsonb_typeof(p_payload) IS DISTINCT FROM 'object' THEN
   RAISE EXCEPTION 'commerce_fulfillment_invalid_input' USING ERRCODE='22023'; END IF;
- INSERT INTO public.fulfillment_operator_attempts(shipment_id,order_id,idempotency_key,provider_key,status,payload,error,actor_type,actor_id)
- VALUES(parcel.id,parcel.order_id,p_key,p_provider_key,p_status,p_payload,p_error,p_actor_type,p_actor_id);
+ INSERT INTO public.fulfillment_operator_attempts(shipment_id,order_id,idempotency_key,provider_key,status,payload,error,metadata,actor_type,actor_id)
+ VALUES(parcel.id,parcel.order_id,p_key,p_provider_key,p_status,p_payload,p_error,coalesce(p_metadata,'{}'),p_actor_type,p_actor_id);
  INSERT INTO public.fulfillment_shipment_operations(shipment_id,order_id,operation_type,idempotency_key,payload)
  VALUES(parcel.id,parcel.order_id,'provider_attempt_recorded',p_key||':operation',jsonb_build_object('providerRef',p_provider_key,'status',p_status,'actorId',p_actor_id));
  RETURN jsonb_build_object('contractVersion','commerce.fulfillment.v0','fulfillmentOrderId',parcel.id,'orderId',parcel.order_id,'status',parcel.status,'replayed',false);

@@ -68,7 +68,7 @@ it('native G17 correlates a newly observed external ID and replays its atomic ac
  expect(await native.read(`observation-${f.shipment}`)).toEqual(before);
 });
 it('fresh full-catalogue install binds sparse assets, hashes and object inventory, then replays without changing history',async()=>{
- expect(FULFILLMENT_MIGRATIONS.map(unit=>unit.position)).toEqual([5,27,51,73,74,76,135]);
+ expect(FULFILLMENT_MIGRATIONS.map(unit=>unit.position)).toEqual([5,27,51,73,74,76,135,136]);
  for(const unit of FULFILLMENT_MIGRATIONS){const bytes=readFileSync(unit.catalogPath);expect(readFileSync(unit.url)).toEqual(bytes);expect(createHash('sha256').update(bytes).digest('hex')).toBe(unit.sha256);expect(units[unit.position]).toEqual({file:unit.catalogPath,sha256:unit.sha256});}
  const history=(await h.pool.query('SELECT * FROM public.platform_schema_migrations ORDER BY position')).rows;
  expect(history.map(({catalog_path,sha256,position})=>({file:catalog_path,sha256,position}))).toEqual(units.map((u,position)=>({...u,position})));
@@ -101,7 +101,8 @@ it('durable command/dispatch fences, G14/remap, atomic paid/accepted ACK, G15–
  expect(await native.begin({dispatchRef:a.record.dispatchRef,commandFingerprint:evidence.commandFingerprint})).toMatchObject({kind:'refused',refusal:{reason:'contact_stale'}});
  expect(await native.claim({...input,evidence:next})).toMatchObject({kind:'claimed',record:{evidence:next}});
  await native.recordProviderAttempt(`remapped-${f.shipment}`,f.shipment,next,'live','recorded');
- await expect(native.recordProviderAttempt(`mapped-${f.shipment}`,f.shipment,next,'live','recorded')).rejects.toMatchObject({code:'23505'});
+ expect(await native.recordProviderAttempt(`mapped-${f.shipment}`,f.shipment,next,'live','recorded')).toEqual({replayed:true});
+ await expect(native.recordProviderAttempt(`mapped-${f.shipment}`,f.shipment,{...next,providerRef:'other'},'live','recorded')).rejects.toMatchObject({code:'23505'});
  await h.pool.query("INSERT INTO public.commerce_order_holds(order_id,reason,status,idempotency_key) VALUES($1,'manual_support','active',$2)",[f.order,`hold-${f.order}`]);
  expect(await native.begin({dispatchRef:a.record.dispatchRef,commandFingerprint:next.commandFingerprint})).toMatchObject({kind:'refused',refusal:{reason:'not_dispatchable'}});
  await h.pool.query("UPDATE public.commerce_order_holds SET status='released',released_at=now() WHERE order_id=$1",[f.order]);

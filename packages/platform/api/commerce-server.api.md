@@ -11479,6 +11479,8 @@ export interface FulfillmentServicesOptions {
         mode: DispatchRecord['mode'];
         batchLimit: number;
     };
+    /** Pure SHA-256 of the actual adapter command; never resolves credentials or performs I/O. */
+    shadowCommandFingerprint?: (request: FulfillmentDispatchRequest) => string;
     now?: () => Date;
 }
 /** Import and construction are inert. Every invocation checks activation before any worker. */
@@ -11680,7 +11682,7 @@ export interface FulfillmentSelection {
     pickupPoint: PickupPoint | null;
 }
 export interface FulfillmentRefusal {
-    reason: "not_dispatchable" | "selection_required" | "provider_mismatch" | "carrier_service_required" | "disabled" | "not_ready" | "unsupported" | "withheld" | "claim_conflict" | "contact_stale" | "stock_contention" | "local_missing" | "io_failure" | "malformed" | "untrusted" | "unsupported_event" | "stale" | "missing_correlation" | "provider_reservations_unsupported" | "stock_consumption_policy_unsupported" | "stock_movements_unsupported" | "independent_split_unsupported" | "pickup_point_delivery_unsupported" | "label_create_unsupported" | "label_void_unsupported" | "provider_cancel_unsupported" | "label_format_unsupported";
+    reason: "dispatch_reservations_not_recorded" | "order_mode_unproven" | "payment_not_succeeded" | "subscription_cycle_not_paid" | "not_dispatchable" | "selection_required" | "provider_mismatch" | "carrier_service_required" | "disabled" | "not_ready" | "unsupported" | "withheld" | "claim_conflict" | "contact_stale" | "stock_contention" | "local_missing" | "io_failure" | "malformed" | "untrusted" | "unsupported_event" | "stale" | "missing_correlation" | "provider_reservations_unsupported" | "stock_consumption_policy_unsupported" | "stock_movements_unsupported" | "independent_split_unsupported" | "pickup_point_delivery_unsupported" | "label_create_unsupported" | "label_void_unsupported" | "provider_cancel_unsupported" | "label_format_unsupported";
     phase: "selection" | "prepare" | "claim" | "begin" | "dispatch" | "acknowledge" | "verify" | "normalize" | "apply" | "readback" | "sync";
     retryable: boolean;
 }
@@ -12262,6 +12264,16 @@ export interface DispatchRecord {
     acceptance?: Extract<FulfillmentDispatchResult, {
         kind: "accepted";
     }> | null;
+    /** Closed neutral diagnostics. Historical references retain null. */
+    outcome?: {
+        classification: 'failed' | 'uncertain';
+        code: string;
+        status: number | null;
+        retryable: boolean;
+        mayHaveSucceeded: boolean;
+        submissionAttempted?: boolean;
+        responseBodyRead?: boolean;
+    } | null;
 }
 export interface FulfillmentStorePort {
     read(requestKey: string): Promise<DispatchRecord | null>;
@@ -13816,6 +13828,11 @@ export declare const FULFILLMENT_MIGRATIONS: readonly [{
     readonly catalogPath: "db/platform/migrations/20261120100000_fulfillment_intake_channel.sql";
     readonly sha256: "5ce8ada91ed1b6634a9d17b54b82751502e6350e564945528f240e361dda5352";
     readonly url: URL;
+}, {
+    readonly position: 136;
+    readonly catalogPath: "db/platform/migrations/20261120110000_fulfillment_dispatch_outcomes.sql";
+    readonly sha256: "60f96464373f57a9570b17eb99d74e7b4615e8940ed46374d45d605b8435344f";
+    readonly url: URL;
 }];
 ```
 ## dist/fulfillment/nativeUnsupported.d.ts
@@ -14005,6 +14022,8 @@ export declare function createPostgresFulfillmentDispatchStore(db: PgExecutor, h
     readCandidate(fulfillmentRef: string): Promise<FulfillmentDispatchRequest | null>;
     /** Selected descriptor declaration; omitted preserves push. Requires the intake-channel SQL forward. */
     intakeMode?: FulfillmentCapabilityDescriptor['intakeMode'];
+    /** Selected native commerce composition adds its recorded-parcel admission fence. */
+    begin?: FulfillmentStorePort['begin'];
 }): FulfillmentStorePort & {
     commandLedger: ReturnType<typeof createFulfillmentCommandLedger>;
 };

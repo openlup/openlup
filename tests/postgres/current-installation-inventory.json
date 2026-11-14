@@ -2,10 +2,14 @@
   "current": {
     "profiles": {
       "legacy": {
-        "count": 136,
-        "exactTailCount": 26,
-        "objectInventorySha256": "94ce6fd5f71a84bfdd5d0c118571b2e57c09aa4a8231bf167c0fb27c8e8262a4",
+        "count": 137,
+        "exactTailCount": 27,
+        "objectInventorySha256": "7f3a580e5f4e42a6c759764df14455dadd01d30a28f2b38cc210c557f828cc73",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261120110000_fulfillment_dispatch_outcomes.sql",
+            "sha256": "60f96464373f57a9570b17eb99d74e7b4615e8940ed46374d45d605b8435344f"
+          },
           {
             "file": "db/platform/migrations/20261120100000_fulfillment_intake_channel.sql",
             "sha256": "5ce8ada91ed1b6634a9d17b54b82751502e6350e564945528f240e361dda5352"
@@ -553,10 +557,14 @@
         ]
       },
       "bootstrap": {
-        "count": 141,
-        "exactTailCount": 26,
-        "objectInventorySha256": "6f0545ff12268556489289bf2e7e04ca32138dd17e26fd04cebfc45c3b9ac004",
+        "count": 142,
+        "exactTailCount": 27,
+        "objectInventorySha256": "192fbd79b11888771a52d92c436106965fffcfca279ef7b0c4debbd2fa4f7da2",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261120110000_fulfillment_dispatch_outcomes.sql",
+            "sha256": "60f96464373f57a9570b17eb99d74e7b4615e8940ed46374d45d605b8435344f"
+          },
           {
             "file": "db/platform/migrations/20261120100000_fulfillment_intake_channel.sql",
             "sha256": "5ce8ada91ed1b6634a9d17b54b82751502e6350e564945528f240e361dda5352"
@@ -1124,10 +1132,14 @@
         ]
       },
       "separate": {
-        "count": 141,
-        "exactTailCount": 26,
-        "objectInventorySha256": "d695929c33a40e8e3f20601a6cffcafe7503308a2b1e6431add7a41a63ba7f63",
+        "count": 142,
+        "exactTailCount": 27,
+        "objectInventorySha256": "bed9cc757180676e06842c158725de69576d82a7c215e9233af3f68b59dafd99",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261120110000_fulfillment_dispatch_outcomes.sql",
+            "sha256": "60f96464373f57a9570b17eb99d74e7b4615e8940ed46374d45d605b8435344f"
+          },
           {
             "file": "db/platform/migrations/20261120100000_fulfillment_intake_channel.sql",
             "sha256": "5ce8ada91ed1b6634a9d17b54b82751502e6350e564945528f240e361dda5352"
@@ -1695,10 +1707,14 @@
         ]
       },
       "admin-managed": {
-        "count": 140,
-        "exactTailCount": 26,
-        "objectInventorySha256": "3255e46d3278a0f57d6cb8a8abb7b0f5993cd0930c514b3d4d9477107a4ea2bd",
+        "count": 141,
+        "exactTailCount": 27,
+        "objectInventorySha256": "9dc25a4d542a01abdafb43abd447ccb939a72b29957083b57a4ae67e00a83463",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261120110000_fulfillment_dispatch_outcomes.sql",
+            "sha256": "60f96464373f57a9570b17eb99d74e7b4615e8940ed46374d45d605b8435344f"
+          },
           {
             "file": "db/platform/migrations/20261120100000_fulfillment_intake_channel.sql",
             "sha256": "5ce8ada91ed1b6634a9d17b54b82751502e6350e564945528f240e361dda5352"
@@ -2262,10 +2278,14 @@
         ]
       },
       "admin-operator": {
-        "count": 140,
-        "exactTailCount": 26,
-        "objectInventorySha256": "3a48264e0067f3698b8976e8e4cac9c9449aa6d60371a6999b6bf2d924019712",
+        "count": 141,
+        "exactTailCount": 27,
+        "objectInventorySha256": "735f05f90300e8aaccbdbcca0895c7f0135eded3f416cd3a1a0dec17c8b25815",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261120110000_fulfillment_dispatch_outcomes.sql",
+            "sha256": "60f96464373f57a9570b17eb99d74e7b4615e8940ed46374d45d605b8435344f"
+          },
           {
             "file": "db/platform/migrations/20261120100000_fulfillment_intake_channel.sql",
             "sha256": "5ce8ada91ed1b6634a9d17b54b82751502e6350e564945528f240e361dda5352"
@@ -2829,7 +2849,7 @@
         ]
       }
     },
-    "connectedTableCount": 147
+    "connectedTableCount": 148
   },
   "historical": {}
 }
