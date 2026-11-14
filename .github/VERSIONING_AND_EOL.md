@@ -14,10 +14,6 @@ follows preview rules.
   upgrade proofs green. No current source checkout, private package, or preview
   release satisfies that gate.
 
-## The public compatibility contract
-
-Moved to [Versioning and stability](../packages/core/docs/guide/reference/stability.md#public-api).
-
 ## Stable semantic versioning
 
 Moved to [Versioning and stability](../packages/core/docs/guide/reference/stability.md#version-numbers).
