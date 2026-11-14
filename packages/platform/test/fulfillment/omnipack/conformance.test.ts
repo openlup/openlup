@@ -824,3 +824,12 @@ it("audit 12 never normalizes a legacy page fact into an equal current expectati
   };
   await expect(runFulfillmentAdapterConformance([value], { mode: "full" })).rejects.toThrow("full paging full contradictory result");
 });
+
+it("FK-d7A-1 never grants full readback credit through a declared method's own bind", async () => {
+  const { value } = fullSubject(), read = value.adapter.readback!.read; let calls = 0, binds = 0;
+  const broken: typeof read = () => { calls++; throw new Error("declared readback failure"); };
+  Object.defineProperty(broken, "bind", { value: () => { binds++; return read; } });
+  value.adapter.readback!.read = broken;
+  await expect(runFulfillmentAdapterConformance([value], { mode: "full" })).rejects.toThrow("readback fixture success did not return");
+  expect(calls).toBe(1); expect(binds).toBe(0);
+});

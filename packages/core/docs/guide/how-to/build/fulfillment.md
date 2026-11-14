@@ -256,6 +256,11 @@ expectations and results are data: proxies, accessors, hidden properties,
 unknown fields, contradictory branches and malformed values fail validation.
 Each invocation receives a fresh input copy; its outcome is copied before it is
 classified or compared. An expectation must exist independently before the call.
+Methods, I/O counters, URL/reference callbacks and optional host-store probes are
+captured once and invoked through a captured intrinsic. Return native promises;
+thenables and promise constructor/species overrides refuse. A native promise's
+own `then` override is ignored. Callback/store results, including thrown failures, are copied before use;
+result iterators, serialization hooks, accessors and proxies cannot supply evidence.
 This is a data-validation and invocation-evidence boundary, not remote attestation.
 
 Only the runner's invocation ledger grants coverage. A supported capability needs

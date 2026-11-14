@@ -10,7 +10,7 @@ import { readFulfillmentCapabilities } from "./providerCapabilities.js";
 import { runFulfillmentDispatchWorker } from "./providerDispatchWorker.js";
 import { runFulfillmentStockSyncWorker } from "./providerStockSyncWorker.js";
 import { readScriptedFulfillmentFaultLog } from "./testing/scriptedFake.js";
-import { PORTLESS_CAPABILITIES, subjectSchema, snapshot, freeze, results, refusal, requireFact, type Operation } from "./testing/schema.js";
+import { PORTLESS_CAPABILITIES, subjectSchema, snapshot, freeze, results, refusal, requireFact, field, method, settled, invokeData, type Operation } from "./testing/schema.js";
 
 type Subject = FulfillmentAdapterConformanceSubject & Pick<FulfillmentAdapterTestSubject, "adapter" | "certification">;
 type Capability = keyof FulfillmentCapabilityDescriptor["operations"];
@@ -24,25 +24,29 @@ export async function runFulfillmentAdapterConformance(subjects: readonly Subjec
   const mode = z.strictObject({ mode: z.enum(["baseline", "full"]) }).parse(snapshot(options)).mode;
   requireFact(Array.isArray(subjects) && !types.isProxy(subjects) && subjects.length > 0, "full subjects required: nonempty array");
   requireFact(Reflect.ownKeys(subjects).every(key => typeof key === "string" && (key === "length" || /^(0|[1-9][0-9]*)$/.test(key)) && !Object.getOwnPropertyDescriptor(subjects, key)?.get), "validation:subjects");
-  const subjectList = Array.from({ length: subjects.length }, (_, index) => subjects[index]!);
+  const subjectList = Array.from({ length: subjects.length }, (_, index) => field(subjects, index)!);
   const preparedSubjects = subjectList.map((subject: Subject) => {
     requireFact(!types.isProxy(subject), "validation:subject_proxy");
-    const adapter = subject.adapter, certification = subject.certification;
-    const data = { subjectId: subject.subjectId, capabilities: adapter.capabilities, sensitiveValues: subject.sensitiveValues, fixtures: subject.fixtures, ...(certification ? { certification } : {}) };
+    const adapter = field(subject, "adapter"), certification = field(subject, "certification");
+    const data = { subjectId: field(subject, "subjectId"), capabilities: field(adapter, "capabilities"), sensitiveValues: field(subject, "sensitiveValues"), fixtures: field(subject, "fixtures"), ...(certification ? { certification } : {}) };
     const frozen = snapshot(data), checked = subjectSchema.safeParse(frozen);
     requireFact(checked.success, `validation:fixtures ${checked.success ? "" : checked.error.message}`);
-    const dispatch = adapter.dispatch, prepare = dispatch.prepare, submit = dispatch.dispatch;
+    const dispatch = field(adapter, "dispatch"), prepare = field(dispatch, "prepare"), submit = field(dispatch, "dispatch");
     const profile: "adapter" | "dispatch-only" = isCapturedFulfillmentAdapter(adapter, dispatch, prepare, submit) ? "dispatch-only" : "adapter";
-    requireFact(!certification?.profile || frozen.certification?.profile === profile, "capability_not_certifiable:dispatch-only brand");
-    const ports: Partial<Record<Operation, (...args: unknown[]) => Promise<unknown>>> = {};
-    for (const [op, port, method] of [["prepare", adapter.dispatch, "prepare"], ["dispatch", adapter.dispatch, "dispatch"], ["create", adapter.label, "create"], ["read", adapter.label, "read"], ["void", adapter.label, "void"], ["observation", adapter.observation, "verifyAndNormalize"], ["readback", adapter.readback, "read"], ["page", adapter.reconciliation, "readPage"], ...["getStock", "getStockMovements"].map(op => [op, adapter.stockSync, op] as const), ...["ensureProduct", "getProductPacks", "addProductPack", "listStockedSkus"].map(op => [op, adapter.productSync, op] as const)] as const) {
-      const methodValue = (op === "prepare" ? prepare : op === "dispatch" ? submit : port && (port as unknown as Record<string, unknown>)[method]) as ((...args: unknown[]) => Promise<unknown>) | undefined;
-      if (methodValue) ports[op as Operation] = methodValue.bind(port);
+    requireFact(!frozen.certification?.profile || frozen.certification.profile === profile, "capability_not_certifiable:dispatch-only brand");
+    const ports: Partial<Record<Operation, (...args: unknown[]) => Promise<unknown>>> = { prepare: method(dispatch, "prepare", prepare) as (...args: unknown[]) => Promise<unknown>, dispatch: method(dispatch, "dispatch", submit) as (...args: unknown[]) => Promise<unknown> };
+    for (const [op, port, name] of [["create", field(adapter, "label"), "create"], ["read", field(adapter, "label"), "read"], ["void", field(adapter, "label"), "void"], ["observation", field(adapter, "observation"), "verifyAndNormalize"], ["readback", field(adapter, "readback"), "read"], ["page", field(adapter, "reconciliation"), "readPage"], ...["getStock", "getStockMovements"].map(op => [op, field(adapter, "stockSync"), op] as const), ...["ensureProduct", "getProductPacks", "addProductPack", "listStockedSkus"].map(op => [op, field(adapter, "productSync"), op] as const)] as const) {
+      if (port) ports[op as Operation] = method(port as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>, name);
     }
     const logs = new Map<number, object>();
-    for (const name of transportNames) { const scenario = certification?.dispatch?.transport[name]; if (scenario) { readScriptedFulfillmentFaultLog(scenario.calls); logs.set(scenario.fixture, scenario.calls); } }
+    for (const name of transportNames) { const scenario = frozen.certification?.dispatch?.transport[name]; if (scenario) { const handle = field(field(field(field(certification!, "dispatch")!, "transport"), name), "calls"); readScriptedFulfillmentFaultLog(handle); logs.set(scenario.fixture, handle); } }
     if (mode === "full") validateFull(frozen, profile);
-    return { subject: { ...subject, observationCodecs: subject.observationCodecs ? { ...subject.observationCodecs } : undefined, ...freeze(frozen), adapter: { ...adapter, capabilities: frozen.capabilities } }, ports, profile, logs, count: subject.readIoCount.bind(subject) };
+    const codecs = field(subject, "observationCodecs"), store = field(subject, "store");
+    const policy = <T>(owner: T, key: keyof T, schema: z.ZodType) => { const invoke = method(owner, key); return invoke === undefined ? undefined : (value: string) => schema.parse(snapshot((invoke as (value: string) => unknown)(value))); };
+    const safeSubject = { ...freeze(frozen), adapter: { capabilities: frozen.capabilities, dispatch: { prepare: ports.prepare as typeof prepare, dispatch: ports.dispatch as typeof submit } }, readIoCount: method(subject, "readIoCount"),
+      approveTrackingUrl: policy(subject, "approveTrackingUrl", z.boolean()), observationCodecs: codecs ? { approveReference: policy(codecs, "approveReference", z.boolean()), trackingUrl: policy(codecs, "trackingUrl", z.string().nullable()) } : undefined,
+      store: store ? { ...freeze(snapshot(Object.fromEntries(["claim", "remappedClaim", "mappedAttemptKey", "remappedAttemptKey", "request", "remappedRequest"].map(key => [key, field(store, key as keyof typeof store)])))), create: method(store, "create") } : undefined } as Subject;
+    return { subject: safeSubject, ports, profile, logs, count: safeSubject.readIoCount };
   });
   const evidence: FulfillmentAdapterConformanceEvidence["subjects"][number][] = [], cases: FulfillmentAdapterConformanceEvidence["cases"][number][] = [], qualifications: FulfillmentQualification[] = [];
   for (const { subject, ports, profile, logs, count } of preparedSubjects) {
@@ -53,8 +57,9 @@ export async function runFulfillmentAdapterConformance(subjects: readonly Subjec
     const witness = async <O extends Operation>(slot: Slot & { op: O }): Promise<z.output<(typeof results)[O]>> => {
       const method = ports[slot.op]; requireFact(method, `${slot.label} port required`);
       const input = snapshot(slot.input), before = io(), faultsBefore = slot.faults ? readScriptedFulfillmentFaultLog(slot.faults).length : 0;
-      let returned = true, raw: unknown;
-      try { raw = await method(...input); } catch (error) { returned = false; raw = error; }
+      let returned = true, raw: unknown, pending: unknown;
+      try { pending = method(...input); } catch (error) { returned = false; raw = error; }
+      if (returned) { const outcome = await settled(pending, raw => ({ returned: true, value: snapshot(raw) }), raw => ({ returned: false, value: snapshot(raw) })); returned = outcome.returned; raw = outcome.value; }
       const value = snapshot(raw), ioDelta = io() - before, faultLogDelta = slot.faults ? readScriptedFulfillmentFaultLog(slot.faults).slice(faultsBefore) : [];
       requireFact(ioDelta >= 0, "validation:io_count_regressed");
       const expectedThrow = Object.hasOwn(slot, "throws");
@@ -242,7 +247,12 @@ function checkFull(caps: FulfillmentCapabilityDescriptor, ledger: readonly Entry
 }
 async function checkStore(subject: Subject): Promise<void> {
   const fixture = subject.store!;
-  const store = await fixture.create();
+  type Store = Awaited<ReturnType<typeof fixture.create>>;
+  const create = () => invokeData(() => fixture.create(), raw => Object.fromEntries((["read", "readCandidate", "prepare", "claim", "recordProviderAttempt", "begin", "finalize", "acknowledge", "markStaleSubmissionsUncertain", "readMappedAttempts"] as const).map(key => {
+    const invoke = method(raw as Store, key) as (...args: unknown[]) => Promise<unknown>;
+    return [key, (...args: unknown[]) => invokeData(() => invoke(...snapshot(args)), snapshot)];
+  })) as unknown as Store);
+  const store = await create();
   const first = await store.claim(fixture.claim);
   requireFact(storeResult("claim", first, subject).kind === "claimed", "store initial claim");
   const replay = await store.claim(fixture.claim);
@@ -268,9 +278,9 @@ async function checkStore(subject: Subject): Promise<void> {
   requireFact(storeResult("begin", stale, subject).kind === "refused", "stale prepared command refuses");
   let claims = 0; let calls = 0; let reads = 0;
   const bounded = await runFulfillmentDispatchWorker({
-    store: { ...await fixture.create(), async read() { return null; }, async readCandidate() { reads += 1; return reads === 1 ? fixture.request : fixture.remappedRequest; },
+    store: { ...await create(), async read() { return null; }, async readCandidate() { reads += 1; return reads === 1 ? fixture.request : fixture.remappedRequest; },
       async claim() { claims += 1; return { kind: "refused", refusal: { reason: "contact_stale", phase: "claim", retryable: true } }; } },
-    provider: { prepare: request => subject.adapter.dispatch.prepare(request), async dispatch() { calls += 1; throw new Error("unexpected dispatch"); } },
+    provider: { prepare: request => invokeData(() => subject.adapter.dispatch.prepare(snapshot(request)), raw => snapshot(raw) as Awaited<ReturnType<Subject["adapter"]["dispatch"]["prepare"]>>), async dispatch() { calls += 1; throw new Error("unexpected dispatch"); } },
     listCandidates: async () => [fixture.request], config: { mode: "stage", batchLimit: 1 },
     keys: { request: () => fixture.claim.requestKey, mappedAttempt: (_key, index) => index === 0 ? fixture.mappedAttemptKey : fixture.remappedAttemptKey,
       acceptance: () => ({ providerAttemptKey: "fixture-attempt", labelKey: "fixture-label" }) },

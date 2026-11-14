@@ -114,22 +114,52 @@ if (value.expectedPrepare.kind === "refused" ? Object.hasOwn(value, "expectedDis
   snapshotOnly: z.literal(true).optional(), dispatchRefusal: fixture("dispatch").optional() }).optional() });
 
 export function requireFact(value: unknown, label: string): asserts value { if (!value) throw new Error(`fulfillment_adapter_conformance:${label}`); }
+const apply = Reflect.apply, NativePromise = Promise, promiseThen = Promise.prototype.then, promisePrototype = Promise.prototype;
+/** Read executable containers without invoking accessors or proxy traps, including on prototypes. */
+export function field<T, K extends keyof T>(owner: T, key: K): T[K] {
+  for (let node: unknown = owner; node != null; node = Object.getPrototypeOf(node)) {
+    requireFact((typeof node === "object" || typeof node === "function") && !types.isProxy(node), "validation:container");
+    const descriptor = Object.getOwnPropertyDescriptor(node, key);
+    if (descriptor) { requireFact(!descriptor.get && !descriptor.set, "validation:accessor"); return descriptor.value as T[K]; }
+  }
+  return undefined as T[K];
+}
+/** Capture once; never read bind/call/apply (or other properties) from the supplied function. */
+export function method<T, K extends keyof T>(owner: T, key: K, fn = field(owner, key)): T[K] {
+  if (fn === undefined) return fn;
+  requireFact(typeof fn === "function" && !types.isProxy(fn), "validation:function");
+  return ((...args: unknown[]) => apply(fn, owner, args)) as T[K];
+}
+/** Native promises only: bypass own then hooks and refuse constructor/species redirection. Project before resolution. */
+export function settled<T>(value: unknown, project: (raw: unknown) => T, failure: (error: unknown) => T): Promise<T> {
+  requireFact(types.isPromise(value) && !types.isProxy(value) && Object.getPrototypeOf(value) === promisePrototype && !Object.hasOwn(value, "constructor"), "validation:native_promise");
+  return new NativePromise<T>((resolve, reject) => {
+    const finish = (transform: typeof project) => (raw: unknown) => { try { resolve(transform(raw)); } catch (error) { reject(error); } };
+    apply(promiseThen, value, [finish(project), finish(failure)]);
+  });
+}
+/** Host workers may inspect failures too: copy both synchronous throws and promise rejections first. */
+export function invokeData<T>(invoke: () => unknown, project: (raw: unknown) => T): Promise<T> {
+  let pending: unknown;
+  try { pending = invoke(); } catch (error) { throw snapshot(error); }
+  return settled(pending, project, error => { throw snapshot(error); });
+}
 /** Data snapshots reject proxies/accessors, including hidden capability declarations. Error diagnostics are flattened. */
 export function snapshot<T>(value: T): T {
   const seen = new WeakSet<object>();
   const inspect = (node: unknown): unknown => {
     if (!node || typeof node !== "object") return node;
     requireFact(!types.isProxy(node), "validation:proxy");
-    if (ArrayBuffer.isView(node) || node instanceof ArrayBuffer) return node;
+    if (ArrayBuffer.isView(node) || types.isAnyArrayBuffer(node)) return node;
     requireFact(!seen.has(node), "validation:cyclic_data"); seen.add(node);
     const descriptors = Object.getOwnPropertyDescriptors(node), output: Record<string, unknown> = Object.create(null);
     for (const key of Reflect.ownKeys(descriptors)) {
       requireFact(typeof key === "string", "validation:symbol"); const field = descriptors[key]!;
-      if ((Array.isArray(node) && key === "length") || (node instanceof Error && ["stack", "message", "name"].includes(key))) continue;
+      if ((Array.isArray(node) && key === "length") || (types.isNativeError(node) && ["stack", "message", "name"].includes(key))) continue;
       requireFact(!field.get && !field.set, "validation:accessor");
       requireFact(field.enumerable && (!Array.isArray(node) || /^(0|[1-9][0-9]*)$/.test(key)), "validation:hidden_data"); output[key] = inspect(field.value);
     }
-    seen.delete(node); return node instanceof Error ? output : (Array.isArray(node) ? Object.assign([], output) : output);
+    seen.delete(node); return types.isNativeError(node) ? output : (Array.isArray(node) ? Object.assign([], output) : output);
   };
   try { return structuredClone(inspect(value)) as T; } catch { throw new Error("fulfillment_adapter_conformance:validation:uncloneable_data"); }
 }

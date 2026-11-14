@@ -868,7 +868,11 @@ entry to [certify a fulfilment adapter offline](../../packages/core/docs/guide/h
 Full mode validates immutable snapshots of capabilities, fixtures and certification
 data before invoking an adapter. Closed schemas reject malformed branches, missing
 expectations, proxies, accessors and hidden fields. Results are copied before
-classification; only the runner's invocation ledger grants coverage. Supported
+classification; only the runner's invocation ledger grants coverage. Methods,
+I/O counters, projection callbacks and optional host-store probes are captured
+once and invoked through a captured intrinsic. Native promise handling ignores
+own `then` overrides; thenables and constructor/species overrides refuse. Callback
+and store results, including thrown failures, are copied before use. Supported
 certifiable capabilities require executed contract-positive success and typed
 failure witnesses, with matching kinds and deep strict equality to independent
 fixture expectations. Scenario indices are integers, in range and distinct;
