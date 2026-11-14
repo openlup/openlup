@@ -835,6 +835,15 @@
       "anchor": "#application-command-line-tooling"
     },
     {
+      "id": "released-starter-upgrade-proof",
+      "when": "Released-starter application-file upgrade qualification and named refusals",
+      "paths": [
+        "scripts/packages/distribution-cli-proof.test.ts"
+      ],
+      "doc": "packages/core/docs/guide/upgrade/application-files.md",
+      "anchor": "#verify-the-rest-of-the-upgrade"
+    },
+    {
       "id": "application-lifecycle",
       "when": "Conservative application-owned file upgrade planning, conflict refusal and interruption recovery",
       "paths": [

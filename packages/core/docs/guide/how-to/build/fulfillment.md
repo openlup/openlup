@@ -14,7 +14,7 @@ its [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/pa
 [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/packages/platform/api/fulfillment.api.md), [contracts report](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/packages/platform/api/fulfillment-contracts.api.md)
 and [composition report](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/packages/platform/api/composition.api.md) for those inventories. Install the
 [complete selected catalogue](../../upgrade/database-migrations.md#check-application-compatibility),
-including the operator shipment routines, before selecting native commands.
+including the native dispatch outcome routines, before selecting native commands.
 
 ## Select shipping rules
 
@@ -38,7 +38,8 @@ points, labels and shipment execution. Continue below to compose those effects.
 ## Provide preparation and dispatch ports
 
 Pass `createNativeFulfillmentBinding` a capability-local transaction lane,
-`preparation.readAuthoritative`, selected service options, version and required
+`nativeDispatch: { portKey, providerRef }` (or explicit
+`preparation.readAuthoritative` and candidate listing), selected service options, version and required
 schema metadata. The reader receives the locked transaction executor and returns
 the candidate dispatch request and its authoritative withholding flag. Service
 options supply selection, capability, provider, readiness, candidate listing,
@@ -52,7 +53,7 @@ your callback must enforce host authorization and replay handling in the same
 transaction. Nonblank actor and key values are attribution, not authorization.
 
 The result contains `services`, `version`, `requiredSchema`, `dispatch`,
-`prepare` and `editAuthoritative`. Missing the transaction lane or authoritative
+`prepare` and `editAuthoritative`. Missing the transaction lane or both native selection and an authoritative
 reader leaves `dispatch` null. Construction mounts no routes or schedules.
 For a contribution descriptor, pass the returned metadata and
 `{ dispatch: binding.dispatch }` as `fulfillment` to
@@ -69,7 +70,7 @@ Map these before serving your own entry points.
 The selected capability can declare `intakeMode: "polling"`; the native binding
 then records `poll` ACK evidence. Omitted or `webhook` intake records `push`.
 Install the complete native SQL catalogue through
-`20261120100000_fulfillment_intake_channel.sql` before composing this store.
+`20261120110000_fulfillment_dispatch_outcomes.sql` before composing this store.
 Existing accepted receipts keep their original channel on replay.
 
 Declare `transportSelection: "provider"` when the provider selects transport:
@@ -201,6 +202,24 @@ A different fingerprint refuses with
 `fulfillment_stock_evidence_idempotency_conflict` (SQLSTATE `23505`). Earlier
 whole-input fingerprints are not rewritten: resolving an alert does not make
 its key available for changed input.
+
+## Compose local commerce operations
+
+Bind `createPostgresFulfillmentCommerceMutationPort(db, { portKey, providerRef,
+stockSourceKey })` behind host operator authorization. Creation commits a local
+obligation only; dispatch is a separate explicitly enabled invocation. Operator
+attempt recording is first-write audit evidence, separate from command attempts;
+replaying its key returns the original parcel and its current status.
+Cancellation composes the existing stock-release transaction and dispatch fences.
+
+Pass a pure `shadowCommandFingerprint` callback in services to hash the adapter's
+actual serialized command without I/O. The same identity then survives shadow
+promotion. Draft refresh is allowed across invocations; one invocation retries
+stale contact once. Historical data is never backfilled. Missing recorded mode,
+settlement or reservation associations refuses or withholds the row. Failed and
+uncertain outcomes remain durable and do not cause a second provider call.
+Accepted proof can repair locally even when current contact is unavailable.
+These local witnesses establish no deployed-target or provider qualification.
 
 ## Certify a fulfilment adapter offline
 

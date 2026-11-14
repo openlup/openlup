@@ -20,7 +20,8 @@ export function createFulfillmentServices(options: FulfillmentServicesOptions): 
     async runDispatch() {
       const state = await readiness();
       if (!state.ready) return 'kind' in state.refusal ? state.refusal : { kind: 'refused', refusal: state.refusal };
-      return runFulfillmentDispatchWorker({ store: store!, provider, listCandidates, keys, config, now });
+      return runFulfillmentDispatchWorker({ store: store!, provider, listCandidates, keys, config, now,
+        shadowCommandFingerprint: options.shadowCommandFingerprint });
     },
   };
 }

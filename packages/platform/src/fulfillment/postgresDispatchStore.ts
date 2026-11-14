@@ -18,22 +18,23 @@ export function createPostgresFulfillmentDispatchStore(db: PgExecutor, host: {
   readCandidate(fulfillmentRef: string): Promise<FulfillmentDispatchRequest | null>;
   /** Selected descriptor declaration; omitted preserves push. Requires the intake-channel SQL forward. */
   intakeMode?: FulfillmentCapabilityDescriptor['intakeMode'];
+  /** Selected native commerce composition adds its recorded-parcel admission fence. */
+  begin?: FulfillmentStorePort['begin'];
 }): FulfillmentStorePort & { commandLedger: ReturnType<typeof createFulfillmentCommandLedger> } {
   return {
     readCandidate: ref => host.readCandidate(ref),
     prepare: ref => host.prepare(ref),
     async read(key) {
-      const result = await db.query("SELECT public.fulfillment_dispatch_read(ref) || jsonb_build_object('acceptance',ref.acceptance) AS response FROM public.fulfillment_dispatch_refs ref WHERE request_key=$1", [key]);
+      const result = await db.query("SELECT public.fulfillment_dispatch_read(ref) || jsonb_build_object('acceptance',ref.acceptance,'outcome',to_jsonb(ref)->'outcome') AS response FROM public.fulfillment_dispatch_refs ref WHERE request_key=$1", [key]);
       return result.rows[0]?.response as DispatchRecord | undefined ?? null;
     },
     claim: input => nativeCall(db, 'fulfillment_dispatch_claim', [input.requestKey, input.fulfillmentRef, input.orderRef, input.parcelRef, input.mode, JSON.stringify(dispatchEvidence(input.evidence))]),
     recordProviderAttempt: (key, ref, evidence, mode) => nativeCall(db, 'fulfillment_record_provider_attempt', [key, ref, JSON.stringify(dispatchEvidence(evidence)), mode]),
-    begin: input => nativeCall(db, 'fulfillment_dispatch_begin', [input.dispatchRef, input.commandFingerprint]),
+    begin: host.begin ?? (input => nativeCall(db, 'fulfillment_dispatch_begin', [input.dispatchRef, input.commandFingerprint])),
     finalize: input => nativeCall(db, 'fulfillment_dispatch_finish', [input.dispatchRef, JSON.stringify(dispatchResult(input.result)), false, host.intakeMode === 'polling' ? 'poll' : 'push']),
     acknowledge: input => nativeCall(db, 'fulfillment_dispatch_finish', [input.dispatchRef, JSON.stringify(dispatchResult(input.acceptance)), true, host.intakeMode === 'polling' ? 'poll' : 'push']),
     async markStaleSubmissionsUncertain(staleBefore) {
-      const result = await db.query("UPDATE public.fulfillment_dispatch_refs SET status='uncertain',updated_at=now() WHERE status='submitting' AND updated_at<$1 RETURNING id", [staleBefore]);
-      return result.rows.length;
+      return nativeCall(db, 'fulfillment_dispatch_mark_stale_submissions_uncertain', [staleBefore]);
     },
     commandLedger: commandLedger(db),
   };

@@ -4231,3 +4231,12 @@ without explicit buyer facts can now reach those existing fallback branches.
 Preparation replay never rewrites its linked replacement, and later profile or
 address edits cannot change the buyer frozen by first capture. Historical orders
 and previously captured duties are not repaired or reselected.
+
+### Native dispatch outcomes and operator attempts
+
+The ordered `20261120110000_fulfillment_dispatch_outcomes.sql` forward adds a
+nullable neutral outcome to dispatch references and the private operator-attempt
+audit table. Old outcomes remain NULL. The forward preserves submitted identity
+while allowing unsubmitted shadow promotion and draft refresh across runs.
+The connected native profile captures/restores operator attempts as rows;
+operator attempts do not constitute command-ledger or acceptance proof.

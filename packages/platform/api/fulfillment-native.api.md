@@ -68,6 +68,8 @@ export interface FulfillmentServicesOptions {
         mode: DispatchRecord['mode'];
         batchLimit: number;
     };
+    /** Pure SHA-256 of the actual adapter command; never resolves credentials or performs I/O. */
+    shadowCommandFingerprint?: (request: FulfillmentDispatchRequest) => string;
     now?: () => Date;
 }
 /** Import and construction are inert. Every invocation checks activation before any worker. */
@@ -269,7 +271,7 @@ export interface FulfillmentSelection {
     pickupPoint: PickupPoint | null;
 }
 export interface FulfillmentRefusal {
-    reason: "not_dispatchable" | "selection_required" | "provider_mismatch" | "carrier_service_required" | "disabled" | "not_ready" | "unsupported" | "withheld" | "claim_conflict" | "contact_stale" | "stock_contention" | "local_missing" | "io_failure" | "malformed" | "untrusted" | "unsupported_event" | "stale" | "missing_correlation" | "provider_reservations_unsupported" | "stock_consumption_policy_unsupported" | "stock_movements_unsupported" | "independent_split_unsupported" | "pickup_point_delivery_unsupported" | "label_create_unsupported" | "label_void_unsupported" | "provider_cancel_unsupported" | "label_format_unsupported";
+    reason: "dispatch_reservations_not_recorded" | "order_mode_unproven" | "payment_not_succeeded" | "subscription_cycle_not_paid" | "not_dispatchable" | "selection_required" | "provider_mismatch" | "carrier_service_required" | "disabled" | "not_ready" | "unsupported" | "withheld" | "claim_conflict" | "contact_stale" | "stock_contention" | "local_missing" | "io_failure" | "malformed" | "untrusted" | "unsupported_event" | "stale" | "missing_correlation" | "provider_reservations_unsupported" | "stock_consumption_policy_unsupported" | "stock_movements_unsupported" | "independent_split_unsupported" | "pickup_point_delivery_unsupported" | "label_create_unsupported" | "label_void_unsupported" | "provider_cancel_unsupported" | "label_format_unsupported";
     phase: "selection" | "prepare" | "claim" | "begin" | "dispatch" | "acknowledge" | "verify" | "normalize" | "apply" | "readback" | "sync";
     retryable: boolean;
 }
@@ -851,6 +853,16 @@ export interface DispatchRecord {
     acceptance?: Extract<FulfillmentDispatchResult, {
         kind: "accepted";
     }> | null;
+    /** Closed neutral diagnostics. Historical references retain null. */
+    outcome?: {
+        classification: 'failed' | 'uncertain';
+        code: string;
+        status: number | null;
+        retryable: boolean;
+        mayHaveSucceeded: boolean;
+        submissionAttempted?: boolean;
+        responseBodyRead?: boolean;
+    } | null;
 }
 export interface FulfillmentStorePort {
     read(requestKey: string): Promise<DispatchRecord | null>;
@@ -1157,6 +1169,18 @@ export interface FulfillmentProductSyncPort {
     }>;
 }
 export {};
+```
+## dist/fulfillment/native/commerceMutations.d.ts
+
+```ts
+import type { FulfillmentOperatorMutationPort } from '../contracts/operator.js';
+import { type PgExecutor } from '../postgresDispatchStore.js';
+/** Host-authorized local obligations and audit attempts; creation never contacts a provider. */
+export declare function createPostgresFulfillmentCommerceMutationPort(db: PgExecutor, input: {
+    portKey: string;
+    providerRef: string;
+    stockSourceKey: string;
+}): Pick<FulfillmentOperatorMutationPort, 'createCommerceFulfillmentOrder' | 'recordCommerceFulfillmentProviderAttempt' | 'cancelCommerceFulfillmentOrder'>;
 ```
 ## dist/fulfillment/native/commerceReads.d.ts
 
@@ -1526,6 +1550,26 @@ export declare function createPostgresFulfillmentCommerceReadPort(input: {
 }): NativeFulfillmentCommerceReadPort;
 export {};
 ```
+## dist/fulfillment/native/dispatchComposition.d.ts
+
+```ts
+import type { FulfillmentDispatchRequest } from '../contracts/dispatch.js';
+import { type PgExecutor } from '../postgresDispatchStore.js';
+/** Native recorded facts only. Structural row refusals withhold that row, never the rest of a batch. */
+export declare function createPostgresFulfillmentDispatchComposition(db: PgExecutor, selection: {
+    portKey: string;
+    providerRef: string;
+}): {
+    readAuthoritative: (tx: PgExecutor, ref: string) => Promise<{
+        candidate: null;
+        withheld: boolean;
+    } | {
+        candidate: FulfillmentDispatchRequest;
+        withheld: boolean;
+    }>;
+    listCandidates(limit: number): Promise<FulfillmentDispatchRequest[]>;
+};
+```
 ## dist/fulfillment/native/index.d.ts
 
 ```ts
@@ -1555,7 +1599,14 @@ export declare function createNativeFulfillmentBinding(input: {
             withheld: boolean;
         }>;
     };
-    services: Omit<FulfillmentServicesOptions, 'enabled' | 'store'>;
+    /** Opt in to recorded native candidates, preparation and final admission. */
+    nativeDispatch?: {
+        portKey: string;
+        providerRef: string;
+    };
+    services: Omit<FulfillmentServicesOptions, 'enabled' | 'store' | 'listCandidates'> & {
+        listCandidates?: FulfillmentServicesOptions['listCandidates'];
+    };
     version: string;
     requiredSchema: RequiredSchema;
 }): {
@@ -1597,6 +1648,8 @@ export declare function createNativeFulfillmentBinding(input: {
 export { createPostgresFulfillmentCommerceReadPort, nativeFulfillmentCommerceResponseSchemas, type NativeFulfillmentCommerceOrder, type NativeFulfillmentCommerceReadPort } from "./commerceReads.js";
 export { createPostgresFulfillmentOperatorPort, createPostgresParcelReservationConsumption } from "./operatorMutations.js";
 export { createPostgresFulfillmentShipmentCommandPort } from './shipmentCommands.js';
+export { createPostgresFulfillmentCommerceMutationPort } from './commerceMutations.js';
+export { createPostgresFulfillmentDispatchComposition } from './dispatchComposition.js';
 ```
 ## dist/fulfillment/native/operatorMutations.d.ts
 
@@ -1654,6 +1707,8 @@ export declare function createPostgresFulfillmentDispatchStore(db: PgExecutor, h
     readCandidate(fulfillmentRef: string): Promise<FulfillmentDispatchRequest | null>;
     /** Selected descriptor declaration; omitted preserves push. Requires the intake-channel SQL forward. */
     intakeMode?: FulfillmentCapabilityDescriptor['intakeMode'];
+    /** Selected native commerce composition adds its recorded-parcel admission fence. */
+    begin?: FulfillmentStorePort['begin'];
 }): FulfillmentStorePort & {
     commandLedger: ReturnType<typeof createFulfillmentCommandLedger>;
 };
