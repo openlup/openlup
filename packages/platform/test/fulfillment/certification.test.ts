@@ -13,6 +13,10 @@ it("types every sync slot with mutually exclusive success and failure roles", ()
   expectTypeOf<AcceptsMixed<Row>>().toEqualTypeOf<false>();
   expectTypeOf<Row["success"]>().not.toExtend<Row["failure"]>();
   expectTypeOf<Row["failure"]>().not.toExtend<Row["success"]>();
+  type Ensure = Extract<NonNullable<Kit["productSync"]>[number], { operation: "ensureProduct" }>;
+  expectTypeOf<Ensure["success"]["expected"]["replayed"]>().toEqualTypeOf<false>();
+  expectTypeOf<NonNullable<Kit["paging"]>["failure"]["expected"]["kind"]>().toEqualTypeOf<"failed">();
+  expectTypeOf<NonNullable<Kit["paging"]>["exhausted"]["expected"]["kind"]>().toEqualTypeOf<"page_exhausted">();
 });
 
 function capturedSubject(): FulfillmentAdapterTestSubject {
@@ -82,4 +86,16 @@ it("requires an executed unknown replay even when unknown dispatch itself was co
   const subject = capturedSubject();
   subject.fixtures.dispatch = subject.fixtures.dispatch.map(row => ({ ...row, replay: row.expectedDispatch?.kind === "unknown" ? false : row.replay }));
   await expect(run([subject], { mode: "full" })).rejects.toThrow("full unknown replay required");
+});
+
+it.each(["unknown", "not_dispatched"] as const)("rejects a %s discriminant with a contradictory effect flag", async kind => {
+  const subject = capturedSubject(), dispatch = subject.adapter.dispatch.dispatch;
+  const row = subject.fixtures.dispatch.find(row => row.expectedDispatch?.kind === kind)!;
+  Object.assign(row.expectedDispatch!, { effectMayHaveSucceeded: kind !== "unknown" });
+  subject.adapter.dispatch.dispatch = async (...input) => {
+    const result = await dispatch(...input);
+    return result.kind === kind && !input[1].commandFingerprint.endsWith(":mismatch")
+      ? Object.assign(result, { effectMayHaveSucceeded: kind !== "unknown" }) : result;
+  };
+  await expect(run([subject], { mode: "full" })).rejects.toThrow("dispatch fixture contradictory result");
 });

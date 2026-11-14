@@ -1209,9 +1209,14 @@ export type { FulfillmentAdapterCertificationScenarios, FulfillmentAdapterTestSu
 ```ts
 import type { FulfillmentAdapterConformanceSubject, FulfillmentObservationPagePort, FulfillmentProductSyncProvider, FulfillmentRefusal, FulfillmentStockSyncProvider } from "../contracts/index.js";
 import type { ScriptedFulfillmentOutcome } from "./scriptedFake.js";
+type PositiveResult<T> = T extends null ? never : T extends {
+    replayed: boolean;
+} ? T & {
+    replayed: false;
+} : T;
 type SuccessFixture<M extends (...args: never[]) => unknown> = {
     input: Parameters<M>;
-    expected: Awaited<ReturnType<M>>;
+    expected: PositiveResult<Awaited<ReturnType<M>>>;
     throws?: never;
 };
 type FailureFixture<M extends (...args: never[]) => unknown> = {
@@ -1254,10 +1259,14 @@ export interface FulfillmentAdapterCertificationScenarios {
         returned: number;
         lostCoarse: number;
     };
-    paging?: Record<"full" | "short" | "empty" | "exhausted" | "failure", {
-        input: Parameters<FulfillmentObservationPagePort["readPage"]>[0];
-        expected: Awaited<ReturnType<FulfillmentObservationPagePort["readPage"]>>;
-    }>;
+    paging?: {
+        [Role in "full" | "short" | "empty" | "exhausted" | "failure"]: {
+            input: Parameters<FulfillmentObservationPagePort["readPage"]>[0];
+            expected: Extract<Awaited<ReturnType<FulfillmentObservationPagePort["readPage"]>>, {
+                kind: Role extends "exhausted" ? "page_exhausted" : Role extends "failure" ? "failed" : "page";
+            }>;
+        };
+    };
     stockSync?: readonly SyncFixtures<FulfillmentStockSyncProvider>[];
     productSync?: readonly SyncFixtures<FulfillmentProductSyncProvider>[];
     /** Invoke the real snapshot-only worker and return its movementRefusal.

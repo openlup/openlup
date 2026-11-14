@@ -271,11 +271,18 @@ stock movements are required unless `stockMovements: false` is declared. A
 `{ input, throws }`, where `throws` is the declared typed sync refusal. The types
 exclude the opposite key; the runner also rejects mixed or contradictory roles
 before invoking either fixture, including for untyped JavaScript callers.
-One local credit rule checks each observed invocation against its slot: success
-must return the expected contract-positive value; failure must throw the declared
-typed refusal. A matching refusal cannot satisfy a success slot, and a returned
-value cannot satisfy a failure slot. Other scenario claims use compared executed
-results, dispatch witnesses and invocation-bound log or I/O-count deltas.
+One credit rule checks every operation's expectation and observed invocation.
+For discriminated result unions, only a success discriminant earns success and
+only a refused or failed discriminant earns refusal or failure. A `created` or
+`available` label result carrying `refusal`, or a refused result carrying success
+payloads, fails with the named `contradictory result` reason and earns neither
+role. The same rule covers dispatch, observation, readback, paging and native
+refusal probes. Label void uses its declared `canProceed` boolean. Sync success
+must return the expected contract-positive value; sync failure must throw the
+declared typed refusal. A returned value cannot satisfy a throwing failure slot.
+Paging expectations are typed to the slot's result kind, and positive
+`ensureProduct` expectations require `replayed: false`. Scenario claims also
+check dispatch witnesses and invocation-bound log or I/O-count deltas.
 Positive sync witnesses must include a stock snapshot,
 movement, addressable product pack or nonblank stocked SKU for the corresponding
 read. `ensureProduct` must return `{ replayed: false }`; skipped `null` and replayed

@@ -472,7 +472,7 @@ it("requires distinct label-void success and refusal witnesses", async () => {
   fixture.value.adapter.capabilities.operations = { ...fixture.value.adapter.capabilities.operations, labelVoid: { supported: true } };
   fixture.value.adapter.label!.void = async () => contradictory;
   fixture.value.fixtures.label!.void = [{ input: [{ parcelRef: "parcel-a", document: null }], expected: contradictory }];
-  await expect(runFulfillmentAdapterConformance([fixture.value], { mode: "full" })).rejects.toThrow("label void success and failure required");
+  await expect(runFulfillmentAdapterConformance([fixture.value], { mode: "full" })).rejects.toThrow("label void contradictory result");
 });
 
 it("rejects status tuples that describe different inputs or shipments", async () => {
@@ -526,7 +526,7 @@ it("refuses false label-deletion confirmation and authentication refusal after p
   const label = fullSubject();
   label.value.adapter.label!.void = async () => ({ providerDeletion: "confirmed", labelDeleted: true, canProceed: true, refusal: refusal("unsupported", "dispatch") });
   label.value.fixtures.label!.void![0]!.expected = { providerDeletion: "confirmed", labelDeleted: true, canProceed: true, refusal: refusal("unsupported", "dispatch") };
-  await expect(runFulfillmentAdapterConformance([label.value], { mode: "full" })).rejects.toThrow("unsupported label void cannot confirm deletion");
+  await expect(runFulfillmentAdapterConformance([label.value], { mode: "full" })).rejects.toThrow("label void contradictory result");
   const auth = fullSubject(); let calls = 0;
   const verify = auth.value.adapter.observation!.verifyAndNormalize, count = auth.value.readIoCount;
   auth.value.readIoCount = () => count() + calls;
@@ -547,7 +547,7 @@ it.each([
   ["productSync", "getProductPacks", [{ ean: " ", quantity: 1 }], "unaddressable"],
   ["productSync", "listStockedSkus", [], "empty"],
   ["productSync", "listStockedSkus", [" "], "unaddressable"],
-] as const)("rejects %s.%s with %j as the only positive witness (%s)", async (name, operation, expected) => {
+] as const)("rejects %s.%s with %j as the only positive witness (%s)", async (name, operation, expected, shape) => {
   const fixture = fullSubject(), subject = fixture.value;
   const row = subject.certification![name]!.find(row => row.operation === operation)!;
   Object.assign(row.success, { expected });
@@ -558,7 +558,7 @@ it.each([
     const result = await invoke(...args);
     return ++calls === baselineCalls + 1 ? expected : result;
   };
-  await expect(runFulfillmentAdapterConformance([subject], { mode: "full" })).rejects.toThrow(`full ${operation} positive success required`);
+  await expect(runFulfillmentAdapterConformance([subject], { mode: "full" })).rejects.toThrow(`full ${operation} ${shape.startsWith("rejected-with") ? "contradictory result" : "positive success required"}`);
 });
 
 it("allows a skipped ensureProduct fixture alongside a positive full witness", async () => {
@@ -595,4 +595,107 @@ it.each([
     await expect(runFulfillmentAdapterConformance([subject], { mode: "full" }), bypass).rejects.toThrow(`full ${operation} ${hint}`);
     expect(calls - baselineCalls, bypass).toBe(bypass === "always throws" ? 1 : bypass === "always returns" ? 2 : 0);
   }
+});
+
+it.each(["create", "read"] as const)("rejects label %s success carrying refusal data for either capability declaration", async operation => {
+  for (const supported of [false, true]) {
+    for (const source of ["actual", "expected", "both"] as const) {
+      const { value } = fullSubject(), unsupported = refusal("unsupported", "dispatch");
+      const success = operation === "create" ? { kind: "created" as const, parcelRef: "parcel-a", document: null }
+        : { kind: "available" as const, url: "https://labels.example.test/a", expiresAt: null };
+      const contradictory = { ...success, refusal: unsupported };
+      Object.assign(value.adapter.capabilities.operations, { [operation === "create" ? "labelCreate" : "labelRead"]: { supported } });
+      const rows = value.fixtures.label![operation]!;
+      Object.assign(rows[0]!, { expected: source === "actual" ? success : contradictory });
+      Object.assign(value.adapter.label!, { [operation]: async () => source === "expected" ? success : contradictory });
+      await expect(runFulfillmentAdapterConformance([value], { mode: "full" }), `${supported}/${source}`).rejects.toThrow(`label ${operation} contradictory result`);
+    }
+  }
+});
+
+it.each(["prepare", "dispatch", "create", "read", "observation", "readback", "page"] as const)("rejects both directions of contradictory %s union results", async operation => {
+  for (const direction of ["success with refusal", "refusal with success"] as const) {
+    const { value } = fullSubject(), { fixtures, adapter } = value;
+    const contradict = (result: unknown) => {
+      const success = result as Record<string, unknown>;
+      return direction === "success with refusal" ? { ...success, refusal: refusal("io_failure", "dispatch") }
+        : { ...success, kind: operation === "dispatch" ? "not_dispatched" : operation === "readback" ? "unknown" : operation === "page" ? "failed" : "refused", refusal: refusal("io_failure", "dispatch") };
+    };
+    if (operation === "prepare") {
+      const invoke = adapter.dispatch.prepare;
+      Object.assign(fixtures.dispatch[0]!, { expectedPrepare: contradict(fixtures.dispatch[0]!.expectedPrepare) });
+      adapter.dispatch.prepare = async input => input.selection.providerRef ? contradict(await invoke(input)) as never : invoke(input);
+    } else if (operation === "dispatch") {
+      const invoke = adapter.dispatch.dispatch;
+      Object.assign(fixtures.dispatch[0]!, { expectedDispatch: contradict(fixtures.dispatch[0]!.expectedDispatch) });
+      adapter.dispatch.dispatch = async (input, evidence) => {
+        const result = await invoke(input, evidence);
+        return result.kind === "accepted" ? contradict(result) as never : result;
+      };
+    } else if (operation === "create" || operation === "read") {
+      const success = operation === "create" ? { kind: "created", parcelRef: "parcel-a", document: null }
+        : { kind: "available", url: "https://labels.example.test/a", expiresAt: null };
+      const result = contradict(success);
+      Object.assign(fixtures.label![operation]![0]!, { expected: result });
+      Object.assign(adapter.label!, { [operation]: async () => result });
+    } else if (operation === "observation") {
+      const invoke = adapter.observation!.verifyAndNormalize;
+      Object.assign(fixtures.observation![0]!, { expected: contradict(fixtures.observation![0]!.expected) });
+      adapter.observation!.verifyAndNormalize = async input => contradict(await invoke(input)) as never;
+    } else if (operation === "readback") {
+      const invoke = adapter.readback!.read;
+      Object.assign(fixtures.readback![0]!, { expected: contradict(fixtures.readback![0]!.expected) });
+      adapter.readback!.read = async input => contradict(await invoke(input)) as never;
+    } else {
+      const invoke = adapter.reconciliation!.readPage;
+      Object.assign(value.certification!.paging!.full, { expected: contradict(value.certification!.paging!.full.expected) });
+      adapter.reconciliation!.readPage = async input => contradict(await invoke(input)) as never;
+    }
+    await expect(runFulfillmentAdapterConformance([value], { mode: "full" }), direction).rejects.toThrow("contradictory result");
+  }
+});
+
+it.each(["stockSync", "productSync"] as const)("rejects %s positive payloads carrying failure discriminants", async name => {
+  const { value } = fullSubject(), operation = name === "stockSync" ? "getStock" : "ensureProduct";
+  const row = value.certification![name]!.find(row => row.operation === operation)!;
+  const contradictory = name === "stockSync" ? [{ kind: "rejected", itemIndex: 0, reason: "invalid_sku_ref", skuRef: "SKU-A", quantityKind: "snapshot" }]
+    : { replayed: false, refusal: refusal("io_failure", "sync") };
+  Object.assign(row.success, { expected: contradictory });
+  await expect(runFulfillmentAdapterConformance([value], { mode: "full" })).rejects.toThrow("contradictory result");
+});
+
+it("rejects a paging failure slot whose expected discriminant reports success", async () => {
+  const { value } = fullSubject(), pages = value.certification!.paging!;
+  Object.assign(pages.failure, { expected: { kind: "page", rows: [] } });
+  await expect(runFulfillmentAdapterConformance([value], { mode: "full" })).rejects.toThrow("fixture discriminant contradicts role");
+});
+
+it.each(["create", "read", "void"] as const)("qualifies supported label %s only with distinct success and refusal results", async operation => {
+  const { value } = fullSubject();
+  Object.assign(value.adapter.capabilities.operations, { [operation === "create" ? "labelCreate" : operation === "read" ? "labelRead" : "labelVoid"]: { supported: true } });
+  const failed = operation === "void" ? { providerDeletion: "unconfirmed", labelDeleted: true, canProceed: false, refusal: refusal("io_failure", "dispatch") }
+    : { kind: "refused", refusal: refusal("io_failure", "dispatch") };
+  const success = operation === "create" ? { kind: "created", parcelRef: "parcel-a", document: null }
+    : operation === "read" ? { kind: "available", url: "https://labels.example.test/a", expiresAt: null }
+      : { providerDeletion: "unconfirmed", labelDeleted: false, canProceed: true };
+  const rows = value.fixtures.label![operation]!;
+  const input = operation === "create" ? { ...request(), requestKey: "label-success" }
+    : operation === "read" ? { objectRef: "label-success", mediaType: "application/pdf", externalRef: null }
+      : { parcelRef: "label-success", document: null };
+  Object.assign(rows[0]!, { expected: failed });
+  Object.assign(value.fixtures.label!, { [operation]: [...rows, { input: [input], expected: success }] });
+  Object.assign(value.adapter.label!, { [operation]: async (received: unknown) => received === input ? success : failed });
+  await expect(runFulfillmentAdapterConformance([value], { mode: "full" })).resolves.toHaveProperty("subjects");
+});
+
+it.each([["stockSync", "getStock"], ["productSync", "ensureProduct"]] as const)("rejects a thrown %s.%s refusal carrying success payload", async (name, operation) => {
+  const { value } = fullSubject(), row = value.certification![name]!.find(row => row.operation === operation)!;
+  const port = value.adapter[name] as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>;
+  const invoke = port[operation]!, baselineCalls = value.fixtures[name]!.filter(row => row.operation === operation).length;
+  let calls = 0;
+  port[operation] = async (...args) => {
+    if (++calls <= baselineCalls + 1) return invoke(...args);
+    throw { ...row.failure.throws, ...(name === "stockSync" ? { skuRef: "SKU-A", quantityKind: "snapshot" } : { replayed: false }) };
+  };
+  await expect(runFulfillmentAdapterConformance([value], { mode: "full" })).rejects.toThrow(`full ${operation} contradictory result`);
 });

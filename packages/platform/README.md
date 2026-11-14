@@ -3077,11 +3077,16 @@ omit `expectedDispatch` and `replay` in either mode. Supported label methods and
 stock/product sync methods require success/failure pairs. Sync fixtures are
 role-typed: `success: { input, expected }` and `failure: { input, throws }` exclude
 the opposite key. Mixed or contradictory roles are also rejected at runtime
-before either fixture is invoked. One local credit rule requires an observed
-return of the expected contract-positive value for success, or an observed throw
-matching the declared typed sync refusal for failure. Other scenario claims use
-compared executed results, dispatch witnesses and invocation-bound log or
-I/O-count deltas. Positive sync witnesses must include a stock snapshot,
+before either sync fixture is invoked. One credit rule classifies every operation
+from its declared result discriminant and checks the independent expectation.
+Success kinds such as `created` and `available` cannot carry `refusal`; refused
+or failed kinds cannot carry success payloads. Contradictions fail with a named
+`contradictory result` reason and earn neither role. Label void uses its declared
+`canProceed` boolean; sync methods require an observed contract-positive return
+or a throw matching the declared typed refusal. Paging expectations are narrowed
+to each slot's result kind, and positive `ensureProduct` expectations require
+`replayed: false`. Scenario claims additionally check dispatch witnesses and
+invocation-bound log or I/O-count deltas. Positive sync witnesses must include a stock snapshot,
 movement, addressable product pack or nonblank stocked SKU for the corresponding
 read. `ensureProduct` must return `{ replayed: false }`; skipped `null` and replayed
 results can be additional fixtures. `addProductPack` succeeds by returning `void`

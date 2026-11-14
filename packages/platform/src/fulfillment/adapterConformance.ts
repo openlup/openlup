@@ -7,6 +7,7 @@ import { runFulfillmentDispatchWorker } from "./providerDispatchWorker.js";
 
 type Subject = FulfillmentAdapterConformanceSubject;
 type DispatchWitness = {
+  credit: Credit;
   result: NonNullable<Subject["fixtures"]["dispatch"][number]["expectedDispatch"]>;
   replayed: boolean;
   ioDelta: number;
@@ -23,33 +24,33 @@ export async function runFulfillmentAdapterConformance(subjects: readonly Fulfil
     const caps = adapter.capabilities;
     const passed = (operation: string) => { cases.push({ subjectId: subject.subjectId, operation, passed: true }); };
     requireFact(caps.defaultOff === true, "default-off");
-    requireFact(readFulfillmentCapabilities([caps], null).kind === "refused", "selection_required");
+    requireFact(creditResult("selection", readFulfillmentCapabilities([caps], null), subject).kind === "refused", "selection_required");
     const first = fixtures.dispatch[0];
     requireFact(Boolean(first), "dispatch fixture required");
     const disabled = readFulfillmentCapabilities([{ ...caps, selected: false }], first.input.selection);
-    requireFact(disabled.kind === "refused" && disabled.refusal.reason === "disabled", "disabled selection");
+    requireFact(creditResult("selection", disabled, subject).kind === "refused" && disabled.kind === "refused" && disabled.refusal.reason === "disabled", "disabled selection");
     const selectionCalls = subject.readIoCount();
     const missing = await adapter.dispatch.prepare({ ...first.input, selection: { ...first.input.selection, providerRef: null } });
-    requireFact(missing.kind === "refused" && missing.refusal.reason === "selection_required", "adapter selection_required");
+    requireFact(creditResult("prepare", missing, subject).kind === "refused" && missing.kind === "refused" && missing.refusal.reason === "selection_required", "adapter selection_required");
     requireFact(subject.readIoCount() === selectionCalls, "selection refusal before I/O");
     passed("default-off and selection_required");
     const dispatchWitnesses = new Map<number, DispatchWitness>();
     for (const [index, fixture] of fixtures.dispatch.entries()) {
       const before = subject.readIoCount();
       const prepared = await adapter.dispatch.prepare(fixture.input);
-      requireSame(prepared, fixture.expectedPrepare, "prepare fixture");
+      const preparation = creditResult("prepare", prepared, subject, fixture.expectedPrepare, "prepare fixture");
       requireFact(subject.readIoCount() === before, "prepare before I/O");
       assertDurable(prepared, subject);
-      if (prepared.kind === "refused") {
+      if (preparation.role === "failure") {
         requireFact(fixture.expectedDispatch === undefined && fixture.replay === undefined, "refused preparation cannot declare dispatch or replay");
         passed("dispatch refused before I/O"); continue;
       }
-      requireFact(caps.operations.dispatch.supported, "unsupported dispatch refuses");
+      requireFact(prepared.kind === "prepared" && caps.operations.dispatch.supported, "unsupported dispatch refuses");
       requireSame(prepared.evidence, dispatchEvidence(prepared.evidence), "prepared evidence allowlist");
       requireFact(prepared.evidence.providerRef === fixture.input.selection.providerRef, "prepared provider identity");
       requireSame(prepared.evidence.contactRevision, fixture.input.contactRevision, "prepared contact identity");
       const mismatch = await adapter.dispatch.dispatch(fixture.input, { ...prepared.evidence, commandFingerprint: `${prepared.evidence.commandFingerprint}:mismatch` });
-      requireSame(mismatch, { kind: "not_dispatched", effectMayHaveSucceeded: false,
+      creditResult("dispatch", mismatch, subject, { kind: "not_dispatched", effectMayHaveSucceeded: false,
         refusal: { reason: "not_dispatchable", phase: "dispatch", retryable: false } }, "mismatched preparation refusal");
       requireFact(subject.readIoCount() === before, "mismatch before I/O");
       requireFact(fixture.expectedDispatch !== undefined, "dispatch expected result");
@@ -58,18 +59,18 @@ export async function runFulfillmentAdapterConformance(subjects: readonly Fulfil
         .map(([name, scenario]) => ({ name, calls: scenario.calls, start: scenario.calls.length }));
       const dispatchCalls = subject.readIoCount();
       const result = await adapter.dispatch.dispatch(fixture.input, prepared.evidence);
-      const witness: DispatchWitness = { result, replayed: false, ioDelta: subject.readIoCount() - dispatchCalls,
+      const resultCredit = creditResult("dispatch", result, subject, fixture.expectedDispatch, "dispatch fixture");
+      const witness: DispatchWitness = { credit: resultCredit, result, replayed: false, ioDelta: subject.readIoCount() - dispatchCalls,
         faults: new Map(faults.map(({ name, calls, start }) => [name, calls.slice(start)])) };
-      requireSame(result, fixture.expectedDispatch, "dispatch fixture");
       requireSame(result, dispatchResult(result), "dispatch allowlist");
       assertDurable(result, subject);
-      if (result.kind === "accepted") {
+      if (resultCredit.role === "success" && result.kind === "accepted") {
         requireSame(result.evidence, prepared.evidence, "dispatch fingerprint identity");
         requireFact(result.externalRef.length > 0 && result.providerAttemptKey.length > 0 && result.labelKey.length > 0, "accepted proof before local ACK");
-      } else requireFact(result.kind === "unknown" ? result.effectMayHaveSucceeded : !result.effectMayHaveSucceeded, "unknown versus refused");
+      }
       if (fixture.replay) {
         const calls = subject.readIoCount();
-        requireSame(await adapter.dispatch.dispatch(fixture.input, prepared.evidence), result, "dispatch replay");
+        creditResult("dispatch", await adapter.dispatch.dispatch(fixture.input, prepared.evidence), subject, result, "dispatch replay");
         requireFact(subject.readIoCount() === calls, "replay no second I/O");
         witness.replayed = true;
       }
@@ -86,13 +87,11 @@ export async function runFulfillmentAdapterConformance(subjects: readonly Fulfil
         const result = operation === "create" ? await adapter.label!.create((fixture as NonNullable<Subject["fixtures"]["label"]>["create"] extends readonly (infer F)[] | undefined ? F : never).input[0])
           : operation === "read" ? await adapter.label!.read((fixture as NonNullable<NonNullable<Subject["fixtures"]["label"]>["read"]>[number]).input[0])
           : await adapter.label!.void((fixture as NonNullable<NonNullable<Subject["fixtures"]["label"]>["void"]>[number]).input[0]);
-        requireSame(result, fixture.expected, `label ${operation}`);
+        const labelCredit = creditResult(operation, result, subject, fixture.expected, `label ${operation}`);
         if (!supported && (options.mode === "full" || !(operation === "read" && caps.labelReadOwner === "host_storage"))) {
-          requireFact("refusal" in result && result.refusal?.reason === "unsupported", `unsupported label ${operation}`);
+          requireFact(labelCredit.role === "failure" && labelCredit.kind === "refused" && "refusal" in result && result.refusal?.reason === "unsupported", `unsupported label ${operation}`);
           requireFact(subject.readIoCount() === before, "unsupported label before I/O");
-          if (options.mode === "full" && "providerDeletion" in result) requireFact(result.providerDeletion === "unconfirmed" && !result.labelDeleted && !result.canProceed, "unsupported label void cannot confirm deletion");
         }
-        if (!(operation === "read" && "kind" in result && result.kind === "available")) assertDurable(result, subject);
         passed(`label ${operation}`);
       }
     }
@@ -104,11 +103,11 @@ export async function runFulfillmentAdapterConformance(subjects: readonly Fulfil
       requireFact(Boolean(adapter.observation), "observation port required");
       const before = subject.readIoCount();
       const result = await adapter.observation!.verifyAndNormalize(...fixture!.input);
-      requireSame(result, fixture!.expected, "observation fixture"); assertDurable(result, subject);
-      if (options.mode === "full" && result.kind === "refused" && result.refusal.reason === "untrusted") requireFact(subject.readIoCount() === before, "authentication refusal before I/O");
-      if (!caps.operations.verifyObservation.supported) requireFact(result.kind === "refused" && result.refusal.reason === "unsupported", "unsupported observation");
+      const observationCredit = creditResult("observation", result, subject, fixture!.expected, "observation fixture");
+      if (options.mode === "full" && observationCredit.role === "failure" && result.kind === "refused" && result.refusal.reason === "untrusted") requireFact(subject.readIoCount() === before, "authentication refusal before I/O");
+      if (!caps.operations.verifyObservation.supported) requireFact(observationCredit.role === "failure" && result.kind === "refused" && result.refusal.reason === "unsupported", "unsupported observation");
       if (options.mode === "full" && !caps.operations.verifyObservation.supported) requireFact(subject.readIoCount() === before, "unsupported observation before I/O");
-      if (result.kind === "verified") {
+      if (observationCredit.role === "success" && result.kind === "verified") {
         requireSame(result.observation, projectObservation(result.observation, subject.approveTrackingUrl, subject.observationCodecs), "observation allowlist");
         const observation = result.observation;
         const identity = stable({ provider: observation.fact.providerKind, reference: observation.fact.fulfillmentReference,
@@ -118,7 +117,7 @@ export async function runFulfillmentAdapterConformance(subjects: readonly Fulfil
         events.set(observation.eventKey, { identity, occurredAt: observation.fact.occurredAt });
         if (retry) {
           const replay = await adapter.observation!.verifyAndNormalize(...fixture!.input);
-          requireSame(replay, result, "observation exact retry");
+          creditResult("observation", replay, subject, result, "observation exact retry");
         }
       }
       return result;
@@ -132,17 +131,17 @@ export async function runFulfillmentAdapterConformance(subjects: readonly Fulfil
       requireFact(Boolean(adapter.readback), "readback port required");
       const before = subject.readIoCount();
       const result = await adapter.readback!.read(...fixture.input);
-      requireSame(result, fixture.expected, "readback fixture"); assertDurable(result, subject);
-      if (!caps.operations.readback.supported) requireFact(result.kind === "unsupported", "unsupported readback");
+      const readbackCredit = creditResult("readback", result, subject, fixture.expected, "readback fixture");
+      if (!caps.operations.readback.supported) requireFact(readbackCredit.kind === "unsupported", "unsupported readback");
       if (options.mode === "full" && !caps.operations.readback.supported) requireFact(subject.readIoCount() === before, "unsupported readback before I/O");
-      if (fixture.localMissing) requireFact(result.kind === "unknown" && result.refusal.reason === "local_missing", "local missing is never absence");
-      if (result.kind === "absent") {
+      if (fixture.localMissing) requireFact(readbackCredit.kind === "unknown" && result.kind === "unknown" && result.refusal.reason === "local_missing", "local missing is never absence");
+      if (readbackCredit.kind === "absent" && result.kind === "absent") {
         requireFact(caps.operations.exactAbsence.supported, "unsupported exact absence refuses");
         const { mode: _mode, ...scope } = fixture.input[0];
         requireSame(result.scope, scope, "absence scope");
         requireFact(result.proof.kind === "authoritative_exact_lookup" && /^evidence:.+/.test(result.proof.evidenceRef) && Number.isFinite(Date.parse(result.proof.checkedAt)), "absence proof");
       }
-      if (result.kind === "found") requireFact(result.externalRef === fixture.input[0].externalRef || fixture.input[0].externalRef === null, "found identity");
+      if (readbackCredit.kind === "found" && result.kind === "found") requireFact(result.externalRef === fixture.input[0].externalRef || fixture.input[0].externalRef === null, "found identity");
       passed(`readback ${result.kind}`);
     }
     for (const name of ["stockSync", "productSync"] as const) {
@@ -152,18 +151,14 @@ export async function runFulfillmentAdapterConformance(subjects: readonly Fulfil
       for (const fixture of rows) {
         requireFact(Boolean(port), `${name} port required`);
         const before = subject.readIoCount();
-        let returned: unknown;
+        let outcome: InvocationOutcome;
         try {
-          // Dispatch a typed fixture tuple to its adapter-owned operation.
           const method = (port as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>)[fixture.operation];
-          returned = await method.apply(port, fixture.input);
-        } catch (error) {
-          const refusal = error as FulfillmentRefusal;
-          requireFact(refusal.reason === "unsupported" && refusal.phase === "sync" && refusal.retryable === false, "typed unsupported sync refusal");
-          returned = { kind: "refused", refusal };
-        }
-        requireSame(returned, fixture.expected, `${name} ${fixture.operation}`); assertDurable(returned, subject);
-        if (!supported) requireFact(typeof returned === "object" && returned !== null && "kind" in returned && returned.kind === "refused", "unsupported sync");
+          outcome = { kind: "returned", value: await method.apply(port, fixture.input) };
+        } catch (error) { outcome = { kind: "threw", error }; }
+        const syncCredit = creditInvocation(fixture.operation, outcome, subject, fixture, undefined, `${name} ${fixture.operation}`);
+        if (!supported) requireFact(syncCredit.kind === "refused" && outcome.kind === "threw"
+          && (outcome.error as FulfillmentRefusal).reason === "unsupported", "unsupported sync");
         if (options.mode === "full" && !supported) requireFact(subject.readIoCount() === before, "unsupported sync before I/O");
         passed(`${name} ${fixture.operation}`);
       }
@@ -180,19 +175,19 @@ async function checkStore(subject: Subject): Promise<void> {
   const fixture = subject.store!;
   const store = await fixture.create();
   const first = await store.claim(fixture.claim);
-  requireFact(first.kind === "claimed", "store initial claim");
+  requireFact(creditResult("claim", first, subject).kind === "claimed", "store initial claim");
   const replay = await store.claim(fixture.claim);
-  requireFact(replay.kind === "claimed" && replay.record.replayed, "store same-key claim replay");
+  requireFact(creditResult("claim", replay, subject).kind === "claimed" && replay.kind === "claimed" && replay.record.replayed, "store same-key claim replay");
   const attempt = () => store.recordProviderAttempt(fixture.mappedAttemptKey, fixture.claim.fulfillmentRef, fixture.claim.evidence, fixture.claim.mode, "recorded");
-  requireFact(!(await attempt()).replayed && (await attempt()).replayed, "G14 same key replays");
+  requireFact(creditResult("attempt", await attempt(), subject).kind === "recorded" && creditResult("attempt", await attempt(), subject).kind === "replayed", "G14 same key replays");
   requireFact(fixture.mappedAttemptKey !== fixture.remappedAttemptKey, "G14 remap own key");
   requireFact(fixture.claim.requestKey === fixture.remappedClaim.requestKey && fixture.claim.evidence.commandFingerprint !== fixture.remappedClaim.evidence.commandFingerprint, "draft remap fixture");
   const remap = await store.claim(fixture.remappedClaim);
-  requireFact(remap.kind === "claimed", "draft re-claim");
+  requireFact(creditResult("claim", remap, subject).kind === "claimed", "draft re-claim");
   const row = await store.read(fixture.claim.requestKey);
   requireSame(row?.evidence, fixture.remappedClaim.evidence, "atomic remap fingerprint and evidence");
   assertDurable(row, subject);
-  requireFact(!(await store.recordProviderAttempt(fixture.remappedAttemptKey, fixture.claim.fulfillmentRef, fixture.remappedClaim.evidence, fixture.claim.mode, "recorded")).replayed, "G14 new mapped attempt");
+  requireFact(creditResult("attempt", await store.recordProviderAttempt(fixture.remappedAttemptKey, fixture.claim.fulfillmentRef, fixture.remappedClaim.evidence, fixture.claim.mode, "recorded"), subject).kind === "recorded", "G14 new mapped attempt");
   const attempts = await store.readMappedAttempts();
   requireFact(attempts.length === 2, "G14 no duplicate durable attempts");
   requireSame(attempts.map(row => row.attemptKey).sort(), [fixture.mappedAttemptKey, fixture.remappedAttemptKey].sort(), "G14 durable remap identity");
@@ -201,7 +196,7 @@ async function checkStore(subject: Subject): Promise<void> {
     assertDurable(attempt, subject);
   }
   const stale = await store.begin({ dispatchRef: row!.dispatchRef, commandFingerprint: fixture.claim.evidence.commandFingerprint });
-  requireFact(stale.kind === "refused", "stale prepared command refuses");
+  requireFact(creditResult("begin", stale, subject).kind === "refused", "stale prepared command refuses");
   let claims = 0; let calls = 0; let reads = 0;
   const bounded = await runFulfillmentDispatchWorker({
     store: { ...await fixture.create(), async read() { return null; }, async readCandidate() { reads += 1; return reads === 1 ? fixture.request : fixture.remappedRequest; },
@@ -211,7 +206,7 @@ async function checkStore(subject: Subject): Promise<void> {
     keys: { request: () => fixture.claim.requestKey, mappedAttempt: (_key, index) => index === 0 ? fixture.mappedAttemptKey : fixture.remappedAttemptKey,
       acceptance: () => ({ providerAttemptKey: "fixture-attempt", labelKey: "fixture-label" }) },
   });
-  requireFact(claims === 2 && calls === 0 && !bounded.ok, "one-remap limit before I/O");
+  requireFact(creditResult("worker", bounded, subject).kind === "refused" && claims === 2 && calls === 0, "one-remap limit before I/O");
 }
 function assertDurable(value: unknown, subject: Subject): void {
   const text = JSON.stringify(value) ?? "";
@@ -234,27 +229,134 @@ function stable(value: unknown): string {
 function requireSame(actual: unknown, expected: unknown, label: string): void { requireFact(stable(actual) === stable(expected), label); }
 function requireFact(value: boolean, label: string): asserts value { if (!value) throw new Error(`fulfillment_adapter_conformance:${label}`); }
 
+function creditResult(operation: CreditOperation, value: unknown, subject: Subject, expected: unknown = value, label: string = operation, expectedKind?: string): Credit {
+  return creditInvocation(operation, { kind: "returned", value }, subject, { expected }, undefined, label, expectedKind);
+}
 type InvocationOutcome = { kind: "returned"; value: unknown } | { kind: "threw"; error: unknown };
-/** The sole credit rule for role-slotted method fixtures; union-result scenarios use compared invocation witnesses. */
-function creditSyncInvocation(operation: string, role: "success" | "failure", fixture: { expected?: unknown; throws?: FulfillmentRefusal },
-  outcome: InvocationOutcome, subject: Subject): void {
-  if (role === "failure") {
-    requireFact(outcome.kind === "threw", `full ${operation} failure did not throw`);
-    const refusal = outcome.error as FulfillmentRefusal | null | undefined;
-    requireSame({ reason: refusal?.reason, phase: refusal?.phase, retryable: refusal?.retryable }, fixture.throws, `full ${operation} failure`);
-    assertDurable(fixture.throws, subject);
-    return;
+type Credit = { kind: string; role: "success" | "failure" | "neutral" };
+// Branch-owned fields are mutually exclusive. Shared fields (for example dispatch.error)
+// remain governed by the existing projections and exact independent expectations.
+const creditBranches = {
+  selection: { selected: ["descriptor"], refused: ["refusal"] },
+  prepare: { prepared: ["evidence"], refused: ["refusal"] },
+  dispatch: { accepted: ["externalRef", "evidence", "providerAttemptKey", "labelKey", "receiptKey", "recovery"], not_dispatched: ["refusal", "effectMayHaveSucceeded"], unknown: ["refusal", "effectMayHaveSucceeded"] },
+  create: { created: ["parcelRef", "document"], refused: ["refusal"] },
+  read: { available: ["url", "expiresAt"], refused: ["refusal"] },
+  observation: { verified: ["observation"], refused: ["refusal", "diagnostics"] },
+  readback: { found: ["externalRef", "createdAt", "updatedAt", "observation"], absent: ["scope", "proof"], unknown: ["refusal"], unsupported: ["refusal"] },
+  page: { page: ["rows"], page_exhausted: [], failed: ["refusal", "error"] },
+  claim: { claimed: ["record"], refused: ["refusal"] },
+  begin: { begun: ["record", "begun", "replayed"], refused: ["refusal"] },
+} satisfies Record<string, Record<string, readonly string[]>>;
+type CreditOperation = keyof typeof creditBranches | "void" | "attempt" | "worker" | "typedRefusal" | "getStock" | "getStockMovements" | "ensureProduct" | "getProductPacks" | "addProductPack" | "listStockedSkus";
+type CreditFixture = { expected?: unknown; throws?: FulfillmentRefusal };
+/** The only role/contradiction rule, for both expectations and observed invocations.
+ * Undefined outcome validates role slots before any invocation; it earns no credit. */
+function creditInvocation(operation: CreditOperation, outcome: InvocationOutcome | undefined, subject: Subject,
+  fixture?: CreditFixture, role?: "success" | "failure", label: string = operation, expectedKind?: string): Credit {
+  const typedRefusal = (value: unknown): void => {
+    const refusal = value as FulfillmentRefusal | null | undefined;
+    requireFact(Boolean(refusal) && typeof refusal?.reason === "string" && Boolean(refusal.reason)
+      && typeof refusal?.phase === "string" && typeof refusal?.retryable === "boolean", `${label} typed refusal required`);
+    const branchFields = Object.values(creditBranches).flatMap(branches => Object.values(branches)).flat()
+      .filter(key => !["refusal", "diagnostics", "error"].includes(key));
+    requireFact(![...branchFields, "kind", "refusal", "canProceed", "providerDeletion", "labelDeleted", "replayed", "skuRef", "quantityKind", "ean"].some(key => key in (value as object)), `${label} contradictory result`);
+  };
+  const classify = (value: unknown): Credit => {
+    const record = value as Record<string, unknown> | null | undefined;
+    const contradiction = () => requireFact(false, `${label} contradictory result`);
+    if (operation in creditBranches) {
+      requireFact(Boolean(record) && typeof record === "object", `${label} result discriminant required`);
+      const branches: Record<string, readonly string[]> = creditBranches[operation as keyof typeof creditBranches];
+      requireFact(typeof record!.kind === "string" && Object.hasOwn(branches, record!.kind), `${label} result discriminant required`);
+      const kind = record!.kind as string, own = branches[kind]!;
+      if (Object.values(branches).flat().some(key => !own.includes(key) && key in record!)) contradiction();
+      if (own.includes("refusal")) typedRefusal(record!.refusal);
+      if (operation === "dispatch" && kind !== "accepted") requireFact(record!.effectMayHaveSucceeded === (kind === "unknown"), `${label} contradictory result`);
+      if (operation === "page" && kind === "page") {
+        requireFact(Array.isArray(record!.rows), `${label} page rows required`);
+        for (const row of record!.rows as unknown[]) {
+          // Unmapped collection entries are not successful readback witnesses.
+          if ((row as { kind?: unknown })?.kind === "unmapped") {
+            requireFact(!["refusal", "observation", "scope", "proof"].some(key => key in (row as object)), `${label} contradictory result`);
+          } else creditInvocation("readback", { kind: "returned", value: row }, subject);
+        }
+      }
+      return { kind, role: ["refused", "not_dispatched", "unknown", "unsupported", "failed"].includes(kind) ? "failure" : "success" };
+    }
+    if (operation === "typedRefusal") { typedRefusal(value); return { kind: "refused", role: "failure" }; }
+    // These contracts use boolean discriminants, array returns, or void, rather than kind.
+    if (operation === "void") {
+      requireFact(typeof record?.canProceed === "boolean", `${label} result discriminant required`);
+      if (record.canProceed && "refusal" in record) contradiction();
+      if (!record.canProceed && (record.refusal as FulfillmentRefusal | undefined)?.reason === "unsupported"
+        && (record.providerDeletion !== "unconfirmed" || record.labelDeleted !== false)) contradiction();
+      if (!record.canProceed) typedRefusal(record.refusal);
+      return { kind: record.canProceed ? "voided" : "refused", role: record.canProceed ? "success" : "failure" };
+    }
+    if (record && typeof record === "object" && ("refusal" in record || "kind" in record || "error" in record)) contradiction();
+    if (operation === "worker") {
+      requireFact(typeof record?.ok === "boolean", `${label} result discriminant required`);
+      return { kind: record.ok ? "completed" : "refused", role: record.ok ? "success" : "failure" };
+    }
+    if (operation === "attempt") {
+      requireFact(typeof record?.replayed === "boolean", `${label} result discriminant required`);
+      return { kind: record.replayed ? "replayed" : "recorded", role: record.replayed ? "neutral" : "success" };
+    }
+    if (operation === "ensureProduct") return { kind: record?.replayed === false ? "created" : "skipped", role: record?.replayed === false ? "success" : "neutral" };
+    if (operation === "addProductPack") return { kind: value === undefined ? "written" : "invalid", role: value === undefined ? "success" : "neutral" };
+    if (!Array.isArray(value)) return { kind: "invalid", role: "neutral" };
+    const positive = value.map(item => {
+      if (operation === "listStockedSkus") return typeof item === "string" && Boolean(item.trim());
+      if (!item || typeof item !== "object") return false;
+      if ("refusal" in item || "error" in item) contradiction();
+      if (operation === "getProductPacks") {
+        if ("kind" in item) contradiction();
+        return typeof item.ean === "string" && Boolean(item.ean.trim());
+      }
+      if ("kind" in item) {
+        if (item.kind !== "rejected" || ["skuRef", "quantityKind", "quantity", "totalQuantity", "forSaleQuantity", "reservedOrUnavailableQuantity"].some(key => key in item)) contradiction();
+        return false;
+      }
+      return typeof item.skuRef === "string" && Boolean(item.skuRef.trim()) && item.quantityKind === (operation === "getStock" ? "snapshot" : "movement");
+    }).some(Boolean);
+    return { kind: positive ? "populated" : "empty", role: positive ? "success" : "neutral" };
+  };
+  if (role) {
+    requireFact(Boolean(fixture) && (role === "success" ? "expected" in fixture! && !("throws" in fixture!) : "throws" in fixture! && !("expected" in fixture!)), `${label} ${role} fixture role`);
+    if (role === "failure") {
+      typedRefusal(fixture!.throws);
+      requireFact(fixture!.throws!.phase === "sync", `${label} typed failure required`);
+    } else requireFact(classify(fixture!.expected).role === "success", `${label} positive success required`);
+  } else if (fixture) {
+    if (!(operation in creditBranches) && operation !== "void" && operation !== "typedRefusal" && (fixture.expected as { kind?: unknown })?.kind === "refused") {
+      const expected = fixture.expected as { kind: "refused"; refusal: FulfillmentRefusal };
+      requireFact(Object.keys(expected).every(key => ["kind", "refusal"].includes(key)), `${label} contradictory result`);
+      typedRefusal(expected.refusal);
+    } else {
+      const expected = classify(fixture.expected);
+      if (expectedKind) requireFact(expected.kind === expectedKind, `${label} fixture discriminant contradicts role`);
+    }
   }
-  requireFact(outcome.kind === "returned", `full ${operation} success did not return`);
-  const actual = outcome.value;
-  requireSame(actual, fixture.expected, `full ${operation} success`); assertDurable(actual, subject);
-  const positive = operation === "ensureProduct" ? actual !== null && typeof actual === "object" && "replayed" in actual && actual.replayed === false
-    : operation === "getStock" || operation === "getStockMovements" ? Array.isArray(actual) && actual.some(item => item && !("kind" in item && item.kind === "rejected") && typeof item.skuRef === "string" && item.skuRef.trim()
-      && item.quantityKind === (operation === "getStock" ? "snapshot" : "movement"))
-      : operation === "getProductPacks" ? Array.isArray(actual) && actual.some(item => item && typeof item.ean === "string" && item.ean.trim())
-        : operation === "listStockedSkus" ? Array.isArray(actual) && actual.some(sku => typeof sku === "string" && sku.trim())
-          : operation === "addProductPack" && actual === undefined;
-  requireFact(positive, `full ${operation} positive success required`);
+  if (!outcome) return { kind: "uninvoked", role: "neutral" };
+  if (role === "failure") requireFact(outcome.kind === "threw", `${label} failure did not throw`);
+  if (role === "success") requireFact(outcome.kind === "returned", `${label} success did not return`);
+  let credit: Credit;
+  if (outcome.kind === "threw") {
+    requireFact(["getStock", "getStockMovements", "ensureProduct", "getProductPacks", "addProductPack", "listStockedSkus"].includes(operation), `${label} unexpected throw`);
+    typedRefusal(outcome.error);
+    requireFact((outcome.error as FulfillmentRefusal).phase === "sync", `${label} typed failure required`);
+    const refusal = outcome.error as FulfillmentRefusal;
+    if (fixture) requireSame({ reason: refusal.reason, phase: refusal.phase, retryable: refusal.retryable }, role ? fixture.throws : (fixture.expected as { refusal?: unknown })?.refusal, label);
+    credit = { kind: "refused", role: "failure" };
+  } else {
+    credit = classify(outcome.value);
+    if (expectedKind) requireFact(credit.kind === expectedKind, `${label} result discriminant contradicts role`);
+    if (fixture) requireSame(outcome.value, fixture.expected, label);
+    if (role === "success") requireFact(credit.role === "success", `${label} positive success required`);
+  }
+  if (!(operation === "read" && credit.kind === "available")) assertDurable(outcome.kind === "returned" ? outcome.value : outcome.error, subject);
+  return credit;
 }
 
 async function checkFull(subject: FulfillmentAdapterTestSubject, dispatchWitnesses: ReadonlyMap<number, DispatchWitness>,
@@ -263,16 +365,16 @@ async function checkFull(subject: FulfillmentAdapterTestSubject, dispatchWitness
   requireFact(Boolean(kit), "full certification fixtures required");
   requireFact(kit!.profile === "adapter" || kit!.profile === "dispatch-only", "full profile required");
   const { adapter, fixtures } = subject, caps = adapter.capabilities;
-  const pair = <T>(rows: readonly T[], success: (row: T) => boolean, failure: (row: T) => boolean, name: string) => {
-    requireFact(rows.some(row => success(row)) && rows.some(row => failure(row)), `full ${name} success and failure required`);
+  const pair = (rows: readonly Credit[], name: string) => {
+    requireFact(rows.some(row => row.role === "success") && rows.some(row => row.role === "failure"), `full ${name} success and failure required`);
   };
   const dispatch = fixtures.dispatch;
   if (caps.operations.dispatch.supported) {
     const witnessed = [...dispatchWitnesses.values()];
-    pair(witnessed, row => row.result.kind === "accepted", row => row.result.kind === "not_dispatched", "dispatch");
-    requireFact(witnessed.some(row => row.result.kind === "unknown" && row.replayed), "full unknown replay required");
+    pair(witnessed.filter(row => row.credit.kind !== "unknown").map(row => row.credit), "dispatch");
+    requireFact(witnessed.some(row => row.credit.kind === "unknown" && row.replayed), "full unknown replay required");
   }
-  requireFact(dispatch.some(row => row.expectedPrepare.kind === "refused"), "full preparation refusal required");
+  requireFact(dispatch.some(row => creditResult("prepare", row.expectedPrepare, subject).kind === "refused"), "full preparation refusal required");
   if (kit!.profile === "dispatch-only") {
     requireFact(caps.operations.dispatch.supported, "dispatch-only dispatch required");
     requireFact(Object.entries(caps.operations).every(([key, value]) => key === "dispatch" || !value.supported), "dispatch-only capability profile");
@@ -288,8 +390,8 @@ async function checkFull(subject: FulfillmentAdapterTestSubject, dispatchWitness
     [{ operation: "reservations" }, "provider_reservations_unsupported"], [{ operation: "pickupPointDelivery" }, "pickup_point_delivery_unsupported"],
   ] as const) {
     const before = subject.readIoCount();
-    requireSame(readFulfillmentCapabilities([caps], selection, request), { kind: "refused", refusal: { reason, phase: "selection", retryable: false } }, `full native ${reason}`);
-    if ("operation" in request && request.operation === "reservations") requireSame(readFulfillmentCapabilities([{ ...caps, inventory: { reservationOwner: "provider", consumption: "finished_picking" } }], selection),
+    creditResult("selection", readFulfillmentCapabilities([caps], selection, request), subject, { kind: "refused", refusal: { reason, phase: "selection", retryable: false } }, `full native ${reason}`);
+    if ("operation" in request && request.operation === "reservations") creditResult("selection", readFulfillmentCapabilities([{ ...caps, inventory: { reservationOwner: "provider", consumption: "finished_picking" } }], selection), subject,
       { kind: "refused", refusal: { reason, phase: "selection", retryable: false } }, "full provider-owned reservation declaration");
     requireFact(subject.readIoCount() === before, `full native ${reason} before I/O`);
     passed(`native refusal:${reason}`);
@@ -298,26 +400,27 @@ async function checkFull(subject: FulfillmentAdapterTestSubject, dispatchWitness
     const rows = fixtures.label?.[operation] ?? [];
     requireFact(Boolean(adapter.label) && rows.length > 0, `full label ${operation} refusal fixture required`);
     const supported = caps.operations[operation === "create" ? "labelCreate" : operation === "read" ? "labelRead" : "labelVoid"].supported;
-    if (supported) pair(rows.map(row => row.expected), result => "kind" in result ? result.kind === (operation === "read" ? "available" : "created") : result.canProceed,
-      result => "refusal" in result && Boolean(result.refusal) && (!("canProceed" in result) || !result.canProceed), `label ${operation}`);
-    else requireFact(rows.some(row => "refusal" in row.expected && row.expected.refusal?.reason === "unsupported"), `full label ${operation} explicit refusal`);
+    const credits = rows.map(row => creditResult(operation, row.expected, subject));
+    if (supported) pair(credits, `label ${operation}`);
+    else requireFact(credits.some((credit, index) => credit.role === "failure" && credit.kind === "refused"
+      && "refusal" in rows[index]!.expected && rows[index]!.expected.refusal?.reason === "unsupported"), `full label ${operation} explicit refusal`);
   }
   if (caps.operations.dispatch.supported) {
     requireFact(Boolean(kit!.dispatch), "full dispatch scenarios required");
     const scenarios = kit!.dispatch!;
     const before = dispatch.find((_row, index) => index === scenarios.addressBeforeSubmission);
-    requireFact(before?.expectedPrepare.kind === "refused" && before.expectedPrepare.refusal.reason === "not_dispatchable", "full address before submission");
+    requireFact(before !== undefined && creditResult("prepare", before.expectedPrepare, subject).kind === "refused" && before.expectedPrepare.kind === "refused" && before.expectedPrepare.refusal.reason === "not_dispatchable", "full address before submission");
     requireFact(before.input.lines.length > 0 && before.input.lines.every(line => Boolean(line.skuRef.trim()) && Number.isFinite(line.quantity) && line.quantity > 0)
       && [before.input.recipient.line1, before.input.recipient.city, before.input.recipient.postalCode, before.input.recipient.country].some(value => !value.trim()), "full address invalid with valid items");
     const afterWitness = dispatchWitnesses.get(scenarios.addressAfterSubmission), after = afterWitness?.result;
-    requireFact(after?.kind === "not_dispatched" && after.error?.submissionAttempted === true && after.error.mayHaveSucceeded === false, "full address after submission");
+    requireFact(afterWitness?.credit.kind === "not_dispatched" && after?.kind === "not_dispatched" && after.error?.submissionAttempted === true && after.error.mayHaveSucceeded === false, "full address after submission");
     requireFact(afterWitness!.ioDelta > 0, "full address after submission I/O");
     for (const name of ["transport-before-submission", "transport-after-submission", "http-failure"] as const) {
       const fixture = scenarios.transport?.[name], witness = fixture && dispatchWitnesses.get(fixture.fixture), result = witness?.result;
       requireFact(Boolean(witness?.faults.get(name)?.some(call => call.kind === name)), `full ${name} injected fault required for dispatch invocation`);
       requireFact(result?.error !== undefined, `full ${name} error evidence required`);
       const uncertain = name !== "transport-before-submission";
-      requireFact(result.kind === (uncertain ? "unknown" : "not_dispatched") && result.error.mayHaveSucceeded === uncertain
+      requireFact(witness!.credit.kind === (uncertain ? "unknown" : "not_dispatched") && result.error.mayHaveSucceeded === uncertain
         && result.error.submissionAttempted === uncertain, `full ${name} uncertainty`);
       requireFact(uncertain ? witness!.ioDelta > 0 : witness!.ioDelta === 0, `full ${name} submission I/O`);
       if (name === "http-failure") requireFact((result.error.status ?? 0) >= 500, "full HTTP 5xx");
@@ -327,7 +430,7 @@ async function checkFull(subject: FulfillmentAdapterTestSubject, dispatchWitness
   if (caps.operations.verifyObservation.supported) {
     const rows = fixtures.observation ?? [], scenarios = kit!.observation;
     requireFact(Boolean(scenarios), "full observation scenarios required");
-    const verified = (index: number) => { const result = rows.find((_row, position) => position === index)?.expected; requireFact(result?.kind === "verified", "full verified status required"); return result.observation; };
+    const verified = (index: number) => { const result = rows.find((_row, position) => position === index)?.expected; requireFact(Boolean(result) && creditResult("observation", result, subject).kind === "verified" && result?.kind === "verified", "full verified status required"); return result.observation; };
     const a = verified(scenarios!.duplicate[0]), b = verified(scenarios!.duplicate[1]);
     requireSame(a, b, "full duplicate status");
     requireSame(rows[scenarios!.duplicate[0]]!.input, rows[scenarios!.duplicate[1]]!.input, "full duplicate input");
@@ -339,29 +442,28 @@ async function checkFull(subject: FulfillmentAdapterTestSubject, dispatchWitness
       for (const index of pair) await observe(index);
     }
     const auth = rows.find((_row, index) => index === scenarios!.authenticationFailure)?.expected;
-    requireFact(auth?.kind === "refused" && auth.refusal.reason === "untrusted" && auth.refusal.phase === "verify", "full authentication refusal");
+    requireFact(Boolean(auth) && creditResult("observation", auth, subject).kind === "refused" && auth?.kind === "refused" && auth.refusal.reason === "untrusted" && auth.refusal.phase === "verify", "full authentication refusal");
     passed("adapter status:duplicate, out-of-order chronology and authentication refusal");
   }
   if (caps.operations.readback.supported) {
     const rows = fixtures.readback ?? [];
-    pair(rows, row => row.expected.kind === "found", row => row.expected.kind === "unknown", "readback");
+    pair(rows.map(row => creditResult("readback", row.expected, subject)).filter(row => ["found", "unknown"].includes(row.kind)), "readback");
     requireFact(Boolean(kit!.exceptions), "full exception fixtures required");
     for (const name of ["returned", "lostCoarse"] as const) {
       const result = rows.find((_row, index) => index === kit!.exceptions![name])?.expected;
-      requireFact(result?.kind === "found" && result.observation.fact.canonicalStatus === "exception", `full ${name} coarse exception`);
+      requireFact(Boolean(result) && creditResult("readback", result, subject).kind === "found" && result?.kind === "found" && result.observation.fact.canonicalStatus === "exception", `full ${name} coarse exception`);
       passed(`adapter exception:${name}`);
     }
-    requireFact(rows.some(row => row.expected.kind === "unknown" && row.localMissing), "full unknown versus absent");
-    if (caps.operations.exactAbsence.supported) requireFact(rows.some(row => row.expected.kind === "absent"), "full authoritative absence required");
+    requireFact(rows.some(row => creditResult("readback", row.expected, subject).kind === "unknown" && row.localMissing), "full unknown versus absent");
+    if (caps.operations.exactAbsence.supported) requireFact(rows.some(row => creditResult("readback", row.expected, subject).kind === "absent"), "full authoritative absence required");
     const pages = kit!.paging;
     requireFact(Boolean(adapter.reconciliation) && Boolean(pages), "full numbered paging fixtures required");
     for (const name of ["full", "short", "empty", "exhausted", "failure"] as const) {
       const fixture = pages![name]; requireFact(Boolean(fixture), `full paging ${name} required`);
       const result = await adapter.reconciliation!.readPage(fixture.input);
-      requireSame(result, fixture.expected, `full paging ${name}`); assertDurable(result, subject);
-      requireFact(name === "exhausted" ? result.kind === "page_exhausted" : name === "failure" ? result.kind === "failed"
-        : result.kind === "page" && (name === "full" ? result.rows.length === fixture.input.size && result.rows.length > 0
-          : name === "empty" ? result.rows.length === 0 : result.rows.length > 0 && result.rows.length < fixture.input.size), `full paging ${name} shape`);
+      const pageCredit = creditResult("page", result, subject, fixture.expected, `full paging ${name}`, name === "exhausted" ? "page_exhausted" : name === "failure" ? "failed" : "page");
+      if (pageCredit.kind === "page" && result.kind === "page") requireFact(name === "full" ? result.rows.length === fixture.input.size && result.rows.length > 0
+        : name === "empty" ? result.rows.length === 0 : result.rows.length > 0 && result.rows.length < fixture.input.size, `full paging ${name} shape`);
       passed(`adapter numbered paging:${name}`);
     }
   }
@@ -374,11 +476,8 @@ async function checkFull(subject: FulfillmentAdapterTestSubject, dispatchWitness
     for (const operation of operations) {
       const row = rows!.find(row => row.operation === operation);
       requireFact(Boolean(row?.success) && Boolean(row?.failure), `full ${name}.${operation} success and failure required`);
-      // Validate both roles before either call, including keys supplied by untyped JavaScript.
-      requireFact("expected" in row!.success && !("throws" in row!.success), `full ${operation} success fixture role`);
-      requireFact("throws" in row!.failure && !("expected" in row!.failure), `full ${operation} failure fixture role`);
-      requireFact(row!.failure.throws?.phase === "sync" && typeof row!.failure.throws.reason === "string" && Boolean(row!.failure.throws.reason)
-        && typeof row!.failure.throws.retryable === "boolean", `full ${operation} typed failure required`);
+      // The same rule validates both role slots before either invocation.
+      for (const role of ["success", "failure"] as const) creditInvocation(operation as CreditOperation, undefined, subject, row![role], role, `full ${operation}`);
       for (const [role, fixture] of [["success", row!.success], ["failure", row!.failure]] as const) {
         let outcome: InvocationOutcome;
         try {
@@ -386,7 +485,7 @@ async function checkFull(subject: FulfillmentAdapterTestSubject, dispatchWitness
         } catch (error) {
           outcome = { kind: "threw", error };
         }
-        creditSyncInvocation(operation, role, fixture, outcome, subject);
+        creditInvocation(operation as CreditOperation, outcome, subject, fixture, role, `full ${operation}`);
       }
       passed(`adapter ${name}.${operation}:success and failure`);
     }
@@ -394,7 +493,7 @@ async function checkFull(subject: FulfillmentAdapterTestSubject, dispatchWitness
       const probe = kit!.snapshotOnly;
       requireFact(Boolean(probe), "full snapshot-only refusal probe required");
       const before = probe!.readMovementCalls();
-      requireSame(await probe!.invoke(), { reason: "stock_movements_unsupported", phase: "sync", retryable: false }, "full snapshot-only refusal");
+      creditResult("typedRefusal", await probe!.invoke(), subject, { reason: "stock_movements_unsupported", phase: "sync", retryable: false }, "full snapshot-only refusal");
       requireFact(probe!.readMovementCalls() === before, "full snapshot-only no movement I/O");
       passed("native refusal:stock_movements_unsupported");
     }
