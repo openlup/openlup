@@ -14,8 +14,10 @@ export async function ecommerceInstallation() {
   if(!await waitForPostgresTcpReady(container.connectionString)) throw new Error('ecommerce_pg_unavailable');
   db=new Pool({connectionString:container.connectionString});
   const manifest=JSON.parse(read('config/platform-migration-manifest.json'));
-  for(const entry of [manifest.baseline,...manifest.forward.filter((row:{file:string})=>row.file!==ecommerceForward)]) await db.query(read(entry.file));
+  const targetIndex=manifest.forward.findIndex((row:{file:string})=>row.file===ecommerceForward);
+  for(const entry of [manifest.baseline,...manifest.forward.slice(0,targetIndex)]) await db.query(read(entry.file));
   await db.query(read(ecommerceForward));
+  for(const entry of manifest.forward.slice(targetIndex+1)) await db.query(read(entry.file));
   const pool=db;
   const withTransaction=async<T>(work:(db:PoolClient)=>Promise<T>)=>{
    const connection=await pool.connect();
