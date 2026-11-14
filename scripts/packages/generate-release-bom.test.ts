@@ -4,6 +4,7 @@ import { lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync 
 import { dirname, join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { generateExactSetReleaseBom, generateReleaseBom } from "./generate-release-bom.ts";
+import { readCiImage } from "../ci-image-pull.mjs";
 import { qualifyReleasedSet } from "./exact-set-qualification.mjs";
 
 const roots: string[] = [];
@@ -48,7 +49,7 @@ function exactFixture(schema = true, major = 16) {
   f.put("application/package-lock.json", { packages: Object.fromEntries(packages.map(pkg => [`node_modules/${pkg.name}`, pkg])) });
   const extraction = { schemaVersion: 2, mode: "released", setVersion: "0.36.0", sourceRevision: commit, contentSha256: digest(JSON.stringify(paths.sort().map(path => [path, digest(readFileSync(join(application, path)))]))), lockfileSha256: digest(readFileSync(join(application, "package-lock.json"))) };
   f.put("application/.starter-origin.json", extraction);
-  const evidence = { setVersion: "0.36.0", tag: "openlup-core-v0.36.0", tagCommit: commit, packages, extraction };
+  const evidence = { setVersion: "0.36.0", tag: "openlup-core-v0.36.0", tagCommit: commit, packages, extraction, image: { name: "ghcr.io/openlup/neutral-store-starter", platform: "linux/amd64", manifestDigest: "sha256:" + "c".repeat(64), baseImageDigest: readCiImage("starter-node").digest } };
   return { ...f, application, evidence, bom: () => generateExactSetReleaseBom(f.root, application, evidence) };
 }
 
@@ -69,12 +70,20 @@ describe("release-set BOM", () => {
 
   it("binds the exact set deterministically, preserving catalogue order without circular receipt inputs", () => {
     const f = exactFixture(), bom = f.bom();
-    expect(bom).toMatchObject({ formatVersion: 2, tagCommit: f.evidence.tagCommit, starter: { mode: "released", contentSha256: f.evidence.extraction.contentSha256, lockfileSha256: f.evidence.extraction.lockfileSha256 }, composition: { postgresMajor: 16 }, schemaCatalogue: { entries: [{ position: 0, path: "@openlup/outbox/sql/manifest.json" }] } });
+    expect(bom).toMatchObject({ formatVersion: 3, image: f.evidence.image, tagCommit: f.evidence.tagCommit, starter: { mode: "released", contentSha256: f.evidence.extraction.contentSha256, lockfileSha256: f.evidence.extraction.lockfileSha256 }, composition: { postgresMajor: 16 }, schemaCatalogue: { entries: [{ position: 0, path: "@openlup/outbox/sql/manifest.json" }] } });
     f.evidence.packages.reverse();
+    Object.assign(f.evidence.image, { publishResult: "published", registryReadback: "ignored detached result" });
     Object.assign(f.evidence, { bom: { sha256: "f".repeat(64) }, endedAt: "ignored final receipt data" });
     expect(JSON.stringify(f.bom())).toBe(JSON.stringify(bom));
-    expect(JSON.stringify(bom)).not.toMatch(/receipt|endedAt|application\/|images|sboms/u);
+    expect(JSON.stringify(bom)).not.toMatch(/receipt|endedAt|application\/|sboms/u);
     expect(bom.verificationSha256).toBe(createHash("sha256").update(JSON.stringify(bom.packages)).digest("hex"));
+  });
+
+  it.each(["missing", "name", "platform", "manifestDigest", "baseImageDigest"])("refuses %s image identity", field => {
+    const f = exactFixture();
+    if (field === "missing") Reflect.deleteProperty(f.evidence, "image");
+    else Reflect.set(f.evidence.image, field, "substituted");
+    expect(() => f.bom()).toThrow("image_identity_mismatch");
   });
 
   it("keeps a failed BOM attempt failed and removes a stale final digest", () => {
