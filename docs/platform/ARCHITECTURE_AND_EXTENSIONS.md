@@ -867,7 +867,7 @@ Adapter authors can use the experimental `@openlup/platform/fulfillment/testing`
 entry to [certify a fulfilment adapter offline](../../packages/core/docs/guide/how-to/build/fulfillment.md#certify-a-fulfilment-adapter-offline).
 Full mode validates immutable snapshots of capabilities, fixtures and certification
 data before invoking an adapter. Closed schemas reject malformed branches, missing
-expectations, proxies, accessors and hidden fields. Results are copied before
+expectations, proxies, accessors, hidden fields and shared-memory buffers/views. Results are copied before
 classification; only the runner's invocation ledger grants coverage. Methods,
 I/O counters, projection callbacks and optional host-store probes are captured
 once and invoked through a captured intrinsic. Native promise handling ignores
@@ -887,7 +887,11 @@ Callable unsupported adapter operations also need explicit refusal witnesses.
 Label probes invoke adapter methods; named native limits invoke platform code.
 The runner executes the real snapshot-only stock worker using its own isolated
 provider/store. Scripted fault evidence comes from the fake's private log via an
-authenticated read-only handle; each claimed submission requires exactly one
+authenticated read-only handle. Enqueue copies and validates each closed outcome
+envelope once; injected transports construct responses from captured data.
+Paging uses the readback capability guard, including every nested absence and
+observation row; replay and preparation use their operation's capability guard.
+Each claimed submission requires exactly one
 provider call. Missing or malformed applicable fixtures fail qualification.
 
 The closed port-less list contains only `courierPickup`. Unsupported is recorded

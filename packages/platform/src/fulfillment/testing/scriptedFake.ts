@@ -1,3 +1,6 @@
+import { z } from "zod";
+import { requireFact, snapshot } from "./schema.js";
+
 /** Synthetic transport outcomes; no network, timer or retry. */
 export type ScriptedFulfillmentOutcome<T> =
   | { kind: "success"; value: T }
@@ -18,6 +21,11 @@ export class ScriptedFulfillmentTransportError extends Error {
 }
 
 type Fault = { kind: ScriptedFulfillmentOutcome<unknown>["kind"] };
+const outcomeSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("success"), value: z.unknown() }).refine(value => Object.hasOwn(value, "value"), "value required"),
+  z.strictObject({ kind: z.literal("http-failure"), status: z.number().int(), response: z.unknown().optional() }),
+  z.strictObject({ kind: z.literal("transport-before-submission") }), z.strictObject({ kind: z.literal("transport-after-submission") }),
+]);
 const faultLogs = new WeakMap<object, readonly Fault[]>();
 /** Internal authenticated log reader. Caller arrays cannot supply transport evidence. */
 export function readScriptedFulfillmentFaultLog(handle: object): readonly Fault[] {
@@ -37,8 +45,10 @@ export function createScriptedFulfillmentFake<Calls extends Record<string, unkno
       return snapshot;
     },
     enqueue<K extends keyof Calls>(call: K, ...outcomes: ScriptedFulfillmentOutcome<Calls[K]>[]): void {
+      requireFact(["string", "number", "symbol"].includes(typeof call), "validation:call");
+      const captured = snapshot(outcomes); captured.forEach(outcome => outcomeSchema.parse(outcome));
       const queue = queues.get(call) ?? [];
-      queue.push(...outcomes); queues.set(call, queue);
+      queue.push(...captured); queues.set(call, queue);
     },
     async invoke<K extends keyof Calls>(call: K): Promise<Calls[K]> {
       const outcome = queues.get(call)?.shift();

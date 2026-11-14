@@ -115,6 +115,7 @@ if (value.expectedPrepare.kind === "refused" ? Object.hasOwn(value, "expectedDis
 
 export function requireFact(value: unknown, label: string): asserts value { if (!value) throw new Error(`fulfillment_adapter_conformance:${label}`); }
 const apply = Reflect.apply, NativePromise = Promise, promiseThen = Promise.prototype.then, promisePrototype = Promise.prototype;
+const viewBuffer = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(Uint8Array.prototype), "buffer")!.get!, dataViewBuffer = Object.getOwnPropertyDescriptor(DataView.prototype, "buffer")!.get!;
 /** Read executable containers without invoking accessors or proxy traps, including on prototypes. */
 export function field<T, K extends keyof T>(owner: T, key: K): T[K] {
   for (let node: unknown = owner; node != null; node = Object.getPrototypeOf(node)) {
@@ -150,7 +151,9 @@ export function snapshot<T>(value: T): T {
   const inspect = (node: unknown): unknown => {
     if (!node || typeof node !== "object") return node;
     requireFact(!types.isProxy(node), "validation:proxy");
-    if (ArrayBuffer.isView(node) || types.isAnyArrayBuffer(node)) return node;
+    if (ArrayBuffer.isView(node) || types.isAnyArrayBuffer(node)) {
+      requireFact(!types.isSharedArrayBuffer(types.isAnyArrayBuffer(node) ? node : apply(types.isDataView(node) ? dataViewBuffer : viewBuffer, node, [])), "validation:shared_memory"); return node;
+    }
     requireFact(!seen.has(node), "validation:cyclic_data"); seen.add(node);
     const descriptors = Object.getOwnPropertyDescriptors(node), output: Record<string, unknown> = Object.create(null);
     for (const key of Reflect.ownKeys(descriptors)) {
@@ -161,6 +164,6 @@ export function snapshot<T>(value: T): T {
     }
     seen.delete(node); return types.isNativeError(node) ? output : (Array.isArray(node) ? Object.assign([], output) : output);
   };
-  try { return structuredClone(inspect(value)) as T; } catch { throw new Error("fulfillment_adapter_conformance:validation:uncloneable_data"); }
+  try { return structuredClone(inspect(value)) as T; } catch (error) { if (error instanceof Error && error.message === "fulfillment_adapter_conformance:validation:shared_memory") throw error; throw new Error("fulfillment_adapter_conformance:validation:uncloneable_data"); }
 }
 export function freeze<T>(value: T): T { if (value && typeof value === "object" && !ArrayBuffer.isView(value)) { Object.values(value).forEach(freeze); Object.freeze(value); } return value; }

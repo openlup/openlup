@@ -226,8 +226,10 @@ These local witnesses establish no deployed-target or provider qualification.
 For adapter authors using this development preview, the experimental
 `@openlup/platform/fulfillment/testing` entry re-exports the existing runner and
 captured dispatch adapter. `createScriptedFulfillmentFake` supplies per-operation
-FIFO scripts with `enqueue`, `invoke`, `calls` and `assertDrained`. It records only
-operation keys and outcome kinds. Use neutral operation keys; keep credentials,
+FIFO scripts with `enqueue`, `invoke`, `calls` and `assertDrained`. Enqueue copies
+data and validates each closed outcome envelope once; accessors and shared memory
+refuse. Construct transport responses from copied body/status data at the injected
+fetch boundary. It records only operation keys and outcome kinds. Use neutral operation keys; keep credentials,
 raw captures and customer data out of scripts and expectations. The kit bundles
 no capture corpus and makes no network calls, timers or retries.
 
@@ -238,10 +240,11 @@ import {
 } from "@openlup/platform/fulfillment/testing";
 import type { FulfillmentAdapterTestSubject } from "@openlup/platform/fulfillment/testing";
 
-const fake = createScriptedFulfillmentFake<{ submit: Response }>();
-fake.enqueue("submit", { kind: "success", value: new Response("{}") });
+const fake = createScriptedFulfillmentFake<{ submit: { body: string; status: number } }>();
+fake.enqueue("submit", { kind: "success", value: { body: "{}", status: 200 } });
 // Consume this illustrative script; in an adapter bind invoke at its injected fetch boundary.
-await fake.invoke("submit");
+const captured = await fake.invoke("submit");
+new Response(captured.body, { status: captured.status });
 fake.assertDrained();
 
 export async function certify(adapterSubject: FulfillmentAdapterTestSubject) {
@@ -253,7 +256,7 @@ Supply `FulfillmentAdapterTestSubject.certification` and opt into `{ mode: "full
 The runner reads the mode once and snapshots capabilities, fixtures and certification
 data before any adapter call. One closed schema validates these copies. Inputs,
 expectations and results are data: proxies, accessors, hidden properties,
-unknown fields, contradictory branches and malformed values fail validation.
+unknown fields, contradictory branches, shared-memory buffers/views and malformed values fail validation.
 Each invocation receives a fresh input copy; its outcome is copied before it is
 classified or compared. An expectation must exist independently before the call.
 Methods, I/O counters, URL/reference callbacks and optional host-store probes are
@@ -269,7 +272,9 @@ The actual and independent expected results must have the same kind and be deepl
 strictly equal. A discriminant alone is insufficient: created labels need a
 parcel reference and document field, available labels need a URL and expiry field,
 and label void needs its complete boolean branch. Unsupported cannot serve as the
-failure witness for a supported operation. Sync success returns a positive
+failure witness for a supported operation, including paged readback and replay.
+Page rows follow the direct-readback absence-capability and observation checks.
+Sync success returns a positive
 snapshot, movement, addressable product pack, nonblank SKU, `{ replayed: false }`
 for product creation, or `undefined` for a pack write. Sync failures use
 `{ input, throws }`; successes use `{ input, expected }`. Mixed roles fail validation.

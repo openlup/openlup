@@ -15,7 +15,8 @@ import { PORTLESS_CAPABILITIES, subjectSchema, snapshot, freeze, results, refusa
 type Subject = FulfillmentAdapterConformanceSubject & Pick<FulfillmentAdapterTestSubject, "adapter" | "certification">;
 type Capability = keyof FulfillmentCapabilityDescriptor["operations"];
 type Entry = FulfillmentQualification["ledger"][number] & { kind: string; value: unknown; input: unknown[]; replay?: boolean };
-type Slot = { op: Operation; input: unknown[]; capability: string; slotId: string; label: string; zero?: string; replay?: boolean; faults?: object; positive?: boolean } & ({ expected: unknown; throws?: never } | { throws: FulfillmentRefusal; expected?: never });
+const operationCapabilities = { selection: "dispatch", preparation: "dispatch", mismatch: "dispatch", replay: "dispatch", observationReplay: "verifyObservation" } as const;
+type Slot = { op: Operation; input: unknown[]; capability: Capability | keyof typeof operationCapabilities | `native:${string}`; slotId: string; label: string; zero?: string; replay?: boolean; faults?: object; positive?: boolean } & ({ expected: unknown; throws?: never } | { throws: FulfillmentRefusal; expected?: never });
 const same = (actual: unknown, expected: unknown, label: string) => requireFact(isDeepStrictEqual(actual, expected), label);
 const unsupported = (phase: FulfillmentRefusal["phase"]): FulfillmentRefusal => ({ reason: "unsupported", phase, retryable: false });
 const transportNames = ["transport-before-submission", "transport-after-submission", "http-failure"] as const;
@@ -74,6 +75,11 @@ export async function runFulfillmentAdapterConformance(subjects: readonly Subjec
         requireFact(checked.success && expectedChecked.success, `${slot.label} contradictory result: validation`);
         actual = value; expected = slot.expected;
       }
+      const readbacks = slot.op === "page" && (actual as z.output<typeof results.page>).kind === "page" ? (actual as Extract<z.output<typeof results.page>, { kind: "page" }>).rows : slot.op === "readback" ? [actual as z.output<typeof results.readback>] : [];
+      for (const row of readbacks) {
+        if (row.kind === "absent") requireFact(caps.operations.exactAbsence.supported, "unsupported exact absence refuses");
+        if (row.kind === "found") same(row.observation, projectObservation(row.observation, subject.approveTrackingUrl, subject.observationCodecs), "readback observation allowlist");
+      }
       const classify = (value: unknown): { kind: string; role: Entry["role"] } => {
         if (expectedThrow) return { kind: "refused", role: "failure" };
         if (slot.op === "void") return { kind: (value as { canProceed: boolean }).canProceed ? "voided" : "refused", role: (value as { canProceed: boolean }).canProceed ? "success" : "failure" };
@@ -86,9 +92,9 @@ export async function runFulfillmentAdapterConformance(subjects: readonly Subjec
       const credit = classify(actual); requireFact(credit.kind === classify(expected).kind, `${slot.label} result kind mismatch`); same(actual, expected, slot.label);
       requireFact(!slot.positive || credit.role === "success", `${slot.label} positive success required`);
       const reason = expectedThrow ? (actual as FulfillmentRefusal).reason : (actual as { refusal?: FulfillmentRefusal } | null)?.refusal?.reason;
-      const supported = caps.operations[slot.capability as Capability]?.supported;
-      requireFact(!(mode === "full" && supported && credit.role === "failure" && reason === "unsupported"), `${slot.label} supported_failure_unsupported`);
-      if (supported === false && slot.op !== "native" && !(mode === "baseline" && slot.op === "read" && caps.labelReadOwner === "host_storage" && credit.kind === "available")) requireFact(credit.role === "failure" && reason === "unsupported", `unsupported ${slot.capability} explicit refusal`);
+      const supported = caps.operations[(operationCapabilities[slot.capability as keyof typeof operationCapabilities] ?? slot.capability) as Capability]?.supported;
+      requireFact(!(mode === "full" && supported && ((credit.role === "failure" && reason === "unsupported") || (slot.op === "page" && readbacks.some(row => "refusal" in row && row.refusal.reason === "unsupported")))), `${slot.label} supported_failure_unsupported`);
+      if (supported === false && slot.op !== "native" && slot.capability !== "selection" && slot.capability !== "preparation" && !(mode === "baseline" && slot.op === "read" && caps.labelReadOwner === "host_storage" && credit.kind === "available")) requireFact(credit.role === "failure" && reason === "unsupported", `unsupported ${slot.capability} explicit refusal`);
       requireFact(!slot.zero || ioDelta === 0, slot.zero ?? "zero I/O");
       if (mode === "full" && reason === "untrusted") requireFact(ioDelta === 0, "authentication refusal before I/O");
       if (!(slot.op === "read" && credit.kind === "available")) assertDurable(actual, subject);
@@ -133,8 +139,8 @@ export async function runFulfillmentAdapterConformance(subjects: readonly Subjec
     for (const [i, row] of (fixtures.readback ?? []).entries()) {
       const result = await witness({ op: "readback", capability: "readback", slotId: kit?.exceptions?.returned === i ? "exception:returned" : kit?.exceptions?.lostCoarse === i ? "exception:lostCoarse" : `readback:${i}`, input: row.input, expected: row.expected, zero: !caps.operations.readback.supported && mode === "full" ? "unsupported readback before I/O" : undefined, label: "readback fixture" });
       if (row.localMissing) requireFact(result.kind === "unknown" && result.refusal.reason === "local_missing", "local missing is never absence");
-      if (result.kind === "absent") { requireFact(caps.operations.exactAbsence.supported, "unsupported exact absence refuses"); const { mode: _mode, ...scope } = row.input[0]; same(result.scope, scope, "absence scope"); }
-      if (result.kind === "found") { requireFact(result.externalRef === row.input[0].externalRef || row.input[0].externalRef === null, "found identity"); same(result.observation, projectObservation(result.observation, subject.approveTrackingUrl, subject.observationCodecs), "readback observation allowlist"); }
+      if (result.kind === "absent") { const { mode: _mode, ...scope } = row.input[0]; same(result.scope, scope, "absence scope"); }
+      if (result.kind === "found") requireFact(result.externalRef === row.input[0].externalRef || row.input[0].externalRef === null, "found identity");
       passed(`readback ${result.kind}`);
     }
     for (const name of ["stockSync", "productSync"] as const) {
@@ -155,7 +161,7 @@ export async function runFulfillmentAdapterConformance(subjects: readonly Subjec
         await witness({ op: "native", capability: "native:format", slotId: "native:format", input: [], expected: { kind: "refused", refusal: { reason: "label_format_unsupported", phase: "selection", retryable: false } }, zero: "native format before I/O", label: "native label_format_unsupported" }); passed("native refusal:label_format_unsupported");
         if (kit!.observation) for (const name of ["duplicate", "outOfOrder"] as const) for (const [i, index] of kit!.observation[name].entries()) await observe(index, `${name}:${i}`, false);
         for (const name of ["stockSync", "productSync"] as const) for (const row of (kit![name] ?? []) as NonNullable<NonNullable<FulfillmentAdapterTestSubject["certification"]>[typeof name]>) for (const role of ["success", "failure"] as const) await witness({ op: row.operation, capability: name === "stockSync" ? "syncStock" : "syncProducts", slotId: `full:${row.operation}:${role}`, ...row[role], positive: role === "success", label: `full ${row.operation}` });
-        if (kit!.paging) for (const name of ["full", "short", "empty", "exhausted", "failure"] as const) await witness({ op: "page", capability: "paging", slotId: `paging:${name}`, input: [kit!.paging[name].input], expected: kit!.paging[name].expected, positive: name === "full" || name === "short", label: `full paging ${name}` });
+        if (kit!.paging) for (const name of ["full", "short", "empty", "exhausted", "failure"] as const) await witness({ op: "page", capability: "readback", slotId: `paging:${name}`, input: [kit!.paging[name].input], expected: kit!.paging[name].expected, positive: name === "full" || name === "short", label: `full paging ${name}` });
         if (caps.operations.exactAbsence.supported) for (const kind of ["absent", "unknown"] as const) {
           const row = fixtures.readback?.find(row => row.expected.kind === kind); requireFact(row, "full authoritative absence and failure required");
           await witness({ op: "readback", capability: "exactAbsence", slotId: `exactAbsence:${kind}`, input: row.input, expected: row.expected, label: "exactAbsence fixture" });

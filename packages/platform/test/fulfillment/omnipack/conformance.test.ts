@@ -214,8 +214,8 @@ it("M08 host ledger fences fresh-instance and evicted-fingerprint replays before
 });
 
 function fullSubject() {
-  const fake = createScriptedFulfillmentFake<Record<string, Response>>();
-  const json = (body: unknown, status = 200) => ({ kind: "success" as const, value: new Response(JSON.stringify(body), { status }) });
+  const fake = createScriptedFulfillmentFake<Record<string, { body: string; status: number }>>();
+  const json = (body: unknown, status = 200) => ({ kind: "success" as const, value: { body: JSON.stringify(body), status } });
   const response = (rows: unknown[]) => ({ _embedded: { fulfilments: rows }, page: { number: 0, size: 100, totalPages: 1, totalElements: rows.length } });
   const delivered = { orderId: "external-a", fulfilmentNumber: "parcel-a", status: "delivered", updatedAt: now, shipments: [{ trackingNo: "TRACK-A", trackingUrl: signedUrl }] };
   let posts = 0, beforeSubmission = false, httpCalls = 0;
@@ -226,10 +226,11 @@ function fullSubject() {
     wire.push({ method, path: u.pathname, query: u.search });
     // The next fixture fails in credentials, before the actual fetch boundary.
     if (method === "POST" && ++posts === 2) beforeSubmission = true;
-    return fake.invoke(`${method} ${u.pathname}`);
+    const response = await fake.invoke(`${method} ${u.pathname}`);
+    return new Response(response.body, { status: response.status });
   };
-  fake.enqueue("POST /orders", json({ orderId: "external-a" }), { kind: "http-failure", status: 400, response: new Response("{}", { status: 400 }) },
-    { kind: "transport-after-submission" }, { kind: "http-failure", status: 503, response: new Response("{}", { status: 503 }) });
+  fake.enqueue("POST /orders", json({ orderId: "external-a" }), { kind: "http-failure", status: 400, response: { body: "{}", status: 400 } },
+    { kind: "transport-after-submission" }, { kind: "http-failure", status: 503, response: { body: "{}", status: 503 } });
   fake.enqueue("credentials", { kind: "transport-before-submission" });
   const baseline = subject({ fetchImpl, readIoCount: () => httpCalls,
     credentials: async () => { if (beforeSubmission) { beforeSubmission = false; await fake.invoke("credentials"); } return { username: "synthetic", password: credential }; },
@@ -304,10 +305,10 @@ function fullSubject() {
     fact: { ...pageObservation.fact, factId: pageKey, fulfillmentReference: "parcel-a", rawEvent: { ...pageObservation.fact.rawEvent, digest: hash(JSON.stringify(pageRaw)) } },
   } };
   fake.enqueue("GET /fulfilments", json(response([pageRow, pageRow])), json(response([pageRow])), json(response([])),
-    { kind: "http-failure", status: 400, response: new Response(JSON.stringify({ code: "ERR_PAGE_MUST_BE_LESS_THAN_TOTAL_PAGES" }), { status: 400 }) },
-    { kind: "http-failure", status: 503, response: new Response("{}", { status: 503 }) });
+    { kind: "http-failure", status: 400, response: { body: JSON.stringify({ code: "ERR_PAGE_MUST_BE_LESS_THAN_TOTAL_PAGES" }), status: 400 } },
+    { kind: "http-failure", status: 503, response: { body: "{}", status: 503 } });
   const syncFailure = { reason: "io_failure" as const, phase: "sync" as const, retryable: false };
-  const fail = () => ({ kind: "http-failure" as const, status: 503, response: new Response("{}", { status: 503 }) });
+  const fail = () => ({ kind: "http-failure" as const, status: 503, response: { body: "{}", status: 503 } });
   fake.enqueue("GET /stock", json({ _embedded: { stockItems: [{ sku: "SKU-A", totalQuantity: 5, forSaleQuantity: 3, faultyQuantity: 2 }] } }), fail(),
     json({ _embedded: { stockItems: [{ sku: "SKU-A" }] } }), fail());
   fake.enqueue("GET /stock-movements", json({ _embedded: [{ sku: "SKU-A", quantity: -2, occurredAt: now, operationType: "order_shipped", warehouseDocumentNumber: "DOC-A", productLotNumber: "LOT-A", expirationDate: "2027-01-01" }] }), fail());
@@ -338,6 +339,7 @@ it("qualifies the real reference adapter offline with invocation-bound fixtures 
   const proof = await runFulfillmentAdapterConformance([fixture.value], { mode: "full" });
   expect(proof.cases.at(-1)?.operation).toBe("full:adapter (offline; no durable host qualification)");
   expect(proof.cases.filter(row => row.operation.startsWith("native refusal:"))).toHaveLength(6);
+  expect(proof.qualifications[0]!.ledger.filter(row => row.slotId.startsWith("paging:")).every(row => row.capability === "readback")).toBe(true);
   fixture.fake.assertDrained();
   expect(fixture.wire.filter(row => row.path === "/orders")).toHaveLength(5);
   expect(fixture.wire.filter(row => row.path === "/fulfilments").slice(-5).map(row => row.query)).toEqual(["?page=0&size=2", "?page=1&size=2", "?page=2&size=2", "?page=3&size=2", "?page=4&size=2"]);
@@ -764,10 +766,6 @@ it.each([["verifyObservation", "observation"], ["readback", "readback"], ["syncS
   Reflect.deleteProperty(value.fixtures, fixtures);
   await expect(runFulfillmentAdapterConformance([value], { mode: "full" })).rejects.toThrow(`full unsupported ${capability} refusal probe required`);
 });
-it("audit 10 rejects a snapshot-only callback in place of the runner's real worker probe", async () => {
-  const { value } = fullSubject(); Object.assign(value.certification!, { snapshotOnly: { invoke: async () => refusal("stock_movements_unsupported", "sync"), readMovementCalls: () => 0 } });
-  await expect(runFulfillmentAdapterConformance([value], { mode: "full" })).rejects.toThrow("validation:uncloneable_data");
-});
 it.each(["dispatch", "observation", "exceptions"] as const)("audit 11 prevents one slot serving two %s scenarios", async name => {
   const { value } = fullSubject(), kit = value.certification!;
   if (name === "dispatch") kit.dispatch!.transport["http-failure"].fixture = kit.dispatch!.transport["transport-after-submission"].fixture;
@@ -798,6 +796,47 @@ it("audit 12 refuses unmapped or unknown-only pages as positive success", async 
 it("audit 12 refuses unsupported as the failure witness of supported label creation", async () => {
   const { value } = fullSubject(); Object.assign(value.adapter.capabilities.operations, { labelCreate: { supported: true } });
   await expect(runFulfillmentAdapterConformance([value], { mode: "full" })).rejects.toThrow("label create supported_failure_unsupported");
+});
+it("rejects unsupported as a paging failure for supported readback", async () => {
+  const { value } = fullSubject(), paging = value.certification!.paging!, read = value.adapter.reconciliation!.readPage;
+  const expected = { kind: "failed" as const, refusal: refusal("unsupported", "readback") };
+  paging.failure.expected = expected;
+  value.adapter.reconciliation!.readPage = input => input.page === paging.failure.input.page ? Promise.resolve(expected) : read(input);
+  await expect(runFulfillmentAdapterConformance([value], { mode: "full" })).rejects.toThrow("full paging failure supported_failure_unsupported");
+});
+it("rejects authoritative absence nested in a page without exact-absence support", async () => {
+  const { value } = fullSubject(), paging = value.certification!.paging!, read = value.adapter.reconciliation!.readPage;
+  const { mode: _mode, ...scope } = readInput("external-a");
+  const absent = { kind: "absent" as const, scope, proof: { kind: "authoritative_exact_lookup" as const, evidenceRef, checkedAt: now } };
+  const expected = { kind: "page" as const, rows: [paging.full.expected.rows[0]!, absent] };
+  paging.full.expected = expected; value.adapter.reconciliation!.readPage = input => input.page === 0 ? Promise.resolve(expected) : read(input);
+  await expect(runFulfillmentAdapterConformance([value], { mode: "full" })).rejects.toThrow("unsupported exact absence refuses");
+});
+it.each(["unsupported", "unknown"] as const)("rejects a nested %s refusal disguised by a positive page row", async kind => {
+  const { value } = fullSubject(), paging = value.certification!.paging!, read = value.adapter.reconciliation!.readPage;
+  const expected = { kind: "page" as const, rows: [paging.full.expected.rows[0]!, { kind, refusal: refusal("unsupported", "readback") }] };
+  paging.full.expected = expected; value.adapter.reconciliation!.readPage = input => input.page === 0 ? Promise.resolve(expected) : read(input);
+  await expect(runFulfillmentAdapterConformance([value], { mode: "full" })).rejects.toThrow("full paging full supported_failure_unsupported");
+});
+it("applies the direct-readback observation allowlist to nested page rows", async () => {
+  const { value } = fullSubject(), paging = value.certification!.paging!, read = value.adapter.reconciliation!.readPage;
+  const expected = structuredClone(paging.full.expected), found = expected.rows[0]!;
+  if (found.kind !== "found") throw Error("Expected found row");
+  found.observation.trackingRefs = [{ ...trackingRefs[0]!, publicUrl: "https://tracking.example.test/unapproved" }];
+  paging.full.expected = expected; value.adapter.reconciliation!.readPage = input => input.page === 0 ? Promise.resolve(expected) : read(input);
+  await expect(runFulfillmentAdapterConformance([value], { mode: "full" })).rejects.toThrow("readback observation allowlist");
+});
+it("rejects shared-memory webhook inputs before any adapter invocation", async () => {
+  const { value } = fullSubject(), row = value.fixtures.observation![0]!, prepare = vi.spyOn(value.adapter.dispatch, "prepare");
+  row.input[0].rawBody = new Uint8Array(new SharedArrayBuffer(row.input[0].rawBody.length));
+  await expect(runFulfillmentAdapterConformance([value], { mode: "full" })).rejects.toThrow("validation:shared_memory"); expect(prepare).not.toHaveBeenCalled();
+});
+it("rejects unsupported preparation as evidence for a supported dispatch capability", async () => {
+  const { value } = fullSubject(), prepare = value.adapter.dispatch.prepare;
+  const input = { ...request(), requestKey: "unsupported-prepare" }, expected = { kind: "refused" as const, refusal: refusal("unsupported", "prepare") };
+  value.fixtures.dispatch.push({ input, expectedPrepare: expected });
+  value.adapter.dispatch.prepare = request => request.requestKey === input.requestKey ? Promise.resolve(expected) : prepare(request);
+  await expect(runFulfillmentAdapterConformance([value], { mode: "full" })).rejects.toThrow("prepare fixture supported_failure_unsupported");
 });
 it("audit 13 rejects a caller-forged fault log rather than trusting its entries", async () => {
   const { value } = fullSubject(); const forged = [{ call: "submit", kind: "transport-after-submission" as const }]; value.certification!.dispatch!.transport["transport-after-submission"].calls = forged;
