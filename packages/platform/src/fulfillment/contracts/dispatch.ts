@@ -7,8 +7,15 @@ export interface FulfillmentSelection {
   deliveryKind: DeliveryKind;
   pickupPoint: PickupPoint | null;
 }
+export const FULFILLMENT_REFUSAL_REASONS = Object.freeze([
+  "dispatch_reservations_not_recorded", "order_mode_unproven", "payment_not_succeeded", "subscription_cycle_not_paid", "not_dispatchable",
+  "selection_required", "provider_mismatch", "carrier_service_required", "disabled", "not_ready", "unsupported", "withheld", "claim_conflict",
+  "contact_stale", "stock_contention", "local_missing", "io_failure", "malformed", "untrusted", "unsupported_event", "stale", "missing_correlation",
+  "provider_reservations_unsupported", "stock_consumption_policy_unsupported", "stock_movements_unsupported", "independent_split_unsupported",
+  "pickup_point_delivery_unsupported", "label_create_unsupported", "label_void_unsupported", "provider_cancel_unsupported", "label_format_unsupported",
+] as const);
 export interface FulfillmentRefusal {
-  reason: "dispatch_reservations_not_recorded" | "order_mode_unproven" | "payment_not_succeeded" | "subscription_cycle_not_paid" | "not_dispatchable" | "selection_required" | "provider_mismatch" | "carrier_service_required" | "disabled" | "not_ready" | "unsupported" | "withheld" | "claim_conflict" | "contact_stale" | "stock_contention" | "local_missing" | "io_failure" | "malformed" | "untrusted" | "unsupported_event" | "stale" | "missing_correlation" | "provider_reservations_unsupported" | "stock_consumption_policy_unsupported" | "stock_movements_unsupported" | "independent_split_unsupported" | "pickup_point_delivery_unsupported" | "label_create_unsupported" | "label_void_unsupported" | "provider_cancel_unsupported" | "label_format_unsupported";
+  reason: typeof FULFILLMENT_REFUSAL_REASONS[number];
   phase: "selection" | "prepare" | "claim" | "begin" | "dispatch" | "acknowledge" | "verify" | "normalize" | "apply" | "readback" | "sync";
   retryable: boolean;
 }

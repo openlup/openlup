@@ -2,6 +2,10 @@ import { createHash } from "node:crypto";
 import { expect, expectTypeOf, it } from "vitest";
 import { createCapturedFulfillmentAdapter, runFulfillmentAdapterConformance as run } from "../../src/fulfillment/testing/index.js";
 import type { FulfillmentAdapterTestSubject } from "../../src/fulfillment/testing/index.js";
+import type { FulfillmentAdapterConformanceSubject } from "../../src/fulfillment/contracts/index.js";
+import { FULFILLMENT_REFUSAL_REASONS } from "../../src/fulfillment/contracts/dispatch.js";
+import { isCapturedFulfillmentAdapter } from "../../src/fulfillment/capturedAdapter.js";
+import { refusal } from "../../src/fulfillment/testing/schema.js";
 import { request } from "./fixtures.js";
 
 it("types every sync slot with mutually exclusive success and failure roles", () => {
@@ -19,7 +23,7 @@ it("types every sync slot with mutually exclusive success and failure roles", ()
   expectTypeOf<NonNullable<Kit["paging"]>["exhausted"]["expected"]["kind"]>().toEqualTypeOf<"page_exhausted">();
 });
 
-function capturedSubject(): FulfillmentAdapterTestSubject {
+function capturedSubject(): Omit<FulfillmentAdapterTestSubject, "fixtures"> & Pick<FulfillmentAdapterConformanceSubject, "fixtures"> {
   const canonical = (value: unknown): string => Array.isArray(value) ? `[${value.map(canonical).join(",")}]`
     : value && typeof value === "object" ? `{${Object.entries(value).filter(([, v]) => v !== undefined).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`).join(",")}}`
       : JSON.stringify(value) ?? "null";
@@ -51,8 +55,10 @@ it("retains baseline callers and fails full qualification on omitted fixtures or
   await expect(run([], { mode: "full" })).rejects.toThrow("full subjects required");
   const missing = capturedSubject(); missing.fixtures.dispatch = missing.fixtures.dispatch.filter(row => row.expectedDispatch?.kind !== "unknown");
   await expect(run([missing], { mode: "full" })).rejects.toThrow("unknown replay required");
-  const inflated = capturedSubject(); inflated.adapter.capabilities.operations = { ...inflated.adapter.capabilities.operations, pickupPoint: { supported: true } };
-  await expect(run([inflated], { mode: "full" })).rejects.toThrow("dispatch-only capability profile");
+  const inflated = capturedSubject();
+  expect(() => { inflated.adapter.capabilities.operations = { ...inflated.adapter.capabilities.operations, pickupPoint: { supported: true } }; }).toThrow(TypeError);
+  inflated.adapter = { ...inflated.adapter, capabilities: { ...inflated.adapter.capabilities, operations: { ...inflated.adapter.capabilities.operations, pickupPoint: { supported: true } } } };
+  await expect(run([inflated], { mode: "full" })).rejects.toThrow("capability_not_certifiable:dispatch-only brand");
 });
 
 it("rejects unknown replay declared on a preparation refusal instead of an executed replay", async () => {
@@ -67,8 +73,6 @@ it("rejects unknown replay declared on a preparation refusal instead of an execu
 it("rejects a dispatch-only adapter that refuses every preparation despite declared dispatch outcomes", async () => {
   const subject = capturedSubject();
   const refused = { kind: "refused" as const, refusal: { reason: "not_dispatchable" as const, phase: "prepare" as const, retryable: false } };
-  const prepare = subject.adapter.dispatch.prepare;
-  subject.adapter.dispatch.prepare = input => input.selection.providerRef ? Promise.resolve(refused) : prepare(input);
   subject.fixtures.dispatch = subject.fixtures.dispatch.map(row => ({ ...row, expectedPrepare: refused }));
   await expect(run([subject], { mode: "full" })).rejects.toThrow("refused preparation cannot declare dispatch or replay");
 });
@@ -92,11 +96,11 @@ it.each(["unknown", "not_dispatched"] as const)("rejects a %s discriminant with 
   const subject = capturedSubject(), dispatch = subject.adapter.dispatch.dispatch;
   const row = subject.fixtures.dispatch.find(row => row.expectedDispatch?.kind === kind)!;
   Object.assign(row.expectedDispatch!, { effectMayHaveSucceeded: kind !== "unknown" });
-  subject.adapter.dispatch.dispatch = async (...input) => {
+  subject.adapter = { ...subject.adapter, dispatch: { ...subject.adapter.dispatch, dispatch: async (...input) => {
     const result = await dispatch(...input);
     return result.kind === kind && !input[1].commandFingerprint.endsWith(":mismatch")
       ? Object.assign(result, { effectMayHaveSucceeded: kind !== "unknown" }) : result;
-  };
+  } } };
   await expect(run([subject], { mode: "full" })).rejects.toThrow("validation:fixtures");
 });
 
@@ -111,10 +115,42 @@ it("audit 14 refuses non-array and empty subjects and records mode, profile, cap
 it("audit 6 snapshots options once and rejects hidden or accessor capability data", async () => {
   const options = { get mode() { return "full" as const; } };
   await expect(run([capturedSubject()], options)).rejects.toThrow("validation:uncloneable_data");
-  const value = capturedSubject(); Object.defineProperty(value.adapter.capabilities.operations, "labelCreate", { enumerable: false, value: { supported: true } });
+  const value = capturedSubject(); value.adapter = { ...value.adapter, capabilities: structuredClone(value.adapter.capabilities) };
+  Object.defineProperty(value.adapter.capabilities.operations, "labelCreate", { enumerable: false, value: { supported: true } });
   await expect(run([value], { mode: "full" })).rejects.toThrow("validation:uncloneable_data");
 });
 it("audit 9 refuses a dispatch-only profile without the captured adapter brand", async () => {
   const value = capturedSubject(); value.adapter = { ...value.adapter };
   await expect(run([value], { mode: "full" })).rejects.toThrow("capability_not_certifiable:dispatch-only brand");
+});
+
+it.each(["port", "prepare", "dispatch"] as const)("binds audit 9's brand to the frozen original %s and refuses swapped qualification", async slot => {
+  const value = capturedSubject(), adapter = value.adapter, port = adapter.dispatch;
+  const replacement = { ...port, prepare: port.prepare.bind(port), dispatch: port.dispatch.bind(port) };
+  expect(Reflect.set(slot === "port" ? adapter : port, slot === "port" ? "dispatch" : slot, slot === "port" ? replacement : replacement[slot])).toBe(false);
+  expect(isCapturedFulfillmentAdapter(adapter, port, port.prepare, port.dispatch)).toBe(true);
+  expect(isCapturedFulfillmentAdapter(adapter, slot === "port" ? replacement : port, slot === "prepare" ? replacement.prepare : port.prepare, slot === "dispatch" ? replacement.dispatch : port.dispatch)).toBe(false);
+  for (const object of [adapter, port, port.prepare, port.dispatch, adapter.capabilities, adapter.capabilities.operations.dispatch]) expect(Object.isFrozen(object)).toBe(true);
+  value.adapter = { ...adapter, dispatch: slot === "port" ? replacement : { ...port, [slot]: replacement[slot] } };
+  await expect(run([value], { mode: "full" })).rejects.toThrow("capability_not_certifiable:dispatch-only brand");
+  delete value.certification!.profile;
+  await expect(run([value], { mode: "full" })).rejects.toThrow("full unsupported labelCreate refusal probe required");
+});
+
+it("derives every refusal fixture reason from the dispatch contract tuple", () => {
+  expect(Object.isFrozen(FULFILLMENT_REFUSAL_REASONS)).toBe(true);
+  for (const reason of FULFILLMENT_REFUSAL_REASONS) expect(refusal.parse({ reason, phase: "prepare", retryable: false }).reason).toBe(reason);
+  expect(refusal.safeParse({ reason: "invented", phase: "prepare", retryable: false }).success).toBe(false);
+});
+
+it("types testing dispatch fixtures as exclusive refused-preparation and prepared-dispatch roles", () => {
+  type Row = FulfillmentAdapterTestSubject["fixtures"]["dispatch"][number];
+  type Input = Row["input"];
+  type Prepared = Extract<Awaited<ReturnType<FulfillmentAdapterTestSubject["adapter"]["dispatch"]["prepare"]>>, { kind: "prepared" }>;
+  type Refused = Extract<Awaited<ReturnType<FulfillmentAdapterTestSubject["adapter"]["dispatch"]["prepare"]>>, { kind: "refused" }>;
+  expectTypeOf<{ input: Input; expectedPrepare: Prepared }>().not.toExtend<Row>();
+  expectTypeOf<{ input: Input; expectedPrepare: Refused; replay: true }>().not.toExtend<Row>();
+  expectTypeOf<{ input: Input; expectedPrepare: Refused; expectedDispatch: NonNullable<Row["expectedDispatch"]> }>().not.toExtend<Row>();
+  expectTypeOf<{ input: Input; expectedPrepare: Refused }>().toExtend<Row>();
+  expectTypeOf<FulfillmentAdapterConformanceSubject["fixtures"]>().not.toExtend<FulfillmentAdapterTestSubject["fixtures"]>();
 });

@@ -231,9 +231,12 @@ function fullSubject() {
   fake.enqueue("POST /orders", json({ orderId: "external-a" }), { kind: "http-failure", status: 400, response: new Response("{}", { status: 400 }) },
     { kind: "transport-after-submission" }, { kind: "http-failure", status: 503, response: new Response("{}", { status: 503 }) });
   fake.enqueue("credentials", { kind: "transport-before-submission" });
-  const value: FulfillmentAdapterTestSubject = subject({ fetchImpl, readIoCount: () => httpCalls,
+  const baseline = subject({ fetchImpl, readIoCount: () => httpCalls,
     credentials: async () => { if (beforeSubmission) { beforeSubmission = false; await fake.invoke("credentials"); } return { username: "synthetic", password: credential }; },
     product: { resolvePushMetadata: async () => ({ sku: "SKU-A" }) } }).value;
+  const value: FulfillmentAdapterTestSubject = { ...baseline, fixtures: { ...baseline.fixtures, dispatch: baseline.fixtures.dispatch.map(row => row.expectedPrepare.kind === "prepared"
+    ? { ...row, expectedPrepare: row.expectedPrepare, expectedDispatch: row.expectedDispatch! }
+    : { input: row.input, expectedPrepare: row.expectedPrepare }) } };
   const dispatchRows = [...value.fixtures.dispatch];
   const dispatchError = (code: string, status: number | null, attempted: boolean) => ({ code, status, retryable: false, mayHaveSucceeded: attempted && status !== 400,
     submissionAttempted: attempted, ...(status === null ? {} : { responseBodyRead: true }) });
@@ -339,6 +342,14 @@ it("qualifies the real reference adapter offline with invocation-bound fixtures 
   expect(fixture.wire.filter(row => row.path === "/orders")).toHaveLength(5);
   expect(fixture.wire.filter(row => row.path === "/fulfilments").slice(-5).map(row => row.query)).toEqual(["?page=0&size=2", "?page=1&size=2", "?page=2&size=2", "?page=3&size=2", "?page=4&size=2"]);
   expect(JSON.stringify(proof)).not.toMatch(/synthetic-credential|synthetic-signature/);
+});
+
+it("requires an explicit unsupported label-read refusal in full mode even with host storage", async () => {
+  const { value } = fullSubject(), available = { kind: "available" as const, url: "https://storage.example.invalid/label", expiresAt: now };
+  value.adapter.capabilities.labelReadOwner = "host_storage";
+  value.adapter.label!.read = async () => available;
+  value.fixtures.label!.read = [{ ...value.fixtures.label!.read![0]!, expected: available }];
+  await expect(runFulfillmentAdapterConformance([value], { mode: "full" })).rejects.toThrow("unsupported labelRead explicit refusal");
 });
 
 it("delivers status tuples explicitly even when fixture storage is oldest first", async () => {

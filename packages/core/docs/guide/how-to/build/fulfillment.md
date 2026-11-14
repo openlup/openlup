@@ -318,6 +318,9 @@ support needs adapter dispatch success and failure witnesses in addition to the
 native execution-limit probe.
 
 Only adapters branded by `createCapturedFulfillmentAdapter` can use `dispatch-only`.
+The factory deeply freezes the adapter, its capabilities, dispatch port and method
+slots. Qualification checks the exact factory-created port and methods it invokes;
+copies or replacement methods cannot inherit the narrower profile.
 The runner derives the profile and checks any supplied profile assertion. Dispatch
 must be that adapter's sole supported operation; its qualification covers only
 preparation and dispatch, and earns no other capability certification. Other
@@ -325,6 +328,8 @@ adapters use the adapter profile. Evidence records mode, derived profile, capabi
 digest, sanitized invocation ledger and port-less declarations, without inputs,
 raw outcomes, credentials or transient URLs. Existing one-argument calls retain
 baseline mode, with shared data validation and no full-coverage claim.
+Baseline mode also retains available host-storage label reads when adapter label
+reading is unsupported; full mode requires an executed unsupported refusal.
 
 Offline evidence does not certify database locks, durable deduplication,
 cancellation races, replacement transactions or delivery alignment. Those require

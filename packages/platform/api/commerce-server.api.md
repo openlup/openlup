@@ -11230,13 +11230,15 @@ export declare function createSupabaseCommerceReturnsPort<Reason extends string 
 ## dist/fulfillment/adapterConformance.d.ts
 
 ```ts
-import type { FulfillmentAdapterConformanceEvidence } from "./contracts/index.js";
+import type { FulfillmentAdapterConformanceEvidence, FulfillmentAdapterConformanceSubject } from "./contracts/index.js";
 import type { FulfillmentAdapterTestSubject, FulfillmentConformanceOptions, FulfillmentQualification } from "./testing/scenarios.js";
+type Subject = FulfillmentAdapterConformanceSubject & Pick<FulfillmentAdapterTestSubject, "adapter" | "certification">;
 /** Snapshot data once; only executed, independently compared invocations can enter the evidence ledger. */
-export declare function runFulfillmentAdapterConformance(subjects: readonly FulfillmentAdapterTestSubject[], options?: FulfillmentConformanceOptions): Promise<FulfillmentAdapterConformanceEvidence & {
+export declare function runFulfillmentAdapterConformance(subjects: readonly Subject[], options?: FulfillmentConformanceOptions): Promise<FulfillmentAdapterConformanceEvidence & {
     mode: "baseline" | "full";
     qualifications: readonly FulfillmentQualification[];
 }>;
+export {};
 ```
 ## dist/fulfillment/bindings.d.ts
 
@@ -11250,7 +11252,7 @@ export declare function createFulfillmentServices(options: FulfillmentServicesOp
 ```ts
 import type { FulfillmentCapabilityDescriptor, FulfillmentDispatchPort, FulfillmentDispatchRequest } from "./contracts/index.js";
 /** Internal profile brand; capability declarations cannot select the captured profile. */
-export declare const isCapturedFulfillmentAdapter: (adapter: object) => boolean;
+export declare function isCapturedFulfillmentAdapter(adapter: object, port: FulfillmentDispatchPort, prepare: FulfillmentDispatchPort["prepare"], dispatch: FulfillmentDispatchPort["dispatch"]): boolean;
 /** Synthetic, host-owned captures only. No command is sent to a provider. */
 export interface CapturedFulfillmentCommand {
     request: FulfillmentDispatchRequest;
@@ -11687,8 +11689,9 @@ export interface FulfillmentSelection {
     deliveryKind: DeliveryKind;
     pickupPoint: PickupPoint | null;
 }
+export declare const FULFILLMENT_REFUSAL_REASONS: readonly ["dispatch_reservations_not_recorded", "order_mode_unproven", "payment_not_succeeded", "subscription_cycle_not_paid", "not_dispatchable", "selection_required", "provider_mismatch", "carrier_service_required", "disabled", "not_ready", "unsupported", "withheld", "claim_conflict", "contact_stale", "stock_contention", "local_missing", "io_failure", "malformed", "untrusted", "unsupported_event", "stale", "missing_correlation", "provider_reservations_unsupported", "stock_consumption_policy_unsupported", "stock_movements_unsupported", "independent_split_unsupported", "pickup_point_delivery_unsupported", "label_create_unsupported", "label_void_unsupported", "provider_cancel_unsupported", "label_format_unsupported"];
 export interface FulfillmentRefusal {
-    reason: "dispatch_reservations_not_recorded" | "order_mode_unproven" | "payment_not_succeeded" | "subscription_cycle_not_paid" | "not_dispatchable" | "selection_required" | "provider_mismatch" | "carrier_service_required" | "disabled" | "not_ready" | "unsupported" | "withheld" | "claim_conflict" | "contact_stale" | "stock_contention" | "local_missing" | "io_failure" | "malformed" | "untrusted" | "unsupported_event" | "stale" | "missing_correlation" | "provider_reservations_unsupported" | "stock_consumption_policy_unsupported" | "stock_movements_unsupported" | "independent_split_unsupported" | "pickup_point_delivery_unsupported" | "label_create_unsupported" | "label_void_unsupported" | "provider_cancel_unsupported" | "label_format_unsupported";
+    reason: typeof FULFILLMENT_REFUSAL_REASONS[number];
     phase: "selection" | "prepare" | "claim" | "begin" | "dispatch" | "acknowledge" | "verify" | "normalize" | "apply" | "readback" | "sync";
     retryable: boolean;
 }
@@ -14805,7 +14808,24 @@ export interface FulfillmentAdapterCertificationScenarios {
     };
 }
 /** Baseline callers need no certification fixtures. Full mode requires every applicable witness. */
-export type FulfillmentAdapterTestSubject = FulfillmentAdapterConformanceSubject & {
+export type FulfillmentAdapterTestSubject = Omit<FulfillmentAdapterConformanceSubject, "fixtures"> & {
+    fixtures: Omit<FulfillmentAdapterConformanceSubject["fixtures"], "dispatch"> & {
+        dispatch: readonly ({
+            input: FulfillmentAdapterConformanceSubject["fixtures"]["dispatch"][number]["input"];
+        } & ({
+            expectedPrepare: Extract<Awaited<ReturnType<FulfillmentAdapterConformanceSubject["adapter"]["dispatch"]["prepare"]>>, {
+                kind: "refused";
+            }>;
+            expectedDispatch?: never;
+            replay?: never;
+        } | {
+            expectedPrepare: Extract<Awaited<ReturnType<FulfillmentAdapterConformanceSubject["adapter"]["dispatch"]["prepare"]>>, {
+                kind: "prepared";
+            }>;
+            expectedDispatch: Awaited<ReturnType<FulfillmentAdapterConformanceSubject["adapter"]["dispatch"]["dispatch"]>>;
+            replay?: boolean;
+        }))[];
+    };
     adapter: FulfillmentAdapterConformanceSubject["adapter"] & {
         reconciliation?: FulfillmentObservationPagePort;
     };
@@ -14866,7 +14886,7 @@ type Fault = {
 /** Internal authenticated log reader. Caller arrays cannot supply transport evidence. */
 export declare function readScriptedFulfillmentFaultLog(handle: object): readonly Fault[];
 /** Per-operation FIFO. Inputs, credentials and response bodies are never logged. */
-export declare function createScriptedFulfillmentFake<Calls extends Record<string, unknown>>(): {
+export declare function createScriptedFulfillmentFake<Calls extends Record<string, unknown>>(): Readonly<{
     readonly calls: readonly Readonly<{
         call: keyof Calls;
         kind: ScriptedFulfillmentOutcome<unknown>["kind"];
@@ -14874,7 +14894,7 @@ export declare function createScriptedFulfillmentFake<Calls extends Record<strin
     enqueue<K extends keyof Calls>(call: K, ...outcomes: ScriptedFulfillmentOutcome<Calls[K]>[]): void;
     invoke<K extends keyof Calls>(call: K): Promise<Calls[K]>;
     assertDrained(): void;
-};
+}>;
 export {};
 ```
 ## dist/fulfillment/trackingProgress.d.ts

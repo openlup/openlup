@@ -44,7 +44,15 @@ export interface FulfillmentAdapterCertificationScenarios {
 }
 
 /** Baseline callers need no certification fixtures. Full mode requires every applicable witness. */
-export type FulfillmentAdapterTestSubject = FulfillmentAdapterConformanceSubject & {
+export type FulfillmentAdapterTestSubject = Omit<FulfillmentAdapterConformanceSubject, "fixtures"> & {
+  fixtures: Omit<FulfillmentAdapterConformanceSubject["fixtures"], "dispatch"> & {
+    dispatch: readonly ({
+      input: FulfillmentAdapterConformanceSubject["fixtures"]["dispatch"][number]["input"];
+    } & (
+      | { expectedPrepare: Extract<Awaited<ReturnType<FulfillmentAdapterConformanceSubject["adapter"]["dispatch"]["prepare"]>>, { kind: "refused" }>; expectedDispatch?: never; replay?: never }
+      | { expectedPrepare: Extract<Awaited<ReturnType<FulfillmentAdapterConformanceSubject["adapter"]["dispatch"]["prepare"]>>, { kind: "prepared" }>; expectedDispatch: Awaited<ReturnType<FulfillmentAdapterConformanceSubject["adapter"]["dispatch"]["dispatch"]>>; replay?: boolean }
+    ))[];
+  };
   adapter: FulfillmentAdapterConformanceSubject["adapter"] & { reconciliation?: FulfillmentObservationPagePort };
   certification?: FulfillmentAdapterCertificationScenarios;
 };

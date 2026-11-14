@@ -893,7 +893,8 @@ Supported fails with `capability_not_certifiable`; supported provider cancellati
 also refuses because its platform path cannot witness success. A contract test
 pins the port-less list. Pickup-point support needs adapter success/failure
 witnesses in addition to the native refusal probe. Only the captured adapter's
-factory brand permits the derived `dispatch-only` profile, with no other
+factory brand, bound to its deeply frozen dispatch port and exact invoked methods,
+permits the derived `dispatch-only` profile, with no other
 capability certification. Evidence includes mode, profile, a capability digest,
 the sanitized ledger and port-less declarations. Offline evidence does not
 establish database locking, durable deduplication, cancellation races, replacement

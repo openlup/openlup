@@ -1,6 +1,7 @@
 import { isDeepStrictEqual, types } from "node:util";
 import { z } from "zod";
 import { parseFulfillmentFact } from "../normalizedFulfillmentFacts.js";
+import { FULFILLMENT_REFUSAL_REASONS } from "../contracts/dispatch.js";
 import type { FulfillmentDispatchPort, FulfillmentLabelPort, FulfillmentObservationPort, FulfillmentReadbackPort, FulfillmentObservationPagePort, FulfillmentStockSyncProvider, FulfillmentProductSyncProvider, FulfillmentRefusal } from "../contracts/index.js";
 type Returned<M extends (...args: never[]) => unknown> = Awaited<ReturnType<M>>;
 type ResultTypes = {
@@ -15,11 +16,7 @@ type ResultTypes = {
 
 export const PORTLESS_CAPABILITIES = Object.freeze(["courierPickup"] as const);
 const s = z.string(), token = s.refine(value => Boolean(value.trim())), n = z.number(), count = n.int().nonnegative(), nullable = s.nullable();
-export const refusal = z.strictObject({ reason: z.enum(["not_dispatchable", "selection_required", "provider_mismatch", "carrier_service_required", "disabled",
-  "not_ready", "unsupported", "withheld", "claim_conflict", "contact_stale", "stock_contention", "local_missing", "io_failure", "malformed", "untrusted",
-  "unsupported_event", "stale", "missing_correlation", "provider_reservations_unsupported", "stock_consumption_policy_unsupported", "stock_movements_unsupported",
-  "independent_split_unsupported", "pickup_point_delivery_unsupported", "label_create_unsupported", "label_void_unsupported", "provider_cancel_unsupported",
-  "label_format_unsupported"]), phase: z.enum(["selection", "prepare", "claim", "begin", "dispatch", "acknowledge", "verify", "normalize", "apply", "readback",
+export const refusal = z.strictObject({ reason: z.enum(FULFILLMENT_REFUSAL_REASONS), phase: z.enum(["selection", "prepare", "claim", "begin", "dispatch", "acknowledge", "verify", "normalize", "apply", "readback",
   "sync"]), retryable: z.boolean() });
 const no = z.strictObject({ supported: z.literal(false), reason: z.enum(["not_exposed", "host_only", "not_implemented"]) }), support = z.union([z.strictObject({ supported: z.literal(true) }), no]);
 const capabilities = z.strictObject({ providerRef: token, role: z.enum(["warehouse", "direct_carrier", "manual", "simulator"]), operations: z.strictObject({ dispatch: support,

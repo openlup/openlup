@@ -12,7 +12,7 @@ import { runFulfillmentStockSyncWorker } from "./providerStockSyncWorker.js";
 import { readScriptedFulfillmentFaultLog } from "./testing/scriptedFake.js";
 import { PORTLESS_CAPABILITIES, subjectSchema, snapshot, freeze, results, refusal, requireFact, type Operation } from "./testing/schema.js";
 
-type Subject = FulfillmentAdapterConformanceSubject;
+type Subject = FulfillmentAdapterConformanceSubject & Pick<FulfillmentAdapterTestSubject, "adapter" | "certification">;
 type Capability = keyof FulfillmentCapabilityDescriptor["operations"];
 type Entry = FulfillmentQualification["ledger"][number] & { kind: string; value: unknown; input: unknown[]; replay?: boolean };
 type Slot = { op: Operation; input: unknown[]; capability: string; slotId: string; label: string; zero?: string; replay?: boolean; faults?: object; positive?: boolean } & ({ expected: unknown; throws?: never } | { throws: FulfillmentRefusal; expected?: never });
@@ -20,23 +20,23 @@ const same = (actual: unknown, expected: unknown, label: string) => requireFact(
 const unsupported = (phase: FulfillmentRefusal["phase"]): FulfillmentRefusal => ({ reason: "unsupported", phase, retryable: false });
 const transportNames = ["transport-before-submission", "transport-after-submission", "http-failure"] as const;
 /** Snapshot data once; only executed, independently compared invocations can enter the evidence ledger. */
-export async function runFulfillmentAdapterConformance(subjects: readonly FulfillmentAdapterTestSubject[], options: FulfillmentConformanceOptions = { mode: "baseline" }): Promise<FulfillmentAdapterConformanceEvidence & { mode: "baseline" | "full"; qualifications: readonly FulfillmentQualification[] }> {
+export async function runFulfillmentAdapterConformance(subjects: readonly Subject[], options: FulfillmentConformanceOptions = { mode: "baseline" }): Promise<FulfillmentAdapterConformanceEvidence & { mode: "baseline" | "full"; qualifications: readonly FulfillmentQualification[] }> {
   const mode = z.strictObject({ mode: z.enum(["baseline", "full"]) }).parse(snapshot(options)).mode;
-  requireFact(mode === "baseline" || mode === "full", "qualification mode");
   requireFact(Array.isArray(subjects) && !types.isProxy(subjects) && subjects.length > 0, "full subjects required: nonempty array");
   requireFact(Reflect.ownKeys(subjects).every(key => typeof key === "string" && (key === "length" || /^(0|[1-9][0-9]*)$/.test(key)) && !Object.getOwnPropertyDescriptor(subjects, key)?.get), "validation:subjects");
   const subjectList = Array.from({ length: subjects.length }, (_, index) => subjects[index]!);
-  const preparedSubjects = subjectList.map((subject: FulfillmentAdapterTestSubject) => {
+  const preparedSubjects = subjectList.map((subject: Subject) => {
     requireFact(!types.isProxy(subject), "validation:subject_proxy");
     const adapter = subject.adapter, certification = subject.certification;
     const data = { subjectId: subject.subjectId, capabilities: adapter.capabilities, sensitiveValues: subject.sensitiveValues, fixtures: subject.fixtures, ...(certification ? { certification } : {}) };
     const frozen = snapshot(data), checked = subjectSchema.safeParse(frozen);
     requireFact(checked.success, `validation:fixtures ${checked.success ? "" : checked.error.message}`);
-    const profile: "adapter" | "dispatch-only" = isCapturedFulfillmentAdapter(adapter) ? "dispatch-only" : "adapter";
+    const dispatch = adapter.dispatch, prepare = dispatch.prepare, submit = dispatch.dispatch;
+    const profile: "adapter" | "dispatch-only" = isCapturedFulfillmentAdapter(adapter, dispatch, prepare, submit) ? "dispatch-only" : "adapter";
     requireFact(!certification?.profile || frozen.certification?.profile === profile, "capability_not_certifiable:dispatch-only brand");
     const ports: Partial<Record<Operation, (...args: unknown[]) => Promise<unknown>>> = {};
     for (const [op, port, method] of [["prepare", adapter.dispatch, "prepare"], ["dispatch", adapter.dispatch, "dispatch"], ["create", adapter.label, "create"], ["read", adapter.label, "read"], ["void", adapter.label, "void"], ["observation", adapter.observation, "verifyAndNormalize"], ["readback", adapter.readback, "read"], ["page", adapter.reconciliation, "readPage"], ...["getStock", "getStockMovements"].map(op => [op, adapter.stockSync, op] as const), ...["ensureProduct", "getProductPacks", "addProductPack", "listStockedSkus"].map(op => [op, adapter.productSync, op] as const)] as const) {
-      const methodValue = port && (port as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>)[method];
+      const methodValue = (op === "prepare" ? prepare : op === "dispatch" ? submit : port && (port as unknown as Record<string, unknown>)[method]) as ((...args: unknown[]) => Promise<unknown>) | undefined;
       if (methodValue) ports[op as Operation] = methodValue.bind(port);
     }
     const logs = new Map<number, object>();
@@ -83,7 +83,7 @@ export async function runFulfillmentAdapterConformance(subjects: readonly Fulfil
       const reason = expectedThrow ? (actual as FulfillmentRefusal).reason : (actual as { refusal?: FulfillmentRefusal } | null)?.refusal?.reason;
       const supported = caps.operations[slot.capability as Capability]?.supported;
       requireFact(!(mode === "full" && supported && credit.role === "failure" && reason === "unsupported"), `${slot.label} supported_failure_unsupported`);
-      if (supported === false && slot.op !== "native") requireFact(credit.role === "failure" && reason === "unsupported", `unsupported ${slot.capability} explicit refusal`);
+      if (supported === false && slot.op !== "native" && !(mode === "baseline" && slot.op === "read" && caps.labelReadOwner === "host_storage" && credit.kind === "available")) requireFact(credit.role === "failure" && reason === "unsupported", `unsupported ${slot.capability} explicit refusal`);
       requireFact(!slot.zero || ioDelta === 0, slot.zero ?? "zero I/O");
       if (mode === "full" && reason === "untrusted") requireFact(ioDelta === 0, "authentication refusal before I/O");
       if (!(slot.op === "read" && credit.kind === "available")) assertDurable(actual, subject);

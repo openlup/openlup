@@ -112,3 +112,13 @@ it.each(["claim", "begin"] as const)("rejects contradictory optional-store %s re
   };
   await expect(run([value])).rejects.toThrow(`${operation} contradictory result`);
 });
+
+it("preserves baseline host-storage label reads without weakening other unsupported reads", async () => {
+  const value = subject(false), available = { kind: "available" as const, url: "https://storage.example.invalid/label", expiresAt: at };
+  value.adapter.capabilities.labelReadOwner = "host_storage";
+  value.adapter.label!.read = async () => available;
+  value.fixtures.label!.read = [{ input: value.fixtures.label!.read![0]!.input, expected: available }];
+  await expect(run([value])).resolves.toHaveProperty("mode", "baseline");
+  value.adapter.capabilities.labelReadOwner = "adapter";
+  await expect(run([value])).rejects.toThrow("unsupported labelRead explicit refusal");
+});

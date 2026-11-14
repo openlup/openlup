@@ -3,9 +3,12 @@ import type { DispatchEvidence, FulfillmentCapabilityDescriptor, FulfillmentDisp
 import { dispatchEvidence, reference } from "./dispatchProjection.js";
 import { readFulfillmentCapabilities } from "./providerCapabilities.js";
 
-const capturedAdapters = new WeakSet<object>();
+const capturedAdapters = new WeakMap<object, FulfillmentDispatchPort>();
 /** Internal profile brand; capability declarations cannot select the captured profile. */
-export const isCapturedFulfillmentAdapter = (adapter: object): boolean => capturedAdapters.has(adapter);
+export function isCapturedFulfillmentAdapter(adapter: object, port: FulfillmentDispatchPort, prepare: FulfillmentDispatchPort["prepare"], dispatch: FulfillmentDispatchPort["dispatch"]): boolean {
+  const original = capturedAdapters.get(adapter);
+  return original === port && original.prepare === prepare && original.dispatch === dispatch;
+}
 
 /** Synthetic, host-owned captures only. No command is sent to a provider. */
 export interface CapturedFulfillmentCommand {
@@ -82,8 +85,15 @@ export function createCapturedFulfillmentAdapter(options: {
     },
   };
   const adapter = { capabilities, dispatch, readSubmissionCount: () => submitted.size };
-  capturedAdapters.add(adapter);
-  return adapter;
+  capturedAdapters.set(adapter, dispatch);
+  return freezeCapture(adapter);
+}
+
+function freezeCapture<T>(value: T): T {
+  if (value && (typeof value === "object" || typeof value === "function")) {
+    Object.values(value).forEach(freezeCapture); Object.freeze(value);
+  }
+  return value;
 }
 
 function commandFingerprint(request: FulfillmentDispatchRequest): string {

@@ -30,7 +30,7 @@ export function readScriptedFulfillmentFaultLog(handle: object): readonly Fault[
 export function createScriptedFulfillmentFake<Calls extends Record<string, unknown>>() {
   const queues = new Map<keyof Calls, ScriptedFulfillmentOutcome<Calls[keyof Calls]>[]>();
   const calls: { call: keyof Calls; kind: ScriptedFulfillmentOutcome<unknown>["kind"] }[] = [];
-  return {
+  return Object.freeze({
     get calls() {
       const snapshot = Object.freeze(calls.map(row => Object.freeze({ ...row })));
       faultLogs.set(snapshot, calls);
@@ -51,5 +51,5 @@ export function createScriptedFulfillmentFake<Calls extends Record<string, unkno
     assertDrained(): void {
       for (const [call, queue] of queues) if (queue.length) throw new Error(`scripted_fulfillment_transport:unconsumed:${String(call)}:${queue.length}`);
     },
-  };
+  });
 }

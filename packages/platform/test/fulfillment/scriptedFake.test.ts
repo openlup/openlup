@@ -30,6 +30,9 @@ it("returns injected HTTP failures and retains transport uncertainty without per
 
 it("audit 13 exposes immutable snapshots while its authenticated fault log stays private", async () => {
   const fake = createScriptedFulfillmentFake<{ submit: string }>(), handle = fake.calls;
+  expect(Object.isFrozen(fake)).toBe(true);
+  expect(Reflect.set(fake, "invoke", async () => "forged")).toBe(false);
+  expect(Reflect.defineProperty(fake, "calls", { value: [] })).toBe(false);
   expect(() => (handle as unknown as unknown[]).push({ kind: "transport-after-submission" })).toThrow();
   fake.enqueue("submit", { kind: "success", value: "response" }); await fake.invoke("submit");
   expect(handle).toHaveLength(0); expect(fake.calls).toEqual([{ call: "submit", kind: "success" }]);
