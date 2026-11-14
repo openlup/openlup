@@ -1546,8 +1546,10 @@ declarations; an executed parity witness compares their shared fields to SQL.
 `payment_provider_profile(text)` is an immutable declarative resolver. A known
 identifier selects its profile; an arbitrary admitted identifier retains the
 existing generic preparation and event-delta behavior. Claims and reopening
-remain opt-in. NULL enumerates declarations solely for the existing early trusted
-tuple validation, which still precedes receipt replay and provider-row validation.
+remain opt-in. Early trusted-tuple validation uses the attempt's own interactive
+profile or a fixed legacy fallback preserving existing refusals for missing or
+unsupported attempts. It precedes receipt replay and provider-row validation;
+acceptance is profile-bound.
 There is no policy table, mutable registry or per-command profile JSON.
 A third provider adds an explicit declaration and its adapter; a new protocol or
 money/retry semantic needs separate work. This does not supply the second
