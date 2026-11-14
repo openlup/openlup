@@ -1,10 +1,11 @@
-// The registry tutorial follows publication in its own read-only workflow.
+// The blocking tutorial and exact-set qualification follow publication independently of PR CI.
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { assertReleaseProvenance, proveNeutralStarterConsumer, qualificationReceipt, qualifyReleasedSet, verifiedReleasePackages } from "./exact-set-qualification.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const workflow = readFileSync(join(ROOT, ".github/workflows/registry-tutorial.yml"), "utf8");
@@ -20,7 +21,7 @@ const CHECKOUT = "uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b
 const SETUP_NODE = "uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6\n        with:\n          node-version: 24.21.0\n          package-manager-cache: false\n";
 // Only this repository's successful release runs, with this repository as the head repository.
 // A release has no pull-request context; checkout keeps the trusted default branch.
-const REGISTRY_GATE = "if: ${{ github.repository == 'openlup/openlup' && github.event.workflow_run.repository.full_name == 'openlup/openlup' && github.event.workflow_run.head_repository.full_name == 'openlup/openlup' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'release' && startsWith(github.event.workflow_run.head_branch, 'openlup-core-v') }}";
+const REGISTRY_GATE = "if: ${{ github.repository == 'openlup/openlup' && ((github.event_name == 'workflow_dispatch' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)) || (github.event_name == 'workflow_run' && github.event.workflow_run.repository.full_name == 'openlup/openlup' && github.event.workflow_run.head_repository.full_name == 'openlup/openlup' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'release' && startsWith(github.event.workflow_run.head_branch, 'openlup-core-v'))) }}";
 const REGISTRY_READY = "        if: steps.registry.outputs.ready == 'true'";
 const REGISTRY_CLEANUP = "        if: always() && steps.postgres.outcome != 'skipped'";
 const REGISTRY_STEP = "Guide tutorial against the npm registry";
@@ -36,14 +37,14 @@ describe("the blocking registry tutorial after publication", () => {
     expect(publisher).toContain("name: Publish Packages\n");
     expect(publisher).toContain("on:\n  release:\n    types: [published]\n");
     expect(workflow).toContain("name: Guide tutorial against the npm registry\n");
-    expect(triggers(workflow)).toEqual(["workflow_run"]);
+    expect(triggers(workflow)).toEqual(["workflow_run", "workflow_dispatch"]);
     expect(workflow).toContain("  workflow_run:\n    workflows: [Publish Packages]\n    types: [completed]\n");
     expect(workflow).toContain("# workflow_run executes trusted default-branch workflow and runner code.");
-    expect(workflow).toContain("concurrency:\n  group: registry-tutorial-${{ github.event.workflow_run.head_branch }}\n  cancel-in-progress: false\n");
-    expect(conditions(workflow)).toEqual([`    ${REGISTRY_GATE}`, REGISTRY_READY, REGISTRY_READY, REGISTRY_CLEANUP]);
-    expect(permissionBlocks(workflow)).toEqual(["permissions: {}\n", "    permissions:\n      contents: read\n"]);
-    expect(workflow).not.toMatch(/secrets\.|github\.token|id-token|environment:|strategy:|needs:|continue-on-error|npm (?:ci|install)\b/u);
-    expect([...workflow.split("\njobs:\n")[1]!.matchAll(/^ {2}([a-z][a-z-]*):$/gmu)].map(match => match[1])).toEqual(["registry-tutorial"]);
+    expect(workflow).toContain("concurrency:\n  group: registry-tutorial-${{ inputs.release_tag || github.event.workflow_run.head_branch }}\n  cancel-in-progress: false\n");
+    expect(conditions(tutorial)).toEqual([`    ${REGISTRY_GATE}`, REGISTRY_READY, REGISTRY_READY, REGISTRY_CLEANUP]);
+    expect(permissionBlocks(tutorial)).toEqual(["    permissions:\n      contents: read\n"]);
+    expect(tutorial).not.toMatch(/secrets\.|github\.token|id-token|environment:|strategy:|needs:|continue-on-error|npm (?:ci|install)\b/u);
+    expect([...workflow.split("\njobs:\n")[1]!.matchAll(/^ {2}([a-z][a-z-]*):$/gmu)].map(match => match[1])).toEqual(["registry-tutorial", "exact-set-qualification"]);
     expect(tutorial).toContain("    timeout-minutes: 20\n");
     expect(stepTexts(tutorial)[1]).toBe(CHECKOUT);
     expect(stepTexts(tutorial)[2]).toBe(SETUP_NODE);
@@ -62,14 +63,14 @@ describe("the blocking registry tutorial after publication", () => {
 
   it("reads only the release tag's page after verifying its commit against the completed run", () => {
     const page = step(tutorial, RELEASE_PAGE);
-    expect(page).toContain("RELEASE_TAG: ${{ github.event.workflow_run.head_branch }}");
+    expect(page).toContain("RELEASE_TAG: ${{ inputs.release_tag || github.event.workflow_run.head_branch }}");
     expect(page).toContain("HEAD_SHA: ${{ github.event.workflow_run.head_sha }}");
     expect(script(page)).toContain('git fetch --no-tags --depth=1 origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"');
-    expect(script(page)).toContain('if [ "$(git rev-list -n 1 "refs/tags/$RELEASE_TAG")" != "$HEAD_SHA" ]; then');
+    expect(script(page)).toContain('if [ -n "$HEAD_SHA" ] && [ "$commit" != "$HEAD_SHA" ]; then');
     expect(script(page)).toContain('git show "refs/tags/$RELEASE_TAG:packages/core/docs/guide/start/tutorial.md" > "$RUNNER_TEMP/tutorial.md"');
   });
 
-  function releasePage(matches: boolean) {
+  function releasePage(matches: boolean | "manual") {
     const directory = mkdtempSync(join(tmpdir(), "openlup-release-page-"));
     try {
       const origin = join(directory, "origin"), workspace = join(directory, "workspace"), temporary = join(directory, "runner-temp");
@@ -95,7 +96,7 @@ describe("the blocking registry tutorial after publication", () => {
       git(directory, ["clone", "--quiet", "--no-tags", origin, workspace]);
       expect(git(workspace, ["tag", "--list"])).toBe("");
       const result = spawnSync("bash", ["--noprofile", "--norc", "-euo", "pipefail", "-c", script(step(tutorial, RELEASE_PAGE))], {
-        cwd: workspace, env: { ...env, RELEASE_TAG: tag, HEAD_SHA: matches ? published : main, RUNNER_TEMP: temporary }, encoding: "utf8", timeout: 5000,
+        cwd: workspace, env: { ...env, RELEASE_TAG: tag, HEAD_SHA: matches === "manual" ? "" : matches ? published : main, RUNNER_TEMP: temporary, GITHUB_OUTPUT: join(temporary, "output") }, encoding: "utf8", timeout: 5000,
       });
       const page = join(temporary, "tutorial.md");
       expect(git(workspace, ["rev-list", "-n", "1", `refs/tags/${tag}`])).toBe(published);
@@ -111,6 +112,12 @@ describe("the blocking registry tutorial after publication", () => {
     expect(result.page).toBe(result.released);
   });
 
+  it("reads an existing tag for manual qualification without requiring a completed run SHA", () => {
+    const result = releasePage("manual");
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.page).toBe(result.released);
+  });
+
   it("refuses a release tag whose commit differs from HEAD_SHA without writing a page", () => {
     const result = releasePage(false);
     expect(result.status, result.stderr).toBe(1);
@@ -120,7 +127,7 @@ describe("the blocking registry tutorial after publication", () => {
 
   it("refuses malformed or non-core tags before checkout or any registry request", () => {
     const validation = step(tutorial, "Validate the core release tag");
-    expect(validation).toContain("RELEASE_TAG: ${{ github.event.workflow_run.head_branch }}");
+    expect(validation).toContain("RELEASE_TAG: ${{ inputs.release_tag || github.event.workflow_run.head_branch }}");
     const inherited = Reflect.get(process, "env") as NodeJS.ProcessEnv;
     for (const tag of ["openlup-core-v0.13.1", "openlup-core-v1.0.0", "", "main", "refs/tags/openlup-core-v0.13.1", "openlup-platform-v0.13.1", "openlup-core-v", "openlup-core-v01.13.1", "openlup-core-v0.013.1", "openlup-core-v0.13.01", "openlup-core-v0.13.1-preview.1", "openlup-core-v0.13.1+build", "openlup-core-v0.13.1\necho unexpected"]) {
       const result = spawnSync("bash", ["--noprofile", "--norc", "-euo", "pipefail", "-c", script(validation)], { env: { ...inherited, RELEASE_TAG: tag }, encoding: "utf8", timeout: 5000 });
@@ -140,7 +147,7 @@ describe("the blocking registry tutorial after publication", () => {
     const readiness = "for i in $(seq 1 30); do pg_isready -h 127.0.0.1 -U postgres -t 1 && exit 0; sleep 1; done; exit 1";
     expect(readFileSync(join(ROOT, "scripts/packages/platform-cold-consumer.ts"), "utf8")).toContain(readiness);
     expect(start).toContain(`docker exec "$container" sh -c '${readiness}'`);
-    expect(step(tutorial, "Remove the package-proof PostgreSQL service")).toBe(`${REGISTRY_CLEANUP}\n        run: docker rm -f install-proof-postgres\n`);
+    expect(step(tutorial, "Remove the package-proof PostgreSQL service").trimEnd()).toBe(`${REGISTRY_CLEANUP}\n        run: docker rm -f install-proof-postgres`);
     expect(step(tutorial, REGISTRY_STEP)).toBe(`${REGISTRY_READY}\n        timeout-minutes: 4\n        env:\n          OPENLUP_PROOF_SERVICE_PORT: \${{ steps.postgres.outputs.port }}\n        run: node --experimental-strip-types scripts/packages/guide-tutorial.ts --registry --page "$RUNNER_TEMP/tutorial.md" --database-url "postgresql://postgres@127.0.0.1:$OPENLUP_PROOF_SERVICE_PORT/postgres"\n`);
     const advisoryComment = "      # --advisory reports a failed tutorial as a warning and exits 0. Remove it after two green\n      # merge-group runs on main to make the step blocking (documentation programme, decision D4).\n";
     expect(candidateWorkflow).not.toContain(advisoryComment);
@@ -154,7 +161,7 @@ describe("the blocking registry tutorial after publication", () => {
     expect(candidateWorkflow).not.toContain("Guide tutorial against the packed candidate (advisory)");
   });
 
-  function registryWait(answers: Array<{ version?: string; fail?: boolean }>, expire = false) {
+  function registryWait(answers: Array<{ version?: string; fail?: boolean }>, expire = false, event = "workflow_run") {
     const directory = mkdtempSync(join(tmpdir(), "openlup-registry-wait-"));
     try {
       const bin = join(directory, "bin"), log = join(directory, "requests"), output = join(directory, "output"), summary = join(directory, "summary");
@@ -176,14 +183,14 @@ console.log(answer.version);
       const inherited = Reflect.get(process, "env") as NodeJS.ProcessEnv;
       const source = expire ? wait.replace("SECONDS + 600", "SECONDS + 0") : wait;
       const result = spawnSync("bash", ["--noprofile", "--norc", "-euo", "pipefail", "-c", source], {
-        cwd: ROOT, env: { ...inherited, PATH: `${bin}:${inherited.PATH}`, RELEASE_TAG: "openlup-core-v0.13.1", GITHUB_OUTPUT: output, GITHUB_STEP_SUMMARY: summary }, encoding: "utf8", timeout: 5000,
+        cwd: ROOT, env: { ...inherited, PATH: `${bin}:${inherited.PATH}`, RELEASE_TAG: "openlup-core-v0.13.1", GITHUB_OUTPUT: output, GITHUB_STEP_SUMMARY: summary, EVENT_NAME: event }, encoding: "utf8", timeout: 5000,
       });
       return { ...result, output: readFileSync(output, "utf8"), summary: readFileSync(summary, "utf8"), requests: readFileSync(log, "utf8").split("\n").filter(Boolean).map(line => JSON.parse(line) as string[]) };
     } finally { rmSync(directory, { recursive: true, force: true }); }
   }
 
   it("retries registry errors and stale versions, waiting for the full set and core's latest value", () => {
-    expect(step(tutorial, REGISTRY_WAIT)).toContain("RELEASE_TAG: ${{ github.event.workflow_run.head_branch }}");
+    expect(step(tutorial, REGISTRY_WAIT)).toContain("RELEASE_TAG: ${{ inputs.release_tag || github.event.workflow_run.head_branch }}");
     expect(wait).toContain('version="${RELEASE_TAG##*-v}"');
     expect(wait).toContain("deadline=$((SECONDS + 600))");
     expect(wait).toContain('timeout "$remaining" npm view "$spec" version');
@@ -196,6 +203,14 @@ console.log(answer.version);
     expect(result.summary).toBe("");
     expect(result.requests.map(args => args.slice(0, 3))).toEqual([packages[0], packages[0], ...packages, "@openlup/core", ...packages, "@openlup/core"].map(spec => ["view", spec, "version"]));
     for (const args of result.requests) expect(args.slice(3)).toEqual(["--registry=https://registry.npmjs.org", "--fetch-retries=0", "--fetch-timeout=10000"]);
+  });
+
+  it("qualifies historical dispatch versions without waiting for latest", () => {
+    const count = JSON.parse(readFileSync(join(ROOT, "config/openlup-packages.json"), "utf8")).packages.filter((entry: { publish: boolean }) => entry.publish).length;
+    const result = registryWait(Array.from({ length: count }, () => ({ version: "0.13.1" })), false, "workflow_dispatch");
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.output).toBe("ready=true\n");
+    expect(result.requests).toHaveLength(count);
   });
 
   it("warns and defers without running the tutorial when the bounded propagation wait expires", () => {
@@ -212,3 +227,109 @@ console.log(answer.version);
   });
 });
 
+
+describe("exact published-set qualification", () => {
+  const qualification = job(workflow, "exact-set-qualification");
+  const commit = "a".repeat(40), version = "0.41.0", name = "@openlup/core";
+  const tag = "openlup-core-v0.41.0", integrity = "sha512-" + Buffer.alloc(64).toString("base64");
+  const signer = `URI:https://github.com/openlup/openlup/.github/workflows/publish-packages.yml@refs/tags/${tag}`;
+  const statement = () => ({ predicateType: "https://slsa.dev/provenance/v1",
+    subject: [{ name: "pkg:npm/%40openlup/core@0.41.0", digest: { sha512: "00".repeat(64) } }],
+    predicate: { buildDefinition: { externalParameters: { workflow: { repository: "https://github.com/openlup/openlup", ref: `refs/tags/${tag}`, path: ".github/workflows/publish-packages.yml" } },
+      resolvedDependencies: [{ uri: `git+https://github.com/openlup/openlup@refs/tags/${tag}`, digest: { gitCommit: commit } }] } } });
+
+  it("shares the trust gates, refuses absent visibility, authenticates mirror-only pulls and retains one receipt for 90 days", () => {
+    expect(qualification).toContain("needs: registry-tutorial");
+    expect(qualification).toContain(REGISTRY_GATE.replace("if: ${{ ", "if: ${{ always() && (").replace(" }}", ") }}"));
+    expect(permissionBlocks(qualification)).toEqual(["    permissions:\n      contents: read\n      packages: read\n"]);
+    expect(qualification).toContain('if [ "$OPENLUP_REGISTRY_READY" != true ]; then');
+    expect(qualification).toContain('image.sources = image.sources.slice(0, 1)');
+    expect(qualification.indexOf('docker login ghcr.io')).toBeLessThan(qualification.indexOf('pullWithRetry(image)'));
+    expect(qualification).toContain('docker run --pull=never');
+    expect(qualification).toContain('retention-days: 90');
+    expect(step(qualification, "Qualify the exact published set")).toContain("timeout-minutes: 2");
+    expect(qualification).not.toMatch(/secrets\.|continue-on-error|sleep|while|npm publish|release upload/);
+    expect(step(qualification, "Retain the qualification receipt")).toContain('if: always()');
+  });
+
+  it("records a failed-by-default receipt and refuses malformed released inputs", () => {
+    const receipt = qualificationReceipt(tag, commit, { image: "fixture" });
+    expect(receipt).toMatchObject({ schemaVersion: 1, setVersion: version, tag, tagCommit: commit, result: "FAIL", packages: [], checks: [], extraction: null, endedAt: null, runnerImage: { image: "fixture" } });
+    expect(Number.isFinite(Date.parse(receipt.startedAt))).toBe(true);
+    for (const invalid of ["main", "openlup-core-v01.41.0", tag + "-preview.1", tag + "\n"]) expect(() => qualificationReceipt(invalid, commit, {})).toThrow("invalid core release tag");
+    expect(() => qualificationReceipt(tag, "short", {})).toThrow("full SHA");
+  });
+
+  it("refuses invisible sets before any command and retains the failed receipt", () => {
+    const directory = mkdtempSync(join(tmpdir(), "qualification-receipt-")), path = join(directory, "receipt.json");
+    vi.stubEnv("OPENLUP_REGISTRY_READY", "false");
+    try {
+      expect(() => qualifyReleasedSet(tag, commit, path)).toThrow("published set not visible on npm");
+      const receipt = JSON.parse(readFileSync(path, "utf8"));
+      expect(receipt).toMatchObject({ result: "FAIL", checks: [], packages: [], tag, tagCommit: commit });
+      expect(Date.parse(receipt.endedAt)).toBeGreaterThanOrEqual(Date.parse(receipt.startedAt));
+    } finally { vi.unstubAllEnvs(); rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("extracts a candidate from an existing working directory before requiring package tarballs", () => {
+    const checkout = mkdtempSync(join(tmpdir(), "qualification-candidate-")), starter = join(checkout, "examples/neutral-store");
+    try {
+      mkdirSync(join(starter, "test"), { recursive: true });
+      writeFileSync(join(starter, "ownership.json"), JSON.stringify({ owned: [], managed: [] }));
+      writeFileSync(join(starter, "test/source.test.mjs"), 'import { test } from "node:test"; test("source fixture", () => {});');
+      writeFileSync(join(starter, "extract.mjs"), `import { mkdirSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { argv } from "node:process";
+const target = argv[2]; mkdirSync(target); writeFileSync(target + "/package.json", "{}");
+execFileSync("git", ["init", "--quiet", target]);`);
+      expect(() => proveNeutralStarterConsumer(checkout, new Map())).toThrow("Candidate starter needs locked dependency tarballs");
+    } finally { rmSync(checkout, { recursive: true, force: true }); }
+  });
+
+  it("refuses a changed released lock or unknown input mode before installing or executing the application", () => {
+    const application = realpathSync(mkdtempSync(join(tmpdir(), "qualification-lock-"))), run = vi.fn((_name: string, _args: string[], _cwd: string) => application), verifyInstalled = vi.fn();
+    try {
+      writeFileSync(join(application, "package.json"), "{}");
+      writeFileSync(join(application, "package-lock.json"), "{}");
+      const input = { mode: "released", application, environment: {}, run, verifyInstalled, packages: [name], lockfileSha256: "unverified" };
+      expect(() => proveNeutralStarterConsumer(ROOT, input)).toThrow("lock changed before installation");
+      expect(run.mock.calls.every(call => call[0] !== "npm")).toBe(true);
+      expect(() => proveNeutralStarterConsumer(ROOT, { ...input, mode: "unknown" })).toThrow("Unknown starter consumer input mode");
+      expect(verifyInstalled).not.toHaveBeenCalled();
+    } finally { rmSync(application, { recursive: true, force: true }); }
+  });
+
+  it("parses successful npm audit bundles with each publishable package's own certificate and tag", () => {
+    const directory = mkdtempSync(join(tmpdir(), "qualification-certificates-"));
+    try {
+      const packages = JSON.parse(readFileSync(join(ROOT, "config/openlup-packages.json"), "utf8")).packages.filter((entry: { publish: boolean }) => entry.publish);
+      const verified = packages.map(({ name }: { name: string }, index: number) => {
+        const packageTag = `openlup-${name.slice(9)}-v${version}`, identity = signer.replace(tag, packageTag);
+        // Synthetic self-signed certificates exercise parsing/identity; npm owns cryptographic verification.
+        const certificate = execFileSync("openssl", ["req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256", "-nodes", "-keyout", join(directory, "key.pem"), "-subj", "/CN=fixture", "-addext", `subjectAltName=${identity}`, "-outform", "DER"], { stdio: ["ignore", "pipe", "ignore"] }).toString("base64");
+        const payload = JSON.stringify(statement()).replaceAll("openlup-core-v", `openlup-${name.slice(9)}-v`).replaceAll("%40openlup/core@", `%40openlup/${name.slice(9)}@`);
+        return { name, version, attestationBundles: [{ predicateType: "https://slsa.dev/provenance/v1", bundle: { verificationMaterial: index % 2 ? { x509CertificateChain: { certificates: [{ rawBytes: certificate }] } } : { certificate: { rawBytes: certificate } }, dsseEnvelope: { payload: Buffer.from(payload).toString("base64") } } }] };
+      });
+      const audit = JSON.parse(JSON.stringify({ invalid: [], missing: [], verified }));
+      expect(verifiedReleasePackages(audit, packages.map(({ name }: { name: string }) => ({ name, integrity })), version, commit)).toEqual(packages.map(({ name }: { name: string }) => ({ name, version, integrity, verificationSource: "npm audit signatures --json --include-attestations", provenanceSha256: expect.stringMatching(/^[a-f0-9]{64}$/) })));
+      audit.verified[1].attestationBundles[0].bundle.verificationMaterial = audit.verified[0].attestationBundles[0].bundle.verificationMaterial;
+      expect(() => verifiedReleasePackages(audit, packages.map(({ name }: { name: string }) => ({ name, integrity })), version, commit)).toThrow("signer mismatch");
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("accepts only the exact release subject, signer, repository, workflow, tag and commit", () => {
+    expect(() => assertReleaseProvenance(statement(), signer, name, integrity, version, commit)).not.toThrow();
+    for (const mutate of [
+      (s: ReturnType<typeof statement>) => { s.subject[0]!.digest.sha512 = "ff".repeat(64); },
+      (s: ReturnType<typeof statement>) => { s.subject[0]!.name = "pkg:npm/other@0.41.0"; },
+      (s: ReturnType<typeof statement>) => { s.predicate.buildDefinition.externalParameters.workflow.repository += "-fork"; },
+      (s: ReturnType<typeof statement>) => { s.predicate.buildDefinition.externalParameters.workflow.ref = "refs/heads/main"; },
+      (s: ReturnType<typeof statement>) => { s.predicate.buildDefinition.externalParameters.workflow.path = ".github/workflows/other.yml"; },
+      (s: ReturnType<typeof statement>) => { s.predicate.buildDefinition.resolvedDependencies[0]!.digest.gitCommit = "b".repeat(40); },
+    ]) { const next = statement(); mutate(next); expect(() => assertReleaseProvenance(next, signer, name, integrity, version, commit)).toThrow(name + "@" + version); }
+    expect(() => assertReleaseProvenance(statement(), signer.replace("openlup/openlup", "other/fork"), name, integrity, version, commit)).toThrow("signer mismatch");
+    for (const audit of [{ invalid: [], missing: [], verified: [] }, { invalid: [], missing: [], verified: [{ name, version, attestationBundles: [{ predicateType: "https://slsa.dev/provenance/v1" }] }] }, { invalid: [{ name }], missing: [] }, { invalid: [], missing: [{ name }] }]) {
+      expect(() => verifiedReleasePackages(audit, [{ name, integrity }], version, commit)).toThrow(name);
+    }
+  });
+});
