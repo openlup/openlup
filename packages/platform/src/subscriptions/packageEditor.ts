@@ -41,7 +41,7 @@ export function createPostgresPackageEditor(options: PackageEditorOptions) {
       EXISTS(SELECT 1 FROM public.subscription_cycles c LEFT JOIN public.commerce_orders o ON o.subscription_cycle_id=c.id
        WHERE c.subscription_id=s.id AND c.scheduled_at=s.next_cycle_at AND
         (c.status IN ('payment_pending','paid') OR o.status IN ('paid','fulfillment_pending','fulfilled'))) AS cycle_locked,
-      EXISTS(SELECT 1 FROM public.subscription_method_states m WHERE m.subscription_id=s.id AND m.health_state='healthy') AS method_healthy
+      (CASE WHEN public.subscription_method_uses_recorded_refs(s.id) THEN public.subscription_method_chargeable_unattended(s.id,now()) ELSE EXISTS(SELECT 1 FROM public.subscription_method_states ms WHERE ms.subscription_id=s.id AND ms.health_state='healthy') END) AS method_healthy
       FROM public.subscriptions s WHERE s.id=$1::uuid AND s.client_id=$2::uuid`, [id, actor.clientId])).rows[0];
     if (!row) throw new Error("subscription_command_forbidden"); return row;
   }

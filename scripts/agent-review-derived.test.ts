@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterAll, beforeAll, expect, it } from 'vitest';
@@ -47,7 +47,10 @@ beforeAll(async () => {
   execFileSync('/usr/bin/git', ['clone', '--shared', '--no-hardlinks', '-q', source, root], { timeout: 30000 });
   // Include the candidate's working bytes during development as well as at final HEAD.
   const overlays = execFileSync('/usr/bin/git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { cwd: source, encoding: 'utf8' }).split('\0').filter(Boolean);
-  for (const path of overlays) { mkdirSync(dirname(join(root, path)), { recursive: true }); cpSync(join(source, path), join(root, path)); }
+  for (const path of new Set([...git('ls-files', '-z').split('\0').filter(Boolean), ...overlays])) {
+    if (!existsSync(join(source, path))) { rmSync(join(root, path), { force: true }); continue; }
+    mkdirSync(dirname(join(root, path)), { recursive: true }); cpSync(join(source, path), join(root, path));
+  }
   symlinkSync(join(source, 'node_modules'), join(root, 'node_modules'));
   git('config', 'user.name', 'Fixture'); git('config', 'user.email', 'fixture@example.invalid');
   base = commit();
@@ -123,10 +126,10 @@ it.each(['edited existing entry', 'duplicate slot'])('refuses %s at the registry
 });
 
 it.each([
-  { path: 'packages/platform/AGENT_CONTEXT.md', unresolved: true, expected: 'refusal' },
+  { path: 'docs/platform/SOURCE_MAP.md', unresolved: true, expected: 'refusal' },
   { path: 'packages/platform/sql/manifest.json', unresolved: true, expected: 'refusal' },
   { path: 'packages/platform/sql/00000000000000_platform_baseline.sql', unresolved: true, expected: 'refusal' },
-  { path: 'packages/platform/AGENT_CONTEXT.md', unresolved: false, expected: 'derived' },
+  { path: 'docs/platform/SOURCE_MAP.md', unresolved: false, expected: 'derived' },
   { path: 'packages/platform/sql/00000000000000_platform_baseline.sql', unresolved: false, expected: 'resolution' },
 ])('requires $expected for $path with unresolved=$unresolved despite other derived carriers', async ({ path, unresolved, expected }) => {
   try {

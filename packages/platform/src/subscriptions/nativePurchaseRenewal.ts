@@ -7,7 +7,7 @@ import { bestEffortNativePurchaseTemplate, resolveNativePurchasePriceList } from
 
 /** Server-owned purchase facts. Sandbox authorization is never a real mandate. */
 export interface NativeRenewalPurchaseFacts {
-  settlementChannelKey: "sandbox";
+  settlementChannelKey: string;
   authorizationRef: string;
   unattendedChargeAuthorizedAt: string;
   payerAccountRef: string | null;
@@ -94,8 +94,16 @@ export function createPostgresPurchaseRenewalWriter(executor: SubscriptionQueryE
       const row = (await executor.query(`SELECT m.health_state AS "healthState",m.method_ref AS "methodRef",
         m.evidence_ref AS "evidenceRef" FROM public.subscription_method_states m
         JOIN public.subscription_renewal_terms t ON t.subscription_id=m.subscription_id
-        WHERE m.subscription_id=$1::uuid AND t.settlement_channel_key='sandbox'`, [subscriptionId])).rows[0];
-      return row ?? null;
+        WHERE m.subscription_id=$1::uuid AND t.settlement_channel_key='sandbox'
+          AND NOT public.subscription_method_has_recorded_ref(m.subscription_id)`, [subscriptionId])).rows[0];
+      if (row) return row;
+      const health = (await executor.query("SELECT public.subscription_method_health_read($1::uuid) AS response WHERE public.subscription_method_has_recorded_ref($1::uuid)", [subscriptionId])).rows[0]?.response;
+      if (!health || typeof health !== "object") return null;
+      const recorded = health as Record<string, unknown>;
+      return { healthState: recorded.health_state, methodRef: recorded.provider_method_ref ?? null,
+        evidenceRef: recorded.payment_method_ref_id ?? null, provider: recorded.provider_kind ?? null,
+        customerRef: recorded.provider_customer_ref ?? null, expiresAt: recorded.method_expires_at ?? null,
+        consentSnapshot: recorded.consent_snapshot ?? {} };
     },
   };
 }

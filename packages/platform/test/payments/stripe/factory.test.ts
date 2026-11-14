@@ -241,3 +241,28 @@ describe("opt-in payment factory", () => {
     expect(mapSetupIntent({ id: "seti_fixture", status: "requires_action", payment_method: "pm_fixture" })).toMatchObject({ id: "seti_fixture", payment_method: "pm_fixture", latest_charge: null });
   });
 });
+
+it("collects an off-session setup with exact host keys and a transient handoff, or refuses the absent client capability", async () => {
+  const { config, adapter } = subject();
+  const input = { customer: "cus_setup", metadata: { source: "account.card-update", subscriptionId: "subscription" }, idempotencyKey: "setup-key" };
+  expect(await adapter.methodPort!.setupMethod(input)).toEqual({ kind: "unsupported" });
+  const createSetupIntent = vi.fn(async () => ({ id: "seti_setup", client_secret: "transient-setup", status: "requires_confirmation" }));
+  const configured = createStripePaymentAdapter({ ...config, client: { ...config.client, createSetupIntent } });
+  expect(createSetupIntent).not.toHaveBeenCalled();
+  expect(await configured.methodPort!.setupMethod(input)).toEqual({ kind: "ready", setupRef: "seti_setup", handoff: { kind: "client-confirmed", payload: "transient-setup" }, replayed: false });
+  expect(createSetupIntent).toHaveBeenCalledExactlyOnceWith({ customer: "cus_setup", metadata: input.metadata, usage: "off_session" }, { idempotencyKey: "setup-key" });
+});
+
+it.each(["setup_intent.succeeded", "payment_intent.succeeded"])("preserves reusable method facts from %s through verified projection", async type => {
+  const { adapter } = subject();
+  const evidence = await adapter.verifyPort.verifyAndNormalize(signed(event(type, { id: type.startsWith("setup") ? "seti_setup" : "pi_fixture",
+    payment_method: { id: "pm_registered", type: "card", card: { brand: "visa", last4: "4242", exp_month: 12, exp_year: 2030 } },
+    setup_future_usage: "off_session", customer: "cus_registered", metadata: { clientId: "untrusted-client", subscriptionId: "untrusted-subscription", recoveryCaseId: "case" } })));
+  expect(evidence).toMatchObject({ reusableMethod: { providerMethodRef: "pm_registered", providerCustomerRef: "cus_registered", methodKind: "card", status: "active" } });
+  if (evidence.kind !== "money" && evidence.kind !== "method") throw new Error("method evidence missing");
+  const owner = { clientId: "recorded-client", subscriptionId: "recorded-subscription" };
+  expect(projectVerifiedEvidence(evidence, { receivedAt: "2026-10-21T10:00:00Z" }, "require-evidence", owner)).toMatchObject({ reusableMethod: {
+    ...owner, providerMethodRef: "pm_registered", consentSnapshot: expect.objectContaining({ source: expect.any(String) }),
+  } });
+  expect(projectVerifiedEvidence(evidence, { receivedAt: "2026-10-21T10:00:00Z" })).not.toHaveProperty("reusableMethod");
+});

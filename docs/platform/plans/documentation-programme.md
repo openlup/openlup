@@ -144,7 +144,7 @@ contract in CI, with no programme work left.
   - `platform` and `outbox` have no `docs:check`; their `ci:required` is only
     `test:consumer`.
   - The neutrality ratchet (shrink-only counts per file).
-  - The installed agent context: `scripts/agent-context/generate.mjs` pulls 12
+  - The installed agent context: [retired agent-context generator](https://github.com/openlup/openlup/blob/5acb11d04b9a0db2fc73417b24d518ac257731d8/scripts/agent-context/generate.mjs) pulls 12
     routes by exact heading from owner pages and throws when a heading is
     missing.
 - **Every new or renamed path needs its own row** in
@@ -417,7 +417,7 @@ goes into the guide.
 3. It leaves a one-line stub ("Moved to <guide page>") at every moved heading,
    until W5. Inbound anchors, the agent-context routes and `files` keep
    resolving.
-4. It retargets `scripts/agent-context/generate.mjs` and `config/doc-routing.json`
+4. It retargets [retired agent-context generator](https://github.com/openlup/openlup/blob/5acb11d04b9a0db2fc73417b24d518ac257731d8/scripts/agent-context/generate.mjs) and `config/doc-routing.json`
    to the guide page.
 
 The root README's `## Status:` heading is a contract: openlup.com reads it.

@@ -17,66 +17,56 @@ export const bindStore = (executor: SqlExecutor) => createPostgresOutboxStore(ex
 ```
 
 This CI-compiled example binds a store; the executor must commit each operation
-before resolving. Read the installation and transaction section before use.
+before resolving. Read [installation and transactions](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/core/docs/guide/how-to/build/outbox.md#postgresql-installation-and-transactions) before use.
 [AGENTS.md](AGENTS.md) explains application ownership and extension boundaries.
 Node 24 or newer is required. Declaration maps connect `dist/` declarations to
 shipped `src/`; JavaScript source maps are not shipped.
 
-## Installed agent context
-
-The tarball includes a small root `AGENT_CONTEXT.md` snapshot of canonical outbox
-guidance. Its metadata records shipped local sources or repository links at the
-package release tag, line ranges and excerpt digests. Repository paths inside
-verbatim excerpts describe the OpenLup checkout, not the application.
-Read the version from the installed `package.json` and check the cited source
-before relying on an excerpt. Core's installed
-`openlup-context` command discovers this local snapshot and returns source
-citations offline. The snapshot adds no dependency, worker or runtime activation,
-and grants no application policy, publication or execution authority.
-
 ## Package Surface Maturity
 
+<!-- generated:maturity:outbox -->
 | Export | Role | Maturity |
 | --- | --- | --- |
 | `.` | rail | experimental |
 | `./postgres` | rail | experimental |
 | `./testing` | testing | testing |
+<!-- /generated:maturity:outbox -->
 
-The application supplies its driver, committed-operation executor, lease adapter, effect handlers, explicit ordered known event vocabulary and host trigger bindings. `createOutbox` validates effective composed timeouts before construction and matches the run-built registry before the first claim. The lease must cover the full declared host execution window, including finish time; the factory has no renewal loop. Build after the lease; a builder owns partially acquired resources until it returns a scope. A returned scope closes after finish, including failure. Hook metadata cannot replace reserved run identity or worker counters. A resolved negative business observation is nonfatal; a thrown business hook prevents claims and attempts a failed finish once. A failed finish remains observable; cleanup errors do not turn accepted effects into retries.
+## Guide
 
-The bare `runOutboxDispatchWorker` supports immediate dispatch without a job lease. The registry alone supplies its claim allowlist. `knownEventTypes` is explicit and is never derived from enabled handlers. A composed handler replays its first component when the second retries, sums timeouts, and retains the original nested details and top-level delivery observations. Its components deliberately do not receive the transient execution context. Effects must honor abort and enforce their own idempotency; timeout cannot cancel a request already accepted by a provider.
+- [Deliver events with the outbox](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/outbox.md) — handler composition, schedules, readiness and retention.
+- [Idempotency](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/concepts/idempotency.md#handler-effects-across-retries) — effects across retries.
+- [Start and tutorial](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/start/README.md).
+- [Extension seams](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/extend/choose-an-extension-seam.md).
+- [Upgrade an application](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/upgrade/README.md).
+- [Glossary](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/glossary.md).
+
+## Installed agent context
+
+Core's installed `openlup-context` searches core's installed reader guide under
+`docs/guide/`, package `AGENTS.md`, `README.md`, declarations and exports, and
+`CHANGELOG.md` for upgrade questions offline.
+See [lookup instructions](https://github.com/openlup/openlup/blob/main/packages/core/README.md#agent-context-lookup); your application's instructions govern.
 
 ## Dispatch configuration and optional diagnostics
 
-`readOutboxDispatchConfig` reads prefixed settings from an environment-like
-record. Its default prefix is `COMMERCE_OUTBOX_DISPATCH_`; pass a different
-prefix to use another host naming scheme. Missing or blank values use each
-setting's default. Other values are parsed with base-10 `parseInt`, non-finite
-parses use defaults, and parsed values clamp to their configured bounds. If the
-backoff cap is below its base, the helper raises the cap to the base.
-`createOutbox` separately validates the host-dependent scheduled limits through
-`validateScheduledConfig`. The setting suffixes, numeric defaults and bounds
-are listed in [`src/config.ts`](src/config.ts).
-
-`OutboxQueueDiagnostics` is an optional host-supplied port. When bound, the
-worker reports its queue observation on a best-effort basis after dispatch,
-with a three-second deadline. This observation is separate from claim and
-acknowledgement policy.
+The parser and `validateScheduledConfig` share [`src/config.ts`](src/config.ts).
+The optional diagnostics deadline in `src/worker.ts` is three seconds.
 
 ## PostgreSQL installation and transactions
 
-Apply [the baseline](sql/0001_outbox.sql) through your own migration chain on a fresh PostgreSQL database. [The manifest](sql/manifest.json) binds its bytes to their public migration owner. PostgreSQL 16 or later supplies the validated timestamp parser used by compaction. Importing the package never applies SQL. Existing managed schemas need their own compatibility assessment; do not apply the fresh-install baseline over them. The default does not supply provider recovery, RLS or role grants.
-
-`buildOutboxEnqueue` returns bound SQL for the producer's transaction. Execute the domain write and enqueue on the same transaction client; commit or roll back both. Duplicate `(event_type,idempotency_key)` enqueue creates no second row. The dispatch executor must commit each claim/ack/failure/release operation before its promise resolves, with no transaction held across handler I/O. A type-compatible executor alone does not prove this property. Compaction likewise commits per operation.
-
-Claims retain six timestamp digits, per-aggregate ordering, exact dormant identities and claim-token fences. An unknown non-dormant predecessor blocks its aggregate; a known but currently unclaimed type may be bypassed. Snooze and release refund attempts. Storage errors remain exceptions; unstarted claims from an interrupted batch expire rather than being falsely settled.
-
-Prune defaults to 30 days for processed and 90 for discarded, in batches of 500. It empties terminal payload/error and stamps `retentionCompactedAt`, `retentionCompactedBy` and `retentionCompactedStatus`; rows and unique dedupe keys survive. Missing/malformed discard timestamps are ineligible. Pending, failed and processing work remains untouched. Application delivery/ledger adjunct retention remains application-owned. An owner may set `metadata.retainPayload=true` while a downstream obligation needs the original payload. The compactor skips that row, including terminal discarded work, and continues pruning unrelated rows. The owner must preserve the pin until durable handoff or resolution and then clear it; this hint supplies no recovery or erasure authority.
+[`sql/manifest.json`](sql/manifest.json) binds [`sql/0001_outbox.sql`](sql/0001_outbox.sql)
+to its public migration owner. PostgreSQL 16 or later supplies the validated
+timestamp parser used by compaction. Claims retain six timestamp digits.
+Prune defaults are 30 days for processed and 90 for discarded, in batches of 500;
+`src/postgres.ts` owns the terminal compaction statement and stamps.
 
 ## Readiness and verification
 
-
-Compose the contribution with `@openlup/core/readiness`, actual loaded package metadata, selected-adapter schema observations and host bindings to the exact contribution run/handle functions before activating the exact new candidate. Only `ready` admits; `unknown` and `unsatisfied` leave the serving version running. Descriptors are inert; the builder supplies the same actual event identities and effective timeouts after lease acquisition. The default schema declaration describes catalog existence and overloads; it does not prove bodies, ACL or recovery. Use framework-free fence conformance from `./testing` and real transactional proof for your adapter. No ambient database URL is used by the packed proof.
+Follow [the composition guide](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/outbox.md#admit-and-bind-the-candidate)
+for runtime admission. Contributor verification belongs to the
+[contribution guide](https://github.com/openlup/openlup/blob/main/CONTRIBUTING.md#test-scope-and-diagnostics)
+and the source [packed consumer proof](https://github.com/openlup/openlup/blob/main/scripts/packages/outbox-consumer-proof.ts).
 
 From an OpenLup task checkout, the existing packed proof accepts an explicit disposable loopback PostgreSQL database and a verified cold-set manifest:
 
@@ -128,30 +118,10 @@ Upgrade the complete `@openlup/*` set together after reading each changelog. Use
 
 ## Adoption and native extensions
 
-One npm package owns the dispatch algorithm. Application drivers, handlers,
-policies, host bindings and compatible native stores remain editable through
-public seams without a nomination or per-function ownership record. Do not
-autonomously fork, vendor, monkey-patch, shadow or restore a copied engine; use
-only the installed package's declared exports. A missing seam follows the
-[agent guide's dependent hold and compatible recovery route](AGENTS.md#using-this-package-in-an-application).
-
-At first adoption compare the actual selected artifact with current consumer
-behavior, including producer payload/schema and composition changes outside the
-extracted engine. On upgrades, preserve pending obligations, transactional enqueue,
-claim/ack/fencing and native recovery. Compatible native schema additions remain
-permitted; published SQL stays immutable. Validate the actual adapter and serving
-binding. For full or partial absorption remove only proven duplicate behavior,
-retain distinct effects sharing an event, and demonstrate durable success and
-unfinished work across retries and replacement. Catalogue existence, a handler
-return or an upstream merge alone cannot establish that proof.
-
-The public [adopter recipe](https://github.com/openlup/openlup/blob/main/docs/platform/adopter-kit/README.md#adopt-or-upgrade-a-package)
-explains source-local nominations and full/partial/retained/hold dispositions.
-Select that optional source guidance at a deliberate revision against your
-installed contract. This package guide conveys version-bound contract information,
-not tool permissions, an automatic control installation or external-write authority.
-The existing wiring and packed protocol examples remain narrow package evidence;
-a complete extension/absorption/retry witness belongs to the actual module adoption.
+Follow [extension seams](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/extend/choose-an-extension-seam.md)
+and [upgrades](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/upgrade/README.md). The installed
+[agent guide](AGENTS.md#using-this-package-in-an-application) retains the dependent
+hold and compatible recovery rules.
 
 ## Package artifact limits
 
@@ -164,24 +134,6 @@ for measured sizes, current caps, the S1 baseline refresh and refusal remedies.
 Artifact checks require a clean package directory; `--manifest-only` supplies no
 artifact evidence.
 
-Source contributors record notable changes in package changelog fragments;
-release preparation assembles the shipped CHANGELOG. Follow the
-[public contribution guide](https://github.com/openlup/openlup/blob/main/CONTRIBUTING.md#development-preview-checks).
-
 ## Release notes
 
-The reviewed release workflow owns provenance-backed publication; direct directory publishing refuses. New API and shipped SQL require the next minor set.
-
-The prepared `0.39.0` set republishes Outbox with unchanged runtime, exports and
-SQL, and an exact `@openlup/core@0.39.0` peer. Upgrade the complete set together;
-no Outbox schema migration is introduced. Read [0.39.0 notes](CHANGELOG.md#0390).
-Releases before `0.37.0` are retained in the source-only `CHANGELOG-HISTORY.md`.
-Size comparison uses the published `0.38.0` tarball; preparation grants no
-publication or installation proof.
-
-Checkout recovery is an optional platform consumer of the outbox. Its wave
-producer inserts each event and recovery-token digest atomically; event uniqueness
-arbitrates concurrent enqueue. Its final-wave gate reads confirmed delivery
-receipts independently of dispatch completion. See the
-[platform recovery recipe](https://github.com/openlup/openlup/blob/main/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#checkout-recovery-waves-and-expiry)
-for transport profiles, reservation-backed expiry and host-binding limits.
+Read [the changelog](CHANGELOG.md#0410) before upgrading the package set.

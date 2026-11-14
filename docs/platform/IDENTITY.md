@@ -135,8 +135,6 @@ Receipt field mapping stays in reference composition.
 
 ## Magic-link redirect policy
 
-Moved to [Identity](../../packages/core/docs/guide/concepts/identity.md#magic-link-destinations).
-
 The reference customer binding supplies a one-origin allowlist from nonblank
 `APP_BASE_URL`, falling back only when absent or blank to
 `CUSTOMER_AUTH_REDIRECT_ORIGIN`. The admin binding uses `APP_BASE_URL` with
@@ -158,15 +156,11 @@ the reference route tests pin configuration precedence and the new refusal.
 
 ## Email-trust schema readiness
 
-Moved to [Identity](../../packages/core/docs/guide/concepts/identity.md#customer-sign-in-and-email-trust).
-
 The reference host helper `assessIdentityReadiness` composes email-trust
 readiness during `startPublicReferenceServer({ identity })` candidate admission,
 before listening.
 
 ## Operator invitation lifecycle
-
-Moved to [Identity](../../packages/core/docs/guide/concepts/identity.md#operator-invitations).
 
 Direct storage uses the two additive tables in forward
 `20261018120000_identity_operator_invitations`, canonical catalogue position 67.
@@ -189,8 +183,8 @@ membership_accepted_at) on `admin_users`; insertion relies on the false
 `is_machine_actor` default. No pending attempt is stored in Auth metadata.
 The reference managed invite runner does not enforce the direct-only TTL setting.
 
-See [data compatibility](DATA_AND_MIGRATIONS.md#compatibility-lifecycle) and the
-[package invocation](PLATFORM_PACKAGE_REFERENCE.md#operator-invitations).
+See [data compatibility](../../packages/core/docs/guide/upgrade/database-migrations.md#check-application-compatibility) and the
+[package invocation](../../packages/core/docs/guide/concepts/identity.md#operator-invitations).
 
 The direct TTL defaults to 604800 seconds, with integer bounds 60..2592000.
 
@@ -424,8 +418,6 @@ These endpoint-source outcomes do not activate a route.
 
 ## Direct human login
 
-Moved to [Identity](../../packages/core/docs/guide/concepts/identity.md#direct-human-login).
-
 The reference composition selects `PLATFORM_BUNDLE=node-postgres` and browser
 `VITE_OPERATOR_AUTH_PROVIDER_KIND=direct`, passing `providerKind` to `AuthProvider`.
 The dispatcher mounts the direct magic-link, verify-otp and `me` handlers through
@@ -434,8 +426,6 @@ binding creation. The default static reference mounts none of them; the bounded
 static and subscription builds omit the admin shell.
 
 ### Challenge delivery and redemption
-
-Moved to [Identity](../../packages/core/docs/guide/concepts/identity.md#challenge-delivery-and-redemption).
 
 The reference dispatcher receives its separate operator delivery binding through
 `createReferenceBffDispatch(env => createOperatorSessionBinding(env, delivery))`.
@@ -454,8 +444,6 @@ consumed challenges. Tokens expire after ten minutes.
 
 ### First-administrator bootstrap
 
-Moved to [Identity](../../packages/core/docs/guide/concepts/identity.md#first-administrator-bootstrap).
-
 The repository's trusted database maintenance entrypoint is:
 
 ```sh
@@ -471,8 +459,6 @@ The bootstrap invitation lasts seven days.
 
 ### Sessions and authorization
 
-Moved to [Identity](../../packages/core/docs/guide/concepts/identity.md#sessions-and-authorization).
-
 The reference shell maps `accessToken` to its neutral `access_token` session
 subset. Managed SDK initialization remains behind managed selection.
 
@@ -480,8 +466,6 @@ Operator sessions have a fixed 900-second lifetime. Verification requires a
 positive lifetime of at most 900 seconds.
 
 ### Retention and recovery
-
-Moved to [Identity](../../packages/core/docs/guide/concepts/identity.md#retention-and-recovery).
 
 The repository's direct maintenance entrypoint is:
 
@@ -495,8 +479,6 @@ Each invocation deletes at most 500 challenges whose expiry is more than
 24 hours old.
 
 ### Installation and verification limits
-
-Moved to [Identity](../../packages/core/docs/guide/concepts/identity.md#installation-and-verification-limits).
 
 The operator challenge forward is
 `20261018180000_identity_operator_challenges`, at catalogue position 68. Its
@@ -523,8 +505,6 @@ respect the same ten-minute constraint as issued challenges.
 
 ## Identity personal data
 
-Moved to [Personal data](../../packages/core/docs/guide/concepts/personal-data.md#personal-data-coverage).
-
 The reference composition registers identity and a subscriptions veto on one
 direct executor, holding a `SHARE` relation lock on subscriptions through commit.
 Its opaque contact retention declares only `lifecycle_stage` and
@@ -548,8 +528,6 @@ composed here.
 
 ### Admin operations and token limits
 
-Moved to [Personal data](../../packages/core/docs/guide/concepts/personal-data.md#export-and-erasure).
-
 The reference dispatcher mounts direct and managed privacy routes without
 caller-supplied entries. Its observed mutation policy precedes body/query reads
 and binding construction; supplied entries retain that wrapper. Admin preflight
@@ -566,10 +544,8 @@ when expiry is strictly older than 24 hours.
 
 ### Retained responsibilities
 
-Moved to [Personal data](../../packages/core/docs/guide/concepts/personal-data.md#export-and-erasure).
-
-See [data compatibility](DATA_AND_MIGRATIONS.md#compatibility-lifecycle) for
-installation ownership and [the package reference](PLATFORM_PACKAGE_REFERENCE.md#personal-data)
+See [data compatibility](../../packages/core/docs/guide/upgrade/database-migrations.md#check-application-compatibility) for
+installation ownership and [the package reference](../../packages/core/docs/guide/concepts/personal-data.md#personal-data-coverage)
 for source composition.
 
 Evidence (historical record, 2026-11-13):
@@ -750,8 +726,6 @@ This service-free proof is outside Vitest and the required test selectors.
 
 ## Guest checkout contact resolution
 
-Moved to [Identity](../../packages/core/docs/guide/concepts/identity.md#guest-checkout-contact-resolution).
-
 The registrar uses the existing restricted native client INSERT/SELECT, bounded
 profile/metadata UPDATE and receipt SELECT capabilities. Profile initialization
 inserts permitted columns then uses a guarded UPDATE in the same transaction.
@@ -767,8 +741,6 @@ email is limited to 320 characters. Acquisition source is 1–100 characters aft
 trimming, with raw limit 100.
 
 ## Opt-in OIDC access tokens
-
-Moved to [Identity](../../packages/core/docs/guide/concepts/identity.md#opt-in-oidc-access-tokens).
 
 The reference `createOidcComposition(env)` recipe explicitly selects the direct
 `node-postgres` bundle and reads issuer/customer/operator audiences through the

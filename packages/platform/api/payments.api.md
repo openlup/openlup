@@ -452,14 +452,10 @@ export declare function timingSafeStringEqual(left: string, right: string): bool
 ## dist/payments/adapterConformance.d.ts
 
 ```ts
-import type { PaymentAdapterConformanceEvidence, PaymentAdapterConformanceSubject, PaymentVerifyNormalizePort } from "./contracts/index.js";
+import type { PaymentAdapterConformanceEvidence } from "./contracts/index.js";
+import type { PaymentAdapterTestSubject } from "./paymentTestingScenarios.js";
 /** Runner-independent adapter proof. Verification fixtures are owned by each adapter. */
-export declare function runPaymentAdapterConformance(subjects: readonly (PaymentAdapterConformanceSubject & {
-    verification: readonly {
-        input: Parameters<PaymentVerifyNormalizePort["verifyAndNormalize"]>[0];
-        expected: Awaited<ReturnType<PaymentVerifyNormalizePort["verifyAndNormalize"]>>;
-    }[];
-})[]): Promise<PaymentAdapterConformanceEvidence>;
+export declare function runPaymentAdapterConformance(subjects: readonly PaymentAdapterTestSubject[]): Promise<PaymentAdapterConformanceEvidence>;
 ```
 ## dist/payments/bindings.d.ts
 
@@ -605,6 +601,7 @@ export interface PaymentAdapter {
     verifyPort: PaymentVerifyNormalizePort;
     readbackPort: PaymentReadbackPort;
     absencePort?: PaymentAbsencePort;
+    methodPort?: import("./repair.js").PaymentRepairMethodPort;
 }
 export {};
 ```
@@ -814,9 +811,19 @@ export type PaymentRefundObservation = {
 });
 /** Type-only policy: require-evidence is default; legacy behavior needs explicit opt-in. */
 export type RefundEvidencePolicy = "require-evidence" | "legacy-assume-full";
+export type VerifiedReusableMethod = {
+    providerCustomerRef?: string | null;
+    providerMethodRef: string;
+    providerMandateRef?: string | null;
+    methodKind: string;
+    status: "pending_verification" | "active" | "inactive" | "expired" | "revoked";
+    consentSnapshot?: Record<string, unknown>;
+    expiresAt?: string | null;
+};
 /** Verified money facts; authorization alone is never settled money. */
 export type VerifiedPaymentEvidence = VerifiedIdentity & {
     kind: "money";
+    reusableMethod?: VerifiedReusableMethod;
     providerPaymentRef: string;
     intentRef: string | null;
     attemptRef: string | null;
@@ -834,13 +841,7 @@ export type VerifiedMethodEvidence = VerifiedIdentity & {
     outcome: "registered" | "updated" | "revoked" | "expired" | "suspended" | "failed" | "requires-action";
     methodLifecycle?: PaymentMethodLifecycleEvent;
     /** Registration facts only. The host resolves client/subscription ownership. */
-    reusableMethod?: {
-        providerCustomerRef?: string | null;
-        providerMethodRef: string;
-        providerMandateRef?: string | null;
-        methodKind: string;
-        status: "pending_verification" | "active" | "inactive" | "expired" | "revoked";
-    };
+    reusableMethod?: VerifiedReusableMethod;
     methodRef: string;
     setupRef: string | null;
     intentRef: string | null;
@@ -933,7 +934,7 @@ export {};
 ```ts
 export type { PreparedAttemptPrepareInput, PreparedAttemptPersistenceResult, PreparedAttemptFinalizeInput, PreparedAttemptPersistencePort, PreparedAttemptExecutionPort, PreparedAttemptExecutionInput, PreparedAttemptFailurePolicy, PreparedAttemptExecutionResult, } from "./preparedAttempt.js";
 export type { TransientSecret, PaymentMethodHandoff, PaymentRefusalEnvelope, PaymentExecutionEnvelope, PaymentAttemptPort, PaymentAdapterCapabilities, PaymentAdapter, } from "./adapter.js";
-export type { PaymentRefundObservation, RefundEvidencePolicy, VerifiedPaymentEvidence, VerifiedMethodEvidence, PaymentVerifyNormalizePort, ProviderReadPurpose, PaymentAbsenceEnvelope, PaymentReadbackEnvelope, PaymentMoney, PaymentAttemptIdentity, PaymentReadbackPort, PaymentAbsencePort, } from "./evidence.js";
+export type { PaymentRefundObservation, RefundEvidencePolicy, VerifiedPaymentEvidence, VerifiedMethodEvidence, VerifiedReusableMethod, PaymentVerifyNormalizePort, ProviderReadPurpose, PaymentAbsenceEnvelope, PaymentReadbackEnvelope, PaymentMoney, PaymentAttemptIdentity, PaymentReadbackPort, PaymentAbsencePort, } from "./evidence.js";
 export type { PaymentAdapterConformanceSubject, PaymentAdapterConformanceEvidence } from "./conformance.js";
 export type { PaymentTruthOutcome, PaymentTruthRefusalClass, PaymentSourceEvidence, PaymentTruthEvent, PaymentReconciliationResult, PaymentTruthReadback, PaymentTruthPort, CanonicalPaymentSource, } from "./truth.js";
 export type { PaymentIngressPort } from "./evidence.js";
@@ -1664,6 +1665,9 @@ export type { ExpiredPaymentSafetyOrder } from './expiredCheckoutSafety.js';
 export { normalizeSandboxPaymentRecoveryEvidence } from './sandboxRecoveryGuidance.js';
 export { createPostgresSandboxCheckoutRecoveryAttemptPort } from './sandboxCheckoutRecoveryPay.js';
 export { createPostgresSandboxInlineRecoveryAttemptPort } from "./sandboxInlineRecovery.js";
+export { createPostgresPaymentMethodStore, createPostgresPaymentWebhookMethodRefPort, applyPostgresPaymentMethodLifecycleEvent, schedulePostgresRetryOnDurableMethodUpdate, consumePostgresPaymentMethodDelivery } from "./postgresPaymentMethods.js";
+export { createPostgresPaymentMethodSetup } from "./postgresMethodSetup.js";
+export { createPostgresRecordedSubscriptionMethodReader } from "./postgresSubscriptionMethod.js";
 export { createPostgresPaymentProviderReconciliationPort } from "./postgresPaymentProviderReconciliation.js";
 ```
 ## dist/payments/paymentMethodLifecycle.d.ts
@@ -1688,6 +1692,49 @@ import type { PaymentProviderReconciliationWorkerInput, PaymentProviderReconcili
 export type { ClaimedPaymentAttempt, PaymentProviderReconciliationPort, PaymentProviderReconciliationProvider, PaymentProviderReconciliationWorkerInput, PaymentProviderReconciliationWorkerResult, ProviderReconciliationStatus, ProviderReconciliationStatusKind, ReconciliationProviderKind, SilenceWindowLookup, } from "./contracts/reconciliation.js";
 export declare const DEFAULT_STALE_AFTER_SECONDS: number;
 export declare function runPaymentProviderReconciliationWorker(input: PaymentProviderReconciliationWorkerInput): Promise<PaymentProviderReconciliationWorkerResult>;
+```
+## dist/payments/paymentTestingScenarios.d.ts
+
+```ts
+import type { PaymentAdapterConformanceSubject } from "./contracts/conformance.js";
+import type { PaymentAttemptPort, PaymentExecutionEnvelope } from "./contracts/adapter.js";
+import type { ScriptedPaymentOutcome } from "./testing/index.js";
+import type { PaymentMoney, PaymentVerifyNormalizePort } from "./contracts/evidence.js";
+export type PaymentWebhookFixture = {
+    input: Parameters<PaymentVerifyNormalizePort["verifyAndNormalize"]>[0];
+    expected: Awaited<ReturnType<PaymentVerifyNormalizePort["verifyAndNormalize"]>>;
+};
+export type PaymentTransportScenario = "timeout-before-dispatch" | "provider-5xx-before-dispatch" | "timeout-after-dispatch" | "redelivery-409";
+export type PaymentTransportFixture = {
+    execute: () => Promise<PaymentExecutionEnvelope>;
+    /** The injected scripted fake's log: the runner checks the intended fault ran. */
+    calls: readonly {
+        kind: ScriptedPaymentOutcome<unknown>["kind"];
+    }[];
+};
+/** Adapter authors supply signed original bytes and bind the shared scripted fake
+ * to their injected client. Each transport callback must execute the real adapter.
+ * These offline probes establish no durable-store or provider qualification.
+ */
+export interface PaymentAdapterSafetyScenarios {
+    /** Count every injected-client invocation at entry, before parsing or assertions. */
+    providerRequests: () => number;
+    transport: Record<PaymentTransportScenario, PaymentTransportFixture>;
+    /** Successful executions demonstrate every declared currency and capture flow's handoff, plus an
+     * unattended attempt (or a refused invocation when unattended is unsupported). */
+    capabilityInputs: readonly Parameters<PaymentAttemptPort["execute"]>[0][];
+    /** An otherwise valid request with a currency outside the declared set. */
+    unsupportedCurrencyInput: Parameters<PaymentAttemptPort["execute"]>[0];
+    /** Omit required payer/method context; adapters with required context must supply it. */
+    missingRequiredInput?: Parameters<PaymentAttemptPort["execute"]>[0];
+    webhooks: Record<"valid" | "duplicate" | "signatureMismatch" | "partialAmount" | "zeroAmount" | "missingAmount" | "missingCurrency" | "chargeback", PaymentWebhookFixture>;
+    partialMoney: PaymentMoney;
+}
+/** Existing baseline callers remain valid; supply safety for the complete kit. */
+export type PaymentAdapterTestSubject = PaymentAdapterConformanceSubject & {
+    verification: readonly PaymentWebhookFixture[];
+    safety?: PaymentAdapterSafetyScenarios;
+};
 ```
 ## dist/payments/paymentTruth.d.ts
 
@@ -1784,6 +1831,112 @@ export interface PaymentFailureDunningPort {
  * silence, timeout and every other non-terminal answer are deliberate no-ops.
  */
 export declare function handoffExplicitPaymentRefusal(input: PaymentRefusalHandoff, port: PaymentFailureDunningPort): Promise<void>;
+```
+## dist/payments/postgresMethodSetup.d.ts
+
+```ts
+import type { PaymentProviderExecutor } from "./postgresPreparedAttempt.js";
+import type { PaymentRepairMethodPort } from "./contracts/repair.js";
+/** Ownership is resolved before any provider I/O; collection handoff stays transient. */
+export declare function createPostgresPaymentMethodSetup(db: PaymentProviderExecutor, input: {
+    enabled: () => boolean;
+    methodPort: PaymentRepairMethodPort;
+    ensureCustomer(input: {
+        clientId: string;
+        metadata: Record<string, string>;
+        idempotencyKey: string;
+    }): Promise<string>;
+}): {
+    execute(principalId: string, request: {
+        subscriptionId: string;
+        idempotencyKey: string;
+    }): Promise<{
+        kind: "ready";
+        setupRef: string;
+        handoff: import("./contracts/adapter.js").PaymentMethodHandoff;
+        replayed: boolean;
+    } | {
+        kind: "unsupported";
+    } | {
+        readonly kind: "disabled";
+        reason?: undefined;
+    } | {
+        readonly kind: "invalid";
+        reason?: undefined;
+    } | {
+        readonly kind: "forbidden";
+        readonly reason: "subscription_not_owned_or_missing";
+    }>;
+};
+```
+## dist/payments/postgresPaymentMethods.d.ts
+
+```ts
+import { type PaymentMethodLifecycleEvent } from "@openlup/core/payment";
+import { z } from "zod";
+import type { PaymentProviderExecutor } from "./postgresPreparedAttempt.js";
+import type { NormalizedProviderPaymentWebhook, PaymentWebhookMethodRefPort } from "./verifiedIngress.js";
+declare const methodSchema: z.ZodObject<{
+    id: z.ZodUUID;
+    client_id: z.ZodUUID;
+    subscription_id: z.ZodNullable<z.ZodUUID>;
+    provider_kind: z.ZodString;
+    provider_method_ref: z.ZodString;
+    method_kind: z.ZodString;
+    provider_customer_ref: z.ZodNullable<z.ZodString>;
+    provider_mandate_ref: z.ZodNullable<z.ZodString>;
+    status: z.ZodString;
+    active: z.ZodBoolean;
+    expires_at: z.ZodNullable<z.ZodString>;
+    consent_snapshot: z.ZodRecord<z.ZodString, z.ZodUnknown>;
+    raw_provider_payload: z.ZodRecord<z.ZodString, z.ZodUnknown>;
+    open_case_id: z.ZodNullable<z.ZodUUID>;
+}, z.core.$strip>;
+type StoredMethod = z.infer<typeof methodSchema>;
+/** Bounded server reader; raw reference tables stay private. */
+export declare function createPostgresPaymentMethodStore(db: PaymentProviderExecutor): {
+    read(provider: string, reference: string): Promise<StoredMethod | null>;
+    upsert(input: {
+        key: string;
+        clientId: string;
+        subscriptionId: string | null;
+        provider: string;
+        methodKind: string;
+        customer: string | null;
+        reference: string;
+        mandate: string | null;
+        status: string;
+        active: boolean;
+        expiresAt: string | null;
+        consent: Record<string, unknown>;
+        payload: Record<string, unknown>;
+    }): Promise<{
+        id: string;
+        replayed: boolean;
+    }>;
+    deactivate(event: PaymentMethodLifecycleEvent, id: string, reason: string): Promise<void>;
+    schedule(caseId: string, reference: string, at: string, entry?: string): Promise<{
+        scheduled: boolean;
+        reason: string | null;
+    }>;
+};
+/** Registration precedes lifecycle delivery and the durable retry lookup. */
+export declare function createPostgresPaymentWebhookMethodRefPort(db: PaymentProviderExecutor): PaymentWebhookMethodRefPort;
+/** Published method facts update the addressed stored row; they confer no ownership. */
+export declare function applyPostgresPaymentMethodLifecycleEvent(db: PaymentProviderExecutor, event: PaymentMethodLifecycleEvent): Promise<{
+    outcome: string;
+    reason: string;
+} | {
+    outcome: string;
+    reason: null;
+}>;
+export declare function schedulePostgresRetryOnDurableMethodUpdate(db: PaymentProviderExecutor, event: NormalizedProviderPaymentWebhook): Promise<{
+    outcome: string;
+    reason: string | null;
+}>;
+/** Compose after registration; a throw leaves the ingress row received for redelivery. */
+export declare function consumePostgresPaymentMethodDelivery(db: PaymentProviderExecutor, event: NormalizedProviderPaymentWebhook): Promise<void>;
+export {};
 ```
 ## dist/payments/postgresPaymentProviderReconciliation.d.ts
 
@@ -1919,6 +2072,35 @@ interface Executor {
 /** Server-only no-key simulator. The host authorizes commands; durable observations are its verifier's source. */
 export declare function createPostgresSandboxPaymentSimulator(db: Executor, options: SandboxPaymentSimulatorOptions): SandboxPaymentSimulator;
 export {};
+```
+## dist/payments/postgresSubscriptionMethod.d.ts
+
+```ts
+import type { PaymentProviderExecutor } from "./postgresPreparedAttempt.js";
+/** A healthy legacy label or a mirror string is never reusable provider evidence. */
+export declare function createPostgresRecordedSubscriptionMethodReader(db: PaymentProviderExecutor): {
+    read(subscriptionId: string): Promise<{
+        readonly kind: "unavailable";
+        readonly reason: "method_ref_not_recorded";
+        readonly methodRef?: undefined;
+        readonly evidenceRef?: undefined;
+        provider?: undefined;
+        readonly customerRef?: undefined;
+        readonly healthState?: undefined;
+        readonly consentSnapshot?: undefined;
+        expiresAt?: undefined;
+    } | {
+        readonly kind: "recorded";
+        readonly methodRef: string;
+        readonly evidenceRef: string;
+        readonly provider: string;
+        readonly customerRef: string | null;
+        readonly healthState: string;
+        readonly consentSnapshot: unknown;
+        readonly expiresAt: unknown;
+        reason?: undefined;
+    }>;
+};
 ```
 ## dist/payments/preparedAttempt.d.ts
 
@@ -2165,7 +2347,7 @@ export declare const paymentSchemaDescriptor: {
     readonly settlement: "supported";
     readonly laterOnlyCycle: "supported";
     readonly preparedDurableStore: "supported";
-    readonly methodSetup: "unsupported";
+    readonly methodSetup: "supported";
     readonly absenceReopen: "supported";
     readonly cumulativeRefund: "supported";
 };
@@ -2194,10 +2376,57 @@ export declare const PAYMENT_MIGRATIONS: readonly [{
     readonly url: URL;
 }];
 ```
+## dist/payments/testing/index.d.ts
+
+```ts
+/** @experimental Development-preview, offline payment adapter test kit. */
+export { runPaymentAdapterConformance } from "../adapterConformance.js";
+export { createScriptedPaymentFake, ScriptedPaymentTransportError } from "./scriptedFake.js";
+export type { ScriptedPaymentOutcome } from "./scriptedFake.js";
+export type { PaymentAdapterSafetyScenarios, PaymentAdapterTestSubject, PaymentTransportScenario, PaymentTransportFixture, PaymentWebhookFixture } from "../paymentTestingScenarios.js";
+```
+## dist/payments/testing/scriptedFake.d.ts
+
+```ts
+/** Synthetic transport outcomes; no provider SDK, network, timer or retry. */
+export type ScriptedPaymentOutcome<T> = {
+    kind: "success";
+    value: T;
+} | {
+    kind: "provider-5xx";
+    response?: T;
+} | {
+    kind: "timeout-before-dispatch";
+} | {
+    kind: "timeout-after-dispatch";
+} | {
+    kind: "redelivery-409";
+    response?: T;
+};
+export declare class ScriptedPaymentTransportError extends Error {
+    readonly kind: Exclude<ScriptedPaymentOutcome<never>["kind"], "success">;
+    readonly status: number | undefined;
+    readonly dispatched: boolean;
+    constructor(kind: Exclude<ScriptedPaymentOutcome<never>["kind"], "success">);
+}
+/** Per-call FIFO extracted from adapter test clients. Arguments/secrets are never recorded.
+ * HTTP bindings may supply a response for 5xx/409; SDK bindings receive an error.
+ * Dispatch observations describe the script only, never production no-charge evidence.
+ */
+export declare function createScriptedPaymentFake<Calls extends Record<string, unknown>>(): {
+    calls: readonly {
+        call: keyof Calls;
+        kind: ScriptedPaymentOutcome<unknown>["kind"];
+    }[];
+    enqueue<K extends keyof Calls>(call: K, ...outcomes: ScriptedPaymentOutcome<Calls[K]>[]): void;
+    invoke<K extends keyof Calls>(call: K): Promise<Calls[K]>;
+    assertDrained(): void;
+};
+```
 ## dist/payments/verifiedIngress.d.ts
 
 ```ts
-import type { PaymentIngressPort, PaymentVerifyNormalizePort, RefundEvidencePolicy, VerifiedMethodEvidence } from "./contracts/evidence.js";
+import type { PaymentIngressPort, PaymentVerifyNormalizePort, RefundEvidencePolicy, VerifiedMethodEvidence, VerifiedPaymentEvidence } from "./contracts/evidence.js";
 declare const PAYMENT_WEBHOOK_EVENT_TYPES: readonly ["payment.succeeded", "payment.failed", "payment.refunded", "payment.requires_action", "payment.disputed", "setup.succeeded", "setup.failed", "setup.requires_action"];
 type PaymentWebhookEventType = (typeof PAYMENT_WEBHOOK_EVENT_TYPES)[number];
 export type ProviderPaymentWebhookKind = PaymentWebhookEventType;
@@ -2222,6 +2451,7 @@ export interface NormalizedProviderPaymentWebhook {
         methodKind: string;
         status: "pending_verification" | "active" | "inactive" | "expired" | "revoked";
         consentSnapshot?: Record<string, unknown>;
+        expiresAt?: string | null;
     } | null;
 }
 export interface PaymentWebhookControlPort {
@@ -2300,7 +2530,7 @@ type OperationalEventRecorder = (event: {
     details: Record<string, unknown>;
 }) => void;
 /** Verified ingress boundary; persistence and transport response writing belong to the host. */
-export declare function createVerifiedPaymentIngress({ provider, verifyPort, paymentControlPort, methodRefPort, afterProcessed, createPorts, resolveMethodOwner, refundEvidencePolicy, operationalEvents, }: {
+export declare function createVerifiedPaymentIngress({ provider, verifyPort, paymentControlPort, methodRefPort, afterProcessed, createPorts, resolveMethodOwner, resolveSavedMethodOwner, refundEvidencePolicy, operationalEvents, }: {
     provider: string;
     verifyPort: PaymentVerifyNormalizePort;
     paymentControlPort: PaymentWebhookControlPort;
@@ -2309,6 +2539,10 @@ export declare function createVerifiedPaymentIngress({ provider, verifyPort, pay
     createPorts?: (event: NormalizedProviderPaymentWebhook) => PaymentWebhookProcessingPorts | Promise<PaymentWebhookProcessingPorts>;
     /** Host-owned identity; adapter metadata cannot supply client/subscription authority. */
     resolveMethodOwner?: (evidence: VerifiedMethodEvidence) => Promise<{
+        clientId: string;
+        subscriptionId?: string | null;
+    } | null>;
+    resolveSavedMethodOwner?: (evidence: VerifiedPaymentEvidence) => Promise<{
         clientId: string;
         subscriptionId?: string | null;
     } | null>;

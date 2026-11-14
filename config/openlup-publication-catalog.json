@@ -98,6 +98,10 @@
       "class": "public-output"
     },
     {
+      "path": ".github/workflows/registry-tutorial.yml",
+      "class": "public-output"
+    },
+    {
       "path": ".gitignore",
       "class": "public-output"
     },
@@ -1386,6 +1390,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261114110000_payment_method_refs.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/20261114120000_payment_reconciliation_refund_evidence.sql",
       "class": "public-output"
     },
@@ -2071,6 +2079,10 @@
     },
     {
       "path": "examples/neutral-store/README.md",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/README.template.md",
       "class": "public-output"
     },
     {
@@ -2838,10 +2850,6 @@
       "class": "public-output"
     },
     {
-      "path": "packages/core/AGENT_CONTEXT.md",
-      "class": "public-output"
-    },
-    {
       "path": "packages/core/CHANGELOG-HISTORY.md",
       "class": "public-output"
     },
@@ -3574,10 +3582,6 @@
       "class": "public-output"
     },
     {
-      "path": "packages/outbox/AGENT_CONTEXT.md",
-      "class": "public-output"
-    },
-    {
       "path": "packages/outbox/CHANGELOG-HISTORY.md",
       "class": "public-output"
     },
@@ -3711,10 +3715,6 @@
     },
     {
       "path": "packages/platform/AGENTS.md",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/AGENT_CONTEXT.md",
       "class": "public-output"
     },
     {
@@ -3939,6 +3939,10 @@
     },
     {
       "path": "packages/platform/api/payments-stripe.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/payments-testing.api.md",
       "class": "public-output"
     },
     {
@@ -4555,6 +4559,10 @@
     },
     {
       "path": "packages/platform/sql/20261114100000_payment_provider_attempt_store.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261114110000_payment_method_refs.sql",
       "class": "public-output"
     },
     {
@@ -7878,6 +7886,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/payments/paymentSafetyConformance.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/paymentTestingScenarios.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/payments/paymentTruth.ts",
       "class": "public-output"
     },
@@ -7891,6 +7907,14 @@
     },
     {
       "path": "packages/platform/src/payments/paymentWebhookPostProcessing.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/postgresMethodSetup.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/postgresPaymentMethods.ts",
       "class": "public-output"
     },
     {
@@ -7915,6 +7939,10 @@
     },
     {
       "path": "packages/platform/src/payments/postgresSandboxPaymentSimulator.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/postgresSubscriptionMethod.ts",
       "class": "public-output"
     },
     {
@@ -8011,6 +8039,14 @@
     },
     {
       "path": "packages/platform/src/payments/stripe/webhookSignature.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/testing/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/testing/scriptedFake.ts",
       "class": "public-output"
     },
     {
@@ -10506,6 +10542,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/payments/postgresMethodParity.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/payments/postgresPaymentTruth.test.ts",
       "class": "public-output"
     },
@@ -10530,6 +10570,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/payments/scriptedFake.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/payments/stripe/a2StripeKeysAndDeclinesCharacterization.test.ts",
       "class": "public-output"
     },
@@ -10551,6 +10595,10 @@
     },
     {
       "path": "packages/platform/test/payments/stripe/conformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/stripe/conformance.testFixtures.ts",
       "class": "public-output"
     },
     {
@@ -10610,7 +10658,15 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/payments/testingDefects.testFixtures.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/payments/tpay/conformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/tpay/conformance.testFixtures.ts",
       "class": "public-output"
     },
     {
@@ -11190,14 +11246,6 @@
       "class": "public-output"
     },
     {
-      "path": "scripts/agent-context/generate.mjs",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/agent-context/generate.test.mjs",
-      "class": "public-output"
-    },
-    {
       "path": "scripts/agent-review-decide.mjs",
       "class": "public-output"
     },
@@ -11307,18 +11355,6 @@
     },
     {
       "path": "scripts/ast-grep/rules/portable-no-industry-contracts.yml",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/audit-orientation-docs.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/audit-orientation-headers.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/audit-orientation-size.ts",
       "class": "public-output"
     },
     {
@@ -11471,18 +11507,6 @@
     },
     {
       "path": "scripts/disposable-run-lifecycle.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/documentation-bundle-io.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/documentation-bundle.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/documentation-bundle.ts",
       "class": "public-output"
     },
     {
@@ -12099,6 +12123,10 @@
     },
     {
       "path": "scripts/packages/reference-delegation-consumer.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/registry-tutorial-workflow.test.ts",
       "class": "public-output"
     },
     {
@@ -29262,6 +29290,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/connectedStorePaymentMethods.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/connectedStorePromotionClaims.test.ts",
       "class": "public-output"
     },
@@ -29363,6 +29395,26 @@
     },
     {
       "path": "tests/postgres/fixtures/m14SelfhostActor.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/paymentMethods/consent_snapshot_merge.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/paymentMethods/health.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/paymentMethods/replayed.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/paymentMethods/scope_repair.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/paymentMethods/subscription_switch.sql",
       "class": "public-output"
     },
     {
@@ -29787,6 +29839,14 @@
     },
     {
       "path": "tests/postgres/partnerAcquisition.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/paymentMethodRefsPgtap.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/paymentMethodRuntime.test.ts",
       "class": "public-output"
     },
     {
@@ -30319,7 +30379,7 @@
     },
     {
       "name": "oss:published-tree",
-      "command": "node scripts/agent-context/generate.mjs --check && node --experimental-strip-types scripts/oss-published-tree-check.ts",
+      "command": "node --experimental-strip-types scripts/oss-published-tree-check.ts",
       "publicDocs": [
         "CONTRIBUTING.md",
         "README.md"
@@ -30415,7 +30475,7 @@
     },
     {
       "path": "package.json",
-      "digest": "sha256-ea9de32d075be1c395786cae8b1d7574924da60d130dbe8fed2406341b93ef62"
+      "digest": "sha256-2031519770f977de75b1836c28d953fc6cea9544ffa4dd1f4d994c463d14d6a2"
     },
     {
       "path": "packages/core/package.json",

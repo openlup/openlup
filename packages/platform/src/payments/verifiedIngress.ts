@@ -1,4 +1,4 @@
-import type { PaymentIngressPort, PaymentVerifyNormalizePort, RefundEvidencePolicy, VerifiedMethodEvidence } from "./contracts/evidence.js";
+import type { PaymentIngressPort, PaymentVerifyNormalizePort, RefundEvidencePolicy, VerifiedMethodEvidence, VerifiedPaymentEvidence } from "./contracts/evidence.js";
 import { projectVerifiedEvidence } from "./verifiedEvidenceProjection.js";
 const PAYMENT_WEBHOOK_EVENT_TYPES = [
   "payment.succeeded",
@@ -35,6 +35,7 @@ export interface NormalizedProviderPaymentWebhook {
     methodKind: string;
     status: "pending_verification" | "active" | "inactive" | "expired" | "revoked";
     consentSnapshot?: Record<string, unknown>;
+    expiresAt?: string | null;
   } | null;
 }
 
@@ -102,7 +103,7 @@ type OperationalEventRecorder = (event: { name: string; domain: string; surface:
 
 /** Verified ingress boundary; persistence and transport response writing belong to the host. */
 export function createVerifiedPaymentIngress({
-  provider, verifyPort, paymentControlPort, methodRefPort, afterProcessed, createPorts, resolveMethodOwner,
+  provider, verifyPort, paymentControlPort, methodRefPort, afterProcessed, createPorts, resolveMethodOwner, resolveSavedMethodOwner,
   refundEvidencePolicy = "require-evidence", operationalEvents = () => {},
 }: {
   provider: string;
@@ -113,6 +114,7 @@ export function createVerifiedPaymentIngress({
   createPorts?: (event: NormalizedProviderPaymentWebhook) => PaymentWebhookProcessingPorts | Promise<PaymentWebhookProcessingPorts>;
   /** Host-owned identity; adapter metadata cannot supply client/subscription authority. */
   resolveMethodOwner?: (evidence: VerifiedMethodEvidence) => Promise<{ clientId: string; subscriptionId?: string | null } | null>;
+  resolveSavedMethodOwner?: (evidence: VerifiedPaymentEvidence) => Promise<{ clientId: string; subscriptionId?: string | null } | null>;
   refundEvidencePolicy?: RefundEvidencePolicy;
   operationalEvents?: OperationalEventRecorder;
 }): PaymentIngressPort {
@@ -150,6 +152,10 @@ export function createVerifiedPaymentIngress({
 
       if (verifiedEvidence.kind === "method" && verifiedEvidence.reusableMethod && resolveMethodOwner) {
         const owner = await resolveMethodOwner(verifiedEvidence);
+        event = projectVerifiedEvidence(verifiedEvidence, input, refundEvidencePolicy, owner ?? undefined);
+      }
+      if (verifiedEvidence.kind === "money" && verifiedEvidence.reusableMethod && resolveSavedMethodOwner) {
+        const owner = await resolveSavedMethodOwner(verifiedEvidence);
         event = projectVerifiedEvidence(verifiedEvidence, input, refundEvidencePolicy, owner ?? undefined);
       }
       const ports = createPorts

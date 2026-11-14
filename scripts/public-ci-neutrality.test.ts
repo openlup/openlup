@@ -931,21 +931,24 @@ describe("neutrality scan reuse", () => {
 
 });
 
-it("keeps the payment and managed pins closed at exactly 21 paths and 29 tuples", () => {
-  expect(reviewedPinnedIntroductions).toHaveLength(21);
-  expect(new Set(reviewedPinnedIntroductions.map(([path]) => path)).size).toBe(21);
-  expect(reviewedPinnedIntroductions.flatMap(([, , counts]) => counts)).toHaveLength(29);
+it("keeps the payment and managed pins closed at exactly 24 paths and 33 tuples", () => {
+  expect(reviewedPinnedIntroductions).toHaveLength(24);
+  expect(new Set(reviewedPinnedIntroductions.map(([path]) => path)).size).toBe(24);
+  expect(reviewedPinnedIntroductions.flatMap(([, , counts]) => counts)).toHaveLength(33);
   const paymentPaths = [paymentAttemptSql, paymentAttemptMirror];
   const reconciliationPins = [["db/platform/migrations/20261114120000_payment_reconciliation_refund_evidence.sql","1630ebe3422045ceb5c7c73a25922271ec05337556fff25230863f8fcff61bfd",[["ui-13",0,9],["ui-14",0,5]]],["packages/platform/sql/20261114120000_payment_reconciliation_refund_evidence.sql","1630ebe3422045ceb5c7c73a25922271ec05337556fff25230863f8fcff61bfd",[["ui-13",0,9],["ui-14",0,5]]],["tests/postgres/fixtures/paymentReconciliation/setup.sql","8a17e1de319f07597dc2ca606800c08b9fcf5fba2e7231c06c21fd50ed6bca20",[["ui-13",0,4],["ui-14",0,2]]],["tests/postgres/fixtures/paymentReconciliation/evidence.sql","e55fa02a9d000143617a73fad40f1e760125bc3aebf6192476015d145f69d95c",[["ui-13",0,1]]]];
-  expect(reviewedPinnedIntroductions.slice(0, 4)).toEqual(reconciliationPins);
+  expect(reviewedPinnedIntroductions.filter(([path]) => reconciliationPins.some(([p]) => p === path))).toEqual(reconciliationPins);
+  const methodPins = [["tests/postgres/fixtures/paymentMethods/replayed.sql","039b65952dfacf1810f60e327dcab41b2d5df858a74d4b0ec76e03562e2dc41e",[["ui-14",0,6]]],["tests/postgres/fixtures/paymentMethods/subscription_switch.sql","cf453ffcae8f3a61375595e9241b0a430d43c6208f4d9b2585627c8f6e12c55e",[["ui-13",0,3]]],["tests/postgres/fixtures/paymentMethods/scope_repair.sql","e2dcc12ff8f76ec519bdb5444c83fb1e748b341c135cff1f3b92de1ea33cacc2",[["ui-13",0,10],["ui-14",0,1]]]];
+  const methodPaths = methodPins.map(([path]) => path);
+  expect(reviewedPinnedIntroductions.filter(([path]) => methodPaths.includes(path))).toEqual(methodPins);
   const reconciliationPaths = reconciliationPins.map(([path]) => path);
-  const c94 = reviewedPinnedIntroductions.filter(([path]) => path !== operationsSql && !paymentPaths.includes(path) && path !== paymentAttemptFixture && !reconciliationPaths.includes(path));
+  const c94 = reviewedPinnedIntroductions.filter(([path]) => path !== operationsSql && !paymentPaths.includes(path) && path !== paymentAttemptFixture && !reconciliationPaths.includes(path) && !methodPaths.includes(path));
   expect(c94).toHaveLength(13);
   expect(c94.flatMap(([, , counts]) => counts)).toHaveLength(15);
   const paymentPins = reviewedPinnedIntroductions.filter(([path]) => paymentPaths.includes(path));
   expect(paymentPins.map(([path]) => path)).toEqual(paymentPaths);
   for (const [, digest, counts] of paymentPins) {
-    expect(digest).toBe("5dca653dbb0f341723822dbb1be55263cf30375cb49410205dcc735a516b75ed");
+    expect(digest).toBe("e99f59e7146ee5cdd57c9b24c60ba7951db264d332d24a9c84b3bb1e9de61511");
     expect(counts).toEqual([["ui-13", 0, 4], ["ui-14", 0, 3]]);
   }
   expect(reviewedPinnedIntroductions.filter(([path]) => path === paymentAttemptFixture)).toEqual([

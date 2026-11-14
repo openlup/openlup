@@ -1,5 +1,7 @@
 # M07 payments and durable money truth
 
+Status: historical record, 2026-10-29.
+
 ## Scope and placement
 
 Development-preview extraction into `@openlup/platform/payments` and its type-only `payments/contracts` entry. The existing platform package owns this capability; isolated subpaths suffice without a new package or core API change. C1 extraction identity: adopter commit `c86e5c27f`, eight witnesses and 33 cases. Provider translation, host configuration, local policy and existing reference composition retain their owners.

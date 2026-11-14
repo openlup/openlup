@@ -1,5 +1,7 @@
 # Invoicing module design
 
+Status: historical record, 2026-10-29.
+
 Status: development-preview design. The contract and offline conformance surface,
 the issue, correction and reversal helpers, the managed correction forwards, and
 the native store with its SQL projections are available for explicit host composition.

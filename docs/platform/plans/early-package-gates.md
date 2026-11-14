@@ -1,5 +1,7 @@
 # Earlier package gates with bounded verification cost
 
+Status: historical record, 2026-11-06.
+
 Status recorded for the 6 October 2026 task: `LOCAL_IMPLEMENTATION` —
 approved local work; no publication or installed-tool authority.
 Audience: development-preview contributors and the maintainer.

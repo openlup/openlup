@@ -74,7 +74,7 @@ function readOrdinaryFile(path: string, packagePath: string, packageRoot: string
 }
 
 function readInstalledFile(cwd: string, path: string, startLine = 1, endLine?: number, hooks: ReadHooks = {}): string {
-  if (/^https?:\/\//iu.test(path)) throw new Error("This source URL is not installed. Read the cited installed AGENT_CONTEXT.md excerpt instead; no URL is fetched.");
+  if (/^https?:\/\//iu.test(path)) throw new Error("This source URL is not installed. Read an installed file using its application-relative path; no URL is fetched.");
   const parts = path.split("/");
   if (isAbsolute(path) || win32.isAbsolute(path) || path.includes("\\") || path.includes("\0") ||
       parts.some(part => !part || part === "." || part === "..") ||

@@ -262,12 +262,15 @@ owns release permissions, setup, detailed refusals and recovery. The sequence is
    changelog's version section below a fresh Unreleased heading. It assembles the
    legacy body first, then validated package fragments in byte order of path,
    and deletes only consumed fragments after successful planning and writes,
-   then stages those deletions and guide writes so preparation can read
-   the Git inventory; historical sections stay byte-identical. The bump assembles
+   then stages those deletions and the documentation writes described below so
+   preparation can read the Git inventory. It stages no other changes;
+   historical sections stay byte-identical. The bump assembles
    `packages/core/docs/guide/upgrade/v<major>-<minor>-<patch>.md` from the consumed
-   fragments and API diff; the maintainer's agent edits that page and the listed guide pages in
+   fragments and API diff, listing added, removed and changed declarations;
+   the maintainer's agent edits that page and the listed guide pages in
    the same PR. The bump also re-pins the guide's repository links and refreshes
-   its generated regions. If no core release tag is an ancestor of HEAD, the listing
+   its generated regions, and re-pins released repository links in each publishable
+   package's `AGENTS.md` and `README.md`. If no core release tag is an ancestor of HEAD, the listing
    and page say that the previous release could not be determined. Each packed package
    CHANGELOG keeps the current release and the two previous ones; older sections
    move verbatim to its non-packed `CHANGELOG-HISTORY.md`. Add notable-change notes under
@@ -313,6 +316,18 @@ owns release permissions, setup, detailed refusals and recovery. The sequence is
    integrity and provenance before offering adoption. A release success alone
    cannot prove npm success.
 
+After a successful core publication, the separate
+[Guide tutorial against the npm registry](../../.github/workflows/registry-tutorial.yml)
+workflow waits for the matching package set and core's `latest` value on npm,
+then runs the guide tutorial against the registry. It runs trusted default-branch
+code and reads only the release tag's tutorial page, after checking the tag's
+commit against the completed publication run. It does not hold the
+publication run open or delay the next release dispatch, and is not a required
+check. The registry tutorial remains advisory until its second green run:
+a tutorial failure appears as a warning annotation and in the step summary.
+The packed-candidate tutorial in `install-packages` is blocking because its
+condition of two green merge-group runs on main has been met.
+
 On partial release or package failure, stop for maintainer recovery. Do not
 retag, rewrite an immutable release or republish a version. A failed publish job
 may be rerun: it re-reads npm and refuses once npm holds that version or a later
@@ -328,57 +343,32 @@ A source change to a bound input after preparation refuses until refreshed in a
 reviewed preparation change; other source bytes and modes remain Git-bound.
 The source-preview descendant check retains its strict snapshot equality.
 
-### Verify the published npm artifact
+### Core release preparation
 
-Use a disposable directory outside any checkout, Node 24, npm 11.19.0 and an
-authenticated `gh`. Select the package/version and full commit from the reviewed
-release. This example verifies the first core set; replace both values together
-for a later release. Repeat for each package before offering the whole set.
+The prepared `0.41.0` set republishes Core with unchanged runtime, exports and
+SQL; its reader guide lists Platform's new experimental `./payments/testing`
+subpath. Upgrade all packages together and read
+[the set notes](../../packages/core/CHANGELOG.md#0410); Core introduces no schema migration.
+Size comparison uses the published `0.40.0` tarball; releases before `0.39.0`
+remain in the source-only `CHANGELOG-HISTORY.md`. Preparation establishes no
+npm publication.
 
-```sh
-export OPENLUP_VERSION=0.12.0
-export OPENLUP_COMMIT=5a851a6db5483fe1c754445ab837429f108dfd75
-gh release verify "openlup-core-v$OPENLUP_VERSION" --repo openlup/openlup
-npm init -y
-npm install --save-exact --ignore-scripts --no-audit --fund=false "@openlup/core@$OPENLUP_VERSION"
-npm view "@openlup/core@$OPENLUP_VERSION" dist --json > registry-dist.json
-npm pack "@openlup/core@$OPENLUP_VERSION" --ignore-scripts --json > registry-pack.json
-npm audit signatures --json --include-attestations > signatures.json
-node --input-type=module - "$OPENLUP_VERSION" "$OPENLUP_COMMIT" <<'JS'
-import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { createHash } from 'node:crypto';
-const json = path => JSON.parse(readFileSync(path, 'utf8'));
-const [version, commit] = process.argv.slice(2);
-const dist = json('registry-dist.json'), audit = json('signatures.json');
-assert.deepEqual(audit.invalid, []); assert.deepEqual(audit.missing, []);
-const digest = createHash('sha512').update(readFileSync(json('registry-pack.json')[0].filename)).digest();
-assert.equal(dist.integrity, `sha512-${digest.toString('base64')}`);
-const verified = audit.verified.find(row => row.name === '@openlup/core' && row.version === version);
-const provenance = verified.attestationBundles.find(row => row.predicateType === 'https://slsa.dev/provenance/v1');
-const statement = JSON.parse(Buffer.from(provenance.bundle.dsseEnvelope.payload, 'base64'));
-assert(statement.subject.some(row => row.name === `pkg:npm/%40openlup/core@${version}` && row.digest.sha512 === digest.toString('hex')));
-const build = statement.predicate.buildDefinition, tag = `refs/tags/openlup-core-v${version}`;
-assert.deepEqual(build.externalParameters.workflow, {
-  ref: tag, repository: 'https://github.com/openlup/openlup', path: '.github/workflows/publish-packages.yml',
-});
-assert(build.resolvedDependencies.some(row => row.uri === `git+https://github.com/openlup/openlup@${tag}` && row.digest.gitCommit === commit));
-console.log('PASS: registry integrity and verified provenance match the reviewed package, tag, commit and workflow');
-JS
-npm view @openlup/core dist-tags.latest
-```
+The set requires Zod `^4.6.6` for GHSA-mrhx-c7xc-m3w5.
+Oversized constrained collections fail before per-element errors accumulate;
+bounded valid inputs and public exports are preserved. Both dependency locks
+select the fixed runtime. The build uses the existing development-only Node
+types for Zod's standard `URL` declaration; Core adds no runtime Node import.
 
-Require each command to succeed; the final `latest` value must equal the selected
-version when confirming a newly published set. `npm audit signatures` verifies
-the signatures before the snippet inspects its verified bundles; decoding a raw
-registry attestation alone is not signature verification. See the
-[npm verification contract](https://docs.npmjs.com/cli/audit/).
-Missing bundles, unsupported npm options, network/authentication failures or
-unavailable release verification mean **verification unavailable**: record the
-failed command, fix that prerequisite and rerun it before offering adoption.
-A digest or identity mismatch is a refusal requiring maintainer investigation.
-Compare the downloaded registry tarball with registry integrity and the signed
-subject digest; a local preflight tarball can differ and is not that evidence.
+### Outbox release preparation
+
+The reviewed release workflow owns provenance-backed publication; direct directory publishing refuses. New API and shipped SQL require the next minor set.
+
+The prepared `0.41.0` set republishes Outbox with unchanged runtime, exports and
+SQL, and an exact `@openlup/core@0.41.0` peer. Upgrade the complete set together;
+no Outbox schema migration is introduced. Read [0.41.0 notes](../../packages/outbox/CHANGELOG.md#0410).
+Releases before `0.39.0` are retained in the source-only `CHANGELOG-HISTORY.md`.
+Size comparison uses the published `0.40.0` tarball; preparation grants no
+publication or installation proof.
 
 ## Cutting an optional source preview
 

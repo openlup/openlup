@@ -1,5 +1,7 @@
 # Independent optional measurement consent
 
+Status: historical record, 2026-11-06.
+
 Delivery-control notes below record the 2026-10-30 task; maintainer reads before
 sign-off, repair budgets and self-retros are historical. Current delivery follows
 [Deliver a change](../../../CONTRIBUTING.md#deliver-a-change).

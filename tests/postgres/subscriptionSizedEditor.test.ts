@@ -12,7 +12,6 @@ import { createCapturedTransactionalDelivery, createPostgresTransactionalDeliver
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady,
   type PostgresContainer } from "../helpers/postgresContainer.js";
 const at = "2026-11-06T12:00:00.000Z", next = "2026-12-20T12:00:00.000Z";
-const sqlPath = "db/platform/migrations/20261109140000_subscription_sized_editor.sql";
 const money = (amountMinor: number) => ({ amountMinor, currency: "XXX" });
 function quoteLine(sku: string, quantity: number, unit = 100): SizedQuoteLine & Record<string, unknown> {
   return { sku, productSlug: "refill", quantity, unitPriceGross: money(unit), lineSubtotalGross: money(unit * quantity),
@@ -37,8 +36,7 @@ beforeAll(async () => {
   installer = new Pool({ connectionString: container.connectionString, options: qualifiedPostgresStartupOptions(selection) });
   const manifest = selectPlatformMigrationManifest(JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")), "qualified-v2", { migrationIsBootstrap: true, hasRestore: true });
   // Direct selected-rail install isolates behavioral evidence from pending admission-class data.
-  for (const entry of [manifest.baseline, ...manifest.forward].filter(entry => entry.file !== sqlPath)) await installer.query(readFileSync(entry.file, "utf8"));
-  await installer.query(readFileSync(sqlPath, "utf8"));
+  for (const entry of [manifest.baseline, ...manifest.forward]) await installer.query(readFileSync(entry.file, "utf8"));
   await owner.query("CREATE ROLE sized_browser LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-conformance'");
   await owner.query("GRANT authenticated TO sized_browser");
   const login = (name: string, role: string) => { const url = new URL(container!.connectionString); url.username = name; url.password = "synthetic-conformance"; url.searchParams.set("options", `-c role=${role}`); return url.toString(); };

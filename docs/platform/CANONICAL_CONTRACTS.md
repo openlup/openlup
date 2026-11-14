@@ -537,7 +537,7 @@ The native fulfillment translation uses `fulfillment_shipments.replaces_shipment
 and order → cycle → subscription correlation, with cycle number on the renewal
 operation. It adds no `retry_scheduled` state or payment lifecycle change.
 Native invoker privileges and catalogue ownership remain in
-[Data and migrations](DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories).
+[Data and migrations](../../packages/core/docs/guide/upgrade/database-migrations.md#select-the-complete-catalogue).
 
 ## Compatibility posture
 
@@ -621,7 +621,7 @@ It requires an already-local immutable Node 24.21.0 image argument for H1/H2.
 budgets, refusal boundaries, mirror execution and the owner's GHCR setup.
 
 The opt-in OIDC settings registry and reference verifier composition retain the
-[identity owner](IDENTITY.md#opt-in-oidc-access-tokens).
+[identity owner](../../packages/core/docs/guide/concepts/identity.md#opt-in-oidc-access-tokens).
 
 The disposable identity reference's run directory, run id and local mail origin
 are evaluation settings bound to one owned installation. They establish no
@@ -1389,7 +1389,7 @@ host-injected persistence/effect keys must keep the donor namespace for replay.
 Native 0.22.0 digest receipts/effects and superseded outcomes are outside that
 compatibility: retries can repeat tracking or fail with
 `fulfillment_observation_outcome_conflict`. Drain in-flight observation retries
-before upgrading; the [Unreleased migration note](../../packages/platform/CHANGELOG.md#unreleased)
+before upgrading; the [0.23.0 migration note](../../packages/platform/CHANGELOG-HISTORY.md#0230)
 records these limitations without a bridge or alias migration.
 The normalized fact uses a separate opaque identity. Hosts must retain the raw
 evidence referenced by its opaque pointer, with access/retention policy of their own.
@@ -1519,7 +1519,7 @@ surface as typed conflicts. Native upgrades never freeze a previously claimed du
 Reader guidance: [Compose invoicing](../../packages/core/docs/guide/how-to/build/invoicing.md).
 
 Host artifact persistence, clearance observation and M04 acceptance are separate
-proofs. The [invoicing contract reference](PLATFORM_PACKAGE_REFERENCE.md#invoicing-contracts)
+proofs. The [invoicing contract reference](../../packages/core/docs/guide/how-to/build/invoicing.md#select-the-ports)
 retains source witnesses.
 
 See the [M09 forward owner](DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval) for the registered managed-correction limit and follow-up.
@@ -1582,10 +1582,12 @@ host paymentMethodSetup refusal by identity, commerce returns commerceRecovery b
 identity, and every other lane returns the frozen host_binding_required constant.
 The guard runs before every unselected-lane refusal. M07 method setup adapts setupMethod to the
 guarded paymentMethod.execute lane and collects a transient handoff only.
-A45/A46 token routes remain reference handlers. Native repair authorization and
-scheduling are a registered follow-up, because the donor native graph does not
-serve them.
-See the [self-service reference](PLATFORM_PACKAGE_REFERENCE.md#account-and-support-contracts).
+Token routes remain reference handlers. The selected native method-reference
+lane now supplies recorded repair authorization and bounded recovery-retry
+scheduling through its service-only store. The host still composes authenticated
+routes, verified provider ingress and method collection; importing the factory
+does not select those routes or qualify a provider account.
+See the [self-service reference](../../packages/core/docs/guide/how-to/build/account-and-support.md#choose-the-imports).
 
 
 ### Operator support receipts and partial links

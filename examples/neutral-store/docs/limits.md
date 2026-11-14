@@ -72,8 +72,6 @@ method states are never replaced by hand-written application rows.
 
 ## Subscription editors
 
-Moved to [Starter limits](../../../packages/core/docs/guide/reference/limits.md#subscription-editors).
-
 The lifecycle renewal entry mounts `composeSizedPaidEmailNote` through
 `host/paid-mail.ts`, deriving the note from frozen quantities, physical identity
 and renewal cadence.
@@ -98,8 +96,6 @@ editors share one current product document with per-SKU variants, including
 physical identity, demand per unit and exclusions.
 
 ## Partner intake and reviews
-
-Moved to [Starter limits](../../../packages/core/docs/guide/reference/limits.md#partner-intake-and-reviews).
 
 The install connection loads the acquisition address registry in the marked
 demonstration seed transaction. Preserve tuple provenance on reinstall. Operator
@@ -141,8 +137,6 @@ unchanged.
 
 ## Purchase composition boundaries
 
-Moved to [Starter limits](../../../packages/core/docs/guide/reference/limits.md#purchase-composition-boundaries).
-
 Checkout creation composes the contact registrar after attempt admission, with
 no demonstration clients seeded. The completion bootstrap owns token scrubbing. Recovery issuers and payment-case rotation retain
 separate native owners. Hash lookup uses an index without a constant-time claim.
@@ -175,8 +169,6 @@ pauses or freezes an active subscription or confirms an undelivered replacement.
 
 ## Interim subscription mode price
 
-Moved to [Starter limits](../../../packages/core/docs/guide/reference/limits.md#subscription-mode-price).
-
 `shared/offer-estimate.ts` delegates catalogue estimates to the package unit-price
 primitive; installed quotes own checkout money. The seed owns distinct one-time
 and subscription price entries. Stock, timestamps, bounds, reservation lifetime,
@@ -198,8 +190,6 @@ are whole days from 1 through 120. Checkout admits at most 50 selected lines and
 
 ## Paid-order message capture
 
-Moved to [Starter limits](../../../packages/core/docs/guide/reference/limits.md#paid-order-message-capture).
-
 The lifecycle entry composes the paid-mail event filter and processor through
 `host/paid-mail.ts`. Deduplication belongs to the filesystem-artifact and outbox
 owners. The composition adds no transport, SQL or grants; subscription notices
@@ -209,8 +199,6 @@ A paid order with an emitted paid-mail event and contact produces one private
 message record; reclaimed sends deduplicate.
 
 ## Subscription care
-
-Moved to [Starter limits](../../../packages/core/docs/guide/reference/limits.md#subscription-care).
 
 The host supplies trusted command timing and composes finite auto-resume, native
 notices and winback in the care entry. Retention settings remain unseeded.
@@ -226,8 +214,6 @@ and one locally captured resumed confirmation, including replay. The fixture
 supplies its own external fulfillment facts; operator tracking commands have a separate witness.
 
 ## Account and operator bindings
-
-Moved to [Starter limits](../../../packages/core/docs/guide/reference/limits.md#account-and-operator-bindings).
 
 Replacement, complete fulfillment cancellation, customer name/phone edits, saved
 addresses, subscription destinations and scoped preferences bind installed
@@ -247,8 +233,6 @@ See the [candidate recipe and owner steps](../README.md#checkout-and-account-can
 
 ## Expired checkout recovery and order holds
 
-Moved to [Starter limits](../../../packages/core/docs/guide/reference/limits.md#expired-checkout-recovery-and-order-holds).
-
 The frozen recovery source reads the original immutable private checkout capture
 under the root order, separately from bearer authorization. Private-capture
 storage retains its own source owner. The owner provisions
@@ -267,8 +251,6 @@ quota and all runner guards remain unchanged.
 
 ## Unpaid cancellation and manual refund records
 
-Moved to [Starter limits](../../../packages/core/docs/guide/reference/limits.md#unpaid-cancellation-and-manual-refund-records).
-
 The two command bindings re-resolve human membership and the existing Commerce
 operator row on replay. Native durable receipts own command identity; genuine
 provider-refund duties retain their existing owners.
@@ -276,8 +258,6 @@ provider-refund duties retain their existing owners.
 Optional reasons retain the 1–2,000 character contract.
 
 ## Return requests and decisions
-
-Moved to [Starter limits](../../../packages/core/docs/guide/reference/limits.md#return-requests-and-decisions).
 
 The host resolves the existing Commerce operator after fresh membership
 admission for every decision and replay. Native ownership, quantity and command
@@ -288,15 +268,11 @@ requires an amount.
 
 ## Optional payment guidance
 
-Moved to [Starter limits](../../../packages/core/docs/guide/reference/limits.md#optional-payment-guidance).
-
 The completion reader composes the native atomic guidance snapshot and the
 sandbox evidence normalizer. Token pay, inline retry and buyer-link sending
 retain separate mutation bindings.
 
 ## Operator shipment evidence
-
-Moved to [Starter limits](../../../packages/core/docs/guide/reference/limits.md#operator-shipment-evidence).
 
 Shipment commands use a host-owned READ COMMITTED transaction. Optional handoff
 accounting runs after commit under the wrapper's fail-soft policy; paid-capture
@@ -306,8 +282,6 @@ payload persistence.
 
 ## Saved addresses and scoped preferences
 
-Moved to [Starter limits](../../../packages/core/docs/guide/reference/limits.md#saved-addresses-and-scoped-preferences).
-
 Native saved-address, billing-profile and scoped-preference handlers bind the
 signed-in session. The host supplies fictional country, phone-prefix and tax
 checksum validation.
@@ -316,8 +290,6 @@ Deleting a missing or foreign saved address or billing profile acknowledges
 a zero-row deletion.
 
 ## Sandbox token payment and exact continuation
-
-Moved to [Starter limits](../../../packages/core/docs/guide/reference/limits.md#sandbox-token-payment-and-exact-continuation).
 
 The continuation codec purpose-derives its key from the current private host
 keyring root supplied by `--quote-acceptance-key-file`; the native order UUID
@@ -330,8 +302,6 @@ Dedicated token pay offers two explicit synthetic demo choices. Buyer-link sends
 deduplicate in the unchanged ten-minute bucket.
 
 ## Billing profiles and frozen invoice buyers
-
-Moved to [Starter limits](../../../packages/core/docs/guide/reference/limits.md#billing-profiles-and-frozen-invoice-buyers).
 
 The composition requires the complete ordered history through
 `20261110280000_checkout_recovery_buyer_snapshot`, including slot 27 first-duty

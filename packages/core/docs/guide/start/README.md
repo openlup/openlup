@@ -2,8 +2,6 @@
 
 Decide whether OpenLup fits the application you want to build.
 
-**Development preview.** OpenLup offers no stable framework API, supported full-platform installation or upgrade guarantee.
-
 ## What OpenLup is and who it is for
 
 OpenLup is open-source, subscription-first commerce for physical products. It is for TypeScript developers and commerce teams building replenishment, curated boxes or other recurring purchases who want to own their application. Your application owns its brand, storefront, catalogue, local policies and integrations; OpenLup supplies reusable engines and contracts.
@@ -16,9 +14,23 @@ OpenLup is open-source, subscription-first commerce for physical products. It is
 
 ## What it does not do yet
 
-Expect explicit integration work. The application starter is a draft whose installation, purchase and upgrade qualification remain incomplete. Configuration health and a successful build do not establish a live, production-ready store. Self-hosting and provider integrations need their own composition and evidence.
+Expect explicit integration work. Compare the
+[evaluation boundaries and current limits](../reference/limits.md#evaluation-boundaries)
+and the [stability policy](../reference/stability.md) before choosing an
+installation path.
 
-Read the [current limits and direction](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/README.md#current-limits-and-direction) and the [adopter kit](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/adopter-kit/README.md) before choosing an installation path.
+## Install the packages
+
+Follow [Adopt OpenLup from npm](adopt-from-npm.md) for package selection, exact
+matching pins, installed-package instructions and application ownership.
+To find the published package-set version:
+
+```sh
+npm view @openlup/core version
+```
+
+Use the toolchain declared by the selected release's package manifests.
+Continue with the [tutorial](tutorial.md) for a runnable example.
 
 ## Maturity
 
@@ -60,7 +72,7 @@ Read the [current limits and direction](https://github.com/openlup/openlup/blob/
 ### `@openlup/platform`
 
 The platform package's subpaths and their maturity are listed in its
-[agent guide](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/AGENTS.md#subpath-maturity).
+[agent guide](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/AGENTS.md#subpath-maturity).
 
 ## Next steps
 

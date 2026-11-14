@@ -44,6 +44,10 @@ export function createPostgresPaymentWebhookControlPort(db: PaymentProviderExecu
       return { paymentEventId: event.id, paymentIntentId: event.paymentIntentId,
         paymentAttemptId: event.paymentAttemptId, replayed: event.replayed, occurredAt };
     },
+    async markSetupEventProcessed(input) {
+      const value = (await db.query("SELECT public.payment_control_mark_setup_event_processed($1::uuid) AS response", [input.paymentEventId])).rows[0]?.response;
+      return z.object({ setupEventProcessed: z.object({ updated: z.boolean() }) }).parse(value).setupEventProcessed;
+    },
     async applyPaymentResult(input) {
       return { replayed: (await control.applyPaymentResult(input)).replayed };
     },

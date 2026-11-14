@@ -93,4 +93,5 @@ export interface PaymentAdapter {
   verifyPort: PaymentVerifyNormalizePort;
   readbackPort: PaymentReadbackPort;
   absencePort?: PaymentAbsencePort;
+  methodPort?: import("./repair.js").PaymentRepairMethodPort;
 }

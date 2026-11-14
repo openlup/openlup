@@ -37,7 +37,7 @@ export const PUBLIC_EXECUTION_ENTRYPOINTS = [
   "scripts/agent-review-session.mjs", "scripts/agent-review-session.test.ts",
   "scripts/agent-review-queue.mjs", "scripts/agent-review-queue.test.ts",
   "scripts/agent-review-gate.test.ts",
-  "scripts/agent-context/evaluate.mjs", "scripts/agent-context/generate.mjs",
+  "scripts/agent-context/evaluate.mjs",
   "scripts/ast-grep/check-filewide-ignore.mjs",
   "scripts/ci-image-mirror.mjs",
   "scripts/starter-browser-ci.mjs",

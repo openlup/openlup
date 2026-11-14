@@ -41,6 +41,7 @@ export function projectVerifiedEvidence(
         providerPaymentId: evidence.providerPaymentRef, paymentAttemptId: evidence.attemptRef,
         amountMinor: evidence.money?.amountMinor ?? null, currency: evidence.money?.currency ?? null,
         refundKind,
+        ...(evidence.reusableMethod && methodOwner ? { reusableMethod: { ...evidence.reusableMethod, ...methodOwner } } : {}),
       };
     }
     case "method":
@@ -56,6 +57,7 @@ export function projectVerifiedEvidence(
           providerMethodRef: evidence.reusableMethod.providerMethodRef,
           providerMandateRef: evidence.reusableMethod.providerMandateRef,
           methodKind: evidence.reusableMethod.methodKind, status: evidence.reusableMethod.status,
+          consentSnapshot: evidence.reusableMethod.consentSnapshot, expiresAt: evidence.reusableMethod.expiresAt,
         } } : {}),
       };
   }

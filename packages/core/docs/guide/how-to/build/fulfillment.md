@@ -7,14 +7,33 @@ operator handlers.
 ## Choose the imports
 
 Use `@openlup/platform/fulfillment/native` for native bindings and stores; see
-its [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/fulfillment-native.api.md). Use
+its [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/api/fulfillment-native.api.md). Use
 `@openlup/platform/fulfillment` for dispatch composition and captures,
 `@openlup/platform/fulfillment/contracts` for request and port types, and
 `@openlup/platform/composition` for contribution composition. Consult the
-[API report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/fulfillment.api.md), [contracts report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/fulfillment-contracts.api.md)
-and [composition report](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/composition.api.md) for those inventories. Install the
-[complete selected catalogue](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/DATA_AND_MIGRATIONS.md#compatibility-lifecycle),
+[API report](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/api/fulfillment.api.md), [contracts report](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/api/fulfillment-contracts.api.md)
+and [composition report](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/api/composition.api.md) for those inventories. Install the
+[complete selected catalogue](../../upgrade/database-migrations.md#check-application-compatibility),
 including the operator shipment routines, before selecting native commands.
+
+## Select shipping rules
+
+Call `resolveShipping` from `@openlup/core/shipping` with your cart, rules and
+explicit resolution time. It selects active rules matching the cart's region,
+currency and validity window, preferring an exact cart mode over `any`. Within
+the same mode, lower `priority` wins. If no rule matches, it returns `null`;
+your application decides how to report or handle missing shipping terms.
+
+The result snapshots the shipping amount and VAT rate. Meeting or exceeding
+`free_threshold_minor` makes shipping free; otherwise `fixed_cost_minor` applies,
+with `null` meaning free. For VAT, `fixed` uses the rule's `vat_rate_bps`,
+`inherit_main_goods` uses the most frequent line rate, and `highest_in_cart` uses
+the highest line rate. With no line rates, either cart-based policy falls back
+to the rule's rate.
+
+The selected rule supplies a carrier kind and delivery estimate; it does not
+choose or call a carrier adapter. Your host owns carrier selection, pickup
+points, labels and shipment execution. Continue below to compose those effects.
 
 ## Provide preparation and dispatch ports
 
@@ -132,3 +151,25 @@ Delivered replay may repair arrival earlier, never later, without repeating
 delivery alignment. Confirm a replacement's arrival only when it reached the
 customer. A label or in-transit observation is not arrival evidence; a late actual
 arrival may extend the next subscription cycle.
+
+## Protect parcel contacts
+
+Preparation keeps recipient and delivery-selection snapshots in the private
+parcel contact store, outside dispatch evidence and public commerce reads.
+Compose `createFulfillmentParcelContactPrivacyContributor` from
+`@openlup/platform/identity` in the identity privacy registry and require
+`fulfillment-parcel-contacts`, alongside identity and the subscription veto.
+Erasure removes the contact payload and retains a marker that prevents legacy
+inference from recreating it. Finite native-store transfer must carry both live
+contacts and those markers. Install the complete native catalogue before
+selecting this preparation path.
+
+## Replay stock evidence
+
+With the complete catalogue installed, a matching-fingerprint stock alert
+replay preserves identity, first-seen time and historical resolver metadata,
+refreshes severity/quantities, reopens the alert and clears `resolved_at`.
+A different fingerprint refuses with
+`fulfillment_stock_evidence_idempotency_conflict` (SQLSTATE `23505`). Earlier
+whole-input fingerprints are not rewritten: resolving an alert does not make
+its key available for changed input.

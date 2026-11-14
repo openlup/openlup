@@ -328,7 +328,7 @@ describe("complete public CI", () => {
       "npm run build:public-reference",
       'echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin',
       'node --experimental-strip-types scripts/packages/required-package-gates.ts --out "$RUNNER_TEMP/package-gates" --expected-commit "$(git rev-parse HEAD)"',
-      'node --experimental-strip-types scripts/packages/guide-tutorial.ts --advisory --page packages/core/docs/guide/start/tutorial.md --packages "$RUNNER_TEMP/package-gates" --database-url "postgresql://postgres@127.0.0.1:$OPENLUP_PROOF_SERVICE_PORT/postgres"',
+      'node --experimental-strip-types scripts/packages/guide-tutorial.ts --page packages/core/docs/guide/start/tutorial.md --packages "$RUNNER_TEMP/package-gates" --database-url "postgresql://postgres@127.0.0.1:$OPENLUP_PROOF_SERVICE_PORT/postgres"',
       "docker rm --force install-proof-postgres",
     ]);
   });
@@ -483,7 +483,7 @@ describe("complete public CI", () => {
         expect(result.status).toBe(29);
         expect(JSON.parse(readFileSync(log, "utf8"))).toEqual(args);
       }
-      const additional = "server/runtime/public-reference src/pages/account/v2/subscriptions/modals/RescheduleModal.test.tsx scripts/oss-published-tree-check.test.ts scripts/documentation-bundle.test.ts scripts/documentation-cli.test.ts scripts/ast-grep/check-filewide-ignore.test.ts scripts/ast-grep/rule-tests/portable-no-industry-contracts.test.ts scripts/public-ci-neutrality.test.ts".split(" ");
+      const additional = "server/runtime/public-reference src/pages/account/v2/subscriptions/modals/RescheduleModal.test.tsx scripts/oss-published-tree-check.test.ts scripts/documentation-cli.test.ts scripts/ast-grep/check-filewide-ignore.test.ts scripts/ast-grep/rule-tests/portable-no-industry-contracts.test.ts scripts/public-ci-neutrality.test.ts".split(" ");
       const combined = run(["run", ...additional], 29);
       expect(combined.error).toBeUndefined();
       expect(combined.status).toBe(29);
@@ -681,7 +681,7 @@ describe("the workflow stays in step with what it claims to run", () => {
   });
 
   it("pins CI and release runtimes while relaying the exact pack runtime to publication", () => {
-    for (const name of ["published-tree-ci", "publish-package", "publish-packages", "publish-source-preview"]) {
+    for (const name of ["published-tree-ci", "publish-package", "publish-packages", "publish-source-preview", "registry-tutorial"]) {
       const source = readFileSync(join(ROOT, `.github/workflows/${name}.yml`), "utf8");
       const setups = source.split(/^ {6}- uses: actions\/setup-node@/mu).slice(1);
       expect(setups.length, name).toBeGreaterThan(0);
@@ -696,6 +696,12 @@ describe("the workflow stays in step with what it claims to run", () => {
     expect(packages).toContain("node-version: ${{ steps.node.outputs.version }}");
     expect(workflowJob("pack", packages)).toContain('echo "version=$(node -p \'process.versions.node\')" >> "$GITHUB_OUTPUT"');
     expect(workflowJob("publish", packages)).toContain("node-version: ${{ needs.pack.outputs.node-version }}");
+    const tutorial = readFileSync(join(ROOT, ".github/workflows/registry-tutorial.yml"), "utf8");
+    expect(workflowJob("registry-tutorial", tutorial)).toContain("node-version: 24.21.0");
+    expect(packages).not.toContain("registry-tutorial");
+    expect(REQUIRED_CONTEXTS).not.toContain("registry-tutorial");
+    expect(REQUIRED_CONTEXTS).not.toContain("Guide tutorial against the npm registry");
+    expect(REQUIRED_CONTEXTS).not.toContain("Guide tutorial against the npm registry (advisory)");
   });
 
   it("pins every action and verifies the runtime and scanner before use", () => {

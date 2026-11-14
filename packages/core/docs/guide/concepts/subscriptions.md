@@ -16,7 +16,7 @@ PostgreSQL bindings. Constructing a binding does not mount a runner or select a
 payment provider. Your application supplies authorization, durable storage,
 scheduling and provider bindings, using matching installed `@openlup/*`
 versions. Check the installed exports and
-[subscription API reference](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/api/subscriptions.api.md)
+[subscription API reference](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/api/subscriptions.api.md)
 before selecting a seam.
 
 The engine returns models and events. Durable admission decides whether a new
@@ -63,7 +63,7 @@ uncollected cycle. These duties are not performed by a pure engine call.
 
 The managed win-back and historical recovery functions assign the requested
 instant plus the implementation’s restart lead unconditionally; consult the
-[migration owner](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/DATA_AND_MIGRATIONS.md#native-subscription-commands-n2)
+[migration owner](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/docs/platform/DATA_AND_MIGRATIONS.md#native-subscription-commands-n2)
 for the durable timing boundary. Unlike the core restart, they do not
 preserve a later stored date: a subscription paid through a later date can
 therefore receive an earlier next charge on this path. Account for that
@@ -117,6 +117,21 @@ that omits it uses the decorator's clock. Only native delivery-admission denials
 return `deferred` before reservation/preparation, without a terminal refusal
 write. The operation stays claimed until lease expiry before the same schedule
 is offered again. Static terms refusals remain terminal.
+
+### Recorded-method recovery
+
+A fresh usable recorded method can accelerate an existing automatic retry.
+Exhausted or stopped work requires recorded token authority for the current
+case, cycle and retry rung. A method update alone cannot grant that authority
+or reset the retry budget. The host still supplies the recovery routes and
+provider composition.
+
+Before dispatch, repair authority may bind a different usable method. Dispatch
+freezes that binding. A later automatic rung reads its currently recorded usable
+method without changing the earlier dispatch binding. Collection, linking and
+scheduling neither settle money nor pause, resume or cancel service. Method
+health and setup processing are described under
+[saved payment methods](payments.md#saved-payment-methods).
 
 ## Timed pauses
 
@@ -228,9 +243,10 @@ prevent automatic arrival alignment regardless of scheduled date.
 ## Native payment truth and review
 
 The native payment descriptor supports truth, settlement, later-only cycle
-alignment, durable prepared-attempt storage, absence reopening and cumulative
-refunds for the complete installed chain. Absence auto-reopen remains default
-off; method setup remains unsupported. Sandbox-attempt storage is a separate
+alignment, durable prepared-attempt storage, method setup, absence reopening
+and cumulative refunds with the complete installed database catalogue.
+Provider execution and method collection require explicit host bindings;
+absence auto-reopen remains default off. Sandbox-attempt storage is a separate
 capability. Refunds settle money without cancelling service.
 A descriptor alone does not establish installed schema readiness.
 
@@ -242,7 +258,7 @@ contention can still roll capture back; redelivery converges after contention
 clears, without an automatic retry dispatcher.
 
 Operators find review-marked events with the read-only query on the
-[data and migrations page](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories),
+[data and migrations page](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories),
 run through an authorized native PostgreSQL session; pass a returned event ID to
 the truth port's `readEvent` for details. The query records no review decision
 and no money or order transition.

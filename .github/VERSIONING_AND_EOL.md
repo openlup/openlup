@@ -750,7 +750,8 @@ says so. Never baseline the unreleased candidate itself: that would erase the
 comparison. Otherwise `release:bump` changes only versions, internal pins and
 changelog sections, and removes consumed fragments, staging exactly those
 deletions; a set bump also writes and stages the guide's upgrade page and its
-refreshed guide pages.
+refreshed guide pages, plus the re-pinned `AGENTS.md` and `README.md` of each
+publishable package.
 
 **Packed content allowlist.** Legitimate current artifacts include root Markdown,
 `LICENSE`, `package.json`, `release-gates.json`, Markdown under `docs/` and `api/`,
@@ -806,10 +807,11 @@ A release takes three steps:
    then `packages/{core,outbox,platform}/changes/*.md` fragments in byte order of
    path under a new `## [<version>]` heading and its "Publishable" line. It leaves
    an empty Unreleased, preserves history byte-for-byte, validates and plans all
-   packages before writes, and deletes only consumed fragments after successful
-   writes, then stages exactly those fragment deletions, the guide's assembled
-   upgrade page and the guide pages it re-pins before source preparation reads
-   the Git inventory. It stages no other changes. Nonempty ordinary
+   packages before writes. Alongside the guide's assembled upgrade page and
+   refreshed guide pages, it writes each publishable package's re-pinned
+   `AGENTS.md` and `README.md`. After successful writes, it deletes only consumed
+   fragments and stages exactly those deletions and documentation writes before
+   source preparation reads the Git inventory. It stages no other changes. Nonempty ordinary
    Markdown, optional `###` headings, `Migration:` and
    size-growth lines are accepted; `#`/`##` headings, conflict markers, nested
    directories, links and executable modes refuse. Fragments are excluded from
@@ -928,6 +930,22 @@ jobs:
    `npm publish ./packs/<file> --provenance --access public --tag latest`.
    GitHub's OIDC token is the npm trusted-publisher credential; there is no
    stored npm token, and only this job has `id-token: write`.
+
+The separate [Guide tutorial against the npm registry](workflows/registry-tutorial.yml)
+workflow runs after a successful core publication. It uses the default-branch
+workflow, with only `contents: read`, and runs the default-branch checkout and
+reads the release tag's tutorial page after checking that tag's commit against
+the completed publication run. It accepts only a release event with an `openlup-core-v<version>` tag,
+then waits up to ten minutes for the matching package set and core's `latest`
+value on npm before running the guide tutorial against the registry and a
+disposable pinned PostgreSQL database. The registry tutorial remains advisory
+until its second green run: a failure produces a warning annotation and a step
+summary. A propagation timeout also warns and defers the tutorial. This workflow
+is not a required check and does not hold the publication run open or delay the
+next release dispatch.
+
+The packed-candidate tutorial in `install-packages` is blocking because its
+condition of two green merge-group runs on main has been met.
 
 Every package release moves the npm `latest` dist-tag, which is why its version
 must be above every version npm holds. A package's `publishConfig.tag` stays

@@ -38,9 +38,20 @@ export type PaymentRefundObservation = {
 /** Type-only policy: require-evidence is default; legacy behavior needs explicit opt-in. */
 export type RefundEvidencePolicy = "require-evidence" | "legacy-assume-full";
 
+export type VerifiedReusableMethod = {
+  providerCustomerRef?: string | null;
+  providerMethodRef: string;
+  providerMandateRef?: string | null;
+  methodKind: string;
+  status: "pending_verification" | "active" | "inactive" | "expired" | "revoked";
+  consentSnapshot?: Record<string, unknown>;
+  expiresAt?: string | null;
+};
+
 /** Verified money facts; authorization alone is never settled money. */
 export type VerifiedPaymentEvidence = VerifiedIdentity & {
   kind: "money";
+  reusableMethod?: VerifiedReusableMethod;
   providerPaymentRef: string;
   intentRef: string | null;
   attemptRef: string | null;
@@ -59,13 +70,7 @@ export type VerifiedMethodEvidence = VerifiedIdentity & {
   outcome: "registered" | "updated" | "revoked" | "expired" | "suspended" | "failed" | "requires-action";
   methodLifecycle?: PaymentMethodLifecycleEvent;
   /** Registration facts only. The host resolves client/subscription ownership. */
-  reusableMethod?: {
-    providerCustomerRef?: string | null;
-    providerMethodRef: string;
-    providerMandateRef?: string | null;
-    methodKind: string;
-    status: "pending_verification" | "active" | "inactive" | "expired" | "revoked";
-  };
+  reusableMethod?: VerifiedReusableMethod;
   methodRef: string;
   setupRef: string | null;
   intentRef: string | null;

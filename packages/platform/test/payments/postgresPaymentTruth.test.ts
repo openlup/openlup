@@ -18,10 +18,5 @@ it("binds canonical sparse SQL identities and preserves native readback and unkn
   });
   expect(await store.readEvent("00000000-0000-4000-8000-000000000000")).toBeNull();
   expect(query.mock.calls).toHaveLength(1);
-  expect(paymentSchemaDescriptor).toMatchObject({ truth: "supported", settlement: "supported", laterOnlyCycle: "supported", preparedDurableStore: "supported", absenceReopen: "supported", cumulativeRefund: "supported" });
-});
-
-it.each(["methodSetup"] as const)("refuses the unsupported direct operation %s", operation => {
-  // Explicit refusal at the schema capability boundary; no writer is offered.
-  expect(paymentSchemaDescriptor[operation]).toBe("unsupported");
+  expect(paymentSchemaDescriptor).toMatchObject({ truth: "supported", settlement: "supported", laterOnlyCycle: "supported", preparedDurableStore: "supported", methodSetup: "supported", absenceReopen: "supported", cumulativeRefund: "supported" });
 });

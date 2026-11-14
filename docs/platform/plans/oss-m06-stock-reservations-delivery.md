@@ -1,5 +1,7 @@
 # M06 stock, reservations and delivery
 
+Status: historical record, 2026-10-29.
+
 **Current owner note (2026-10-29).** The M06 state and PENDING dispositions
 below describe evidence through the 2026-10-21 S1/C4 cut. M11 later added a
 native ATP reader selected only when the host supplies `stockSourceKey`, and an

@@ -58,7 +58,7 @@ export function noticeSessionWithRecipientFault(db: PoolClient, unresolvedClient
 }
 
 /** Only catalog/prices are installer seed data. Draft, lines, intent and paid events use native writers. */
-export async function nativeNoticeOrder(admin: Pool, runtime: Pool, clientId?: string, mode: "one_time" | "subscription" = "one_time") {
+export async function nativeNoticeOrder(admin: Pool | PoolClient, runtime: Pool | PoolClient, clientId?: string, mode: "one_time" | "subscription" = "one_time", channelKey = "captured") {
   const product = randomUUID(), sku = `G8-${product}`, list = randomUUID();
   await admin.query("INSERT INTO public.catalog_products(id,slug,name) VALUES($1,$2,'Fictional item')", [product, sku]);
   await admin.query(`INSERT INTO public.catalog_skus(id,product_id,sku,title,sellable_in_subscription)
@@ -92,11 +92,11 @@ export async function nativeNoticeOrder(admin: Pool, runtime: Pool, clientId?: s
   const response = (await runtime.query("SELECT public.commerce_create_order_draft_with_outbox($1,$2::jsonb,$3::jsonb,$4::uuid) AS result",
     [`draft:${product}`, quote, draft, client])).rows[0].result;
   const order = String(response.orderDraft.orderId).replace(/^order_/, "");
-  const intent = (await runtime.query(`SELECT public.commerce_open_settlement_intent($1,$2::uuid,'captured',200,'XXX') AS result`,
-    [`intent:${product}`, order])).rows[0].result.settlement.id as string;
+  const intent = (await runtime.query(`SELECT public.commerce_open_settlement_intent($1,$2::uuid,$3,200,'XXX') AS result`,
+    [`intent:${product}`, order, channelKey])).rows[0].result.settlement.id as string;
   const settle = (db: Pool | PoolClient = runtime) => db.query("SELECT public.commerce_record_settlement($1,$2::uuid,'succeeded',$3) AS result",
     [`settle:${product}`, intent, `captured:${product}`]);
-  return { client: String(client), order, intent, settle };
+  return { client: String(client), order, intent, settle, sku, variantId: product };
 }
 
 export function capturedPaidHandler(runtime: Pool, receipts: TransactionalDeliveryReceiptStore,

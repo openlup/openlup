@@ -4,7 +4,7 @@ import { createPostgresLifecycleMessages, createPostgresRetryLifecycleBinding, c
 import { createPostgresRenewalSettlementPort } from "../../server/adapters/postgres/commerce/renewalSettlement.js";
 import type { RenewalSettlementPort } from "@openlup/platform/subscriptions/contracts";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
-import { AT, call, failure, later, prepareOriginal, renewal, request } from "./subscriptionNativeFixture.js";
+import { AT, call, failure, later, prepareOriginal, sandboxRenewal as renewal, request } from "./subscriptionNativeFixture.js";
 import { lifecycleInstallation, lifecycleProfiles, lifecycleRows, lifecycleSubject, type LifecycleInstallation } from "./subscriptionLifecycleClosureFixture.js";
 
 const NOW = later(24 * 60);

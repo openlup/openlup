@@ -4,8 +4,6 @@ Status: maintainer page: how to change OpenLup. Reader guidance lives in the [Op
 
 ## PostgreSQL connection recipe
 
-Moved to [Connect to PostgreSQL](../../packages/core/docs/guide/how-to/operate/connect-postgresql.md#assign-connections-by-work).
-
 Evidence (historical record, 2026-11-13):
 
 The [qualified composition witness](../../tests/postgres/m14QualifiedComposition.test.ts)
@@ -255,8 +253,6 @@ This also removes any residual realm state after failed issuer provisioning.
 
 ## Runtime model
 
-Moved to [Run OpenLup on your own host](../../packages/core/docs/guide/how-to/operate/self-host.md#compose-the-host), [Shut down a host cleanly](../../packages/core/docs/guide/how-to/operate/shutdown.md#drain-before-disposal).
-
 For a managed-source acquisition cut-over, configure the reference target's
 `OPENLUP_ACQUISITION_DRAIN_STARTED_AT` as a fixed UTC ISO instant and
 `OPENLUP_ACQUISITION_DRAIN_MAX_SECONDS` as a positive integer no greater than
@@ -355,7 +351,7 @@ settings. Direct invite/remove factories compose the invitation directory/store
 behind human-admin authorization and retain invitations when delivery fails.
 Managed invitations still create active membership immediately; native membership
 reads do not activate it. Pending/expiry semantics remain a managed compatibility
-gap. The [identity owner](IDENTITY.md#operator-invitation-lifecycle) owns results,
+gap. The [identity owner](../../packages/core/docs/guide/concepts/identity.md#operator-invitations) owns results,
 retries and the direct pending-invitation lifecycle.
 
 The server health and unsubscribe bindings read `#email-presentation` and expose
@@ -368,7 +364,7 @@ availability and handler construction order.
 Identity route files supply application schemas, admission, limiter, redirects
 and observed request IDs to [package handler factories](IDENTITY.md). A source
 route does not add itself to the default empty table or closed reference set.
-Magic-link composition uses the [shared strict origin policy](IDENTITY.md#magic-link-redirect-policy):
+Magic-link composition uses the [shared strict origin policy](../../packages/core/docs/guide/concepts/identity.md#magic-link-destinations):
 customer origins select `APP_BASE_URL` then `CUSTOMER_AUTH_REDIRECT_ORIGIN`, admin
 origins select `APP_BASE_URL` then `SITE_URL`. Invalid or absent origins refuse
 before provider access; request hosts supply no fallback. The Auth mail bridge
@@ -485,10 +481,20 @@ or hosted duration evidence.
 | Reference repair view | `ReferenceStorePage` mounts `ReferencePaymentRepairPage` after checkout; `PaymentRepairStatus` reuses the injected customer status poller. Exact file/specifier guardrail exemptions admit only the status-only `commerce/paymentStatusClient`, customer `commerce/paymentVerifyClient` and injected `payment/components/PaymentStatusPoller` modules; the broader `commerceClient` stays refused. Redirect handoff links render only for HTTPS URLs. Verify responses never prove payment; only stored paid status does. Native method setup is visibly unsupported without host collection/confirmation. The store is opt-in: a source-import scan proves no module outside its own test imports it, so no shipped default route mounts it. |
 
 Method evidence registration data contains neutral provider references, method
-kind and status. The host's `resolveMethodOwner` supplies the client and optional
+kind, status, consent and expiry. The host's `resolveMethodOwner` supplies the client and optional
 subscription identity before projection; untrusted adapter ownership fields are
 ignored. Without that resolver no reusable registration carrier is produced.
-The native schema descriptor still refuses method setup. The direct truth
+With the method-reference forward installed, the native schema descriptor admits
+method setup. `createPostgresPaymentMethodSetup` checks ownership before customer
+or setup calls and preserves the customer/setup idempotency keys. Inject the
+selected adapter's `methodPort` and host-owned customer creation; clients without
+collection capability still return `unsupported`. `createPostgresPaymentWebhookMethodRefPort`
+and `consumePostgresPaymentMethodDelivery` register and consume recorded facts
+before `payment_control_mark_setup_event_processed` closes the setup receipt.
+Saved-method money events use the optional `resolveSavedMethodOwner` resolver;
+method events retain `resolveMethodOwner`. Both resolve host-owned identity.
+Consent and expiry survive projection; absent ownership resolution supplies no
+registration carrier. The direct truth
 binding now supplies its host executor to `createPaymentServices`; each runtime
 unit closes its scope after either result. `bindM07Payments` refuses unknown or
 unavailable selections. The existing bundle composer has one optional payments
@@ -510,8 +516,6 @@ opt-in selector mounts no live route feeding them.
 
 
 ## Self-host boundary
-
-Moved to [Run OpenLup on your own host](../../packages/core/docs/guide/how-to/operate/self-host.md#compose-the-host).
 
 Application-file lifecycle maintenance belongs to the
 [snapshot owner](ARCHITECTURE_AND_EXTENSIONS.md#application-file-upgrades);
@@ -611,7 +615,7 @@ readback through its typed handler.
 It refuses combination with another reference profile or identity admission.
 The watchdog remains a trusted scheduler callable and gets no public cron route.
 Omitting the selection preserves the static reference's existing route surface.
-See the [captured operations recipe](#runtime-model) for ports and proof limits.
+See the [captured operations recipe](../../packages/core/docs/guide/how-to/operate/self-host.md#compose-the-host) for ports and proof limits.
 
 The unmounted [SEO head adapter](../../src/public-reference/seoHead.tsx) renders
 `@openlup/platform/marketing` head descriptors through the host's
@@ -733,7 +737,10 @@ Every output lane stays callable when unselected and returns a named
 `{ supported: false, refusalCode }` after the principal guard. PaymentMethod returns
 the host paymentMethodSetup refusal by identity, commerce returns commerceRecovery,
 and other lanes return a frozen host_binding_required refusal. Supported
-paymentMethodSetup requires paymentMethod; supported commerceRecovery/configuredPurchase
+paymentMethodSetup requires paymentMethod. The selected native lane can be
+`createPostgresPaymentMethodSetup`; its principal and subscription checks run
+before provider I/O, and the facade retains its principal guard. Installation
+alone selects no account lane; supported commerceRecovery/configuredPurchase
 require commerce. Supported subscriptions.genericBundleCommands/commandBoundReceipts
 require at least one selected managed/native legacy/raw/typed command lane. The factory
 returns the SelfServiceCommandFacade envelope. Its trailing defaulted
@@ -1043,8 +1050,6 @@ still use their current source implementations; P7 owns any later route adoption
 
 ## Customer diagnostic history preview
 
-Moved to [Customer diagnostic history and retention](../../packages/core/docs/guide/how-to/operate/diagnostics-and-retention.md#select-the-diagnostic-bindings).
-
 The diagnostic ingest and read bindings are application source mechanisms;
 they are not automatically registered installed-package exports. Their owners
 are the [history binding](../../server/runtime/observability/customerDiagnosticHistoryBinding.ts)
@@ -1057,8 +1062,6 @@ bounded to seven days and returns up to three opaque segment IDs per bucket.
 Version 1 and version 2 coverage can coexist in one retained history.
 
 ### Retention drain
-
-Moved to [Customer diagnostic history and retention](../../packages/core/docs/guide/how-to/operate/diagnostics-and-retention.md#retention-drain).
 
 `CUSTOMER_DIAGNOSTIC_RETENTION_DAYS` uses the same 1–90 value as ingest; expiry
 is stamped on each row at ingest, so changing it ages future rows only.
@@ -1076,8 +1079,6 @@ falsifiers; follow [testing](../../CONTRIBUTING.md#test-scope-and-diagnostics) f
 execution. Second-runtime and deployed conformance remain separate adoption proof.
 
 ## Provider and host boundaries
-
-Moved to [Run OpenLup on your own host](../../packages/core/docs/guide/how-to/operate/self-host.md#keep-provider-authority-at-the-host).
 
 [ReferenceFulfillmentPage](../../src/pages/ReferenceFulfillmentPage.tsx) is an
 opt-in operator read example with no default runtime importer or route. Mounting
@@ -1138,10 +1139,10 @@ still refuses once any invitation exists. An active human administrator can
 reissue an expired invitation. Without one, recovery requires the database
 owner's audited deployment procedure; no bootstrap-reset command is supplied.
 Preserve identity and audit history; see
-[bootstrap recovery](IDENTITY.md#first-administrator-bootstrap).
+[bootstrap recovery](../../packages/core/docs/guide/concepts/identity.md#first-administrator-bootstrap).
 Operator delivery defaults to discard; compose a separate delivery port
 and use only the strict configured application origin for callback links.
-The [identity guide](IDENTITY.md#direct-human-login) documents commands, tab-session
+The [identity guide](../../packages/core/docs/guide/concepts/identity.md#direct-human-login) documents commands, tab-session
 limits and required database acceptance. Existing machine credentials remain
 separate and human login needs none. The bounded public-reference builds do not
 mount the admin shell or provide a direct operator browser journey.
@@ -1199,8 +1200,6 @@ managed receipt service-scope and fixture construction remain in the reference
 adapter.
 
 ## Preview posture
-
-Moved to [Run OpenLup on your own host](../../packages/core/docs/guide/how-to/operate/self-host.md#keep-provider-authority-at-the-host).
 
 Before maintainers make stable-framework claims, the release evidence must
 establish a versioned release/BOM, a thin adopter application, conformance

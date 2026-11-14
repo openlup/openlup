@@ -1,6 +1,17 @@
 # Maturity
 
-Check a subpath's compatibility policy before using it. `candidate` and `experimental` both use the `internal-candidate` policy: these APIs may change and make no stable compatibility promise. `testing` uses `testing-internal`: test support may change and makes no runtime compatibility promise.
+Check a subpath's compatibility policy before using it. See [stability](stability.md)
+for package policy definitions and release boundaries.
+
+<!-- generated:compatibility-policies -->
+| Maturity | Compatibility policy |
+| --- | --- |
+| `candidate` | `internal-candidate` |
+| `experimental` | `internal-candidate` |
+| `testing` | `testing-internal` |
+
+[Compatibility policy mapping](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/core/scripts/public-api-config.ts)
+<!-- /generated:compatibility-policies -->
 
 ## `@openlup/core`
 
@@ -92,6 +103,7 @@ Check a subpath's compatibility policy before using it. `candidate` and `experim
 | `./operations/server` | capability | experimental |
 | `./payments` | capability | experimental |
 | `./payments/contracts` | capability | experimental |
+| `./payments/testing` | capability | experimental |
 | `./portability` | rail | experimental |
 | `./pricing` | capability | experimental |
 | `./pricing/browser` | capability | experimental |
@@ -107,6 +119,6 @@ Check a subpath's compatibility policy before using it. `candidate` and `experim
 | `./subscriptions` | capability | experimental |
 | `./subscriptions/contracts` | capability | experimental |
 
-4 subpaths omitted because their names are provider-specific. Complete list: [package.json](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/package.json) and [Subpath maturity](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/AGENTS.md#subpath-maturity).
+4 subpaths omitted because their names are provider-specific. Complete list: [package.json](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/package.json) and [Subpath maturity](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/AGENTS.md#subpath-maturity).
 <!-- /generated:maturity:platform -->
 

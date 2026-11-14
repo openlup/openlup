@@ -1,10 +1,81 @@
 # Starter limits
 
-Use this reference to decide whether the `examples/neutral-store` starter meets your needs and to recognize its refusals while running it.
-It uses a local demonstration database, sandbox payments and private message capture.
+Compare package composition, source references and the application starter before
+choosing an evaluation path. Use the starter tables below to recognize its
+refusals while running it.
+
+## Evaluation boundaries
+
+| Path | What you can evaluate | Boundary |
+| --- | --- | --- |
+| npm packages | Selected engines and server services in your application | Pin matching exact versions; supply adapters and host composition. Follow [installation](../start/README.md#install-the-packages). |
+| Portable PostgreSQL primitives | Database ports, migrations and recovery operations | Supply application composition; see the payment boundaries below and the [database recipe](../how-to/operate/connect-postgresql.md). |
+| Default source reference | Static catalogue and item pages, plus health | GET/HEAD only; checkout, subscriptions, admin, API/BFF, cron and mutations are refused. |
+| Opt-in subscription reference | Recurring-item purchase, captured payment, confirmed email sign-in, owned order/subscription reads and renewal-date changes | Owned disposable local database/authentication services and Node host; synthetic data and a captured mailbox, with no external provider calls. |
+| Application starter | Native actions bound to a local demonstration database | Sandbox payments and private message capture; no hosted-database installation recipe. |
+
+The opt-in subscription reference does not demonstrate automatic renewals,
+fulfillment, failed-renewal recovery or the complete late-delivery journey.
+A renewal date is a planned charge date, not a delivery promise. Follow its
+[local evaluation recipe](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/docs/platform/SUBSCRIPTION_REFERENCE.md)
+for setup and buyer/account verification.
+
+To evaluate a source reference, choose an immutable release tag and follow that
+revision's README and release notes, including its toolchain and test
+prerequisites. A source build does not start a complete commerce application.
+See the [install support policy](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/.github/INSTALL_SUPPORT_POLICY.md)
+for the installation boundary.
+
+## Pure contract limits
+
+Core's catalogue identifier schemas validate bounded shapes. They do not prove
+that a product, SKU, variant or slug exists; your catalogue reader owns
+membership and current product facts.
+
+`calculateInventoryAtp` evaluates supplied stock, reservations, unavailable
+quantities, safety stock and lot facts. It selects a location when the request
+can be fulfilled there and can return review-required or unsupported results.
+It neither reads stock nor reserves it. Its no-split policy refuses split
+shipment requests with `split_shipment_unsupported`.
+
+Company-identity contracts describe lookup requests, per-source outcomes and
+verification levels. Your host selects identifier kinds, supplies the lookup
+adapter and decides whether its trust level meets the purpose. Schema validation
+queries no registry and approves no seller.
+
+`StandardSchemaV1` is a structural schema interface that keeps browser consumers
+independent of a validation-library runtime. The selected schema and its
+consumer still own validation behavior.
+
+Risk evaluation matches supplied signals against deterministic rules and returns
+score, severity, reasons and mode-dependent enforcement facts. Your host selects
+shadow, review or enforcement policy; a result alone authorizes no order or payment.
+
+## Store composition
+
+Starting the starter host without a runtime database connection leaves its
+native actions unbound. Its lifecycle supplies that connection for the local
+demonstration database; configuration health alone does not establish live
+operations. The [local image quickstart](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/deploy/neutral-store/README.md)
+does not establish rollback after a schema or package upgrade. Follow the
+[database upgrade procedure](../upgrade/database-migrations.md) for that boundary.
+
+Portable payment execution is sandbox-only; real-money execution uses the
+managed rail. Provider-neutral contracts do not supply every payment rail.
+Self-hosting and provider integrations require application composition:
+[compose the host](../how-to/operate/self-host.md) and
+[bind a provider adapter](../how-to/extend/provider-adapters.md).
+Adapter source does not activate an integration or certify a live provider account.
+
+Native account reads need explicit host sources. See
+[account composition](../how-to/build/account-and-support.md#bind-reads-to-the-customer)
+for missing-section refusals, newsletter consent, historical order money and
+paid orders awaiting subscription activation.
+
+## Starter refusal responses
 
 The app’s `/limits` and `/ograniczenia` pages and unavailable-action buttons use the
-[canonical limits table](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/neutral-store/shared/limits.ts).
+[canonical limits table](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/examples/neutral-store/shared/limits.ts).
 A visible refusal button displays the code and explanation locally; it does not submit an operation.
 API refusals return an object such as `{"ok":false,"code":"host_binding_required"}`.
 Unknown operations return HTTP 404; other action refusals normally return HTTP 409 unless the handler supplies another status.
@@ -74,7 +145,8 @@ address tuple returns `starter_acquisition_seed_conflict` and rolls back.
 
 | Action | What happens | Refusal code |
 | --- | --- | --- |
-| Take real payments, set up a payment method, replace a card or use cumulative refunds or absence reopening | Only sandbox payment attempts are available. These actions do not pause or freeze an existing subscription. | `native_prepared_attempt_store_unsupported` |
+| Take real payments, set up a payment method or replace a card in the starter | The starter binds sandbox attempts only. The native provider store and method-setup lane require a complete installed database catalogue and explicit host composition; installing them does not enable these starter actions. | `native_prepared_attempt_store_unsupported` |
+| Use native cumulative refunds or absence reopening | These capabilities remain unsupported. Method collection, linking and retry scheduling do not settle money, pause or freeze a subscription. | —; unsupported capabilities |
 | Use an email address alone to access an existing purchase | Guest checkout is available, but existing-order access needs an owned customer session or an admitted recovery link. A recovery link grants no account or subscription-command access. | `customer_session_required` for account actions; `starter_recovery_unavailable` for unavailable recovery authority |
 | Change the address of a parcel already in flight through the customer action | The destination change applies from the next parcel; the parcel in flight keeps its address. | —; result `applied_from_next_parcel` |
 
@@ -142,7 +214,7 @@ days within the accepted range; checkout bounds line count and units per line
 within the configured total. Stock and unit prices fit PostgreSQL integers, with
 positive prices for every offered mode. Tax legal-basis text and the trimmed,
 nonempty legal revision have bounded lengths. Consult the
-[maintainer configuration limits](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/examples/neutral-store/docs/limits.md#interim-subscription-mode-price)
+[maintainer configuration limits](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/examples/neutral-store/docs/limits.md#interim-subscription-mode-price)
 for exact values. Configuration outside these bounds refuses before startup.
 
 ## Paid-order message capture

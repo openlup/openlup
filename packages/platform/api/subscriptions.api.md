@@ -1584,7 +1584,7 @@ import type { RenewalLine, RenewalRetainedTerms } from "./contracts/renewal.js";
 import { type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 /** Server-owned purchase facts. Sandbox authorization is never a real mandate. */
 export interface NativeRenewalPurchaseFacts {
-    settlementChannelKey: "sandbox";
+    settlementChannelKey: string;
     authorizationRef: string;
     unattendedChargeAuthorizedAt: string;
     payerAccountRef: string | null;
