@@ -897,6 +897,36 @@ Browser graphs declare only core fulfillment modules and exclude platform
 fulfillment, the reference preparation binding and the account order screens.
 The order-management status ladder/queue pair remains host-owned.
 
+The optional capability declarations separate provider behavior from warehouse role:
+
+| Declaration | Default and native admission |
+| --- | --- |
+| `intakeMode` | Omitted or `webhook` records `push`; `polling` records `poll`. The native binding passes the selected descriptor to its dispatch store. |
+| `inventory` | Omitted means local reservations and `finished_picking` consumption. Provider ownership refuses `provider_reservations_unsupported`; another consumption policy refuses `stock_consumption_policy_unsupported`. |
+| `stockMovements` | Omitted retains movement reads. Pass explicit `false` to the stock worker for snapshots with a separate `stock_movements_unsupported` diagnostic. No movement writes are added. |
+| `independentSplits` | Independent allocations refuse `independent_split_unsupported`; multiple tracking references still describe one commitment. |
+| `transportSelection` | Omitted retains the warehouse carrier/service requirement. Explicit `provider` admits null native parcel carrier/service; explicit `merchant` requires both for every role. Saved customer preferences still require strings. |
+| `labelFormats` | Omitted declares `application/pdf`. Other MIME declarations or requests refuse `label_format_unsupported`; the PDF document return type is unchanged. |
+
+`readFulfillmentCapabilities(profiles, selection, request?)` also accepts native
+execution probes. `request.operation` values `pickupPointDelivery`, `labelCreate`,
+`labelVoid`, `cancel` and `reservations` return the named limits in the
+[reader limits](../../packages/core/docs/guide/reference/limits.md#fulfillment-execution-limits).
+`independentSplit` probes the split refusal; `labelRead` with `request.format`
+probes the PDF boundary. Existing adapter operation flags are reused: pickup-point
+support declares selection data, not standalone booking. These probes do not call
+an adapter or replace its existing refusal results. Selection/activation/readiness
+checks run first; unsupported inventory declarations refuse before host readiness,
+store access, candidate listing or provider I/O.
+
+Dispatch acceptance may include neutral `receiptKey` alongside required legacy
+`labelKey`; both must be byte-equal. Legacy acceptance bytes remain unchanged when
+the alias is omitted. Observation status may include `code`/`detailCode` alongside
+legacy `primary`/`subStatus`; neutral event kinds `shipment.preparing`,
+`shipment.packed`, `shipment.in_transit` and `shipment.delivered` are also accepted.
+Adapters retain occurrence identity and event keys; aliases never rewrite receipts.
+Provider payload translation stays in adapter-owned code.
+
 Adopters may supply the optional local, opaque, shadow-only command fingerprint through `runFulfillmentDispatchWorker.shadowCommandFingerprint` (validated as lowercase 64-hex) and read the optional `submissionAttempted` / `responseBodyRead` dispatch facts, while the package's D6 classification remains the default.
 
 The deeply frozen, readonly default-off descriptor remains unselected and unready

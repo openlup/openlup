@@ -183,7 +183,7 @@ bearer; its local fixture establishes no hosted revocation guarantee.
 | `./fulfillment/omnipack` | Opt-in Node fulfillment example with injected I/O; default-off. |
 | `./payments/testing` | Experimental offline adapter conformance runner and scripted transport fake; development preview. |
 | `./payments` | Experimental prepared-attempt ordering with injected persistence, execution and failure policy; contracts at `./payments/contracts`. |
-| `./fulfillment`, `./fulfillment/contracts` | [Experimental fulfillment services, contracts and status canon](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#fulfillment-contracts). |
+| `./fulfillment`, `./fulfillment/contracts` | [Experimental fulfillment services, capability declarations/refusals and status canon](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#fulfillment-contracts). |
 | `./fulfillment/native` | Experimental `createNativeFulfillmentBinding` locked dispatch-preparation binding; the host supplies authoritative facts, a capability-local transaction lane and contribution composition. |
 | `./fulfillment/native` (operator transactions) | Experimental `createPostgresFulfillmentOperatorPort` for replacement and complete cancellation, with authenticated actor and explicit provider/stock-source binding; `createPostgresParcelReservationConsumption` supplies exact parcel stock consumption. Install the complete catalogue and retain the [legacy cancellation limits](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#native-parity-boundaries). |
 | `./fulfillment/native` (shipment commands) | Experimental `createPostgresFulfillmentShipmentCommandPort` records label evidence, handoff and tracking atomically with server actor and durable replay evidence. Handoff consumes only frozen parcel reservation IDs. Compose `withAccountingInvoiceShadowTrigger` from `./invoicing` after the committed command, using host channel policy and fail-soft accounting. [Historical limits](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#native-parity-boundaries). |
@@ -1448,6 +1448,16 @@ policy and composes only declared port capabilities and refusals. Read the
 installed `./payments/contracts` or `./fulfillment/contracts` declarations and
 their maturity before binding; an exported adapter does not activate a provider.
 
+Fulfillment descriptors optionally declare intake, reservation ownership,
+consumption, movement support, split support, transport selection and label MIME
+formats. Omitted fields preserve existing defaults. Native services refuse
+unsupported declarations before host/store/provider work. Use
+`readFulfillmentCapabilities` with an optional operation/format probe for the
+[documented execution limits](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/reference/limits.md#fulfillment-execution-limits).
+The native binding forwards `capability.intakeMode`; standalone dispatch-store
+hosts pass it in the store options. Snapshot-only stock workers take
+`stockMovements: false` and return a separate movement refusal.
+
 ## Job-run ledger SQL
 
 See [the ledger install-path constraint](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/upgrade/database-migrations.md#select-the-complete-catalogue).
@@ -2046,6 +2056,13 @@ clears `resolved_at`, preserving identity, first-seen time and historical resolv
 metadata. Mismatches, including legacy 0.22.0 whole-input fingerprints, still
 raise `23505`; no rewrite is supplied. See the [migration owner](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/upgrade/database-migrations.md#select-the-complete-catalogue)
 for upgrade and operational-dependency proof.
+
+The updated fulfillment dispatch store also requires the complete catalogue
+through `20261120100000_fulfillment_intake_channel.sql` (canonical position 135).
+Its explicit intake parameter defaults to push through the legacy SQL wrapper;
+polling descriptors record poll evidence. Existing receipts, acceptance keys and
+replay remain unchanged. `receiptKey` is an optional byte-equal `labelKey` alias;
+neutral observation status/event aliases retain legacy fields and event keys.
 
 ## Subscription contracts and renewal port
 

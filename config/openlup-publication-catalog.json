@@ -1398,6 +1398,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261120100000_fulfillment_intake_channel.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4567,6 +4571,10 @@
     },
     {
       "path": "packages/platform/sql/20261114120000_payment_reconciliation_refund_evidence.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261120100000_fulfillment_intake_channel.sql",
       "class": "public-output"
     },
     {

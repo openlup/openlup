@@ -4864,6 +4864,25 @@
         ],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "fulfilment-fn-intake-channel",
+        "path": "db/platform/migrations/20261120100000_fulfillment_intake_channel.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.fulfillment_dispatch_finish(uuid,jsonb,boolean)",
+            "beforeSha256": "b3f34c6dd5d9ded20924aed2ab204053aafae5a89b35f74ad41cf439fe166152",
+            "searchPath": "pg_catalog"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.fulfillment_dispatch_finish(uuid,jsonb,boolean,text)",
+            "searchPath": "pg_catalog"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -6574,6 +6593,22 @@
           "signature": "public.payment_prepared_absence_reopen_due(uuid,timestamptz,text)",
           "beforeSha256": null,
           "afterSha256": "d5a9587ef53ea738fd02743e0b81e7fa5734cf209501405a948cbb6d5f25ab1e"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261120100000_fulfillment_intake_channel.sql",
+      "sha256": "5ce8ada91ed1b6634a9d17b54b82751502e6350e564945528f240e361dda5352",
+      "functions": [
+        {
+          "signature": "public.fulfillment_dispatch_finish(uuid,jsonb,boolean)",
+          "beforeSha256": "b3f34c6dd5d9ded20924aed2ab204053aafae5a89b35f74ad41cf439fe166152",
+          "afterSha256": "1c53297ee689590d04e238449d6d4eef4f60a60371c154aa86bc46c37b95912a"
+        },
+        {
+          "signature": "public.fulfillment_dispatch_finish(uuid,jsonb,boolean,text)",
+          "beforeSha256": null,
+          "afterSha256": "791b8b5b33351e05859c7b02f05b20dd166ee241595aec142a33039ca3ba7a7e"
         }
       ]
     }

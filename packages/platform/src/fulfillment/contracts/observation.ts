@@ -11,13 +11,13 @@ export interface FulfillmentTrackingReference { trackingNumber: string; /** Norm
 /** Durable normalized envelope. eventKey, not the receivedAt-bearing fact fingerprint, deduplicates retries. */
 export interface FulfillmentObservation {
   fact: NormalizedFulfillmentFact<CanonicalLocalFulfillmentStatus>;
-  eventKind: "shipment.accepted" | "order.processing_started" | "order.picked" | "order.shipped" | "order.delivered" | "parcel.exception" | "parcel.cancelled";
+  eventKind: "shipment.accepted" | "shipment.preparing" | "shipment.packed" | "shipment.in_transit" | "shipment.delivered" | "order.processing_started" | "order.picked" | "order.shipped" | "order.delivered" | "parcel.exception" | "parcel.cancelled";
   eventKey: string;
   firstReceivedAt: string;
   correlation: { orderRef: string | null; fulfillmentRef: string | null; externalRef: string | null; orderNumber: string | null; providerFulfillmentRef: string | null; parcelRef: string | null };
   trackingRefs: readonly FulfillmentTrackingReference[];
   /** Original provider status tokens; canonical status does not identify an occurrence. */
-  providerStatus?: { primary: string | null; subStatus: string | null };
+  providerStatus?: { primary: string | null; subStatus: string | null; /** Neutral aliases; legacy fields remain the compatibility carrier. */ code?: string | null; detailCode?: string | null };
   diagnostics?: { redactedFieldCount?: number; admission?: { rejectedTrackingRefs: number; rejectedTrackingUrls: number }; refusal?: FulfillmentRefusal; stockContention?: { sqlState: "55P03"; phase: "provider_stock_consumed"; retryable: true }; annotation?: "recorded" | "failed"; recoveredPickedReceipt?: { receiptRef: string; closed: boolean } };
 }
 export interface FulfillmentObservationPort {

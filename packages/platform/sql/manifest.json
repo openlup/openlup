@@ -542,6 +542,10 @@
       {
         "file": "db/platform/migrations/20261114120000_payment_reconciliation_refund_evidence.sql",
         "sha256": "53e6675a8346accaf31805d03118940df09c5dfc1cc063578af53714d2abcc5f"
+      },
+      {
+        "file": "db/platform/migrations/20261120100000_fulfillment_intake_channel.sql",
+        "sha256": "5ce8ada91ed1b6634a9d17b54b82751502e6350e564945528f240e361dda5352"
       }
     ],
     "objectInventorySha256": "2113a2e8ab35937055fe62743af11a252c6e0cc316edc90a9fee2a9de0ca6261",
@@ -1106,6 +1110,10 @@
         {
           "file": "db/platform/migrations/20261114120000_payment_reconciliation_refund_evidence.sql",
           "sha256": "53e6675a8346accaf31805d03118940df09c5dfc1cc063578af53714d2abcc5f"
+        },
+        {
+          "file": "db/platform/migrations/20261120100000_fulfillment_intake_channel.sql",
+          "sha256": "5ce8ada91ed1b6634a9d17b54b82751502e6350e564945528f240e361dda5352"
         }
       ],
       "objectInventorySha256": {
@@ -1674,6 +1682,10 @@
         {
           "file": "db/platform/migrations/20261114120000_payment_reconciliation_refund_evidence.sql",
           "sha256": "53e6675a8346accaf31805d03118940df09c5dfc1cc063578af53714d2abcc5f"
+        },
+        {
+          "file": "db/platform/migrations/20261120100000_fulfillment_intake_channel.sql",
+          "sha256": "5ce8ada91ed1b6634a9d17b54b82751502e6350e564945528f240e361dda5352"
         }
       ],
       "objectInventorySha256": {
@@ -2357,6 +2369,11 @@
       "file": "20261114120000_payment_reconciliation_refund_evidence.sql",
       "source": "db/platform/migrations/20261114120000_payment_reconciliation_refund_evidence.sql",
       "sha256": "53e6675a8346accaf31805d03118940df09c5dfc1cc063578af53714d2abcc5f"
+    },
+    {
+      "file": "20261120100000_fulfillment_intake_channel.sql",
+      "source": "db/platform/migrations/20261120100000_fulfillment_intake_channel.sql",
+      "sha256": "5ce8ada91ed1b6634a9d17b54b82751502e6350e564945528f240e361dda5352"
     },
     {
       "file": "q2_00000000000000_platform_baseline.sql",

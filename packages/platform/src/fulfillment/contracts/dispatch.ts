@@ -8,7 +8,7 @@ export interface FulfillmentSelection {
   pickupPoint: PickupPoint | null;
 }
 export interface FulfillmentRefusal {
-  reason: "not_dispatchable" | "selection_required" | "provider_mismatch" | "carrier_service_required" | "disabled" | "not_ready" | "unsupported" | "withheld" | "claim_conflict" | "contact_stale" | "stock_contention" | "local_missing" | "io_failure" | "malformed" | "untrusted" | "unsupported_event" | "stale" | "missing_correlation";
+  reason: "not_dispatchable" | "selection_required" | "provider_mismatch" | "carrier_service_required" | "disabled" | "not_ready" | "unsupported" | "withheld" | "claim_conflict" | "contact_stale" | "stock_contention" | "local_missing" | "io_failure" | "malformed" | "untrusted" | "unsupported_event" | "stale" | "missing_correlation" | "provider_reservations_unsupported" | "stock_consumption_policy_unsupported" | "stock_movements_unsupported" | "independent_split_unsupported" | "pickup_point_delivery_unsupported" | "label_create_unsupported" | "label_void_unsupported" | "provider_cancel_unsupported" | "label_format_unsupported";
   phase: "selection" | "prepare" | "claim" | "begin" | "dispatch" | "acknowledge" | "verify" | "normalize" | "apply" | "readback" | "sync";
   retryable: boolean;
 }
@@ -52,7 +52,7 @@ export interface FulfillmentOperationError {
   cause?: string;
 }
 export type FulfillmentDispatchResult = ({ error?: FulfillmentOperationError; redactedFieldCount?: number } & (
-  | { kind: "accepted"; externalRef: string; evidence: DispatchEvidence; providerAttemptKey: string; labelKey: string; recovery?: { source: "persisted_acceptance"; proof: "persisted_external_ref"; noProviderPost: true } }
+  | { kind: "accepted"; externalRef: string; evidence: DispatchEvidence; providerAttemptKey: string; labelKey: string; /** Neutral alias; when supplied, must equal labelKey byte-for-byte. */ receiptKey?: string; recovery?: { source: "persisted_acceptance"; proof: "persisted_external_ref"; noProviderPost: true } }
   | { kind: "not_dispatched"; effectMayHaveSucceeded: false; refusal: FulfillmentRefusal }
   | { kind: "unknown"; effectMayHaveSucceeded: true; refusal: FulfillmentRefusal }));
 export type FulfillmentDispatchPrepareResult =

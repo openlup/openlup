@@ -11526,6 +11526,20 @@ export interface FulfillmentCapabilityDescriptor {
     };
     ownsDeliveredNotification: boolean;
     stockAuthority: "local_atp" | "external_stock_master_with_local_reservations";
+    /** Omitted intake preserves webhook/push acknowledgement evidence. */
+    intakeMode?: "webhook" | "polling";
+    /** Only local reservations with finished-picking consumption are admitted. */
+    inventory?: {
+        reservationOwner: "local" | "provider";
+        consumption: "finished_picking" | "provider_managed";
+    };
+    /** Omitted means movement reads are required; false selects snapshot-only sync. */
+    stockMovements?: boolean;
+    independentSplits?: boolean;
+    /** Independent of warehouse role; omitted retains the existing role rule. */
+    transportSelection?: "merchant" | "provider";
+    /** MIME formats; only application/pdf is admitted by the native label contract. */
+    labelFormats?: readonly string[];
     labelReadOwner: "host_storage" | "adapter" | "none";
     actionPolicy: {
         providerSpecificAdminActions: boolean;
@@ -11666,7 +11680,7 @@ export interface FulfillmentSelection {
     pickupPoint: PickupPoint | null;
 }
 export interface FulfillmentRefusal {
-    reason: "not_dispatchable" | "selection_required" | "provider_mismatch" | "carrier_service_required" | "disabled" | "not_ready" | "unsupported" | "withheld" | "claim_conflict" | "contact_stale" | "stock_contention" | "local_missing" | "io_failure" | "malformed" | "untrusted" | "unsupported_event" | "stale" | "missing_correlation";
+    reason: "not_dispatchable" | "selection_required" | "provider_mismatch" | "carrier_service_required" | "disabled" | "not_ready" | "unsupported" | "withheld" | "claim_conflict" | "contact_stale" | "stock_contention" | "local_missing" | "io_failure" | "malformed" | "untrusted" | "unsupported_event" | "stale" | "missing_correlation" | "provider_reservations_unsupported" | "stock_consumption_policy_unsupported" | "stock_movements_unsupported" | "independent_split_unsupported" | "pickup_point_delivery_unsupported" | "label_create_unsupported" | "label_void_unsupported" | "provider_cancel_unsupported" | "label_format_unsupported";
     phase: "selection" | "prepare" | "claim" | "begin" | "dispatch" | "acknowledge" | "verify" | "normalize" | "apply" | "readback" | "sync";
     retryable: boolean;
 }
@@ -11753,7 +11767,8 @@ export type FulfillmentDispatchResult = ({
     externalRef: string;
     evidence: DispatchEvidence;
     providerAttemptKey: string;
-    labelKey: string;
+    labelKey: string; /** Neutral alias; when supplied, must equal labelKey byte-for-byte. */
+    receiptKey?: string;
     recovery?: {
         source: "persisted_acceptance";
         proof: "persisted_external_ref";
@@ -11886,7 +11901,7 @@ export interface FulfillmentTrackingReference {
 /** Durable normalized envelope. eventKey, not the receivedAt-bearing fact fingerprint, deduplicates retries. */
 export interface FulfillmentObservation {
     fact: NormalizedFulfillmentFact<CanonicalLocalFulfillmentStatus>;
-    eventKind: "shipment.accepted" | "order.processing_started" | "order.picked" | "order.shipped" | "order.delivered" | "parcel.exception" | "parcel.cancelled";
+    eventKind: "shipment.accepted" | "shipment.preparing" | "shipment.packed" | "shipment.in_transit" | "shipment.delivered" | "order.processing_started" | "order.picked" | "order.shipped" | "order.delivered" | "parcel.exception" | "parcel.cancelled";
     eventKey: string;
     firstReceivedAt: string;
     correlation: {
@@ -11901,7 +11916,9 @@ export interface FulfillmentObservation {
     /** Original provider status tokens; canonical status does not identify an occurrence. */
     providerStatus?: {
         primary: string | null;
-        subStatus: string | null;
+        subStatus: string | null; /** Neutral aliases; legacy fields remain the compatibility carrier. */
+        code?: string | null;
+        detailCode?: string | null;
     };
     diagnostics?: {
         redactedFieldCount?: number;
@@ -12362,6 +12379,8 @@ export interface SyncCursor {
     /** G15: successful sellable coverage gaps; legacy absent values read as []. */
     coverageGapSkus?: readonly string[];
     refusal: FulfillmentRefusal | null;
+    /** Snapshot-only sync diagnostic; independent of snapshot success/failure. */
+    movementRefusal?: FulfillmentRefusal;
     /** Per-entry bounded diagnostics and run evidence in the existing cursor JSON, never raw errors. */
     syncRunId?: string;
     counts?: {
@@ -13792,6 +13811,11 @@ export declare const FULFILLMENT_MIGRATIONS: readonly [{
     readonly catalogPath: "db/platform/migrations/20261022165000_fulfillment_stock_evidence_replay_reopen.sql";
     readonly sha256: "6d132dec2820047f4e337bcf752b3d884600ccc12de03887fe6d6aa5575bc1db";
     readonly url: URL;
+}, {
+    readonly position: 135;
+    readonly catalogPath: "db/platform/migrations/20261120100000_fulfillment_intake_channel.sql";
+    readonly sha256: "5ce8ada91ed1b6634a9d17b54b82751502e6350e564945528f240e361dda5352";
+    readonly url: URL;
 }];
 ```
 ## dist/fulfillment/nativeUnsupported.d.ts
@@ -13966,7 +13990,7 @@ export declare function createPostgresDeliveryAlignmentPort(db: PgExecutor): Del
 ## dist/fulfillment/postgresDispatchStore.d.ts
 
 ```ts
-import type { FulfillmentDispatchRequest, FulfillmentStorePort } from './contracts/index.js';
+import type { FulfillmentCapabilityDescriptor, FulfillmentDispatchRequest, FulfillmentStorePort } from './contracts/index.js';
 import type { createFulfillmentCommandLedger } from './providerCommandLedger.js';
 /** Caller supplies a driver and its selected host preparation/data boundary. */
 export interface PgExecutor {
@@ -13979,6 +14003,8 @@ export declare function createPostgresFulfillmentDispatchStore(db: PgExecutor, h
     /** Synchronize authoritative withholding/contact revision on prepare and every source edit. */
     prepare(fulfillmentRef: string): ReturnType<FulfillmentStorePort['prepare']>;
     readCandidate(fulfillmentRef: string): Promise<FulfillmentDispatchRequest | null>;
+    /** Selected descriptor declaration; omitted preserves push. Requires the intake-channel SQL forward. */
+    intakeMode?: FulfillmentCapabilityDescriptor['intakeMode'];
 }): FulfillmentStorePort & {
     commandLedger: ReturnType<typeof createFulfillmentCommandLedger>;
 };
@@ -14180,7 +14206,12 @@ export declare function createProductReconciliationEvidenceHandler<Request exten
 ```ts
 import type { FulfillmentCapabilityDescriptor, FulfillmentRefusal, FulfillmentSelection } from "./contracts/index.js";
 /** Injected profiles replace the private registry. Support never activates a provider. */
-export declare function readFulfillmentCapabilities(profiles: readonly FulfillmentCapabilityDescriptor[], selection: FulfillmentSelection | null | undefined): {
+export declare function readFulfillmentCapabilities(profiles: readonly FulfillmentCapabilityDescriptor[], selection: FulfillmentSelection | null | undefined,
+/** Probe native execution limits independently of adapter selection support. */
+request?: {
+    operation?: "dispatch" | "independentSplit" | "pickupPointDelivery" | "labelCreate" | "labelVoid" | "cancel" | "reservations" | "labelRead";
+    format?: string;
+}): {
     kind: "selected";
     descriptor: FulfillmentCapabilityDescriptor;
 } | {
@@ -14573,11 +14604,13 @@ interface StockSyncResult {
     items: NonNullable<SyncCursor["items"]>[number][];
     providerError?: NonNullable<SyncCursor["error"]>["providerError"];
     refusal?: NonNullable<SyncCursor["refusal"]>;
+    movementRefusal?: SyncCursor["movementRefusal"];
 }
 export declare function runFulfillmentStockSyncWorker(input: {
     port: FulfillmentStockSyncPort;
     provider: FulfillmentStockSyncProvider;
     movementBatchSize: number;
+    stockMovements?: boolean;
     staleSyncThresholdHours?: number;
     now?: () => Date;
     compatibility: {

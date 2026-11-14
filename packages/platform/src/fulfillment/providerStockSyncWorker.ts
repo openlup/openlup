@@ -9,11 +9,13 @@ interface StockSyncResult {
   rejected: number; items: NonNullable<SyncCursor["items"]>[number][];
   providerError?: NonNullable<SyncCursor["error"]>["providerError"];
   refusal?: NonNullable<SyncCursor["refusal"]>;
+  movementRefusal?: SyncCursor["movementRefusal"];
 }
 export async function runFulfillmentStockSyncWorker(input: {
   port: FulfillmentStockSyncPort;
   provider: FulfillmentStockSyncProvider;
   movementBatchSize: number;
+  stockMovements?: boolean;
   staleSyncThresholdHours?: number;
   now?: () => Date;
   compatibility: {
@@ -45,6 +47,7 @@ export async function runFulfillmentStockSyncWorker(input: {
     skipped: false,
     syncRunId,
     lastMovementOccurredAt: null,
+    ...(input.stockMovements === false ? { movementRefusal: { reason: "stock_movements_unsupported" as const, phase: "sync" as const, retryable: false } } : {}),
   };
 
   const alerts: NonNullable<SyncCursor["alerts"]>[number][] = [];
@@ -57,6 +60,7 @@ export async function runFulfillmentStockSyncWorker(input: {
   const currentCoverageGapSkus = new Set<string>();
   try {
     previousCursor = await input.port.readCursor();
+    if (input.stockMovements === false) result.lastMovementOccurredAt = previousCursor?.lastMovementOccurredAt ?? null;
 
     // Stale-sync alert: if the last successful sync aged past the threshold, open a stale_sync
     // low-stock evidence row (evidence/warn — never blocks sales); a healthy run resolves it
@@ -87,7 +91,8 @@ export async function runFulfillmentStockSyncWorker(input: {
       syncRunId,
       status: "running",
       lastStockSyncedAt: null,
-      lastMovementOccurredAt: null,
+      lastMovementOccurredAt: result.lastMovementOccurredAt,
+      ...(result.movementRefusal ? { movementRefusal: result.movementRefusal } : {}),
       continuation: { nextRef: null, startLocalDate: null, endLocalDate: null },
       coverageGapSkus: previousCursor?.coverageGapSkus ?? [], refusal: null,
     });
@@ -117,8 +122,8 @@ export async function runFulfillmentStockSyncWorker(input: {
     ]);
 
     stage = "stock_movements_read_failed";
-    result.providerCalls += 1;
-    const movementRows = await input.provider.getStockMovements({ ...stockMovementWindow(previousCursor, now, input.compatibility.timeZone), size: input.movementBatchSize });
+    if (input.stockMovements !== false) result.providerCalls += 1;
+    const movementRows = input.stockMovements === false ? [] : await input.provider.getStockMovements({ ...stockMovementWindow(previousCursor, now, input.compatibility.timeZone), size: input.movementBatchSize });
     const movements: StockMovement[] = [];
     for (const item of movementRows) {
       if ("kind" in item && item.kind === "rejected") {
@@ -134,7 +139,7 @@ export async function runFulfillmentStockSyncWorker(input: {
       result.reason = "invalid_sku_ref";
     }
     result.movements = movements.length;
-    result.lastMovementOccurredAt = latestOccurredAt(movements);
+    if (input.stockMovements !== false) result.lastMovementOccurredAt = latestOccurredAt(movements);
 
     const localBySku = aggregateAtpCompatibleStock(localStock, now);
     const coverageCandidates: Array<{
@@ -244,6 +249,7 @@ export async function runFulfillmentStockSyncWorker(input: {
     continuation: { nextRef: null, startLocalDate: null, endLocalDate: null },
     coverageGapSkus: result.ok ? [...currentCoverageGapSkus].sort() : rejectedStockResponse ? previousCursor?.coverageGapSkus ?? [] : [],
     refusal: result.refusal ?? null,
+    ...(result.movementRefusal ? { movementRefusal: result.movementRefusal } : {}),
     error: result.ok ? null : { reason: result.reason!, ...(result.providerError ? { providerError: result.providerError } : {}) },
     counts: { checked: result.checked, updated: result.updated, movements: result.movements, rejected: result.rejected,
       failures: result.failures, providerCalls: result.providerCalls, readBacks: result.readBacks },

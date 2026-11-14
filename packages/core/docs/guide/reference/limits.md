@@ -26,6 +26,24 @@ prerequisites. A source build does not start a complete commerce application.
 See the [install support policy](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/.github/INSTALL_SUPPORT_POLICY.md)
 for the installation boundary.
 
+## Fulfillment execution limits
+
+The native capability reader names these boundaries before provider I/O. A
+capability declaration does not activate an adapter or install an execution path.
+
+| Requested capability | Refusal or limit | Available path |
+| --- | --- | --- |
+| Provider-held reservations, including remote reserve/release | `provider_reservations_unsupported` | Use recorded local reservations. |
+| Provider-managed stock consumption | `stock_consumption_policy_unsupported` | Use local finished-picking consumption. |
+| Movements on a snapshot-only stock source | `stock_movements_unsupported` in `movementRefusal` | Snapshots may succeed; retain the prior movement watermark. |
+| Independent split allocations | `independent_split_unsupported` | Multiple tracking references may describe one commitment; resolve independent allocations through host operations. |
+| Standalone pickup-point or locker booking/delivery | `pickup_point_delivery_unsupported` | Existing adapter pickup-point selection data remains accepted. |
+| Native label creation | `label_create_unsupported` | Bind a separately authorized host label workflow. |
+| Native label void | `label_void_unsupported` | Bind a separately authorized host cleanup workflow. |
+| Provider-side cancellation | `provider_cancel_unsupported` | Local cancellation retains its dispatch fences; use the provider's operator path for remote action. |
+| Label MIME format other than PDF | `label_format_unsupported` | Use `application/pdf`; label return types remain unchanged. |
+| Nullable carrier/service in saved customer preferences | Required string validation; `carrier_service_required` for merchant-selected dispatch | Use explicit provider-selected native parcel transport; saved preferences cannot store null transport. |
+
 ## Pure contract limits
 
 Core's catalogue identifier schemas validate bounded shapes. They do not prove

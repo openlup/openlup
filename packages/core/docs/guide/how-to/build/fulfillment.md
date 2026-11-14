@@ -66,6 +66,34 @@ Disabled services refuse with `disabled`. Missing selection refuses with
 and `fulfillment_preparation_attribution_required` for an empty edit actor/key.
 Map these before serving your own entry points.
 
+The selected capability can declare `intakeMode: "polling"`; the native binding
+then records `poll` ACK evidence. Omitted or `webhook` intake records `push`.
+Install the complete native SQL catalogue through
+`20261120100000_fulfillment_intake_channel.sql` before composing this store.
+Existing accepted receipts keep their original channel on replay.
+
+Declare `transportSelection: "provider"` when the provider selects transport:
+native parcel preparation, capture and readback preserve null carrier/service.
+Saved customer preferences still require strings; use explicit host parcel
+selection for this model. Omission preserves the warehouse requirement, and
+`transportSelection: "merchant"` requires carrier/service for any role.
+
+Omitted inventory declarations preserve local reservations and finished-picking
+consumption. Provider reservations and other consumption policies refuse during
+readiness. Independent splits, standalone pickup-point/locker execution, label
+create/void, remote cancellation and non-PDF documents have
+[named limits](../../reference/limits.md#fulfillment-execution-limits).
+Pickup-point selection data and multiple tracking references remain available.
+Pass `stockMovements: false` to the stock worker for snapshot-only synchronization;
+inspect `movementRefusal` separately from snapshot success. Omission retains the
+movement-read requirement; neither mode introduces movement writes.
+
+Adapters can add `receiptKey` equal to legacy `labelKey` and neutral observation
+status aliases `code`/`detailCode` alongside `primary`/`subStatus`. Neutral event
+kinds are `shipment.preparing`, `shipment.packed`, `shipment.in_transit` and
+`shipment.delivered`. Preserve existing event keys and receipts when adopting
+these aliases.
+
 ## Exercise captured dispatch
 
 Call `createCapturedFulfillmentAdapter` with `providerRef`, explicit
