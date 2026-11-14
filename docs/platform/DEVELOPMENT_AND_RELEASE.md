@@ -323,8 +323,10 @@ then runs the guide tutorial against the registry. It runs trusted default-branc
 code and reads only the release tag's tutorial page, after checking the tag's
 commit against the completed publication run. It does not hold the
 publication run open or delay the next release dispatch, and is not a required
-check. The registry tutorial remains advisory until its second green run:
-a tutorial failure appears as a warning annotation and in the step summary.
+check. The registry tutorial is blocking after two green release runs: a failed
+tutorial fails that workflow run, which reports to the maintainer. It runs after
+publication and cannot affect that publication. A propagation timeout still
+warns and defers the tutorial.
 The packed-candidate tutorial in `install-packages` is blocking because its
 condition of two green merge-group runs on main has been met.
 

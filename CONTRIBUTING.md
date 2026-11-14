@@ -394,7 +394,9 @@ independently of the required `test` job in a separate checkout and installation
 
 The packed-candidate guide tutorial runs after the package gates as a blocking
 step: its condition of two green merge-group runs on main has been met.
-The separate registry tutorial remains advisory until its second green run.
+The separate registry tutorial is also blocking after two green release runs:
+a failed tutorial fails its workflow run, which reports to the maintainer. It
+runs after publication and cannot affect that publication.
 
 After package proof succeeds, `install-browser` runs the starter's installed
 PostgreSQL browser journeys in four parallel shards through
