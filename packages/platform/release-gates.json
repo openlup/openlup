@@ -972,6 +972,18 @@
       ],
       "entrypoint": "dist/payments/testing/index.d.ts",
       "snapshot": "api/payments-testing.api.md"
+    },
+    "./fulfillment/testing": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/fulfillment/scriptedFake.test.ts",
+        "test/fulfillment/certification.test.ts",
+        "test/fulfillment/omnipack/conformance.test.ts"
+      ],
+      "entrypoint": "dist/fulfillment/testing/index.d.ts",
+      "snapshot": "api/fulfillment-testing.api.md"
     }
   },
   "pack": {

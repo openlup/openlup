@@ -3854,6 +3854,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/fulfillment-testing.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/api/fulfillment.api.md",
       "class": "public-output"
     },
@@ -6811,6 +6815,18 @@
     },
     {
       "path": "packages/platform/src/fulfillment/statusMap.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/testing/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/testing/scenarios.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/testing/scriptedFake.ts",
       "class": "public-output"
     },
     {
@@ -9878,6 +9894,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/fulfillment/certification.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/fulfillment/contracts.test.ts",
       "class": "public-output"
     },
@@ -9999,6 +10019,10 @@
     },
     {
       "path": "packages/platform/test/fulfillment/replacementDelay.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/scriptedFake.test.ts",
       "class": "public-output"
     },
     {

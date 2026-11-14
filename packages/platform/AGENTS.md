@@ -67,6 +67,7 @@ or external-write authority. The application's own instructions govern.
 | `./fulfillment/contracts` | capability | experimental |
 | `./fulfillment/native` | capability | experimental |
 | `./fulfillment/omnipack` | capability | experimental |
+| `./fulfillment/testing` | capability | experimental |
 | `./http` | rail | experimental |
 | `./identity` | capability | experimental |
 | `./identity/contracts` | capability | experimental |

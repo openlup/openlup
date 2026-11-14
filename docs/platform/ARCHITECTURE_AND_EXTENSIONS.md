@@ -863,6 +863,12 @@ observation ledger; neither initiates a replacement send.
 
 ## Fulfillment contracts
 
+Adapter authors can use the experimental `@openlup/platform/fulfillment/testing`
+entry to [certify a fulfilment adapter offline](../../packages/core/docs/guide/how-to/build/fulfillment.md#certify-a-fulfilment-adapter-offline).
+Strict qualification requires capability-selected fixtures and explicit refusal
+probes; baseline callers retain their existing checks. Offline adapter evidence
+does not establish database locking, durable deduplication or replacement transactions.
+
 The fulfillment entry also exports its existing `parseOutboxPayload` helper.
 K4 reference email bindings reuse that same parser through the host runtime;
 paid handoff retains the identical schema parsing, issue paths and 300-character
@@ -875,7 +881,7 @@ subpath: the status canon, actual-evidence tracking progress, current-parcel
 selection/attribution and parsers narrowed to the canonical status union. Its
 [local sources](../../packages/core/src/fulfillment/index.ts) have no I/O or platform
 dependency. Generic core fact types retain their names; narrowed aliases use the
-`Canonical` prefix. Platform fulfillment lives at three existing-package subpaths:
+`Canonical` prefix. Platform fulfillment retains its existing-package subpaths:
 `@openlup/platform/fulfillment`, `/fulfillment/contracts` and the opt-in
 `/fulfillment/omnipack` example. `@openlup/platform/fulfillment` keeps compatibility
 re-exports of the core presentation, and `/fulfillment/contracts` re-exports the

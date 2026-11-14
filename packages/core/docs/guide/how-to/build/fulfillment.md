@@ -201,3 +201,71 @@ A different fingerprint refuses with
 `fulfillment_stock_evidence_idempotency_conflict` (SQLSTATE `23505`). Earlier
 whole-input fingerprints are not rewritten: resolving an alert does not make
 its key available for changed input.
+
+## Certify a fulfilment adapter offline
+
+For adapter authors using this development preview, the experimental
+`@openlup/platform/fulfillment/testing` entry re-exports the existing runner and
+captured dispatch adapter. `createScriptedFulfillmentFake` supplies per-operation
+FIFO scripts with `enqueue`, `invoke`, `calls` and `assertDrained`. It records only
+operation keys and outcome kinds. Use neutral operation keys; keep credentials,
+raw captures and customer data out of scripts and expectations. The kit bundles
+no capture corpus and makes no network calls, timers or retries.
+
+```ts
+import {
+  createScriptedFulfillmentFake,
+  runFulfillmentAdapterConformance,
+} from "@openlup/platform/fulfillment/testing";
+import type { FulfillmentAdapterTestSubject } from "@openlup/platform/fulfillment/testing";
+
+const fake = createScriptedFulfillmentFake<{ submit: Response }>();
+fake.enqueue("submit", { kind: "success", value: new Response("{}") });
+// Consume this illustrative script; in an adapter bind invoke at its injected fetch boundary.
+await fake.invoke("submit");
+fake.assertDrained();
+
+export async function certify(adapterSubject: FulfillmentAdapterTestSubject) {
+  return runFulfillmentAdapterConformance([adapterSubject], { mode: "full" });
+}
+```
+
+Supply `FulfillmentAdapterTestSubject.certification` with profile `adapter`.
+Every supported callable operation needs success and failure witnesses. Dispatch
+scenarios index the subject's dispatch fixtures: address refusal before submission,
+definitive rejection after submission, transport failures before and after
+submission, and HTTP 5xx. Bind the scripted fault at the actual boundary: a
+before-submission script injected into fetch has already crossed that boundary.
+The runner checks adapter error evidence, including `submissionAttempted` and
+`mayHaveSucceeded`; a script's metadata alone proves neither.
+
+Observation indices select an exact duplicate, a newer then older occurrence
+with explicit timestamps, and an authentication refusal. Authentication may be
+a token check; passing it does not establish body-signature verification.
+Readback includes unknown versus authoritative absence, returned parcels and a
+coarse exception representing loss recovery input. It does not manufacture an
+unknown provider status into a loss event or start a replacement. Numbered page
+fixtures cover full, short, empty, exhausted and failing pages. A cursor-based
+provider maps its cursors to sequential page numbers inside its adapter; the
+public page port carries no opaque cursor and this kit adds none.
+
+Supply success/failure pairs for each stock and product sync method. The
+`snapshotOnly` callback invokes the real snapshot-only worker and returns its
+movement refusal; its counter counts only movement calls. Native selection probes
+invoke the shipped refusal paths for non-PDF labels, label creation/voiding,
+provider cancellation, independent splits, provider-owned reservations and
+pickup-point/locker execution. These are native execution limits, separate from
+adapter metadata flags. Unsupported label methods must also be invoked through
+the actual adapter with no provider call. Full qualification fails if an applicable
+fixture is missing; it never silently skips one.
+
+The transportless captured adapter can qualify profile `dispatch-only`, proving
+accepted, refused and unknown dispatch/replay. It earns no label, observation,
+readback or sync certification. Existing one-argument calls retain baseline mode;
+opt into full mode explicitly when qualifying an adapter.
+
+Offline evidence establishes adapter results and the named native refusal
+probes. It does not certify database locks, durable deduplication, cancellation
+races, replacement transactions or delivery alignment. Those require the real
+PostgreSQL host witnesses. An offline status replay does not establish one durable
+host effect, and no replacement is confirmed unless it reached the customer.

@@ -1,0 +1,3 @@
+- Add the experimental `./fulfillment/testing` offline adapter certification entry, scripted transport and capability-selected full qualification. Missing full-mode fixtures fail qualification. Native selection refusals are reported separately from adapter witnesses; durable host guarantees remain PostgreSQL evidence.
+
+Migration: existing imports and one-argument runner calls retain baseline checks. Adapter authors opt into strict qualification with `runFulfillmentAdapterConformance(subjects, { mode: "full" })` and supply `certification` fixtures. A transportless captured adapter selects the narrower `dispatch-only` profile; it earns no other capability certification. No provider behavior or SQL changes.

@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 import { expect, it, vi } from "vitest";
 import { runFulfillmentAdapterConformance, runFulfillmentDispatchWorker } from "../../../src/fulfillment/index.js";
+import { createScriptedFulfillmentFake } from "../../../src/fulfillment/testing/index.js";
+import type { FulfillmentAdapterTestSubject } from "../../../src/fulfillment/testing/index.js";
+import { runFulfillmentStockSyncWorker } from "../../../src/fulfillment/index.js";
 import { createOmnipackFulfillmentAdapter } from "../../../src/fulfillment/omnipack/index.js";
 import type { DispatchEvidence, DispatchRecord, FulfillmentStorePort, FulfillmentAdapterConformanceSubject as Subject, FulfillmentDispatchRequest, FulfillmentObservation, FulfillmentRefusal } from "../../../src/fulfillment/contracts/index.js";
 
@@ -50,7 +53,7 @@ const readbackRawEvidence = { provider: "omnipack", event: "order.delivered", pr
   trackingReferences: [{ provider: "omnipack", trackingNumber: "TRACK-A", trackingUrl: signedUrl, carrier: null, carrierKind: null, service: null }], shippingMethods: [] };
 const syncIdentity = { providerRef: "omnipack", syncRunId: "sync-a", collectedAt: now, sourceRevision: null, revisionSource: "collection" as const };
 
-function subject(): { value: Subject; calls: { method: string; path: string; body: BodyInit | null | undefined }[] } {
+function subject(options: { fetchImpl?: typeof fetch; credentials?: () => Promise<{ username: string; password: string }>; readIoCount?: () => number; product?: { resolvePushMetadata: (sku: string) => Promise<Record<string, unknown> | null> } } = {}): { value: Subject; calls: { method: string; path: string; body: BodyInit | null | undefined }[] } {
   const calls: { method: string; path: string; body: BodyInit | null | undefined }[] = [];
   let readbacks = 0;
   const fetchImpl: typeof fetch = async (url, init) => {
@@ -70,16 +73,16 @@ function subject(): { value: Subject; calls: { method: string; path: string; bod
     return new Response(JSON.stringify(body), { status: 200 });
   };
   const adapter = createOmnipackFulfillmentAdapter({
-    http: { baseUrl: "https://warehouse.example.test", credentials: () => ({ username: "synthetic", password: credential }),
-      fetchImpl, timeoutMs: 1000, safeReadRetries: 0, productPath: "/products" }, selected: true, readiness: { ready: true },
+    http: { baseUrl: "https://warehouse.example.test", credentials: options.credentials ?? (() => ({ username: "synthetic", password: credential })),
+      fetchImpl: options.fetchImpl ?? fetchImpl, timeoutMs: 1000, safeReadRetries: 0, productPath: "/products" }, selected: true, readiness: { ready: true },
     resolveProduct: async () => ({ lotNumber: "LOT-A", expirationDate: "2027-01-01" }),
     notification: { token: () => credential, expectedEvent: "order.delivered" }, clock: () => now,
-    mintEvidenceReference: () => evidenceRef, mintSyncRunId: () => "sync-a", approveTrackingUrl: () => true,
+    mintEvidenceReference: () => evidenceRef, mintSyncRunId: () => "sync-a", approveTrackingUrl: () => true, product: options.product,
   });
   const input = request();
   const refusedInput = { ...request(), lines: [] };
   const value: Subject = { subjectId: "omnipack-offline", adapter,
-    readIoCount: () => calls.length, sensitiveValues: [email, phone, credential, signedUrl, "synthetic-signature-placeholder"],
+    readIoCount: options.readIoCount ?? (() => calls.length), sensitiveValues: [email, phone, credential, signedUrl, "synthetic-signature-placeholder"],
     fixtures: {
       dispatch: [
         { input, expectedPrepare: { kind: "prepared", evidence: preparedEvidence }, expectedDispatch: accepted, replay: true },
@@ -207,4 +210,168 @@ it("M08 host ledger fences fresh-instance and evicted-fingerprint replays before
     expect(ledger.get(candidate.requestKey)).toEqual(record);
     expect(attempts.size).toBe(1);
   }
+});
+
+function fullSubject() {
+  const fake = createScriptedFulfillmentFake<Record<string, Response>>();
+  const json = (body: unknown, status = 200) => ({ kind: "success" as const, value: new Response(JSON.stringify(body), { status }) });
+  const response = (rows: unknown[]) => ({ _embedded: { fulfilments: rows }, page: { number: 0, size: 100, totalPages: 1, totalElements: rows.length } });
+  const delivered = { orderId: "external-a", fulfilmentNumber: "parcel-a", status: "delivered", updatedAt: now, shipments: [{ trackingNo: "TRACK-A", trackingUrl: signedUrl }] };
+  let posts = 0, beforeSubmission = false, httpCalls = 0;
+  const wire: { method: string; path: string; query: string }[] = [];
+  const fetchImpl: typeof fetch = async (url, init) => {
+    httpCalls += 1;
+    const u = new URL(url.toString()), method = init?.method ?? "GET";
+    wire.push({ method, path: u.pathname, query: u.search });
+    // The next fixture fails in credentials, before the actual fetch boundary.
+    if (method === "POST" && ++posts === 2) beforeSubmission = true;
+    return fake.invoke(`${method} ${u.pathname}`);
+  };
+  fake.enqueue("POST /orders", json({ orderId: "external-a" }), { kind: "http-failure", status: 400, response: new Response("{}", { status: 400 }) },
+    { kind: "transport-after-submission" }, { kind: "http-failure", status: 503, response: new Response("{}", { status: 503 }) });
+  fake.enqueue("credentials", { kind: "transport-before-submission" });
+  const value: FulfillmentAdapterTestSubject = subject({ fetchImpl, readIoCount: () => httpCalls,
+    credentials: async () => { if (beforeSubmission) { beforeSubmission = false; await fake.invoke("credentials"); } return { username: "synthetic", password: credential }; },
+    product: { resolvePushMetadata: async () => ({ sku: "SKU-A" }) } }).value;
+  const dispatchRows = [...value.fixtures.dispatch];
+  const dispatchError = (code: string, status: number | null, attempted: boolean) => ({ code, status, retryable: false, mayHaveSucceeded: attempted && status !== 400,
+    submissionAttempted: attempted, ...(status === null ? {} : { responseBodyRead: true }) });
+  for (const [key, detail] of [
+    ["address-rejected", dispatchError("http_400", 400, true)],
+    ["before-send", dispatchError("network_error", null, false)],
+    ["after-send", dispatchError("network_error", null, true)],
+    ["server-failure", dispatchError("http_503", 503, true)],
+  ] as const) {
+    const input = { ...request(), requestKey: key, orderNumber: key };
+    const evidence = { ...preparedEvidence, commandFingerprint: hash(commandBody.replace('"ORDER-A"', JSON.stringify(key))) };
+    dispatchRows.push({ input, expectedPrepare: { kind: "prepared", evidence }, replay: true,
+      expectedDispatch: detail.mayHaveSucceeded ? { kind: "unknown", effectMayHaveSucceeded: true, refusal: { reason: "io_failure", phase: "dispatch", retryable: false }, error: detail }
+        : { kind: "not_dispatched", effectMayHaveSucceeded: false, refusal: { reason: "io_failure", phase: "dispatch", retryable: false }, error: detail } });
+  }
+  value.fixtures.dispatch = dispatchRows;
+  value.fixtures.label!.read = [{ input: [{ objectRef: "label-a", mediaType: "application/pdf", externalRef: "external-a" }], expected: { kind: "refused", refusal: refusal("unsupported", "dispatch") } }];
+  const valid = value.fixtures.observation![0]!;
+  const olderPayload = { ...webhookPayload, occurredAt: "2026-10-20T10:00:00.000Z" };
+  const olderKey = `order.delivered:external-a:parcel-a:${olderPayload.occurredAt}`;
+  const baseObservation = expectedObservation("provider_webhook", webhook(webhookPayload).rawBody);
+  value.fixtures.observation = [valid, valid,
+    { input: [webhook(olderPayload)], expected: { kind: "verified", observation: { ...baseObservation, eventKey: olderKey,
+      fact: { ...baseObservation.fact, factId: hash(olderKey), occurredAt: olderPayload.occurredAt,
+        rawEvent: { ...baseObservation.fact.rawEvent, digest: hash(webhook(olderPayload).rawBody) } } } } },
+    { input: [{ ...webhook(webhookPayload), headers: { authorization: "Bearer incorrect-placeholder" } }], expected: { kind: "refused", refusal: refusal("untrusted", "verify") } }];
+  const readbacks = [...value.fixtures.readback!];
+  // Independent expected coarse exception envelopes, without inventing a LOST status.
+  const exception = (primary: string, detail: string | null) => {
+    const providerStatus = { primary, subStatus: detail };
+    const eventKey = hash(JSON.stringify(["external-a", "parcel-a", null, primary, detail, now]));
+    const raw = { ...readbackRawEvidence, event: "parcel.exception", providerStatus };
+    const observation: FulfillmentObservation = { ...expectedObservation("provider_reconciliation", JSON.stringify(raw)), providerStatus, eventKey, eventKind: "parcel.exception",
+      fact: { ...expectedObservation("provider_reconciliation", JSON.stringify(raw)).fact, factId: eventKey, canonicalStatus: "exception" } };
+    return { kind: "found" as const, externalRef: "external-a", createdAt: null, updatedAt: now, observation };
+  };
+  for (const [status, subStatus] of [["returned_to_sender", null], ["shipping_failed", "PARCEL_UNLOCATED"]] as const) {
+    readbacks.push({ input: [readInput("external-a")], expected: exception(status, subStatus) });
+  }
+  fake.enqueue("GET /fulfilments", json(response([delivered])), json(response([])),
+    json(response([{ ...delivered, status: "returned_to_sender" }])), json(response([{ ...delivered, status: "shipping_failed", subStatus: "PARCEL_UNLOCATED" }])));
+  value.fixtures.readback = readbacks;
+  // Empty baseline stock/movement and product calls retain the original exact fixtures.
+  fake.enqueue("GET /stock", json({ _embedded: { stockItems: [{ sku: "SKU-A", totalQuantity: 5, forSaleQuantity: 3, faultyQuantity: 2 }] } }),
+    json({ _embedded: { stockItems: [{ sku: "SKU-A" }] } }));
+  fake.enqueue("GET /stock-movements", json({ _embedded: [{ sku: "SKU-A", quantity: -2, occurredAt: now, operationType: "order_shipped", warehouseDocumentNumber: "DOC-A", productLotNumber: "LOT-A", expirationDate: "2027-01-01" }] }));
+  fake.enqueue("GET /products/SKU-A", json({ packs: [{ ean: "0000000000012", quantity: 2 }] }));
+  // Numbered paging: full, short, empty, exhausted, HTTP failure.
+  const pageRow = { ...delivered, shipments: [] };
+  const pageObservation = expectedObservation("provider_reconciliation", "unused");
+  const pageKey = hash(JSON.stringify(["external-a", "parcel-a", null, "delivered", null, now]));
+  const pageRaw = { ...readbackRawEvidence, trackingNumbers: [], trackingReferences: [], providerStatus: { primary: "delivered", subStatus: null } };
+  const pageResult = { kind: "found" as const, externalRef: "external-a", createdAt: null, updatedAt: now, observation: {
+    ...pageObservation, trackingRefs: [], correlation: { ...pageObservation.correlation, fulfillmentRef: null },
+    diagnostics: { admission: { rejectedTrackingRefs: 0, rejectedTrackingUrls: 0 } },
+    fact: { ...pageObservation.fact, factId: pageKey, fulfillmentReference: "parcel-a", rawEvent: { ...pageObservation.fact.rawEvent, digest: hash(JSON.stringify(pageRaw)) } },
+  } };
+  fake.enqueue("GET /fulfilments", json(response([pageRow, pageRow])), json(response([pageRow])), json(response([])),
+    { kind: "http-failure", status: 400, response: new Response(JSON.stringify({ code: "ERR_PAGE_MUST_BE_LESS_THAN_TOTAL_PAGES" }), { status: 400 }) },
+    { kind: "http-failure", status: 503, response: new Response("{}", { status: 503 }) });
+  const syncFailure = { reason: "io_failure" as const, phase: "sync" as const, retryable: false };
+  const fail = () => ({ kind: "http-failure" as const, status: 503, response: new Response("{}", { status: 503 }) });
+  fake.enqueue("GET /stock", json({}), fail(), json({}), fail());
+  fake.enqueue("GET /stock-movements", json({}), fail());
+  fake.enqueue("GET /products/SKU-A", json({ packs: [] }), fail());
+  let movements = 0;
+  value.certification = { profile: "adapter", dispatch: { addressBeforeSubmission: 1, addressAfterSubmission: 2,
+    transport: { "transport-before-submission": { fixture: 3, calls: fake.calls }, "transport-after-submission": { fixture: 4, calls: fake.calls }, "http-failure": { fixture: 5, calls: fake.calls } } },
+    observation: { duplicate: [0, 1], outOfOrder: [0, 2], authenticationFailure: 3 }, exceptions: { returned: 2, lostCoarse: 3 },
+    paging: { full: { input: { page: 0, size: 2 }, expected: { kind: "page", rows: [pageResult, pageResult] } },
+      short: { input: { page: 1, size: 2 }, expected: { kind: "page", rows: [pageResult] } }, empty: { input: { page: 2, size: 2 }, expected: { kind: "page", rows: [] } },
+      exhausted: { input: { page: 3, size: 2 }, expected: { kind: "page_exhausted" } }, failure: { input: { page: 4, size: 2 }, expected: { kind: "failed", refusal: { reason: "io_failure", phase: "readback", retryable: true }, error: { code: "http_503", status: 503, retryable: true, mayHaveSucceeded: false } } } },
+    stockSync: [ { operation: "getStock", success: { input: [], expected: [] }, failure: { input: [], throws: { ...syncFailure, retryable: true } } },
+      { operation: "getStockMovements", success: { input: [], expected: [] }, failure: { input: [], throws: { ...syncFailure, retryable: true } } } ],
+    productSync: [ { operation: "ensureProduct", success: { input: ["SKU-A"], expected: { replayed: false } }, failure: { input: ["SKU-A"], throws: syncFailure } },
+      { operation: "getProductPacks", success: { input: ["SKU-A"], expected: [] }, failure: { input: ["SKU-A"], throws: { ...syncFailure, retryable: true } } },
+      { operation: "addProductPack", success: { input: ["SKU-A", { ean: "0000000000012", quantity: 2 }], expected: undefined }, failure: { input: ["SKU-A", { ean: "invalid", quantity: 2 }], throws: { reason: "malformed", phase: "sync", retryable: false } } },
+      { operation: "listStockedSkus", success: { input: [], expected: [] }, failure: { input: [], throws: { ...syncFailure, retryable: true } } } ],
+    snapshotOnly: { readMovementCalls: () => movements, async invoke() {
+      const result = await runFulfillmentStockSyncWorker({ stockMovements: false, movementBatchSize: 1, now: () => new Date(now),
+        compatibility: { syncRunId: () => "sync-offline", timeZone: "UTC", staleEvidenceSku: "sentinel", currentKey: () => "current", snapshotKey: () => "snapshot", lowStockKey: () => "low", staleKey: () => "stale" },
+        provider: { getStock: async () => [], getStockMovements: async () => { movements += 1; return []; } }, port: {
+          readCursor: async () => null, recordCursor: async () => {}, readLocalInventoryStock: async () => [], readSkuInventoryClasses: async () => new Map(), readActiveReservations: async () => new Map(),
+          recordStockSnapshot: async () => ({ replayed: false, readBack: true }), recordProviderStockCurrent: async () => ({ replayed: false, readBack: true }),
+          recordMovement: async () => ({ replayed: false, readBack: true }), recordLowStockEvidence: async () => ({ replayed: false }), resolveLowStockEvidence: async () => ({ resolved: 0 }),
+        } }); return result.movementRefusal;
+    } },
+  };
+  // Configure the real product write path for success and HTTP failure.
+  fake.enqueue("POST /products/SKU-A/packs", json({}));
+  fake.enqueue("POST /products", json({}), fail());
+  return { value, fake, wire };
+}
+
+it("qualifies the real reference adapter offline with strict fixtures and native refusal probes", async () => {
+  const fixture = fullSubject();
+  const proof = await runFulfillmentAdapterConformance([fixture.value], { mode: "full" });
+  expect(proof.cases.at(-1)?.operation).toBe("full:adapter (offline; no durable host qualification)");
+  expect(proof.cases.filter(row => row.operation.startsWith("native refusal:"))).toHaveLength(8);
+  fixture.fake.assertDrained();
+  expect(fixture.wire.filter(row => row.path === "/orders")).toHaveLength(4);
+  expect(fixture.wire.filter(row => row.path === "/fulfilments").slice(-5).map(row => row.query)).toEqual(["?page=0&size=2", "?page=1&size=2", "?page=2&size=2", "?page=3&size=2", "?page=4&size=2"]);
+  expect(JSON.stringify(proof)).not.toMatch(/synthetic-credential|synthetic-signature/);
+});
+
+it.each([
+  ["dispatch", (s: FulfillmentAdapterTestSubject) => { delete s.certification!.dispatch; }, "dispatch scenarios required"],
+  ["label", (s: FulfillmentAdapterTestSubject) => { s.fixtures.label!.read = []; }, "label read refusal fixture required"],
+  ["observation", (s: FulfillmentAdapterTestSubject) => { delete s.certification!.observation; }, "observation scenarios required"],
+  ["chronology", (s: FulfillmentAdapterTestSubject) => { s.certification!.observation!.outOfOrder = [2, 0]; }, "out-of-order chronology"],
+  ["exception", (s: FulfillmentAdapterTestSubject) => { delete s.certification!.exceptions; }, "exception fixtures required"],
+  ["paging", (s: FulfillmentAdapterTestSubject) => { delete s.certification!.paging; }, "numbered paging fixtures required"],
+  ["sync", (s: FulfillmentAdapterTestSubject) => { s.certification!.stockSync = []; }, "stockSync witnesses required"],
+  ["movements", (s: FulfillmentAdapterTestSubject) => { delete s.certification!.snapshotOnly; }, "snapshot-only refusal probe required"],
+] as const)("fails full qualification on missing or invalid %s evidence", async (_name, mutate, hint) => {
+  const fixture = fullSubject(); mutate(fixture.value);
+  await expect(runFulfillmentAdapterConformance([fixture.value], { mode: "full" })).rejects.toThrow(hint);
+});
+
+it("rejects a refusal that calls the provider and a snapshot-only probe that calls movements", async () => {
+  const label = fullSubject(); let calls = 0;
+  const read = label.value.adapter.label!.read;
+  label.value.adapter.label!.read = async input => { calls++; return read(input); };
+  const count = label.value.readIoCount; label.value.readIoCount = () => count() + calls;
+  await expect(runFulfillmentAdapterConformance([label.value], { mode: "full" })).rejects.toThrow("unsupported label before I/O");
+  const movement = fullSubject(); let movementCalls = 0;
+  movement.value.certification!.snapshotOnly = { readMovementCalls: () => movementCalls, async invoke() { movementCalls++; return { reason: "stock_movements_unsupported", phase: "sync", retryable: false }; } };
+  await expect(runFulfillmentAdapterConformance([movement.value], { mode: "full" })).rejects.toThrow("snapshot-only no movement I/O");
+});
+
+
+it("refuses false label-deletion confirmation and authentication refusal after provider access", async () => {
+  const label = fullSubject();
+  label.value.adapter.label!.void = async () => ({ providerDeletion: "confirmed", labelDeleted: true, canProceed: true, refusal: refusal("unsupported", "dispatch") });
+  label.value.fixtures.label!.void![0]!.expected = { providerDeletion: "confirmed", labelDeleted: true, canProceed: true, refusal: refusal("unsupported", "dispatch") };
+  await expect(runFulfillmentAdapterConformance([label.value], { mode: "full" })).rejects.toThrow("unsupported label void cannot confirm deletion");
+  const auth = fullSubject(); let calls = 0;
+  const verify = auth.value.adapter.observation!.verifyAndNormalize, count = auth.value.readIoCount;
+  auth.value.readIoCount = () => count() + calls;
+  auth.value.adapter.observation!.verifyAndNormalize = async input => { const result = await verify(input); if (result.kind === "refused") calls++; return result; };
+  await expect(runFulfillmentAdapterConformance([auth.value], { mode: "full" })).rejects.toThrow("authentication refusal before I/O");
 });

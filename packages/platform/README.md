@@ -3062,3 +3062,13 @@ rewriting them. Legacy installations are capture sources. The smaller compatible
 row utility is unchanged; managed-source nonempty profiles without a typed path
 refuse explicitly. No credentials or target activation are transferred. See the
 [data owner](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#customer-billing-profile-and-invoice-buyer-data).
+
+### Offline fulfillment adapter certification
+
+`@openlup/platform/fulfillment/testing` exports the existing conformance runner,
+captured dispatch adapter and `createScriptedFulfillmentFake`. Adapter authors
+bind synthetic transport outcomes to their real adapter and provide independently
+expected fixtures. Use `{ mode: "full" }` for strict qualification; the default
+baseline mode preserves existing callers. Missing applicable fixtures fail full
+qualification. The captured adapter selects the narrower `dispatch-only` profile.
+See [certify a fulfilment adapter offline](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/fulfillment.md#certify-a-fulfilment-adapter-offline).
