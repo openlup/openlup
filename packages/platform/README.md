@@ -1734,8 +1734,8 @@ money-moved claim. Customer “refund processed” messaging must use the
 evidence-gated `commerce.order.refund_processed` path. Monetary readback through
 `payment_refund_readback` requires accepted same-currency evidence. A status-only
 refund cannot produce that financial notice. The native rail supports the two
-reference payment providers; a third provider needs the provider-profile
-refactor. Refund creation and live-provider activation remain separate work.
+reference payment providers through declarative profiles; a third provider needs
+a profile declaration plus its adapter. Refund creation and live-provider activation remain separate work.
 See the [native payment limits](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories).
 
 The additive provider recovery factories read bounded evidence and use the existing
@@ -1782,7 +1782,18 @@ the event's durable attempt link, not the current remote handle: finalizing a
 matching handle after unresolved ingestion leaves that event unresolved on every
 redelivery, without business-state changes.
 
-The native rail supports the two reference payment providers; a third provider needs the provider-profile refactor.
+The native rail supports the two reference payment providers through declarative provider profiles. A third provider needs a profile declaration plus its adapter.
+Install the complete catalogue through
+`20261121090000_payment_provider_profiles.sql` to use the profile-based generic
+predicates. The immutable `payment_provider_profile(text)` resolves closed policy
+data; unknown admitted providers retain their existing generic behavior, with
+claims and reopening disabled. The reference adapter implementations carry typed profile declarations;
+a profile declaration does not activate an adapter. Existing evidence fields,
+result codes, replay responses and refusal order remain unchanged.
+The optional `executionFlows` argument on `createPostgresProviderPaymentRail`
+lets a host select existing protocol flow labels; omission preserves the current
+one-time/off-session mapping and supplies no additional provider composition.
+
 This composition selects card provider only. The second reference provider's portable
 composition and live-provider qualification remain follow-up work. Existing
 managed exports and the default sandbox bindings remain available.

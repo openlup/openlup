@@ -129,7 +129,7 @@ The native rail can compose the reference card provider through the explicit
 [host composition](../../examples/neutral-store/host/provider-portable.ts), with
 the complete database catalogue and host-owned configuration. Real-payment,
 method-setup and card-replacement actions remain unconfigured in this starter.
-The native rail supports the two reference payment providers; a third provider needs the provider-profile refactor.
+The native rail uses provider profiles; a third provider is added by a declaration plus an adapter.
 The supplied portable composition covers the reference card provider only.
 No supported, stable or production-ready deployment is claimed.
 

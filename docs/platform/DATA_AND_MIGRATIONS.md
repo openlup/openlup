@@ -847,7 +847,7 @@ exclusion retain their existing contract.
 | Cancelled or refunded historical service | No resurrection, rewritten receipts or automatic repair. |
 | Equal or older cumulative refund observation | Durable ignored observation; no repeated financial, reservation or notice effect. |
 | Refunded order status without accepted same-currency evidence | Status projection only; no financial notice or monetary readback. Use verified refund evidence for customer messaging. |
-| Another payment provider | The native rail supports the two reference payment providers; a third provider needs the provider-profile refactor. |
+| Another payment provider | The native rail supports the two reference payment providers through declarative provider profiles. A third provider needs a profile declaration plus its adapter. |
 | Provider dispatch and customer delivery | Offline store proof supplies no live-provider or journey activation claim. The host owns provider reads, dispatch and financial-notice delivery. |
 
 `paymentSchemaDescriptor.absenceReopen` and `.cumulativeRefund` are supported
@@ -1532,25 +1532,32 @@ routing and a refund-amount rule. Each row adds only its own whole-file SHA-256
 pins, exact counts and baseline keys with its files. R1's attempt-store slot and
 mirror each pin `ui-13` 0→4 and `ui-14` 0→3. Its unchanged characterization fixture,
 `tests/postgres/fixtures/paymentProvider/durability.sql`, pins `ui-13` 0→6 and
-`ui-14` 0→5 with its own whole-file digest and baseline key. This fixture keeps
-the same names until the provider-profile refactor removes them together with
-the predicates; a third provider needs that refactor. Every other test or
-fixture path remains refused by this extension, except the three method-ledger
-characterization fixtures listed below. No other native
-or package SQL path is admitted beyond these six paths and the existing
-operations compatibility carrier; TypeScript and documentation remain outside
-this allowance. This is vocabulary debt, not provider activation or portable-contract parity;
-future neutral replacements must lower it. The [neutrality owner](../../CONTRIBUTING.md#package-policy-and-release-checks)
-owns the ratchet. Its `reviewedPinnedIntroductions` allowance is a closed list of
-20 paths and 26 tuples: six managed fixture/rail pairs and the registry
-(13 paths/15 tuples), the operations package SQL carrier (one path/tuple), and
-the attempt-store slot, mirror and characterization witness (three paths/six tuples),
-and method-ledger characterization fixtures (three paths/four tuples).
-`tests/postgres/fixtures/paymentMethods/replayed.sql` pins `ui-14` 0→6;
-`subscription_switch.sql` pins `ui-13` 0→3; `scope_repair.sql` pins `ui-13`
-0→10 and `ui-14` 0→1. Each exact file has its own whole-file digest and
-baseline key, retained until the same provider-profile refactor. The method
-SQL itself introduces no counted provider vocabulary.
+`ui-14` 0→5 with its own whole-file digest and baseline key. Historical migration slots and characterization fixtures retain those exact bytes,
+namespaces and whole-file pins. The appended
+`20261121090000_payment_provider_profiles.sql` and its identical package mirror
+replace the ten effective payment-policy functions without editing history.
+The replacement predicates select closed policy fields instead of provider
+identities. Each of the two declaration carriers has an exact whole-file digest
+and precisely one `ui-13` and one `ui-14` occurrence, both declaration data.
+No other new native SQL, generic TypeScript or fixture receives an allowance.
+The existing adapter-owned subpaths retain protocol translation and typed profile
+declarations; an executed parity witness compares their shared fields to SQL.
+
+`payment_provider_profile(text)` is an immutable declarative resolver. A known
+identifier selects its profile; an arbitrary admitted identifier retains the
+existing generic preparation and event-delta behavior. Claims and reopening
+remain opt-in. NULL enumerates declarations solely for the existing early trusted
+tuple validation, which still precedes receipt replay and provider-row validation.
+There is no policy table, mutable registry or per-command profile JSON.
+A third provider adds an explicit declaration and its adapter; a new protocol or
+money/retry semantic needs separate work. This does not supply the second
+reference provider's portable composition or activate any provider.
+
+The closed `reviewedPinnedIntroductions` list retains every historical SQL and
+characterization-witness pin. The two new carriers extend that exact list only;
+its path validator rejects other paths, even when their bytes match. The unused
+method-store slot and mirror eligibility entries have been removed because
+neither had an introduction pin. Historical witness assertions remain unchanged.
 Each SQL pin requires the complete file's SHA-256
 and exact category and before/after counts, on any base. The registry instead
 pins the exact refund COMMENT text because later approvals edit unrelated

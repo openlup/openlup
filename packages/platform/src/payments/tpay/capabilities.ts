@@ -1,8 +1,9 @@
+import { tpayPaymentProviderProfile } from "./providerProfile.js";
 import type { PaymentAdapterCapabilities } from "../contracts/index.js";
 
 /** Bank-redirect, one-time-code and unattended Model O attempts are supported with host payer/method input; account availability remains verification_pending. */
 export const tpayPaymentCapabilities: Readonly<PaymentAdapterCapabilities> = Object.freeze<PaymentAdapterCapabilities>({
-  providerKind: "tpay",
+  providerKind: tpayPaymentProviderProfile.provider,
   captureFlows: Object.freeze([
     Object.freeze({ kind: "bank_redirect", handoff: "redirect", methodFamilies: Object.freeze(["bank-redirect"] as const) }),
     Object.freeze({ kind: "one_time_code", handoff: "customer-authorization", methodFamilies: Object.freeze(["one-time-code"] as const) }),

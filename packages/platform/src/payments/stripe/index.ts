@@ -1,3 +1,4 @@
+import { stripePaymentProviderProfile } from "./providerProfile.js";
 import { createHash } from "node:crypto";
 import { classifyPaymentFailure, isPaymentRetryAdviceCode, type PaymentMethodLifecycleEvent } from "@openlup/core/payment";
 import type {
@@ -24,7 +25,7 @@ export interface StripePaymentAdapterConfig {
 
 /** Observed protocol capabilities; account activation remains host-owned. */
 export const stripePaymentCapabilities: Readonly<PaymentAdapterCapabilities> = Object.freeze<PaymentAdapterCapabilities>({
-  providerKind: "stripe",
+  providerKind: stripePaymentProviderProfile.provider,
   captureFlows: Object.freeze([Object.freeze({ kind: "card_payment", handoff: "client-confirmed", methodFamilies: Object.freeze(["card", "wallet"] as const) })]),
   requiresStoredMandateEvidence: false,
   assessMandate: () => ({ chargeable: true }),
@@ -79,7 +80,7 @@ export function createStripePaymentAdapter(config: StripePaymentAdapterConfig): 
   };
   const read: PaymentReadbackPort["readPayment"] = async input => {
     const base = { identity: input.identity, expectedMoney: input.expectedMoney, purpose: input.purpose };
-    if (input.identity.provider !== "stripe" || !input.identity.providerPaymentRef) return { ...base, kind: "unsupported" };
+    if (input.identity.provider !== stripePaymentProviderProfile.provider || !input.identity.providerPaymentRef) return { ...base, kind: "unsupported" };
     try {
       // Bind the response to the requested remote object before translating status.
       const intent = await config.client.retrievePaymentIntent(input.identity.providerPaymentRef);
@@ -157,7 +158,7 @@ export function createStripePaymentAdapter(config: StripePaymentAdapterConfig): 
       readPayment: read,
       ...(reader.closePayment ? { close: async (input: Parameters<PaymentReadbackPort["readPayment"]>[0]): Promise<PaymentReadbackEnvelope> => {
         const base = { identity: input.identity, expectedMoney: input.expectedMoney, purpose: input.purpose };
-        if (input.identity.provider !== "stripe" || !input.identity.providerPaymentRef) return { ...base, kind: "unsupported" };
+        if (input.identity.provider !== stripePaymentProviderProfile.provider || !input.identity.providerPaymentRef) return { ...base, kind: "unsupported" };
         try {
           // Check configured money and object identity before a destructive provider operation.
           const before = await read(input);
@@ -208,7 +209,7 @@ function mapVerifiedStripeEvent(raw: Record<string, unknown>): VerificationResul
     ? normalized.occurredAt : typeof raw.created === "string" && Number.isFinite(Date.parse(raw.created)) ? normalized.occurredAt : null;
   const metadata = object.metadata && typeof object.metadata === "object" ? object.metadata as Record<string, unknown> : {};
   const intentRef = typeof metadata.paymentIntentId === "string" ? metadata.paymentIntentId : null;
-  const identity = { provider: "stripe", providerEventId: normalized.providerEventId,
+  const identity = { provider: stripePaymentProviderProfile.provider, providerEventId: normalized.providerEventId,
     providerOccurredAt: occurred };
   let result: Omit<VerifiedMethodEvidence, "fingerprint"> | Omit<VerifiedPaymentEvidence, "fingerprint">;
   if (normalized.methodLifecycle || normalized.eventType.startsWith("setup.")) {

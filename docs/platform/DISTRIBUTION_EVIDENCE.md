@@ -447,5 +447,5 @@ The 0.42.0 source candidate supplies explicit card provider composition on porta
 PostgreSQL, exercised with an offline client and installed runtime roles.
 The starter still selects sandbox payments. A portable composition for the
 second reference provider and live-provider qualification remain separate.
-The native rail supports the two reference payment providers; a third provider needs the provider-profile refactor. Read the [install policy](../../.github/INSTALL_SUPPORT_POLICY.md)
+The native rail supports the two reference payment providers through declarative provider profiles. A third provider needs a profile declaration plus its adapter. Read the [install policy](../../.github/INSTALL_SUPPORT_POLICY.md)
 before relying on any preview profile.

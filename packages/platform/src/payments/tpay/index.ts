@@ -1,3 +1,4 @@
+import { tpayPaymentProviderProfile } from "./providerProfile.js";
 import { createHash, X509Certificate } from "node:crypto";
 import { classifyPaymentFailure, isPaymentRetryAdviceCode } from "@openlup/core/payment";
 import type { PaymentAdapter, PaymentAttemptPort, PaymentExecutionEnvelope,
@@ -87,8 +88,8 @@ export function createTpayPaymentAdapter(config: TpayPaymentAdapterConfig): Paym
       ...(renewal ? { providerFlow: "recurring_charge", paymentMethodRef: input.storedMethod!.reference,
         paymentMethodAliasType: "PAYID", paymentMethodRecurringModel: "O" } : {
         transientProviderInput: family === "bank-redirect"
-          ? { provider: "tpay", flow: "pbl_one_time", channelId: input.methodSelection!.channelRef }
-          : { provider: "tpay", flow: "blik_one_time", blikToken: input.customerAuthorization },
+          ? { provider: tpayPaymentProviderProfile.provider, flow: "pbl_one_time", channelId: input.methodSelection!.channelRef }
+          : { provider: tpayPaymentProviderProfile.provider, flow: "blik_one_time", blikToken: input.customerAuthorization },
       }),
     };
   };
@@ -115,7 +116,7 @@ export function createTpayPaymentAdapter(config: TpayPaymentAdapterConfig): Paym
           if (!(error instanceof ProviderAttemptPreDispatchError)) throw error;
           // A proven document refusal needs corrected data; other trusted no-charge failures can retry.
           const hints: PaymentRefusalEnvelope["hints"] = error.phase === "response_decode"
-            && error.code === "tpay_request_refused" && error.dispatchState === "refused" ? ["dataInvalid"] : ["transient"];
+            && error.code === tpayPaymentProviderProfile.trusted_refusal_code && error.dispatchState === "refused" ? ["dataInvalid"] : ["transient"];
           const reason: PaymentRefusalEnvelope = { code: classifyPaymentFailure({ neutralReasonHints: hints }).failureClass, hints };
           return { outcome: { kind: "decline", refusal: reason },
             dispatch: { kind: "notDispatched", evidence: { exact: true, phase: "before-dispatch", reason } }, diagnostics: {} };
@@ -169,7 +170,7 @@ export function createTpayPaymentAdapter(config: TpayPaymentAdapterConfig): Paym
     readbackPort: {
       async readPayment(input) {
         const base = { identity: input.identity, expectedMoney: input.expectedMoney, purpose: input.purpose };
-        if (input.identity.provider !== "tpay" || !input.identity.providerPaymentRef) return { ...base, kind: "unsupported" };
+        if (input.identity.provider !== tpayPaymentProviderProfile.provider || !input.identity.providerPaymentRef) return { ...base, kind: "unsupported" };
         try {
           const reading = await reconciliation.readRecoveryPayment({
             providerPaymentId: input.identity.providerPaymentRef, purpose: input.purpose, attempt: input.expectedMoney,
@@ -220,7 +221,7 @@ function mapVerifiedTpayEvent(rawBody: string, occurred: string | null, mode: "l
   const payload = event.raw_payload;
   if (payload.testMode !== null && payload.testMode !== undefined
     && payload.testMode !== (mode === "test" ? "1" : "0")) return refusal("unsupported-event");
-  const identity = { provider: "tpay", providerOccurredAt: occurred };
+  const identity = { provider: tpayPaymentProviderProfile.provider, providerOccurredAt: occurred };
   let evidence: Omit<VerifiedPaymentEvidence, "fingerprint"> | Omit<VerifiedMethodEvidence, "fingerprint">;
   if (payload.eventKind === "blik_alias") {
     const kinds: Record<string, VerifiedMethodEvidence["outcome"]> = {
