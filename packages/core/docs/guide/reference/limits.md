@@ -39,8 +39,11 @@ capability declaration does not activate an adapter or install an execution path
 | Independent split allocations | `independent_split_unsupported` | Multiple tracking references may describe one commitment; resolve independent allocations through host operations. |
 | Standalone pickup-point or locker booking/delivery | `pickup_point_delivery_unsupported` | Existing adapter pickup-point selection data remains accepted. |
 | Historical dispatch without recorded reservations or order mode | `dispatch_reservations_not_recorded` or `order_mode_unproven`; batch selection withholds unpreparable rows | Authorized manual repair; no backfill or inferred acceptance. |
-| Native replacement dispatch | `replacement_dispatch_not_composed`; unsubmitted parcels with a predecessor or a positive sequence are withheld | Replacement dispatch is not yet composed natively; accepted-proof recovery remains available. |
+| Automatic replacement confirmation | No automatic confirmation or inferred arrival | Replacement creation and dispatch never settle alignment; record actual customer arrival through an admitted command. |
+| Native shipments overview | `host_binding_required` | Bind a reader over host-owned overview data; native shipment rows do not supply that dataset. |
 | Historical failed/uncertain dispatch | Old diagnostic `outcome` remains NULL; no automatic resubmission | Inspect recorded proof and use authorized provider readback/manual recovery. |
+| Replacement submission with a lost acknowledgement and only an echoed replacement number | Without a recorded provider identity or matching native/order identity, intake cannot correlate; the echoed number alone does not identify the stored order | Inspect provider records, verify the recorded parcel and reconcile confirmed acceptance through the authorized host recovery path; never blindly resubmit. |
+| Automatic replacement dispatch for a fulfilled parent order | Creation may succeed, but native dispatch requires a `paid` or `fulfillment_pending` parent and a `created` or `label_pending` parcel | Resolve through an authorized host fulfillment workflow; the native worker does not rewrite the parent status. |
 | Native label creation | `label_create_unsupported` | Bind a separately authorized host label workflow. |
 | Native label void | `label_void_unsupported` | Bind a separately authorized host cleanup workflow. |
 | Provider-side cancellation | `provider_cancel_unsupported` | Local cancellation retains its dispatch fences; use the provider's operator path for remote action. |
