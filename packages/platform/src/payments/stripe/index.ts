@@ -1,5 +1,4 @@
 import { stripePaymentProviderProfile } from "./providerProfile.js";
-export { stripePaymentProviderProfile } from "./providerProfile.js";
 import { createHash } from "node:crypto";
 import { classifyPaymentFailure, isPaymentRetryAdviceCode, type PaymentMethodLifecycleEvent } from "@openlup/core/payment";
 import type {

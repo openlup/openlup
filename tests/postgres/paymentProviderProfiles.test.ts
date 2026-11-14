@@ -354,7 +354,7 @@ it("pins every preimage and proves the ten bodies and generic TypeScript contain
 it("matches all SQL fields to the independent adapter declarations and preserves generic fallback",async()=>{
   expect(profiles).toHaveLength(2);
   for(const profile of profiles){
-    const exports=await import(/* @vite-ignore */ pathToFileURL(resolve("packages/platform/dist/payments",profile.provider,"index.js")).href) as Record<string,unknown>;
+    const exports=await import(/* @vite-ignore */ pathToFileURL(resolve("packages/platform/dist/payments",profile.provider,"providerProfile.js")).href) as Record<string,unknown>;
     expect(Object.values(exports).find(value=>value&&typeof value==="object"&&"provider"in value&&(value as PaymentProviderProfile).provider===profile.provider)).toEqual(profile);
   }
   const fallback=(await runtime.query("SELECT * FROM public.payment_provider_profile('unprofiled-provider')")).rows;

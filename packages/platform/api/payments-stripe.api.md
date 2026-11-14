@@ -1290,7 +1290,6 @@ export interface PaymentProviderRecoveryProvider {
 ## dist/payments/stripe/index.d.ts
 
 ```ts
-export { stripePaymentProviderProfile } from "./providerProfile.js";
 import type { PaymentAdapter, PaymentAdapterCapabilities } from "../contracts/index.js";
 import { type StripeSandboxClient } from "./stripeSandboxPaymentExecutionAdapter.js";
 import { type StripePaymentIntentReader } from "./stripePaymentReconciliationProvider.js";
@@ -1392,15 +1391,6 @@ export declare function evidenceRecord(value: unknown): Record<string, unknown>;
 export declare function serializeFailureEvidence(input: PaymentFailureEvidence): PaymentFailureEvidence;
 /** Persist beside legacy fields; never merge the diagnostic codes into them. */
 export declare function failureEvidencePayload(evidence: PaymentFailureEvidence | null | undefined): Record<string, unknown>;
-```
-## dist/payments/stripe/providerProfile.d.ts
-
-```ts
-import type { PaymentProviderProfile } from "../contracts/providerProfile.js";
-/** Native policy declaration; the adapter still owns protocol translation. */
-export declare const stripePaymentProviderProfile: Readonly<PaymentProviderProfile & {
-    provider: "stripe";
-}>;
 ```
 ## dist/payments/stripe/stripeFailureEvidence.d.ts
 

@@ -1393,7 +1393,6 @@ export interface TpayTransientProviderInput {
 ## dist/payments/tpay/index.d.ts
 
 ```ts
-export { tpayPaymentProviderProfile } from "./providerProfile.js";
 import type { PaymentAdapter } from "../contracts/index.js";
 export { tpayPaymentCapabilities } from "./capabilities.js";
 import { type TpayJwsCertificateResolver } from "./webhookJwsVerifier.js";
@@ -1523,15 +1522,6 @@ export declare class ProviderAttemptPreDispatchError extends Error {
     withPaymentAttempt(paymentAttemptId: string): this;
     withRetryCount(retryCount: number): this;
 }
-```
-## dist/payments/tpay/providerProfile.d.ts
-
-```ts
-import type { PaymentProviderProfile } from "../contracts/providerProfile.js";
-/** Native policy declaration; this does not supply a portable composition. */
-export declare const tpayPaymentProviderProfile: Readonly<PaymentProviderProfile & {
-    provider: "tpay";
-}>;
 ```
 ## dist/payments/tpay/tpayCreateTransactionInput.d.ts
 

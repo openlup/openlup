@@ -1786,7 +1786,7 @@ Install the complete catalogue through
 `20261121090000_payment_provider_profiles.sql` to use the profile-based generic
 predicates. The immutable `payment_provider_profile(text)` resolves closed policy
 data; unknown admitted providers retain their existing generic behavior, with
-claims and reopening disabled. The adapter subpaths export typed profile data;
+claims and reopening disabled. The reference adapter implementations carry typed profile declarations;
 a profile declaration does not activate an adapter. Existing evidence fields,
 result codes, replay responses and refusal order remain unchanged.
 The optional `executionFlows` argument on `createPostgresProviderPaymentRail`

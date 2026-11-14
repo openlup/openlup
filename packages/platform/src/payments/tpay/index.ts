@@ -1,5 +1,4 @@
 import { tpayPaymentProviderProfile } from "./providerProfile.js";
-export { tpayPaymentProviderProfile } from "./providerProfile.js";
 import { createHash, X509Certificate } from "node:crypto";
 import { classifyPaymentFailure, isPaymentRetryAdviceCode } from "@openlup/core/payment";
 import type { PaymentAdapter, PaymentAttemptPort, PaymentExecutionEnvelope,
