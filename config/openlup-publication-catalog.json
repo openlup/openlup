@@ -12186,6 +12186,10 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/packages/portability-consumer-proof.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/packages/reference-delegation-consumer-proof.ts",
       "class": "public-output"
     },
